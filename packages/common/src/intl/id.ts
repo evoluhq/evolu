@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan string Int64 yang valid.`;
 
+/** Formats an IdentifierError in Indonesian. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan pengenal ${error.casing}.`;
+
 /** Formats a CapitalizedError in Indonesian. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -210,6 +218,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Indonesian. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} harus dipangkas.`;
+
+/** Formats a StartsWithError in Indonesian. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus diawali dengan ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formats a MinLengthError in Indonesian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Değer ${safelyStringifyUnknownValue(error.value)} geçerli bir Int64 dizgesi değildir.`;
 
+/** Formats an IdentifierError in Turkish. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri bir ${error.casing} tanımlayıcısı değildir.`;
+
 /** Formats a CapitalizedError in Turkish. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -210,6 +218,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Turkish. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Metin ${safelyStringifyUnknownValue(error.value)} başında veya sonunda boşluk içermemelidir.`;
+
+/** Formats a StartsWithError in Turkish. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri ${safelyStringifyUnknownValue(error.prefix)} ile başlamalıdır.`;
 
 /** Formats a MinLengthError in Turkish. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

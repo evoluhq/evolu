@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -158,6 +160,13 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là chuỗi Int64 hợp lệ.`;
+
+/** Formats an IdentifierError in Vietnamese. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là định danh ${error.casing}.`;
+
 /** Định dạng CapitalizedError bằng tiếng Việt. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -183,6 +192,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Định dạng TrimmedError bằng tiếng Việt. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} phải được cắt khoảng trắng đầu và cuối.`;
+/** Formats a StartsWithError in Vietnamese. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} phải bắt đầu bằng ${safelyStringifyUnknownValue(error.prefix)}.`;
+
 /** Định dạng MinLengthError bằng tiếng Việt. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,

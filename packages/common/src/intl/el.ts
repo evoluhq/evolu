@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -190,6 +192,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη συμβολοσειρά Int64.`;
 
+/** Formats an IdentifierError in Greek. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι αναγνωριστικό ${error.casing}.`;
+
 /** Formats a CapitalizedError in Greek. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -217,6 +225,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Greek. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να μην έχει κενά στην αρχή ή στο τέλος.`;
+
+/** Formats a StartsWithError in Greek. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να ξεκινά με ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formats a MinLengthError in Greek. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

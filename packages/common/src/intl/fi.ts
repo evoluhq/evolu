@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen Int64-merkkijono.`;
 
+/** Formats an IdentifierError in Finnish. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole ${error.casing}-tunniste.`;
+
 /** Muotoilee CapitalizedError-virheen suomeksi. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -210,6 +218,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Muotoilee TrimmedError-virheen suomeksi. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} alussa tai lopussa ei saa olla tyhjiä merkkejä.`;
+
+/** Formats a StartsWithError in Finnish. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on alettava merkkijonolla ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Muotoilee MinLengthError-virheen suomeksi. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

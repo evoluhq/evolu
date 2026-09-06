@@ -83,6 +83,13 @@ export const formatInt64StringError: T.TypeErrorFormatter<
   T.Int64StringError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si mfuatano halali wa Int64.`;
+
+/** Formats an IdentifierError in Swahili. */
+export const formatIdentifierError: T.TypeErrorFormatter<T.IdentifierError> = (
+  error,
+) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si kitambulishi cha ${error.casing}.`;
+
 export const formatCapitalizedError: T.TypeErrorFormatter<
   T.CapitalizedError
 > = (error) =>
@@ -109,6 +116,12 @@ export const formatTrimmedError: T.TypeErrorFormatter<T.TrimmedError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima ipunguzwe nafasi za mwanzo na mwisho.`;
+/** Formats a StartsWithError in Swahili. */
+export const formatStartsWithError: T.TypeErrorFormatter<T.StartsWithError> = (
+  error,
+) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} lazima ianze na ${safelyStringifyUnknownValue(error.prefix)}.`;
+
 export const formatMinLengthError: T.TypeErrorFormatter<T.MinLengthError> = (
   error,
 ) =>

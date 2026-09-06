@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -184,6 +186,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un șir Int64 valid.`;
 
+/** Formats an IdentifierError in Romanian. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un identificator ${error.casing}.`;
+
 /** Formatează un CapitalizedError în română. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -211,6 +219,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formatează un TrimmedError în română. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie fără spații la început sau la sfârșit.`;
+
+/** Formats a StartsWithError in Romanian. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să înceapă cu ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formatează un MinLengthError în română. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

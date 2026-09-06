@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ Int64 string ਨਹੀਂ ਹੈ।`;
 
+/** Formats an IdentifierError in Punjabi. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ${error.casing} ਪਛਾਣਕਰਤਾ ਨਹੀਂ ਹੈ।`;
+
 /** CapitalizedError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -210,6 +218,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** TrimmedError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦੇ ਸ਼ੁਰੂ ਅਤੇ ਅੰਤ ਤੋਂ whitespace ਹਟਿਆ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+
+/** Formats a StartsWithError in Punjabi. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦੀ ਸ਼ੁਰੂਆਤ ${safelyStringifyUnknownValue(error.prefix)} ਨਾਲ ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ।`;
 
 /** MinLengthError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

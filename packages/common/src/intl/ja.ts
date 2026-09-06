@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -184,6 +186,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な Int64 文字列ではありません。`;
 
+/** Formats an IdentifierError in Japanese. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は ${error.casing} 識別子ではありません。`;
+
 /** CapitalizedError を日本語でフォーマットします。 */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -211,6 +219,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** TrimmedError を日本語でフォーマットします。 */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は前後の空白が除去されている必要があります。`;
+
+/** Formats a StartsWithError in Japanese. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は ${safelyStringifyUnknownValue(error.prefix)} で始まる必要があります。`;
 
 /** MinLengthError を日本語でフォーマットします。 */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

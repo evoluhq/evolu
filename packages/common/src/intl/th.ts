@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่สตริง Int64 ที่ถูกต้อง`;
 
+/** Formats an IdentifierError in Thai. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ตัวระบุรูปแบบ ${error.casing}`;
+
 /** จัดรูปแบบ CapitalizedError เป็นภาษาไทย */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -208,6 +216,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** จัดรูปแบบ TrimmedError เป็นภาษาไทย */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องตัดช่องว่างหัวท้ายแล้ว`;
+
+/** Formats a StartsWithError in Thai. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องขึ้นต้นด้วย ${safelyStringifyUnknownValue(error.prefix)}`;
 
 /** จัดรูปแบบ MinLengthError เป็นภาษาไทย */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 Int64 문자열이 아닙니다.`;
 
+/** Formats an IdentifierError in Korean. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 ${error.casing} 식별자가 아닙니다.`;
+
 /** CapitalizedError를 한국어로 포맷합니다. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -208,6 +216,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** TrimmedError를 한국어로 포맷합니다. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값의 앞뒤 공백이 제거되어 있어야 합니다.`;
+
+/** Formats a StartsWithError in Korean. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `값 ${safelyStringifyUnknownValue(error.value)}은(는) ${safelyStringifyUnknownValue(error.prefix)}(으)로 시작해야 합니다.`;
 
 /** MinLengthError를 한국어로 포맷합니다. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

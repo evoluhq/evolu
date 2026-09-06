@@ -462,7 +462,12 @@ import { assert, assertNonNullable } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
 import type { RandomBytesDep } from "./Crypto.ts";
 import { identity, type Thunk } from "./Function.ts";
-import { createMutableRecord, getObjectKind, isPlainObject } from "./Object.ts";
+import {
+  createMutableRecord,
+  getObjectKind,
+  isPlainObject,
+  type ReadonlyRecord,
+} from "./Object.ts";
 import { hasNodeBuffer } from "./Platform.ts";
 import {
   err,
@@ -1972,7 +1977,42 @@ type ValidateParent<T extends ConcreteTypeNode> =
         "Parent must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes."
       >;
 
-type ValidateOutput<T extends ConcreteTypeNode> =
+/**
+ * Requires one concrete output {@link Type} node in a factory parameter.
+ *
+ * Rejects TypeScript unions of Type nodes. A {@link union} Type is one concrete
+ * node and remains valid. Use an intersection with the inferred parameter type
+ * to preserve its specific Type. This guard performs no runtime validation.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertSame,
+ *   Number,
+ *   String,
+ *   union,
+ *   type AnyType,
+ *   type ValidateOutput,
+ * } from "@evolu/common";
+ *
+ * const defineOutput = <T extends AnyType>(
+ *   type: T & ValidateOutput<T>,
+ * ): T => type;
+ *
+ * assertSame(defineOutput(String), String);
+ *
+ * const Value = union(String, Number);
+ * assertSame(defineOutput(Value), Value);
+ *
+ * const uncertain = String as typeof String | typeof Number;
+ * // @ts-expect-error Output Type must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+ * defineOutput(uncertain);
+ * ```
+ *
+ * @group Construction
+ */
+export type ValidateOutput<T extends AnyType> =
   IsUnion<T> extends false
     ? T
     : CompileTimeError<
@@ -3608,6 +3648,40 @@ type InstanceConstructorCompileTimeError = CompileTimeError<
 >;
 
 /**
+ * Requires one concrete literal type in a factory parameter.
+ *
+ * Preserves an exact literal and produces a compile-time error for widened,
+ * union, branded, or open template literal types. Use an intersection with the
+ * inferred parameter type, as {@link prefixed} does. This guard performs no
+ * runtime validation.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertType, type ValidateLiteral } from "@evolu/common";
+ *
+ * const definePrefix = <Prefix extends string>(
+ *   prefix: Prefix & ValidateLiteral<Prefix>,
+ * ): Prefix => prefix;
+ *
+ * const prefix = definePrefix("APP_");
+ * assertType<typeof prefix, "APP_">();
+ *
+ * const widened: string = "APP_";
+ * // @ts-expect-error Expected must be one concrete literal value.
+ * definePrefix(widened);
+ * ```
+ *
+ * @group Unions
+ */
+export type ValidateLiteral<Expected extends Literal> =
+  IsUnion<Expected> extends false
+    ? {} extends Readonly<Record<`${Expected}`, never>>
+      ? LiteralCompileTimeError
+      : Expected
+    : LiteralCompileTimeError;
+
+/**
  * Literal {@link Type}.
  *
  * {@link String}, {@link Number}, {@link BigInt}, and {@link Boolean} literal Types
@@ -3726,13 +3800,6 @@ type LiteralParentErrors<Expected extends Literal> =
   LiteralParent<Expected> extends infer Parent extends TypeNode
     ? InferErrors<Parent>
     : never;
-
-type ValidateLiteral<Expected extends Literal> =
-  IsUnion<Expected> extends false
-    ? {} extends Readonly<Record<`${Expected}`, never>>
-      ? LiteralCompileTimeError
-      : Expected
-    : LiteralCompileTimeError;
 
 type LiteralCompileTimeError = CompileTimeError<
   "Type",
@@ -5548,6 +5615,459 @@ type BrandFactoryNumberError = CompileTimeError<
 >;
 
 /**
+ * Naming conventions accepted by {@link identifier}.
+ *
+ * @group String
+ */
+export type IdentifierCasing =
+  "camelCase" | "PascalCase" | "snake_case" | "kebab-case" | "CONSTANT_CASE";
+
+/**
+ * Brand names of the Types that {@link identifier} creates, by casing.
+ *
+ * @group String
+ */
+export interface IdentifierBrandByCasing {
+  readonly camelCase: "CamelCaseIdentifier";
+  readonly PascalCase: "PascalCaseIdentifier";
+  readonly snake_case: "SnakeCaseIdentifier";
+  readonly "kebab-case": "KebabCaseIdentifier";
+  readonly CONSTANT_CASE: "ConstantCaseIdentifier";
+}
+
+/**
+ * Adds identifier validation in a naming convention to an existing string Type.
+ *
+ * An identifier is one or more ASCII words, each starting with a letter and
+ * continuing with letters or digits. camelCase and PascalCase start every word
+ * after the first with an uppercase letter, so `httpUrl` has two words and
+ * `httpURL` has four. snake_case, kebab-case, and CONSTANT_CASE put exactly one
+ * separator between words. Validation keeps the spelling and rejects empty
+ * strings, whitespace, punctuation, and non-ASCII characters.
+ *
+ * Words never start with a digit. Identifier grammars in most languages forbid
+ * a leading digit, and camelCase cannot mark a word boundary before one, so the
+ * rule applies to every word and keeps every conversion exact. Join an
+ * abbreviation such as `2FA` to the previous word, as in `MAX2FA_ATTEMPTS` and
+ * `max2faAttempts`, or spell the number out, as in `TWO_FACTOR_SECRET`.
+ *
+ * Convert validated identifiers with functions such as
+ * {@link camelCaseToSnakeCase}. Conversions preserve word boundaries, and
+ * converting back restores the original spelling. They return only the
+ * destination brand, dropping unrelated constraints such as input length.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   identifier,
+ *   maxLength,
+ *   String,
+ * } from "@evolu/common";
+ *
+ * const EnvName = identifier("CONSTANT_CASE")(maxLength(16)(String));
+ *
+ * assertOk(EnvName.fromUnknown("HTTP2_PORT"), "HTTP2_PORT");
+ * assertErr(EnvName.fromUnknown("HTTP_2_PORT"));
+ * ```
+ *
+ * @group String
+ */
+export const identifier =
+  <Casing extends IdentifierCasing>(
+    casing: Casing,
+  ): BrandFactory<
+    IdentifierBrandByCasing[Casing],
+    string,
+    IdentifierError<Casing>
+  > =>
+  (parent) => {
+    const name = identifierBrandByCasing[casing];
+    const pattern = identifierPatternByCasing[casing];
+
+    return brand(
+      name,
+      parent,
+      (value) =>
+        pattern.test(value)
+          ? ok()
+          : err<IdentifierError<Casing>>({ type: name, value, casing }),
+      (error) =>
+        `The value ${safelyStringifyUnknownValue(error.value)} is not a ${error.casing} identifier.`,
+    );
+  };
+
+/**
+ * Error returned when {@link identifier} rejects a string.
+ *
+ * @group String
+ */
+export interface IdentifierError<
+  Casing extends IdentifierCasing = IdentifierCasing,
+> extends TypeError<IdentifierBrandByCasing[Casing]> {
+  readonly value: string;
+  readonly casing: Casing;
+}
+
+const identifierBrandByCasing: IdentifierBrandByCasing = {
+  camelCase: "CamelCaseIdentifier",
+  PascalCase: "PascalCaseIdentifier",
+  snake_case: "SnakeCaseIdentifier",
+  "kebab-case": "KebabCaseIdentifier",
+  CONSTANT_CASE: "ConstantCaseIdentifier",
+};
+
+const identifierPatternByCasing: ReadonlyRecord<IdentifierCasing, RegExp> = {
+  camelCase: /^[a-z][a-zA-Z0-9]*$/u,
+  PascalCase: /^[A-Z][a-zA-Z0-9]*$/u,
+  snake_case: /^[a-z][a-z0-9]*(?:_[a-z][a-z0-9]*)*$/u,
+  "kebab-case": /^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*$/u,
+  CONSTANT_CASE: /^[A-Z][A-Z0-9]*(?:_[A-Z][A-Z0-9]*)*$/u,
+};
+
+/**
+ * A validated camelCase identifier, such as `http2Port`.
+ *
+ * See {@link identifier} for the grammar and the conversion functions.
+ *
+ * @group String
+ */
+export const CamelCaseIdentifier =
+  /*#__PURE__*/ identifier("camelCase")(String);
+export type CamelCaseIdentifier = typeof CamelCaseIdentifier.Output;
+
+/**
+ * A validated PascalCase identifier, such as `Http2Port`.
+ *
+ * See {@link identifier} for the grammar and the conversion functions.
+ *
+ * @group String
+ */
+export const PascalCaseIdentifier =
+  /*#__PURE__*/ identifier("PascalCase")(String);
+export type PascalCaseIdentifier = typeof PascalCaseIdentifier.Output;
+
+/**
+ * A validated snake_case identifier, such as `http2_port`.
+ *
+ * See {@link identifier} for the grammar and the conversion functions.
+ *
+ * @group String
+ */
+export const SnakeCaseIdentifier =
+  /*#__PURE__*/ identifier("snake_case")(String);
+export type SnakeCaseIdentifier = typeof SnakeCaseIdentifier.Output;
+
+/**
+ * A validated kebab-case identifier, such as `http2-port`.
+ *
+ * See {@link identifier} for the grammar and the conversion functions.
+ *
+ * @group String
+ */
+export const KebabCaseIdentifier =
+  /*#__PURE__*/ identifier("kebab-case")(String);
+export type KebabCaseIdentifier = typeof KebabCaseIdentifier.Output;
+
+/**
+ * A validated CONSTANT_CASE identifier, such as `HTTP2_PORT`.
+ *
+ * See {@link identifier} for the grammar and the conversion functions.
+ *
+ * @group String
+ */
+export const ConstantCaseIdentifier =
+  /*#__PURE__*/ identifier("CONSTANT_CASE")(String);
+export type ConstantCaseIdentifier = typeof ConstantCaseIdentifier.Output;
+
+/**
+ * Converts a {@link CamelCaseIdentifier} to a {@link PascalCaseIdentifier}.
+ *
+ * Converts `http2Port` to `Http2Port`. Use {@link pascalCaseToCamelCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const camelCaseToPascalCase = (
+  value: CamelCaseIdentifier,
+): PascalCaseIdentifier =>
+  (value.charAt(0).toUpperCase() + value.slice(1)) as PascalCaseIdentifier;
+
+/**
+ * Converts a {@link CamelCaseIdentifier} to a {@link SnakeCaseIdentifier}.
+ *
+ * Converts `http2Port` to `http2_port`. Use {@link snakeCaseToCamelCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const camelCaseToSnakeCase = (
+  value: CamelCaseIdentifier,
+): SnakeCaseIdentifier =>
+  value.replaceAll(
+    /[A-Z]/gu,
+    (letter) => `_${letter.toLowerCase()}`,
+  ) as SnakeCaseIdentifier;
+
+/**
+ * Converts a {@link CamelCaseIdentifier} to a {@link KebabCaseIdentifier}.
+ *
+ * Converts `http2Port` to `http2-port`. Use {@link kebabCaseToCamelCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const camelCaseToKebabCase = (
+  value: CamelCaseIdentifier,
+): KebabCaseIdentifier => snakeCaseToKebabCase(camelCaseToSnakeCase(value));
+
+/**
+ * Converts a {@link CamelCaseIdentifier} to a {@link ConstantCaseIdentifier}.
+ *
+ * Converts `http2Port` to `HTTP2_PORT`. Use {@link constantCaseToCamelCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const camelCaseToConstantCase = (
+  value: CamelCaseIdentifier,
+): ConstantCaseIdentifier =>
+  snakeCaseToConstantCase(camelCaseToSnakeCase(value));
+
+/**
+ * Converts a {@link PascalCaseIdentifier} to a {@link CamelCaseIdentifier}.
+ *
+ * Converts `Http2Port` to `http2Port`. Use {@link camelCaseToPascalCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const pascalCaseToCamelCase = (
+  value: PascalCaseIdentifier,
+): CamelCaseIdentifier =>
+  (value.charAt(0).toLowerCase() + value.slice(1)) as CamelCaseIdentifier;
+
+/**
+ * Converts a {@link PascalCaseIdentifier} to a {@link SnakeCaseIdentifier}.
+ *
+ * Converts `Http2Port` to `http2_port`. Use {@link snakeCaseToPascalCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const pascalCaseToSnakeCase = (
+  value: PascalCaseIdentifier,
+): SnakeCaseIdentifier => camelCaseToSnakeCase(pascalCaseToCamelCase(value));
+
+/**
+ * Converts a {@link PascalCaseIdentifier} to a {@link KebabCaseIdentifier}.
+ *
+ * Converts `Http2Port` to `http2-port`. Use {@link kebabCaseToPascalCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const pascalCaseToKebabCase = (
+  value: PascalCaseIdentifier,
+): KebabCaseIdentifier => snakeCaseToKebabCase(pascalCaseToSnakeCase(value));
+
+/**
+ * Converts a {@link PascalCaseIdentifier} to a {@link ConstantCaseIdentifier}.
+ *
+ * Converts `Http2Port` to `HTTP2_PORT`. Use {@link constantCaseToPascalCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const pascalCaseToConstantCase = (
+  value: PascalCaseIdentifier,
+): ConstantCaseIdentifier =>
+  snakeCaseToConstantCase(pascalCaseToSnakeCase(value));
+
+/**
+ * Converts a {@link SnakeCaseIdentifier} to a {@link CamelCaseIdentifier}.
+ *
+ * Converts `http2_port` to `http2Port`. Use {@link camelCaseToSnakeCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const snakeCaseToCamelCase = (
+  value: SnakeCaseIdentifier,
+): CamelCaseIdentifier =>
+  value.replaceAll(/_[a-z]/gu, (word) =>
+    word.charAt(1).toUpperCase(),
+  ) as CamelCaseIdentifier;
+
+/**
+ * Converts a {@link SnakeCaseIdentifier} to a {@link PascalCaseIdentifier}.
+ *
+ * Converts `http2_port` to `Http2Port`. Use {@link pascalCaseToSnakeCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const snakeCaseToPascalCase = (
+  value: SnakeCaseIdentifier,
+): PascalCaseIdentifier => camelCaseToPascalCase(snakeCaseToCamelCase(value));
+
+/**
+ * Converts a {@link SnakeCaseIdentifier} to a {@link KebabCaseIdentifier}.
+ *
+ * Converts `http2_port` to `http2-port`. Use {@link kebabCaseToSnakeCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const snakeCaseToKebabCase = (
+  value: SnakeCaseIdentifier,
+): KebabCaseIdentifier => value.replaceAll("_", "-") as KebabCaseIdentifier;
+
+/**
+ * Converts a {@link SnakeCaseIdentifier} to a {@link ConstantCaseIdentifier}.
+ *
+ * Converts `http2_port` to `HTTP2_PORT`. Use {@link constantCaseToSnakeCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const snakeCaseToConstantCase = (
+  value: SnakeCaseIdentifier,
+): ConstantCaseIdentifier => value.toUpperCase() as ConstantCaseIdentifier;
+
+/**
+ * Converts a {@link KebabCaseIdentifier} to a {@link CamelCaseIdentifier}.
+ *
+ * Converts `http2-port` to `http2Port`. Use {@link camelCaseToKebabCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const kebabCaseToCamelCase = (
+  value: KebabCaseIdentifier,
+): CamelCaseIdentifier => snakeCaseToCamelCase(kebabCaseToSnakeCase(value));
+
+/**
+ * Converts a {@link KebabCaseIdentifier} to a {@link PascalCaseIdentifier}.
+ *
+ * Converts `http2-port` to `Http2Port`. Use {@link pascalCaseToKebabCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const kebabCaseToPascalCase = (
+  value: KebabCaseIdentifier,
+): PascalCaseIdentifier => camelCaseToPascalCase(kebabCaseToCamelCase(value));
+
+/**
+ * Converts a {@link KebabCaseIdentifier} to a {@link SnakeCaseIdentifier}.
+ *
+ * Converts `http2-port` to `http2_port`. Use {@link snakeCaseToKebabCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const kebabCaseToSnakeCase = (
+  value: KebabCaseIdentifier,
+): SnakeCaseIdentifier => value.replaceAll("-", "_") as SnakeCaseIdentifier;
+
+/**
+ * Converts a {@link KebabCaseIdentifier} to a {@link ConstantCaseIdentifier}.
+ *
+ * Converts `http2-port` to `HTTP2_PORT`. Use {@link constantCaseToKebabCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const kebabCaseToConstantCase = (
+  value: KebabCaseIdentifier,
+): ConstantCaseIdentifier =>
+  snakeCaseToConstantCase(kebabCaseToSnakeCase(value));
+
+/**
+ * Converts a {@link ConstantCaseIdentifier} to a {@link CamelCaseIdentifier}.
+ *
+ * Converts `HTTP2_PORT` to `http2Port`. Use {@link camelCaseToConstantCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const constantCaseToCamelCase = (
+  value: ConstantCaseIdentifier,
+): CamelCaseIdentifier => snakeCaseToCamelCase(constantCaseToSnakeCase(value));
+
+/**
+ * Decodes a {@link ConstantCaseIdentifier} to a {@link CamelCaseIdentifier} and
+ * restores the original spelling when encoding.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertOk,
+ *   CamelCaseIdentifierFromConstantCaseIdentifier,
+ * } from "@evolu/common";
+ *
+ * const Key = CamelCaseIdentifierFromConstantCaseIdentifier;
+ * const result = Key.fromUnknown("HTTP2_PORT");
+ * assertOk(result, "http2Port");
+ * assertEqual(Key.to(result.value), "HTTP2_PORT");
+ * ```
+ *
+ * @group String
+ */
+export const CamelCaseIdentifierFromConstantCaseIdentifier =
+  /*#__PURE__*/ transform(
+    "CamelCaseIdentifierFromConstantCaseIdentifier",
+    ConstantCaseIdentifier,
+    CamelCaseIdentifier,
+    {
+      from: (value) => ok(constantCaseToCamelCase(value)),
+      to: camelCaseToConstantCase,
+    },
+  );
+
+/**
+ * Converts a {@link ConstantCaseIdentifier} to a {@link PascalCaseIdentifier}.
+ *
+ * Converts `HTTP2_PORT` to `Http2Port`. Use {@link pascalCaseToConstantCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const constantCaseToPascalCase = (
+  value: ConstantCaseIdentifier,
+): PascalCaseIdentifier =>
+  camelCaseToPascalCase(constantCaseToCamelCase(value));
+
+/**
+ * Converts a {@link ConstantCaseIdentifier} to a {@link SnakeCaseIdentifier}.
+ *
+ * Converts `HTTP2_PORT` to `http2_port`. Use {@link snakeCaseToConstantCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const constantCaseToSnakeCase = (
+  value: ConstantCaseIdentifier,
+): SnakeCaseIdentifier => value.toLowerCase() as SnakeCaseIdentifier;
+
+/**
+ * Converts a {@link ConstantCaseIdentifier} to a {@link KebabCaseIdentifier}.
+ *
+ * Converts `HTTP2_PORT` to `http2-port`. Use {@link kebabCaseToConstantCase} to
+ * recover the original spelling.
+ *
+ * @group String
+ */
+export const constantCaseToKebabCase = (
+  value: ConstantCaseIdentifier,
+): KebabCaseIdentifier => snakeCaseToKebabCase(constantCaseToSnakeCase(value));
+
+/**
  * Adds capitalized text validation to an existing string Type.
  *
  * Narrows the output to TypeScript's `Capitalize<string>` while preserving the
@@ -6059,6 +6579,185 @@ export const trim = (value: string): TrimmedString =>
   value.trim() as TrimmedString;
 
 /**
+ * String {@link Brand} requiring an exact, case-sensitive prefix.
+ *
+ * Validation preserves the complete string, including the prefix. An empty
+ * prefix accepts every string allowed by the parent Type. The prefix must be
+ * one concrete string literal so different prefixes have distinct brands.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   maxLength,
+ *   startsWith,
+ *   String,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const EnvName = startsWith("APP_")(maxLength(64)(String));
+ *
+ * const name = EnvName.fromUnknown("APP_PORT");
+ * assertOk(name, "APP_PORT");
+ * assertType<
+ *   typeof name.value,
+ *   string & Brand<"MaxLength64"> & Brand<"StartsWithAPP_">
+ * >();
+ *
+ * assertEqual(EnvName.to(name.value), "APP_PORT");
+ *
+ * assertErr(EnvName.fromUnknown("app_PORT"));
+ * assertErr(EnvName.fromUnknown("APP_" + "X".repeat(61)));
+ * ```
+ *
+ * @group String
+ */
+export const startsWith = <Prefix extends string>(
+  prefix: Prefix & ValidateLiteral<Prefix>,
+): BrandFactory<`StartsWith${Prefix}`, string, StartsWithError<Prefix>> => {
+  const name = `StartsWith${prefix}` as const;
+
+  return (parent) =>
+    brand(
+      name,
+      parent,
+      (value) =>
+        value.startsWith(prefix)
+          ? ok()
+          : err<StartsWithError<Prefix>>({
+              type: name,
+              value,
+              prefix,
+            }),
+      (error) =>
+        `The value ${safelyStringifyUnknownValue(error.value)} must start with ${safelyStringifyUnknownValue(error.prefix)}.`,
+    );
+};
+
+/**
+ * Error returned when {@link startsWith} rejects a string.
+ *
+ * @group String
+ */
+export interface StartsWithError<
+  Prefix extends string = string,
+> extends TypeError<`StartsWith${Prefix}`> {
+  readonly value: string;
+  readonly prefix: Prefix;
+}
+
+/**
+ * Decodes a prefixed string with another {@link Type} and restores the prefix
+ * when encoding.
+ *
+ * Uses {@link startsWith} to validate an exact, case-sensitive prefix before
+ * removing one occurrence. The wrapped Type validates and decodes the suffix;
+ * its constraints apply to the suffix, and its Output is preserved. Encoding
+ * prepends the prefix to the wrapped Type's canonical string representation. An
+ * empty prefix leaves that representation unchanged.
+ *
+ * The prefix must be one concrete string literal. The wrapped Type must accept
+ * a string Input and encode to strings; its Output can have another type, as
+ * with {@link PortFromString}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   ConstantCaseIdentifier,
+ *   prefixed,
+ *   PortFromString,
+ *   type Port,
+ * } from "@evolu/common";
+ *
+ * const EnvName = prefixed("APP_")(ConstantCaseIdentifier);
+ *
+ * const name = EnvName.fromUnknown("APP_PORT");
+ * assertOk(name, "PORT");
+ * assertType<typeof name.value, ConstantCaseIdentifier>();
+ *
+ * assertEqual(EnvName.to(name.value), "APP_PORT");
+ *
+ * assertErr(EnvName.fromUnknown("OTHER_PORT"));
+ * assertErr(EnvName.fromUnknown("APP_port"));
+ *
+ * const PortSetting = prefixed("port:")(PortFromString);
+ *
+ * const port = PortSetting.fromUnknown("port:04000");
+ * assertOk(port, 4000);
+ * assertType<typeof port.value, Port>();
+ *
+ * assertEqual(PortSetting.to(port.value), "port:4000");
+ * ```
+ *
+ * @group String
+ */
+export const prefixed =
+  <Prefix extends string>(prefix: Prefix & ValidateLiteral<Prefix>) =>
+  <
+    T extends ConcreteTypeNode & {
+      readonly Input: string;
+      readonly CanonicalInput: string;
+    },
+  >(
+    type: T &
+      ValidateOutput<T> &
+      (string extends T["Input"] ? unknown : PrefixedInputTypeError),
+  ): PrefixedType<Prefix, T> => {
+    // A literal prefix makes the generated names concrete and distinct.
+    const source = startsWith<Prefix>(prefix)(
+      String as ValidateBrandParent<`StartsWith${Prefix}`, typeof String>,
+    );
+
+    return transform<
+      `Prefixed${Prefix}`,
+      typeof source,
+      T,
+      typeof source.Output
+    >(
+      `Prefixed${prefix}` as ValidateChildTypeName<
+        `Prefixed${Prefix}`,
+        typeof source
+      >,
+      source,
+      type,
+      {
+        // The Input guard permits any string; concatenation establishes the prefix brand.
+        from: (value) => ok(value.slice(prefix.length) as T["Input"]),
+        to: (value) => `${prefix}${value}` as typeof source.Output,
+      },
+    );
+  };
+
+/**
+ * The {@link Type} returned by {@link prefixed}.
+ *
+ * @group String
+ */
+export interface PrefixedType<
+  Prefix extends string,
+  T extends TypeNode,
+> extends TransformType<
+  BrandType<typeof String, `StartsWith${Prefix}`, StartsWithError<Prefix>>,
+  T,
+  `Prefixed${Prefix}`,
+  never
+> {}
+
+type PrefixedInputTypeError = CompileTimeError<
+  "Type",
+  "Prefixed Type Input must accept every string."
+>;
+
+/**
  * Minimum-length {@link Brand} for values whose `length` is at least `min`.
  *
  * ### Example
@@ -6270,6 +6969,7 @@ export interface LengthError<
  * assertType<UrlSafeString, string & Brand<"UrlSafeString">>();
  *
  * assertOk(UrlSafeString.fromUnknown("abc-123_DEF"), "abc-123_DEF");
+ *
  * const invalid = UrlSafeString.fromUnknown("not safe");
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -6462,7 +7162,13 @@ export const base64UrlToUint8Array = (value: Base64Url): Uint8Array =>
   base64UrlStringToUint8Array(value);
 
 /**
- * A non-empty URL-safe name containing at most 64 UTF-16 code units.
+ * A non-empty file-system-safe and URL-safe token of at most 64 UTF-16 code
+ * units.
+ *
+ * Evolu uses it for database file names, storage pool names, and log prefixes.
+ * It accepts the {@link UrlSafeString} alphabet in any order, so it may start
+ * with a digit, `-`, or `_`. It is not a language identifier; for
+ * word-structured names, use {@link identifier}.
  *
  * @group String
  */

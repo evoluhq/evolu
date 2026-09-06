@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -182,6 +184,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) => `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 Int64 字符串。`;
 
+/** Formats an IdentifierError in Simplified Chinese. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是 ${error.casing} 标识符。`;
+
 /** 以简体中文格式化 CapitalizedError。 */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -206,6 +214,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** 以简体中文格式化 TrimmedError。 */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 必须去除首尾空白。`;
+
+/** Formats a StartsWithError in Simplified Chinese. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必须以 ${safelyStringifyUnknownValue(error.prefix)} 开头。`;
 
 /** 以简体中文格式化 MinLengthError。 */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

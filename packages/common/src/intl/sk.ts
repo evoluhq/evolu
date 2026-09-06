@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -157,6 +159,13 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť platný reťazec Int64.`;
+
+/** Formats an IdentifierError in Slovak. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je identifikátor vo formáte ${error.casing}.`;
+
 /** Formats a CapitalizedError in Slovak. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -183,6 +192,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Slovak. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Reťazec ${safelyStringifyUnknownValue(error.value)} nesmie obsahovať medzery na začiatku ani na konci.`;
+/** Formats a StartsWithError in Slovak. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí začínať na ${safelyStringifyUnknownValue(error.prefix)}.`;
+
 /** Formats a MinLengthError in Slovak. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,

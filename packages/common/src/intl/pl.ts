@@ -131,6 +131,12 @@ export const formatInt64StringError: Type.TypeErrorFormatter<
 > = (error) =>
   `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest prawidłowym łańcuchem Int64.`;
 
+/** Formats an IdentifierError in Polish. */
+export const formatIdentifierError: Type.TypeErrorFormatter<
+  Type.IdentifierError
+> = (error) =>
+  `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest identyfikatorem w formacie ${error.casing}.`;
+
 /** Formats a CapitalizedError in Polish. */
 export const formatCapitalizedError: Type.TypeErrorFormatter<
   Type.CapitalizedError
@@ -160,6 +166,12 @@ export const formatTrimmedError: Type.TypeErrorFormatter<Type.TrimmedError> = (
   error,
 ) =>
   `Tekst ${safelyStringifyUnknownValue(error.value)} nie może zawierać białych znaków na początku ani na końcu.`;
+
+/** Formats a StartsWithError in Polish. */
+export const formatStartsWithError: Type.TypeErrorFormatter<
+  Type.StartsWithError
+> = (error) =>
+  `Wartość ${safelyStringifyUnknownValue(error.value)} musi zaczynać się od ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formats a MinLengthError in Polish. */
 export const formatMinLengthError: Type.TypeErrorFormatter<

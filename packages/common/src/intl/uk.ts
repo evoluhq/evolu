@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -187,6 +189,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим рядком Int64.`;
 
+/** Formats an IdentifierError in Ukrainian. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є ідентифікатором у форматі ${error.casing}.`;
+
 /** Форматує CapitalizedError українською. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -214,6 +222,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Форматує TrimmedError українською. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не має містити пробілів на початку та в кінці.`;
+
+/** Formats a StartsWithError in Ukrainian. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має починатися з ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Форматує MinLengthError українською. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -184,6 +186,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és una cadena Int64 vàlida.`;
 
+/** Formats an IdentifierError in Catalan. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no és un identificador ${error.casing}.`;
+
 /** Formata CapitalizedError en català. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -211,6 +219,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formata TrimmedError en català. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no pot tenir espais en blanc al principi ni al final.`;
+
+/** Formats a StartsWithError in Catalan. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} ha de començar amb ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formata MinLengthError en català. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

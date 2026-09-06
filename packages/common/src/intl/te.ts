@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే Int64 string కాదు.`;
 
+/** Formats an IdentifierError in Telugu. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} ${error.casing} ఐడెంటిఫయర్ కాదు.`;
+
 /** CapitalizedErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -210,6 +218,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** TrimmedErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} లో ప్రారంభం లేదా చివర ఖాళీలు ఉండకూడదు.`;
+
+/** Formats a StartsWithError in Telugu. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా ${safelyStringifyUnknownValue(error.prefix)} తో ప్రారంభం కావాలి.`;
 
 /** MinLengthErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

@@ -44,6 +44,33 @@ import {
   Boolean,
   BooleanFromString,
   brand,
+  CamelCaseIdentifier,
+  CamelCaseIdentifierFromConstantCaseIdentifier,
+  camelCaseToPascalCase,
+  camelCaseToSnakeCase,
+  camelCaseToKebabCase,
+  camelCaseToConstantCase,
+  pascalCaseToCamelCase,
+  pascalCaseToSnakeCase,
+  pascalCaseToKebabCase,
+  pascalCaseToConstantCase,
+  snakeCaseToCamelCase,
+  snakeCaseToPascalCase,
+  snakeCaseToKebabCase,
+  snakeCaseToConstantCase,
+  kebabCaseToCamelCase,
+  kebabCaseToPascalCase,
+  kebabCaseToSnakeCase,
+  kebabCaseToConstantCase,
+  constantCaseToCamelCase,
+  constantCaseToPascalCase,
+  constantCaseToSnakeCase,
+  constantCaseToKebabCase,
+  ConstantCaseIdentifier,
+  identifier,
+  KebabCaseIdentifier,
+  PascalCaseIdentifier,
+  SnakeCaseIdentifier,
   capitalize,
   capitalized,
   uncapitalize,
@@ -156,12 +183,14 @@ import {
   PositiveNumber,
   Port,
   PortFromString,
+  prefixed,
   Ratio,
   record,
   regex,
   result,
   nextResult,
   set,
+  startsWith,
   String,
   Symbol,
   SimplePassword,
@@ -195,6 +224,7 @@ import {
   type ArrayType,
   type BrandFactory,
   type BrandType,
+  type StartsWithError,
   type Base64UrlError,
   type DataError,
   type DataIssue,
@@ -210,6 +240,8 @@ import {
   type ExtractTyped,
   type FiniteError,
   type GreaterThanError,
+  type IdentifierCasing,
+  type IdentifierError,
   type InferErrors,
   type InferType,
   type TypeIssue,
@@ -317,6 +349,8 @@ import {
   type UnionMemberError,
   type UnionType,
   type ValidationOptions,
+  type ValidateLiteral,
+  type ValidateOutput,
 } from "./Type.ts";
 
 const createNullRecord = <T extends object>(entries: T): T =>
@@ -486,10 +520,13 @@ describe("Type", () => {
       BigInt,
       Boolean,
       BooleanFromString,
+      CamelCaseIdentifier,
+      CamelCaseIdentifierFromConstantCaseIdentifier,
       CapitalizedString,
       UncapitalizedString,
       UppercasedString,
       LowercasedString,
+      ConstantCaseIdentifier,
       Data,
       Date,
       DateIso,
@@ -517,6 +554,7 @@ describe("Type", () => {
       JsonObject,
       JsonValue,
       JsonValueFromJson,
+      KebabCaseIdentifier,
       NegativeDecimalString,
       NegativeInt,
       NegativeNumber,
@@ -537,6 +575,7 @@ describe("Type", () => {
       Null,
       Number,
       Object,
+      PascalCaseIdentifier,
       PositiveDecimalString,
       PositiveFiniteNumber,
       PositiveInt,
@@ -545,6 +584,7 @@ describe("Type", () => {
       PortFromString,
       Ratio,
       SimplePassword,
+      SnakeCaseIdentifier,
       String,
       Symbol,
       TrimmedString,
@@ -623,7 +663,10 @@ describe("Type", () => {
       "BigInt",
       "Boolean",
       "BooleanFromString",
+      "CamelCaseIdentifier",
+      "CamelCaseIdentifierFromConstantCaseIdentifier",
       "Capitalized",
+      "ConstantCaseIdentifier",
       "Data",
       "Date",
       "DateIso",
@@ -650,6 +693,7 @@ describe("Type", () => {
       "Json",
       "JsonValue",
       "JsonValueFromJson",
+      "KebabCaseIdentifier",
       "Length16",
       "Length4",
       "LessThan200",
@@ -681,6 +725,7 @@ describe("Type", () => {
       "Number",
       "NumberFromString",
       "Object",
+      "PascalCaseIdentifier",
       "Port",
       "PortFromString",
       "Positive",
@@ -689,6 +734,7 @@ describe("Type", () => {
       "Record",
       "Set",
       "SimplePassword",
+      "SnakeCaseIdentifier",
       "String",
       "Symbol",
       "TemplateLiteral",
@@ -4764,7 +4810,47 @@ describe("instanceOf", () => {
   });
 });
 
+it("ValidateOutput accepts concrete Types and rejects unions of Type nodes", () => {
+  const defineOutput = <T extends AnyType>(type: T & ValidateOutput<T>): T =>
+    type;
+  const Value = union(String, Number);
+  assertSame(defineOutput(Value), Value);
+  assertType<ValidateOutput<typeof String>, typeof String>();
+  assertType<ValidateOutput<typeof Value>, typeof Value>();
+  const uncertain = String as typeof String | typeof Number;
+  const reject = () => {
+    // @ts-expect-error Output Type must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+    defineOutput(uncertain);
+  };
+  assertType<typeof reject, () => void>();
+});
+
 describe("literal", () => {
+  it("exposes its compile-time literal guard for other factories", () => {
+    assertType<ValidateLiteral<"APP_">, "APP_">();
+    assertType<ValidateLiteral<42>, 42>();
+    assertType<ValidateLiteral<42n>, 42n>();
+    assertType<ValidateLiteral<true>, true>();
+    assertType<ValidateLiteral<null>, null>();
+    assertType<ValidateLiteral<undefined>, undefined>();
+
+    const definePrefix = <Prefix extends string>(
+      prefix: Prefix & ValidateLiteral<Prefix>,
+    ): Prefix => prefix;
+    assertEqual(definePrefix("APP_"), "APP_");
+    const reject = () => {
+      // @ts-expect-error Expected must be one concrete literal value.
+      definePrefix("APP_" as string);
+      // @ts-expect-error Expected must be one concrete literal value.
+      definePrefix("APP_" as "APP_" | "OTHER_");
+      // @ts-expect-error Expected must be one concrete literal value.
+      definePrefix(TrimmedString.orThrow("APP_"));
+      // @ts-expect-error Expected must be one concrete literal value.
+      definePrefix("APP_" as `APP_${string}`);
+    };
+    assertType<typeof reject, () => void>();
+  });
+
   const Hello = literal("Hello");
 
   it("creates a Literal Type with its primitive Type as parent", () => {
@@ -8333,6 +8419,688 @@ describe("BrandFactory", () => {
   });
 
   describe("Type Factory", () => {
+    describe("identifier", () => {
+      const formats = [
+        {
+          type: CamelCaseIdentifier,
+          casing: "camelCase",
+          valid: [
+            "a",
+            "a0",
+            "http2Port",
+            "v2beta",
+            "v2Beta",
+            "maxOwnerBytes",
+            "httpUrl",
+            "httpURL",
+            "aBC",
+          ],
+          invalid: ["Http2Port", "HTTP2_PORT", "http_port", "http-port"],
+        },
+        {
+          type: PascalCaseIdentifier,
+          casing: "PascalCase",
+          valid: [
+            "A",
+            "A0",
+            "Http2Port",
+            "V2beta",
+            "V2Beta",
+            "MaxOwnerBytes",
+            "HttpUrl",
+            "HttpURL",
+            "ABC",
+          ],
+          invalid: ["http2Port", "HTTP2_PORT", "http_port", "http-port"],
+        },
+        {
+          type: SnakeCaseIdentifier,
+          casing: "snake_case",
+          valid: [
+            "a",
+            "a0",
+            "http2_port",
+            "v2beta",
+            "v2_beta",
+            "max_owner_bytes",
+            "http_url",
+            "http_u_r_l",
+            "a_b_c",
+          ],
+          invalid: [
+            "HTTP2_PORT",
+            "httpPort",
+            "http-port",
+            "_port",
+            "port_",
+            "http__port",
+            "http_2_port",
+          ],
+        },
+        {
+          type: KebabCaseIdentifier,
+          casing: "kebab-case",
+          valid: [
+            "a",
+            "a0",
+            "http2-port",
+            "v2beta",
+            "v2-beta",
+            "max-owner-bytes",
+            "http-url",
+            "http-u-r-l",
+            "a-b-c",
+          ],
+          invalid: [
+            "HTTP2-PORT",
+            "httpPort",
+            "http_port",
+            "-port",
+            "port-",
+            "http--port",
+            "http-2-port",
+          ],
+        },
+        {
+          type: ConstantCaseIdentifier,
+          casing: "CONSTANT_CASE",
+          valid: [
+            "A",
+            "A0",
+            "HTTP2_PORT",
+            "V2BETA",
+            "V2_BETA",
+            "MAX_OWNER_BYTES",
+            "HTTP_URL",
+            "HTTP_U_R_L",
+            "A_B_C",
+          ],
+          invalid: [
+            "http2_port",
+            "httpPort",
+            "HTTP-PORT",
+            "_PORT",
+            "PORT_",
+            "HTTP__PORT",
+            "HTTP_2_PORT",
+          ],
+        },
+      ] as const;
+
+      for (const { type, casing, valid, invalid } of formats) {
+        it(`${type.name} accepts only its complete ASCII grammar`, () => {
+          for (const value of valid) {
+            assertOk(type.fromUnknown(value), value);
+            assertTrue(type.is(value));
+          }
+          for (const value of [
+            ...invalid,
+            "",
+            "0",
+            "2FA",
+            "2fa",
+            " hello",
+            "hello ",
+            "hello world",
+            "HELLO WORLD",
+            "hello.world",
+            "HELLO.WORLD",
+            "déjà",
+            "DÉJÀ",
+            "𐐀x",
+            "😀",
+            "a\u0301",
+            "A\u0301",
+            ...valid.flatMap((value) =>
+              ["\n", "\r", "\r\n", "\t", "\0", "\u2028", "\u2029"].map(
+                (suffix) => value + suffix,
+              ),
+            ),
+          ]) {
+            assertErr(type.fromUnknown(value), {
+              type: type.name,
+              casing,
+              value,
+            });
+            assertFalse(type.is(value));
+          }
+          assertErr(type.fromUnknown(123), {
+            type: "TypeOf",
+            expected: "String",
+            value: 123,
+          });
+          const empty = type.fromUnknown("");
+          assertErr(empty);
+          assertEqual(
+            typeErrorToIssues(type, empty.error)[0]?.message,
+            `The value "" is not a ${casing} identifier.`,
+          );
+        });
+      }
+
+      it("exposes distinct brands and composes validation constraints", () => {
+        assertType<
+          CamelCaseIdentifier,
+          string & Brand<"CamelCaseIdentifier">
+        >();
+        assertType<
+          PascalCaseIdentifier,
+          string & Brand<"PascalCaseIdentifier">
+        >();
+        assertType<
+          SnakeCaseIdentifier,
+          string & Brand<"SnakeCaseIdentifier">
+        >();
+        assertType<
+          KebabCaseIdentifier,
+          string & Brand<"KebabCaseIdentifier">
+        >();
+        assertType<
+          ConstantCaseIdentifier,
+          string & Brand<"ConstantCaseIdentifier">
+        >();
+        assertType<
+          IdentifierError<"camelCase">["type"],
+          "CamelCaseIdentifier"
+        >();
+        assertType<IdentifierError["casing"], IdentifierCasing>();
+
+        const ShortCamel = identifier("camelCase")(maxLength(3)(String));
+        assertType<
+          typeof ShortCamel.Output,
+          string & Brand<"MaxLength3"> & Brand<"CamelCaseIdentifier">
+        >();
+        assertOk(ShortCamel.fromUnknown("aBC"), "aBC");
+        assertErr(ShortCamel.fromUnknown("long"), {
+          type: "MaxLength3",
+          value: "long",
+          max: 3,
+        });
+        assertErr(ShortCamel.fromUnknown("Ab"), {
+          type: "CamelCaseIdentifier",
+          casing: "camelCase",
+          value: "Ab",
+        });
+        assertOk(
+          identifier("PascalCase")(maxLength(3)(String)).fromUnknown("ABC"),
+          "ABC",
+        );
+        assertOk(
+          identifier("snake_case")(maxLength(3)(String)).fromUnknown("a_b"),
+          "a_b",
+        );
+        assertOk(
+          identifier("kebab-case")(maxLength(3)(String)).fromUnknown("a-b"),
+          "a-b",
+        );
+        assertOk(
+          identifier("CONSTANT_CASE")(maxLength(3)(String)).fromUnknown("A_B"),
+          "A_B",
+        );
+      });
+    });
+
+    describe("naming conversions", () => {
+      const conversions = [
+        {
+          from: "CamelCase",
+          to: "PascalCase",
+          convert: (value: string) =>
+            camelCaseToPascalCase(CamelCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "CamelCase",
+          to: "SnakeCase",
+          convert: (value: string) =>
+            camelCaseToSnakeCase(CamelCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "CamelCase",
+          to: "KebabCase",
+          convert: (value: string) =>
+            camelCaseToKebabCase(CamelCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "CamelCase",
+          to: "ConstantCase",
+          convert: (value: string) =>
+            camelCaseToConstantCase(CamelCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "PascalCase",
+          to: "CamelCase",
+          convert: (value: string) =>
+            pascalCaseToCamelCase(PascalCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "PascalCase",
+          to: "SnakeCase",
+          convert: (value: string) =>
+            pascalCaseToSnakeCase(PascalCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "PascalCase",
+          to: "KebabCase",
+          convert: (value: string) =>
+            pascalCaseToKebabCase(PascalCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "PascalCase",
+          to: "ConstantCase",
+          convert: (value: string) =>
+            pascalCaseToConstantCase(PascalCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "SnakeCase",
+          to: "CamelCase",
+          convert: (value: string) =>
+            snakeCaseToCamelCase(SnakeCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "SnakeCase",
+          to: "PascalCase",
+          convert: (value: string) =>
+            snakeCaseToPascalCase(SnakeCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "SnakeCase",
+          to: "KebabCase",
+          convert: (value: string) =>
+            snakeCaseToKebabCase(SnakeCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "SnakeCase",
+          to: "ConstantCase",
+          convert: (value: string) =>
+            snakeCaseToConstantCase(SnakeCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "KebabCase",
+          to: "CamelCase",
+          convert: (value: string) =>
+            kebabCaseToCamelCase(KebabCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "KebabCase",
+          to: "PascalCase",
+          convert: (value: string) =>
+            kebabCaseToPascalCase(KebabCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "KebabCase",
+          to: "SnakeCase",
+          convert: (value: string) =>
+            kebabCaseToSnakeCase(KebabCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "KebabCase",
+          to: "ConstantCase",
+          convert: (value: string) =>
+            kebabCaseToConstantCase(KebabCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "ConstantCase",
+          to: "CamelCase",
+          convert: (value: string) =>
+            constantCaseToCamelCase(ConstantCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "ConstantCase",
+          to: "PascalCase",
+          convert: (value: string) =>
+            constantCaseToPascalCase(ConstantCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "ConstantCase",
+          to: "SnakeCase",
+          convert: (value: string) =>
+            constantCaseToSnakeCase(ConstantCaseIdentifier.orThrow(value)),
+        },
+        {
+          from: "ConstantCase",
+          to: "KebabCase",
+          convert: (value: string) =>
+            constantCaseToKebabCase(ConstantCaseIdentifier.orThrow(value)),
+        },
+      ] as const;
+
+      it("preserves the exact spelling for every pair of formats", () => {
+        const spellings = [
+          {
+            CamelCase: "maxOwnerBytes",
+            PascalCase: "MaxOwnerBytes",
+            SnakeCase: "max_owner_bytes",
+            KebabCase: "max-owner-bytes",
+            ConstantCase: "MAX_OWNER_BYTES",
+          },
+          {
+            CamelCase: "http2Port",
+            PascalCase: "Http2Port",
+            SnakeCase: "http2_port",
+            KebabCase: "http2-port",
+            ConstantCase: "HTTP2_PORT",
+          },
+          {
+            CamelCase: "httpUrl",
+            PascalCase: "HttpUrl",
+            SnakeCase: "http_url",
+            KebabCase: "http-url",
+            ConstantCase: "HTTP_URL",
+          },
+          {
+            CamelCase: "httpURL",
+            PascalCase: "HttpURL",
+            SnakeCase: "http_u_r_l",
+            KebabCase: "http-u-r-l",
+            ConstantCase: "HTTP_U_R_L",
+          },
+          {
+            CamelCase: "aBC",
+            PascalCase: "ABC",
+            SnakeCase: "a_b_c",
+            KebabCase: "a-b-c",
+            ConstantCase: "A_B_C",
+          },
+          {
+            CamelCase: "v2Beta",
+            PascalCase: "V2Beta",
+            SnakeCase: "v2_beta",
+            KebabCase: "v2-beta",
+            ConstantCase: "V2_BETA",
+          },
+          {
+            CamelCase: "v2beta",
+            PascalCase: "V2beta",
+            SnakeCase: "v2beta",
+            KebabCase: "v2beta",
+            ConstantCase: "V2BETA",
+          },
+          {
+            CamelCase: "a",
+            PascalCase: "A",
+            SnakeCase: "a",
+            KebabCase: "a",
+            ConstantCase: "A",
+          },
+          {
+            CamelCase: "a0B2c",
+            PascalCase: "A0B2c",
+            SnakeCase: "a0_b2c",
+            KebabCase: "a0-b2c",
+            ConstantCase: "A0_B2C",
+          },
+          {
+            CamelCase: "max2faAttempts",
+            PascalCase: "Max2faAttempts",
+            SnakeCase: "max2fa_attempts",
+            KebabCase: "max2fa-attempts",
+            ConstantCase: "MAX2FA_ATTEMPTS",
+          },
+        ];
+        for (const values of spellings) {
+          for (const { from, to, convert } of conversions) {
+            assertEqual(convert(values[from]), values[to]);
+          }
+        }
+      });
+
+      it("round-trips generated word sequences through every format", () => {
+        const words = ["a", "b", "z", "a0", "b2", "ab", "z9a", "http2", "url"];
+        const formats = {
+          CamelCase: CamelCaseIdentifier,
+          PascalCase: PascalCaseIdentifier,
+          SnakeCase: SnakeCaseIdentifier,
+          KebabCase: KebabCaseIdentifier,
+          ConstantCase: ConstantCaseIdentifier,
+        };
+        for (const first of words) {
+          for (const second of words) {
+            for (const third of words) {
+              const parts = [first, second, third];
+              const titled = parts.map(
+                (word) => word.charAt(0).toUpperCase() + word.slice(1),
+              );
+              const spellings = {
+                CamelCase: first + titled.slice(1).join(""),
+                PascalCase: titled.join(""),
+                SnakeCase: parts.join("_"),
+                KebabCase: parts.join("-"),
+                ConstantCase: parts.join("_").toUpperCase(),
+              };
+              for (const { from, to, convert } of conversions) {
+                const converted = convert(spellings[from]);
+                assertTrue(formats[to].is(converted));
+                assertEqual(converted, spellings[to]);
+                const reverse = conversions.find(
+                  (conversion) =>
+                    conversion.from === to && conversion.to === from,
+                );
+                nodeAssert.ok(reverse);
+                assertEqual(reverse.convert(converted), spellings[from]);
+              }
+            }
+          }
+        }
+      });
+
+      it("requires the source brand and returns only the destination brand", () => {
+        assertType<
+          Parameters<typeof camelCaseToPascalCase>[0],
+          CamelCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof camelCaseToPascalCase>,
+          PascalCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof camelCaseToSnakeCase>[0],
+          CamelCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof camelCaseToSnakeCase>,
+          SnakeCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof camelCaseToKebabCase>[0],
+          CamelCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof camelCaseToKebabCase>,
+          KebabCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof camelCaseToConstantCase>[0],
+          CamelCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof camelCaseToConstantCase>,
+          ConstantCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof pascalCaseToCamelCase>[0],
+          PascalCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof pascalCaseToCamelCase>,
+          CamelCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof pascalCaseToSnakeCase>[0],
+          PascalCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof pascalCaseToSnakeCase>,
+          SnakeCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof pascalCaseToKebabCase>[0],
+          PascalCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof pascalCaseToKebabCase>,
+          KebabCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof pascalCaseToConstantCase>[0],
+          PascalCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof pascalCaseToConstantCase>,
+          ConstantCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof snakeCaseToCamelCase>[0],
+          SnakeCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof snakeCaseToCamelCase>,
+          CamelCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof snakeCaseToPascalCase>[0],
+          SnakeCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof snakeCaseToPascalCase>,
+          PascalCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof snakeCaseToKebabCase>[0],
+          SnakeCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof snakeCaseToKebabCase>,
+          KebabCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof snakeCaseToConstantCase>[0],
+          SnakeCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof snakeCaseToConstantCase>,
+          ConstantCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof kebabCaseToCamelCase>[0],
+          KebabCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof kebabCaseToCamelCase>,
+          CamelCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof kebabCaseToPascalCase>[0],
+          KebabCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof kebabCaseToPascalCase>,
+          PascalCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof kebabCaseToSnakeCase>[0],
+          KebabCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof kebabCaseToSnakeCase>,
+          SnakeCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof kebabCaseToConstantCase>[0],
+          KebabCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof kebabCaseToConstantCase>,
+          ConstantCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof constantCaseToCamelCase>[0],
+          ConstantCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof constantCaseToCamelCase>,
+          CamelCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof constantCaseToPascalCase>[0],
+          ConstantCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof constantCaseToPascalCase>,
+          PascalCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof constantCaseToSnakeCase>[0],
+          ConstantCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof constantCaseToSnakeCase>,
+          SnakeCaseIdentifier
+        >();
+        assertType<
+          Parameters<typeof constantCaseToKebabCase>[0],
+          ConstantCaseIdentifier
+        >();
+        assertType<
+          ReturnType<typeof constantCaseToKebabCase>,
+          KebabCaseIdentifier
+        >();
+        const short = maxLength(3)(CamelCaseIdentifier).orThrow("aBC");
+        const constant = camelCaseToConstantCase(short);
+        assertEqual(constant, "A_B_C");
+        assertType<typeof constant, ConstantCaseIdentifier>();
+        const compileTimeAssertions = () => {
+          // @ts-expect-error Requires the CamelCaseIdentifier brand.
+          camelCaseToPascalCase("example");
+          // @ts-expect-error Requires the CamelCaseIdentifier brand.
+          camelCaseToSnakeCase("example");
+          // @ts-expect-error Requires the CamelCaseIdentifier brand.
+          camelCaseToKebabCase("example");
+          // @ts-expect-error Requires the CamelCaseIdentifier brand.
+          camelCaseToConstantCase("example");
+          // @ts-expect-error Requires the PascalCaseIdentifier brand.
+          pascalCaseToCamelCase("example");
+          // @ts-expect-error Requires the PascalCaseIdentifier brand.
+          pascalCaseToSnakeCase("example");
+          // @ts-expect-error Requires the PascalCaseIdentifier brand.
+          pascalCaseToKebabCase("example");
+          // @ts-expect-error Requires the PascalCaseIdentifier brand.
+          pascalCaseToConstantCase("example");
+          // @ts-expect-error Requires the SnakeCaseIdentifier brand.
+          snakeCaseToCamelCase("example");
+          // @ts-expect-error Requires the SnakeCaseIdentifier brand.
+          snakeCaseToPascalCase("example");
+          // @ts-expect-error Requires the SnakeCaseIdentifier brand.
+          snakeCaseToKebabCase("example");
+          // @ts-expect-error Requires the SnakeCaseIdentifier brand.
+          snakeCaseToConstantCase("example");
+          // @ts-expect-error Requires the KebabCaseIdentifier brand.
+          kebabCaseToCamelCase("example");
+          // @ts-expect-error Requires the KebabCaseIdentifier brand.
+          kebabCaseToPascalCase("example");
+          // @ts-expect-error Requires the KebabCaseIdentifier brand.
+          kebabCaseToSnakeCase("example");
+          // @ts-expect-error Requires the KebabCaseIdentifier brand.
+          kebabCaseToConstantCase("example");
+          // @ts-expect-error Requires the ConstantCaseIdentifier brand.
+          constantCaseToCamelCase("example");
+          // @ts-expect-error Requires the ConstantCaseIdentifier brand.
+          constantCaseToPascalCase("example");
+          // @ts-expect-error Requires the ConstantCaseIdentifier brand.
+          constantCaseToSnakeCase("example");
+          // @ts-expect-error Requires the ConstantCaseIdentifier brand.
+          constantCaseToKebabCase("example");
+          // @ts-expect-error ConstantCaseIdentifier does not prove the CamelCaseIdentifier brand.
+          camelCaseToSnakeCase(constant);
+          // @ts-expect-error Conversion does not retain the input's MaxLength3 brand.
+          const _short: string & Brand<"MaxLength3"> = constant;
+          // @ts-expect-error Uppercase text does not prove the ConstantCaseIdentifier grammar.
+          const _constant: ConstantCaseIdentifier =
+            "HTTP PORT" as Uppercase<string>;
+        };
+        assertType<typeof compileTimeAssertions, () => void>();
+      });
+    });
+
     describe("trimmed", () => {
       it("is a reusable Brand Factory", () => {
         assertType<
@@ -8371,6 +9139,328 @@ describe("BrandFactory", () => {
 
         assertEqual(value, "Evolu");
         assertType<typeof value, TrimmedString>();
+      });
+    });
+
+    describe("startsWith", () => {
+      it("preserves the full string and parent constraints", () => {
+        const Parent = maxLength(12)(TrimmedString);
+        const AppName = startsWith("APP_")(Parent);
+        const input = Parent.orThrow("APP_PORT");
+        const result = AppName.from.parent(input);
+
+        assertOk(result, input);
+        assertSame(result.value, input);
+        assertSame(AppName.to(result.value), input);
+        assertSame(AppName.parent, Parent);
+        assertEqual(AppName.name, "StartsWithAPP_");
+        assertType<typeof AppName.name, "StartsWithAPP_">();
+        assertType<typeof AppName.parent, typeof Parent>();
+        assertType<
+          typeof AppName.Output,
+          typeof Parent.Output & Brand<"StartsWithAPP_">
+        >();
+        assertType<typeof AppName.Error, StartsWithError<"APP_">>();
+        assertType<
+          Parameters<typeof AppName.from.parent>[0],
+          typeof Parent.Output
+        >();
+        assertErr(AppName.fromUnknown(" APP_PORT"), {
+          type: "Trimmed",
+          value: " APP_PORT",
+        });
+        assertErr(AppName.fromUnknown("APP_LONG_NAME"), {
+          type: "MaxLength12",
+          value: "APP_LONG_NAME",
+          max: 12,
+        });
+        assertErr(AppName.fromUnknown(1), {
+          type: "TypeOf",
+          expected: "String",
+          value: 1,
+        });
+      });
+
+      it("matches the exact prefix at the start without removing it", () => {
+        const AppName = startsWith("APP_")(String);
+        for (const value of ["APP_", "APP_PORT", "APP_APP_PORT", "APP_\n"]) {
+          assertOk(AppName.fromUnknown(value), value);
+        }
+        for (const value of ["", "APP", "app_PORT", "XAPP_PORT"]) {
+          assertErr(AppName.fromUnknown(value), {
+            type: "StartsWithAPP_",
+            value,
+            prefix: "APP_",
+          });
+        }
+        assertEqual(
+          AppName.formatError({
+            type: "StartsWithAPP_",
+            value: "PORT",
+            prefix: "APP_",
+          }),
+          'The value "PORT" must start with "APP_".',
+        );
+      });
+
+      it("accepts an empty prefix and matches punctuation and Unicode literally", () => {
+        const AnyString = startsWith("")(String);
+        for (const value of ["", "PORT", "\n", "😀"]) {
+          assertOk(AnyString.fromUnknown(value), value);
+        }
+        assertErr(startsWith("")(TrimmedString).fromUnknown(" "));
+        assertOk(
+          startsWith("[a].*")(String).fromUnknown("[a].*value"),
+          "[a].*value",
+        );
+        assertErr(startsWith("[a].*")(String).fromUnknown("abc"));
+        assertOk(startsWith("😀:")(String).fromUnknown("😀:value"), "😀:value");
+        assertErr(startsWith("é")(String).fromUnknown("e\u0301"));
+      });
+
+      it("validates transformed parent output and preserves its encoder", () => {
+        const Parent = transform("LowercasePrefixInput", String, String, {
+          from: (value) => ok(value.toLowerCase()),
+          to: (value) => value.toUpperCase(),
+        });
+        const AppName = startsWith("app_")(Parent);
+        const result = AppName.fromUnknown("APP_PORT");
+
+        assertOk(result, "app_port");
+        assertEqual(AppName.to(result.value), "APP_PORT");
+        assertErr(AppName.fromUnknown("OTHER_PORT"), {
+          type: "StartsWithapp_",
+          value: "other_port",
+          prefix: "app_",
+        });
+      });
+
+      it("requires a concrete prefix and keeps different prefix brands distinct", () => {
+        const AppName = startsWith("APP_")(String);
+        const OtherName = startsWith("OTHER_")(String);
+        const otherName = OtherName.orThrow("OTHER_PORT");
+        const widened = globalThis.String("APP_");
+        const unionPrefix = "APP_" as "APP_" | "OTHER_";
+        const branded = TrimmedString.orThrow("APP_");
+        const templatePrefix = "APP_" as `APP_${string}`;
+        const compileTimeAssertions = () => {
+          // @ts-expect-error Expected must be one concrete literal value.
+          startsWith(widened);
+          // @ts-expect-error Expected must be one concrete literal value.
+          startsWith(unionPrefix);
+          // @ts-expect-error Expected must be one concrete literal value.
+          startsWith(branded);
+          // @ts-expect-error Expected must be one concrete literal value.
+          startsWith(templatePrefix);
+          // @ts-expect-error The parent Type must output strings.
+          startsWith("APP_")(Number);
+          // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+          startsWith("APP_")(AppName);
+          // @ts-expect-error OTHER_ values do not carry the StartsWithAPP_ brand.
+          AppName.from(otherName);
+        };
+
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
+      });
+    });
+
+    describe("prefixed", () => {
+      it("preserves the suffix Type and applies its constraints after stripping", () => {
+        const Suffix = maxLength(4)(ConstantCaseIdentifier);
+        const Key = prefixed("app:")(Suffix);
+        const result = Key.fromUnknown("app:PORT");
+
+        assertOk(result, "PORT");
+        assertEqual(Key.to(result.value), "app:PORT");
+        assertSame(Key.output, Suffix);
+        assertEqual(Key.name, "Prefixedapp:");
+        assertEqual(Key.parent.name, "StartsWithapp:");
+        assertType<typeof Key.Output, typeof Suffix.Output>();
+        assertType<typeof Key.output, typeof Suffix>();
+        assertType<typeof Key.name, "Prefixedapp:">();
+        assertType<
+          typeof Key.Error,
+          TransformOutputError<
+            "Prefixedapp:",
+            IdentifierError<"CONSTANT_CASE"> | MaxLengthError<4>
+          >
+        >();
+        assertType<
+          Parameters<typeof Key.from.parent>[0],
+          string & Brand<"StartsWithapp:">
+        >();
+        assertType<Parameters<typeof Key.from.parent.parent>[0], string>();
+        assertType<Parameters<typeof Key.from>[0], typeof Suffix.Output>();
+        assertType<
+          ReturnType<typeof Key.to>,
+          string & Brand<"StartsWithapp:">
+        >();
+        assertOk(Key.from.parent(Key.parent.orThrow("app:PORT")), "PORT");
+        assertOk(Key.from.parent.parent("app:PORT"), "PORT");
+        assertOk(Key.from(result.value), result.value);
+        assertTrue(Key.is("PORT"));
+        assertFalse(Key.is("app:PORT"));
+        assertErr(Key.fromUnknown("app:PORTS"), {
+          type: "Prefixedapp:",
+          outputError: { type: "MaxLength4", value: "PORTS", max: 4 },
+        });
+      });
+
+      it("reports prefix and suffix errors through their existing formatters", () => {
+        const Key = prefixed("APP_")(ConstantCaseIdentifier);
+        for (const value of ["PORT", "app_PORT", "XAPP_PORT"]) {
+          const result = Key.fromUnknown(value);
+          assertErr(result, { type: "StartsWithAPP_", value, prefix: "APP_" });
+          assertEqual(
+            Key.formatError(result.error),
+            `The value "${value}" must start with "APP_".`,
+          );
+        }
+        assertErr(Key.fromUnknown(1), {
+          type: "TypeOf",
+          expected: "String",
+          value: 1,
+        });
+        const invalid = Key.fromUnknown("APP_port");
+        assertErr(invalid, {
+          type: "PrefixedAPP_",
+          outputError: {
+            type: "ConstantCaseIdentifier",
+            value: "port",
+            casing: "CONSTANT_CASE",
+          },
+        });
+        assertEqual(typeErrorToIssues(Key, invalid.error), [
+          {
+            path: [],
+            message: 'The value "port" is not a CONSTANT_CASE identifier.',
+          },
+        ]);
+        assertErr(Key.fromUnknown("APP_"));
+      });
+
+      it("runs the wrapped decoder and canonical encoder for non-string Outputs", () => {
+        const Setting = prefixed("port:")(PortFromString);
+        const result = Setting.fromUnknown("port:04000");
+
+        assertOk(result, 4000);
+        assertType<typeof result.value, Port>();
+        assertEqual(Setting.to(result.value), "port:4000");
+        assertOk(Setting.fromUnknown(Setting.to(result.value)), result.value);
+        assertErr(Setting.fromUnknown("port:65536"), {
+          type: "Prefixedport:",
+          outputError: {
+            type: "PortFromString",
+            outputError: {
+              type: "LessThanOrEqualTo65535",
+              value: 65536,
+              max: 65535,
+            },
+          },
+        });
+        assertTrue(Setting.is(4000));
+        assertFalse(Setting.is("port:4000"));
+      });
+
+      it("removes one literal prefix, including empty and Unicode prefixes", () => {
+        const Empty = prefixed("")(String);
+        for (const value of ["", "PORT", "\n"]) {
+          assertOk(Empty.fromUnknown(value), value);
+          assertEqual(Empty.to(value), value);
+        }
+        const App = prefixed("APP_")(String);
+        assertOk(App.fromUnknown("APP_"), "");
+        assertOk(App.fromUnknown("APP_APP_PORT"), "APP_PORT");
+        assertEqual(App.to("APP_PORT"), "APP_APP_PORT");
+        const Unicode = prefixed("😀:")(String);
+        assertOk(Unicode.fromUnknown("😀:PORT"), "PORT");
+        assertEqual(Unicode.to("PORT"), "😀:PORT");
+        const Punctuation = prefixed("[a].*")(String);
+        assertOk(Punctuation.fromUnknown("[a].*PORT"), "PORT");
+        assertEqual(Punctuation.to("PORT"), "[a].*PORT");
+        assertErr(Punctuation.fromUnknown("abcPORT"));
+      });
+
+      it("composes nested prefixes in both directions", () => {
+        const Nested = prefixed("outer/")(prefixed("inner/")(PortFromString));
+        const result = Nested.fromUnknown("outer/inner/04000");
+        assertOk(result, 4000);
+        assertEqual(Nested.to(result.value), "outer/inner/4000");
+        assertErr(Nested.fromUnknown("outer/4000"));
+
+        const Repeated = prefixed("APP_")(prefixed("APP_")(String));
+        assertOk(Repeated.fromUnknown("APP_APP_PORT"), "PORT");
+        assertEqual(Repeated.to("PORT"), "APP_APP_PORT");
+
+        const Literal = prefixed("APP_")(literal("PORT"));
+        assertOk(Literal.fromUnknown("APP_PORT"), "PORT");
+        assertErr(Literal.fromUnknown("APP_OTHER"));
+        assertEqual(Literal.to("PORT"), "APP_PORT");
+        assertType<typeof Literal.Output, "PORT">();
+      });
+
+      it("decodes and encodes record keys without filtering mismatched prefixes", () => {
+        const Settings = record(
+          prefixed("APP_")(ConstantCaseIdentifier),
+          String,
+        );
+        const result = Settings.fromUnknown({ APP_PORT: "4000" });
+        assertOk(result, { PORT: "4000" });
+        assertEqual(Settings.to(result.value), { APP_PORT: "4000" });
+        assertErr(Settings.fromUnknown({ PORT: "4000" }));
+      });
+
+      it("rejects uncertain prefixes and Types without a string input boundary", () => {
+        const widened = globalThis.String("APP_");
+        const unionPrefix = "APP_" as "APP_" | "OTHER_";
+        const branded = TrimmedString.orThrow("APP_");
+        const templatePrefix = "APP_" as `APP_${string}`;
+        const uncertain = String as
+          typeof String | typeof ConstantCaseIdentifier;
+        const Setting = prefixed("port:")(PortFromString);
+        const LiteralRoot = createType(
+          "LiteralRoot",
+          (value): Result<"PORT", TypeError<"LiteralRoot">> =>
+            value === "PORT" ? ok(value) : err({ type: "LiteralRoot" }),
+          () => "Expected PORT.",
+        );
+        const compileTimeAssertions = () => {
+          // @ts-expect-error Expected must be one concrete literal value.
+          prefixed(widened);
+          // @ts-expect-error Expected must be one concrete literal value.
+          prefixed(unionPrefix);
+          // @ts-expect-error Expected must be one concrete literal value.
+          prefixed(branded);
+          // @ts-expect-error Expected must be one concrete literal value.
+          prefixed(templatePrefix);
+          // @ts-expect-error The wrapped Type must have string Input and CanonicalInput.
+          prefixed("APP_")(Number);
+          // @ts-expect-error The wrapped Type must have string Input and CanonicalInput.
+          prefixed("APP_")(object({ port: Port }));
+          // @ts-expect-error Output Type must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+          prefixed("APP_")(uncertain);
+          // @ts-expect-error Prefixed Type Input must accept every string.
+          prefixed("APP_")(LiteralRoot);
+          // @ts-expect-error The typed parent boundary requires the StartsWithport: brand.
+          Setting.from.parent("port:4000");
+          // @ts-expect-error Encoding requires a validated Port, not a plain number.
+          Setting.to(4000);
+        };
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
       });
     });
 
@@ -21376,6 +22466,30 @@ describe("IntFromString", () => {
     assertEqual(
       IntFromString.formatError(invalid.error),
       "The value Infinity must be finite.",
+    );
+  });
+});
+
+describe("CamelCaseIdentifierFromConstantCaseIdentifier", () => {
+  it("preserves identifier word boundaries in both directions", () => {
+    for (const [encoded, decoded] of [
+      ["PORT", "port"],
+      ["HTTP2_PORT", "http2Port"],
+      ["H_T_T_P", "hTTP"],
+    ]) {
+      const result =
+        CamelCaseIdentifierFromConstantCaseIdentifier.fromUnknown(encoded);
+      assertOk(result, decoded);
+      assertEqual(
+        CamelCaseIdentifierFromConstantCaseIdentifier.to(result.value),
+        encoded,
+      );
+    }
+    assertErr(
+      CamelCaseIdentifierFromConstantCaseIdentifier.fromUnknown("HTTP__PORT"),
+    );
+    assertErr(
+      CamelCaseIdentifierFromConstantCaseIdentifier.fromUnknown("http_PORT"),
     );
   });
 });

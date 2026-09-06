@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -157,6 +159,13 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست Int64 string نہیں ہے۔`;
+
+/** Formats an IdentifierError in Urdu. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} ${error.casing} شناخت کنندہ نہیں ہے۔`;
+
 /** CapitalizedError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -182,6 +191,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** TrimmedError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} کے شروع یا آخر میں خالی جگہ نہیں ہونی چاہیے۔`;
+/** Formats a StartsWithError in Urdu. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} کی ابتدا ${safelyStringifyUnknownValue(error.prefix)} سے ہونی چاہیے۔`;
+
 /** MinLengthError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,

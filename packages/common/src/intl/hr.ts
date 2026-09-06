@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -190,6 +192,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani Int64 niz.`;
 
+/** Formats an IdentifierError in Croatian. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije identifikator u formatu ${error.casing}.`;
+
 /** Formats a CapitalizedError in Croatian. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -217,6 +225,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Croatian. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} ne smije imati razmake na početku ni na kraju.`;
+
+/** Formats a StartsWithError in Croatian. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora počinjati s ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formats a MinLengthError in Croatian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

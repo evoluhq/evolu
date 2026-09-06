@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו מחרוזת Int64 חוקית.`;
 
+/** Formats an IdentifierError in Hebrew. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו מזהה בתבנית ${error.casing}.`;
+
 /** מעצב שגיאת CapitalizedError בעברית. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -209,6 +217,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** מעצב שגיאת TrimmedError בעברית. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `יש להסיר רווחים מיותרים מתחילת הערך ${safelyStringifyUnknownValue(error.value)} ומסופו.`;
+
+/** Formats a StartsWithError in Hebrew. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להתחיל ב־${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** מעצב שגיאת MinLengthError בעברית. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

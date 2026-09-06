@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -182,6 +184,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný řetězec Int64.`;
 
+/** Formats an IdentifierError in Czech. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} není identifikátor ve formátu ${error.casing}.`;
+
 /** Formats a CapitalizedError in Czech. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -208,6 +216,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Czech. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Text ${safelyStringifyUnknownValue(error.value)} nesmí obsahovat bílé znaky na začátku ani na konci.`;
+
+/** Formats a StartsWithError in Czech. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí začínat na ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formats a MinLengthError in Czech. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

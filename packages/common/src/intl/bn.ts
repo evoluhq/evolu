@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -182,6 +184,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) => `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ Int64 string নয়।`;
 
+/** Formats an IdentifierError in Bengali. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি ${error.casing} শনাক্তকারী নয়।`;
+
 /** Formats a CapitalizedError in Bengali. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -209,6 +217,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Bengali. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটির শুরু বা শেষে whitespace থাকা যাবে না।`;
+
+/** Formats a StartsWithError in Bengali. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `মান ${safelyStringifyUnknownValue(error.value)} অবশ্যই ${safelyStringifyUnknownValue(error.prefix)} দিয়ে শুরু হতে হবে।`;
 
 /** Formats a MinLengthError in Bengali. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

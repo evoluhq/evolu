@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ Int64 string അല്ല.`;
 
+/** Formats an IdentifierError in Malayalam. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഒരു ${error.casing} ഐഡന്റിഫയർ അല്ല.`;
+
 /** CapitalizedError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -210,6 +218,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** TrimmedError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `മൂല്യമായ ${safelyStringifyUnknownValue(error.value)} trim ചെയ്തതായിരിക്കണം.`;
+
+/** Formats a StartsWithError in Malayalam. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ആരംഭിക്കേണ്ടത് ${safelyStringifyUnknownValue(error.prefix)} ഉപയോഗിച്ചായിരിക്കണം.`;
 
 /** MinLengthError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -184,6 +186,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldige Int64-tekenreeks.`;
 
+/** Formats an IdentifierError in Dutch. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen ${error.casing}-identifier.`;
+
 /** Formatteert een CapitalizedError in het Nederlands. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -211,6 +219,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formatteert een TrimmedError in het Nederlands. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} mag geen witruimte aan het begin of einde bevatten.`;
+
+/** Formats a StartsWithError in Dutch. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} moet beginnen met ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formatteert een MinLengthError in het Nederlands. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

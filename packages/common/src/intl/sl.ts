@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljaven niz Int64.`;
 
+/** Formats an IdentifierError in Slovenian. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni identifikator v obliki ${error.casing}.`;
+
 /** Formats a CapitalizedError in Slovene. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -210,6 +218,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Slovene. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Vrednost ${safelyStringifyUnknownValue(error.value)} mora biti brez presledkov na začetku in koncu.`;
+
+/** Formats a StartsWithError in Slovene. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} se mora začeti z ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formats a MinLengthError in Slovene. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

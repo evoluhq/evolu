@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -184,6 +186,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no es una cadena Int64 válida.`;
 
+/** Formats an IdentifierError in Spanish. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no es un identificador ${error.casing}.`;
+
 /** Formatea CapitalizedError en español. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -211,6 +219,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formatea TrimmedError en español. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no debe tener espacios en blanco al principio ni al final.`;
+
+/** Formats a StartsWithError in Spanish. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} debe empezar por ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formatea MinLengthError en español. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

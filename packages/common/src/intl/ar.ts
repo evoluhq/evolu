@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -157,6 +159,13 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست سلسلة Int64 صالحة.`;
+
+/** Formats an IdentifierError in Arabic. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست معرّفًا بصيغة ${error.casing}.`;
+
 /** Formats a CapitalizedError in Arabic. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -183,6 +192,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Arabic. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `يجب إزالة المسافات من بداية القيمة ${safelyStringifyUnknownValue(error.value)} ونهايتها.`;
+/** Formats a StartsWithError in Arabic. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `يجب أن تبدأ القيمة ${safelyStringifyUnknownValue(error.value)} بـ ${safelyStringifyUnknownValue(error.prefix)}.`;
+
 /** Formats a MinLengthError in Arabic. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,

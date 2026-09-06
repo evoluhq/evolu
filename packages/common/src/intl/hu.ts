@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -140,6 +142,13 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes Int64 karakterlánc.`;
+
+/** Formats an IdentifierError in Hungarian. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem ${error.casing} azonosító.`;
+
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -164,6 +173,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
   `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek kisbetűsnek kell lennie.`;
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek nem lehetnek kezdő vagy záró szóközei.`;
+/** Formats a StartsWithError in Hungarian. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek a(z) ${safelyStringifyUnknownValue(error.prefix)} előtaggal kell kezdődnie.`;
+
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>

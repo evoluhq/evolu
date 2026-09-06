@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் Int64 string அல்ல.`;
 
+/** Formats an IdentifierError in Tamil. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு ${error.casing} அடையாளங்காட்டி அல்ல.`;
+
 /** CapitalizedError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -210,6 +218,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** TrimmedError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} trim செய்யப்பட்டதாக இருக்க வேண்டும்.`;
+
+/** Formats a StartsWithError in Tamil. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஆனது ${safelyStringifyUnknownValue(error.prefix)} உடன் தொடங்க வேண்டும்.`;
 
 /** MinLengthError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

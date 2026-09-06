@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک رشتهٔ Int64 معتبر نیست.`;
 
+/** Formats an IdentifierError in Persian. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک شناسه با قالب ${error.casing} نیست.`;
+
 /** CapitalizedError را به فارسی قالب‌بندی می‌کند. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -210,6 +218,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** TrimmedError را به فارسی قالب‌بندی می‌کند. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} نباید در ابتدا یا انتها فاصلهٔ اضافی داشته باشد.`;
+
+/** Formats a StartsWithError in Persian. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید با ${safelyStringifyUnknownValue(error.prefix)} شروع شود.`;
 
 /** MinLengthError را به فارسی قالب‌بندی می‌کند. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

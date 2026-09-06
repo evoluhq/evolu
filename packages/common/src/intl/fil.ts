@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -184,6 +186,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na Int64 string.`;
 
+/** Formats an IdentifierError in Filipino. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang ${error.casing} identifier.`;
+
 /** Fino-format ang CapitalizedError sa Filipino. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -211,6 +219,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Fino-format ang TrimmedError sa Filipino. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat naka-trim.`;
+
+/** Formats a StartsWithError in Filipino. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat magsimula sa ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Fino-format ang MinLengthError sa Filipino. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

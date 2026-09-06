@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -184,6 +186,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig Int64-streng.`;
 
+/** Formats an IdentifierError in Danish. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke en ${error.casing}-identifikator.`;
+
 /** Formaterer CapitalizedError på dansk. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -211,6 +219,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formaterer TrimmedError på dansk. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Værdien ${safelyStringifyUnknownValue(error.value)} skal være trimmet.`;
+
+/** Formats a StartsWithError in Danish. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} skal starte med ${safelyStringifyUnknownValue(error.prefix)}.`;
 
 /** Formaterer MinLengthError på dansk. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

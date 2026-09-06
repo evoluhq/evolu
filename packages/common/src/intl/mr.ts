@@ -11,6 +11,7 @@ import type {
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
+  IdentifierError,
   CapitalizedError,
   UncapitalizedError,
   UppercasedError,
@@ -61,6 +62,7 @@ import type {
   SetError,
   TableIdError,
   TemplateLiteralError,
+  StartsWithError,
   TrimmedError,
   TupleElementsError,
   TupleError,
@@ -183,6 +185,12 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 ) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} ही वैध Int64 string नाही.`;
 
+/** Formats an IdentifierError in Marathi. */
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे ${error.casing} अभिज्ञापक नाही.`;
+
 /** Formats a CapitalizedError in Marathi. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
@@ -210,6 +218,12 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Marathi. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} मधील सुरुवातीची आणि शेवटची रिकामी जागा काढलेली असली पाहिजे.`;
+
+/** Formats a StartsWithError in Marathi. */
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} ची सुरुवात ${safelyStringifyUnknownValue(error.prefix)} ने होणे आवश्यक आहे.`;
 
 /** Formats a MinLengthError in Marathi. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
