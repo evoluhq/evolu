@@ -94,6 +94,9 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup-node-pnpm-install
 
+      - name: Install test dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends jq
+
       - name: Build
         run: pnpm build
 
