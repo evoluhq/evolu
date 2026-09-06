@@ -11,6 +11,7 @@ export * from "./Brand.ts";
 export * from "./Bytes.ts";
 export * from "./Cache.ts";
 export * from "./Callbacks.ts";
+export * from "./Config.ts";
 export * from "./Console.ts";
 export * from "./Crypto.ts";
 export * from "./Eq.ts";

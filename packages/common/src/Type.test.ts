@@ -173,6 +173,7 @@ import {
   Number,
   Object,
   object,
+  objectKeys,
   omit,
   onePositiveInt,
   optional,
@@ -23220,6 +23221,179 @@ describe("IntFromString", () => {
       IntFromString.formatError(invalid.error),
       "The value Infinity must be finite.",
     );
+  });
+});
+
+describe("objectKeys", () => {
+  it("includes missing and excess properties in the error type", () => {
+    const Model = objectKeys(String)(object({ port: Number }));
+    const result = Model.fromUnknown({ extra: 0 }, { errors: "all" });
+    assertErr(result);
+    assertTrue("error" in result.error);
+    const error = result.error.error;
+    assertTrue(error.reason.kind === "Properties");
+    const errors = error.reason.errors;
+
+    assertType<
+      (typeof errors)[string],
+      | TypeOfError<"Number">
+      | ObjectPropertyAccessError
+      | ObjectMissingPropertyError
+      | ObjectExcessPropertyError
+      | undefined
+    >();
+    assertEqual(errors.port, { type: "ObjectMissingProperty" });
+    assertEqual(errors.extra, { type: "ObjectExcessProperty" });
+  });
+
+  it("uses canonical key encodings and retains field codecs and optionality", () => {
+    const Key = prefixed("APP_")(CamelCaseIdentifierFromConstantCaseIdentifier);
+    const Output = object({
+      http2Port: PortFromString,
+      displayName: optional(String),
+    });
+    const Env = objectKeys(Key)(Output);
+    const result = Env.fromUnknown({ APP_HTTP2_PORT: "04000" });
+    assertOk(result, { http2Port: 4000 });
+    assertType<typeof result.value, typeof Output.Output>();
+    assertType(Env, result.value);
+    assertSame(Env.key, Key);
+    assertSame(Env.output, Output);
+    assertEqual(Env.to(result.value), { APP_HTTP2_PORT: "4000" });
+    assertOk(Env.from.parent({ APP_HTTP2_PORT: "4000" }), result.value);
+    assertOk(Env.from(result.value), result.value);
+    assertTrue(Env.is(result.value));
+    assertFalse(Env.is({ http2Port: "4000" }));
+    assertEqual(Env.orNull({ APP_HTTP2_PORT: "invalid" }), null);
+    assertOk(
+      Env.fromUnknown({ APP_HTTP2_PORT: "4000", APP_DISPLAY_NAME: "" }),
+      { http2Port: 4000, displayName: "" },
+    );
+    for (const value of [
+      null,
+      [],
+      { http2Port: "4000" },
+      { APP_HTTP2_PORT: "4000", HOME: "" },
+      { APP_HTTP2_PORT: "4000", APP_DISPLAY_NAME: undefined },
+    ]) {
+      assertErr(Env.fromUnknown(value));
+    }
+    nodeAssert.throws(() => Env.to({ http2Port: 65536 as Port }));
+    const outputError: TransformOutputError<
+      "ObjectKeys",
+      InferErrors<typeof Output>
+    > = {
+      type: "ObjectKeys",
+      outputError: {
+        type: "Object",
+        reason: { kind: "NotObject", value: null },
+      },
+    };
+    assertEqual(typeErrorToIssues(Env, outputError)[0]?.path, []);
+    assertEqual(objectKeys(Key)(object({})).to({}), {});
+  });
+
+  it("preserves external paths, nested paths, descriptors, and unknown-key errors", () => {
+    const [Payload] = json(object({ items: array(Int) }), "ObjectKeysPayload");
+    const Key = prefixed("APP_")(CamelCaseIdentifierFromConstantCaseIdentifier);
+    const Env = objectKeys(Key)(
+      object({ payload: Payload, port: PortFromString }),
+    );
+    const result = Env.fromUnknown(
+      { APP_PAYLOAD: '{"items":["bad"]}', APP_EXTRA: "value" },
+      { errors: "all" },
+    );
+    assertErr(result);
+    assertEqual(
+      typeErrorToIssues(Env, result.error).map(({ path }) => path),
+      [["APP_PAYLOAD", "items", 0], ["APP_PORT"], ["APP_EXTRA"]],
+    );
+    let reads = 0;
+    const accessor = globalThis.Object.defineProperty(
+      { APP_PORT: "4000" },
+      "APP_PAYLOAD",
+      {
+        enumerable: true,
+        get: () => {
+          reads++;
+          return "{}";
+        },
+      },
+    );
+    assertErr(Env.fromUnknown(accessor));
+    assertEqual(reads, 0);
+    assertErr(
+      Env.fromUnknown(
+        globalThis.Object.defineProperty({ APP_PORT: "4000" }, "APP_PAYLOAD", {
+          value: "{}",
+        }),
+      ),
+    );
+    const SpecialKey = transform("SpecialObjectKey", String, String, {
+      from: (value) => ok(value === "__proto__" ? "proto" : value),
+      to: (value) => (value === "proto" ? "__proto__" : value),
+    });
+    const Special = objectKeys(SpecialKey)(
+      object({ proto: String, constructor: optional(String) }),
+    );
+    const special = Special.orThrow({ ["__proto__"]: "safe" });
+    assertEqual(special, { proto: "safe" });
+    assertEqual(Special.to(special), { ["__proto__"]: "safe" });
+    const source = globalThis.Object.assign(globalThis.Object.create(null), {
+      ["__proto__"]: "safe",
+    });
+    assertOk(Special.fromUnknown(source), special);
+  });
+
+  it("rejects invalid keys, duplicate encodings, and broken key codecs at construction", () => {
+    nodeAssert.throws(() =>
+      objectKeys(CamelCaseIdentifierFromConstantCaseIdentifier)(
+        object({ BadKey: String }),
+      ),
+    );
+    const Broken = transform("BrokenObjectKey", String, String, {
+      from: (value) => ok(value),
+      to: () => "first",
+    });
+    nodeAssert.throws(
+      () => objectKeys(Broken)(object({ first: String, second: String })),
+      /Duplicate encoded object key/u,
+    );
+    nodeAssert.throws(
+      () => objectKeys(Broken)(object({ second: String })),
+      /decode its encoding/u,
+    );
+    const Rejecting = transform(
+      "RejectingObjectKey",
+      String,
+      String,
+      {
+        from: () => err({ type: "RejectingObjectKey" as const }),
+        to: (value) => value,
+      },
+      () => "Rejected key.",
+    );
+    nodeAssert.throws(
+      () => objectKeys(Rejecting)(object({ key: String })),
+      /decode its encoding/u,
+    );
+  });
+
+  it("requires string key codecs and a concrete strict object", () => {
+    const reject = () => {
+      // @ts-expect-error Key Output must be string.
+      objectKeys(PortFromString);
+      // @ts-expect-error objectKeys requires a strict Object Type without a record rest.
+      objectKeys(String)(object({}, record(String, String)));
+      // @ts-expect-error objectKeys requires an Object Type.
+      objectKeys(String)(String);
+      const objectType = (true as boolean)
+        ? object({ name: String })
+        : object({ age: Number });
+      // @ts-expect-error Output Type must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+      objectKeys(String)(objectType);
+    };
+    assertType<typeof reject, () => void>();
   });
 });
 

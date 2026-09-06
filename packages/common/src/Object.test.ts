@@ -1,4 +1,5 @@
-import { test } from "node:test";
+import nodeAssert from "node:assert/strict";
+import { describe, it, test } from "node:test";
 import { assertEqual, assertFalse, assertSame, assertTrue } from "./Assert.ts";
 
 import type { Brand } from "./Brand.ts";
@@ -8,6 +9,7 @@ import {
   createMutableRecord,
   emptyRecord,
   excludeProp,
+  filterObjectKeys,
   getObjectKind,
   getOwnProp,
   isFunction,
@@ -203,6 +205,118 @@ test("mapObject", () => {
   assertType<typeof mapped, ReadonlyRecord<UserId, string>>();
 
   assertEqual(mapped, { u1: "u1:10", u2: "u2:20" });
+});
+
+describe("filterObjectKeys", () => {
+  it("preserves field types and makes selected fields optional", () => {
+    const symbol = Symbol("ignored");
+    const source = {
+      APP_PORT: "4000",
+      other: 1,
+      42: true,
+      [symbol]: "ignored",
+    };
+    const selected = filterObjectKeys(source, (key) => {
+      assertType<typeof key, string>();
+      return key.startsWith("APP_") || key === "42";
+    });
+    assertType<
+      typeof selected,
+      {
+        readonly APP_PORT?: string;
+        readonly other?: number;
+        readonly 42?: boolean;
+      }
+    >();
+    assertEqual(selected, { APP_PORT: "4000", 42: true });
+    assertFalse(selected === source);
+    assertEqual(
+      filterObjectKeys(source, () => false),
+      {},
+    );
+
+    type UserId = string & Brand<"UserId">;
+    const users: ReadonlyRecord<UserId, number> = { ["u1" as UserId]: 1 };
+    const selectedUsers = filterObjectKeys(users, () => true);
+    assertType<
+      typeof selectedUsers,
+      Readonly<Partial<Record<UserId, number>>>
+    >();
+    assertEqual(selectedUsers, { u1: 1 });
+
+    const reject = () => {
+      // @ts-expect-error filterObjectKeys requires an object source.
+      filterObjectKeys("text", () => true);
+      // @ts-expect-error Selected properties are readonly.
+      selected.APP_PORT = "5000";
+    };
+    assertType<typeof reject, () => void>();
+  });
+
+  it("preserves descriptors without reading getters", () => {
+    let reads = 0;
+    const getter = () => {
+      reads++;
+      return "value";
+    };
+    const source = Object.defineProperties(Object.create({ inherited: 1 }), {
+      visible: { value: { nested: true }, enumerable: true, writable: true },
+      hidden: { value: undefined },
+      accessor: { get: getter, enumerable: true, configurable: true },
+      excluded: { get: getter },
+      [Symbol("ignored")]: { get: getter },
+    });
+    const visited: Array<string> = [];
+    const selected = filterObjectKeys(source, (key) => {
+      visited.push(key);
+      return key !== "excluded";
+    });
+    assertEqual(visited, ["visible", "hidden", "accessor", "excluded"]);
+    assertEqual(Object.getOwnPropertyNames(selected), [
+      "visible",
+      "hidden",
+      "accessor",
+    ]);
+    for (const key of Object.getOwnPropertyNames(selected)) {
+      nodeAssert.deepEqual(
+        Object.getOwnPropertyDescriptor(selected, key),
+        Object.getOwnPropertyDescriptor(source, key),
+      );
+    }
+    assertEqual(reads, 0);
+    assertFalse(Object.hasOwn(selected, "inherited"));
+    assertEqual(Object.getOwnPropertySymbols(selected), []);
+    assertSame(Object.getPrototypeOf(selected), Object.prototype);
+    assertSame(
+      Reflect.get(selected, "visible"),
+      Reflect.get(source, "visible"),
+    );
+    assertSame(Reflect.get(selected, "accessor"), "value");
+    assertEqual(reads, 1);
+  });
+
+  it("safely copies special keys and handles arrays as objects", () => {
+    const source = createMutableRecord();
+    source.__proto__ = "value";
+    Object.defineProperty(source, "constructor", {
+      value: "constructor",
+      enumerable: true,
+    });
+    const selected = filterObjectKeys(source, () => true);
+    assertTrue(Object.hasOwn(selected, "__proto__"));
+    assertSame(Object.getPrototypeOf(selected), Object.prototype);
+    assertEqual(selected, {
+      ["__proto__"]: "value",
+      constructor: "constructor",
+    });
+
+    const values: ReadonlyArray<number> = [10, 20];
+    const array = filterObjectKeys(values, (key) => key === "0");
+    assertFalse(Array.isArray(array));
+    assertEqual(array, { 0: 10 });
+    assertType<(typeof array)[0], number | undefined>();
+    assertType<typeof array.map, ReadonlyArray<number>["map"] | undefined>();
+  });
 });
 
 test("excludeProp", () => {

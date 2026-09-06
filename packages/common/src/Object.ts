@@ -243,6 +243,50 @@ export const mapObject = <K extends string, V, U>(
   return out;
 };
 
+/**
+ * Selects own string-keyed properties while preserving their descriptors.
+ *
+ * Visits enumerable and non-enumerable properties, ignoring inherited and
+ * symbol properties. The predicate receives only the key; property values and
+ * getters are never read. The result is a new ordinary object with matching
+ * descriptors, including accessor functions and property flags. Declared
+ * properties are optional because the predicate may exclude any of them.
+ * Numeric property names are visited as strings.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   filterObjectKeys,
+ * } from "@evolu/common";
+ *
+ * const source = { APP_PORT: "4000", HOME: "/home/evolu" };
+ * const selected = filterObjectKeys(source, (key) =>
+ *   key.startsWith("APP_"),
+ * );
+ *
+ * assertEqual(selected, { APP_PORT: "4000" });
+ * assertType<
+ *   typeof selected,
+ *   { readonly APP_PORT?: string; readonly HOME?: string }
+ * >();
+ * ```
+ */
+export const filterObjectKeys = <T extends object>(
+  source: T,
+  predicate: (key: string) => boolean,
+): Readonly<Partial<Pick<T, Exclude<keyof T, symbol>>>> => {
+  const selected: Partial<Pick<T, Exclude<keyof T, symbol>>> = {};
+  for (const key of Object.getOwnPropertyNames(source)) {
+    if (!predicate(key)) continue;
+    const descriptor = Object.getOwnPropertyDescriptor(source, key)!;
+    Object.defineProperty(selected, key, descriptor);
+  }
+  return selected;
+};
+
 /** Conditionally excludes a property from an object. */
 export const excludeProp = <T extends object, K extends keyof T>(
   obj: T,

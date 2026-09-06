@@ -13802,6 +13802,198 @@ type OmitKeyConcreteTypeError = CompileTimeError<
 >;
 
 /**
+ * The {@link Type} returned by {@link objectKeys}.
+ *
+ * @group Objects
+ */
+export interface ObjectKeysType<
+  Key extends TypeNode,
+  T extends TypeNode & { readonly props: ObjectProps },
+> extends Type<
+  "ObjectKeys",
+  unknown,
+  T["Output"],
+  ObjectKeysError<T> | TransformOutputError<"ObjectKeys", InferErrors<T>>,
+  typeof Unknown,
+  ObjectKeysError<T> | TransformOutputError<"ObjectKeys", InferErrors<T>>,
+  never,
+  Readonly<Record<string, T["CanonicalInput"][keyof T["CanonicalInput"]]>>,
+  false
+> {
+  readonly key: Key;
+  readonly output: T;
+  readonly [reflectedTypesSymbol]?: Key | T;
+}
+
+/**
+ * Renames a strict {@link object} Type's encoded keys using a string codec.
+ *
+ * The object declaration uses semantic keys. Each key must be a valid Output of
+ * the key Type. Its canonical encoding becomes the external property name.
+ * Decoding accepts those exact names; aliases and unknown properties are
+ * rejected. Values, optionality, and semantic Output stay with the object Type.
+ * Only the outer keys change. Nested field codecs keep their own behavior.
+ *
+ * Construction rejects invalid schema keys, duplicate encodings, and key codecs
+ * that do not decode their encodings back to the declared keys. These are
+ * schema mistakes; invalid external values return normal Type errors. Error
+ * paths use the external names, including missing required properties.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   CamelCaseIdentifierFromConstantCaseIdentifier,
+ *   object,
+ *   objectKeys,
+ *   optional,
+ *   PortFromString,
+ *   prefixed,
+ * } from "@evolu/common";
+ *
+ * const Key = prefixed("APP_")(
+ *   CamelCaseIdentifierFromConstantCaseIdentifier,
+ * );
+ * const Settings = objectKeys(Key)(
+ *   object({ port: optional(PortFromString) }),
+ * );
+ *
+ * const result = Settings.fromUnknown({ APP_PORT: "04000" });
+ * assertOk(result, { port: 4000 });
+ *
+ * assertEqual(Settings.to(result.value), { APP_PORT: "4000" });
+ *
+ * assertErr(Settings.fromUnknown({ APP_POTR: "4000" }));
+ * ```
+ *
+ * @group Objects
+ */
+export const objectKeys =
+  <
+    Key extends ConcreteTypeNode & {
+      readonly Output: string;
+      readonly CanonicalInput: string;
+    },
+  >(
+    key: Key & ValidateOutput<Key>,
+  ) =>
+  <
+    T extends ConcreteTypeNode & {
+      readonly name: "Object";
+      readonly props: ObjectProps;
+      readonly record?: never;
+    },
+  >(
+    type: T & ValidateOutput<T>,
+  ): ObjectKeysType<Key, T> => {
+    const runtimeKey = key as unknown as RuntimeTypeNode;
+    const runtimeOutput = type as unknown as RuntimeTypeNode;
+    const props = createMutableRecord<string, ObjectProperty>();
+    const outputKeyByInputKey = new Map<string, string>();
+    const inputKeyByOutputKey = new Map<string, string>();
+
+    for (const outputKey of globalThis.Object.keys(type.props)) {
+      assert(
+        runtimeKey.is(outputKey),
+        `Invalid object schema key ${safelyStringifyUnknownValue(outputKey)} for ${key.name}.`,
+      );
+      const inputKey = runtimeKey.to(outputKey as never) as string;
+      assert(
+        !outputKeyByInputKey.has(inputKey),
+        `Duplicate encoded object key ${safelyStringifyUnknownValue(inputKey)}.`,
+      );
+      const decoded = runtimeKey.fromUnknown(inputKey, firstValidationOptions);
+      assert(
+        decoded.ok && decoded.value === outputKey,
+        "An object key codec must decode its encoding to the declared key.",
+      );
+      props[inputKey] = type.props[outputKey];
+      outputKeyByInputKey.set(inputKey, outputKey);
+      inputKeyByOutputKey.set(outputKey, inputKey);
+    }
+
+    const input = createObjectType(props) as unknown as RuntimeTypeNode;
+    const fromUnknown = (
+      value: unknown,
+      options = firstValidationOptions,
+    ): Result<unknown, TypeError> => {
+      const result = input.fromUnknown(value, options);
+      if (!result.ok) return err({ type: "ObjectKeys", error: result.error });
+      const output = createMutableRecord();
+      for (const [inputKey, value] of globalThis.Object.entries(
+        result.value as Record<string, unknown>,
+      )) {
+        output[outputKeyByInputKey.get(inputKey)!] = value;
+      }
+      return ok(output);
+    };
+    const to: RuntimeEncoder = (value: never) => {
+      const encoded = runtimeOutput[encoderSymbol](value) as Record<
+        string,
+        unknown
+      >;
+      const input = createMutableRecord();
+      for (const [key, value] of globalThis.Object.entries(encoded)) {
+        input[inputKeyByOutputKey.get(key)!] = value;
+      }
+      return input;
+    };
+    const validateOutput: RuntimeOutputValidation = (value, options) => {
+      const result = runtimeOutput[outputValidationSymbol](value, options);
+      return result.ok
+        ? result
+        : err({ type: "ObjectKeys", outputError: result.error });
+    };
+    const getTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+      if ("outputError" in error) {
+        return runtimeOutput[getRuntimeTypeIssuesSymbol](
+          error.outputError as TypeError,
+          mode,
+        );
+      }
+      return input[getRuntimeTypeIssuesSymbol](
+        (error as ObjectKeysError<T>).error,
+        mode,
+      );
+    };
+    return createTypeNode<ObjectKeysType<Key, T>>(
+      "ObjectKeys",
+      Unknown,
+      fromUnknown,
+      runtimeOutput.is,
+      validateOutput,
+      createFromOperation(fromUnknown),
+      to,
+      getTypeIssues,
+      { key, output: type },
+    );
+  };
+
+/**
+ * An error from the externally named object decoded by {@link objectKeys}.
+ *
+ * @group Objects
+ */
+export interface ObjectKeysError<
+  T extends TypeNode & { readonly props: ObjectProps },
+>
+  extends TypeError<"ObjectKeys">, TransparentTypeError {
+  readonly error: ObjectError<
+    Readonly<
+      Record<
+        string,
+        | T["props"][keyof T["props"]][typeof errorsSymbol]
+        | ObjectMissingPropertyError
+        | ObjectExcessPropertyError
+      >
+    >
+  >;
+}
+
+/**
  * Creates a {@link Type} for {@link Result} values.
  *
  * Use this to validate Results crossing a storage, worker, API, or other
