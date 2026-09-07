@@ -32,6 +32,23 @@ jobs:
       - name: Oxlint
         run: pnpm lint:oxlint
 
+  type-benchmarks:
+    name: Type benchmarks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Build
+        run: pnpm build
+
+      - name: Check compiler benchmarks
+        run: pnpm bench:type
+
   packages:
     name: Packages
     runs-on: ubuntu-latest
