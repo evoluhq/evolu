@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { createSearch } from "../../../../apps/web/src/mdx/createSearch.ts";
 import { generateSearchIndex } from "../../../../apps/web/src/scripts/generate-search-index.mts";
 
-await generateSearchIndex();
-const { search } = await import("../../../../apps/web/src/mdx/searchClient.ts");
+const search = createSearch(await generateSearchIndex());
 
 const mapArrayUrl = "/docs/api-reference/common/Array/functions/mapArray";
 
