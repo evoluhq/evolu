@@ -105,6 +105,8 @@ Run all integration tests with `pnpm test:integration`. Node.js integrations
 run without source coverage with `pnpm test:integration:nodejs`; their contract
 is the behavior across real components and platform implementations rather than
 which source lines they execute.
+The Node.js integration command builds documentation first so the web search
+integration tests use the generated API reference and current documentation.
 `pnpm test:integration:browsers` runs only the explicitly configured browser
 integration projects: first in Chromium with coverage, then in Firefox and
 WebKit without coverage because those engines do not support V8 coverage. Its
