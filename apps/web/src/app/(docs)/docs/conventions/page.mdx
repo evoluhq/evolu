@@ -6,29 +6,40 @@ export const metadata = { title: "Conventions" };
 
 Conventions minimize decision-making and improve consistency.
 
+This page and the guides it links to explain Evolu's coding conventions.
+The repository's `AGENTS.md` is a selective summary for routine agent work,
+with additional repository workflow instructions. Keep shared rules consistent;
+not every convention needs a summary there. Agents should read only the relevant
+documentation section when clarification is needed or when reviewing or changing
+a convention.
+
 ## Imports and exports
 
 Use named exports and named imports.
 
+Use a default export only when a framework or tool API requires one. Namespace
+imports are allowed for third-party namespace APIs.
+
 ```ts
-import { bar, baz } from "Foo.ts";
-export { bar, baz };
+import { ok, trySync } from "@evolu/common";
+
+export { ok, trySync };
 ```
 
 Avoid namespaces. Use unique names because Evolu re-exports everything through a single `index.ts`.
 
 ```ts
-// Use
-export const ok = () => {};
-export const trySync = () => {};
+// Use: export each unique name.
+export const emptyArray: ReadonlyArray<never> = [];
+export const emptyRecord: Readonly<Record<string, never>> = {};
 
-// Avoid
-export const Utils = { ok, trySync };
+// Avoid: a namespace-like object hides the names from the shared index.
+export const Empty = { array: emptyArray, record: emptyRecord };
 ```
 
 ### Naming conventions
 
-- **Types** — PascalCase without suffix: `Eq`, `Order`, `Result`, `Millis`
+- **Types** — PascalCase: `Eq`, `Order`, `Result`, `Millis`
 - **Type instances** — type prefix + TypeSuffix: `eqString`, `eqNumber`, `orderString`, `orderBigInt`
 - **Operations** — verb + TypeSuffix: `mapArray`, `filterSet`, `sortArray`, `addToSet`
 - **Conversions** — `xToY` (often symmetric pairs): `ownerIdToOwnerIdBytes`/`ownerIdBytesToOwnerId`, `durationToMillis`
@@ -39,7 +50,7 @@ export const Utils = { ok, trySync };
 - **Accessors** — position + `InX`: `firstInArray`, `lastInArray`, `firstInSet`
 - **Indexed collections** — value + `By` + key (`vByK`): `rowsByQuery`, `messagesByOwnerId`, `usersById`
 - **Dependencies** — `XDep`: `TimeDep`, `RandomDep`, `ConsoleDep`
-- **Domain errors** — interface `XError`, discriminant `"X"`: `UserNotFoundError` extends `Typed<"UserNotFound">`
+- **Domain errors** — interface `XError`; omit `Error` from the discriminant only when the remaining name clearly describes a failure: `UserNotFoundError` extends `Typed<"UserNotFound">`, while `TimeoutError` keeps `"TimeoutError"`
 
 Reusable test setup helpers should be named after what they set up: use `setupFoo`
 for local helpers and helpers shared from test-only files such as `_deps.ts`.
@@ -47,13 +58,24 @@ Use the `test` prefix only for test helpers exported from library modules.
 
 Consistent prefixes enable discoverability—type `map` and autocomplete shows `mapArray`, `mapSet`, `mapObject`, `mapSchedule` without importing first.
 
+Use `globalThis` for globals whose names overlap local APIs, such as
+`globalThis.Worker`. Variable shadowing is allowed.
+
 ## Order (top-down readability)
 
 Many developers naturally write code bottom-up, starting with small helpers and building up to the public API. However, Evolu optimizes for reading, not writing, because source code is read far more often than it is written. By presenting the public API first—interfaces and types—followed by implementation and implementation details, the developer-facing contract is immediately clear.
 
 Think of it like painting—from the whole to the detail. The painter never starts with details, but with the overall composition, then gradually refines.
 
+Group declarations by feature. Finish each feature before starting the next;
+do not collect all exported declarations at the top of the module. Within a
+feature, put the public contract and its supporting types
+before the implementation. Shared helpers and private implementation types
+follow the implementation.
+
 ```ts
+import { assertEqual } from "@evolu/common";
+
 // Public interface first: the contract developers rely on.
 interface Foo {
   readonly bar: Bar;
@@ -61,52 +83,78 @@ interface Foo {
 
 // Supporting types next: details of the contract.
 interface Bar {
-  //
+  readonly name: string;
 }
 
 // Implementation after: how the contract is fulfilled.
-const foo = () => {
-  bar();
-};
+const foo: Foo = { bar: { name: "Evolu" } };
 
-// Implementation details below the implementation, if any.
-const bar = () => {
-  //
-};
+// Shared helpers and private implementation types follow, if needed.
+assertEqual(foo.bar.name, "Evolu");
 ```
 
-Ordinary interfaces and types describe the happy-path contract, so place them
-before the code that uses them. A function-specific error describes the
-non-happy path: place its interface immediately after that function, separated
-by an empty line.
+Error types are part of the public contract, just like success types. Place
+both before the implementation so readers can understand the possible outcomes
+before reading how the function works.
 
 ```ts
-import { err, ok, type Result, type Typed } from "@evolu/common";
+import {
+  assertErr,
+  assertOk,
+  err,
+  ok,
+  type Result,
+  type Typed,
+} from "@evolu/common";
 
 interface User {
   readonly id: string;
 }
 
+interface UserNotFoundError extends Typed<"UserNotFound"> {}
+
 const getUser = (id: string): Result<User, UserNotFoundError> =>
   id === "user-1" ? ok({ id }) : err({ type: "UserNotFound" });
 
-interface UserNotFoundError extends Typed<"UserNotFound"> {}
+assertOk(getUser("user-1"), { id: "user-1" });
+assertErr(getUser("user-2"), { type: "UserNotFound" });
 ```
+
+Keep an inferred output interface immediately after its Evolu Type value, as
+shown under [Interface over type](#interface-over-type).
+
+Place orchestration before the lower-level operations it calls. There is one
+runtime constraint: a `const` helper must be initialized before a module
+initializer calls it, including through another function. Otherwise module
+evaluation can fail before initialization is complete.
+
+Do not extract a helper used only once; inline it. Keeping the operation in
+place lets the reader follow the code without jumping to another declaration.
+Meaningful local constants can explain intermediate values within that flow.
 
 ## Immutability
 
-Immutable values enable **referential transparency**: identity (`===`) implies equality. React and React Compiler rely on this for efficient rendering — `prevValue !== nextValue` detects changes without deep comparison.
+Immutable data makes reference equality useful for detecting changes. When a
+reference stays the same, consumers can skip work because its contents have not
+changed. A new reference may contain equal data. Preserving the original
+reference for unchanged data can avoid unnecessary rendering and recomputation.
 
 ```ts
-// Mutable: same reference, different content
-const mutableItems = [1, 2, 3];
-mutableItems.push(4);
-mutableItems === mutableItems; // true, but content changed
+import { assertEqual, assertSame, assertTrue } from "@evolu/common";
 
-// Immutable: new reference signals change
+// Mutable: the same reference now holds different content.
+const mutableItems = [1, 2, 3];
+const previousItems = mutableItems;
+mutableItems.push(4);
+assertSame(mutableItems, previousItems);
+assertEqual(mutableItems, [1, 2, 3, 4]);
+
+// Immutable: a new reference signals the change.
 const items = [1, 2, 3];
-const newItems = [...items, 4];
-items === newItems; // false
+const nextItems = [...items, 4];
+assertTrue(items !== nextItems);
+assertEqual(items, [1, 2, 3]);
+assertEqual(nextItems, [1, 2, 3, 4]);
 ```
 
 Mutation causes unintended side effects, makes code harder to predict, and
@@ -117,8 +165,9 @@ patterns for application data.
 
 Local mutation is allowed as an implementation detail when useful for
 performance. A function may mutate a value it exclusively owns while
-constructing its result, but mutation must stop before the result leaves that
-function. Use readonly types to describe immutable APIs, but do not mistake them
+constructing its result, but mutation must stop before returning it as immutable
+data. Explicitly mutable APIs may retain mutable state as part of their
+contract. Use readonly types to describe immutable APIs, but do not mistake them
 for runtime immutability or an ownership system.
 
 ### Readonly types
@@ -131,6 +180,8 @@ Use readonly types for collections and prefix interface properties with `readonl
 - `ReadonlyMap<K, V>` for maps
 
 ```ts
+import { assertEqual, assertTrue } from "@evolu/common";
+
 // Use ReadonlyArray for immutable arrays.
 const values: ReadonlyArray<string> = ["a", "b", "c"];
 
@@ -140,6 +191,16 @@ interface Example {
   readonly items: ReadonlyArray<string>;
   readonly tags: ReadonlySet<string>;
 }
+
+const example: Example = { id: 1, items: values, tags: new Set(["a"]) };
+
+assertEqual(example.items, ["a", "b", "c"]);
+assertTrue(example.tags.has("a"));
+
+// @ts-expect-error Index signature in type 'readonly string[]' only permits reading.
+values[0] = "d";
+// @ts-expect-error Cannot assign to 'id' because it is a read-only property.
+example.id = 2;
 ```
 
 Readonly in TypeScript is only a static constraint. It prevents direct mutation
@@ -148,18 +209,22 @@ value is actually immutable. A mutable alias can still change it, and TypeScript
 can allow a readonly object to be passed to a function accepting a mutable type.
 
 ```ts
+import { assertEqual } from "@evolu/common";
+
 const mutable = [1, 2, 3];
 const items: ReadonlyArray<number> = mutable;
 
 mutable.push(4);
-items; // [1, 2, 3, 4]
+assertEqual(items, [1, 2, 3, 4]);
 
 const mutateRecord = (value: Record<string, number>): void => {
   value.count = 1;
 };
 
 const record: Readonly<Record<string, number>> = {};
-mutateRecord(record); // TypeScript allows this.
+// TypeScript accepts the readonly record for the mutable parameter.
+mutateRecord(record);
+assertEqual(record, { count: 1 });
 ```
 
 Treat readonly types as a contract for APIs that already maintain immutability.
@@ -173,13 +238,15 @@ preserve readonly types.
 
 ## Interface over type
 
-Use `interface` over `type` because interfaces always appear by name in error
-messages and tooltips.
+Use `interface` over `type` because interfaces retain their names in error
+messages and tooltips, while type aliases can be expanded into their underlying
+types.
 
 Use `type` only when necessary:
 
 - Union types: `type Status = "pending" | "done"`
 - Mapped types, tuples, or type utilities
+- Intersections that compose dependencies, such as `ConsoleDep & TimeDep`
 
 > Use `interface` until you need to use features from `type`.
 >
@@ -190,51 +257,60 @@ Use `type` only when necessary:
 For Evolu Type objects created with `object()` or `typed()`, use an interface with `InferType`. TypeScript displays the interface name instead of expanding all properties.
 
 ```ts
-import { object, String, Number, type InferType } from "@evolu/common";
+import {
+  Number,
+  String,
+  assertOk,
+  object,
+  type InferType,
+} from "@evolu/common";
 
 const User = object({ name: String, age: Number });
 interface User extends InferType<typeof User> {}
+
+const user: User = { name: "Ada", age: 36 };
+assertOk(User.fromUnknown(user), user);
 ```
 
-Avoid a type alias because TypeScript expands all properties in tooltips and error messages:
-
-```ts
-import { object, String, Number } from "@evolu/common";
-
-const User = object({ name: String, age: Number });
-// Avoid: don't use a type alias for object Outputs.
-type User = typeof User.Output;
-```
+Avoid the type alias `type User = typeof User.Output` because TypeScript expands
+all properties of a type alias in tooltips and error messages.
 
 ## Arrow functions
 
 Use arrow functions instead of the `function` keyword.
 
 ```ts
-// Use
-const createUser = (data: UserData): User => {
-  // implementation
-};
+import { assertEqual } from "@evolu/common";
 
-// Avoid
-function createUser(data: UserData): User {
-  // implementation
+interface User {
+  readonly name: string;
 }
+
+const createUser = (name: string): User => ({ name });
+
+assertEqual(createUser("Ada"), { name: "Ada" });
 ```
+
+Do not write `function createUser(name: string): User { ... }`. The shared lint
+configuration reserves function declarations for overloads.
 
 Why arrow functions?
 
 - **Consistency** - Functions and readonly function-valued interface properties
   use the same concise syntax
-- **No dynamic `this`** - Functions can be passed around as ordinary values
-  without changing their behavior
+- **No dynamic `this`** - Arrow functions retain their lexical `this` when
+  passed around as values
 - **Conciseness** - Callbacks, small functions, and currying need little syntax
-- **Dependency injection** - Currying keeps dependencies explicit; see
-  [dependency injection](/docs/dependency-injection)
 
 **Exception: function overloads.** While overloading with arrow functions is possible (using a type with multiple call signatures), it can be hard to type properly because the implementation must satisfy all overloads at once, which TypeScript often can't verify without assertions. Use the `function` keyword instead:
 
-````ts
+```ts
+import {
+  assertEqual,
+  assertType,
+  type NonEmptyReadonlyArray,
+} from "@evolu/common";
+
 function mapArray<T, U>(
   array: NonEmptyReadonlyArray<T>,
   mapper: (item: T) => U,
@@ -247,95 +323,148 @@ function mapArray<T, U>(
   array: ReadonlyArray<T>,
   mapper: (item: T) => U,
 ): ReadonlyArray<U> {
-  return array.map(mapper) as ReadonlyArray<U>;
+  return array.map(mapper);
 }
 
+const nonEmpty: NonEmptyReadonlyArray<number> = [1, 2];
+const doubled = mapArray(nonEmpty, (value) => value * 2);
+
+assertType<typeof doubled, NonEmptyReadonlyArray<number>>();
+assertEqual(doubled, [2, 4]);
+```
+
 **In interfaces too.** Use readonly function-valued properties rather than
-method syntax. This matches implementations and avoids implicit method `this`
-semantics when functions are passed as values.
+method shorthand such as `bar(value: string): void`. This keeps contracts
+consistent with our arrow-function implementations.
 
 ```ts
-// Use arrow function syntax
+import { assertEqual } from "@evolu/common";
+
 interface Foo {
   readonly bar: (value: string) => void;
   readonly baz: () => number;
 }
 
-// Avoid method shorthand syntax
-interface FooAvoid {
-  bar(value: string): void;
-  baz(): number;
-}
-````
+const values: Array<string> = [];
+
+const foo: Foo = {
+  bar: (value) => {
+    values.push(value);
+  },
+  baz: () => values.length,
+};
+
+foo.bar("a");
+assertEqual(foo.baz(), 1);
+```
 
 ## Function options
 
-For functions with optional configuration, use inline types without `readonly` for single-use options and named interfaces with `readonly` for reusable options. Always destructure immediately.
+For functions with optional configuration, inline single-use, non-exported
+options types without `readonly`. Use a named interface with `readonly`
+properties when the options type is exported or used by more than one function.
+Destructure options in the parameter list.
 
-**Inline types** when options are single-use:
+**Inline types** when options are single-use and not exported:
 
 ```ts
-const race = (
-  tasks: Tasks,
+import { assertEqual } from "@evolu/common";
+
+const formatName = (
+  name: string,
   {
-    abortReason = raceLostError,
+    trim = true,
   }: {
-    // The reason to abort losing tasks with.
-    abortReason?: unknown;
+    // Whether surrounding whitespace is removed.
+    trim?: boolean;
   } = {},
-): Task<T, E> => {
-  // implementation
-};
+): string => (trim ? name.trim() : name);
+
+assertEqual(formatName(" Ada "), "Ada");
+assertEqual(formatName(" Ada ", { trim: false }), " Ada ");
 ```
 
-**Named interfaces** when options are reused:
+**Named interfaces** when options are exported or reused:
 
 ```ts
-interface RetryOptions {
+import { assertEqual, durationToMillis, type Duration } from "@evolu/common";
+
+export interface BackoffOptions {
   readonly maxAttempts?: number;
   readonly delay?: Duration;
   readonly backoff?: "linear" | "exponential";
 }
 
-const retry = (
-  task: Task<T, E>,
-  schedule: Schedule<unknown, E>,
-  { maxAttempts = 3, delay = "1s", backoff = "exponential" }: RetryOptions,
-): Task<T, RetryError<E>> => {
-  // implementation
+export const backoffDelays = ({
+  maxAttempts = 3,
+  delay = "1s",
+  backoff = "exponential",
+}: BackoffOptions = {}): ReadonlyArray<number> => {
+  const base = durationToMillis(delay);
+  const delays: Array<number> = [];
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    delays.push(
+      backoff === "linear" ? base * (attempt + 1) : base * 2 ** attempt,
+    );
+  }
+  return delays;
 };
+
+assertEqual(backoffDelays(), [1000, 2000, 4000]);
+assertEqual(backoffDelays({ backoff: "linear", maxAttempts: 2 }), [1000, 2000]);
 ```
 
 ## Switch exhaustiveness
 
-Use `exhaustiveCheck` in the `default` branch of switches over union types.
+In a side-effecting switch over a union, call `exhaustiveCheck` in `default`.
 This makes missing cases fail at compile time and preserves a runtime guard if
 an unexpected value crosses a typed boundary.
 
-Use it mainly for side-effect switches. For value-producing switches, prefer
-returning from every case and omitting `default` so TypeScript enforces
+For value-producing switches, return from every case and omit `default` so TypeScript enforces
 exhaustiveness through the return type.
 
 ```ts
-import { exhaustiveCheck } from "@evolu/common";
+import { assertEqual, exhaustiveCheck } from "@evolu/common";
 
 type Message =
   | { readonly type: "Create" }
   | { readonly type: "Update" }
   | { readonly type: "Delete" };
 
+const handledTypes: Array<string> = [];
+
+// Side-effecting switch: exhaustiveCheck guards the default branch.
 const handleMessage = (message: Message): void => {
   switch (message.type) {
     case "Create":
+      handledTypes.push("created");
       break;
     case "Update":
+      handledTypes.push("updated");
       break;
     case "Delete":
+      handledTypes.push("deleted");
       break;
     default:
       exhaustiveCheck(message);
   }
 };
+
+// Value-producing switch: every case returns, so no default is needed.
+const messageToVerb = (message: Message): string => {
+  switch (message.type) {
+    case "Create":
+      return "create";
+    case "Update":
+      return "update";
+    case "Delete":
+      return "delete";
+  }
+};
+
+handleMessage({ type: "Create" });
+assertEqual(handledTypes, ["created"]);
+assertEqual(messageToVerb({ type: "Delete" }), "delete");
 ```
 
 ## Avoid getters and setters
@@ -349,24 +478,56 @@ Avoid JavaScript getters and setters. Use simple readonly properties for stable 
 **Use explicit methods instead.** When a value can change or requires computation, use a method like `getValue()`. The parentheses signal "this might change or compute something" and make the behavior obvious at the call site. A readonly property like `readonly id: string` communicates stability—you can safely cache, memoize, or pass the value around knowing it won't change behind your back.
 
 ```ts
-// Use explicit methods for mutable internal state
+import { assertEqual } from "@evolu/common";
+
 interface Counter {
+  // Stable: safe to cache.
+  readonly id: string;
+  // Changes over time: an explicit function signals it.
   readonly getValue: () => number;
   readonly increment: () => void;
 }
 
-// Avoid: This looks stable but if backed by a getter, value might change
-interface CounterAvoid {
-  readonly value: number;
-  readonly increment: () => void;
-}
+const createCounter = (id: string): Counter => {
+  let value = 0;
+  return {
+    id,
+    getValue: () => value,
+    increment: () => {
+      value++;
+    },
+  };
+};
+
+const counter = createCounter("clicks");
+const cachedValue = counter.getValue();
+counter.increment();
+
+assertEqual(counter.id, "clicks");
+assertEqual(cachedValue, 0);
+assertEqual(counter.getValue(), 1);
 ```
+
+Avoid `readonly value: number` backed by a getter. It looks stable, but its
+value can change on every access.
 
 ## Functions over classes
 
 Use interfaces with factory functions instead of classes. This keeps the public
 API separate from the implementation so the interface can describe the whole
 contract without mixing in state and method bodies.
+
+Name factories `createX`. Inside a factory, declare items in this order:
+
+1. Derived constants and assertions.
+2. Mutable variables.
+3. `DisposableStack`, `AsyncDisposableStack`, and other owned resources.
+4. Listeners and timers.
+5. Local functions.
+6. The returned API.
+
+The initialization constraint also applies here: initialize a `const` helper
+before any setup code calls it synchronously.
 
 Evolu favors composition over class inheritance. When inheritance is useful, an
 interface can extend multiple interfaces, which is more flexible than a
@@ -387,6 +548,18 @@ For behavior, prefer plain functions that take the previous state and return
 the next state instead of mutating an instance.
 
 ```ts
+import {
+  NonEmptyTrimmedString100,
+  assertFalse,
+  assertTrue,
+  createIdFromString,
+  id,
+  type Typed,
+} from "@evolu/common";
+
+const TodoId = id("Todo");
+type TodoId = typeof TodoId.Output;
+
 interface Todo extends Typed<"Todo"> {
   readonly id: TodoId;
   readonly title: NonEmptyTrimmedString100;
@@ -397,9 +570,31 @@ const completeTodo = (todo: Todo): Todo => ({
   ...todo,
   isCompleted: true,
 });
+
+const todo: Todo = {
+  type: "Todo",
+  id: TodoId.orThrow(createIdFromString("todo")),
+  title: NonEmptyTrimmedString100.orThrow("Buy milk"),
+  isCompleted: false,
+};
+const completedTodo = completeTodo(todo);
+
+assertFalse(todo.isCompleted);
+assertTrue(completedTodo.isCompleted);
 ```
 
 ```ts
+import {
+  Boolean,
+  NonEmptyTrimmedString100,
+  assertEqual,
+  assertOk,
+  createIdFromString,
+  id,
+  typed,
+  type InferType,
+} from "@evolu/common";
+
 const Todo = typed("Todo", {
   id: id("Todo"),
   title: NonEmptyTrimmedString100,
@@ -407,33 +602,49 @@ const Todo = typed("Todo", {
 });
 
 interface Todo extends InferType<typeof Todo> {}
+
+const result = Todo.fromUnknown({
+  type: "Todo",
+  id: createIdFromString("todo"),
+  title: "Buy milk",
+  isCompleted: false,
+});
+
+assertOk(result);
+const todo: Todo = result.value;
+assertEqual(todo.title, "Buy milk");
 ```
 
 ```ts
-// Use interface + factory function
+import { assertEqual } from "@evolu/common";
+
+// Use an interface with a factory function.
 interface Counter {
   readonly getValue: () => number;
   readonly increment: () => void;
 }
 
-const createCounter = (): Counter => {
+const createCounter = (step = 1): Counter => {
+  // Mutable variables stay private to the factory.
   let value = 0;
+
+  // The returned API is the only way to observe or change them.
   return {
     getValue: () => value,
     increment: () => {
-      value++;
+      value += step;
     },
   };
 };
 
-// Avoid
-class Counter {
-  value = 0;
-  increment() {
-    this.value++;
-  }
-}
+const counter = createCounter(2);
+counter.increment();
+assertEqual(counter.getValue(), 2);
 ```
+
+Avoid a `class Counter` with a public `value` field and an `increment()`
+method. The class exposes its state and mixes the contract with the
+implementation.
 
 ## Disposing
 
@@ -452,6 +663,10 @@ For full disposal patterns, anti-patterns, and `move()` examples, see
 
 ## Branded types
 
+Validate external input with Evolu Types. A cast or assertion does not replace
+decoding untrusted data. Construct Types with factories such as `createType`, `brand`,
+`array`, and `object`.
+
 Use [`Brand`](/docs/api-reference/common/Brand/interfaces/Brand) to give
 otherwise identical values distinct meaning at the type level. Branding lets us
 separate domain concepts without changing the runtime representation. For
@@ -459,10 +674,15 @@ example, `PositiveInt` is still a number at runtime, but it is not
 interchangeable with an arbitrary `number` in the type system.
 
 ```ts
-import { Brand } from "@evolu/common";
+import { type Brand } from "@evolu/common";
 
 type UserId = number & Brand<"UserId">;
 type TrimmedName = string & Brand<"TrimmedName">;
+
+const describeUser = (_id: UserId, _name: TrimmedName): void => {};
+
+// @ts-expect-error A plain number and string are not assignable to the branded UserId and TrimmedName parameters.
+describeUser(1, "Ada");
 ```
 
 Prefer Evolu `Type` brands over raw primitives when the value has domain
@@ -478,15 +698,35 @@ them when callers should not inspect or construct values directly and can only
 pass them back to the API that created them.
 
 ```ts
-import { Brand } from "@evolu/common";
+import { assertEqual, type Brand } from "@evolu/common";
 
-// Opaque type: standalone brand with no exposed representation
+// Opaque type: standalone brand with no exposed representation.
 type TimeoutId = Brand<"TimeoutId">;
 
 interface Timer {
   readonly setTimeout: (fn: () => void, ms: number) => TimeoutId;
   readonly clearTimeout: (id: TimeoutId) => void;
 }
+
+// Only the creating API knows the representation behind the brand.
+const timer: Timer = {
+  setTimeout: (fn) => {
+    fn();
+    const handle: unknown = 1;
+    return handle as TimeoutId;
+  },
+  clearTimeout: () => {},
+};
+
+let calls = 0;
+const timeoutId = timer.setTimeout(() => {
+  calls++;
+}, 0);
+timer.clearTimeout(timeoutId);
+assertEqual(calls, 1);
+
+// @ts-expect-error A number is not a TimeoutId.
+timer.clearTimeout(1);
 ```
 
 Opaque types are useful for:
@@ -495,53 +735,206 @@ Opaque types are useful for:
 - **Handle types** - IDs that should only be passed back to the creating API (e.g., timeout IDs, file handles)
 - **Type safety** - Prevent accidental misuse by making internal structure inaccessible
 
+### Symbol identity
+
+Symbols used as keys in exported types must retain their unique identity in
+emitted declarations. `globalThis.Symbol()` can infer `symbol` instead of
+`unique symbol`, causing computed properties to disappear from emitted
+declarations and erase type distinctions. Follow the explicit unique-symbol
+declaration pattern in the repository's `Type.ts` and verify the emitted
+declarations.
+
+Define shared symbol keys at module scope so objects and the code reading them
+use the same runtime key. Creating a key with `Symbol()` inside a function gives
+each call a different symbol, but TypeScript associates its unique type with
+the declaration. It can therefore accept an object from another call and allow
+reading a required property that is actually missing at runtime. Sharing one
+module-level key prevents this separate mismatch.
+
+Runtime-only symbols used as sentinels or identity tokens do not need unique
+types.
+
 ## Composition without pipe
 
 Evolu doesn't provide a `pipe` helper. Instead, compose functions directly:
 
 ```ts
+import {
+  assertType,
+  exponential,
+  jitter,
+  maxDelay,
+  take,
+  type Millis,
+  type Schedule,
+} from "@evolu/common";
+
 // AWS SDK for Java 2.1 ordinary-failure retry timing.
 const retryStrategyAws = jitter("100%")(
   maxDelay("20s")(take(2)(exponential("50ms"))),
 );
+
+assertType<typeof retryStrategyAws, Schedule<Millis>>();
 ```
 
 If nested composition gets too deep, split into meaningful named parts:
 
 ```ts
-// Split long compositions into named intermediate values
+import {
+  assertType,
+  exponential,
+  jitter,
+  maxDelay,
+  take,
+  type Millis,
+  type Schedule,
+} from "@evolu/common";
+
+// Split long compositions into named intermediate values.
 const limitedExponential = take(2)(exponential("50ms"));
 const cappedBackoff = maxDelay("20s")(limitedExponential);
 const retryStrategyAws = jitter("100%")(cappedBackoff);
+
+assertType<typeof retryStrategyAws, Schedule<Millis>>();
 ```
 
-Shallow nesting often fits one line (like `retryStrategyAws`). If it doesn't, split — there's a good chance you'll reuse those named parts elsewhere.
+Evolu favors imperative code and direct composition over pipes. Use meaningful
+local constants when nesting becomes hard to read; keep single-use operations
+inline.
 
-Evolu favors imperative code over pipes. A well-named helper is more discoverable and self-documenting than a long chain of transformations.
+## Result and errors
+
+Fallible public APIs return `Result<T, E>` for typed domain errors. Represent
+domain errors as exact plain objects, not `Error` instances. Name their
+interfaces `XError`. Omit the `Error` suffix from the discriminant only when
+the remaining name already clearly describes a failure, as in
+`UserNotFoundError extends Typed<"UserNotFound">`. Keep it for names such as
+`TimeoutError`, `RetryError`, and `AbortError`.
+
+Use `trySync` and `tryAsync` to convert thrown or rejected values into a Result.
+Use `getOrThrow` and Type `.orThrow` for module initialization, startup and
+configuration loading, test fixtures, or internal invariants. Do not use them
+to process user input.
+
+See the [Result module](/docs/api-reference/common/Result) for composition and
+error-handling examples.
 
 ## Avoid meaningless ok values
 
 Don't use `ok("done")` or `ok("success")` — the `ok()` itself already communicates success. Use `ok()` for `Result<void, E>` or return a meaningful value.
 
 ```ts
-// Good - ok() means success, no redundant string needed
-const save = (): Result<void, SaveError> => {
-  // ...
-  return ok();
-};
+import {
+  assertErr,
+  assertOk,
+  err,
+  ok,
+  type Result,
+  type Typed,
+} from "@evolu/common";
 
-// Good - return a meaningful value
-const parse = (): Result<User, ParseError> => {
-  // ...
-  return ok(user);
-};
+interface User {
+  readonly id: string;
+}
 
-// Avoid - "done" and "success" add no information
-return ok("done");
-return ok("success");
+interface SaveError extends Typed<"SaveError"> {}
+
+// Good: ok() means success, no redundant string needed.
+const save = (_user: User): Result<void, SaveError> => ok();
+
+interface ParseError extends Typed<"ParseError"> {}
+
+// Good: return a meaningful value.
+const parse = (input: string): Result<User, ParseError> =>
+  input === "" ? err({ type: "ParseError" }) : ok({ id: input });
+
+assertOk(save({ id: "user-1" }), undefined);
+assertOk(parse("user-1"), { id: "user-1" });
+assertErr(parse(""), { type: "ParseError" });
 ```
+
+Avoid `ok("done")` and `ok("success")`; the strings add no information.
 
 ## Testing
 
+Every feature addition and bug fix includes a test that fails without the
+change. Create fresh dependencies in each test and retain 100% statement,
+branch, function, and line coverage for changed source files.
+
+Use `assertType` for compile-time contracts and `@ts-expect-error` for rejected
+programs. Every `@ts-expect-error` must describe the specific expected rejection.
+If an Evolu API supplies a `CompileTimeError` message, copy it verbatim;
+otherwise, state the rejected TypeScript contract precisely.
+
 See [Testing](/docs/testing) for test doubles, fresh dependency setup,
 deterministic Tasks, and test helper naming.
+
+## Dependency injection and Tasks
+
+Synchronous functions with injected dependencies accept one `deps` object.
+Describe each dependency and its `XDep` wrapper with interfaces. Wrappers give
+dependencies distinct property names, preventing clashes when combining them.
+Dependency interfaces do not use generic parameters and expose domain errors,
+not implementation-specific errors.
+
+Use type aliases for intersections that compose dependencies. Sort dependencies
+alphabetically and put `Partial` dependencies last. A caller may pass more
+dependencies than a function requires, but a function must not require
+dependencies it does not use.
+
+Shared modules do not export dependency instances. Create and wire them in the
+composition root, where module-level instances are allowed.
+
+Tasks declare dependencies in `Task<T, E, D>` and read them through `run.deps`.
+Call Tasks with `run(task)`, never `task(run)`. Return, handle, or translate an
+`Err` before accessing the result's value. An object exposing multiple
+asynchronous operations creates one internal `Run` that every asynchronous
+method uses.
+
+See [Dependency injection](/docs/dependency-injection) for synchronous examples
+and the [Task module](/docs/api-reference/common/Task) for asynchronous
+composition.
+
+## Documentation
+
+JSDoc should explain behavior and intent without repeating TypeScript parameter
+or return types. Do not use `@param`, `@return`, or `@example`. Put examples
+under a `### Example` Markdown heading. Use `{@link}` on the first mention of
+an exported symbol. Avoid pipe characters in the first sentence because TypeDoc
+inserts that sentence into Markdown tables. Do not make alignment-only JSDoc
+edits.
+
+### Executable examples
+
+Write every TypeScript code fence as a standalone, deterministic example that
+`testJSDocExamples` can lint, compile, and run. Explicitly import dependencies
+and assertions. Prefix intentionally unused declarations with `_`; the harness
+rejects both unprefixed unused declarations and used underscore-prefixed
+declarations.
+
+Prove the documented contract with assertions instead of describing expected
+output only in comments. Use `assertType` for static contracts, `assertEqual`
+for Data comparisons, `assertSame` for SameValue or reference identity,
+`assertTrue` or `assertFalse` for predicates, `assert` with a descriptive message
+for invariants and narrowing, and `assertOk` or `assertErr` for Results.
+
+After changing examples, run `pnpm test:jsdoc <changed-file>`. The repository's
+`pnpm verify` runs the configured documentation-example suite. Only explicitly
+configured sources are included automatically; a passing suite does not prove
+that every documentation page was tested.
+
+### API reference organization
+
+Use TypeDoc's generated declaration-kind groups for simple modules. If a module
+uses custom `@group` tags, assign every exported declaration to a semantic
+group. Do not mix custom groups with generated groups such as Functions,
+Interfaces, and Type Aliases.
+
+Name custom groups by their purpose within the module, using short contextual
+names such as Creation, Guards, Model, or Pull, and define their order
+explicitly. Keep module prose before generated API groups, with FAQ last when
+present. Put API-specific guidance and examples on the relevant declarations.
+Do not use `@groupDescription` or custom renderer logic to reposition module
+prose.
+
+TypeDoc warnings fail CI. Resolve every warning emitted by `pnpm build:docs`.

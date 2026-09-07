@@ -1,266 +1,181 @@
 # Evolu repository guidance
 
-## Repository
+This file selectively summarizes [Conventions](<apps/web/src/app/(docs)/docs/conventions/page.mdx>)
+and adds repository workflow instructions. It is sufficient for routine work.
+Read only the relevant documentation section when clarification is needed or
+when reviewing or changing a convention. Do not open linked guides routinely.
+Keep shared rules consistent; not every documented convention needs a summary here.
 
-Evolu is a TypeScript monorepo using pnpm workspaces. Platform and
-framework packages depend on `@evolu/common`.
+## Working on a task
 
-- `packages/common/src/` — platform-independent source code.
-- `packages/common/src/local-first/` — the local-first subsystem.
-- `packages/web/`, `packages/nodejs/`, and `packages/react-native/` — platform adapters.
-- `packages/react/`, `packages/react-web/`, `packages/svelte/`, and `packages/vue/` — framework integrations.
-- `apps/web/` — documentation and playgrounds.
-- `apps/relay/` — the sync server.
-- `examples/` — framework-specific example applications.
-- `bench/` — storage and TypeScript compiler benchmarks.
+- Proceed with reasonable assumptions for routine, reversible decisions. Ask
+  when missing information materially changes scope or correctness.
+- Keep reviews read-only unless edits are requested. Before editing, read the
+  relevant implementation and its tests; limit exploration to the task.
+- Preserve unrelated working-tree changes. Do not create a commit unless asked.
+- Write new modules and helper scripts in TypeScript. Keep existing JavaScript,
+  MJS, and CJS files in their current language unless migrating them is the task.
+- Report the outcome, relevant verification, and remaining limitations concisely.
 
-## Worktree
+## Repository and commands
 
-- Before editing a module, read that module and its tests, if present.
-- Do not discard, overwrite, or reformat unrelated working-tree changes.
-- Write new source modules and helper scripts in TypeScript. Keep existing
-  JavaScript, MJS, and CJS files in their current language unless the task is a
-  language migration.
-- Do not create a commit unless the user asks for one.
+This is a pnpm TypeScript monorepo. Use the Node.js version in `.nvmrc`.
 
-## Commands
+- `packages/common/src/` contains platform-independent code; `local-first/`
+  contains the local-first subsystem.
+- Other `packages/` contain platform adapters and framework integrations.
+- `apps/web/` contains documentation and playgrounds; `apps/relay/` is the server.
+- `examples/` contains example apps; `bench/` contains compiler and storage benchmarks.
 
-The repository uses the latest Node.js LTS release selected by `.nvmrc` and pnpm.
+Look up less common commands in [package.json](package.json), and test-runner
+details in [test/README.md](test/README.md) when needed. Run standalone TypeScript
+scripts with `node script.mts`. Run GitHub CLI commands with network access.
 
-- `pnpm install` — install workspace dependencies.
-- `pnpm playwright:install` — install browsers for Playwright-based tests and
-  `pnpm verify`. Run it after Playwright updates or browser-cache removal.
-- `pnpm typecheck` — type-check packages, scripts, and benchmarks.
-- `pnpm test:node "<test-file-or-glob>"` — run selected Node test files with the
-  shared configuration from `node.config.json`. Quote globs so Node expands them
-  consistently across shells.
-- `pnpm test` — run unit, integration, bundle, and documentation-example tests.
-- `pnpm test:unit` — run all unit tests with test-file durations sorted
-  slowest-first and the per-source-file coverage table.
-- `pnpm test:integration` — run Node.js and browser integration tests.
-- `pnpm test:integration:nodejs` — run Node.js integration tests without source
-  coverage.
-- `pnpm test:integration:browsers` — run the explicitly configured browser
-  integration projects, first in Chromium with coverage and then in Firefox and
-  WebKit without coverage. Use it after changing browser APIs,
-  platform-sensitive behavior, polyfills, workers, or browser test
-  configuration. It runs only the files selected by
-  `test/integration/browsers/vitest.config.ts` and
-  `test/integration/browsers/web/vitest.config.ts`, not the collocated
-  unit-test suite.
-- `pnpm test:bundle` — run production bundle and tree-shaking tests without
-  source coverage.
-- `pnpm test:jsdoc <file-or-glob>...` — compile and run documentation examples
-  from specific source or Markdown files. Omit arguments to test every
-  configured JSDoc source and changeset.
-- `pnpm build` — build publishable packages and the relay. Run it once after a
-  clone or pull to generate IDE package types.
-- `pnpm check:packages` — validate package source and distribution exports.
-- `pnpm lint` — run Oxlint and monorepo structure linting.
-- `pnpm lint:oxlint` — run Oxlint, including runtime import-cycle analysis.
-- `pnpm lint:sherif` — lint the pnpm workspace structure with Sherif.
-- `pnpm verify` — run type-checking, builds, package checks, coverage,
-  Firefox/WebKit compatibility tests, monorepo linting, documentation
-  generation, and Oxlint serially. Its underlying tools can use all available
-  CPU cores, so do not run other CPU-intensive commands concurrently.
-- `pnpm format:check` — check Prettier formatting without writing changes.
-- `pnpm format` — write Prettier formatting changes.
-- `pnpm bench:type` — compare Type compiler metrics with committed baselines.
-  Run it after changing Type declarations or `bench/type` infrastructure. It is
-  not part of `pnpm verify`.
-- `pnpm bench:storage` — run storage benchmarks. Run it after changing storage
-  algorithms, SQL, indexes, or query plans.
-- Run GitHub CLI commands with network access.
+## Verification
 
-Run standalone TypeScript scripts directly with Node.js, for example
-`node script.mts`.
+- For implementation changes, run relevant type-checking, linting, and focused
+  tests. Use `pnpm typecheck`, `pnpm lint`, and
+  `pnpm test:node "<test-file-or-glob>"`; quote globs. For Vitest suites, select
+  the owning project from its configuration and follow `test/README.md`.
+- After changing documentation examples, run `pnpm test:jsdoc <changed-file>`.
+  The default suite covers configured sources, not every documentation page.
+- After changing Type declarations, run
+  `pnpm bench:type --filter=<affected-workload>` for relevant local workloads.
+  CI runs the full suite. Run it locally when updating baselines or investigating
+  broad regressions. See [benchmark usage](bench/type/README.md#running).
+- After changing storage algorithms, SQL, indexes, or query plans, run
+  `pnpm bench:storage`. Neither benchmark is included in `pnpm verify`.
+- After changing browser APIs, platform-sensitive behavior, polyfills, workers,
+  or browser test configuration, run `pnpm test:integration:browsers`. It tests
+  configured integration projects, not all collocated unit tests. Run
+  `pnpm playwright:install` after Playwright updates or browser-cache removal.
+- After packaging or export changes, run `pnpm build`, `pnpm check:packages`,
+  and relevant bundle tests. `pnpm build` also generates IDE package types.
+- For cross-package behavior or shared build/test-infrastructure changes, or
+  when requested, run `pnpm verify`. It runs formatting, type-checking, lint,
+  builds, package checks, documentation generation, and all configured tests.
+  Do not run other CPU-intensive commands concurrently with it.
+- For prose-only changes, check formatting and relevant links; compile changed
+  MDX pages. Restrict focused formatting checks to touched files in a dirty tree.
+- Once required checks pass, stop expanding or repeating verification unless
+  new changes, failures, or unresolved concerns justify it. Report failed or
+  blocked checks accurately; do not treat an attempted check as a pass.
 
-## Module structure
+## Module structure and naming
 
-- Group declarations by feature, not by export visibility. For each feature,
-  place ordinary exported interfaces and types before exported code, then
-  internal code. Place a function-specific error interface immediately after
-  that function, separated by an empty line, so the happy path comes first.
-  Finish that feature before starting the next one.
-- Within a feature, place orchestration code before the lower-level operations it
-  calls so the feature can be read from start to end. Define a `const` helper
-  first when a module initializer invokes it during module evaluation.
-- Repository source modules use named exports and named imports. Do not define
-  namespaces; package indexes re-export names into one namespace, so exported
-  names must be unique. Use a default export only for a framework or tool API
-  that requires one. Namespace imports are allowed for third-party namespace
-  APIs.
-- Prefer `interface`. Use `type` for unions, tuples, mapped types, type utilities,
-  and intersections that compose dependencies.
-- Name conversions `xToY`, predicates `isX`, empty values `emptyX`, dependencies
-  `XDep`, and operations as a verb plus the operated-on type, such as `mapArray`.
-- Name maps and records as value-by-key, for example `rowsByQuery`,
-  `messagesByOwnerId`, and `usersById`.
-- Use `globalThis` for globals whose names overlap local APIs, for example
-  `globalThis.Worker`.
-- Interface properties use `readonly`, and callable properties use arrow-function
-  syntax instead of method syntax.
-- Immutable collection APIs use `ReadonlyArray`, `NonEmptyReadonlyArray`,
-  `ReadonlySet`, `ReadonlyMap`, and `ReadonlyRecord`. Use mutable collection types
-  only when the API mutates them. Do not expose a mutable alias as readonly.
-- Variable shadowing is allowed.
+- Group by feature: public contract and supporting types,
+  then implementation, shared helpers, and private implementation types. Finish
+  one feature before starting another. Put orchestration before the operations
+  it calls.
+- Keep inferred output interfaces immediately after their Evolu Type values.
+- Initialize `const` helpers before module initialization or factory setup calls
+  them synchronously, including through another function.
+- Use named exports and imports, with unique exported names and no namespaces.
+  Default exports are allowed when required by framework/tool APIs; namespace
+  imports are allowed for third-party namespace APIs.
+- Prefer `interface`; use `type` for unions, tuples, mapped types, type utilities,
+  and dependency intersections. Interface properties are `readonly`; callable
+  properties use arrow syntax, not methods.
+- Name factories `createX`, operations `mapArray`, conversions `xToY`, predicates
+  `isX`, empty values `emptyX`, and dependencies `XDep`. Name instances `eqString`
+  or `orderNumber`, positional accessors `firstInArray`, and indexed collections
+  as value-by-key, such as `messagesByOwnerId`.
+- Use `globalThis` for globals whose names overlap local APIs. Shadowing is allowed.
 
-## Functions and factories
+## Functions and data
 
-- Use arrow functions. Use `function` for overloads.
+- Use arrow functions; use `function` for overloads.
 - Do not extract a helper used only once; inline it.
-- Use `createX` factory functions instead of classes for Evolu object
-  construction.
-- Inside a factory, declare items in this order: derived constants and
-  assertions; mutable variables; `DisposableStack`, `AsyncDisposableStack`, and
-  other owned resources; listeners and timers; local functions; returned API.
-- Inline the type of an options object used by one function. Use an interface
-  with `readonly` properties when the options type is exported or used by more
-  than one function. Destructure options in the parameter list.
-- Avoid getters and setters. Use readonly properties for stable values and
-  explicit methods for values that can change or require computation.
-- In a side-effecting switch over a union, call `exhaustiveCheck` in `default`.
-  In a value-producing switch, return from every case and omit `default`.
+- Use meaningful local constants for complex nested expressions.
+- Use interfaces and `createX` factories instead of classes. Model domain objects
+  as plain data; use `Typed` for tags and `typed` or `object` for validation.
+- Inside factories, order declarations as: derived constants/assertions, mutable
+  variables, owned resources, listeners/timers, local functions, returned API.
+  Respect the synchronous initialization constraint above.
+- Inline single-use, non-exported options types without `readonly`. Use readonly
+  interfaces for exported or reused options. Destructure options in parameters.
+- Avoid getters/setters. Use readonly properties for stable values and explicit
+  functions for values that change or require computation.
+- Side-effecting union switches use `exhaustiveCheck` in `default`.
+  Value-producing switches return from every case and omit `default`.
+- Use `ReadonlyArray`, `NonEmptyReadonlyArray`, `ReadonlySet`, `ReadonlyMap`, and
+  `ReadonlyRecord` for immutable APIs. Do not expose a mutable alias as readonly.
+- Do not mutate application data passed to public functions. Local construction
+  mutation is allowed, but stop before returning immutable data. Explicitly
+  mutable APIs may mutate as their contract requires. Readonly does not freeze
+  values or prove ownership.
 
-## Result and errors
+## Results, Types, and brands
 
-- Fallible public APIs return `Result<T, E>` for typed domain errors instead of
-  throwing them.
-- Domain errors are exact plain objects, not `Error` instances. Name an error
-  interface `XError`. When `X` already clearly describes a failure, extend
-  `Typed<"X">` and omit the redundant `Error` suffix from the discriminant,
-  for example `UserNotFoundError extends Typed<"UserNotFound">`. Keep the
-  suffix when it is needed to make the discriminant unambiguously an error, as
-  in `TimeoutError`, `RetryError`, and `AbortError`.
-- Operations without a success value return `Result<void, E>` with `ok()`.
-- Use `trySync` and `tryAsync` when converting thrown or rejected values into a
-  `Result`.
-- Use `getOrThrow` and Type `.orThrow` for module initialization, startup and
-  configuration loading, test fixtures, or internal invariants. Do not use them
-  to process user input.
+- Fallible public APIs return `Result<T, E>` with exact plain-object domain errors,
+  not `Error` instances. Use `ok()` for success without a value and `trySync` or
+  `tryAsync` to convert thrown/rejected values.
+- Name error interfaces `XError`. Drop `Error` from the discriminant only when
+  the remainder clearly names a failure: `UserNotFoundError` extends
+  `Typed<"UserNotFound">`; `TimeoutError`, `RetryError`, and `AbortError` keep it.
+- Use `getOrThrow` and Type `.orThrow` for initialization, startup/configuration,
+  test fixtures, or internal invariants, not for processing user input.
+- Validate external input with Evolu Types, not casts/assertions. Construct Types
+  with factories such as `createType`, `brand`, `array`, and `object`.
+- For a named object Type `X`, use
+  `export interface X extends InferType<typeof X> {}` for its output.
+- Use `Brand<"Name">` for opaque handles and otherwise interchangeable values.
+- Exported symbol keys must retain unique identity in emitted declarations.
+  `globalThis.Symbol()` can infer `symbol`, erasing computed properties and type
+  distinctions. Follow the explicit unique-symbol pattern in `Type.ts` and check
+  emitted declarations when changing such keys.
+- Shared symbol keys belong at module scope. A factory creates a different key
+  per call, but TypeScript associates the unique type with the declaration;
+  it can accept cross-call objects whose required property is actually missing.
+  Runtime-only sentinels and identity tokens do not need unique types.
 
-## Type and brands
+## Dependencies, Tasks, and disposal
 
-- Validate external input with Evolu Type declarations; do not cast or assert it.
-- Construct Types with factories such as `base`, `brand`, `array`, and `object`.
-- For a named object Type `X`, declare its output as
-  `export interface X extends InferType<typeof X> {}`.
-- Use `Brand<"Name">` for opaque handles and values that share a runtime type but
-  must not be interchangeable.
-- Symbols used as keys in exported types must retain their unique identity in
-  emitted declarations. `globalThis.Symbol()` can infer `symbol` instead of
-  `unique symbol`, causing computed properties to disappear from emitted
-  declarations and erase type distinctions. Follow the explicit unique-symbol
-  declaration pattern in `Type.ts` and verify the emitted declarations.
-- Define shared symbol keys at module scope so objects and the code reading them
-  use the same runtime key. Creating a key with `Symbol()` inside a function gives
-  each call a different symbol, but TypeScript associates its unique type with
-  the declaration. It can therefore accept an object from another call and allow
-  reading a required property that is actually missing at runtime. Sharing one
-  module-level key prevents this separate mismatch.
-- Runtime-only symbols used as sentinels or identity tokens do not need unique
-  types.
+- Synchronous dependency injection uses one `deps` object. Use interfaces for
+  dependencies and their `XDep` wrappers, without generic dependency parameters
+  or implementation-specific errors.
+- Compose dependencies with type intersections, alphabetically, with `Partial`
+  dependencies last. Callers may over-provide; functions must not over-depend.
+- Shared modules do not export dependency instances; composition roots may
+  create them at module scope.
+- Tasks declare dependencies in `Task<T, E, D>` and read `run.deps`. Call
+  `run(task)`, never `task(run)`. Handle or propagate `Err` before reading value.
+- Objects with multiple async operations create one internal `Run` shared by
+  those operations.
+- Create disposable objects with `disposable`. Pass the owned `DisposableStack`
+  or `AsyncDisposableStack` when cleanup resources are involved.
 
-## Dependency injection and Tasks
+## Documentation and tests
 
-- Synchronous functions with injected dependencies accept one `deps` object.
-- Wrap each dependency in an `XDep` interface to prevent property-name clashes.
-- Dependency interfaces do not use generic parameters and expose domain errors,
-  not implementation-specific errors.
-- Use interfaces for dependencies and their `XDep` wrappers. Use type aliases for
-  intersections that compose dependencies.
-- Sort dependencies alphabetically in intersections and put `Partial` dependencies
-  last.
-- Tasks declare dependencies in `Task<T, E, D>` and read them through `run.deps`.
-- Call Tasks with `run(task)`, never `task(run)`.
-- Return, handle, or translate an `Err` from `run(task)` before accessing the
-  result's value.
-- Shared modules do not export dependency instances. Composition roots may create
-  them at module scope.
-- A caller may pass more dependency properties than a function requires.
-- A function does not require dependencies it does not use.
-- An object exposing multiple asynchronous operations creates one internal
-  `Run`; every asynchronous method uses that instance.
-
-## Disposal
-
-- Create disposable objects with `disposable`. Pass it a `DisposableStack` or
-  `AsyncDisposableStack` when the object owns cleanup resources.
-
-## JSDoc and TypeDoc
-
-- Do not repeat TypeScript parameter and return types in JSDoc prose.
-- Do not use `@param`, `@return`, or `@example`.
-- Put examples under a `### Example` Markdown heading.
-- Write every TypeScript code fence as a standalone, deterministic example that
-  can be linted, compiled, and run by `testJSDocExamples`. Explicitly import its
-  dependencies and assertions.
-- Prefix intentionally unused example declarations with `_`. The harness
-  rejects both unprefixed unused declarations and used underscore-prefixed
-  declarations.
-- Prove documented contracts in examples instead of describing expected output
-  only in comments: use `assertType` for static contracts, `assertEqual` for
-  Data comparisons, `assertSame` for SameValue or reference identity,
-  `assertTrue` or `assertFalse` for boolean predicates, `assert` with a
-  descriptive message for invariants and narrowing, and `assertOk` or
-  `assertErr` for Results.
-- After changing documentation examples, run `pnpm test:jsdoc <changed-file>`
-  during development. The exhaustive JSDoc test remains part of `pnpm verify`.
-- Use `{@link}` on the first mention of an exported symbol.
-- Do not put a pipe character in the first sentence; TypeDoc inserts that
-  sentence into Markdown tables.
-- Use TypeDoc's generated declaration-kind groups for simple modules. If a
-  module uses any custom `@group`, assign every exported declaration to a
-  semantic group; do not mix custom groups with generated groups such as
-  Functions, Interfaces, and Type Aliases.
-- Name custom groups by their purpose within the module, using short contextual
-  names such as Creation, Guards, Model, or Pull, and define their order
-  explicitly. Keep all module prose before the generated API groups, with FAQ
-  last when present. Put API-specific guidance and examples on the relevant
-  declarations instead of using `@groupDescription` or custom renderer logic to
-  reposition module prose.
-- Do not make alignment-only JSDoc edits.
-- TypeDoc warnings fail CI. Resolve every warning emitted by `pnpm build:docs`.
-
-## Tests
-
-- Every feature addition and bug fix includes a test that fails without the
-  change.
-- After changing a module with a native Node.js test, run that test file with
-  `pnpm test:node <test-file>`. Run a focused Vitest suite with
-  `pnpm exec vitest run <test-file> --project=<project>` using
-  `node-integration`, `browser-integration`, or `browser-web`; add
-  `--mode=chromium` for a browser project.
-- Vitest test locations are defined by each project and are not limited to a
-  conventional test directory.
-- Use `assertType` for compile-time contracts and `@ts-expect-error` for
-  rejected programs.
-- Every `@ts-expect-error` must describe the specific expected rejection. When
-  an Evolu API provides a `CompileTimeError` message, copy that message verbatim.
-  Otherwise, state the rejected TypeScript contract precisely. Do not use
-  generic descriptions such as "should fail."
-- Create fresh dependencies in each test; do not share mutable dependency
-  instances between tests.
-- Library-exported test helpers use the `testX` prefix. Reusable setup helpers
-  local to tests or exported from test-only files use `setupX`. `testCreateDeps`
-  and `testCreateRun` are defined in `packages/common/src/Task.ts`.
-- Changed source files retain 100% statement, branch, function, and line
-  coverage.
+- JSDoc explains behavior without repeating types. No `@param`, `@return`, or
+  `@example`; use `### Example`. Link the first exported-symbol mention with
+  `{@link}`. Avoid pipes in the first sentence and alignment-only edits.
+- TypeScript examples are standalone and deterministic, with explicit imports
+  and assertions. Prefix intentionally unused declarations with `_`, but never
+  declarations that are used.
+- Prove contracts: `assertType` for types, `assertEqual` for Data, `assertSame`
+  for SameValue/reference identity, `assertTrue`/`assertFalse` for predicates,
+  `assert` for invariants/narrowing, and `assertOk`/`assertErr` for Results.
+- When changing API reference organization, read only the relevant section of
+  [Conventions](<apps/web/src/app/(docs)/docs/conventions/page.mdx#api-reference-organization>).
+  Resolve TypeDoc warnings; they fail CI.
+- Feature additions and bug fixes need a test that fails without the change.
+  Changed source files retain 100% statement, branch, function, and line coverage.
+- Use `assertType` and precise `@ts-expect-error` comments for type contracts.
+  Copy Evolu `CompileTimeError` messages verbatim; otherwise describe the rejected
+  TypeScript contract. Do not use generic comments such as "should fail."
+- Create fresh dependencies per test. Library-exported helpers use `testX`;
+  local/test-only setup helpers use `setupX`. `testCreateDeps` and `testCreateRun`
+  are in `packages/common/src/Task.ts`.
 
 ## Commits and changesets
 
-- Commit messages use sentence case, no `feat:`/`fix:` prefix, and no trailing
-  period.
-- Changes to a published package’s exported API or runtime behavior require a
-  changeset created with `pnpm changeset`.
-- Write changesets as release notes for package users, not implementation logs.
-  The first body paragraph is the changelog title: keep it short, standalone,
-  sentence case, in past tense, and without a trailing period. Use the following
-  paragraphs to explain observable behavior or migration impact. When a change
-  affects TypeScript usage, include one or more examples that follow the JSDoc
-  example rules above. Documentation-only and tooling-only changesets do not
-  need an example. For a breaking migration, prove that the old usage is
-  rejected and show the replacement in the same tested example. Put unrelated
-  user-facing changes in separate changesets.
-- Fixes use patch changesets, additive features use minor changesets, and
-  breaking public APIs use major changesets, including during preview releases.
+- Commit messages use sentence case, no `feat:`/`fix:` prefix or trailing period.
+- Published API/runtime changes require a changeset created with `pnpm changeset`:
+  patch for fixes, minor for additions, major for breaking changes, even in previews.
+- Changesets are release notes. Start with a short, standalone, past-tense title
+  without a trailing period. Explain observable behavior or migration impact;
+  keep unrelated changes separate.
+- TypeScript usage changes need tested examples following the documentation
+  rules. For breaking changes, prove old usage is rejected and show its replacement
+  in the same example. Documentation-only/tooling-only notes need no example.

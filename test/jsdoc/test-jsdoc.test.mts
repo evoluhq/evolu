@@ -2,6 +2,7 @@ import { assertEqual, assertThrowsInstanceOf } from "@evolu/common";
 import { describe, it } from "node:test";
 import {
   changesetSourcePattern,
+  conventionsSourcePattern,
   jsdocSourcePattern,
   nodeFsSourcePattern,
   resourceManagementSourcePattern,
@@ -16,6 +17,7 @@ describe("selectJSDocIncludes", () => {
       jsdocSourcePattern,
       nodeFsSourcePattern,
       changesetSourcePattern,
+      conventionsSourcePattern,
       resourceManagementSourcePattern,
       schemaSourcePattern,
       testingSourcePattern,

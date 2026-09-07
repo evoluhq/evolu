@@ -2,9 +2,10 @@
 
 The Type benchmark measures the TypeScript compiler cost of Evolu Type APIs. It compiles isolated Type programs with TypeScript 7's `tsc --extendedDiagnostics` to expose generic instantiation growth that ordinary correctness tests cannot detect.
 
-The current Type benchmark has committed deterministic baselines. Run it
-explicitly when changing Evolu Type declarations or benchmark infrastructure;
-it fails when compiler work regresses.
+The Type benchmark has committed deterministic baselines and fails when compiler
+work regresses. The shared [Checks workflow](../../.github/workflows/checks.yaml)
+runs the full suite in a separate job for pull requests, merge queues, and
+releases. CI compares baselines without updating them.
 
 ## Running
 
@@ -13,8 +14,9 @@ pnpm bench:type
 ```
 
 Default mode runs the complete matrix and compares it with the compatible
-committed baseline. Pass one or more `--filter` options to run selected fixture
-names or workload prefixes while developing a workload:
+committed baseline. Prefer filtered runs locally after changing Type declarations
+or individual workloads. Pass one or more `--filter` options to select fixture
+names or workload prefixes:
 
 ```bash
 pnpm bench:type --filter=array-child-all
@@ -25,7 +27,8 @@ pnpm bench:type --filter=template-literal-canonical-input
 
 A filtered run reports the same diagnostics and compares any matching committed
 measurements, but it cannot update the baseline. Baseline updates remain
-complete-matrix operations.
+complete-matrix operations. Run the full suite locally when updating baselines or
+investigating broad regressions; otherwise rely on CI for the complete matrix.
 
 The benchmark uses Evolu Tasks and the platform's available parallelism to run independent
 TypeScript compiler processes concurrently. Each compiler runs with

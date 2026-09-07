@@ -76,139 +76,6 @@ import type {
 export const EnvName = /*#__PURE__*/ maxLength(255)(ConstantCaseIdentifier);
 export type EnvName = typeof EnvName.Output;
 
-/** Fields and one-level namespace groups used to construct an {@link env} Type. */
-export type EnvProps = Readonly<
-  Record<string, ObjectProps[string] | ObjectProps>
->;
-
-// Classify declarations by casing; identifier Types validate the full grammar
-// and name lengths during construction.
-type EnvDeclarationKind<Key> = Key extends string
-  ? Key extends Uppercase<Key>
-    ? "group"
-    : Key extends Uncapitalize<Key>
-      ? "field"
-      : "invalid"
-  : "invalid";
-
-type EnvFlatProps<Props extends EnvProps> =
-  UnionToIntersection<
-    {
-      [Key in keyof Props]: EnvDeclarationKind<Key> extends "group"
-        ? Props[Key]
-        : EnvDeclarationKind<Key> extends "field"
-          ? { readonly [Field in Key]: Props[Key] }
-          : never;
-    }[keyof Props]
-  > extends infer Flat extends ObjectProps
-    ? Flat
-    : {};
-
-type EnvFieldType<Field> = Field extends TypeNode
-  ? Field
-  : Field extends { readonly type: infer T extends TypeNode }
-    ? T
-    : never;
-
-type EnvKeysValidation<Props> =
-  | (string extends keyof Props
-      ? CompileTimeError<
-          "Env",
-          "Environment properties must use fixed string keys."
-        >
-      : never)
-  | (IsUnion<Props> extends true
-      ? CompileTimeError<
-          "Env",
-          "Environment properties must use one concrete schema."
-        >
-      : never)
-  | {
-      [Key in keyof Props]: Key extends string
-        ? ValidateLiteral<Key> extends Key
-          ? never
-          : CompileTimeError<
-              "Env",
-              "Environment properties must use fixed string keys."
-            >
-        : CompileTimeError<
-            "Env",
-            "Environment properties must use fixed string keys."
-          >;
-    }[keyof Props];
-
-type EnvFieldValidation<Field> =
-  IsUnion<Field> extends true
-    ? CompileTimeError<"Env", "Environment fields must use one concrete Type.">
-    : EnvFieldType<Field> extends infer T extends AnyType
-      ? IsUnion<T> extends true
-        ? CompileTimeError<
-            "Env",
-            "Environment fields must use one concrete Type."
-          >
-        : [T["CanonicalInput"]] extends [string]
-          ? Extract<
-              | "ObjectMissingProperty"
-              | "ObjectPropertyAccess"
-              | "ObjectExcessProperty",
-              InferErrors<T>["type"]
-            > extends never
-            ? never
-            : CompileTimeError<
-                "Env",
-                "Environment fields must not use error tags reserved for Object structure."
-              >
-          : CompileTimeError<
-              "Env",
-              "Environment fields must encode to strings."
-            >
-      : CompileTimeError<
-          "Env",
-          "Environment fields must use one concrete Type."
-        >;
-
-type EnvFieldsValidation<Props extends ObjectProps> =
-  | EnvKeysValidation<Props>
-  | {
-      [Key in keyof Props]: EnvDeclarationKind<Key> extends "field"
-        ? EnvFieldValidation<Props[Key]>
-        : CompileTimeError<
-            "Env",
-            "Environment fields must use camelCase names."
-          >;
-    }[keyof Props];
-
-type EnvValidation<Props extends EnvProps> =
-  | EnvKeysValidation<Props>
-  | {
-      [Key in keyof Props]: EnvDeclarationKind<Key> extends "group"
-        ? Props[Key] extends ObjectProps
-          ? EnvFieldsValidation<Props[Key]>
-          : CompileTimeError<
-              "Env",
-              "Environment namespaces must contain a group of fields."
-            >
-        : EnvDeclarationKind<Key> extends "field"
-          ? Props[Key] extends ObjectProps[string]
-            ? EnvFieldValidation<Props[Key]>
-            : CompileTimeError<
-                "Env",
-                "Environment fields must be Types, optional properties, or defaulted properties."
-              >
-          : CompileTimeError<
-              "Env",
-              "Environment declarations must use camelCase field names or CONSTANT_CASE namespace names."
-            >;
-    }[keyof Props];
-
-type EnvKeyType = TransformType<
-  typeof String,
-  typeof CamelCaseIdentifier,
-  "EnvKey",
-  never,
-  string
->;
-
 /** The configuration codec returned by {@link env}. */
 export interface EnvType<Props extends EnvProps> extends TransformType<
   typeof Unknown,
@@ -224,6 +91,11 @@ export interface EnvType<Props extends EnvProps> extends TransformType<
     >
   >
 > {}
+
+/** Fields and one-level namespace groups used to construct an {@link env} Type. */
+export type EnvProps = Readonly<
+  Record<string, ObjectProps[string] | ObjectProps>
+>;
 
 /**
  * Creates a reversible environment-variable codec with a flat decoded output.
@@ -408,3 +280,131 @@ export const env = <const Props extends EnvProps>(
   // cannot be expressed by the runtime loops above.
   return type as unknown as EnvType<Props>;
 };
+
+type EnvFlatProps<Props extends EnvProps> =
+  UnionToIntersection<
+    {
+      [Key in keyof Props]: EnvDeclarationKind<Key> extends "group"
+        ? Props[Key]
+        : EnvDeclarationKind<Key> extends "field"
+          ? { readonly [Field in Key]: Props[Key] }
+          : never;
+    }[keyof Props]
+  > extends infer Flat extends ObjectProps
+    ? Flat
+    : {};
+
+type EnvKeyType = TransformType<
+  typeof String,
+  typeof CamelCaseIdentifier,
+  "EnvKey",
+  never,
+  string
+>;
+
+type EnvValidation<Props extends EnvProps> =
+  | EnvKeysValidation<Props>
+  | {
+      [Key in keyof Props]: EnvDeclarationKind<Key> extends "group"
+        ? Props[Key] extends ObjectProps
+          ? EnvFieldsValidation<Props[Key]>
+          : CompileTimeError<
+              "Env",
+              "Environment namespaces must contain a group of fields."
+            >
+        : EnvDeclarationKind<Key> extends "field"
+          ? Props[Key] extends ObjectProps[string]
+            ? EnvFieldValidation<Props[Key]>
+            : CompileTimeError<
+                "Env",
+                "Environment fields must be Types, optional properties, or defaulted properties."
+              >
+          : CompileTimeError<
+              "Env",
+              "Environment declarations must use camelCase field names or CONSTANT_CASE namespace names."
+            >;
+    }[keyof Props];
+
+type EnvFieldsValidation<Props extends ObjectProps> =
+  | EnvKeysValidation<Props>
+  | {
+      [Key in keyof Props]: EnvDeclarationKind<Key> extends "field"
+        ? EnvFieldValidation<Props[Key]>
+        : CompileTimeError<
+            "Env",
+            "Environment fields must use camelCase names."
+          >;
+    }[keyof Props];
+
+type EnvFieldValidation<Field> =
+  IsUnion<Field> extends true
+    ? CompileTimeError<"Env", "Environment fields must use one concrete Type.">
+    : EnvFieldType<Field> extends infer T extends AnyType
+      ? IsUnion<T> extends true
+        ? CompileTimeError<
+            "Env",
+            "Environment fields must use one concrete Type."
+          >
+        : [T["CanonicalInput"]] extends [string]
+          ? Extract<
+              | "ObjectMissingProperty"
+              | "ObjectPropertyAccess"
+              | "ObjectExcessProperty",
+              InferErrors<T>["type"]
+            > extends never
+            ? never
+            : CompileTimeError<
+                "Env",
+                "Environment fields must not use error tags reserved for Object structure."
+              >
+          : CompileTimeError<
+              "Env",
+              "Environment fields must encode to strings."
+            >
+      : CompileTimeError<
+          "Env",
+          "Environment fields must use one concrete Type."
+        >;
+
+type EnvFieldType<Field> = Field extends TypeNode
+  ? Field
+  : Field extends { readonly type: infer T extends TypeNode }
+    ? T
+    : never;
+
+type EnvKeysValidation<Props> =
+  | (string extends keyof Props
+      ? CompileTimeError<
+          "Env",
+          "Environment properties must use fixed string keys."
+        >
+      : never)
+  | (IsUnion<Props> extends true
+      ? CompileTimeError<
+          "Env",
+          "Environment properties must use one concrete schema."
+        >
+      : never)
+  | {
+      [Key in keyof Props]: Key extends string
+        ? ValidateLiteral<Key> extends Key
+          ? never
+          : CompileTimeError<
+              "Env",
+              "Environment properties must use fixed string keys."
+            >
+        : CompileTimeError<
+            "Env",
+            "Environment properties must use fixed string keys."
+          >;
+    }[keyof Props];
+
+// Classify declarations by casing; identifier Types validate the full grammar
+// and name lengths during construction.
+type EnvDeclarationKind<Key> = Key extends string
+  ? Key extends Uppercase<Key>
+    ? "group"
+    : Key extends Uncapitalize<Key>
+      ? "field"
+      : "invalid"
+  : "invalid";

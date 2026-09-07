@@ -895,10 +895,6 @@ export interface TypeError<Name extends TypeName = TypeName> {
 
 declare const transparentTypeErrorSymbol: unique symbol;
 
-interface TransparentTypeError {
-  readonly [transparentTypeErrorSymbol]?: true;
-}
-
 /**
  * A structured error that directly describes a rejected value.
  *
@@ -923,6 +919,44 @@ export interface TypeValueError<
 export type TypeErrorFormatter<Error extends TypeError> = (
   error: Error,
 ) => string;
+
+/**
+ * The common structural shape of every {@link Type}, with its specific type
+ * parameters erased.
+ *
+ * @group Core
+ */
+export interface TypeNode {
+  readonly name: TypeName;
+  readonly "~standard": StandardSchemaV1.Props<unknown, unknown>;
+  /** A type-only phantom property that does not exist at runtime. */
+  readonly Input: unknown;
+  /** A type-only phantom property that does not exist at runtime. */
+  readonly CanonicalInput: unknown;
+  /** A type-only phantom property that does not exist at runtime. */
+  readonly Output: unknown;
+  /** A type-only phantom property that does not exist at runtime. */
+  readonly Error: TypeError;
+  readonly [errorsSymbol]: TypeError;
+  readonly [customFromSymbol]: unknown;
+  readonly [identityEncodingSymbol]: boolean;
+  readonly parent: TypeNode | null;
+  readonly fromUnknown: (
+    value: unknown,
+    options?: ValidationOptions,
+  ) => Result<unknown, TypeError>;
+  readonly is: (value: unknown) => boolean;
+}
+
+/**
+ * Configures how container {@link Type} operations report errors.
+ *
+ * @group Core
+ */
+export interface ValidationOptions {
+  /** Controls whether container {@link Type} operations return one or all errors. */
+  readonly errors: "first" | "all";
+}
 
 /**
  * A formatted validation issue located by its path from the root value.
@@ -979,32 +1013,8 @@ export const typeErrorToIssues = <T extends TypeNode>(
   })) as unknown as NonEmptyReadonlyArray<TypeIssue>;
 };
 
-/**
- * The common structural shape of every {@link Type}, with its specific type
- * parameters erased.
- *
- * @group Core
- */
-export interface TypeNode {
-  readonly name: TypeName;
-  readonly "~standard": StandardSchemaV1.Props<unknown, unknown>;
-  /** A type-only phantom property that does not exist at runtime. */
-  readonly Input: unknown;
-  /** A type-only phantom property that does not exist at runtime. */
-  readonly CanonicalInput: unknown;
-  /** A type-only phantom property that does not exist at runtime. */
-  readonly Output: unknown;
-  /** A type-only phantom property that does not exist at runtime. */
-  readonly Error: TypeError;
-  readonly [errorsSymbol]: TypeError;
-  readonly [customFromSymbol]: unknown;
-  readonly [identityEncodingSymbol]: boolean;
-  readonly parent: TypeNode | null;
-  readonly fromUnknown: (
-    value: unknown,
-    options?: ValidationOptions,
-  ) => Result<unknown, TypeError>;
-  readonly is: (value: unknown) => boolean;
+interface TransparentTypeError {
+  readonly [transparentTypeErrorSymbol]?: true;
 }
 
 declare const outputValidationSymbolType: unique symbol;
@@ -1951,16 +1961,6 @@ type TypeOperationFn<
       options?: ValidationOptions,
     ) => Kind extends "from" ? Result<Output, Error> : Output;
 
-/**
- * Configures how container {@link Type} operations report errors.
- *
- * @group Core
- */
-export interface ValidationOptions {
-  /** Controls whether container {@link Type} operations return one or all errors. */
-  readonly errors: "first" | "all";
-}
-
 // Keeps partially erased TypeNode values out of Type composition without
 // recursively analyzing parent chains. Changes are measured by
 // `pnpm bench:type`.
@@ -2448,6 +2448,67 @@ const createChildType = <
 };
 
 /**
+ * The {@link Type} returned by {@link transform}.
+ *
+ * @group Construction
+ */
+export interface TransformType<
+  ParentType extends TypeNode,
+  OutputType extends TypeNode,
+  Name extends TypeName,
+  FromError extends TypeError<Name>,
+  ToOutput extends ParentType["Output"] = ParentType["Output"],
+> extends Type<
+  Name,
+  ParentType["Input"],
+  OutputType["Output"],
+  TransformError<Name, FromError, TypeFromError<OutputType>>,
+  ParentType,
+  | TransformError<Name, FromError, TypeFromError<OutputType>>
+  | InferErrors<ParentType>,
+  ChildCustomFrom<
+    ParentType,
+    OutputType["Output"],
+    TransformError<Name, FromError, TypeFromError<OutputType>>
+  >,
+  CanonicalInputForChild<ParentType, ToOutput>,
+  false
+> {
+  readonly [reflectedTypesSymbol]?: OutputType;
+  readonly output: OutputType;
+}
+
+/**
+ * An error produced by {@link transform} while decoding or validating its
+ * output.
+ *
+ * @group Construction
+ */
+export type TransformError<
+  Name extends TypeName,
+  OwnError extends TypeError<Name>,
+  OutputError extends TypeError,
+> =
+  | OwnError
+  | ([OutputError] extends [never]
+      ? never
+      : TransformOutputError<Name, OutputError>);
+
+/**
+ * Wraps an error produced by the output {@link Type} of {@link transform}.
+ *
+ * @group Construction
+ */
+export interface TransformOutputError<
+  Name extends TypeName,
+  OutputError extends TypeError,
+>
+  extends TypeError<Name>, TransparentTypeError {
+  /** The error returned by the output Type. */
+  readonly outputError: OutputError;
+}
+
+/**
  * Transform {@link Type}.
  *
  * `from` accepts the semantic Output. `from.parent` converts the parent Output
@@ -2678,67 +2739,6 @@ export function transform(
     getTypeIssues,
     { output: typeOutput },
   );
-}
-
-/**
- * The {@link Type} returned by {@link transform}.
- *
- * @group Construction
- */
-export interface TransformType<
-  ParentType extends TypeNode,
-  OutputType extends TypeNode,
-  Name extends TypeName,
-  FromError extends TypeError<Name>,
-  ToOutput extends ParentType["Output"] = ParentType["Output"],
-> extends Type<
-  Name,
-  ParentType["Input"],
-  OutputType["Output"],
-  TransformError<Name, FromError, TypeFromError<OutputType>>,
-  ParentType,
-  | TransformError<Name, FromError, TypeFromError<OutputType>>
-  | InferErrors<ParentType>,
-  ChildCustomFrom<
-    ParentType,
-    OutputType["Output"],
-    TransformError<Name, FromError, TypeFromError<OutputType>>
-  >,
-  CanonicalInputForChild<ParentType, ToOutput>,
-  false
-> {
-  readonly [reflectedTypesSymbol]?: OutputType;
-  readonly output: OutputType;
-}
-
-/**
- * An error produced by {@link transform} while decoding or validating its
- * output.
- *
- * @group Construction
- */
-export type TransformError<
-  Name extends TypeName,
-  OwnError extends TypeError<Name>,
-  OutputError extends TypeError,
-> =
-  | OwnError
-  | ([OutputError] extends [never]
-      ? never
-      : TransformOutputError<Name, OutputError>);
-
-/**
- * Wraps an error produced by the output {@link Type} of {@link transform}.
- *
- * @group Construction
- */
-export interface TransformOutputError<
-  Name extends TypeName,
-  OutputError extends TypeError,
->
-  extends TypeError<Name>, TransparentTypeError {
-  /** The error returned by the output Type. */
-  readonly outputError: OutputError;
 }
 
 type DeepestFromError<Operation> =
@@ -3019,6 +3019,15 @@ export const Unknown = /*#__PURE__*/ createRootType<"Unknown", unknown, never>(
 );
 
 /**
+ * Error returned by {@link Never} for every value.
+ *
+ * @group Base
+ */
+export interface NeverError extends TypeError<"Never"> {
+  readonly value: unknown;
+}
+
+/**
  * A {@link Type} rejecting every value.
  *
  * @group Base
@@ -3031,11 +3040,14 @@ export const Never = /*#__PURE__*/ createRootType(
 );
 
 /**
- * Error returned by {@link Never} for every value.
+ * Error returned when `typeof` does not match the expected JavaScript type.
  *
  * @group Base
  */
-export interface NeverError extends TypeError<"Never"> {
+export interface TypeOfError<
+  Name extends keyof TypeOfOutputByName,
+> extends TypeError<"TypeOf"> {
+  readonly expected: Name;
   readonly value: unknown;
 }
 
@@ -3071,18 +3083,6 @@ interface TypeOfOutputByName {
   readonly Boolean: boolean;
   readonly Symbol: symbol;
   readonly Function: globalThis.Function;
-}
-
-/**
- * Error returned when `typeof` does not match the expected JavaScript type.
- *
- * @group Base
- */
-export interface TypeOfError<
-  Name extends keyof TypeOfOutputByName,
-> extends TypeError<"TypeOf"> {
-  readonly expected: Name;
-  readonly value: unknown;
 }
 
 /**
@@ -3288,24 +3288,6 @@ export const Symbol = /*#__PURE__*/ createTypeOfType("Symbol");
 export const Function = /*#__PURE__*/ createTypeOfType("Function");
 
 /**
- * A {@link Type} validating Evolu Type declarations.
- *
- * This is useful when a Type itself crosses an unknown boundary or must be
- * asserted with {@link assertType}.
- *
- * @group Core
- */
-export const EvoluType = /*#__PURE__*/ createType(
-  "EvoluType",
-  (value): Result<AnyType, EvoluTypeError> =>
-    isInstance<AnyType & Instance<"Type">>("Type")(value)
-      ? ok(value)
-      : err({ type: "EvoluType", value }),
-  (error) =>
-    `A value ${safelyStringifyUnknownValue(error.value)} is not an Evolu Type.`,
-);
-
-/**
  * Any concrete {@link Type}, regardless of its particular type parameters.
  *
  * This describes Type values such as {@link String} and Types created by
@@ -3327,6 +3309,24 @@ export interface AnyType extends TypeNode {
  * @group Core
  */
 export interface EvoluTypeError extends TypeValueError<"EvoluType"> {}
+
+/**
+ * A {@link Type} validating Evolu Type declarations.
+ *
+ * This is useful when a Type itself crosses an unknown boundary or must be
+ * asserted with {@link assertType}.
+ *
+ * @group Core
+ */
+export const EvoluType = /*#__PURE__*/ createType(
+  "EvoluType",
+  (value): Result<AnyType, EvoluTypeError> =>
+    isInstance<AnyType & Instance<"Type">>("Type")(value)
+      ? ok(value)
+      : err({ type: "EvoluType", value }),
+  (error) =>
+    `A value ${safelyStringifyUnknownValue(error.value)} is not an Evolu Type.`,
+);
 
 /**
  * Nominal evidence that a value has one object tag.
@@ -3374,12 +3374,6 @@ export interface ObjectTagError<
 > extends TypeError<"ObjectTag"> {
   readonly expected: Expected;
   readonly value: unknown;
-}
-
-interface ObjectTagOutputByName {
-  readonly Date: globalThis.Date;
-  readonly Uint8Array: globalThis.Uint8Array;
-  readonly ArrayBuffer: globalThis.ArrayBuffer;
 }
 
 /**
@@ -3502,6 +3496,12 @@ export function objectTag(
   );
 }
 
+interface ObjectTagOutputByName {
+  readonly Date: globalThis.Date;
+  readonly Uint8Array: globalThis.Uint8Array;
+  readonly ArrayBuffer: globalThis.ArrayBuffer;
+}
+
 declare const objectTagSymbol: unique symbol;
 
 const hasObjectTag = (value: unknown, expected: string): boolean =>
@@ -3537,6 +3537,45 @@ export const Uint8Array = /*#__PURE__*/ objectTag("Uint8Array");
  * @group Base
  */
 export const ArrayBuffer = /*#__PURE__*/ objectTag("ArrayBuffer");
+
+/**
+ * The {@link Type} returned by {@link instanceOf}.
+ *
+ * @group Base
+ */
+export interface InstanceOfType<
+  Constructor extends InstanceConstructor,
+> extends Type<
+  "InstanceOf",
+  InstanceOfOutput<Constructor>,
+  InstanceOfOutput<Constructor>,
+  InstanceOfError,
+  null,
+  InstanceOfError,
+  never,
+  InstanceOfOutput<Constructor>
+> {
+  readonly constructor: Constructor;
+}
+
+/**
+ * A JavaScript class constructor accepted by {@link instanceOf}.
+ *
+ * @group Base
+ */
+export type InstanceConstructor<Instance extends object = object> =
+  (abstract new (...args: ReadonlyArray<never>) => Instance) & {
+    readonly name: string;
+  };
+
+/**
+ * Error returned when a value is not an instance of the expected constructor.
+ *
+ * @group Base
+ */
+export interface InstanceOfError extends TypeValueError<"InstanceOf"> {
+  readonly constructorName: string;
+}
 
 /**
  * Instance {@link Type} for one constructor.
@@ -3594,49 +3633,10 @@ export const instanceOf = <Constructor extends InstanceConstructor>(
   );
 };
 
-/**
- * A JavaScript class constructor accepted by {@link instanceOf}.
- *
- * @group Base
- */
-export type InstanceConstructor<Instance extends object = object> =
-  (abstract new (...args: ReadonlyArray<never>) => Instance) & {
-    readonly name: string;
-  };
-
-/**
- * The {@link Type} returned by {@link instanceOf}.
- *
- * @group Base
- */
-export interface InstanceOfType<
-  Constructor extends InstanceConstructor,
-> extends Type<
-  "InstanceOf",
-  InstanceOfOutput<Constructor>,
-  InstanceOfOutput<Constructor>,
-  InstanceOfError,
-  null,
-  InstanceOfError,
-  never,
-  InstanceOfOutput<Constructor>
-> {
-  readonly constructor: Constructor;
-}
-
 type InstanceOfOutput<Constructor extends InstanceConstructor> =
   Constructor extends { readonly prototype: infer Output extends object }
     ? Output
     : InstanceType<Constructor>;
-
-/**
- * Error returned when a value is not an instance of the expected constructor.
- *
- * @group Base
- */
-export interface InstanceOfError extends TypeValueError<"InstanceOf"> {
-  readonly constructorName: string;
-}
 
 type ValidateInstanceConstructor<Constructor extends InstanceConstructor> =
   IsUnion<Constructor> extends false
@@ -3683,6 +3683,41 @@ export type ValidateLiteral<Expected extends Literal> =
       ? LiteralCompileTimeError
       : Expected
     : LiteralCompileTimeError;
+
+/**
+ * The {@link Type} returned by {@link literal}.
+ *
+ * @group Unions
+ */
+export interface LiteralType<Expected extends Literal> extends Type<
+  "Literal",
+  WidenLiteral<Expected>,
+  Expected,
+  LiteralError<Expected>,
+  LiteralParent<Expected>,
+  LiteralError<Expected> | LiteralParentErrors<Expected>,
+  never,
+  CanonicalInputSubset<
+    WidenLiteral<Expected>,
+    CanonicalInputForParent<LiteralParent<Expected>, Expected>
+  >,
+  IdentityEncodingForParent<LiteralParent<Expected>>
+> {
+  readonly [templateLiteralSyntaxSymbol]: true;
+  readonly expected: Expected;
+}
+
+/**
+ * Error returned when a value does not equal the expected literal.
+ *
+ * @group Unions
+ */
+export interface LiteralError<
+  Expected extends Literal = Literal,
+> extends TypeError<"Literal"> {
+  readonly expected: Expected;
+  readonly value: unknown;
+}
 
 /**
  * Literal {@link Type}.
@@ -3766,29 +3801,6 @@ export const literal = <const Expected extends Literal>(
   ) as unknown as LiteralType<Expected>;
 };
 
-/**
- * The {@link Type} returned by {@link literal}.
- *
- * @group Unions
- */
-export interface LiteralType<Expected extends Literal> extends Type<
-  "Literal",
-  WidenLiteral<Expected>,
-  Expected,
-  LiteralError<Expected>,
-  LiteralParent<Expected>,
-  LiteralError<Expected> | LiteralParentErrors<Expected>,
-  never,
-  CanonicalInputSubset<
-    WidenLiteral<Expected>,
-    CanonicalInputForParent<LiteralParent<Expected>, Expected>
-  >,
-  IdentityEncodingForParent<LiteralParent<Expected>>
-> {
-  readonly [templateLiteralSyntaxSymbol]: true;
-  readonly expected: Expected;
-}
-
 type LiteralParent<Expected extends Literal> = Expected extends string
   ? typeof String
   : Expected extends number
@@ -3810,18 +3822,6 @@ type LiteralCompileTimeError = CompileTimeError<
 >;
 
 /**
- * Error returned when a value does not equal the expected literal.
- *
- * @group Unions
- */
-export interface LiteralError<
-  Expected extends Literal = Literal,
-> extends TypeError<"Literal"> {
-  readonly expected: Expected;
-  readonly value: unknown;
-}
-
-/**
  * Literal {@link Type} accepting only `undefined`.
  *
  * @group Unions
@@ -3834,6 +3834,68 @@ export const Undefined = /*#__PURE__*/ literal(undefined);
  * @group Unions
  */
 export const Null = /*#__PURE__*/ literal(null);
+
+/**
+ * The {@link Type} returned by {@link union}.
+ *
+ * @group Unions
+ */
+export interface UnionType<
+  Members extends AtLeastTwoReadonlyArray<TypeNode>,
+> extends Type<
+  "Union",
+  Members[number]["Input"],
+  Members[number]["Output"],
+  UnionTypeError<Members>,
+  UnionInputParent<Members>,
+  UnionTypeError<Members>,
+  never,
+  CanonicalInputOf<Members[number]>,
+  AllTypesUseIdentityEncoding<Members[number]>
+> {
+  readonly [templateLiteralSyntaxSymbol]: true;
+  readonly [reflectedTypesSymbol]?: Members[number];
+  readonly members: Members;
+}
+
+/**
+ * A root {@link Type} validating the encoded Inputs accepted by {@link union}.
+ *
+ * @group Unions
+ */
+export type UnionInputType<Input, Error extends TypeError> = Type<
+  "Union",
+  Input,
+  Input,
+  Error,
+  null,
+  Error,
+  never,
+  Input
+>;
+
+/**
+ * Error returned when every member of a {@link union} rejects an input.
+ *
+ * @group Unions
+ */
+export type UnionError<
+  Error extends TypeError = TypeError,
+  MemberError extends UnionMemberError<Error> = UnionMemberError<Error>,
+> = [Error] extends [never] ? never : UnionErrorValue<Error, MemberError>;
+
+/**
+ * An error returned by one {@link union} member and its index.
+ *
+ * @group Unions
+ */
+export interface UnionMemberError<
+  Error extends TypeError,
+  Index extends number = number,
+> {
+  readonly index: Index;
+  readonly error: Error;
+}
 
 /**
  * Union {@link Type}.
@@ -4153,29 +4215,6 @@ type NormalizeUnionMembers<
   ? Normalized
   : never;
 
-/**
- * The {@link Type} returned by {@link union}.
- *
- * @group Unions
- */
-export interface UnionType<
-  Members extends AtLeastTwoReadonlyArray<TypeNode>,
-> extends Type<
-  "Union",
-  Members[number]["Input"],
-  Members[number]["Output"],
-  UnionTypeError<Members>,
-  UnionInputParent<Members>,
-  UnionTypeError<Members>,
-  never,
-  CanonicalInputOf<Members[number]>,
-  AllTypesUseIdentityEncoding<Members[number]>
-> {
-  readonly [templateLiteralSyntaxSymbol]: true;
-  readonly [reflectedTypesSymbol]?: Members[number];
-  readonly members: Members;
-}
-
 interface RuntimeUnionTypeNode extends RuntimeTypeNode {
   readonly name: "Union";
   readonly members: ReadonlyArray<TypeNode>;
@@ -4185,22 +4224,6 @@ const isRuntimeUnionTypeNode = (
   type: RuntimeTypeNode,
 ): type is RuntimeUnionTypeNode =>
   type.name === "Union" && "members" in type && Array.isArray(type.members);
-
-/**
- * A root {@link Type} validating the encoded Inputs accepted by {@link union}.
- *
- * @group Unions
- */
-export type UnionInputType<Input, Error extends TypeError> = Type<
-  "Union",
-  Input,
-  Input,
-  Error,
-  null,
-  Error,
-  never,
-  Input
->;
 
 type UnionInputParent<Members extends AtLeastTwoReadonlyArray<TypeNode>> =
   UnionMembersAreLiterals<Members> extends true
@@ -4232,29 +4255,6 @@ type RootUnionMembers<Members extends AtLeastTwoReadonlyArray<TypeNode>> = {
 } extends infer RootMembers extends AtLeastTwoReadonlyArray<TypeNode>
   ? RootMembers
   : never;
-
-/**
- * Error returned when every member of a {@link union} rejects an input.
- *
- * @group Unions
- */
-export type UnionError<
-  Error extends TypeError = TypeError,
-  MemberError extends UnionMemberError<Error> = UnionMemberError<Error>,
-> = [Error] extends [never] ? never : UnionErrorValue<Error, MemberError>;
-
-/**
- * An error returned by one {@link union} member and its index.
- *
- * @group Unions
- */
-export interface UnionMemberError<
-  Error extends TypeError,
-  Index extends number = number,
-> {
-  readonly index: Index;
-  readonly error: Error;
-}
 
 // Intentionally more complex than the union rule requires to reduce TypeScript
 // compiler work for wide unions. Changes are measured by `pnpm bench:type`.
@@ -4308,6 +4308,39 @@ interface UnionErrorValue<
   MemberError extends UnionMemberError<Error> = UnionMemberError<Error>,
 > extends TypeError<"Union"> {
   readonly errors: NonEmptyReadonlyArray<MemberError>;
+}
+
+/**
+ * The parsing {@link Type} returned by {@link templateLiteralParser}.
+ *
+ * @group Template literals
+ */
+export interface TemplateLiteralParserType<
+  Parts extends TemplateLiteralParts,
+> extends Type<
+  "TemplateLiteral",
+  string,
+  TemplateLiteralCaptureTuple<Parts>["Output"],
+  never,
+  TemplateLiteralType<Parts>,
+  InferErrors<TemplateLiteralType<Parts>>,
+  never,
+  TemplateLiteralStringOutput<Parts>,
+  false
+> {
+  readonly [templateLiteralSyntaxSymbol]: true;
+  readonly [reflectedTypesSymbol]?: TemplateLiteralCaptureTuple<Parts>;
+  readonly output: TemplateLiteralCaptureTuple<Parts>;
+  readonly parts: Parts;
+}
+
+/**
+ * Error returned when a string does not match a template literal declaration.
+ *
+ * @group Template literals
+ */
+export interface TemplateLiteralError extends TypeError<"TemplateLiteral"> {
+  readonly value: string;
 }
 
 /**
@@ -4707,30 +4740,6 @@ const createTemplateLiteralParserType = <
 };
 
 /**
- * The parsing {@link Type} returned by {@link templateLiteralParser}.
- *
- * @group Template literals
- */
-export interface TemplateLiteralParserType<
-  Parts extends TemplateLiteralParts,
-> extends Type<
-  "TemplateLiteral",
-  string,
-  TemplateLiteralCaptureTuple<Parts>["Output"],
-  never,
-  TemplateLiteralType<Parts>,
-  InferErrors<TemplateLiteralType<Parts>>,
-  never,
-  TemplateLiteralStringOutput<Parts>,
-  false
-> {
-  readonly [templateLiteralSyntaxSymbol]: true;
-  readonly [reflectedTypesSymbol]?: TemplateLiteralCaptureTuple<Parts>;
-  readonly output: TemplateLiteralCaptureTuple<Parts>;
-  readonly parts: Parts;
-}
-
-/**
  * The validating string {@link Type} returned by {@link templateLiteral}.
  *
  * @group Template literals
@@ -4825,15 +4834,6 @@ type TemplateLiteralCaptureFromStringError<T extends TypeNode> =
       ? TypeFromError<T>
       : InferErrors<T>
     : never;
-
-/**
- * Error returned when a string does not match a template literal declaration.
- *
- * @group Template literals
- */
-export interface TemplateLiteralError extends TypeError<"TemplateLiteral"> {
-  readonly value: string;
-}
 
 declare const templateLiteralStringBrandSymbol: unique symbol;
 
@@ -5190,6 +5190,27 @@ const getTemplateLiteralPartFraming = (
 };
 
 /**
+ * The {@link Type} returned by {@link brand}.
+ *
+ * @group Construction
+ */
+export interface BrandType<
+  ParentType extends TypeNode,
+  Name extends TypeName,
+  Error extends TypeError,
+> extends Type<
+  Name,
+  ParentType["Input"],
+  ParentType["Output"] & Brand<Name>,
+  Error,
+  ParentType,
+  Error | InferErrors<ParentType>,
+  ChildCustomFrom<ParentType, ParentType["Output"] & Brand<Name>, Error>,
+  CanonicalInputForChild<ParentType, ParentType["Output"] & Brand<Name>>,
+  IdentityEncodingOf<ParentType>
+> {}
+
+/**
  * Branded {@link Type}.
  *
  * Branding is the recommended way to define domain-specific primitive Types in
@@ -5228,6 +5249,10 @@ const getTemplateLiteralPartFraming = (
  *   type TypeError,
  * } from "@evolu/common";
  *
+ * interface Int64Error extends TypeError<"Int64"> {
+ *   readonly value: bigint;
+ * }
+ *
  * const Int64 = brand(
  *   "Int64",
  *   BigInt,
@@ -5241,10 +5266,6 @@ const getTemplateLiteralPartFraming = (
  *
  * // Note the Brand.
  * assertType<Int64, bigint & Brand<"Int64">>();
- *
- * interface Int64Error extends TypeError<"Int64"> {
- *   readonly value: bigint;
- * }
  *
  * assertOk(Int64.fromUnknown(42n), 42n);
  *
@@ -5301,25 +5322,13 @@ export function brand(
 }
 
 /**
- * The {@link Type} returned by {@link brand}.
+ * Error returned when a string is not a canonical {@link DateIso}.
  *
- * @group Construction
+ * @group String
  */
-export interface BrandType<
-  ParentType extends TypeNode,
-  Name extends TypeName,
-  Error extends TypeError,
-> extends Type<
-  Name,
-  ParentType["Input"],
-  ParentType["Output"] & Brand<Name>,
-  Error,
-  ParentType,
-  Error | InferErrors<ParentType>,
-  ChildCustomFrom<ParentType, ParentType["Output"] & Brand<Name>, Error>,
-  CanonicalInputForChild<ParentType, ParentType["Output"] & Brand<Name>>,
-  IdentityEncodingOf<ParentType>
-> {}
+export interface DateIsoError extends TypeError<"DateIso"> {
+  readonly value: string;
+}
 
 /**
  * Canonical ISO date-time {@link String}.
@@ -5371,12 +5380,12 @@ export const DateIso = /*#__PURE__*/ brand(
 export type DateIso = typeof DateIso.Output;
 
 /**
- * Error returned when a string is not a canonical {@link DateIso}.
+ * Error returned when a {@link Date} cannot be represented as {@link DateIso}.
  *
  * @group String
  */
-export interface DateIsoError extends TypeError<"DateIso"> {
-  readonly value: string;
+export interface DateIsoFromDateError extends TypeError<"DateIsoFromDate"> {
+  readonly value: globalThis.Date;
 }
 
 /**
@@ -5412,12 +5421,12 @@ export const DateIsoFromDate = /*#__PURE__*/ transform(
 );
 
 /**
- * Error returned when a {@link Date} cannot be represented as {@link DateIso}.
+ * Error returned when a bigint is outside the signed 64-bit {@link Int64} range.
  *
- * @group String
+ * @group Number
  */
-export interface DateIsoFromDateError extends TypeError<"DateIsoFromDate"> {
-  readonly value: globalThis.Date;
+export interface Int64Error extends TypeError<"Int64"> {
+  readonly value: bigint;
 }
 
 /**
@@ -5438,11 +5447,12 @@ export const Int64 = /*#__PURE__*/ brand(
 export type Int64 = typeof Int64.Output;
 
 /**
- * Error returned when a bigint is outside the signed 64-bit {@link Int64} range.
+ * Error returned when a bigint is outside the unsigned 64-bit {@link UInt64}
+ * range.
  *
  * @group Number
  */
-export interface Int64Error extends TypeError<"Int64"> {
+export interface UInt64Error extends TypeError<"UInt64"> {
   readonly value: bigint;
 }
 
@@ -5462,16 +5472,6 @@ export const UInt64 = /*#__PURE__*/ brand(
     `The value ${safelyStringifyUnknownValue(error.value)} is not a valid unsigned 64-bit integer (UInt64).`,
 );
 export type UInt64 = typeof UInt64.Output;
-
-/**
- * Error returned when a bigint is outside the unsigned 64-bit {@link UInt64}
- * range.
- *
- * @group Number
- */
-export interface UInt64Error extends TypeError<"UInt64"> {
-  readonly value: bigint;
-}
 
 /**
  * Reusable factory for creating a {@link Type} with a {@link Brand}.
@@ -5498,6 +5498,10 @@ export interface UInt64Error extends TypeError<"UInt64"> {
  *   type TypeError,
  * } from "@evolu/common";
  *
+ * interface TrimmedError extends TypeError<"Trimmed"> {
+ *   readonly value: string;
+ * }
+ *
  * const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
  *   parent,
  * ) =>
@@ -5515,10 +5519,6 @@ export interface UInt64Error extends TypeError<"UInt64"> {
  * type TrimmedString = typeof TrimmedString.Output;
  *
  * assertType<TrimmedString, string & Brand<"Trimmed">>();
- *
- * interface TrimmedError extends TypeError<"Trimmed"> {
- *   readonly value: string;
- * }
  *
  * assertOk(TrimmedString.fromUnknown("Evolu"), "Evolu");
  *
@@ -5568,6 +5568,13 @@ export type BrandFactory<
  *   type ValidateBrandFactoryNumber,
  * } from "@evolu/common";
  *
+ * interface LessThanError<
+ *   Max extends number,
+ * > extends TypeError<`LessThan${Max}`> {
+ *   readonly value: number;
+ *   readonly max: Max;
+ * }
+ *
  * const lessThan =
  *   <Max extends number>(
  *     max: ValidateBrandFactoryNumber<Max>,
@@ -5591,13 +5598,6 @@ export type BrandFactory<
  *
  * assertType<typeof LessThan100.name, "LessThan100">();
  * assertType<LessThan100, number & Brand<"LessThan100">>();
- *
- * interface LessThanError<
- *   Max extends number,
- * > extends TypeError<`LessThan${Max}`> {
- *   readonly value: number;
- *   readonly max: Max;
- * }
  *
  * // @ts-expect-error Arithmetic expressions widen to number.
  * lessThan(100 - 1)(Number);
@@ -5636,6 +5636,18 @@ export interface IdentifierBrandByCasing {
   readonly snake_case: "SnakeCaseIdentifier";
   readonly "kebab-case": "KebabCaseIdentifier";
   readonly CONSTANT_CASE: "ConstantCaseIdentifier";
+}
+
+/**
+ * Error returned when {@link identifier} rejects a string.
+ *
+ * @group String
+ */
+export interface IdentifierError<
+  Casing extends IdentifierCasing = IdentifierCasing,
+> extends TypeError<IdentifierBrandByCasing[Casing]> {
+  readonly value: string;
+  readonly casing: Casing;
 }
 
 /**
@@ -5701,18 +5713,6 @@ export const identifier =
         `The value ${safelyStringifyUnknownValue(error.value)} is not a ${error.casing} identifier.`,
     );
   };
-
-/**
- * Error returned when {@link identifier} rejects a string.
- *
- * @group String
- */
-export interface IdentifierError<
-  Casing extends IdentifierCasing = IdentifierCasing,
-> extends TypeError<IdentifierBrandByCasing[Casing]> {
-  readonly value: string;
-  readonly casing: Casing;
-}
 
 const identifierBrandByCasing: IdentifierBrandByCasing = {
   camelCase: "CamelCaseIdentifier",
@@ -6071,6 +6071,15 @@ export const constantCaseToKebabCase = (
 ): KebabCaseIdentifier => snakeCaseToKebabCase(constantCaseToSnakeCase(value));
 
 /**
+ * Error returned when {@link capitalized} rejects a string.
+ *
+ * @group String
+ */
+export interface CapitalizedError extends TypeError<"Capitalized"> {
+  readonly value: string;
+}
+
+/**
  * Adds capitalized text validation to an existing string Type.
  *
  * Narrows the output to TypeScript's `Capitalize<string>` while preserving the
@@ -6122,15 +6131,6 @@ export const capitalized = <
     (error) =>
       `The value ${safelyStringifyUnknownValue(error.value)} must be capitalized.`,
   );
-
-/**
- * Error returned when {@link capitalized} rejects a string.
- *
- * @group String
- */
-export interface CapitalizedError extends TypeError<"Capitalized"> {
-  readonly value: string;
-}
 
 /**
  * Validates capitalized text as TypeScript's `Capitalize<string>`.
@@ -6187,6 +6187,15 @@ export const capitalize = <S extends string>(value: S): Capitalize<S> => {
 };
 
 /**
+ * Error returned when {@link uncapitalized} rejects a string.
+ *
+ * @group String
+ */
+export interface UncapitalizedError extends TypeError<"Uncapitalized"> {
+  readonly value: string;
+}
+
+/**
  * Adds uncapitalized text validation to an existing string Type.
  *
  * Narrows the output to TypeScript's `Uncapitalize<string>` while preserving
@@ -6240,15 +6249,6 @@ export const uncapitalized = <
   );
 
 /**
- * Error returned when {@link uncapitalized} rejects a string.
- *
- * @group String
- */
-export interface UncapitalizedError extends TypeError<"Uncapitalized"> {
-  readonly value: string;
-}
-
-/**
  * Validates uncapitalized text as TypeScript's `Uncapitalize<string>`.
  *
  * The rest of the text can use any casing. Empty strings and text starting with
@@ -6296,6 +6296,15 @@ export const uncapitalize = <S extends string>(value: S): Uncapitalize<S> => {
   const [first = ""] = value;
   return (first.toLowerCase() + value.slice(first.length)) as Uncapitalize<S>;
 };
+
+/**
+ * Error returned when {@link uppercased} rejects a string.
+ *
+ * @group String
+ */
+export interface UppercasedError extends TypeError<"Uppercased"> {
+  readonly value: string;
+}
 
 /**
  * Adds uppercased text validation to an existing string Type.
@@ -6351,15 +6360,6 @@ export const uppercased = <
   );
 
 /**
- * Error returned when {@link uppercased} rejects a string.
- *
- * @group String
- */
-export interface UppercasedError extends TypeError<"Uppercased"> {
-  readonly value: string;
-}
-
-/**
  * Validates uppercased text as TypeScript's `Uppercase<string>`.
  *
  * Checks the whole string using JavaScript's Unicode uppercase mapping. Empty
@@ -6404,6 +6404,15 @@ export type UppercasedString = typeof UppercasedString.Output;
  */
 export const uppercase = <S extends string>(value: S): Uppercase<S> =>
   value.toUpperCase() as Uppercase<S>;
+
+/**
+ * Error returned when {@link lowercased} rejects a string.
+ *
+ * @group String
+ */
+export interface LowercasedError extends TypeError<"Lowercased"> {
+  readonly value: string;
+}
 
 /**
  * Adds lowercased text validation to an existing string Type.
@@ -6459,15 +6468,6 @@ export const lowercased = <
   );
 
 /**
- * Error returned when {@link lowercased} rejects a string.
- *
- * @group String
- */
-export interface LowercasedError extends TypeError<"Lowercased"> {
-  readonly value: string;
-}
-
-/**
  * Validates lowercased text as TypeScript's `Lowercase<string>`.
  *
  * Checks the whole string using JavaScript's Unicode lowercase mapping. Empty
@@ -6514,6 +6514,15 @@ export const lowercase = <S extends string>(value: S): Lowercase<S> =>
   value.toLowerCase() as Lowercase<S>;
 
 /**
+ * Error returned when {@link trimmed} rejects a string.
+ *
+ * @group String
+ */
+export interface TrimmedError extends TypeError<"Trimmed"> {
+  readonly value: string;
+}
+
+/**
  * String {@link Brand} without surrounding whitespace.
  *
  * ### Example
@@ -6541,15 +6550,6 @@ export const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
     (error) =>
       `The value ${safelyStringifyUnknownValue(error.value)} must be trimmed.`,
   );
-
-/**
- * Error returned when {@link trimmed} rejects a string.
- *
- * @group String
- */
-export interface TrimmedError extends TypeError<"Trimmed"> {
-  readonly value: string;
-}
 
 /**
  * A {@link String} without surrounding whitespace.
@@ -6580,6 +6580,18 @@ export type TrimmedString = typeof TrimmedString.Output;
  */
 export const trim = (value: string): TrimmedString =>
   value.trim() as TrimmedString;
+
+/**
+ * Error returned when {@link startsWith} rejects a string.
+ *
+ * @group String
+ */
+export interface StartsWithError<
+  Prefix extends string = string,
+> extends TypeError<`StartsWith${Prefix}`> {
+  readonly value: string;
+  readonly prefix: Prefix;
+}
 
 /**
  * String {@link Brand} requiring an exact, case-sensitive prefix.
@@ -6642,16 +6654,19 @@ export const startsWith = <Prefix extends string>(
 };
 
 /**
- * Error returned when {@link startsWith} rejects a string.
+ * The {@link Type} returned by {@link prefixed}.
  *
  * @group String
  */
-export interface StartsWithError<
-  Prefix extends string = string,
-> extends TypeError<`StartsWith${Prefix}`> {
-  readonly value: string;
-  readonly prefix: Prefix;
-}
+export interface PrefixedType<
+  Prefix extends string,
+  T extends TypeNode,
+> extends TransformType<
+  BrandType<typeof String, `StartsWith${Prefix}`, StartsWithError<Prefix>>,
+  T,
+  `Prefixed${Prefix}`,
+  never
+> {}
 
 /**
  * Decodes a prefixed string with another {@link Type} and restores the prefix
@@ -6740,25 +6755,22 @@ export const prefixed =
     );
   };
 
-/**
- * The {@link Type} returned by {@link prefixed}.
- *
- * @group String
- */
-export interface PrefixedType<
-  Prefix extends string,
-  T extends TypeNode,
-> extends TransformType<
-  BrandType<typeof String, `StartsWith${Prefix}`, StartsWithError<Prefix>>,
-  T,
-  `Prefixed${Prefix}`,
-  never
-> {}
-
 type PrefixedInputTypeError = CompileTimeError<
   "Type",
   "Prefixed Type Input must accept every string."
 >;
+
+/**
+ * Error returned when {@link minLength} rejects a value.
+ *
+ * @group Collection
+ */
+export interface MinLengthError<
+  Min extends number = number,
+> extends TypeError<`MinLength${Min}`> {
+  readonly value: ValueWithLength;
+  readonly min: Min;
+}
 
 /**
  * Minimum-length {@link Brand} for values whose `length` is at least `min`.
@@ -6798,18 +6810,6 @@ export const minLength =
   };
 
 /**
- * Error returned when {@link minLength} rejects a value.
- *
- * @group Collection
- */
-export interface MinLengthError<
-  Min extends number = number,
-> extends TypeError<`MinLength${Min}`> {
-  readonly value: ValueWithLength;
-  readonly min: Min;
-}
-
-/**
  * A non-empty {@link TrimmedString}.
  *
  * Use as the base Type for ordinary human-entered text, which should usually be
@@ -6825,6 +6825,18 @@ export interface MinLengthError<
  */
 export const NonEmptyTrimmedString = /*#__PURE__*/ minLength(1)(TrimmedString);
 export type NonEmptyTrimmedString = typeof NonEmptyTrimmedString.Output;
+
+/**
+ * Error returned when {@link maxLength} rejects a value.
+ *
+ * @group Collection
+ */
+export interface MaxLengthError<
+  Max extends number = number,
+> extends TypeError<`MaxLength${Max}`> {
+  readonly value: ValueWithLength;
+  readonly max: Max;
+}
 
 /**
  * Maximum-length {@link Brand} for values whose `length` is at most `max`.
@@ -6864,18 +6876,6 @@ export const maxLength =
   };
 
 /**
- * Error returned when {@link maxLength} rejects a value.
- *
- * @group Collection
- */
-export interface MaxLengthError<
-  Max extends number = number,
-> extends TypeError<`MaxLength${Max}`> {
-  readonly value: ValueWithLength;
-  readonly max: Max;
-}
-
-/**
  * A {@link NonEmptyTrimmedString} with at most 100 UTF-16 code units.
  *
  * @group String
@@ -6894,6 +6894,18 @@ export const NonEmptyTrimmedString1000 = /*#__PURE__*/ maxLength(1000)(
   NonEmptyTrimmedString,
 );
 export type NonEmptyTrimmedString1000 = typeof NonEmptyTrimmedString1000.Output;
+
+/**
+ * Error returned when {@link length} rejects a value.
+ *
+ * @group Collection
+ */
+export interface LengthError<
+  Exact extends number = number,
+> extends TypeError<`Length${Exact}`> {
+  readonly value: ValueWithLength;
+  readonly exact: Exact;
+}
 
 /**
  * Exact-length {@link Brand} for values whose `length` equals `exact`.
@@ -6933,15 +6945,17 @@ export const length =
   };
 
 /**
- * Error returned when {@link length} rejects a value.
+ * Error returned when a string does not match the regular expression supplied
+ * to {@link regex}.
  *
- * @group Collection
+ * @group String
  */
-export interface LengthError<
-  Exact extends number = number,
-> extends TypeError<`Length${Exact}`> {
-  readonly value: ValueWithLength;
-  readonly exact: Exact;
+export interface RegexError<
+  Name extends TypeName = TypeName,
+> extends TypeError<Name> {
+  readonly value: string;
+  readonly source: string;
+  readonly flags: string;
 }
 
 /**
@@ -7017,20 +7031,6 @@ export const regex = <const Name extends TypeName>(
 };
 
 /**
- * Error returned when a string does not match the regular expression supplied
- * to {@link regex}.
- *
- * @group String
- */
-export interface RegexError<
-  Name extends TypeName = TypeName,
-> extends TypeError<Name> {
-  readonly value: string;
-  readonly source: string;
-  readonly flags: string;
-}
-
-/**
  * Non-empty URL-safe {@link String}.
  *
  * Accepts ASCII letters, digits, `-`, and `_`. This is the same alphabet used
@@ -7089,6 +7089,15 @@ const base64UrlStringToUint8Array = (value: string): Uint8Array => {
 };
 
 /**
+ * Error returned when a string is not valid {@link Base64Url} text.
+ *
+ * @group String
+ */
+export interface Base64UrlError extends TypeError<"Base64Url"> {
+  readonly value: string;
+}
+
+/**
  * Base64Url text without padding.
  *
  * Convert bytes to Base64Url with {@link uint8ArrayToBase64Url} and convert
@@ -7110,15 +7119,6 @@ export const Base64Url = /*#__PURE__*/ brand(
     `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Base64Url string.`,
 );
 export type Base64Url = typeof Base64Url.Output;
-
-/**
- * Error returned when a string is not valid {@link Base64Url} text.
- *
- * @group String
- */
-export interface Base64UrlError extends TypeError<"Base64Url"> {
-  readonly value: string;
-}
 
 /**
  * Converts bytes to {@link Base64Url}.
@@ -7165,6 +7165,15 @@ export const base64UrlToUint8Array = (value: Base64Url): Uint8Array =>
   base64UrlStringToUint8Array(value);
 
 /**
+ * Error returned when a string is not a valid {@link Name}.
+ *
+ * @group String
+ */
+export interface NameError extends TypeError<"Name"> {
+  readonly value: string;
+}
+
+/**
  * A non-empty file-system-safe and URL-safe token of at most 64 UTF-16 code
  * units.
  *
@@ -7186,15 +7195,6 @@ export const Name = /*#__PURE__*/ brand(
 export type Name = typeof Name.Output;
 
 /**
- * Error returned when a string is not a valid {@link Name}.
- *
- * @group String
- */
-export interface NameError extends TypeError<"Name"> {
-  readonly value: string;
-}
-
-/**
  * Stable valid {@link Name} for tests and internal fixtures.
  *
  * @group String
@@ -7213,6 +7213,15 @@ export const SimplePassword = /*#__PURE__*/ brand(
 export type SimplePassword = typeof SimplePassword.Output;
 
 /**
+ * Error returned when a string is not a valid English BIP39 {@link Mnemonic}.
+ *
+ * @group String
+ */
+export interface MnemonicError extends TypeError<"Mnemonic"> {
+  readonly value: string;
+}
+
+/**
  * A valid English BIP39 mnemonic.
  *
  * @group String
@@ -7228,15 +7237,6 @@ export const Mnemonic = /*#__PURE__*/ brand(
     `The value ${safelyStringifyUnknownValue(error.value)} is not a valid English BIP39 mnemonic.`,
 );
 export type Mnemonic = typeof Mnemonic.Output;
-
-/**
- * Error returned when a string is not a valid English BIP39 {@link Mnemonic}.
- *
- * @group String
- */
-export interface MnemonicError extends TypeError<"Mnemonic"> {
-  readonly value: string;
-}
 
 /**
  * Evolu Id: 16 bytes encoded as a 22-character {@link Base64Url}.
@@ -7265,15 +7265,6 @@ export const Id = /*#__PURE__*/ brand(
     `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Id.`,
 );
 export type Id = typeof Id.Output;
-
-/**
- * Error returned when a string is not a valid {@link Id}.
- *
- * @group String
- */
-export interface IdError extends TypeError<"Id"> {
-  readonly value: string;
-}
 
 /**
  * Creates a cryptographically random {@link Id}.
@@ -7394,6 +7385,47 @@ export const createIdAsUuidv7 = <B extends string = never>(
 };
 
 /**
+ * The {@link Type} returned by {@link id} for one table.
+ *
+ * @group String
+ */
+export interface TableId<Table extends TypeName> extends Type<
+  "TableId",
+  string,
+  Id & Brand<Table>,
+  TableIdError<Table>,
+  typeof String,
+  TableIdError<Table> | InferErrors<typeof String>,
+  ChildCustomFrom<typeof String, Id & Brand<Table>, TableIdError<Table>>,
+  CanonicalInputForChild<typeof String, Id & Brand<Table>>,
+  // oxlint-disable-next-line typescript/no-unnecessary-type-arguments -- TableId must track its parent Type's identity encoding instead of hard-coding Type's default.
+  IdentityEncodingOf<typeof String>
+> {
+  readonly table: Table;
+}
+
+/**
+ * Error returned when a string is not a valid {@link Id} for the expected table.
+ *
+ * @group String
+ */
+export interface TableIdError<
+  Table extends TypeName = TypeName,
+> extends TypeError<"TableId"> {
+  readonly table: Table;
+  readonly value: string;
+}
+
+/**
+ * Error returned when a string is not a valid {@link Id}.
+ *
+ * @group String
+ */
+export interface IdError extends TypeError<"Id"> {
+  readonly value: string;
+}
+
+/**
  * Table-specific {@link Id} Type.
  *
  * ### Example
@@ -7434,38 +7466,6 @@ export const id = <Table extends TypeName>(
     { table: concreteTable },
   );
 };
-
-/**
- * The {@link Type} returned by {@link id} for one table.
- *
- * @group String
- */
-export interface TableId<Table extends TypeName> extends Type<
-  "TableId",
-  string,
-  Id & Brand<Table>,
-  TableIdError<Table>,
-  typeof String,
-  TableIdError<Table> | InferErrors<typeof String>,
-  ChildCustomFrom<typeof String, Id & Brand<Table>, TableIdError<Table>>,
-  CanonicalInputForChild<typeof String, Id & Brand<Table>>,
-  // oxlint-disable-next-line typescript/no-unnecessary-type-arguments -- TableId must track its parent Type's identity encoding instead of hard-coding Type's default.
-  IdentityEncodingOf<typeof String>
-> {
-  readonly table: Table;
-}
-
-/**
- * Error returned when a string is not a valid {@link Id} for the expected table.
- *
- * @group String
- */
-export interface TableIdError<
-  Table extends TypeName = TypeName,
-> extends TypeError<"TableId"> {
-  readonly table: Table;
-  readonly value: string;
-}
 
 type ValidateTableName<Table extends TypeName> =
   IsTypeNameUnion<Table> extends false
@@ -7564,6 +7564,15 @@ export const idBytesToId = (value: IdBytes): Id =>
   uint8ArrayToBase64Url(value) as unknown as Id;
 
 /**
+ * Error returned when a string is not a canonical {@link Int64String}.
+ *
+ * @group Number
+ */
+export interface Int64StringError extends TypeError<"Int64String"> {
+  readonly value: string;
+}
+
+/**
  * Decimal string representation of a signed {@link Int64}.
  *
  * @group Number
@@ -7592,15 +7601,6 @@ export const Int64String = /*#__PURE__*/ brand(
     `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Int64 string.`,
 );
 export type Int64String = typeof Int64String.Output;
-
-/**
- * Error returned when a string is not a canonical {@link Int64String}.
- *
- * @group Number
- */
-export interface Int64StringError extends TypeError<"Int64String"> {
-  readonly value: string;
-}
 
 /**
  * Transforms an {@link Int64String} into an {@link Int64}.
@@ -7640,6 +7640,15 @@ export const Int64FromInt64String = /*#__PURE__*/ transform(
 );
 
 /**
+ * Error returned when {@link nonNegative} rejects a number.
+ *
+ * @group Number
+ */
+export interface NonNegativeError extends TypeError<"NonNegative"> {
+  readonly value: number;
+}
+
+/**
  * Number {@link Brand} requiring a value greater than or equal to zero.
  *
  * ### Example
@@ -7669,21 +7678,21 @@ export const nonNegative: BrandFactory<
   );
 
 /**
- * Error returned when {@link nonNegative} rejects a number.
- *
- * @group Number
- */
-export interface NonNegativeError extends TypeError<"NonNegative"> {
-  readonly value: number;
-}
-
-/**
  * Non-negative {@link Number}.
  *
  * @group Number
  */
 export const NonNegativeNumber = /*#__PURE__*/ nonNegative(Number);
 export type NonNegativeNumber = typeof NonNegativeNumber.Output;
+
+/**
+ * Error returned when {@link positive} rejects a number.
+ *
+ * @group Number
+ */
+export interface PositiveError extends TypeError<"Positive"> {
+  readonly value: number;
+}
 
 /**
  * Number {@link Brand} requiring a value greater than zero.
@@ -7713,15 +7722,6 @@ export const positive: BrandFactory<"Positive", number, PositiveError> = (
   );
 
 /**
- * Error returned when {@link positive} rejects a number.
- *
- * @group Number
- */
-export interface PositiveError extends TypeError<"Positive"> {
-  readonly value: number;
-}
-
-/**
  * Positive {@link Number}.
  *
  * Also satisfies {@link NonNegativeNumber}, so it can be used wherever a
@@ -7731,6 +7731,15 @@ export interface PositiveError extends TypeError<"Positive"> {
  */
 export const PositiveNumber = /*#__PURE__*/ positive(NonNegativeNumber);
 export type PositiveNumber = typeof PositiveNumber.Output;
+
+/**
+ * Error returned when {@link nonPositive} rejects a number.
+ *
+ * @group Number
+ */
+export interface NonPositiveError extends TypeError<"NonPositive"> {
+  readonly value: number;
+}
 
 /**
  * Number {@link Brand} requiring a value less than or equal to zero.
@@ -7762,21 +7771,21 @@ export const nonPositive: BrandFactory<
   );
 
 /**
- * Error returned when {@link nonPositive} rejects a number.
- *
- * @group Number
- */
-export interface NonPositiveError extends TypeError<"NonPositive"> {
-  readonly value: number;
-}
-
-/**
  * Non-positive {@link Number}.
  *
  * @group Number
  */
 export const NonPositiveNumber = /*#__PURE__*/ nonPositive(Number);
 export type NonPositiveNumber = typeof NonPositiveNumber.Output;
+
+/**
+ * Error returned when {@link negative} rejects a number.
+ *
+ * @group Number
+ */
+export interface NegativeError extends TypeError<"Negative"> {
+  readonly value: number;
+}
 
 /**
  * Number {@link Brand} requiring a value less than zero.
@@ -7806,15 +7815,6 @@ export const negative: BrandFactory<"Negative", number, NegativeError> = (
   );
 
 /**
- * Error returned when {@link negative} rejects a number.
- *
- * @group Number
- */
-export interface NegativeError extends TypeError<"Negative"> {
-  readonly value: number;
-}
-
-/**
  * Negative {@link Number}.
  *
  * Also satisfies {@link NonPositiveNumber}, so it can be used wherever a
@@ -7824,6 +7824,15 @@ export interface NegativeError extends TypeError<"Negative"> {
  */
 export const NegativeNumber = /*#__PURE__*/ negative(NonPositiveNumber);
 export type NegativeNumber = typeof NegativeNumber.Output;
+
+/**
+ * Error returned when {@link nonNaN} rejects `NaN`.
+ *
+ * @group Number
+ */
+export interface NonNaNError extends TypeError<"NonNaN"> {
+  readonly value: number;
+}
 
 /**
  * Number {@link Brand} requiring a value other than `NaN`.
@@ -7852,15 +7861,6 @@ export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
   );
 
 /**
- * Error returned when {@link nonNaN} rejects `NaN`.
- *
- * @group Number
- */
-export interface NonNaNError extends TypeError<"NonNaN"> {
-  readonly value: number;
-}
-
-/**
  * {@link Number} other than `NaN`; infinities are allowed.
  *
  * This is useful for arithmetic that deliberately saturates infinities to a
@@ -7872,6 +7872,15 @@ export interface NonNaNError extends TypeError<"NonNaN"> {
  */
 export const NonNaNNumber = /*#__PURE__*/ nonNaN(Number);
 export type NonNaNNumber = typeof NonNaNNumber.Output;
+
+/**
+ * Error returned when {@link finite} rejects a non-finite number.
+ *
+ * @group Number
+ */
+export interface FiniteError extends TypeError<"Finite"> {
+  readonly value: number;
+}
 
 /**
  * Number {@link Brand} requiring a finite value.
@@ -7901,15 +7910,6 @@ export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
   );
 
 /**
- * Error returned when {@link finite} rejects a non-finite number.
- *
- * @group Number
- */
-export interface FiniteError extends TypeError<"Finite"> {
-  readonly value: number;
-}
-
-/**
  * Finite {@link Number}.
  *
  * @group Number
@@ -7934,6 +7934,15 @@ export const PositiveFiniteNumber = /*#__PURE__*/ positive(
   NonNegativeFiniteNumber,
 );
 export type PositiveFiniteNumber = typeof PositiveFiniteNumber.Output;
+
+/**
+ * Error returned when {@link int} rejects a number that is not a safe integer.
+ *
+ * @group Number
+ */
+export interface IntError extends TypeError<"Int"> {
+  readonly value: number;
+}
 
 /**
  * Safe integer {@link Brand}.
@@ -7982,15 +7991,6 @@ export const int: BrandFactory<"Int", number, IntError> = (parent) =>
     (error) =>
       `The value ${safelyStringifyUnknownValue(error.value)} must be a safe integer.`,
   );
-
-/**
- * Error returned when {@link int} rejects a number that is not a safe integer.
- *
- * @group Number
- */
-export interface IntError extends TypeError<"Int"> {
-  readonly value: number;
-}
 
 /**
  * Safe integer {@link FiniteNumber}.
@@ -8123,6 +8123,18 @@ export const NegativeInt = /*#__PURE__*/ negative(NonPositiveInt);
 export type NegativeInt = typeof NegativeInt.Output;
 
 /**
+ * Error returned when {@link greaterThan} rejects a number.
+ *
+ * @group Number
+ */
+export interface GreaterThanError<
+  Min extends number = number,
+> extends TypeError<`GreaterThan${Min}`> {
+  readonly value: number;
+  readonly min: Min;
+}
+
+/**
  * Number {@link Brand} requiring a value greater than `min`.
  *
  * ### Example
@@ -8157,13 +8169,13 @@ export const greaterThan =
   };
 
 /**
- * Error returned when {@link greaterThan} rejects a number.
+ * Error returned when {@link greaterThanOrEqualTo} rejects a number.
  *
  * @group Number
  */
-export interface GreaterThanError<
+export interface GreaterThanOrEqualToError<
   Min extends number = number,
-> extends TypeError<`GreaterThan${Min}`> {
+> extends TypeError<`GreaterThanOrEqualTo${Min}`> {
   readonly value: number;
   readonly min: Min;
 }
@@ -8211,15 +8223,15 @@ export const greaterThanOrEqualTo =
   };
 
 /**
- * Error returned when {@link greaterThanOrEqualTo} rejects a number.
+ * Error returned when {@link lessThan} rejects a number.
  *
  * @group Number
  */
-export interface GreaterThanOrEqualToError<
-  Min extends number = number,
-> extends TypeError<`GreaterThanOrEqualTo${Min}`> {
+export interface LessThanError<
+  Max extends number = number,
+> extends TypeError<`LessThan${Max}`> {
   readonly value: number;
-  readonly min: Min;
+  readonly max: Max;
 }
 
 /**
@@ -8257,18 +8269,6 @@ export const lessThan =
   };
 
 /**
- * Error returned when {@link lessThan} rejects a number.
- *
- * @group Number
- */
-export interface LessThanError<
-  Max extends number = number,
-> extends TypeError<`LessThan${Max}`> {
-  readonly value: number;
-  readonly max: Max;
-}
-
-/**
  * A person's age as a {@link NonNegativeInt} less than 200.
  *
  * @group Number
@@ -8278,6 +8278,18 @@ export const Age = /*#__PURE__*/ brand(
   /*#__PURE__*/ lessThan(200)(NonNegativeInt),
 );
 export type Age = typeof Age.Output;
+
+/**
+ * Error returned when {@link lessThanOrEqualTo} rejects a number.
+ *
+ * @group Number
+ */
+export interface LessThanOrEqualToError<
+  Max extends number = number,
+> extends TypeError<`LessThanOrEqualTo${Max}`> {
+  readonly value: number;
+  readonly max: Max;
+}
 
 /**
  * Number {@link Brand} requiring a value less than or equal to `max`.
@@ -8316,18 +8328,6 @@ export const lessThanOrEqualTo =
         `The value ${safelyStringifyUnknownValue(error.value)} must be less than or equal to ${error.max}.`,
     );
   };
-
-/**
- * Error returned when {@link lessThanOrEqualTo} rejects a number.
- *
- * @group Number
- */
-export interface LessThanOrEqualToError<
-  Max extends number = number,
-> extends TypeError<`LessThanOrEqualTo${Max}`> {
-  readonly value: number;
-  readonly max: Max;
-}
 
 /**
  * A TCP or UDP port as an integer from zero through 65535, inclusive.
@@ -8402,6 +8402,15 @@ export const Ratio = /*#__PURE__*/ brand(
 export type Ratio = typeof Ratio.Output;
 
 /**
+ * Error returned when a string is not a canonical {@link DecimalString}.
+ *
+ * @group Number
+ */
+export interface DecimalStringError extends TypeError<"DecimalString"> {
+  readonly value: string;
+}
+
+/**
  * Canonical string representation of a signed base-10 decimal value.
  *
  * Use this Type when a decimal value must remain exact instead of being
@@ -8465,11 +8474,11 @@ export const DecimalString = /*#__PURE__*/ brand(
 export type DecimalString = typeof DecimalString.Output;
 
 /**
- * Error returned when a string is not a canonical {@link DecimalString}.
+ * Error returned when {@link nonNegativeDecimalString} rejects a decimal string.
  *
  * @group Number
  */
-export interface DecimalStringError extends TypeError<"DecimalString"> {
+export interface NonNegativeDecimalStringError extends TypeError<"NonNegativeDecimalString"> {
   readonly value: string;
 }
 
@@ -8512,15 +8521,6 @@ export const nonNegativeDecimalString: BrandFactory<
   );
 
 /**
- * Error returned when {@link nonNegativeDecimalString} rejects a decimal string.
- *
- * @group Number
- */
-export interface NonNegativeDecimalStringError extends TypeError<"NonNegativeDecimalString"> {
-  readonly value: string;
-}
-
-/**
  * Non-negative {@link DecimalString}.
  *
  * @group Number
@@ -8528,6 +8528,15 @@ export interface NonNegativeDecimalStringError extends TypeError<"NonNegativeDec
 export const NonNegativeDecimalString =
   /*#__PURE__*/ nonNegativeDecimalString(DecimalString);
 export type NonNegativeDecimalString = typeof NonNegativeDecimalString.Output;
+
+/**
+ * Error returned when {@link positiveDecimalString} rejects a decimal string.
+ *
+ * @group Number
+ */
+export interface PositiveDecimalStringError extends TypeError<"PositiveDecimalString"> {
+  readonly value: string;
+}
 
 /**
  * {@link DecimalString} Brand requiring a value greater than zero.
@@ -8568,15 +8577,6 @@ export const positiveDecimalString: BrandFactory<
   );
 
 /**
- * Error returned when {@link positiveDecimalString} rejects a decimal string.
- *
- * @group Number
- */
-export interface PositiveDecimalStringError extends TypeError<"PositiveDecimalString"> {
-  readonly value: string;
-}
-
-/**
  * Positive {@link DecimalString}.
  *
  * Also satisfies {@link NonNegativeDecimalString}, so it can be used wherever a
@@ -8588,6 +8588,15 @@ export const PositiveDecimalString = /*#__PURE__*/ positiveDecimalString(
   NonNegativeDecimalString,
 );
 export type PositiveDecimalString = typeof PositiveDecimalString.Output;
+
+/**
+ * Error returned when {@link nonPositiveDecimalString} rejects a decimal string.
+ *
+ * @group Number
+ */
+export interface NonPositiveDecimalStringError extends TypeError<"NonPositiveDecimalString"> {
+  readonly value: string;
+}
 
 /**
  * {@link DecimalString} Brand requiring a value less than or equal to zero.
@@ -8628,15 +8637,6 @@ export const nonPositiveDecimalString: BrandFactory<
   );
 
 /**
- * Error returned when {@link nonPositiveDecimalString} rejects a decimal string.
- *
- * @group Number
- */
-export interface NonPositiveDecimalStringError extends TypeError<"NonPositiveDecimalString"> {
-  readonly value: string;
-}
-
-/**
  * Non-positive {@link DecimalString}.
  *
  * @group Number
@@ -8644,6 +8644,15 @@ export interface NonPositiveDecimalStringError extends TypeError<"NonPositiveDec
 export const NonPositiveDecimalString =
   /*#__PURE__*/ nonPositiveDecimalString(DecimalString);
 export type NonPositiveDecimalString = typeof NonPositiveDecimalString.Output;
+
+/**
+ * Error returned when {@link negativeDecimalString} rejects a decimal string.
+ *
+ * @group Number
+ */
+export interface NegativeDecimalStringError extends TypeError<"NegativeDecimalString"> {
+  readonly value: string;
+}
 
 /**
  * {@link DecimalString} Brand requiring a value less than zero.
@@ -8684,15 +8693,6 @@ export const negativeDecimalString: BrandFactory<
   );
 
 /**
- * Error returned when {@link negativeDecimalString} rejects a decimal string.
- *
- * @group Number
- */
-export interface NegativeDecimalStringError extends TypeError<"NegativeDecimalString"> {
-  readonly value: string;
-}
-
-/**
  * Negative {@link DecimalString}.
  *
  * Also satisfies {@link NonPositiveDecimalString}, so it can be used wherever a
@@ -8704,6 +8704,18 @@ export const NegativeDecimalString = /*#__PURE__*/ negativeDecimalString(
   NonPositiveDecimalString,
 );
 export type NegativeDecimalString = typeof NegativeDecimalString.Output;
+
+/**
+ * Error returned when {@link multipleOf} rejects a number.
+ *
+ * @group Number
+ */
+export interface MultipleOfError<
+  Divisor extends string = string,
+> extends TypeError<`MultipleOf${Divisor}`> {
+  readonly value: number;
+  readonly divisor: Divisor;
+}
 
 /**
  * Number {@link Brand} requiring an exact decimal multiple of `divisor`.
@@ -8793,18 +8805,6 @@ export const multipleOf = <const Divisor extends string>(
     );
 };
 
-/**
- * Error returned when {@link multipleOf} rejects a number.
- *
- * @group Number
- */
-export interface MultipleOfError<
-  Divisor extends string = string,
-> extends TypeError<`MultipleOf${Divisor}`> {
-  readonly value: number;
-  readonly divisor: Divisor;
-}
-
 type ValidateMultipleOfDivisor<Divisor extends string> =
   IsUnion<Divisor> extends false
     ? string extends Divisor
@@ -8874,6 +8874,20 @@ const decimalStringToParts = (value: string): DecimalParts => {
 };
 
 /**
+ * Error returned when {@link between} rejects a number.
+ *
+ * @group Number
+ */
+export interface BetweenError<
+  Min extends number = number,
+  Max extends number = number,
+> extends TypeError<`Between${Min}-${Max}`> {
+  readonly value: number;
+  readonly min: Min;
+  readonly max: Max;
+}
+
+/**
  * Number {@link Brand} requiring a value within an inclusive range.
  *
  * ### Example
@@ -8914,18 +8928,116 @@ export const between =
   };
 
 /**
- * Error returned when {@link between} rejects a number.
+ * The homogeneous readonly-array {@link Type} returned by {@link array}.
  *
- * @group Number
+ * @group Collection
  */
-export interface BetweenError<
-  Min extends number = number,
-  Max extends number = number,
-> extends TypeError<`Between${Min}-${Max}`> {
-  readonly value: number;
-  readonly min: Min;
-  readonly max: Max;
+export interface ArrayType<ElementType extends TypeNode> extends Type<
+  "Array",
+  ReadonlyArray<ElementType["Input"]>,
+  ReadonlyArray<ElementType["Output"]>,
+  ArrayNodeError<ElementType>,
+  ArrayParent<ElementType>,
+  ArrayError<InferErrors<ElementType>>,
+  ArrayCustomFrom<ElementType>,
+  ReadonlyArray<CanonicalInputOf<ElementType>>,
+  AllTypesUseIdentityEncoding<ElementType>
+> {
+  readonly [reflectedTypesSymbol]?: ElementType;
+  readonly element: ElementType;
 }
+
+/**
+ * Error returned by {@link array} for a non-array value or invalid array items.
+ *
+ * @group Collection
+ */
+export type ArrayError<Error extends TypeError = TypeError> =
+  ArrayNotArrayError | ArrayItemsErrorValue<Error, true>;
+
+/**
+ * Error returned when an {@link array} input is not an array.
+ *
+ * @group Collection
+ */
+export interface ArrayNotArrayError extends TypeError<"Array"> {
+  readonly reason: {
+    readonly kind: "NotArray";
+    readonly value: unknown;
+  };
+}
+
+/**
+ * An {@link array} error containing structural or element issues.
+ *
+ * @group Collection
+ */
+export type ArrayItemsError<Error extends TypeError> = ArrayItemsErrorValue<
+  Error,
+  true
+>;
+
+/**
+ * One structural or element issue found by {@link array}.
+ *
+ * @group Collection
+ */
+export type ArrayIssue<Error extends TypeError> =
+  ArrayStructuralIssue | ArrayElementIssue<Error>;
+
+/**
+ * A missing array element.
+ *
+ * @group Collection
+ */
+export interface ArrayHoleIssue {
+  readonly kind: "Hole";
+  readonly index: number;
+}
+
+/**
+ * An array element defined by an accessor instead of a data property.
+ *
+ * @group Collection
+ */
+export interface ArrayAccessorIssue {
+  readonly kind: "Accessor";
+  readonly index: number;
+}
+
+/**
+ * An own array property other than `length` or an indexed element.
+ *
+ * @group Collection
+ */
+export interface ArrayExcessPropertyIssue {
+  readonly kind: "ExcessProperty";
+  readonly key: string | symbol;
+}
+
+/**
+ * An invalid array element and its index.
+ *
+ * @group Collection
+ */
+export type ArrayElementIssue<Error extends TypeError> = Error extends TypeError
+  ? {
+      readonly kind: "Element";
+      readonly index: number;
+      readonly error: Error;
+    }
+  : never;
+
+/**
+ * An {@link array} error containing element errors from a typed boundary.
+ *
+ * @group Collection
+ */
+export type ArrayElementsError<Error extends TypeError> = [Error] extends [
+  never,
+]
+  ? never
+  : ArrayItemsErrorValue<Error, false>;
 
 /**
  * Array {@link Type}.
@@ -8996,26 +9108,6 @@ export const array = <ElementType extends ConcreteTypeNode>(
     arrayRuntimeConfig,
   ) as ArrayType<ElementType>;
 
-/**
- * The homogeneous readonly-array {@link Type} returned by {@link array}.
- *
- * @group Collection
- */
-export interface ArrayType<ElementType extends TypeNode> extends Type<
-  "Array",
-  ReadonlyArray<ElementType["Input"]>,
-  ReadonlyArray<ElementType["Output"]>,
-  ArrayNodeError<ElementType>,
-  ArrayParent<ElementType>,
-  ArrayError<InferErrors<ElementType>>,
-  ArrayCustomFrom<ElementType>,
-  ReadonlyArray<CanonicalInputOf<ElementType>>,
-  AllTypesUseIdentityEncoding<ElementType>
-> {
-  readonly [reflectedTypesSymbol]?: ElementType;
-  readonly element: ElementType;
-}
-
 type ArrayCustomFrom<ElementType extends TypeNode> = [
   ElementType["parent"],
 ] extends [TypeNode]
@@ -9079,100 +9171,8 @@ type ArrayNodeError<ElementType extends TypeNode> = [
   ? ArrayElementsError<ElementType["Error"]>
   : ArrayError<ElementType["Error"]>;
 
-/**
- * Error returned by {@link array} for a non-array value or invalid array items.
- *
- * @group Collection
- */
-export type ArrayError<Error extends TypeError = TypeError> =
-  ArrayNotArrayError | ArrayItemsErrorValue<Error, true>;
-
-/**
- * Error returned when an {@link array} input is not an array.
- *
- * @group Collection
- */
-export interface ArrayNotArrayError extends TypeError<"Array"> {
-  readonly reason: {
-    readonly kind: "NotArray";
-    readonly value: unknown;
-  };
-}
-
-/**
- * An {@link array} error containing structural or element issues.
- *
- * @group Collection
- */
-export type ArrayItemsError<Error extends TypeError> = ArrayItemsErrorValue<
-  Error,
-  true
->;
-
-/**
- * One structural or element issue found by {@link array}.
- *
- * @group Collection
- */
-export type ArrayIssue<Error extends TypeError> =
-  ArrayStructuralIssue | ArrayElementIssue<Error>;
-
-/**
- * A missing array element.
- *
- * @group Collection
- */
-export interface ArrayHoleIssue {
-  readonly kind: "Hole";
-  readonly index: number;
-}
-
-/**
- * An array element defined by an accessor instead of a data property.
- *
- * @group Collection
- */
-export interface ArrayAccessorIssue {
-  readonly kind: "Accessor";
-  readonly index: number;
-}
-
-/**
- * An own array property other than `length` or an indexed element.
- *
- * @group Collection
- */
-export interface ArrayExcessPropertyIssue {
-  readonly kind: "ExcessProperty";
-  readonly key: string | symbol;
-}
-
 type ArrayStructuralIssue =
   ArrayHoleIssue | ArrayAccessorIssue | ArrayExcessPropertyIssue;
-
-/**
- * An invalid array element and its index.
- *
- * @group Collection
- */
-export type ArrayElementIssue<Error extends TypeError> = Error extends TypeError
-  ? {
-      readonly kind: "Element";
-      readonly index: number;
-      readonly error: Error;
-    }
-  : never;
-
-/**
- * An {@link array} error containing element errors from a typed boundary.
- *
- * @group Collection
- */
-export type ArrayElementsError<Error extends TypeError> = [Error] extends [
-  never,
-]
-  ? never
-  : ArrayItemsErrorValue<Error, false>;
 
 interface ArrayItemsErrorValue<
   Error extends TypeError,
@@ -9394,6 +9394,88 @@ const copyArrayPrefix = (
 };
 
 /**
+ * The homogeneous readonly-set {@link Type} returned by {@link set}.
+ *
+ * @group Collection
+ */
+export interface SetType<ElementType extends TypeNode> extends Type<
+  "Set",
+  ReadonlySet<ElementType["Input"]>,
+  ReadonlySet<ElementType["Output"]>,
+  SetNodeError<ElementType>,
+  SetParent<ElementType>,
+  SetError<InferErrors<ElementType>>,
+  SetCustomFrom<ElementType>,
+  ReadonlySet<CanonicalInputOf<ElementType>>,
+  AllTypesUseIdentityEncoding<ElementType>
+> {
+  readonly [reflectedTypesSymbol]?: ElementType;
+  readonly element: ElementType;
+}
+
+/**
+ * Error returned by {@link set} for a non-Set value or invalid Set items.
+ *
+ * @group Collection
+ */
+export type SetError<Error extends TypeError = TypeError> =
+  SetNotSetError | SetItemsErrorValue<Error, true>;
+
+/**
+ * Error returned when a {@link set} input is not a Set.
+ *
+ * @group Collection
+ */
+export interface SetNotSetError extends TypeError<"Set"> {
+  readonly reason: {
+    readonly kind: "NotSet";
+    readonly value: unknown;
+  };
+}
+
+/**
+ * An own property found on a Set value.
+ *
+ * @group Collection
+ */
+export interface SetExcessPropertyIssue {
+  readonly kind: "ExcessProperty";
+  readonly key: string | symbol;
+}
+
+/**
+ * An invalid Set element and its iteration index.
+ *
+ * @group Collection
+ */
+export type SetElementIssue<Error extends TypeError> = Error extends TypeError
+  ? {
+      readonly kind: "Element";
+      readonly index: number;
+      readonly error: Error;
+    }
+  : never;
+
+/**
+ * A {@link set} error containing structural or element issues.
+ *
+ * @group Collection
+ */
+export type SetItemsError<Error extends TypeError> = SetItemsErrorValue<
+  Error,
+  true
+>;
+
+/**
+ * A {@link set} error containing element errors from a typed boundary.
+ *
+ * @group Collection
+ */
+export type SetElementsError<Error extends TypeError> = [Error] extends [never]
+  ? never
+  : SetItemsErrorValue<Error, false>;
+
+/**
  * Set {@link Type} whose every element must match one Type.
  *
  * Sets from this or another realm are accepted. A Set must have no own
@@ -9421,26 +9503,6 @@ export const set = <ElementType extends ConcreteTypeNode>(
     element as unknown as RuntimeTypeNode,
     setRuntimeConfig,
   ) as SetType<ElementType>;
-
-/**
- * The homogeneous readonly-set {@link Type} returned by {@link set}.
- *
- * @group Collection
- */
-export interface SetType<ElementType extends TypeNode> extends Type<
-  "Set",
-  ReadonlySet<ElementType["Input"]>,
-  ReadonlySet<ElementType["Output"]>,
-  SetNodeError<ElementType>,
-  SetParent<ElementType>,
-  SetError<InferErrors<ElementType>>,
-  SetCustomFrom<ElementType>,
-  ReadonlySet<CanonicalInputOf<ElementType>>,
-  AllTypesUseIdentityEncoding<ElementType>
-> {
-  readonly [reflectedTypesSymbol]?: ElementType;
-  readonly element: ElementType;
-}
 
 type SetCustomFrom<ElementType extends TypeNode> = [
   ElementType["parent"],
@@ -9497,69 +9559,7 @@ type SetNodeError<ElementType extends TypeNode> = [
   ? SetElementsError<ElementType["Error"]>
   : SetError<ElementType["Error"]>;
 
-/**
- * Error returned by {@link set} for a non-Set value or invalid Set items.
- *
- * @group Collection
- */
-export type SetError<Error extends TypeError = TypeError> =
-  SetNotSetError | SetItemsErrorValue<Error, true>;
-
-/**
- * Error returned when a {@link set} input is not a Set.
- *
- * @group Collection
- */
-export interface SetNotSetError extends TypeError<"Set"> {
-  readonly reason: {
-    readonly kind: "NotSet";
-    readonly value: unknown;
-  };
-}
-
-/**
- * An own property found on a Set value.
- *
- * @group Collection
- */
-export interface SetExcessPropertyIssue {
-  readonly kind: "ExcessProperty";
-  readonly key: string | symbol;
-}
-
 type SetStructuralIssue = SetExcessPropertyIssue;
-
-/**
- * An invalid Set element and its iteration index.
- *
- * @group Collection
- */
-export type SetElementIssue<Error extends TypeError> = Error extends TypeError
-  ? {
-      readonly kind: "Element";
-      readonly index: number;
-      readonly error: Error;
-    }
-  : never;
-
-/**
- * A {@link set} error containing structural or element issues.
- *
- * @group Collection
- */
-export type SetItemsError<Error extends TypeError> = SetItemsErrorValue<
-  Error,
-  true
->;
-
-/**
- * A {@link set} error containing element errors from a typed boundary.
- *
- * @group Collection
- */
-export type SetElementsError<Error extends TypeError> = [Error] extends [never]
-  ? never
-  : SetItemsErrorValue<Error, false>;
 
 interface SetItemsErrorValue<
   Error extends TypeError,
@@ -9772,6 +9772,142 @@ const validateSetItems = (
         },
       });
 };
+
+/**
+ * The readonly-map {@link Type} returned by {@link map}.
+ *
+ * @group Collection
+ */
+export interface MapType<
+  KeyType extends TypeNode,
+  ValueType extends TypeNode,
+> extends Type<
+  "Map",
+  ReadonlyMap<KeyType["Input"], ValueType["Input"]>,
+  ReadonlyMap<KeyType["Output"], ValueType["Output"]>,
+  MapNodeError<KeyType, ValueType>,
+  MapParent<KeyType, ValueType>,
+  MapError<
+    InferErrors<KeyType>,
+    InferErrors<ValueType>,
+    MapCollisionFor<KeyType>
+  >,
+  never,
+  CanonicalInputSubset<
+    ReadonlyMap<KeyType["Input"], ValueType["Input"]>,
+    ReadonlyMap<CanonicalInputOf<KeyType>, CanonicalInputOf<ValueType>>
+  >,
+  AllTypesUseIdentityEncoding<KeyType | ValueType>
+> {
+  readonly [reflectedTypesSymbol]?: KeyType | ValueType;
+  readonly key: KeyType;
+  readonly value: ValueType;
+}
+
+/**
+ * Error returned while validating a {@link map} and its entries.
+ *
+ * @group Collection
+ */
+export type MapError<
+  KeyError extends TypeError = TypeError,
+  ValueError extends TypeError = TypeError,
+  Collision extends MapKeyCollisionIssue = MapKeyCollisionIssue,
+> =
+  | MapNotMapError
+  | MapEntriesErrorValue<
+      KeyError,
+      ValueError,
+      Collision | MapExcessPropertyIssue
+    >;
+
+/**
+ * Error returned when a {@link map} input is not a Map.
+ *
+ * @group Collection
+ */
+export interface MapNotMapError extends TypeError<"Map"> {
+  readonly reason: {
+    readonly kind: "NotMap";
+    readonly value: unknown;
+  };
+}
+
+/**
+ * An own property found on a Map value.
+ *
+ * @group Collection
+ */
+export interface MapExcessPropertyIssue {
+  readonly kind: "ExcessProperty";
+  readonly key: string | symbol;
+}
+
+/**
+ * An invalid key and its entry index in a {@link map}.
+ *
+ * @group Collection
+ */
+export type MapKeyIssue<Error extends TypeError> = Error extends TypeError
+  ? {
+      readonly kind: "Key";
+      readonly index: number;
+      readonly key: unknown;
+      readonly error: Error;
+    }
+  : never;
+
+/**
+ * An invalid value and its entry index in a {@link map}.
+ *
+ * @group Collection
+ */
+export type MapValueIssue<Error extends TypeError> = Error extends TypeError
+  ? {
+      readonly kind: "Value";
+      readonly index: number;
+      readonly key: unknown;
+      readonly error: Error;
+    }
+  : never;
+
+/**
+ * Two {@link map} keys that decode to the same output key.
+ *
+ * @group Collection
+ */
+export interface MapKeyCollisionIssue {
+  readonly kind: "Collision";
+  readonly index: number;
+  readonly key: unknown;
+  readonly previousIndex: number;
+  readonly previousKey: unknown;
+  readonly outputKey: unknown;
+}
+
+/**
+ * An invalid key, value, or structure in a {@link map}.
+ *
+ * @group Collection
+ */
+export type MapIssue<
+  KeyError extends TypeError,
+  ValueError extends TypeError,
+  StructuralIssue extends MapStructuralIssue = MapKeyCollisionIssue,
+> = MapKeyIssue<KeyError> | MapValueIssue<ValueError> | StructuralIssue;
+
+/**
+ * Entry errors returned by a {@link map} operation.
+ *
+ * @group Collection
+ */
+export type MapEntriesError<
+  KeyError extends TypeError,
+  ValueError extends TypeError,
+  StructuralIssue extends MapStructuralIssue = MapKeyCollisionIssue,
+> = [KeyError | ValueError | StructuralIssue] extends [never]
+  ? never
+  : MapEntriesErrorValue<KeyError, ValueError, StructuralIssue>;
 
 /**
  * Map {@link Type} whose keys and values must match their respective Types.
@@ -9995,37 +10131,6 @@ const mapTypeByValueByKey = /*#__PURE__*/ new WeakMap<
   WeakMap<TypeNode, TypeNode>
 >();
 
-/**
- * The readonly-map {@link Type} returned by {@link map}.
- *
- * @group Collection
- */
-export interface MapType<
-  KeyType extends TypeNode,
-  ValueType extends TypeNode,
-> extends Type<
-  "Map",
-  ReadonlyMap<KeyType["Input"], ValueType["Input"]>,
-  ReadonlyMap<KeyType["Output"], ValueType["Output"]>,
-  MapNodeError<KeyType, ValueType>,
-  MapParent<KeyType, ValueType>,
-  MapError<
-    InferErrors<KeyType>,
-    InferErrors<ValueType>,
-    MapCollisionFor<KeyType>
-  >,
-  never,
-  CanonicalInputSubset<
-    ReadonlyMap<KeyType["Input"], ValueType["Input"]>,
-    ReadonlyMap<CanonicalInputOf<KeyType>, CanonicalInputOf<ValueType>>
-  >,
-  AllTypesUseIdentityEncoding<KeyType | ValueType>
-> {
-  readonly [reflectedTypesSymbol]?: KeyType | ValueType;
-  readonly key: KeyType;
-  readonly value: ValueType;
-}
-
 type MapParent<KeyType extends TypeNode, ValueType extends TypeNode> = [
   KeyType["parent"] | ValueType["parent"],
 ] extends [null]
@@ -10064,115 +10169,10 @@ type ValidateMapValueType<T extends ConcreteTypeNode> =
         "Map value must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes."
       >;
 
-/**
- * Error returned while validating a {@link map} and its entries.
- *
- * @group Collection
- */
-export type MapError<
-  KeyError extends TypeError = TypeError,
-  ValueError extends TypeError = TypeError,
-  Collision extends MapKeyCollisionIssue = MapKeyCollisionIssue,
-> =
-  | MapNotMapError
-  | MapEntriesErrorValue<
-      KeyError,
-      ValueError,
-      Collision | MapExcessPropertyIssue
-    >;
-
-/**
- * Error returned when a {@link map} input is not a Map.
- *
- * @group Collection
- */
-export interface MapNotMapError extends TypeError<"Map"> {
-  readonly reason: {
-    readonly kind: "NotMap";
-    readonly value: unknown;
-  };
-}
-
-/**
- * An own property found on a Map value.
- *
- * @group Collection
- */
-export interface MapExcessPropertyIssue {
-  readonly kind: "ExcessProperty";
-  readonly key: string | symbol;
-}
-
-/**
- * An invalid key and its entry index in a {@link map}.
- *
- * @group Collection
- */
-export type MapKeyIssue<Error extends TypeError> = Error extends TypeError
-  ? {
-      readonly kind: "Key";
-      readonly index: number;
-      readonly key: unknown;
-      readonly error: Error;
-    }
-  : never;
-
-/**
- * An invalid value and its entry index in a {@link map}.
- *
- * @group Collection
- */
-export type MapValueIssue<Error extends TypeError> = Error extends TypeError
-  ? {
-      readonly kind: "Value";
-      readonly index: number;
-      readonly key: unknown;
-      readonly error: Error;
-    }
-  : never;
-
-/**
- * Two {@link map} keys that decode to the same output key.
- *
- * @group Collection
- */
-export interface MapKeyCollisionIssue {
-  readonly kind: "Collision";
-  readonly index: number;
-  readonly key: unknown;
-  readonly previousIndex: number;
-  readonly previousKey: unknown;
-  readonly outputKey: unknown;
-}
-
 type MapStructuralIssue = MapExcessPropertyIssue | MapKeyCollisionIssue;
 
 type MapStructuralError =
   MapNotMapError | MapEntriesErrorValue<never, never, MapStructuralIssue>;
-
-/**
- * An invalid key, value, or structure in a {@link map}.
- *
- * @group Collection
- */
-export type MapIssue<
-  KeyError extends TypeError,
-  ValueError extends TypeError,
-  StructuralIssue extends MapStructuralIssue = MapKeyCollisionIssue,
-> = MapKeyIssue<KeyError> | MapValueIssue<ValueError> | StructuralIssue;
-
-/**
- * Entry errors returned by a {@link map} operation.
- *
- * @group Collection
- */
-export type MapEntriesError<
-  KeyError extends TypeError,
-  ValueError extends TypeError,
-  StructuralIssue extends MapStructuralIssue = MapKeyCollisionIssue,
-> = [KeyError | ValueError | StructuralIssue] extends [never]
-  ? never
-  : MapEntriesErrorValue<KeyError, ValueError, StructuralIssue>;
 
 interface MapEntriesErrorValue<
   KeyError extends TypeError,
@@ -10288,6 +10288,137 @@ const validateMapEntries = (
         },
       });
 };
+
+/**
+ * The fixed-length heterogeneous {@link Type} returned by {@link tuple}.
+ *
+ * @group Collection
+ */
+export interface TupleType<Elements extends TupleElements> extends Type<
+  "Tuple",
+  TupleShape<Elements, "Input">,
+  TupleShape<Elements, "Output">,
+  [TupleParents<Elements>] extends [null]
+    ? TupleError<Elements[number]["Error"]>
+    : TupleElementsError<TupleFromErrors<Elements>>,
+  [TupleParents<Elements>] extends [null]
+    ? null
+    : RootTupleType<RootTupleElements<Elements>>,
+  TupleError<InferErrors<Elements[number]>>,
+  never,
+  TupleShape<Elements, "CanonicalInput">,
+  AllTypesUseIdentityEncoding<Elements[number]>
+> {
+  readonly [reflectedTypesSymbol]?: Elements[number];
+  readonly elements: Elements;
+}
+
+/**
+ * An error returned while validating a {@link tuple}.
+ *
+ * @group Collection
+ */
+export type TupleError<Error extends TypeError = TypeError> =
+  | TupleNotArrayError
+  | TupleInvalidLengthError
+  | TupleItemsErrorValue<Error, true>;
+
+/**
+ * An error returned when a {@link tuple} input is not an Array.
+ *
+ * @group Collection
+ */
+export interface TupleNotArrayError extends TypeError<"Tuple"> {
+  readonly reason: {
+    readonly kind: "NotArray";
+    readonly value: unknown;
+  };
+}
+
+/**
+ * An error returned when a {@link tuple} input has the wrong length.
+ *
+ * @group Collection
+ */
+export interface TupleInvalidLengthError extends TypeError<"Tuple"> {
+  readonly reason: {
+    readonly kind: "InvalidLength";
+    readonly expected: number;
+    readonly actual: number;
+  };
+}
+
+/**
+ * An error containing structural or element issues found in a {@link tuple}.
+ *
+ * @group Collection
+ */
+export type TupleItemsError<Error extends TypeError> = TupleItemsErrorValue<
+  Error,
+  true
+>;
+
+/**
+ * One structural or element issue found in a {@link tuple}.
+ *
+ * @group Collection
+ */
+export type TupleIssue<Error extends TypeError> =
+  TupleStructuralIssue | TupleElementIssue<Error>;
+
+/**
+ * A missing indexed element in a {@link tuple}.
+ *
+ * @group Collection
+ */
+export interface TupleHoleIssue {
+  readonly kind: "Hole";
+  readonly index: number;
+}
+
+/**
+ * An accessor element in a {@link tuple}.
+ *
+ * @group Collection
+ */
+export interface TupleAccessorIssue {
+  readonly kind: "Accessor";
+  readonly index: number;
+}
+
+/**
+ * An undeclared own property in a {@link tuple}.
+ *
+ * @group Collection
+ */
+export interface TupleExcessPropertyIssue {
+  readonly kind: "ExcessProperty";
+  readonly key: string | symbol;
+}
+
+/**
+ * An error returned by one element Type in a {@link tuple}.
+ *
+ * @group Collection
+ */
+export type TupleElementIssue<Error extends TypeError> = Error extends TypeError
+  ? {
+      readonly kind: "Element";
+      readonly index: number;
+      readonly error: Error;
+    }
+  : never;
+
+/**
+ * Element errors possible after a typed {@link tuple} boundary was asserted.
+ *
+ * @group Collection
+ */
+export type TupleElementsError<Error extends TypeError> = [Error] extends [
+  never,
+]
+  ? never
+  : TupleItemsErrorValue<Error, false>;
 
 /**
  * Tuple {@link Type}.
@@ -10489,30 +10620,6 @@ const createTupleType = (
   );
 };
 
-/**
- * The fixed-length heterogeneous {@link Type} returned by {@link tuple}.
- *
- * @group Collection
- */
-export interface TupleType<Elements extends TupleElements> extends Type<
-  "Tuple",
-  TupleShape<Elements, "Input">,
-  TupleShape<Elements, "Output">,
-  [TupleParents<Elements>] extends [null]
-    ? TupleError<Elements[number]["Error"]>
-    : TupleElementsError<TupleFromErrors<Elements>>,
-  [TupleParents<Elements>] extends [null]
-    ? null
-    : RootTupleType<RootTupleElements<Elements>>,
-  TupleError<InferErrors<Elements[number]>>,
-  never,
-  TupleShape<Elements, "CanonicalInput">,
-  AllTypesUseIdentityEncoding<Elements[number]>
-> {
-  readonly [reflectedTypesSymbol]?: Elements[number];
-  readonly elements: Elements;
-}
-
 type TupleElements = NonEmptyReadonlyArray<TypeNode>;
 
 type TupleShape<
@@ -10586,115 +10693,8 @@ type TupleElementConcreteTypeError = CompileTimeError<
   "Element must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes."
 >;
 
-/**
- * An error returned while validating a {@link tuple}.
- *
- * @group Collection
- */
-export type TupleError<Error extends TypeError = TypeError> =
-  | TupleNotArrayError
-  | TupleInvalidLengthError
-  | TupleItemsErrorValue<Error, true>;
-
-/**
- * An error returned when a {@link tuple} input is not an Array.
- *
- * @group Collection
- */
-export interface TupleNotArrayError extends TypeError<"Tuple"> {
-  readonly reason: {
-    readonly kind: "NotArray";
-    readonly value: unknown;
-  };
-}
-
-/**
- * An error returned when a {@link tuple} input has the wrong length.
- *
- * @group Collection
- */
-export interface TupleInvalidLengthError extends TypeError<"Tuple"> {
-  readonly reason: {
-    readonly kind: "InvalidLength";
-    readonly expected: number;
-    readonly actual: number;
-  };
-}
-
-/**
- * An error containing structural or element issues found in a {@link tuple}.
- *
- * @group Collection
- */
-export type TupleItemsError<Error extends TypeError> = TupleItemsErrorValue<
-  Error,
-  true
->;
-
-/**
- * One structural or element issue found in a {@link tuple}.
- *
- * @group Collection
- */
-export type TupleIssue<Error extends TypeError> =
-  TupleStructuralIssue | TupleElementIssue<Error>;
-
-/**
- * A missing indexed element in a {@link tuple}.
- *
- * @group Collection
- */
-export interface TupleHoleIssue {
-  readonly kind: "Hole";
-  readonly index: number;
-}
-
-/**
- * An accessor element in a {@link tuple}.
- *
- * @group Collection
- */
-export interface TupleAccessorIssue {
-  readonly kind: "Accessor";
-  readonly index: number;
-}
-
-/**
- * An undeclared own property in a {@link tuple}.
- *
- * @group Collection
- */
-export interface TupleExcessPropertyIssue {
-  readonly kind: "ExcessProperty";
-  readonly key: string | symbol;
-}
-
 type TupleStructuralIssue =
   TupleHoleIssue | TupleAccessorIssue | TupleExcessPropertyIssue;
-
-/**
- * An error returned by one element Type in a {@link tuple}.
- *
- * @group Collection
- */
-export type TupleElementIssue<Error extends TypeError> = Error extends TypeError
-  ? {
-      readonly kind: "Element";
-      readonly index: number;
-      readonly error: Error;
-    }
-  : never;
-
-/**
- * Element errors possible after a typed {@link tuple} boundary was asserted.
- *
- * @group Collection
- */
-export type TupleElementsError<Error extends TypeError> = [Error] extends [
-  never,
-]
-  ? never
-  : TupleItemsErrorValue<Error, false>;
 
 interface TupleItemsErrorValue<
   Error extends TypeError,
@@ -11113,6 +11113,173 @@ const _Object: Type<
 export { _Object as Object };
 
 /**
+ * The {@link Type} returned by {@link record}.
+ *
+ * @group Objects
+ */
+export interface RecordType<
+  KeyType extends TypeNode,
+  ValueType extends TypeNode,
+> extends Type<
+  "Record",
+  RecordShape<KeyType, ValueType, "Input">,
+  RecordShape<KeyType, ValueType, "Output">,
+  RecordNodeError<KeyType, ValueType>,
+  RecordParent<KeyType, ValueType>,
+  RecordError<
+    InferErrors<KeyType>,
+    InferErrors<ValueType>,
+    RecordCollisionFor<KeyType>
+  >,
+  never,
+  CanonicalInputSubset<
+    RecordShape<KeyType, ValueType, "Input">,
+    RecordShape<KeyType, ValueType, "CanonicalInput">
+  >,
+  AllTypesUseIdentityEncoding<KeyType | ValueType>
+> {
+  readonly [reflectedTypesSymbol]?: KeyType | ValueType;
+  readonly key: KeyType;
+  readonly value: ValueType;
+}
+
+/**
+ * Error returned while validating a {@link record} and its entries.
+ *
+ * @group Objects
+ */
+export type RecordError<
+  KeyError extends TypeError = TypeError,
+  ValueError extends TypeError = TypeError,
+  Collision extends RecordCollisionIssue = RecordCollisionIssue,
+> =
+  | RecordNotRecordError
+  | RecordNotPlainRecordError
+  | RecordEntriesErrorValue<
+      KeyError,
+      ValueError,
+      Collision | RecordAccessorIssue | RecordNonEnumerableIssue
+    >;
+
+/**
+ * Error returned when a {@link record} input is not an object.
+ *
+ * @group Objects
+ */
+export interface RecordNotRecordError extends TypeError<"Record"> {
+  readonly reason: {
+    readonly kind: "NotRecord";
+    readonly value: unknown;
+  };
+}
+
+/**
+ * Error returned when a {@link record} input is not a plain object.
+ *
+ * @group Objects
+ */
+export interface RecordNotPlainRecordError extends TypeError<"Record"> {
+  readonly reason: {
+    readonly kind: "NotPlainRecord";
+    readonly value: object;
+  };
+}
+
+/**
+ * Entry errors returned by a {@link record} operation.
+ *
+ * Property structure is omitted by default because typed operations assert
+ * enumerable own data properties. {@link RecordError} includes structural issues
+ * at the unknown-input boundary.
+ *
+ * @group Objects
+ */
+export type RecordEntriesError<
+  KeyError extends TypeError,
+  ValueError extends TypeError,
+  StructuralIssue extends RecordStructuralIssue = RecordCollisionIssue,
+> = [KeyError | ValueError | StructuralIssue] extends [never]
+  ? never
+  : RecordEntriesErrorValue<KeyError, ValueError, StructuralIssue>;
+
+/**
+ * An invalid key, value, or property structure in a {@link record}.
+ *
+ * @group Objects
+ */
+export type RecordIssue<
+  KeyError extends TypeError,
+  ValueError extends TypeError,
+  StructuralIssue extends RecordStructuralIssue = RecordCollisionIssue,
+> = RecordKeyIssue<KeyError> | RecordValueIssue<ValueError> | StructuralIssue;
+
+/**
+ * A property-structure issue returned by {@link record}.
+ *
+ * @group Objects
+ */
+export type RecordStructuralIssue =
+  RecordAccessorIssue | RecordCollisionIssue | RecordNonEnumerableIssue;
+
+/**
+ * An accessor property rejected by {@link record}.
+ *
+ * @group Objects
+ */
+export interface RecordAccessorIssue {
+  readonly kind: "Accessor";
+  readonly key: string | symbol;
+}
+
+/**
+ * A non-enumerable property rejected by {@link record}.
+ *
+ * @group Objects
+ */
+export interface RecordNonEnumerableIssue {
+  readonly kind: "NonEnumerable";
+  readonly key: string | symbol;
+}
+
+/**
+ * An invalid key and its source property key in a {@link record}.
+ *
+ * @group Objects
+ */
+export type RecordKeyIssue<Error extends TypeError> = Error extends TypeError
+  ? {
+      readonly kind: "Key";
+      readonly key: string | symbol;
+      readonly error: Error;
+    }
+  : never;
+
+/**
+ * An invalid value and its property key in a {@link record}.
+ *
+ * @group Objects
+ */
+export type RecordValueIssue<Error extends TypeError> = Error extends TypeError
+  ? {
+      readonly kind: "Value";
+      readonly key: string | symbol;
+      readonly error: Error;
+    }
+  : never;
+
+/**
+ * Two {@link record} keys that decode to the same output key.
+ *
+ * @group Objects
+ */
+export interface RecordCollisionIssue {
+  readonly kind: "Collision";
+  readonly key: string | symbol;
+  readonly previousKey: string | symbol;
+  readonly outputKey: string;
+}
+
+/**
  * Record {@link Type}.
  *
  * Use `record(Key, Value)` for readonly Records with dynamic string keys, such
@@ -11424,37 +11591,6 @@ export const record = <
   );
 };
 
-/**
- * The {@link Type} returned by {@link record}.
- *
- * @group Objects
- */
-export interface RecordType<
-  KeyType extends TypeNode,
-  ValueType extends TypeNode,
-> extends Type<
-  "Record",
-  RecordShape<KeyType, ValueType, "Input">,
-  RecordShape<KeyType, ValueType, "Output">,
-  RecordNodeError<KeyType, ValueType>,
-  RecordParent<KeyType, ValueType>,
-  RecordError<
-    InferErrors<KeyType>,
-    InferErrors<ValueType>,
-    RecordCollisionFor<KeyType>
-  >,
-  never,
-  CanonicalInputSubset<
-    RecordShape<KeyType, ValueType, "Input">,
-    RecordShape<KeyType, ValueType, "CanonicalInput">
-  >,
-  AllTypesUseIdentityEncoding<KeyType | ValueType>
-> {
-  readonly [reflectedTypesSymbol]?: KeyType | ValueType;
-  readonly key: KeyType;
-  readonly value: ValueType;
-}
-
 interface RecordTypeNode extends TypeNode {
   readonly name: "Record";
   readonly key: TypeNode;
@@ -11551,142 +11687,6 @@ type RecordKeyStringTypeError = CompileTimeError<
   "Type",
   "Record key Type Input and Output must extend string."
 >;
-
-/**
- * Error returned while validating a {@link record} and its entries.
- *
- * @group Objects
- */
-export type RecordError<
-  KeyError extends TypeError = TypeError,
-  ValueError extends TypeError = TypeError,
-  Collision extends RecordCollisionIssue = RecordCollisionIssue,
-> =
-  | RecordNotRecordError
-  | RecordNotPlainRecordError
-  | RecordEntriesErrorValue<
-      KeyError,
-      ValueError,
-      Collision | RecordAccessorIssue | RecordNonEnumerableIssue
-    >;
-
-/**
- * Error returned when a {@link record} input is not an object.
- *
- * @group Objects
- */
-export interface RecordNotRecordError extends TypeError<"Record"> {
-  readonly reason: {
-    readonly kind: "NotRecord";
-    readonly value: unknown;
-  };
-}
-
-/**
- * Error returned when a {@link record} input is not a plain object.
- *
- * @group Objects
- */
-export interface RecordNotPlainRecordError extends TypeError<"Record"> {
-  readonly reason: {
-    readonly kind: "NotPlainRecord";
-    readonly value: object;
-  };
-}
-
-/**
- * Entry errors returned by a {@link record} operation.
- *
- * Property structure is omitted by default because typed operations assert
- * enumerable own data properties. {@link RecordError} includes structural issues
- * at the unknown-input boundary.
- *
- * @group Objects
- */
-export type RecordEntriesError<
-  KeyError extends TypeError,
-  ValueError extends TypeError,
-  StructuralIssue extends RecordStructuralIssue = RecordCollisionIssue,
-> = [KeyError | ValueError | StructuralIssue] extends [never]
-  ? never
-  : RecordEntriesErrorValue<KeyError, ValueError, StructuralIssue>;
-
-/**
- * An invalid key, value, or property structure in a {@link record}.
- *
- * @group Objects
- */
-export type RecordIssue<
-  KeyError extends TypeError,
-  ValueError extends TypeError,
-  StructuralIssue extends RecordStructuralIssue = RecordCollisionIssue,
-> = RecordKeyIssue<KeyError> | RecordValueIssue<ValueError> | StructuralIssue;
-
-/**
- * A property-structure issue returned by {@link record}.
- *
- * @group Objects
- */
-export type RecordStructuralIssue =
-  RecordAccessorIssue | RecordCollisionIssue | RecordNonEnumerableIssue;
-
-/**
- * An accessor property rejected by {@link record}.
- *
- * @group Objects
- */
-export interface RecordAccessorIssue {
-  readonly kind: "Accessor";
-  readonly key: string | symbol;
-}
-
-/**
- * A non-enumerable property rejected by {@link record}.
- *
- * @group Objects
- */
-export interface RecordNonEnumerableIssue {
-  readonly kind: "NonEnumerable";
-  readonly key: string | symbol;
-}
-
-/**
- * An invalid key and its source property key in a {@link record}.
- *
- * @group Objects
- */
-export type RecordKeyIssue<Error extends TypeError> = Error extends TypeError
-  ? {
-      readonly kind: "Key";
-      readonly key: string | symbol;
-      readonly error: Error;
-    }
-  : never;
-
-/**
- * An invalid value and its property key in a {@link record}.
- *
- * @group Objects
- */
-export type RecordValueIssue<Error extends TypeError> = Error extends TypeError
-  ? {
-      readonly kind: "Value";
-      readonly key: string | symbol;
-      readonly error: Error;
-    }
-  : never;
-
-/**
- * Two {@link record} keys that decode to the same output key.
- *
- * @group Objects
- */
-export interface RecordCollisionIssue {
-  readonly kind: "Collision";
-  readonly key: string | symbol;
-  readonly previousKey: string | symbol;
-  readonly outputKey: string;
-}
 
 interface RecordEntriesErrorValue<
   KeyError extends TypeError,
@@ -12231,6 +12231,20 @@ interface RuntimeDefaultOperations {
 }
 
 /**
+ * The {@link Type} returned by {@link object}.
+ *
+ * @group Objects
+ */
+export type ObjectType<
+  Props extends ObjectProps,
+  Rest extends ObjectRecordTypeNode | undefined = undefined,
+> = Props extends ObjectValueProps
+  ? Rest extends ObjectRecordTypeNode
+    ? ObjectWithRecordType<Props, Rest>
+    : StrictObjectType<Props>
+  : DefaultObjectType<Props, Rest>;
+
+/**
  * Properties used to construct an {@link object} Type.
  *
  * @group Objects
@@ -12244,11 +12258,120 @@ export type ObjectProps = Readonly<
   >
 >;
 
-type ObjectValueProps = Readonly<
-  Record<string, TypeNode | OptionalProperty<TypeNode>>
->;
+/**
+ * An error returned while validating an {@link object} and its properties.
+ *
+ * Declare required properties as required keys and optional properties as
+ * optional keys. Object adds its structural property errors automatically, so
+ * each value is only the error returned by that property's Type. The interface
+ * can be extended by recursive error declarations.
+ *
+ * @group Objects
+ */
+export interface ObjectError<
+  Errors extends {
+    readonly [Key in keyof Errors]: TypeError | undefined;
+  } = Readonly<Record<string, TypeError>>,
+  RestError extends TypeError = ObjectExcessPropertyError,
+> extends TypeError<"Object"> {
+  readonly reason:
+    | ObjectNotObjectError["reason"]
+    | ObjectUnexpectedPrototypeError["reason"]
+    | ObjectPropertiesError<
+        ObjectStructuralPropertyErrors<Errors>,
+        RestError
+      >["reason"];
+}
 
-type ObjectProperty = ObjectProps[string];
+/**
+ * An error returned when a required {@link object} property is absent.
+ *
+ * `ObjectMissingProperty` is reserved for absent required properties. Property
+ * {@link Type | Types} must use another error tag.
+ *
+ * @group Objects
+ */
+export interface ObjectMissingPropertyError extends TypeError<"ObjectMissingProperty"> {}
+
+/**
+ * An error returned when a present {@link object} property is not represented as
+ * an enumerable data property.
+ *
+ * `ObjectPropertyAccess` is reserved for this structural failure. Property
+ * {@link Type | Types} must use another error tag.
+ *
+ * @group Objects
+ */
+export interface ObjectPropertyAccessError extends TypeError<"ObjectPropertyAccess"> {
+  readonly reason: "Accessor" | "NonEnumerable";
+}
+
+/**
+ * An error returned when an {@link object} input is not an object.
+ *
+ * @group Objects
+ */
+export interface ObjectNotObjectError extends TypeError<"Object"> {
+  readonly reason: {
+    readonly kind: "NotObject";
+    readonly value: unknown;
+  };
+}
+
+/**
+ * An error returned when an {@link object} input falls outside its supported
+ * plain-object prototype boundary.
+ *
+ * Object Types use the realm-neutral structural heuristic described by
+ * {@link isPlainObject}. Values that do not satisfy it return this error instead
+ * of having their prototype or inherited state discarded. `reason.value` is the
+ * rejected object.
+ *
+ * @group Objects
+ */
+export interface ObjectUnexpectedPrototypeError extends TypeError<"Object"> {
+  readonly reason: {
+    readonly kind: "UnexpectedPrototype";
+    readonly value: object;
+  };
+}
+
+/**
+ * An error returned for an input property outside an Object Type's allowed key
+ * domain.
+ *
+ * This includes a property not declared by an {@link object} schema and a symbol
+ * property on the predefined {@link Object}. The property key locates this error
+ * in the containing Object error map. `ObjectExcessProperty` is reserved for
+ * this structural failure. Property {@link Type | Types} must use another error
+ * tag.
+ *
+ * @group Objects
+ */
+export interface ObjectExcessPropertyError extends TypeError<"ObjectExcessProperty"> {}
+
+/**
+ * An error returned while validating the properties of an {@link object}.
+ *
+ * @group Objects
+ */
+export interface ObjectPropertiesError<
+  Errors extends {
+    readonly [Key in keyof Errors]: TypeError | undefined;
+  },
+  RestError extends TypeError = never,
+> extends TypeError<"Object"> {
+  readonly reason: {
+    readonly kind: "Properties";
+    readonly errors: Partial<Errors> &
+      ([RestError] extends [never]
+        ? unknown
+        : ObjectUnknownPropertyErrors<
+            Exclude<Errors[keyof Errors], undefined>,
+            RestError
+          >);
+  };
+}
 
 /**
  * Plain object {@link Type}.
@@ -12491,6 +12614,12 @@ export function object(props: ObjectProps, recordType?: unknown): TypeNode {
     recordType as RuntimeRecordTypeNode | undefined,
   );
 }
+
+type ObjectValueProps = Readonly<
+  Record<string, TypeNode | OptionalProperty<TypeNode>>
+>;
+
+type ObjectProperty = ObjectProps[string];
 
 const createObjectType = (
   props: ObjectProps,
@@ -13163,20 +13292,6 @@ type ObjectRecordCanonicalInputTypeError = CompileTimeError<
   "Every declared property Type CanonicalInput must extend the Object Record value Type CanonicalInput."
 >;
 
-/**
- * The {@link Type} returned by {@link object}.
- *
- * @group Objects
- */
-export type ObjectType<
-  Props extends ObjectProps,
-  Rest extends ObjectRecordTypeNode | undefined = undefined,
-> = Props extends ObjectValueProps
-  ? Rest extends ObjectRecordTypeNode
-    ? ObjectWithRecordType<Props, Rest>
-    : StrictObjectType<Props>
-  : DefaultObjectType<Props, Rest>;
-
 type ObjectValueType<
   Props extends ObjectValueProps,
   Rest extends ObjectRecordTypeNode | undefined,
@@ -13434,121 +13549,6 @@ type StrictObjectFromUnknownPropertyErrors<Props extends ObjectValueProps> = {
     Props[Key][typeof errorsSymbol] | ObjectPropertyAccessError;
 };
 
-/**
- * An error returned when a required {@link object} property is absent.
- *
- * `ObjectMissingProperty` is reserved for absent required properties. Property
- * {@link Type | Types} must use another error tag.
- *
- * @group Objects
- */
-export interface ObjectMissingPropertyError extends TypeError<"ObjectMissingProperty"> {}
-
-/**
- * An error returned when a present {@link object} property is not represented as
- * an enumerable data property.
- *
- * `ObjectPropertyAccess` is reserved for this structural failure. Property
- * {@link Type | Types} must use another error tag.
- *
- * @group Objects
- */
-export interface ObjectPropertyAccessError extends TypeError<"ObjectPropertyAccess"> {
-  readonly reason: "Accessor" | "NonEnumerable";
-}
-
-/**
- * An error returned when an {@link object} input is not an object.
- *
- * @group Objects
- */
-export interface ObjectNotObjectError extends TypeError<"Object"> {
-  readonly reason: {
-    readonly kind: "NotObject";
-    readonly value: unknown;
-  };
-}
-
-/**
- * An error returned when an {@link object} input falls outside its supported
- * plain-object prototype boundary.
- *
- * Object Types use the realm-neutral structural heuristic described by
- * {@link isPlainObject}. Values that do not satisfy it return this error instead
- * of having their prototype or inherited state discarded. `reason.value` is the
- * rejected object.
- *
- * @group Objects
- */
-export interface ObjectUnexpectedPrototypeError extends TypeError<"Object"> {
-  readonly reason: {
-    readonly kind: "UnexpectedPrototype";
-    readonly value: object;
-  };
-}
-
-/**
- * An error returned for an input property outside an Object Type's allowed key
- * domain.
- *
- * This includes a property not declared by an {@link object} schema and a symbol
- * property on the predefined {@link Object}. The property key locates this error
- * in the containing Object error map. `ObjectExcessProperty` is reserved for
- * this structural failure. Property {@link Type | Types} must use another error
- * tag.
- *
- * @group Objects
- */
-export interface ObjectExcessPropertyError extends TypeError<"ObjectExcessProperty"> {}
-
-/**
- * An error returned while validating an {@link object} and its properties.
- *
- * Declare required properties as required keys and optional properties as
- * optional keys. Object adds its structural property errors automatically, so
- * each value is only the error returned by that property's Type. The interface
- * can be extended by recursive error declarations.
- *
- * @group Objects
- */
-export interface ObjectError<
-  Errors extends {
-    readonly [Key in keyof Errors]: TypeError | undefined;
-  } = Readonly<Record<string, TypeError>>,
-  RestError extends TypeError = ObjectExcessPropertyError,
-> extends TypeError<"Object"> {
-  readonly reason:
-    | ObjectNotObjectError["reason"]
-    | ObjectUnexpectedPrototypeError["reason"]
-    | ObjectPropertiesError<
-        ObjectStructuralPropertyErrors<Errors>,
-        RestError
-      >["reason"];
-}
-
-/**
- * An error returned while validating the properties of an {@link object}.
- *
- * @group Objects
- */
-export interface ObjectPropertiesError<
-  Errors extends {
-    readonly [Key in keyof Errors]: TypeError | undefined;
-  },
-  RestError extends TypeError = never,
-> extends TypeError<"Object"> {
-  readonly reason: {
-    readonly kind: "Properties";
-    readonly errors: Partial<Errors> &
-      ([RestError] extends [never]
-        ? unknown
-        : ObjectUnknownPropertyErrors<
-            Exclude<Errors[keyof Errors], undefined>,
-            RestError
-          >);
-  };
-}
-
 // Object factories already know their structural property errors. Keeping that
 // expanded map private avoids remapping it through the public ObjectError.
 // Changes are measured by `pnpm bench:type`.
@@ -13643,6 +13643,25 @@ const createRecordPropertyError = <Error extends TypeError>(
 });
 
 /**
+ * Maps every required object property Type to an optional property.
+ *
+ * @group Objects
+ */
+export type PartialObjectProps<Props extends ObjectProps> = {
+  readonly [Key in keyof Props]: Props[Key] extends WithDefaultProperty<
+    infer T,
+    infer Value,
+    infer Strategy
+  >
+    ? OptionalProperty<WithDefaultType<T, Value, Strategy>>
+    : Props[Key] extends OptionalProperty<TypeNode>
+      ? Props[Key]
+      : Props[Key] extends TypeNode
+        ? OptionalProperty<Props[Key]>
+        : never;
+};
+
+/**
  * Object {@link Type} with every property optional.
  *
  * No property is required, but every present property must still satisfy its
@@ -13694,22 +13713,19 @@ export const partial = <const Props extends ObjectProps>(
 };
 
 /**
- * Maps every required object property Type to an optional property.
+ * Maps object properties whose Union Type includes {@link Null} to optional
+ * properties.
  *
  * @group Objects
  */
-export type PartialObjectProps<Props extends ObjectProps> = {
-  readonly [Key in keyof Props]: Props[Key] extends WithDefaultProperty<
-    infer T,
-    infer Value,
-    infer Strategy
-  >
-    ? OptionalProperty<WithDefaultType<T, Value, Strategy>>
-    : Props[Key] extends OptionalProperty<TypeNode>
-      ? Props[Key]
-      : Props[Key] extends TypeNode
+export type NullableToOptionalProps<Props extends ObjectProps> = {
+  readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<TypeNode>
+    ? Props[Key]
+    : Props[Key] extends UnionType<infer Members>
+      ? typeof Null extends Members[number]
         ? OptionalProperty<Props[Key]>
-        : never;
+        : Props[Key]
+      : Props[Key];
 };
 
 /**
@@ -13776,22 +13792,6 @@ export const nullableToOptional = <const Props extends ObjectProps>(
   return createObjectType(optionalProps) as unknown as ObjectType<
     NullableToOptionalProps<Props>
   >;
-};
-
-/**
- * Maps object properties whose Union Type includes {@link Null} to optional
- * properties.
- *
- * @group Objects
- */
-export type NullableToOptionalProps<Props extends ObjectProps> = {
-  readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<TypeNode>
-    ? Props[Key]
-    : Props[Key] extends UnionType<infer Members>
-      ? typeof Null extends Members[number]
-        ? OptionalProperty<Props[Key]>
-        : Props[Key]
-      : Props[Key];
 };
 
 /**
@@ -13884,6 +13884,27 @@ export interface ObjectKeysType<
   readonly key: Key;
   readonly output: T;
   readonly [reflectedTypesSymbol]?: Key | T;
+}
+
+/**
+ * An error from the externally named object decoded by {@link objectKeys}.
+ *
+ * @group Objects
+ */
+export interface ObjectKeysError<
+  T extends TypeNode & { readonly props: ObjectProps },
+>
+  extends TypeError<"ObjectKeys">, TransparentTypeError {
+  readonly error: ObjectError<
+    Readonly<
+      Record<
+        string,
+        | T["props"][keyof T["props"]][typeof errorsSymbol]
+        | ObjectMissingPropertyError
+        | ObjectExcessPropertyError
+      >
+    >
+  >;
 }
 
 /**
@@ -14034,27 +14055,6 @@ export const objectKeys =
   };
 
 /**
- * An error from the externally named object decoded by {@link objectKeys}.
- *
- * @group Objects
- */
-export interface ObjectKeysError<
-  T extends TypeNode & { readonly props: ObjectProps },
->
-  extends TypeError<"ObjectKeys">, TransparentTypeError {
-  readonly error: ObjectError<
-    Readonly<
-      Record<
-        string,
-        | T["props"][keyof T["props"]][typeof errorsSymbol]
-        | ObjectMissingPropertyError
-        | ObjectExcessPropertyError
-      >
-    >
-  >;
-}
-
-/**
  * Creates a {@link Type} for {@link Result} values.
  *
  * Use this to validate Results crossing a storage, worker, API, or other
@@ -14138,6 +14138,106 @@ export function result(okType: TypeNode, errorType: TypeNode): TypeNode {
  */
 export const UnknownResult = /*#__PURE__*/ result(Unknown, Unknown);
 export type UnknownResult = typeof UnknownResult.Output;
+
+/**
+ * The {@link ObjectType} returned by {@link typed}.
+ *
+ * @group Discriminated unions
+ */
+export type TypedType<
+  Tag extends TypeName,
+  Props extends ObjectProps = Readonly<Record<never, never>>,
+  Rest extends ObjectRecordTypeNode | undefined = undefined,
+> = ObjectType<TypedProps<Tag, Props>, Rest>;
+
+/**
+ * A TypeScript interface with a literal `type` property.
+ *
+ * Use `Typed` for both domain objects in discriminated unions and plain domain
+ * errors returned by {@link Result}. Name a domain error interface `XError`.
+ * When `X` already describes a failure, use `X` for its `type` discriminant
+ * because `Error` describes the interface's role rather than the runtime error
+ * kind. Keep `Error` when it is needed to make the discriminant unambiguous,
+ * such as `TimeoutError`.
+ *
+ * Typed unions model mutually exclusive states as separate variants instead of
+ * combinations of flags and optional properties. TypeScript narrows a union by
+ * its literal `type` property. To enforce exhaustive handling, return from
+ * every case of a value-producing switch or assert that the remaining value is
+ * `never` in the `default` case of a side-effecting switch.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Typed,
+ * } from "@evolu/common";
+ *
+ * interface User extends Typed<"User"> {
+ *   readonly id: string;
+ * }
+ *
+ * interface UserNotFoundError extends Typed<"UserNotFound"> {
+ *   readonly id: string;
+ * }
+ *
+ * const getUser = (id: string): Result<User, UserNotFoundError> =>
+ *   id === "user-1"
+ *     ? ok({ type: "User", id })
+ *     : err({ type: "UserNotFound", id });
+ *
+ * assertOk(getUser("user-1"), { type: "User", id: "user-1" });
+ * assertErr(getUser("missing"), { type: "UserNotFound", id: "missing" });
+ * ```
+ *
+ * @group Discriminated unions
+ */
+export interface Typed<Tag extends TypeName> {
+  readonly type: Tag;
+}
+
+/**
+ * Extracts members of a {@link Typed} Output union by their `type` literal.
+ *
+ * The requested tag is constrained to the union's actual discriminator values,
+ * so a misspelling is a TypeScript error instead of silently producing
+ * `never`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertType,
+ *   String,
+ *   discriminatedUnion,
+ *   typed,
+ *   type ExtractTyped,
+ * } from "@evolu/common";
+ *
+ * const Create = typed("Create", { id: String });
+ * const Delete = typed("Delete", { id: String });
+ * const Message = discriminatedUnion(Create, Delete);
+ * type Message = typeof Message.Output;
+ *
+ * type CreateMessage = ExtractTyped<Message, "Create">;
+ *
+ * assertType<CreateMessage, typeof Create.Output>();
+ *
+ * // @ts-expect-error "Cretae" is not a Message type.
+ * type _Typo = ExtractTyped<Message, "Cretae">;
+ * ```
+ *
+ * @group Discriminated unions
+ */
+export type ExtractTyped<
+  Output extends Typed<TypeName>,
+  Name extends Output["type"],
+> = Extract<Output, { readonly type: Name }>;
 
 /**
  * Creates an {@link ObjectType} with a literal `type` property.
@@ -14284,106 +14384,6 @@ export function typed(
   );
 }
 
-/**
- * A TypeScript interface with a literal `type` property.
- *
- * Use `Typed` for both domain objects in discriminated unions and plain domain
- * errors returned by {@link Result}. Name a domain error interface `XError`.
- * When `X` already describes a failure, use `X` for its `type` discriminant
- * because `Error` describes the interface's role rather than the runtime error
- * kind. Keep `Error` when it is needed to make the discriminant unambiguous,
- * such as `TimeoutError`.
- *
- * Typed unions model mutually exclusive states as separate variants instead of
- * combinations of flags and optional properties. TypeScript narrows a union by
- * its literal `type` property. To enforce exhaustive handling, return from
- * every case of a value-producing switch or assert that the remaining value is
- * `never` in the `default` case of a side-effecting switch.
- *
- * ### Example
- *
- * ```ts
- * import {
- *   assertErr,
- *   assertOk,
- *   err,
- *   ok,
- *   type Result,
- *   type Typed,
- * } from "@evolu/common";
- *
- * interface User extends Typed<"User"> {
- *   readonly id: string;
- * }
- *
- * const getUser = (id: string): Result<User, UserNotFoundError> =>
- *   id === "user-1"
- *     ? ok({ type: "User", id })
- *     : err({ type: "UserNotFound", id });
- *
- * interface UserNotFoundError extends Typed<"UserNotFound"> {
- *   readonly id: string;
- * }
- *
- * assertOk(getUser("user-1"), { type: "User", id: "user-1" });
- * assertErr(getUser("missing"), { type: "UserNotFound", id: "missing" });
- * ```
- *
- * @group Discriminated unions
- */
-export interface Typed<Tag extends TypeName> {
-  readonly type: Tag;
-}
-
-/**
- * Extracts members of a {@link Typed} Output union by their `type` literal.
- *
- * The requested tag is constrained to the union's actual discriminator values,
- * so a misspelling is a TypeScript error instead of silently producing
- * `never`.
- *
- * ### Example
- *
- * ```ts
- * import {
- *   assertType,
- *   String,
- *   discriminatedUnion,
- *   typed,
- *   type ExtractTyped,
- * } from "@evolu/common";
- *
- * const Create = typed("Create", { id: String });
- * const Delete = typed("Delete", { id: String });
- * const Message = discriminatedUnion(Create, Delete);
- * type Message = typeof Message.Output;
- *
- * type CreateMessage = ExtractTyped<Message, "Create">;
- *
- * assertType<CreateMessage, typeof Create.Output>();
- *
- * // @ts-expect-error "Cretae" is not a Message type.
- * type _Typo = ExtractTyped<Message, "Cretae">;
- * ```
- *
- * @group Discriminated unions
- */
-export type ExtractTyped<
-  Output extends Typed<TypeName>,
-  Name extends Output["type"],
-> = Extract<Output, { readonly type: Name }>;
-
-/**
- * The {@link ObjectType} returned by {@link typed}.
- *
- * @group Discriminated unions
- */
-export type TypedType<
-  Tag extends TypeName,
-  Props extends ObjectProps = Readonly<Record<never, never>>,
-  Rest extends ObjectRecordTypeNode | undefined = undefined,
-> = ObjectType<TypedProps<Tag, Props>, Rest>;
-
 type TypedProps<Tag extends TypeName, Props extends ObjectProps> = {
   readonly type: LiteralType<Tag>;
 } & Props;
@@ -14513,6 +14513,138 @@ export const UnknownNextResult = /*#__PURE__*/ nextResult(
   Unknown,
 );
 export type UnknownNextResult = typeof UnknownNextResult.Output;
+
+/**
+ * The routed {@link Type} returned by {@link discriminatedUnion}.
+ *
+ * @group Discriminated unions
+ */
+export interface DiscriminatedUnionType<
+  Key extends string,
+  Members extends DiscriminatedUnionMembers,
+> extends Type<
+  "DiscriminatedUnion",
+  DiscriminatedUnionInput<Key, Members>,
+  Members[number]["Output"],
+  DiscriminatedUnionNodeError<Key, Members>,
+  DiscriminatedUnionInputType<
+    DiscriminatedUnionInput<Key, Members>,
+    DiscriminatedUnionParentError<Key, Members>
+  >,
+  DiscriminatedUnionCompleteError<Key, Members>,
+  never,
+  CanonicalInputSubset<
+    DiscriminatedUnionInput<Key, Members>,
+    CanonicalInputOf<Members[number]>
+  >,
+  AllTypesUseIdentityEncoding<Members[number]>
+> {
+  readonly [reflectedTypesSymbol]?: Members[number];
+  readonly key: Key;
+  readonly members: Members;
+}
+
+/**
+ * A root {@link Type} validating Inputs accepted by {@link discriminatedUnion}.
+ *
+ * @group Discriminated unions
+ */
+export type DiscriminatedUnionInputType<Input, Error extends TypeError> = Type<
+  "DiscriminatedUnion",
+  Input,
+  Input,
+  Error,
+  null,
+  Error,
+  never,
+  Input
+>;
+
+/**
+ * An error returned while selecting a member in {@link discriminatedUnion}.
+ *
+ * @group Discriminated unions
+ */
+export type DiscriminatedUnionError<
+  Key extends string = string,
+  Expected extends Literal = Literal,
+  MemberIssue extends DiscriminatedUnionMemberIssue =
+    DiscriminatedUnionMemberIssue<Expected>,
+> =
+  | DiscriminatedUnionObjectError
+  | DiscriminatedUnionPropertyAccessError<Key>
+  | DiscriminatedUnionDiscriminatorError<Key, Expected>
+  | DiscriminatedUnionMemberError<MemberIssue>;
+
+/**
+ * An error returned when a value cannot be routed through {@link Object}.
+ *
+ * @group Discriminated unions
+ */
+export interface DiscriminatedUnionObjectError extends TypeError<"DiscriminatedUnion"> {
+  readonly reason: {
+    readonly kind: "Object";
+    readonly error: ObjectNotObjectError | ObjectUnexpectedPrototypeError;
+  };
+}
+
+/**
+ * An error returned when the discriminator for {@link discriminatedUnion} is not
+ * an own enumerable data property.
+ *
+ * @group Discriminated unions
+ */
+export interface DiscriminatedUnionPropertyAccessError<
+  Key extends string = string,
+> extends TypeError<"DiscriminatedUnion"> {
+  readonly reason: {
+    readonly kind: "PropertyAccess";
+    readonly key: Key;
+    readonly reason: "Accessor" | "Inherited" | "NonEnumerable";
+  };
+}
+
+/**
+ * An error returned when no member of {@link discriminatedUnion} matches.
+ *
+ * @group Discriminated unions
+ */
+export interface DiscriminatedUnionDiscriminatorError<
+  Key extends string = string,
+  Expected extends Literal = Literal,
+> extends TypeError<"DiscriminatedUnion"> {
+  readonly reason: {
+    readonly kind: "Discriminator";
+    readonly key: Key;
+    readonly value: unknown;
+    readonly expected: ReadonlyArray<Expected>;
+  };
+}
+
+/**
+ * A selected-member issue returned by {@link discriminatedUnion}.
+ *
+ * @group Discriminated unions
+ */
+export interface DiscriminatedUnionMemberIssue<
+  Discriminator extends Literal = Literal,
+  Error extends TypeError = TypeError,
+> {
+  readonly kind: "Member";
+  readonly discriminator: Discriminator;
+  readonly error: Error;
+}
+
+/**
+ * An error returned by the member selected by {@link discriminatedUnion}.
+ *
+ * @group Discriminated unions
+ */
+export type DiscriminatedUnionMemberError<
+  Issue extends DiscriminatedUnionMemberIssue = DiscriminatedUnionMemberIssue,
+> = [Issue] extends [never]
+  ? never
+  : TypeError<"DiscriminatedUnion"> & { readonly reason: Issue };
 
 /**
  * Discriminated union {@link Type}.
@@ -14820,138 +14952,6 @@ export function discriminatedUnion(
   );
 }
 
-/**
- * The routed {@link Type} returned by {@link discriminatedUnion}.
- *
- * @group Discriminated unions
- */
-export interface DiscriminatedUnionType<
-  Key extends string,
-  Members extends DiscriminatedUnionMembers,
-> extends Type<
-  "DiscriminatedUnion",
-  DiscriminatedUnionInput<Key, Members>,
-  Members[number]["Output"],
-  DiscriminatedUnionNodeError<Key, Members>,
-  DiscriminatedUnionInputType<
-    DiscriminatedUnionInput<Key, Members>,
-    DiscriminatedUnionParentError<Key, Members>
-  >,
-  DiscriminatedUnionCompleteError<Key, Members>,
-  never,
-  CanonicalInputSubset<
-    DiscriminatedUnionInput<Key, Members>,
-    CanonicalInputOf<Members[number]>
-  >,
-  AllTypesUseIdentityEncoding<Members[number]>
-> {
-  readonly [reflectedTypesSymbol]?: Members[number];
-  readonly key: Key;
-  readonly members: Members;
-}
-
-/**
- * A root {@link Type} validating Inputs accepted by {@link discriminatedUnion}.
- *
- * @group Discriminated unions
- */
-export type DiscriminatedUnionInputType<Input, Error extends TypeError> = Type<
-  "DiscriminatedUnion",
-  Input,
-  Input,
-  Error,
-  null,
-  Error,
-  never,
-  Input
->;
-
-/**
- * An error returned while selecting a member in {@link discriminatedUnion}.
- *
- * @group Discriminated unions
- */
-export type DiscriminatedUnionError<
-  Key extends string = string,
-  Expected extends Literal = Literal,
-  MemberIssue extends DiscriminatedUnionMemberIssue =
-    DiscriminatedUnionMemberIssue<Expected>,
-> =
-  | DiscriminatedUnionObjectError
-  | DiscriminatedUnionPropertyAccessError<Key>
-  | DiscriminatedUnionDiscriminatorError<Key, Expected>
-  | DiscriminatedUnionMemberError<MemberIssue>;
-
-/**
- * An error returned when a value cannot be routed through {@link Object}.
- *
- * @group Discriminated unions
- */
-export interface DiscriminatedUnionObjectError extends TypeError<"DiscriminatedUnion"> {
-  readonly reason: {
-    readonly kind: "Object";
-    readonly error: ObjectNotObjectError | ObjectUnexpectedPrototypeError;
-  };
-}
-
-/**
- * An error returned when the discriminator for {@link discriminatedUnion} is not
- * an own enumerable data property.
- *
- * @group Discriminated unions
- */
-export interface DiscriminatedUnionPropertyAccessError<
-  Key extends string = string,
-> extends TypeError<"DiscriminatedUnion"> {
-  readonly reason: {
-    readonly kind: "PropertyAccess";
-    readonly key: Key;
-    readonly reason: "Accessor" | "Inherited" | "NonEnumerable";
-  };
-}
-
-/**
- * An error returned when no member of {@link discriminatedUnion} matches.
- *
- * @group Discriminated unions
- */
-export interface DiscriminatedUnionDiscriminatorError<
-  Key extends string = string,
-  Expected extends Literal = Literal,
-> extends TypeError<"DiscriminatedUnion"> {
-  readonly reason: {
-    readonly kind: "Discriminator";
-    readonly key: Key;
-    readonly value: unknown;
-    readonly expected: ReadonlyArray<Expected>;
-  };
-}
-
-/**
- * A selected-member issue returned by {@link discriminatedUnion}.
- *
- * @group Discriminated unions
- */
-export interface DiscriminatedUnionMemberIssue<
-  Discriminator extends Literal = Literal,
-  Error extends TypeError = TypeError,
-> {
-  readonly kind: "Member";
-  readonly discriminator: Discriminator;
-  readonly error: Error;
-}
-
-/**
- * An error returned by the member selected by {@link discriminatedUnion}.
- *
- * @group Discriminated unions
- */
-export type DiscriminatedUnionMemberError<
-  Issue extends DiscriminatedUnionMemberIssue = DiscriminatedUnionMemberIssue,
-> = [Issue] extends [never]
-  ? never
-  : TypeError<"DiscriminatedUnion"> & { readonly reason: Issue };
-
 type DiscriminatedUnionObjectType = ObjectTypeNode & ConcreteTypeNode;
 
 type DiscriminatedUnionMembers =
@@ -15166,6 +15166,50 @@ type RuntimeDiscriminatedUnionMember = RuntimeObjectTypeNode & {
 };
 
 /**
+ * A deferred {@link Type} with an explicit recursive type declaration.
+ *
+ * A Lazy Type exposes one terminal input parent before its definition is
+ * evaluated. Its `from` operation accepts its Output, while `from.parent`
+ * performs the complete conversion from Input to Output. The resolved Type's
+ * intermediate parent suffixes and constructor-specific reflection are
+ * intentionally not exposed.
+ *
+ * `FromError` describes `from.parent` failures, `InputError` describes the
+ * synthetic parent's unknown-input failures, and `Errors` describes the
+ * complete `fromUnknown` failures. Keeping those channels explicit makes a
+ * recursive declaration finite for TypeScript while preserving structured
+ * errors at every boundary.
+ *
+ * @group Recursive
+ */
+export interface LazyType<
+  // Explicit invariance prevents recursive comparisons from repeatedly
+  // expanding their structured Object errors. Changes are measured by `pnpm
+  // bench:type`.
+  in out Input,
+  in out Output,
+  in out FromError extends TypeError,
+  in out InputError extends TypeError,
+  in out Errors extends TypeError,
+  in out CanonicalInput extends Input = Input,
+  in out UsesIdentityEncoding extends boolean = true,
+> extends Type<
+  "Lazy",
+  Input,
+  Output,
+  FromError,
+  Type<"Lazy", Input, Input, InputError, null, InputError, never, Input>,
+  Errors,
+  never,
+  CanonicalInput,
+  UsesIdentityEncoding
+> {
+  readonly [lazyTypeSymbol]: true;
+  /** Formats an error returned by any Lazy Type decoding operation. */
+  readonly formatError: TypeErrorFormatter<Errors | FromError>;
+}
+
+/**
  * Creates a lazy {@link Type} for recursive definitions.
  *
  * The definition is evaluated on first use and then cached, allowing recursive
@@ -15332,50 +15376,6 @@ export function lazy(getType: Thunk<TypeNode>): TypeNode {
   return type;
 }
 
-/**
- * A deferred {@link Type} with an explicit recursive type declaration.
- *
- * A Lazy Type exposes one terminal input parent before its definition is
- * evaluated. Its `from` operation accepts its Output, while `from.parent`
- * performs the complete conversion from Input to Output. The resolved Type's
- * intermediate parent suffixes and constructor-specific reflection are
- * intentionally not exposed.
- *
- * `FromError` describes `from.parent` failures, `InputError` describes the
- * synthetic parent's unknown-input failures, and `Errors` describes the
- * complete `fromUnknown` failures. Keeping those channels explicit makes a
- * recursive declaration finite for TypeScript while preserving structured
- * errors at every boundary.
- *
- * @group Recursive
- */
-export interface LazyType<
-  // Explicit invariance prevents recursive comparisons from repeatedly
-  // expanding their structured Object errors. Changes are measured by `pnpm
-  // bench:type`.
-  in out Input,
-  in out Output,
-  in out FromError extends TypeError,
-  in out InputError extends TypeError,
-  in out Errors extends TypeError,
-  in out CanonicalInput extends Input = Input,
-  in out UsesIdentityEncoding extends boolean = true,
-> extends Type<
-  "Lazy",
-  Input,
-  Output,
-  FromError,
-  Type<"Lazy", Input, Input, InputError, null, InputError, never, Input>,
-  Errors,
-  never,
-  CanonicalInput,
-  UsesIdentityEncoding
-> {
-  readonly [lazyTypeSymbol]: true;
-  /** Formats an error returned by any Lazy Type decoding operation. */
-  readonly formatError: TypeErrorFormatter<Errors | FromError>;
-}
-
 type ValidateLazyTarget<Target extends ConcreteTypeNode> =
   IsUnion<Target> extends false ? Target : LazyTargetConcreteTypeError;
 
@@ -15419,6 +15419,22 @@ const assertLazyReferencesAreGuarded = (type: RuntimeTypeNode): void => {
     type = type.parent as RuntimeTypeNode;
   }
 };
+
+/**
+ * The root {@link Type} for Evolu {@link Data}.
+ *
+ * @group Base
+ */
+export interface DataType extends Type<
+  "Data",
+  Data,
+  Data,
+  DataError,
+  null,
+  DataError,
+  never,
+  Data
+> {}
 
 /**
  * Evolu's recursive platform-independent structured-cloneable data domain.
@@ -15476,94 +15492,17 @@ export type Data =
   | globalThis.Uint8Array;
 
 /**
- * Returns whether a TypeScript type consists only of {@link Data}.
- *
- * Unlike `Value extends Data`, this recursively checks the declared properties
- * of object types, so ordinary interfaces do not need a string index signature.
- * This is a compile-time approximation of the Data domain; representation
- * details such as prototypes and property descriptors still require the runtime
- * {@link Data} Type.
- *
- * Recursive object types are supported.
- *
- * ### Example
- *
- * ```ts
- * import { assertType, type IsData } from "@evolu/common";
- *
- * interface User {
- *   readonly name: string;
- *   readonly roles: ReadonlySet<string>;
- * }
- *
- * interface Service {
- *   readonly run: () => void;
- * }
- *
- * assertType<IsData<User>, true>();
- * assertType<IsData<Service>, false>();
- * ```
+ * An error containing one or more issues found while validating a candidate as
+ * {@link Data}.
  *
  * @group Base
  */
-export type IsData<Value> = IsDataValue<Value, readonly []>;
-
-type IsDataValue<Value, Seen extends ReadonlyArray<unknown>> =
-  IsAny<Value> extends true
-    ? false
-    : unknown extends Value
-      ? false
-      : [Value] extends [never]
-        ? true
-        : false extends (
-              Value extends unknown ? IsDataMember<Value, Seen> : never
-            )
-          ? false
-          : true;
-
-type IsAny<Value> = 0 extends 1 & Value ? true : false;
-
-type IsDataMember<Value, Seen extends ReadonlyArray<unknown>> =
-  IsSameType<Value, object> extends true
-    ? false
-    : IncludesSameType<Seen, Value> extends true
-      ? true
-      : Value extends void | null | string | number | bigint | boolean
-        ? true
-        : Value extends globalThis.Function
-          ? false
-          : Value extends globalThis.Date | globalThis.Uint8Array
-            ? true
-            : Value extends ReadonlyArray<infer Element>
-              ? IsDataValue<Element, readonly [...Seen, Value]>
-              : Value extends ReadonlySet<infer Element>
-                ? IsDataValue<Element, readonly [...Seen, Value]>
-                : Value extends ReadonlyMap<infer Key, infer MapValue>
-                  ? IsDataValue<Key | MapValue, readonly [...Seen, Value]>
-                  : Value extends object
-                    ? Extract<keyof Value, symbol> extends never
-                      ? IsDataObject<Value, readonly [...Seen, Value]>
-                      : false
-                    : false;
-
-type IsDataObject<Value extends object, Seen extends ReadonlyArray<unknown>> = [
-  keyof Value,
-] extends [never]
-  ? false
-  : false extends {
-        [Key in keyof Value]-?: IsDataValue<Value[Key], Seen>;
-      }[keyof Value]
-    ? false
-    : true;
-
-type IncludesSameType<
-  Values extends ReadonlyArray<unknown>,
-  Value,
-> = Values extends readonly [infer First, ...infer Rest]
-  ? IsSameType<First, Value> extends true
-    ? true
-    : IncludesSameType<Rest, Value>
-  : false;
+export interface DataError extends TypeError<"Data"> {
+  readonly reason: {
+    readonly kind: "Issues";
+    readonly issues: NonEmptyReadonlyArray<DataIssue>;
+  };
+}
 
 /**
  * One issue found while validating a candidate as {@link Data}.
@@ -15608,35 +15547,6 @@ export type DataIssue =
       readonly path: ReadonlyArray<PropertyKey>;
       readonly container: "Array" | "Set" | "Map";
     };
-
-/**
- * An error containing one or more issues found while validating a candidate as
- * {@link Data}.
- *
- * @group Base
- */
-export interface DataError extends TypeError<"Data"> {
-  readonly reason: {
-    readonly kind: "Issues";
-    readonly issues: NonEmptyReadonlyArray<DataIssue>;
-  };
-}
-
-/**
- * The root {@link Type} for Evolu {@link Data}.
- *
- * @group Base
- */
-export interface DataType extends Type<
-  "Data",
-  Data,
-  Data,
-  DataError,
-  null,
-  DataError,
-  never,
-  Data
-> {}
 
 interface DataPathNode {
   readonly parent: DataPathNode | null;
@@ -15973,6 +15883,112 @@ export const Data: DataType = /*#__PURE__*/ createTypeNode<DataType>(
 );
 
 /**
+ * Returns whether a TypeScript type consists only of {@link Data}.
+ *
+ * Unlike `Value extends Data`, this recursively checks the declared properties
+ * of object types, so ordinary interfaces do not need a string index signature.
+ * This is a compile-time approximation of the Data domain; representation
+ * details such as prototypes and property descriptors still require the runtime
+ * {@link Data} Type.
+ *
+ * Recursive object types are supported.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertType, type IsData } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly name: string;
+ *   readonly roles: ReadonlySet<string>;
+ * }
+ *
+ * interface Service {
+ *   readonly run: () => void;
+ * }
+ *
+ * assertType<IsData<User>, true>();
+ * assertType<IsData<Service>, false>();
+ * ```
+ *
+ * @group Base
+ */
+export type IsData<Value> = IsDataValue<Value, readonly []>;
+
+type IsDataValue<Value, Seen extends ReadonlyArray<unknown>> =
+  IsAny<Value> extends true
+    ? false
+    : unknown extends Value
+      ? false
+      : [Value] extends [never]
+        ? true
+        : false extends (
+              Value extends unknown ? IsDataMember<Value, Seen> : never
+            )
+          ? false
+          : true;
+
+type IsAny<Value> = 0 extends 1 & Value ? true : false;
+
+type IsDataMember<Value, Seen extends ReadonlyArray<unknown>> =
+  IsSameType<Value, object> extends true
+    ? false
+    : IncludesSameType<Seen, Value> extends true
+      ? true
+      : Value extends void | null | string | number | bigint | boolean
+        ? true
+        : Value extends globalThis.Function
+          ? false
+          : Value extends globalThis.Date | globalThis.Uint8Array
+            ? true
+            : Value extends ReadonlyArray<infer Element>
+              ? IsDataValue<Element, readonly [...Seen, Value]>
+              : Value extends ReadonlySet<infer Element>
+                ? IsDataValue<Element, readonly [...Seen, Value]>
+                : Value extends ReadonlyMap<infer Key, infer MapValue>
+                  ? IsDataValue<Key | MapValue, readonly [...Seen, Value]>
+                  : Value extends object
+                    ? Extract<keyof Value, symbol> extends never
+                      ? IsDataObject<Value, readonly [...Seen, Value]>
+                      : false
+                    : false;
+
+type IsDataObject<Value extends object, Seen extends ReadonlyArray<unknown>> = [
+  keyof Value,
+] extends [never]
+  ? false
+  : false extends {
+        [Key in keyof Value]-?: IsDataValue<Value[Key], Seen>;
+      }[keyof Value]
+    ? false
+    : true;
+
+type IncludesSameType<
+  Values extends ReadonlyArray<unknown>,
+  Value,
+> = Values extends readonly [infer First, ...infer Rest]
+  ? IsSameType<First, Value> extends true
+    ? true
+    : IncludesSameType<Rest, Value>
+  : false;
+
+/**
+ * The exact root {@link Type} of in-memory JSON data values.
+ *
+ * @group JSON
+ */
+export interface JsonValueType extends Type<
+  "JsonValue",
+  JsonValue,
+  JsonValue,
+  JsonValueError,
+  null,
+  JsonValueError,
+  never,
+  JsonValue
+> {}
+
+/**
  * A candidate JSON value before exact runtime validation.
  *
  * Unlike {@link JsonValue}, numbers are not yet proven finite and TypeScript
@@ -16027,6 +16043,19 @@ export interface JsonObject {
 }
 
 /**
+ * An error containing one or more issues found while validating a candidate as
+ * an exact {@link JsonValue}.
+ *
+ * @group JSON
+ */
+export interface JsonValueError extends TypeError<"JsonValue"> {
+  readonly reason: {
+    readonly kind: "Issues";
+    readonly issues: NonEmptyReadonlyArray<JsonValueIssue>;
+  };
+}
+
+/**
  * One issue found while validating a candidate as an exact {@link JsonValue}.
  *
  * @group JSON
@@ -16073,55 +16102,6 @@ export type JsonValueIssue =
       readonly path: ReadonlyArray<string | number | symbol>;
       readonly ancestorPath: ReadonlyArray<string | number | symbol>;
     };
-
-/**
- * An error containing one or more issues found while validating a candidate as
- * an exact {@link JsonValue}.
- *
- * @group JSON
- */
-export interface JsonValueError extends TypeError<"JsonValue"> {
-  readonly reason: {
-    readonly kind: "Issues";
-    readonly issues: NonEmptyReadonlyArray<JsonValueIssue>;
-  };
-}
-
-/**
- * The exact root {@link Type} of in-memory JSON data values.
- *
- * @group JSON
- */
-export interface JsonValueType extends Type<
-  "JsonValue",
-  JsonValue,
-  JsonValue,
-  JsonValueError,
-  null,
-  JsonValueError,
-  never,
-  JsonValue
-> {}
-
-/**
- * The exact top-level JSON object {@link Type}.
- *
- * @group JSON
- */
-export interface JsonObjectType extends Type<
-  "Record",
-  JsonObject,
-  JsonObject,
-  RecordError<TypeOfError<"String">, JsonValueError, never>,
-  null,
-  RecordError<TypeOfError<"String">, JsonValueError, never>,
-  never,
-  JsonObject
-> {
-  readonly [reflectedTypesSymbol]?: typeof String | JsonValueType;
-  readonly key: typeof String;
-  readonly value: JsonValueType;
-}
 
 /**
  * An error returned when a string does not contain valid JSON text.
@@ -16570,6 +16550,26 @@ export const JsonValue: JsonValueType =
  * @group JSON
  */
 export const JsonArray = /*#__PURE__*/ array(JsonValue);
+
+/**
+ * The exact top-level JSON object {@link Type}.
+ *
+ * @group JSON
+ */
+export interface JsonObjectType extends Type<
+  "Record",
+  JsonObject,
+  JsonObject,
+  RecordError<TypeOfError<"String">, JsonValueError, never>,
+  null,
+  RecordError<TypeOfError<"String">, JsonValueError, never>,
+  never,
+  JsonObject
+> {
+  readonly [reflectedTypesSymbol]?: typeof String | JsonValueType;
+  readonly key: typeof String;
+  readonly value: JsonValueType;
+}
 
 /**
  * Exact top-level JSON object {@link Type}.
