@@ -2,12 +2,14 @@
 
 ARG NODE_VERSION=24
 
+# droast ignore=DF011 reason="The published Relay package needs the Node runtime; no separate compilation stage is needed."
 FROM node:${NODE_VERSION}-alpine
 
 # The published @evolu/relay version, or a packed tarball path relative to the
 # build context for verifying unpublished changes (see CONTRIBUTING.md).
 ARG RELAY_PACKAGE=@evolu/relay@latest
 
+# droast ignore=DF008,DF031 reason="cd scopes installation to the temporary context mount; release CI supplies an exact package version, while manual builds default to latest."
 RUN --mount=type=bind,target=/context,readonly \
     cd /context && \
     npm install --global "${RELAY_PACKAGE}" && \

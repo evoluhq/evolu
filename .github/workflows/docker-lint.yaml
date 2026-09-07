@@ -1,0 +1,36 @@
+name: Dockerfile lint
+
+on:
+  pull_request:
+    paths:
+      - apps/relay/Dockerfile
+      - apps/relay/.dockerignore
+      - .github/workflows/docker-lint.yaml
+  push:
+    branches: [main]
+    paths:
+      - apps/relay/Dockerfile
+      - apps/relay/.dockerignore
+      - .github/workflows/docker-lint.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Lint Relay Dockerfile
+        # Follow latest so new rules are reviewed when they produce findings.
+        run: |
+          docker run --rm --pull always --network none \
+            -v "$PWD/apps/relay/Dockerfile:/workspace/apps/relay/Dockerfile:ro" \
+            -v "$PWD/apps/relay/.dockerignore:/workspace/apps/relay/.dockerignore:ro" \
+            -w /workspace \
+            ghcr.io/immanuwell/droast:latest \
+            --no-roast --format github --fail-on warning apps/relay/Dockerfile
