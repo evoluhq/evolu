@@ -851,11 +851,10 @@ test("assertEqual", () => {
 test("assertEqualBytes", () => {
   assertEqualBytes(new Uint8Array([1, 5, 39, 254]), [1, 5, 39, 254]);
 
-  const compileTimeAssertions = () => {
+  void (() => {
     // @ts-expect-error assertEqualBytes actual value must be a Uint8Array.
     assertEqualBytes([1, 5, 39, 254], [1, 5, 39, 254]);
-  };
-  assertEqual(typeof compileTimeAssertions, "function");
+  });
 
   const actual = new Uint8Array([0]);
   const expected = [1];
@@ -923,7 +922,6 @@ describe("assertOk and assertErr", () => {
     assertOk(result);
 
     assertType<typeof result, Ok<Service>>();
-    nodeAssert.equal(typeof result.value.run, "function");
   });
 
   it("asserts and narrows an Ok with a deeply equal value", () => {
@@ -1092,7 +1090,6 @@ describe("assertOk and assertErr", () => {
     assertErr(result);
 
     assertType<typeof result, Err<ServiceError>>();
-    nodeAssert.equal(typeof result.error.retry, "function");
   });
 
   it("compares an explicitly provided undefined error", () => {

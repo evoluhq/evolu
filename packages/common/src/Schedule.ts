@@ -94,18 +94,10 @@ import type { Predicate } from "./Types.ts";
  * Or use a preset:
  *
  * ```ts
- * import {
- *   assertTrue,
- *   ok,
- *   retry,
- *   retryStrategyAws,
- *   type Task,
- * } from "@evolu/common";
+ * import { ok, retry, retryStrategyAws, type Task } from "@evolu/common";
  *
  * const fetchData: Task<string> = () => ok("data");
- * const fetchWithRetry = retry(fetchData, retryStrategyAws);
- *
- * assertTrue(typeof fetchWithRetry === "function");
+ * const _fetchWithRetry = retry(fetchData, retryStrategyAws);
  * ```
  */
 export type Schedule<out Output, in Input = unknown> = (

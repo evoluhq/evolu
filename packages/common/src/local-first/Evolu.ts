@@ -237,7 +237,6 @@ export interface EvoluConfig {
    * ```ts
    * import {
    *   AppName,
-   *   assertTrue,
    *   createAppOwner,
    *   createEvolu,
    *   createOwnerSecret,
@@ -254,7 +253,7 @@ export interface EvoluConfig {
    *   createOwnerSecret({ randomBytes: createRandomBytes() }),
    * );
    *
-   * const createTodoEvolu = createEvolu(Schema, {
+   * const _createTodoEvolu = createEvolu(Schema, {
    *   appName: AppName.orThrow("IndexedTodos"),
    *   appOwner,
    *   transports: [],
@@ -265,8 +264,6 @@ export interface EvoluConfig {
    *       .column("createdAt"),
    *   ],
    * });
-   *
-   * assertTrue(typeof createTodoEvolu === "function");
    * ```
    */
   readonly indexes?: IndexesConfig;

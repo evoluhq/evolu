@@ -293,13 +293,12 @@ test("eqData", () => {
   }
   const service: Service = { run: () => undefined };
   const broadObject: NonNullable<unknown> = new WeakMap();
-  const compileTimeAssertions = () => {
+  void (() => {
     // @ts-expect-error ⛔ eqData error: Actual and expected values must consist only of Data.
     eqData(service, service);
     // @ts-expect-error ⛔ eqData error: Actual and expected values must consist only of Data.
     eqData(broadObject, broadObject);
-  };
-  assertEqual(typeof compileTimeAssertions, "function");
+  });
 });
 
 test("eqData compares deeply nested Set and Map data", () => {

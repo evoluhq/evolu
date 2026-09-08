@@ -447,7 +447,6 @@ export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
  * import {
  *   AppName,
  *   assertEqual,
- *   assertTrue,
  *   createAppOwner,
  *   createEvolu,
  *   createOwnerWebSocketTransport,
@@ -464,7 +463,7 @@ export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
  *   url: "wss://relay.evolu.dev",
  *   ownerId: appOwner.id,
  * });
- * const createTodoEvolu = createEvolu(
+ * const _createTodoEvolu = createEvolu(
  *   { todo: { id: id("Todo") } },
  *   {
  *     appName: AppName.orThrow("OwnerTransportExample"),
@@ -473,7 +472,6 @@ export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
  *   },
  * );
  *
- * assertTrue(typeof createTodoEvolu === "function");
  * assertEqual(transport, {
  *   type: "WebSocket",
  *   url: `wss://relay.evolu.dev?ownerId=${appOwner.id}`,

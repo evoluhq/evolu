@@ -458,7 +458,6 @@ export const createConsole = ({
  *
  * ```ts
  * import {
- *   assertEqual,
  *   assertType,
  *   createNativeConsoleOutput,
  *   type ConsoleOutput,
@@ -467,7 +466,6 @@ export const createConsole = ({
  * const output = createNativeConsoleOutput();
  *
  * assertType<typeof output, ConsoleOutput>();
- * assertEqual(typeof output.write, "function");
  * ```
  */
 export const createNativeConsoleOutput = (): ConsoleOutput => ({
