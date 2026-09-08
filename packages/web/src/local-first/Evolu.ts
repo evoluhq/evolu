@@ -17,12 +17,6 @@ import {
   installOneTabSharedWorkerPolyfill,
 } from "../Worker.ts";
 
-// // TODO: Redesign.
-// export const localAuth = createLocalAuth({
-//   randomBytes: createRandomBytes(),
-//   secureStorage: createWebAuthnStore({ randomBytes: createRandomBytes() }),
-// });
-
 export interface SharedWorkerUnsupported {
   readonly type: "SharedWorkerUnsupported";
 }

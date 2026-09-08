@@ -86,17 +86,32 @@ import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
 import { DbChange } from "./Storage.ts";
 import type { Timestamp } from "./Timestamp.ts";
 
+/**
+ * Configuration for {@link createEvolu}.
+ *
+ * @group Configuration
+ */
 export interface EvoluConfig {
   /**
-   * The app name. Evolu is multitenant - it can run multiple instances
-   * concurrently. The same app can have multiple instances for different
-   * accounts.
+   * An application name used in logs and local database names.
    *
-   * Evolu derives the final instance name from `appName` and `appOwner` in
-   * {@link EvoluConfig}. The derived instance name is used as the SQLite
-   * database filename and as the log prefix. This ensures that each
-   * {@link Owner} gets a separate local database while preserving a readable app
-   * prefix.
+   * Evolu combines `appName` with the {@link AppOwner} identity to identify the
+   * local database. Changing either opens a different database. Keep `appName`
+   * stable across ordinary application updates.
+   *
+   * Instances that share an `appName` and AppOwner open the same database and
+   * must use the same schema. Evolu applies the schema of the first instance
+   * and later instances join it.
+   *
+   * A different app name lets you create a separate local replica for the same
+   * AppOwner—for example, to test a different SQLite implementation or index
+   * configuration, or rebuild a replica for debugging while preserving the
+   * existing database.
+   *
+   * Evolu supports running these databases concurrently. Their local separation
+   * does not isolate synchronization: replicas synchronizing the same owners
+   * through the same relay can still exchange changes. Changing `appName`
+   * neither migrates existing local data nor isolates incompatible schemas.
    *
    * ### Example
    *
@@ -131,6 +146,73 @@ export interface EvoluConfig {
    *   flow).
    */
   readonly appOwner: AppOwner;
+
+  /**
+   * Keep the database in memory instead of persisting it on this device.
+   *
+   * This option controls device persistence independently of synchronization.
+   * When synchronization is enabled, data can still be synchronized and
+   * persisted remotely.
+   *
+   * Useful for testing or temporary sessions. Data that exists only in this
+   * database is lost when the database closes.
+   *
+   * The default value is: `false`.
+   */
+  readonly memoryOnly?: boolean;
+
+  /**
+   * Use the `indexes` option to define SQLite indexes.
+   *
+   * Table and column names are not typed because Kysely doesn't support it.
+   *
+   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
+   *
+   * ### Example
+   *
+   * ```ts
+   * import {
+   *   createEvolu,
+   *   id,
+   *   testAppName,
+   *   testAppOwner,
+   * } from "@evolu/common";
+   *
+   * const Schema = {
+   *   todo: { id: id("Todo") },
+   *   todoCategory: { id: id("TodoCategory") },
+   * };
+   *
+   * const _createTodoEvolu = createEvolu(Schema, {
+   *   appName: testAppName,
+   *   appOwner: testAppOwner,
+   *   transports: [],
+   *   indexes: (create) => [
+   *     create("todoCreatedAt").on("todo").column("createdAt"),
+   *     create("todoCategoryCreatedAt")
+   *       .on("todoCategory")
+   *       .column("createdAt"),
+   *   ],
+   * });
+   * ```
+   */
+  readonly indexes?: IndexesConfig;
+
+  /**
+   * Called when this instance's local database is deleted.
+   *
+   * Apps can use this to update UI immediately because the corresponding
+   * {@link Evolu} instance becomes unusable after local database deletion.
+   */
+  readonly onDatabaseDeleted?: () => void;
+
+  /**
+   * Called when local data for an {@link Owner} is deleted.
+   *
+   * Apps can use this to update UI immediately because that owner stops being
+   * used across tabs and instances.
+   */
+  readonly onOwnerDeleted?: (owner: Owner) => void;
 
   /**
    * Transport configuration for sync and backup.
@@ -205,71 +287,6 @@ export interface EvoluConfig {
    * ```
    */
   readonly transports?: ReadonlyArray<OwnerTransport>;
-
-  /**
-   * Keep local data only in memory instead of persisting it on this device.
-   * Useful for testing, temporary data, or sensitive data that should not be
-   * recoverable from local storage after the process ends.
-   *
-   * Local data stored in memory is completely destroyed when the process ends.
-   * Sync can still persist data remotely when transports are enabled.
-   *
-   * The default value is: `false`.
-   */
-  readonly memoryOnly?: boolean;
-
-  /**
-   * Use the `indexes` option to define SQLite indexes.
-   *
-   * Table and column names are not typed because Kysely doesn't support it.
-   *
-   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
-   *
-   * ### Example
-   *
-   * ```ts
-   * import {
-   *   createEvolu,
-   *   id,
-   *   testAppName,
-   *   testAppOwner,
-   * } from "@evolu/common";
-   *
-   * const Schema = {
-   *   todo: { id: id("Todo") },
-   *   todoCategory: { id: id("TodoCategory") },
-   * };
-   *
-   * const _createTodoEvolu = createEvolu(Schema, {
-   *   appName: testAppName,
-   *   appOwner: testAppOwner,
-   *   transports: [],
-   *   indexes: (create) => [
-   *     create("todoCreatedAt").on("todo").column("createdAt"),
-   *     create("todoCategoryCreatedAt")
-   *       .on("todoCategory")
-   *       .column("createdAt"),
-   *   ],
-   * });
-   * ```
-   */
-  readonly indexes?: IndexesConfig;
-
-  /**
-   * Called when this instance's local database is deleted.
-   *
-   * Apps can use this to update UI immediately because the corresponding
-   * {@link Evolu} instance becomes unusable after local database deletion.
-   */
-  readonly onDatabaseDeleted?: () => void;
-
-  /**
-   * Called when local data for an {@link Owner} is deleted.
-   *
-   * Apps can use this to update UI immediately because that owner stops being
-   * used across tabs and instances.
-   */
-  readonly onOwnerDeleted?: (owner: Owner) => void;
 }
 
 /**
@@ -281,6 +298,8 @@ export interface EvoluConfig {
  *
  * Uses the same safe alphabet as {@link UrlSafeString} (letters, digits, `-`,
  * `_`) and must be between 1 and 41 characters.
+ *
+ * @group Configuration
  */
 export const AppName = /*#__PURE__*/ brand(
   "AppName",
@@ -293,6 +312,11 @@ export const AppName = /*#__PURE__*/ brand(
     `The value ${JSON.stringify(error.value)} is not between 1 and 41 characters.`,
 );
 export type AppName = typeof AppName.Output;
+/**
+ * Error produced when a value is not a valid {@link AppName}.
+ *
+ * @group Configuration
+ */
 export interface AppNameError extends TypeError<"AppName"> {
   readonly value: UrlSafeString;
 }
@@ -305,9 +329,18 @@ export interface AppNameError extends TypeError<"AppName"> {
 export const testAppName = /*#__PURE__*/ AppName.orThrow("AppName");
 
 /**
- * Local-first SQL database with typed queries, mutations, and sync.
+ * A local-first SQL database.
  *
- * TODO: Better docs.
+ * Stores application data in SQLite on the device, so reads and writes work
+ * offline. Provides typed queries, mutations, and reactive subscriptions, with
+ * synchronization between devices. Persistent SQLite is encrypted with the
+ * {@link AppOwner} key, and synchronized data is end-to-end encrypted.
+ *
+ * Tables whose names start with `_` stay local, even when the instance
+ * synchronizes other data. Use them for device-local data such as application
+ * settings or an app-owner registry.
+ *
+ * @group Core
  */
 export interface Evolu<
   S extends EvoluSchema = EvoluSchema,
@@ -711,9 +744,18 @@ export interface Evolu<
   ) => UnuseOwner;
 }
 
-/** Function returned by {@link Evolu.useOwner} to stop using an Owner for sync. */
+/**
+ * Function returned by {@link Evolu.useOwner} to stop using an Owner for sync.
+ *
+ * @group Core
+ */
 export type UnuseOwner = () => void;
 
+/**
+ * Dependency wrapper for the shared {@link EvoluError} store.
+ *
+ * @group Construction
+ */
 export interface EvoluErrorDep {
   /**
    * {@link ReadonlyStore} of {@link EvoluError} shared by all {@link Evolu}
@@ -777,6 +819,8 @@ export interface EvoluErrorDep {
  *
  * Includes platform adapters, the shared {@link EvoluErrorDep.evoluError} store,
  * and disposal for owned resources.
+ *
+ * @group Construction
  */
 export type EvoluDeps = EvoluPlatformDeps &
   ConsoleDep &
@@ -788,6 +832,8 @@ export type EvoluDeps = EvoluPlatformDeps &
  *
  * Provides worker and channel adapters plus optional platform integrations for
  * logging and synchronous UI flush.
+ *
+ * @group Construction
  */
 export type EvoluPlatformDeps = CreateDbWorkerDep &
   CreateBroadcastChannelDep &
@@ -808,6 +854,8 @@ export type EvoluPlatformDeps = CreateDbWorkerDep &
  * store.
  *
  * Dispose it only during app shutdown.
+ *
+ * @group Construction
  */
 export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   const { createBroadcastChannel, sharedWorker } = deps;
@@ -869,6 +917,8 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
 /**
  * Creates an {@link Evolu} instance from {@link EvoluSchema} and
  * {@link EvoluConfig}.
+ *
+ * @group Construction
  */
 export const createEvolu =
   <S extends EvoluSchema>(

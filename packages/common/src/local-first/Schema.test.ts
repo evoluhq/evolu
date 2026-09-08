@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import {
   assertEqual,
+  assertErr,
   assertOk,
   assertSame,
   assertType,
@@ -15,6 +16,8 @@ import {
   testAppOwner,
   type TestEvoluSchema,
   testEvoluSchema,
+  testLocalOnlyEvoluSchema,
+  testOwnerSecret,
   TestProjectId,
   testProjectId,
   TestTodoId,
@@ -74,5 +77,49 @@ test("testEvoluSchema supports project-linked and independent todos", () => {
   assertType<
     typeof createTodos,
     Task<Evolu<TestEvoluSchema>, never, EvoluPlatformDeps>
+  >();
+});
+
+test("testLocalOnlyEvoluSchema supports keys with or without recovery material", () => {
+  assertType<
+    ValidateSchema<typeof testLocalOnlyEvoluSchema>,
+    typeof testLocalOnlyEvoluSchema
+  >();
+  const AppOwnerRow = object(testLocalOnlyEvoluSchema._appOwner);
+  const recoverableOwner = {
+    id: testAppOwner.id,
+    encryptionKey: testAppOwner.encryptionKey,
+    writeKey: testAppOwner.writeKey,
+    secret: testOwnerSecret,
+    name: "Personal",
+  };
+  assertOk(AppOwnerRow.fromUnknown(recoverableOwner), recoverableOwner);
+  const keyOnlyOwner = {
+    ...recoverableOwner,
+    secret: null,
+    name: null,
+  };
+  assertOk(AppOwnerRow.fromUnknown(keyOnlyOwner), keyOnlyOwner);
+  assertErr(
+    AppOwnerRow.fromUnknown({
+      ...keyOnlyOwner,
+      encryptionKey: new Uint8Array(1),
+    }),
+  );
+  assertErr(
+    AppOwnerRow.fromUnknown({
+      ...recoverableOwner,
+      secret: new Uint8Array(1),
+    }),
+  );
+
+  const createAccounts = createEvolu(testLocalOnlyEvoluSchema, {
+    appName: testAppName,
+    appOwner: testAppOwner,
+    transports: [],
+  });
+  assertType<
+    typeof createAccounts,
+    Task<Evolu<typeof testLocalOnlyEvoluSchema>, never, EvoluPlatformDeps>
   >();
 });

@@ -1,5 +1,6 @@
 import {
   assertEqual,
+  assertTrue,
   assertLength,
   assertNotNull,
   assertNotUndefined,
@@ -146,6 +147,88 @@ describe("Evolu integration", () => {
       [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
   };
+
+  it("local tables share reactive data across instances without sync history", async () => {
+    await using setup = await setupRunWithEvoluDeps();
+    const { run, sqlite } = setup;
+    const LocalSchema = {
+      _note: { id: id("Note"), title: NonEmptyTrimmedString100 },
+    };
+    const createLocalQuery = createQueryBuilder(LocalSchema);
+    const notesQuery = createLocalQuery((db) =>
+      db.selectFrom("_note").select(["id", "title"]),
+    );
+    const createLocal = createEvolu(LocalSchema, {
+      appName: testAppName,
+      appOwner: testAppOwner,
+      transports: [],
+    });
+    const writer = await run.ok(createLocal);
+    const reader = await run.ok(createLocal);
+    assertTrue(typeof writer.useOwner === "function");
+    assertEqual(await reader.loadQuery(notesQuery), []);
+    const observed = Promise.withResolvers<void>();
+    const unsubscribe = reader.subscribeQuery(notesQuery)(() => {
+      if (reader.getQueryRows(notesQuery).length > 0) observed.resolve();
+    });
+    const inserted = Promise.withResolvers<void>();
+    const { id: noteId } = writer.insert(
+      "_note",
+      {
+        title: NonEmptyTrimmedString100.orThrow("Local note"),
+      },
+      { onComplete: inserted.resolve },
+    );
+    await inserted.promise;
+    await observed.promise;
+    assertEqual(reader.getQueryRows(notesQuery), [
+      { id: noteId, title: "Local note" },
+    ]);
+    unsubscribe();
+
+    const updated = Promise.withResolvers<void>();
+    writer.update(
+      "_note",
+      { id: noteId, title: NonEmptyTrimmedString100.orThrow("Updated") },
+      { onComplete: updated.resolve },
+    );
+    await updated.promise;
+    assertEqual(await writer.loadQuery(notesQuery), [
+      { id: noteId, title: "Updated" },
+    ]);
+    const snapshot = getSqliteSnapshot({ sqlite });
+    assertEqual(
+      snapshot.tables.find((table) => table.name === "evolu_history")?.rows,
+      [],
+    );
+    assertEqual(
+      snapshot.tables.find((table) => table.name === "evolu_timestamp")?.rows,
+      [],
+    );
+    assertTrue((await writer.exportDatabase()).length > 0);
+
+    await writer[Symbol.asyncDispose]();
+    const reopened = await run.ok(createLocal);
+    assertEqual(await reopened.loadQuery(notesQuery), [
+      { id: noteId, title: "Updated" },
+    ]);
+    const deleted = Promise.withResolvers<void>();
+    reopened.update(
+      "_note",
+      { id: noteId, isDeleted: SqliteBoolean.orThrow(1) },
+      { onComplete: deleted.resolve },
+    );
+    await deleted.promise;
+    assertEqual(await reopened.loadQuery(notesQuery), []);
+    assertEqual(
+      getSqliteSnapshot({ sqlite }).tables.find(
+        (table) => table.name === "_note",
+      )?.rows,
+      [],
+    );
+    await reopened[Symbol.asyncDispose]();
+    await reader[Symbol.asyncDispose]();
+  });
 
   it("createEvolu", async () => {
     await using setup = await setupRunWithEvoluDeps();

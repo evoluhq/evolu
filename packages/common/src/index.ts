@@ -60,7 +60,6 @@ export type {
   EvoluDeps,
   UnuseOwner,
 } from "./local-first/Evolu.ts";
-export * from "./local-first/LocalAuth.ts";
 export * from "./local-first/Owner.ts";
 export type { SyncOwner } from "./local-first/Owner.ts";
 export {
@@ -78,6 +77,7 @@ export {
 export {
   createQueryBuilder,
   testEvoluSchema,
+  testLocalOnlyEvoluSchema,
   TestProjectId,
   testProjectId,
   TestTodoId,

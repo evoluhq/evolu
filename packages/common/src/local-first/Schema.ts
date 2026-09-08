@@ -42,7 +42,12 @@ import {
 } from "../Type.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
 import type { AppOwner } from "./Owner.ts";
-import { OwnerId } from "./Owner.ts";
+import {
+  OwnerEncryptionKey,
+  OwnerId,
+  OwnerSecret,
+  OwnerWriteKey,
+} from "./Owner.ts";
 import type {
   evoluJsonArrayFrom,
   evoluJsonObjectFrom,
@@ -52,7 +57,11 @@ import type {
 import type { CrdtMessage, DbChange } from "./Storage.ts";
 import { TimestampBytes } from "./Timestamp.ts";
 
-/** Any Standard Schema V1 declaration. */
+/**
+ * Any Standard Schema V1 declaration.
+ *
+ * @group Core
+ */
 export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
 
 /**
@@ -124,6 +133,8 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  * };
  * assertTrue(ZodSchema.todo.title.safeParse("Write docs").success);
  * ```
+ *
+ * @group Core
  */
 export type EvoluSchema = ReadonlyRecord<
   string,
@@ -131,7 +142,11 @@ export type EvoluSchema = ReadonlyRecord<
   TableSchema
 >;
 
-/** A table schema: column names mapped to Standard Schema validators. */
+/**
+ * A table schema: column names mapped to Standard Schema validators.
+ *
+ * @group Core
+ */
 export type TableSchema = ReadonlyRecord<string, AnyStandardSchemaV1>;
 
 /**
@@ -212,6 +227,33 @@ export const testEvoluSchema = {
  */
 export type TestEvoluSchema = typeof testEvoluSchema;
 
+/**
+ * App-owner registry schema with local tables for tests and examples.
+ *
+ * Stores operational keys separately from optional recovery material. A null
+ * secret represents an owner whose recovery material is managed elsewhere or
+ * unavailable. Names are optional device-local labels; identicons can be
+ * derived from the owner identity without an additional column.
+ *
+ * This fixture does not define the production registry's persistence contract.
+ *
+ * @group Testing
+ */
+export const testLocalOnlyEvoluSchema = {
+  _appOwner: {
+    id: OwnerId,
+    encryptionKey: OwnerEncryptionKey,
+    writeKey: OwnerWriteKey,
+    secret: /*#__PURE__*/ nullOr(OwnerSecret),
+    name: /*#__PURE__*/ nullOr(NonEmptyTrimmedString100),
+  },
+} as const satisfies EvoluSchema;
+
+/**
+ * Dependency wrapper for {@link SqliteSchema}.
+ *
+ * @group SQLite
+ */
 export interface SqliteSchemaDep {
   readonly sqliteSchema: SqliteSchema;
 }
@@ -228,6 +270,8 @@ export interface SqliteSchemaDep {
  * 2. The 'id' column output type must extend {@link Id}
  * 3. Tables cannot use system column names (createdAt, updatedAt, isDeleted)
  * 4. All column output types must be compatible with SQLite (extend SqliteValue)
+ *
+ * @group Validation
  */
 export type ValidateSchema<S extends EvoluSchema> =
   ValidateSchemaHasId<S> extends never
@@ -240,10 +284,20 @@ export type ValidateSchema<S extends EvoluSchema> =
       : ValidateIdColumnType<S>
     : ValidateSchemaHasId<S>;
 
+/**
+ * Defines SQLite indexes with Kysely's index builder.
+ *
+ * @group SQLite
+ */
 export type IndexesConfig = (
   create: (indexName: string) => Kysely.CreateIndexBuilder,
 ) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>;
 
+/**
+ * Typed query factory returned by {@link createQueryBuilder}.
+ *
+ * @group Queries
+ */
 export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
   queryCallback: (
     db: Pick<
@@ -285,6 +339,8 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
  * - `isDeleted`: Soft delete flag created by Evolu and used by the developer to
  *   mark rows as deleted.
  * - `ownerId`: Represents ownership and logically partitions the database.
+ *
+ * @group Core
  */
 export const SystemColumns: ObjectType<{
   readonly createdAt: typeof DateIso;
@@ -299,6 +355,11 @@ export const SystemColumns: ObjectType<{
 });
 export interface SystemColumns extends InferType<typeof SystemColumns> {}
 
+/**
+ * Kind of a {@link Mutation}: insert, update, or upsert.
+ *
+ * @group Mutations
+ */
 export type MutationKind = "insert" | "update" | "upsert";
 
 /**
@@ -320,6 +381,8 @@ export type MutationKind = "insert" | "update" | "upsert";
  *   `id` omitted (auto-generated)
  * - **update**: only `id` required, everything else optional
  * - **upsert**: like insert but `id` required too
+ *
+ * @group Mutations
  */
 export type Mutation<S extends EvoluSchema, Kind extends MutationKind> = <
   TableName extends keyof S,
@@ -329,6 +392,11 @@ export type Mutation<S extends EvoluSchema, Kind extends MutationKind> = <
   options?: MutationOptions,
 ) => { readonly id: StandardSchemaV1.InferOutput<S[TableName]["id"]> };
 
+/**
+ * Options accepted by every {@link Mutation}.
+ *
+ * @group Mutations
+ */
 export interface MutationOptions {
   /**
    * Called after the mutation is completed and the local state is updated.
@@ -398,6 +466,12 @@ export interface MutationOptions {
   readonly ownerId?: OwnerId;
 }
 
+/**
+ * Database change produced by a {@link Mutation}, attributed to the
+ * {@link OwnerId} that owns the row.
+ *
+ * @group Mutations
+ */
 export interface MutationChange extends DbChange {
   readonly ownerId: OwnerId;
 }
@@ -405,6 +479,8 @@ export interface MutationChange extends DbChange {
 /**
  * Derives the expected values type for a mutation from a table's column schemas
  * and a {@link MutationKind}.
+ *
+ * @group Mutations
  */
 export type MutationValues<
   T extends TableSchema,
@@ -420,6 +496,8 @@ export type MutationValues<
 /**
  * Insert values: `id` omitted (auto-generated), nullable columns optional,
  * non-nullable columns required.
+ *
+ * @group Mutations
  */
 export type InsertValues<T extends TableSchema> = Omit<
   NullableColumnsToOptional<T>,
@@ -429,6 +507,8 @@ export type InsertValues<T extends TableSchema> = Omit<
 /**
  * Update values: `id` required, all other columns optional. Includes
  * `isDeleted` for soft deletes.
+ *
+ * @group Mutations
  */
 export type UpdateValues<T extends TableSchema> = {
   readonly id: StandardSchemaV1.InferOutput<T["id"]>;
@@ -441,12 +521,19 @@ export type UpdateValues<T extends TableSchema> = {
 /**
  * Upsert values: `id` required, nullable columns optional, non-nullable columns
  * required. Includes `isDeleted` for soft deletes.
+ *
+ * @group Mutations
  */
 export type UpsertValues<T extends TableSchema> =
   NullableColumnsToOptional<T> & {
     readonly isDeleted?: SqliteBoolean;
   };
 
+/**
+ * Requires an `id` column in every table.
+ *
+ * @group Validation
+ */
 export type ValidateSchemaHasId<S extends EvoluSchema> =
   keyof S extends infer TableName
     ? TableName extends keyof S
@@ -456,6 +543,11 @@ export type ValidateSchemaHasId<S extends EvoluSchema> =
       : never
     : never;
 
+/**
+ * Requires every `id` column output type to extend {@link Id}.
+ *
+ * @group Validation
+ */
 export type ValidateIdColumnType<S extends EvoluSchema> =
   keyof S extends infer TableName
     ? TableName extends keyof S
@@ -467,6 +559,11 @@ export type ValidateIdColumnType<S extends EvoluSchema> =
       : never
     : never;
 
+/**
+ * Rejects tables that define system column names.
+ *
+ * @group Validation
+ */
 export type ValidateNoSystemColumns<S extends EvoluSchema> =
   keyof S extends infer TableName
     ? TableName extends keyof S
@@ -481,6 +578,11 @@ export type ValidateNoSystemColumns<S extends EvoluSchema> =
       : never
     : never;
 
+/**
+ * Requires every column output type to be compatible with SQLite.
+ *
+ * @group Validation
+ */
 export type ValidateColumnTypes<S extends EvoluSchema> =
   keyof S extends infer TableName
     ? TableName extends keyof S
@@ -495,36 +597,69 @@ export type ValidateColumnTypes<S extends EvoluSchema> =
       : never
     : never;
 
-/** Schema validation error that shows clear, readable messages */
+/**
+ * Schema validation error that shows clear, readable messages
+ *
+ * @group Validation
+ */
 export type SchemaValidationError<Message extends string> = CompileTimeError<
   "Schema",
   Message
 >;
 
-/** Makes columns whose output type includes `null` optional. */
+/**
+ * Makes columns whose output type includes `null` optional.
+ *
+ * @group Mutations
+ */
 export type NullableColumnsToOptional<T extends TableSchema> = {
   readonly [K in RequiredColumnKeys<T>]: StandardSchemaV1.InferOutput<T[K]>;
 } & {
   readonly [K in OptionalColumnKeys<T>]?: StandardSchemaV1.InferOutput<T[K]>;
 };
 
+/**
+ * Column names whose output type excludes `null`.
+ *
+ * @group Mutations
+ */
 export type RequiredColumnKeys<T extends TableSchema> = {
   [K in keyof T]: null extends StandardSchemaV1.InferOutput<T[K]> ? never : K;
 }[keyof T];
 
+/**
+ * Column names whose output type includes `null`.
+ *
+ * @group Mutations
+ */
 export type OptionalColumnKeys<T extends TableSchema> = {
   [K in keyof T]: null extends StandardSchemaV1.InferOutput<T[K]> ? K : never;
 }[keyof T];
 
+/**
+ * Names of {@link SystemColumns}.
+ *
+ * @group Core
+ */
 export const systemColumns: ReadonlySet<string> = /*#__PURE__*/ new Set(
   /*#__PURE__*/ Object.keys(SystemColumns.props),
 );
 
+/**
+ * Names of {@link SystemColumns} together with `id`.
+ *
+ * @group Core
+ */
 export const systemColumnsWithId: ReadonlyArray<string> = [
   ...systemColumns,
   "id",
 ];
 
+/**
+ * Derives {@link SqliteSchema} tables and indexes from an {@link EvoluSchema}.
+ *
+ * @group SQLite
+ */
 export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
   schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
   indexesConfig?: IndexesConfig,
@@ -582,6 +717,8 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
  *   }
  * >();
  * ```
+ *
+ * @group Queries
  */
 export const createQueryBuilder = <S extends EvoluSchema>(
   _schema: S,
@@ -601,6 +738,12 @@ export const createQueryBuilder = <S extends EvoluSchema>(
   return createQuery;
 };
 
+/**
+ * Creates missing tables, columns, and indexes, and drops indexes that the new
+ * schema no longer defines.
+ *
+ * @group SQLite
+ */
 export const ensureSqliteSchema =
   (deps: SqliteDep) =>
   (newSchema: SqliteSchema, currentSchema?: SqliteSchema): void => {
@@ -652,10 +795,24 @@ export const ensureSqliteSchema =
     }
   };
 
+/**
+ * Reads the current application {@link SqliteSchema}, excluding Evolu's internal
+ * indexes.
+ *
+ * @group SQLite
+ */
 export const getEvoluSqliteSchema = (deps: SqliteDep) => (): SqliteSchema =>
   getSqliteSchema(deps)({ excludeIndexNamePrefix: "evolu_" });
 
-// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
+/**
+ * Kysely instance that only compiles queries to SQL. It never executes them;
+ * Evolu runs the compiled SQL itself.
+ *
+ * See [Splitting query building and
+ * execution](https://kysely.dev/docs/recipes/splitting-query-building-and-execution).
+ *
+ * @group Queries
+ */
 export const kysely = /*#__PURE__*/ new Kysely.Kysely({
   dialect: {
     createAdapter: () => new Kysely.SqliteAdapter(),

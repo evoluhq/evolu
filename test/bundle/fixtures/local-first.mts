@@ -8,6 +8,7 @@ import {
   testAppOwner,
   type TestEvoluSchema,
   testEvoluSchema,
+  testLocalOnlyEvoluSchema,
   TestProjectId,
   testProjectId,
   TestTodoId,
@@ -30,6 +31,16 @@ const createTodos = createEvolu(testEvoluSchema, {
 assertType<
   typeof createTodos,
   Task<Evolu<TestEvoluSchema>, never, EvoluPlatformDeps>
+>();
+
+const createAccounts = createEvolu(testLocalOnlyEvoluSchema, {
+  appName: testAppName,
+  appOwner: testAppOwner,
+  transports: [],
+});
+assertType<
+  typeof createAccounts,
+  Task<Evolu<typeof testLocalOnlyEvoluSchema>, never, EvoluPlatformDeps>
 >();
 
 // @ts-expect-error A todo ID is not a project ID.

@@ -1581,12 +1581,12 @@
           "symbols": 311
         },
         "common-barrel-all": {
-          "files": 296,
-          "lines": 42680,
-          "identifiers": 42505,
-          "instantiations": 66893,
-          "types": 29993,
-          "symbols": 56555
+          "files": 295,
+          "lines": 42939,
+          "identifiers": 42239,
+          "instantiations": 67012,
+          "types": 29766,
+          "symbols": 55630
         },
         "config-env-all": {
           "files": 2,

@@ -23,6 +23,8 @@ import {
   AppName,
   createEvolu,
   createEvoluDeps,
+  type Evolu,
+  type EvoluConfig,
   testAppName,
   type EvoluPlatformDeps,
 } from "./Evolu.ts";
@@ -202,6 +204,8 @@ describe("Evolu", () => {
         value: "a".repeat(42),
       }),
     );
+
+    assertThrowsInstanceOf(() => AppName.orThrow("a".repeat(42)), Error);
 
     const appName = AppName.orThrow("my-app");
     assertType<typeof appName, AppName>();
@@ -573,7 +577,80 @@ describe("Evolu", () => {
     });
   });
 
+  describe("local tables", () => {
+    const LocalSchema = { _todo: Schema.todo };
+    const config: EvoluConfig = {
+      appName: testAppName,
+      appOwner: testAppOwner,
+      transports: [],
+    };
+
+    it("keeps useOwner available for an instance with only local tables", async () => {
+      const messages: Array<SharedWorkerInput> = [];
+      await using setup = await setupRunWithEvoluDeps({
+        onSharedWorkerPostMessage: (message) => {
+          messages.push(message);
+        },
+      });
+      const evolu = await setup.run.ok(createEvolu(LocalSchema, config));
+      assertType<typeof evolu, Evolu<typeof LocalSchema>>();
+      assertSame(evolu.appOwner, testAppOwner);
+      assertEqual(evolu.name, `AppName-${createIdFromString(testAppOwner.id)}`);
+      assertTrue(typeof evolu.useOwner === "function");
+      await testWaitForWorkerMessage();
+      assertEqual(setup.evoluInputs, []);
+      const message = messages.find(
+        (message) => message.type === "CreateEvolu",
+      );
+      assertNotUndefined(message);
+      assertSame(message.encryptionKey, testAppOwner.encryptionKey);
+      assertFalse(message.memoryOnly);
+
+      evolu.insert("_todo", {
+        title: NonEmptyTrimmedString100.orThrow("Local"),
+      });
+      await testWaitForWorkerMessage();
+      assertTrue(setup.evoluInputs.some((input) => input.type === "Mutate"));
+      assertFalse(setup.evoluInputs.some((input) => input.type === "UseOwner"));
+      const unuseOwner = evolu.useOwner(testAppOwner, [testOwnerTransport]);
+      await testWaitForWorkerMessage();
+      assertTrue(setup.evoluInputs.some((input) => input.type === "UseOwner"));
+      unuseOwner();
+      await evolu[Symbol.asyncDispose]();
+      assertThrowsInstanceOf(
+        () =>
+          evolu.insert("_todo", {
+            title: NonEmptyTrimmedString100.orThrow("Disposed"),
+          }),
+        Error,
+      );
+    });
+  });
+
   describe("createEvolu", () => {
+    it("uses the default relay when transports are omitted", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      await setup.run.ok(
+        createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+        }),
+      );
+      await testWaitForWorkerMessage();
+      const input = setup.evoluInputs.find(
+        (input) => input.type === "UseOwner",
+      );
+      assertNotUndefined(input);
+      assertEqual(input.actions, [
+        {
+          action: "add",
+          owner: {
+            owner: testAppOwner,
+            transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
+          },
+        },
+      ]);
+    });
     it("resolves name from appName and appOwner hash", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run } = setup;
