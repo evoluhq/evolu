@@ -46,6 +46,11 @@ import {
   TimestampBytes,
 } from "./Timestamp.ts";
 
+/**
+ * Configuration for {@link Storage}, such as quota checks.
+ *
+ * @group Core
+ */
 export interface StorageConfig {
   /**
    * Callback called before an attempt to write, to check if an {@link OwnerId}
@@ -119,6 +124,8 @@ export interface StorageConfig {
  * The only exception is {@link Storage.writeMessages}, which is async to allow
  * for async validation logic before writing to storage. The write operation
  * itself remains synchronous.
+ *
+ * @group Core
  */
 export interface Storage {
   readonly getSize: (ownerId: OwnerIdBytes) => NonNegativeInt;
@@ -193,11 +200,20 @@ export interface Storage {
   readonly deleteOwner: (ownerId: OwnerIdBytes) => void;
 }
 
+/**
+ * Dependency wrapper for {@link Storage}.
+ *
+ * @group Core
+ */
 export interface StorageDep {
   readonly storage: Storage;
 }
 
-/** Error when storage or billing quota is exceeded. */
+/**
+ * Error when storage or billing quota is exceeded.
+ *
+ * @group Core
+ */
 export interface StorageQuotaError
   extends OwnerError, Typed<"StorageQuotaError"> {}
 
@@ -207,16 +223,32 @@ export interface StorageQuotaError
  *
  * It consists of the first {@link fingerprintSize} bytes of the SHA-256 hash of
  * one or more timestamps.
+ *
+ * @group Ranges
  */
 export type Fingerprint = Uint8Array & Brand<"Fingerprint">;
 
+/**
+ * Number of leading SHA-256 bytes that form a {@link Fingerprint}.
+ *
+ * @group Ranges
+ */
 export const fingerprintSize = /*#__PURE__*/ NonNegativeInt.orThrow(12);
 
-/** A fingerprint of an empty range. */
+/**
+ * A fingerprint of an empty range.
+ *
+ * @group Ranges
+ */
 export const zeroFingerprint = /*#__PURE__*/ new Uint8Array(
   fingerprintSize,
 ) as Fingerprint;
 
+/**
+ * Common shape of every {@link Range}.
+ *
+ * @group Ranges
+ */
 export interface BaseRange {
   readonly upperBound: RangeUpperBound;
 }
@@ -224,45 +256,96 @@ export interface BaseRange {
 /**
  * Union type for Range's upperBound: either a {@link TimestampBytes} or
  * {@link InfiniteUpperBound}.
+ *
+ * @group Ranges
  */
 export type RangeUpperBound = TimestampBytes | InfiniteUpperBound;
 
+/**
+ * Sentinel {@link RangeUpperBound} for a range without an upper limit.
+ *
+ * @group Ranges
+ */
 export const InfiniteUpperBound = /*#__PURE__*/ Symbol(
   "evolu.local-first.Storage.InfiniteUpperBound",
 );
+/**
+ * Type of the {@link InfiniteUpperBound} sentinel.
+ *
+ * @group Ranges
+ */
 export type InfiniteUpperBound = typeof InfiniteUpperBound;
 
+/**
+ * Numeric tags discriminating {@link Range} variants.
+ *
+ * @group Ranges
+ */
 export const RangeType = {
   Fingerprint: 1,
   Skip: 0,
   Timestamps: 2,
 } as const;
 
+/**
+ * Numeric tag of one {@link Range} variant.
+ *
+ * @group Ranges
+ */
 export type RangeType = (typeof RangeType)[keyof typeof RangeType];
 
+/**
+ * Range with nothing to reconcile.
+ *
+ * @group Ranges
+ */
 export interface SkipRange extends BaseRange {
   readonly type: typeof RangeType.Skip;
 }
 
+/**
+ * Range summarized by a {@link Fingerprint} for comparison.
+ *
+ * @group Ranges
+ */
 export interface FingerprintRange extends BaseRange {
   readonly type: typeof RangeType.Fingerprint;
   readonly fingerprint: Fingerprint;
 }
 
+/**
+ * Range listing its {@link TimestampBytes} explicitly.
+ *
+ * @group Ranges
+ */
 export interface TimestampsRange extends BaseRange {
   readonly type: typeof RangeType.Timestamps;
   readonly timestamps: ReadonlyArray<TimestampBytes>;
 }
 
+/**
+ * Range exchanged during sync: {@link SkipRange}, {@link FingerprintRange}, or
+ * {@link TimestampsRange}.
+ *
+ * @group Ranges
+ */
 export type Range = SkipRange | FingerprintRange | TimestampsRange;
 
-/** An encrypted {@link CrdtMessage}. */
+/**
+ * An encrypted {@link CrdtMessage}.
+ *
+ * @group Messages
+ */
 export interface EncryptedCrdtMessage {
   readonly timestamp: Timestamp;
   readonly change: EncryptedDbChange;
 }
 
-/** Encrypted DbChange */
+/**
+ * Encrypted DbChange
+ *
+ * @group Messages
+ */
 export type EncryptedDbChange = Uint8Array & Brand<"EncryptedDbChange">;
 
 /**
@@ -271,13 +354,19 @@ export type EncryptedDbChange = Uint8Array & Brand<"EncryptedDbChange">;
  * Used in Evolu's sync protocol to replicate data changes across devices. Evolu
  * operates as a durable queue, providing exactly-once delivery guarantees for
  * reliable synchronization across application restarts and network failures.
+ *
+ * @group Messages
  */
 export interface CrdtMessage {
   readonly timestamp: Timestamp;
   readonly change: DbChange;
 }
 
-/** Test helper for creating a simple {@link CrdtMessage}. */
+/**
+ * Test helper for creating a simple {@link CrdtMessage}.
+ *
+ * @group Testing
+ */
 export const testCreateCrdtMessage = (
   id: Id,
   millis: number,
@@ -296,9 +385,19 @@ export const testCreateCrdtMessage = (
   }),
 });
 
+/**
+ * Column values of a {@link DbChange}, keyed by column name.
+ *
+ * @group Messages
+ */
 export const DbChangeValues = /*#__PURE__*/ record(String, SqliteValue);
 export type DbChangeValues = typeof DbChangeValues.Output;
 
+/**
+ * Column values that contain no reserved system columns.
+ *
+ * @group Messages
+ */
 export const ValidDbChangeValues = /*#__PURE__*/ brand(
   "ValidDbChangeValues",
   DbChangeValues,
@@ -318,6 +417,11 @@ export const ValidDbChangeValues = /*#__PURE__*/ brand(
 );
 export type ValidDbChangeValues = typeof ValidDbChangeValues.Output;
 
+/**
+ * Error produced when {@link DbChangeValues} contain reserved system columns.
+ *
+ * @group Messages
+ */
 export interface ValidDbChangeValuesError extends TypeError<"ValidDbChangeValues"> {
   readonly value: DbChangeValues;
   readonly invalidColumns: ReadonlyArray<string>;
@@ -326,6 +430,8 @@ export interface ValidDbChangeValuesError extends TypeError<"ValidDbChangeValues
 /**
  * A DbChange is a change to a table row. Together with a unique
  * {@link Timestamp}, it forms a {@link CrdtMessage}.
+ *
+ * @group Messages
  */
 export const DbChange: ObjectType<{
   readonly table: typeof String;
@@ -371,6 +477,8 @@ export interface DbChange extends InferType<typeof DbChange> {}
  * each other, if necessary. One relay should handle hundreds of thousands of
  * users, and when it goes down, nothing happens, because it will be
  * synchronized later.
+ *
+ * @group SQLite
  */
 export interface BaseSqliteStorage extends Omit<
   Storage,
@@ -393,10 +501,20 @@ export interface BaseSqliteStorage extends Omit<
   ) => ReadonlyArray<TimestampBytes>;
 }
 
+/**
+ * Dependency wrapper for {@link BaseSqliteStorage}.
+ *
+ * @group SQLite
+ */
 export interface BaseSqliteStorageDep {
   readonly baseSqliteStorage: BaseSqliteStorage;
 }
 
+/**
+ * Dependencies required by {@link createBaseSqliteStorage}.
+ *
+ * @group SQLite
+ */
 export type SqliteStorageDeps = RandomDep & SqliteDep;
 
 /**
@@ -411,6 +529,8 @@ export type SqliteStorageDeps = RandomDep & SqliteDep;
  * Cloudflare Workers with Durable Objects, and other platforms where memory
  * doesn't persist between requests. While not extensively tested in all these
  * environments yet, the stateless design should work well across them.
+ *
+ * @group SQLite
  */
 export const createBaseSqliteStorage = (
   deps: SqliteStorageDeps,
@@ -509,6 +629,11 @@ const assertBeginEnd = (begin: NonNegativeInt, end: NonNegativeInt) => {
   assert(begin <= end, "invalid begin or end");
 };
 
+/**
+ * Creates the SQLite tables used by {@link BaseSqliteStorage}.
+ *
+ * @group SQLite
+ */
 export const createBaseSqliteStorageTables = (deps: SqliteDep): void => {
   for (const query of [
     /**
@@ -575,6 +700,11 @@ export const createBaseSqliteStorageTables = (deps: SqliteDep): void => {
   }
 };
 
+/**
+ * Position at which a timestamp is inserted relative to existing timestamps.
+ *
+ * @group SQLite
+ */
 export type StorageInsertTimestampStrategy = "append" | "prepend" | "insert";
 
 /**
@@ -582,6 +712,8 @@ export type StorageInsertTimestampStrategy = "append" | "prepend" | "insert";
  * relative to the current first and last timestamps.
  *
  * Returns a tuple with the strategy and updated timestamp bounds.
+ *
+ * @group SQLite
  */
 export const getTimestampInsertStrategy = (
   timestamp: TimestampBytes,
@@ -1083,6 +1215,11 @@ const insertTimestamp =
     }
   };
 
+/**
+ * Computes the {@link Fingerprint} of a single timestamp.
+ *
+ * @group Ranges
+ */
 export const timestampBytesToFingerprint = (
   timestamp: TimestampBytes,
 ): Fingerprint => {
@@ -1093,6 +1230,8 @@ export const timestampBytesToFingerprint = (
 /**
  * Computes a brute-force {@link Fingerprint} from {@link TimestampBytes} values
  * for tests and benchmarks.
+ *
+ * @group Testing
  */
 export const testFingerprintTimestamps = (
   timestamps: ReadonlyArray<TimestampBytes>,
@@ -1492,6 +1631,11 @@ const fingerprintRanges =
 // XOR in SQLite
 const x = (a: string, b: string) => sql.raw(`(${a} | ${b}) - (${a} & ${b})`);
 
+/**
+ * Reads the timestamp at a position within an owner's ordered timestamps.
+ *
+ * @group SQLite
+ */
 export const getTimestampByIndex =
   (deps: SqliteDep) =>
   (ownerId: OwnerIdBytes, index: NonNegativeInt): TimestampBytes => {
@@ -1572,7 +1716,11 @@ export const getTimestampByIndex =
     return result.rows[0].pt;
   };
 
-/** Reads owner usage from SQLite and returns default bounds when absent. */
+/**
+ * Reads owner usage from SQLite and returns default bounds when absent.
+ *
+ * @group SQLite
+ */
 export const readOwnerUsageOrDefault =
   (deps: SqliteDep) =>
   (
@@ -1617,6 +1765,8 @@ export const readOwnerUsageOrDefault =
  *
  * Used by both relay and client to maintain firstTimestamp/lastTimestamp after
  * processing messages.
+ *
+ * @group SQLite
  */
 export const updateOwnerUsage =
   (deps: SqliteDep) =>

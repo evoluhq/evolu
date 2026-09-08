@@ -24,6 +24,11 @@ import {
   zeroNonNegativeInt,
 } from "./Type.ts";
 
+/**
+ * Cryptographically secure random bytes with length-branded results.
+ *
+ * @group Random bytes
+ */
 export interface RandomBytes {
   /**
    * Creates cryptographically secure random bytes with type-safe length
@@ -77,6 +82,11 @@ export interface RandomBytes {
   create(bytesLength: number): Entropy;
 }
 
+/**
+ * Dependency wrapper for {@link RandomBytes}.
+ *
+ * @group Random bytes
+ */
 export interface RandomBytesDep {
   readonly randomBytes: RandomBytes;
 }
@@ -84,23 +94,53 @@ export interface RandomBytesDep {
 const Entropy = /*#__PURE__*/ brand("Entropy", Uint8Array);
 type Entropy = typeof Entropy.Output;
 
+/**
+ * Cryptographic entropy of exactly 16 bytes.
+ *
+ * @group Random bytes
+ */
 export const Entropy16 = /*#__PURE__*/ length(16)(Entropy);
 export type Entropy16 = typeof Entropy16.Output;
 
+/**
+ * Cryptographic entropy of exactly 24 bytes.
+ *
+ * @group Random bytes
+ */
 export const Entropy24 = /*#__PURE__*/ length(24)(Entropy);
 export type Entropy24 = typeof Entropy24.Output;
 
+/**
+ * Cryptographic entropy of exactly 32 bytes.
+ *
+ * @group Random bytes
+ */
 export const Entropy32 = /*#__PURE__*/ length(32)(Entropy);
 export type Entropy32 = typeof Entropy32.Output;
 
+/**
+ * Cryptographic entropy of exactly 64 bytes.
+ *
+ * @group Random bytes
+ */
 export const Entropy64 = /*#__PURE__*/ length(64)(Entropy);
 export type Entropy64 = typeof Entropy64.Output;
 
+/**
+ * Creates {@link RandomBytes} backed by the platform's secure random number
+ * generator.
+ *
+ * @group Random bytes
+ */
 export const createRandomBytes = (): RandomBytes => ({
   create: randomBytes as RandomBytes["create"],
 });
 
-/** Creates seeded random bytes for deterministic tests. */
+/**
+ * Creates seeded random bytes for deterministic tests.
+ *
+ * @group Testing
+ */
 export const testCreateRandomBytes = (deps: RandomLibDep): RandomBytes =>
   ({
     create: (bytesLength: number) =>
@@ -113,6 +153,8 @@ export const testCreateRandomBytes = (deps: RandomLibDep): RandomBytes =>
  * SLIP21.
  *
  * https://github.com/satoshilabs/slips/blob/master/slip-0021.md
+ *
+ * @group Key derivation
  */
 export const createSlip21 = (
   seed: Entropy16 | Entropy32 | Entropy64,
@@ -135,6 +177,7 @@ export const createSlip21 = (
 /**
  * Derives a single node in the SLIP-21 hierarchical key derivation.
  *
+ * @group Key derivation
  * @see {@link createSlip21}
  */
 export const deriveSlip21Node = (
@@ -148,16 +191,25 @@ export const deriveSlip21Node = (
   return hmac(sha512, parentNode.slice(0, 32), message) as Entropy64;
 };
 
-/** The encryption key for symmetric encryption. */
+/**
+ * The encryption key for symmetric encryption.
+ *
+ * @group Encryption
+ */
 export const EncryptionKey = /*#__PURE__*/ brand("EncryptionKey", Entropy32);
 export type EncryptionKey = typeof EncryptionKey.Output;
 
-/** The nonce length for XChaCha20-Poly1305 encryption. */
+/**
+ * The nonce length for XChaCha20-Poly1305 encryption.
+ *
+ * @group Encryption
+ */
 export const xChaCha20Poly1305NonceLength = 24;
 
 /**
  * Branded Uint8Array for XChaCha20-Poly1305 encryption.
  *
+ * @group Encryption
  * @see {@link encryptWithXChaCha20Poly1305}
  */
 export const XChaCha20Poly1305Ciphertext = /*#__PURE__*/ brand(
@@ -196,6 +248,7 @@ export type XChaCha20Poly1305Ciphertext =
  * assertEqual(nonce.length, 24);
  * ```
  *
+ * @group Encryption
  * @see https://github.com/paulmillr/noble-ciphers
  */
 export const encryptWithXChaCha20Poly1305 =
@@ -211,6 +264,11 @@ export const encryptWithXChaCha20Poly1305 =
     return [ciphertext, nonce];
   };
 
+/**
+ * Error returned by {@link decryptWithXChaCha20Poly1305} when decryption fails.
+ *
+ * @group Encryption
+ */
 export interface DecryptWithXChaCha20Poly1305Error extends Typed<"DecryptWithXChaCha20Poly1305Error"> {
   readonly error: unknown;
 }
@@ -254,6 +312,8 @@ export interface DecryptWithXChaCha20Poly1305Error extends Typed<"DecryptWithXCh
  *
  * assertOk(decryptMessage(), "secret message");
  * ```
+ *
+ * @group Encryption
  */
 export const decryptWithXChaCha20Poly1305 = (
   ciphertext: XChaCha20Poly1305Ciphertext,
@@ -275,6 +335,8 @@ export const decryptWithXChaCha20Poly1305 = (
  * wide range of encrypted data sizes.
  *
  * See the PURBs paper for details: https://bford.info/pub/sec/purb.pdf
+ *
+ * @group Padding
  */
 export const createPadmePaddedLength = (
   length: NonNegativeInt,
@@ -287,7 +349,11 @@ export const createPadmePaddedLength = (
   return NonNegativeInt.orThrow((length + mask) & ~mask);
 };
 
-/** Creates a PADMÉ padding array of zeros for the given input length. */
+/**
+ * Creates a PADMÉ padding array of zeros for the given input length.
+ *
+ * @group Padding
+ */
 export const createPadmePadding = (length: NonNegativeInt): Uint8Array => {
   const paddedLength = createPadmePaddedLength(length);
   const paddingLength = NonNegativeInt.orThrow(paddedLength - length);
@@ -299,10 +365,16 @@ export const createPadmePadding = (length: NonNegativeInt): Uint8Array => {
  * are equal, false otherwise. Takes constant time regardless of where the
  * arrays differ.
  *
+ * @group Comparison
  * @see https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b
  */
 export type TimingSafeEqual = (a: Uint8Array, b: Uint8Array) => boolean;
 
+/**
+ * Dependency wrapper for {@link TimingSafeEqual}.
+ *
+ * @group Comparison
+ */
 export interface TimingSafeEqualDep {
   readonly timingSafeEqual: TimingSafeEqual;
 }

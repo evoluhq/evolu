@@ -60,7 +60,11 @@ import type { ByteLength } from "./Bytes.ts";
 import type { createRun, Task } from "./Task.ts";
 import type { Typed } from "./Type.ts";
 
-/** Asynchronous file system operations. */
+/**
+ * Asynchronous file system operations.
+ *
+ * @group Core
+ */
 export interface Fs {
   /**
    * Reads a whole file, as bytes by default or as a string with an encoding. An
@@ -163,15 +167,27 @@ export interface Fs {
   ) => Task<FsTempDirectory, FsError>;
 }
 
-/** Dependency wrapper for {@link Fs}. */
+/**
+ * Dependency wrapper for {@link Fs}.
+ *
+ * @group Core
+ */
 export interface FsDep {
   readonly fs: Fs;
 }
 
-/** A file system path, or a `file:` URL. */
+/**
+ * A file system path, or a `file:` URL.
+ *
+ * @group Core
+ */
 export type FsPath = string | URL;
 
-/** Supported text encodings. */
+/**
+ * Supported text encodings.
+ *
+ * @group Core
+ */
 export type FsEncoding =
   | "ascii"
   | "utf8"
@@ -186,7 +202,11 @@ export type FsEncoding =
   | "binary"
   | "hex";
 
-/** Supported file opening modes for {@link Fs.writeFile}. */
+/**
+ * Supported file opening modes for {@link Fs.writeFile}.
+ *
+ * @group Core
+ */
 export type FsOpenFlag =
   | "a"
   | "ax"
@@ -202,7 +222,11 @@ export type FsOpenFlag =
   | "w+"
   | "wx+";
 
-/** Reads bytes by default, or text when an encoding is specified. */
+/**
+ * Reads bytes by default, or text when an encoding is specified.
+ *
+ * @group Core
+ */
 export interface FsReadFile {
   (path: FsPath): Task<Uint8Array, FsError>;
   (
@@ -211,7 +235,11 @@ export interface FsReadFile {
   ): Task<string, FsError>;
 }
 
-/** Options for {@link Fs.writeFile}. */
+/**
+ * Options for {@link Fs.writeFile}.
+ *
+ * @group Options
+ */
 export interface FsWriteFileOptions {
   /** Encoding of string data. Defaults to `utf8`. */
   readonly encoding?: FsEncoding;
@@ -221,13 +249,21 @@ export interface FsWriteFileOptions {
   readonly flag?: FsOpenFlag;
 }
 
-/** Options for {@link Fs.readDirectory}. */
+/**
+ * Options for {@link Fs.readDirectory}.
+ *
+ * @group Options
+ */
 export interface FsReadDirectoryOptions {
   /** Includes entries from nested directories. Defaults to `false`. */
   readonly recursive?: boolean;
 }
 
-/** Options for {@link Fs.createDirectory}. */
+/**
+ * Options for {@link Fs.createDirectory}.
+ *
+ * @group Options
+ */
 export interface FsCreateDirectoryOptions {
   /** Creates missing parents and accepts an existing directory. */
   readonly recursive?: boolean;
@@ -235,7 +271,11 @@ export interface FsCreateDirectoryOptions {
   readonly mode?: number;
 }
 
-/** Options for {@link Fs.copy}. */
+/**
+ * Options for {@link Fs.copy}.
+ *
+ * @group Options
+ */
 export interface FsCopyOptions {
   /**
    * Node's `force` option. Replaces existing files; `false` skips them unless
@@ -253,13 +293,21 @@ export interface FsCopyOptions {
   readonly preserveTimestamps?: boolean;
 }
 
-/** Options for {@link Fs.copyFile}. */
+/**
+ * Options for {@link Fs.copyFile}.
+ *
+ * @group Options
+ */
 export interface FsCopyFileOptions {
   /** Replaces an existing destination file. Defaults to `false`. */
   readonly overwrite?: boolean;
 }
 
-/** Options for {@link Fs.remove}. */
+/**
+ * Options for {@link Fs.remove}.
+ *
+ * @group Options
+ */
 export interface FsRemoveOptions {
   /** Removes directories and their contents. */
   readonly recursive?: boolean;
@@ -277,7 +325,11 @@ export interface FsRemoveOptions {
   readonly retryDelay?: number;
 }
 
-/** File metadata as data, with Node's numeric and timestamp field names. */
+/**
+ * File metadata as data, with Node's numeric and timestamp field names.
+ *
+ * @group Core
+ */
 export interface FsMetadata {
   readonly type: FsEntryType;
   readonly dev: number;
@@ -300,7 +352,11 @@ export interface FsMetadata {
   readonly birthtime: Date;
 }
 
-/** The kind of file system entry described by {@link FsMetadata}. */
+/**
+ * The kind of file system entry described by {@link FsMetadata}.
+ *
+ * @group Core
+ */
 export type FsEntryType =
   | "File"
   | "Directory"
@@ -311,7 +367,11 @@ export type FsEntryType =
   | "Socket"
   | "Unknown";
 
-/** Options for {@link Fs.createTempDirectory}. */
+/**
+ * Options for {@link Fs.createTempDirectory}.
+ *
+ * @group Options
+ */
 export interface FsCreateTempDirectoryOptions {
   /** Existing parent directory. Defaults to the system temporary directory. */
   readonly directory?: string;
@@ -319,12 +379,20 @@ export interface FsCreateTempDirectoryOptions {
   readonly prefix?: string;
 }
 
-/** A temporary directory removed, with its contents, on asynchronous disposal. */
+/**
+ * A temporary directory removed, with its contents, on asynchronous disposal.
+ *
+ * @group Core
+ */
 export interface FsTempDirectory extends AsyncDisposable {
   readonly path: string;
 }
 
-/** A failed file system operation. */
+/**
+ * A failed file system operation.
+ *
+ * @group Errors
+ */
 export interface FsError extends Typed<"FsError"> {
   readonly reason: FsErrorReason;
   /**
@@ -345,7 +413,11 @@ export interface FsError extends Typed<"FsError"> {
   readonly message: string;
 }
 
-/** Why a file system operation failed, mapped from the platform's error code. */
+/**
+ * Why a file system operation failed, mapped from the platform's error code.
+ *
+ * @group Errors
+ */
 export type FsErrorReason =
   | "NotFound"
   | "AlreadyExists"
@@ -392,6 +464,8 @@ export type FsErrorReason =
  *
  * assertOk(await run(saveMessage));
  * ```
+ *
+ * @group Testing
  */
 export const testCreateFs = (overrides: Partial<Fs> = {}): Fs => ({
   readFile: createUnexpectedFsOperation("readFile"),

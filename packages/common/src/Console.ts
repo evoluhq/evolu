@@ -93,6 +93,7 @@ import {
  * For testing, use {@link testCreateConsole} which creates a {@link TestConsole}
  * with array output and snapshot helpers.
  *
+ * @group Core
  * @see {@link createConsole}
  */
 export interface Console {
@@ -176,6 +177,11 @@ export interface Console {
   readonly write: (entry: ConsoleEntry) => void;
 }
 
+/**
+ * Dependency wrapper for {@link Console}.
+ *
+ * @group Core
+ */
 export interface ConsoleDep {
   readonly console: Console;
 }
@@ -193,6 +199,8 @@ export interface ConsoleDep {
  * - `"warn"` — Recoverable issues that may need attention
  * - `"error"` — Failures requiring immediate attention
  * - `"silent"` — Disables all logging
+ *
+ * @group Core
  */
 export type ConsoleLevel =
   "trace" | "debug" | "log" | "info" | "warn" | "error" | "silent";
@@ -202,6 +210,8 @@ export type ConsoleLevel =
  *
  * Contains all information needed for outputs to route the log: method for
  * routing, path for context, and the original arguments.
+ *
+ * @group Core
  */
 export interface ConsoleEntry {
   /** The console method that was called. */
@@ -219,6 +229,8 @@ export interface ConsoleEntry {
  *
  * Used in {@link ConsoleEntry} to identify which console method was invoked.
  * Outputs can route or format differently based on the method.
+ *
+ * @group Core
  */
 export type ConsoleMethod =
   | "trace"
@@ -242,6 +254,8 @@ export type ConsoleMethod =
  * array for testing, etc.).
  *
  * Use {@link createNativeConsoleOutput} for native console output.
+ *
+ * @group Output
  */
 export interface ConsoleOutput {
   /** Write a log entry to this output. */
@@ -253,10 +267,16 @@ export interface ConsoleOutput {
  *
  * Used by {@link ConsoleConfig.formatter} and {@link ConsoleOutput.write}. Create
  * one with {@link createConsoleFormatter}.
+ *
+ * @group Output
  */
 export type ConsoleFormatter = (entry: ConsoleEntry) => ReadonlyArray<unknown>;
 
-/** Configuration for {@link createConsole}. */
+/**
+ * Configuration for {@link createConsole}.
+ *
+ * @group Core
+ */
 export interface ConsoleConfig {
   /** Name of this console. Defaults to empty string. */
   readonly name?: string;
@@ -283,7 +303,11 @@ export interface ConsoleConfig {
   readonly formatter?: ConsoleFormatter;
 }
 
-/** Configuration for {@link createConsoleFormatter}. */
+/**
+ * Configuration for {@link createConsoleFormatter}.
+ *
+ * @group Output
+ */
 export interface ConsoleFormatterConfig {
   /**
    * Timestamp format to prepend to log messages.
@@ -304,7 +328,11 @@ export interface ConsoleFormatterConfig {
   readonly startTime?: Millis;
 }
 
-/** Timestamp format for {@link ConsoleFormatterConfig}. */
+/**
+ * Timestamp format for {@link ConsoleFormatterConfig}.
+ *
+ * @group Output
+ */
 export type ConsoleEntryTimestampFormat =
   "relative" | "absolute" | "iso" | "none";
 
@@ -341,6 +369,8 @@ export type ConsoleEntryTimestampFormat =
  *   args: ["connected"],
  * });
  * ```
+ *
+ * @group Output
  */
 export interface ConsoleStoreOutput extends ConsoleOutput {
   /** Latest entry written to this output. */
@@ -350,6 +380,8 @@ export interface ConsoleStoreOutput extends ConsoleOutput {
 /**
  * Dependency providing the latest {@link ConsoleEntry} from a
  * {@link ConsoleStoreOutput}.
+ *
+ * @group Output
  */
 export interface ConsoleStoreOutputEntryDep {
   readonly consoleStoreOutputEntry: ReadonlyStore<ConsoleEntry | null>;
@@ -359,6 +391,8 @@ export interface ConsoleStoreOutputEntryDep {
  * A test console that captures all output for assertions.
  *
  * Use as a drop-in replacement for {@link Console} in tests.
+ *
+ * @group Testing
  */
 export interface TestConsole extends Console {
   /** Gets all captured entries and clears the internal buffer. */
@@ -368,6 +402,11 @@ export interface TestConsole extends Console {
   readonly clearEntries: () => void;
 }
 
+/**
+ * Dependency wrapper for {@link TestConsole}.
+ *
+ * @group Testing
+ */
 export interface TestConsoleDep {
   readonly console: TestConsole;
 }
@@ -382,7 +421,11 @@ const levelOrder: Record<ConsoleLevel, number> = {
   silent: 6,
 };
 
-/** Creates a {@link Console}. */
+/**
+ * Creates a {@link Console}.
+ *
+ * @group Core
+ */
 export const createConsole = ({
   name = "",
   level = "log",
@@ -467,6 +510,8 @@ export const createConsole = ({
  *
  * assertType<typeof output, ConsoleOutput>();
  * ```
+ *
+ * @group Output
  */
 export const createNativeConsoleOutput = (): ConsoleOutput => ({
   write: (entry, formatter) => {
@@ -528,6 +573,8 @@ export const createNativeConsoleOutput = (): ConsoleOutput => ({
  * assertType(Data, absolute);
  * assertEqual(absolute, ["14:30:15.123 [relay]", "connected"]);
  * ```
+ *
+ * @group Output
  */
 export const createConsoleFormatter =
   ({ time = createTime() }: Partial<TimeDep> = {}) =>
@@ -564,7 +611,11 @@ export const createConsoleFormatter =
     };
   };
 
-/** Creates a {@link ConsoleStoreOutput}. */
+/**
+ * Creates a {@link ConsoleStoreOutput}.
+ *
+ * @group Output
+ */
 export const createConsoleStoreOutput = (): ConsoleStoreOutput => {
   const entry = createStore<ConsoleEntry | null>(null);
   return {
@@ -598,6 +649,8 @@ export const createConsoleStoreOutput = (): ConsoleStoreOutput => {
  *   { method: "info", path: [], args: ["connected"] },
  * ]);
  * ```
+ *
+ * @group Output
  */
 export const createConsoleArrayOutput = (
   entries: Array<ConsoleEntry>,
@@ -642,6 +695,8 @@ export const createConsoleArrayOutput = (
  * assertType(Data, entries[0]);
  * assertEqual(storedEntry, entries[0]);
  * ```
+ *
+ * @group Output
  */
 export const createMultiOutput = (
   outputs: ReadonlyArray<ConsoleOutput>,
@@ -670,6 +725,8 @@ export const createMultiOutput = (
  *   { method: "info", path: ["relay"], args: ["connected"] },
  * ]);
  * ```
+ *
+ * @group Testing
  */
 export const testCreateConsole = ({
   level = "trace",

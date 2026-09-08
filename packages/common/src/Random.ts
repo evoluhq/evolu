@@ -11,6 +11,8 @@ import type { Brand } from "./Brand.ts";
  * A random floating point number in [0, 1).
  *
  * Branded to distinguish random values from arbitrary numbers.
+ *
+ * @group Core
  */
 export type RandomNumber = number & Brand<"RandomNumber">;
 
@@ -43,17 +45,28 @@ export type RandomNumber = number & Brand<"RandomNumber">;
  * const secondTestRandom = testCreateRandom("test");
  * assertEqual(firstTestRandom.next(), secondTestRandom.next());
  * ```
+ *
+ * @group Core
  */
 export interface Random {
   /** Returns a floating point number in [0, 1). Just like Math.random(). */
   readonly next: () => RandomNumber;
 }
 
+/**
+ * Dependency wrapper for {@link Random}.
+ *
+ * @group Core
+ */
 export interface RandomDep {
   readonly random: Random;
 }
 
-/** Creates a {@link Random} using Math.random(). */
+/**
+ * Creates a {@link Random} using Math.random().
+ *
+ * @group Core
+ */
 export const createRandom = (): Random => ({
   next: () => Math.random() as RandomNumber,
 });
@@ -62,6 +75,8 @@ export const createRandom = (): Random => ({
  * Creates a seeded {@link Random} for deterministic tests.
  *
  * Default seed "evolu".
+ *
+ * @group Testing
  */
 export const testCreateRandom = (seed = "evolu"): Random => {
   const random = new RandomLib(seed);
@@ -75,12 +90,18 @@ export const testCreateRandom = (seed = "evolu"): Random => {
  * provided by the NPM `random` package.
  *
  * https://github.com/transitive-bullshit/random
+ *
+ * @group Core
  */
 export interface RandomLibDep {
   readonly randomLib: RandomLib;
 }
 
-/** Creates a random number generator from the NPM `random` package. */
+/**
+ * Creates a random number generator from the NPM `random` package.
+ *
+ * @group Core
+ */
 export const createRandomLib = (): RandomLib => new RandomLib();
 
 /**
@@ -88,6 +109,8 @@ export const createRandomLib = (): RandomLib => new RandomLib();
  * deterministic tests.
  *
  * Default seed "evolu".
+ *
+ * @group Testing
  */
 export const testCreateRandomLib = (seed = "evolu"): RandomLib =>
   new RandomLib(seed);

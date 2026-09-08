@@ -4,10 +4,18 @@
  * @module
  */
 
-/** Returns true if running in React Native with Hermes engine. */
+/**
+ * Returns true if running in React Native with Hermes engine.
+ *
+ * @group Detection
+ */
 export const isHermes = "HermesInternal" in globalThis;
 
-/** Returns true if running in a server environment (no DOM). */
+/**
+ * Returns true if running in a server environment (no DOM).
+ *
+ * @group Detection
+ */
 export const isServer = typeof document === "undefined";
 
 /**
@@ -20,6 +28,8 @@ export const isServer = typeof document === "undefined";
  * where no bundler ran, such as un-bundled browser ESM, where it fails closed
  * to production behavior. Node.js reads it natively; React Native polyfills it.
  * A missing `NODE_ENV` counts as development, matching React semantics.
+ *
+ * @group Detection
  */
 export const isDev =
   typeof process === "undefined"
@@ -35,6 +45,7 @@ export const isDev =
  * Returns false in React Native even if Buffer is polyfilled, as we prefer
  * native methods in that environment.
  *
+ * @group Detection
  * @see https://github.com/craftzdog/react-native-quick-base64#installation
  */
 export const hasNodeBuffer =
@@ -49,9 +60,16 @@ export const hasNodeBuffer =
  * if an onComplete callback is used.
  *
  * https://react.dev/reference/react-dom/flushSync
+ *
+ * @group Integration
  */
 export type FlushSync = (callback: () => void) => void;
 
+/**
+ * Dependency wrapper for {@link FlushSync}.
+ *
+ * @group Integration
+ */
 export interface FlushSyncDep {
   readonly flushSync: FlushSync;
 }
@@ -64,13 +82,25 @@ export interface FlushSyncDep {
  *
  * - Web: Redirects to the specified URL (defaults to `/`)
  * - React Native: Restarts the app (URL ignored)
+ *
+ * @group Integration
  */
 export type ReloadApp = (url?: string) => void;
 
+/**
+ * Dependency wrapper for {@link ReloadApp}.
+ *
+ * @group Integration
+ */
 export interface ReloadAppDep {
   readonly reloadApp: ReloadApp;
 }
 
+/**
+ * Records platform global errors until disposed.
+ *
+ * @group Testing
+ */
 export interface TestGlobalErrors extends Disposable {
   readonly errors: ReadonlyArray<unknown>;
   readonly next: () => Promise<unknown>;
@@ -88,11 +118,19 @@ export interface TestGlobalErrors extends Disposable {
   readonly settle: () => Promise<ReadonlyArray<unknown>>;
 }
 
-/** Records platform global uncaught-error reporting until disposed. */
+/**
+ * Records platform global uncaught-error reporting until disposed.
+ *
+ * @group Testing
+ */
 export const testGlobalUncaughtErrors = (): TestGlobalErrors =>
   createTestGlobalErrors("uncaughtErrors");
 
-/** Records platform global unhandled-rejection reporting until disposed. */
+/**
+ * Records platform global unhandled-rejection reporting until disposed.
+ *
+ * @group Testing
+ */
 export const testGlobalUnhandledRejections = (): TestGlobalErrors =>
   createTestGlobalErrors("unhandledRejection");
 

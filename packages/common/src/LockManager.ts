@@ -47,6 +47,8 @@ import type { Callback } from "./Types.ts";
  * );
  * assertEqual(result, "example");
  * ```
+ *
+ * @group Core
  */
 
 export interface LockManagerDep {
@@ -65,6 +67,8 @@ export interface LockManagerDep {
  * via internal namespacing, so tests can reuse the same lock names without
  * contending through the global Web Locks. Query results are filtered to that
  * private namespace and returned with the original visible names.
+ *
+ * @group Testing
  */
 export const testCreateLockManager = (
   nativeLockManager: LockManager = navigator.locks,
@@ -119,6 +123,8 @@ export const testCreateLockManager = (
  * Leadership is held until the returned handle is disposed. Once released,
  * another waiting caller may become the next leader. Waiting for leadership is
  * abortable via the calling {@link Task}'s signal.
+ *
+ * @group Leader election
  */
 export const acquireLeaderLock =
   (name: string): Task<AsyncDisposable, never, LockManagerDep> =>
@@ -156,6 +162,8 @@ export const acquireLeaderLock =
  * Leadership is held until the returned handle is disposed. Once released,
  * another waiting caller may become the next leader. Waiting for leadership is
  * abortable by disposing the returned handle.
+ *
+ * @group Leader election
  */
 export const acquireLeaderLockCallback =
   (deps: LockManagerDep) =>

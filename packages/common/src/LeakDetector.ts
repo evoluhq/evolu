@@ -22,6 +22,8 @@ import { constVoid } from "./Function.ts";
  * a warning may come late or, in short-lived processes, never. It is a
  * development canary, not a guarantee. Production uses
  * {@link noopLeakDetector}.
+ *
+ * @group Core
  */
 export interface LeakDetector {
   /**
@@ -38,7 +40,11 @@ export interface LeakDetector {
   readonly untrack: (unregisterToken: object) => void;
 }
 
-/** Describes a tracked handle for {@link LeakDetector.track}. */
+/**
+ * Describes a tracked handle for {@link LeakDetector.track}.
+ *
+ * @group Core
+ */
 export interface Leak {
   /** Handle name used in the warning, for example `"Lease"`. */
   readonly name: string;
@@ -50,6 +56,7 @@ export interface Leak {
 /**
  * Dependency wrapper for {@link LeakDetector}.
  *
+ * @group Core
  * @see {@link LeakDetector}
  */
 export interface LeakDetectorDep {
@@ -61,6 +68,8 @@ export interface LeakDetectorDep {
  *
  * Capturing a stack per track call is too expensive for production; use
  * {@link noopLeakDetector} there.
+ *
+ * @group Core
  */
 export const createLeakDetector = (deps: ConsoleDep): LeakDetector => {
   if (typeof globalThis.FinalizationRegistry !== "function")
@@ -86,7 +95,11 @@ export const createLeakDetector = (deps: ConsoleDep): LeakDetector => {
   };
 };
 
-/** No-op {@link LeakDetector} for production. */
+/**
+ * No-op {@link LeakDetector} for production.
+ *
+ * @group Core
+ */
 export const noopLeakDetector: LeakDetector = {
   track: constVoid,
   untrack: constVoid,
@@ -118,6 +131,7 @@ const reportLeak =
 /**
  * Test {@link LeakDetector} with deterministic collection.
  *
+ * @group Testing
  * @see {@link testCreateLeakDetector}
  */
 export interface TestLeakDetector extends LeakDetector {
@@ -136,13 +150,18 @@ export interface TestLeakDetector extends LeakDetector {
 /**
  * Dependency wrapper for {@link TestLeakDetector}.
  *
+ * @group Testing
  * @see {@link TestLeakDetector}
  */
 export interface TestLeakDetectorDep extends LeakDetectorDep {
   readonly leakDetector: TestLeakDetector;
 }
 
-/** Creates {@link TestLeakDetector}. */
+/**
+ * Creates {@link TestLeakDetector}.
+ *
+ * @group Testing
+ */
 export const testCreateLeakDetector = (deps: ConsoleDep): TestLeakDetector => {
   const trackedLeaksByToken = new Map<object, ReadonlyArray<TrackedLeak>>();
   const report = reportLeak(deps);

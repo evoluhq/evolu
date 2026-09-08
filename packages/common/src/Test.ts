@@ -38,6 +38,8 @@ import { createId, type Id } from "./Type.ts";
  * }
  * assertFalse(Reflect.has(globalThis, key));
  * ```
+ *
+ * @group Testing
  */
 export const testStubGlobal = (
   key: PropertyKey,
@@ -58,6 +60,11 @@ export const testStubGlobal = (
   return disposer;
 };
 
+/**
+ * Deterministic id factory returned by {@link testCreateId}.
+ *
+ * @group Testing
+ */
 export type TestCreateId = <B extends string = never>() => [B] extends [never]
   ? Id
   : Id & Brand<B>;
@@ -96,6 +103,8 @@ export type TestCreateId = <B extends string = never>() => [B] extends [never]
  * assertEqual(replayCreateId(), callbackId);
  * assertType<typeof todoId, Id & Brand<"Todo">>();
  * ```
+ *
+ * @group Testing
  */
 export const testCreateId = (): TestCreateId => {
   const randomBytes = testCreateRandomBytes({

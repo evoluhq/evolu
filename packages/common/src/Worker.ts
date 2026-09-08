@@ -12,6 +12,7 @@ import { disposable } from "./Function.ts";
 /**
  * Typed, disposable Worker.
  *
+ * @group Core
  * @see https://developer.mozilla.org/en-US/docs/Web/API/Worker
  */
 export interface Worker<Input, Output = never> extends MessagePort<
@@ -25,6 +26,7 @@ export interface Worker<Input, Output = never> extends MessagePort<
  * A shared worker is shared across multiple clients (tabs, windows, iframes)
  * and provides a port for bidirectional communication with each client.
  *
+ * @group Core
  * @see https://developer.mozilla.org/en-US/docs/Web/API/SharedWorker
  */
 export interface SharedWorker<Input, Output = never> extends Disposable {
@@ -41,6 +43,7 @@ export interface SharedWorker<Input, Output = never> extends Disposable {
  * end periodically sends "alive" messages and stale ports are pruned after a
  * timeout.
  *
+ * @group Core
  * @see https://developer.mozilla.org/en-US/docs/Web/API/MessagePort
  */
 export interface MessagePort<Input, Output = never> extends Disposable {
@@ -92,6 +95,8 @@ export interface MessagePort<Input, Output = never> extends Disposable {
  * Intentionally scoped to types Evolu uses. The web platform defines additional
  * transferable types (`ImageBitmap`, `OffscreenCanvas`, `ReadableStream`, etc.)
  * that can be added here if needed.
+ *
+ * @group Core
  */
 export type Transferable = NativeMessagePort<any, any> | ArrayBuffer;
 
@@ -101,6 +106,8 @@ export type Transferable = NativeMessagePort<any, any> | ArrayBuffer;
  * Exists because `postMessage` transfer requires the native object itself, not
  * a wrapper. Ensures type-safe wiring between {@link MessagePort.native} and
  * {@link CreateMessagePort} without exposing platform details.
+ *
+ * @group Core
  */
 export type NativeMessagePort<
   Input = unknown,
@@ -113,16 +120,29 @@ export type NativeMessagePort<
 declare const nativeMessagePortInput: unique symbol;
 declare const nativeMessagePortOutput: unique symbol;
 
-/** Factory function to create a {@link MessagePort} from a native port. */
+/**
+ * Factory function to create a {@link MessagePort} from a native port.
+ *
+ * @group Construction
+ */
 export type CreateMessagePort = <Input, Output = never>(
   nativePort: NativeMessagePort<Input, Output>,
 ) => MessagePort<Input, Output>;
 
+/**
+ * Dependency wrapper for {@link CreateMessagePort}.
+ *
+ * @group Construction
+ */
 export interface CreateMessagePortDep {
   readonly createMessagePort: CreateMessagePort;
 }
 
-/** Common dependencies for worker entry points. */
+/**
+ * Common dependencies for worker entry points.
+ *
+ * @group Core
+ */
 export type WorkerDeps = ConsoleDep &
   ConsoleStoreOutputEntryDep &
   CreateMessagePortDep;
@@ -221,6 +241,7 @@ export type WorkerDeps = ConsoleDep &
  * ]);
  * ```
  *
+ * @group Core
  * @see https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel
  */
 export interface MessageChannel<Input, Output = never> extends Disposable {
@@ -231,12 +252,21 @@ export interface MessageChannel<Input, Output = never> extends Disposable {
   readonly port2: MessagePort<Output, Input>;
 }
 
-/** Factory function to create a {@link MessageChannel}. */
+/**
+ * Factory function to create a {@link MessageChannel}.
+ *
+ * @group Construction
+ */
 export type CreateMessageChannel = <Input, Output = never>() => MessageChannel<
   Input,
   Output
 >;
 
+/**
+ * Dependency wrapper for {@link CreateMessageChannel}.
+ *
+ * @group Construction
+ */
 export interface CreateMessageChannelDep {
   readonly createMessageChannel: CreateMessageChannel;
 }
@@ -247,6 +277,7 @@ export interface CreateMessageChannelDep {
  * Broadcast channels deliver messages to other channels opened with the same
  * name. The sending channel does not receive its own messages.
  *
+ * @group Core
  * @see https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel
  */
 export interface BroadcastChannel<Input, Output = Input> extends Disposable {
@@ -257,11 +288,20 @@ export interface BroadcastChannel<Input, Output = Input> extends Disposable {
   onMessage: ((message: Output) => void) | null;
 }
 
-/** Factory function to create a {@link BroadcastChannel}. */
+/**
+ * Factory function to create a {@link BroadcastChannel}.
+ *
+ * @group Construction
+ */
 export type CreateBroadcastChannel = <Input, Output = Input>(
   name: string,
 ) => BroadcastChannel<Input, Output>;
 
+/**
+ * Dependency wrapper for {@link CreateBroadcastChannel}.
+ *
+ * @group Construction
+ */
 export interface CreateBroadcastChannelDep {
   readonly createBroadcastChannel: CreateBroadcastChannel;
 }
@@ -271,6 +311,8 @@ export interface CreateBroadcastChannelDep {
  *
  * This is the worker-side counterpart to {@link Worker} — a typed
  * {@link MessagePort} that wraps `self` inside the worker.
+ *
+ * @group Core
  */
 export interface WorkerSelf<Input, Output = never> extends MessagePort<
   Output,
@@ -282,6 +324,8 @@ export interface WorkerSelf<Input, Output = never> extends MessagePort<
  *
  * This is the worker-side counterpart to {@link SharedWorker}. It wraps `self`
  * inside the shared worker, providing typed `onConnect` callbacks.
+ *
+ * @group Core
  */
 export interface SharedWorkerSelf<Input, Output = never> extends Disposable {
   onConnect: ((port: MessagePort<Output, Input>) => void) | null;
@@ -292,6 +336,8 @@ export interface SharedWorkerSelf<Input, Output = never> extends Disposable {
  *
  * This is a memory-only fallback for platforms without native worker support.
  * Message delivery is asynchronous in-process.
+ *
+ * @group Construction
  */
 export const createWorker = <Input, Output = never>(
   initWorker: (self: WorkerSelf<Input, Output>) => void,
@@ -309,6 +355,8 @@ export const createWorker = <Input, Output = never>(
  * in-process.
  *
  * Intended usage is one shared worker instance per process/app runtime.
+ *
+ * @group Construction
  */
 export const createSharedWorker = <Input, Output = never>(
   initWorker: (self: SharedWorkerSelf<Input, Output>) => void,
@@ -329,6 +377,8 @@ export const createSharedWorker = <Input, Output = never>(
  *
  * This is a memory-only fallback for platforms without native MessageChannel
  * support. Message delivery is asynchronous in-process.
+ *
+ * @group Construction
  */
 export const createMessageChannel: CreateMessageChannel = <
   Input,
@@ -386,6 +436,8 @@ export const createMessageChannel: CreateMessageChannel = <
  *
  * This is a memory-only fallback for platforms without native MessagePort
  * support. Message delivery through returned ports is asynchronous in-process.
+ *
+ * @group Construction
  */
 export const createMessagePort: CreateMessagePort = <Input, Output = never>(
   nativePort: NativeMessagePort<Input, Output>,
@@ -400,6 +452,8 @@ export const createMessagePort: CreateMessagePort = <Input, Output = never>(
  *
  * This is a memory-only fallback for platforms without native BroadcastChannel
  * support. Message delivery is asynchronous in-process.
+ *
+ * @group Construction
  */
 export const createBroadcastChannel: CreateBroadcastChannel = <
   Input,
@@ -468,6 +522,8 @@ const broadcastChannelDispatchesByName = new Map<
  * Test {@link Worker} with access to its paired worker-side `self`.
  *
  * Use `self` to simulate messages and behavior from inside the worker.
+ *
+ * @group Testing
  */
 export interface TestWorker<Input, Output = never> extends Worker<
   Input,
@@ -482,6 +538,8 @@ export interface TestWorker<Input, Output = never> extends Worker<
  *
  * Call `connect()` to simulate a client connection and trigger
  * `self.onConnect`.
+ *
+ * @group Testing
  */
 export interface TestSharedWorker<Input, Output = never> extends SharedWorker<
   Input,
@@ -491,7 +549,11 @@ export interface TestSharedWorker<Input, Output = never> extends SharedWorker<
   readonly connect: () => void;
 }
 
-/** {@link MessageChannel} with disposal tracking for testing. */
+/**
+ * {@link MessageChannel} with disposal tracking for testing.
+ *
+ * @group Testing
+ */
 export interface TestMessageChannel<
   Input,
   Output = never,
@@ -499,7 +561,11 @@ export interface TestMessageChannel<
   readonly isDisposed: () => boolean;
 }
 
-/** {@link BroadcastChannel} with disposal tracking for testing. */
+/**
+ * {@link BroadcastChannel} with disposal tracking for testing.
+ *
+ * @group Testing
+ */
 export interface TestBroadcastChannel<
   Input,
   Output = Input,
@@ -512,6 +578,8 @@ export interface TestBroadcastChannel<
  *
  * The returned worker includes its typed {@link TestWorker.self} counterpart, so
  * tests can exercise dedicated worker communication without a real thread.
+ *
+ * @group Testing
  */
 export const testCreateWorker = <Input, Output = never>(): TestWorker<
   Input,
@@ -531,6 +599,8 @@ export const testCreateWorker = <Input, Output = never>(): TestWorker<
  *
  * The returned worker includes `self` and `connect` so tests can exercise the
  * full worker ↔ client pipeline without a real worker thread.
+ *
+ * @group Testing
  */
 export const testCreateSharedWorker = <
   Input,
@@ -554,6 +624,8 @@ export const testCreateSharedWorker = <
  *
  * Both ports are registered in the native port registry so
  * {@link testCreateMessagePort} can look them up by their native token.
+ *
+ * @group Testing
  */
 export const testCreateMessageChannel = <
   Input,
@@ -572,12 +644,20 @@ export const testCreateMessageChannel = <
   };
 };
 
-/** Creates an in-memory {@link CreateMessagePort} for testing. */
+/**
+ * Creates an in-memory {@link CreateMessagePort} for testing.
+ *
+ * @group Testing
+ */
 export const testCreateMessagePort: CreateMessagePort = <Input, Output = never>(
   nativePort: NativeMessagePort<Input, Output>,
 ): MessagePort<Input, Output> => createMessagePort(nativePort);
 
-/** Creates an in-memory {@link BroadcastChannel} for testing. */
+/**
+ * Creates an in-memory {@link BroadcastChannel} for testing.
+ *
+ * @group Testing
+ */
 export const testCreateBroadcastChannel = <Input, Output = Input>(
   name: string,
 ): TestBroadcastChannel<Input, Output> => {
@@ -605,6 +685,8 @@ export const testCreateBroadcastChannel = <Input, Output = Input>(
  * This observes actual transport tasks instead of waiting for an arbitrary
  * duration. It also waits through message handlers that schedule more worker
  * tasks before the current microtask checkpoint completes.
+ *
+ * @group Testing
  */
 export const testWaitForWorkerMessage = (): Promise<void> =>
   new Promise((resolve) => {

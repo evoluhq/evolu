@@ -40,6 +40,8 @@ import {
  * API is synchronous because it provides
  * {@link https://github.com/WiseLibs/better-sqlite3/issues/262 | better concurrency}
  * for SQLite.
+ *
+ * @group Core
  */
 export interface Sqlite extends AsyncDisposable {
   readonly exec: <R extends SqliteRow = SqliteRow>(
@@ -67,26 +69,48 @@ export interface Sqlite extends AsyncDisposable {
   readonly export: () => Uint8Array<ArrayBuffer>;
 }
 
+/**
+ * Dependency wrapper for {@link Sqlite}.
+ *
+ * @group Core
+ */
 export interface SqliteDep {
   readonly sqlite: Sqlite;
 }
 
+/**
+ * Runs a callback inside a SQLite transaction.
+ *
+ * @group Core
+ */
 export interface SqliteTransaction {
   <T, E>(callback: () => Result<T, E>): Result<T, E>;
   (callback: () => void): void;
 }
 
-/** Represents a SQL query to be executed on a {@link Sqlite} database. */
+/**
+ * Represents a SQL query to be executed on a {@link Sqlite} database.
+ *
+ * @group Queries
+ */
 export interface SqliteQuery {
   readonly sql: SafeSql;
   readonly parameters: SqliteQueryParameters;
   readonly options?: SqliteQueryOptions;
 }
 
-/** Serialized {@link SqliteQuery} used as a stable string key. */
+/**
+ * Serialized {@link SqliteQuery} used as a stable string key.
+ *
+ * @group Queries
+ */
 export type SqliteQueryString = string & Brand<"SqliteQueryString">;
 
-/** A sanitized SQL string for {@link SqliteQuery}. */
+/**
+ * A sanitized SQL string for {@link SqliteQuery}.
+ *
+ * @group Queries
+ */
 export type SafeSql = string & Brand<"SafeSql">;
 
 /**
@@ -99,6 +123,8 @@ export type SafeSql = string & Brand<"SafeSql">;
  *
  * Note that Evolu can't support Int64 because expo-sqlite (and some others) do
  * not support it.
+ *
+ * @group Values
  */
 export const SqliteValue = /*#__PURE__*/ union(
   FiniteNumber,
@@ -108,7 +134,11 @@ export const SqliteValue = /*#__PURE__*/ union(
 );
 export type SqliteValue = typeof SqliteValue.Output;
 
-/** Parameters of a {@link SqliteQuery}. */
+/**
+ * Parameters of a {@link SqliteQuery}.
+ *
+ * @group Queries
+ */
 export const SqliteQueryParameters = /*#__PURE__*/ array(SqliteValue);
 export type SqliteQueryParameters = typeof SqliteQueryParameters.Output;
 
@@ -118,14 +148,24 @@ export type SqliteQueryParameters = typeof SqliteQueryParameters.Output;
  *
  * It differs from {@link SqliteValue} only by using `number` instead of
  * {@link FiniteNumber}.
+ *
+ * @group Values
  */
 export type SqliteValueInput = typeof SqliteValue.Input;
 
-/** Equality comparison for {@link SqliteValueInput}. */
+/**
+ * Equality comparison for {@link SqliteValueInput}.
+ *
+ * @group Values
+ */
 export const eqSqliteValue: Eq<SqliteValueInput> = (x, y) =>
   Uint8Array.is(x) && Uint8Array.is(y) ? eqUint8Array(x, y) : x === y;
 
-/** Options for configuring {@link SqliteQuery} execution behavior. */
+/**
+ * Options for configuring {@link SqliteQuery} execution behavior.
+ *
+ * @group Queries
+ */
 export interface SqliteQueryOptions {
   /**
    * If set to `true`, logs the time taken to execute the SQL query. Useful for
@@ -152,7 +192,11 @@ export interface SqliteQueryOptions {
   readonly prepare?: boolean;
 }
 
-/** Converts a {@link SqliteQuery} into a stable {@link SqliteQueryString}. */
+/**
+ * Converts a {@link SqliteQuery} into a stable {@link SqliteQueryString}.
+ *
+ * @group Queries
+ */
 export const sqliteQueryToSqliteQueryString = (
   query: SqliteQuery,
 ): SqliteQueryString => {
@@ -169,7 +213,11 @@ export const sqliteQueryToSqliteQueryString = (
   return JSON.stringify([query.sql, params, options]) as SqliteQueryString;
 };
 
-/** Converts a {@link SqliteQueryString} back into a {@link SqliteQuery}. */
+/**
+ * Converts a {@link SqliteQueryString} back into a {@link SqliteQuery}.
+ *
+ * @group Queries
+ */
 export const sqliteQueryStringToSqliteQuery = (
   query: SqliteQueryString,
 ): SqliteQuery => {
@@ -196,7 +244,11 @@ export const sqliteQueryStringToSqliteQuery = (
   };
 };
 
-/** Result of executing a SQLite query. */
+/**
+ * Result of executing a SQLite query.
+ *
+ * @group Queries
+ */
 export interface SqliteExecResult<R extends SqliteRow = SqliteRow> {
   readonly rows: ReadonlyArray<R>;
   readonly changes: number;
@@ -205,6 +257,8 @@ export interface SqliteExecResult<R extends SqliteRow = SqliteRow> {
 /**
  * A row returned from a {@link Sqlite} query, mapping column names to
  * {@link SqliteValueInput}.
+ *
+ * @group Values
  */
 export type SqliteRow = Record<string, SqliteValueInput>;
 
@@ -212,6 +266,8 @@ export type SqliteRow = Record<string, SqliteValueInput>;
  * SQLite driver interface.
  *
  * Platform-specific drivers must implement this interface.
+ *
+ * @group Core
  */
 export interface SqliteDriver extends Disposable {
   readonly exec: (query: SqliteQuery) => SqliteExecResult;
@@ -228,12 +284,21 @@ export interface SqliteDriver extends Disposable {
   readonly export: () => Uint8Array<ArrayBuffer>;
 }
 
-/** Creates a {@link SqliteDriver}. */
+/**
+ * Creates a {@link SqliteDriver}.
+ *
+ * @group Core
+ */
 export type CreateSqliteDriver = (
   name: Name,
   options?: SqliteDriverOptions,
 ) => Task<SqliteDriver>;
 
+/**
+ * Dependency wrapper for {@link CreateSqliteDriver}.
+ *
+ * @group Core
+ */
 export interface CreateSqliteDriverDep {
   createSqliteDriver: CreateSqliteDriver;
 }
@@ -243,6 +308,8 @@ export interface CreateSqliteDriverDep {
  *
  * Three mutually exclusive modes: in-memory (for testing), encrypted persistent
  * (OPFS/file with encryption key), or persistent (default when omitted).
+ *
+ * @group Core
  */
 export type SqliteDriverOptions =
   | { readonly mode: "memory" }
@@ -253,6 +320,8 @@ export type SqliteDriverOptions =
  *
  * The driver is created via {@link CreateSqliteDriver} and wrapped with logging,
  * error handling, and transaction helpers.
+ *
+ * @group Core
  */
 export const createSqlite =
   (
@@ -330,7 +399,11 @@ export const createSqlite =
     );
   };
 
-/** Creates a test setup with a in-memory {@link Sqlite}. */
+/**
+ * Creates a test setup with a in-memory {@link Sqlite}.
+ *
+ * @group Testing
+ */
 export const testSetupSqlite = async (
   deps: CreateSqliteDriverDep,
 ): Promise<
@@ -381,6 +454,8 @@ const drawSqliteQueryPlan = (rows: Array<SqliteQueryPlanRow>): string =>
  *
  * Statements are created on first access and reused for subsequent calls with
  * the same SQL. Disposing the cache finalizes all cached statements.
+ *
+ * @group Core
  */
 export interface PreparedStatements<P> extends Disposable {
   readonly get: <T extends boolean>(
@@ -392,6 +467,8 @@ export interface PreparedStatements<P> extends Disposable {
 /**
  * Creates a {@link PreparedStatements} cache backed by the given factory and
  * dispose function.
+ *
+ * @group Core
  */
 export const createPreparedStatementsCache = <P>(
   factory: (sql: SafeSql) => P,
@@ -428,7 +505,11 @@ export const createPreparedStatementsCache = <P>(
   );
 };
 
-/** A double-quoted SQL identifier for safe column or table name interpolation. */
+/**
+ * A double-quoted SQL identifier for safe column or table name interpolation.
+ *
+ * @group Queries
+ */
 export interface SqlIdentifier extends Typed<"SqlIdentifier"> {
   readonly sql: SafeSql;
 }
@@ -437,12 +518,18 @@ export interface SqlIdentifier extends Typed<"SqlIdentifier"> {
  * An unescaped SQL fragment inserted verbatim into a query.
  *
  * **Warning**: Use only with trusted, constant strings to avoid SQL injection.
+ *
+ * @group Queries
  */
 export interface RawSql extends Typed<"RawSql"> {
   readonly sql: string;
 }
 
-/** A parameter accepted by the {@link sql} tagged template. */
+/**
+ * A parameter accepted by the {@link sql} tagged template.
+ *
+ * @group Queries
+ */
 export type SqlTemplateParam = SqliteValueInput | SqlIdentifier | RawSql;
 
 /**
@@ -488,6 +575,8 @@ export type SqlTemplateParam = SqliteValueInput | SqlIdentifier | RawSql;
  * Use `prettier-plugin-sql-cst` for SQL formatting. Like Prettier for
  * JavaScript, this plugin formats SQL expressions differently depending on
  * their length.
+ *
+ * @group Queries
  */
 export const sql = (
   strings: TemplateStringsArray,
@@ -535,14 +624,22 @@ sql.prepared = (
   return { ...query, options: { prepare: true } };
 };
 
-/** Index metadata stored in `sqlite_master` for a {@link Sqlite} database. */
+/**
+ * Index metadata stored in `sqlite_master` for a {@link Sqlite} database.
+ *
+ * @group Schema
+ */
 export const SqliteIndex: ObjectType<{
   readonly name: typeof String;
   readonly sql: typeof String;
 }> = /*#__PURE__*/ object({ name: String, sql: String });
 export interface SqliteIndex extends InferType<typeof SqliteIndex> {}
 
-/** {@link Eq} instance for {@link SqliteIndex}. */
+/**
+ * {@link Eq} instance for {@link SqliteIndex}.
+ *
+ * @group Schema
+ */
 export const eqSqliteIndex: Eq<SqliteIndex> = /*#__PURE__*/ createEqObject({
   name: eqString,
   sql: eqString,
@@ -552,6 +649,8 @@ export const eqSqliteIndex: Eq<SqliteIndex> = /*#__PURE__*/ createEqObject({
  * Full schema metadata for a {@link Sqlite} database.
  *
  * Includes table-column mappings and user-visible indexes.
+ *
+ * @group Schema
  */
 export const SqliteSchema: ObjectType<{
   readonly tables: RecordType<typeof String, SetType<typeof String>>;
@@ -562,7 +661,11 @@ export const SqliteSchema: ObjectType<{
 });
 export interface SqliteSchema extends InferType<typeof SqliteSchema> {}
 
-/** Get the current SQLite schema by reading SQLite metadata. */
+/**
+ * Get the current SQLite schema by reading SQLite metadata.
+ *
+ * @group Schema
+ */
 export const getSqliteSchema =
   (deps: SqliteDep) =>
   ({
@@ -627,6 +730,8 @@ export const getSqliteSchema =
 /**
  * Returns {@link SqliteSchema} and full {@link SqliteRow} table contents for
  * inspection and testing.
+ *
+ * @group Schema
  */
 export interface SqliteSnapshot {
   readonly schema: SqliteSchema;
@@ -641,6 +746,8 @@ export interface SqliteSnapshot {
  *
  * The snapshot includes current {@link SqliteSchema} and all rows from every
  * discovered table. Table order follows `schema.tables` iteration order.
+ *
+ * @group Schema
  */
 export const getSqliteSnapshot = (deps: SqliteDep): SqliteSnapshot => {
   const schema = getSqliteSchema(deps)();
@@ -671,6 +778,8 @@ export const getSqliteSnapshot = (deps: SqliteDep): SqliteSnapshot => {
  *   readability.
  * - Use {@link booleanToSqliteBoolean} and {@link sqliteBooleanToBoolean} for
  *   converting between JavaScript booleans and SQLite boolean values.
+ *
+ * @group Values
  */
 export const SqliteBoolean = /*#__PURE__*/ union(0, 1);
 export type SqliteBoolean = typeof SqliteBoolean.Output;
@@ -679,6 +788,8 @@ export type SqliteBoolean = typeof SqliteBoolean.Output;
  * Represents the {@link SqliteBoolean} value for `true`.
  *
  * See {@link SqliteBoolean}.
+ *
+ * @group Values
  */
 export const sqliteTrue = 1;
 
@@ -686,6 +797,8 @@ export const sqliteTrue = 1;
  * Represents the {@link SqliteBoolean} value for `false`.
  *
  * See {@link SqliteBoolean}.
+ *
+ * @group Values
  */
 export const sqliteFalse = 0;
 
@@ -699,6 +812,8 @@ export const sqliteFalse = 0;
  *
  * assertEqual(booleanToSqliteBoolean(true), 1);
  * ```
+ *
+ * @group Values
  */
 export const booleanToSqliteBoolean = (value: boolean): SqliteBoolean =>
   value ? sqliteTrue : sqliteFalse;
@@ -713,6 +828,8 @@ export const booleanToSqliteBoolean = (value: boolean): SqliteBoolean =>
  *
  * assertTrue(sqliteBooleanToBoolean(1));
  * ```
+ *
+ * @group Values
  */
 export const sqliteBooleanToBoolean = (value: SqliteBoolean): boolean =>
   value === sqliteTrue;

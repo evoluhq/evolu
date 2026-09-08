@@ -91,6 +91,8 @@ import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.ts";
  *   { url: "wss://example.com", data: "Hello" },
  * );
  * ```
+ *
+ * @group Core
  */
 export interface WebSocket extends AsyncDisposable {
   /**
@@ -112,23 +114,42 @@ export interface WebSocket extends AsyncDisposable {
  * or is in the CONNECTING state.
  *
  * https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/send
+ *
+ * @group Errors
  */
 export interface WebSocketSendError extends Typed<"WebSocketSendError"> {}
 
-/** WebSocket connection states. */
+/**
+ * WebSocket connection states.
+ *
+ * @group Core
+ */
 export type WebSocketReadyState = "connecting" | "open" | "closing" | "closed";
 
-/** {@link Task} that creates a {@link WebSocket}. */
+/**
+ * {@link Task} that creates a {@link WebSocket}.
+ *
+ * @group Core
+ */
 export type CreateWebSocket = (
   url: string,
   options?: WebSocketOptions,
 ) => Task<WebSocket>;
 
+/**
+ * Dependency wrapper for {@link CreateWebSocket}.
+ *
+ * @group Core
+ */
 export interface CreateWebSocketDep {
   readonly createWebSocket: CreateWebSocket;
 }
 
-/** Options for creating {@link WebSocket}. */
+/**
+ * Options for creating {@link WebSocket}.
+ *
+ * @group Core
+ */
 export interface WebSocketOptions {
   /** Protocol(s) to use with the WebSocket connection. */
   readonly protocols?: string | ReadonlyArray<string>;
@@ -171,6 +192,12 @@ export interface WebSocketOptions {
   readonly WebSocketConstructor?: typeof globalThis.WebSocket;
 }
 
+/**
+ * Any error reported by a {@link WebSocket}, including exhausted reconnect
+ * retries.
+ *
+ * @group Errors
+ */
 export type WebSocketError =
   | WebSocketConnectError
   | WebSocketConnectionError
@@ -179,6 +206,8 @@ export type WebSocketError =
 /**
  * An error that occurs when a connection cannot be established due to a network
  * error. Fires before `onclose`.
+ *
+ * @group Errors
  */
 export interface WebSocketConnectError extends Typed<"WebSocketConnectError"> {
   readonly event: Event;
@@ -192,15 +221,27 @@ export interface WebSocketConnectError extends Typed<"WebSocketConnectError"> {
  * Chromium and Firefox only fire `onclose` without a preceding error event.
  *
  * https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/error_event
+ *
+ * @group Errors
  */
 export interface WebSocketConnectionError extends Typed<"WebSocketConnectionError"> {
   readonly event: Event;
 }
 
+/**
+ * Errors that trigger a reconnect attempt under
+ * {@link webSocketReconnectSchedule}.
+ *
+ * @group Errors
+ */
 export type WebSocketRetryError =
   WebSocketConnectError | WebSocketConnectionCloseError;
 
-/** An error that occurs when the connection is closed by the server. */
+/**
+ * An error that occurs when the connection is closed by the server.
+ *
+ * @group Errors
+ */
 export interface WebSocketConnectionCloseError extends Typed<"WebSocketConnectionCloseError"> {
   readonly event: CloseEvent;
 }
@@ -210,13 +251,19 @@ export interface WebSocketConnectionCloseError extends Typed<"WebSocketConnectio
  *
  * Uses unlimited exponential backoff with a 100ms base, 30s cap, and full
  * jitter.
+ *
+ * @group Core
  */
 export const webSocketReconnectSchedule: Schedule<Millis, WebSocketRetryError> =
   /*#__PURE__*/ jitter("100%")(
     /*#__PURE__*/ maxDelay("30s")(/*#__PURE__*/ exponential("100ms")),
   );
 
-/** Create a new {@link WebSocket}. */
+/**
+ * Create a new {@link WebSocket}.
+ *
+ * @group Core
+ */
 export const createWebSocket: CreateWebSocket =
   (
     url,
@@ -363,6 +410,8 @@ const nativeToStringState: Record<number, WebSocketReadyState> = {
 /**
  * An inspectable in-memory {@link CreateWebSocket} for testing by
  * {@link testCreateWebSocket}.
+ *
+ * @group Testing
  */
 export interface TestCreateWebSocket extends CreateWebSocket {
   readonly createdUrls: Array<string>;
@@ -374,7 +423,11 @@ export interface TestCreateWebSocket extends CreateWebSocket {
   readonly open: (url: string) => void;
 }
 
-/** Creates {@link TestCreateWebSocket}. */
+/**
+ * Creates {@link TestCreateWebSocket}.
+ *
+ * @group Testing
+ */
 export const testCreateWebSocket = (
   options: {
     /** Throw immediately when a socket is created. */
@@ -466,6 +519,8 @@ export const testCreateWebSocket = (
 /**
  * A native {@link WebSocket} prepared for integration tests by
  * {@link testSetupWebSocket}.
+ *
+ * @group Testing
  */
 export interface TestSetupWebSocket extends AsyncDisposable {
   readonly socket: globalThis.WebSocket;
@@ -475,7 +530,11 @@ export interface TestSetupWebSocket extends AsyncDisposable {
   readonly waitForMessage: () => Promise<string | globalThis.Uint8Array>;
 }
 
-/** Opens a native {@link WebSocket} and returns {@link TestSetupWebSocket}. */
+/**
+ * Opens a native {@link WebSocket} and returns {@link TestSetupWebSocket}.
+ *
+ * @group Testing
+ */
 export const testSetupWebSocket = async (
   url: string,
 ): Promise<TestSetupWebSocket> => {

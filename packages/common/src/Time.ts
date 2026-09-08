@@ -42,7 +42,11 @@ import {
   union,
 } from "./Type.ts";
 
-/** Time and timer operations. */
+/**
+ * Time and timer operations.
+ *
+ * @group Core
+ */
 export interface Time {
   readonly now: {
     /** Returns current time as Unix epoch milliseconds. */
@@ -80,6 +84,11 @@ export interface Time {
   readonly clearTimeout: (id: TimeoutId) => void;
 }
 
+/**
+ * Dependency wrapper for {@link Time}.
+ *
+ * @group Core
+ */
 export interface TimeDep {
   readonly time: Time;
 }
@@ -88,6 +97,8 @@ export interface TimeDep {
  * Opaque type for timeout handles.
  *
  * Use with {@link Time.clearTimeout} to cancel a pending timeout.
+ *
+ * @group Core
  */
 export type TimeoutId = Brand<"TimeoutId">;
 
@@ -107,6 +118,8 @@ interface TimeoutIdInternal {
  *
  * Throws if the system clock returns an out-of-range value. This is intentional
  * — there's no reasonable fallback for a misconfigured clock.
+ *
+ * @group Core
  */
 export const createTime = (): Time => {
   const timeoutOwner = Symbol("Time");
@@ -204,6 +217,8 @@ const clearTimeoutId = (owner: symbol, id: TimeoutId): void => {
  * Test {@link Time} with controllable timers.
  *
  * Call `advance(ms)` to move time forward and trigger any pending timeouts.
+ *
+ * @group Testing
  */
 export interface TestTime extends Time {
   /**
@@ -215,6 +230,11 @@ export interface TestTime extends Time {
   readonly advance: (duration: Duration) => void;
 }
 
+/**
+ * Dependency wrapper for {@link TestTime}.
+ *
+ * @group Testing
+ */
 export interface TestTimeDep {
   readonly time: TestTime;
 }
@@ -230,6 +250,8 @@ export interface TestTimeDep {
  * wall-clock or performance `now()` call. `"microtask"` increments after the
  * current turn, while `"sync"` increments immediately after each read. Omit it
  * to keep time fixed until `advance()` is called.
+ *
+ * @group Testing
  */
 export const testCreateTime = (options?: {
   readonly startAt?: Millis;
@@ -341,6 +363,8 @@ const maxMillisWithInfinity = 281474976710655;
  *
  * If a system clock exceeds this range, operations will throw. This is
  * intentional — there's no reasonable fallback for a misconfigured clock.
+ *
+ * @group Millis
  */
 export const Millis = /*#__PURE__*/ brand(
   "Millis",
@@ -348,19 +372,33 @@ export const Millis = /*#__PURE__*/ brand(
 );
 export type Millis = typeof Millis.Output;
 
-/** Positive {@link Millis} value. */
+/**
+ * Positive {@link Millis} value.
+ *
+ * @group Millis
+ */
 export const PositiveMillis = /*#__PURE__*/ positive(Millis);
 export type PositiveMillis = typeof PositiveMillis.Output;
 
-/** Minimum {@link Millis} value. */
+/**
+ * Minimum {@link Millis} value.
+ *
+ * @group Millis
+ */
 export const minMillis = 0 as Millis;
 
-/** Maximum {@link Millis} value. */
+/**
+ * Maximum {@link Millis} value.
+ *
+ * @group Millis
+ */
 export const maxMillis = (maxMillisWithInfinity - 1) as Millis;
 
 /**
  * Converts a number to {@link Millis}, rounding to the nearest millisecond and
  * saturating overflow at {@link maxMillis}.
+ *
+ * @group Millis
  */
 export const saturateMillis = (value: NonNaNNumber): Millis =>
   Millis.orNull(Math.max(0, Math.round(value))) ?? maxMillis;
@@ -370,23 +408,39 @@ export const saturateMillis = (value: NonNaNNumber): Millis =>
  *
  * This is a safe cast because {@link Millis} guarantees a valid timestamp range
  * that always produces a valid ISO string.
+ *
+ * @group Millis
  */
 export const millisToDateIso = (value: Millis): DateIso =>
   new Date(value).toISOString() as DateIso;
 
-/** Unix epoch milliseconds used as the origin for {@link PerformanceTime}. */
+/**
+ * Unix epoch milliseconds used as the origin for {@link PerformanceTime}.
+ *
+ * @group Performance
+ */
 export type PerformanceTimeOrigin = number & Brand<"PerformanceTimeOrigin">;
 
-/** High-resolution milliseconds elapsed since {@link PerformanceTimeOrigin}. */
+/**
+ * High-resolution milliseconds elapsed since {@link PerformanceTimeOrigin}.
+ *
+ * @group Performance
+ */
 export type PerformanceTime = number & Brand<"PerformanceTime">;
 
-/** Elapsed fractional milliseconds measured using {@link PerformanceTime}. */
+/**
+ * Elapsed fractional milliseconds measured using {@link PerformanceTime}.
+ *
+ * @group Performance
+ */
 export type PerformanceDuration = number & Brand<"PerformanceDuration">;
 
 /**
  * Returns the elapsed fractional milliseconds between two performance times.
  *
  * Throws if `end` precedes `start`.
+ *
+ * @group Performance
  */
 export const performanceDurationBetween = (
   start: PerformanceTime,
@@ -412,6 +466,8 @@ export const performanceDurationBetween = (
  *
  * assertType<typeof readableSchedule, typeof validatedSchedule>();
  * ```
+ *
+ * @group Durations
  */
 export type Duration = DurationLiteral | Millis;
 
@@ -431,12 +487,18 @@ export type Duration = DurationLiteral | Millis;
  *
  * assertType<typeof readableSleep, typeof validatedSleep>();
  * ```
+ *
+ * @group Durations
  */
 export type PositiveDuration = DurationLiteral | PositiveMillis;
 
 // Keep these annotations concrete. Generic unit wrappers add thousands of
 // compiler instantiations to pnpm bench:type.
-/** Milliseconds duration: `"1ms"` to `"999ms"`. See {@link DurationLiteral}. */
+/**
+ * Milliseconds duration: `"1ms"` to `"999ms"`. See {@link DurationLiteral}.
+ *
+ * @group Durations
+ */
 export const DurationLiteralMilliseconds: UnionType<
   readonly [
     TemplateLiteralType<readonly [typeof Digit1To9, "ms"]>,
@@ -456,6 +518,8 @@ export type DurationLiteralMilliseconds =
 /**
  * Seconds duration: `"1s"` to `"59s"` or `"1.1s"` to `"59.9s"`. See
  * {@link DurationLiteral}.
+ *
+ * @group Durations
  */
 export const DurationLiteralSeconds: UnionType<
   readonly [
@@ -473,6 +537,8 @@ export type DurationLiteralSeconds = typeof DurationLiteralSeconds.Output;
 /**
  * Minutes duration: `"1m"` to `"59m"` or `"1.1m"` to `"59.9m"`. See
  * {@link DurationLiteral}.
+ *
+ * @group Durations
  */
 export const DurationLiteralMinutes: UnionType<
   readonly [
@@ -490,6 +556,8 @@ export type DurationLiteralMinutes = typeof DurationLiteralMinutes.Output;
 /**
  * Hours duration: `"1h"` to `"23h"` or `"1.1h"` to `"23.9h"`. See
  * {@link DurationLiteral}.
+ *
+ * @group Durations
  */
 export const DurationLiteralHours: UnionType<
   readonly [
@@ -507,6 +575,8 @@ export type DurationLiteralHours = typeof DurationLiteralHours.Output;
 /**
  * Days duration: `"1d"` to `"6d"` or `"1.1d"` to `"6.9d"`. See
  * {@link DurationLiteral}.
+ *
+ * @group Durations
  */
 export const DurationLiteralDays: UnionType<
   readonly [
@@ -524,6 +594,8 @@ export type DurationLiteralDays = typeof DurationLiteralDays.Output;
 /**
  * Weeks duration: `"1w"` to `"51w"` or `"1.1w"` to `"51.9w"`. See
  * {@link DurationLiteral}.
+ *
+ * @group Durations
  */
 export const DurationLiteralWeeks: UnionType<
   readonly [
@@ -541,6 +613,8 @@ export type DurationLiteralWeeks = typeof DurationLiteralWeeks.Output;
 /**
  * Years duration: `"1y"` to `"99y"` or `"1.1y"` to `"99.9y"`. See
  * {@link DurationLiteral}.
+ *
+ * @group Durations
  */
 export const DurationLiteralYears: UnionType<
   readonly [
@@ -555,6 +629,12 @@ export const DurationLiteralYears: UnionType<
 );
 export type DurationLiteralYears = typeof DurationLiteralYears.Output;
 
+/**
+ * Duration literal string, from {@link DurationLiteralMilliseconds} to
+ * {@link DurationLiteralYears}.
+ *
+ * @group Durations
+ */
 export type DurationLiteral =
   | DurationLiteralMilliseconds
   | DurationLiteralSeconds
@@ -622,6 +702,8 @@ const durationLiteralSyntax = /*#__PURE__*/ union(
  * assertOk(DurationLiteral.fromUnknown(literal), "1.5s");
  * assertFalse(DurationLiteral.is("1000ms"));
  * ```
+ *
+ * @group Durations
  */
 export const DurationLiteral: Type<
   "DurationLiteral",
@@ -640,7 +722,11 @@ export const DurationLiteral: Type<
     `The value ${safelyStringifyUnknownValue(error.value)} is not a duration literal. Use a value such as "500ms" or "1.5s".`,
 );
 
-/** Error returned when {@link DurationLiteral} rejects a value. */
+/**
+ * Error returned when {@link DurationLiteral} rejects a value.
+ *
+ * @group Durations
+ */
 export interface DurationLiteralError extends TypeError<"DurationLiteral"> {
   readonly value: unknown;
   /**
@@ -668,6 +754,8 @@ export interface DurationLiteralError extends TypeError<"DurationLiteral"> {
  * assertEqual(durationToMillis("1w"), 604800000);
  * assertEqual(durationToMillis(Millis.orThrow(5000)), 5000);
  * ```
+ *
+ * @group Durations
  */
 export function durationToMillis(
   duration: DurationLiteral | PositiveMillis,
@@ -704,6 +792,8 @@ const durationUnits = {
  * Frame budget at 60fps (16ms).
  *
  * Work exceeding this blocks a frame, causing visible jank in animations.
+ *
+ * @group Millis
  */
 export const ms60fps = 16 as Millis;
 
@@ -711,6 +801,8 @@ export const ms60fps = 16 as Millis;
  * Frame budget at 120fps (8ms).
  *
  * For high refresh rate displays. Work exceeding this blocks a frame.
+ *
+ * @group Millis
  */
 export const ms120fps = 8 as Millis;
 
@@ -720,6 +812,7 @@ export const ms120fps = 8 as Millis;
  * Tasks exceeding this are "long tasks" per web standards. Use with
  * {@link yieldNow} to yield periodically and keep UI responsive.
  *
+ * @group Millis
  * @see https://web.dev/articles/optimize-long-tasks
  */
 export const msLongTask = 50 as Millis;
@@ -752,6 +845,8 @@ export const msLongTask = 50 as Millis;
  *   "1d1h1m1.000s",
  * );
  * ```
+ *
+ * @group Millis
  */
 export const formatMillisAsDuration = (millis: Millis): string => {
   const seconds = ((millis % durationUnits.m) / durationUnits.s).toFixed(3);
@@ -796,6 +891,8 @@ export const formatMillisAsDuration = (millis: Millis): string => {
  *   "14:32:15.234",
  * );
  * ```
+ *
+ * @group Millis
  */
 export const formatMillisAsClockTime = (millis: Millis): string => {
   const date = new Date(millis);
