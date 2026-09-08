@@ -39,8 +39,10 @@ for real platform implementations such as SQLite drivers and WebSockets, and
 bundle tests when a published library's output, tree-shaking, execution, or size
 is part of its contract.
 
-Use Node.js's built-in coverage for unit tests. Changed source modules retain
-100% line, function, and branch coverage. Integration and bundle tests verify
+Use Node.js's built-in coverage for unit tests. Cover the changed behavior,
+including relevant branches and failure paths. Report pre-existing coverage
+gaps without adding unrelated tests solely to reach 100% coverage of an entire
+source file. Integration and bundle tests verify
 compositions and artifacts; browser suites can also collect coverage where the
 engine supports it. Documentation examples are executable tests and belong in
 the test pipeline. Use consistent script roles such as `test:unit`,

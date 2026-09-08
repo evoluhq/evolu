@@ -33,28 +33,35 @@ scripts with `node script.mts`. Run GitHub CLI commands with network access.
 
 ## Verification
 
-- For implementation changes, run relevant type-checking, linting, and focused
-  tests. Use `pnpm typecheck`, `pnpm lint`, and
-  `pnpm test:node "<test-file-or-glob>"`; quote globs. For Vitest suites, select
-  the owning project from its configuration and follow `test/README.md`.
+- Run checks directly relevant to the change. Scope tests, linting, and builds
+  to affected files or packages. Repository-wide type-checking is allowed because
+  it is fast. Do not run full test suites
+  merely because a change touches exports, multiple packages, or infrastructure.
+- Do not run `pnpm verify` unless the user explicitly requests it. Full verification
+  belongs to the user's pre-commit workflow. Do not reproduce it by running all
+  its component commands separately.
+- For implementation changes, use `pnpm test:node "<test-file-or-glob>"`; quote
+  globs. For Vitest suites, select the owning project and relevant test files
+  from its configuration and follow `test/README.md`.
+- Lint changed source files with `pnpm exec oxlint <changed-files>`.
+  Use `pnpm typecheck` for repository-wide type-checking. Node tests alone do not
+  check TypeScript types.
 - After changing documentation examples, run `pnpm test:jsdoc <changed-file>`.
   The default suite covers configured sources, not every documentation page.
 - After changing Type declarations, run
   `pnpm bench:type --filter=<affected-workload>` for relevant local workloads.
-  CI runs the full suite. Run it locally when updating baselines or investigating
-  broad regressions. See [benchmark usage](bench/type/README.md#running).
-- After changing storage algorithms, SQL, indexes, or query plans, run
-  `pnpm bench:storage`. Neither benchmark is included in `pnpm verify`.
+  CI runs the full suite. Reserve full benchmark runs and baseline updates for
+  explicit user requests. See [benchmark usage](bench/type/README.md#running).
+- After changing storage algorithms, SQL, indexes, or query plans, select the
+  relevant storage tests. `pnpm bench:storage` does not support workload filters;
+  run it only when explicitly requested by the user.
 - After changing browser APIs, platform-sensitive behavior, polyfills, workers,
-  or browser test configuration, run `pnpm test:integration:browsers`. It tests
-  configured integration projects, not all collocated unit tests. Run
+  or browser test configuration, run the affected browser tests and projects.
+  `pnpm test:integration:browsers` runs all configured integration projects;
+  use a focused Vitest invocation instead. Run
   `pnpm playwright:install` after Playwright updates or browser-cache removal.
-- After packaging or export changes, run `pnpm build`, `pnpm check:packages`,
-  and relevant bundle tests. `pnpm build` also generates IDE package types.
-- For cross-package behavior or shared build/test-infrastructure changes, or
-  when requested, run `pnpm verify`. It runs formatting, type-checking, lint,
-  builds, package checks, documentation generation, and all configured tests.
-  Do not run other CPU-intensive commands concurrently with it.
+- After packaging or export changes, build affected packages when needed and
+  run relevant package or bundle tests. Package builds also generate IDE types.
 - For prose-only changes, check formatting and relevant links; compile changed
   MDX pages. Restrict focused formatting checks to touched files in a dirty tree.
 - Once required checks pass, stop expanding or repeating verification unless
@@ -160,7 +167,9 @@ scripts with `node script.mts`. Run GitHub CLI commands with network access.
   [Conventions](<apps/web/src/app/(docs)/docs/conventions/page.mdx#api-reference-organization>).
   Resolve TypeDoc warnings; they fail CI.
 - Feature additions and bug fixes need a test that fails without the change.
-  Changed source files retain 100% statement, branch, function, and line coverage.
+  Cover the changed behavior, including relevant branches and failure paths.
+  Report pre-existing coverage gaps without adding unrelated tests solely to
+  reach 100% coverage of an entire source file.
 - Use `assertType` and precise `@ts-expect-error` comments for type contracts.
   Copy Evolu `CompileTimeError` messages verbatim; otherwise describe the rejected
   TypeScript contract. Do not use generic comments such as "should fail."

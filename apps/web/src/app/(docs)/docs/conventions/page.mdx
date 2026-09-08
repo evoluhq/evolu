@@ -858,8 +858,10 @@ Avoid `ok("done")` and `ok("success")`; the strings add no information.
 ## Testing
 
 Every feature addition and bug fix includes a test that fails without the
-change. Create fresh dependencies in each test and retain 100% statement,
-branch, function, and line coverage for changed source files.
+change. Create fresh dependencies in each test. Cover the changed behavior,
+including relevant branches and failure paths. Report pre-existing coverage
+gaps without adding unrelated tests solely to reach 100% coverage of an entire
+source file.
 
 Use `assertType` for compile-time contracts and `@ts-expect-error` for rejected
 programs. Every `@ts-expect-error` must describe the specific expected rejection.
