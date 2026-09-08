@@ -360,16 +360,10 @@ test("createMutableRecord", () => {
   assertEqual(source, { name: "Ada" });
   assertSame(Object.getPrototypeOf(copy), null);
 
-  const compileTimeAssertions = () => {
+  void (() => {
     // @ts-expect-error createMutableRecord source must be an object.
     createMutableRecord("Ada");
-  };
-  assertType<
-    typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-      ? true
-      : false,
-    true
-  >();
+  });
 });
 
 test("emptyRecord", () => {

@@ -97,16 +97,10 @@ test("Instance", () => {
   const value: unknown = foo;
   if (isFoo(value)) assertType<typeof value, Foo>();
 
-  const compileTimeAssertions = () => {
+  void (() => {
     // @ts-expect-error The runtime name must match the interface name.
     isInstance<Foo>("Bar");
-  };
-  assertType<
-    typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-      ? true
-      : false,
-    true
-  >();
+  });
 });
 
 test("isInstance checks its own marker", () => {

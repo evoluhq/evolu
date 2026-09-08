@@ -521,16 +521,10 @@ describe("Run", () => {
       const userFiber = run(loadUser);
 
       assertType<typeof userFiber, Fiber<string, never>>();
-      const compileTimeAssertions = () => {
+      void (() => {
         // oxlint-disable-next-line typescript/no-floating-promises -- Verifies that a Fiber must be handled or explicitly discarded with void.
         run(loadUser);
-      };
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
       assertNotUndefined(childRun);
       assertFalse(Object.is(childRun, run));
       assertSame(userFiber.run, childRun);

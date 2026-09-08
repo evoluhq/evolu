@@ -1675,7 +1675,7 @@ describe("assertType", () => {
     assertType<never, never>();
     assertType<{ readonly value?: string }, { readonly value?: string }>();
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error ⛔ assertType error: Actual and expected types must be identical
       assertType<"value", string>();
       // @ts-expect-error ⛔ assertType error: Actual and expected types must be identical
@@ -1687,13 +1687,7 @@ describe("assertType", () => {
         { readonly value?: string },
         { readonly value: string | undefined }
       >();
-    };
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("narrows values that satisfy a Type Output", () => {
@@ -2279,7 +2273,7 @@ describe("localizeTypes", () => {
       "Localized String.",
     );
 
-    const compileTimeAssertions = () => {
+    void (() => {
       localizeTypes(
         { Strings },
         {
@@ -2294,14 +2288,7 @@ describe("localizeTypes", () => {
           missingSet: { String: () => "String." },
         },
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("localizes a Union summary and its retained member failures", () => {
@@ -2332,7 +2319,7 @@ describe("localizeTypes", () => {
       "Localized String.",
     );
 
-    const compileTimeAssertions = () => {
+    void (() => {
       localizeTypes(
         { Value },
         {
@@ -2340,14 +2327,7 @@ describe("localizeTypes", () => {
           test: { Union: () => "Union." },
         },
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("localizes nested Union details and can localize the result again", async () => {
@@ -2419,7 +2399,7 @@ describe("localizeTypes", () => {
       "Localized Literal.",
     );
 
-    const compileTimeAssertions = () => {
+    void (() => {
       localizeTypes(
         { Value },
         {
@@ -2431,14 +2411,7 @@ describe("localizeTypes", () => {
           },
         },
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("localizes fallible members of an infallible Union", () => {
@@ -2458,7 +2431,7 @@ describe("localizeTypes", () => {
       "Localized String.",
     );
 
-    const compileTimeAssertions = () => {
+    void (() => {
       localizeTypes(
         { Value },
         {
@@ -2466,14 +2439,7 @@ describe("localizeTypes", () => {
           test: {},
         },
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires fallible Types reachable only through reflection", () => {
@@ -2509,7 +2475,7 @@ describe("localizeTypes", () => {
       "Localized String.",
     );
 
-    const compileTimeAssertions = () => {
+    void (() => {
       localizeTypes(
         { Model, NonEmptyValues },
         {
@@ -2521,14 +2487,7 @@ describe("localizeTypes", () => {
           },
         },
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("routes DiscriminatedUnion member errors", () => {
@@ -2607,7 +2566,7 @@ describe("localizeTypes", () => {
       },
     ).test.Refined;
     const result = LocalizedRefined.fromUnknown("value");
-    const compileTimeAssertions = () => {
+    void (() => {
       localizeTypes(
         { Refined },
         {
@@ -2615,7 +2574,7 @@ describe("localizeTypes", () => {
           test: { String: () => "Localized String." },
         },
       );
-    };
+    });
 
     assertErr(result);
     assertEqual(
@@ -2625,12 +2584,6 @@ describe("localizeTypes", () => {
     assertEqual(await LocalizedRefined["~standard"].validate("value"), {
       issues: [{ message: "Localized Refined.", path: [] }],
     });
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
   });
 
   it("routes custom root TypeOf errors by their expected Types", async () => {
@@ -2837,7 +2790,7 @@ describe("localizeTypes", () => {
   it("requires plain string-keyed maps", () => {
     const selected = globalThis.Symbol("selected");
     const locale = globalThis.Symbol("locale");
-    const compileTimeAssertions = () => {
+    void (() => {
       localizeTypes(
         // @ts-expect-error Selected Type names must be strings.
         { [selected]: String },
@@ -2848,7 +2801,7 @@ describe("localizeTypes", () => {
         // @ts-expect-error Locale names must be strings.
         { [locale]: { String: () => "String." } },
       );
-    };
+    });
 
     const selectedByName = { [selected]: String } as unknown as {
       readonly String: typeof String;
@@ -2929,13 +2882,6 @@ describe("localizeTypes", () => {
         "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
       ),
     );
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
   });
 
   it("requires exactly the reachable formatters", () => {
@@ -2949,7 +2895,7 @@ describe("localizeTypes", () => {
       ...formatters,
       Number: () => "Number.",
     };
-    const compileTimeAssertions = () => {
+    void (() => {
       localizeTypes({ Label }, { valid: formatters });
       localizeTypes(
         { Label },
@@ -2976,14 +2922,7 @@ describe("localizeTypes", () => {
           excessStored: excessFormatters,
         },
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires formatters for every union-typed selection branch", () => {
@@ -3015,19 +2954,12 @@ describe("localizeTypes", () => {
       "Localized Number.",
     );
 
-    const compileTimeAssertions = (selected: Selected) => {
+    void ((selected: Selected) => {
       localizeTypes(selected, {
         // @ts-expect-error Every possible selection branch requires its formatter.
         test: {},
       });
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 });
 
@@ -3173,7 +3105,7 @@ describe("createType", () => {
     assertEqual(FortyTwo.from(42), ok(42));
     assertType<typeof FortyTwo.Output, 42>();
 
-    const compileTimeAssertions = () => {
+    void (() => {
       createType(
         "Length",
         String,
@@ -3197,14 +3129,7 @@ describe("createType", () => {
         // @ts-expect-error An infallible child Type must not provide a formatter.
         () => "Unreachable.",
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires a formatter for root and fallible child Types", () => {
@@ -3217,21 +3142,14 @@ describe("createType", () => {
     ): Result<never, ChildWithoutFormatterError> =>
       err({ type: "ChildWithoutFormatter", value });
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A root Type must format its validation errors.
       createType("RootWithoutFormatter", (_value): Result<never, TypeError> =>
         err({ type: "RootWithoutFormatter" }),
       );
       // @ts-expect-error A fallible child Type must format its own error.
       createType("ChildWithoutFormatter", String, fromChildWithoutFormatter);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("inherits the parent formatter when a child is infallible", () => {
@@ -3283,7 +3201,7 @@ describe("createType", () => {
       readonly value: string;
     }
 
-    const compileTimeAssertions = () => {
+    void (() => {
       createType(
         "TypeOf",
         // @ts-expect-error A child error type must not duplicate an inherited error type.
@@ -3292,14 +3210,7 @@ describe("createType", () => {
           err({ type: "TypeOf", value }),
         () => "Duplicate TypeOf error.",
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires one concrete name for a fallible child Type", () => {
@@ -3314,37 +3225,28 @@ describe("createType", () => {
       err({ type: "A", value });
     const formatError = () => "A error.";
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A union does not identify one concrete Type name.
       createType(unionName, String, from, formatError);
       // @ts-expect-error A widened string does not identify one concrete Type name.
       createType(broadName, String, from, formatError);
       // @ts-expect-error A template pattern does not identify one concrete Type name.
       createType(patternedName, String, from, formatError);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires one concrete name for root and infallible child Types", () => {
     const unionName = "A" as "A" | "B";
     const broadName = "A" as Capitalize<string>;
     const patternedName = "A" as `A${string}`;
-    const genericCompileTimeAssertion = <Name extends "A" | "B">(
-      name: Name,
-    ): Name => {
+    void (<Name extends "A" | "B">(name: Name): Name => {
       // @ts-expect-error An unresolved generic root name might be a union.
       createType(name, ok, () => "Generic root error.");
       // @ts-expect-error An unresolved generic child name might be a union.
       createType(name, String, ok);
       return name;
-    };
-    const compileTimeAssertions = () => {
+    });
+    void (() => {
       // @ts-expect-error A union does not identify one concrete root Type name.
       createType(unionName, ok, () => "Root error.");
       // @ts-expect-error A widened string does not identify one concrete root Type name.
@@ -3357,30 +3259,13 @@ describe("createType", () => {
       createType(broadName, String, ok);
       // @ts-expect-error A template pattern does not identify one concrete child Type name.
       createType(patternedName, String, ok);
-    };
-
-    assertType<
-      typeof genericCompileTimeAssertion extends (
-        ...args: Array<never>
-      ) => unknown
-        ? true
-        : false,
-      true
-    >();
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("rejects a parent with erased concrete Type information", () => {
     const erased: FormattableTypeNode = brand("ErasedParent", String);
 
-    const compileTimeAssertions = <
-      Parent extends typeof String | typeof Number,
-    >(
+    void (<Parent extends typeof String | typeof Number>(
       parent: Parent,
     ): Parent => {
       // @ts-expect-error A parent must preserve its concrete Type.
@@ -3388,14 +3273,7 @@ describe("createType", () => {
       // @ts-expect-error An unresolved generic parent might be a union.
       createType("GenericChild", parent, ok);
       return parent;
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires a child error type matching the child name", () => {
@@ -3403,7 +3281,7 @@ describe("createType", () => {
       readonly value: string;
     }
 
-    const compileTimeAssertions = () => {
+    void (() => {
       createType(
         "ChildName",
         String,
@@ -3412,14 +3290,7 @@ describe("createType", () => {
           err({ type: "DifferentName", value }),
         () => "Different name error.",
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   describe("Type", () => {
@@ -3692,9 +3563,7 @@ describe("createTypeWithError", () => {
   });
 
   it("rejects transforming sources and incompatible error names", () => {
-    const compileTimeAssertions = (
-      uncertain: typeof String | typeof Number,
-    ) => {
+    void ((uncertain: typeof String | typeof Number) => {
       createTypeWithError(
         "Value",
         // @ts-expect-error Source Type must use identity encoding.
@@ -3716,11 +3585,7 @@ describe("createTypeWithError", () => {
         () => ({ type: "Other" as const }),
         () => "Invalid value.",
       );
-    };
-    assertType<
-      typeof compileTimeAssertions,
-      (uncertain: typeof String | typeof Number) => void
-    >();
+    });
   });
 });
 
@@ -4136,7 +4001,7 @@ describe("transform", () => {
   });
 
   it("requires a formatter exactly when decoding adds an own error", () => {
-    const compileTimeAssertions = () => {
+    void (() => {
       interface MissingFormatterError extends TypeError<"MissingFormatter"> {
         readonly value: string;
       }
@@ -4158,18 +4023,11 @@ describe("transform", () => {
         // @ts-expect-error An infallible transformation has no own error to format.
         formatTestTypeError,
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires callbacks to return their declared boundary types", () => {
-    const compileTimeAssertions = () => {
+    void (() => {
       transform("InvalidOutput", String, Number, {
         // @ts-expect-error A callback must return the output Type Input.
         from: () => ok("not a number"),
@@ -4180,14 +4038,7 @@ describe("transform", () => {
         // @ts-expect-error An encoder must return the parent Type Output.
         to: () => 42,
       });
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("asserts successful decoding callback results", () => {
@@ -4267,7 +4118,7 @@ describe("transform", () => {
     );
     const erased: FormattableTypeNode = PositiveNumber;
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A parent must preserve its concrete Type.
       transform("ErasedParent", erased, Number, {
         from: () => ok(42),
@@ -4278,21 +4129,14 @@ describe("transform", () => {
         from: () => ok(-1),
         to: globalThis.String,
       });
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("rejects unresolved generic parent and output Types", () => {
     const _A = literal("a");
     const _B = literal("b");
 
-    const compileTimeAssertions = <
+    void (<
       Parent extends typeof String | typeof Number,
       Output extends typeof _A | typeof _B,
     >(
@@ -4310,14 +4154,7 @@ describe("transform", () => {
         to: (value) => value,
       });
       return [parent, output];
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires an own error to use the transformation name", () => {
@@ -4325,7 +4162,7 @@ describe("transform", () => {
       readonly value: string;
     }
 
-    const compileTimeAssertions = () => {
+    void (() => {
       transform(
         "NumberFromString",
         String,
@@ -4338,14 +4175,7 @@ describe("transform", () => {
         },
         formatTestTypeError,
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("reserves outputError for errors from the output Type", () => {
@@ -4353,7 +4183,7 @@ describe("transform", () => {
       readonly outputError: TypeOfError<"Number">;
     }
 
-    const compileTimeAssertions = () => {
+    void (() => {
       transform(
         "NumberFromString",
         String,
@@ -4373,14 +4203,7 @@ describe("transform", () => {
         },
         formatTestTypeError,
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("does not widen its own errors from a broad formatter", () => {
@@ -4587,10 +4410,10 @@ describe("objectTag", () => {
     const fromParentResult = Tagged.from.parent(value);
     const transformedResult = TaggedFromString.fromUnknown("Tagged");
     const wrongTag = new TaggedValue("Other");
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A raw parent Output has no validated object-tag evidence.
       Tagged.to(value);
-    };
+    });
 
     assertType<
       typeof Tagged,
@@ -4636,12 +4459,6 @@ describe("objectTag", () => {
       }),
       'A value {"tag":"Other"} does not have the expected object tag "Tagged".',
     );
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
   });
 
   it("requires one concrete tag name and a Type for custom tags", () => {
@@ -4678,7 +4495,7 @@ describe("objectTag", () => {
       objectTag("Tagged", outputType);
       return outputType;
     };
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A union does not identify one concrete object tag.
       objectTag(unionName, TaggedValueInstance);
       // @ts-expect-error A union does not identify one predefined object tag.
@@ -4695,7 +4512,7 @@ describe("objectTag", () => {
       objectTag("Tagged", outputType);
       // @ts-expect-error The output Type must retain its concrete information.
       objectTag("Tagged", erasedOutputType);
-    };
+    });
 
     assertType<
       typeof genericNameAssertion extends (...args: Array<never>) => unknown
@@ -4709,12 +4526,6 @@ describe("objectTag", () => {
         : false,
       true
     >();
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
   });
 
   it("rejects an ObjectTag error inherited from the output Type", () => {
@@ -4723,20 +4534,13 @@ describe("objectTag", () => {
     }
 
     const Tagged = objectTag("Tagged", instanceOf(TaggedValue));
-    const compileTimeAssertions = () => {
+    void (() => {
       objectTag(
         "Other",
         // @ts-expect-error An ObjectTag error must not duplicate one inherited from the output Type.
         Tagged,
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("infers ObjectTag localization", () => {
@@ -4808,22 +4612,17 @@ describe("instanceOf", () => {
     type ErasedConstructorParameter = Parameters<
       typeof instanceOf<ErasedConstructor>
     >[0];
-    const compileTimeAssertions = (
-      constructor: Constructor,
-      erasedConstructor: ErasedConstructor,
-    ) => {
+    void ((constructor: Constructor, erasedConstructor: ErasedConstructor) => {
       // @ts-expect-error An Instance Type requires one concrete constructor.
       instanceOf(constructor);
       // @ts-expect-error An Instance Type requires concrete constructor information.
       instanceOf(erasedConstructor);
-    };
-    const genericCompileTimeAssertion = <C extends Constructor>(
-      constructor: C,
-    ): C => {
+    });
+    void (<C extends Constructor>(constructor: C): C => {
       // @ts-expect-error An unresolved generic could be instantiated with a constructor union.
       instanceOf(constructor);
       return constructor;
-    };
+    });
 
     assertType<
       Constructor extends ConstructorParameter ? true : false,
@@ -4838,20 +4637,6 @@ describe("instanceOf", () => {
       "⛔ Type error: Constructor must preserve one concrete constructor. Create a Union Type from separate Instance Types instead of passing a union or erased constructor."
     >();
     assertType<ErasedConstructorParameter, ConstructorParameter>();
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
-    assertType<
-      typeof genericCompileTimeAssertion extends (
-        ...args: Array<never>
-      ) => unknown
-        ? true
-        : false,
-      true
-    >();
   });
 
   it("composes multiple constructors through one Union Type", () => {
@@ -5152,7 +4937,7 @@ describe("literal", () => {
     const Amount = brand("Amount", Number);
     const amount = getOrThrow(Amount.from.parent(42));
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A widened string does not identify one literal.
       literal(stringValue);
       // @ts-expect-error A widened number does not identify one literal.
@@ -5173,13 +4958,7 @@ describe("literal", () => {
       literal(globalThis.Number.POSITIVE_INFINITY);
       // @ts-expect-error NaN has the widened `number` type.
       literal(globalThis.Number.NaN);
-    };
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   describe("Type", () => {
@@ -5831,7 +5610,7 @@ describe("union", () => {
     const uncertain = String as typeof String | typeof Number;
     const possiblyInfallible = String as typeof String | typeof Unknown;
     const erased: FormattableTypeNode = String;
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A member must use one concrete Type node.
       union(uncertain, Boolean).to(42);
       // @ts-expect-error A member must preserve its concrete Type information.
@@ -5842,14 +5621,7 @@ describe("union", () => {
       union("draft", erased).to(true);
       // @ts-expect-error Infallibility must not depend on a runtime member choice.
       union(possiblyInfallible, Number).to(true);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("forwards all-errors mode to member Types", () => {
@@ -6253,7 +6025,7 @@ describe("union", () => {
     const stringValue = "draft" as string;
     const unionValue = "draft" as "draft" | "published";
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A Union requires at least two member Types.
       union();
       // @ts-expect-error A Union requires at least two member Types.
@@ -6268,14 +6040,7 @@ describe("union", () => {
       union(Number, stringValue);
       // @ts-expect-error A union does not identify one literal.
       union(Number, unionValue);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 });
 
@@ -6310,19 +6075,12 @@ describe("undefinedOr", () => {
     type Value = typeof String | typeof Number;
     const value = String as Value;
     const erased: FormattableTypeNode = String;
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error The supplied Type must use one concrete Type node.
       undefinedOr(value);
       // @ts-expect-error The supplied Type must preserve its concrete information.
       undefinedOr(erased);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 });
 
@@ -6345,19 +6103,12 @@ describe("nullOr", () => {
     type Value = typeof String | typeof Number;
     const value = String as Value;
     const erased: FormattableTypeNode = String;
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error The supplied Type must use one concrete Type node.
       nullOr(value);
       // @ts-expect-error The supplied Type must preserve its concrete information.
       nullOr(erased);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 });
 
@@ -6380,19 +6131,12 @@ describe("nullishOr", () => {
     type Value = typeof String | typeof Number;
     const value = String as Value;
     const erased: FormattableTypeNode = String;
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error The supplied Type must use one concrete Type node.
       nullishOr(value);
       // @ts-expect-error The supplied Type must preserve its concrete information.
       nullishOr(erased);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 });
 
@@ -6610,14 +6354,13 @@ describe("templateLiteralParser", () => {
     const FixedWidth = union("🙂", "a");
     const VariableWidth = union("🙂", "ab");
     const Value = templateLiteralParser(FixedWidth, String);
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error At most one Type capture can have a variable-width string representation.
       templateLiteralParser(VariableWidth, String);
-    };
+    });
 
     assertOk(Value.fromUnknown("🙂value"), ["🙂", "value"]);
     assertOk(Value.fromUnknown("avalue"), ["a", "value"]);
-    void compileTimeAssertions;
   });
 
   it("rejects surrogate pairs formed across part boundaries", () => {
@@ -6718,14 +6461,13 @@ describe("templateLiteralParser", () => {
     assertFalse(NumberValue.parent.is("number:not-a-number"));
     assertOk(NumberValue.from.parent(encoded), [42]);
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A matching string is not necessarily canonical.
       const validLooking: NumberLiteral = "number:42";
       // @ts-expect-error An invalid string is not canonical.
       const invalid: NumberLiteral = "number:not-a-number";
       return [validLooking, invalid];
-    };
-    void compileTimeAssertions;
+    });
   });
 
   it("distinguishes transforming templates with the same string shape", () => {
@@ -6787,23 +6529,21 @@ describe("templateLiteralParser", () => {
   it("rejects ambiguous variable-width captures statically", () => {
     const VariableUnion = union("a", "bb");
     const Inner = templateLiteralParser("<", String, ">");
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error At most one Type capture can have a variable-width string representation.
       templateLiteralParser(String, ":", String);
       // @ts-expect-error At most one Type capture can have a variable-width string representation.
       templateLiteralParser(VariableUnion, String);
       // @ts-expect-error At most one Type capture can have a variable-width string representation.
       templateLiteralParser(Inner, String);
-    };
-
-    void compileTimeAssertions;
+    });
   });
 
   it("requires a capture and canonically string-encoded concrete parts", () => {
     const widened = "value" as string;
     const uncertain = String as typeof String | typeof Number;
     const parts: ReadonlyArray<typeof String> = [String];
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error At least one part must be a Type capture.
       templateLiteralParser("value");
       // @ts-expect-error Part must be a raw string literal or a Type canonically encoded as a string.
@@ -6818,9 +6558,7 @@ describe("templateLiteralParser", () => {
       templateLiteralParser(uncertain);
       // @ts-expect-error Parts must use one concrete finite non-empty tuple.
       templateLiteralParser(...parts);
-    };
-
-    void compileTimeAssertions;
+    });
   });
 
   it("decodes every capture exactly once", () => {
@@ -7073,13 +6811,12 @@ describe("templateLiteralParser", () => {
     );
     assertEqual(SupportedLocale.to(["en", "US"]), "en-US");
 
-    const compileTimeAssertions = () => {
+    void (() => {
       const supported: SupportedLocaleLiteral = "cs-CZ";
       // @ts-expect-error Unsupported language.
       const unsupported: SupportedLocaleLiteral = "fr-CZ";
       return [supported, unsupported];
-    };
-    void compileTimeAssertions;
+    });
   });
 
   it("normalizes broader capture input into a canonical literal", () => {
@@ -7107,11 +6844,10 @@ describe("templateLiteralParser", () => {
     );
     assertEqual(Tag.to([lowercase]), "tag:evolu");
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error Encoding requires a lowercase branded Output.
       Tag.to(["EVOLU"]);
-    };
-    void compileTimeAssertions;
+    });
   });
 
   it("exposes canonical and parsed Standard Schema stages", async () => {
@@ -7196,14 +6932,13 @@ describe("templateLiteral", () => {
   it("uses the same reversible framing rules as templateLiteralParser", () => {
     const Value = templateLiteral(String, "::");
     const Parser = templateLiteralParser(String, "::");
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error At most one Type capture can have a variable-width string representation.
       templateLiteral(String, ":", String);
-    };
+    });
 
     assertOk(Value.fromUnknown("a::::"), "a::::");
     assertSame(Value.is("a::::"), Parser.parent.is("a::::"));
-    void compileTimeAssertions;
   });
 });
 
@@ -7289,20 +7024,11 @@ describe("brand", () => {
   });
 
   it("rejects an unresolved generic infallible name", () => {
-    const compileTimeAssertions = <Name extends "A" | "B">(
-      name: Name,
-    ): Name => {
+    void (<Name extends "A" | "B">(name: Name): Name => {
       // @ts-expect-error An unresolved generic name might be a union.
       brand<Name, typeof String>(name, String);
       return name;
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("rejects a union of parent Types", () => {
@@ -7321,17 +7047,10 @@ describe("brand", () => {
   it("rejects a parent with erased concrete Type information", () => {
     const erased: FormattableTypeNode = brand("Erased", String);
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A parent must preserve its concrete Type.
       brand("Wrapped", erased);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("inherits the parent formatter when validation is infallible", () => {
@@ -7351,17 +7070,10 @@ describe("brand", () => {
     ): Result<void, ValidatedWithoutFormatterError> =>
       err({ type: "ValidatedWithoutFormatter", value });
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A fallible brand must format its own error.
       brand("ValidatedWithoutFormatter", String, validateWithoutFormatter);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires one concrete name when validation is fallible", () => {
@@ -7376,21 +7088,14 @@ describe("brand", () => {
       err({ type: "A", value });
     const formatError = () => "A error.";
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A union does not identify one concrete Brand name.
       brand(unionName, String, validate, formatError);
       // @ts-expect-error A widened string does not identify one concrete Brand name.
       brand(broadName, String, validate, formatError);
       // @ts-expect-error A template pattern does not identify one concrete Brand name.
       brand(patternedName, String, validate, formatError);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("rejects an error type inherited from the parent Type", () => {
@@ -7398,7 +7103,7 @@ describe("brand", () => {
       readonly value: string;
     }
 
-    const compileTimeAssertions = () => {
+    void (() => {
       brand(
         "TypeOf",
         // @ts-expect-error A Brand error must not duplicate an inherited error type.
@@ -7407,14 +7112,7 @@ describe("brand", () => {
           err({ type: "TypeOf", value }),
         () => "Duplicate TypeOf error.",
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires a brand error type matching the brand name", () => {
@@ -7422,7 +7120,7 @@ describe("brand", () => {
       readonly value: string;
     }
 
-    const compileTimeAssertions = () => {
+    void (() => {
       brand(
         "BrandName",
         String,
@@ -7431,18 +7129,11 @@ describe("brand", () => {
           err({ type: "DifferentName", value }),
         () => "Different name error.",
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("requires validation to report success without replacing the parent value", () => {
-    const compileTimeAssertions = () => {
+    void (() => {
       brand(
         "Lowercase",
         String,
@@ -7450,14 +7141,7 @@ describe("brand", () => {
         (value) => ok(value.toLowerCase()),
         formatTestTypeError,
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("validates only the brand after a validated Literal parent through from.parent", () => {
@@ -8508,54 +8192,34 @@ describe("BrandFactory", () => {
     type Parent = typeof _NumberFromString | typeof _NumberFromBoolean;
     type ParentParameter = Parameters<typeof positive<Parent>>[0];
 
-    const compileTimeAssertions = (parent: Parent) => {
+    void ((parent: Parent) => {
       // @ts-expect-error A Brand Factory requires one concrete parent Type.
       positive(parent);
-    };
+    });
 
     assertType<Parent extends ParentParameter ? true : false, false>();
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
   });
 
   it("rejects incompatible and erased parents", () => {
     const { nonEmpty } = createNonEmpty();
     const erased: FormattableTypeNode = String;
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error The parent Output must have a length.
       nonEmpty(Number);
       // @ts-expect-error The parent must preserve its concrete Type information.
       nonEmpty(erased);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("rejects a parent that already exposes the factory error type", () => {
     const { nonEmpty } = createNonEmpty();
     const NonEmptyString = nonEmpty(String);
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A Brand Factory error must not duplicate an inherited error type.
       nonEmpty(NonEmptyString);
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   describe("ValidateBrandFactoryNumber", () => {
@@ -8563,7 +8227,7 @@ describe("BrandFactory", () => {
       const value = globalThis.Number(1);
       const unionValue = 1 as 1 | 2;
       const nonNegativeInt = NonNegativeInt.orThrow(1);
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error Numeric Brand parameters must not widen to number.
         minLength(1 + 1);
         // @ts-expect-error Numeric Brand parameters must not be widened.
@@ -8580,14 +8244,7 @@ describe("BrandFactory", () => {
         minLength(unionValue);
         // @ts-expect-error A branded runtime number does not identify one literal.
         maxLength(nonNegativeInt);
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
   });
 
@@ -9221,7 +8878,7 @@ describe("BrandFactory", () => {
         const constant = camelCaseToConstantCase(short);
         assertEqual(constant, "A_B_C");
         assertType<typeof constant, ConstantCaseIdentifier>();
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error Requires the CamelCaseIdentifier brand.
           camelCaseToPascalCase("example");
           // @ts-expect-error Requires the CamelCaseIdentifier brand.
@@ -9269,8 +8926,7 @@ describe("BrandFactory", () => {
           // @ts-expect-error Uppercase text does not prove the ConstantCaseIdentifier grammar.
           const _constant: ConstantCaseIdentifier =
             "HTTP PORT" as Uppercase<string>;
-        };
-        assertType<typeof compileTimeAssertions, () => void>();
+        });
       });
     });
 
@@ -9416,7 +9072,7 @@ describe("BrandFactory", () => {
         const unionPrefix = "APP_" as "APP_" | "OTHER_";
         const branded = TrimmedString.orThrow("APP_");
         const templatePrefix = "APP_" as `APP_${string}`;
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error Expected must be one concrete literal value.
           startsWith(widened);
           // @ts-expect-error Expected must be one concrete literal value.
@@ -9431,16 +9087,7 @@ describe("BrandFactory", () => {
           startsWith("APP_")(AppName);
           // @ts-expect-error OTHER_ values do not carry the StartsWithAPP_ brand.
           AppName.from(otherName);
-        };
-
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
     });
 
@@ -9604,7 +9251,7 @@ describe("BrandFactory", () => {
             value === "PORT" ? ok(value) : err({ type: "LiteralRoot" }),
           () => "Expected PORT.",
         );
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error Expected must be one concrete literal value.
           prefixed(widened);
           // @ts-expect-error Expected must be one concrete literal value.
@@ -9625,15 +9272,7 @@ describe("BrandFactory", () => {
           Setting.from.parent("port:4000");
           // @ts-expect-error Encoding requires a validated Port, not a plain number.
           Setting.to(4000);
-        };
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
     });
 
@@ -9663,19 +9302,10 @@ describe("BrandFactory", () => {
       });
 
       it("returns a Brand Factory that accepts the parent separately", () => {
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error Parameterized Brand Factories accept their parent separately.
           minLength(1, String);
-        };
-
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
 
       describe("Type", () => {
@@ -9732,19 +9362,10 @@ describe("BrandFactory", () => {
       });
 
       it("requires a parent value with a length", () => {
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error Length constraints require a value with a length.
           maxLength(1)(Number);
-        };
-
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
 
       describe("Type", () => {
@@ -9847,19 +9468,10 @@ describe("BrandFactory", () => {
 
       it("requires one concrete parent Type", () => {
         const parent = String as typeof String | typeof Number;
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error A constraint requires one concrete parent Type.
           length(1)(parent);
-        };
-
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
     });
 
@@ -9868,23 +9480,14 @@ describe("BrandFactory", () => {
         const unionName = "Pattern" as "Pattern" | "Other";
         const broadName = "Pattern" as TypeName;
         const patternedName = "Pattern" as `Pattern${string}`;
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error A union does not identify one concrete Regex name.
           regex(unionName, /./u);
           // @ts-expect-error A widened string does not identify one concrete Regex name.
           regex(broadName, /./u);
           // @ts-expect-error A template pattern does not identify one concrete Regex name.
           regex(patternedName, /./u);
-        };
-
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
 
       it("keeps stateful matching private and returns immutable pattern data", () => {
@@ -9927,37 +9530,19 @@ describe("BrandFactory", () => {
         assertType<typeof failure.error.source, string>();
         assertType<typeof failure.error.flags, string>();
 
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error Regex errors do not expose the live matcher.
           failure.error.pattern.test = () => true; // oxlint-disable-line typescript/no-unsafe-member-access -- The unavailable matcher access is intentionally rejected above.
           // @ts-expect-error Pattern data is readonly.
           failure.error.source = ".*";
-        };
-
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
 
       it("requires a string parent Output", () => {
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error Regex constraints require string Outputs.
           regex("NumberPattern", /1/u)(Number);
-        };
-
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
 
       describe("Type", () => {
@@ -10132,7 +9717,7 @@ describe("BrandFactory", () => {
             return brand;
           };
 
-          const compileTimeAssertions = () => {
+          void (() => {
             // @ts-expect-error A union would assign multiple brands to one Id.
             createId<typeof _unionBrand>(deps);
             // @ts-expect-error Every Id creator rejects union brands.
@@ -10147,18 +9732,10 @@ describe("BrandFactory", () => {
             const _todoId: Id & Brand<"Todo"> = random;
             // @ts-expect-error A Todo Id must not satisfy a User Id API.
             const _userId: Id & Brand<"User"> = todoRandom;
-          };
+          });
 
           assertType<
             typeof genericBrandAssertion extends (
-              ...args: Array<never>
-            ) => unknown
-              ? true
-              : false,
-            true
-          >();
-          assertType<
-            typeof compileTimeAssertions extends (
               ...args: Array<never>
             ) => unknown
               ? true
@@ -10210,19 +9787,10 @@ describe("BrandFactory", () => {
           assertType<typeof TodoId.Error, TableIdError<"Todo">>();
           assertType<typeof value, Id & Brand<"Todo">>();
 
-          const compileTimeAssertions = () => {
+          void (() => {
             // @ts-expect-error A Todo Id must not satisfy a User Id API.
             const _userId: Id & Brand<"User"> = value;
-          };
-
-          assertType<
-            typeof compileTimeAssertions extends (
-              ...args: Array<never>
-            ) => unknown
-              ? true
-              : false,
-            true
-          >();
+          });
         });
 
         it("requires one concrete table name", () => {
@@ -10236,25 +9804,17 @@ describe("BrandFactory", () => {
             id(table);
             return table;
           };
-          const compileTimeAssertions = () => {
+          void (() => {
             // @ts-expect-error A union would assign multiple table brands to one Id.
             id(unionTable);
             // @ts-expect-error A widened TypeName does not identify one table.
             id(broadTable);
             // @ts-expect-error A template pattern does not identify one table.
             id(patternedTable);
-          };
+          });
 
           assertType<
             typeof genericTableAssertion extends (
-              ...args: Array<never>
-            ) => unknown
-              ? true
-              : false,
-            true
-          >();
-          assertType<
-            typeof compileTimeAssertions extends (
               ...args: Array<never>
             ) => unknown
               ? true
@@ -10621,19 +10181,10 @@ describe("BrandFactory", () => {
       });
 
       it("requires a number parent Output", () => {
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error Numeric constraints require number Outputs.
           lessThan(1)(String);
-        };
-
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
     });
 
@@ -11015,19 +10566,10 @@ describe("BrandFactory", () => {
         });
 
         it("requires a DecimalString parent", () => {
-          const compileTimeAssertions = () => {
+          void (() => {
             // @ts-expect-error The parent must output DecimalString.
             nonNegativeDecimalString(String);
-          };
-
-          assertType<
-            typeof compileTimeAssertions extends (
-              ...args: Array<never>
-            ) => unknown
-              ? true
-              : false,
-            true
-          >();
+          });
         });
 
         describe("Type", () => {
@@ -11244,7 +10786,7 @@ describe("BrandFactory", () => {
         const value = globalThis.String("0.1");
         const unionValue = "0.1" as "0.1" | "0.2";
         const positiveDecimalString = PositiveDecimalString.orThrow("0.1");
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error The divisor must be an exact decimal string.
           multipleOf(0.1);
           // @ts-expect-error Arithmetic expressions are numbers, not exact decimal strings.
@@ -11263,16 +10805,7 @@ describe("BrandFactory", () => {
           multipleOf(unionValue);
           // @ts-expect-error A validated runtime string still has no literal value.
           multipleOf(positiveDecimalString);
-        };
-
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
 
       it("creates a Brand Factory requiring an exact multiple", () => {
@@ -11384,19 +10917,10 @@ describe("BrandFactory", () => {
       });
 
       it("returns a Brand Factory that accepts the parent separately", () => {
-        const compileTimeAssertions = () => {
+        void (() => {
           // @ts-expect-error Parameterized Brand Factories accept their parent separately.
           between(1, 2, Number);
-        };
-
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
+        });
       });
     });
   });
@@ -11573,38 +11097,22 @@ describe("array", () => {
     });
 
     it("rejects an unresolved generic element Type", () => {
-      const compileTimeAssertions = <
-        Element extends typeof String | typeof Number,
-      >(
+      void (<Element extends typeof String | typeof Number>(
         element: Element,
       ): Element => {
         // @ts-expect-error An unresolved generic element might be a union.
         array(element);
         return element;
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
 
     it("rejects an element with erased concrete Type information", () => {
       const erased: FormattableTypeNode = brand("Erased", String);
 
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error An element must preserve its concrete Type.
         array(erased);
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
   });
 
@@ -12029,18 +11537,12 @@ describe("array", () => {
     assertType<Parameters<typeof UserIds.is>, [unknown]>();
     assertType<Parameters<typeof UserIds.orNull>, [ReadonlyArray<number>]>();
 
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error Error collection is not observable through `is`.
       UserIds.is([], { errors: "all" });
       // @ts-expect-error Error collection is not observable through `orNull`.
       UserIds.orNull([], { errors: "all" });
-    };
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   describe("is", () => {
@@ -13165,18 +12667,12 @@ describe("set", () => {
 
     const uncertain = Math.random() ? String : Number;
     const erased: FormattableTypeNode = String;
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error An element must use one concrete Type node.
       set(uncertain);
       // @ts-expect-error An element must preserve its concrete Type.
       set(erased);
-    };
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("validates the Set boundary and elements", () => {
@@ -13362,7 +12858,7 @@ describe("map", () => {
 
     const uncertain = Math.random() ? String : Number;
     const erased: FormattableTypeNode = String;
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error Map key must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
       map(uncertain, Number);
       // @ts-expect-error Map value must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
@@ -13371,13 +12867,7 @@ describe("map", () => {
       map(erased, Number);
       // @ts-expect-error A value must preserve its concrete Type.
       map(String, erased);
-    };
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("validates the Map boundary, structure, keys, and values", () => {
@@ -13757,7 +13247,7 @@ describe("map", () => {
     assertEqual(formatError(new Map([["Ada", "bad"]])), "Localized Number.");
     assertEqual(formatError(null), "Localized Map.");
 
-    const compileTimeAssertions = () => {
+    void (() => {
       localizeTypes(
         { Scores },
         {
@@ -13788,14 +13278,7 @@ describe("map", () => {
           },
         },
       );
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 });
 
@@ -13922,21 +13405,15 @@ describe("tuple", () => {
         return elements;
       };
 
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error A Tuple must contain at least one Type.
         tuple();
         // @ts-expect-error An element must preserve its concrete Type.
         tuple(uncertain);
         // @ts-expect-error A widened array is not a finite Tuple schema.
         tuple(...widened);
-      };
+      });
 
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
       assertType<
         typeof validateUnionElement extends (...args: Array<never>) => unknown
           ? true
@@ -14875,7 +14352,7 @@ describe("record", () => {
       const Values = record(Never, Number);
       const symbol = globalThis.Symbol();
       const value = { anything: 1 };
-      const compileTimeAssertions = () => {
+      void (() => {
         Values.from({});
         Values.to({});
         Values.from({ [symbol]: true });
@@ -14888,16 +14365,10 @@ describe("record", () => {
         Values.orNull(value);
         // @ts-expect-error A Record with Never keys has no properties.
         Values.to(value);
-      };
+      });
 
       assertType<typeof Values.Input, Readonly<Record<string, never>>>();
       assertType<typeof Values.Output, Readonly<Record<string, never>>>();
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
       assertEqual(Values.fromUnknown({}), ok(createNullRecord({})));
       assertEqual(
         Values.fromUnknown(value),
@@ -14948,7 +14419,7 @@ describe("record", () => {
       type Value = typeof String | typeof Number;
       const key = String as Key;
       const value = String as Value;
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error Record key Input and Output must extend string.
         record(Number, String);
         // @ts-expect-error Record key Input and Output must extend string.
@@ -14958,14 +14429,7 @@ describe("record", () => {
         // @ts-expect-error Record value requires one concrete Type node.
         record(String, value);
         record(String, union(String, Number));
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
 
     it("distributes key and value errors inside one issue container", () => {
@@ -16622,22 +16086,16 @@ describe("object", () => {
     it("exposes readonly properties", () => {
       const props = { value: String, note: optional(Number) };
       const Model = object(props);
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error Object properties are readonly.
         Model.props.value = String;
         // @ts-expect-error Optional Object properties are readonly.
         Model.props.note = optional(Number);
         // @ts-expect-error The Type wrapped by an optional property is readonly.
         Model.props.note.type = Number;
-      };
+      });
 
       assertType<typeof Model.props, Readonly<typeof props>>();
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
     });
 
     it("composes declared properties with a Record", () => {
@@ -16685,7 +16143,7 @@ describe("object", () => {
         object({}, rest);
         return rest;
       };
-      const compileTimeAssertions = () => {
+      void (() => {
         object({ count: Number });
         object({ count: Number }, Values);
         // @ts-expect-error The second argument must be a Record Type.
@@ -16710,7 +16168,7 @@ describe("object", () => {
         Model.from({ count: 0, other: "not a number" });
         // @ts-expect-error Undeclared properties must match the Record value Output.
         Model.to({ count: 0, other: "not a number" });
-      };
+      });
       interface Errors {
         readonly count: TypeOfError<"Number">;
       }
@@ -16761,26 +16219,20 @@ describe("object", () => {
           : false,
         false
       >();
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
     });
 
     it("rejects every property in an empty schema", () => {
       const Model = object({});
       const symbol = globalThis.Symbol();
       const value = { anything: 1 };
-      const compileTimeAssertions = () => {
+      void (() => {
         Model.from({ [symbol]: true });
         Model.to({ [symbol]: true });
         // @ts-expect-error Object.from requires an object value.
         Model.from(42);
         // @ts-expect-error An empty Object schema has no properties.
         Model.from(value);
-      };
+      });
 
       assertType<typeof Model.Input, Readonly<Record<string, never>>>();
       assertType<typeof Model.Output, Readonly<Record<string, never>>>();
@@ -16791,12 +16243,6 @@ describe("object", () => {
       assertType<
         InferErrors<typeof Model>,
         ObjectError<Readonly<Record<never, never>>>
-      >();
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
       >();
       assertEqual(
         Model.fromUnknown(value),
@@ -16892,9 +16338,7 @@ describe("object", () => {
       const optionalProperty: OptionalProperty<Property> = optional(String);
       const requiredOrOptional = String as
         typeof String | OptionalProperty<typeof String>;
-      const genericCompileTimeAssertion = <
-        Property extends typeof String | typeof Number,
-      >(
+      void (<Property extends typeof String | typeof Number>(
         genericProperty: Property,
       ): Property => {
         // @ts-expect-error An unresolved generic could be instantiated with a property Type union.
@@ -16902,8 +16346,8 @@ describe("object", () => {
         // @ts-expect-error typed preserves Object property validation.
         typed("Generic", { value: genericProperty });
         return genericProperty;
-      };
-      const compileTimeAssertions = () => {
+      });
+      void (() => {
         // @ts-expect-error A property requires one concrete Type node.
         object({ value: property });
         // @ts-expect-error An optional property requires one concrete Type node.
@@ -16912,23 +16356,9 @@ describe("object", () => {
         object({ value: optionalProperty });
         // @ts-expect-error Requiredness must not depend on a runtime union.
         object({ value: requiredOrOptional });
-      };
+      });
 
       assertType<Property extends OptionalParameter ? true : false, false>();
-      assertType<
-        typeof genericCompileTimeAssertion extends (
-          ...args: Array<never>
-        ) => unknown
-          ? true
-          : false,
-        true
-      >();
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
     });
 
     it("rejects erased property Types and a union of schemas", () => {
@@ -16940,7 +16370,7 @@ describe("object", () => {
       const getSubsumedProps = (): typeof baseProps | typeof extendedProps =>
         Math.random() > 0.5 ? baseProps : extendedProps;
       const subsumedProps = getSubsumedProps();
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error Optional requires a property Type with concrete information.
         optional(type);
         // @ts-expect-error Object requires a property Type with a concrete parent.
@@ -16949,14 +16379,7 @@ describe("object", () => {
         object(props);
         // @ts-expect-error A structurally wider branch is still a schema union.
         object(subsumedProps);
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
 
     it("rejects reserved structural error tags in property Types", () => {
@@ -16995,7 +16418,7 @@ describe("object", () => {
         formatTestTypeError,
       );
       const ExcessChild = brand("ExcessChild", Excess);
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error ObjectMissingProperty is reserved for Object structure.
         object({ value: Missing });
         // @ts-expect-error Reserved errors are rejected for optional properties too.
@@ -17008,14 +16431,7 @@ describe("object", () => {
         object({ value: optional(Access) });
         // @ts-expect-error ObjectExcessProperty is reserved through child Types and optional properties.
         object({ value: optional(ExcessChild) });
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
 
     it("requires a fixed set of string property names", () => {
@@ -17030,7 +16446,7 @@ describe("object", () => {
       const symbol = globalThis.Symbol();
       const number = { 0: String };
       const proto = { ["__proto__"]: String };
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error Broad keys belong to a Record Type.
         object(broad);
         // @ts-expect-error Template-pattern keys belong to a Record Type.
@@ -17045,14 +16461,7 @@ describe("object", () => {
         object(number);
         // @ts-expect-error __proto__ is not an Object property name.
         object(proto);
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
   });
 
@@ -18638,10 +18047,10 @@ describe("object", () => {
       const Model = object({ name: String });
       const symbol = globalThis.Symbol();
       const value = { name: "Ada", [symbol]: true };
-      const compileTimeAssertions = () => {
+      void (() => {
         Model.from(value);
         Model.to(value);
-      };
+      });
 
       assertType<
         typeof Model.Input extends {
@@ -18665,12 +18074,6 @@ describe("object", () => {
       >();
       assertType<
         { readonly name: string } extends typeof Model.Output ? true : false,
-        true
-      >();
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
         true
       >();
     });
@@ -18756,7 +18159,7 @@ describe("object", () => {
         name: String,
       };
       const uncertain = String as typeof String | typeof Number;
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error Partial Object properties require fixed keys.
         partial(dynamic);
         // @ts-expect-error Nullable Object properties require fixed keys.
@@ -18765,14 +18168,7 @@ describe("object", () => {
         partial({ value: uncertain });
         // @ts-expect-error Nullable Object properties require one concrete Type node.
         nullableToOptional({ value: uncertain });
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
 
     describe("omit", () => {
@@ -18796,15 +18192,12 @@ describe("object", () => {
         assertEqual(Empty.props, {});
         assertType<typeof Empty, ObjectType<{}>>();
 
-        const compileTimeAssertions = (
-          key: "name" | "age",
-          keys: ReadonlyArray<"name" | "age">,
-        ) => {
+        void ((key: "name" | "age", keys: ReadonlyArray<"name" | "age">) => {
           // @ts-expect-error A runtime key must identify one statically known property.
           omit(User, key);
           // @ts-expect-error A runtime array does not guarantee which properties are omitted.
           omit(User, ...keys);
-        };
+        });
 
         const Metadata = object(
           { name: String, age: Number },
@@ -18824,14 +18217,6 @@ describe("object", () => {
           MetadataWithoutAge.fromUnknown({ name: "Ada", age: "unknown" }),
           { name: "Ada", age: "unknown" },
         );
-        assertType<
-          typeof compileTimeAssertions extends (
-            ...args: Array<never>
-          ) => unknown
-            ? true
-            : false,
-          true
-        >();
       });
 
       it("retains defaulted fields and can remove every default", () => {
@@ -18906,10 +18291,10 @@ describe("result", () => {
     const Pair = tuple(String, Number);
     const PairResult = result(Pair, Pair);
     const NeverResult = result(Never, Never);
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error The exact ok discriminator must select the value branch.
       StringResult.from({ ok: false, value: "value" });
-    };
+    });
 
     assertEqual(StringResult.name, "DiscriminatedUnion");
     assertEqual(StringResult.key, "ok");
@@ -18928,12 +18313,6 @@ describe("result", () => {
           }>,
         ]
       >
-    >();
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
     >();
     assertOk(StringResult.fromUnknown({ ok: true, value: "value" }), {
       ok: true,
@@ -19037,19 +18416,13 @@ describe("typed", () => {
       const Message = discriminatedUnion(Create, Delete);
       type Message = typeof Message.Output;
       type CreateMessage = ExtractTyped<Message, "Create">;
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error The selected type must exist in the Output union.
         type Typo = ExtractTyped<Message, "Cretae">;
         assertType<Typo, never>();
-      };
+      });
 
       assertType<CreateMessage, typeof Create.Output>();
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
     });
 
     it("creates a strict Object with only a literal type property", () => {
@@ -19340,12 +18713,12 @@ describe("typed", () => {
         ValuesWithTag,
       );
       const value = { type: "Open", label: "Label", note: "Note" } as const;
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error Additional properties must match the Record value Type.
         Open.from({ type: "Open", label: "Label", score: 1 });
         // @ts-expect-error The declared CanonicalInput must extend the Record value CanonicalInput.
         typed("Open", { fixed: AFromString }, ValuesWithTag);
-      };
+      });
 
       assertSame(Open.record, Values);
       assertType<
@@ -19400,12 +18773,6 @@ describe("typed", () => {
           },
         }),
       );
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
     });
 
     it("requires one concrete Type name and reserves the type property", () => {
@@ -19430,7 +18797,7 @@ describe("typed", () => {
         typed(tag);
         return tag;
       };
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error Type names start with an uppercase letter.
         typed("one");
         // @ts-expect-error A union does not identify one concrete Type name.
@@ -19458,16 +18825,10 @@ describe("typed", () => {
         typed("One", {}, restrictedKeys);
         // @ts-expect-error Declared Inputs and Outputs must extend the Record value Type.
         typed("One", { value: Number }, Values);
-      };
+      });
 
       assertType<
         typeof genericTagAssertion extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
           ? true
           : false,
         true
@@ -19479,10 +18840,10 @@ describe("typed", () => {
     it("rejects missing, mismatched, and excess properties", () => {
       const Empty = typed("Empty");
       const valueWithExcessProperty = { type: "Empty", extra: true } as const;
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error Strict typed Input excludes excess properties.
         Empty.from({ type: "Empty", extra: true });
-      };
+      });
 
       assertEqual(
         Empty.fromUnknown({}),
@@ -19506,12 +18867,6 @@ describe("typed", () => {
         }),
       );
       assertFalse(Empty.is(valueWithExcessProperty));
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
     });
   });
 
@@ -19771,7 +19126,7 @@ describe("discriminatedUnion", () => {
       const broadKey = "type" as string;
       const unionKey = "type" as "type" | "kind";
       const patternedKey = "type" as `type${string}`;
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error A Discriminated Union requires at least two members.
         discriminatedUnion();
         // @ts-expect-error A Discriminated Union requires at least two members.
@@ -19798,14 +19153,7 @@ describe("discriminatedUnion", () => {
         discriminatedUnion(unionKey, Valid, typed("Other"));
         // @ts-expect-error The explicit discriminator key must not be a template pattern.
         discriminatedUnion(patternedKey, Valid, typed("Other"));
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
 
     it("requires one concrete finite member tuple", () => {
@@ -19830,7 +19178,7 @@ describe("discriminatedUnion", () => {
       ] = [OneWithString, TwoWithString];
       const uncertainThird = ThreeWithString as
         typeof ThreeWithString | typeof _ThreeWithNumber;
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error Members must use one concrete finite tuple.
         discriminatedUnion(...members);
         // @ts-expect-error Explicit-key members must also use one concrete finite tuple.
@@ -19841,14 +19189,7 @@ describe("discriminatedUnion", () => {
         discriminatedUnion(...widenedMembers);
         // @ts-expect-error Every member slot must use one concrete Object Type.
         discriminatedUnion(OneWithString, TwoWithString, uncertainThird);
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
   });
 
@@ -19987,10 +19328,10 @@ describe("discriminatedUnion", () => {
       const Deleted = typed("Deleted", { reason: String });
       const Event = discriminatedUnion(Created, Deleted);
       const uncorrelated = { type: "Created", reason: "reason" } as const;
-      const compileTimeAssertions = () => {
+      void (() => {
         // @ts-expect-error The exact discriminator must correlate with its member Input.
         Event.from(uncorrelated);
-      };
+      });
 
       assertType<
         typeof uncorrelated extends typeof Event.Input ? true : false,
@@ -20016,12 +19357,6 @@ describe("discriminatedUnion", () => {
           },
         }),
       );
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
     });
 
     it("returns routed discriminator, access, and member errors", () => {
@@ -20397,43 +19732,28 @@ describe("lazy", () => {
     type Definition = Parameters<typeof lazy<Target>>[0];
     type DefinitionOutput = ReturnType<Definition>;
     const getTarget = (): Target => chooseTarget(true);
-    const compileTimeAssertions = () => {
+    void (() => {
       // @ts-expect-error A Lazy Type definition must return one concrete Type node.
       lazy(getTarget);
       // @ts-expect-error An inferred Lazy Type definition must also return one concrete Type node.
       lazy(() => chooseTarget(true));
-    };
+    });
 
     assertType<Target extends DefinitionOutput ? true : false, false>();
     assertType<
       DefinitionOutput,
       "⛔ Type error: Lazy Type definition must return one concrete Type node. Pass a Union Type node instead of a union of Type nodes."
     >();
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
   });
 
   it("rejects an unresolved generic definition", () => {
-    const compileTimeAssertions = <
-      Target extends typeof String | typeof Number,
-    >(
+    void (<Target extends typeof String | typeof Number>(
       target: Target,
     ): Target => {
       // @ts-expect-error An unresolved generic target might be a union.
       lazy(() => target);
       return target;
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("accepts one Union Type node as its definition", () => {
@@ -22136,7 +21456,7 @@ describe("json", () => {
     >();
     assertType<ReturnType<typeof Person.to>, typeof Person.CanonicalInput>();
 
-    const compileTimeAssertions = () => {
+    void (() => {
       type InvalidCanonicalInput = Type<
         "InvalidCanonicalInput",
         string,
@@ -22154,14 +21474,7 @@ describe("json", () => {
       // The encoder's actual image is finite, but CanonicalInput is number.
       // @ts-expect-error Type CanonicalInput must be JSON-compatible.
       json(_FiniteAfterNumberTransform, "FiniteAfterNumberTransformJson");
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("creates a branded Json Type and total typed conversions", () => {
@@ -22405,7 +21718,7 @@ describe("json", () => {
   });
 
   it("accepts only Types with a JSON-compatible canonical Input", () => {
-    const compileTimeAssertions = () => {
+    void (() => {
       interface StringTree {
         readonly value: string;
         readonly children: ReadonlyArray<StringTree>;
@@ -22762,14 +22075,7 @@ describe("json", () => {
 
       // @ts-expect-error Type CanonicalInput must be JSON-compatible.
       json(NonCanonicalArrayIndex, "NonCanonicalArrayIndexJson");
-    };
-
-    assertType<
-      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
+    });
   });
 
   it("forwards ValidationOptions to the represented Type", () => {
@@ -22911,7 +22217,7 @@ describe("json", () => {
 describe("design decisions", () => {
   describe("typed inputs", () => {
     it("protect append-only fields from incompatible component changes", () => {
-      const compileTimeAssertions = () => {
+      void (() => {
         const Todo = object({ title: NonEmptyTrimmedString100 });
 
         // The input guarantees the same constraints as the domain model.
@@ -22939,18 +22245,11 @@ describe("design decisions", () => {
         };
 
         return { inputOnChange, longerInputOnChange };
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
 
     it("compose one weaker component output", () => {
-      const compileTimeAssertions = () => {
+      void (() => {
         const Todo = object({
           title: NonEmptyTrimmedString100,
           note: NonEmptyTrimmedString100,
@@ -22980,18 +22279,11 @@ describe("design decisions", () => {
         };
 
         return saveTodo;
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
 
     it("compose trim-only component outputs", () => {
-      const compileTimeAssertions = () => {
+      void (() => {
         const Todo = object({
           title: NonEmptyTrimmedString100,
           note: NonEmptyTrimmedString100,
@@ -23013,14 +22305,7 @@ describe("design decisions", () => {
         >();
 
         return saveTodo;
-      };
-
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+      });
     });
   });
 
