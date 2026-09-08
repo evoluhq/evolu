@@ -43,25 +43,22 @@ export type { NotNull as KyselyNotNull } from "kysely";
  * import {
  *   assertType,
  *   createQueryBuilder,
- *   id,
+ *   testEvoluSchema,
+ *   type TestEvoluSchema,
  *   NonEmptyTrimmedString100,
  *   type Query,
+ *   type TestTodoId,
  * } from "@evolu/common";
  *
- * const TodoId = id("Todo");
- * type TodoId = typeof TodoId.Output;
- * const Schema = {
- *   todo: { id: TodoId, title: NonEmptyTrimmedString100 },
- * };
- * const createQuery = createQueryBuilder(Schema);
+ * const createQuery = createQueryBuilder(testEvoluSchema);
  * const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
  *
  * type AllTodosRow = typeof allTodos.Row;
  * assertType<
- *   typeof allTodos extends Query<typeof Schema> ? true : false,
+ *   typeof allTodos extends Query<TestEvoluSchema> ? true : false,
  *   true
  * >();
- * assertType<AllTodosRow["id"], TodoId>();
+ * assertType<AllTodosRow["id"], TestTodoId>();
  * assertType<AllTodosRow["title"], NonEmptyTrimmedString100 | null>();
  * ```
  */
@@ -82,15 +79,11 @@ export type Query<
      * import {
      *   assertType,
      *   createQueryBuilder,
-     *   id,
+     *   testEvoluSchema,
      *   type InferRow,
-     *   NonEmptyTrimmedString100,
      * } from "@evolu/common";
      *
-     * const Schema = {
-     *   todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
-     * };
-     * const createQuery = createQueryBuilder(Schema);
+     * const createQuery = createQueryBuilder(testEvoluSchema);
      * const allTodos = createQuery((db) =>
      *   db.selectFrom("todo").selectAll(),
      * );

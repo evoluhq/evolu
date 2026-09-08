@@ -25,11 +25,14 @@ import {
 } from "../Sqlite.ts";
 import {
   assertType,
+  createIdFromString,
   DateIso,
   type FiniteNumber,
   type Id,
+  id,
   IdBytes,
   type InferType,
+  NonEmptyTrimmedString100,
   Null,
   nullOr,
   object,
@@ -130,6 +133,84 @@ export type EvoluSchema = ReadonlyRecord<
 
 /** A table schema: column names mapped to Standard Schema validators. */
 export type TableSchema = ReadonlyRecord<string, AnyStandardSchemaV1>;
+
+/**
+ * Todo ID Type for {@link testEvoluSchema}.
+ *
+ * @group Testing
+ */
+export const TestTodoId = /*#__PURE__*/ id("Todo");
+export type TestTodoId = typeof TestTodoId.Output;
+
+/**
+ * Deterministic {@link TestTodoId} for tests and examples.
+ *
+ * @group Testing
+ */
+export const testTodoId = /*#__PURE__*/ TestTodoId.orThrow(
+  /*#__PURE__*/ createIdFromString("testTodo"),
+);
+
+/**
+ * Project ID Type for {@link testEvoluSchema}.
+ *
+ * @group Testing
+ */
+export const TestProjectId = /*#__PURE__*/ id("Project");
+export type TestProjectId = typeof TestProjectId.Output;
+
+/**
+ * Deterministic {@link TestProjectId} for tests and examples.
+ *
+ * @group Testing
+ */
+export const testProjectId = /*#__PURE__*/ TestProjectId.orThrow(
+  /*#__PURE__*/ createIdFromString("testProject"),
+);
+
+/**
+ * Todo and project schema for tests and examples. A todo can belong to a
+ * project or have no project. Use an explicit schema when teaching schema
+ * definition.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertOk,
+ *   testEvoluSchema,
+ *   testProjectId,
+ *   testTodoId,
+ * } from "@evolu/common";
+ *
+ * assertOk(testEvoluSchema.todo.id.from(testTodoId), testTodoId);
+ * assertOk(
+ *   testEvoluSchema.todo.projectId.from(testProjectId),
+ *   testProjectId,
+ * );
+ * ```
+ *
+ * @group Testing
+ */
+export const testEvoluSchema = {
+  todo: {
+    id: TestTodoId,
+    title: NonEmptyTrimmedString100,
+    isCompleted: /*#__PURE__*/ nullOr(SqliteBoolean),
+    projectId: /*#__PURE__*/ nullOr(TestProjectId),
+  },
+  project: {
+    id: TestProjectId,
+    name: NonEmptyTrimmedString100,
+  },
+} as const satisfies EvoluSchema;
+
+/**
+ * Schema type of {@link testEvoluSchema}.
+ *
+ * @group Testing
+ */
+export type TestEvoluSchema = typeof testEvoluSchema;
 
 export interface SqliteSchemaDep {
   readonly sqliteSchema: SqliteSchema;
@@ -480,24 +561,14 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
  * import {
  *   assertType,
  *   createQueryBuilder,
- *   id,
+ *   testEvoluSchema,
+ *   type TestTodoId,
  *   NonEmptyTrimmedString100,
- *   nullOr,
  *   SqliteBoolean,
  * } from "@evolu/common";
  *
- * const TodoId = id("Todo");
- * type TodoId = typeof TodoId.Output;
- * const Schema = {
- *   todo: {
- *     id: TodoId,
- *     title: NonEmptyTrimmedString100,
- *     isCompleted: nullOr(SqliteBoolean),
- *   },
- * };
- *
  * // Create one typed builder per schema and reuse it for every query.
- * const createQuery = createQueryBuilder(Schema);
+ * const createQuery = createQueryBuilder(testEvoluSchema);
  * const todosQuery = createQuery((db) =>
  *   db.selectFrom("todo").select(["id", "title", "isCompleted"]),
  * );
@@ -505,7 +576,7 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
  * assertType<
  *   typeof todosQuery.Row,
  *   {
- *     id: TodoId;
+ *     id: TestTodoId;
  *     title: NonEmptyTrimmedString100 | null;
  *     isCompleted: SqliteBoolean | null;
  *   }

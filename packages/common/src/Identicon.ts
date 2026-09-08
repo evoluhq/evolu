@@ -37,6 +37,7 @@ export type IdenticonStyle = "github" | "quadrant" | "gradient" | "sutnar";
  *   assertTrue,
  *   createIdFromString,
  *   createIdenticon,
+ *   testTodoId,
  * } from "@evolu/common";
  *
  * const id = createIdFromString("identicon-example");
@@ -47,8 +48,7 @@ export type IdenticonStyle = "github" | "quadrant" | "gradient" | "sutnar";
  * );
  *
  * // Branded IDs work too.
- * const todoId = createIdFromString<"Todo">("todo-1");
- * const todoSvg = createIdenticon(todoId);
+ * const todoSvg = createIdenticon(testTodoId);
  *
  * assertTrue(svg.startsWith("<svg"));
  * assertEqual(new Set([svg, ...alternativeSvgs]).size, 4);

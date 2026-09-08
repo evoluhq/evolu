@@ -169,17 +169,10 @@ export interface EvoluConfig {
    * ```ts
    * import {
    *   assertEqual,
-   *   createAppOwner,
    *   createOwnerWebSocketTransport,
-   *   createOwnerSecret,
-   *   createRandomBytes,
+   *   testAppOwner,
    *   type OwnerTransport,
    * } from "@evolu/common";
-   *
-   * // Create once, persist the mnemonic securely, and restore it on later runs.
-   * const appOwner = createAppOwner(
-   *   createOwnerSecret({ randomBytes: createRandomBytes() }),
-   * );
    *
    * // Use one relay.
    * const _singleRelay = [
@@ -201,13 +194,13 @@ export interface EvoluConfig {
    * const authenticatedRelay = [
    *   createOwnerWebSocketTransport({
    *     url: "wss://relay.example.com",
-   *     ownerId: appOwner.id,
+   *     ownerId: testAppOwner.id,
    *   }),
    * ];
    *
    * assertEqual(
    *   authenticatedRelay[0]?.url,
-   *   `wss://relay.example.com?ownerId=${appOwner.id}`,
+   *   `wss://relay.example.com?ownerId=${testAppOwner.id}`,
    * );
    * ```
    */
@@ -236,26 +229,20 @@ export interface EvoluConfig {
    *
    * ```ts
    * import {
-   *   AppName,
-   *   createAppOwner,
    *   createEvolu,
-   *   createOwnerSecret,
-   *   createRandomBytes,
    *   id,
+   *   testAppName,
+   *   testAppOwner,
    * } from "@evolu/common";
    *
    * const Schema = {
    *   todo: { id: id("Todo") },
    *   todoCategory: { id: id("TodoCategory") },
    * };
-   * // Create once, persist the mnemonic securely, and restore it on later runs.
-   * const appOwner = createAppOwner(
-   *   createOwnerSecret({ randomBytes: createRandomBytes() }),
-   * );
    *
    * const _createTodoEvolu = createEvolu(Schema, {
-   *   appName: AppName.orThrow("IndexedTodos"),
-   *   appOwner,
+   *   appName: testAppName,
+   *   appOwner: testAppOwner,
    *   transports: [],
    *   indexes: (create) => [
    *     create("todoCreatedAt").on("todo").column("createdAt"),
@@ -310,6 +297,11 @@ export interface AppNameError extends TypeError<"AppName"> {
   readonly value: UrlSafeString;
 }
 
+/**
+ * Stable valid {@link AppName} for tests and examples.
+ *
+ * @group Testing
+ */
 export const testAppName = /*#__PURE__*/ AppName.orThrow("AppName");
 
 /**
@@ -345,24 +337,19 @@ export interface Evolu<
    * ```ts
    * import {
    *   assertType,
-   *   id,
+   *   type TestEvoluSchema,
    *   NonEmptyTrimmedString100,
    *   type Evolu,
+   *   type TestTodoId,
    * } from "@evolu/common";
    *
-   * const TodoId = id("Todo");
-   * type TodoId = typeof TodoId.Output;
-   * const Schema = {
-   *   todo: { id: TodoId, title: NonEmptyTrimmedString100 },
-   * };
-   *
-   * const insertTodo = (evolu: Evolu<typeof Schema>) =>
+   * const insertTodo = (evolu: Evolu<TestEvoluSchema>) =>
    *   evolu.insert("todo", {
    *     title: NonEmptyTrimmedString100.orThrow("Learn Evolu"),
    *   }).id;
    *
    * const insertTodoAndNotify = (
-   *   evolu: Evolu<typeof Schema>,
+   *   evolu: Evolu<TestEvoluSchema>,
    *   onComplete: () => void,
    * ) =>
    *   evolu.insert(
@@ -376,7 +363,7 @@ export interface Evolu<
    *     ReturnType<typeof insertTodo>,
    *     ReturnType<typeof insertTodoAndNotify>,
    *   ],
-   *   [TodoId, TodoId]
+   *   [TestTodoId, TestTodoId]
    * >();
    * ```
    *
@@ -394,30 +381,30 @@ export interface Evolu<
    * ```ts
    * import {
    *   assertType,
-   *   id,
+   *   type TestEvoluSchema,
    *   NonEmptyTrimmedString100,
    *   sqliteTrue,
    *   type Evolu,
+   *   type TestTodoId,
    * } from "@evolu/common";
    *
-   * const TodoId = id("Todo");
-   * type TodoId = typeof TodoId.Output;
-   * const Schema = {
-   *   todo: { id: TodoId, title: NonEmptyTrimmedString100 },
-   * };
-   *
-   * const renameTodo = (evolu: Evolu<typeof Schema>, todoId: TodoId) =>
+   * const renameTodo = (
+   *   evolu: Evolu<TestEvoluSchema>,
+   *   todoId: TestTodoId,
+   * ) =>
    *   evolu.update("todo", {
    *     id: todoId,
    *     title: NonEmptyTrimmedString100.orThrow("Updated title"),
    *   }).id;
    *
-   * const softDeleteTodo = (evolu: Evolu<typeof Schema>, todoId: TodoId) =>
-   *   evolu.update("todo", { id: todoId, isDeleted: sqliteTrue }).id;
+   * const softDeleteTodo = (
+   *   evolu: Evolu<TestEvoluSchema>,
+   *   todoId: TestTodoId,
+   * ) => evolu.update("todo", { id: todoId, isDeleted: sqliteTrue }).id;
    *
    * assertType<
    *   [ReturnType<typeof renameTodo>, ReturnType<typeof softDeleteTodo>],
-   *   [TodoId, TodoId]
+   *   [TestTodoId, TestTodoId]
    * >();
    * ```
    *
@@ -443,24 +430,20 @@ export interface Evolu<
    * import {
    *   assertType,
    *   createIdFromString,
-   *   id,
+   *   type TestEvoluSchema,
    *   NonEmptyTrimmedString100,
    *   type Evolu,
+   *   TestTodoId,
    * } from "@evolu/common";
    *
-   * const TodoId = id("Todo");
-   * type TodoId = typeof TodoId.Output;
-   * const Schema = {
-   *   todo: { id: TodoId, title: NonEmptyTrimmedString100 },
-   * };
-   * const stableId = TodoId.orThrow(createIdFromString("my-todo-1"));
-   * const upsertTodo = (evolu: Evolu<typeof Schema>) =>
+   * const stableId = TestTodoId.orThrow(createIdFromString("my-todo-1"));
+   * const upsertTodo = (evolu: Evolu<TestEvoluSchema>) =>
    *   evolu.upsert("todo", {
    *     id: stableId,
    *     title: NonEmptyTrimmedString100.orThrow("Learn Evolu"),
    *   }).id;
    *
-   * assertType<ReturnType<typeof upsertTodo>, TodoId>();
+   * assertType<ReturnType<typeof upsertTodo>, TestTodoId>();
    * ```
    *
    * @see {@link Mutation}
@@ -488,20 +471,17 @@ export interface Evolu<
    * import {
    *   assertType,
    *   createQueryBuilder,
-   *   id,
-   *   NonEmptyTrimmedString100,
+   *   testEvoluSchema,
+   *   type TestEvoluSchema,
    *   type Evolu,
    *   type QueryRows,
    * } from "@evolu/common";
    *
-   * const Schema = {
-   *   todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
-   * };
-   * const createQuery = createQueryBuilder(Schema);
+   * const createQuery = createQueryBuilder(testEvoluSchema);
    * const allTodos = createQuery((db) =>
    *   db.selectFrom("todo").selectAll(),
    * );
-   * const loadTodos = async (evolu: Evolu<typeof Schema>) => {
+   * const loadTodos = async (evolu: Evolu<TestEvoluSchema>) => {
    *   const rows = await evolu.loadQuery(allTodos);
    *   return rows;
    * };
@@ -526,31 +506,22 @@ export interface Evolu<
    * ```ts
    * import {
    *   assertType,
-   *   createIdFromString,
    *   createQueryBuilder,
-   *   id,
-   *   NonEmptyTrimmedString100,
+   *   testEvoluSchema,
+   *   type TestEvoluSchema,
+   *   testTodoId,
    *   type Evolu,
    *   type QueryRows,
    * } from "@evolu/common";
    *
-   * const TodoId = id("Todo");
-   * type TodoId = typeof TodoId.Output;
-   * const Schema = {
-   *   todo: { id: TodoId, title: NonEmptyTrimmedString100 },
-   * };
-   * const createQuery = createQueryBuilder(Schema);
+   * const createQuery = createQueryBuilder(testEvoluSchema);
    * const allTodos = createQuery((db) =>
    *   db.selectFrom("todo").select(["id", "title"]),
    * );
-   * const todoById = (todoId: TodoId) =>
-   *   createQuery((db) =>
-   *     db.selectFrom("todo").select("title").where("id", "=", todoId),
-   *   );
-   * const firstTodo = todoById(
-   *   TodoId.orThrow(createIdFromString("first-todo")),
+   * const firstTodo = createQuery((db) =>
+   *   db.selectFrom("todo").select("title").where("id", "=", testTodoId),
    * );
-   * const loadTodoQueries = (evolu: Evolu<typeof Schema>) =>
+   * const loadTodoQueries = (evolu: Evolu<TestEvoluSchema>) =>
    *   evolu.loadQueries([allTodos, firstTodo]);
    *
    * assertType<
@@ -575,22 +546,19 @@ export interface Evolu<
    * import {
    *   assertType,
    *   createQueryBuilder,
-   *   id,
-   *   NonEmptyTrimmedString100,
+   *   testEvoluSchema,
+   *   type TestEvoluSchema,
    *   type Evolu,
    *   type QueryRows,
    *   type Unsubscribe,
    * } from "@evolu/common";
    *
-   * const Schema = {
-   *   todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
-   * };
-   * const createQuery = createQueryBuilder(Schema);
+   * const createQuery = createQueryBuilder(testEvoluSchema);
    * const allTodos = createQuery((db) =>
    *   db.selectFrom("todo").select("title"),
    * );
    * const subscribeToTodos = (
-   *   evolu: Evolu<typeof Schema>,
+   *   evolu: Evolu<TestEvoluSchema>,
    *   onRows: (rows: QueryRows<typeof allTodos.Row>) => void,
    * ) =>
    *   evolu.subscribeQuery(allTodos)(() => {
@@ -613,20 +581,17 @@ export interface Evolu<
    * import {
    *   assertType,
    *   createQueryBuilder,
-   *   id,
-   *   NonEmptyTrimmedString100,
+   *   testEvoluSchema,
+   *   type TestEvoluSchema,
    *   type Evolu,
    *   type QueryRows,
    * } from "@evolu/common";
    *
-   * const Schema = {
-   *   todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
-   * };
-   * const createQuery = createQueryBuilder(Schema);
+   * const createQuery = createQueryBuilder(testEvoluSchema);
    * const allTodos = createQuery((db) =>
    *   db.selectFrom("todo").select("title"),
    * );
-   * const getTodos = (evolu: Evolu<typeof Schema>) =>
+   * const getTodos = (evolu: Evolu<TestEvoluSchema>) =>
    *   evolu.getQueryRows(allTodos);
    *
    * assertType<
@@ -700,21 +665,15 @@ export interface Evolu<
    * ```ts
    * import {
    *   assertEqual,
-   *   createAppOwner,
    *   createOwnerWebSocketTransport,
-   *   createOwnerSecret,
-   *   createRandomBytes,
    *   deriveShardOwner,
+   *   testAppOwner,
    *   type Evolu,
    *   type ReadonlyOwner,
    *   type UnuseOwner,
    * } from "@evolu/common";
    *
-   * // Create once, persist the mnemonic securely, and restore it on later runs.
-   * const appOwner = createAppOwner(
-   *   createOwnerSecret({ randomBytes: createRandomBytes() }),
-   * );
-   * const shardOwner = deriveShardOwner(appOwner, ["todos", 1]);
+   * const shardOwner = deriveShardOwner(testAppOwner, ["todos", 1]);
    * const shardTransport = createOwnerWebSocketTransport({
    *   url: "wss://relay.example.com",
    *   ownerId: shardOwner.id,

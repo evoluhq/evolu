@@ -52,7 +52,7 @@ export * from "./Worker.ts";
 
 // Local-first essentials.
 export type { EvoluError } from "./local-first/Error.ts";
-export { AppName, createEvolu } from "./local-first/Evolu.ts";
+export { AppName, createEvolu, testAppName } from "./local-first/Evolu.ts";
 export type {
   AppNameError,
   Evolu,
@@ -75,7 +75,14 @@ export {
   type QueryRows,
   type Row,
 } from "./local-first/Query.ts";
-export { createQueryBuilder } from "./local-first/Schema.ts";
+export {
+  createQueryBuilder,
+  testEvoluSchema,
+  TestProjectId,
+  testProjectId,
+  TestTodoId,
+  testTodoId,
+} from "./local-first/Schema.ts";
 export type {
   AnyStandardSchemaV1,
   EvoluSchema,
@@ -88,6 +95,7 @@ export type {
   OptionalColumnKeys,
   RequiredColumnKeys,
   TableSchema,
+  TestEvoluSchema,
   UpdateValues,
   UpsertValues,
 } from "./local-first/Schema.ts";

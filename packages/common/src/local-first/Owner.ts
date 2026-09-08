@@ -445,36 +445,27 @@ export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
  *
  * ```ts
  * import {
- *   AppName,
  *   assertEqual,
- *   createAppOwner,
  *   createEvolu,
  *   createOwnerWebSocketTransport,
- *   createOwnerSecret,
- *   createRandomBytes,
- *   id,
+ *   testAppName,
+ *   testAppOwner,
+ *   testEvoluSchema,
  * } from "@evolu/common";
  *
- * // Create once, persist the mnemonic securely, and restore it on later runs.
- * const appOwner = createAppOwner(
- *   createOwnerSecret({ randomBytes: createRandomBytes() }),
- * );
  * const transport = createOwnerWebSocketTransport({
  *   url: "wss://relay.evolu.dev",
- *   ownerId: appOwner.id,
+ *   ownerId: testAppOwner.id,
  * });
- * const _createTodoEvolu = createEvolu(
- *   { todo: { id: id("Todo") } },
- *   {
- *     appName: AppName.orThrow("OwnerTransportExample"),
- *     appOwner,
- *     transports: [transport],
- *   },
- * );
+ * const _createTodoEvolu = createEvolu(testEvoluSchema, {
+ *   appName: testAppName,
+ *   appOwner: testAppOwner,
+ *   transports: [transport],
+ * });
  *
  * assertEqual(transport, {
  *   type: "WebSocket",
- *   url: `wss://relay.evolu.dev?ownerId=${appOwner.id}`,
+ *   url: `wss://relay.evolu.dev?ownerId=${testAppOwner.id}`,
  * });
  * ```
  *
@@ -500,21 +491,15 @@ export const createOwnerWebSocketTransport = (config: {
  * ```ts
  * import {
  *   assertEqual,
- *   createAppOwner,
- *   createOwnerSecret,
- *   createRandomBytes,
  *   parseOwnerIdFromOwnerWebSocketTransportUrl,
+ *   testAppOwner,
  * } from "@evolu/common";
  *
- * // Create once, persist the mnemonic securely, and restore it on later runs.
- * const appOwner = createAppOwner(
- *   createOwnerSecret({ randomBytes: createRandomBytes() }),
- * );
- * const url = `/sync?ownerId=${appOwner.id}`;
+ * const url = `/sync?ownerId=${testAppOwner.id}`;
  *
  * assertEqual(
  *   parseOwnerIdFromOwnerWebSocketTransportUrl(url),
- *   appOwner.id,
+ *   testAppOwner.id,
  * );
  * assertEqual(
  *   parseOwnerIdFromOwnerWebSocketTransportUrl("/sync?ownerId=invalid"),

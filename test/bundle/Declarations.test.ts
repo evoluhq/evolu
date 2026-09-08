@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 describe("emitted declarations", () => {
   for (const [name, fixture] of [
     ["defaulted properties", "defaults.mts"],
+    ["local-first schema fixtures", "local-first.mts"],
     ["literal values, members, errors, and localization", "literals.mts"],
   ])
     it(`preserves ${name}`, () => {
