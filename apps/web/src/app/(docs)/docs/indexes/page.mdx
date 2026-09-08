@@ -10,8 +10,13 @@ export const metadata = {
 
 Are your queries taking too long to run? Measure their performance using the `logQueryExecutionTime` option:
 
+Using the `Schema` from [Define schema](/docs/local-first#define-schema):
+
 ```ts
-const allTodos = evolu.createQuery(
+import { createQueryBuilder } from "@evolu/common";
+
+const createQuery = createQueryBuilder(Schema);
+const allTodos = createQuery(
   (db) => db.selectFrom("todo").orderBy("createdAt").selectAll(),
   {
     logQueryExecutionTime: true,
@@ -33,11 +38,20 @@ For deeper insights into how SQLite indexes work under the hood, read [this in-d
   Usage
 </Heading>
 
+Using the schema, shared `run`, and `appOwner` from [Create Evolu](/docs/local-first#create-evolu):
+
 ```ts
-const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  // ...
-  indexes: (create) => [create("todoCreatedAt").on("todo").column("createdAt")],
-});
+import { AppName, createEvolu } from "@evolu/common";
+
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("MyApp"),
+    indexes: (create) => [
+      create("todoCreatedAt").on("todo").column("createdAt"),
+    ],
+    appOwner,
+  }),
+);
 ```
 
 Evolu handles this automatically—it will create any new indexes you define and drop those no longer present in the `indexes` array.

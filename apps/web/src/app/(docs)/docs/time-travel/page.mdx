@@ -5,32 +5,45 @@ export const metadata = {
 
 # Time Travel
 
-Evolu does not delete data—it only marks it as deleted. This is a fundamental design choice because **local-first is a distributed system**. There is no central authority (if there is, it’s not truly local-first).
+Synced Evolu tables mark rows as deleted and retain their history so devices can merge changes after reconnecting. Local tables, whose names start with `_`, delete rows permanently and do not keep sync history.
 
 Imagine this scenario: you delete a piece of data on a disconnected device, while another device updates that same data. Should the update be discarded? To enforce true deletion across all devices—even future ones—would require complex logic to reject the data forever, without exposing the original data (for security reasons). This is possible (and planned for Evolu), but it's not trivial.
 
-By retaining all data, Evolu enables **time travel**. All mutations—including deletes and overrides—are stored in the `evolu_history` table.
+For synced tables, Evolu stores column changes—including the `isDeleted` flag—in `evolu_history`. This history enables **time travel**.
 
-Here’s how to query the history of a specific column:
+Using the `Schema`, `TodoId`, and Evolu instance from [Get started](/docs/local-first), query the history of a specific todo's title:
 
 ```ts
-const titleHistoryQuery = evolu.createQuery((db) =>
-  db
-    .selectFrom("evolu_history")
-    .select(["value", "timestamp"])
-    .where("table", "==", "todo")
-    .where("id", "==", idToIdBytes(id))
-    .where("column", "==", "title")
-    // `value` isn't typed; this is how we can narrow its type.
-    .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Output"] }>()
-    .orderBy("timestamp", "desc"),
-);
+import {
+  createQueryBuilder,
+  idToIdBytes,
+  millisToDateIso,
+  timestampBytesToTimestamp,
+} from "@evolu/common";
 
-const handleHistoryClick = () => {
-  void evolu.loadQuery(titleHistoryQuery).then((rows) => {
+const createQuery = createQueryBuilder(Schema);
+const titleHistoryQuery = (todoId: TodoId) =>
+  createQuery((db) =>
+    db
+      .selectFrom("evolu_history")
+      .select(["value", "timestamp"])
+      .where("table", "=", "todo")
+      .where("id", "=", idToIdBytes(todoId))
+      .where("column", "=", "title")
+      // Narrows the TypeScript type; it does not validate stored values.
+      .$narrowType<{
+        value: (typeof Schema)["todo"]["title"]["Output"] | null;
+      }>()
+      .orderBy("timestamp", "desc"),
+  );
+
+const handleHistoryClick = (todoId: TodoId) => {
+  void evolu.loadQuery(titleHistoryQuery(todoId)).then((rows) => {
     const rowsWithTimestamp = rows.map((row) => ({
       value: row.value,
-      timestamp: timestampToDateIso(timestampBytesToTimestamp(row.timestamp)),
+      timestamp: millisToDateIso(
+        timestampBytesToTimestamp(row.timestamp).millis,
+      ),
     }));
     alert(JSON.stringify(rowsWithTimestamp, null, 2));
   });

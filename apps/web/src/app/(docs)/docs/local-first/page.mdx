@@ -25,7 +25,7 @@ Evolu offers SDKs for a variety of frameworks, including React, Svelte, React Na
 <SinglePlatformCodeGroup>
 
 ```bash {{ title: 'React' }}
-npm install @evolu/common @evolu/react @evolu/react-web
+npm install @evolu/common @evolu/react @evolu/react-web @evolu/web
 ```
 
 ```bash {{ title: 'React Native' }}
@@ -101,102 +101,150 @@ const Schema = {
 
 <Note>
   Evolu automatically adds [system
-  columns](/docs/api-reference/common/local-first/variables/SystemColumns-1):
+  columns](/docs/api-reference/common/local-first/Schema/variables/SystemColumns-1):
   `createdAt`, `updatedAt`, `isDeleted`, and `ownerId`.
 </Note>
 
 ## Create Evolu
 
-After defining the schema, create an Evolu instance for your environment.
+After defining the schema, create an Evolu instance for your environment. Every instance needs an `appOwner`. Create one on the first run and persist its secret material securely, for example in Expo SecureStore or WebAuthn-backed storage, then restore the same owner on later runs:
+
+```ts
+import {
+  createAppOwner,
+  createOwnerSecret,
+  createRandomBytes,
+} from "@evolu/common";
+
+// First run only. Persist the secret and restore the owner on later runs.
+const appOwner = createAppOwner(
+  createOwnerSecret({ randomBytes: createRandomBytes() }),
+);
+```
+
+The following snippets continue from the schema and `appOwner` above.
+
+Create one shared Run for your application's Evolu instances. Omit `transports` to use the default relay, provide your own relay URLs, or pass `transports: []` to disable synchronization.
 
 <SinglePlatformCodeGroup>
 
 ```ts {{ title: 'React', language: 'tsx' }}
-import { createEvolu, Name } from "@evolu/common";
-import { createUseEvolu, EvoluProvider } from "@evolu/react";
-import { evoluReactWebDeps } from "@evolu/react-web";
+import { AppName, createEvolu } from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createEvoluDeps } from "@evolu/react-web";
+import { createRun } from "@evolu/web";
+import { Suspense, use, type ReactNode } from "react";
 
-const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  appName: Name.orThrow("your-app-name"),
-  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
-});
+const run = createRun(createEvoluDeps());
+const evoluPromise = run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("your-app-name"),
+    appOwner,
+  }),
+);
 
-// Wrap your app with <EvoluProvider>
-<EvoluProvider value={evolu}>
- {/* ... */}
-</EvoluProvider>
+const { EvoluContext, useEvolu, useQuery } = createEvoluBinding<typeof Schema>();
 
-// Create a typed React Hook returning an instance of Evolu
-const useEvolu = createUseEvolu(evolu);
+const EvoluProvider = ({ children }: { children: ReactNode }) => (
+  <EvoluContext value={use(evoluPromise)}>{children}</EvoluContext>
+);
 
-// Use the Hook in your app
-const { insert, update } = useEvolu();
+export const App = ({ children }: { children: ReactNode }) => (
+  <Suspense fallback={null}>
+    <EvoluProvider>{children}</EvoluProvider>
+  </Suspense>
+);
+
+// Call useEvolu() and useQuery() in components inside EvoluProvider.
 ```
 
 ```ts {{ title: 'React Native', language: 'tsx' }}
-import { createEvolu, Name } from "@evolu/common";
-import { createUseEvolu, EvoluProvider } from "@evolu/react";
+import { AppName, createEvolu } from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createRun } from "@evolu/react-native";
+import { Suspense, use, type ReactNode } from "react";
 
-const evolu = createEvolu(createEvoluDeps())(Schema, {
- appName: Name.orThrow("your-app-name"),
- transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
-});
+const run = createRun(createEvoluDeps());
+const evoluPromise = run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("your-app-name"),
+    appOwner,
+  }),
+);
 
-// Wrap your app with <EvoluProvider>
-<EvoluProvider value={evolu}>
- {/* ... */}
-</EvoluProvider>
+const { EvoluContext, useEvolu, useQuery } = createEvoluBinding<typeof Schema>();
 
-// Create a typed React Hook returning an instance of Evolu
-const useEvolu = createUseEvolu(evolu);
+const EvoluProvider = ({ children }: { children: ReactNode }) => (
+  <EvoluContext value={use(evoluPromise)}>{children}</EvoluContext>
+);
 
-// Use the Hook in your app
-const { insert, update } = useEvolu();
+export const App = ({ children }: { children: ReactNode }) => (
+  <Suspense fallback={null}>
+    <EvoluProvider>{children}</EvoluProvider>
+  </Suspense>
+);
+
+// Call useEvolu() and useQuery() in components inside EvoluProvider.
 ```
 
 ```ts {{ title: 'Expo', language: 'tsx' }}
-import { createEvolu, Name } from "@evolu/common";
-import { createUseEvolu, EvoluProvider } from "@evolu/react";
+import { AppName, createEvolu } from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createRun } from "@evolu/react-native";
+import { Suspense, use, type ReactNode } from "react";
 
-const evolu = createEvolu(createEvoluDeps())(Schema, {
- appName: Name.orThrow("your-app-name"),
- transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
-});
+const run = createRun(createEvoluDeps());
+const evoluPromise = run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("your-app-name"),
+    appOwner,
+  }),
+);
 
-// Wrap your app with <EvoluProvider>
-<EvoluProvider value={evolu}>
- {/* ... */}
-</EvoluProvider>
+const { EvoluContext, useEvolu, useQuery } = createEvoluBinding<typeof Schema>();
 
-// Create a typed React Hook returning an instance of Evolu
-const useEvolu = createUseEvolu(evolu);
+const EvoluProvider = ({ children }: { children: ReactNode }) => (
+  <EvoluContext value={use(evoluPromise)}>{children}</EvoluContext>
+);
 
-// Use the Hook in your app
-const { insert, update } = useEvolu();
+export const App = ({ children }: { children: ReactNode }) => (
+  <Suspense fallback={null}>
+    <EvoluProvider>{children}</EvoluProvider>
+  </Suspense>
+);
+
+// Call useEvolu() and useQuery() in components inside EvoluProvider.
 ```
 
-```ts {{ title: 'Svelte'}}
-import * as Evolu from "@evolu/common";
+```ts {{ title: 'Svelte' }}
+import { AppName, createEvolu } from "@evolu/common";
 import { evoluSvelteDeps } from "@evolu/svelte";
+import { createRun } from "@evolu/web";
 
-const evolu = Evolu.createEvolu(evoluSvelteDeps)(Schema, {
-  appName: Evolu.Name.orThrow("your-app-name"),
-  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
-});
+const run = createRun(evoluSvelteDeps);
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("your-app-name"),
+    appOwner,
+  }),
+);
 ```
 
-```ts {{ title: 'Vue', language: 'ts' }}
-import { defineComponent } from "vue";
-import { createEvolu, Name } from "@evolu/common";
-import { evoluWebDeps } from "@evolu/web";
+```ts {{ title: 'Vue' }}
+import { AppName, createEvolu } from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
 import { provideEvolu } from "@evolu/vue";
+import { defineComponent } from "vue";
 
-const evolu = createEvolu(evoluWebDeps)(Schema, {
-  appName: Name.orThrow("your-app-name"),
-  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
-});
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("your-app-name"),
+    appOwner,
+  }),
+);
 
 export default defineComponent({
   setup() {
@@ -208,13 +256,16 @@ export default defineComponent({
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
-import { createEvolu, Name } from "@evolu/common";
-import { evoluWebDeps } from "@evolu/web";
+import { AppName, createEvolu } from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
 
-const evolu = createEvolu(evoluWebDeps)(Schema, {
-  appName: Name.orThrow("your-app-name"),
-  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
-});
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("your-app-name"),
+    appOwner,
+  }),
+);
 ```
 
 </SinglePlatformCodeGroup>
@@ -226,75 +277,63 @@ const evolu = createEvolu(evoluWebDeps)(Schema, {
 ```ts {{ title: 'React', language: 'tsx' }}
 const { insert, update } = useEvolu();
 
-const result = insert("todo", {
-  title: "New Todo",
+const { id } = insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
   isCompleted: Evolu.sqliteFalse,
 });
 
-if (result.ok) {
-  update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
-}
+update("todo", { id, isCompleted: Evolu.sqliteTrue });
 ```
 
 ```ts {{ title: 'React Native', language: 'tsx' }}
 const { insert, update } = useEvolu();
 
-const result = insert("todo", {
-  title: "New Todo",
+const { id } = insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
   isCompleted: Evolu.sqliteFalse,
 });
 
-if (result.ok) {
-  update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
-}
+update("todo", { id, isCompleted: Evolu.sqliteTrue });
 ```
 
 ```ts {{ title: 'Expo', language: 'tsx' }}
 const { insert, update } = useEvolu();
 
-const result = insert("todo", {
-  title: "New Todo",
+const { id } = insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
   isCompleted: Evolu.sqliteFalse,
 });
 
-if (result.ok) {
-  update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
-}
+update("todo", { id, isCompleted: Evolu.sqliteTrue });
 ```
 
 ```ts {{ title: 'Svelte', language: 'ts' }}
-const result = evolu.insert("todo", {
-  title: "New Todo",
+const { id } = evolu.insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
   isCompleted: Evolu.sqliteFalse,
 });
 
-if (result.ok) {
-  evolu.update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
-}
+evolu.update("todo", { id, isCompleted: Evolu.sqliteTrue });
 ```
 
 ```ts {{ title: 'Vue', language: 'ts' }}
 const { insert, update } = evolu;
 
-const result = insert("todo", {
-  title: "New Todo",
+const { id } = insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
   isCompleted: Evolu.sqliteFalse,
 });
 
-if (result.ok) {
-  update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
-}
+update("todo", { id, isCompleted: Evolu.sqliteTrue });
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
-const result = evolu.insert("todo", {
-  title: "New Todo",
+const { id } = evolu.insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
   isCompleted: Evolu.sqliteFalse,
 });
 
-if (result.ok) {
-  evolu.update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
-}
+evolu.update("todo", { id, isCompleted: Evolu.sqliteTrue });
 ```
 
 </SinglePlatformCodeGroup>
@@ -306,7 +345,8 @@ Evolu uses type-safe TypeScript SQL query builder [Kysely](https://github.com/ko
 Let's start with a simple `Query`.
 
 ```ts
-const allTodos = evolu.createQuery((db) => db.selectFrom("todo").selectAll());
+const createQuery = Evolu.createQueryBuilder(Schema);
+const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
 ```
 
 Once we have a query, we can load or subscribe to it.
@@ -314,20 +354,17 @@ Once we have a query, we can load or subscribe to it.
 <SinglePlatformCodeGroup>
 
 ```ts {{ title: 'React' }}
-import { useQuery } from "@evolu/react";
-// ...
+// Inside a component, use the useQuery binding created above.
 const todos = useQuery(allTodos);
 ```
 
 ```ts {{ title: 'React Native' }}
-import { useQuery } from "@evolu/react";
-// ...
+// Inside a component, use the useQuery binding created above.
 const todos = useQuery(allTodos);
 ```
 
 ```ts {{ title: 'Expo' }}
-import { useQuery } from "@evolu/react";
-// ...
+// Inside a component, use the useQuery binding created above.
 const todos = useQuery(allTodos);
 ```
 
@@ -336,7 +373,7 @@ import { queryState } from "@evolu/svelte";
 
 // Query once
 const todosOnce = await evolu.loadQuery(allTodos);
-// todosOnce.rows for all entries
+// todosOnce contains all rows
 
 // Subscribe to changes, automatically filled when the Data changes
 const todos = queryState(evolu, () => allTodos);
@@ -365,7 +402,7 @@ const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
 
 ## Delete data
 
-To delete a row, set `isDeleted` to `sqliteTrue` (1). Evolu uses **soft deletes** instead of permanent deletion.
+To delete a row, set `isDeleted` to `sqliteTrue` (1). Synced tables use **soft deletes**. Tables prefixed with `_` delete the row permanently and have no sync history. In the examples below, `todoId` is the ID of the row to delete.
 
 <SinglePlatformCodeGroup>
 
@@ -412,7 +449,7 @@ evolu.update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
 When querying, filter out deleted rows:
 
 ```ts
-const activeTodos = evolu.createQuery((db) =>
+const activeTodos = createQuery((db) =>
   db
     .selectFrom("todo")
     .selectAll()
@@ -423,86 +460,71 @@ const activeTodos = evolu.createQuery((db) =>
 ```
 
 <Warn>
-  Evolu does not permanently delete data—it marks them as deleted to support
-  merging across devices and time travel. This is essential for local-first
-  systems where devices sync asynchronously. See [Time
-  Travel](/docs/time-travel) to learn how to recover deleted data.
+  Synced tables retain deleted data to support merging across devices and time
+  travel. This is essential for local-first systems where devices sync
+  asynchronously. See [Time Travel](/docs/time-travel) to learn how to recover
+  deleted data.
 </Warn>
 
 ## Protect data
 
 **Privacy is essential for Evolu**, so all data are **encrypted** with an encryption key derived from a cryptographically strong secret (which can be represented as a [mnemonic](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)) or provided by an external hardware device.
 
+`evolu.appOwner` is the owner passed to `createEvolu`; it is available synchronously. For the owner created from a secret in this guide, `mnemonic` can be shown in your recovery UI.
+
 <SinglePlatformCodeGroup>
 
 ```ts {{ title: 'React', language: 'tsx' }}
-import { use } from "react";
-// ...
-const evolu = useEvolu();
-const owner = use(evolu.appOwner);
-console.log(owner.mnemonic);
-// this will print the mnemonic in the console
+// Inside a component, use the binding created above.
+const owner = useEvolu().appOwner;
+const mnemonic = owner.mnemonic;
 ```
 
 ```ts {{ title: 'React Native', language: 'tsx' }}
-import { use } from "react";
-// ...
-const evolu = useEvolu();
-const owner = use(evolu.appOwner);
-console.log(owner.mnemonic);
-// this will print the mnemonic in the console
+// Inside a component, use the binding created above.
+const owner = useEvolu().appOwner;
+const mnemonic = owner.mnemonic;
 ```
 
 ```ts {{ title: 'Expo', language: 'tsx' }}
-import { use } from "react";
-// ...
-const evolu = useEvolu();
-const owner = use(evolu.appOwner);
-console.log(owner.mnemonic);
-// this will print the mnemonic in the console
+// Inside a component, use the binding created above.
+const owner = useEvolu().appOwner;
+const mnemonic = owner.mnemonic;
 ```
 
 ```ts {{ title: 'Svelte' }}
-import { appOwnerState } from "@evolu/svelte";
-
-const owner = appOwnerState(evolu);
-// use owner.current in your templates
+const owner = evolu.appOwner;
+const mnemonic = owner.mnemonic;
 ```
 
 ```ts {{ title: 'Vue', language: 'ts' }}
 import { useEvolu } from "@evolu/vue";
 
 const evolu = useEvolu();
-const owner = await evolu.appOwner;
-console.log(owner.mnemonic);
+const owner = evolu.appOwner;
+const mnemonic = owner.mnemonic;
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
-const owner = await evolu.appOwner;
-console.log(owner.mnemonic);
+const owner = evolu.appOwner;
+const mnemonic = owner.mnemonic;
 ```
 
 </SinglePlatformCodeGroup>
 
 ## Purge data
 
-To clear all local data from the device (this is different from soft deletes):
-
-```ts
-evolu.resetAppOwner();
-```
-
 <Note>
-  This removes all data from the local database. This is not a soft delete—it's
-  a complete reset.
+  `Evolu.deleteDatabase` and `Evolu.deleteOwner` are declared but **not
+  implemented yet**. Both currently throw. Implementation is planned soon.
 </Note>
+
+`deleteDatabase` is intended to remove an instance's local database. `deleteOwner` is intended to remove an owner's local rows and history and stop using that owner across tabs. Neither currently provides a working purge operation. The Evolu 7 `resetAppOwner` method is no longer available.
 
 ## Restore data
 
-To restore synced data on any device:
+The Evolu 7 `restoreAppOwner` method is no longer available. To restore synced data, validate the user's mnemonic with `Mnemonic`, convert it with `mnemonicToOwnerSecret`, and pass the resulting secret to `createAppOwner`. Then pass that owner to `createEvolu` and connect to the relays holding its data.
 
-```ts
-evolu.restoreAppOwner(mnemonic);
-```
+Use the original `appName` to reopen the same local database on a device that already has it. Your app currently manages owner persistence, instance switching, and UI updates. Built-in account management is still being developed. Rows in `_`-prefixed tables cannot be restored from a relay because they never sync.
 
 To learn more about Evolu, explore our [playgrounds](/docs/playgrounds) and [examples](/docs/examples).

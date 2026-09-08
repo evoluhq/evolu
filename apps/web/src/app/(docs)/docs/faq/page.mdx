@@ -56,24 +56,31 @@ Kysely **is not** an ORM. It **does not** have the concept of relations. Kysely 
 
 ## How do I store device-specific settings that shouldn't sync?
 
-Use a separate local-only Evolu instance with `transports: []` for device-specific settings like UI preferences, onboarding state, or account management flow:
+Use a separate Evolu instance with `transports: []` and `_`-prefixed tables for device-specific settings like UI preferences, onboarding state, or account management flow. The prefix keeps the tables local even if the instance later syncs other owners:
+
+The following setup reuses the shared `run` and persisted `appOwner` from [Create Evolu](/docs/local-first#create-evolu).
 
 ```ts
+import { AppName, createEvolu, id } from "@evolu/common";
+
 const PreferencesId = id("Preferences");
 type PreferencesId = typeof PreferencesId.Output;
 
 const DeviceSchema = {
-  preferences: {
+  _preferences: {
     id: PreferencesId,
     // whatever
   },
 };
 
 // Local-only instance for device settings (no sync)
-const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-  appName: Name.orThrow("MyApp-Device"),
-  transports: [], // No sync - stays local to device
-});
+const deviceEvolu = await run.ok(
+  createEvolu(DeviceSchema, {
+    appName: AppName.orThrow("MyApp-Device"),
+    transports: [], // No sync - stays local to device
+    appOwner,
+  }),
+);
 ```
 
 This approach gives us:
@@ -87,9 +94,18 @@ This approach gives us:
 
 Tables prefixed with underscores (`_`) are local-only within an existing Evolu instance—they're never synced.
 
-Imagine editing a JSON-rich text document. Syncing the entire document on every keystroke would be inefficient. Instead, save drafts to a local-only table first:
+Imagine editing a JSON-rich text document. Syncing the entire document on every keystroke would be inefficient. Instead, create an Evolu instance with the following schema and save drafts to its local table first. The `documentId`, `title`, and `content` below are values already validated with the corresponding schema types.
 
 ```ts
+import {
+  id,
+  NonEmptyTrimmedString,
+  NonEmptyTrimmedString1000,
+  sqliteTrue,
+} from "@evolu/common";
+
+const DocumentId = id("Document");
+
 const Schema = {
   // Regular synced table
   document: {
@@ -113,29 +129,26 @@ evolu.upsert("_documentDraft", {
 });
 
 // When ready to sync (e.g., on blur, route change)
-evolu.update("_documentDraft", { id: documentId, isDeleted: true });
+evolu.update("_documentDraft", { id: documentId, isDeleted: sqliteTrue });
 evolu.upsert("document", { id: documentId, title, content });
 ```
 
-Evolu batches mutations in a microtask and runs them in a transaction, ensuring atomicity and no data loss. Saving to local-only tables won't block the main thread since Evolu uses Web Workers. In React Native, `InteractionManager.runAfterInteractions` will be used (coming soon).
+Evolu batches mutations queued in the same microtask and applies them in a SQLite transaction. The draft deletion and document upsert above are therefore applied together. Local tables use the same mutation and reactive query APIs as synced tables.
 
 ## How do I integrate with external systems that have their own IDs?
 
-Use `createIdFromString` to convert external IDs into valid Evolu IDs:
+Use `createIdFromString` to convert external IDs into valid Evolu IDs. Using the schema and Evolu instance from [Get started](/docs/local-first):
 
 ```ts
-import { createIdFromString } from "@evolu/common";
+import { createIdFromString, NonEmptyTrimmedString100 } from "@evolu/common";
 
-// Convert external API ID to Evolu ID
-const evoluId = createIdFromString("user-api-123");
-
-upsert("todo", {
-  id: evoluId,
-  title: "Task from external system",
-});
-
-// With table branding for type safety
+// Use the table's ID brand, matching TodoId from the getting-started schema.
 const todoId = createIdFromString<"Todo">("external-todo-456");
+
+evolu.upsert("todo", {
+  id: todoId,
+  title: NonEmptyTrimmedString100.orThrow("Task from external system"),
+});
 ```
 
 This ensures that multiple clients creating records with the same external identifier will generate the same Evolu ID.
@@ -149,33 +162,61 @@ Evolu previously had an automatic seeding feature that ran when an AppOwner was 
 **Simple approach**: Create initial data on explicit user action. For example:
 
 ```ts
-const seedDefaultData = () => {
-  evolu.upsert("category", { id: createIdFromString("groceries"), name: "Groceries" });
-  evolu.upsert("category", { id: createIdFromString("utilities"), name: "Utilities" });
-  evolu.upsert("category", { id: createIdFromString("entertainment"), name: "Entertainment" });
+import {
+  createIdFromString,
+  type Evolu,
+  id,
+  NonEmptyTrimmedString100,
+} from "@evolu/common";
+
+const CategorySchema = {
+  category: { id: id("Category"), name: NonEmptyTrimmedString100 },
 };
 
-// In your UI, provide a button or onboarding step
-<button onClick={seedDefaultData}>Set up default categories</button>
+const seedDefaultData = (evolu: Evolu<typeof CategorySchema>) => {
+  for (const [externalId, name] of [
+    ["groceries", "Groceries"],
+    ["utilities", "Utilities"],
+    ["entertainment", "Entertainment"],
+  ] as const) {
+    evolu.upsert("category", {
+      id: createIdFromString<"Category">(externalId),
+      name: NonEmptyTrimmedString100.orThrow(name),
+    });
+  }
+};
+
+// Create an instance with CategorySchema and call seedDefaultData(evolu)
+// from a setup button or onboarding step.
 ```
 
 **Note**: Using `createIdFromString` ensures deterministic IDs, so if a user clicks the button on multiple devices (e.g., after restoring their account but before sync completes), the same data will be upserted rather than duplicated.
 
 **Alternative approach**: Create Evolu without transports initially, verify the user through a backend service that knows whether it's their first login, then have the client insert data explicitly before enabling sync:
 
+Using `CategorySchema` and `seedDefaultData` above, with the shared `run` and persisted `appOwner` from [Create Evolu](/docs/local-first#create-evolu):
+
 ```ts
+import { AppName, createEvolu } from "@evolu/common";
+
 // Start without sync
-const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  appName: Name.orThrow("MyApp"),
-  transports: [],
-});
+const evolu = await run.ok(
+  createEvolu(CategorySchema, {
+    appName: AppName.orThrow("MyApp-Categories"),
+    transports: [],
+    appOwner,
+  }),
+);
 
 // After backend verification for first-time user
 if (isFirstLogin) {
-  seedDefaultData();
+  seedDefaultData(evolu);
 }
 
-// Then enable sync by recreating with transports
+// Enable sync on the same instance. Call unuseOwner() to release this use.
+const unuseOwner = evolu.useOwner(appOwner, [
+  { type: "WebSocket", url: "wss://free.evoluhq.com" },
+]);
 ```
 
 For reference data that rarely changes (like country or currency lists), consider whether it needs to be in the database at all—it might be better as a constant in your code or imported from a package.
