@@ -16,10 +16,9 @@ import {
   assertNotUndefined,
 } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
-import { createCallbacks } from "../Callbacks.ts";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
 import type { EncryptionKey } from "../Crypto.ts";
-import { disposable } from "../Function.ts";
+import { disposable, exhaustiveCheck } from "../Function.ts";
 import { acquireLeaderLock, type LockManagerDep } from "../LockManager.ts";
 import {
   createLookupMap,
@@ -46,7 +45,14 @@ import {
   type Mutex,
   type Task,
 } from "../Task.ts";
-import type { ExtractTyped, Id, Name, Typed } from "../Type.ts";
+import type { Millis } from "../Time.ts";
+import {
+  createId,
+  type ExtractTyped,
+  type Id,
+  type Name,
+  type Typed,
+} from "../Type.ts";
 import type { Callback } from "../Types.ts";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.ts";
 import type {
@@ -78,6 +84,7 @@ import {
 } from "./Query.ts";
 import type { MutationChange } from "./Schema.ts";
 import type { CrdtMessage } from "./Storage.ts";
+import type { Timestamp } from "./Timestamp.ts";
 
 export type SharedWorker = CommonSharedWorker<
   SharedWorkerInput,
@@ -156,42 +163,56 @@ export type EvoluOutput =
     };
 
 export type DbWorkerInput =
-  | (Typed<"Request"> & {
-      readonly callbackId: Id;
-      readonly request: DbWorkerRequest;
-    })
+  | (Typed<"Request"> & { readonly attemptId: Id } & (
+        | {
+            readonly request: DbWorkerWriteRequest;
+            readonly clock: Timestamp;
+            readonly now: Millis;
+          }
+        | { readonly request: DbWorkerReadRequest }
+      ))
   | Typed<"Dispose">;
 
-export type DbWorkerRequest =
+export type DbWorkerRequest = DbWorkerWriteRequest | DbWorkerReadRequest;
+
+export type DbWorkerWriteRequest =
   | {
       readonly type: "ForEvolu";
       readonly id: EvoluInstanceId;
-      readonly message: {
-        readonly [Message in EvoluInput as Message["type"]]: Message;
-      }["Mutate" | "Query" | "Export"];
+      readonly message: ExtractTyped<EvoluInput, "Mutate">;
     }
   | {
       readonly type: "ForSharedWorker";
-      readonly message:
-        | {
-            readonly type: "CreateSyncMessages";
-            readonly owners: NonEmptyReadonlyArray<Owner>;
-          }
-        | {
-            readonly type: "ApplySyncMessage";
-            readonly owner: Owner;
-            readonly inputMessage: Uint8Array;
-          };
+      readonly message: {
+        readonly type: "ApplySyncMessage";
+        readonly owner: Owner;
+        readonly inputMessage: Uint8Array;
+      };
+    };
+
+export type DbWorkerReadRequest =
+  | {
+      readonly type: "ForEvolu";
+      readonly id: EvoluInstanceId;
+      readonly message: ExtractTyped<EvoluInput, "Query" | "Export">;
+    }
+  | {
+      readonly type: "ForSharedWorker";
+      readonly message: {
+        readonly type: "CreateSyncMessages";
+        readonly owners: NonEmptyReadonlyArray<Owner>;
+      };
     };
 
 export type DbWorkerOutput =
   | {
       readonly type: "LeaderAcquired";
       readonly name: Name;
+      readonly clock: Timestamp;
     }
   | {
       readonly type: "OnQueuedResponse";
-      readonly callbackId: Id;
+      readonly attemptId: Id;
       readonly response: DbWorkerQueuedResponse;
     };
 
@@ -202,6 +223,7 @@ export type DbWorkerQueuedResponse =
       readonly message:
         | {
             readonly type: "Mutate";
+            readonly clock: Timestamp;
             readonly messagesByOwnerId: ReadonlyMap<
               OwnerId,
               NonEmptyReadonlyArray<CrdtMessage>
@@ -229,6 +251,7 @@ export type DbWorkerQueuedResponse =
           }
         | {
             readonly type: "ApplySyncMessage";
+            readonly clock: Timestamp;
             readonly ownerId: OwnerId;
             readonly didWriteMessages: boolean;
             readonly result: Result<
@@ -513,14 +536,36 @@ const createEvoluTenant =
             assertNotSame(dbWorkerPort, currentDbWorkerPort);
             dbWorkerPort?.[Symbol.dispose]();
             dbWorkerPort = currentDbWorkerPort;
-            queueRequestInFlight = false;
+            activeDispatch = null;
+            sessionClock ??= message.clock;
             console.info("leaderAcquired");
             dbWorkerInited.resolve();
             runQueue();
             break;
           }
           case "OnQueuedResponse": {
-            callbacks.execute(message.callbackId, message);
+            if (activeDispatch?.attemptId !== message.attemptId) return;
+            const { request } = activeDispatch.entry;
+            const { response } = message;
+            if (
+              response.message.type === "Mutate" ||
+              response.message.type === "ApplySyncMessage"
+            ) {
+              sessionClock = response.message.clock;
+            }
+            switch (response.type) {
+              case "ForEvolu":
+                handleResponseForEvolu(response, request);
+                break;
+              case "ForSharedWorker":
+                handleResponseForSharedWorker(response);
+                break;
+              default:
+                exhaustiveCheck(response);
+            }
+            queue.shift();
+            activeDispatch = null;
+            runQueue();
             break;
           }
         }
@@ -540,47 +585,51 @@ const createEvoluTenant =
       );
     };
 
-    const queue: Array<DbWorkerRequest> = [];
-    const callbacks = disposer.use(
-      createCallbacks<ExtractTyped<DbWorkerOutput, "OnQueuedResponse">>(
-        run.deps,
-      ),
-    );
-    let queueRequestInFlight = false;
+    type QueueEntry =
+      | {
+          readonly type: "Read";
+          readonly request: DbWorkerReadRequest;
+        }
+      | {
+          readonly type: "Write";
+          readonly request: DbWorkerWriteRequest;
+          now?: Millis;
+        };
+    const queue: Array<QueueEntry> = [];
+    let sessionClock: Timestamp | null = null;
+    let activeDispatch: {
+      readonly entry: QueueEntry;
+      readonly attemptId: Id;
+    } | null = null;
 
     const runQueue = (): void => {
-      if (queueRequestInFlight || !isNonEmptyArray(queue) || !dbWorkerPort) {
-        return;
+      if (activeDispatch || !isNonEmptyArray(queue) || !dbWorkerPort) return;
+      assertNonNullable(sessionClock);
+      const entry = firstInArray(queue);
+      const attemptId = createId(run.deps);
+      activeDispatch = { entry, attemptId };
+      if (entry.type === "Write") {
+        entry.now ??= run.deps.time.now();
+        dbWorkerPort.postMessage({
+          type: "Request",
+          attemptId,
+          request: entry.request,
+          clock: sessionClock,
+          now: entry.now,
+        });
+      } else {
+        dbWorkerPort.postMessage({
+          type: "Request",
+          attemptId,
+          request: entry.request,
+        });
       }
-
-      const request = firstInArray(queue);
-
-      const callbackId = callbacks.register(({ response }) => {
-        switch (response.type) {
-          case "ForEvolu": {
-            handleResponseForEvolu(response, request);
-            break;
-          }
-
-          case "ForSharedWorker":
-            handleResponseForSharedWorker(response);
-            break;
-        }
-
-        // Complete the current queue item and continue with the next one.
-        queue.shift();
-        queueRequestInFlight = false;
-        runQueue();
-      });
-
-      queueRequestInFlight = true;
-      dbWorkerPort.postMessage({ type: "Request", callbackId, request });
     };
 
     disposer.defer(async () => {
       dbWorkerPort?.postMessage({ type: "Dispose" });
       dbWorkerPort = null;
-      queueRequestInFlight = false;
+      activeDispatch = null;
 
       // The DbWorker holds this tenant leader lock while it is alive. Tenant
       // disposal sends Dispose, then acquires the same lock to wait until the
@@ -864,13 +913,18 @@ const createEvoluTenant =
             switch (message.type) {
               case "Query":
               case "Export": {
-                queue.push({ type: "ForEvolu", id: instance.id, message });
+                queue.push({
+                  type: "Read",
+                  request: { type: "ForEvolu", id: instance.id, message },
+                });
                 runQueue();
                 break;
               }
               case "Mutate": {
-                // TODO: Delegate do vsech evolu instances, co to pouzivaji
-                queue.push({ type: "ForEvolu", id: instance.id, message });
+                queue.push({
+                  type: "Write",
+                  request: { type: "ForEvolu", id: instance.id, message },
+                });
                 runQueue();
                 break;
               }
@@ -907,10 +961,10 @@ const createEvoluTenant =
           });
 
           queue.push({
-            type: "ForSharedWorker",
-            message: {
-              type: "CreateSyncMessages",
-              owners: ownersToSync,
+            type: "Read",
+            request: {
+              type: "ForSharedWorker",
+              message: { type: "CreateSyncMessages", owners: ownersToSync },
             },
           });
 
@@ -927,11 +981,10 @@ const createEvoluTenant =
           });
 
           queue.push({
-            type: "ForSharedWorker",
-            message: {
-              type: "ApplySyncMessage",
-              owner,
-              inputMessage,
+            type: "Write",
+            request: {
+              type: "ForSharedWorker",
+              message: { type: "ApplySyncMessage", owner, inputMessage },
             },
           });
 
@@ -969,10 +1022,6 @@ const createEvoluTenant =
 
 // TODO: SharedWorker follow-ups.
 // - Complete the queue head when a DbWorker mutation returns an error.
-// - Make retried DbWorker requests deterministic by materializing clocks and
-//   timestamps in the SharedWorker before enqueueing them.
-// - Replace the callback registry and queueRequestInFlight flag with one
-//   explicit in-flight request state.
 // - Detect DbWorker and port liveness so a worker-only crash resumes the queue.
 // - Consolidate usedSyncOwners and claimLeasesBySyncOwner into one owner-use
 //   state abstraction without changing repeated-use semantics.

@@ -9,15 +9,14 @@ import {
 import { increment } from "../Number.ts";
 import { orderNumber } from "../Order.ts";
 import type { Result } from "../Result.ts";
-import { ok } from "../Result.ts";
 import { testCreateDeps } from "../Task.ts";
 import type { Time, TimeDep } from "../Time.ts";
 import { maxMillis, Millis, minMillis, testCreateTime } from "../Time.ts";
+import { assertType } from "../Type.ts";
 import type {
   Timestamp,
   TimestampBytes,
   TimestampConfigDep,
-  TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
 } from "./Timestamp.ts";
@@ -135,20 +134,52 @@ describe("sendTimestamp", () => {
     );
   });
 
-  it("returns TimestampCounterOverflowError for counter overflow", () => {
-    let timestamp: Result<
-      Timestamp,
-      | TimestampDriftError
-      | TimestampCounterOverflowError
-      | TimestampTimeOutOfRangeError
-    > = ok(createTimestamp());
-
-    // Note +1 in 65536.
-    for (let i = 0; i < 65536; i++) {
-      if (timestamp.ok) timestamp = sendTimestamp(deps0)(timestamp.value);
+  it("continues past a full counter with fixed wall time", () => {
+    const deps = {
+      time: testCreateTime(),
+      timestampConfig: { maxDrift: defaultTimestampMaxDrift },
+    };
+    let timestamp = createTimestamp();
+    for (let i = 0; i <= maxCounter; i++) {
+      const next = sendTimestamp(deps)(timestamp);
+      assertOk(next);
+      timestamp = next.value;
     }
+    assertEqual(timestamp, createTimestamp({ millis: makeMillis(1) }));
+    assertOk(
+      sendTimestamp(deps)(timestamp),
+      createTimestamp({ millis: makeMillis(1), counter: Counter.orThrow(1) }),
+    );
+  });
 
-    assertErr(timestamp, { type: "TimestampCounterOverflowError" });
+  it("continues past a full counter while the clock is ahead of advancing wall time", () => {
+    // Wall time advances by one millisecond per read, while the clock stays two
+    // minutes ahead, as after receiving a timestamp from a fast peer. Every
+    // send keeps the pinned millis, so the counter alone must carry ordering.
+    const deps = {
+      time: testCreateTime({ autoIncrement: "sync" }),
+      timestampConfig: { maxDrift: defaultTimestampMaxDrift },
+    };
+    const pinnedMillis = makeMillis(2 * 60 * 1000);
+    let timestamp = createTimestamp({ millis: pinnedMillis });
+    for (let i = 0; i <= maxCounter; i++) {
+      const next = sendTimestamp(deps)(timestamp);
+      assertOk(next);
+      assertEqual(
+        orderTimestampBytes(
+          timestampToTimestampBytes(timestamp),
+          timestampToTimestampBytes(next.value),
+        ),
+        -1,
+      );
+      if (i < maxCounter) assertEqual(next.value.millis, pinnedMillis);
+      timestamp = next.value;
+    }
+    assertEqual(
+      timestamp,
+      createTimestamp({ millis: makeMillis(pinnedMillis + 1) }),
+    );
+    assertEqual(deps.time.now(), makeMillis(maxCounter + 1));
   });
 
   it("returns TimestampDriftError for excessive clock drift", () => {
@@ -286,15 +317,171 @@ describe("receiveTimestamp", () => {
       );
     });
 
-    it("returns TimestampCounterOverflowError for counter overflow", () => {
-      assertErr(
-        receiveTimestamp(deps0)(
-          makeNode1Timestamp(0, maxCounter),
-          makeNode2Timestamp(0, maxCounter),
+    for (const [
+      label,
+      localMillis,
+      remoteMillis,
+      localCounter,
+      remoteCounter,
+    ] of [
+      ["equal millis with the local counter exhausted", 1, 1, maxCounter, 0],
+      ["equal millis with the remote counter exhausted", 1, 1, 0, maxCounter],
+      [
+        "equal millis with both counters exhausted",
+        1,
+        1,
+        maxCounter,
+        maxCounter,
+      ],
+      ["later local millis", 1, 0, maxCounter, 0],
+      ["later remote millis", 0, 1, 0, maxCounter],
+    ] as const) {
+      it(`rolls over for ${label}`, () => {
+        const deps = {
+          time: testCreateTime(),
+          timestampConfig: { maxDrift: defaultTimestampMaxDrift },
+        };
+        const local = makeNode1Timestamp(localMillis, localCounter);
+        const remote = makeNode2Timestamp(remoteMillis, remoteCounter);
+        const result = receiveTimestamp(deps)(local, remote);
+        assertOk(result, makeNode1Timestamp(2, 0));
+        const bytes = timestampToTimestampBytes(result.value);
+        assertEqual(
+          orderTimestampBytes(timestampToTimestampBytes(local), bytes),
+          -1,
+        );
+        assertEqual(
+          orderTimestampBytes(timestampToTimestampBytes(remote), bytes),
+          -1,
+        );
+      });
+    }
+    it("resets exhausted counters when wall time is newer", () => {
+      const deps = {
+        time: testCreateTime({ startAt: makeMillis(2) }),
+        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
+      };
+      assertOk(
+        receiveTimestamp(deps)(
+          makeNode1Timestamp(1, maxCounter),
+          makeNode2Timestamp(1, maxCounter),
         ),
-        { type: "TimestampCounterOverflowError" },
+        makeNode1Timestamp(2, 0),
       );
     });
+  });
+});
+
+describe("timestamp rollover boundaries", () => {
+  for (const operation of ["send", "receive"] as const) {
+    const nextTimestamp = (
+      deps: TimeDep & TimestampConfigDep,
+      timestamp: Timestamp,
+    ) =>
+      operation === "send"
+        ? sendTimestamp(deps)(timestamp)
+        : receiveTimestamp(deps)(timestamp, timestamp);
+
+    it(`${operation} uses the last counter before rolling over`, () => {
+      const deps = {
+        time: testCreateTime(),
+        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
+      };
+      const lastCounter = createTimestamp({ counter: maxCounter });
+      assertOk(
+        nextTimestamp(
+          deps,
+          createTimestamp({ counter: Counter.orThrow(maxCounter - 1) }),
+        ),
+        lastCounter,
+      );
+      const result = nextTimestamp(deps, lastCounter);
+      assertOk(result, createTimestamp({ millis: makeMillis(1) }));
+      assertEqual(
+        timestampBytesToTimestamp(timestampToTimestampBytes(result.value)),
+        result.value,
+      );
+    });
+
+    it(`${operation} permits rollover at the drift limit and rejects the next millisecond`, () => {
+      const deps = {
+        time: testCreateTime(),
+        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
+      };
+      assertOk(
+        nextTimestamp(
+          deps,
+          createTimestamp({
+            millis: makeMillis(defaultTimestampMaxDrift - 1),
+            counter: maxCounter,
+          }),
+        ),
+        createTimestamp({ millis: makeMillis(defaultTimestampMaxDrift) }),
+      );
+      assertErr(
+        nextTimestamp(
+          deps,
+          createTimestamp({
+            millis: makeMillis(defaultTimestampMaxDrift),
+            counter: maxCounter,
+          }),
+        ),
+        {
+          type: "TimestampDriftError",
+          now: minMillis,
+          next: makeMillis(defaultTimestampMaxDrift + 1),
+        },
+      );
+    });
+
+    it(`${operation} permits the maximum millis and rejects rollover beyond it`, () => {
+      const deps = {
+        time: testCreateTime({ startAt: makeMillis(maxMillis - 1) }),
+        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
+      };
+      assertOk(
+        nextTimestamp(
+          deps,
+          createTimestamp({
+            millis: makeMillis(maxMillis - 1),
+            counter: maxCounter,
+          }),
+        ),
+        createTimestamp({ millis: maxMillis }),
+      );
+      assertErr(
+        nextTimestamp(
+          deps,
+          createTimestamp({ millis: maxMillis, counter: maxCounter }),
+        ),
+        { type: "TimestampTimeOutOfRangeError" },
+      );
+    });
+
+    it(`${operation} checks rollover against the same wall-time reading`, () => {
+      const deps = {
+        time: testCreateTime({ autoIncrement: "sync" }),
+        timestampConfig: { maxDrift: 0 },
+      };
+      assertErr(nextTimestamp(deps, createTimestamp({ counter: maxCounter })), {
+        type: "TimestampDriftError",
+        now: minMillis,
+        next: makeMillis(1),
+      });
+    });
+  }
+
+  it("exposes drift and range errors without a counter overflow error", () => {
+    assertType<
+      ReturnType<ReturnType<typeof sendTimestamp>>,
+      Result<Timestamp, TimestampDriftError | TimestampTimeOutOfRangeError>
+    >();
+    assertType<
+      ReturnType<ReturnType<typeof receiveTimestamp>>,
+      Result<Timestamp, TimestampDriftError | TimestampTimeOutOfRangeError>
+    >();
+    // @ts-expect-error TimestampCounterOverflowError is no longer exported; counters roll over.
+    type _RemovedError = import("../index.ts").TimestampCounterOverflowError;
   });
 });
 

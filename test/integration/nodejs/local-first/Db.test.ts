@@ -1,21 +1,27 @@
+import { randomUUID } from "node:crypto";
+import { describe, it, test } from "node:test";
 import {
   assertEqual,
+  assertErr,
   assertFalse,
   assertInstanceOf,
   assertLength,
+  assertNonEmptyReadonlyArray,
   assertNotNull,
   assertNotUndefined,
   assertSame,
   assertTrue,
 } from "../../../../packages/common/src/Assert.ts";
-import { describe, it, test } from "node:test";
 import {
   createConsoleStoreOutput,
   testCreateConsole,
   type ConsoleEntry,
   type ConsoleStoreOutput,
 } from "../../../../packages/common/src/Console.ts";
-import { constVoid } from "../../../../packages/common/src/Function.ts";
+import {
+  constVoid,
+  disposable,
+} from "../../../../packages/common/src/Function.ts";
 import {
   startDbWorker,
   type DbWorkerInit,
@@ -28,8 +34,12 @@ import {
 } from "../../../../packages/common/src/local-first/Owner.ts";
 import {
   applyProtocolMessageAsRelay,
+  createProtocolMessageBuffer,
   createProtocolMessageFromCrdtMessages,
   decryptAndDecodeDbChange,
+  encodeAndEncryptDbChange,
+  MessageType,
+  ProtocolErrorCode,
 } from "../../../../packages/common/src/local-first/Protocol.ts";
 import { createQueryBuilder } from "../../../../packages/common/src/local-first/Schema.ts";
 import type {
@@ -37,12 +47,15 @@ import type {
   DbWorkerInput,
   DbWorkerOutput,
   DbWorkerRequest,
+  DbWorkerWriteRequest,
   EvoluInstanceId,
 } from "../../../../packages/common/src/local-first/Shared.ts";
 import { consoleEntryOrErrorBroadcastChannelName } from "../../../../packages/common/src/local-first/Shared.ts";
 import { DbChange } from "../../../../packages/common/src/local-first/Storage.ts";
 import {
   createTimestamp,
+  maxCounter,
+  type Timestamp,
   TimestampBytes,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
@@ -61,6 +74,7 @@ import {
   sql,
   type CreateSqliteDriver,
   type Sqlite,
+  type SqliteQuery,
   type SqliteSchema,
   type SqliteValue,
 } from "../../../../packages/common/src/Sqlite.ts";
@@ -76,12 +90,12 @@ import {
 } from "../../../../packages/common/src/Time.ts";
 import {
   id,
+  Name,
   String,
   testName,
+  type ExtractTyped,
   type Id,
-  type Name,
 } from "../../../../packages/common/src/Type.ts";
-import type { ExtractTyped } from "../../../../packages/common/src/Type.ts";
 import {
   createMessagePort,
   createWorker,
@@ -91,6 +105,7 @@ import {
   type MessagePort,
   type WorkerSelf,
 } from "../../../../packages/common/src/Worker.ts";
+import { createBetterSqliteDriver } from "../../../../packages/nodejs/src/Sqlite.ts";
 import { setupSqliteAndRelayStorage, testCreateSqliteDep } from "../_deps.ts";
 
 installPolyfills();
@@ -194,8 +209,10 @@ interface DbSetup extends AsyncDisposable {
 
 const setupDb = async ({
   time = testCreateTime(),
+  createSqliteDriver: suppliedDriver = testCreateSqliteDep.createSqliteDriver,
 }: {
   time?: TestTime;
+  createSqliteDriver?: CreateSqliteDriver;
 } = {}): Promise<DbSetup> => {
   await using disposer = new AsyncDisposableStack();
 
@@ -211,9 +228,7 @@ const setupDb = async ({
     }),
   );
 
-  const driver = disposer.use(
-    await run.ok(testCreateSqliteDep.createSqliteDriver(name)),
-  );
+  const driver = disposer.use(await run.ok(suppliedDriver(name)));
 
   // Tests need a stable handle to the lazily created SQLite driver.
   const createSqliteDriver: CreateSqliteDriver = (_name, _options) => () =>
@@ -244,13 +259,14 @@ const setupDb = async ({
 };
 
 interface DbWorkerSetup extends DbSetup {
+  readonly getClock: () => Timestamp;
   readonly initOutputs: ReadonlyArray<DbWorkerOutput>;
   readonly lockManager: LockManagerDep["lockManager"];
   readonly outputs: Array<DbWorkerOutput>;
   readonly port: MessagePort<DbWorkerInput, DbWorkerOutput>;
   readonly consoleEntryOrErrors: Array<ConsoleEntryOrError>;
   readonly waitForActivity: () => Promise<void>;
-  readonly waitForResponse: (callbackId: Id) => Promise<void>;
+  readonly waitForResponse: (attemptId: Id) => Promise<void>;
   readonly workerName: Name;
 }
 
@@ -259,11 +275,13 @@ const setupDbWorker = async ({
   sqliteSchema = defaultSqliteSchema,
   memoryOnly = true,
   time,
+  onThrown,
 }: {
   dbSetup?: DbSetup;
   memoryOnly?: boolean;
   sqliteSchema?: SqliteSchema;
   time?: TestTime;
+  onThrown?: (error: unknown) => void;
 } = {}): Promise<DbWorkerSetup> => {
   await using disposer = new AsyncDisposableStack();
 
@@ -278,7 +296,30 @@ const setupDbWorker = async ({
       console: testCreateConsole({ level: "silent" }),
       consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
       createBroadcastChannel: testCreateBroadcastChannel,
-      createMessagePort,
+      createMessagePort:
+        onThrown === undefined
+          ? createMessagePort
+          : (native) => {
+              const port = createMessagePort(native);
+              return {
+                ...port,
+                get onMessage() {
+                  return port.onMessage;
+                },
+                set onMessage(handler) {
+                  port.onMessage =
+                    handler === null
+                      ? null
+                      : (input) => {
+                          try {
+                            handler(input);
+                          } catch (error) {
+                            onThrown(error);
+                          }
+                        };
+                },
+              };
+            },
       lockManager,
       createSqliteDriver: dbSetup.createSqliteDriver,
       time: dbSetup.time,
@@ -294,12 +335,12 @@ const setupDbWorker = async ({
   );
   const outputs: Array<DbWorkerOutput> = [];
   const consoleEntryOrErrors: Array<ConsoleEntryOrError> = [];
-  const responseWaitersByCallbackId = new Map<Id, () => void>();
+  const responseWaitersByAttemptId = new Map<Id, () => void>();
   let activity = Promise.withResolvers<void>();
   const waitForActivity = (): Promise<void> => activity.promise;
-  const waitForResponse = (callbackId: Id): Promise<void> => {
+  const waitForResponse = (attemptId: Id): Promise<void> => {
     const response = Promise.withResolvers<void>();
-    responseWaitersByCallbackId.set(callbackId, response.resolve);
+    responseWaitersByAttemptId.set(attemptId, response.resolve);
     return response.promise;
   };
   const notifyActivity = (): void => {
@@ -317,11 +358,18 @@ const setupDbWorker = async ({
     notifyActivity();
   };
 
+  let clock: Timestamp | undefined;
   channel.port2.onMessage = (output) => {
+    if (output.type === "LeaderAcquired") clock = output.clock;
+    else if (
+      output.response.message.type === "Mutate" ||
+      output.response.message.type === "ApplySyncMessage"
+    )
+      clock = output.response.message.clock;
     outputs.push(output);
     if (output.type === "OnQueuedResponse") {
-      responseWaitersByCallbackId.get(output.callbackId)?.();
-      responseWaitersByCallbackId.delete(output.callbackId);
+      responseWaitersByAttemptId.get(output.attemptId)?.();
+      responseWaitersByAttemptId.delete(output.attemptId);
     }
     notifyActivity();
   };
@@ -339,13 +387,20 @@ const setupDbWorker = async ({
 
   await initActivity;
 
+  const getClock = (): Timestamp => {
+    assertNotUndefined(clock);
+    return clock;
+  };
   const initOutputs = outputs.splice(0);
-  assertEqual(initOutputs, [{ type: "LeaderAcquired", name: workerName }]);
+  assertEqual(initOutputs, [
+    { clock: getClock(), type: "LeaderAcquired", name: workerName },
+  ]);
 
   const disposables = disposer.move();
 
   return {
     ...dbSetup,
+    getClock,
     initOutputs,
     lockManager,
     outputs,
@@ -361,14 +416,46 @@ const setupDbWorker = async ({
 const postRequest = async (
   setup: DbWorkerSetup,
   request: DbWorkerRequest,
-  callbackId = setup.createId(),
+  attemptId = setup.createId(),
   waitFor: "activity" | "response" = "response",
+  context?: { clock: Timestamp; now: Millis },
 ): Promise<ReadonlyArray<DbWorkerOutput>> => {
   const completion =
     waitFor === "response"
-      ? setup.waitForResponse(callbackId)
+      ? setup.waitForResponse(attemptId)
       : setup.waitForActivity();
-  setup.port.postMessage({ type: "Request", callbackId, request });
+  const envelope = { type: "Request" as const, attemptId };
+  if (request.type === "ForEvolu") {
+    const { id, message } = request;
+    if (message.type === "Mutate") {
+      setup.port.postMessage({
+        ...envelope,
+        request: { type: "ForEvolu", id, message },
+        clock: context?.clock ?? setup.getClock(),
+        now: context?.now ?? setup.time.now(),
+      });
+    } else {
+      setup.port.postMessage({
+        ...envelope,
+        request: { type: "ForEvolu", id, message },
+      });
+    }
+  } else {
+    const { message } = request;
+    if (message.type === "ApplySyncMessage") {
+      setup.port.postMessage({
+        ...envelope,
+        request: { type: "ForSharedWorker", message },
+        clock: context?.clock ?? setup.getClock(),
+        now: context?.now ?? setup.time.now(),
+      });
+    } else {
+      setup.port.postMessage({
+        ...envelope,
+        request: { type: "ForSharedWorker", message },
+      });
+    }
+  }
   await completion;
   return setup.outputs.splice(0);
 };
@@ -464,7 +551,11 @@ describe("worker startup", () => {
     await using setup = await setupDbWorker();
 
     assertEqual(setup.initOutputs, [
-      { type: "LeaderAcquired", name: setup.workerName },
+      {
+        clock: setup.getClock(),
+        type: "LeaderAcquired",
+        name: setup.workerName,
+      },
     ]);
     assertEqual(getSqliteSnapshot(setup), {
       schema: {
@@ -631,7 +722,11 @@ describe("worker startup", () => {
     });
 
     assertEqual(setup.initOutputs, [
-      { type: "LeaderAcquired", name: setup.workerName },
+      {
+        clock: setup.getClock(),
+        type: "LeaderAcquired",
+        name: setup.workerName,
+      },
     ]);
     assertEqual(sqliteDriverOptions, [
       { mode: "encrypted", encryptionKey: testAppOwner.encryptionKey },
@@ -700,10 +795,11 @@ describe("query and mutation flow", () => {
       }),
       [
         {
-          callbackId: "in2khoBFZNo9ESZlzuacxA",
+          attemptId: "in2khoBFZNo9ESZlzuacxA",
           response: {
             id: "ncqMQ1uwd5-zf5YKUbT3VA",
             message: {
+              clock: setup.getClock(),
               messagesByOwnerId: new Map([]),
               rowsByQuery: new Map([
                 [
@@ -834,10 +930,11 @@ describe("query and mutation flow", () => {
       }),
       [
         {
-          callbackId: "dXpWgmgRSqCJV_tQPAS7Ug",
+          attemptId: "dXpWgmgRSqCJV_tQPAS7Ug",
           response: {
             id: "ncqMQ1uwd5-zf5YKUbT3VA",
             message: {
+              clock: setup.getClock(),
               messagesByOwnerId: new Map([]),
               rowsByQuery: new Map([
                 [
@@ -973,10 +1070,11 @@ describe("query and mutation flow", () => {
       }),
       [
         {
-          callbackId: "uOCPavv1rW_A-VrpXIfUZA",
+          attemptId: "uOCPavv1rW_A-VrpXIfUZA",
           response: {
             id: "ncqMQ1uwd5-zf5YKUbT3VA",
             message: {
+              clock: setup.getClock(),
               messagesByOwnerId: new Map([]),
               rowsByQuery: new Map([
                 [
@@ -1160,7 +1258,7 @@ describe("query and mutation flow", () => {
     );
   });
 
-  it("mixed local-only and sync mutate preserves order", async () => {
+  it("mixed local-only and sync mutate uses one captured time", async () => {
     await using setup = await setupDbWorker({
       time: testCreateTime({ autoIncrement: "sync" }),
     });
@@ -1202,188 +1300,21 @@ describe("query and mutation flow", () => {
       setup.createId(),
     );
 
-    assertEqual(getSqliteSnapshot(setup), {
-      schema: {
-        indexes: [
-          {
-            name: "evolu_history_ownerId_timestamp",
-            sql: 'create index evolu_history_ownerId_timestamp on evolu_history (\n          "ownerId",\n          "timestamp"\n        )',
-          },
-          {
-            name: "evolu_history_ownerId_table_id_column_timestampDesc",
-            sql: 'create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (\n          "ownerId",\n          "table",\n          "id",\n          "column",\n          "timestamp" desc\n        )',
-          },
-          {
-            name: "evolu_timestamp_index",
-            sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
-          },
-        ],
-        tables: {
-          _localTable: new Set([
-            "id",
-            "createdAt",
-            "updatedAt",
-            "isDeleted",
-            "ownerId",
-            "value",
-          ]),
-          evolu_config: new Set(["clock"]),
-          evolu_history: new Set([
-            "ownerId",
-            "table",
-            "id",
-            "column",
-            "timestamp",
-            "value",
-          ]),
-          evolu_message_quarantine: new Set([
-            "ownerId",
-            "timestamp",
-            "table",
-            "id",
-            "column",
-            "value",
-          ]),
-          evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
-          evolu_usage: new Set([
-            "ownerId",
-            "storedBytes",
-            "firstTimestamp",
-            "lastTimestamp",
-          ]),
-          evolu_version: new Set(["protocolVersion"]),
-          testTable: new Set([
-            "id",
-            "createdAt",
-            "updatedAt",
-            "isDeleted",
-            "ownerId",
-            "name",
-          ]),
-        },
-      },
-      tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
-        {
-          name: "evolu_config",
-          rows: [
-            {
-              clock: new Uint8Array([
-                0, 0, 0, 0, 0, 1, 0, 0, 197, 43, 199, 155, 149, 57, 12, 87,
-              ]),
-            },
-          ],
-        },
-        {
-          name: "evolu_history",
-          rows: [
-            {
-              column: "name",
-              id: new Uint8Array([
-                138, 125, 164, 134, 128, 69, 100, 218, 61, 17, 38, 101, 206,
-                230, 156, 196,
-              ]),
-              ownerId: new Uint8Array([
-                5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
-                235, 212,
-              ]),
-              table: "testTable",
-              timestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 1, 0, 0, 197, 43, 199, 155, 149, 57, 12, 87,
-              ]),
-              value: "synced",
-            },
-            {
-              column: "createdAt",
-              id: new Uint8Array([
-                138, 125, 164, 134, 128, 69, 100, 218, 61, 17, 38, 101, 206,
-                230, 156, 196,
-              ]),
-              ownerId: new Uint8Array([
-                5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
-                235, 212,
-              ]),
-              table: "testTable",
-              timestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 1, 0, 0, 197, 43, 199, 155, 149, 57, 12, 87,
-              ]),
-              value: "1970-01-01T00:00:00.001Z",
-            },
-          ],
-        },
-        { name: "evolu_message_quarantine", rows: [] },
-        {
-          name: "evolu_timestamp",
-          rows: [
-            {
-              c: 1,
-              h1: 239229796330191,
-              h2: 206460782245569,
-              l: 1,
-              ownerId: new Uint8Array([
-                5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
-                235, 212,
-              ]),
-              t: new Uint8Array([
-                0, 0, 0, 0, 0, 1, 0, 0, 197, 43, 199, 155, 149, 57, 12, 87,
-              ]),
-            },
-          ],
-        },
-        {
-          name: "evolu_usage",
-          rows: [
-            {
-              firstTimestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 1, 0, 0, 197, 43, 199, 155, 149, 57, 12, 87,
-              ]),
-              lastTimestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 1, 0, 0, 197, 43, 199, 155, 149, 57, 12, 87,
-              ]),
-              ownerId: new Uint8Array([
-                5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
-                235, 212,
-              ]),
-              storedBytes: 1,
-            },
-          ],
-        },
-        {
-          name: "testTable",
-          rows: [
-            {
-              createdAt: "1970-01-01T00:00:00.001Z",
-              id: "in2khoBFZNo9ESZlzuacxA",
-              isDeleted: null,
-              name: "synced",
-              ownerId: "BSf-8mxNjgk72yD-D7rr1A",
-              updatedAt: null,
-            },
-          ],
-        },
-        {
-          name: "_localTable",
-          rows: [
-            {
-              createdAt: "1970-01-01T00:00:00.002Z",
-              id: "dXpWgmgRSqCJV_tQPAS7Ug",
-              isDeleted: null,
-              ownerId: "BSf-8mxNjgk72yD-D7rr1A",
-              updatedAt: null,
-              value: "second local",
-            },
-            {
-              createdAt: "1970-01-01T00:00:00.000Z",
-              id: "ofZXw_hAfJ8fIcpFxi6nag",
-              isDeleted: null,
-              ownerId: "BSf-8mxNjgk72yD-D7rr1A",
-              updatedAt: null,
-              value: "first local",
-            },
-          ],
-        },
+    assertEqual(
+      setup.sqlite.exec(sql`
+        select value, createdAt from "_localTable" order by value;
+      `).rows,
+      [
+        { value: "first local", createdAt: "1970-01-01T00:00:00.000Z" },
+        { value: "second local", createdAt: "1970-01-01T00:00:00.000Z" },
       ],
-    });
+    );
+    assertEqual(
+      setup.sqlite.exec(sql`select name, createdAt from testTable;`).rows,
+      [{ name: "synced", createdAt: "1970-01-01T00:00:00.000Z" }],
+    );
+    assertSame(setup.getClock().millis, 0);
+    assertSame(setup.getClock().counter, 1);
   });
 
   it("query returns current state", async () => {
@@ -1419,7 +1350,7 @@ describe("query and mutation flow", () => {
       }),
       [
         {
-          callbackId: "dXpWgmgRSqCJV_tQPAS7Ug",
+          attemptId: "dXpWgmgRSqCJV_tQPAS7Ug",
           response: {
             id: "ncqMQ1uwd5-zf5YKUbT3VA",
             message: {
@@ -1461,7 +1392,7 @@ describe("query and mutation flow", () => {
       },
     });
 
-    const exportCallbackId = setup.createId();
+    const exportAttemptId = setup.createId();
     const exportOutputs = await postRequest(
       setup,
       {
@@ -1469,7 +1400,7 @@ describe("query and mutation flow", () => {
         id: setup.evoluInstanceId,
         message: { type: "Export" },
       },
-      exportCallbackId,
+      exportAttemptId,
     );
 
     assertLength(exportOutputs, 1);
@@ -1481,7 +1412,7 @@ describe("query and mutation flow", () => {
     assertEqual(file.byteLength, setup.sqlite.export().byteLength);
     assertEqual(exportOutputs, [
       {
-        callbackId: exportCallbackId,
+        attemptId: exportAttemptId,
         response: {
           id: setup.evoluInstanceId,
           message: {
@@ -1684,10 +1615,11 @@ describe("sync message flow", () => {
       }),
       [
         {
-          callbackId: "in2khoBFZNo9ESZlzuacxA",
+          attemptId: "in2khoBFZNo9ESZlzuacxA",
           response: {
             id: "ncqMQ1uwd5-zf5YKUbT3VA",
             message: {
+              clock: setup.getClock(),
               messagesByOwnerId: new Map([
                 [
                   "BSf-8mxNjgk72yD-D7rr1A",
@@ -1729,7 +1661,7 @@ describe("sync message flow", () => {
       }),
       [
         {
-          callbackId: "dXpWgmgRSqCJV_tQPAS7Ug",
+          attemptId: "dXpWgmgRSqCJV_tQPAS7Ug",
           response: {
             message: {
               protocolMessagesByOwnerId: new Map([
@@ -1956,7 +1888,7 @@ describe("sync message flow", () => {
 
     assertEqual(outputs, [
       {
-        callbackId: "uOCPavv1rW_A-VrpXIfUZA",
+        attemptId: "uOCPavv1rW_A-VrpXIfUZA",
         response: {
           message: {
             protocolMessagesByOwnerId: new Map([
@@ -2018,10 +1950,11 @@ describe("sync message flow", () => {
       }),
       [
         {
-          callbackId: "in2khoBFZNo9ESZlzuacxA",
+          attemptId: "in2khoBFZNo9ESZlzuacxA",
           response: {
             id: "ncqMQ1uwd5-zf5YKUbT3VA",
             message: {
+              clock: setup.getClock(),
               messagesByOwnerId: new Map([
                 [
                   "BSf-8mxNjgk72yD-D7rr1A",
@@ -2309,9 +2242,10 @@ describe("sync message flow", () => {
       }),
       [
         {
-          callbackId: "in2khoBFZNo9ESZlzuacxA",
+          attemptId: "in2khoBFZNo9ESZlzuacxA",
           response: {
             message: {
+              clock: setup.getClock(),
               didWriteMessages: true,
               ownerId: "BSf-8mxNjgk72yD-D7rr1A",
               result: { ok: true, value: { type: "Broadcast" } },
@@ -2335,7 +2269,7 @@ describe("sync message flow", () => {
       }),
       [
         {
-          callbackId: "dXpWgmgRSqCJV_tQPAS7Ug",
+          attemptId: "dXpWgmgRSqCJV_tQPAS7Ug",
           response: {
             id: "ncqMQ1uwd5-zf5YKUbT3VA",
             message: {
@@ -2558,9 +2492,10 @@ describe("sync message flow", () => {
     assertInstanceOf(consoleEntryOrError.error.error, Error);
     assertEqual(outputs, [
       {
-        callbackId: "in2khoBFZNo9ESZlzuacxA",
+        attemptId: "in2khoBFZNo9ESZlzuacxA",
         response: {
           message: {
+            clock: setup.getClock(),
             didWriteMessages: false,
             ownerId: "BSf-8mxNjgk72yD-D7rr1A",
             result: { ok: true, value: { type: "Broadcast" } },
@@ -2694,9 +2629,10 @@ describe("sync message flow", () => {
     ]);
     assertEqual(outputs, [
       {
-        callbackId: "in2khoBFZNo9ESZlzuacxA",
+        attemptId: "in2khoBFZNo9ESZlzuacxA",
         response: {
           message: {
+            clock: setup.getClock(),
             didWriteMessages: false,
             ownerId: "BSf-8mxNjgk72yD-D7rr1A",
             result: { ok: true, value: { type: "Broadcast" } },
@@ -3241,8 +3177,8 @@ describe("sync message flow", () => {
   it("persisted delete changes survive a sync roundtrip", async () => {
     await using setup = await setupDbWorker();
     const rowId = setup.createId();
-    const createSyncMessagesCallbackId = setup.createId();
-    const applySyncMessageCallbackId = setup.createId();
+    const createSyncMessagesAttemptId = setup.createId();
+    const applySyncMessageAttemptId = setup.createId();
 
     await postRequest(setup, {
       type: "ForEvolu",
@@ -3291,12 +3227,12 @@ describe("sync message flow", () => {
           owners: [testAppOwner],
         },
       },
-      createSyncMessagesCallbackId,
+      createSyncMessagesAttemptId,
     );
 
     assertEqual(syncResponses, [
       {
-        callbackId: "in2khoBFZNo9ESZlzuacxA",
+        attemptId: "in2khoBFZNo9ESZlzuacxA",
         response: {
           message: {
             protocolMessagesByOwnerId: new Map([
@@ -3339,7 +3275,7 @@ describe("sync message flow", () => {
           inputMessage: relayResponse.message,
         },
       },
-      applySyncMessageCallbackId,
+      applySyncMessageAttemptId,
     );
 
     assertEqual(
@@ -3373,9 +3309,10 @@ describe("sync message flow", () => {
       }),
       [
         {
-          callbackId: "dXpWgmgRSqCJV_tQPAS7Ug",
+          attemptId: "dXpWgmgRSqCJV_tQPAS7Ug",
           response: {
             message: {
+              clock: setup.getClock(),
               didWriteMessages: false,
               ownerId: "BSf-8mxNjgk72yD-D7rr1A",
               result: {
@@ -3637,9 +3574,10 @@ describe("quarantine replay", () => {
         }),
         [
           {
-            callbackId: "in2khoBFZNo9ESZlzuacxA",
+            attemptId: "in2khoBFZNo9ESZlzuacxA",
             response: {
               message: {
+                clock: setup.getClock(),
                 didWriteMessages: true,
                 ownerId: "BSf-8mxNjgk72yD-D7rr1A",
                 result: { ok: true, value: { type: "Broadcast" } },
@@ -4073,7 +4011,7 @@ describe("quarantine replay", () => {
         }),
         [
           {
-            callbackId: "dXpWgmgRSqCJV_tQPAS7Ug",
+            attemptId: "dXpWgmgRSqCJV_tQPAS7Ug",
             response: {
               id: "ncqMQ1uwd5-zf5YKUbT3VA",
               message: {
@@ -4447,8 +4385,8 @@ describe("quarantine replay", () => {
       },
     };
     const futureRowId = dbSetup.createId();
-    const applySyncCallbackId = dbSetup.createId();
-    const queryCallbackId = dbSetup.createId();
+    const applySyncAttemptId = dbSetup.createId();
+    const queryAttemptId = dbSetup.createId();
 
     const protocolMessage = await createBroadcastProtocolMessage([
       {
@@ -4480,13 +4418,14 @@ describe("quarantine replay", () => {
               inputMessage: protocolMessage,
             },
           },
-          applySyncCallbackId,
+          applySyncAttemptId,
         ),
         [
           {
-            callbackId: applySyncCallbackId,
+            attemptId: applySyncAttemptId,
             response: {
               message: {
+                clock: setup.getClock(),
                 didWriteMessages: true,
                 ownerId: testAppOwner.id,
                 result: {
@@ -4563,11 +4502,11 @@ describe("quarantine replay", () => {
               queries: createSet([futureTableQuery]),
             },
           },
-          queryCallbackId,
+          queryAttemptId,
         ),
         [
           {
-            callbackId: queryCallbackId,
+            attemptId: queryAttemptId,
             response: {
               id: setup.evoluInstanceId,
               message: {
@@ -4639,4 +4578,451 @@ describe("quarantine replay", () => {
       ],
     );
   });
+});
+
+const setupReplayDatabase = () => {
+  const name = Name.orThrow(`evolu-retry-${randomUUID()}`);
+  const connections: Array<{ disposed: boolean }> = [];
+  let deleteDatabase = constVoid;
+  using disposer = new DisposableStack();
+  disposer.defer(() => deleteDatabase());
+  const createSqliteDriver: CreateSqliteDriver = () => async (run) => {
+    const driver = await run.ok(createBetterSqliteDriver(name));
+    const connection = { disposed: false };
+    connections.push(connection);
+    deleteDatabase = driver.deleteDatabase;
+    return ok({
+      ...driver,
+      [Symbol.dispose]: () => {
+        driver[Symbol.dispose]();
+        connection.disposed = true;
+      },
+    });
+  };
+  return disposable({ createSqliteDriver, connections }, disposer);
+};
+
+type ReplayKind = "local" | "broadcast" | "response" | "malformed-ranges";
+
+const createReplayRequest = (
+  setup: DbWorkerSetup,
+  kind: ReplayKind,
+  rowId: Id,
+): DbWorkerWriteRequest => {
+  if (kind === "local") {
+    const localId = setup.createId();
+    return {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: {
+        type: "Mutate",
+        onCompleteIds: [],
+        subscribedQueries: createSet([testTableQuery]),
+        changes: [
+          createMutationChange({
+            table: "testTable",
+            id: rowId,
+            values: { name: "before", note: "quarantined" },
+            isInsert: true,
+            isDelete: null,
+          }),
+          createMutationChange({
+            table: "_localTable",
+            id: localId,
+            values: { value: "insert" },
+            isInsert: true,
+            isDelete: null,
+          }),
+          createMutationChange({
+            table: "_localTable",
+            id: localId,
+            values: { value: "update" },
+            isInsert: false,
+            isDelete: null,
+          }),
+          createMutationChange({
+            table: "_localTable",
+            id: localId,
+            values: {},
+            isInsert: false,
+            isDelete: true,
+          }),
+          createMutationChange({
+            table: "_localTable",
+            id: setup.createId(),
+            values: { value: "kept" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ],
+      },
+    };
+  }
+  const buffer = createProtocolMessageBuffer(
+    testAppOwner.id,
+    kind === "broadcast"
+      ? { messageType: MessageType.Broadcast }
+      : {
+          messageType: MessageType.Response,
+          errorCode: ProtocolErrorCode.NoError,
+        },
+  );
+  const message = {
+    timestamp: createTimestamp({ millis: Millis.orThrow(100) }),
+    change: DbChange.orThrow({
+      table: "testTable",
+      id: rowId,
+      values: { name: "before", note: "quarantined" },
+      isInsert: true,
+      isDelete: null,
+    }),
+  };
+  buffer.addMessage({
+    timestamp: message.timestamp,
+    change: encodeAndEncryptDbChange(testCreateDeps())(
+      message,
+      testAppOwner.encryptionKey,
+    ),
+  });
+  const encoded = buffer.unwrap();
+  // One range with an invalid range type: message decoding and commit precede it.
+  const inputMessage =
+    kind === "malformed-ranges"
+      ? new Uint8Array([...encoded, 1, 127])
+      : encoded;
+  return {
+    type: "ForSharedWorker",
+    message: { type: "ApplySyncMessage", owner: testAppOwner, inputMessage },
+  };
+};
+
+const sqliteSnapshotToLogicalSnapshot = (
+  snapshot: ReturnType<typeof getSqliteSnapshot>,
+) => ({
+  ...snapshot,
+  tables: snapshot.tables.map((table) =>
+    table.name === "evolu_timestamp"
+      ? {
+          name: table.name,
+          rows: table.rows.map(({ ownerId, t }) => ({ ownerId, t })),
+        }
+      : table,
+  ),
+});
+
+describe("write replay", () => {
+  it("replays local-only inserts, updates, and deletes without advancing the clock", async () => {
+    await using setup = await setupDbWorker();
+    const mixed = createReplayRequest(setup, "local", setup.createId());
+    assertSame(mixed.type, "ForEvolu");
+    const changes = mixed.message.changes.filter((change) =>
+      change.table.startsWith("_"),
+    );
+    assertNonEmptyReadonlyArray(changes);
+    const request: DbWorkerWriteRequest = {
+      ...mixed,
+      message: { ...mixed.message, changes },
+    };
+    const context = { clock: setup.getClock(), now: Millis.orThrow(100) };
+    await postRequest(setup, request, setup.createId(), "response", context);
+    const snapshot = getSqliteSnapshot(setup);
+    assertEqual(setup.getClock(), context.clock);
+    setup.time.advance("10s");
+    await postRequest(setup, request, setup.createId(), "response", context);
+    assertEqual(getSqliteSnapshot(setup), snapshot);
+    assertEqual(setup.getClock(), context.clock);
+  });
+
+  for (const [kind, rollover] of [
+    ["local", false],
+    ["broadcast", false],
+    ["response", false],
+    ["malformed-ranges", false],
+    ["local", true],
+    ["broadcast", true],
+  ] as const) {
+    it(`replays ${kind}${rollover ? " across counter rollover" : ""} after closing SQLite and accepts a fresh write at the same time`, async () => {
+      using file = setupReplayDatabase();
+      let request: DbWorkerWriteRequest | undefined;
+      let context: { clock: Timestamp; now: Millis } | undefined;
+      let snapshot: ReturnType<typeof getSqliteSnapshot> | undefined;
+      let committedClock: Timestamp | undefined;
+      const rowId = testCreateId()();
+      {
+        await using dbSetup = await setupDb({
+          createSqliteDriver: file.createSqliteDriver,
+        });
+        await using setup = await setupDbWorker({ dbSetup, memoryOnly: false });
+        request = createReplayRequest(setup, kind, rowId);
+        context = { clock: setup.getClock(), now: Millis.orThrow(100) };
+        if (rollover) {
+          context = {
+            ...context,
+            clock: {
+              ...context.clock,
+              millis: context.now,
+              counter: maxCounter,
+            },
+          };
+          // Seed the preceding committed clock at the rollover boundary.
+          setup.sqlite.exec(sql`
+            update evolu_config
+            set clock = ${timestampToTimestampBytes(context.clock)};
+          `);
+        }
+        const output = (
+          await postRequest(
+            setup,
+            request,
+            setup.createId(),
+            "response",
+            context,
+          )
+        )[0];
+        assertSame(output.type, "OnQueuedResponse");
+        if (kind === "malformed-ranges") {
+          assertSame(output.response.message.type, "ApplySyncMessage");
+          const { result } = output.response.message;
+          assertErr(result);
+          assertSame(result.error.type, "ProtocolInvalidDataError");
+          assertSame(request.type, "ForSharedWorker");
+          assertEqual(result.error.data, request.message.inputMessage);
+          assertInstanceOf(result.error.error, Error);
+          assertSame(result.error.error.message, "Invalid RangeType: 127");
+          assertTrue(output.response.message.didWriteMessages);
+        }
+        snapshot = getSqliteSnapshot(setup);
+        committedClock = setup.getClock();
+        if (rollover) {
+          assertEqual(committedClock, {
+            ...context.clock,
+            millis: Millis.orThrow(101),
+            counter: 0,
+          });
+        }
+        assertTrue(
+          committedClock.counter > context.clock.counter ||
+            committedClock.millis > context.clock.millis,
+        );
+      }
+      assertTrue(file.connections[0].disposed);
+      assertNotUndefined(request);
+      assertNotUndefined(context);
+      assertNotUndefined(snapshot);
+      assertNotUndefined(committedClock);
+      {
+        await using dbSetup = await setupDb({
+          createSqliteDriver: file.createSqliteDriver,
+        });
+        await using setup = await setupDbWorker({ dbSetup, memoryOnly: false });
+        assertEqual(setup.getClock(), committedClock);
+        setup.time.advance("1m");
+        await postRequest(
+          setup,
+          request,
+          setup.createId(),
+          "response",
+          context,
+        );
+        assertEqual(setup.getClock(), committedClock);
+        assertEqual(getSqliteSnapshot(setup), snapshot);
+        // Replay again to exercise duplicate insertion after random draws have advanced.
+        await postRequest(
+          setup,
+          request,
+          setup.createId(),
+          "response",
+          context,
+        );
+        assertEqual(getSqliteSnapshot(setup), snapshot);
+        await postRequest(
+          setup,
+          {
+            type: "ForEvolu",
+            id: setup.evoluInstanceId,
+            message: {
+              type: "Mutate",
+              onCompleteIds: [],
+              subscribedQueries: emptySet,
+              changes: [
+                createMutationChange({
+                  table: "testTable",
+                  id: rowId,
+                  values: { name: "after" },
+                  isInsert: false,
+                  isDelete: null,
+                }),
+              ],
+            },
+          },
+          setup.createId(),
+          "response",
+          { clock: committedClock, now: context.now },
+        );
+        assertSame(setup.getClock().millis, committedClock.millis);
+        assertSame(setup.getClock().counter, committedClock.counter + 1);
+        assertEqual(
+          setup.sqlite.exec(sql`
+            select name from testTable where id = ${rowId};
+          `).rows,
+          [{ name: "after" }],
+        );
+        const bytes = timestampToTimestampBytes(setup.getClock());
+        assertEqual(
+          setup.sqlite.exec(sql`
+            select value
+            from evolu_history
+            where timestamp = ${bytes} and "column" = ${"name"};
+          `).rows,
+          [{ value: "after" }],
+        );
+        assertLength(
+          setup.sqlite.exec(sql`
+            select t from evolu_timestamp where t = ${bytes};
+          `).rows,
+          1,
+        );
+      }
+      assertLength(file.connections, 2);
+      assertTrue(file.connections[1].disposed);
+    });
+  }
+
+  for (const kind of ["local", "broadcast"] as const) {
+    for (const failure of kind === "local"
+      ? ["update", "query", "commit"]
+      : ["update", "commit"]) {
+      it(`rolls back ${kind} on ${failure} failure and replays after reopen`, async () => {
+        using file = setupReplayDatabase();
+        let armed = false;
+        let failed = false;
+        const injected = new Error(`injected ${failure} failure`);
+        const throwingDriver: CreateSqliteDriver =
+          (name, options) => async (run) => {
+            const result = await run(file.createSqliteDriver(name, options));
+            if (!result.ok) return result;
+            const driver = result.value;
+            return ok({
+              ...driver,
+              exec: (query: SqliteQuery) => {
+                const sqlText = query.sql.trim().toLowerCase();
+                const matches =
+                  failure === "update"
+                    ? sqlText.startsWith("update evolu_config")
+                    : failure === "commit"
+                      ? sqlText === "commit;"
+                      : sqlText.startsWith(
+                          'select "id", "name" from "testtable"',
+                        );
+                if (armed && matches) {
+                  armed = false;
+                  failed = true;
+                  throw injected;
+                }
+                return driver.exec(query);
+              },
+            });
+          };
+        const thrown: Array<unknown> = [];
+        let request: DbWorkerWriteRequest | undefined;
+        let context: { clock: Timestamp; now: Millis } | undefined;
+        const rowId = testCreateId()();
+        {
+          await using dbSetup = await setupDb({
+            createSqliteDriver: throwingDriver,
+          });
+          await using setup = await setupDbWorker({
+            dbSetup,
+            memoryOnly: false,
+            onThrown: (error) => {
+              thrown.push(error);
+            },
+          });
+          request = createReplayRequest(setup, kind, rowId);
+          context = { clock: setup.getClock(), now: Millis.orThrow(100) };
+          const before = getSqliteSnapshot(setup);
+          armed = true;
+          setup.port.postMessage({
+            type: "Request",
+            attemptId: setup.createId(),
+            request,
+            ...context,
+          });
+          await testWaitForWorkerMessage();
+          await testWaitForWorkerMessage();
+          assertTrue(failed);
+          assertEqual(getSqliteSnapshot(setup), before);
+          assertEqual(setup.getClock(), context.clock);
+          if (kind === "local") {
+            assertEqual(thrown, [injected]);
+            assertEqual(setup.outputs, []);
+            assertEqual(setup.consoleEntryOrErrors, []);
+          } else {
+            assertEqual(thrown, []);
+            assertLength(setup.outputs, 1);
+            const output = setup.outputs[0];
+            assertSame(output.type, "OnQueuedResponse");
+            assertSame(output.response.message.type, "ApplySyncMessage");
+            assertFalse(output.response.message.didWriteMessages);
+            assertEqual(output.response.message.clock, context.clock);
+            assertEqual(output.response.message.result, {
+              ok: false,
+              error: {
+                type: "AbortError",
+                reason: { type: "PanicAbortReason", defect: injected },
+              },
+            });
+          }
+        }
+        assertTrue(file.connections[0].disposed);
+        assertNotUndefined(request);
+        assertNotUndefined(context);
+        {
+          await using dbSetup = await setupDb({
+            createSqliteDriver: file.createSqliteDriver,
+          });
+          await using setup = await setupDbWorker({
+            dbSetup,
+            memoryOnly: false,
+          });
+          setup.time.advance("1m");
+          await postRequest(
+            setup,
+            request,
+            setup.createId(),
+            "response",
+            context,
+          );
+          assertSame(setup.getClock().millis, context.now);
+          assertEqual(
+            setup.sqlite.exec(sql`
+              select name from testTable where id = ${rowId};
+            `).rows,
+            [{ name: "before" }],
+          );
+          const committed = getSqliteSnapshot(setup);
+          await postRequest(
+            setup,
+            request,
+            setup.createId(),
+            "response",
+            context,
+          );
+          assertEqual(getSqliteSnapshot(setup), committed);
+          await using once = await setupDbWorker();
+          await postRequest(
+            once,
+            request,
+            once.createId(),
+            "response",
+            context,
+          );
+          assertEqual(
+            sqliteSnapshotToLogicalSnapshot(getSqliteSnapshot(setup)),
+            sqliteSnapshotToLogicalSnapshot(getSqliteSnapshot(once)),
+          );
+        }
+      });
+    }
+  }
 });

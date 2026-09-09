@@ -46,6 +46,7 @@ import { Millis, millisToDateIso, type TimeDep } from "../Time.ts";
 import {
   assertType,
   type FiniteNumber,
+  type DateIso,
   Id,
   IdBytes,
   idBytesToId,
@@ -86,7 +87,7 @@ import type {
   DbWorkerInput,
   DbWorkerOutput,
   DbWorkerQueuedResponse,
-  DbWorkerRequest,
+  EvoluInput,
 } from "./Shared.ts";
 import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
 import {
@@ -103,7 +104,6 @@ import {
 } from "./Storage.ts";
 import type {
   Timestamp,
-  TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
 } from "./Timestamp.ts";
@@ -201,15 +201,24 @@ export const startDbWorker =
     };
     const currentSchema = getEvoluSqliteSchema(dbDeps)();
     const dbIsInitialized = "evolu_version" in currentSchema.tables;
-    const clock = createClock(dbDeps)(dbIsInitialized);
+    let initialClock: Timestamp;
+    if (dbIsInitialized) {
+      const { rows } = sqlite.exec<{ clock: TimestampBytes }>(sql`
+        select clock from evolu_config limit 1;
+      `);
+      assertNonEmptyReadonlyArray(rows);
+      initialClock = timestampBytesToTimestamp(firstInArray(rows).clock);
+    } else {
+      initialClock = createInitialTimestamp(dbDeps);
+    }
 
     sqlite.transaction(() => {
-      if (!dbIsInitialized) initializeDb(dbDeps)(clock.get());
+      if (!dbIsInitialized) initializeDb(dbDeps)(initialClock);
       ensureSqliteSchema(dbDeps)(initMessage.sqliteSchema, currentSchema);
       tryApplyQuarantinedMessages(dbDeps);
     });
 
-    const storage = createClientStorage({ ...dbDeps, clock })({
+    const storage = createClientStorage(dbDeps)({
       onError: (error) => {
         consoleEntryOrErrorBroadcastChannel.postMessage({
           type: "Error",
@@ -219,7 +228,11 @@ export const startDbWorker =
     });
     const dbWorkerRun = disposer.use(run.create({ storage }));
 
-    port.postMessage({ type: "LeaderAcquired", name: initMessage.name });
+    port.postMessage({
+      type: "LeaderAcquired",
+      name: initMessage.name,
+      clock: initialClock,
+    });
 
     await run.ok(
       callback<void>(({ resolve }) => {
@@ -229,14 +242,14 @@ export const startDbWorker =
             return;
           }
 
-          const { callbackId, request } = input;
+          const { attemptId } = input;
           const postQueuedResponse = (
             response: DbWorkerQueuedResponse,
           ): void => {
             port.postMessage(
               {
                 type: "OnQueuedResponse",
-                callbackId,
+                attemptId,
                 response,
               },
               response.type === "ForEvolu" && response.message.type === "Export"
@@ -245,34 +258,71 @@ export const startDbWorker =
             );
           };
 
-          if (request.type === "ForSharedWorker") {
-            if (request.message.type === "ApplySyncMessage") {
+          if ("clock" in input) {
+            const { clock: inputClock, now: capturedNow } = input;
+            const context: ClockDep & TimeDep = (() => {
+              let committedClock = inputClock;
+              function now(): Millis;
+              function now(type: "DateIso"): DateIso;
+              function now(type?: "DateIso"): Millis | DateIso {
+                return type === "DateIso"
+                  ? millisToDateIso(capturedNow)
+                  : capturedNow;
+              }
+              return {
+                time: { ...deps.time, now },
+                clock: {
+                  get: () => committedClock,
+                  set: (timestamp) => {
+                    committedClock = timestamp;
+                  },
+                },
+              };
+            })();
+            const request = input.request;
+            if (request.type === "ForSharedWorker") {
               const { owner, inputMessage } = request.message;
-
               void dbWorkerRun(async (run) => {
-                storage.setRequestContext(owner.encryptionKey);
-
+                storage.setRequestContext(owner.encryptionKey, context);
                 const result = await run.abortable(
                   applyProtocolMessageAsClient(inputMessage, {
                     writeKey: owner.writeKey,
                   }),
                 );
-
                 postQueuedResponse({
                   type: "ForSharedWorker",
                   message: {
                     type: "ApplySyncMessage",
+                    clock: context.clock.get(),
                     ownerId: owner.id,
                     didWriteMessages: storage.didWriteMessages(),
                     result,
                   },
                 });
-
                 return ok();
               });
-              return;
+            } else {
+              const result = handleMutation({ ...dbDeps, ...context })(
+                request.message,
+              );
+              if (!result.ok) {
+                consoleEntryOrErrorBroadcastChannel.postMessage({
+                  type: "Error",
+                  error: result.error,
+                });
+                return;
+              }
+              postQueuedResponse({
+                type: "ForEvolu",
+                id: request.id,
+                message: result.value,
+              });
             }
+            return;
+          }
 
+          const request = input.request;
+          if (request.type === "ForSharedWorker") {
             const protocolMessagesByOwnerId = new Map<
               OwnerId,
               ProtocolMessage
@@ -320,23 +370,7 @@ export const startDbWorker =
                 file: sqlite.export(),
               },
             });
-            return;
           }
-
-          const result = handleMutation({ ...dbDeps, clock })(request.message);
-          if (!result.ok) {
-            consoleEntryOrErrorBroadcastChannel.postMessage({
-              type: "Error",
-              error: result.error,
-            });
-            return;
-          }
-
-          postQueuedResponse({
-            type: "ForEvolu",
-            id: request.id,
-            message: result.value,
-          });
         };
 
         return () => {
@@ -348,48 +382,22 @@ export const startDbWorker =
     return ok();
   };
 
-/**
- * Hybrid Logical Clock. Keeps the current timestamp in memory to avoid frequent
- * SQLite reads.
- */
+/** Clock state owned by one write request; published only after commit. */
 interface Clock {
   readonly get: () => Timestamp;
-  readonly save: (timestamp: Timestamp) => void;
+  readonly set: (timestamp: Timestamp) => void;
 }
 
 interface ClockDep {
   readonly clock: Clock;
 }
 
-const createClock =
-  (deps: RandomBytesDep & SqliteDep) =>
-  (dbIsInitialized: boolean): Clock => {
-    let currentTimestamp: Timestamp;
-
-    if (dbIsInitialized) {
-      const { rows } = deps.sqlite.exec<{ clock: TimestampBytes }>(sql`
-        select clock
-        from evolu_config
-        limit 1;
-      `);
-      assertNonEmptyReadonlyArray(rows);
-      currentTimestamp = timestampBytesToTimestamp(firstInArray(rows).clock);
-    } else {
-      currentTimestamp = createInitialTimestamp(deps);
-    }
-
-    return {
-      get: () => currentTimestamp,
-
-      save: (timestamp) => {
-        currentTimestamp = timestamp;
-
-        deps.sqlite.exec(sql.prepared`
-          update evolu_config
-          set "clock" = ${timestampToTimestampBytes(timestamp)};
-        `);
-      },
-    };
+const saveClock =
+  (deps: SqliteDep) =>
+  (timestamp: Timestamp): void => {
+    deps.sqlite.exec(sql.prepared`
+      update evolu_config set "clock" = ${timestampToTimestampBytes(timestamp)};
+    `);
   };
 
 const initializeDb =
@@ -604,18 +612,19 @@ const applyColumnChange =
  * implementation, and switch owner encryption keys between requests.
  */
 interface ClientStorage extends Storage, BaseSqliteStorage {
-  readonly setRequestContext: (encryptionKey: EncryptionKey) => void;
+  readonly setRequestContext: (
+    encryptionKey: EncryptionKey,
+    writeContext?: ClockDep & TimeDep,
+  ) => void;
   readonly didWriteMessages: () => boolean;
 }
 
 const createClientStorage =
   (
     deps: BaseSqliteStorageDep &
-      ClockDep &
       SqliteSchemaDep &
       RandomBytesDep &
       SqliteDep &
-      TimeDep &
       TimestampConfigDep,
   ) =>
   ({
@@ -626,13 +635,13 @@ const createClientStorage =
         | ProtocolInvalidDataError
         | ProtocolTimestampMismatchError
         | DecryptWithXChaCha20Poly1305Error
-        | TimestampCounterOverflowError
         | TimestampDriftError
         | TimestampTimeOutOfRangeError,
     ) => void;
   }): ClientStorage => {
     let encryptionKey: EncryptionKey | null = null;
     let didWriteMessages = false;
+    let writeContext: (ClockDep & TimeDep) | undefined;
 
     const getEncryptionKey = (): EncryptionKey => {
       assertNonNullable(
@@ -645,12 +654,11 @@ const createClientStorage =
     return {
       ...deps.baseSqliteStorage,
 
-      // DEV: ClientStorage was designed when Storage and Sync lived in the
-      // same file.
-      // This is safe because the worker handles one message at a time. We will
-      // refactor it later, we will probably have to change Protocol API.
-      setRequestContext: (nextEncryptionKey) => {
+      // SharedWorker waits for the response before dispatching another request,
+      // so asynchronous sync processing cannot overlap this request context.
+      setRequestContext: (nextEncryptionKey, nextWriteContext) => {
         encryptionKey = nextEncryptionKey;
+        writeContext = nextWriteContext;
         didWriteMessages = false;
       },
 
@@ -682,10 +690,12 @@ const createClientStorage =
           messages.push({ timestamp: message.timestamp, change: change.value });
         }
 
-        let clockTimestamp = deps.clock.get();
+        assertNonNullable(writeContext);
+        const { clock, time } = writeContext;
+        let clockTimestamp = clock.get();
 
         for (const message of messages) {
-          const nextTimestamp = receiveTimestamp(deps)(
+          const nextTimestamp = receiveTimestamp({ ...deps, time })(
             clockTimestamp,
             message.timestamp,
           );
@@ -698,12 +708,13 @@ const createClientStorage =
 
         assertNonEmptyReadonlyArray(messages);
 
-        return deps.sqlite.transaction(() => {
+        deps.sqlite.transaction(() => {
           applyMessages(deps)(ownerIdBytesToOwnerId(ownerIdBytes), messages);
-          deps.clock.save(clockTimestamp);
-          didWriteMessages = true;
-          return ok();
+          saveClock(deps)(clockTimestamp);
         });
+        clock.set(clockTimestamp);
+        didWriteMessages = true;
+        return ok();
       },
 
       readDbChange: (ownerId, timestamp) => {
@@ -774,22 +785,18 @@ const handleMutation =
       TimestampConfigDep,
   ) =>
   (
-    message: ExtractTyped<
-      ExtractTyped<DbWorkerRequest, "ForEvolu">["message"],
-      "Mutate"
-    >,
+    message: ExtractTyped<EvoluInput, "Mutate">,
   ): Result<
     {
       readonly type: "Mutate";
+      readonly clock: Timestamp;
       readonly messagesByOwnerId: ReadonlyMap<
         OwnerId,
         NonEmptyReadonlyArray<CrdtMessage>
       >;
       readonly rowsByQuery: RowsByQueryMap;
     },
-    | TimestampDriftError
-    | TimestampCounterOverflowError
-    | TimestampTimeOutOfRangeError
+    TimestampDriftError | TimestampTimeOutOfRangeError
   > =>
     deps.sqlite.transaction(() => {
       const messagesByOwnerId = new Map<OwnerId, NonEmptyArray<CrdtMessage>>();
@@ -823,10 +830,11 @@ const handleMutation =
         applyMessages(deps)(ownerId, messages);
       }
 
-      if (clockChanged) deps.clock.save(clockTimestamp);
+      if (clockChanged) saveClock(deps)(clockTimestamp);
 
       return ok({
         type: "Mutate",
+        clock: clockTimestamp,
         messagesByOwnerId,
         rowsByQuery: loadQueries(deps)(message.subscribedQueries),
       });
@@ -858,7 +866,7 @@ const applyLocalOnlyChange =
   };
 
 const applyMessages =
-  (deps: BaseSqliteStorageDep & ClockDep & SqliteSchemaDep & SqliteDep) =>
+  (deps: BaseSqliteStorageDep & SqliteSchemaDep & SqliteDep) =>
   (ownerId: OwnerId, messages: NonEmptyReadonlyArray<CrdtMessage>): void => {
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 

@@ -45,17 +45,12 @@ export interface TimestampConfigDep {
   readonly timestampConfig: TimestampConfig;
 }
 
-export type TimestampError =
-  | TimestampDriftError
-  | TimestampCounterOverflowError
-  | TimestampTimeOutOfRangeError;
+export type TimestampError = TimestampDriftError | TimestampTimeOutOfRangeError;
 
 export interface TimestampDriftError extends Typed<"TimestampDriftError"> {
   readonly next: Millis;
   readonly now: Millis;
 }
-
-export interface TimestampCounterOverflowError extends Typed<"TimestampCounterOverflowError"> {}
 
 export interface TimestampTimeOutOfRangeError extends Typed<"TimestampTimeOutOfRangeError"> {}
 
@@ -136,6 +131,11 @@ export const nodeIdBytesToNodeId = (nodeIdBytes: NodeIdBytes): NodeId =>
  * well-defined, eventually-consistent behavior regardless of physical clock
  * accuracy.
  *
+ * When the 16-bit counter is exhausted, the logical millisecond advances by one
+ * and the counter resets to zero. The resulting timestamp must still fit within
+ * {@link Millis} and {@link TimestampConfig.maxDrift}. This preserves
+ * deterministic ordering even when a batch uses one captured wall time.
+ *
  * Vector clocks can accurately track causality and detect concurrent
  * operations, but they require unbounded space in peer-to-peer systems and
  * crucially, still don't solve our fundamental problem: when they detect
@@ -150,6 +150,14 @@ export const nodeIdBytesToNodeId = (nodeIdBytes: NodeIdBytes): NodeId =>
  *
  * ## References
  *
+ * - Kulkarni, Demirbas, Madeppa, Avva, Leone: [Logical Physical Clocks and
+ *   Consistent Snapshots in Globally Distributed
+ *   Databases](https://cse.buffalo.edu/tech-reports/2014-04.pdf) (OPODIS 2014,
+ *   [doi:10.1007/978-3-319-14472-6_2](https://doi.org/10.1007/978-3-319-14472-6_2)).
+ *   The paper proposes 48 significant bits of an NTP timestamp plus a 16-bit
+ *   counter and argues that the counter is sufficient under its assumptions.
+ *   Evolu uses 48-bit milliseconds and rolls counter exhaustion into the next
+ *   logical millisecond, subject to the timestamp range and drift limit.
  * - https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
  * - https://sergeiturukin.com/2017/06/26/hybrid-logical-clocks.html
  * - https://jaredforsyth.com/posts/hybrid-logical-clocks/
@@ -206,88 +214,95 @@ export const createInitialTimestamp = (deps: RandomBytesDep): Timestamp => {
   return createTimestamp({ nodeId });
 };
 
-const getNextMillis =
-  (deps: TimeDep & TimestampConfigDep) =>
-  (
-    millis: ReadonlyArray<Millis>,
-  ): Result<Millis, TimestampTimeOutOfRangeError | TimestampDriftError> => {
-    const now = Millis.fromUnknown(deps.time.now());
-    if (!now.ok) {
-      return err({ type: "TimestampTimeOutOfRangeError" });
-    }
-    const next = Math.max(now.value, ...millis) as Millis;
-    return next - now.value > deps.timestampConfig.maxDrift
-      ? err<TimestampDriftError>({
-          type: "TimestampDriftError",
-          now: now.value,
-          next,
-        })
-      : ok(next);
-  };
-
-const incrementCounter = (
-  counter: Counter,
-): Result<Counter, TimestampCounterOverflowError> => {
-  const next = Counter.fromUnknown(increment(counter));
-  if (!next.ok) return err({ type: "TimestampCounterOverflowError" });
-  return ok(next.value);
-};
-
+/**
+ * Advances a {@link Timestamp} for a local event.
+ *
+ * Counter exhaustion rolls into the next logical millisecond. Failures are
+ * limited to the drift and timestamp-range errors in {@link TimestampError}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertOk, Millis, testCreateTime } from "@evolu/common";
+ * import {
+ *   createTimestamp,
+ *   maxCounter,
+ *   sendTimestamp,
+ * } from "@evolu/common/local-first";
+ *
+ * const before = createTimestamp({ counter: maxCounter });
+ * const result = sendTimestamp({
+ *   time: testCreateTime(),
+ *   timestampConfig: { maxDrift: 1 },
+ * })(before);
+ * assertOk(result, { ...before, millis: Millis.orThrow(1), counter: 0 });
+ * ```
+ */
 export const sendTimestamp =
   (deps: TimeDep & TimestampConfigDep) =>
-  (
-    timestamp: Timestamp,
-  ): Result<
-    Timestamp,
-    | TimestampDriftError
-    | TimestampCounterOverflowError
-    | TimestampTimeOutOfRangeError
-  > => {
-    const millis = getNextMillis(deps)([timestamp.millis]);
-    if (!millis.ok) return millis;
-
+  (timestamp: Timestamp): Result<Timestamp, TimestampError> => {
+    const now = Millis.fromUnknown(deps.time.now());
+    if (!now.ok) return err({ type: "TimestampTimeOutOfRangeError" });
+    const millis = Math.max(now.value, timestamp.millis) as Millis;
     const counter =
-      millis.value === timestamp.millis
-        ? incrementCounter(timestamp.counter)
-        : ok(minCounter);
-    if (!counter.ok) return counter;
+      millis === timestamp.millis ? increment(timestamp.counter) : minCounter;
 
-    return ok({
-      millis: millis.value,
-      counter: counter.value,
+    return createNextTimestamp(deps)({
+      millis,
+      counter,
       nodeId: timestamp.nodeId,
+      now: now.value,
     });
   };
 
 export const receiveTimestamp =
   (deps: TimeDep & TimestampConfigDep) =>
-  (
-    local: Timestamp,
-    remote: Timestamp,
-  ): Result<
-    Timestamp,
-    | TimestampDriftError
-    | TimestampCounterOverflowError
-    | TimestampTimeOutOfRangeError
-  > => {
-    const millis = getNextMillis(deps)([local.millis, remote.millis]);
-    if (!millis.ok) return millis;
-
+  (local: Timestamp, remote: Timestamp): Result<Timestamp, TimestampError> => {
+    const now = Millis.fromUnknown(deps.time.now());
+    if (!now.ok) return err({ type: "TimestampTimeOutOfRangeError" });
+    const millis = Math.max(now.value, local.millis, remote.millis) as Millis;
     const counter =
-      millis.value === local.millis && millis.value === remote.millis
-        ? incrementCounter(Math.max(local.counter, remote.counter) as Counter)
-        : millis.value === local.millis
-          ? incrementCounter(local.counter)
-          : millis.value === remote.millis
-            ? incrementCounter(remote.counter)
-            : ok(minCounter);
+      millis === local.millis && millis === remote.millis
+        ? increment(Math.max(local.counter, remote.counter))
+        : millis === local.millis
+          ? increment(local.counter)
+          : millis === remote.millis
+            ? increment(remote.counter)
+            : minCounter;
 
-    if (!counter.ok) return counter;
-
-    return ok({
-      millis: millis.value,
-      counter: counter.value,
+    return createNextTimestamp(deps)({
+      millis,
+      counter,
       nodeId: local.nodeId,
+      now: now.value,
+    });
+  };
+
+const createNextTimestamp =
+  (deps: TimestampConfigDep) =>
+  ({
+    millis,
+    counter,
+    nodeId,
+    now,
+  }: {
+    millis: Millis;
+    counter: number;
+    nodeId: NodeId;
+    now: Millis;
+  }): Result<Timestamp, TimestampError> => {
+    const nextCounter = Counter.fromUnknown(counter);
+    const nextMillis = nextCounter.ok
+      ? ok(millis)
+      : Millis.fromUnknown(increment(millis));
+    if (!nextMillis.ok) return err({ type: "TimestampTimeOutOfRangeError" });
+    if (nextMillis.value - now > deps.timestampConfig.maxDrift) {
+      return err({ type: "TimestampDriftError", now, next: nextMillis.value });
+    }
+    return ok({
+      millis: nextMillis.value,
+      counter: nextCounter.ok ? nextCounter.value : minCounter,
+      nodeId,
     });
   };
 

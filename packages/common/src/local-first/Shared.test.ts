@@ -8,6 +8,7 @@ import {
   assertLength,
   assertNonNullable,
   assertNotUndefined,
+  assertNotSame,
   assertSame,
   assertTrue,
 } from "../Assert.ts";
@@ -36,7 +37,8 @@ import {
   type SharedWorkerInput,
   type SharedWorkerOutput,
 } from "./Shared.ts";
-import { testCreateCrdtMessage } from "./Storage.ts";
+import { DbChange, testCreateCrdtMessage } from "./Storage.ts";
+import { createTimestamp, type Timestamp } from "./Timestamp.ts";
 import { acquireLeaderLock, testCreateLockManager } from "../LockManager.ts";
 import { installPolyfills } from "../Polyfills.ts";
 import { createSet } from "../Set.ts";
@@ -44,6 +46,7 @@ import type { SqliteSchema } from "../Sqlite.ts";
 import { createStore } from "../Store.ts";
 import { AbortError, testCreateDeps, testCreateRun } from "../Task.ts";
 import { testCreateId } from "../Test.ts";
+import { Millis } from "../Time.ts";
 import {
   assertType,
   createId,
@@ -51,6 +54,7 @@ import {
   String,
   testName,
   type Id,
+  type ExtractTyped,
   type Name,
 } from "../Type.ts";
 import { testCreateWebSocket, type CreateWebSocket } from "../WebSocket.ts";
@@ -142,11 +146,13 @@ const setupSharedWorker = async ({
     evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>(),
     releaseDbWorkerLeaderOnDispose = true,
     autoDispose = true,
+    initialClock = createTimestamp(),
   }: {
     tenantName?: Name;
     evoluChannel?: TestMessageChannel<EvoluOutput, EvoluInput>;
     releaseDbWorkerLeaderOnDispose?: boolean;
     autoDispose?: boolean;
+    initialClock?: Timestamp;
   } = {}) => {
     const instanceDisposables = new AsyncDisposableStack();
     const id = createTestId<"EvoluInstance">();
@@ -167,6 +173,7 @@ const setupSharedWorker = async ({
         acquireLeaderLock(tenantName),
       );
       dbWorkerPort.postMessage({
+        clock: initialClock,
         type: "LeaderAcquired",
         name: tenantName,
       });
@@ -383,10 +390,10 @@ describe("with one evolu instance", () => {
 
       const firstInput = dbInputs[0];
       assertNotUndefined(firstInput);
-      assertEqual(typeof firstInput.callbackId, "string");
+      assertEqual(typeof firstInput.attemptId, "string");
       assertEqual(firstInput, {
         type: "Request",
-        callbackId: firstInput.callbackId,
+        attemptId: firstInput.attemptId,
         request: {
           type: "ForEvolu",
           id,
@@ -430,7 +437,7 @@ describe("with one evolu instance", () => {
 
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: firstInput.callbackId,
+        attemptId: firstInput.attemptId,
         response: {
           type: "ForEvolu",
           id,
@@ -453,7 +460,7 @@ describe("with one evolu instance", () => {
           queries: createSet([testQuery]),
         },
       });
-      assertFalse(Object.is(secondInput.callbackId, firstInput.callbackId));
+      assertFalse(Object.is(secondInput.attemptId, firstInput.attemptId));
     });
   });
 
@@ -494,11 +501,12 @@ describe("with one evolu instance", () => {
 
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: mutateInput.callbackId,
+        attemptId: mutateInput.attemptId,
         response: {
           type: "ForEvolu",
           id,
           message: {
+            clock: createTimestamp(),
             type: "Mutate",
             messagesByOwnerId: new Map(),
             rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
@@ -527,7 +535,7 @@ describe("with one evolu instance", () => {
 
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: queryInput.callbackId,
+        attemptId: queryInput.attemptId,
         response: {
           type: "ForEvolu",
           id,
@@ -608,7 +616,7 @@ describe("with one evolu instance", () => {
 
       first.dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: secondQueryInput.callbackId,
+        attemptId: secondQueryInput.attemptId,
         response: {
           type: "ForEvolu",
           id: secondId,
@@ -644,11 +652,12 @@ describe("with one evolu instance", () => {
 
       first.dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: mutateInput.callbackId,
+        attemptId: mutateInput.attemptId,
         response: {
           type: "ForEvolu",
           id: first.id,
           message: {
+            clock: createTimestamp(),
             type: "Mutate",
             messagesByOwnerId: new Map(),
             rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
@@ -707,6 +716,7 @@ describe("with one evolu instance", () => {
 
       const disposePromise = setup[Symbol.asyncDispose]();
       dbWorkerPort.postMessage({
+        clock: createTimestamp(),
         type: "LeaderAcquired",
         name: testName,
       });
@@ -742,7 +752,7 @@ describe("with one evolu instance", () => {
       const file = new Uint8Array([1, 2, 3]);
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: exportInput.callbackId,
+        attemptId: exportInput.attemptId,
         response: {
           type: "ForEvolu",
           id,
@@ -781,7 +791,7 @@ describe("with one evolu instance", () => {
 
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: queryInput.callbackId,
+        attemptId: queryInput.attemptId,
         response: {
           type: "ForEvolu",
           id: createId<"EvoluInstance">(run.deps),
@@ -844,7 +854,7 @@ describe("with one evolu instance", () => {
 
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: createSyncInput.callbackId,
+        attemptId: createSyncInput.attemptId,
         response: {
           type: "ForSharedWorker",
           message: {
@@ -874,11 +884,12 @@ describe("with one evolu instance", () => {
       ] as const;
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: mutateInput.callbackId,
+        attemptId: mutateInput.attemptId,
         response: {
           type: "ForEvolu",
           id,
           message: {
+            clock: createTimestamp(),
             type: "Mutate",
             messagesByOwnerId: new Map([
               [testAppOwner.id, messages],
@@ -1165,7 +1176,7 @@ describe("with one evolu instance", () => {
       assertNotUndefined(createSyncInput);
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: createSyncInput.callbackId,
+        attemptId: createSyncInput.attemptId,
         response: {
           type: "ForSharedWorker",
           message: {
@@ -1192,12 +1203,14 @@ describe("with one evolu instance", () => {
       assertSame(firstApplyInput.request.message.type, "ApplySyncMessage");
       assertEqual(firstApplyInput.request.message.owner, testAppOwner);
 
+      const receivedClock = createTimestamp({ millis: Millis.orThrow(1000) });
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: firstApplyInput.callbackId,
+        attemptId: firstApplyInput.attemptId,
         response: {
           type: "ForSharedWorker",
           message: {
+            clock: receivedClock,
             type: "ApplySyncMessage",
             ownerId: testAppOwner.id,
             didWriteMessages: true,
@@ -1237,12 +1250,15 @@ describe("with one evolu instance", () => {
 
       const responseApplyInput = dbInputs.at(-1);
       assertNotUndefined(responseApplyInput);
+      assertTrue("clock" in responseApplyInput);
+      assertEqual(responseApplyInput.clock, receivedClock);
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: responseApplyInput.callbackId,
+        attemptId: responseApplyInput.attemptId,
         response: {
           type: "ForSharedWorker",
           message: {
+            clock: createTimestamp(),
             type: "ApplySyncMessage",
             ownerId: testAppOwner.id,
             didWriteMessages: false,
@@ -1299,7 +1315,7 @@ describe("with one evolu instance", () => {
       assertNotUndefined(createSyncInput);
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: createSyncInput.callbackId,
+        attemptId: createSyncInput.attemptId,
         response: {
           type: "ForSharedWorker",
           message: {
@@ -1330,7 +1346,7 @@ describe("with one evolu instance", () => {
         assertNotUndefined(applyInput);
         dbWorkerPort.postMessage({
           type: "OnQueuedResponse",
-          callbackId: applyInput.callbackId,
+          attemptId: applyInput.attemptId,
           response: {
             type: "ForSharedWorker",
             message: response,
@@ -1343,6 +1359,7 @@ describe("with one evolu instance", () => {
       const sentMessageCount = createWebSocket.sentMessages.length;
 
       await runApplySync({
+        clock: createTimestamp(),
         type: "ApplySyncMessage",
         ownerId: testAppOwner.id,
         didWriteMessages: false,
@@ -1352,12 +1369,14 @@ describe("with one evolu instance", () => {
         },
       });
       await runApplySync({
+        clock: createTimestamp(),
         type: "ApplySyncMessage",
         ownerId: testAppOwner.id,
         didWriteMessages: false,
         result: { ok: true, value: { type: "Broadcast" } },
       });
       await runApplySync({
+        clock: createTimestamp(),
         type: "ApplySyncMessage",
         ownerId: testAppOwner.id,
         didWriteMessages: false,
@@ -1475,11 +1494,12 @@ describe("with one evolu instance", () => {
       assertNotUndefined(mutateInput);
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: mutateInput.callbackId,
+        attemptId: mutateInput.attemptId,
         response: {
           type: "ForEvolu",
           id,
           message: {
+            clock: createTimestamp(),
             type: "Mutate",
             messagesByOwnerId: new Map([
               [
@@ -1617,6 +1637,190 @@ describe("with one evolu instance", () => {
       assertSame(initDbWorker.name, testName);
     });
 
+    it("replays fixed write inputs, rejects stale attempts, and adopts the clock after caller disposal", async () => {
+      await using setup = await setupSharedWorker();
+      using disposer = new DisposableStack();
+      const initialClock = createTimestamp({ millis: Millis.orThrow(23) });
+      const first = await setup.createEvolu({
+        releaseDbWorkerLeaderOnDispose: false,
+        initialClock,
+      });
+      const siblingId = createId<"EvoluInstance">(setup.run.deps);
+      await using _siblingLock = await setup.run.ok(
+        acquireLeaderLock(siblingId),
+      );
+      using siblingChannel = testCreateMessageChannel<
+        EvoluOutput,
+        EvoluInput
+      >();
+      const siblingOutputs: Array<EvoluOutput> = [];
+      siblingChannel.port2.onMessage = (output) => {
+        siblingOutputs.push(output);
+      };
+      setup.worker.port.postMessage(
+        {
+          type: "CreateEvolu",
+          id: siblingId,
+          name: testName,
+          consoleLevel: "silent",
+          sqliteSchema: testSqliteSchema,
+          encryptionKey: testAppOwner.encryptionKey,
+          memoryOnly: true,
+          evoluPort: siblingChannel.port1.native,
+        },
+        [siblingChannel.port1.native],
+      );
+      await testWaitForWorkerMessage();
+
+      const bytes = new Uint8Array([1, 2, 3]);
+      const mutation: ExtractTyped<EvoluInput, "Mutate"> = {
+        type: "Mutate",
+        changes: [
+          {
+            ownerId: testAppOwner.id,
+            ...DbChange.orThrow({
+              table: "_registry",
+              id: createId(setup.run.deps),
+              values: { secret: bytes },
+              isInsert: true,
+              isDelete: null,
+            }),
+          },
+        ],
+        subscribedQueries: new Set(),
+        onCompleteIds: [],
+      };
+      first.evoluChannel.port2.postMessage(mutation);
+      siblingChannel.port2.postMessage(mutation);
+      await testWaitForWorkerMessage();
+      assertLength(first.dbInputs, 1);
+      const original = first.dbInputs[0];
+      assertTrue("clock" in original);
+      const capturedNow = original.now;
+      assertEqual(original.clock, initialClock);
+      setup.run.deps.time.advance("10s");
+      await first.releaseDbWorkerLeader();
+
+      const inputs: Array<ExtractTyped<DbWorkerInput, "Request">> = [];
+      const committedClock = createTimestamp({ millis: Millis.orThrow(1000) });
+      const replaceLeader = async () => {
+        const leaderChannel = disposer.use(
+          testCreateMessageChannel<SharedWorkerInput, SharedWorkerOutput>(),
+        );
+        const leaderOutputs: Array<SharedWorkerOutput> = [];
+        leaderChannel.port1.onMessage = (output) => {
+          leaderOutputs.push(output);
+        };
+        assertNonNullable(setup.worker.self.onConnect);
+        setup.worker.self.onConnect(leaderChannel.port2);
+        leaderChannel.port1.postMessage({
+          type: "AnnounceTabLeader",
+          consoleLevel: "silent",
+        });
+        await testWaitForWorkerMessage();
+        await testWaitForWorkerMessage();
+        const init = leaderOutputs[0];
+        assertNotUndefined(init);
+        const port = disposer.use(
+          testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(init.port),
+        );
+        port.onMessage = (input) => {
+          if (input.type === "Request") inputs.push(input);
+        };
+        port.postMessage({
+          type: "LeaderAcquired",
+          name: testName,
+          clock: committedClock,
+        });
+        await testWaitForWorkerMessage();
+        return port;
+      };
+      let port = await replaceLeader();
+      assertSame(inputs.length, 1);
+      const replay = inputs[0];
+      assertTrue("clock" in replay);
+      assertEqual(replay.request, original.request);
+      assertEqual(replay.clock, initialClock);
+      assertSame(replay.now, capturedNow);
+      assertNotSame(replay.attemptId, original.attemptId);
+
+      const response = {
+        type: "OnQueuedResponse",
+        attemptId: replay.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: first.id,
+          message: {
+            type: "Mutate",
+            clock: committedClock,
+            messagesByOwnerId: new Map(),
+            rowsByQuery: new Map(),
+          },
+        },
+      } satisfies DbWorkerOutput;
+      // A stale response on the live port tests the ID guard independently of disposal.
+      const staleClock = createTimestamp({ millis: Millis.orThrow(2000) });
+      port.postMessage({
+        ...response,
+        attemptId: original.attemptId,
+        response: {
+          ...response.response,
+          message: { ...response.response.message, clock: staleClock },
+        },
+      });
+      await testWaitForWorkerMessage();
+      assertSame(inputs.length, 1);
+      assertEqual(siblingOutputs, []);
+      // Observe the clock before a valid acknowledgement could overwrite it.
+      port = await replaceLeader();
+      assertSame(inputs.length, 2);
+      const secondReplay = inputs[1];
+      assertTrue("clock" in secondReplay);
+      assertEqual(secondReplay.clock, initialClock);
+      assertSame(secondReplay.now, capturedNow);
+      assertEqual(secondReplay.request, original.request);
+      assertNotSame(secondReplay.attemptId, replay.attemptId);
+      const currentResponse = {
+        ...response,
+        attemptId: secondReplay.attemptId,
+      };
+      await first[Symbol.asyncDispose]();
+      port.postMessage(currentResponse);
+      await testWaitForWorkerMessage();
+      assertSame(inputs.length, 3);
+      const next = inputs[2];
+      assertTrue("clock" in next);
+      assertEqual(next.clock, committedClock);
+      assertTrue(next.now > capturedNow);
+
+      port.postMessage(currentResponse);
+      await testWaitForWorkerMessage();
+      assertSame(inputs.length, 3);
+      assertEqual(siblingOutputs, []);
+      const finalClock = createTimestamp({ millis: Millis.orThrow(1001) });
+      port.postMessage({
+        ...response,
+        attemptId: next.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: siblingId,
+          message: {
+            type: "Mutate",
+            clock: finalClock,
+            messagesByOwnerId: new Map(),
+            rowsByQuery: new Map(),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+      assertLength(siblingOutputs, 1);
+      siblingChannel.port2.postMessage(mutation);
+      await testWaitForWorkerMessage();
+      assertSame(inputs.length, 4);
+      assertTrue("clock" in inputs[3]);
+      assertEqual(inputs[3].clock, finalClock);
+    });
+
     it("retries in-flight request when new DbWorker leader is acquired", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, worker } = setup;
@@ -1677,6 +1881,7 @@ describe("with one evolu instance", () => {
       };
 
       dbWorkerPort.postMessage({
+        clock: createTimestamp(),
         type: "LeaderAcquired",
         name: testName,
       });
@@ -1686,7 +1891,7 @@ describe("with one evolu instance", () => {
       const [nextInput] = nextDbInputs;
       assertEqual(nextInput, {
         type: "Request",
-        callbackId: nextInput.callbackId,
+        attemptId: nextInput.attemptId,
         request: {
           type: "ForEvolu",
           id,
@@ -1696,11 +1901,11 @@ describe("with one evolu instance", () => {
           },
         },
       });
-      assertFalse(Object.is(nextInput.callbackId, firstInput.callbackId));
+      assertFalse(Object.is(nextInput.attemptId, firstInput.attemptId));
 
       oldDbWorkerPort.postMessage({
         type: "OnQueuedResponse",
-        callbackId: firstInput.callbackId,
+        attemptId: firstInput.attemptId,
         response: {
           type: "ForEvolu",
           id,
@@ -1825,4 +2030,40 @@ describe("with multiple evolu instances", () => {
 
 describe("with multiple tabs", () => {
   it.todo("coordinates tab leader changes across connected tabs");
+});
+
+describe("DbWorkerInput", () => {
+  it("requires clock and time on write envelopes", () => {
+    const deps = testCreateDeps();
+    const request = {
+      type: "ForSharedWorker" as const,
+      message: {
+        type: "ApplySyncMessage" as const,
+        owner: testAppOwner,
+        inputMessage: new Uint8Array(),
+      },
+    };
+    const attemptId = createId(deps);
+    // @ts-expect-error Write requests require clock and now in the envelope.
+    const _missingContext: DbWorkerInput = {
+      type: "Request",
+      attemptId,
+      request,
+    };
+    // @ts-expect-error Write requests require now as well as clock.
+    const _missingTime: DbWorkerInput = {
+      type: "Request",
+      attemptId,
+      request,
+      clock: createTimestamp(),
+    };
+    const valid: DbWorkerInput = {
+      type: "Request",
+      attemptId,
+      request,
+      clock: createTimestamp(),
+      now: deps.time.now(),
+    };
+    assertType<typeof valid.now, Millis>();
+  });
 });
