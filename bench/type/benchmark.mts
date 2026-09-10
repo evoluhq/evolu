@@ -162,6 +162,7 @@ const { tokens: benchmarkArgumentTokens, values: benchmarkArgumentValues } =
     options: {
       filter: { multiple: true, type: "string" },
       mode: { type: "string" },
+      "update-barrel": { type: "boolean", default: false },
     },
     strict: true,
     tokens: true,
@@ -175,6 +176,12 @@ const benchmarkMode = parseBenchmarkMode({
 const fixtureFilters = benchmarkArgumentValues.filter ?? [];
 const filteredBenchmark = fixtureFilters.length > 0;
 const updateBaseline = benchmarkMode !== "default";
+const updateBarrel = benchmarkArgumentValues["update-barrel"];
+if (updateBarrel && (filteredBenchmark || updateBaseline)) {
+  throw new Error(
+    "--update-barrel requires an unfiltered run in default mode.",
+  );
+}
 if (filteredBenchmark && updateBaseline) {
   throw new Error("A filtered Type benchmark cannot update the baseline.");
 }
@@ -579,6 +586,7 @@ await runMain(
       const comparison = compareTypeBenchmarkMeasurements(
         measurements,
         comparedBaselineMeasurements,
+        { ignoreBarrelChanges: updateBarrel },
       );
       if (comparison.changes.length > 0) {
         console.log("Changes from the committed deterministic baseline:");
@@ -635,19 +643,34 @@ await runMain(
       }
     }
 
-    if (updateBaseline) {
+    if (updateBaseline || updateBarrel) {
+      const measurementsToWrite = updateBarrel
+        ? { ...existingBaseline?.measurements }
+        : measurements;
+      if (updateBarrel) {
+        const barrelMeasurement = measurements["common-barrel-all"];
+        assertNonNullable(barrelMeasurement);
+        measurementsToWrite["common-barrel-all"] = barrelMeasurement;
+      }
       await normalizeAbort(
         writeFile(
           typeBenchmarkBaselinesUrl,
           `${JSON.stringify(
-            upsertTypeBenchmarkBaseline(typeBenchmarkBaselines, nextBaseline),
+            upsertTypeBenchmarkBaseline(typeBenchmarkBaselines, {
+              ...nextBaseline,
+              measurements: measurementsToWrite,
+            }),
             null,
             2,
           )}\n`,
           { signal: run.signal },
         ),
       );
-      console.log("Updated Type benchmark baseline.");
+      console.log(
+        updateBarrel
+          ? "Updated only the Type benchmark barrel baseline."
+          : "Updated Type benchmark baseline.",
+      );
     }
   }
 

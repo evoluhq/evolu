@@ -118,6 +118,34 @@ describe("Type benchmark baselines", () => {
     assertEqual(comparison.fixtureChanges, []);
   });
 
+  it("can accept barrel changes while reporting them and gating other fixtures", () => {
+    const fixtures = ["common-barrel-all", "factory-output-01"];
+    const current = objectFrom(fixtures, () =>
+      objectFrom(
+        deterministicMetricNames,
+        (metric) => diagnostics[metric] + 100,
+      ),
+    );
+    const previous = objectFrom(fixtures, () => diagnostics);
+    for (const ignoreBarrelChanges of [false, true]) {
+      const comparison = compareTypeBenchmarkMeasurements(current, previous, {
+        ignoreBarrelChanges,
+      });
+      const gatedFixtures = ignoreBarrelChanges
+        ? ["factory-output-01"]
+        : fixtures;
+      assertLength(comparison.changes, 12);
+      assertEqual(
+        comparison.regressions.map((change) => change.fixture),
+        gatedFixtures.flatMap((fixture) => [fixture, fixture]),
+      );
+      assertEqual(
+        comparison.workloadChanges.map((change) => change.fixture),
+        gatedFixtures.flatMap((fixture) => [fixture, fixture, fixture]),
+      );
+    }
+  });
+
   it("reports fixture-set changes", () => {
     assertEqual(
       compareTypeBenchmarkMeasurements({}, baseline.measurements)

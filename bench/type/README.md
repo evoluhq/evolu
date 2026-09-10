@@ -7,6 +7,12 @@ work regresses. The shared [Checks workflow](../../.github/workflows/checks.yaml
 runs the full suite in a separate job for pull requests, merge queues, and
 releases. CI compares baselines without updating them.
 
+`pnpm verify` runs the complete matrix with `--update-barrel`. After successful
+compilation and checks, it updates only `common-barrel-all`, accepting its metric
+changes so library growth appears in the commit diff. Other fixtures remain
+strict and their baselines are preserved. Review and commit the barrel change.
+This option cannot be combined with filters or baseline update modes.
+
 ## Running
 
 ```bash

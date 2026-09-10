@@ -114,6 +114,7 @@ export const subtractDeterministicDiagnostics = (
 export const compareTypeBenchmarkMeasurements = (
   current: Readonly<Partial<Record<string, DeterministicDiagnostics>>>,
   baseline: Readonly<Partial<Record<string, DeterministicDiagnostics>>>,
+  { ignoreBarrelChanges = false }: { ignoreBarrelChanges?: boolean } = {},
 ): TypeBenchmarkComparison => {
   const currentFixtures = Object.keys(current).toSorted();
   const baselineFixtures = Object.keys(baseline).toSorted();
@@ -145,14 +146,16 @@ export const compareTypeBenchmarkMeasurements = (
     changes,
     regressions: changes.filter(
       (change) =>
+        (!ignoreBarrelChanges || change.fixture !== "common-barrel-all") &&
         (change.metric === "instantiations" || change.metric === "types") &&
         change.delta > 0,
     ),
     workloadChanges: changes.filter(
       (change) =>
-        change.metric === "files" ||
-        change.metric === "lines" ||
-        change.metric === "identifiers",
+        (!ignoreBarrelChanges || change.fixture !== "common-barrel-all") &&
+        (change.metric === "files" ||
+          change.metric === "lines" ||
+          change.metric === "identifiers"),
     ),
     fixtureChanges: [
       ...currentFixtures
