@@ -12,6 +12,9 @@ const withMDX = nextMDX({
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // The root AGENTS.md is the single source of agent guidance; do not let
+  // `next dev` generate apps/web/AGENTS.md and CLAUDE.md.
+  agentRules: false,
   pageExtensions: ["js", "jsx", "ts", "tsx", "mdx"],
   transpilePackages: [
     "@evolu/common",

@@ -25,6 +25,9 @@ This is a pnpm TypeScript monorepo. Use the Node.js version in `.nvmrc`.
   contains the local-first subsystem.
 - Other `packages/` contain platform adapters and framework integrations.
 - `apps/web/` contains documentation and playgrounds; `apps/relay/` is the server.
+  It runs Next 16, whose APIs differ from older versions. When changing
+  Next-specific configuration or routing, consult the bundled docs in
+  `apps/web/node_modules/next/dist/docs/`.
 - `examples/` contains example apps; `bench/` contains compiler and storage benchmarks.
 
 Look up less common commands in [package.json](package.json), and test-runner
