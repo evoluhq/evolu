@@ -93,7 +93,7 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.10.0",
+    "@evolu/common": "^8.11.0",
     "@evolu/react": "^11.0.3",
     "expo": ">=55",
     "expo-sqlite": ">=55",

@@ -1,5 +1,80 @@
 # @evolu/common
 
+## 8.11.0
+
+### Minor Changes
+
+- c6fd793: Added an app-owner registry test schema
+
+  Added `testLocalOnlyEvoluSchema` for tests and examples that store app owners in
+  an `_appOwner` table. It includes operational keys, optional recovery secrets,
+  and optional names.
+
+  Use it with `createEvolu`. Tables prefixed with `_` stay local even when the
+  instance synchronizes other data through `useOwner`.
+
+  ```ts
+  import {
+    createEvolu,
+    testAppName,
+    testAppOwner,
+    testLocalOnlyEvoluSchema,
+  } from "@evolu/common";
+
+  const _createAccounts = createEvolu(testLocalOnlyEvoluSchema, {
+    appName: testAppName,
+    appOwner: testAppOwner,
+    transports: [],
+  });
+  ```
+
+- cf68cee: Added reusable local-first test fixtures
+
+  Exported `testEvoluSchema`, `TestEvoluSchema`, `TestTodoId`, `TestProjectId`,
+  `testTodoId`, and `testProjectId` for deterministic tests and examples with
+  project-linked or independent todos. Also exported the existing `testAppName`
+  from the common entrypoint. Examples now reuse these fixtures and the existing
+  `testAppOwner` where schema or owner creation is not the subject.
+
+  ```ts
+  import {
+    assertOk,
+    testEvoluSchema,
+    testProjectId,
+    testTodoId,
+  } from "@evolu/common";
+
+  assertOk(testEvoluSchema.todo.id.from(testTodoId), testTodoId);
+  assertOk(testEvoluSchema.todo.projectId.from(testProjectId), testProjectId);
+  ```
+
+### Patch Changes
+
+- 09b1b5c: Refreshed queries invalidated before subscription
+
+  Queries now catch up when a mutation or incoming sync invalidates a loaded result before its listener subscribes. This prevents an empty or stale UI during startup. Previously loaded rows remain available without suspending while the subscription refreshes them. Pending reads retain their promise identity, and valid cached reads are reused.
+
+- 2e139eb: Fixed timestamp counter overflow after the clock ran ahead of wall time
+
+  When the 16-bit counter of a Hybrid Logical Clock timestamp is exhausted, the
+  timestamp now advances the logical millisecond by one and resets the counter,
+  while still respecting the timestamp range and the configured drift limit.
+  Previously, once the clock was ahead of wall time, for example after syncing
+  with a device whose clock is fast, every local write shared one millisecond and
+  a large batch failed with a counter overflow that left the write queue pending.
+  The `TimestampCounterOverflowError` type is now unreachable and was removed.
+  Clock failures are `TimestampDriftError` or `TimestampTimeOutOfRangeError`.
+
+- 2e139eb: Made database writes safe to replay after leader replacement
+
+  Pending writes use the same clock and time inputs across DbWorker replacement,
+  preventing duplicate CRDT changes and changes to local-only system columns.
+  SharedWorker ignores stale attempts and adopts the committed clock even when
+  the originating instance has closed.
+
+  Queued writes remain in memory. This change does not add worker-crash detection
+  or completion for existing error paths that leave requests pending.
+
 ## 8.10.0
 
 ### Minor Changes
