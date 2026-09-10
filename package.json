@@ -16,6 +16,8 @@
     "test:integration:nodejs": "pnpm build:docs && pnpm test:node --no-experimental-test-coverage --test-reporter=@evolu/nodejs/TestOverviewReporter \"test/integration/nodejs/**/*.test.ts\" && vitest run --reporter=default --project=node-integration",
     "test:integration:browsers": "vitest run --coverage --mode=chromium --project='browser-*' && vitest run --mode=firefox-webkit --project='browser-*'",
     "test:bundle": "node --disable-warning=ExperimentalWarning --test --test-isolation=none --test-randomize --test-timeout=60000 \"test/bundle/**/*.test.ts\"",
+    "test:e2e": "playwright test --config=test/e2e/playwright.config.mts",
+    "test:e2e:dev": "playwright test --config=test/e2e/playwright.dev.config.mts",
     "test:jsdoc": "node test/jsdoc/test-jsdoc.mts",
     "playwright:install": "playwright install chromium firefox webkit",
     "bench:json-codec": "node bench/json-codec/benchmark.mts",

@@ -7,6 +7,8 @@ __screenshots__
 coverage
 dist
 .vitest-attachments
+playwright-report
+test-results
 next-env.d.ts
 node_modules
 .pnpm-store

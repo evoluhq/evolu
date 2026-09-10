@@ -13,12 +13,10 @@ import {
   evoluJsonObjectFrom,
   FiniteNumber,
   id,
-  idToIdBytes,
   type InferType,
   json,
   type KyselyNotNull,
   maxLength,
-  Mnemonic,
   NonEmptyTrimmedString,
   NonEmptyTrimmedString100,
   nullOr,
@@ -126,9 +124,16 @@ const evoluFiber = run.ok(
     appName: AppName.orThrow("full-example"),
     appOwner: testAppOwner,
 
-    ...(process.env.NODE_ENV === "development" && {
-      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-    }),
+    transports: [
+      {
+        type: "WebSocket",
+        url:
+          process.env.NEXT_PUBLIC_EVOLU_RELAY_URL ??
+          (process.env.NODE_ENV === "development"
+            ? "ws://localhost:4000"
+            : "wss://free.evoluhq.com"),
+      },
+    ],
 
     // Empty transports for local-only instance.
     // transports: [],
@@ -145,10 +150,16 @@ const evoluFiber = run.ok(
 export const EvoluFullExample: FC = () => (
   <div className="min-h-screen px-8 py-8">
     <div className="mx-auto max-w-md min-w-sm md:min-w-md">
+      <p className="mb-6 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+        This example uses a shared test identity. Visitors connected to the same
+        relay share its data. Use only sample data. History, account restore,
+        reset, and backup download are not implemented in this example yet.
+      </p>
       <Suspense>
         {/*
-          Suspense delivers great UX (no loading flickers) and DX (no loading
-          states to manage). Highly recommended with Evolu.
+          Suspense handles initial loading. Evolu's query cache prevents live
+          updates from suspending again; startTransition below keeps the current
+          view visible while a newly selected tab loads its queries.
         */}
         <Root />
       </Suspense>
@@ -425,32 +436,6 @@ const HomeTabProjectSectionTodoItem: FC<{
     update("todo", { id, isDeleted: sqliteTrue });
   };
 
-  // Demonstrate history tracking. Evolu automatically tracks all changes
-  // in the evolu_history table, making it easy to build audit logs or undo features.
-  createQuery((db) =>
-    db
-      .selectFrom("evolu_history")
-      .select(["value", "timestamp"])
-      .where("table", "==", "todo")
-      .where("id", "==", idToIdBytes(id))
-      .where("column", "==", "title")
-      // The value isn't typed; this is how we can cast it.
-      .$narrowType<{
-        value: (typeof AppSchema)["todo"]["title"]["Output"];
-      }>()
-      .orderBy("timestamp", "desc"),
-  );
-
-  const handleHistoryClick = () => {
-    // void evolu.loadQuery(titleHistoryQuery).then((rows) => {
-    //   const rowsWithTimestamp = rows.map((row) => ({
-    //     value: row.value,
-    //     timestamp: timestampToDateIso(timestampBytesToTimestamp(row.timestamp)),
-    //   }));
-    //   alert(JSON.stringify(rowsWithTimestamp, null, 2));
-    // });
-  };
-
   return (
     <li className="-mx-2 flex items-center gap-3 px-2 py-2 hover:bg-gray-50">
       <label className="flex flex-1 cursor-pointer items-center gap-2">
@@ -504,8 +489,8 @@ const HomeTabProjectSectionTodoItem: FC<{
             <IconEdit className="size-4" />
           </button>
           <button
-            onClick={handleHistoryClick}
-            className="p-1 text-gray-400 transition-colors hover:text-purple-600"
+            disabled
+            className="p-1 text-gray-400 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             title="View History"
           >
             <IconHistory className="size-4" />
@@ -657,40 +642,19 @@ const AccountTab: FC = () => {
   const { appOwner } = useEvolu();
   const [showMnemonic, setShowMnemonic] = useState(false);
 
-  const handleRestoreAppOwnerClick = () => {
-    const result = promptStringWithAlert(
-      "Enter your mnemonic to restore your data:",
-      Mnemonic,
-    );
-    // oxlint-disable-next-line eslint/no-useless-return -- Keeps this validation guard correct when owner restoration is implemented.
-    if (!result.ok) return;
-
-    // void evolu.restoreAppOwner(result.value);
-  };
-
-  const handleResetAppOwnerClick = () => {
-    if (confirm("Are you sure? This will delete all your local data.")) {
-      // void evolu.resetAppOwner();
-    }
-  };
-
-  const handleDownloadDatabaseClick = () => {
-    // void evolu.exportDatabase().then((data) => {
-    //   using objectUrl = createObjectURL(
-    //     new Blob([data], { type: "application/x-sqlite3" }),
-    //   );
-    //   const link = document.createElement("a");
-    //   link.href = objectUrl.url;
-    //   link.download = `${evolu.name}.sqlite3`;
-    //   link.click();
-    // });
-  };
-
   return (
     <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <p className="mb-4 text-sm text-gray-600">
-        Todos are stored in local SQLite. When you sync across devices, your
-        data is end-to-end encrypted using your mnemonic.
+        Evolu encrypts local SQLite and synced data using the AppOwner&apos;s
+        secret. This example uses a public test identity, so its encryption does
+        not protect your data from other visitors.
+      </p>
+
+      <p className="mb-4 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+        Account restore, reset, and backup download are not implemented in this
+        example yet. A production app needs its own identity and account flow.
+        To protect encryption at rest, securely store and unlock the AppOwner
+        secret, for example with a passkey or a hardware device.
       </p>
 
       <div className="space-y-3">
@@ -705,7 +669,7 @@ const AccountTab: FC = () => {
         {showMnemonic && (
           <div className="bg-gray-50 p-3">
             <label className="mb-2 block text-xs font-medium text-gray-700">
-              Your Mnemonic (keep this safe!)
+              Shared Test Mnemonic
             </label>
             <textarea
               value={appOwner.mnemonic}
@@ -717,15 +681,9 @@ const AccountTab: FC = () => {
         )}
 
         <div className="flex gap-2">
-          <Button
-            title="Restore from Mnemonic"
-            onClick={handleRestoreAppOwnerClick}
-          />
-          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
-          <Button
-            title="Download Backup"
-            onClick={handleDownloadDatabaseClick}
-          />
+          <Button disabled title="Restore from Mnemonic" />
+          <Button disabled title="Reset All Data" />
+          <Button disabled title="Download Backup" />
         </div>
       </div>
     </div>
@@ -894,11 +852,12 @@ const TrashTabDeletedTodoItem: FC<{
 const Button: FC<{
   title: string;
   className?: string;
-  onClick: () => void;
+  onClick?: () => void;
+  disabled?: boolean;
   variant?: "primary" | "secondary";
-}> = ({ title, className, onClick, variant = "secondary" }) => {
+}> = ({ title, className, onClick, disabled, variant = "secondary" }) => {
   const baseClasses =
-    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
+    "px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50";
   const variantClasses =
     variant === "primary"
       ? "bg-blue-600 text-white hover:bg-blue-700"
@@ -908,6 +867,7 @@ const Button: FC<{
     <button
       className={clsx(baseClasses, variantClasses, className)}
       onClick={onClick}
+      disabled={disabled}
     >
       {title}
     </button>

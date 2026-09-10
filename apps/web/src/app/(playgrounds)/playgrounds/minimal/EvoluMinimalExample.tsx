@@ -80,6 +80,11 @@ export const EvoluMinimalExample: FC = () => (
         </h1>
       </div>
 
+      <p className="mb-6 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+        This example uses a shared test identity. Visitors connected to the same
+        relay share its data. Use only sample data.
+      </p>
+
       <Suspense>
         {/*
           Suspense delivers great UX (no loading flickers) and DX (no loading
@@ -96,9 +101,16 @@ const appPromise = run.ok(
     appName: Evolu.AppName.orThrow("minimal-example"),
     appOwner: Evolu.testAppOwner,
 
-    ...(process.env.NODE_ENV === "development" && {
-      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-    }),
+    transports: [
+      {
+        type: "WebSocket",
+        url:
+          process.env.NEXT_PUBLIC_EVOLU_RELAY_URL ??
+          (process.env.NODE_ENV === "development"
+            ? "ws://localhost:4000"
+            : "wss://free.evoluhq.com"),
+      },
+    ],
   }),
 );
 
@@ -243,29 +255,6 @@ const OwnerActions: FC = () => {
 
   const [showMnemonic, setShowMnemonic] = useState(false);
 
-  // Restore owner from mnemonic to sync data across devices.
-  const handleRestoreAppOwnerClick = () => {
-    const mnemonic = window.prompt("Enter your mnemonic to restore your data:");
-    if (mnemonic == null) return;
-
-    const result = Evolu.Mnemonic.fromUnknown(mnemonic.trim());
-    if (!result.ok) {
-      alert(Evolu.Mnemonic.formatError(result.error));
-      // oxlint-disable-next-line eslint/no-useless-return -- Keeps this validation guard correct when owner restoration is implemented.
-      return;
-    }
-
-    // TODO:
-    // void evolu.restoreAppOwner(result.value);
-  };
-
-  const handleResetAppOwnerClick = () => {
-    if (confirm("Are you sure? This will delete all your local data.")) {
-      // TODO:
-      // void evolu.resetAppOwner();
-    }
-  };
-
   const handleDownloadDatabaseClick = () => {
     void evolu.exportDatabase().then((data: Uint8Array<ArrayBuffer>) => {
       using objectUrl = Evolu.createObjectURL(
@@ -317,11 +306,8 @@ const OwnerActions: FC = () => {
         )}
 
         <div className="flex gap-2">
-          <Button
-            title="Restore from Mnemonic"
-            onClick={handleRestoreAppOwnerClick}
-          />
-          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
+          <Button disabled title="Restore from Mnemonic" />
+          <Button disabled title="Reset All Data" />
           <Button
             title="Download Backup"
             onClick={handleDownloadDatabaseClick}
@@ -374,11 +360,12 @@ const OwnerActions: FC = () => {
 const Button: FC<{
   title: string;
   className?: string;
-  onClick: () => void;
+  onClick?: () => void;
+  disabled?: boolean;
   variant?: "primary" | "secondary";
-}> = ({ title, className, onClick, variant = "secondary" }) => {
+}> = ({ title, className, onClick, disabled, variant = "secondary" }) => {
   const baseClasses =
-    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
+    "px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50";
   const variantClasses =
     variant === "primary"
       ? "bg-blue-600 text-white hover:bg-blue-700"
@@ -388,6 +375,7 @@ const Button: FC<{
     <button
       className={clsx(baseClasses, variantClasses, className)}
       onClick={onClick}
+      disabled={disabled}
     >
       {title}
     </button>

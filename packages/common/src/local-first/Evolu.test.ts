@@ -1392,6 +1392,229 @@ describe("Evolu", () => {
   });
 
   describe("query behavior", () => {
+    it("subscribeQuery catches a refresh between loading and subscribing", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const initialLoad = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, [{ op: "replaceAll", value: [] }]],
+        ]),
+        onCompleteIds: [],
+      });
+      const initialRows = await initialLoad;
+      assertEqual(initialRows, []);
+
+      evoluInputs.length = 0;
+      postEvoluOutput({ type: "RefreshQueries" });
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, []);
+
+      let notifications = 0;
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(() => {
+        notifications += 1;
+      });
+      // React use() must still see fulfilled rows if another render happens
+      // before the worker answers the refresh queued by subscription.
+      const cachedLoad = evolu.loadQuery(todoTitleQuery);
+      assert("status" in cachedLoad, "Cached promises expose React status");
+      assertSame(cachedLoad.status, "fulfilled");
+      assert("value" in cachedLoad, "Fulfilled promises expose cached rows");
+      assertSame(cachedLoad.value, initialRows);
+      assertSame(await cachedLoad, initialRows);
+      assertSame(notifications, 0);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [
+        { type: "Query", queries: new Set([todoTitleQuery]) },
+      ]);
+
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [
+            todoTitleQuery,
+            [{ op: "replaceAll", value: [{ title: "Synced" }] }],
+          ],
+        ]),
+        onCompleteIds: [],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(evolu.getQueryRows(todoTitleQuery), [{ title: "Synced" }]);
+      assertEqual(notifications, 1);
+      // React use() sees a new fulfilled promise after the refresh.
+      const refreshedLoad = evolu.loadQuery(todoTitleQuery);
+      assertNotSame(refreshedLoad, cachedLoad);
+      assertEqual(await refreshedLoad, [{ title: "Synced" }]);
+      unsubscribe();
+    });
+
+    it("subscribeQuery catches a mutation while the initial read is pending", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const initialLoad = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("New") });
+      await testWaitForWorkerMessage();
+      evoluInputs.length = 0;
+
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
+      assertSame(evolu.loadQuery(todoTitleQuery), initialLoad);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [
+        { type: "Query", queries: new Set([todoTitleQuery]) },
+      ]);
+
+      // The old read completes first. Its promise must still settle, and the
+      // new subscription must retain the loading entry for the fresh response.
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, [{ op: "replaceAll", value: [] }]],
+        ]),
+        onCompleteIds: [],
+      });
+      assertEqual(await initialLoad, []);
+      assertSame(evolu.loadQuery(todoTitleQuery), initialLoad);
+
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, [{ op: "replaceAll", value: [{ title: "New" }] }]],
+        ]),
+        onCompleteIds: [],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(evolu.getQueryRows(todoTitleQuery), [{ title: "New" }]);
+      assertEqual(await evolu.loadQuery(todoTitleQuery), [{ title: "New" }]);
+      unsubscribe();
+    });
+
+    it("subscribeQuery reuses valid pending and completed reads", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const initialLoad = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      evoluInputs.length = 0;
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
+      assertSame(evolu.loadQuery(todoTitleQuery), initialLoad);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, []);
+
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, [{ op: "replaceAll", value: [] }]],
+        ]),
+        onCompleteIds: [],
+      });
+      await initialLoad;
+      unsubscribe();
+
+      const unsubscribeAgain = evolu.subscribeQuery(todoTitleQuery)(constVoid);
+      assertSame(evolu.loadQuery(todoTitleQuery), initialLoad);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, []);
+      unsubscribeAgain();
+    });
+
+    it("subscribeQuery keeps refreshed rows cached after unsubscribe until the next invalidation", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const initialLoad = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, [{ op: "replaceAll", value: [] }]],
+        ]),
+        onCompleteIds: [],
+      });
+      await initialLoad;
+      postEvoluOutput({ type: "RefreshQueries" });
+      await testWaitForWorkerMessage();
+      evoluInputs.length = 0;
+
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [
+        { type: "Query", queries: new Set([todoTitleQuery]) },
+      ]);
+      unsubscribe();
+      evoluInputs.length = 0;
+
+      // The refresh response still replaces the cached rows.
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [
+            todoTitleQuery,
+            [{ op: "replaceAll", value: [{ title: "Synced" }] }],
+          ],
+        ]),
+        onCompleteIds: [],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(evolu.getQueryRows(todoTitleQuery), [{ title: "Synced" }]);
+      const cachedLoad = evolu.loadQuery(todoTitleQuery);
+      assertEqual(await cachedLoad, [{ title: "Synced" }]);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, []);
+
+      // The next invalidation drops the unsubscribed cache without a read.
+      postEvoluOutput({ type: "RefreshQueries" });
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, []);
+      const reload = evolu.loadQuery(todoTitleQuery);
+      assertNotSame(reload, cachedLoad);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [
+        { type: "Query", queries: new Set([todoTitleQuery]) },
+      ]);
+    });
+
+    it("subscribeQuery reuses the refreshing entry for repeated subscriptions in one tick", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const initialLoad = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, [{ op: "replaceAll", value: [] }]],
+        ]),
+        onCompleteIds: [],
+      });
+      await initialLoad;
+      postEvoluOutput({ type: "RefreshQueries" });
+      await testWaitForWorkerMessage();
+      evoluInputs.length = 0;
+
+      // React StrictMode subscribes, unsubscribes, and subscribes again
+      // synchronously.
+      const unsubscribeFirst = evolu.subscribeQuery(todoTitleQuery)(constVoid);
+      const refreshingLoad = evolu.loadQuery(todoTitleQuery);
+      unsubscribeFirst();
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
+      assertSame(evolu.loadQuery(todoTitleQuery), refreshingLoad);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [
+        { type: "Query", queries: new Set([todoTitleQuery]) },
+      ]);
+      unsubscribe();
+    });
+
     it("loadQuery reuses pending promise and sends one Query message", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs } = setup;

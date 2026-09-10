@@ -491,9 +491,12 @@ export interface Evolu<
    * typed.
    *
    * Loading is batched. Returned promises are cached while pending and can be
-   * reused after fulfillment until mutation-driven invalidation, which prevents
-   * redundant database queries and supports React Suspense (stable references
-   * while pending).
+   * reused after fulfillment, which prevents redundant database queries and
+   * supports React Suspense (stable references while pending). A mutation or
+   * incoming sync invalidates the cache of an unsubscribed query, so its next
+   * load reads again. A subscribed query keeps its cached rows and the
+   * subscription refreshes them, so a load can return rows that a pending
+   * refresh is about to replace.
    *
    * To subscribe a query for automatic updates, use
    * {@link Evolu.subscribeQuery}.
@@ -572,6 +575,9 @@ export interface Evolu<
 
   /**
    * Subscribe to {@link Query} {@link QueryRows} changes.
+   *
+   * Cached rows invalidated before subscription are refreshed. Subscribing
+   * alone does not load a query that has no cached rows.
    *
    * ### Example
    *
@@ -1316,6 +1322,27 @@ export const createEvolu =
               previousRows = rows;
               listener();
             });
+
+            // Invalidation can happen after loading but before a framework
+            // subscribes. Register first so subsequent invalidations also
+            // refresh this query.
+            const loadingPromise = loadingPromisesByQuery.get(query);
+            if (loadingPromise?.releaseOnResolve) {
+              // Retain the pending promise for its awaiters, but queue a read
+              // after the mutation or sync that invalidated its result.
+              loadingPromise.releaseOnResolve = false;
+              queryBatch.push(query);
+            } else if (!loadingPromise) {
+              const rows = rowsByQueryMapStore.get().get(query);
+              if (rows) {
+                // Queue a read, but keep cached rows available to React use()
+                // so a render before the worker responds does not suspend.
+                void loadQuery(query);
+                const entry = loadingPromisesByQuery.get(query);
+                assertNotUndefined(entry);
+                fulfillLoadingPromise(entry, rows);
+              }
+            }
 
             return () => {
               assert(

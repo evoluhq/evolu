@@ -11,6 +11,7 @@ test/
   bundle/
     Bundle/
     TestBundle/
+  e2e/
   integration/
     browsers/
       web/
@@ -120,6 +121,56 @@ Integration tests use `node:test` unless they need Vitest or its browser
 runner. Native tests under `integration/nodejs` are discovered structurally.
 Tests shared with browsers use the Node Vitest project as well as the browser
 projects; register new Vitest suites in the appropriate project config.
+
+## Browser E2E tests
+
+Playwright tests in `test/e2e` drive the actual Next.js minimal and full playgrounds in
+Chromium, including React, workers, and persistent WASM SQLite. They cover CRUD,
+the mutation completion callback, reload persistence, live updates between
+tabs without Suspense hiding the loaded UI, and sync through a real relay
+between isolated browser contexts. The tab test records DOM removals and hiding
+throughout updates, including brief hide/show transitions between assertions.
+The full example also covers projects, moving todos, restoring deleted todos and
+projects, mnemonic visibility, and the disabled unfinished actions. Its navigation
+test opens Trash for the first time after deleting a todo and checks that
+`startTransition` keeps the loaded UI visible while Trash's queries load. Both
+examples use the same DOM visibility observer to detect even brief Suspense hides.
+Each test gets fresh browser storage and a separate relay process with a
+temporary database directory, removed after the test. Tabs within a context
+share storage and workers; contexts within a test share only the relay.
+Every test fails on uncaught browser errors and unexpected dialogs, including
+the examples' Evolu error alert; tests declare the dialogs they expect.
+
+```sh
+pnpm test:e2e
+```
+
+The command builds the web dependencies, relay, documentation, and production app,
+then starts and stops its own server on `127.0.0.1:3100`. Build output streams to
+the console. Stop the web dev server first: the production build regenerates the
+API reference that the dev docs watcher owns, and the dev configuration starts
+its own `next dev` on the same `.next/dev` output. The build receives
+`NEXT_PUBLIC_EVOLU_RELAY_URL=ws://127.0.0.1:4311`, so the resulting `.next` build
+connects to the test relay instead of the public relay. Production tests run
+the built relay CLI; dev tests run its TypeScript source.
+
+Tests run sequentially because the relay address is embedded in the browser
+bundle. Each test replaces the relay at that address with fresh storage, so
+the example's temporary shared `testAppOwner` cannot connect unrelated tests.
+Keep ports 3100 and 4311 free and run only one E2E invocation at a time.
+
+For faster local iteration, select the dev configuration, which starts a
+managed Next.js dev server without building the production app:
+
+```sh
+pnpm test:e2e:dev
+```
+
+Pass a file or `--grep` to focus the run, for example
+`pnpm test:e2e --grep 'between tabs'`. CI runs the production mode. Failures
+retain traces and screenshots in `test-results/e2e`, and every test attaches the
+relay log to the HTML report; open it with `pnpm exec playwright show-report`.
+E2E tests run separately from `pnpm test` and `pnpm verify`.
 
 ## Bundle tests
 

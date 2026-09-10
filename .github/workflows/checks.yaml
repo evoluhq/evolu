@@ -98,6 +98,35 @@ jobs:
           pnpm exec vitest run --coverage --mode=chromium --project='browser-*'
           pnpm test:bundle
 
+  e2e:
+    name: Browser E2E
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Test production playground
+        run: pnpm test:e2e
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/e2e/
+          retention-days: 7
+
   browser-compatibility:
     name: Browser compatibility (${{ matrix.browser }})
     runs-on: ubuntu-latest
