@@ -593,7 +593,9 @@ export const sql = (
         sql += param.sql;
       } else {
         sql += "?";
-        values.push(SqliteValue.orThrow(param));
+        values.push(
+          typeof param === "number" ? FiniteNumber.orThrow(param) : param,
+        );
       }
     }
   }
