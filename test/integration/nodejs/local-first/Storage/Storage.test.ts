@@ -91,12 +91,17 @@ const testTimestamps = async (
 
   const txResult = sqlite.transaction(() => {
     for (const timestamp of timestamps) {
-      storage.insertTimestamp(testAppOwnerIdBytes, timestamp, strategy);
+      assertTrue(
+        storage.insertTimestamp(testAppOwnerIdBytes, timestamp, strategy),
+      );
     }
 
-    // Add the same timestamps again to test idempotency.
+    // Add the same timestamps again to test idempotency. An existing
+    // timestamp is reported as not new.
     for (const timestamp of timestamps) {
-      storage.insertTimestamp(testAppOwnerIdBytes, timestamp, strategy);
+      assertFalse(
+        storage.insertTimestamp(testAppOwnerIdBytes, timestamp, strategy),
+      );
     }
 
     // Add similar timestamps of another owner.

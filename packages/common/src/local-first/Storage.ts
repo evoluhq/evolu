@@ -484,12 +484,17 @@ export interface BaseSqliteStorage extends Omit<
   Storage,
   "validateWriteKey" | "setWriteKey" | "writeMessages" | "readDbChange"
 > {
-  /** Inserts a timestamp for an owner into the skiplist-based storage. */
+  /**
+   * Inserts a timestamp for an owner into the skiplist-based storage.
+   *
+   * Returns whether the timestamp was new. An existing timestamp is left
+   * unchanged.
+   */
   readonly insertTimestamp: (
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
     strategy: StorageInsertTimestampStrategy,
-  ) => void;
+  ) => boolean;
 
   /**
    * Efficiently checks which timestamps already exist in the database using a
@@ -541,7 +546,7 @@ export const createBaseSqliteStorage = (
     strategy: StorageInsertTimestampStrategy,
   ) => {
     const level = randomSkiplistLevel(deps);
-    insertTimestamp(deps)(ownerId, timestamp, level, strategy);
+    return insertTimestamp(deps)(ownerId, timestamp, level, strategy);
   },
 
   getExistingTimestamps: (ownerIdBytes, timestampsBytes) => {
@@ -756,9 +761,9 @@ export const getTimestampInsertStrategy = (
  * key instead of repeating the same correlated range lookup for every column.
  *
  * Inserts are idempotent to support direct calls and message replay. `on
- * conflict do nothing` makes a duplicate insertion a no-op, and `changes() > 0`
- * ensures ancestor metadata is updated only when the preceding insertion added
- * a timestamp.
+ * conflict do nothing` makes a duplicate insertion a no-op that reports the
+ * timestamp as not new, so the follow-up statements update metadata only for a
+ * new timestamp.
  */
 const insertTimestamp =
   (deps: SqliteDep) =>
@@ -767,12 +772,15 @@ const insertTimestamp =
     timestamp: TimestampBytes,
     level: PositiveInt,
     strategy: StorageInsertTimestampStrategy,
-  ): void => {
+  ): boolean => {
     const [h1, h2] = fingerprintToSqliteFingerprint(
       timestampBytesToFingerprint(timestamp),
     );
 
-    let queries: Array<ReturnType<typeof sql.prepared>> = [];
+    let queries: [
+      insert: ReturnType<typeof sql.prepared>,
+      ...updates: Array<ReturnType<typeof sql.prepared>>,
+    ];
 
     switch (strategy) {
       case "append":
@@ -948,10 +956,7 @@ const insertTimestamp =
               h2 = u.h2,
               c = c + 1
             from u
-            where
-              changes() > 0
-              and ownerId = ${ownerId}
-              and evolu_timestamp.t = u.t;
+            where ownerId = ${ownerId} and evolu_timestamp.t = u.t;
           `,
         ];
         break;
@@ -1018,10 +1023,7 @@ const insertTimestamp =
                     h2 = u.h2,
                     c = c + 1
                   from u
-                  where
-                    changes() > 0
-                    and ownerId = ${ownerId}
-                    and evolu_timestamp.t = u.t;
+                  where ownerId = ${ownerId} and evolu_timestamp.t = u.t;
                 `,
               ]
             : [
@@ -1204,15 +1206,18 @@ const insertTimestamp =
                     h2 = uh2,
                     c = uc
                   from u
-                  where changes() > 0 and ownerId = ${ownerId} and t = ut;
+                  where ownerId = ${ownerId} and t = ut;
                 `,
               ];
         break;
     }
 
-    for (const query of queries) {
-      deps.sqlite.exec(query);
-    }
+    // The insert uses "on conflict do nothing". An existing timestamp changes
+    // nothing, and the metadata updates are skipped.
+    const [insert, ...updates] = queries;
+    if (deps.sqlite.exec(insert).changes === 0) return false;
+    for (const update of updates) deps.sqlite.exec(update);
+    return true;
   };
 
 /**
