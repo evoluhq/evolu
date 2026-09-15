@@ -5,15 +5,15 @@
         "platform": "darwin",
         "arch": "arm64",
         "cpu": "Apple M5",
-        "nodeVersion": "24.14.1",
+        "nodeVersion": "24.20.0",
         "sqliteVersion": "3.53.2"
       },
       "measurementsMs": {
-        "append": 291,
-        "prepend": 1092,
-        "insert": 1610,
+        "append": 297,
+        "prepend": 1016,
+        "insert": 1498,
         "getTimestampByIndex": 30,
-        "fingerprintRanges": 164
+        "fingerprintRanges": 166
       }
     }
   ]
