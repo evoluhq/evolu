@@ -48,3 +48,16 @@ pnpm bench:storage --mode=force-update-baseline
 ```
 
 Forced updates bypass only the regression guard. Either update mode creates an initial baseline when none matches.
+
+## Continuous integration
+
+TODO: Run the benchmark in CI as a relative comparison. The exact-environment
+baselines cannot be used on hosted runners: the CPU model changes between runs,
+so no baseline would match, and timing noise on shared runners exceeds the 10%
+threshold. Instead, one job checks out the base commit in a Git worktree, runs
+the benchmark on the base and on the head in the same runner, and compares the
+ratios with a wider threshold, around 20%. This cancels machine differences and
+needs no CI baseline entry. It requires a benchmark mode that emits results as
+JSON without comparing to baselines, plus a comparison step. Start it
+non-blocking to learn the actual noise, then gate. Deterministic query-plan
+checks stay in the storage tests; the comparison only guards constant factors.
