@@ -11,4 +11,3 @@ Previously, once the clock was ahead of wall time, for example after syncing
 with a device whose clock is fast, every local write shared one millisecond and
 a large batch failed with a counter overflow that left the write queue pending.
 The `TimestampCounterOverflowError` type is now unreachable and was removed.
-Clock failures are `TimestampDriftError` or `TimestampTimeOutOfRangeError`.
