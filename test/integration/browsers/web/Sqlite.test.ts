@@ -154,6 +154,30 @@ describe("createWasmSqliteDriver", () => {
       expect(deleteResult.changes).toBe(2);
     });
 
+    test("exec reports zero changes for a conflicting insert", async () => {
+      await using setup = await setupWasmSqlite();
+      const { sqlite } = setup;
+
+      sqlite.exec(sql`create table t (id integer primary key, name text);`);
+
+      // Both statement paths distinguish inserted rows from conflicts.
+      const preparedInsert = sql.prepared`
+        insert into t (id, name)
+        values (${1}, ${"Alice"})
+        on conflict do nothing;
+      `;
+      expect(sqlite.exec(preparedInsert).changes).toBe(1);
+      expect(sqlite.exec(preparedInsert).changes).toBe(0);
+
+      const plainInsert = sql`
+        insert into t (id, name)
+        values (${2}, ${"Bob"})
+        on conflict do nothing;
+      `;
+      expect(sqlite.exec(plainInsert).changes).toBe(1);
+      expect(sqlite.exec(plainInsert).changes).toBe(0);
+    });
+
     test("prepared statements are cached and reused", async () => {
       await using setup = await setupWasmSqlite();
       const { sqlite } = setup;
