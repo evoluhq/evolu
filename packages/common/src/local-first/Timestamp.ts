@@ -9,7 +9,7 @@ import type { RandomBytesDep } from "../Crypto.ts";
 import { createEqObject, eqNumber, eqString } from "../Eq.ts";
 import { increment } from "../Number.ts";
 import type { Order } from "../Order.ts";
-import { orderUint8Array } from "../Order.ts";
+import { orderNumber, orderString, orderUint8Array } from "../Order.ts";
 import type { Result } from "../Result.ts";
 import { err, ok } from "../Result.ts";
 import type { TimeDep } from "../Time.ts";
@@ -203,6 +203,30 @@ export const eqTimestamp = /*#__PURE__*/ createEqObject<Timestamp>({
   nodeId: eqString,
 });
 
+/**
+ * Orders {@link Timestamp} by milliseconds, counter, then node ID.
+ *
+ * Matches {@link orderTimestampBytes} without encoding timestamps. Distinct
+ * objects with identical fields compare as equal.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual } from "@evolu/common";
+ * import {
+ *   createTimestamp,
+ *   orderTimestamp,
+ * } from "@evolu/common/local-first";
+ *
+ * const timestamp = createTimestamp();
+ * assertEqual(orderTimestamp(timestamp, { ...timestamp }), 0);
+ * ```
+ */
+export const orderTimestamp: Order<Timestamp> = (a, b) =>
+  orderNumber(a.millis, b.millis) ||
+  orderNumber(a.counter, b.counter) ||
+  orderString(a.nodeId, b.nodeId);
+
 export const createTimestamp = ({
   millis = minMillis,
   counter = minCounter,
@@ -278,6 +302,30 @@ export const receiveTimestamp =
     });
   };
 
+/**
+ * Whether timestamp milliseconds exceed {@link TimestampConfig.maxDrift} ahead
+ * of the supplied reference time. The exact limit and past timestamps are
+ * accepted.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertFalse, assertTrue, Millis } from "@evolu/common";
+ * import { isTimestampBeyondMaxDrift } from "@evolu/common/local-first";
+ *
+ * const isBeyondMaxDrift = isTimestampBeyondMaxDrift({
+ *   timestampConfig: { maxDrift: 10 },
+ * });
+ * const now = Millis.orThrow(100);
+ * assertFalse(isBeyondMaxDrift(Millis.orThrow(110), now));
+ * assertTrue(isBeyondMaxDrift(Millis.orThrow(111), now));
+ * ```
+ */
+export const isTimestampBeyondMaxDrift =
+  (deps: TimestampConfigDep) =>
+  (millis: Millis, now: Millis): boolean =>
+    millis - now > deps.timestampConfig.maxDrift;
+
 const createNextTimestamp =
   (deps: TimestampConfigDep) =>
   ({
@@ -296,7 +344,7 @@ const createNextTimestamp =
       ? ok(millis)
       : Millis.fromUnknown(increment(millis));
     if (!nextMillis.ok) return err({ type: "TimestampTimeOutOfRangeError" });
-    if (nextMillis.value - now > deps.timestampConfig.maxDrift) {
+    if (isTimestampBeyondMaxDrift(deps)(nextMillis.value, now)) {
       return err({ type: "TimestampDriftError", now, next: nextMillis.value });
     }
     return ok({

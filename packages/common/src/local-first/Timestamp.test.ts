@@ -3,6 +3,7 @@ import {
   assertEqual,
   assertErr,
   assertFalse,
+  assertNotSame,
   assertOk,
   assertTrue,
 } from "../Assert.ts";
@@ -25,11 +26,14 @@ import {
   createInitialTimestamp,
   createTimestamp,
   defaultTimestampMaxDrift,
+  isTimestampBeyondMaxDrift,
   maxCounter,
+  maxNodeId,
   minCounter,
   NodeId,
   nodeIdBytesToNodeId,
   nodeIdToNodeIdBytes,
+  orderTimestamp,
   orderTimestampBytes,
   receiveTimestamp,
   sendTimestamp,
@@ -92,7 +96,82 @@ test("creates an initial Timestamp", () => {
   });
 });
 
+describe("orderTimestamp", () => {
+  it("compares equal timestamps regardless of object identity", () => {
+    const timestamp = createTimestamp({
+      millis: maxMillis,
+      counter: maxCounter,
+      nodeId: maxNodeId,
+    });
+    const copy = { ...timestamp };
+
+    assertNotSame(timestamp, copy);
+    assertEqual(orderTimestamp(timestamp, timestamp), 0);
+    assertEqual(orderTimestamp(timestamp, copy), 0);
+    assertEqual(orderTimestamp(copy, timestamp), 0);
+  });
+
+  it("orders millis, counter, then nodeId consistently with timestamp bytes", () => {
+    const timestamps = [
+      createTimestamp(),
+      createTimestamp({ nodeId: NodeId.orThrow("9999999999999999") }),
+      createTimestamp({ nodeId: NodeId.orThrow("aaaaaaaaaaaaaaaa") }),
+      createTimestamp({ nodeId: maxNodeId }),
+      createTimestamp({ counter: Counter.orThrow(255), nodeId: maxNodeId }),
+      createTimestamp({ counter: Counter.orThrow(256) }),
+      createTimestamp({ counter: maxCounter, nodeId: maxNodeId }),
+      createTimestamp({ millis: Millis.orThrow(1) }),
+      createTimestamp({
+        millis: Millis.orThrow(2 ** 32 - 1),
+        counter: maxCounter,
+        nodeId: maxNodeId,
+      }),
+      createTimestamp({ millis: Millis.orThrow(2 ** 32) }),
+      createTimestamp({
+        millis: maxMillis,
+        counter: maxCounter,
+        nodeId: maxNodeId,
+      }),
+    ];
+    const bytes = timestamps.map(timestampToTimestampBytes);
+
+    for (const [i, a] of timestamps.entries()) {
+      for (const [j, b] of timestamps.entries()) {
+        const order = orderTimestamp(a, b);
+        assertEqual(order, orderNumber(i, j));
+        assertEqual(order, orderTimestampBytes(bytes[i], bytes[j]));
+      }
+    }
+  });
+});
+
 const makeMillis = (millis: number): Millis => Millis.orThrow(millis);
+
+describe("isTimestampBeyondMaxDrift", () => {
+  it("accepts past timestamps and the exact future limit", () => {
+    const isBeyondMaxDrift = isTimestampBeyondMaxDrift({
+      timestampConfig: { maxDrift: 10 },
+    });
+    const now = makeMillis(100);
+
+    assertFalse(isBeyondMaxDrift(makeMillis(0), now));
+    assertFalse(isBeyondMaxDrift(now, now));
+    assertFalse(isBeyondMaxDrift(makeMillis(109), now));
+    assertFalse(isBeyondMaxDrift(makeMillis(110), now));
+    assertTrue(isBeyondMaxDrift(makeMillis(111), now));
+  });
+
+  it("rejects any future timestamp when the limit is zero", () => {
+    const isBeyondMaxDrift = isTimestampBeyondMaxDrift({
+      timestampConfig: { maxDrift: 0 },
+    });
+    const now = makeMillis(100);
+
+    assertFalse(isBeyondMaxDrift(makeMillis(99), now));
+    assertFalse(isBeyondMaxDrift(now, now));
+    assertTrue(isBeyondMaxDrift(makeMillis(101), now));
+  });
+});
 
 const deps0: TimeDep & TimestampConfigDep = {
   time: testCreateTime({ startAt: minMillis }),
