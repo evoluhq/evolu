@@ -65,7 +65,7 @@ import type {
   WorkerDeps,
 } from "../Worker.ts";
 import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
-import type { EvoluError } from "./Error.ts";
+import type { EvoluError } from "./Evolu.ts";
 import type { Owner, OwnerId, OwnerTransport, SyncOwner } from "./Owner.ts";
 import {
   createProtocolMessageForUnsubscribe,
@@ -84,7 +84,7 @@ import {
 } from "./Query.ts";
 import type { MutationChange } from "./Schema.ts";
 import type { CrdtMessage } from "./Storage.ts";
-import type { Timestamp } from "./Timestamp.ts";
+import { orderTimestamp, type Timestamp } from "./Timestamp.ts";
 
 export type SharedWorker = CommonSharedWorker<
   SharedWorkerInput,
@@ -555,10 +555,22 @@ const createEvoluTenant =
               currentDbWorkerPort[Symbol.dispose]();
               break;
             }
+            const replacesLeader = dbWorkerPort !== null;
             dbWorkerPort?.[Symbol.dispose]();
             dbWorkerPort = currentDbWorkerPort;
             activeDispatch = null;
-            sessionClock ??= message.clock;
+            // A replacement may advance the clock by releasing quarantine, or
+            // start behind it with an empty memoryOnly database. Keep the
+            // greater clock; pending writes retain their captured inputs.
+            if (
+              sessionClock === null ||
+              orderTimestamp(sessionClock, message.clock) === -1
+            ) {
+              sessionClock = message.clock;
+            }
+            // A replacement leader may have committed writes whose responses
+            // were lost, and may have released quarantine at startup.
+            if (replacesLeader) refreshQueries();
             console.info("leaderAcquired");
             dbWorkerInited.resolve();
             runQueue();
@@ -591,7 +603,12 @@ const createEvoluTenant =
               response.message.type === "Mutate" ||
               response.message.type === "ApplySyncMessage"
             ) {
-              sessionClock = response.message.clock;
+              // Replays report their computed clock, which a replacement
+              // leader may have passed at startup. Keep the greater clock.
+              assertNonNullable(sessionClock);
+              if (orderTimestamp(sessionClock, response.message.clock) === -1) {
+                sessionClock = response.message.clock;
+              }
             }
             switch (response.type) {
               case "ForEvolu":
@@ -625,6 +642,13 @@ const createEvoluTenant =
       );
     };
 
+    const refreshQueries = (exceptInstanceId?: EvoluInstanceId): void => {
+      for (const [id, instance] of instancesById) {
+        if (id === exceptInstanceId) continue;
+        instance.port.postMessage({ type: "RefreshQueries" });
+      }
+    };
+
     type QueueEntry =
       | {
           readonly type: "Read";
@@ -634,6 +658,7 @@ const createEvoluTenant =
           readonly type: "Write";
           readonly request: DbWorkerWriteRequest;
           now?: Millis;
+          clock?: Timestamp;
         };
     const queue: Array<QueueEntry> = [];
     let sessionClock: Timestamp | null = null;
@@ -662,12 +687,15 @@ const createEvoluTenant =
       const attemptId = createId(run.deps);
       activeDispatch = { entry, attemptId };
       if (entry.type === "Write") {
+        // A write captures its inputs on first dispatch, so a retry after
+        // leader replacement reproduces the same timestamps.
         entry.now ??= run.deps.time.now();
+        entry.clock ??= sessionClock;
         dbWorkerPort.postMessage({
           type: "Request",
           attemptId,
           request: entry.request,
-          clock: sessionClock,
+          clock: entry.clock,
           now: entry.now,
         });
       } else {
@@ -730,12 +758,7 @@ const createEvoluTenant =
           });
 
           if (response.message.type === "Mutate") {
-            for (const [instanceId, instance] of instancesById) {
-              if (instanceId === response.id) continue;
-              instance.port.postMessage({
-                type: "RefreshQueries",
-              });
-            }
+            refreshQueries(response.id);
 
             const protocolMessagesByOwnerId = new Map<
               OwnerId,
@@ -785,11 +808,7 @@ const createEvoluTenant =
           break;
 
         case "ApplySyncMessage":
-          if (response.message.didWriteMessages) {
-            for (const instance of instancesById.values()) {
-              instance.port.postMessage({ type: "RefreshQueries" });
-            }
-          }
+          if (response.message.didWriteMessages) refreshQueries();
 
           if (!response.message.result.ok) {
             if (response.message.result.error.type !== "AbortError") {
@@ -1081,6 +1100,8 @@ const createEvoluTenant =
 
 // TODO: SharedWorker follow-ups.
 // - Complete the queue head when a DbWorker mutation returns an error.
+// - Rotate the node ID when a copied database is detected; see the Duplicate
+//   node IDs section in the Timestamp module.
 // - Detect DbWorker and port liveness so a worker-only crash resumes the queue.
 // - Consolidate usedSyncOwners and claimLeasesBySyncOwner into one owner-use
 //   state abstraction without changing repeated-use semantics.

@@ -10,6 +10,8 @@ import {
   type Evolu,
   NonEmptyTrimmedString100,
   object,
+  type OwnerIdBytes,
+  ownerIdToOwnerIdBytes,
   sqliteQueryStringToSqliteQuery,
   type Task,
   testAppName,
@@ -22,9 +24,25 @@ import {
   testProjectId,
   TestTodoId,
   testTodoId,
+  type TimestampBytes,
 } from "../index.ts";
 import type { EvoluPlatformDeps } from "./Evolu.ts";
 import type { ValidateSchema } from "./Schema.ts";
+
+test("history queries select and filter by ownerId bytes", () => {
+  const createQuery = createQueryBuilder(testEvoluSchema);
+  const query = createQuery((db) =>
+    db
+      .selectFrom("evolu_history")
+      .select(["ownerId", "timestamp"])
+      .where("ownerId", "=", ownerIdToOwnerIdBytes(testAppOwner.id)),
+  );
+
+  assertType<
+    typeof query.Row,
+    { ownerId: OwnerIdBytes; timestamp: TimestampBytes }
+  >();
+});
 
 test("testEvoluSchema supports project-linked and independent todos", () => {
   assertType<TestEvoluSchema, typeof testEvoluSchema>();

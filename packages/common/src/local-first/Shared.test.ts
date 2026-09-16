@@ -41,7 +41,12 @@ import {
 } from "./Shared.ts";
 import type { NativeMessagePort } from "../Worker.ts";
 import { DbChange, testCreateCrdtMessage } from "./Storage.ts";
-import { createTimestamp, type Timestamp } from "./Timestamp.ts";
+import {
+  createTimestamp,
+  maxCounter,
+  maxNodeId,
+  type Timestamp,
+} from "./Timestamp.ts";
 import { acquireLeaderLock, testCreateLockManager } from "../LockManager.ts";
 import { installPolyfills } from "../Polyfills.ts";
 import { createSet } from "../Set.ts";
@@ -49,7 +54,7 @@ import type { SqliteSchema } from "../Sqlite.ts";
 import { createStore } from "../Store.ts";
 import { AbortError, testCreateDeps, testCreateRun } from "../Task.ts";
 import { testCreateId } from "../Test.ts";
-import { Millis } from "../Time.ts";
+import { maxMillis, Millis } from "../Time.ts";
 import {
   assertType,
   createId,
@@ -448,6 +453,59 @@ describe("with one evolu instance", () => {
       });
     });
 
+    it("keeps later requests queued when a mutation reports a range error without responding", async () => {
+      await using setup = await setupSharedWorker();
+      const clock = createTimestamp({ millis: maxMillis, counter: maxCounter });
+      const { dbInputs, evoluChannel } = await setup.createEvolu({
+        initialClock: clock,
+      });
+      const outputs: Array<EvoluOutput> = [];
+      evoluChannel.port2.onMessage = (output) => {
+        outputs.push(output);
+      };
+      evoluChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [
+          {
+            ownerId: testAppOwner.id,
+            ...DbChange.orThrow({
+              table: "todo",
+              id: createId(setup.run.deps),
+              values: { title: "overflow" },
+              isInsert: true,
+              isDelete: null,
+            }),
+          },
+        ],
+        onCompleteIds: [createId(setup.run.deps)],
+        subscribedQueries: new Set(),
+      });
+      await testWaitForWorkerMessage();
+      assertLength(dbInputs, 1);
+      const mutation = dbInputs[0];
+      assertTrue("clock" in mutation);
+      assertEqual(mutation.clock, clock);
+      assertSame(mutation.request.message.type, "Mutate");
+
+      // The DbWorker broadcasts this error without completing the request.
+      using errors = testCreateBroadcastChannel<ConsoleEntryOrError>(
+        consoleEntryOrErrorBroadcastChannelName,
+      );
+      errors.postMessage({
+        type: "Error",
+        error: { type: "TimestampTimeOutOfRangeError" },
+      });
+      evoluChannel.port2.postMessage({
+        type: "Query",
+        queries: createSet([testQuery]),
+      });
+      setup.run.deps.time.advance("10s");
+      await testWaitForWorkerMessage();
+
+      assertEqual(dbInputs, [mutation]);
+      assertEqual(outputs, []);
+    });
+
     it("starts the next queued request after the first response arrives", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run } = setup;
@@ -711,6 +769,9 @@ describe("with one evolu instance", () => {
 
       assertTrue(
         firstOutputs.some((output) => output.type === "OnPatchesByQuery"),
+      );
+      assertFalse(
+        firstOutputs.some((output) => output.type === "RefreshQueries"),
       );
       assertTrue(
         secondOutputs.some((output) => output.type === "RefreshQueries"),
@@ -1320,6 +1381,23 @@ describe("with one evolu instance", () => {
         url: transport.url,
         data: createProtocolMessageForUnsubscribe(testAppOwner.id),
       });
+
+      // The response reported an older clock, as a sync request that stored
+      // nothing does after a replacement leader advanced the clock. The
+      // session clock keeps the newer one, so the next write is stamped after
+      // everything the leader applied.
+      evoluChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [{} as MutationChange],
+        onCompleteIds: [],
+        subscribedQueries: new Set(),
+      });
+      time.advance("10s");
+      await testWaitForWorkerMessage();
+      const mutateInput = dbInputs.at(-1);
+      assertNotUndefined(mutateInput);
+      assertTrue("clock" in mutateInput);
+      assertEqual(mutateInput.clock, receivedClock);
     });
 
     it("ignores abort, broadcast, and no-response apply sync results", async () => {
@@ -1742,6 +1820,8 @@ describe("with one evolu instance", () => {
           clock: committedClock,
         });
         await testWaitForWorkerMessage();
+        // A replacement leader refreshes every instance's subscribed queries.
+        assertEqual(siblingOutputs.splice(0), [{ type: "RefreshQueries" }]);
         return port;
       };
       let port = await replaceLeader();
@@ -1830,10 +1910,11 @@ describe("with one evolu instance", () => {
       assertEqual(inputs[3].clock, finalClock);
     });
 
-    it("retries in-flight request when new DbWorker leader is acquired", async () => {
+    it("retries an in-flight read and keeps the session clock when the replacement reports an older clock", async () => {
       await using setup = await setupSharedWorker();
       using disposer = new DisposableStack();
       const { createEvolu } = setup;
+      const initialClock = createTimestamp({ millis: Millis.orThrow(23) });
       const {
         dbInputs,
         dbWorkerPort: oldDbWorkerPort,
@@ -1842,6 +1923,7 @@ describe("with one evolu instance", () => {
         releaseDbWorkerLeader,
       } = await createEvolu({
         releaseDbWorkerLeaderOnDispose: false,
+        initialClock,
       });
       const evoluOutputs: Array<EvoluOutput> = [];
       evoluChannel.port2.onMessage = (output) => {
@@ -1871,15 +1953,19 @@ describe("with one evolu instance", () => {
         if (input.type !== "Dispose") nextDbInputs.push(input);
       };
 
+      // An empty memoryOnly replacement starts with a fresh clock and node ID.
       dbWorkerPort.postMessage({
-        clock: createTimestamp(),
+        clock: createTimestamp({ nodeId: maxNodeId }),
         type: "LeaderAcquired",
         name: testName,
       });
       await testWaitForWorkerMessage();
+      // A replacement leader refreshes every instance's subscribed queries.
+      assertEqual(evoluOutputs.splice(0), [{ type: "RefreshQueries" }]);
 
-      assertLength(nextDbInputs, 1);
+      assertSame(nextDbInputs.length, 1);
       const [nextInput] = nextDbInputs;
+      assertNotUndefined(nextInput);
       assertEqual(nextInput, {
         type: "Request",
         attemptId: nextInput.attemptId,
@@ -1894,7 +1980,7 @@ describe("with one evolu instance", () => {
       });
       assertFalse(Object.is(nextInput.attemptId, firstInput.attemptId));
 
-      oldDbWorkerPort.postMessage({
+      const response: DbWorkerOutput = {
         type: "OnQueuedResponse",
         attemptId: firstInput.attemptId,
         response: {
@@ -1905,10 +1991,137 @@ describe("with one evolu instance", () => {
             rowsByQuery: new Map([[testQuery, []]]),
           },
         },
-      });
+      };
+      oldDbWorkerPort.postMessage(response);
       await testWaitForWorkerMessage();
 
       assertEqual(evoluOutputs, []);
+
+      dbWorkerPort.postMessage({ ...response, attemptId: nextInput.attemptId });
+      await testWaitForWorkerMessage();
+      evoluChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [
+          {
+            ownerId: testAppOwner.id,
+            ...testCreateCrdtMessage(createId(setup.run.deps), 1, "fresh")
+              .change,
+          },
+        ],
+        onCompleteIds: [],
+        subscribedQueries: new Set(),
+      });
+      await testWaitForWorkerMessage();
+      assertLength(nextDbInputs, 2);
+      const fresh = nextDbInputs[1];
+      assertTrue("clock" in fresh);
+      assertEqual(fresh.clock, initialClock);
+    });
+
+    it("keeps the replacement leader's clock after a stale local-only replay and refreshes subscribed queries", async () => {
+      await using setup = await setupSharedWorker();
+      using disposer = new DisposableStack();
+      const initialClock = createTimestamp({ millis: Millis.orThrow(23) });
+      const instance = await setup.createEvolu({
+        releaseDbWorkerLeaderOnDispose: false,
+        initialClock,
+      });
+      const evoluOutputs: Array<EvoluOutput> = [];
+      instance.evoluChannel.port2.onMessage = (output) => {
+        evoluOutputs.push(output);
+      };
+      const mutation: ExtractTyped<EvoluInput, "Mutate"> = {
+        type: "Mutate",
+        changes: [
+          {
+            ownerId: testAppOwner.id,
+            ...DbChange.orThrow({
+              table: "_registry",
+              id: createId(setup.run.deps),
+              values: { secret: new Uint8Array([1, 2, 3]) },
+              isInsert: true,
+              isDelete: null,
+            }),
+          },
+        ],
+        subscribedQueries: new Set(),
+        onCompleteIds: [],
+      };
+
+      // A write is in flight when the leader is lost.
+      instance.evoluChannel.port2.postMessage(mutation);
+      await testWaitForWorkerMessage();
+      assertLength(instance.dbInputs, 1);
+      const original = instance.dbInputs[0];
+      assertTrue("clock" in original);
+      assertEqual(original.clock, initialClock);
+      await instance.releaseDbWorkerLeader();
+
+      const leaderChannel = disposer.use(
+        testCreateMessageChannel<SharedWorkerInput, SharedWorkerOutput>(),
+      );
+      const leaderOutputs: Array<SharedWorkerOutput> = [];
+      leaderChannel.port1.onMessage = (output) => {
+        leaderOutputs.push(output);
+      };
+      assertNonNullable(setup.worker.self.onConnect);
+      setup.worker.self.onConnect(leaderChannel.port2);
+      leaderChannel.port1.postMessage({
+        type: "AnnounceTabLeader",
+        consoleLevel: "silent",
+      });
+      await testWaitForWorkerMessage();
+      await testWaitForWorkerMessage();
+      const init = getDbWorkerInit(leaderOutputs[0]);
+      const port = disposer.use(
+        testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(init.port),
+      );
+      const inputs: Array<ExtractTyped<DbWorkerInput, "Request">> = [];
+      port.onMessage = (input) => {
+        if (input.type === "Request") inputs.push(input);
+      };
+      assertEqual(evoluOutputs, []);
+
+      // The new leader's stored clock advanced at startup, for example by
+      // releasing drift quarantine. Its acquisition refreshes subscribed
+      // queries, and the pending write is retried with its captured clock.
+      const startupClock = createTimestamp({ millis: Millis.orThrow(1000) });
+      port.postMessage({
+        type: "LeaderAcquired",
+        name: testName,
+        clock: startupClock,
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(evoluOutputs.splice(0), [{ type: "RefreshQueries" }]);
+      assertSame(inputs.length, 1);
+      const replay = inputs[0];
+      assertTrue("clock" in replay);
+      assertEqual(replay.clock, initialClock);
+
+      // A local-only replay reports its captured clock. The session clock
+      // stays at the leader's, so the next write sorts after whatever the
+      // leader applied.
+      port.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: replay.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: instance.id,
+          message: {
+            type: "Mutate",
+            clock: initialClock,
+            messagesByOwnerId: new Map(),
+            rowsByQuery: new Map(),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+      instance.evoluChannel.port2.postMessage(mutation);
+      await testWaitForWorkerMessage();
+      assertSame(inputs.length, 2);
+      const fresh = inputs[1];
+      assertTrue("clock" in fresh);
+      assertEqual(fresh.clock, startupClock);
     });
   });
 

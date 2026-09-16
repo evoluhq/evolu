@@ -23,6 +23,7 @@ import {
   type SqliteSchema,
   SqliteValue,
 } from "../Sqlite.ts";
+import type { Millis } from "../Time.ts";
 import {
   assertType,
   createIdFromString,
@@ -41,7 +42,7 @@ import {
   type withDefault,
 } from "../Type.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
-import type { AppOwner } from "./Owner.ts";
+import type { AppOwner, OwnerIdBytes } from "./Owner.ts";
 import {
   OwnerEncryptionKey,
   OwnerId,
@@ -294,6 +295,90 @@ export type IndexesConfig = (
 ) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>;
 
 /**
+ * Why a message is stored in `evolu_message_quarantine` instead of being
+ * applied to its table. Persisted codes: names may change, but numbers must not
+ * be reassigned.
+ *
+ * Quarantine is queryable state, not an error. An application subscribes to a
+ * query over `evolu_message_quarantine` to tell the user what is waiting. Each
+ * row is one column of a message, so distinct `ownerId` and `timestamp` pairs
+ * count messages. `origin` records whether this database stamped the message
+ * for a local mutation or received it from sync, see {@link QuarantineOrigin}.
+ * `quarantinedAt` is the system time captured for the request that quarantined
+ * the row, in milliseconds; it is null for rows written before Evolu recorded
+ * it. The clock-drift rules are described in the Timestamp module.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertType,
+ *   createQueryBuilder,
+ *   type Millis,
+ *   type OwnerIdBytes,
+ *   type QuarantineOrigin,
+ *   QuarantineReason,
+ *   testEvoluSchema,
+ *   type TimestampBytes,
+ * } from "@evolu/common";
+ *
+ * const createQuery = createQueryBuilder(testEvoluSchema);
+ *
+ * // Messages waiting in drift quarantine, one row per message.
+ * const driftQuarantineQuery = createQuery((db) =>
+ *   db
+ *     .selectFrom("evolu_message_quarantine")
+ *     .select(["ownerId", "timestamp", "origin", "quarantinedAt"])
+ *     .where("reason", "=", QuarantineReason.TimestampDrift)
+ *     .distinct(),
+ * );
+ *
+ * assertType<
+ *   typeof driftQuarantineQuery.Row,
+ *   {
+ *     ownerId: OwnerIdBytes;
+ *     timestamp: TimestampBytes;
+ *     origin: QuarantineOrigin;
+ *     quarantinedAt: Millis | null;
+ *   }
+ * >();
+ * ```
+ *
+ * @group Queries
+ */
+export const QuarantineReason = {
+  /**
+   * The message has a table or column the current schema does not define. It is
+   * applied automatically once a schema update defines them.
+   */
+  Schema: 0,
+  /**
+   * The message's timestamp exceeded the drift limit when it was stored. It is
+   * applied when the database worker starts, once system time comes within the
+   * limit of the timestamp.
+   */
+  TimestampDrift: 1,
+} as const;
+
+export type QuarantineReason =
+  (typeof QuarantineReason)[keyof typeof QuarantineReason];
+
+/**
+ * Whether a quarantined message was stamped by this database for a local
+ * mutation or received from sync. Persisted codes: names may change, but
+ * numbers must not be reassigned.
+ *
+ * @group Queries
+ */
+export const QuarantineOrigin = {
+  LocalMutation: 0,
+  ReceivedMessage: 1,
+} as const;
+
+export type QuarantineOrigin =
+  (typeof QuarantineOrigin)[keyof typeof QuarantineOrigin];
+
+/**
  * Typed query factory returned by {@link createQueryBuilder}.
  *
  * @group Queries
@@ -310,6 +395,7 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
           } & SystemColumns;
         } & {
           readonly evolu_history: {
+            readonly ownerId: OwnerIdBytes;
             readonly timestamp: TimestampBytes;
             readonly table: keyof S;
             readonly id: IdBytes;
@@ -317,11 +403,15 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
             readonly value: SqliteValue;
           };
           readonly evolu_message_quarantine: {
+            readonly ownerId: OwnerIdBytes;
             readonly timestamp: TimestampBytes;
             readonly table: string;
             readonly id: IdBytes;
             readonly column: string;
             readonly value: SqliteValue;
+            readonly reason: QuarantineReason;
+            readonly origin: QuarantineOrigin;
+            readonly quarantinedAt: Millis | null;
           };
         }
       >,

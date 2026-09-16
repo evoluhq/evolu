@@ -18,6 +18,8 @@ import {
 import { createCallbacks } from "../Callbacks.ts";
 import type { ConsoleDep } from "../Console.ts";
 import { createConsole } from "../Console.ts";
+import type { DecryptWithXChaCha20Poly1305Error } from "../Crypto.ts";
+import type { UnknownError } from "../Error.ts";
 import { createUnknownError } from "../Error.ts";
 import { disposable, exhaustiveCheck, todo } from "../Function.ts";
 import {
@@ -49,7 +51,6 @@ import type {
   CreateMessageChannelDep,
 } from "../Worker.ts";
 import type { CreateDbWorkerDep, UnsupportedDbVersionError } from "./Db.ts";
-import type { EvoluError } from "./Error.ts";
 import type {
   AppOwner,
   Owner,
@@ -59,6 +60,7 @@ import type {
   SyncOwner,
 } from "./Owner.ts";
 import { createOwnerWebSocketTransport } from "./Owner.ts";
+import type { ProtocolError } from "./Protocol.ts";
 import type {
   Queries,
   QueriesToQueryRowsPromises,
@@ -73,6 +75,7 @@ import type {
   IndexesConfig,
   Mutation,
   MutationChange,
+  QuarantineReason,
   ValidateSchema,
 } from "./Schema.ts";
 import { evoluSchemaToSqliteSchema } from "./Schema.ts";
@@ -84,7 +87,7 @@ import type {
 } from "./Shared.ts";
 import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
 import { DbChange } from "./Storage.ts";
-import type { Timestamp } from "./Timestamp.ts";
+import type { Timestamp, TimestampTimeOutOfRangeError } from "./Timestamp.ts";
 
 /**
  * Configuration for {@link createEvolu}.
@@ -362,9 +365,18 @@ export interface Evolu<
    * every row has a globally unique, conflict-free identifier without
    * coordination.
    *
-   * Pass `onComplete` when follow-up work must wait until the mutation and its
-   * query patches have been applied. It never runs when the database is
-   * unavailable; see {@link Evolu.loadQuery}.
+   * Pass `onComplete` when follow-up work must wait until the mutation is
+   * stored and subscribed queries reflect it. It never runs when the database
+   * is unavailable; see {@link Evolu.loadQuery}.
+   *
+   * Stored does not always mean visible. A change quarantined for
+   * {@link QuarantineReason.TimestampDrift} is stored in
+   * `evolu_message_quarantine` without changing application rows. `onComplete`
+   * still fires after storage commits; no drift error is reported. Applications
+   * can subscribe to the quarantine table; those query results reflect the
+   * change before `onComplete` runs. See the
+   * {@link @evolu/common!"local-first/Timestamp" | Timestamp module} for drift
+   * and release behavior.
    *
    * ### Example
    *
@@ -762,6 +774,18 @@ export interface Evolu<
 export type UnuseOwner = () => void;
 
 /**
+ * Represents errors that can occur in {@link Evolu}.
+ *
+ * @group Core
+ */
+export type EvoluError =
+  | DecryptWithXChaCha20Poly1305Error
+  | ProtocolError
+  | TimestampTimeOutOfRangeError
+  | UnknownError
+  | UnsupportedDbVersionError;
+
+/**
  * Dependency wrapper for the shared {@link EvoluError} store.
  *
  * @group Construction
@@ -791,7 +815,6 @@ export interface EvoluErrorDep {
    * import {
    *   assertEqual,
    *   createStore,
-   *   Millis,
    *   PositiveInt,
    *   type EvoluError,
    * } from "@evolu/common";
@@ -811,10 +834,10 @@ export interface EvoluErrorDep {
    *
    *   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The default intentionally handles every other EvoluError.
    *   switch (error.type) {
-   *     case "TimestampDriftError":
+   *     case "TimestampTimeOutOfRangeError":
    *       // Show guidance specific to the detected error.
    *       showMessage(
-   *         "Your system clock appears incorrect. Please fix it.",
+   *         "Your system clock appears incorrect. Fix it and restart the app.",
    *       );
    *       break;
    *     case "UnsupportedDbVersionError":
@@ -828,22 +851,18 @@ export interface EvoluErrorDep {
    *   }
    * });
    *
-   * deps.evoluError.set({
-   *   type: "TimestampDriftError",
-   *   next: Millis.orThrow(360000),
-   *   now: Millis.orThrow(0),
-   * });
+   * deps.evoluError.set({ type: "TimestampTimeOutOfRangeError" });
    * assertEqual(displayedMessages, [
-   *   "Your system clock appears incorrect. Please fix it.",
+   *   "Your system clock appears incorrect. Fix it and restart the app.",
    * ]);
    *
    * deps.evoluError.set({
    *   type: "UnsupportedDbVersionError",
-   *   storedVersion: PositiveInt.orThrow(2),
-   *   supportedVersion: PositiveInt.orThrow(1),
+   *   storedVersion: PositiveInt.orThrow(3),
+   *   supportedVersion: PositiveInt.orThrow(2),
    * });
    * assertEqual(displayedMessages, [
-   *   "Your system clock appears incorrect. Please fix it.",
+   *   "Your system clock appears incorrect. Fix it and restart the app.",
    *   "Your data requires a newer app version. Close all tabs of this app, then open it again.",
    * ]);
    * ```

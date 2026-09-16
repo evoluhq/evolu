@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { describe, it, test } from "node:test";
+import { describe, it } from "node:test";
+import type { NonEmptyReadonlyArray } from "../../../../packages/common/src/Array.ts";
 import {
   assertEqual,
   assertErr,
@@ -9,6 +10,7 @@ import {
   assertNonEmptyReadonlyArray,
   assertNotNull,
   assertNotUndefined,
+  assertOk,
   assertSame,
   assertTrue,
 } from "../../../../packages/common/src/Assert.ts";
@@ -31,6 +33,7 @@ import {
   createOwnerSecret,
   ownerIdToOwnerIdBytes,
   testAppOwner,
+  type Owner,
 } from "../../../../packages/common/src/local-first/Owner.ts";
 import {
   applyProtocolMessageAsRelay,
@@ -41,7 +44,13 @@ import {
   MessageType,
   ProtocolErrorCode,
 } from "../../../../packages/common/src/local-first/Protocol.ts";
-import { createQueryBuilder } from "../../../../packages/common/src/local-first/Schema.ts";
+import type { Query } from "../../../../packages/common/src/local-first/Query.ts";
+import {
+  createQueryBuilder,
+  QuarantineOrigin,
+  QuarantineReason,
+  type MutationChange,
+} from "../../../../packages/common/src/local-first/Schema.ts";
 import type {
   ConsoleEntryOrError,
   DbWorkerInput,
@@ -54,7 +63,10 @@ import { consoleEntryOrErrorBroadcastChannelName } from "../../../../packages/co
 import { DbChange } from "../../../../packages/common/src/local-first/Storage.ts";
 import {
   createTimestamp,
+  Counter,
+  defaultTimestampMaxDrift,
   maxCounter,
+  maxNodeId,
   type Timestamp,
   TimestampBytes,
   timestampBytesToTimestamp,
@@ -72,6 +84,7 @@ import {
   createSqlite,
   getSqliteSnapshot,
   sql,
+  sqliteQueryStringToSqliteQuery,
   type CreateSqliteDriver,
   type Sqlite,
   type SqliteQuery,
@@ -84,7 +97,9 @@ import {
 } from "../../../../packages/common/src/Task.ts";
 import { testCreateId } from "../../../../packages/common/src/Test.ts";
 import {
+  maxMillis,
   Millis,
+  millisToDateIso,
   testCreateTime,
   type TestTime,
 } from "../../../../packages/common/src/Time.ts";
@@ -142,6 +157,18 @@ const localTableQuery = createQuery((db) =>
   db.selectFrom("_localTable").select(["id", "value"]),
 );
 
+const quarantineIndex = {
+  name: "evolu_message_quarantine_reason_timestamp",
+  sql: 'create index evolu_message_quarantine_reason_timestamp on evolu_message_quarantine (\n        "reason",\n        "timestamp"\n      )',
+};
+
+const quarantineQuery = createQuery((db) =>
+  db
+    .selectFrom("evolu_message_quarantine")
+    .select(["column", "value", "reason", "origin", "quarantinedAt"])
+    .orderBy("column"),
+);
+
 const createTestSqliteSchema = (
   testTableColumns: ReadonlyArray<string>,
 ): SqliteSchema => ({
@@ -177,10 +204,11 @@ const createBroadcastProtocolMessage = async (
   messages: Parameters<
     ReturnType<typeof createProtocolMessageFromCrdtMessages>
   >[1],
+  owner = testAppOwner,
 ): Promise<Uint8Array> => {
   const requestMessage = createProtocolMessageFromCrdtMessages(
     testCreateDeps(),
-  )(testAppOwner, messages);
+  )(owner, messages);
 
   await using relay = await setupSqliteAndRelayStorage();
   const broadcastMessages: Array<Uint8Array> = [];
@@ -211,9 +239,11 @@ interface DbSetup extends AsyncDisposable {
 const setupDb = async ({
   time = testCreateTime(),
   createSqliteDriver: suppliedDriver = testCreateSqliteDep.createSqliteDriver,
+  onExec,
 }: {
   time?: TestTime;
   createSqliteDriver?: CreateSqliteDriver;
+  onExec?: (query: SqliteQuery) => void;
 } = {}): Promise<DbSetup> => {
   await using disposer = new AsyncDisposableStack();
 
@@ -234,7 +264,10 @@ const setupDb = async ({
   // Tests need a stable handle to the lazily created SQLite driver.
   const createSqliteDriver: CreateSqliteDriver = (_name, _options) => () =>
     ok({
-      exec: (query) => driver.exec(query),
+      exec: (query) => {
+        onExec?.(query);
+        return driver.exec(query);
+      },
       export: () => driver.export(),
       deleteDatabase: () => driver.deleteDatabase(),
       [Symbol.dispose]: constVoid,
@@ -423,6 +456,19 @@ const setupDbWorker = async ({
   };
 };
 
+const readStoredClock = (setup: DbWorkerSetup): Timestamp => {
+  const { rows } = setup.sqlite.exec<{ clock: TimestampBytes }>(sql`
+    select clock from evolu_config;
+  `);
+  assertLength(rows, 1);
+  return timestampBytesToTimestamp(rows[0].clock);
+};
+
+const readQuarantineRows = (setup: DbSetup) =>
+  setup.sqlite.exec<typeof quarantineQuery.Row>(
+    sqliteQueryStringToSqliteQuery(quarantineQuery),
+  ).rows;
+
 const postRequest = async (
   setup: DbWorkerSetup,
   request: DbWorkerRequest,
@@ -469,6 +515,30 @@ const postRequest = async (
   await completion;
   return setup.outputs.splice(0);
 };
+
+const setupMutateRequest = (
+  id: EvoluInstanceId,
+  changes: NonEmptyReadonlyArray<MutationChange>,
+  {
+    onCompleteIds = [],
+    subscribedQueries = emptySet,
+  }: {
+    onCompleteIds?: ReadonlyArray<Id>;
+    subscribedQueries?: ReadonlySet<Query>;
+  } = {},
+): ExtractTyped<DbWorkerWriteRequest, "ForEvolu"> => ({
+  type: "ForEvolu",
+  id,
+  message: { type: "Mutate", changes, onCompleteIds, subscribedQueries },
+});
+
+const setupApplySyncRequest = (
+  inputMessage: Uint8Array,
+  owner: Owner = testAppOwner,
+): ExtractTyped<DbWorkerWriteRequest, "ForSharedWorker"> => ({
+  type: "ForSharedWorker",
+  message: { type: "ApplySyncMessage", owner, inputMessage },
+});
 
 type QueuedResponse = ExtractTyped<DbWorkerOutput, "OnQueuedResponse">;
 type SharedWorkerResponse = ExtractTyped<
@@ -582,6 +652,7 @@ describe("worker startup", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -608,6 +679,9 @@ describe("worker startup", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -628,7 +702,7 @@ describe("worker startup", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -841,6 +915,7 @@ describe("query and mutation flow", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -867,6 +942,9 @@ describe("query and mutation flow", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -887,7 +965,7 @@ describe("query and mutation flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -981,6 +1059,7 @@ describe("query and mutation flow", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -1007,6 +1086,9 @@ describe("query and mutation flow", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -1027,7 +1109,7 @@ describe("query and mutation flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -1116,6 +1198,7 @@ describe("query and mutation flow", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -1142,6 +1225,9 @@ describe("query and mutation flow", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -1162,7 +1248,7 @@ describe("query and mutation flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -1270,8 +1356,13 @@ describe("query and mutation flow", () => {
 
   it("mixed local-only and sync mutate uses one captured time", async () => {
     await using setup = await setupDbWorker({
-      time: testCreateTime({ autoIncrement: "sync" }),
+      time: testCreateTime({
+        startAt: Millis.orThrow(100),
+        autoIncrement: "sync",
+      }),
     });
+    const context = { clock: setup.getClock(), now: setup.time.now() };
+    const createdAt = millisToDateIso(context.now);
 
     await postRequest(
       setup,
@@ -1308,6 +1399,8 @@ describe("query and mutation flow", () => {
         },
       },
       setup.createId(),
+      "response",
+      context,
     );
 
     assertEqual(
@@ -1315,16 +1408,16 @@ describe("query and mutation flow", () => {
         select value, createdAt from "_localTable" order by value;
       `).rows,
       [
-        { value: "first local", createdAt: "1970-01-01T00:00:00.000Z" },
-        { value: "second local", createdAt: "1970-01-01T00:00:00.000Z" },
+        { value: "first local", createdAt },
+        { value: "second local", createdAt },
       ],
     );
     assertEqual(
       setup.sqlite.exec(sql`select name, createdAt from testTable;`).rows,
-      [{ name: "synced", createdAt: "1970-01-01T00:00:00.000Z" }],
+      [{ name: "synced", createdAt }],
     );
-    assertSame(setup.getClock().millis, 0);
-    assertSame(setup.getClock().counter, 1);
+    assertSame(setup.getClock().millis, context.now);
+    assertSame(setup.getClock().counter, 0);
   });
 
   it("query returns current state", async () => {
@@ -1450,6 +1543,7 @@ describe("query and mutation flow", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -1476,6 +1570,9 @@ describe("query and mutation flow", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -1496,7 +1593,7 @@ describe("query and mutation flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -1708,6 +1805,7 @@ describe("sync message flow", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -1734,6 +1832,9 @@ describe("sync message flow", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -1754,7 +1855,7 @@ describe("sync message flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -2030,6 +2131,7 @@ describe("sync message flow", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -2056,6 +2158,9 @@ describe("sync message flow", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -2076,7 +2181,7 @@ describe("sync message flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -2313,6 +2418,7 @@ describe("sync message flow", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -2339,6 +2445,9 @@ describe("sync message flow", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -2359,7 +2468,7 @@ describe("sync message flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -2532,6 +2641,7 @@ describe("sync message flow", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -2558,6 +2668,9 @@ describe("sync message flow", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -2578,144 +2691,7 @@ describe("sync message flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
-        {
-          name: "evolu_config",
-          rows: [
-            {
-              clock: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 0, 197, 43, 199, 155, 149, 57, 12, 87,
-              ]),
-            },
-          ],
-        },
-        { name: "evolu_history", rows: [] },
-        { name: "evolu_message_quarantine", rows: [] },
-        { name: "evolu_timestamp", rows: [] },
-        { name: "evolu_usage", rows: [] },
-        { name: "testTable", rows: [] },
-        { name: "_localTable", rows: [] },
-      ],
-    });
-  });
-
-  it("ApplySyncMessage emits Error for timestamps beyond max drift", async () => {
-    await using setup = await setupDbWorker();
-
-    const farFutureMessage = await createBroadcastProtocolMessage([
-      {
-        timestamp: createTimestamp({
-          millis: Millis.orThrow(10 * 60 * 1000),
-          counter: 0 as never,
-        }),
-        change: DbChange.orThrow({
-          table: "testTable",
-          id: setup.createId(),
-          values: { name: "future" },
-          isInsert: true,
-          isDelete: null,
-        }),
-      },
-    ]);
-
-    const outputs = await postRequest(setup, {
-      type: "ForSharedWorker",
-      message: {
-        type: "ApplySyncMessage",
-        owner: testAppOwner,
-        inputMessage: farFutureMessage,
-      },
-    });
-
-    assertEqual(setup.consoleEntryOrErrors, [
-      {
-        type: "Error",
-        error: {
-          type: "TimestampDriftError",
-          now: 0,
-          next: 600000,
-        },
-      },
-    ]);
-    assertEqual(outputs, [
-      {
-        attemptId: "in2khoBFZNo9ESZlzuacxA",
-        response: {
-          message: {
-            clock: setup.getClock(),
-            didWriteMessages: false,
-            ownerId: "BSf-8mxNjgk72yD-D7rr1A",
-            result: { ok: true, value: { type: "Broadcast" } },
-            type: "ApplySyncMessage",
-          },
-          type: "ForSharedWorker",
-        },
-        type: "OnQueuedResponse",
-      },
-    ]);
-
-    assertEqual(getSqliteSnapshot(setup), {
-      schema: {
-        indexes: [
-          {
-            name: "evolu_history_ownerId_timestamp",
-            sql: 'create index evolu_history_ownerId_timestamp on evolu_history (\n          "ownerId",\n          "timestamp"\n        )',
-          },
-          {
-            name: "evolu_history_ownerId_table_id_column_timestampDesc",
-            sql: 'create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (\n          "ownerId",\n          "table",\n          "id",\n          "column",\n          "timestamp" desc\n        )',
-          },
-          {
-            name: "evolu_timestamp_index",
-            sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
-          },
-        ],
-        tables: {
-          _localTable: new Set([
-            "id",
-            "createdAt",
-            "updatedAt",
-            "isDeleted",
-            "ownerId",
-            "value",
-          ]),
-          evolu_config: new Set(["clock"]),
-          evolu_history: new Set([
-            "ownerId",
-            "table",
-            "id",
-            "column",
-            "timestamp",
-            "value",
-          ]),
-          evolu_message_quarantine: new Set([
-            "ownerId",
-            "timestamp",
-            "table",
-            "id",
-            "column",
-            "value",
-          ]),
-          evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
-          evolu_usage: new Set([
-            "ownerId",
-            "storedBytes",
-            "firstTimestamp",
-            "lastTimestamp",
-          ]),
-          evolu_version: new Set(["dbVersion"]),
-          testTable: new Set([
-            "id",
-            "createdAt",
-            "updatedAt",
-            "isDeleted",
-            "ownerId",
-            "name",
-          ]),
-        },
-      },
-      tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -3410,144 +3386,6 @@ describe("sync message flow", () => {
   });
 });
 
-test("sync mutate posts Error when persisted clock exceeds drift", async () => {
-  await using dbSetup = await setupDb();
-
-  {
-    await using setup = await setupDbWorker({ dbSetup });
-    assertEqual(setup.outputs, []);
-  }
-
-  dbSetup.sqlite.exec(sql.prepared`
-    update evolu_config
-    set "clock" = ${timestampToTimestampBytes(
-      createTimestamp({
-        millis: Millis.orThrow(10 * 60 * 1000),
-        counter: 0 as never,
-      }),
-    )};
-  `);
-
-  await using setup = await setupDbWorker({ dbSetup });
-
-  const outputs = await postRequest(
-    setup,
-    {
-      type: "ForEvolu",
-      id: setup.evoluInstanceId,
-      message: {
-        type: "Mutate",
-        changes: [
-          createMutationChange({
-            table: "testTable",
-            id: setup.createId(),
-            values: { name: "drift" },
-            isInsert: true,
-            isDelete: null,
-          }),
-        ],
-        onCompleteIds: [],
-        subscribedQueries: emptySet,
-      },
-    },
-    setup.createId(),
-    "activity",
-  );
-
-  assertEqual(outputs, []);
-  assertEqual(setup.consoleEntryOrErrors, [
-    {
-      type: "Error",
-      error: {
-        type: "TimestampDriftError",
-        now: 0,
-        next: 600000,
-      },
-    },
-  ]);
-
-  assertEqual(getSqliteSnapshot({ sqlite: dbSetup.sqlite }), {
-    schema: {
-      indexes: [
-        {
-          name: "evolu_history_ownerId_timestamp",
-          sql: 'create index evolu_history_ownerId_timestamp on evolu_history (\n          "ownerId",\n          "timestamp"\n        )',
-        },
-        {
-          name: "evolu_history_ownerId_table_id_column_timestampDesc",
-          sql: 'create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (\n          "ownerId",\n          "table",\n          "id",\n          "column",\n          "timestamp" desc\n        )',
-        },
-        {
-          name: "evolu_timestamp_index",
-          sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
-        },
-      ],
-      tables: {
-        _localTable: new Set([
-          "id",
-          "createdAt",
-          "updatedAt",
-          "isDeleted",
-          "ownerId",
-          "value",
-        ]),
-        evolu_config: new Set(["clock"]),
-        evolu_history: new Set([
-          "ownerId",
-          "table",
-          "id",
-          "column",
-          "timestamp",
-          "value",
-        ]),
-        evolu_message_quarantine: new Set([
-          "ownerId",
-          "timestamp",
-          "table",
-          "id",
-          "column",
-          "value",
-        ]),
-        evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
-        evolu_usage: new Set([
-          "ownerId",
-          "storedBytes",
-          "firstTimestamp",
-          "lastTimestamp",
-        ]),
-        evolu_version: new Set(["dbVersion"]),
-        testTable: new Set([
-          "id",
-          "createdAt",
-          "updatedAt",
-          "isDeleted",
-          "ownerId",
-          "name",
-        ]),
-      },
-    },
-    tables: [
-      { name: "evolu_version", rows: [{ dbVersion: 1 }] },
-      {
-        name: "evolu_config",
-        rows: [
-          {
-            clock: new Uint8Array([
-              0, 0, 0, 9, 39, 192, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            ]),
-          },
-        ],
-      },
-      { name: "evolu_history", rows: [] },
-      { name: "evolu_message_quarantine", rows: [] },
-      { name: "evolu_timestamp", rows: [] },
-      { name: "evolu_usage", rows: [] },
-      { name: "testTable", rows: [] },
-      { name: "_localTable", rows: [] },
-    ],
-  });
-});
-
 describe("quarantine replay", () => {
   it("applies quarantined columns after schema expansion", async () => {
     await using dbSetup = await setupDb();
@@ -3616,6 +3454,7 @@ describe("quarantine replay", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -3642,6 +3481,9 @@ describe("quarantine replay", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -3662,7 +3504,7 @@ describe("quarantine replay", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -3731,6 +3573,9 @@ describe("quarantine replay", () => {
           rows: [
             {
               column: "note",
+              reason: QuarantineReason.Schema,
+              origin: QuarantineOrigin.ReceivedMessage,
+              quarantinedAt: 0,
               id: new Uint8Array([
                 161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
                 167, 106,
@@ -3820,6 +3665,7 @@ describe("quarantine replay", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -3846,6 +3692,9 @@ describe("quarantine replay", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -3866,7 +3715,7 @@ describe("quarantine replay", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -3935,6 +3784,9 @@ describe("quarantine replay", () => {
           rows: [
             {
               column: "note",
+              reason: QuarantineReason.Schema,
+              origin: QuarantineOrigin.ReceivedMessage,
+              quarantinedAt: 0,
               id: new Uint8Array([
                 161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
                 167, 106,
@@ -4062,6 +3914,7 @@ describe("quarantine replay", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          quarantineIndex,
         ],
         tables: {
           _localTable: new Set([
@@ -4088,6 +3941,9 @@ describe("quarantine replay", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -4109,7 +3965,7 @@ describe("quarantine replay", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -4907,39 +4763,29 @@ describe("write replay", () => {
         let armed = false;
         let failed = false;
         const injected = new Error(`injected ${failure} failure`);
-        const throwingDriver: CreateSqliteDriver =
-          (name, options) => async (run) => {
-            const result = await run(file.createSqliteDriver(name, options));
-            if (!result.ok) return result;
-            const driver = result.value;
-            return ok({
-              ...driver,
-              exec: (query: SqliteQuery) => {
-                const sqlText = query.sql.trim().toLowerCase();
-                const matches =
-                  failure === "update"
-                    ? sqlText.startsWith("update evolu_config")
-                    : failure === "commit"
-                      ? sqlText === "commit;"
-                      : sqlText.startsWith(
-                          'select "id", "name" from "testtable"',
-                        );
-                if (armed && matches) {
-                  armed = false;
-                  failed = true;
-                  throw injected;
-                }
-                return driver.exec(query);
-              },
-            });
-          };
         const thrown: Array<unknown> = [];
         let request: DbWorkerWriteRequest | undefined;
         let context: { clock: Timestamp; now: Millis } | undefined;
         const rowId = testCreateId()();
         {
           await using dbSetup = await setupDb({
-            createSqliteDriver: throwingDriver,
+            createSqliteDriver: file.createSqliteDriver,
+            onExec: (query) => {
+              const sqlText = query.sql.trim().toLowerCase();
+              const matches =
+                failure === "update"
+                  ? sqlText.startsWith("update evolu_config")
+                  : failure === "commit"
+                    ? sqlText === "commit;"
+                    : sqlText.startsWith(
+                        'select "id", "name" from "testtable"',
+                      );
+              if (armed && matches) {
+                armed = false;
+                failed = true;
+                throw injected;
+              }
+            },
           });
           await using setup = await setupDbWorker({
             dbSetup,
@@ -5037,44 +4883,1397 @@ describe("write replay", () => {
   }
 });
 
-describe("database version", () => {
-  it("converts the legacy version record and preserves data", async () => {
+/**
+ * Removes `evolu_config` from a snapshot. Any receipt within the drift limit
+ * advances the persisted clock, which these comparisons do not cover.
+ */
+const snapshotWithoutConfig = (
+  snapshot: ReturnType<typeof getSqliteSnapshot>,
+) => ({
+  ...snapshot,
+  tables: snapshot.tables.filter((table) => table.name !== "evolu_config"),
+});
+
+describe("timestamp range errors", () => {
+  it("reports a sync range error without storing the batch and still responds", async () => {
+    await using setup = await setupDbWorker();
+    const clock = {
+      ...setup.getClock(),
+      millis: maxMillis,
+      counter: maxCounter,
+    };
+    const now = setup.time.now();
+    setup.sqlite.exec(sql`
+      update evolu_config set clock = ${timestampToTimestampBytes(clock)};
+    `);
+    const before = getSqliteSnapshot(setup);
+    const inputMessage = await createBroadcastProtocolMessage([
+      {
+        // The remote timestamp passes drift checking; the local clock overflows.
+        timestamp: createTimestamp({ millis: now }),
+        change: DbChange.orThrow({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "overflow" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      },
+    ]);
+    const response = getQueuedSharedWorkerMessage(
+      await postRequest(
+        setup,
+        setupApplySyncRequest(inputMessage),
+        setup.createId(),
+        "response",
+        { clock, now },
+      ),
+      "ApplySyncMessage",
+    );
+    await testWaitForWorkerMessage();
+
+    assertEqual(setup.consoleEntryOrErrors, [
+      { type: "Error", error: { type: "TimestampTimeOutOfRangeError" } },
+    ]);
+    assertOk(response.result, { type: "Broadcast" });
+    assertFalse(response.didWriteMessages);
+    assertEqual(response.clock, clock);
+    assertEqual(getSqliteSnapshot(setup), before);
+  });
+
+  it("reports a mutation range error, rolls back preceding writes, and sends no queued response", async () => {
+    await using setup = await setupDbWorker();
+    const clock = {
+      ...setup.getClock(),
+      millis: maxMillis,
+      counter: maxCounter,
+    };
+    const now = setup.time.now();
+    setup.sqlite.exec(sql`
+      update evolu_config set clock = ${timestampToTimestampBytes(clock)};
+    `);
+    const before = getSqliteSnapshot(setup);
+    const request = setupMutateRequest(setup.evoluInstanceId, [
+      createMutationChange({
+        table: "_localTable",
+        id: setup.createId(),
+        values: { value: "rolled back" },
+        isInsert: true,
+        isDelete: null,
+      }),
+      createMutationChange({
+        table: "testTable",
+        id: setup.createId(),
+        values: { name: "overflow" },
+        isInsert: true,
+        isDelete: null,
+      }),
+    ]);
+    const outputs = await postRequest(
+      setup,
+      request,
+      setup.createId(),
+      "activity",
+      { clock, now },
+    );
+    await testWaitForWorkerMessage();
+
+    assertEqual(setup.consoleEntryOrErrors, [
+      { type: "Error", error: { type: "TimestampTimeOutOfRangeError" } },
+    ]);
+    assertEqual(outputs, []);
+    assertEqual(setup.outputs, []);
+    assertEqual(getSqliteSnapshot(setup), before);
+  });
+});
+
+describe("clock drift quarantine", () => {
+  for (const origin of ["local", "incoming"] as const) {
+    it(`stores and forwards ${origin} drift, preserves retries, and releases it on restart once system time catches up`, async () => {
+      await using dbSetup = await setupDb();
+      const rowId = dbSetup.createId();
+      const change = DbChange.orThrow({
+        table: "testTable",
+        id: rowId,
+        values: { name: "preserved", note: "unknown" },
+        isInsert: true,
+        isDelete: false,
+      });
+      let quarantinedTimestamp: Timestamp | undefined;
+      let originalRequest: DbWorkerWriteRequest | undefined;
+      let originalContext: { clock: Timestamp; now: Millis } | undefined;
+      {
+        await using setup = await setupDbWorker({ dbSetup });
+        const context = { clock: setup.getClock(), now: setup.time.now() };
+        const future = createTimestamp({
+          millis: Millis.orThrow(600000),
+          counter: maxCounter,
+        });
+        if (origin === "local") {
+          context.clock = { ...future, nodeId: context.clock.nodeId };
+          setup.sqlite.exec(sql`
+            update evolu_config
+            set clock = ${timestampToTimestampBytes(context.clock)};
+          `);
+        }
+        const request: DbWorkerWriteRequest =
+          origin === "local"
+            ? setupMutateRequest(
+                setup.evoluInstanceId,
+                [{ ...change, ownerId: testAppOwner.id }],
+                {
+                  subscribedQueries: createSet([
+                    testTableQuery,
+                    quarantineQuery,
+                  ]),
+                  onCompleteIds: [setup.createId()],
+                },
+              )
+            : setupApplySyncRequest(
+                await createBroadcastProtocolMessage([
+                  { timestamp: future, change },
+                ]),
+              );
+        const outputs = await postRequest(
+          setup,
+          request,
+          setup.createId(),
+          "response",
+          context,
+        );
+        originalRequest = request;
+        originalContext = context;
+        await testWaitForWorkerMessage();
+        assertLength(outputs, 1);
+        // Quarantine is recorded in the table, not reported as an error.
+        assertEqual(setup.consoleEntryOrErrors, []);
+        const quarantinedRows = (timestamp: Timestamp) => {
+          const row = {
+            reason: QuarantineReason.TimestampDrift,
+            origin:
+              origin === "local"
+                ? QuarantineOrigin.LocalMutation
+                : QuarantineOrigin.ReceivedMessage,
+            quarantinedAt: context.now,
+          };
+          return [
+            {
+              column: "createdAt",
+              value: new Date(timestamp.millis).toISOString(),
+              ...row,
+            },
+            { column: "isDeleted", value: 0, ...row },
+            { column: "name", value: "preserved", ...row },
+            { column: "note", value: "unknown", ...row },
+          ];
+        };
+        if (origin === "incoming") {
+          const response = getQueuedSharedWorkerMessage(
+            outputs,
+            "ApplySyncMessage",
+          );
+          assertTrue(response.didWriteMessages);
+          assertOk(response.result, { type: "Broadcast" });
+          assertEqual(setup.getClock(), context.clock);
+          quarantinedTimestamp = future;
+        } else {
+          const output = outputs[0];
+          assertSame(output.type, "OnQueuedResponse");
+          assertSame(output.response.type, "ForEvolu");
+          assertSame(output.response.message.type, "Mutate");
+          assertEqual(
+            output.response.message.rowsByQuery.get(testTableQuery),
+            [],
+          );
+          assertEqual(setup.getClock(), {
+            ...context.clock,
+            millis: 600001,
+            counter: 0,
+          });
+          quarantinedTimestamp = setup.getClock();
+          assertEqual(
+            output.response.message.messagesByOwnerId.get(testAppOwner.id),
+            [{ timestamp: quarantinedTimestamp, change }],
+          );
+          // The subscribed quarantine query is loaded with the mutation, so
+          // the instance sees the quarantined rows before it runs onComplete.
+          assertEqual(
+            output.response.message.rowsByQuery.get(quarantineQuery),
+            quarantinedRows(quarantinedTimestamp),
+          );
+        }
+        assertEqual(setup.sqlite.exec(sql`select * from testTable;`).rows, []);
+        assertEqual(
+          setup.sqlite.exec(sql`select * from evolu_history;`).rows,
+          [],
+        );
+        assertEqual(
+          readQuarantineRows(setup),
+          quarantinedRows(quarantinedTimestamp),
+        );
+        const snapshot = getSqliteSnapshot(setup);
+        const clock = setup.getClock();
+        setup.time.advance("1s");
+        await postRequest(
+          setup,
+          request,
+          setup.createId(),
+          "response",
+          context,
+        );
+        assertEqual(getSqliteSnapshot(setup), snapshot);
+        assertEqual(setup.getClock(), clock);
+
+        // Range reconciliation must upload quarantine to a fresh relay and finish.
+        await using relay = await setupSqliteAndRelayStorage();
+        const sync = getQueuedSharedWorkerMessage(
+          await postRequest(setup, {
+            type: "ForSharedWorker",
+            message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+          }),
+          "CreateSyncMessages",
+        ).protocolMessagesByOwnerId.get(testAppOwner.id);
+        assertNotUndefined(sync);
+        let message = sync;
+        let completed = false;
+        for (let round = 0; round < 10; round++) {
+          const relayResponse = await relay.run.orThrow(
+            applyProtocolMessageAsRelay(message),
+          );
+          const response = getQueuedSharedWorkerMessage(
+            await postRequest(
+              setup,
+              setupApplySyncRequest(relayResponse.message),
+            ),
+            "ApplySyncMessage",
+          );
+          assertOk(response.result);
+          if (response.result.value.type === "NoResponse") {
+            completed = true;
+            break;
+          }
+          assertSame(response.result.value.type, "Response");
+          message = response.result.value.message;
+        }
+        assertTrue(completed);
+        const timestampBytes = timestampToTimestampBytes(quarantinedTimestamp);
+        assertOk(
+          decryptAndDecodeDbChange(
+            {
+              timestamp: quarantinedTimestamp,
+              change: relay.storage.readDbChange(
+                testAppOwnerIdBytes,
+                timestampBytes,
+              ),
+            },
+            testAppOwner.encryptionKey,
+          ),
+          change,
+        );
+        assertLength(
+          relay.sqlite.exec(sql`select * from evolu_message;`).rows,
+          1,
+        );
+      }
+      assertNotUndefined(quarantinedTimestamp);
+      assertNotUndefined(originalRequest);
+      assertNotUndefined(originalContext);
+      const expectedOrigin =
+        origin === "local"
+          ? QuarantineOrigin.LocalMutation
+          : QuarantineOrigin.ReceivedMessage;
+      dbSetup.time.advance("1h");
+      {
+        // Startup releases drift quarantine once system time is within the
+        // limit of its timestamp: known columns are applied, the unknown one
+        // moves to schema quarantine, and the clock advances as for a receipt.
+        await using restarted = await setupDbWorker({ dbSetup });
+        const startupClock = restarted.getClock();
+        assertEqual(startupClock, {
+          millis: restarted.time.now(),
+          counter: Counter.orThrow(0),
+          nodeId: originalContext.clock.nodeId,
+        });
+        assertEqual(
+          restarted.sqlite.exec(sql`select name from testTable;`).rows,
+          [{ name: "preserved" }],
+        );
+        assertEqual(readQuarantineRows(restarted), [
+          {
+            column: "note",
+            value: "unknown",
+            reason: QuarantineReason.Schema,
+            origin: expectedOrigin,
+            quarantinedAt: originalContext.now,
+          },
+        ]);
+        // The replay writes nothing and reports its computed clock. A local
+        // replay reproduces its timestamp; an incoming replay is still fully
+        // quarantined at its captured time and leaves its clock untouched.
+        const before = getSqliteSnapshot(restarted);
+        await postRequest(
+          restarted,
+          originalRequest,
+          restarted.createId(),
+          "response",
+          originalContext,
+        );
+        assertEqual(getSqliteSnapshot(restarted), before);
+        assertEqual(
+          restarted.getClock(),
+          origin === "local" ? quarantinedTimestamp : originalContext.clock,
+        );
+        const duplicate = await createBroadcastProtocolMessage([
+          { timestamp: quarantinedTimestamp, change },
+        ]);
+        await postRequest(
+          restarted,
+          setupApplySyncRequest(duplicate),
+          restarted.createId(),
+          "response",
+          { clock: startupClock, now: restarted.time.now() },
+        );
+        // The duplicate is neither applied nor written again. Its timestamp is
+        // within the drift limit by now, so receipt advances the clock as usual.
+        assertEqual(
+          snapshotWithoutConfig(getSqliteSnapshot(restarted)),
+          snapshotWithoutConfig(before),
+        );
+        assertEqual(restarted.getClock(), {
+          ...startupClock,
+          counter: Counter.orThrow(1),
+        });
+        // New operations work again.
+        await postRequest(
+          restarted,
+          setupMutateRequest(restarted.evoluInstanceId, [
+            createMutationChange({
+              ...change,
+              id: restarted.createId(),
+              ownerId: testAppOwner.id,
+              values: { name: "later" },
+            }),
+          ]),
+        );
+        assertEqual(
+          restarted.sqlite.exec(sql`select name from testTable order by name;`)
+            .rows,
+          [{ name: "later" }, { name: "preserved" }],
+        );
+        assertLength(readQuarantineRows(restarted), 1);
+      }
+      // A schema update applies the column that release moved to schema
+      // quarantine.
+      await using expanded = await setupDbWorker({
+        dbSetup,
+        sqliteSchema: createTestSqliteSchema(["name", "note"]),
+      });
+      assertEqual(
+        expanded.sqlite.exec(sql`
+          select name, note from testTable order by name;
+        `).rows,
+        [
+          { name: "later", note: null },
+          { name: "preserved", note: "unknown" },
+        ],
+      );
+      assertEqual(readQuarantineRows(expanded), []);
+    });
+  }
+
+  it("applies healthy messages in a mixed batch without adopting the future clock", async () => {
+    await using setup = await setupDbWorker();
+    const clock = setup.getClock();
+    const messages = [1, 2, 600000].map((millis) => ({
+      timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
+      change: DbChange.orThrow({
+        table: "testTable",
+        id: setup.createId(),
+        values: { name: `${millis}` },
+        isInsert: true,
+        isDelete: null,
+      }),
+    }));
+    assertNonEmptyReadonlyArray(messages);
+    const inputMessage = await createBroadcastProtocolMessage(messages);
+    const response = getQueuedSharedWorkerMessage(
+      await postRequest(setup, setupApplySyncRequest(inputMessage)),
+      "ApplySyncMessage",
+    );
+    assertOk(response.result, { type: "Broadcast" });
+    assertEqual(setup.getClock(), { ...clock, millis: 2, counter: 1 });
+    assertEqual(
+      setup.sqlite.exec(sql`select name from testTable order by name;`).rows,
+      [{ name: "1" }, { name: "2" }],
+    );
+    assertLength(
+      setup.sqlite.exec(sql`select * from evolu_timestamp;`).rows,
+      3,
+    );
+    assertEqual(
+      setup.sqlite.exec(sql`
+        select "value", "reason", "origin", "quarantinedAt"
+        from evolu_message_quarantine
+        where "column" = 'name';
+      `).rows,
+      [
+        {
+          value: "600000",
+          reason: QuarantineReason.TimestampDrift,
+          origin: QuarantineOrigin.ReceivedMessage,
+          quarantinedAt: setup.time.now(),
+        },
+      ],
+    );
+    assertEqual(setup.consoleEntryOrErrors, []);
+  });
+
+  it("applies incoming messages within the drift limit when the local clock is ahead", async () => {
+    await using setup = await setupDbWorker();
+    const clock = { ...setup.getClock(), millis: Millis.orThrow(600000) };
+    setup.sqlite.exec(sql`
+      update evolu_config set clock = ${timestampToTimestampBytes(clock)};
+    `);
+    const inputMessage = await createBroadcastProtocolMessage([
+      {
+        timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+        change: DbChange.orThrow({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "healthy sender" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      },
+    ]);
+    const response = getQueuedSharedWorkerMessage(
+      await postRequest(
+        setup,
+        setupApplySyncRequest(inputMessage),
+        setup.createId(),
+        "response",
+        { clock, now: setup.time.now() },
+      ),
+      "ApplySyncMessage",
+    );
+    await testWaitForWorkerMessage();
+    assertOk(response.result, { type: "Broadcast" });
+    // The drift candidate advances the counter of the already-ahead clock.
+    assertEqual(setup.getClock(), {
+      ...clock,
+      counter: Counter.orThrow(clock.counter + 1),
+    });
+    assertEqual(setup.sqlite.exec(sql`select name from testTable;`).rows, [
+      { name: "healthy sender" },
+    ]);
+    assertEqual(readQuarantineRows(setup), []);
+    assertEqual(setup.consoleEntryOrErrors, []);
+  });
+
+  it("applies an incoming message at the drift limit whose counter rolls over past it", async () => {
+    await using setup = await setupDbWorker();
+    const clock = setup.getClock();
+    const inputMessage = await createBroadcastProtocolMessage([
+      {
+        timestamp: createTimestamp({
+          millis: Millis.orThrow(defaultTimestampMaxDrift),
+          counter: maxCounter,
+        }),
+        change: DbChange.orThrow({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "at the limit" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      },
+    ]);
+    const response = getQueuedSharedWorkerMessage(
+      await postRequest(setup, setupApplySyncRequest(inputMessage)),
+      "ApplySyncMessage",
+    );
+    await testWaitForWorkerMessage();
+    assertOk(response.result, { type: "Broadcast" });
+    // Rollover moves the candidate one millisecond past the limit.
+    assertEqual(setup.getClock(), {
+      ...clock,
+      millis: Millis.orThrow(defaultTimestampMaxDrift + 1),
+      counter: Counter.orThrow(0),
+    });
+    assertEqual(setup.sqlite.exec(sql`select name from testTable;`).rows, [
+      { name: "at the limit" },
+    ]);
+    assertEqual(readQuarantineRows(setup), []);
+    assertEqual(setup.consoleEntryOrErrors, []);
+  });
+
+  it("quarantines a received timestamp at the range ceiling instead of failing the batch", async () => {
+    await using setup = await setupDbWorker();
+    const clock = setup.getClock();
+    // The counter cannot roll over past maxMillis. The message's own timestamp
+    // is checked first, so the message is quarantined rather than refused.
+    const inputMessage = await createBroadcastProtocolMessage([
+      {
+        timestamp: createTimestamp({ millis: maxMillis, counter: maxCounter }),
+        change: DbChange.orThrow({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "ceiling" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      },
+    ]);
+    const response = getQueuedSharedWorkerMessage(
+      await postRequest(setup, setupApplySyncRequest(inputMessage)),
+      "ApplySyncMessage",
+    );
+    await testWaitForWorkerMessage();
+    assertOk(response.result, { type: "Broadcast" });
+    assertTrue(response.didWriteMessages);
+    assertEqual(setup.getClock(), clock);
+    assertEqual(setup.sqlite.exec(sql`select * from testTable;`).rows, []);
+    assertLength(
+      setup.sqlite.exec(sql`select * from evolu_timestamp;`).rows,
+      1,
+    );
+    assertEqual(
+      setup.sqlite.exec(sql`
+        select "value", "reason", "origin", "quarantinedAt"
+        from evolu_message_quarantine
+        where "column" = 'name';
+      `).rows,
+      [
+        {
+          value: "ceiling",
+          reason: QuarantineReason.TimestampDrift,
+          origin: QuarantineOrigin.ReceivedMessage,
+          quarantinedAt: setup.time.now(),
+        },
+      ],
+    );
+    assertEqual(setup.consoleEntryOrErrors, []);
+  });
+
+  for (const exhaustedCounter of [false, true]) {
+    it(
+      exhaustedCounter
+        ? "preserves quarantine when startup release would overflow the timestamp range"
+        : "releases quarantine at maxMillis when the drift limit extends beyond it",
+      async () => {
+        await using dbSetup = await setupDb();
+        let initialClock: Timestamp;
+        {
+          await using setup = await setupDbWorker({ dbSetup });
+          initialClock = setup.getClock();
+          const messages = [
+            ...(exhaustedCounter
+              ? [
+                  {
+                    timestamp: createTimestamp({
+                      millis: Millis.orThrow(maxMillis - 2),
+                    }),
+                    change: DbChange.orThrow({
+                      table: "testTable",
+                      id: setup.createId(),
+                      values: { name: "releasable prefix" },
+                      isInsert: true,
+                      isDelete: null,
+                    }),
+                  },
+                ]
+              : []),
+            {
+              timestamp: createTimestamp({
+                millis: maxMillis,
+                counter: exhaustedCounter ? maxCounter : Counter.orThrow(0),
+              }),
+              change: DbChange.orThrow({
+                table: "testTable",
+                id: setup.createId(),
+                values: { name: "ceiling" },
+                isInsert: true,
+                isDelete: null,
+              }),
+            },
+          ];
+          assertNonEmptyReadonlyArray(messages);
+          const inputMessage = await createBroadcastProtocolMessage(messages);
+          const response = getQueuedSharedWorkerMessage(
+            await postRequest(setup, setupApplySyncRequest(inputMessage)),
+            "ApplySyncMessage",
+          );
+          assertOk(response.result, { type: "Broadcast" });
+          assertEqual(setup.getClock(), initialClock);
+          assertEqual(
+            setup.sqlite.exec(sql`select name from testTable;`).rows,
+            [],
+          );
+        }
+
+        // Valid system time plus the drift allowance exceeds maxMillis.
+        dbSetup.time.advance(Millis.orThrow(maxMillis - 1));
+        await using restarted = await setupDbWorker({ dbSetup });
+        const expectedClock = exhaustedCounter
+          ? initialClock
+          : { ...initialClock, millis: maxMillis, counter: Counter.orThrow(1) };
+        assertEqual(restarted.getClock(), expectedClock);
+        assertEqual(readStoredClock(restarted), expectedClock);
+        assertEqual(
+          restarted.sqlite.exec(sql`select name from testTable;`).rows,
+          exhaustedCounter ? [] : [{ name: "ceiling" }],
+        );
+        assertEqual(
+          restarted.sqlite.exec(sql`
+            select "value", "reason"
+            from evolu_message_quarantine
+            where "column" = 'name'
+            order by "timestamp";
+          `).rows,
+          exhaustedCounter
+            ? [
+                {
+                  value: "releasable prefix",
+                  reason: QuarantineReason.TimestampDrift,
+                },
+                { value: "ceiling", reason: QuarantineReason.TimestampDrift },
+              ]
+            : [],
+        );
+        assertEqual(restarted.consoleEntryOrErrors, []);
+      },
+    );
+  }
+
+  it("uses one startup time sample to release the exact drift boundary and retain the next timestamp", async () => {
     await using dbSetup = await setupDb();
     {
       await using setup = await setupDbWorker({ dbSetup });
-      await postRequest(setup, {
-        type: "ForEvolu",
-        id: setup.evoluInstanceId,
-        message: {
-          type: "Mutate",
-          changes: [
-            createMutationChange({
-              table: "testTable",
-              id: setup.createId(),
-              values: { name: "kept" },
-              isInsert: true,
-              isDelete: null,
-            }),
-          ],
-          onCompleteIds: [],
-          subscribedQueries: emptySet,
-        },
+      const messages = [600000, 600001].map((millis) => ({
+        timestamp: createTimestamp({
+          millis: Millis.orThrow(millis),
+          counter: maxCounter,
+          nodeId: maxNodeId,
+        }),
+        change: DbChange.orThrow({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: `${millis}`, note: `${millis}` },
+          isInsert: true,
+          isDelete: null,
+        }),
+      }));
+      assertNonEmptyReadonlyArray(messages);
+      const inputMessage = await createBroadcastProtocolMessage(messages);
+      await postRequest(setup, setupApplySyncRequest(inputMessage));
+    }
+    const startAt = Millis.orThrow(600000 - defaultTimestampMaxDrift);
+    const time = testCreateTime({ startAt, autoIncrement: "sync" });
+    await using restarted = await setupDbWorker({
+      dbSetup: { ...dbSetup, time },
+    });
+    assertSame(time.now(), startAt + 1);
+    assertEqual(restarted.sqlite.exec(sql`select name from testTable;`).rows, [
+      { name: "600000" },
+    ]);
+    assertEqual(
+      restarted.sqlite.exec(sql`
+        select "value", "reason"
+        from evolu_message_quarantine
+        where "column" = 'note'
+        order by "value";
+      `).rows,
+      [
+        { value: "600000", reason: QuarantineReason.Schema },
+        { value: "600001", reason: QuarantineReason.TimestampDrift },
+      ],
+    );
+    // Receiving the last timestamp at the boundary rolls the local clock past
+    // the drift limit, but must still release this accepted remote timestamp.
+    assertSame(restarted.getClock().millis, 600001);
+    assertSame(restarted.getClock().counter, 0);
+    assertEqual(restarted.consoleEntryOrErrors, []);
+  });
+
+  it("does not load future drift timestamps and uses the index for both quarantine stages", async () => {
+    const reads: Array<SqliteQuery> = [];
+    let captureReads = false;
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        if (captureReads && query.sql.includes("from evolu_message_quarantine"))
+          reads.push(query);
+      },
+    });
+    {
+      await using setup = await setupDbWorker({ dbSetup });
+      setup.sqlite.transaction(() => {
+        for (let index = 0; index < 1000; index++) {
+          const timestamp = timestampToTimestampBytes(
+            createTimestamp({ millis: Millis.orThrow(600000 + index) }),
+          );
+          setup.sqlite.exec(sql.prepared`
+            insert into evolu_message_quarantine
+              (
+                "ownerId",
+                "timestamp",
+                "table",
+                "id",
+                "column",
+                "value",
+                "reason"
+              )
+            values
+              (
+                ${testAppOwnerIdBytes},
+                ${timestamp},
+                'testTable',
+                ${timestamp},
+                'name',
+                'future',
+                ${QuarantineReason.TimestampDrift}
+              );
+          `);
+        }
       });
     }
-    const expected = getSqliteSnapshot(dbSetup);
-    // Databases created before the version record hold one protocolVersion row.
-    dbSetup.sqlite.exec(sql`
-      alter table evolu_version rename column "dbVersion" to "protocolVersion";
+
+    captureReads = true;
+    await using restarted = await setupDbWorker({ dbSetup });
+    captureReads = false;
+    assertLength(reads, 2);
+    for (const query of reads) {
+      // Nothing was released, so rerunning the captured startup read sees the
+      // same rows. Future timestamps must never be materialized in JavaScript.
+      assertLength(restarted.sqlite.exec(query).rows, 0);
+      const plan = restarted.sqlite.exec<{ detail: string }>({
+        ...query,
+        // prettier-ignore
+        sql: sql`explain query plan ${sql.raw(query.sql)}`.sql,
+      }).rows;
+      assertTrue(
+        plan.some(({ detail }) =>
+          detail.includes("evolu_message_quarantine_reason_timestamp"),
+        ),
+      );
+      assertFalse(plan.some(({ detail }) => /SCAN|TEMP B-TREE/u.test(detail)));
+    }
+    assertEqual(restarted.consoleEntryOrErrors, []);
+  });
+
+  it("advances the startup clock once per timestamp across owners in timestamp order", async () => {
+    await using dbSetup = await setupDb();
+    {
+      await using setup = await setupDbWorker({ dbSetup });
+      for (const [index, owner] of [testAppOwner, testDbAppOwner2].entries()) {
+        // Both owners have the final timestamp. Owner-first iteration would
+        // revisit it after receiving an earlier timestamp from the next owner.
+        const messages = [600000 + index, 600002].map((millis) => ({
+          timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
+          change: DbChange.orThrow({
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: `${millis}` },
+            isInsert: true,
+            isDelete: null,
+          }),
+        }));
+        assertNonEmptyReadonlyArray(messages);
+        const inputMessage = await createBroadcastProtocolMessage(
+          messages,
+          owner,
+        );
+        await postRequest(setup, setupApplySyncRequest(inputMessage, owner));
+      }
+    }
+    dbSetup.time.advance(Millis.orThrow(600002 - defaultTimestampMaxDrift));
+    await using restarted = await setupDbWorker({ dbSetup });
+    assertSame(restarted.getClock().millis, 600002);
+    assertSame(restarted.getClock().counter, 1);
+    assertEqual(
+      restarted.sqlite.exec(sql`select name from testTable order by name;`)
+        .rows,
+      [
+        { name: "600000" },
+        { name: "600001" },
+        { name: "600002" },
+        { name: "600002" },
+      ],
+    );
+    assertEqual(readQuarantineRows(restarted), []);
+    assertEqual(restarted.consoleEntryOrErrors, []);
+  });
+
+  it("commits mixed local and synced changes when timestamp assignment crosses the drift boundary", async () => {
+    await using setup = await setupDbWorker();
+    const clock = {
+      ...setup.getClock(),
+      millis: Millis.orThrow(defaultTimestampMaxDrift),
+      counter: Counter.orThrow(maxCounter - 1),
+    };
+    setup.sqlite.exec(sql`
+      update evolu_config set clock = ${timestampToTimestampBytes(clock)};
     `);
-    assertEqual(dbSetup.sqlite.exec(sql`select * from evolu_version;`).rows, [
-      { protocolVersion: 1 },
+    const changes = ["accepted", "quarantined", "also quarantined"].map(
+      (name) =>
+        createMutationChange({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name },
+          isInsert: true,
+          isDelete: null,
+        }),
+    );
+    assertNonEmptyReadonlyArray(changes);
+    const context = { clock, now: setup.time.now() };
+    const request: DbWorkerWriteRequest = setupMutateRequest(
+      setup.evoluInstanceId,
+      [
+        createMutationChange({
+          table: "_localTable",
+          id: setup.createId(),
+          values: { value: "local" },
+          isInsert: true,
+          isDelete: null,
+        }),
+        ...changes,
+      ],
+    );
+    // Processing may happen after live time has moved past the drift boundary.
+    setup.time.advance("10s");
+    await postRequest(setup, request, setup.createId(), "response", context);
+    assertEqual(setup.sqlite.exec(sql`select name from testTable;`).rows, [
+      { name: "accepted" },
+    ]);
+    assertEqual(
+      setup.sqlite.exec(sql`select "createdAt", "value" from _localTable;`)
+        .rows,
+      [{ createdAt: new Date(context.now).toISOString(), value: "local" }],
+    );
+    const quarantinedRow = {
+      reason: QuarantineReason.TimestampDrift,
+      origin: QuarantineOrigin.LocalMutation,
+      quarantinedAt: context.now,
+    };
+    assertEqual(
+      setup.sqlite.exec(sql`
+        select "value", "reason", "origin", "quarantinedAt"
+        from evolu_message_quarantine
+        where "column" = 'name'
+        order by "value";
+      `).rows,
+      [
+        { value: "also quarantined", ...quarantinedRow },
+        { value: "quarantined", ...quarantinedRow },
+      ],
+    );
+    assertEqual(setup.consoleEntryOrErrors, []);
+    assertEqual(setup.getClock(), {
+      ...clock,
+      millis: defaultTimestampMaxDrift + 1,
+      counter: 1,
+    });
+    const snapshot = getSqliteSnapshot(setup);
+    await postRequest(setup, request, setup.createId(), "response", context);
+    assertEqual(getSqliteSnapshot(setup), snapshot);
+  });
+
+  it("migrates a legacy database to version 2 before replaying schema quarantine", async () => {
+    await using dbSetup = await setupDb();
+    {
+      await using setup = await setupDbWorker({ dbSetup });
+      await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: "known", note: "schema quarantine" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ]),
+      );
+      setup.sqlite.exec(sql`
+        drop index if exists evolu_message_quarantine_reason_timestamp;
+      `);
+      for (const column of ["reason", "origin", "quarantinedAt"]) {
+        setup.sqlite.exec(sql`
+          alter table evolu_message_quarantine
+          drop column ${sql.identifier(column)};
+        `);
+      }
+      // Databases created before the version record hold one protocolVersion row.
+      setup.sqlite.exec(sql`
+        alter table evolu_version
+        rename column "dbVersion" to "protocolVersion";
+      `);
+      setup.sqlite.exec(sql`update evolu_version set "protocolVersion" = 1;`);
+    }
+    {
+      await using setup = await setupDbWorker({ dbSetup });
+      assertEqual(setup.sqlite.exec(sql`select * from evolu_version;`).rows, [
+        { dbVersion: 2 },
+      ]);
+      assertEqual(
+        setup.sqlite.exec(sql`
+          select "name"
+          from pragma_index_info('evolu_message_quarantine_reason_timestamp')
+          order by "seqno";
+        `).rows,
+        [{ name: "reason" }, { name: "timestamp" }],
+      );
+      // Rows from before the columns existed get the defaults.
+      assertEqual(
+        setup.sqlite.exec(sql`
+          select "reason", "origin", "quarantinedAt", "value"
+          from evolu_message_quarantine;
+        `).rows,
+        [
+          {
+            reason: QuarantineReason.Schema,
+            origin: QuarantineOrigin.ReceivedMessage,
+            quarantinedAt: null,
+            value: "schema quarantine",
+          },
+        ],
+      );
+    }
+    await using expanded = await setupDbWorker({
+      dbSetup,
+      sqliteSchema: createTestSqliteSchema(["name", "note"]),
+    });
+    assertEqual(expanded.sqlite.exec(sql`select note from testTable;`).rows, [
+      { note: "schema quarantine" },
+    ]);
+    assertEqual(readQuarantineRows(expanded), []);
+  });
+});
+
+describe("quarantine transactions", () => {
+  for (const origin of ["local", "incoming"] as const) {
+    it(`rolls back ${origin} quarantine and clock together without reporting preservation before commit`, async () => {
+      let failCommit = false;
+      const injected = new Error("quarantine commit failed");
+      await using dbSetup = await setupDb({
+        onExec: (query) => {
+          if (failCommit && query.sql.trim().toLowerCase() === "commit;") {
+            failCommit = false;
+            throw injected;
+          }
+        },
+      });
+      const thrown: Array<unknown> = [];
+      await using setup = await setupDbWorker({
+        dbSetup,
+        onThrown: (error) => {
+          thrown.push(error);
+        },
+      });
+      const clock =
+        origin === "local"
+          ? { ...setup.getClock(), millis: Millis.orThrow(600000) }
+          : setup.getClock();
+      setup.sqlite.exec(sql`
+        update evolu_config set clock = ${timestampToTimestampBytes(clock)};
+      `);
+      const change = DbChange.orThrow({
+        table: "testTable",
+        id: setup.createId(),
+        values: { name: "preserved only on commit" },
+        isInsert: true,
+        isDelete: null,
+      });
+      const request: DbWorkerWriteRequest =
+        origin === "local"
+          ? setupMutateRequest(setup.evoluInstanceId, [
+              { ...change, ownerId: testAppOwner.id },
+            ])
+          : setupApplySyncRequest(
+              await createBroadcastProtocolMessage([
+                {
+                  timestamp: createTimestamp({
+                    millis: Millis.orThrow(600000),
+                  }),
+                  change,
+                },
+              ]),
+            );
+      const before = getSqliteSnapshot(setup);
+      failCommit = true;
+      setup.port.postMessage({
+        type: "Request",
+        attemptId: setup.createId(),
+        request,
+        clock,
+        now: setup.time.now(),
+      });
+      await testWaitForWorkerMessage();
+      await testWaitForWorkerMessage();
+      assertFalse(failCommit);
+      assertEqual(getSqliteSnapshot(setup), before);
+      assertEqual(setup.consoleEntryOrErrors, []);
+      if (origin === "local") {
+        assertEqual(thrown, [injected]);
+        assertEqual(setup.outputs, []);
+      } else {
+        const response = getQueuedSharedWorkerMessage(
+          setup.outputs,
+          "ApplySyncMessage",
+        );
+        assertFalse(response.didWriteMessages);
+        assertEqual(response.clock, clock);
+        assertErr(response.result);
+      }
+    });
+  }
+
+  it("does not reclassify accepted messages as drift quarantine on duplicate delivery", async () => {
+    await using setup = await setupDbWorker();
+    const inputMessage = await createBroadcastProtocolMessage([
+      {
+        timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+        change: DbChange.orThrow({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "accepted", note: "schema quarantine" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      },
+    ]);
+    const request: DbWorkerWriteRequest = setupApplySyncRequest(inputMessage);
+    await postRequest(setup, request);
+    const clock = { ...setup.getClock(), millis: Millis.orThrow(600000) };
+    setup.sqlite.exec(sql`
+      update evolu_config set clock = ${timestampToTimestampBytes(clock)};
+    `);
+    const before = getSqliteSnapshot(setup);
+    const response = getQueuedSharedWorkerMessage(
+      await postRequest(setup, request, setup.createId(), "response", {
+        clock,
+        now: setup.time.now(),
+      }),
+      "ApplySyncMessage",
+    );
+    // Nothing is written for the duplicate, so queries need no refresh. The
+    // clock still adopts the drift candidate, because the message's own
+    // timestamp is within the limit.
+    assertFalse(response.didWriteMessages);
+    assertEqual(
+      snapshotWithoutConfig(getSqliteSnapshot(setup)),
+      snapshotWithoutConfig(before),
+    );
+    assertEqual(setup.getClock(), {
+      ...clock,
+      counter: Counter.orThrow(clock.counter + 1),
+    });
+  });
+});
+
+describe("owner usage", () => {
+  it("updates usage for new messages and skips duplicate-only batches", async () => {
+    let usageWrites = 0;
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        if (
+          query.sql.includes("evolu_usage") &&
+          /^\s*(insert|update|delete)\b/iu.test(query.sql)
+        ) {
+          usageWrites += 1;
+        }
+      },
+    });
+    await using setup = await setupDbWorker({ dbSetup });
+    const createMessage = (millis: number) => ({
+      timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
+      change: DbChange.orThrow({
+        table: "testTable",
+        id: setup.createId(),
+        values: { name: `${millis}` },
+        isInsert: true,
+        isDelete: null,
+      }),
+    });
+    const initial = createMessage(10);
+    const earlier = createMessage(1);
+    const drifted = createMessage(600000);
+    const furtherDrifted = createMessage(900000);
+
+    for (const { messages, writes, first, last } of [
+      { messages: [initial], writes: 1, first: initial, last: initial },
+      { messages: [initial], writes: 0, first: initial, last: initial },
+      {
+        messages: [earlier, initial, drifted],
+        writes: 1,
+        first: earlier,
+        last: drifted,
+      },
+      {
+        messages: [earlier, initial, drifted],
+        writes: 0,
+        first: earlier,
+        last: drifted,
+      },
+      {
+        messages: [furtherDrifted],
+        writes: 1,
+        first: earlier,
+        last: furtherDrifted,
+      },
+      {
+        messages: [furtherDrifted],
+        writes: 0,
+        first: earlier,
+        last: furtherDrifted,
+      },
+    ] as const) {
+      usageWrites = 0;
+      const response = getQueuedSharedWorkerMessage(
+        await postRequest(
+          setup,
+          setupApplySyncRequest(await createBroadcastProtocolMessage(messages)),
+        ),
+        "ApplySyncMessage",
+      );
+      assertOk(response.result, { type: "Broadcast" });
+      assertSame(usageWrites, writes);
+      assertEqual(
+        setup.sqlite.exec(sql`
+          select "firstTimestamp", "lastTimestamp"
+          from evolu_usage
+          where "ownerId" = ${testAppOwnerIdBytes};
+        `).rows,
+        [
+          {
+            firstTimestamp: timestampToTimestampBytes(first.timestamp),
+            lastTimestamp: timestampToTimestampBytes(last.timestamp),
+          },
+        ],
+      );
+    }
+
+    assertEqual(
+      setup.sqlite.exec(sql`select name from testTable order by name;`).rows,
+      [{ name: "1" }, { name: "10" }],
+    );
+    assertEqual(
+      setup.sqlite.exec(sql`
+        select "value", "reason"
+        from evolu_message_quarantine
+        where "column" = 'name'
+        order by "value";
+      `).rows,
+      [
+        { value: "600000", reason: QuarantineReason.TimestampDrift },
+        { value: "900000", reason: QuarantineReason.TimestampDrift },
+      ],
+    );
+  });
+});
+
+describe("clock persistence", () => {
+  const createLocalOnlyMutation = (
+    setup: DbWorkerSetup,
+  ): DbWorkerWriteRequest =>
+    setupMutateRequest(setup.evoluInstanceId, [
+      createMutationChange({
+        table: "_localTable",
+        id: setup.createId(),
+        values: { value: "local" },
+        isInsert: true,
+        isDelete: null,
+      }),
     ]);
 
+  const createQuarantinedBatch = async (
+    setup: DbWorkerSetup,
+  ): Promise<DbWorkerWriteRequest> =>
+    setupApplySyncRequest(
+      await createBroadcastProtocolMessage([
+        {
+          timestamp: createTimestamp({ millis: Millis.orThrow(600000) }),
+          change: DbChange.orThrow({
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: "future" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        },
+      ]),
+    );
+
+  it("skips local-only clock statements and uses one for synced mutations and batches", async () => {
+    let clockStatements = 0;
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        if (query.sql.includes("evolu_config")) clockStatements += 1;
+      },
+    });
+    await using setup = await setupDbWorker({ dbSetup });
+    const context = { clock: setup.getClock(), now: setup.time.now() };
+    const localOnly = createLocalOnlyMutation(setup);
+    const quarantined = await createQuarantinedBatch(setup);
+    clockStatements = 0;
+
+    await postRequest(setup, localOnly, setup.createId(), "response", context);
+    assertSame(clockStatements, 0);
+    assertEqual(setup.getClock(), context.clock);
+    assertEqual(readStoredClock(setup), context.clock);
+
+    clockStatements = 0;
+    await postRequest(
+      setup,
+      quarantined,
+      setup.createId(),
+      "response",
+      context,
+    );
+    assertSame(clockStatements, 1);
+    assertEqual(setup.getClock(), context.clock);
+    assertEqual(readStoredClock(setup), context.clock);
+    assertLength(
+      setup.sqlite.exec(sql`
+        select * from evolu_message_quarantine where "column" = 'name';
+      `).rows,
+      1,
+    );
+
+    // Advancing the clock is one guarded update.
+    clockStatements = 0;
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        createMutationChange({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "synced" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      ]),
+      setup.createId(),
+      "response",
+      context,
+    );
+    assertSame(clockStatements, 1);
+    const advanced = { ...context.clock, counter: Counter.orThrow(1) };
+    assertEqual(setup.getClock(), advanced);
+    assertEqual(readStoredClock(setup), advanced);
+
+    // A stale batch needs only the guarded update; its response can be older
+    // than the stored clock.
+    clockStatements = 0;
+    await postRequest(
+      setup,
+      quarantined,
+      setup.createId(),
+      "response",
+      context,
+    );
+    assertSame(clockStatements, 1);
+    assertEqual(setup.getClock(), context.clock);
+    assertEqual(readStoredClock(setup), advanced);
+
+    // A stale local-only replay reports its captured clock without reading or
+    // changing the newer clock stored by the synced mutation.
+    clockStatements = 0;
+    await postRequest(setup, localOnly, setup.createId(), "response", context);
+    assertSame(clockStatements, 0);
+    assertEqual(setup.getClock(), context.clock);
+    assertEqual(readStoredClock(setup), advanced);
+  });
+
+  it("preserves the stored clock when a stale local-only mutation or fully quarantined batch is replayed", async () => {
+    await using setup = await setupDbWorker();
+    const stale = { clock: setup.getClock(), now: setup.time.now() };
+    const quarantined = await createQuarantinedBatch(setup);
+    const localOnly = createLocalOnlyMutation(setup);
+    await postRequest(setup, quarantined, setup.createId(), "response", stale);
+    await postRequest(setup, localOnly, setup.createId(), "response", stale);
+
+    // A later synced mutation advances the clock.
+    setup.time.advance("1m");
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        createMutationChange({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "fresh" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      ]),
+      setup.createId(),
+      "response",
+      { clock: stale.clock, now: setup.time.now() },
+    );
+    const committed = setup.getClock();
+    assertEqual(committed, {
+      ...stale.clock,
+      millis: setup.time.now(),
+      counter: Counter.orThrow(0),
+    });
+    const snapshot = getSqliteSnapshot(setup);
+
+    // A fully quarantined batch reports its captured clock.
+    await postRequest(setup, quarantined, setup.createId(), "response", stale);
+    assertEqual(setup.getClock(), stale.clock);
+    assertEqual(getSqliteSnapshot(setup), snapshot);
+
+    // A local-only replay reports its captured clock. The SharedWorker keeps
+    // its newer session clock, while SQLite state remains unchanged.
+    await postRequest(setup, localOnly, setup.createId(), "response", stale);
+    assertEqual(setup.getClock(), stale.clock);
+    assertEqual(getSqliteSnapshot(setup), snapshot);
+    assertEqual(readStoredClock(setup), committed);
+    assertEqual(setup.consoleEntryOrErrors, []);
+  });
+});
+
+describe("database version", () => {
+  it("migrates a version 1 database to version 2 once", async () => {
+    await using dbSetup = await setupDb();
+    {
+      await using setup = await setupDbWorker({ dbSetup });
+      await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: "kept" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ]),
+      );
+    }
+    const expected = getSqliteSnapshot(dbSetup);
+    // A version 1 database lacks the quarantine columns and their index.
+    dbSetup.sqlite.exec(sql`
+      drop index evolu_message_quarantine_reason_timestamp;
+    `);
+    for (const column of ["reason", "origin", "quarantinedAt"]) {
+      dbSetup.sqlite.exec(sql`
+        alter table evolu_message_quarantine
+        drop column ${sql.identifier(column)};
+      `);
+    }
+    dbSetup.sqlite.exec(sql`update evolu_version set "dbVersion" = 1;`);
+
+    {
+      await using migrated = await setupDbWorker({ dbSetup });
+      assertEqual(getSqliteSnapshot(migrated), expected);
+      assertEqual(migrated.sqlite.exec(sql`select name from testTable;`).rows, [
+        { name: "kept" },
+      ]);
+      assertEqual(migrated.consoleEntryOrErrors, []);
+    }
+    // A second start finds the current version and changes nothing.
     await using restarted = await setupDbWorker({ dbSetup });
     assertEqual(getSqliteSnapshot(restarted), expected);
-    assertEqual(restarted.sqlite.exec(sql`select name from testTable;`).rows, [
-      { name: "kept" },
-    ]);
     assertEqual(restarted.consoleEntryOrErrors, []);
   });
 
@@ -5084,7 +6283,7 @@ describe("database version", () => {
       await using setup = await setupDbWorker({ dbSetup });
       assertLength(setup.initOutputs, 1);
     }
-    dbSetup.sqlite.exec(sql`update evolu_version set "dbVersion" = 2;`);
+    dbSetup.sqlite.exec(sql`update evolu_version set "dbVersion" = 3;`);
     const before = getSqliteSnapshot(dbSetup);
 
     await using refused = await setupDbWorker({ dbSetup, expectRefused: true });
@@ -5094,8 +6293,8 @@ describe("database version", () => {
         name: refused.workerName,
         error: {
           type: "UnsupportedDbVersionError",
-          storedVersion: PositiveInt.orThrow(2),
-          supportedVersion: PositiveInt.orThrow(1),
+          storedVersion: PositiveInt.orThrow(3),
+          supportedVersion: PositiveInt.orThrow(2),
         },
       },
     ]);

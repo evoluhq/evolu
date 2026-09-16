@@ -13,16 +13,20 @@ import {
   constVoid,
   exhaustiveCheck,
 } from "../../../../packages/common/src/Function.ts";
-import type { EvoluError } from "../../../../packages/common/src/local-first/Error.ts";
 import type { DbWorkerInit } from "../../../../packages/common/src/local-first/Db.ts";
 import { startDbWorker } from "../../../../packages/common/src/local-first/Db.ts";
 import {
   createEvolu,
   createEvoluDeps,
+  type EvoluError,
   testAppName,
 } from "../../../../packages/common/src/local-first/Evolu.ts";
 import { testAppOwner } from "../../../../packages/common/src/local-first/Owner.ts";
-import { createQueryBuilder } from "../../../../packages/common/src/local-first/Schema.ts";
+import {
+  createQueryBuilder,
+  QuarantineOrigin,
+  QuarantineReason,
+} from "../../../../packages/common/src/local-first/Schema.ts";
 import {
   consoleEntryOrErrorBroadcastChannelName,
   initSharedWorker,
@@ -47,7 +51,14 @@ import {
 } from "../../../../packages/common/src/Sqlite.ts";
 import { testCreateRun } from "../../../../packages/common/src/Task.ts";
 import {
+  Millis,
+  millisToDateIso,
+  testCreateTime,
+  type TestTime,
+} from "../../../../packages/common/src/Time.ts";
+import {
   createIdFromString,
+  type DateIso,
   id,
   NonEmptyTrimmedString100,
   nullOr,
@@ -90,8 +101,12 @@ const todosWithIsCompletedQuery = createQuery((db) =>
   db.selectFrom("todo").select(["id", "title", "isCompleted"]),
 );
 
+const todoTitlesQuery = createQuery((db) =>
+  db.selectFrom("todo").select(["title"]).orderBy("title"),
+);
+
 describe("Evolu integration", () => {
-  const setupRunWithEvoluDeps = async () => {
+  const setupRunWithEvoluDeps = async ({ time }: { time?: TestTime } = {}) => {
     await using disposer = new AsyncDisposableStack();
 
     const consoleStoreOutput = createConsoleStoreOutput();
@@ -105,6 +120,7 @@ describe("Evolu integration", () => {
         createMessagePort,
         createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
         lockManager: testCreateLockManager(),
+        ...(time && { time }),
       }),
     );
 
@@ -340,6 +356,10 @@ describe("Evolu integration", () => {
             name: "evolu_timestamp_index",
             sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
           },
+          {
+            name: "evolu_message_quarantine_reason_timestamp",
+            sql: 'create index evolu_message_quarantine_reason_timestamp on evolu_message_quarantine (\n        "reason",\n        "timestamp"\n      )',
+          },
         ],
         tables: {
           evolu_config: new Set(["clock"]),
@@ -358,6 +378,9 @@ describe("Evolu integration", () => {
             "id",
             "column",
             "value",
+            "reason",
+            "origin",
+            "quarantinedAt",
           ]),
           evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
           evolu_usage: new Set([
@@ -379,7 +402,7 @@ describe("Evolu integration", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
         {
           name: "evolu_config",
           rows: [
@@ -591,6 +614,102 @@ describe("Evolu integration", () => {
     unsubscribe();
   });
 
+  it("stores a drifted mutation in quarantine that a subscribed query shows before onComplete", async () => {
+    // System time that can be moved back, as when a clock set to the future is
+    // corrected. The SharedWorker captures it for every write.
+    const baseTime = testCreateTime();
+    let shift = 0;
+    function now(): Millis;
+    function now(type: "DateIso"): DateIso;
+    function now(type?: "DateIso"): Millis | DateIso {
+      const millis = Millis.orThrow(baseTime.now() + shift);
+      return type === "DateIso" ? millisToDateIso(millis) : millis;
+    }
+    await using setup = await setupRunWithEvoluDeps({
+      time: { ...baseTime, now },
+    });
+    const { createIntegrationEvolu, run, sqlite } = setup;
+    const evolu = await run.ok(createIntegrationEvolu);
+
+    const quarantineQuery = createQuery((db) =>
+      db
+        .selectFrom("evolu_message_quarantine")
+        .select(["column", "value", "reason", "origin", "quarantinedAt"])
+        .orderBy("column"),
+    );
+    assertEqual(await evolu.loadQuery(quarantineQuery), []);
+    const unsubscribe = evolu.subscribeQuery(quarantineQuery)(constVoid);
+
+    // A write while system time is an hour ahead moves the logical clock there.
+    shift = 60 * 60 * 1000;
+    const ahead = Promise.withResolvers<void>();
+    const { id: aheadId } = evolu.insert(
+      "todo",
+      { title: NonEmptyTrimmedString100.orThrow("Ahead") },
+      { onComplete: ahead.resolve },
+    );
+    await ahead.promise;
+
+    // After system time is corrected, the next write is quarantined. The
+    // subscribed quarantine query already shows it when onComplete runs.
+    shift = 0;
+    let rowsInOnComplete: ReadonlyArray<typeof quarantineQuery.Row> | undefined;
+    const quarantined = Promise.withResolvers<void>();
+    evolu.insert(
+      "todo",
+      { title: NonEmptyTrimmedString100.orThrow("Quarantined") },
+      {
+        onComplete: () => {
+          rowsInOnComplete = evolu.getQueryRows(quarantineQuery);
+          quarantined.resolve();
+        },
+      },
+    );
+    await quarantined.promise;
+    unsubscribe();
+    assertNotUndefined(rowsInOnComplete);
+    const quarantinedRow = {
+      reason: QuarantineReason.TimestampDrift,
+      origin: QuarantineOrigin.LocalMutation,
+      quarantinedAt: Millis.orThrow(0),
+    };
+    assertEqual(rowsInOnComplete, [
+      {
+        column: "createdAt",
+        value: "1970-01-01T01:00:00.000Z",
+        ...quarantinedRow,
+      },
+      { column: "title", value: "Quarantined", ...quarantinedRow },
+    ]);
+
+    // The quarantined row is invisible to app queries and stays in the table.
+    assertEqual(await evolu.loadQuery(todoByCreatedAtQuery), [
+      { id: aheadId, title: "Ahead" },
+    ]);
+    assertEqual(
+      getSqliteSnapshot({ sqlite }).tables.find(
+        (table) => table.name === "evolu_message_quarantine",
+      )?.rows.length,
+      2,
+    );
+
+    // Once system time catches up with the logical clock, new mutations are
+    // applied again. The quarantined row waits for the next startup.
+    shift = 60 * 60 * 1000;
+    const after = Promise.withResolvers<void>();
+    evolu.insert(
+      "todo",
+      { title: NonEmptyTrimmedString100.orThrow("After") },
+      { onComplete: after.resolve },
+    );
+    await after.promise;
+    assertLength(await evolu.loadQuery(quarantineQuery), 2);
+    assertEqual(await evolu.loadQuery(todoTitlesQuery), [
+      { title: "After" },
+      { title: "Ahead" },
+    ]);
+  });
+
   it("memoryOnly opens SQLite in memory mode", async () => {
     const consoleStoreOutput = createConsoleStoreOutput();
     const sqliteDriverOptions: Array<SqliteDriverOptions | undefined> = [];
@@ -673,7 +792,7 @@ describe("Evolu integration", () => {
     sqlite.exec(sql`
       create table evolu_version ("dbVersion" integer not null) strict;
     `);
-    sqlite.exec(sql`insert into evolu_version ("dbVersion") values (2);`);
+    sqlite.exec(sql`insert into evolu_version ("dbVersion") values (3);`);
     const before = getSqliteSnapshot({ sqlite });
 
     const reported = setup.waitForTabError();
@@ -703,8 +822,8 @@ describe("Evolu integration", () => {
 
     const error = {
       type: "UnsupportedDbVersionError",
-      storedVersion: PositiveInt.orThrow(2),
-      supportedVersion: PositiveInt.orThrow(1),
+      storedVersion: PositiveInt.orThrow(3),
+      supportedVersion: PositiveInt.orThrow(2),
     };
     await reported;
     await testWaitForWorkerMessage();
@@ -745,11 +864,11 @@ describe("Evolu integration", () => {
     sqlite.exec(sql`
       create table evolu_version ("dbVersion" integer not null) strict;
     `);
-    sqlite.exec(sql`insert into evolu_version ("dbVersion") values (2);`);
+    sqlite.exec(sql`insert into evolu_version ("dbVersion") values (3);`);
     const error = {
       type: "UnsupportedDbVersionError",
-      storedVersion: PositiveInt.orThrow(2),
-      supportedVersion: PositiveInt.orThrow(1),
+      storedVersion: PositiveInt.orThrow(3),
+      supportedVersion: PositiveInt.orThrow(2),
     };
 
     const firstReported = setup.waitForTabError();

@@ -1,5 +1,4 @@
 export * from "./Db.ts";
-export * from "./Error.ts";
 export * from "./Evolu.ts";
 export * from "./Owner.ts";
 export * from "./Protocol.ts";

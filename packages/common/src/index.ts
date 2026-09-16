@@ -52,13 +52,13 @@ export * from "./Worker.ts";
 
 // Local-first essentials.
 export type { UnsupportedDbVersionError } from "./local-first/Db.ts";
-export type { EvoluError } from "./local-first/Error.ts";
 export { AppName, createEvolu, testAppName } from "./local-first/Evolu.ts";
 export type {
   AppNameError,
   Evolu,
   EvoluConfig,
   EvoluDeps,
+  EvoluError,
   UnuseOwner,
 } from "./local-first/Evolu.ts";
 export * from "./local-first/Owner.ts";
@@ -77,6 +77,8 @@ export {
 } from "./local-first/Query.ts";
 export {
   createQueryBuilder,
+  QuarantineOrigin,
+  QuarantineReason,
   testEvoluSchema,
   testLocalOnlyEvoluSchema,
   TestProjectId,

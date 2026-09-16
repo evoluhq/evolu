@@ -38,6 +38,7 @@ import {
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
 import {
+  assert,
   assertNonEmptyReadonlyArray,
   assertNonNullable,
   assertNotUndefined,
@@ -69,17 +70,22 @@ import {
   SqliteValue,
 } from "../Sqlite.ts";
 import { callback, type Run, type Task } from "../Task.ts";
-import { Millis, millisToDateIso, type TimeDep } from "../Time.ts";
+import {
+  millisToDateIso,
+  saturateMillis,
+  type Millis,
+  type TimeDep,
+} from "../Time.ts";
 import {
   assertType,
   type FiniteNumber,
-  type DateIso,
   Id,
   IdBytes,
   idBytesToId,
   idToIdBytes,
+  NonNaNNumber,
   onePositiveInt,
-  type PositiveInt,
+  PositiveInt,
   type ExtractTyped,
   type Name,
   type Typed,
@@ -108,6 +114,8 @@ import type { MutationChange, SqliteSchemaDep } from "./Schema.ts";
 import {
   ensureSqliteSchema,
   getEvoluSqliteSchema,
+  QuarantineOrigin,
+  QuarantineReason,
   systemColumns,
 } from "./Schema.ts";
 import type {
@@ -130,14 +138,13 @@ import {
   type CrdtMessage,
   type Storage,
 } from "./Storage.ts";
-import type {
-  Timestamp,
-  TimestampDriftError,
-  TimestampTimeOutOfRangeError,
-} from "./Timestamp.ts";
+import type { Timestamp, TimestampTimeOutOfRangeError } from "./Timestamp.ts";
 import {
   createInitialTimestamp,
   defaultTimestampMaxDrift,
+  isTimestampBeyondMaxDrift,
+  maxCounter,
+  maxNodeId,
   receiveTimestamp,
   sendTimestamp,
   TimestampBytes,
@@ -170,7 +177,7 @@ export type DbWorkerDeps = WorkerDeps &
   CreateSqliteDriverDep;
 
 /** The database version this code creates and supports; see the module doc. */
-const dbVersion: PositiveInt = onePositiveInt;
+const dbVersion = PositiveInt.orThrow(2);
 
 /**
  * The stored database version is newer than this code supports. Newer code
@@ -265,6 +272,11 @@ export const startDbWorker =
           initialClock = timestampBytesToTimestamp(firstInArray(rows).clock);
         }
         ensureSqliteSchema(dbDeps)(initMessage.sqliteSchema, currentSchema);
+        const released = releaseDriftQuarantine(dbDeps)(initialClock);
+        if (released) {
+          initialClock = released;
+          saveClock(dbDeps)(released);
+        }
         tryApplyQuarantinedMessages(dbDeps);
         return ok(initialClock);
       },
@@ -323,26 +335,17 @@ export const startDbWorker =
           };
 
           if ("clock" in input) {
-            const { clock: inputClock, now: capturedNow } = input;
-            const context: ClockDep & TimeDep = (() => {
-              let committedClock = inputClock;
-              function now(): Millis;
-              function now(type: "DateIso"): DateIso;
-              function now(type?: "DateIso"): Millis | DateIso {
-                return type === "DateIso"
-                  ? millisToDateIso(capturedNow)
-                  : capturedNow;
-              }
-              return {
-                time: { ...deps.time, now },
-                clock: {
-                  get: () => committedClock,
-                  set: (timestamp) => {
-                    committedClock = timestamp;
-                  },
+            const { clock: inputClock, now } = input;
+            let committedClock = inputClock;
+            const context: WriteContext = {
+              now,
+              clock: {
+                get: () => committedClock,
+                set: (timestamp) => {
+                  committedClock = timestamp;
                 },
-              };
-            })();
+              },
+            };
             const request = input.request;
             if (request.type === "ForSharedWorker") {
               const { owner, inputMessage } = request.message;
@@ -366,9 +369,10 @@ export const startDbWorker =
                 return ok();
               });
             } else {
-              const result = handleMutation({ ...dbDeps, ...context })(
-                request.message,
-              );
+              const result = handleMutation({
+                ...dbDeps,
+                clock: context.clock,
+              })(request.message, now);
               if (!result.ok) {
                 consoleEntryOrErrorBroadcastChannel.postMessage({
                   type: "Error",
@@ -456,19 +460,44 @@ interface ClockDep {
   readonly clock: Clock;
 }
 
+interface WriteContext extends ClockDep {
+  readonly now: Millis;
+}
+
+/**
+ * Persists `timestamp` only when it is greater than the stored clock.
+ *
+ * Requests report their computed clock, which can be older than the stored
+ * clock when replayed after startup release. The SQL guard keeps the stored
+ * clock from moving backwards; the SharedWorker adopts response clocks only
+ * when newer than its session clock.
+ *
+ * Timestamp bytes sort like their timestamps and SQLite compares blobs byte by
+ * byte, so persistence takes one statement even when the clock does not
+ * advance.
+ *
+ * Local-only mutations and sync requests that do not invoke `writeMessages`
+ * skip this. Successfully processed batches in `writeMessages` call this even
+ * when every message is duplicated or quarantined. Duplicate receipts within
+ * the drift limit can advance the clock without storing new messages.
+ */
 const saveClock =
   (deps: SqliteDep) =>
   (timestamp: Timestamp): void => {
+    const bytes = timestampToTimestampBytes(timestamp);
     deps.sqlite.exec(sql.prepared`
-      update evolu_config set "clock" = ${timestampToTimestampBytes(timestamp)};
+      update evolu_config
+      set "clock" = ${bytes}
+      where "clock" < ${bytes};
     `);
   };
 
 /**
  * Checks the stored database version inside the startup transaction, before any
  * other read. The legacy layout, one `protocolVersion` row that was always 1,
- * is converted to database version 1 first. Migrations arrive with version 2;
- * until then the stored version must equal `dbVersion`.
+ * is converted to database version 1 first. An older database is migrated one
+ * version at a time, and the record is updated in the same transaction, so a
+ * failed migration leaves both data and version unchanged.
  */
 const ensureDbVersion =
   ({ sqlite }: SqliteDep) =>
@@ -493,8 +522,47 @@ const ensureDbVersion =
         supportedVersion: dbVersion,
       });
     }
+    if (storedVersion < dbVersion) {
+      if (storedVersion < 2) migrateToVersion2({ sqlite });
+      sqlite.exec(sql`update evolu_version set "dbVersion" = ${dbVersion};`);
+    }
     return ok();
   };
+
+/**
+ * Version 2 records why a message is quarantined, whether this database stamped
+ * or received it, and when, and adds the index that startup release reads. Rows
+ * from version 1 get the defaults: schema quarantine of a received message with
+ * an unknown quarantine time. See {@link QuarantineReason}.
+ */
+const migrateToVersion2 = ({ sqlite }: SqliteDep): void => {
+  for (const query of [
+    sql`
+      alter table evolu_message_quarantine
+      add column "reason" integer not null default ${sql.raw(
+        String(QuarantineReason.Schema),
+      )};
+    `,
+    sql`
+      alter table evolu_message_quarantine
+      add column "origin" integer not null default ${sql.raw(
+        String(QuarantineOrigin.ReceivedMessage),
+      )};
+    `,
+    sql`
+      alter table evolu_message_quarantine
+      add column "quarantinedAt" integer;
+    `,
+    sql`
+      create index evolu_message_quarantine_reason_timestamp on evolu_message_quarantine (
+        "reason",
+        "timestamp"
+      );
+    `,
+  ]) {
+    sqlite.exec(query);
+  }
+};
 
 const initializeDb =
   ({ sqlite }: SqliteDep) =>
@@ -563,7 +631,7 @@ const initializeDb =
       `,
 
       /**
-       * Stores messages with unknown schema in a quarantine table.
+       * Stores unapplied messages with their quarantine reason.
        *
        * When a device receives sync messages containing tables or columns that
        * don't exist in its current schema (e.g., from a newer app version),
@@ -574,6 +642,16 @@ const initializeDb =
        * 2. Messages are still propagated to other devices that may understand them
        * 3. Partial messages work - known columns go to app tables, unknown to
        *    quarantine
+       *
+       * Clock-drift quarantine preserves every column of the affected message.
+       * It is released at startup once system time comes within the drift limit
+       * of the message's timestamp; see the Timestamp module.
+       *
+       * Each row records why it was not applied (`reason`), whether this
+       * database stamped the message for a local mutation or received it
+       * (`origin`), and the captured system time of the request that
+       * quarantined it (`quarantinedAt`). Quarantine is not reported as an
+       * error; applications watch this table through queries.
        *
        * The `union all` query in `readDbChange` combines `evolu_history` and
        * this table, ensuring all data (known and unknown) is included when
@@ -587,6 +665,13 @@ const initializeDb =
           "id" blob not null,
           "column" text not null,
           "value" any,
+          "reason" integer not null default ${sql.raw(
+            String(QuarantineReason.Schema),
+          )},
+          "origin" integer not null default ${sql.raw(
+            String(QuarantineOrigin.ReceivedMessage),
+          )},
+          "quarantinedAt" integer,
           primary key ("ownerId", "timestamp", "table", "id", "column")
         )
         strict;
@@ -596,26 +681,35 @@ const initializeDb =
     }
 
     createBaseSqliteStorageTables({ sqlite });
+
+    // Startup release reads drift quarantine by reason and timestamp. Created
+    // last so fresh and migrated databases list their indexes in one order.
+    sqlite.exec(sql`
+      create index evolu_message_quarantine_reason_timestamp on evolu_message_quarantine (
+        "reason",
+        "timestamp"
+      );
+    `);
   };
 
 const tryApplyQuarantinedMessages = (
   deps: SqliteDep & SqliteSchemaDep,
 ): void => {
-  const rows = deps.sqlite.exec<{
-    readonly ownerId: OwnerIdBytes;
-    readonly timestamp: TimestampBytes;
-    readonly table: string;
-    readonly id: IdBytes;
-    readonly column: string;
-    readonly value: SqliteValue;
+  const { rows } = deps.sqlite.exec<{
+    ownerId: OwnerIdBytes;
+    timestamp: TimestampBytes;
+    table: string;
+    id: IdBytes;
+    column: string;
+    value: SqliteValue;
   }>(sql`
     select "ownerId", "timestamp", "table", "id", "column", "value"
-    from evolu_message_quarantine;
+    from evolu_message_quarantine
+    where "reason" = ${QuarantineReason.Schema};
   `);
 
-  for (const row of rows.rows) {
+  for (const row of rows) {
     if (!validateColumnValue(deps)(row.table, row.column, row.value)) continue;
-
     applyColumnChange(deps)(
       row.ownerId,
       ownerIdBytesToOwnerId(row.ownerId),
@@ -627,7 +721,7 @@ const tryApplyQuarantinedMessages = (
       row.timestamp,
     );
 
-    deps.sqlite.exec(sql`
+    deps.sqlite.exec(sql.prepared`
       delete from evolu_message_quarantine
       where
         "ownerId" = ${row.ownerId}
@@ -638,6 +732,70 @@ const tryApplyQuarantinedMessages = (
     `);
   }
 };
+
+/**
+ * Moves drift quarantine within the drift limit to schema quarantine for
+ * application. Advances `clock` once per distinct timestamp in timestamp order,
+ * using one captured system time, so later local changes sort after released
+ * messages. Only timestamps within the drift limit are loaded. A range error
+ * releases nothing. Returns the advanced clock, or `null` when nothing was
+ * released. Runs inside the startup transaction, before saving the clock and
+ * applying schema quarantine, so the SharedWorker learns the clock only after
+ * release commits.
+ */
+const releaseDriftQuarantine =
+  (deps: SqliteDep & TimeDep & TimestampConfigDep) =>
+  (clock: Timestamp): Timestamp | null => {
+    const now = deps.time.now();
+    // Milliseconds are integers; floor the allowance before adding it so a
+    // fractional allowance cannot round up near the timestamp range ceiling.
+    const maxReleaseMillis = now + Math.floor(deps.timestampConfig.maxDrift);
+    assertType(NonNaNNumber, maxReleaseMillis);
+    const bound = timestampToTimestampBytes({
+      millis: saturateMillis(maxReleaseMillis),
+      counter: maxCounter,
+      nodeId: maxNodeId,
+    });
+    const { rows } = deps.sqlite.exec<{ timestamp: TimestampBytes }>(sql`
+      select distinct "timestamp"
+      from evolu_message_quarantine
+      where
+        "reason" = ${QuarantineReason.TimestampDrift}
+        and "timestamp" <= ${bound}
+      order by "timestamp";
+    `);
+    if (rows.length === 0) return null;
+
+    const receive = receiveTimestamp(deps);
+    let nextClock = clock;
+    for (const { timestamp } of rows) {
+      const remote = timestampBytesToTimestamp(timestamp);
+      const next = receive(nextClock, remote, now);
+      if (next.ok) {
+        nextClock = next.value;
+      } else if (next.error.type === "TimestampDriftError") {
+        assert(
+          next.error.cause === "local",
+          "The query bound excludes remote drift at the captured time.",
+        );
+        nextClock = next.error.timestamp;
+      } else {
+        // Every selected row stays quarantined on a range error.
+        return null;
+      }
+    }
+
+    // Drift checks passed; mark these rows for the next schema pass.
+    deps.sqlite.exec(sql`
+      update evolu_message_quarantine
+      set "reason" = ${QuarantineReason.Schema}
+      where
+        "reason" = ${QuarantineReason.TimestampDrift}
+        and "timestamp" <= ${bound};
+    `);
+
+    return nextClock;
+  };
 
 const validateColumnValue =
   (deps: SqliteSchemaDep) =>
@@ -711,7 +869,7 @@ const applyColumnChange =
 interface ClientStorage extends Storage, BaseSqliteStorage {
   readonly setRequestContext: (
     encryptionKey: EncryptionKey,
-    writeContext?: ClockDep & TimeDep,
+    writeContext?: WriteContext,
   ) => void;
   readonly didWriteMessages: () => boolean;
 }
@@ -732,13 +890,12 @@ const createClientStorage =
         | ProtocolInvalidDataError
         | ProtocolTimestampMismatchError
         | DecryptWithXChaCha20Poly1305Error
-        | TimestampDriftError
         | TimestampTimeOutOfRangeError,
     ) => void;
   }): ClientStorage => {
     let encryptionKey: EncryptionKey | null = null;
     let didWriteMessages = false;
-    let writeContext: (ClockDep & TimeDep) | undefined;
+    let writeContext: WriteContext | undefined;
 
     const getEncryptionKey = (): EncryptionKey => {
       assertNonNullable(
@@ -788,29 +945,40 @@ const createClientStorage =
         }
 
         assertNonNullable(writeContext);
-        const { clock, time } = writeContext;
+        const { clock, now } = writeContext;
         let clockTimestamp = clock.get();
+        const receive = receiveTimestamp(deps);
 
+        // The clock is computed over every message, duplicates included, so a
+        // retry with the same inputs reports the same clock. Writes for
+        // timestamps already in the owner's set are skipped by applyMessages.
         for (const message of messages) {
-          const nextTimestamp = receiveTimestamp({ ...deps, time })(
-            clockTimestamp,
-            message.timestamp,
-          );
+          const nextTimestamp = receive(clockTimestamp, message.timestamp, now);
           if (!nextTimestamp.ok) {
-            onError(nextTimestamp.error);
-            return ok();
-          }
-          clockTimestamp = nextTimestamp.value;
+            if (nextTimestamp.error.type !== "TimestampDriftError") {
+              onError(nextTimestamp.error);
+              return ok();
+            }
+            if (nextTimestamp.error.cause === "remote") continue;
+            clockTimestamp = nextTimestamp.error.timestamp;
+          } else clockTimestamp = nextTimestamp.value;
         }
 
         assertNonEmptyReadonlyArray(messages);
 
+        let wroteNewMessages = false;
         deps.sqlite.transaction(() => {
-          applyMessages(deps)(ownerIdBytesToOwnerId(ownerIdBytes), messages);
+          wroteNewMessages = applyMessages(deps)(
+            ownerIdBytesToOwnerId(ownerIdBytes),
+            messages,
+            QuarantineOrigin.ReceivedMessage,
+            now,
+          );
           saveClock(deps)(clockTimestamp);
         });
         clock.set(clockTimestamp);
-        didWriteMessages = true;
+        // A batch of duplicates changes no table, so queries need no refresh.
+        if (wroteNewMessages) didWriteMessages = true;
         return ok();
       },
 
@@ -875,14 +1043,13 @@ const handleMutation =
   (
     deps: BaseSqliteStorageDep &
       ClockDep &
-      SqliteSchemaDep &
-      RandomBytesDep &
       SqliteDep &
-      TimeDep &
+      SqliteSchemaDep &
       TimestampConfigDep,
   ) =>
   (
     message: ExtractTyped<EvoluInput, "Mutate">,
+    now: Millis,
   ): Result<
     {
       readonly type: "Mutate";
@@ -893,24 +1060,26 @@ const handleMutation =
       >;
       readonly rowsByQuery: RowsByQueryMap;
     },
-    TimestampDriftError | TimestampTimeOutOfRangeError
+    TimestampTimeOutOfRangeError
   > =>
     deps.sqlite.transaction(() => {
       const messagesByOwnerId = new Map<OwnerId, NonEmptyArray<CrdtMessage>>();
       let clockTimestamp = deps.clock.get();
-      let clockChanged = false;
 
       for (const change of message.changes) {
         if (change.table.startsWith("_")) {
-          applyLocalOnlyChange(deps)(change);
+          applyLocalOnlyChange(deps)(change, now);
           continue;
         }
 
-        const nextTimestamp = sendTimestamp(deps)(clockTimestamp);
-        if (!nextTimestamp.ok) return nextTimestamp;
-
-        clockTimestamp = nextTimestamp.value;
-        clockChanged = true;
+        // A drifted change still receives the next timestamp; applyMessages
+        // stores it in quarantine instead of its table.
+        const nextTimestamp = sendTimestamp(deps)(clockTimestamp, now);
+        if (!nextTimestamp.ok) {
+          if (nextTimestamp.error.type !== "TimestampDriftError")
+            return err(nextTimestamp.error);
+          clockTimestamp = nextTimestamp.error.timestamp;
+        } else clockTimestamp = nextTimestamp.value;
 
         const { ownerId, ...dbChange } = change;
         const message: CrdtMessage = {
@@ -924,10 +1093,15 @@ const handleMutation =
       }
 
       for (const [ownerId, messages] of messagesByOwnerId) {
-        applyMessages(deps)(ownerId, messages);
+        applyMessages(deps)(
+          ownerId,
+          messages,
+          QuarantineOrigin.LocalMutation,
+          now,
+        );
       }
 
-      if (clockChanged) saveClock(deps)(clockTimestamp);
+      if (messagesByOwnerId.size > 0) saveClock(deps)(clockTimestamp);
 
       return ok({
         type: "Mutate",
@@ -938,8 +1112,8 @@ const handleMutation =
     });
 
 const applyLocalOnlyChange =
-  (deps: SqliteDep & TimeDep) =>
-  (change: MutationChange): void => {
+  (deps: SqliteDep) =>
+  (change: MutationChange, now: Millis): void => {
     if (change.isDelete) {
       deps.sqlite.exec(sql`
         delete from ${sql.identifier(change.table)}
@@ -947,7 +1121,7 @@ const applyLocalOnlyChange =
       `);
     } else {
       const ownerId = change.ownerId;
-      const columns = dbChangeToColumns(change, deps.time.now());
+      const columns = dbChangeToColumns(change, now);
 
       for (const [column, value] of columns) {
         assertNotUndefined(value);
@@ -962,10 +1136,28 @@ const applyLocalOnlyChange =
     }
   };
 
+/**
+ * Stores messages for an owner and applies them to their tables. Drifted
+ * messages and columns the schema does not define go to quarantine instead.
+ * Uses the request's captured time to classify drift, matching timestamp
+ * generation. Returns whether any message was new; the rest were stored
+ * before.
+ */
 const applyMessages =
-  (deps: BaseSqliteStorageDep & SqliteSchemaDep & SqliteDep) =>
-  (ownerId: OwnerId, messages: NonEmptyReadonlyArray<CrdtMessage>): void => {
+  (
+    deps: BaseSqliteStorageDep &
+      SqliteDep &
+      SqliteSchemaDep &
+      TimestampConfigDep,
+  ) =>
+  (
+    ownerId: OwnerId,
+    messages: NonEmptyReadonlyArray<CrdtMessage>,
+    origin: QuarantineOrigin,
+    now: Millis,
+  ): boolean => {
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
+    let wroteNewMessages = false;
 
     const usage = readOwnerUsageOrDefault(deps)(
       ownerIdBytes,
@@ -975,13 +1167,36 @@ const applyMessages =
     let { firstTimestamp, lastTimestamp } = usage;
 
     for (const { timestamp, change } of messages) {
+      const timestampBytes = timestampToTimestampBytes(timestamp);
+
+      let strategy;
+      [strategy, firstTimestamp, lastTimestamp] = getTimestampInsertStrategy(
+        timestampBytes,
+        firstTimestamp,
+        lastTimestamp,
+      );
+
+      // A timestamp already in the set was applied or quarantined before.
+      // Skipping it preserves that decision and makes duplicate delivery and
+      // retries idempotent without a separate lookup.
+      const isNew = deps.baseSqliteStorage.insertTimestamp(
+        ownerIdBytes,
+        timestampBytes,
+        strategy,
+      );
+      if (!isNew) continue;
+      wroteNewMessages = true;
+
+      const hasDrift = isTimestampBeyondMaxDrift(deps)(timestamp.millis, now);
       const columns = dbChangeToColumns(change, timestamp.millis);
       const idBytes = idToIdBytes(change.id);
-      const timestampBytes = timestampToTimestampBytes(timestamp);
 
       for (const [column, value] of columns) {
         assertNotUndefined(value);
-        if (validateColumnValue(deps)(change.table, column, value)) {
+        if (
+          !hasDrift &&
+          validateColumnValue(deps)(change.table, column, value)
+        ) {
           applyColumnChange(deps)(
             ownerIdBytes,
             ownerId,
@@ -995,7 +1210,17 @@ const applyMessages =
         } else {
           deps.sqlite.exec(sql.prepared`
             insert into evolu_message_quarantine
-              ("ownerId", "timestamp", "table", "id", "column", "value")
+              (
+                "ownerId",
+                "timestamp",
+                "table",
+                "id",
+                "column",
+                "value",
+                "reason",
+                "origin",
+                "quarantinedAt"
+              )
             values
               (
                 ${ownerIdBytes},
@@ -1003,38 +1228,34 @@ const applyMessages =
                 ${change.table},
                 ${idBytes},
                 ${column},
-                ${value}
+                ${value},
+                ${hasDrift
+                  ? QuarantineReason.TimestampDrift
+                  : QuarantineReason.Schema},
+                ${origin},
+                ${now}
               )
             on conflict do nothing;
           `);
         }
       }
+    }
 
-      let strategy;
-      [strategy, firstTimestamp, lastTimestamp] = getTimestampInsertStrategy(
-        timestampBytes,
+    if (wroteNewMessages) {
+      /**
+       * TODO: Implement proper storedBytes tracking for client using received
+       * and sent encrypted message sizes.
+       */
+      updateOwnerUsage(deps)(
+        ownerIdBytes,
+        // Placeholder until proper tracking implemented
+        onePositiveInt,
         firstTimestamp,
         lastTimestamp,
       );
-
-      deps.baseSqliteStorage.insertTimestamp(
-        ownerIdBytes,
-        timestampBytes,
-        strategy,
-      );
     }
 
-    /**
-     * TODO: Implement proper storedBytes tracking for client using received and
-     * sent encrypted message sizes.
-     */
-    updateOwnerUsage(deps)(
-      ownerIdBytes,
-      // Placeholder until proper tracking implemented
-      onePositiveInt,
-      firstTimestamp,
-      lastTimestamp,
-    );
+    return wroteNewMessages;
   };
 
 const dbChangeToColumns = (change: DbChange, now: Millis) => {
