@@ -87,7 +87,6 @@ import type {
   PositiveIntOutput,
   TrimmedStringOutput,
 } from "./fixtures/constraints-all.mts";
-import type { Output as CommonBarrelOutput } from "./fixtures/common-barrel-all.mts";
 import type {
   ArrayElementsError,
   ArrayError,
@@ -702,11 +701,6 @@ type ExpectedUnionErrors = UnionError<
   TypeOfError<"String"> | ExpectedUnionMemberErrors,
   ExpectedCorrelatedUnionMemberErrors
 >;
-
-// The common source barrel preserves the selected Type output.
-{
-  assertType<CommonBarrelOutput, string>();
-}
 
 // The depth-32 fixture preserves its semantics.
 {

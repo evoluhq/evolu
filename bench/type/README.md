@@ -7,11 +7,9 @@ work regresses. The shared [Checks workflow](../../.github/workflows/checks.yaml
 runs the full suite in a separate job for pull requests, merge queues, and
 releases. CI compares baselines without updating them.
 
-`pnpm verify` runs the complete matrix with `--update-barrel`. After successful
-compilation and checks, it updates only `common-barrel-all`, accepting its metric
-changes so library growth appears in the commit diff. Other fixtures remain
-strict and their baselines are preserved. Review and commit the barrel change.
-This option cannot be combined with filters or baseline update modes.
+`pnpm verify` runs the complete matrix and compares the committed baselines,
+just like CI. It does not update them. Baseline updates require an explicit
+update mode and should be reviewed and committed before pushing.
 
 ## Running
 
@@ -104,8 +102,6 @@ positions, plus twenty-four standalone workloads:
   `from.parent` boundaries.
 - `literal-all` forces string and number Literal Type outputs and errors together
   with Array Type composition.
-- `common-barrel-all` imports a small Type through the complete common source
-  barrel, exposing the ambient compiler cost paid by source-barrel consumers.
 - `config-env-all` forces the input, output, canonical encoding, errors, and
   operations of `env` with an unprefixed port and namespaced byte-quota field, including
   its object-key and identifier codecs.
@@ -208,10 +204,9 @@ Development should extend the benchmark together with the Type API:
    shape are stable. Use stress fixtures to find compiler limits only when a
    scaling curve or real API composition indicates that the limit matters.
 
-`common-barrel-all` measures the workspace source entrypoint. A published-package
-consumer benchmark remains separate because it must first build and resolve
-fresh generated declarations through `@evolu/common`, then compare them against
-its own declaration baseline.
+A published-package consumer benchmark remains separate because it must first
+build and resolve fresh generated declarations through `@evolu/common`, then
+compare them against its own declaration baseline.
 
 `test/bundle/Declarations.test.ts` also checks generated literal declarations.
 It compiles a package consumer and limits declaration size without counting
