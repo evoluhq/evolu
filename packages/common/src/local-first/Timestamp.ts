@@ -9,10 +9,14 @@
  * changes to synced tables and accepting incoming messages, so later writes
  * sort after earlier local writes and accepted messages.
  *
- * A device whose system clock is ahead can produce future timestamps. Those
- * timestamps can override edits made later in real time on other devices.
- * Accepting them also advances the receiving device's logical clock, causing
- * its subsequent writes to carry future timestamps.
+ * A device whose system clock is ahead produces future timestamps. They can
+ * override edits made later in real time on devices that have not yet accepted
+ * them. Accepting one advances the receiver's logical clock, so its later
+ * writes sort after the accepted message and carry future timestamps too, even
+ * before system time catches up. That propagation preserves ordering, and it
+ * does not compound: each device checks an incoming timestamp against its own
+ * system time. Counter rollover or a backwards system-clock adjustment can
+ * still put such a write in quarantine.
  *
  * ### Clock drift
  *
@@ -24,8 +28,9 @@
  * here:
  *
  * - An incoming message has a timestamp too far ahead of the receiving device's
- *   system time. This can come from another device of the same owner or from a
- *   collaborator.
+ *   system time. It can come from another device of the same owner or from a
+ *   collaborator, and the check cannot tell whether the sender is ahead or the
+ *   receiver behind.
  * - The device's own system time is ahead and a write advances its logical clock.
  *   Drift is measured against the device's own system time, so the device
  *   accepts such writes as normal and stamps them ahead; other devices
@@ -44,14 +49,24 @@
  * years comes from a clock set to the wrong year, a bug, or, in collaboration,
  * a vandalizing collaborator.
  *
+ * The database uses a five-minute limit. It tolerates a few minutes of
+ * difference between device clocks and quarantines messages hours or days ahead
+ * of system time. The limit is a trade-off: a smaller one quarantines more; a
+ * larger one admits more future skew and releases sooner. No limit orders
+ * independent offline edits by real time. Five minutes is a policy choice: the
+ * [HLC paper, Section 4.2](https://cse.buffalo.edu/tech-reports/2014-04.pdf)
+ * leaves the tolerance to application semantics and suggests at most seconds
+ * for NTP-synchronized servers, which user devices are not. [Actual
+ * Budget](https://github.com/actualbudget/actual/blob/master/packages/crdt/src/crdt/timestamp.ts)
+ * uses the same default, a precedent rather than proof.
+ *
  * ### Quarantine
  *
- * The drift limit is five minutes by default. When a message's own timestamp
- * exceeds the limit, Evolu stores the message in quarantine without applying it
- * to application tables. The database queue and sync continue; other messages
- * and requests are processed normally. Completing a mutation means its changes
- * are stored; some may be quarantined rather than visible in application
- * queries.
+ * When a message's own timestamp exceeds the limit, Evolu stores the message in
+ * quarantine without applying it to application tables. The database queue and
+ * sync continue; other messages and requests are processed normally. Completing
+ * a mutation means its changes are stored; some may be quarantined rather than
+ * visible in application queries.
  *
  * Quarantine is state, not an error. Nothing is reported through the error
  * channel; the quarantine table records each unapplied message with its reason,
@@ -107,15 +122,14 @@
  *
  * Release checks use one captured system time. The logical clock advances over
  * distinct released timestamps in timestamp order, as receipts do, so later
- * local changes sort after them. Released columns use last-writer-wins. A
- * message stamped ahead still wins last-writer-wins on its columns until system
- * time passes its timestamp, on every device; release does not change that.
- * Columns the schema does not define move to schema quarantine and are applied
- * after a schema update. Duplicate delivery does not release: the timestamp is
- * already in the owner's set. Release during a running database worker's
- * session is outside this change's scope. Correcting system time does not
- * trigger release; eligible messages are released when the database worker next
- * starts.
+ * local changes sort after them even before system time catches up. Released
+ * columns use last-writer-wins, so a future-stamped message overrides edits any
+ * device stamped before accepting or releasing it. Columns the schema does not
+ * define move to schema quarantine and are applied after a schema update.
+ * Duplicate delivery does not release: the timestamp is already in the owner's
+ * set. Release during a running database worker's session is outside this
+ * change's scope. Correcting system time does not trigger release; eligible
+ * messages are released when the database worker next starts.
  *
  * Release runs before the database worker reports its clock, so fresh requests
  * start from the clock advanced by release. The stored clock never moves
@@ -135,15 +149,15 @@
  * timestamp must be able to produce its message. Recovery therefore applies the
  * rows early, re-authors them as a new mutation with a fresh timestamp, or
  * marks them discarded. Re-authoring is only right for a local origin. All
- * three leave the future-stamped message in the owner's history, where it wins
- * last-writer-wins on its columns until system time passes its timestamp, also
- * on devices that first receive it later. Applying early is acceptable while
- * the rows are a short time ahead, as after a manual clock change; how short is
- * an application decision, measured as the row's timestamp minus current time.
- * Rows far ahead, from a clock set to the wrong year, a bug, or a vandalizing
- * collaborator, require migrating the owner's visible state to a new owner with
- * fresh timestamps; the old owner is abandoned. How relays treat an abandoned
- * owner is not specified yet.
+ * three leave the future-stamped message stored for sync with its original
+ * timestamp, so on other devices it still overrides edits stamped before they
+ * accept it. Applying early is acceptable while the rows are a short time
+ * ahead, as after a manual clock change; how short is an application decision,
+ * measured as the row's timestamp minus current time. Rows far ahead, from a
+ * clock set to the wrong year, a bug, or a vandalizing collaborator, require
+ * migrating the owner's visible state to a new owner with fresh timestamps; the
+ * old owner is abandoned. How relays treat an abandoned owner is not specified
+ * yet.
  *
  * ### Range error
  *
