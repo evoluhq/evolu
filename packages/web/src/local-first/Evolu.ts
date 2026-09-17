@@ -60,7 +60,8 @@ export const createEvoluDeps = (
         webSharedWorker.port.onMessage = fn
           ? (message: SharedWorkerOutput | SharedWorkerUnsupported) => {
               switch (message.type) {
-                case "DbWorkerInit": {
+                case "DbWorkerInit":
+                case "Error": {
                   fn(message);
                   break;
                 }

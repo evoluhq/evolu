@@ -18,7 +18,7 @@ import type { Brand } from "../Brand.ts";
 import type { ConsoleEntry, TestConsole } from "../Console.ts";
 import { testCreateConsole } from "../Console.ts";
 import { constVoid } from "../Function.ts";
-import type { DbWorkerInit } from "./Db.ts";
+import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
 import {
   AppName,
   createEvolu,
@@ -52,6 +52,7 @@ import {
   id,
   NonEmptyTrimmedString100,
   nullOr,
+  PositiveInt,
   testName,
 } from "../Type.ts";
 import type { ExtractTyped } from "../Type.ts";
@@ -219,6 +220,10 @@ describe("Evolu", () => {
     ): Promise<{
       readonly deps: ReturnType<typeof createEvoluDeps>;
       readonly messages: Array<SharedWorkerInput>;
+      readonly sharedWorkerPort: MessagePort<
+        SharedWorkerOutput,
+        SharedWorkerInput
+      >;
       readonly consoleEntryOrErrorBroadcastChannel: {
         readonly postMessage: (message: ConsoleEntryOrError) => void;
       };
@@ -230,7 +235,11 @@ describe("Evolu", () => {
       );
 
       const messages: Array<SharedWorkerInput> = [];
+      const sharedWorkerPort: {
+        value: MessagePort<SharedWorkerOutput, SharedWorkerInput> | null;
+      } = { value: null };
       worker.self.onConnect = (port) => {
+        sharedWorkerPort.value = port;
         port.onMessage = (message) => {
           messages.push(message);
         };
@@ -253,6 +262,7 @@ describe("Evolu", () => {
 
       assertLength(messages, 1);
       assertSame(messages[0].type, "AnnounceTabLeader");
+      assertNotNull(sharedWorkerPort.value);
       const consoleEntryOrErrorBroadcastChannel = disposer.use(
         testCreateBroadcastChannel<ConsoleEntryOrError>(
           consoleEntryOrErrorBroadcastChannelName,
@@ -263,6 +273,7 @@ describe("Evolu", () => {
       return {
         deps,
         messages,
+        sharedWorkerPort: sharedWorkerPort.value,
         consoleEntryOrErrorBroadcastChannel,
         [Symbol.dispose]: () => disposables.dispose(),
       };
@@ -500,6 +511,78 @@ describe("Evolu", () => {
 
       assertEqual(deps.evoluError.get(), error);
     });
+
+    for (const source of ["SharedWorker", "Error", "ConsoleEntry"] as const) {
+      it(`preserves the first startup refusal while logging a later ${source} message`, async () => {
+        const testConsole = testCreateConsole();
+        using setup = await setupCreateEvoluDeps(testConsole);
+        const { deps, sharedWorkerPort, consoleEntryOrErrorBroadcastChannel } =
+          setup;
+        assertSame(deps.evoluError.get(), null);
+
+        const initialError = {
+          type: "UnknownError",
+          error: "before refusal",
+        } as const;
+        consoleEntryOrErrorBroadcastChannel.postMessage({
+          type: "Error",
+          error: initialError,
+        });
+        await testWaitForWorkerMessage();
+        assertEqual(deps.evoluError.get(), initialError);
+
+        let notifications = 0;
+        deps.evoluError.subscribe(() => {
+          notifications++;
+        });
+        const refusal: UnsupportedDbVersionError = {
+          type: "UnsupportedDbVersionError",
+          storedVersion: PositiveInt.orThrow(2),
+          supportedVersion: PositiveInt.orThrow(1),
+        };
+        sharedWorkerPort.postMessage({ type: "Error", error: refusal });
+        await testWaitForWorkerMessage();
+        const storedRefusal = deps.evoluError.get();
+        assertEqual(storedRefusal, refusal);
+        assertSame(notifications, 1);
+
+        const laterRefusal: UnsupportedDbVersionError = {
+          ...refusal,
+          storedVersion: PositiveInt.orThrow(3),
+        };
+        const laterError = {
+          type: "UnknownError",
+          error: "after refusal",
+        } as const;
+        const laterEntry: ConsoleEntry = {
+          method: "error",
+          path: source === "ConsoleEntry" ? ["worker"] : [],
+          args: [source === "SharedWorker" ? laterRefusal : laterError],
+        };
+        if (source === "SharedWorker") {
+          sharedWorkerPort.postMessage({ type: "Error", error: laterRefusal });
+        } else if (source === "Error") {
+          consoleEntryOrErrorBroadcastChannel.postMessage({
+            type: "Error",
+            error: laterError,
+          });
+        } else {
+          consoleEntryOrErrorBroadcastChannel.postMessage({
+            type: "ConsoleEntry",
+            entry: laterEntry,
+          });
+        }
+        await testWaitForWorkerMessage();
+
+        assertSame(deps.evoluError.get(), storedRefusal);
+        assertSame(notifications, 1);
+        assertEqual(testConsole.getEntriesSnapshot(), [
+          { method: "error", path: [], args: [initialError] },
+          { method: "error", path: [], args: [refusal] },
+          laterEntry,
+        ]);
+      });
+    }
 
     it("throws for unknown tab output type", () => {
       const consoleEntryOrErrorBroadcastChannel: {

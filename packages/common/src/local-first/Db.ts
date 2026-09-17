@@ -1,6 +1,33 @@
 /**
  * Platform-agnostic Evolu DbWorker.
  *
+ * ### Database version
+ *
+ * Every database records `dbVersion` in `evolu_version`. The version describes
+ * Evolu's internal persisted format: the layout of its system tables and the
+ * meaning of the data stored in them. It is independent of the application
+ * schema, which evolves append-only through {@link ensureSqliteSchema}, and of
+ * the network protocol version, which is checked per message. Many Evolu
+ * releases can share one database version.
+ *
+ * Bump `dbVersion` for any change that older code would misread, not only for
+ * changed SQL. A new quarantine reason, for example, changes what startup may
+ * replay even when its columns are additive. Each bump ships with a migration
+ * from the previous version; fresh databases are created at the latest layout
+ * directly.
+ *
+ * Startup holds the database leader lock, then checks the stored version record
+ * before it reads the clock, ensures the application schema, or replays
+ * quarantine. Databases written before the version record existed hold one
+ * `protocolVersion` row instead; that known legacy layout is converted to
+ * version 1. A newer stored version refuses startup with
+ * {@link UnsupportedDbVersionError}. The refusal returns from the startup
+ * transaction before anything is written and is posted to the SharedWorker; the
+ * worker then exits and releases its resources. The single version row is
+ * created in the same transaction as the other system tables. Code released
+ * before the version record existed never reads it and cannot be protected by
+ * it.
+ *
  * @module
  */
 
@@ -25,7 +52,7 @@ import { constFalse, constVoid } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import { acquireLeaderLock } from "../LockManager.ts";
 import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
-import { ok, type Result } from "../Result.ts";
+import { err, ok, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
   SqliteDep,
@@ -52,8 +79,10 @@ import {
   idBytesToId,
   idToIdBytes,
   onePositiveInt,
+  type PositiveInt,
   type ExtractTyped,
   type Name,
+  type Typed,
 } from "../Type.ts";
 import type {
   CreateBroadcastChannelDep,
@@ -69,7 +98,6 @@ import {
   createProtocolMessageForSync,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
-  protocolVersion,
   SubscriptionFlags,
   type ProtocolInvalidDataError,
   type ProtocolMessage,
@@ -141,9 +169,26 @@ export type DbWorkerDeps = WorkerDeps &
   LockManagerDep &
   CreateSqliteDriverDep;
 
+/** The database version this code creates and supports; see the module doc. */
+const dbVersion: PositiveInt = onePositiveInt;
+
 /**
- * Starts the platform-agnostic Evolu DbWorker and owns its resources until the
- * worker receives a dispose message or its {@link Run} is aborted.
+ * The stored database version is newer than this code supports. Newer code
+ * created or migrated the database, which is left unchanged. This happens when
+ * a tab running a newer deployment migrated the database while this tab still
+ * runs older code, or when the app was downgraded after a newer version
+ * migrated the local data. Update the app to a version that supports
+ * `storedVersion` and close all its tabs.
+ */
+export interface UnsupportedDbVersionError extends Typed<"UnsupportedDbVersionError"> {
+  readonly storedVersion: PositiveInt;
+  readonly supportedVersion: PositiveInt;
+}
+
+/**
+ * Starts the platform-agnostic Evolu DbWorker and owns its resources until
+ * startup is refused, the worker receives a dispose message, or its {@link Run}
+ * is aborted.
  */
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
@@ -200,23 +245,42 @@ export const startDbWorker =
       timestampConfig: { maxDrift: defaultTimestampMaxDrift },
     };
     const currentSchema = getEvoluSqliteSchema(dbDeps)();
-    const dbIsInitialized = "evolu_version" in currentSchema.tables;
-    let initialClock: Timestamp;
-    if (dbIsInitialized) {
-      const { rows } = sqlite.exec<{ clock: TimestampBytes }>(sql`
-        select clock from evolu_config limit 1;
-      `);
-      assertNonEmptyReadonlyArray(rows);
-      initialClock = timestampBytesToTimestamp(firstInArray(rows).clock);
-    } else {
-      initialClock = createInitialTimestamp(dbDeps);
+    const startup = sqlite.transaction(
+      (): Result<Timestamp, UnsupportedDbVersionError> => {
+        const versionColumns = getOwnProp(
+          currentSchema.tables,
+          "evolu_version",
+        );
+        let initialClock: Timestamp;
+        if (versionColumns === undefined) {
+          initialClock = createInitialTimestamp(dbDeps);
+          initializeDb(dbDeps)(initialClock);
+        } else {
+          const version = ensureDbVersion(dbDeps)(versionColumns);
+          if (!version.ok) return version;
+          const { rows } = sqlite.exec<{ clock: TimestampBytes }>(sql`
+            select "clock" from evolu_config limit 1;
+          `);
+          assertNonEmptyReadonlyArray(rows);
+          initialClock = timestampBytesToTimestamp(firstInArray(rows).clock);
+        }
+        ensureSqliteSchema(dbDeps)(initMessage.sqliteSchema, currentSchema);
+        tryApplyQuarantinedMessages(dbDeps);
+        return ok(initialClock);
+      },
+    );
+    if (!startup.ok) {
+      // Nothing was written. Returning lets the disposer close SQLite and
+      // release the database lock, which the SharedWorker's tenant disposal
+      // waits on. The tab leader lock is unaffected.
+      port.postMessage({
+        type: "LeaderRefused",
+        name: initMessage.name,
+        error: startup.error,
+      });
+      return ok();
     }
-
-    sqlite.transaction(() => {
-      if (!dbIsInitialized) initializeDb(dbDeps)(initialClock);
-      ensureSqliteSchema(dbDeps)(initMessage.sqliteSchema, currentSchema);
-      tryApplyQuarantinedMessages(dbDeps);
-    });
+    const initialClock = startup.value;
 
     const storage = createClientStorage(dbDeps)({
       onError: (error) => {
@@ -400,20 +464,53 @@ const saveClock =
     `);
   };
 
+/**
+ * Checks the stored database version inside the startup transaction, before any
+ * other read. The legacy layout, one `protocolVersion` row that was always 1,
+ * is converted to database version 1 first. Migrations arrive with version 2;
+ * until then the stored version must equal `dbVersion`.
+ */
+const ensureDbVersion =
+  ({ sqlite }: SqliteDep) =>
+  (
+    versionColumns: ReadonlySet<string>,
+  ): Result<void, UnsupportedDbVersionError> => {
+    if (!versionColumns.has("dbVersion")) {
+      sqlite.exec(sql`
+        alter table evolu_version
+        rename column "protocolVersion" to "dbVersion";
+      `);
+    }
+
+    const { rows } = sqlite.exec<{ dbVersion: PositiveInt }>(sql`
+      select "dbVersion" from evolu_version;
+    `);
+    const storedVersion = rows[0].dbVersion;
+    if (storedVersion > dbVersion) {
+      return err({
+        type: "UnsupportedDbVersionError",
+        storedVersion,
+        supportedVersion: dbVersion,
+      });
+    }
+    return ok();
+  };
+
 const initializeDb =
   ({ sqlite }: SqliteDep) =>
   (initialClock: Timestamp): void => {
     for (const query of [
+      // The database version record; see the module documentation.
       sql`
         create table evolu_version (
-          "protocolVersion" integer not null
+          "dbVersion" integer not null
         )
         strict;
       `,
 
       sql`
-        insert into evolu_version ("protocolVersion")
-        values (${protocolVersion});
+        insert into evolu_version ("dbVersion")
+        values (${dbVersion});
       `,
 
       sql`

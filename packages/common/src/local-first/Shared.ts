@@ -64,7 +64,7 @@ import type {
   SharedWorkerSelf,
   WorkerDeps,
 } from "../Worker.ts";
-import type { DbWorkerInit } from "./Db.ts";
+import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
 import type { EvoluError } from "./Error.ts";
 import type { Owner, OwnerId, OwnerTransport, SyncOwner } from "./Owner.ts";
 import {
@@ -111,7 +111,13 @@ export type SharedWorkerInput =
       readonly evoluPort: NativeMessagePort<EvoluOutput, EvoluInput>;
     };
 
-export type SharedWorkerOutput = DbWorkerInit;
+export type SharedWorkerOutput =
+  | DbWorkerInit
+  | {
+      /** Sent to one tab only: its database refused startup. */
+      readonly type: "Error";
+      readonly error: UnsupportedDbVersionError;
+    };
 
 export type ConsoleEntryOrError =
   | {
@@ -211,6 +217,12 @@ export type DbWorkerOutput =
       readonly clock: Timestamp;
     }
   | {
+      /** Startup was refused; the worker is releasing its resources. */
+      readonly type: "LeaderRefused";
+      readonly name: Name;
+      readonly error: UnsupportedDbVersionError;
+    }
+  | {
       readonly type: "OnQueuedResponse";
       readonly attemptId: Id;
       readonly response: DbWorkerQueuedResponse;
@@ -270,6 +282,7 @@ export type SharedWorkerDeps = WorkerDeps &
 interface EvoluTenant extends AsyncDisposable {
   readonly addInstance: (
     message: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
+    tabPort: TabPort,
     onDisposed: () => void,
   ) => void;
 
@@ -291,10 +304,11 @@ interface PostConsoleEntryOrErrorDep {
 }
 
 interface TabLeaderPortStoreDep {
-  readonly tabLeaderPortStore: Store<TabLeaderPort | null>;
+  readonly tabLeaderPortStore: Store<TabPort | null>;
 }
 
-type TabLeaderPort = Pick<MessagePort<DbWorkerInit>, "postMessage">;
+/** A tab's SharedWorker connection, as seen from the SharedWorker. */
+type TabPort = Pick<MessagePort<SharedWorkerOutput>, "postMessage">;
 
 interface TransportsDep {
   readonly transports: SharedResourceByKeyWithClaims<
@@ -319,9 +333,7 @@ export const initSharedWorker =
 
     await using disposer = new AsyncDisposableStack();
 
-    const tabLeaderPortStore = disposer.use(
-      createStore<TabLeaderPort | null>(null),
-    );
+    const tabLeaderPortStore = disposer.use(createStore<TabPort | null>(null));
     const consoleEntryOrErrorBroadcastChannel = disposer.use(
       deps.createBroadcastChannel<ConsoleEntryOrError>(
         consoleEntryOrErrorBroadcastChannelName,
@@ -351,7 +363,7 @@ export const initSharedWorker =
                 const tenantLease = await run.ok(
                   unabortable(tenantsByName.acquire(message)),
                 );
-                tenantLease.resource.addInstance(message, () => {
+                tenantLease.resource.addInstance(message, port, () => {
                   tenantLease.release();
                 });
                 return ok();
@@ -499,6 +511,7 @@ const createEvoluTenant =
       readonly claimLeasesBySyncOwner: LookupMap<SyncOwner, Array<ClaimLease>>;
       readonly onDisposed: () => void;
       readonly port: MessagePort<EvoluOutput, EvoluInput>;
+      readonly tabPort: TabPort;
       readonly useOwnerMutex: Mutex;
       readonly usedSyncOwners: RefCountByKey<SyncOwner>;
       rowsByQuery: Map<Query, ReadonlyArray<Row>>;
@@ -521,6 +534,7 @@ const createEvoluTenant =
     const dbWorkerInited = Promise.withResolvers<void>();
 
     const initDbWorker = (): void => {
+      if (startupError) return;
       const tabLeaderPort = deps.tabLeaderPortStore.get();
       assertNonNullable(tabLeaderPort);
 
@@ -534,6 +548,13 @@ const createEvoluTenant =
         switch (message.type) {
           case "LeaderAcquired": {
             assertNotSame(dbWorkerPort, currentDbWorkerPort);
+            if (startupError) {
+              // This worker was requested before the refusal. The tenant
+              // stays unavailable, so let it release the database lock.
+              currentDbWorkerPort.postMessage({ type: "Dispose" });
+              currentDbWorkerPort[Symbol.dispose]();
+              break;
+            }
             dbWorkerPort?.[Symbol.dispose]();
             dbWorkerPort = currentDbWorkerPort;
             activeDispatch = null;
@@ -541,6 +562,25 @@ const createEvoluTenant =
             console.info("leaderAcquired");
             dbWorkerInited.resolve();
             runQueue();
+            break;
+          }
+          case "LeaderRefused": {
+            assertNotSame(dbWorkerPort, currentDbWorkerPort);
+            // The worker refused startup and is releasing its resources.
+            // Requests stay unanswered until their instances are disposed.
+            // Keep the tenant unavailable, tell each connected tab once, and
+            // tell tabs that connect later without starting another worker.
+            dbWorkerPort?.[Symbol.dispose]();
+            dbWorkerPort = null;
+            currentDbWorkerPort[Symbol.dispose]();
+            activeDispatch = null;
+            queue.length = 0;
+            startupError = message.error;
+            console.info("leaderRefused", message.error);
+            for (const instance of instancesById.values()) {
+              reportRefusal(instance.tabPort, message.error);
+            }
+            dbWorkerInited.resolve();
             break;
           }
           case "OnQueuedResponse": {
@@ -597,6 +637,19 @@ const createEvoluTenant =
         };
     const queue: Array<QueueEntry> = [];
     let sessionClock: Timestamp | null = null;
+    let startupError: UnsupportedDbVersionError | null = null;
+    // Each tab is told once during this tenant's lifetime, through its own
+    // connection. Recreating the tenant after idle disposal retries startup
+    // and may report the refusal again.
+    const refusedTabPorts = new WeakSet<TabPort>();
+    const reportRefusal = (
+      tabPort: TabPort,
+      error: UnsupportedDbVersionError,
+    ): void => {
+      if (refusedTabPorts.has(tabPort)) return;
+      refusedTabPorts.add(tabPort);
+      tabPort.postMessage({ type: "Error", error });
+    };
     let activeDispatch: {
       readonly entry: QueueEntry;
       readonly attemptId: Id;
@@ -841,7 +894,7 @@ const createEvoluTenant =
     });
     const tenant = disposable<EvoluTenant>(
       {
-        addInstance: (message, onDisposed) => {
+        addInstance: (message, tabPort, onDisposed) => {
           const disposer = new AsyncDisposableStack();
           const instance: EvoluInstance = {
             id: message.id,
@@ -860,6 +913,7 @@ const createEvoluTenant =
             port: deps.createMessagePort<EvoluOutput, EvoluInput>(
               message.evoluPort,
             ),
+            tabPort,
             onDisposed,
             rowsByQuery: new Map<Query, ReadonlyArray<Row>>(),
             useOwnerMutex: createMutex(),
@@ -910,6 +964,7 @@ const createEvoluTenant =
             });
 
           instance.port.onMessage = (message) => {
+            if (startupError) return;
             switch (message.type) {
               case "Query":
               case "Export": {
@@ -949,9 +1004,12 @@ const createEvoluTenant =
               }
             }
           };
+
+          if (startupError) reportRefusal(instance.tabPort, startupError);
         },
 
         requestCreateSyncMessages: (ownerIds): void => {
+          if (startupError) return;
           const ownersToSync = [...getUsedOwnersById(ownerIds).values()];
 
           if (!isNonEmptyArray(ownersToSync)) return;
@@ -972,6 +1030,7 @@ const createEvoluTenant =
         },
 
         requestApplySyncMessage: (ownerId, inputMessage): void => {
+          if (startupError) return;
           const owner = getUsedOwnersById(new Set([ownerId])).get(ownerId);
           if (!owner) return;
 

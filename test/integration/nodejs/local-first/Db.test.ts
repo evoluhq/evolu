@@ -91,6 +91,7 @@ import {
 import {
   id,
   Name,
+  PositiveInt,
   String,
   testName,
   type ExtractTyped,
@@ -276,12 +277,15 @@ const setupDbWorker = async ({
   memoryOnly = true,
   time,
   onThrown,
+  expectRefused = false,
 }: {
   dbSetup?: DbSetup;
   memoryOnly?: boolean;
   sqliteSchema?: SqliteSchema;
   time?: TestTime;
   onThrown?: (error: unknown) => void;
+  /** The worker is expected to post LeaderRefused instead of LeaderAcquired. */
+  expectRefused?: boolean;
 } = {}): Promise<DbWorkerSetup> => {
   await using disposer = new AsyncDisposableStack();
 
@@ -362,8 +366,9 @@ const setupDbWorker = async ({
   channel.port2.onMessage = (output) => {
     if (output.type === "LeaderAcquired") clock = output.clock;
     else if (
-      output.response.message.type === "Mutate" ||
-      output.response.message.type === "ApplySyncMessage"
+      output.type === "OnQueuedResponse" &&
+      (output.response.message.type === "Mutate" ||
+        output.response.message.type === "ApplySyncMessage")
     )
       clock = output.response.message.clock;
     outputs.push(output);
@@ -392,9 +397,14 @@ const setupDbWorker = async ({
     return clock;
   };
   const initOutputs = outputs.splice(0);
-  assertEqual(initOutputs, [
-    { clock: getClock(), type: "LeaderAcquired", name: workerName },
-  ]);
+  if (expectRefused) {
+    assertLength(initOutputs, 1);
+    assertSame(initOutputs[0].type, "LeaderRefused");
+  } else {
+    assertEqual(initOutputs, [
+      { clock: getClock(), type: "LeaderAcquired", name: workerName },
+    ]);
+  }
 
   const disposables = disposer.move();
 
@@ -606,7 +616,7 @@ describe("worker startup", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -618,7 +628,7 @@ describe("worker startup", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -865,7 +875,7 @@ describe("query and mutation flow", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -877,7 +887,7 @@ describe("query and mutation flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -1005,7 +1015,7 @@ describe("query and mutation flow", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -1017,7 +1027,7 @@ describe("query and mutation flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -1140,7 +1150,7 @@ describe("query and mutation flow", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -1152,7 +1162,7 @@ describe("query and mutation flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -1474,7 +1484,7 @@ describe("query and mutation flow", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -1486,7 +1496,7 @@ describe("query and mutation flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -1732,7 +1742,7 @@ describe("sync message flow", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -1744,7 +1754,7 @@ describe("sync message flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -2054,7 +2064,7 @@ describe("sync message flow", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -2066,7 +2076,7 @@ describe("sync message flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -2337,7 +2347,7 @@ describe("sync message flow", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -2349,7 +2359,7 @@ describe("sync message flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -2556,7 +2566,7 @@ describe("sync message flow", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -2568,7 +2578,7 @@ describe("sync message flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -2693,7 +2703,7 @@ describe("sync message flow", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -2705,7 +2715,7 @@ describe("sync message flow", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -3505,7 +3515,7 @@ test("sync mutate posts Error when persisted clock exceeds drift", async () => {
           "firstTimestamp",
           "lastTimestamp",
         ]),
-        evolu_version: new Set(["protocolVersion"]),
+        evolu_version: new Set(["dbVersion"]),
         testTable: new Set([
           "id",
           "createdAt",
@@ -3517,7 +3527,7 @@ test("sync mutate posts Error when persisted clock exceeds drift", async () => {
       },
     },
     tables: [
-      { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+      { name: "evolu_version", rows: [{ dbVersion: 1 }] },
       {
         name: "evolu_config",
         rows: [
@@ -3640,7 +3650,7 @@ describe("quarantine replay", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -3652,7 +3662,7 @@ describe("quarantine replay", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -3844,7 +3854,7 @@ describe("quarantine replay", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -3856,7 +3866,7 @@ describe("quarantine replay", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -4086,7 +4096,7 @@ describe("quarantine replay", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           testTable: new Set([
             "id",
             "createdAt",
@@ -4099,7 +4109,7 @@ describe("quarantine replay", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -5025,4 +5035,75 @@ describe("write replay", () => {
       });
     }
   }
+});
+
+describe("database version", () => {
+  it("converts the legacy version record and preserves data", async () => {
+    await using dbSetup = await setupDb();
+    {
+      await using setup = await setupDbWorker({ dbSetup });
+      await postRequest(setup, {
+        type: "ForEvolu",
+        id: setup.evoluInstanceId,
+        message: {
+          type: "Mutate",
+          changes: [
+            createMutationChange({
+              table: "testTable",
+              id: setup.createId(),
+              values: { name: "kept" },
+              isInsert: true,
+              isDelete: null,
+            }),
+          ],
+          onCompleteIds: [],
+          subscribedQueries: emptySet,
+        },
+      });
+    }
+    const expected = getSqliteSnapshot(dbSetup);
+    // Databases created before the version record hold one protocolVersion row.
+    dbSetup.sqlite.exec(sql`
+      alter table evolu_version rename column "dbVersion" to "protocolVersion";
+    `);
+    assertEqual(dbSetup.sqlite.exec(sql`select * from evolu_version;`).rows, [
+      { protocolVersion: 1 },
+    ]);
+
+    await using restarted = await setupDbWorker({ dbSetup });
+    assertEqual(getSqliteSnapshot(restarted), expected);
+    assertEqual(restarted.sqlite.exec(sql`select name from testTable;`).rows, [
+      { name: "kept" },
+    ]);
+    assertEqual(restarted.consoleEntryOrErrors, []);
+  });
+
+  it("refuses a newer database unchanged and releases the leader lock", async () => {
+    await using dbSetup = await setupDb();
+    {
+      await using setup = await setupDbWorker({ dbSetup });
+      assertLength(setup.initOutputs, 1);
+    }
+    dbSetup.sqlite.exec(sql`update evolu_version set "dbVersion" = 2;`);
+    const before = getSqliteSnapshot(dbSetup);
+
+    await using refused = await setupDbWorker({ dbSetup, expectRefused: true });
+    assertEqual(refused.initOutputs, [
+      {
+        type: "LeaderRefused",
+        name: refused.workerName,
+        error: {
+          type: "UnsupportedDbVersionError",
+          storedVersion: PositiveInt.orThrow(2),
+          supportedVersion: PositiveInt.orThrow(1),
+        },
+      },
+    ]);
+    assertEqual(getSqliteSnapshot(refused), before);
+    assertEqual(refused.consoleEntryOrErrors, []);
+
+    // Wait for the refused worker to release its leader lock.
+    await using run = testCreateRun({ lockManager: refused.lockManager });
+    await using _lock = await run.ok(acquireLeaderLock(refused.workerName));
+  });
 });

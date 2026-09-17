@@ -48,7 +48,7 @@ import type {
   CreateBroadcastChannelDep,
   CreateMessageChannelDep,
 } from "../Worker.ts";
-import type { CreateDbWorkerDep } from "./Db.ts";
+import type { CreateDbWorkerDep, UnsupportedDbVersionError } from "./Db.ts";
 import type { EvoluError } from "./Error.ts";
 import type {
   AppOwner,
@@ -363,7 +363,8 @@ export interface Evolu<
    * coordination.
    *
    * Pass `onComplete` when follow-up work must wait until the mutation and its
-   * query patches have been applied.
+   * query patches have been applied. It never runs when the database is
+   * unavailable; see {@link Evolu.loadQuery}.
    *
    * ### Example
    *
@@ -486,9 +487,11 @@ export interface Evolu<
   /**
    * Load {@link Query} and return a promise with {@link QueryRows}.
    *
-   * The returned promise always resolves successfully because there is no
-   * reason why loading should fail. All data are local, and the query is
-   * typed.
+   * The returned promise always resolves successfully because all data are
+   * local and the query is typed. If the database refuses startup, unanswered
+   * loads stay pending until disposal resolves them with empty rows. Observe
+   * {@link EvoluErrorDep.evoluError} to display the refusal independently of
+   * query loading.
    *
    * Loading is batched. Returned promises are cached while pending and can be
    * reused after fulfillment, which prevents redundant database queries and
@@ -648,7 +651,8 @@ export interface Evolu<
    * of starting parallel exports.
    *
    * The pending promise rejects if this {@link Evolu} instance is disposed
-   * before export completion.
+   * before export completion. If the database refuses startup, export stays
+   * pending until disposal; see {@link Evolu.loadQuery}.
    */
   readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
@@ -767,7 +771,19 @@ export interface EvoluErrorDep {
    * {@link ReadonlyStore} of {@link EvoluError} shared by all {@link Evolu}
    * instances created from the same {@link createEvoluDeps} result.
    *
+   * Starts at `null` and otherwise holds the latest reported error until the
+   * first {@link UnsupportedDbVersionError}. That refusal remains for the
+   * lifetime of these dependencies, even if a tenant is disposed and recreated.
+   * Later errors are still logged but do not replace it or notify this store's
+   * subscribers. Fresh dependencies start with a fresh error store.
+   *
    * Subscribe once to show user-facing error messages across all instances.
+   * While a refused database's tenant remains alive, the SharedWorker sends the
+   * refusal to each tab once, including tabs that connect later, and starts no
+   * replacement database workers. After all instances release that tenant and
+   * it is disposed when idle, creating another instance retries startup and may
+   * send the refusal again. Show that blocking message outside any
+   * query-loading boundary, so pending queries do not hide it.
    *
    * ### Example
    *
@@ -776,6 +792,7 @@ export interface EvoluErrorDep {
    *   assertEqual,
    *   createStore,
    *   Millis,
+   *   PositiveInt,
    *   type EvoluError,
    * } from "@evolu/common";
    * import type { EvoluErrorDep } from "@evolu/common/local-first";
@@ -783,9 +800,9 @@ export interface EvoluErrorDep {
    * // Stand-in for run.deps.evoluError from createEvoluDeps.
    * using evoluError = createStore<EvoluError | null>(null);
    * const deps = { evoluError } satisfies EvoluErrorDep;
-   * let displayedMessage = "";
+   * const displayedMessages: Array<string> = [];
    * const showMessage = (message: string) => {
-   *   displayedMessage = message;
+   *   displayedMessages.push(message);
    * };
    *
    * deps.evoluError.subscribe(() => {
@@ -800,6 +817,11 @@ export interface EvoluErrorDep {
    *         "Your system clock appears incorrect. Please fix it.",
    *       );
    *       break;
+   *     case "UnsupportedDbVersionError":
+   *       showMessage(
+   *         "Your data requires a newer app version. Close all tabs of this app, then open it again.",
+   *       );
+   *       break;
    *     default:
    *       // Show a generic user message for other operational errors.
    *       showMessage("Something went wrong. Please try again.");
@@ -811,10 +833,19 @@ export interface EvoluErrorDep {
    *   next: Millis.orThrow(360000),
    *   now: Millis.orThrow(0),
    * });
-   * assertEqual(
-   *   displayedMessage,
+   * assertEqual(displayedMessages, [
    *   "Your system clock appears incorrect. Please fix it.",
-   * );
+   * ]);
+   *
+   * deps.evoluError.set({
+   *   type: "UnsupportedDbVersionError",
+   *   storedVersion: PositiveInt.orThrow(2),
+   *   supportedVersion: PositiveInt.orThrow(1),
+   * });
+   * assertEqual(displayedMessages, [
+   *   "Your system clock appears incorrect. Please fix it.",
+   *   "Your data requires a newer app version. Close all tabs of this app, then open it again.",
+   * ]);
    * ```
    */
   readonly evoluError: ReadonlyStore<EvoluError | null>;
@@ -876,18 +907,23 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
       consoleEntryOrErrorBroadcastChannelName,
     ),
   );
+  const setEvoluError = (error: EvoluError): void => {
+    if (evoluError.get()?.type === "UnsupportedDbVersionError") return;
+    evoluError.set(error);
+  };
+
   consoleEntryOrErrorBroadcastChannel.onMessage = (message) => {
     switch (message.type) {
       case "ConsoleEntry":
         console.write(message.entry);
         // Fallback channel for unexpected errors without EvoluError typing.
         if (message.entry.method === "error") {
-          evoluError.set(createUnknownError(message.entry.args));
+          setEvoluError(createUnknownError(message.entry.args));
         }
         break;
 
       case "Error":
-        evoluError.set(message.error);
+        setEvoluError(message.error);
         // Keep typed errors visible in logs as operational failures.
         console.error(message.error);
         break;
@@ -898,7 +934,20 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   };
 
   sharedWorker.port.onMessage = (message) => {
-    deps.createDbWorker().postMessage(message, [message.port]);
+    switch (message.type) {
+      case "DbWorkerInit":
+        deps.createDbWorker().postMessage(message, [message.port]);
+        break;
+
+      case "Error":
+        // Sent to this tab only: its database refused startup.
+        setEvoluError(message.error);
+        console.error(message.error);
+        break;
+
+      default:
+        exhaustiveCheck(message);
+    }
   };
 
   disposer.use(

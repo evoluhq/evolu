@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import { sql as kyselySql } from "kysely";
 
 import {
+  assert,
   assertEqual,
   assertFalse,
   assertInstanceOf,
@@ -12,7 +13,8 @@ import {
   assertSame,
   assertTrue,
 } from "../Assert.ts";
-import type { ConsoleEntry } from "../Console.ts";
+import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
+import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
 import {
   createAppOwner,
   createOwnerSecret,
@@ -37,6 +39,7 @@ import {
   type SharedWorkerInput,
   type SharedWorkerOutput,
 } from "./Shared.ts";
+import type { NativeMessagePort } from "../Worker.ts";
 import { DbChange, testCreateCrdtMessage } from "./Storage.ts";
 import { createTimestamp, type Timestamp } from "./Timestamp.ts";
 import { acquireLeaderLock, testCreateLockManager } from "../LockManager.ts";
@@ -51,6 +54,7 @@ import {
   assertType,
   createId,
   id,
+  PositiveInt,
   String,
   testName,
   type Id,
@@ -97,6 +101,14 @@ const testSqliteSchema: SqliteSchema = {
 
 const protocolMessageToArrayBuffer = (message: Uint8Array): ArrayBuffer =>
   Uint8Array.from(message).buffer;
+
+const getDbWorkerInit = (
+  output: SharedWorkerOutput | undefined,
+): DbWorkerInit => {
+  assertNotUndefined(output);
+  assert(output.type === "DbWorkerInit", "Expected a DbWorkerInit output.");
+  return output;
+};
 
 const setupSharedWorker = async ({
   createWebSocket = testCreateWebSocket({ throwOnCreate: true }),
@@ -207,8 +219,7 @@ const setupSharedWorker = async ({
 
     await output;
 
-    const initDbWorker = sharedWorkerOutputs.at(outputCount);
-    assertNotUndefined(initDbWorker);
+    const initDbWorker = getDbWorkerInit(sharedWorkerOutputs.at(outputCount));
 
     const dbWorkerPort = instanceDisposables.use(
       testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(initDbWorker.port),
@@ -286,6 +297,38 @@ const setupSharedWorker = async ({
 
     [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
+};
+
+type SharedWorkerSetup = Awaited<ReturnType<typeof setupSharedWorker>>;
+
+/** Connects another tab and collects what the SharedWorker sends to it. */
+const setupTab = (
+  setup: SharedWorkerSetup,
+  disposer: Pick<DisposableStack, "use">,
+) => {
+  const channel = disposer.use(
+    testCreateMessageChannel<SharedWorkerInput, SharedWorkerOutput>(),
+  );
+  const outputs: Array<SharedWorkerOutput> = [];
+  channel.port1.onMessage = (output) => {
+    outputs.push(output);
+  };
+  assertNonNullable(setup.worker.self.onConnect);
+  setup.worker.self.onConnect(channel.port2);
+  return { port: channel.port1, outputs };
+};
+
+/** Connects a new tab leader and waits for its DbWorker initialization message. */
+const setupTabLeader = async (
+  setup: SharedWorkerSetup,
+  disposer: Pick<DisposableStack, "use">,
+  consoleLevel: ConsoleLevel = "debug",
+): Promise<DbWorkerInit> => {
+  const tab = setupTab(setup, disposer);
+  tab.port.postMessage({ type: "AnnounceTabLeader", consoleLevel });
+  await testWaitForWorkerMessage();
+  await testWaitForWorkerMessage();
+  return getDbWorkerInit(tab.outputs.at(0));
 };
 
 describe("AnnounceTabLeader", () => {
@@ -701,8 +744,7 @@ describe("with one evolu instance", () => {
 
       await testWaitForWorkerMessage();
 
-      const initDbWorker = sharedWorkerOutputs[outputCount];
-      assertNotUndefined(initDbWorker);
+      const initDbWorker = getDbWorkerInit(sharedWorkerOutputs[outputCount]);
 
       using dbWorkerPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
         initDbWorker.port,
@@ -1606,34 +1648,17 @@ describe("with one evolu instance", () => {
   describe("tab leader changes", () => {
     it("starts a new DbWorker when tab leader changes", async () => {
       await using setup = await setupSharedWorker();
-      const { createEvolu, worker } = setup;
+      using disposer = new DisposableStack();
+      const { createEvolu } = setup;
       const { dbDisposeInputs, releaseDbWorkerLeader } = await createEvolu({
         releaseDbWorkerLeaderOnDispose: false,
       });
 
       await releaseDbWorkerLeader();
 
-      using tabLeaderChannel = testCreateMessageChannel<
-        SharedWorkerInput,
-        SharedWorkerOutput
-      >();
-      const tabLeaderOutputs: Array<SharedWorkerOutput> = [];
-      tabLeaderChannel.port1.onMessage = (output) => {
-        tabLeaderOutputs.push(output);
-      };
-
-      assertNonNullable(worker.self.onConnect);
-      worker.self.onConnect(tabLeaderChannel.port2);
-      tabLeaderChannel.port1.postMessage({
-        type: "AnnounceTabLeader",
-        consoleLevel: "debug",
-      });
-      await testWaitForWorkerMessage();
-      await testWaitForWorkerMessage();
+      const initDbWorker = await setupTabLeader(setup, disposer);
 
       assertEqual(dbDisposeInputs, []);
-      const initDbWorker = tabLeaderOutputs[0];
-      assertSame(initDbWorker?.type, "DbWorkerInit");
       assertSame(initDbWorker.name, testName);
     });
 
@@ -1704,23 +1729,7 @@ describe("with one evolu instance", () => {
       const inputs: Array<ExtractTyped<DbWorkerInput, "Request">> = [];
       const committedClock = createTimestamp({ millis: Millis.orThrow(1000) });
       const replaceLeader = async () => {
-        const leaderChannel = disposer.use(
-          testCreateMessageChannel<SharedWorkerInput, SharedWorkerOutput>(),
-        );
-        const leaderOutputs: Array<SharedWorkerOutput> = [];
-        leaderChannel.port1.onMessage = (output) => {
-          leaderOutputs.push(output);
-        };
-        assertNonNullable(setup.worker.self.onConnect);
-        setup.worker.self.onConnect(leaderChannel.port2);
-        leaderChannel.port1.postMessage({
-          type: "AnnounceTabLeader",
-          consoleLevel: "silent",
-        });
-        await testWaitForWorkerMessage();
-        await testWaitForWorkerMessage();
-        const init = leaderOutputs[0];
-        assertNotUndefined(init);
+        const init = await setupTabLeader(setup, disposer, "silent");
         const port = disposer.use(
           testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(init.port),
         );
@@ -1823,7 +1832,8 @@ describe("with one evolu instance", () => {
 
     it("retries in-flight request when new DbWorker leader is acquired", async () => {
       await using setup = await setupSharedWorker();
-      const { createEvolu, worker } = setup;
+      using disposer = new DisposableStack();
+      const { createEvolu } = setup;
       const {
         dbInputs,
         dbWorkerPort: oldDbWorkerPort,
@@ -1850,26 +1860,7 @@ describe("with one evolu instance", () => {
 
       await releaseDbWorkerLeader();
 
-      using tabLeaderChannel = testCreateMessageChannel<
-        SharedWorkerInput,
-        SharedWorkerOutput
-      >();
-      const tabLeaderOutputs: Array<SharedWorkerOutput> = [];
-      tabLeaderChannel.port1.onMessage = (output) => {
-        tabLeaderOutputs.push(output);
-      };
-
-      assertNonNullable(worker.self.onConnect);
-      worker.self.onConnect(tabLeaderChannel.port2);
-      tabLeaderChannel.port1.postMessage({
-        type: "AnnounceTabLeader",
-        consoleLevel: "debug",
-      });
-      await testWaitForWorkerMessage();
-      await testWaitForWorkerMessage();
-
-      const initDbWorker = tabLeaderOutputs.at(0);
-      assertNotUndefined(initDbWorker);
+      const initDbWorker = await setupTabLeader(setup, disposer);
 
       using dbWorkerPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
         initDbWorker.port,
@@ -2065,5 +2056,234 @@ describe("DbWorkerInput", () => {
       now: deps.time.now(),
     };
     assertType<typeof valid.now, Millis>();
+  });
+});
+
+describe("startup refusal", () => {
+  const refusal: UnsupportedDbVersionError = {
+    type: "UnsupportedDbVersionError",
+    storedVersion: PositiveInt.orThrow(2),
+    supportedVersion: PositiveInt.orThrow(1),
+  };
+  const createEvoluInput = (
+    id: EvoluInstanceId,
+    evoluPort: NativeMessagePort<EvoluOutput, EvoluInput>,
+  ): SharedWorkerInput => ({
+    type: "CreateEvolu",
+    name: testName,
+    id,
+    consoleLevel: "debug",
+    sqliteSchema: testSqliteSchema,
+    encryptionKey: testAppOwner.encryptionKey,
+    memoryOnly: false,
+    evoluPort,
+  });
+
+  it("tells each tab once, drops requests, and starts no more workers", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    using errors = testCreateBroadcastChannel<ConsoleEntryOrError>(
+      consoleEntryOrErrorBroadcastChannelName,
+    );
+    const broadcasts: Array<ConsoleEntryOrError> = [];
+    errors.onMessage = (output) => {
+      broadcasts.push(output);
+    };
+
+    const instance = await setup.createEvoluBeforeDbWorkerLeader();
+    const evoluOutputs: Array<EvoluOutput> = [];
+    instance.evoluChannel.port2.onMessage = (output) => {
+      evoluOutputs.push(output);
+    };
+    const firstTabOutputs = () =>
+      setup.sharedWorkerOutputs.filter((output) => output.type === "Error");
+    // Buffered in the message port until the instance is added after refusal,
+    // then dropped by the instance guard without entering the tenant's queue.
+    instance.evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(instance.dbInputs, []);
+
+    instance.dbWorkerPort.postMessage({
+      type: "LeaderRefused",
+      name: testName,
+      error: refusal,
+    });
+    await testWaitForWorkerMessage();
+    // The tab is told through its own connection, not the broadcast channel,
+    // and its instance is not answered: pending work stays pending.
+    assertEqual(firstTabOutputs(), [{ type: "Error", error: refusal }]);
+    assertEqual(broadcasts, []);
+    assertEqual(evoluOutputs, []);
+
+    // Later requests are dropped without a response.
+    instance.evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    instance.evoluChannel.port2.postMessage({
+      type: "Mutate",
+      changes: [
+        {
+          ownerId: testAppOwner.id,
+          ...testCreateCrdtMessage(createId(setup.run.deps), 1, "dropped")
+            .change,
+        },
+      ],
+      onCompleteIds: [createId(setup.run.deps)],
+      subscribedQueries: new Set(),
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(instance.dbInputs, []);
+    assertEqual(evoluOutputs, []);
+
+    // Another instance in the same tab does not repeat the message.
+    const secondId = createId<"EvoluInstance">(setup.run.deps);
+    disposer.use(await setup.run.ok(acquireLeaderLock(secondId)));
+    const secondChannel = disposer.use(
+      testCreateMessageChannel<EvoluOutput, EvoluInput>(),
+    );
+    const secondOutputs: Array<EvoluOutput> = [];
+    secondChannel.port2.onMessage = (output) => {
+      secondOutputs.push(output);
+    };
+    setup.worker.port.postMessage(
+      createEvoluInput(secondId, secondChannel.port1.native),
+    );
+    await testWaitForWorkerMessage();
+    assertEqual(firstTabOutputs(), [{ type: "Error", error: refusal }]);
+    assertEqual(secondOutputs, []);
+
+    // A tab that connects later is told once, through its own connection.
+    const laterTab = setupTab(setup, disposer);
+    const laterId = createId<"EvoluInstance">(setup.run.deps);
+    disposer.use(await setup.run.ok(acquireLeaderLock(laterId)));
+    const laterChannel = disposer.use(
+      testCreateMessageChannel<EvoluOutput, EvoluInput>(),
+    );
+    laterTab.port.postMessage(
+      createEvoluInput(laterId, laterChannel.port1.native),
+    );
+    await testWaitForWorkerMessage();
+    assertEqual(laterTab.outputs, [{ type: "Error", error: refusal }]);
+
+    // Announcing that tab as leader starts no worker for the refused database.
+    laterTab.port.postMessage({
+      type: "AnnounceTabLeader",
+      consoleLevel: "debug",
+    });
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+    assertEqual(laterTab.outputs, [{ type: "Error", error: refusal }]);
+    assertEqual(firstTabOutputs(), [{ type: "Error", error: refusal }]);
+    assertEqual(evoluOutputs, []);
+    assertEqual(broadcasts, []);
+  });
+
+  it("makes a replacement refusal terminal and drops the in-flight write", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    using errors = testCreateBroadcastChannel<ConsoleEntryOrError>(
+      consoleEntryOrErrorBroadcastChannelName,
+    );
+    const broadcasts: Array<ConsoleEntryOrError> = [];
+    errors.onMessage = (output) => {
+      broadcasts.push(output);
+    };
+    const instance = await setup.createEvolu({
+      releaseDbWorkerLeaderOnDispose: false,
+    });
+    const evoluOutputs: Array<EvoluOutput> = [];
+    instance.evoluChannel.port2.onMessage = (output) => {
+      evoluOutputs.push(output);
+    };
+    const outputCount = setup.sharedWorkerOutputs.length;
+    instance.evoluChannel.port2.postMessage({
+      type: "Mutate",
+      changes: [
+        {
+          ownerId: testAppOwner.id,
+          ...testCreateCrdtMessage(createId(setup.run.deps), 1, "in flight")
+            .change,
+        },
+      ],
+      onCompleteIds: [createId(setup.run.deps)],
+      subscribedQueries: new Set(),
+    });
+    await testWaitForWorkerMessage();
+    assertLength(instance.dbInputs, 1);
+    const [inFlight] = instance.dbInputs;
+    await instance.releaseDbWorkerLeader();
+
+    const initDbWorker = await setupTabLeader(setup, disposer);
+    using leaderPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
+      initDbWorker.port,
+    );
+    const leaderInputs: Array<DbWorkerInput> = [];
+    leaderPort.onMessage = (input) => {
+      leaderInputs.push(input);
+    };
+    leaderPort.postMessage({
+      type: "LeaderRefused",
+      name: testName,
+      error: refusal,
+    });
+    await testWaitForWorkerMessage();
+    // The write is not replayed and its completion never fires. The tab that
+    // owns the instance is told once.
+    assertEqual(leaderInputs, []);
+    assertEqual(evoluOutputs, []);
+    assertEqual(setup.sharedWorkerOutputs.slice(outputCount), [
+      { type: "Error", error: refusal },
+    ]);
+    assertEqual(broadcasts, []);
+
+    // A late response from the retired leader changes nothing.
+    instance.dbWorkerPort.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: inFlight.attemptId,
+      response: {
+        type: "ForEvolu",
+        id: instance.id,
+        message: {
+          type: "Mutate",
+          clock: createTimestamp(),
+          messagesByOwnerId: new Map(),
+          rowsByQuery: new Map(),
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(evoluOutputs, []);
+  });
+
+  it("disposes a worker already requested before another worker refused startup", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvoluBeforeDbWorkerLeader();
+    const initDbWorker = await setupTabLeader(setup, disposer);
+    using leaderPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
+      initDbWorker.port,
+    );
+    const leaderInputs: Array<DbWorkerInput> = [];
+    leaderPort.onMessage = (input) => {
+      leaderInputs.push(input);
+    };
+
+    instance.dbWorkerPort.postMessage({
+      type: "LeaderRefused",
+      name: testName,
+      error: refusal,
+    });
+    await testWaitForWorkerMessage();
+    leaderPort.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(leaderInputs, [{ type: "Dispose" }]);
   });
 });

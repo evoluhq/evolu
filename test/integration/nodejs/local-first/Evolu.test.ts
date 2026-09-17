@@ -1,32 +1,46 @@
 import {
   assertEqual,
+  assertFalse,
   assertTrue,
   assertLength,
   assertNotNull,
   assertNotUndefined,
+  assertSame,
 } from "../../../../packages/common/src/Assert.ts";
 import { describe, it } from "node:test";
 import { createConsoleStoreOutput } from "../../../../packages/common/src/Console.ts";
-import { constVoid } from "../../../../packages/common/src/Function.ts";
+import {
+  constVoid,
+  exhaustiveCheck,
+} from "../../../../packages/common/src/Function.ts";
+import type { EvoluError } from "../../../../packages/common/src/local-first/Error.ts";
 import type { DbWorkerInit } from "../../../../packages/common/src/local-first/Db.ts";
 import { startDbWorker } from "../../../../packages/common/src/local-first/Db.ts";
 import {
   createEvolu,
+  createEvoluDeps,
   testAppName,
 } from "../../../../packages/common/src/local-first/Evolu.ts";
 import { testAppOwner } from "../../../../packages/common/src/local-first/Owner.ts";
 import { createQueryBuilder } from "../../../../packages/common/src/local-first/Schema.ts";
 import {
+  consoleEntryOrErrorBroadcastChannelName,
   initSharedWorker,
+  type ConsoleEntryOrError,
+  type SharedWorker,
   type SharedWorkerInput,
   type SharedWorkerOutput,
 } from "../../../../packages/common/src/local-first/Shared.ts";
-import { testCreateLockManager } from "../../../../packages/common/src/LockManager.ts";
+import {
+  acquireLeaderLock,
+  testCreateLockManager,
+} from "../../../../packages/common/src/LockManager.ts";
 import { installPolyfills } from "../../../../packages/common/src/Polyfills.ts";
 import { ok } from "../../../../packages/common/src/Result.ts";
 import {
   createSqlite,
   getSqliteSnapshot,
+  sql,
   SqliteBoolean,
   type CreateSqliteDriver,
   type SqliteDriverOptions,
@@ -37,6 +51,7 @@ import {
   id,
   NonEmptyTrimmedString100,
   nullOr,
+  PositiveInt,
   testName,
 } from "../../../../packages/common/src/Type.ts";
 import { testCreateWebSocket } from "../../../../packages/common/src/WebSocket.ts";
@@ -46,6 +61,8 @@ import {
   createMessagePort,
   createSharedWorker,
   createWorker,
+  testCreateMessageChannel,
+  testCreateSharedWorker,
   testWaitForWorkerMessage,
 } from "../../../../packages/common/src/Worker.ts";
 import { testCreateSqliteDep } from "../_deps.ts";
@@ -91,9 +108,18 @@ describe("Evolu integration", () => {
       }),
     );
 
-    const driver = await run.ok(
-      testCreateSqliteDep.createSqliteDriver(testName),
+    const driver = disposer.use(
+      await run.ok(testCreateSqliteDep.createSqliteDriver(testName)),
     );
+    // DbWorkers share one driver whose lifetime belongs to this setup, so a
+    // worker that exits early must not dispose it.
+    const createSqliteDriver: CreateSqliteDriver = () => () =>
+      ok({
+        exec: (query) => driver.exec(query),
+        export: () => driver.export(),
+        deleteDatabase: () => driver.deleteDatabase(),
+        [Symbol.dispose]: constVoid,
+      });
 
     const workerRun = disposer.use(
       testCreateRun({
@@ -101,7 +127,7 @@ describe("Evolu integration", () => {
         createBroadcastChannel,
         createMessagePort,
         lockManager: testCreateLockManager(),
-        createSqliteDriver: () => () => ok(driver),
+        createSqliteDriver,
       }),
     );
 
@@ -111,18 +137,48 @@ describe("Evolu integration", () => {
       });
 
     const sharedWorker = disposer.use(
-      createSharedWorker<SharedWorkerInput, SharedWorkerOutput>((self) => {
-        void run(initSharedWorker(self));
-      }),
+      testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
     );
+    void run(initSharedWorker(sharedWorker.self));
+    sharedWorker.connect();
+    // Errors the SharedWorker sends to this tab only.
+    const tabErrors: Array<EvoluError> = [];
+    let tabErrorReported = Promise.withResolvers<void>();
     sharedWorker.port.onMessage = (message) => {
-      createDbWorker().postMessage(message, [message.port]);
+      switch (message.type) {
+        case "DbWorkerInit":
+          createDbWorker().postMessage(message, [message.port]);
+          break;
+        case "Error":
+          tabErrors.push(message.error);
+          tabErrorReported.resolve();
+          tabErrorReported = Promise.withResolvers<void>();
+          break;
+        default:
+          exhaustiveCheck(message);
+      }
     };
     sharedWorker.port.postMessage({
       type: "AnnounceTabLeader",
       consoleLevel: "debug",
     });
     await testWaitForWorkerMessage();
+
+    /** Connects another tab to the same SharedWorker. */
+    const connectLaterTab = (): SharedWorker => {
+      const channel = testCreateMessageChannel<
+        SharedWorkerInput,
+        SharedWorkerOutput
+      >();
+      assertNotNull(sharedWorker.self.onConnect);
+      sharedWorker.self.onConnect(channel.port2);
+      return {
+        port: channel.port1,
+        [Symbol.dispose]: () => {
+          channel[Symbol.dispose]();
+        },
+      };
+    };
 
     const sqlite = disposer.use(await workerRun.ok(createSqlite(testName)));
     const createIntegrationEvolu = createEvolu(Schema, {
@@ -141,9 +197,12 @@ describe("Evolu integration", () => {
     const disposables = disposer.move();
 
     return {
+      connectLaterTab,
       createIntegrationEvolu,
       run: runWithEvoluDeps,
       sqlite,
+      tabErrors,
+      waitForTabError: () => tabErrorReported.promise,
       [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
   };
@@ -307,7 +366,7 @@ describe("Evolu integration", () => {
             "firstTimestamp",
             "lastTimestamp",
           ]),
-          evolu_version: new Set(["protocolVersion"]),
+          evolu_version: new Set(["dbVersion"]),
           todo: new Set([
             "id",
             "createdAt",
@@ -320,7 +379,7 @@ describe("Evolu integration", () => {
         },
       },
       tables: [
-        { name: "evolu_version", rows: [{ protocolVersion: 1 }] },
+        { name: "evolu_version", rows: [{ dbVersion: 1 }] },
         {
           name: "evolu_config",
           rows: [
@@ -571,7 +630,8 @@ describe("Evolu integration", () => {
       void run(initSharedWorker(self));
     });
     sharedWorker.port.onMessage = (message) => {
-      createDbWorker().postMessage(message, [message.port]);
+      if (message.type === "DbWorkerInit")
+        createDbWorker().postMessage(message, [message.port]);
     };
     sharedWorker.port.postMessage({
       type: "AnnounceTabLeader",
@@ -597,5 +657,127 @@ describe("Evolu integration", () => {
     await sqliteDriverOptionsCalled.promise;
 
     assertEqual(sqliteDriverOptions, [{ mode: "memory" }]);
+  });
+
+  it("keeps refused work pending until disposal and never completes mutations", async () => {
+    await using setup = await setupRunWithEvoluDeps();
+    const { createIntegrationEvolu, run, sqlite } = setup;
+    using errors = createBroadcastChannel<ConsoleEntryOrError>(
+      consoleEntryOrErrorBroadcastChannelName,
+    );
+    const broadcasts: Array<ConsoleEntryOrError> = [];
+    errors.onMessage = (message) => {
+      broadcasts.push(message);
+    };
+    // A database created by newer code.
+    sqlite.exec(sql`
+      create table evolu_version ("dbVersion" integer not null) strict;
+    `);
+    sqlite.exec(sql`insert into evolu_version ("dbVersion") values (2);`);
+    const before = getSqliteSnapshot({ sqlite });
+
+    const reported = setup.waitForTabError();
+    const evolu = await run.ok(createIntegrationEvolu);
+    const pending = evolu.loadQuery(todoByCreatedAtQuery);
+    const exported = evolu.exportDatabase();
+    let exportSettled = false;
+    const exportResult = exported.then(
+      () => {
+        exportSettled = true;
+      },
+      (reason: unknown) => {
+        exportSettled = true;
+        return reason;
+      },
+    );
+    let completed = false;
+    evolu.insert(
+      "todo",
+      { title: NonEmptyTrimmedString100.orThrow("Lost") },
+      {
+        onComplete: () => {
+          completed = true;
+        },
+      },
+    );
+
+    const error = {
+      type: "UnsupportedDbVersionError",
+      storedVersion: PositiveInt.orThrow(2),
+      supportedVersion: PositiveInt.orThrow(1),
+    };
+    await reported;
+    await testWaitForWorkerMessage();
+    // The tab is told once, through its own connection.
+    assertEqual(setup.tabErrors, [error]);
+    assertEqual(broadcasts, []);
+    // React `use` keeps suspending while the application shows the error.
+    const thenable = pending as Promise<unknown> & {
+      status?: string;
+    };
+    assertSame(thenable.status, "pending");
+    const later = evolu.loadQuery(todosWithIsCompletedQuery);
+    let laterSettled = false;
+    void later.then(() => {
+      laterSettled = true;
+    });
+    assertSame(evolu.exportDatabase(), exported);
+    // Another instance in the same tab does not repeat the message.
+    const second = await run.ok(createIntegrationEvolu);
+    await testWaitForWorkerMessage();
+    assertEqual(setup.tabErrors, [error]);
+    assertFalse(laterSettled);
+    assertFalse(exportSettled);
+    assertFalse(completed);
+    assertEqual(getSqliteSnapshot({ sqlite }), before);
+
+    await second[Symbol.asyncDispose]();
+    await evolu[Symbol.asyncDispose]();
+    assertEqual(await pending, []);
+    assertEqual(await later, []);
+    assertEqual(await exportResult, { type: "EvoluDisposedError" });
+    assertFalse(completed);
+  });
+
+  it("reports refusal once to the error store of a later tab", async () => {
+    await using setup = await setupRunWithEvoluDeps();
+    const { createIntegrationEvolu, run, sqlite } = setup;
+    sqlite.exec(sql`
+      create table evolu_version ("dbVersion" integer not null) strict;
+    `);
+    sqlite.exec(sql`insert into evolu_version ("dbVersion") values (2);`);
+    const error = {
+      type: "UnsupportedDbVersionError",
+      storedVersion: PositiveInt.orThrow(2),
+      supportedVersion: PositiveInt.orThrow(1),
+    };
+
+    const firstReported = setup.waitForTabError();
+    const first = await run.ok(createIntegrationEvolu);
+    const firstLoad = first.loadQuery(todoByCreatedAtQuery);
+    await firstReported;
+    assertEqual(setup.tabErrors, [error]);
+
+    // The existing tab hosts the leader; the later tab only joins its tenant.
+    await using _leaderLock = await run.ok(acquireLeaderLock("tab"));
+    using lateDeps = createEvoluDeps({
+      ...run.deps,
+      sharedWorker: setup.connectLaterTab(),
+    });
+    assertSame(lateDeps.evoluError.get(), null);
+    const reported = Promise.withResolvers<void>();
+    lateDeps.evoluError.subscribe(reported.resolve);
+    await using lateRun = run.create(lateDeps);
+    const second = await lateRun.ok(createIntegrationEvolu);
+    const secondLoad = second.loadQuery(todoByCreatedAtQuery);
+    await reported.promise;
+    assertEqual(lateDeps.evoluError.get(), error);
+    // The first tab was not told again.
+    assertEqual(setup.tabErrors, [error]);
+
+    await second[Symbol.asyncDispose]();
+    await first[Symbol.asyncDispose]();
+    assertEqual(await secondLoad, []);
+    assertEqual(await firstLoad, []);
   });
 });
