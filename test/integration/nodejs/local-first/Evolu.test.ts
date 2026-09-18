@@ -21,7 +21,10 @@ import {
   type EvoluError,
   testAppName,
 } from "../../../../packages/common/src/local-first/Evolu.ts";
-import { testAppOwner } from "../../../../packages/common/src/local-first/Owner.ts";
+import {
+  createOwnerWebSocketTransport,
+  testAppOwner,
+} from "../../../../packages/common/src/local-first/Owner.ts";
 import {
   createQueryBuilder,
   QuarantineOrigin,
@@ -48,6 +51,7 @@ import {
   SqliteBoolean,
   type CreateSqliteDriver,
   type SqliteDriverOptions,
+  type SqliteDriver,
 } from "../../../../packages/common/src/Sqlite.ts";
 import { testCreateRun } from "../../../../packages/common/src/Task.ts";
 import {
@@ -60,12 +64,22 @@ import {
   createIdFromString,
   type DateIso,
   id,
+  Name,
   NonEmptyTrimmedString100,
   nullOr,
   PositiveInt,
+  Port,
   testName,
 } from "../../../../packages/common/src/Type.ts";
-import { testCreateWebSocket } from "../../../../packages/common/src/WebSocket.ts";
+import {
+  createWebSocket,
+  testCreateWebSocket,
+  type CreateWebSocket,
+} from "../../../../packages/common/src/WebSocket.ts";
+import {
+  createRelay,
+  createRelayDeps,
+} from "../../../../packages/nodejs/src/local-first/Relay.ts";
 import {
   createBroadcastChannel,
   createMessageChannel,
@@ -106,7 +120,10 @@ const todoTitlesQuery = createQuery((db) =>
 );
 
 describe("Evolu integration", () => {
-  const setupRunWithEvoluDeps = async ({ time }: { time?: TestTime } = {}) => {
+  const setupRunWithEvoluDeps = async ({
+    time,
+    createWebSocket = testCreateWebSocket({ throwOnCreate: true }),
+  }: { time?: TestTime; createWebSocket?: CreateWebSocket } = {}) => {
     await using disposer = new AsyncDisposableStack();
 
     const consoleStoreOutput = createConsoleStoreOutput();
@@ -118,7 +135,7 @@ describe("Evolu integration", () => {
         createBroadcastChannel,
         createMessageChannel,
         createMessagePort,
-        createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
+        createWebSocket,
         lockManager: testCreateLockManager(),
         ...(time && { time }),
       }),
@@ -222,6 +239,155 @@ describe("Evolu integration", () => {
       [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
   };
+
+  for (const instanceCount of [1, 2]) {
+    const instanceLabel = instanceCount === 1 ? "instance" : "instances";
+    it(`requestSync retries quota-rejected writes with ${instanceCount} active ${instanceLabel}`, async () => {
+      let hasQuota = false;
+      let relayDriver: SqliteDriver | undefined;
+      const socketClosed = Promise.withResolvers<void>();
+      await using relayRun = testCreateRun({
+        ...createRelayDeps(),
+        createSqliteDriver: ((name) => async (run) => {
+          const result = await run(
+            testCreateSqliteDep.createSqliteDriver(name),
+          );
+          if (result.ok) relayDriver = result.value;
+          return result;
+        }) satisfies CreateSqliteDriver,
+      });
+      await using relay = await relayRun.ok(
+        createRelay({
+          port: Port.orThrow(0),
+          name: Name.orThrow(`evolu-request-sync-${instanceCount}`),
+          isOwnerWithinQuota: () => hasQuota,
+        }),
+      );
+      assertNotUndefined(relayDriver);
+      const driver = relayDriver;
+      const opened = Promise.withResolvers<void>();
+      const recovered = Promise.withResolvers<void>();
+      let socketCount = 0;
+      let openCount = 0;
+      let expectedMessageCount = 0;
+      await using setup = await setupRunWithEvoluDeps({
+        createWebSocket: (url, options) => {
+          socketCount++;
+          return createWebSocket(url, {
+            ...options,
+            WebSocketConstructor: new Proxy(WebSocket, {
+              construct: (
+                WebSocketConstructor,
+                args: ConstructorParameters<typeof WebSocket>,
+              ) => {
+                const socket = new WebSocketConstructor(...args);
+                // The adapter clears onclose during disposal; this listener
+                // independently observes the native close handshake.
+                socket.addEventListener("close", () => socketClosed.resolve(), {
+                  once: true,
+                });
+                return socket;
+              },
+            }),
+            onOpen: () => {
+              openCount++;
+              options?.onOpen?.();
+              opened.resolve();
+            },
+            onMessage: (data) => {
+              options?.onMessage?.(data);
+              if (
+                hasQuota &&
+                expectedMessageCount > 0 &&
+                driver.exec(sql`select timestamp from evolu_message;`).rows
+                  .length === expectedMessageCount
+              ) {
+                recovered.resolve();
+              }
+            },
+          });
+        },
+      });
+      const { run, sqlite, createIntegrationEvolu } = setup;
+      await using clientCleanup = new AsyncDisposableStack();
+      clientCleanup.defer(async () => {
+        await setup[Symbol.asyncDispose]();
+        // Let the relay consume the final unsubscribe and close handshake
+        // before disposing its task runner.
+        if (openCount > 0) {
+          using _closeTimeout = setTimeout(() => {
+            socketClosed.reject(
+              new Error(
+                "Timed out waiting for the client's WebSocket to close",
+              ),
+            );
+          }, 5_000);
+          await socketClosed.promise;
+        }
+        await relay[Symbol.asyncDispose]();
+        assertEqual(relayRun.deps.reportDefect.getDefects(), []);
+      });
+      await using evolu = await run.ok(createIntegrationEvolu);
+      await using instances = new AsyncDisposableStack();
+      const transport = createOwnerWebSocketTransport({
+        url: `ws://127.0.0.1:${relay.port}`,
+        ownerId: testAppOwner.id,
+      });
+      evolu.useOwner(testAppOwner, [transport]);
+      if (instanceCount === 2) {
+        const laterTab = instances.use(setup.connectLaterTab());
+        const laterRun = instances.use(
+          run.create({ ...run.deps, sharedWorker: laterTab }),
+        );
+        const second = instances.use(await laterRun.ok(createIntegrationEvolu));
+        second.useOwner(testAppOwner, [transport]);
+      }
+      await opened.promise;
+      await testWaitForWorkerMessage();
+
+      const rejected = Promise.withResolvers<void>();
+      using errors = createBroadcastChannel<ConsoleEntryOrError>(
+        consoleEntryOrErrorBroadcastChannelName,
+      );
+      errors.onMessage = (message) => {
+        if (
+          message.type === "Error" &&
+          message.error.type === "ProtocolQuotaError"
+        ) {
+          assertSame(message.error.ownerId, testAppOwner.id);
+          rejected.resolve();
+        }
+      };
+      const title = NonEmptyTrimmedString100.orThrow(
+        "Rejected while quota was exhausted",
+      );
+      evolu.insert("todo", { title });
+      await rejected.promise;
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title }]);
+      assertEqual(
+        driver.exec(sql`select timestamp from evolu_message;`).rows,
+        [],
+      );
+      const localMessages = sqlite.exec(sql`
+        select distinct timestamp from evolu_history order by timestamp;
+      `).rows;
+      expectedMessageCount = localMessages.length;
+      assertTrue(expectedMessageCount > 0);
+
+      hasQuota = true;
+      evolu.requestSync(testAppOwner.id);
+      await recovered.promise;
+      assertEqual(
+        driver.exec(sql`
+          select timestamp from evolu_message order by timestamp;
+        `).rows,
+        localMessages,
+      );
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title }]);
+      assertSame(socketCount, 1);
+      assertSame(openCount, 1);
+    });
+  }
 
   it("local tables share reactive data across instances without sync history", async () => {
     await using setup = await setupRunWithEvoluDeps();

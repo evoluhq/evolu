@@ -60,7 +60,7 @@ import type {
   SyncOwner,
 } from "./Owner.ts";
 import { createOwnerWebSocketTransport } from "./Owner.ts";
-import type { ProtocolError } from "./Protocol.ts";
+import type { ProtocolError, ProtocolQuotaError } from "./Protocol.ts";
 import type {
   Queries,
   QueriesToQueryRowsPromises,
@@ -764,6 +764,42 @@ export interface Evolu<
     owner: ReadonlyOwner | Owner,
     transports?: NonEmptyReadonlyArray<OwnerTransport>,
   ) => UnuseOwner;
+
+  /**
+   * Requests a new synchronization round for an active {@link OwnerId}.
+   *
+   * Reconciles locally stored changes, including writes previously rejected
+   * with {@link ProtocolQuotaError}, through the owner's active transports. Call
+   * this after the relay provider confirms additional quota is available.
+   * Existing connections and {@link Evolu.useOwner} registrations are retained,
+   * including registrations shared by multiple instances or tabs.
+   *
+   * The owner must have an active writable registration in this database.
+   * Unregistered or read-only owners are ignored. Requests are skipped while
+   * all of the owner's transports are closed; they synchronize when they
+   * reopen. Disposal drops locally buffered requests. Calling a disposed
+   * instance throws, like other Evolu operations.
+   *
+   * Returns immediately, without waiting for synchronization to complete.
+   * Errors are reported through {@link EvoluErrorDep.evoluError}.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { assertType, type Evolu, type OwnerId } from "@evolu/common";
+   *
+   * // Call after successfully increasing the affected owner's relay quota.
+   * const onQuotaIncreased = (evolu: Evolu, ownerId: OwnerId) => {
+   *   evolu.requestSync(ownerId);
+   * };
+   *
+   * assertType<
+   *   typeof onQuotaIncreased,
+   *   (evolu: Evolu, ownerId: OwnerId) => void
+   * >();
+   * ```
+   */
+  readonly requestSync: (ownerId: OwnerId) => void;
 }
 
 /**
@@ -1448,6 +1484,13 @@ export const createEvolu =
           },
 
           useOwner,
+          requestSync: (ownerId) => {
+            // Do not let the forced mutation flush overtake pending owner actions.
+            useOwnerBatch.flushNow();
+            // Queue preceding mutations before the reconciliation request.
+            mutateBatch.flushNow();
+            useOwnerBatch.push({ action: "sync", ownerId });
+          },
         },
         disposer,
       ),

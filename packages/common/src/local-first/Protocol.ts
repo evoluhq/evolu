@@ -247,6 +247,7 @@ import {
   zeroNonNegativeInt,
 } from "../Type.ts";
 import type { Predicate } from "../Types.ts";
+import type { Evolu } from "./Evolu.ts";
 import {
   type Owner,
   type OwnerError,
@@ -468,8 +469,9 @@ export interface ProtocolWriteError
  * still sync normally.
  *
  * Clients should prompt the user to contact the relay provider or upgrade their
- * plan. Quota monitoring and management is the relay provider's
- * responsibility.
+ * plan. Quota monitoring and management is the relay provider's responsibility.
+ * After additional quota is available, call {@link Evolu.requestSync} with the
+ * affected owner's ID to retry locally stored changes.
  */
 export interface ProtocolQuotaError
   extends OwnerError, Typed<"ProtocolQuotaError"> {}

@@ -28,7 +28,12 @@ import {
   testAppName,
   type EvoluPlatformDeps,
 } from "./Evolu.ts";
-import { createOwnerWebSocketTransport, testAppOwner } from "./Owner.ts";
+import {
+  createOwnerSecret,
+  createOwnerWebSocketTransport,
+  createSharedOwner,
+  testAppOwner,
+} from "./Owner.ts";
 import { createQueryBuilder } from "./Schema.ts";
 import {
   consoleEntryOrErrorBroadcastChannelName,
@@ -804,6 +809,70 @@ describe("Evolu", () => {
       assertNonNullable(message.evoluPort);
     });
 
+    describe("requestSync", () => {
+      it("preserves pending owner operations and returns immediately", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const sharedOwner = createSharedOwner(createOwnerSecret(run.deps));
+        const owner = { owner: sharedOwner, transports: [testOwnerTransport] };
+        assertNotSame(sharedOwner.id, evolu.appOwner.id);
+
+        const unuse = evolu.useOwner(sharedOwner, [testOwnerTransport]);
+        const result = evolu.requestSync(sharedOwner.id);
+        assertType<typeof result, void>();
+        assertSame(result, undefined);
+        unuse();
+        evolu.requestSync(sharedOwner.id);
+        assertEqual(evoluInputs, []);
+
+        await testWaitForWorkerMessage();
+        assertEqual(evoluInputs, [
+          {
+            type: "UseOwner",
+            actions: [{ action: "add", owner }],
+          },
+          {
+            type: "UseOwner",
+            actions: [
+              { action: "sync", ownerId: sharedOwner.id },
+              { action: "remove", owner },
+            ],
+          },
+          {
+            type: "UseOwner",
+            actions: [{ action: "sync", ownerId: sharedOwner.id }],
+          },
+        ]);
+      });
+
+      it("drops pending requests on disposal", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        evolu.requestSync(testAppOwner.id);
+        await evolu[Symbol.asyncDispose]();
+        await testWaitForWorkerMessage();
+        assertEqual(evoluInputs, []);
+      });
+
+      it("preserves registration, mutation, and sync request order", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        evolu.useOwner(testAppOwner, [testOwnerTransport]);
+        evolu.insert("todo", {
+          title: NonEmptyTrimmedString100.orThrow("Before sync"),
+        });
+        evolu.requestSync(testAppOwner.id);
+        await testWaitForWorkerMessage();
+        assertEqual(
+          evoluInputs.map(({ type }) => type),
+          ["UseOwner", "Mutate", "UseOwner"],
+        );
+      });
+    });
+
     describe("useOwner", () => {
       it("auto-uses appOwner in a microtask when transports are configured", async () => {
         await using setup = await setupRunWithEvoluDeps();
@@ -1058,7 +1127,7 @@ describe("Evolu", () => {
       assertEqual(evoluInputs, [{ type: "Export" }]);
     });
 
-    it("throws from sync methods after dispose", async () => {
+    it("throws from synchronous methods after disposal", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run } = setup;
       const evolu = await run.ok(testCreateEvolu);
@@ -1149,6 +1218,13 @@ describe("Evolu", () => {
       assertEqual(
         assertThrowsInstanceOf(() => {
           evolu.useOwner(testAppOwner, [testOwnerTransport]);
+        }, Error).message,
+        disposedMessage,
+      );
+
+      assertEqual(
+        assertThrowsInstanceOf(() => {
+          evolu.requestSync(testAppOwner.id);
         }, Error).message,
         disposedMessage,
       );

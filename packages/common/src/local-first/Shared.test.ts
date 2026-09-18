@@ -21,7 +21,12 @@ import {
   createOwnerWebSocketTransport,
   testAppOwner,
 } from "./Owner.ts";
-import { createProtocolMessageForUnsubscribe } from "./Protocol.ts";
+import {
+  createProtocolMessageBuffer,
+  createProtocolMessageForUnsubscribe,
+  MessageType,
+  SubscriptionFlags,
+} from "./Protocol.ts";
 import {
   createQueryBuilder,
   type EvoluSchema,
@@ -1073,6 +1078,81 @@ describe("with one evolu instance", () => {
       });
     });
 
+    it("skips explicit sync while all transports are closed and syncs after opening", async () => {
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const { dbInputs, dbWorkerPort, evoluChannel } =
+        await setup.createEvolu();
+      const transports = [
+        createOwnerWebSocketTransport({
+          url: "wss://closed.example",
+          ownerId: testAppOwner.id,
+        }),
+        createOwnerWebSocketTransport({
+          url: "wss://opening.example",
+          ownerId: testAppOwner.id,
+        }),
+      ] as const;
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "sync", ownerId: testAppOwner.id }],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(dbInputs, []);
+      assertEqual(createWebSocket.sentMessages, []);
+
+      const message = createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        subscriptionFlag: SubscriptionFlags.Subscribe,
+      }).unwrap();
+      createWebSocket.open(transports[1].url);
+      for (const requestCount of [1, 2]) {
+        if (requestCount === 2) {
+          evoluChannel.port2.postMessage({
+            type: "UseOwner",
+            actions: [{ action: "sync", ownerId: testAppOwner.id }],
+          });
+        }
+        await testWaitForWorkerMessage();
+        assertLength(dbInputs, requestCount);
+        const input = dbInputs.at(-1);
+        assertNotUndefined(input);
+        assertEqual(input.request, {
+          type: "ForSharedWorker",
+          message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+        });
+        dbWorkerPort.postMessage({
+          type: "OnQueuedResponse",
+          attemptId: input.attemptId,
+          response: {
+            type: "ForSharedWorker",
+            message: {
+              type: "CreateSyncMessages",
+              protocolMessagesByOwnerId: new Map([[testAppOwner.id, message]]),
+            },
+          },
+        });
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.sentMessages.splice(0), [
+          { url: transports[1].url, data: message },
+        ]);
+      }
+      assertEqual(
+        createWebSocket.createdUrls,
+        transports.map(({ url }) => url),
+      );
+    });
+
     it("sends unsubscribe when the last transport claim is removed", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
@@ -1152,6 +1232,164 @@ describe("with one evolu instance", () => {
         url: transport.url,
         data: createProtocolMessageForUnsubscribe(testAppOwner.id),
       });
+    });
+
+    it("explicit sync selects only active writable owners without changing claims", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const { dbInputs, dbWorkerPort, evoluChannel } =
+        await setup.createEvolu();
+      const onMessage = dbWorkerPort.onMessage;
+      assertNonNullable(onMessage);
+      // Complete each queued read so later sync requests can be observed.
+      dbWorkerPort.onMessage = (input) => {
+        onMessage(input);
+        if (input.type !== "Request") return;
+        dbWorkerPort.postMessage({
+          type: "OnQueuedResponse",
+          attemptId: input.attemptId,
+          response: {
+            type: "ForSharedWorker",
+            message: {
+              type: "CreateSyncMessages",
+              protocolMessagesByOwnerId: new Map(),
+            },
+          },
+        });
+      };
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://explicit-sync.example",
+        ownerId: testAppOwner.id,
+      });
+      const first = { owner: testAppOwner, transports: [transport] } as const;
+      const second = { owner: testAppOwner2, transports: [transport] } as const;
+      const readonlyOwner = {
+        id: createId<"OwnerId">(setup.run.deps),
+        encryptionKey: testAppOwner.encryptionKey,
+      };
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "add", owner: first },
+          { action: "add", owner: first },
+          { action: "add", owner: second },
+          {
+            action: "add",
+            owner: { owner: readonlyOwner, transports: [transport] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      dbInputs.length = 0;
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "sync", ownerId: testAppOwner.id },
+          { action: "sync", ownerId: readonlyOwner.id },
+          { action: "sync", ownerId: createId<"OwnerId">(setup.run.deps) },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(
+        dbInputs.map(({ request }) => request),
+        [
+          {
+            type: "ForSharedWorker",
+            message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+          },
+        ],
+      );
+      assertEqual(createWebSocket.sentMessages, []);
+      assertEqual(createWebSocket.createdUrls, [transport.url]);
+      dbInputs.length = 0;
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "remove", owner: first },
+          { action: "sync", ownerId: testAppOwner.id },
+          { action: "remove", owner: first },
+          { action: "sync", ownerId: testAppOwner.id },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertLength(dbInputs, 1);
+      assertEqual(createWebSocket.sentMessages, [
+        {
+          url: transport.url,
+          data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+        },
+      ]);
+    });
+
+    it("explicit sync waits for pending transport registration", async () => {
+      const createWebSocket = testCreateWebSocket();
+      const creating = Promise.withResolvers<void>();
+      const continueCreating = Promise.withResolvers<void>();
+      await using setup = await setupSharedWorker({
+        createWebSocket: (url, options) => async (run) => {
+          creating.resolve();
+          await continueCreating.promise;
+          return run(createWebSocket(url, options));
+        },
+      });
+      const { dbInputs, dbWorkerPort, evoluChannel } =
+        await setup.createEvolu();
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://pending-sync.example",
+        ownerId: testAppOwner.id,
+      });
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transport] },
+          },
+        ],
+      });
+      await creating.promise;
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "sync", ownerId: testAppOwner.id }],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(dbInputs, []);
+      continueCreating.resolve();
+      await testWaitForWorkerMessage();
+      assertEqual(createWebSocket.sentMessages, []);
+
+      const message = createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        subscriptionFlag: SubscriptionFlags.Subscribe,
+      }).unwrap();
+      // The first claim and the queued explicit sync each request reconciliation.
+      for (const requestCount of [1, 2]) {
+        await testWaitForWorkerMessage();
+        assertLength(dbInputs, requestCount);
+        const input = dbInputs.at(-1);
+        assertNotUndefined(input);
+        assertEqual(input.request, {
+          type: "ForSharedWorker",
+          message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+        });
+        dbWorkerPort.postMessage({
+          type: "OnQueuedResponse",
+          attemptId: input.attemptId,
+          response: {
+            type: "ForSharedWorker",
+            message: {
+              type: "CreateSyncMessages",
+              protocolMessagesByOwnerId: new Map([[testAppOwner.id, message]]),
+            },
+          },
+        });
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.sentMessages.splice(0), [
+          { url: transport.url, data: message },
+        ]);
+      }
     });
 
     it("releases the matching transport set when owner uses are removed out of order", async () => {
@@ -2182,6 +2420,57 @@ describe("with one evolu instance", () => {
       await disposing;
 
       assertTrue(disposed);
+    });
+
+    it("disposes cleanly when queued sync resumes during tenant disposal", async () => {
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
+      const creating = Promise.withResolvers<void>();
+      const continueCreating = Promise.withResolvers<void>();
+      await using setup = await setupSharedWorker({
+        createWebSocket: (url, options) => async (run) => {
+          creating.resolve();
+          await continueCreating.promise;
+          return run(createWebSocket(url, options));
+        },
+      });
+      const instance = await setup.createEvolu({
+        autoDispose: false,
+        releaseDbWorkerLeaderOnDispose: false,
+      });
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://sync-during-dispose.example",
+        ownerId: testAppOwner.id,
+      });
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transport] },
+          },
+          { action: "sync", ownerId: testAppOwner.id },
+        ],
+      });
+      await creating.promise;
+
+      const disposing = Promise.allSettled([setup[Symbol.asyncDispose]()]);
+      try {
+        await testWaitForWorkerMessage();
+        assertEqual(instance.dbDisposeInputs, [{ type: "Dispose" }]);
+
+        continueCreating.resolve();
+        await testWaitForWorkerMessage();
+
+        assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+        assertEqual(instance.dbInputs, []);
+      } finally {
+        continueCreating.resolve();
+        await instance[Symbol.asyncDispose]();
+        await disposing;
+      }
+
+      assertEqual(await disposing, [{ status: "fulfilled", value: undefined }]);
+      assertEqual(setup.run.deps.reportDefect.getDefects(), []);
     });
 
     it("drops UseOwner messages posted after instance disposal starts", async () => {

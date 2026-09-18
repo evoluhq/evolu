@@ -141,10 +141,16 @@ export type EvoluInput =
     }
   | {
       readonly type: "UseOwner";
-      readonly actions: ReadonlyArray<{
-        readonly owner: SyncOwner;
-        readonly action: "add" | "remove";
-      }>;
+      readonly actions: ReadonlyArray<
+        | {
+            readonly owner: SyncOwner;
+            readonly action: "add" | "remove";
+          }
+        | {
+            readonly ownerId: OwnerId;
+            readonly action: "sync";
+          }
+      >;
     }
   | {
       readonly type: "Query";
@@ -279,6 +285,10 @@ export type SharedWorkerDeps = WorkerDeps &
   CreateWebSocketDep &
   LockManagerDep;
 
+/**
+ * Coordinates all instances of one named local database within a SharedWorker.
+ * Manages their DbWorker request queue and owner registrations.
+ */
 interface EvoluTenant extends AsyncDisposable {
   readonly addInstance: (
     message: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
@@ -873,6 +883,37 @@ const createEvoluTenant =
       return ownersById;
     };
 
+    const requestCreateSyncMessages = (
+      ownerIds: ReadonlySet<OwnerId>,
+    ): void => {
+      if (startupError) return;
+      const ownersToSync = [...getUsedOwnersById(ownerIds).values()].filter(
+        ({ id }) => {
+          let hasOpenTransport = false;
+          deps.transports.forEachResourceForClaim(id, (webSocket) => {
+            if (webSocket.isOpen()) hasOpenTransport = true;
+          });
+          return hasOpenTransport;
+        },
+      );
+
+      if (!isNonEmptyArray(ownersToSync)) return;
+
+      console.debug("requestCreateSyncMessages", {
+        ownerIds: ownersToSync.map(({ id }) => id),
+      });
+
+      queue.push({
+        type: "Read",
+        request: {
+          type: "ForSharedWorker",
+          message: { type: "CreateSyncMessages", owners: ownersToSync },
+        },
+      });
+
+      runQueue();
+    };
+
     const toggleSyncOwner =
       (
         instance: EvoluInstance,
@@ -1005,15 +1046,36 @@ const createEvoluTenant =
               case "UseOwner": {
                 void tenantRun(
                   instance.useOwnerMutex.withLock(async (run) => {
-                    for (const { owner, action } of message.actions) {
-                      console.debug("useOwner", {
-                        id: instance.id,
-                        action,
-                        ownerId: owner.owner.id,
-                        transportUrls: owner.transports.map(({ url }) => url),
-                      });
-
-                      await run(toggleSyncOwner(instance, owner, action));
+                    for (const action of message.actions) {
+                      switch (action.action) {
+                        case "sync":
+                          console.debug("requestSync", {
+                            id: instance.id,
+                            ownerId: action.ownerId,
+                          });
+                          requestCreateSyncMessages(new Set([action.ownerId]));
+                          break;
+                        case "add":
+                        case "remove":
+                          console.debug("useOwner", {
+                            id: instance.id,
+                            action: action.action,
+                            ownerId: action.owner.owner.id,
+                            transportUrls: action.owner.transports.map(
+                              ({ url }) => url,
+                            ),
+                          });
+                          await run(
+                            toggleSyncOwner(
+                              instance,
+                              action.owner,
+                              action.action,
+                            ),
+                          );
+                          break;
+                        default:
+                          exhaustiveCheck(action);
+                      }
                     }
 
                     return ok();
@@ -1027,26 +1089,7 @@ const createEvoluTenant =
           if (startupError) reportRefusal(instance.tabPort, startupError);
         },
 
-        requestCreateSyncMessages: (ownerIds): void => {
-          if (startupError) return;
-          const ownersToSync = [...getUsedOwnersById(ownerIds).values()];
-
-          if (!isNonEmptyArray(ownersToSync)) return;
-
-          console.debug("requestCreateSyncMessages", {
-            ownerIds: ownersToSync.map(({ id }) => id),
-          });
-
-          queue.push({
-            type: "Read",
-            request: {
-              type: "ForSharedWorker",
-              message: { type: "CreateSyncMessages", owners: ownersToSync },
-            },
-          });
-
-          runQueue();
-        },
+        requestCreateSyncMessages,
 
         requestApplySyncMessage: (ownerId, inputMessage): void => {
           if (startupError) return;
