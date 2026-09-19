@@ -16,6 +16,7 @@ import {
 import type { DbWorkerInit } from "../../../../packages/common/src/local-first/Db.ts";
 import { startDbWorker } from "../../../../packages/common/src/local-first/Db.ts";
 import {
+  AppName,
   createEvolu,
   createEvoluDeps,
   type EvoluError,
@@ -122,8 +123,13 @@ const todoTitlesQuery = createQuery((db) =>
 describe("Evolu integration", () => {
   const setupRunWithEvoluDeps = async ({
     time,
+    createSqliteDriver,
     createWebSocket = testCreateWebSocket({ throwOnCreate: true }),
-  }: { time?: TestTime; createWebSocket?: CreateWebSocket } = {}) => {
+  }: {
+    time?: TestTime;
+    createSqliteDriver?: CreateSqliteDriver;
+    createWebSocket?: CreateWebSocket;
+  } = {}) => {
     await using disposer = new AsyncDisposableStack();
 
     const consoleStoreOutput = createConsoleStoreOutput();
@@ -141,18 +147,22 @@ describe("Evolu integration", () => {
       }),
     );
 
-    const driver = disposer.use(
-      await run.ok(testCreateSqliteDep.createSqliteDriver(testName)),
-    );
-    // DbWorkers share one driver whose lifetime belongs to this setup, so a
-    // worker that exits early must not dispose it.
-    const createSqliteDriver: CreateSqliteDriver = () => () =>
-      ok({
+    const driver = createSqliteDriver
+      ? undefined
+      : disposer.use(
+          await run.ok(testCreateSqliteDep.createSqliteDriver(testName)),
+        );
+    // The default factory shares one driver owned by this setup, so a worker
+    // that exits early must not dispose it.
+    const createSharedSqliteDriver: CreateSqliteDriver = () => () => {
+      assertNotUndefined(driver);
+      return ok({
         exec: (query) => driver.exec(query),
         export: () => driver.export(),
         deleteDatabase: () => driver.deleteDatabase(),
         [Symbol.dispose]: constVoid,
       });
+    };
 
     const workerRun = disposer.use(
       testCreateRun({
@@ -160,7 +170,7 @@ describe("Evolu integration", () => {
         createBroadcastChannel,
         createMessagePort,
         lockManager: testCreateLockManager(),
-        createSqliteDriver,
+        createSqliteDriver: createSqliteDriver ?? createSharedSqliteDriver,
       }),
     );
 
@@ -213,7 +223,9 @@ describe("Evolu integration", () => {
       };
     };
 
-    const sqlite = disposer.use(await workerRun.ok(createSqlite(testName)));
+    const sharedSqlite = createSqliteDriver
+      ? undefined
+      : disposer.use(await workerRun.ok(createSqlite(testName)));
     const createIntegrationEvolu = createEvolu(Schema, {
       appName: testAppName,
       appOwner: testAppOwner,
@@ -233,9 +245,126 @@ describe("Evolu integration", () => {
       connectLaterTab,
       createIntegrationEvolu,
       run: runWithEvoluDeps,
-      sqlite,
+      /** Only the default shared-driver setup exposes a shared database. */
+      getSharedSqlite: () => {
+        assertNotUndefined(
+          sharedSqlite,
+          "Inspect injected drivers directly; this setup has no shared SQLite database.",
+        );
+        return sharedSqlite;
+      },
       tabErrors,
       waitForTabError: () => tabErrorReported.promise,
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
+    };
+  };
+
+  /** One SharedWorker observing its relay frames and native socket cleanup. */
+  const setupDevice = async (
+    options: {
+      createSqliteDriver?: CreateSqliteDriver;
+    } = {},
+  ) => {
+    let constructedCount = 0;
+    let closedCount = 0;
+    let onAllClosed: () => void = constVoid;
+    let onMessage: (url: string) => void = constVoid;
+    const setup = await setupRunWithEvoluDeps({
+      ...options,
+      createWebSocket: (url, options) =>
+        createWebSocket(url, {
+          ...options,
+          WebSocketConstructor: new Proxy(WebSocket, {
+            construct: (
+              WebSocketConstructor,
+              args: ConstructorParameters<typeof WebSocket>,
+            ) => {
+              constructedCount++;
+              const socket = new WebSocketConstructor(...args);
+              socket.addEventListener(
+                "close",
+                () => {
+                  closedCount++;
+                  if (closedCount === constructedCount) onAllClosed();
+                },
+                { once: true },
+              );
+              return socket;
+            },
+          }),
+          onMessage: (data) => {
+            options?.onMessage?.(data);
+            onMessage(url);
+          },
+        }),
+    });
+    return {
+      setup,
+      setOnMessage: (callback: (url: string) => void): void => {
+        onMessage = callback;
+      },
+      [Symbol.asyncDispose]: async () => {
+        await setup[Symbol.asyncDispose]();
+        // Let the relays consume the close handshakes before they stop.
+        if (closedCount === constructedCount) return;
+        const allClosed = Promise.withResolvers<void>();
+        onAllClosed = allClosed.resolve;
+        using _closeTimeout = setTimeout(() => {
+          allClosed.reject(
+            new Error("Timed out waiting for the device's WebSockets to close"),
+          );
+        }, 5_000);
+        await allClosed.promise;
+      },
+    };
+  };
+
+  /** Two relays whose stored message timestamps are readable per relay. */
+  const setupRelays = async (namePrefix: string) => {
+    const driversByName = new Map<string, SqliteDriver>();
+    await using disposer = new AsyncDisposableStack();
+    const relayRun = disposer.use(
+      testCreateRun({
+        ...createRelayDeps(),
+        createSqliteDriver: ((name) => async (run) => {
+          const result = await run(
+            testCreateSqliteDep.createSqliteDriver(name),
+          );
+          if (result.ok) driversByName.set(name, result.value);
+          return result;
+        }) satisfies CreateSqliteDriver,
+      }),
+    );
+    disposer.defer(() => {
+      assertEqual(relayRun.deps.reportDefect.getDefects(), []);
+    });
+    const setupRelay = async (name: string) => {
+      const relay = disposer.use(
+        await relayRun.ok(
+          createRelay({
+            port: Port.orThrow(0),
+            name: Name.orThrow(name),
+            isOwnerWithinQuota: () => true,
+          }),
+        ),
+      );
+      return {
+        port: relay.port,
+        getTimestamps: (): ReadonlyArray<unknown> => {
+          const driver = driversByName.get(name);
+          assertNotUndefined(driver);
+          return driver.exec(sql`
+            select timestamp from evolu_message order by timestamp;
+          `).rows;
+        },
+      };
+    };
+    const relayA = await setupRelay(`${namePrefix}-a`);
+    const relayB = await setupRelay(`${namePrefix}-b`);
+    const disposables = disposer.move();
+    return {
+      relayA,
+      relayB,
       [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
   };
@@ -308,7 +437,8 @@ describe("Evolu integration", () => {
           });
         },
       });
-      const { run, sqlite, createIntegrationEvolu } = setup;
+      const { run, createIntegrationEvolu } = setup;
+      const sqlite = setup.getSharedSqlite();
       await using clientCleanup = new AsyncDisposableStack();
       clientCleanup.defer(async () => {
         await setup[Symbol.asyncDispose]();
@@ -389,9 +519,161 @@ describe("Evolu integration", () => {
     });
   }
 
+  it("reconciles data received from one relay with the owner's other relay", async () => {
+    await using relays = await setupRelays("evolu-two-relays");
+    const { relayA, relayB } = relays;
+
+    const title = NonEmptyTrimmedString100.orThrow("Learned from relay A");
+    const transportA = createOwnerWebSocketTransport({
+      url: `ws://127.0.0.1:${relayA.port}`,
+      ownerId: testAppOwner.id,
+    });
+    const transportB = createOwnerWebSocketTransport({
+      url: `ws://127.0.0.1:${relayB.port}`,
+      ownerId: testAppOwner.id,
+    });
+
+    // The first device stores its change on relay A only.
+    await using firstDevice = await setupDevice();
+    await using first = await firstDevice.setup.run.ok(
+      firstDevice.setup.createIntegrationEvolu,
+    );
+    first.insert("todo", { title });
+    assertEqual(await first.loadQuery(todoTitlesQuery), [{ title }]);
+    const localTimestamps = firstDevice.setup
+      .getSharedSqlite()
+      .exec(sql`
+        select distinct timestamp from evolu_history order by timestamp;
+      `).rows;
+    assertTrue(localTimestamps.length > 0);
+    const seeded = Promise.withResolvers<void>();
+    firstDevice.setOnMessage(() => {
+      if (relayA.getTimestamps().length === localTimestamps.length)
+        seeded.resolve();
+    });
+    first.useOwner(testAppOwner, [transportA]);
+    {
+      using _seedingTimeout = setTimeout(() => {
+        seeded.reject(
+          new Error("Timed out waiting for relay A to receive the seed data"),
+        );
+      }, 5_000);
+      await seeded.promise;
+    }
+    assertEqual(relayA.getTimestamps(), localTimestamps);
+    assertEqual(relayB.getTimestamps(), []);
+
+    // A second device with an empty database learns the change from relay A
+    // and reconciles it with relay B without a reconnect or requestSync.
+    await using secondDevice = await setupDevice();
+    const propagated = Promise.withResolvers<void>();
+    secondDevice.setOnMessage(() => {
+      if (relayB.getTimestamps().length === localTimestamps.length)
+        propagated.resolve();
+    });
+    await using second = await secondDevice.setup.run.ok(
+      secondDevice.setup.createIntegrationEvolu,
+    );
+    second.useOwner(testAppOwner, [transportA, transportB]);
+    using _propagationTimeout = setTimeout(() => {
+      propagated.reject(
+        new Error("Timed out waiting for relay B to receive the change"),
+      );
+    }, 10_000);
+    await propagated.promise;
+    assertEqual(relayB.getTimestamps(), localTimestamps);
+    assertEqual(await second.loadQuery(todoTitlesQuery), [{ title }]);
+  });
+
+  it("reconciles a joining tenant's existing history through another tenant's relay", async () => {
+    await using relays = await setupRelays("evolu-tenant-relay");
+    const { relayA, relayB } = relays;
+    const transportA = createOwnerWebSocketTransport({
+      url: `ws://127.0.0.1:${relayA.port}`,
+      ownerId: testAppOwner.id,
+    });
+    const transportB = createOwnerWebSocketTransport({
+      url: `ws://127.0.0.1:${relayB.port}`,
+      ownerId: testAppOwner.id,
+    });
+    const tenantDriversByName = new Map<Name, SqliteDriver>();
+    await using device = await setupDevice({
+      createSqliteDriver: (name) => async (run) => {
+        const result = await run(testCreateSqliteDep.createSqliteDriver(name));
+        if (result.ok) tenantDriversByName.set(name, result.value);
+        return result;
+      },
+    });
+    const createTenant = (appName: string) =>
+      device.setup.run.ok(
+        createEvolu(Schema, {
+          appName: AppName.orThrow(appName),
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+    // The first tenant has already reconciled its empty database with B.
+    await using first = await createTenant("EmptyTenant");
+    const firstRound = Promise.withResolvers<void>();
+    device.setOnMessage((url) => {
+      if (url === transportB.url) firstRound.resolve();
+    });
+    first.useOwner(testAppOwner, [transportB]);
+    {
+      using _firstRoundTimeout = setTimeout(() => {
+        firstRound.reject(
+          new Error("Timed out waiting for relay B's first round"),
+        );
+      }, 5_000);
+      await firstRound.promise;
+    }
+    assertEqual(relayB.getTimestamps(), []);
+
+    // Another database writes before registering the owner, then claims A.
+    // Its history must also reach B, which only the first tenant claimed.
+    await using second = await createTenant("SeededTenant");
+    const title = NonEmptyTrimmedString100.orThrow(
+      "Created before using owner",
+    );
+    second.insert("todo", { title });
+    assertEqual(await second.loadQuery(todoTitlesQuery), [{ title }]);
+    const driver = tenantDriversByName.get(second.name);
+    assertNotUndefined(driver);
+    const localTimestamps = driver.exec(sql`
+      select distinct timestamp from evolu_history order by timestamp;
+    `).rows;
+    assertTrue(localTimestamps.length > 0);
+    const propagated = Promise.withResolvers<void>();
+    device.setOnMessage(() => {
+      if (
+        [relayA, relayB].every(
+          (relay) => relay.getTimestamps().length === localTimestamps.length,
+        )
+      ) {
+        propagated.resolve();
+      }
+    });
+    second.useOwner(testAppOwner, [transportA]);
+    using _propagationTimeout = setTimeout(() => {
+      propagated.reject(
+        new Error(
+          "Timed out waiting for both relays to receive the tenant's history",
+        ),
+      );
+    }, 10_000);
+    await propagated.promise;
+    for (const relay of [relayA, relayB]) {
+      assertEqual(relay.getTimestamps(), localTimestamps);
+    }
+    assertEqual(device.setup.tabErrors, []);
+    assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
+  });
+
   it("local tables share reactive data across instances without sync history", async () => {
     await using setup = await setupRunWithEvoluDeps();
-    const { run, sqlite } = setup;
+    const { run } = setup;
+    const sqlite = setup.getSharedSqlite();
     const LocalSchema = {
       _note: { id: id("Note"), title: NonEmptyTrimmedString100 },
     };
@@ -473,7 +755,8 @@ describe("Evolu integration", () => {
 
   it("createEvolu", async () => {
     await using setup = await setupRunWithEvoluDeps();
-    const { createIntegrationEvolu, run, sqlite } = setup;
+    const { createIntegrationEvolu, run } = setup;
+    const sqlite = setup.getSharedSqlite();
 
     const evolu = await run.ok(createIntegrationEvolu);
 
@@ -794,7 +1077,8 @@ describe("Evolu integration", () => {
     await using setup = await setupRunWithEvoluDeps({
       time: { ...baseTime, now },
     });
-    const { createIntegrationEvolu, run, sqlite } = setup;
+    const { createIntegrationEvolu, run } = setup;
+    const sqlite = setup.getSharedSqlite();
     const evolu = await run.ok(createIntegrationEvolu);
 
     const quarantineQuery = createQuery((db) =>
@@ -946,7 +1230,8 @@ describe("Evolu integration", () => {
 
   it("keeps refused work pending until disposal and never completes mutations", async () => {
     await using setup = await setupRunWithEvoluDeps();
-    const { createIntegrationEvolu, run, sqlite } = setup;
+    const { createIntegrationEvolu, run } = setup;
+    const sqlite = setup.getSharedSqlite();
     using errors = createBroadcastChannel<ConsoleEntryOrError>(
       consoleEntryOrErrorBroadcastChannelName,
     );
@@ -1026,7 +1311,8 @@ describe("Evolu integration", () => {
 
   it("reports refusal once to the error store of a later tab", async () => {
     await using setup = await setupRunWithEvoluDeps();
-    const { createIntegrationEvolu, run, sqlite } = setup;
+    const { createIntegrationEvolu, run } = setup;
+    const sqlite = setup.getSharedSqlite();
     sqlite.exec(sql`
       create table evolu_version ("dbVersion" integer not null) strict;
     `);

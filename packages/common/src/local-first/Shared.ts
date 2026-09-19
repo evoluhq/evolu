@@ -1,6 +1,36 @@
 /**
  * Platform-agnostic Evolu SharedWorker.
  *
+ * ## Synchronization routing
+ *
+ * WebSocket transports are shared resources keyed by their configuration and
+ * claimed by owner ID, so every tenant (one named local database) using an
+ * owner shares that owner's sockets, whichever tenant claimed them. An incoming
+ * frame is offered to every tenant with a writable registration for its owner,
+ * and each tenant reconciles independently: the protocol exchange is stateless
+ * per message and message writes are idempotent, so a response that answered
+ * another tenant's request is still a valid reconciliation step.
+ *
+ * Every queued sync request carries a `SyncTarget`. A continuation returns only
+ * to the transport that produced the response. A round started by a socket
+ * opening, by a transport's first claim for an owner, or by a tenant's first
+ * use of a transport other tenants already claimed targets that transport. A
+ * tenant's first writable owner registration also reconciles its existing
+ * history through every transport already claimed for that owner. Explicit
+ * synchronization requests and mutation uploads go to every open transport
+ * claimed for the owner.
+ *
+ * When a frame stores new owner messages, the tenant requests a full round
+ * through each other transport claimed for the owner, by any tenant, so data
+ * learned from one relay reaches the others. Duplicate receipts store nothing
+ * and request nothing. A replacement leader may have stored messages whose
+ * response was lost, so it reconciles every transport again. A later request is
+ * absorbed by a queued round with the same owners, a covering target, and a
+ * position after all writes already queued. Propagation requests can reuse a
+ * queued round with the same owners and a covering target regardless of later
+ * queued writes because their messages are already stored. A closed transport
+ * reconciles when it opens.
+ *
  * @module
  */
 
@@ -296,13 +326,34 @@ interface EvoluTenant extends AsyncDisposable {
     onDisposed: () => void,
   ) => void;
 
-  readonly requestCreateSyncMessages: (ownerIds: ReadonlySet<OwnerId>) => void;
+  readonly requestCreateSyncMessages: (
+    ownerIds: ReadonlySet<OwnerId>,
+    target: SyncTarget,
+  ) => void;
 
   readonly requestApplySyncMessage: (
     ownerId: OwnerId,
     inputMessage: Uint8Array,
+    transport: OwnerTransport,
   ) => void;
 }
+
+/** Where the protocol messages produced by a queued sync request are sent. */
+type SyncTarget =
+  | { readonly type: "AllTransports" }
+  | {
+      /** One transport, identified by its structural lookup key. */
+      readonly type: "Transport";
+      readonly key: StructuralLookupKey;
+    };
+
+const allTransports: SyncTarget = { type: "AllTransports" };
+
+const isTargetTransport = (
+  target: SyncTarget,
+  transport: OwnerTransport,
+): boolean =>
+  target.type === "AllTransports" || target.key === structuralLookup(transport);
 
 type EvoluTenantDeps = SharedWorkerDeps &
   PostConsoleEntryOrErrorDep &
@@ -415,8 +466,12 @@ export const initSharedWorker =
                   ownerIds: [...ownerIds],
                 });
 
+                const target: SyncTarget = {
+                  type: "Transport",
+                  key: structuralLookup(transport),
+                };
                 forEachTenant((tenant) => {
-                  tenant.requestCreateSyncMessages(ownerIds);
+                  tenant.requestCreateSyncMessages(ownerIds, target);
                 });
               },
 
@@ -444,15 +499,20 @@ export const initSharedWorker =
                   tenant.requestApplySyncMessage(
                     headerResult.value.ownerId,
                     message,
+                    transport,
                   );
                 });
               },
             }),
           {
-            onFirstClaimAdded: (ownerId, webSocket) => {
+            onFirstClaimAdded: (ownerId, webSocket, transport) => {
               if (!webSocket.isOpen()) return;
+              const target: SyncTarget = {
+                type: "Transport",
+                key: structuralLookup(transport),
+              };
               forEachTenant((tenant) => {
-                tenant.requestCreateSyncMessages(new Set([ownerId]));
+                tenant.requestCreateSyncMessages(new Set([ownerId]), target);
               });
             },
 
@@ -579,8 +639,19 @@ const createEvoluTenant =
               sessionClock = message.clock;
             }
             // A replacement leader may have committed writes whose responses
-            // were lost, and may have released quarantine at startup.
-            if (replacesLeader) refreshQueries();
+            // were lost, and may have released quarantine at startup. A lost
+            // response may also have reported stored owner messages, so the
+            // owners reconcile through every transport again.
+            if (replacesLeader) {
+              refreshQueries();
+              const usedOwnerIds = new Set<OwnerId>();
+              for (const instance of instancesById.values()) {
+                for (const { owner } of instance.usedSyncOwners.keys()) {
+                  usedOwnerIds.add(owner.id);
+                }
+              }
+              requestCreateSyncMessages(usedOwnerIds, allTransports);
+            }
             console.info("leaderAcquired");
             dbWorkerInited.resolve();
             runQueue();
@@ -607,7 +678,8 @@ const createEvoluTenant =
           }
           case "OnQueuedResponse": {
             if (activeDispatch?.attemptId !== message.attemptId) return;
-            const { request } = activeDispatch.entry;
+            const { entry } = activeDispatch;
+            const { request } = entry;
             const { response } = message;
             if (
               response.message.type === "Mutate" ||
@@ -625,7 +697,7 @@ const createEvoluTenant =
                 handleResponseForEvolu(response, request);
                 break;
               case "ForSharedWorker":
-                handleResponseForSharedWorker(response);
+                handleResponseForSharedWorker(response, entry);
                 break;
               default:
                 exhaustiveCheck(response);
@@ -659,14 +731,18 @@ const createEvoluTenant =
       }
     };
 
+    // A ForSharedWorker request keeps its target on the entry: the DbWorker
+    // does not need it, and a replacement leader replays the same entry.
     type QueueEntry =
       | {
           readonly type: "Read";
           readonly request: DbWorkerReadRequest;
+          readonly target?: SyncTarget;
         }
       | {
           readonly type: "Write";
           readonly request: DbWorkerWriteRequest;
+          readonly target?: SyncTarget;
           now?: Millis;
           clock?: Timestamp;
         };
@@ -793,7 +869,10 @@ const createEvoluTenant =
               );
             }
 
-            sendProtocolMessagesByOwnerId(protocolMessagesByOwnerId);
+            sendProtocolMessagesByOwnerId(
+              protocolMessagesByOwnerId,
+              allTransports,
+            );
           }
           break;
         }
@@ -809,16 +888,37 @@ const createEvoluTenant =
 
     const handleResponseForSharedWorker = (
       response: ExtractTyped<DbWorkerQueuedResponse, "ForSharedWorker">,
+      entry: QueueEntry,
     ): void => {
+      const { target } = entry;
+      assertNonNullable(target);
       switch (response.message.type) {
         case "CreateSyncMessages":
           sendProtocolMessagesByOwnerId(
             response.message.protocolMessagesByOwnerId,
+            target,
           );
           break;
 
         case "ApplySyncMessage":
-          if (response.message.didWriteMessages) refreshQueries();
+          if (response.message.didWriteMessages) {
+            refreshQueries();
+            // Reconcile newly stored messages through each other transport.
+            // Rounds toward the same transport coalesce whatever their source.
+            const { ownerId } = response.message;
+            const keys: Array<StructuralLookupKey> = [];
+            deps.transports.forEachResourceForClaim(ownerId, (_, transport) => {
+              if (isTargetTransport(target, transport)) return;
+              keys.push(structuralLookup(transport));
+            });
+            for (const key of keys) {
+              requestCreateSyncMessages(
+                new Set([ownerId]),
+                { type: "Transport", key },
+                { afterQueuedWrites: false },
+              );
+            }
+          }
 
           if (!response.message.result.ok) {
             if (response.message.result.error.type !== "AbortError") {
@@ -837,6 +937,7 @@ const createEvoluTenant =
                       response.message.result.value.message,
                     ],
                   ]),
+                  target,
                 );
                 break;
 
@@ -851,12 +952,14 @@ const createEvoluTenant =
 
     const sendProtocolMessagesByOwnerId = (
       protocolMessagesByOwnerId: ReadonlyMap<OwnerId, ProtocolMessage>,
+      target: SyncTarget,
     ): void => {
       for (const [ownerId, protocolMessage] of protocolMessagesByOwnerId) {
         deps.transports.forEachResourceForClaim(
           ownerId,
           (webSocket, transport) => {
-            if (!webSocket.isOpen()) return;
+            if (!isTargetTransport(target, transport) || !webSocket.isOpen())
+              return;
 
             console.debug("sendProtocolMessage", {
               ownerId,
@@ -885,23 +988,60 @@ const createEvoluTenant =
 
     const requestCreateSyncMessages = (
       ownerIds: ReadonlySet<OwnerId>,
+      target: SyncTarget,
+      {
+        afterQueuedWrites = true,
+      }: {
+        /** Whether the round must read the writes queued when it is requested. */
+        afterQueuedWrites?: boolean;
+      } = {},
     ): void => {
       if (startupError) return;
       const ownersToSync = [...getUsedOwnersById(ownerIds).values()].filter(
         ({ id }) => {
           let hasOpenTransport = false;
-          deps.transports.forEachResourceForClaim(id, (webSocket) => {
-            if (webSocket.isOpen()) hasOpenTransport = true;
-          });
+          deps.transports.forEachResourceForClaim(
+            id,
+            (webSocket, transport) => {
+              if (isTargetTransport(target, transport) && webSocket.isOpen())
+                hasOpenTransport = true;
+            },
+          );
           return hasOpenTransport;
         },
       );
 
       if (!isNonEmptyArray(ownersToSync)) return;
 
+      // A queued round reads the database when it is dispatched, so it covers
+      // this request unless the request must also read writes queued behind
+      // that round. A dispatched round covers neither.
+      const ownerIdsToSync = new Set(ownersToSync.map(({ id }) => id));
+      const lastWriteIndex = afterQueuedWrites
+        ? queue.findLastIndex(({ type }) => type === "Write")
+        : -1;
+      const isQueued = queue.some(
+        (entry, index) =>
+          index > lastWriteIndex &&
+          entry !== activeDispatch?.entry &&
+          entry.request.type === "ForSharedWorker" &&
+          entry.request.message.type === "CreateSyncMessages" &&
+          entry.target !== undefined &&
+          (entry.target.type === "AllTransports" ||
+            (target.type === "Transport" && entry.target.key === target.key)) &&
+          entry.request.message.owners.length === ownerIdsToSync.size &&
+          entry.request.message.owners.every(({ id }) =>
+            ownerIdsToSync.has(id),
+          ),
+      );
+
       console.debug("requestCreateSyncMessages", {
-        ownerIds: ownersToSync.map(({ id }) => id),
+        ownerIds: [...ownerIdsToSync],
+        target,
+        isQueued,
       });
+
+      if (isQueued) return;
 
       queue.push({
         type: "Read",
@@ -909,6 +1049,7 @@ const createEvoluTenant =
           type: "ForSharedWorker",
           message: { type: "CreateSyncMessages", owners: ownersToSync },
         },
+        target,
       });
 
       runQueue();
@@ -922,6 +1063,29 @@ const createEvoluTenant =
       ): Task<void, never, EvoluTenantDeps> =>
       async (run) => {
         if (action === "add") {
+          const ownerId = syncOwner.owner.id;
+          const isFirstWritableUse =
+            "writeKey" in syncOwner.owner &&
+            !getUsedOwnersById(new Set([ownerId])).has(ownerId);
+          // A transport first claimed for the owner starts every tenant's
+          // round through onFirstClaimAdded. A joining tenant also reconciles
+          // its existing history through the owner's already claimed transports.
+          // Later registrations reconcile only transports newly used here:
+          // earlier rounds may predate writes from an unregistered instance.
+          const claimedKeys = new Set(
+            [...deps.transports.getResourceKeysForClaim(ownerId)].map(
+              structuralLookup,
+            ),
+          );
+          const usedKeys = new Set<StructuralLookupKey>();
+          for (const { claimLeasesBySyncOwner } of instancesById.values()) {
+            for (const usedSyncOwner of claimLeasesBySyncOwner.keys()) {
+              if (usedSyncOwner.owner.id !== ownerId) continue;
+              for (const transport of usedSyncOwner.transports) {
+                usedKeys.add(structuralLookup(transport));
+              }
+            }
+          }
           instance.usedSyncOwners.increment(syncOwner);
           let succeeded = false;
           using compensation = new DisposableStack();
@@ -929,12 +1093,23 @@ const createEvoluTenant =
             if (!succeeded) instance.usedSyncOwners.decrement(syncOwner);
           });
           const claimLease = await run.ok(
-            deps.transports.claim(syncOwner.owner.id, syncOwner.transports),
+            deps.transports.claim(ownerId, syncOwner.transports),
           );
           instance.claimLeasesBySyncOwner
             .getOrInsertComputed(syncOwner, () => [])
             .push(claimLease);
           succeeded = true;
+          const keysToSync = isFirstWritableUse
+            ? claimedKeys
+            : syncOwner.transports
+                .map(structuralLookup)
+                .filter((key) => claimedKeys.has(key) && !usedKeys.has(key));
+          for (const key of keysToSync) {
+            requestCreateSyncMessages(new Set([ownerId]), {
+              type: "Transport",
+              key,
+            });
+          }
         } else {
           instance.usedSyncOwners.decrement(syncOwner);
           const claimLeases = instance.claimLeasesBySyncOwner.get(syncOwner);
@@ -991,8 +1166,10 @@ const createEvoluTenant =
           disposer.defer(async () => {
             await tenantRun(
               instance.useOwnerMutex.withLock(async (run) => {
-                for (const syncOwner of instance.usedSyncOwners.keys()) {
-                  while (instance.usedSyncOwners.has(syncOwner)) {
+                // Uses are counted per owner but claimed per transport set,
+                // so release every claimed set, not the first one per owner.
+                for (const syncOwner of instance.claimLeasesBySyncOwner.keys()) {
+                  while (instance.claimLeasesBySyncOwner.has(syncOwner)) {
                     await run(toggleSyncOwner(instance, syncOwner, "remove"));
                   }
                 }
@@ -1053,7 +1230,10 @@ const createEvoluTenant =
                             id: instance.id,
                             ownerId: action.ownerId,
                           });
-                          requestCreateSyncMessages(new Set([action.ownerId]));
+                          requestCreateSyncMessages(
+                            new Set([action.ownerId]),
+                            allTransports,
+                          );
                           break;
                         case "add":
                         case "remove":
@@ -1091,13 +1271,14 @@ const createEvoluTenant =
 
         requestCreateSyncMessages,
 
-        requestApplySyncMessage: (ownerId, inputMessage): void => {
+        requestApplySyncMessage: (ownerId, inputMessage, transport): void => {
           if (startupError) return;
           const owner = getUsedOwnersById(new Set([ownerId])).get(ownerId);
           if (!owner) return;
 
           console.debug("requestApplySyncMessage", {
             ownerId,
+            url: transport.url,
             byteLength: inputMessage.byteLength,
           });
 
@@ -1107,6 +1288,7 @@ const createEvoluTenant =
               type: "ForSharedWorker",
               message: { type: "ApplySyncMessage", owner, inputMessage },
             },
+            target: { type: "Transport", key: structuralLookup(transport) },
           });
 
           runQueue();
@@ -1153,3 +1335,8 @@ const createEvoluTenant =
 // - Remove the obsolete commented protocol block above.
 // - Replace the SyncState placeholder with actual sync monitoring state.
 // - Propagate invalid protocol messages to sync state.
+// - Measure sync traffic before bounding it: several tenants using one owner
+//   multiply rounds, and a bulk catch-up from one relay starts up to one round
+//   to each other relay per frame that stores new messages, depending on queued
+//   round coalescing. Forwarding the stored messages the way mutation uploads
+//   do would replace those rounds.

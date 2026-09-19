@@ -39,6 +39,7 @@ import {
   type ConsoleEntryOrError,
   type DbWorkerInput,
   type DbWorkerOutput,
+  type DbWorkerQueuedResponse,
   type EvoluInput,
   type EvoluOutput,
   type SharedWorkerInput,
@@ -64,14 +65,18 @@ import {
   assertType,
   createId,
   id,
+  Name,
   PositiveInt,
   String,
   testName,
   type Id,
   type ExtractTyped,
-  type Name,
 } from "../Type.ts";
-import { testCreateWebSocket, type CreateWebSocket } from "../WebSocket.ts";
+import {
+  testCreateWebSocket,
+  type CreateWebSocket,
+  type TestCreateWebSocket,
+} from "../WebSocket.ts";
 import {
   testCreateBroadcastChannel,
   testCreateMessageChannel,
@@ -326,6 +331,77 @@ const setupTab = (
   assertNonNullable(setup.worker.self.onConnect);
   setup.worker.self.onConnect(channel.port2);
   return { port: channel.port1, outputs };
+};
+
+type TestEvoluInstance = Awaited<ReturnType<SharedWorkerSetup["createEvolu"]>>;
+
+type ApplySyncResult = Extract<
+  Extract<DbWorkerQueuedResponse, { type: "ForSharedWorker" }>["message"],
+  { type: "ApplySyncMessage" }
+>["result"];
+
+/** Completes the latest queued sync round and returns the URLs it was sent to. */
+const respondToSyncRound = async (
+  {
+    dbInputs,
+    dbWorkerPort,
+  }: Pick<TestEvoluInstance, "dbInputs" | "dbWorkerPort">,
+  createWebSocket: TestCreateWebSocket,
+): Promise<Array<string>> => {
+  const input = dbInputs.at(-1);
+  assertNotUndefined(input);
+  assertEqual(input.request, {
+    type: "ForSharedWorker",
+    message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+  });
+  dbWorkerPort.postMessage({
+    type: "OnQueuedResponse",
+    attemptId: input.attemptId,
+    response: {
+      type: "ForSharedWorker",
+      message: {
+        type: "CreateSyncMessages",
+        protocolMessagesByOwnerId: new Map([
+          [
+            testAppOwner.id,
+            createProtocolMessageForUnsubscribe(testAppOwner.id),
+          ],
+        ]),
+      },
+    },
+  });
+  await testWaitForWorkerMessage();
+  return createWebSocket.sentMessages.splice(0).map(({ url }) => url);
+};
+
+/** Completes the latest queued ApplySyncMessage. */
+const respondToApplySync = async (
+  {
+    dbInputs,
+    dbWorkerPort,
+  }: Pick<TestEvoluInstance, "dbInputs" | "dbWorkerPort">,
+  didWriteMessages: boolean,
+  result: ApplySyncResult,
+): Promise<void> => {
+  const input = dbInputs.at(-1);
+  assertNotUndefined(input);
+  assertSame(input.request.type, "ForSharedWorker");
+  assertSame(input.request.message.type, "ApplySyncMessage");
+  dbWorkerPort.postMessage({
+    type: "OnQueuedResponse",
+    attemptId: input.attemptId,
+    response: {
+      type: "ForSharedWorker",
+      message: {
+        type: "ApplySyncMessage",
+        clock: createTimestamp(),
+        ownerId: testAppOwner.id,
+        didWriteMessages,
+        result,
+      },
+    },
+  });
+  await testWaitForWorkerMessage();
 };
 
 /** Connects a new tab leader and waits for its DbWorker initialization message. */
@@ -1013,6 +1089,793 @@ describe("with one evolu instance", () => {
       assertLength(createWebSocket.sentMessages, 1);
       assertSame(createWebSocket.sentMessages[0]?.url, writableTransport.url);
       assertInstanceOf(createWebSocket.sentMessages[0]?.data, Uint8Array);
+    });
+
+    it("starts a round only through a transport first claimed while open and explicit sync through every transport", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const instance = await setup.createEvolu();
+      const { dbInputs, evoluChannel } = instance;
+      const transportA = createOwnerWebSocketTransport({
+        url: "wss://first-claim-a.example",
+        ownerId: testAppOwner.id,
+      });
+      const transportB = createOwnerWebSocketTransport({
+        url: "wss://first-claim-b.example",
+        ownerId: testAppOwner.id,
+      });
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transportA] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertSame(dbInputs.length, 1);
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transportA.url,
+      ]);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transportB] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertSame(dbInputs.length, 2);
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transportB.url,
+      ]);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "sync", ownerId: testAppOwner.id }],
+      });
+      await testWaitForWorkerMessage();
+      assertSame(dbInputs.length, 3);
+      assertEqual(
+        new Set(await respondToSyncRound(instance, createWebSocket)),
+        new Set([transportA.url, transportB.url]),
+      );
+    });
+
+    it("starts a round only through the transport that opened", async () => {
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const instance = await setup.createEvolu();
+      const { dbInputs, evoluChannel } = instance;
+      const transports = [
+        createOwnerWebSocketTransport({
+          url: "wss://opened-a.example",
+          ownerId: testAppOwner.id,
+        }),
+        createOwnerWebSocketTransport({
+          url: "wss://opened-b.example",
+          ownerId: testAppOwner.id,
+        }),
+      ] as const;
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "add", owner: { owner: testAppOwner, transports } },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(dbInputs, []);
+
+      for (const transport of transports) {
+        createWebSocket.open(transport.url);
+        await testWaitForWorkerMessage();
+        assertEqual(await respondToSyncRound(instance, createWebSocket), [
+          transport.url,
+        ]);
+      }
+      assertSame(dbInputs.length, 2);
+    });
+
+    it("sends a continuation only to the transport that produced the response", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const instance = await setup.createEvolu();
+      const { dbInputs, evoluChannel } = instance;
+      const { time } = setup.run.deps;
+      const transports = [
+        createOwnerWebSocketTransport({
+          url: "wss://continuation-a.example",
+          ownerId: testAppOwner.id,
+        }),
+        createOwnerWebSocketTransport({
+          url: "wss://continuation-b.example",
+          ownerId: testAppOwner.id,
+        }),
+      ] as const;
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "add", owner: { owner: testAppOwner, transports } },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      // Each transport's first claim starts a round through that transport.
+      const roundUrls = [
+        await respondToSyncRound(instance, createWebSocket),
+        await respondToSyncRound(instance, createWebSocket),
+      ];
+      assertEqual(
+        roundUrls.flat().toSorted(),
+        transports.map(({ url }) => url).toSorted(),
+      );
+      assertSame(dbInputs.length, 2);
+
+      const continuation = createProtocolMessageForUnsubscribe(testAppOwner.id);
+      for (const transport of transports) {
+        createWebSocket.message(
+          transport.url,
+          protocolMessageToArrayBuffer(continuation),
+        );
+        time.advance("10s");
+        await testWaitForWorkerMessage();
+        await respondToApplySync(instance, false, {
+          ok: true,
+          value: { type: "Response", message: continuation },
+        });
+        assertEqual(createWebSocket.sentMessages.splice(0), [
+          { url: transport.url, data: continuation },
+        ]);
+      }
+    });
+
+    it("reconciles newly stored messages through the owner's other transports and coalesces pending rounds", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const instance = await setup.createEvolu();
+      const { dbInputs, evoluChannel } = instance;
+      const { time } = setup.run.deps;
+      const transportA = createOwnerWebSocketTransport({
+        url: "wss://propagate-a.example",
+        ownerId: testAppOwner.id,
+      });
+      const transportB = createOwnerWebSocketTransport({
+        url: "wss://propagate-b.example",
+        ownerId: testAppOwner.id,
+      });
+      const frame = protocolMessageToArrayBuffer(
+        createProtocolMessageForUnsubscribe(testAppOwner.id),
+      );
+      const deliver = async (url: string): Promise<void> => {
+        createWebSocket.message(url, frame);
+        time.advance("10s");
+        await testWaitForWorkerMessage();
+      };
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transportA] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transportA.url,
+      ]);
+
+      // With no other transport, new messages start no round.
+      dbInputs.length = 0;
+      await deliver(transportA.url);
+      await respondToApplySync(instance, true, {
+        ok: true,
+        value: { type: "NoResponse" },
+      });
+      assertSame(dbInputs.length, 1);
+      assertEqual(createWebSocket.sentMessages, []);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transportB] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transportB.url,
+      ]);
+
+      // A frame that stores nothing new starts no round.
+      dbInputs.length = 0;
+      await deliver(transportA.url);
+      await respondToApplySync(instance, false, {
+        ok: true,
+        value: { type: "Broadcast" },
+      });
+      assertSame(dbInputs.length, 1);
+      assertEqual(createWebSocket.sentMessages, []);
+
+      // New messages from A start one round through B. A second receipt while
+      // that round is still queued is absorbed by it.
+      dbInputs.length = 0;
+      createWebSocket.message(transportA.url, frame);
+      createWebSocket.message(transportA.url, frame);
+      time.advance("10s");
+      await testWaitForWorkerMessage();
+      assertSame(dbInputs.length, 1);
+      await respondToApplySync(instance, true, {
+        ok: true,
+        value: { type: "NoResponse" },
+      });
+      assertSame(dbInputs.length, 2);
+      await respondToApplySync(instance, true, {
+        ok: true,
+        value: { type: "Broadcast" },
+      });
+      assertSame(dbInputs.length, 3);
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transportB.url,
+      ]);
+      await testWaitForWorkerMessage();
+      assertSame(dbInputs.length, 3);
+
+      // A continuation returns to A while the new messages reconcile with B.
+      dbInputs.length = 0;
+      const continuation = createProtocolMessageForUnsubscribe(testAppOwner.id);
+      await deliver(transportA.url);
+      await respondToApplySync(instance, true, {
+        ok: true,
+        value: { type: "Response", message: continuation },
+      });
+      assertEqual(createWebSocket.sentMessages.splice(0), [
+        { url: transportA.url, data: continuation },
+      ]);
+      assertSame(dbInputs.length, 2);
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transportB.url,
+      ]);
+
+      // New messages from B reconcile with A.
+      dbInputs.length = 0;
+      await deliver(transportB.url);
+      await respondToApplySync(instance, true, {
+        ok: true,
+        value: { type: "NoResponse" },
+      });
+      assertSame(dbInputs.length, 2);
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transportA.url,
+      ]);
+    });
+
+    for (const trigger of [
+      "explicit sync",
+      "socket opening",
+      "first claim of an open transport",
+    ] as const) {
+      it(`does not absorb ${trigger} into a round queued before a later write`, async () => {
+        const createWebSocket = testCreateWebSocket({
+          isOpen: trigger !== "socket opening",
+        });
+        await using setup = await setupSharedWorker({ createWebSocket });
+        const first = await setup.createEvolu();
+        const { dbInputs, dbWorkerPort, evoluChannel } = first;
+        const transport = createOwnerWebSocketTransport({
+          url: "wss://ordered-sync.example",
+          ownerId: testAppOwner.id,
+        });
+        const nextTransport = createOwnerWebSocketTransport({
+          url: "wss://ordered-sync-next.example",
+          ownerId: testAppOwner.id,
+        });
+        evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              action: "add",
+              owner: {
+                owner: testAppOwner,
+                transports:
+                  trigger === "socket opening"
+                    ? [transport, nextTransport]
+                    : [transport],
+              },
+            },
+          ],
+        });
+        await testWaitForWorkerMessage();
+        if (trigger === "socket opening") {
+          createWebSocket.open(transport.url);
+          await testWaitForWorkerMessage();
+        }
+        await respondToSyncRound(first, createWebSocket);
+        dbInputs.length = 0;
+
+        // A sibling instance without an owner registration relies on rounds to
+        // upload its mutations.
+        const siblingId = createId<"EvoluInstance">(setup.run.deps);
+        await using _siblingLock = await setup.run.ok(
+          acquireLeaderLock(siblingId),
+        );
+        using siblingChannel = testCreateMessageChannel<
+          EvoluOutput,
+          EvoluInput
+        >();
+        setup.worker.port.postMessage({
+          type: "CreateEvolu",
+          id: siblingId,
+          name: testName,
+          consoleLevel: "debug",
+          sqliteSchema: testSqliteSchema,
+          encryptionKey: testAppOwner.encryptionKey,
+          memoryOnly: false,
+          evoluPort: siblingChannel.port1.native,
+        });
+        await testWaitForWorkerMessage();
+
+        // A pending query keeps the following round queued.
+        evoluChannel.port2.postMessage({
+          type: "Query",
+          queries: createSet([testQuery]),
+        });
+        evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [{ action: "sync", ownerId: testAppOwner.id }],
+        });
+        await testWaitForWorkerMessage();
+        siblingChannel.port2.postMessage({
+          type: "Mutate",
+          changes: [{} as MutationChange],
+          onCompleteIds: [],
+          subscribedQueries: new Set(),
+        });
+        await testWaitForWorkerMessage();
+        if (trigger === "explicit sync") {
+          evoluChannel.port2.postMessage({
+            type: "UseOwner",
+            actions: [{ action: "sync", ownerId: testAppOwner.id }],
+          });
+        } else if (trigger === "socket opening") {
+          createWebSocket.open(nextTransport.url);
+        } else {
+          evoluChannel.port2.postMessage({
+            type: "UseOwner",
+            actions: [
+              {
+                action: "add",
+                owner: { owner: testAppOwner, transports: [nextTransport] },
+              },
+            ],
+          });
+        }
+        setup.run.deps.time.advance("10s");
+        await testWaitForWorkerMessage();
+        assertSame(dbInputs.length, 1);
+
+        const query = dbInputs[0];
+        assertNotUndefined(query);
+        assertSame(query.request.type, "ForEvolu");
+        dbWorkerPort.postMessage({
+          type: "OnQueuedResponse",
+          attemptId: query.attemptId,
+          response: {
+            type: "ForEvolu",
+            id: first.id,
+            message: { type: "Query", rowsByQuery: new Map() },
+          },
+        });
+        await testWaitForWorkerMessage();
+        assertEqual(
+          await respondToSyncRound(first, createWebSocket),
+          trigger === "explicit sync"
+            ? [transport.url]
+            : [transport.url, nextTransport.url],
+        );
+
+        const mutate = dbInputs.at(-1);
+        assertNotUndefined(mutate);
+        assertSame(mutate.request.type, "ForEvolu");
+        assertSame(mutate.request.message.type, "Mutate");
+        dbWorkerPort.postMessage({
+          type: "OnQueuedResponse",
+          attemptId: mutate.attemptId,
+          response: {
+            type: "ForEvolu",
+            id: siblingId,
+            message: {
+              type: "Mutate",
+              clock: createTimestamp(),
+              messagesByOwnerId: new Map([
+                [
+                  testAppOwner.id,
+                  [
+                    testCreateCrdtMessage(
+                      createId(setup.run.deps),
+                      1,
+                      "queued",
+                    ),
+                  ],
+                ],
+              ]),
+              rowsByQuery: new Map(),
+            },
+          },
+        });
+        await testWaitForWorkerMessage();
+
+        // This sibling does not upload its mutation, so the later round must
+        // read that write and send it through the requested transport.
+        assertEqual(createWebSocket.sentMessages, []);
+        assertEqual(
+          dbInputs.map(({ request }) => request.message.type),
+          ["Query", "CreateSyncMessages", "Mutate", "CreateSyncMessages"],
+        );
+        assertEqual(await respondToSyncRound(first, createWebSocket), [
+          trigger === "explicit sync" ? transport.url : nextTransport.url,
+        ]);
+      });
+    }
+
+    it("absorbs a propagation round into a queued explicit round with a frame behind it", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const instance = await setup.createEvolu();
+      const { dbInputs, dbWorkerPort, evoluChannel } = instance;
+      const transports = [
+        createOwnerWebSocketTransport({
+          url: "wss://covering-a.example",
+          ownerId: testAppOwner.id,
+        }),
+        createOwnerWebSocketTransport({
+          url: "wss://covering-b.example",
+          ownerId: testAppOwner.id,
+        }),
+      ] as const;
+      const frame = protocolMessageToArrayBuffer(
+        createProtocolMessageForUnsubscribe(testAppOwner.id),
+      );
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "add", owner: { owner: testAppOwner, transports } },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(instance, createWebSocket);
+      await respondToSyncRound(instance, createWebSocket);
+      dbInputs.length = 0;
+
+      // A pending query keeps a frame and the explicit round queued, and a
+      // second frame arrives behind that round.
+      evoluChannel.port2.postMessage({
+        type: "Query",
+        queries: createSet([testQuery]),
+      });
+      await testWaitForWorkerMessage();
+      createWebSocket.message(transports[0].url, frame);
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "sync", ownerId: testAppOwner.id }],
+      });
+      await testWaitForWorkerMessage();
+      createWebSocket.message(transports[0].url, frame);
+      setup.run.deps.time.advance("10s");
+      await testWaitForWorkerMessage();
+      assertSame(dbInputs.length, 1);
+
+      const query = dbInputs[0];
+      assertNotUndefined(query);
+      dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: query.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: instance.id,
+          message: { type: "Query", rowsByQuery: new Map() },
+        },
+      });
+      await testWaitForWorkerMessage();
+
+      // The first frame stores messages. The queued explicit round already
+      // covers the other transport although the second frame is behind it.
+      await respondToApplySync(instance, true, {
+        ok: true,
+        value: { type: "NoResponse" },
+      });
+      assertEqual(
+        new Set(await respondToSyncRound(instance, createWebSocket)),
+        new Set(transports.map(({ url }) => url)),
+      );
+      await respondToApplySync(instance, false, {
+        ok: true,
+        value: { type: "NoResponse" },
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(
+        dbInputs.map(({ request }) => request.message.type),
+        ["Query", "ApplySyncMessage", "CreateSyncMessages", "ApplySyncMessage"],
+      );
+    });
+
+    it("starts a round for a tenant that joins an owner on a transport another tenant already uses", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const first = await setup.createEvolu();
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://late-tenant.example",
+        ownerId: testAppOwner.id,
+      });
+      const syncOwner = {
+        owner: testAppOwner,
+        transports: [transport],
+      } as const;
+
+      first.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "add", owner: syncOwner }],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(first, createWebSocket), [
+        transport.url,
+      ]);
+      first.dbInputs.length = 0;
+
+      // A sibling instance of the same tenant reuses the transport without
+      // another round.
+      const siblingId: EvoluInstanceId = createId(setup.run.deps);
+      await using _siblingLock = await setup.run.ok(
+        acquireLeaderLock(siblingId),
+      );
+      using siblingChannel = testCreateMessageChannel<
+        EvoluOutput,
+        EvoluInput
+      >();
+      setup.worker.port.postMessage({
+        type: "CreateEvolu",
+        name: testName,
+        id: siblingId,
+        consoleLevel: "debug",
+        sqliteSchema: testSqliteSchema,
+        encryptionKey: testAppOwner.encryptionKey,
+        memoryOnly: false,
+        evoluPort: siblingChannel.port1.native,
+      });
+      await testWaitForWorkerMessage();
+      siblingChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "add", owner: syncOwner }],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(first.dbInputs, []);
+
+      // Another tenant joining the owner on that transport starts its own
+      // round, because its database has not reconciled with the relay.
+      const second = await setup.createEvolu({
+        tenantName: Name.orThrow("late-tenant"),
+      });
+      second.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "add", owner: syncOwner }],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(second, createWebSocket), [
+        transport.url,
+      ]);
+      assertEqual(first.dbInputs, []);
+      assertEqual(createWebSocket.createdUrls, [transport.url]);
+    });
+
+    it("reconciles a joining tenant through transports already claimed by other tenants", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const first = await setup.createEvolu();
+      const transportA = createOwnerWebSocketTransport({
+        url: "wss://joining-tenant-a.example",
+        ownerId: testAppOwner.id,
+      });
+      const transportB = createOwnerWebSocketTransport({
+        url: "wss://joining-tenant-b.example",
+        ownerId: testAppOwner.id,
+      });
+      first.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transportB] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(first, createWebSocket), [
+        transportB.url,
+      ]);
+      first.dbInputs.length = 0;
+
+      const second = await setup.createEvolu({
+        tenantName: Name.orThrow("joining-tenant"),
+      });
+      second.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transportA] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+
+      // The joining database reconciles with both owner transports, including
+      // B, which only the first tenant claimed.
+      const firstRoundUrls = await respondToSyncRound(second, createWebSocket);
+      assertSame(second.dbInputs.length, 2);
+      const secondRoundUrls = await respondToSyncRound(second, createWebSocket);
+      assertEqual(
+        new Set([...firstRoundUrls, ...secondRoundUrls]),
+        new Set([transportA.url, transportB.url]),
+      );
+
+      // The existing tenant starts only the new transport's round.
+      assertSame(first.dbInputs.length, 1);
+      assertEqual(await respondToSyncRound(first, createWebSocket), [
+        transportA.url,
+      ]);
+    });
+
+    it("reconciles a tenant's later writes when it first uses an already claimed transport", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const first = await setup.createEvolu();
+      const transportA = createOwnerWebSocketTransport({
+        url: "wss://later-tenant-use-a.example",
+        ownerId: testAppOwner.id,
+      });
+      const transportB = createOwnerWebSocketTransport({
+        url: "wss://later-tenant-use-b.example",
+        ownerId: testAppOwner.id,
+      });
+      first.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transportA] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(first, createWebSocket), [
+        transportA.url,
+      ]);
+
+      const second = await setup.createEvolu({
+        tenantName: Name.orThrow("later-tenant-use"),
+      });
+      const syncOwnerB = {
+        owner: testAppOwner,
+        transports: [transportB],
+      } as const;
+      second.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "add", owner: syncOwnerB }],
+      });
+      await testWaitForWorkerMessage();
+
+      // B's first global claim already reconciles the first tenant through B.
+      assertEqual(await respondToSyncRound(first, createWebSocket), [
+        transportB.url,
+      ]);
+      const secondFirstRound = await respondToSyncRound(
+        second,
+        createWebSocket,
+      );
+      const secondLastRound = await respondToSyncRound(second, createWebSocket);
+      assertEqual(
+        new Set([...secondFirstRound, ...secondLastRound]),
+        new Set([transportA.url, transportB.url]),
+      );
+      first.dbInputs.length = 0;
+      second.dbInputs.length = 0;
+
+      // A sibling writes after those rounds without registering the owner.
+      // Mutation uploads depend on the writing instance's registrations.
+      const siblingId: EvoluInstanceId = createId(setup.run.deps);
+      await using _siblingLock = await setup.run.ok(
+        acquireLeaderLock(siblingId),
+      );
+      using siblingChannel = testCreateMessageChannel<
+        EvoluOutput,
+        EvoluInput
+      >();
+      setup.worker.port.postMessage({
+        type: "CreateEvolu",
+        name: testName,
+        id: siblingId,
+        consoleLevel: "debug",
+        sqliteSchema: testSqliteSchema,
+        encryptionKey: testAppOwner.encryptionKey,
+        memoryOnly: false,
+        evoluPort: siblingChannel.port1.native,
+      });
+      await testWaitForWorkerMessage();
+      const crdtMessage = testCreateCrdtMessage(
+        createId(setup.run.deps),
+        1,
+        "written after the earlier round",
+      );
+      siblingChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [{ ...crdtMessage.change, ownerId: testAppOwner.id }],
+        onCompleteIds: [],
+        subscribedQueries: new Set(),
+      });
+      setup.run.deps.time.advance("10s");
+      await testWaitForWorkerMessage();
+      assertSame(first.dbInputs.length, 1);
+      const mutation = first.dbInputs[0];
+      assertNotUndefined(mutation);
+      assertSame(mutation.request.type, "ForEvolu");
+      assertSame(mutation.request.id, siblingId);
+      assertSame(mutation.request.message.type, "Mutate");
+      first.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: mutation.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: siblingId,
+          message: {
+            type: "Mutate",
+            clock: createTimestamp(),
+            messagesByOwnerId: new Map([[testAppOwner.id, [crdtMessage]]]),
+            rowsByQuery: new Map(),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+      assertSame(first.dbInputs.length, 1);
+      assertEqual(createWebSocket.sentMessages, []);
+      first.dbInputs.length = 0;
+
+      // The tenant already has a writable registration through A, and B's
+      // global claim remains active. Its first local use of B needs a new round.
+      siblingChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "add", owner: syncOwnerB }],
+      });
+      await testWaitForWorkerMessage();
+      assertSame(first.dbInputs.length, 1);
+      assertEqual(await respondToSyncRound(first, createWebSocket), [
+        transportB.url,
+      ]);
+      assertEqual(second.dbInputs, []);
+      first.dbInputs.length = 0;
+
+      // Repeated use does not start another round or construct another socket.
+      siblingChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "add", owner: syncOwnerB }],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(first.dbInputs, []);
+      assertEqual(second.dbInputs, []);
+      assertEqual(createWebSocket.sentMessages, []);
+      assertEqual(createWebSocket.createdUrls, [
+        transportA.url,
+        transportB.url,
+      ]);
     });
 
     it("ignores non-binary and invalid transport messages", async () => {
@@ -2148,6 +3011,82 @@ describe("with one evolu instance", () => {
       assertEqual(inputs[3].clock, finalClock);
     });
 
+    it("reconciles every transport after a leader replacement", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const first = await setup.createEvolu({
+        releaseDbWorkerLeaderOnDispose: false,
+      });
+      const transportA = createOwnerWebSocketTransport({
+        url: "wss://replayed-a.example",
+        ownerId: testAppOwner.id,
+      });
+      const transportB = createOwnerWebSocketTransport({
+        url: "wss://replayed-b.example",
+        ownerId: testAppOwner.id,
+      });
+      first.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: {
+              owner: testAppOwner,
+              transports: [transportA, transportB],
+            },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(first, createWebSocket);
+      await respondToSyncRound(first, createWebSocket);
+      first.dbInputs.length = 0;
+
+      // The frame reaches the first leader, which is replaced before it
+      // responds.
+      createWebSocket.message(
+        transportA.url,
+        protocolMessageToArrayBuffer(
+          createProtocolMessageForUnsubscribe(testAppOwner.id),
+        ),
+      );
+      setup.run.deps.time.advance("10s");
+      await testWaitForWorkerMessage();
+      assertSame(first.dbInputs.length, 1);
+      await first.releaseDbWorkerLeader();
+
+      const init = await setupTabLeader(setup, disposer, "silent");
+      const dbWorkerPort = disposer.use(
+        testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(init.port),
+      );
+      const dbInputs: Array<ExtractTyped<DbWorkerInput, "Request">> = [];
+      dbWorkerPort.onMessage = (input) => {
+        if (input.type === "Request") dbInputs.push(input);
+      };
+      dbWorkerPort.postMessage({
+        type: "LeaderAcquired",
+        name: testName,
+        clock: createTimestamp(),
+      });
+      await testWaitForWorkerMessage();
+      const replacement = { dbInputs, dbWorkerPort };
+      assertSame(dbInputs.length, 1);
+      assertEqual(dbInputs[0]?.request, first.dbInputs[0]?.request);
+
+      // The replay stores nothing because the first attempt may have, so the
+      // owner reconciles through every transport after the replay.
+      await respondToApplySync(replacement, false, {
+        ok: true,
+        value: { type: "NoResponse" },
+      });
+      assertSame(dbInputs.length, 2);
+      assertEqual(
+        new Set(await respondToSyncRound(replacement, createWebSocket)),
+        new Set([transportA.url, transportB.url]),
+      );
+    });
+
     it("retries an in-flight read and keeps the session clock when the replacement reports an older clock", async () => {
       await using setup = await setupSharedWorker();
       using disposer = new DisposableStack();
@@ -2396,6 +3335,45 @@ describe("with one evolu instance", () => {
         url: transport.url,
         data: createProtocolMessageForUnsubscribe(testAppOwner.id),
       });
+    });
+
+    it("releases every transport set of an owner when the instance is disposed", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const instance = await setup.createEvolu({ autoDispose: false });
+      const transports = [
+        createOwnerWebSocketTransport({
+          url: "wss://dispose-sets-a.example",
+          ownerId: testAppOwner.id,
+        }),
+        createOwnerWebSocketTransport({
+          url: "wss://dispose-sets-b.example",
+          ownerId: testAppOwner.id,
+        }),
+      ] as const;
+
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: transports.map((transport) => ({
+          action: "add" as const,
+          owner: { owner: testAppOwner, transports: [transport] },
+        })),
+      });
+      await testWaitForWorkerMessage();
+      createWebSocket.sentMessages.length = 0;
+
+      await instance[Symbol.asyncDispose]();
+
+      assertEqual(
+        new Set(createWebSocket.sentMessages),
+        new Set(
+          transports.map(({ url }) => ({
+            url,
+            data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+          })),
+        ),
+      );
+      assertEqual(setup.run.deps.reportDefect.getDefects(), []);
     });
 
     it("waits for DbWorker leader lock during tenant disposal", async () => {
