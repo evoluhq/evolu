@@ -1,5 +1,410 @@
 # @evolu/common
 
+## 8.11.0
+
+### Minor Changes
+
+- ecbac00: Fixed local synchronization between databases
+
+  Named databases with writable registrations for the same owner now receive each other's mutation and continuation uploads locally, including while relay sockets are closed or a relay's quota check is pending. Large mutation batches are split into complete frames, and duplicate receipts do not start extra relay rounds.
+
+  Added `createProtocolBroadcastMessagesFromCrdtMessages` for producing all broadcast frames from a mutation batch. Client protocol responses can also include a `broadcast` companion containing their uploaded messages.
+
+  ```ts
+  import {
+    assertSame,
+    createId,
+    getOrThrow,
+    testCreateDeps,
+  } from "@evolu/common";
+  import {
+    createProtocolBroadcastMessagesFromCrdtMessages,
+    MessageType,
+    parseProtocolHeader,
+    testAppOwner,
+    testCreateCrdtMessage,
+  } from "@evolu/common/local-first";
+
+  const deps = testCreateDeps();
+  const broadcasts = createProtocolBroadcastMessagesFromCrdtMessages(deps)(
+    testAppOwner,
+    [testCreateCrdtMessage(createId(deps), 1, "Ada")],
+  );
+  assertSame(broadcasts.length, 1);
+  assertSame(
+    getOrThrow(parseProtocolHeader(broadcasts[0])).messageType,
+    MessageType.Broadcast,
+  );
+  ```
+
+- 69b756c: Added timestamp drift and ordering helpers
+
+  `isTimestampBeyondMaxDrift` checks whether timestamp milliseconds exceed the
+  configured drift limit relative to a supplied time. Timestamp generation reuses
+  this predicate without changing its drift-error contract.
+
+  `orderTimestamp` compares timestamps by milliseconds, counter, and node ID,
+  matching their encoded byte order without serialization. Distinct objects with
+  identical fields compare as equal.
+
+  ```ts
+  import { assertEqual, assertFalse, assertTrue, Millis } from "@evolu/common";
+  import {
+    createTimestamp,
+    isTimestampBeyondMaxDrift,
+    orderTimestamp,
+  } from "@evolu/common/local-first";
+
+  const now = Millis.orThrow(100);
+  const timestamp = createTimestamp({ millis: now });
+  const later = createTimestamp({ millis: Millis.orThrow(111) });
+  assertEqual(orderTimestamp(timestamp, later), -1);
+  assertEqual(orderTimestamp(timestamp, { ...timestamp }), 0);
+
+  const isBeyondMaxDrift = isTimestampBeyondMaxDrift({
+    timestampConfig: { maxDrift: 10 },
+  });
+  assertFalse(isBeyondMaxDrift(Millis.orThrow(110), now));
+  assertTrue(isBeyondMaxDrift(later.millis, now));
+  ```
+
+- c6fd793: Added an app-owner registry test schema
+
+  Added `testLocalOnlyEvoluSchema` for tests and examples that store app owners in
+  an `_appOwner` table. It includes operational keys, optional recovery secrets,
+  and optional names.
+
+  Use it with `createEvolu`. Tables prefixed with `_` stay local even when the
+  instance synchronizes other data through `useOwner`.
+
+  ```ts
+  import {
+    createEvolu,
+    testAppName,
+    testAppOwner,
+    testLocalOnlyEvoluSchema,
+  } from "@evolu/common";
+
+  const _createAccounts = createEvolu(testLocalOnlyEvoluSchema, {
+    appName: testAppName,
+    appOwner: testAppOwner,
+    transports: [],
+  });
+  ```
+
+- daf6295: Added explicit synchronization requests for active owners
+
+  Call `evolu.requestSync(ownerId)` after resolving a relay quota error to retry locally
+  stored changes. It requests a fresh reconciliation through the owner's active
+  transports while preserving connections and subscriptions, including those shared
+  by multiple instances or tabs. The call returns immediately; errors continue
+  through the existing Evolu error store.
+
+  Requests skip sync-message creation while all of the owner's transports are
+  closed. Synchronization starts automatically when a transport opens.
+
+  ```ts
+  import { assertType, type Evolu, type OwnerId } from "@evolu/common";
+
+  // Call after successfully increasing the affected owner's relay quota.
+  const onQuotaIncreased = (evolu: Evolu, ownerId: OwnerId) => {
+    evolu.requestSync(ownerId);
+  };
+
+  assertType<
+    typeof onQuotaIncreased,
+    (evolu: Evolu, ownerId: OwnerId) => void
+  >();
+  ```
+
+- cf68cee: Added reusable local-first test fixtures
+
+  Exported `testEvoluSchema`, `TestEvoluSchema`, `TestTodoId`, `TestProjectId`,
+  `testTodoId`, and `testProjectId` for deterministic tests and examples with
+  project-linked or independent todos. Also exported the existing `testAppName`
+  from the common entrypoint. Examples now reuse these fixtures and the existing
+  `testAppOwner` where schema or owner creation is not the subject.
+
+  ```ts
+  import {
+    assertOk,
+    testEvoluSchema,
+    testProjectId,
+    testTodoId,
+  } from "@evolu/common";
+
+  assertOk(testEvoluSchema.todo.id.from(testTodoId), testTodoId);
+  assertOk(testEvoluSchema.todo.projectId.from(testProjectId), testProjectId);
+  ```
+
+### Patch Changes
+
+- f0101ca: Reduced SQL template parameter validation overhead
+
+  The `sql` tagged template now validates only numeric parameters with `FiniteNumber`,
+  continuing to reject `NaN` and infinities while trusting the declared input types
+  for strings, blobs, and `null`. Invalid numbers now report `FiniteNumber` validation
+  errors directly.
+
+- b506c9b: Fixed synchronization routing across relays and databases
+
+  A relay's response now continues only with that relay, and a round started by
+  a socket opening or by a transport's first use goes only through that
+  transport. Previously every such message was sent to all of the owner's
+  relays. Owner messages received from one relay are now reconciled with the
+  owner's other relays in the same session, instead of waiting for a reconnect or
+  `requestSync`. A database's first writable owner registration also reconciles its
+  existing history through connections already claimed by other databases. A
+  database using another already claimed connection starts its own reconciliation.
+  Explicit `requestSync` calls and mutation uploads still reach every open
+  transport. A request is absorbed by a queued round with the same owners and a
+  covering target that reads all previously queued writes. Propagation requests
+  can reuse a queued round with the same owners and a covering target regardless
+  of later queued writes because their messages are already stored. After a leader
+  replacement, the owner's relays are reconciled again, because a response
+  reporting stored messages may have been lost.
+
+  Disposing an Evolu instance that used one owner through several transport sets
+  now releases every set instead of failing on the second one.
+
+- 5a671b2: Fixed owner filtering and selection in history query types
+
+  Queries over `evolu_history` now expose the existing `ownerId` column as
+  `OwnerIdBytes`, allowing typed selection and filtering by owner. No database
+  migration is required.
+
+  ```ts
+  import {
+    assertType,
+    createQueryBuilder,
+    type OwnerIdBytes,
+    ownerIdToOwnerIdBytes,
+    testAppOwner,
+    testEvoluSchema,
+    type TimestampBytes,
+  } from "@evolu/common";
+
+  const createQuery = createQueryBuilder(testEvoluSchema);
+  const historyQuery = createQuery((db) =>
+    db
+      .selectFrom("evolu_history")
+      .select(["ownerId", "timestamp"])
+      .where("ownerId", "=", ownerIdToOwnerIdBytes(testAppOwner.id)),
+  );
+
+  assertType<
+    typeof historyQuery.Row,
+    { ownerId: OwnerIdBytes; timestamp: TimestampBytes }
+  >();
+  ```
+
+- 5a671b2: Fixed writes failing when the device clock is wrong
+
+  TLDR: A wrong device clock can give changes future timestamps, which can
+  override edits made later on other devices. Correcting system time can leave
+  Evolu's logical clock ahead, because it never moves backwards. Previously,
+  clock drift could fail writes and stall the write queue. A full app restart
+  discarded the blocked mutation without necessarily fixing the drift. Now those
+  changes are saved in quarantine while writes and sync continue. Apps can query
+  quarantine to show users what is waiting. Eligible changes are applied when
+  the database worker starts with system time within the drift limit. Correcting
+  time alone does not release quarantined changes in a running worker.
+
+  Local mutations and incoming messages whose timestamps exceed the clock-drift
+  limit (five minutes by default) are now stored in `evolu_message_quarantine`
+  and synchronized without being applied to application tables. Drift no longer
+  blocks the local write queue or causes incoming messages to be rejected and
+  repeatedly offered by sync. Mutations complete after storage commits, including
+  offline; `onComplete` can fire while the change remains quarantined. Apps can
+  query quarantine to show pending changes. Drift is not reported through
+  `EvoluError`. Quarantining an incoming message does not advance the local clock.
+  Incoming messages within the limit still apply when the local logical clock
+  is ahead.
+
+  Databases at version 1 are migrated to version 2 at startup. The migration adds
+  the quarantine columns `reason` (schema or timestamp drift), `origin` (local
+  mutation or received message), and `quarantinedAt` (captured system time), plus
+  the index that startup release reads. `createQuery` types the whole table;
+  `QuarantineReason` and `QuarantineOrigin` export the persisted codes. See the
+  tested example on `QuarantineReason`.
+
+  Drift quarantine is released only when the database worker starts, once the
+  message's timestamp is within the drift limit. Startup loads only drift
+  timestamps within that limit. Unknown columns remain in schema quarantine until a
+  schema update. Duplicate delivery does not release messages.
+  Subscribed queries refresh when the database worker is replaced, and clocks
+  remain monotonic across replacement and replay, including when an empty
+  `memoryOnly` replacement reports an older clock.
+
+  Local-only mutations avoid clock persistence. Duplicate deliveries skip message
+  writes, and duplicate-only batches avoid rewriting owner usage. Clock persistence
+  uses one guarded update, including on replay.
+
+  Recovery APIs for messages further ahead remain future work. Range exhaustion
+  at the timestamp ceiling still leaves a local mutation's queue waiting. Copied
+  databases sharing an owner and node ID remain unsupported and can silently lose
+  colliding changes even when `onComplete` fires. See the Timestamp module
+  documentation for these limitations and the detailed drift and release rules.
+
+  `sendTimestamp` and `receiveTimestamp` now take captured system time as an
+  explicit `Millis` argument. Their dependencies contain only drift configuration.
+  Both return `TimestampError` for drift or range exhaustion, including after
+  counter rollover. Success means the resulting timestamp is within both limits.
+  `receiveTimestamp` also rejects remote drift before clock arithmetic.
+
+  `TimestampDriftError.timestamp` replaces `next` with the complete timestamp.
+  With `cause: "local"`, it is the failed operation's candidate, which the
+  database uses for explicit recovery. With `cause: "remote"`, it is the received
+  timestamp itself, which must not advance the clock.
+
+  ```ts
+  import { assertErr, Millis, type TimestampDriftError } from "@evolu/common";
+  import {
+    Counter,
+    createTimestamp,
+    receiveTimestamp,
+    sendTimestamp,
+  } from "@evolu/common/local-first";
+
+  const deps = { timestampConfig: { maxDrift: 300000 } };
+  const now = Millis.orThrow(0);
+  const local = createTimestamp();
+  const future = createTimestamp({ millis: Millis.orThrow(300001) });
+  assertErr(sendTimestamp(deps)(future, now), {
+    type: "TimestampDriftError",
+    timestamp: { ...future, counter: Counter.orThrow(1) },
+    cause: "local",
+    now,
+  });
+
+  assertErr(receiveTimestamp(deps)(local, future, now), {
+    type: "TimestampDriftError",
+    timestamp: future,
+    cause: "remote",
+    now,
+  });
+
+  const _previousCalls = () => {
+    // @ts-expect-error sendTimestamp now requires captured milliseconds.
+    sendTimestamp(deps)(local);
+    // @ts-expect-error receiveTimestamp now requires captured milliseconds.
+    receiveTimestamp(deps)(local, future);
+  };
+
+  // @ts-expect-error TimestampDriftError.next was replaced by timestamp.
+  type _PreviousNext = TimestampDriftError["next"];
+  ```
+
+- 09b1b5c: Refreshed queries invalidated before subscription
+
+  Queries now catch up when a mutation or incoming sync invalidates a loaded result before its listener subscribes. This prevents an empty or stale UI during startup. Previously loaded rows remain available without suspending while the subscription refreshes them. Pending reads retain their promise identity, and valid cached reads are reused.
+
+- 2e139eb: Fixed timestamp counter overflow after the clock ran ahead of wall time
+
+  When the 16-bit counter of a Hybrid Logical Clock timestamp is exhausted, the
+  timestamp now advances the logical millisecond by one and resets the counter,
+  while still respecting the timestamp range and the configured drift limit.
+  Previously, once the clock was ahead of wall time, for example after syncing
+  with a device whose clock is fast, every local write shared one millisecond and
+  a large batch failed with a counter overflow that left the write queue pending.
+  The `TimestampCounterOverflowError` type is now unreachable and was removed.
+
+- 568358b: Reported timestamp insertion results
+
+  `BaseSqliteStorage.insertTimestamp` now returns `true` for a new timestamp and
+  `false` for a duplicate. Duplicate insertions skip the follow-up metadata
+  updates. Calls that ignore the result continue to work; custom storage
+  implementations must return whether they inserted the timestamp.
+
+  ```ts
+  import { assertType } from "@evolu/common";
+  import type { BaseSqliteStorage } from "@evolu/common/local-first";
+
+  assertType<ReturnType<BaseSqliteStorage["insertTimestamp"]>, boolean>();
+  ```
+
+- 237fd7f: Fixed writable owner registrations
+
+  Readonly and writable registrations for the same owner now retain their own capabilities and transport leases. Adding writable access starts synchronization even when readonly access already exists; removing the last writable registration stops synchronization while any readonly registrations keep their connections.
+
+- 2e139eb: Made database writes safe to replay after leader replacement
+
+  Pending writes use the same clock and time inputs across DbWorker replacement,
+  preventing duplicate CRDT changes and changes to local-only system columns.
+  SharedWorker ignores stale attempts and adopts the committed clock even when
+  the originating instance has closed.
+
+  Queued writes remain in memory. This change does not add worker-crash detection
+  or completion for existing error paths that leave requests pending.
+
+- ba8c493: Added database versioning with startup refusal
+
+  Evolu now records `dbVersion` in its `evolu_version` table instead of the
+  unused `protocolVersion`. Existing databases are converted at startup. The
+  database version covers Evolu's internal storage format and how stored data is
+  interpreted. It is independent of the application schema, which still evolves
+  append-only, and of the network protocol version. This release supports
+  database version 1 and adds no migration.
+
+  A newer database appears in two situations. After a deployment, a tab running
+  the new app version migrates the database while an older tab is still open or
+  a cached older build loads; when that older tab later hosts the database
+  worker, its code meets a database it does not understand, which is why the
+  recovery is closing all tabs rather than reloading one. Or the app is
+  downgraded, including installing an older React Native build, after a newer
+  version migrated the local data; then only the newer app helps. Only code from
+  this release onward checks the version, so releases before it cannot be
+  protected. Nothing produces a newer database yet: the first refusal can occur
+  when a later release introduces version 2, so handle the error now.
+
+  A database whose version is newer than the code supports is refused before
+  Evolu reads the clock, touches the application schema, or replays quarantine.
+  Nothing is written, and the database worker exits and releases the database.
+  While the refused database's tenant remains alive, the SharedWorker sends
+  `UnsupportedDbVersionError` to each tab once, including tabs that connect later.
+  The tenant stops processing requests and does not start replacement database
+  workers. After all instances release the
+  tenant and it is disposed when idle, creating another instance retries startup
+  and may report the refusal again.
+
+  The first `UnsupportedDbVersionError` remains in `evoluError` for the lifetime
+  of the dependencies returned by `createEvoluDeps`, including across tenant
+  disposal and recreation. Later errors are still logged but cannot replace the
+  refusal or notify the error store's subscribers. Fresh dependencies start with
+  an empty error store.
+
+  Unanswered `loadQuery` and `exportDatabase` calls remain pending, and mutation
+  `onComplete` callbacks do not run. Disposing an instance still
+  resolves pending query loads with empty rows and rejects its pending export with
+  `EvoluDisposedError`.
+
+  Apps should observe `evoluError` outside query-loading UI and show a blocking
+  message asking users to close all tabs of the app and reopen it for
+  `UnsupportedDbVersionError`. Evolu does not automatically reload tabs or replace the SharedWorker.
+
+  ```ts
+  import { assertEqual, PositiveInt, type EvoluError } from "@evolu/common";
+
+  const describeError = (error: EvoluError): string => {
+    // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The default handles every other EvoluError.
+    switch (error.type) {
+      case "UnsupportedDbVersionError":
+        return "Your data requires a newer app version. Close all tabs of this app, then open it again.";
+      default:
+        return "Something went wrong.";
+    }
+  };
+
+  assertEqual(
+    describeError({
+      type: "UnsupportedDbVersionError",
+      storedVersion: PositiveInt.orThrow(2),
+      supportedVersion: PositiveInt.orThrow(1),
+    }),
+    "Your data requires a newer app version. Close all tabs of this app, then open it again.",
+  );
+  ```
+
 ## 8.10.0
 
 ### Minor Changes
