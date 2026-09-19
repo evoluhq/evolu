@@ -44,6 +44,7 @@ import {
   assertNonNullable,
   assertNotSame,
   assertNotUndefined,
+  assertSame,
 } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
@@ -56,7 +57,6 @@ import {
   type LookupMap,
   type StructuralLookupKey,
 } from "../Lookup.ts";
-import { createRefCountByKey, type RefCountByKey } from "../RefCount.ts";
 import {
   createSharedResourceByKey,
   createSharedResourceByKeyWithClaims,
@@ -578,12 +578,15 @@ const createEvoluTenant =
 
     interface EvoluInstance extends AsyncDisposable {
       readonly id: EvoluInstanceId;
-      readonly claimLeasesBySyncOwner: LookupMap<SyncOwner, Array<ClaimLease>>;
+      /** A null lease reserves a registration while its transports are acquired. */
+      readonly ownerRegistrations: LookupMap<
+        SyncOwner,
+        Array<ClaimLease | null>
+      >;
       readonly onDisposed: () => void;
       readonly port: MessagePort<EvoluOutput, EvoluInput>;
       readonly tabPort: TabPort;
       readonly useOwnerMutex: Mutex;
-      readonly usedSyncOwners: RefCountByKey<SyncOwner>;
       rowsByQuery: Map<Query, ReadonlyArray<Row>>;
     }
 
@@ -646,7 +649,7 @@ const createEvoluTenant =
               refreshQueries();
               const usedOwnerIds = new Set<OwnerId>();
               for (const instance of instancesById.values()) {
-                for (const { owner } of instance.usedSyncOwners.keys()) {
+                for (const { owner } of instance.ownerRegistrations.keys()) {
                   usedOwnerIds.add(owner.id);
                 }
               }
@@ -679,7 +682,6 @@ const createEvoluTenant =
           case "OnQueuedResponse": {
             if (activeDispatch?.attemptId !== message.attemptId) return;
             const { entry } = activeDispatch;
-            const { request } = entry;
             const { response } = message;
             if (
               response.message.type === "Mutate" ||
@@ -692,15 +694,19 @@ const createEvoluTenant =
                 sessionClock = response.message.clock;
               }
             }
-            switch (response.type) {
-              case "ForEvolu":
-                handleResponseForEvolu(response, request);
+            switch (entry.type) {
+              case "Read":
+              case "Write":
+                assertSame(response.type, "ForEvolu");
+                handleResponseForEvolu(response, entry.request);
                 break;
-              case "ForSharedWorker":
-                handleResponseForSharedWorker(response, entry);
+              case "CreateSyncMessages":
+              case "ApplySyncMessage":
+                assertSame(response.type, "ForSharedWorker");
+                handleResponseForSharedWorker(response, entry.target);
                 break;
               default:
-                exhaustiveCheck(response);
+                exhaustiveCheck(entry);
             }
             queue.shift();
             activeDispatch = null;
@@ -736,13 +742,29 @@ const createEvoluTenant =
     type QueueEntry =
       | {
           readonly type: "Read";
-          readonly request: DbWorkerReadRequest;
-          readonly target?: SyncTarget;
+          readonly request: ExtractTyped<DbWorkerReadRequest, "ForEvolu">;
         }
       | {
           readonly type: "Write";
-          readonly request: DbWorkerWriteRequest;
-          readonly target?: SyncTarget;
+          readonly request: ExtractTyped<DbWorkerWriteRequest, "ForEvolu">;
+          now?: Millis;
+          clock?: Timestamp;
+        }
+      | {
+          readonly type: "CreateSyncMessages";
+          readonly request: ExtractTyped<
+            DbWorkerReadRequest,
+            "ForSharedWorker"
+          >;
+          readonly target: SyncTarget;
+        }
+      | {
+          readonly type: "ApplySyncMessage";
+          readonly request: ExtractTyped<
+            DbWorkerWriteRequest,
+            "ForSharedWorker"
+          >;
+          readonly target: SyncTarget;
           now?: Millis;
           clock?: Timestamp;
         };
@@ -772,7 +794,7 @@ const createEvoluTenant =
       const entry = firstInArray(queue);
       const attemptId = createId(run.deps);
       activeDispatch = { entry, attemptId };
-      if (entry.type === "Write") {
+      if (entry.type === "Write" || entry.type === "ApplySyncMessage") {
         // A write captures its inputs on first dispatch, so a retry after
         // leader replacement reproduces the same timestamps.
         entry.now ??= run.deps.time.now();
@@ -851,14 +873,19 @@ const createEvoluTenant =
               ProtocolMessage
             >();
 
-            for (const syncOwner of instance.usedSyncOwners.keys()) {
+            for (const syncOwner of instance.ownerRegistrations.keys()) {
               const { owner } = syncOwner;
               const messages = response.message.messagesByOwnerId.get(owner.id);
 
               // Skip owners this instance does not currently sync for
               // writing. Read-only owners cannot produce protocol
               // messages because they do not have a write key.
-              if (!messages || !("writeKey" in owner)) continue;
+              if (
+                !messages ||
+                !("writeKey" in owner) ||
+                protocolMessagesByOwnerId.has(owner.id)
+              )
+                continue;
 
               protocolMessagesByOwnerId.set(
                 owner.id,
@@ -888,10 +915,8 @@ const createEvoluTenant =
 
     const handleResponseForSharedWorker = (
       response: ExtractTyped<DbWorkerQueuedResponse, "ForSharedWorker">,
-      entry: QueueEntry,
+      target: SyncTarget,
     ): void => {
-      const { target } = entry;
-      assertNonNullable(target);
       switch (response.message.type) {
         case "CreateSyncMessages":
           sendProtocolMessagesByOwnerId(
@@ -978,7 +1003,7 @@ const createEvoluTenant =
     ): ReadonlyMap<OwnerId, Owner> => {
       const ownersById = new Map<OwnerId, Owner>();
       for (const instance of instancesById.values()) {
-        for (const { owner } of instance.usedSyncOwners.keys()) {
+        for (const { owner } of instance.ownerRegistrations.keys()) {
           if (!ownerIds.has(owner.id) || !("writeKey" in owner)) continue;
           ownersById.set(owner.id, owner);
         }
@@ -1018,15 +1043,15 @@ const createEvoluTenant =
       // that round. A dispatched round covers neither.
       const ownerIdsToSync = new Set(ownersToSync.map(({ id }) => id));
       const lastWriteIndex = afterQueuedWrites
-        ? queue.findLastIndex(({ type }) => type === "Write")
+        ? queue.findLastIndex(
+            ({ type }) => type === "Write" || type === "ApplySyncMessage",
+          )
         : -1;
       const isQueued = queue.some(
         (entry, index) =>
           index > lastWriteIndex &&
           entry !== activeDispatch?.entry &&
-          entry.request.type === "ForSharedWorker" &&
-          entry.request.message.type === "CreateSyncMessages" &&
-          entry.target !== undefined &&
+          entry.type === "CreateSyncMessages" &&
           (entry.target.type === "AllTransports" ||
             (target.type === "Transport" && entry.target.key === target.key)) &&
           entry.request.message.owners.length === ownerIdsToSync.size &&
@@ -1044,7 +1069,7 @@ const createEvoluTenant =
       if (isQueued) return;
 
       queue.push({
-        type: "Read",
+        type: "CreateSyncMessages",
         request: {
           type: "ForSharedWorker",
           message: { type: "CreateSyncMessages", owners: ownersToSync },
@@ -1078,27 +1103,32 @@ const createEvoluTenant =
             ),
           );
           const usedKeys = new Set<StructuralLookupKey>();
-          for (const { claimLeasesBySyncOwner } of instancesById.values()) {
-            for (const usedSyncOwner of claimLeasesBySyncOwner.keys()) {
+          for (const { ownerRegistrations } of instancesById.values()) {
+            for (const [usedSyncOwner, leases] of ownerRegistrations) {
               if (usedSyncOwner.owner.id !== ownerId) continue;
+              if (!leases.some((lease) => lease !== null)) continue;
               for (const transport of usedSyncOwner.transports) {
                 usedKeys.add(structuralLookup(transport));
               }
             }
           }
-          instance.usedSyncOwners.increment(syncOwner);
-          let succeeded = false;
-          using compensation = new DisposableStack();
-          compensation.defer(() => {
-            if (!succeeded) instance.usedSyncOwners.decrement(syncOwner);
-          });
-          const claimLease = await run.ok(
-            deps.transports.claim(ownerId, syncOwner.transports),
+          const leases = instance.ownerRegistrations.getOrInsertComputed(
+            syncOwner,
+            () => [],
           );
-          instance.claimLeasesBySyncOwner
-            .getOrInsertComputed(syncOwner, () => [])
-            .push(claimLease);
-          succeeded = true;
+          // First-claim callbacks must see the owner before acquisition finishes.
+          const index = leases.push(null) - 1;
+          try {
+            leases[index] = await run.ok(
+              deps.transports.claim(ownerId, syncOwner.transports),
+            );
+          } finally {
+            if (leases[index] === null) {
+              leases.splice(index, 1);
+              if (leases.length === 0)
+                instance.ownerRegistrations.delete(syncOwner);
+            }
+          }
           const keysToSync = isFirstWritableUse
             ? claimedKeys
             : syncOwner.transports
@@ -1111,14 +1141,13 @@ const createEvoluTenant =
             });
           }
         } else {
-          instance.usedSyncOwners.decrement(syncOwner);
-          const claimLeases = instance.claimLeasesBySyncOwner.get(syncOwner);
+          const claimLeases = instance.ownerRegistrations.get(syncOwner);
           assertNotUndefined(claimLeases);
           const claimLease = claimLeases.pop();
-          assertNotUndefined(claimLease);
+          assertNonNullable(claimLease);
           claimLease.release();
           if (claimLeases.length === 0) {
-            instance.claimLeasesBySyncOwner.delete(syncOwner);
+            instance.ownerRegistrations.delete(syncOwner);
           }
         }
         return ok();
@@ -1133,13 +1162,13 @@ const createEvoluTenant =
           const disposer = new AsyncDisposableStack();
           const instance: EvoluInstance = {
             id: message.id,
-            claimLeasesBySyncOwner: createLookupMap({
+            ownerRegistrations: createLookupMap({
               lookup: (syncOwner: SyncOwner) =>
                 structuralLookup<{
-                  readonly ownerId: OwnerId;
+                  readonly owner: SyncOwner["owner"];
                   readonly transports: ReadonlyArray<StructuralLookupKey>;
                 }>({
-                  ownerId: syncOwner.owner.id,
+                  owner: syncOwner.owner,
                   transports: syncOwner.transports
                     .map(structuralLookup)
                     .toSorted(),
@@ -1152,27 +1181,20 @@ const createEvoluTenant =
             onDisposed,
             rowsByQuery: new Map<Query, ReadonlyArray<Row>>(),
             useOwnerMutex: createMutex(),
-            usedSyncOwners: createRefCountByKey<SyncOwner, OwnerId>({
-              lookup: (syncOwner) => syncOwner.owner.id,
-            }),
             [Symbol.asyncDispose]: () => disposer.disposeAsync(),
           };
 
           instancesById.set(instance.id, instance);
 
           disposer.defer(instance.onDisposed);
-          disposer.use(instance.usedSyncOwners);
 
           disposer.defer(async () => {
             await tenantRun(
-              instance.useOwnerMutex.withLock(async (run) => {
-                // Uses are counted per owner but claimed per transport set,
-                // so release every claimed set, not the first one per owner.
-                for (const syncOwner of instance.claimLeasesBySyncOwner.keys()) {
-                  while (instance.claimLeasesBySyncOwner.has(syncOwner)) {
-                    await run(toggleSyncOwner(instance, syncOwner, "remove"));
-                  }
+              instance.useOwnerMutex.withLock(() => {
+                for (const leases of instance.ownerRegistrations.values()) {
+                  for (const lease of leases) lease?.release();
                 }
+                instance.ownerRegistrations.clear();
                 return ok();
               }),
             );
@@ -1283,7 +1305,7 @@ const createEvoluTenant =
           });
 
           queue.push({
-            type: "Write",
+            type: "ApplySyncMessage",
             request: {
               type: "ForSharedWorker",
               message: { type: "ApplySyncMessage", owner, inputMessage },
@@ -1328,8 +1350,6 @@ const createEvoluTenant =
 // - Rotate the node ID when a copied database is detected; see the Duplicate
 //   node IDs section in the Timestamp module.
 // - Detect DbWorker and port liveness so a worker-only crash resumes the queue.
-// - Consolidate usedSyncOwners and claimLeasesBySyncOwner into one owner-use
-//   state abstraction without changing repeated-use semantics.
 // - Split worker protocol types and the EvoluTenant implementation into focused
 //   modules.
 // - Remove the obsolete commented protocol block above.

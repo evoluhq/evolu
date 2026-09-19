@@ -2097,6 +2097,155 @@ describe("with one evolu instance", () => {
       });
     });
 
+    it("activates a writable registration after readonly access to the same owner", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const instance = await setup.createEvolu();
+      const { dbInputs, evoluChannel } = instance;
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://readonly-then-writable.example",
+        ownerId: testAppOwner.id,
+      });
+      const readonlySyncOwner = {
+        owner: {
+          id: testAppOwner.id,
+          encryptionKey: testAppOwner.encryptionKey,
+        },
+        transports: [transport],
+      } as const;
+      const writableSyncOwner = {
+        owner: testAppOwner,
+        transports: [transport],
+      } as const;
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "add", owner: readonlySyncOwner }],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(dbInputs, []);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "add", owner: writableSyncOwner }],
+      });
+      await testWaitForWorkerMessage();
+      assertLength(dbInputs, 1);
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transport.url,
+      ]);
+      dbInputs.splice(0);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "remove", owner: readonlySyncOwner },
+          { action: "sync", ownerId: testAppOwner.id },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertLength(dbInputs, 1);
+      assertEqual(createWebSocket.sentMessages, []);
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transport.url,
+      ]);
+      assertEqual(createWebSocket.createdUrls, [transport.url]);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "remove", owner: writableSyncOwner }],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(createWebSocket.sentMessages, [
+        {
+          url: transport.url,
+          data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+        },
+      ]);
+    });
+
+    it("stops syncing only after the last writable registration leaves readonly access", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const instance = await setup.createEvolu();
+      const { dbInputs, evoluChannel } = instance;
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://writable-then-readonly.example",
+        ownerId: testAppOwner.id,
+      });
+      const readonlySyncOwner = {
+        owner: {
+          id: testAppOwner.id,
+          encryptionKey: testAppOwner.encryptionKey,
+        },
+        transports: [transport],
+      } as const;
+      const writableSyncOwner = {
+        owner: testAppOwner,
+        transports: [transport],
+      } as const;
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "add", owner: writableSyncOwner },
+          { action: "add", owner: readonlySyncOwner },
+          { action: "add", owner: writableSyncOwner },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertLength(dbInputs, 1);
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transport.url,
+      ]);
+      dbInputs.splice(0);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "remove", owner: writableSyncOwner },
+          { action: "sync", ownerId: testAppOwner.id },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertLength(dbInputs, 1);
+      assertEqual(createWebSocket.sentMessages, []);
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transport.url,
+      ]);
+      dbInputs.splice(0);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "remove", owner: writableSyncOwner },
+          { action: "sync", ownerId: testAppOwner.id },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      createWebSocket.message(
+        transport.url,
+        protocolMessageToArrayBuffer(
+          createProtocolMessageForUnsubscribe(testAppOwner.id),
+        ),
+      );
+      await testWaitForWorkerMessage();
+      assertEqual(dbInputs, []);
+      assertEqual(createWebSocket.sentMessages, []);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "remove", owner: readonlySyncOwner }],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(createWebSocket.sentMessages, [
+        {
+          url: transport.url,
+          data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+        },
+      ]);
+    });
+
     it("explicit sync selects only active writable owners without changing claims", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
