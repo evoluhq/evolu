@@ -182,6 +182,7 @@ import {
 } from "../Array.ts";
 import {
   assert,
+  assertNonEmptyArray,
   assertNonNullable,
   assertNotUndefined,
   assertSame,
@@ -560,6 +561,84 @@ export const createProtocolMessageFromCrdtMessages =
     return buffer.unwrap();
   };
 
+/**
+ * Creates size-limited broadcast {@link ProtocolMessage}s containing every
+ * supplied {@link CrdtMessage}.
+ *
+ * Broadcasts contain no synchronization ranges or write key. Unlike
+ * {@link createProtocolMessageFromCrdtMessages}, this function splits all
+ * messages into complete frames rather than relying on later synchronization
+ * rounds to deliver messages that do not fit. Each individual message must fit
+ * the configured size limit.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertSame,
+ *   createId,
+ *   getOrThrow,
+ *   testCreateDeps,
+ * } from "@evolu/common";
+ * import {
+ *   createProtocolBroadcastMessagesFromCrdtMessages,
+ *   MessageType,
+ *   parseProtocolHeader,
+ *   testAppOwner,
+ *   testCreateCrdtMessage,
+ * } from "@evolu/common/local-first";
+ *
+ * const deps = testCreateDeps();
+ * const broadcasts = createProtocolBroadcastMessagesFromCrdtMessages(deps)(
+ *   testAppOwner,
+ *   [testCreateCrdtMessage(createId(deps), 1, "Ada")],
+ * );
+ * assertSame(broadcasts.length, 1);
+ * assertSame(
+ *   getOrThrow(parseProtocolHeader(broadcasts[0])).messageType,
+ *   MessageType.Broadcast,
+ * );
+ * ```
+ */
+export const createProtocolBroadcastMessagesFromCrdtMessages =
+  (deps: RandomBytesDep) =>
+  (
+    owner: Owner,
+    messages: NonEmptyReadonlyArray<CrdtMessage>,
+    maxSize: ProtocolMessageMaxSize = defaultProtocolMessageMaxSize,
+  ): NonEmptyReadonlyArray<ProtocolMessage> => {
+    const broadcasts: Array<ProtocolMessage> = [];
+    let buffer = createProtocolMessageBuffer(owner.id, {
+      messageType: MessageType.Broadcast,
+      totalMaxSize: maxSize,
+    });
+    for (const message of messages) {
+      const encryptedMessage = {
+        timestamp: message.timestamp,
+        change: encodeAndEncryptDbChange(deps)(message, owner.encryptionKey),
+      };
+
+      if (!buffer.canAddMessage(encryptedMessage)) {
+        const nextBuffer = createProtocolMessageBuffer(owner.id, {
+          messageType: MessageType.Broadcast,
+          totalMaxSize: maxSize,
+        });
+        assert(
+          nextBuffer.canAddMessage(encryptedMessage),
+          "the message is too big",
+        );
+        broadcasts.push(buffer.unwrap());
+        buffer = nextBuffer;
+      }
+
+      buffer.addMessage(encryptedMessage);
+    }
+
+    broadcasts.push(buffer.unwrap());
+    assertNonEmptyArray(broadcasts);
+    return broadcasts;
+  };
+
 /** Creates a {@link ProtocolMessage} for sync. */
 export const createProtocolMessageForSync =
   (deps: StorageDep & ConsoleDep) =>
@@ -909,6 +988,8 @@ export interface ApplyProtocolMessageAsClientOptions {
  */
 export interface ApplyProtocolMessageAsClientResponse extends Typed<"Response"> {
   readonly message: ProtocolMessage;
+  /** The uploaded messages, if any, for delivery to other local databases. */
+  readonly broadcast?: ProtocolMessage;
 }
 
 export interface ApplyProtocolMessageAsClientNoResponse extends Typed<"NoResponse"> {}
@@ -1032,14 +1113,24 @@ export const applyProtocolMessageAsClient =
         rangesMaxSize: options.rangesMaxSize,
       });
 
-      const result = sync(run.deps)(ranges, output, ownerIdBytes);
+      let broadcast: ProtocolMessageBuffer | undefined;
+      const result = sync(run.deps)(ranges, output, ownerIdBytes, (message) => {
+        broadcast ??= createProtocolMessageBuffer(ownerId, {
+          messageType: MessageType.Broadcast,
+        });
+        broadcast.addMessage(message);
+      });
 
       // Client sync error (handled via Storage) or no changes.
       if (!result.ok || !result.value) {
         return ok({ type: "NoResponse" });
       }
 
-      return ok({ type: "Response", message: output.unwrap() });
+      return ok({
+        type: "Response",
+        message: output.unwrap(),
+        ...(broadcast && { broadcast: broadcast.unwrap() }),
+      });
     } catch (error) {
       if (AbortError.is(error)) throw error;
       return err<ProtocolInvalidDataError>({
@@ -1321,6 +1412,7 @@ const sync =
     ranges: NonEmptyReadonlyArray<Range>,
     output: ProtocolMessageBuffer,
     ownerIdBytes: OwnerIdBytes,
+    onMessage?: (message: EncryptedCrdtMessage) => void,
   ): Result<boolean, typeof ProtocolErrorCode.SyncError> => {
     const outputInitialSize = output.getSize();
     let storageSize: NonNegativeInt;
@@ -1497,7 +1589,10 @@ const sync =
                 }
 
                 ourTimestamps.add(timestampBinary);
-                if (message) output.addMessage(message);
+                if (message) {
+                  output.addMessage(message);
+                  onMessage?.(message);
+                }
                 return true;
               },
             );

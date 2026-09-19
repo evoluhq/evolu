@@ -3283,6 +3283,7 @@ describe("sync message flow", () => {
                   ...output.response.message.result,
                   value: {
                     ...output.response.message.result.value,
+                    broadcast: "<dynamic>",
                     message: "<dynamic>",
                   },
                 },
@@ -3303,7 +3304,11 @@ describe("sync message flow", () => {
               ownerId: "BSf-8mxNjgk72yD-D7rr1A",
               result: {
                 ok: true,
-                value: { message: "<dynamic>", type: "Response" },
+                value: {
+                  broadcast: "<dynamic>",
+                  message: "<dynamic>",
+                  type: "Response",
+                },
               },
               type: "ApplySyncMessage",
             },
@@ -3318,14 +3323,23 @@ describe("sync message flow", () => {
       applySyncResponses,
       "ApplySyncMessage",
     );
-    const clientFollowUpMessage =
-      applySyncMessage.result.ok &&
-      applySyncMessage.result.value.type === "Response"
-        ? applySyncMessage.result.value.message
-        : null;
-    assertNotNull(clientFollowUpMessage);
+    assertOk(applySyncMessage.result);
+    assertSame(applySyncMessage.result.value.type, "Response");
+    const { message: clientFollowUpMessage, broadcast } =
+      applySyncMessage.result.value;
+    assertNotUndefined(broadcast);
 
-    await relay.run.orThrow(applyProtocolMessageAsRelay(clientFollowUpMessage));
+    let didBroadcast = false;
+    await relay.run.orThrow(
+      applyProtocolMessageAsRelay(clientFollowUpMessage, {
+        broadcast: (ownerId, relayBroadcast) => {
+          assertSame(ownerId, testAppOwner.id);
+          assertEqual(relayBroadcast, broadcast);
+          didBroadcast = true;
+        },
+      }),
+    );
+    assertTrue(didBroadcast);
 
     const relayRows = relay.sqlite.exec<{
       readonly timestamp: Uint8Array;

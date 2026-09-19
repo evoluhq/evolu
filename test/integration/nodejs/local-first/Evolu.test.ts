@@ -5,6 +5,7 @@ import {
   assertLength,
   assertNotNull,
   assertNotUndefined,
+  assertNonEmptyArray,
   assertSame,
 } from "../../../../packages/common/src/Assert.ts";
 import { describe, it } from "node:test";
@@ -70,6 +71,7 @@ import {
   nullOr,
   PositiveInt,
   Port,
+  String,
   testName,
 } from "../../../../packages/common/src/Type.ts";
 import {
@@ -320,7 +322,10 @@ describe("Evolu integration", () => {
   };
 
   /** Two relays whose stored message timestamps are readable per relay. */
-  const setupRelays = async (namePrefix: string) => {
+  const setupRelays = async (
+    namePrefix: string,
+    isOwnerWithinQuota: () => boolean | Promise<boolean> = () => true,
+  ) => {
     const driversByName = new Map<string, SqliteDriver>();
     await using disposer = new AsyncDisposableStack();
     const relayRun = disposer.use(
@@ -344,7 +349,7 @@ describe("Evolu integration", () => {
           createRelay({
             port: Port.orThrow(0),
             name: Name.orThrow(name),
-            isOwnerWithinQuota: () => true,
+            isOwnerWithinQuota,
           }),
         ),
       );
@@ -655,6 +660,18 @@ describe("Evolu integration", () => {
       }
     });
     second.useOwner(testAppOwner, [transportA]);
+    const siblingReceived = Promise.withResolvers<void>();
+    const unsubscribe = first.subscribeQuery(todoTitlesQuery)(() => {
+      if (first.getQueryRows(todoTitlesQuery).length === 1)
+        siblingReceived.resolve();
+    });
+    using siblingCleanup = new DisposableStack();
+    siblingCleanup.defer(unsubscribe);
+    using _siblingTimeout = setTimeout(() => {
+      siblingReceived.reject(
+        new Error("Timed out waiting for the empty tenant to receive history"),
+      );
+    }, 5_000);
     using _propagationTimeout = setTimeout(() => {
       propagated.reject(
         new Error(
@@ -662,12 +679,147 @@ describe("Evolu integration", () => {
         ),
       );
     }, 10_000);
-    await propagated.promise;
+    await Promise.all([propagated.promise, siblingReceived.promise]);
     for (const relay of [relayA, relayB]) {
       assertEqual(relay.getTimestamps(), localTimestamps);
     }
+    assertEqual(await first.loadQuery(todoTitlesQuery), [{ title }]);
     assertEqual(device.setup.tabErrors, []);
     assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("delivers sibling mutations before the relay's quota check completes", async () => {
+    const quotaEntered = Promise.withResolvers<void>();
+    const quota = Promise.withResolvers<boolean>();
+    await using relays = await setupRelays("evolu-sibling-quota", () => {
+      quotaEntered.resolve();
+      return quota.promise;
+    });
+    await using device = await setupDevice({
+      createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+    });
+    const createTenant = (appName: string) =>
+      device.setup.run.ok(
+        createEvolu(Schema, {
+          appName: AppName.orThrow(appName),
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+    await using writer = await createTenant("QuotaWriter");
+    await using sibling = await createTenant("QuotaSibling");
+    // Release a pending quota callback even if the regression assertion fails.
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => quota.resolve(true));
+    const transport = createOwnerWebSocketTransport({
+      url: `ws://127.0.0.1:${relays.relayA.port}`,
+      ownerId: testAppOwner.id,
+    });
+    const initialRound = Promise.withResolvers<void>();
+    device.setOnMessage(() => initialRound.resolve());
+    writer.useOwner(testAppOwner, [transport]);
+    sibling.useOwner(testAppOwner, [transport]);
+    {
+      using _roundTimeout = setTimeout(() => {
+        initialRound.reject(new Error("Timed out waiting for the first round"));
+      }, 5_000);
+      await initialRound.promise;
+    }
+    await testWaitForWorkerMessage();
+    assertEqual(await sibling.loadQuery(todoTitlesQuery), []);
+    const received = Promise.withResolvers<void>();
+    cleanup.defer(
+      sibling.subscribeQuery(todoTitlesQuery)(() => {
+        if (sibling.getQueryRows(todoTitlesQuery).length === 1)
+          received.resolve();
+      }),
+    );
+    const title = NonEmptyTrimmedString100.orThrow(
+      "Available before relay storage",
+    );
+    writer.insert("todo", { title });
+    const delivered = Promise.all([quotaEntered.promise, received.promise]);
+    using _deliveryTimeout = setTimeout(() => {
+      const error = new Error(
+        "Timed out waiting for delivery while quota is pending",
+      );
+      quotaEntered.reject(error);
+      received.reject(error);
+    }, 5_000);
+    await delivered;
+    assertEqual(await sibling.loadQuery(todoTitlesQuery), [{ title }]);
+    assertEqual(relays.relayA.getTimestamps(), []);
+
+    const stored = Promise.withResolvers<void>();
+    device.setOnMessage(() => {
+      if (relays.relayA.getTimestamps().length > 0) stored.resolve();
+    });
+    quota.resolve(true);
+    using _storageTimeout = setTimeout(() => {
+      stored.reject(
+        new Error("Timed out waiting for the released quota check"),
+      );
+    }, 5_000);
+    await stored.promise;
+    assertEqual(device.setup.tabErrors, []);
+    assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("delivers every chunk of a large sibling mutation with closed sockets", async () => {
+    const sockets = testCreateWebSocket({ isOpen: false });
+    await using setup = await setupRunWithEvoluDeps({
+      createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+      createWebSocket: sockets,
+    });
+    const LargeSchema = { todo: { id: TodoId, title: String } };
+    const titlesQuery = createQueryBuilder(LargeSchema)((db) =>
+      db.selectFrom("todo").select("title").orderBy("title"),
+    );
+    const createTenant = (appName: string) =>
+      setup.run.ok(
+        createEvolu(LargeSchema, {
+          appName: AppName.orThrow(appName),
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+    await using writer = await createTenant("LargeWriter");
+    await using sibling = await createTenant("LargeSibling");
+    const transports = [
+      "ws://offline-a.localhost",
+      "ws://offline-b.localhost",
+    ].map((url) =>
+      createOwnerWebSocketTransport({ url, ownerId: testAppOwner.id }),
+    );
+    assertNonEmptyArray(transports);
+    writer.useOwner(testAppOwner, transports);
+    sibling.useOwner(testAppOwner, transports);
+    await testWaitForWorkerMessage();
+    assertEqual(await sibling.loadQuery(titlesQuery), []);
+    const received = Promise.withResolvers<void>();
+    using cleanup = new DisposableStack();
+    cleanup.defer(
+      sibling.subscribeQuery(titlesQuery)(() => {
+        if (sibling.getQueryRows(titlesQuery).length === 2) received.resolve();
+      }),
+    );
+    // Each value fits one frame, but their batch exceeds the 1 MB frame limit.
+    const titles = ["a".repeat(700_000), "b".repeat(700_000)];
+    for (const title of titles) writer.insert("todo", { title });
+    using _deliveryTimeout = setTimeout(() => {
+      received.reject(
+        new Error("Timed out waiting for all offline mutation chunks"),
+      );
+    }, 5_000);
+    await received.promise;
+    const rows = await sibling.loadQuery(titlesQuery);
+    assertLength(rows, 2);
+    for (let index = 0; index < titles.length; index++)
+      assertSame(rows[index]?.title, titles[index]);
+    assertLength(sockets.createdUrls, 2);
+    assertEqual(sockets.sentMessages, []);
+    assertEqual(setup.tabErrors, []);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
   });
 
   it("local tables share reactive data across instances without sync history", async () => {

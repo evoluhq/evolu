@@ -10,6 +10,7 @@ import {
   assertNonNullable,
   assertNotUndefined,
   assertNotSame,
+  assertOk,
   assertSame,
   assertTrue,
 } from "../Assert.ts";
@@ -25,6 +26,7 @@ import {
   createProtocolMessageBuffer,
   createProtocolMessageForUnsubscribe,
   MessageType,
+  parseProtocolHeader,
   SubscriptionFlags,
 } from "./Protocol.ts";
 import {
@@ -3641,6 +3643,220 @@ describe("with one evolu instance", () => {
       await disposeInstance();
       await disposeSetup;
     });
+  });
+});
+
+describe("local delivery between databases", () => {
+  it("copies mutations once to each writable sibling while sockets are closed", async () => {
+    const createWebSocket = testCreateWebSocket({ isOpen: false });
+    await using setup = await setupSharedWorker({ createWebSocket });
+    const writer = await setup.createEvolu();
+    const siblings = [
+      await setup.createEvolu({ tenantName: Name.orThrow("local-sibling-a") }),
+      await setup.createEvolu({ tenantName: Name.orThrow("local-sibling-b") }),
+    ];
+    const readonly = await setup.createEvolu({
+      tenantName: Name.orThrow("local-readonly"),
+    });
+    const unrelated = await setup.createEvolu({
+      tenantName: Name.orThrow("local-unrelated"),
+    });
+    const transports = [
+      createOwnerWebSocketTransport({
+        url: "wss://local-mutation-a.example",
+        ownerId: testAppOwner.id,
+      }),
+      createOwnerWebSocketTransport({
+        url: "wss://local-mutation-b.example",
+        ownerId: testAppOwner.id,
+      }),
+    ] as const;
+    const syncOwner = { owner: testAppOwner, transports };
+    for (const instance of [writer, ...siblings]) {
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "add", owner: syncOwner },
+          { action: "add", owner: syncOwner },
+        ],
+      });
+    }
+    readonly.evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          action: "add",
+          owner: {
+            owner: {
+              id: testAppOwner.id,
+              encryptionKey: testAppOwner.encryptionKey,
+            },
+            transports,
+          },
+        },
+      ],
+    });
+    unrelated.evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [{ action: "add", owner: { owner: testAppOwner2, transports } }],
+    });
+    await testWaitForWorkerMessage();
+    for (const instance of [writer, ...siblings, readonly, unrelated]) {
+      assertEqual(instance.dbInputs, []);
+    }
+    const outputsBySibling = siblings.map((instance) => {
+      const outputs: Array<EvoluOutput> = [];
+      instance.evoluChannel.port2.onMessage = (output) => {
+        outputs.push(output);
+      };
+      return outputs;
+    });
+    const message = testCreateCrdtMessage(
+      createId(setup.run.deps),
+      1,
+      "copied locally",
+    );
+
+    // A replay can offer the same stored messages again; each sibling's
+    // idempotent application decides whether its queries need refreshing.
+    for (const didWriteMessages of [true, false]) {
+      writer.evoluChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [{ ...message.change, ownerId: testAppOwner.id }],
+        onCompleteIds: [],
+        subscribedQueries: new Set(),
+      });
+      await testWaitForWorkerMessage();
+      const mutation = writer.dbInputs.at(-1);
+      assertNotUndefined(mutation);
+      assertSame(mutation.request.type, "ForEvolu");
+      assertSame(mutation.request.message.type, "Mutate");
+      writer.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: mutation.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: writer.id,
+          message: {
+            type: "Mutate",
+            clock: createTimestamp(),
+            messagesByOwnerId: new Map([[testAppOwner.id, [message]]]),
+            rowsByQuery: new Map(),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+
+      for (const [index, sibling] of siblings.entries()) {
+        assertLength(sibling.dbInputs, 1);
+        const input = sibling.dbInputs[0];
+        assertSame(input.request.type, "ForSharedWorker");
+        assertSame(input.request.message.type, "ApplySyncMessage");
+        assertEqual(input.request.message.owner, testAppOwner);
+        const header = parseProtocolHeader(input.request.message.inputMessage);
+        assertOk(header);
+        assertSame(header.value.ownerId, testAppOwner.id);
+        assertSame(header.value.messageType, MessageType.Broadcast);
+        await respondToApplySync(sibling, didWriteMessages, {
+          ok: true,
+          value: { type: "Broadcast" },
+        });
+        assertLength(sibling.dbInputs, 1);
+        assertEqual(
+          outputsBySibling[index].splice(0),
+          didWriteMessages ? [{ type: "RefreshQueries" }] : [],
+        );
+        sibling.dbInputs.splice(0);
+      }
+      assertLength(writer.dbInputs, 1);
+      writer.dbInputs.splice(0);
+      assertEqual(readonly.dbInputs, []);
+      assertEqual(unrelated.dbInputs, []);
+      assertEqual(createWebSocket.sentMessages, []);
+    }
+  });
+
+  it("copies continuation broadcasts without propagating them back through relays", async () => {
+    const createWebSocket = testCreateWebSocket();
+    await using setup = await setupSharedWorker({ createWebSocket });
+    const source = await setup.createEvolu();
+    const sibling = await setup.createEvolu({
+      tenantName: Name.orThrow("continuation-sibling"),
+    });
+    const transports = [
+      createOwnerWebSocketTransport({
+        url: "wss://local-continuation-a.example",
+        ownerId: testAppOwner.id,
+      }),
+      createOwnerWebSocketTransport({
+        url: "wss://local-continuation-b.example",
+        ownerId: testAppOwner.id,
+      }),
+    ] as const;
+    for (const instance of [source, sibling]) {
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "add", owner: { owner: testAppOwner, transports } },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(instance, createWebSocket);
+      await respondToSyncRound(instance, createWebSocket);
+      instance.dbInputs.splice(0);
+    }
+    const siblingOutputs: Array<EvoluOutput> = [];
+    sibling.evoluChannel.port2.onMessage = (output) => {
+      siblingOutputs.push(output);
+    };
+    const continuation = createProtocolMessageForUnsubscribe(testAppOwner.id);
+    const broadcast = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Broadcast,
+    }).unwrap();
+
+    for (const didWriteMessages of [true, false]) {
+      createWebSocket.message(
+        transports[0].url,
+        protocolMessageToArrayBuffer(continuation),
+      );
+      await testWaitForWorkerMessage();
+      assertLength(source.dbInputs, 1);
+      assertSame(sibling.dbInputs.length, 1);
+      await respondToApplySync(source, false, {
+        ok: true,
+        value: { type: "Response", message: continuation, broadcast },
+      });
+      assertEqual(createWebSocket.sentMessages.splice(0), [
+        { url: transports[0].url, data: continuation },
+      ]);
+
+      // The sibling was also processing the network frame. Its local copy
+      // must wait in the same queue until that earlier work finishes.
+      assertSame(sibling.dbInputs.length, 1);
+      await respondToApplySync(sibling, false, {
+        ok: true,
+        value: { type: "NoResponse" },
+      });
+      assertSame(sibling.dbInputs.length, 2);
+      const localInput = sibling.dbInputs[1];
+      assertNotUndefined(localInput);
+      assertSame(localInput.request.type, "ForSharedWorker");
+      assertSame(localInput.request.message.type, "ApplySyncMessage");
+      assertEqual(localInput.request.message.inputMessage, broadcast);
+      await respondToApplySync(sibling, didWriteMessages, {
+        ok: true,
+        value: { type: "Broadcast" },
+      });
+      assertEqual(
+        siblingOutputs.splice(0),
+        didWriteMessages ? [{ type: "RefreshQueries" }] : [],
+      );
+      assertLength(source.dbInputs, 1);
+      assertSame(sibling.dbInputs.length, 2);
+      assertEqual(createWebSocket.sentMessages, []);
+      source.dbInputs.splice(0);
+      sibling.dbInputs.splice(0);
+    }
   });
 });
 

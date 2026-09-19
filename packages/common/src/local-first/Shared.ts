@@ -20,16 +20,29 @@
  * synchronization requests and mutation uploads go to every open transport
  * claimed for the owner.
  *
- * When a frame stores new owner messages, the tenant requests a full round
- * through each other transport claimed for the owner, by any tenant, so data
- * learned from one relay reaches the others. Duplicate receipts store nothing
- * and request nothing. A replacement leader may have stored messages whose
- * response was lost, so it reconciles every transport again. A later request is
- * absorbed by a queued round with the same owners, a covering target, and a
- * position after all writes already queued. Propagation requests can reuse a
- * queued round with the same owners and a covering target regardless of later
- * queued writes because their messages are already stored. A closed transport
- * reconciles when it opens.
+ * Relays omit the sending socket when broadcasting uploads. Mutation uploads
+ * and continuation uploads therefore also deliver local Broadcast frames to
+ * every other tenant with writable access to the owner, even while sockets are
+ * closed. Large mutation batches use as many frames as needed. These copies
+ * target AllTransports so their recipients refresh queries without scheduling
+ * relay propagation; the uploading tenant already owns that work.
+ *
+ * Local delivery forwards uploads—including historical messages sent during
+ * reconciliation—to other tenants with writable access to the owner. It does
+ * not initiate reconciliation between local database histories. Automatic
+ * sibling catch-up is deferred until replication scopes and retention semantics
+ * are defined.
+ *
+ * When a relay frame stores new owner messages, the tenant requests a full
+ * round through each other transport claimed for the owner, by any tenant, so
+ * data learned from one relay reaches the others. Duplicate receipts store
+ * nothing and request nothing. A replacement leader may have stored messages
+ * whose response was lost, so it reconciles every transport again. A later
+ * request is absorbed by a queued round with the same owners, a covering
+ * target, and a position after all writes already queued. Propagation requests
+ * can reuse a queued round with the same owners and a covering target
+ * regardless of later queued writes because their messages are already stored.
+ * A closed transport reconciles when it opens.
  *
  * @module
  */
@@ -98,6 +111,7 @@ import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
 import type { EvoluError } from "./Evolu.ts";
 import type { Owner, OwnerId, OwnerTransport, SyncOwner } from "./Owner.ts";
 import {
+  createProtocolBroadcastMessagesFromCrdtMessages,
   createProtocolMessageForUnsubscribe,
   createProtocolMessageFromCrdtMessages,
   parseProtocolHeader,
@@ -334,7 +348,7 @@ interface EvoluTenant extends AsyncDisposable {
   readonly requestApplySyncMessage: (
     ownerId: OwnerId,
     inputMessage: Uint8Array,
-    transport: OwnerTransport,
+    target: SyncTarget,
   ) => void;
 }
 
@@ -499,7 +513,7 @@ export const initSharedWorker =
                   tenant.requestApplySyncMessage(
                     headerResult.value.ownerId,
                     message,
-                    transport,
+                    { type: "Transport", key: structuralLookup(transport) },
                   );
                 });
               },
@@ -894,6 +908,15 @@ const createEvoluTenant =
                   messages,
                 ),
               );
+              if (currentTenantsByName.size > 1) {
+                broadcastProtocolMessages(
+                  owner.id,
+                  createProtocolBroadcastMessagesFromCrdtMessages(run.deps)(
+                    owner,
+                    messages,
+                  ),
+                );
+              }
             }
 
             sendProtocolMessagesByOwnerId(
@@ -955,6 +978,11 @@ const createEvoluTenant =
           } else {
             switch (response.message.result.value.type) {
               case "Response":
+                if (response.message.result.value.broadcast) {
+                  broadcastProtocolMessages(response.message.ownerId, [
+                    response.message.result.value.broadcast,
+                  ]);
+                }
                 sendProtocolMessagesByOwnerId(
                   new Map([
                     [
@@ -972,6 +1000,17 @@ const createEvoluTenant =
             }
           }
           break;
+      }
+    };
+
+    const broadcastProtocolMessages = (
+      ownerId: OwnerId,
+      messages: ReadonlyArray<ProtocolMessage>,
+    ): void => {
+      for (const [tenantName, tenant] of currentTenantsByName) {
+        if (tenantName === name) continue;
+        for (const message of messages)
+          tenant.requestApplySyncMessage(ownerId, message, allTransports);
       }
     };
 
@@ -1293,14 +1332,14 @@ const createEvoluTenant =
 
         requestCreateSyncMessages,
 
-        requestApplySyncMessage: (ownerId, inputMessage, transport): void => {
+        requestApplySyncMessage: (ownerId, inputMessage, target): void => {
           if (startupError) return;
           const owner = getUsedOwnersById(new Set([ownerId])).get(ownerId);
           if (!owner) return;
 
           console.debug("requestApplySyncMessage", {
             ownerId,
-            url: transport.url,
+            target,
             byteLength: inputMessage.byteLength,
           });
 
@@ -1310,7 +1349,7 @@ const createEvoluTenant =
               type: "ForSharedWorker",
               message: { type: "ApplySyncMessage", owner, inputMessage },
             },
-            target: { type: "Transport", key: structuralLookup(transport) },
+            target,
           });
 
           runQueue();

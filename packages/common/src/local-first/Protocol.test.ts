@@ -25,6 +25,10 @@ import {
   applyProtocolMessageAsClient,
   applyProtocolMessageAsRelay,
   createProtocolMessageBuffer,
+  createProtocolBroadcastMessagesFromCrdtMessages,
+  defaultProtocolMessageMaxSize,
+  ProtocolMessageMaxSize,
+  ProtocolErrorCode,
   createProtocolMessageFromCrdtMessages,
   createTimestampsBuffer,
   decodeSqliteValue,
@@ -43,7 +47,12 @@ import type {
   EncryptedDbChange,
   StorageDep,
 } from "./Storage.ts";
-import { DbChange, InfiniteUpperBound, RangeType } from "./Storage.ts";
+import {
+  DbChange,
+  InfiniteUpperBound,
+  RangeType,
+  zeroFingerprint,
+} from "./Storage.ts";
 import { err, getOrThrow, ok } from "../Result.ts";
 import {
   testCreateDeps,
@@ -1034,4 +1043,237 @@ describe("E2E relay options", () => {
     }
     assertTrue(writeMessagesCalled);
   });
+});
+
+test("local mutation broadcasts contain every message in nonempty size-limited frames", async () => {
+  const deps = testCreateDeps();
+  const messages: NonEmptyReadonlyArray<CrdtMessage> = [
+    {
+      timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+      change: DbChange.orThrow({
+        ...createDbChange(deps),
+        values: { data: new Uint8Array(700_000).fill(1) },
+      }),
+    },
+    {
+      timestamp: createTimestamp({ millis: Millis.orThrow(2) }),
+      change: DbChange.orThrow({
+        ...createDbChange(deps),
+        values: { data: new Uint8Array(700_000).fill(2) },
+      }),
+    },
+    {
+      timestamp: createTimestamp({ millis: Millis.orThrow(3) }),
+      change: createDbChange(deps),
+    },
+  ];
+
+  for (const [maxSize, expectedFrameCount] of [
+    [defaultProtocolMessageMaxSize, 2],
+    [ProtocolMessageMaxSize.orThrow(2_000_000), 1],
+  ] as const) {
+    const broadcasts = createProtocolBroadcastMessagesFromCrdtMessages(deps)(
+      testAppOwner,
+      messages,
+      maxSize,
+    );
+    assertSame(broadcasts.length, expectedFrameCount);
+
+    const received: Array<CrdtMessage> = [];
+    let writes = 0;
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        writeMessages: (ownerId, encryptedMessages) => () => {
+          assertEqualBytes(ownerId, ownerIdToOwnerIdBytes(testAppOwner.id));
+          assertTrue(encryptedMessages.length > 0);
+          writes++;
+          for (const message of encryptedMessages) {
+            received.push({
+              timestamp: message.timestamp,
+              change: getOrThrow(
+                decryptAndDecodeDbChange(message, testAppOwner.encryptionKey),
+              ),
+            });
+          }
+          return ok();
+        },
+      },
+    } satisfies StorageDep);
+
+    for (const broadcast of broadcasts) {
+      assertTrue(broadcast.length <= maxSize);
+      assertSame(
+        getOrThrow(parseProtocolHeader(broadcast)).messageType,
+        MessageType.Broadcast,
+      );
+      assertOk(
+        await run(
+          applyProtocolMessageAsClient(broadcast, {
+            writeKey: testAppOwner.writeKey,
+          }),
+        ),
+        { type: "Broadcast" },
+      );
+    }
+
+    assertSame(writes, broadcasts.length);
+    assertEqual(received, messages);
+  }
+});
+
+test("local mutation broadcasts reject a message that cannot fit in an empty frame", () => {
+  const deps = testCreateDeps();
+  const smallMessage: CrdtMessage = {
+    timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+    change: createDbChange(deps),
+  };
+  const oversizedMessage: CrdtMessage = {
+    timestamp: createTimestamp({ millis: Millis.orThrow(2) }),
+    change: DbChange.orThrow({
+      ...createDbChange(deps),
+      values: { data: new Uint8Array(1_100_000) },
+    }),
+  };
+
+  for (const messages of [
+    [oversizedMessage],
+    [smallMessage, oversizedMessage],
+  ] as const) {
+    const error = assertThrowsInstanceOf(
+      () =>
+        createProtocolBroadcastMessagesFromCrdtMessages(deps)(
+          testAppOwner,
+          messages,
+        ),
+      Error,
+    );
+    assertSame(error.message, "the message is too big");
+  }
+});
+
+test("client continuation broadcasts exactly the uploaded messages within the frame limit", async () => {
+  const deps = testCreateDeps();
+  const messages = [1, 2].map((millis) => {
+    const message: CrdtMessage = {
+      timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
+      change: DbChange.orThrow({
+        ...createDbChange(deps),
+        values: { data: new Uint8Array(700_000).fill(millis) },
+      }),
+    };
+    return createEncryptedCrdtMessage(deps, message);
+  });
+  const input = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Response,
+    errorCode: ProtocolErrorCode.NoError,
+  });
+  input.addRange({
+    type: RangeType.Timestamps,
+    upperBound: InfiniteUpperBound,
+    timestamps: createTimestampsBuffer(),
+  });
+
+  await using senderRun = testCreateRun({
+    storage: {
+      ...shouldNotBeCalledStorageDep.storage,
+      getSize: () => NonNegativeInt.orThrow(messages.length),
+      findLowerBound: (_ownerId, _begin, end) => end,
+      fingerprint: () => zeroFingerprint,
+      iterate: (_ownerId, begin, end, callback) => {
+        for (let index = begin; index < end; index++) {
+          const message = messages[index];
+          assertNonNullable(message);
+          if (
+            !callback(
+              timestampToTimestampBytes(message.timestamp),
+              NonNegativeInt.orThrow(index),
+            )
+          )
+            break;
+        }
+      },
+      readDbChange: (_ownerId, timestamp) => {
+        const message = messages.find(
+          (message) =>
+            message.timestamp.millis ===
+            timestampBytesToTimestamp(timestamp).millis,
+        );
+        assertNonNullable(message);
+        return message.change;
+      },
+    },
+  } satisfies StorageDep);
+  const result = await senderRun.orThrow(
+    applyProtocolMessageAsClient(input.unwrap(), {
+      writeKey: testAppOwner.writeKey,
+    }),
+  );
+  assertSame(result.type, "Response");
+  const broadcast = result.broadcast;
+  assertNonNullable(broadcast);
+  assertTrue(broadcast.length <= defaultProtocolMessageMaxSize);
+
+  let receivedBroadcast = false;
+  await using receiverRun = testCreateRun({
+    storage: {
+      ...shouldNotBeCalledStorageDep.storage,
+      getSize: () => NonNegativeInt.orThrow(0),
+      findLowerBound: () => NonNegativeInt.orThrow(0),
+      fingerprint: () => zeroFingerprint,
+      iterate: () => {},
+      validateWriteKey: constTrue,
+      writeMessages: (_ownerId, uploaded) => () => {
+        assertEqual(uploaded, [messages[0]]);
+        return ok();
+      },
+    },
+  } satisfies StorageDep);
+  assertOk(
+    await receiverRun(
+      applyProtocolMessageAsClient(broadcast, {
+        writeKey: testAppOwner.writeKey,
+      }),
+    ),
+    { type: "Broadcast" },
+  );
+  await receiverRun.orThrow(
+    applyProtocolMessageAsRelay(result.message, {
+      broadcast: (_ownerId, relayBroadcast) => {
+        receivedBroadcast = true;
+        assertEqualBytes(relayBroadcast, broadcast);
+      },
+    }),
+  );
+  assertTrue(receivedBroadcast);
+});
+
+test("client range-only continuation has no local broadcast", async () => {
+  const timestamps = createTimestampsBuffer();
+  timestamps.add(timestampBytesToTimestamp(testTimestampsAsc[0]));
+  const input = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Response,
+    errorCode: ProtocolErrorCode.NoError,
+  });
+  input.addRange({
+    type: RangeType.Timestamps,
+    upperBound: InfiniteUpperBound,
+    timestamps,
+  });
+
+  await using run = testCreateRun({
+    storage: {
+      ...shouldNotBeCalledStorageDep.storage,
+      getSize: () => NonNegativeInt.orThrow(0),
+      findLowerBound: () => NonNegativeInt.orThrow(0),
+      iterate: () => {},
+    },
+  } satisfies StorageDep);
+  const result = await run.orThrow(
+    applyProtocolMessageAsClient(input.unwrap(), {
+      writeKey: testAppOwner.writeKey,
+    }),
+  );
+  assertSame(result.type, "Response");
+  assertFalse("broadcast" in result);
 });
