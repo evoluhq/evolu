@@ -6,6 +6,7 @@ import {
   assertFalse,
   assertInstanceOf,
   assertLength,
+  assertNotSame,
   assertNotUndefined,
   assertOk,
   assertRejects,
@@ -20,6 +21,7 @@ import {
   createSharedResourceByKeyWithClaims,
   createSharedResource,
   createSharedResourceByKey,
+  createResettableResource,
   type BorrowedResource,
   type ClaimLease,
   type Lease,
@@ -30,10 +32,12 @@ import {
 import { err, ok } from "./Result.ts";
 import {
   AbortError,
+  createAbortError,
   createGate,
   runDisposedAbortReason,
   testAbortReason,
   testCreateRun,
+  type AbortableFiber,
   type Task,
 } from "./Task.ts";
 import { assertType } from "./Type.ts";
@@ -1343,6 +1347,839 @@ describe("SharedResource", () => {
       );
       assertType<typeof use, Task<"used", TestError, TestDep>>();
     });
+  });
+});
+
+describe("ResettableResource", () => {
+  it("creates the first resource before returning", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+
+    await using resettable = await run.ok(
+      createResettableResource(resources.create),
+    );
+
+    assertEqual(resources.getCreateCount(), 1);
+    assertNotUndefined(resettable.get());
+    assertType<
+      ReturnType<typeof resettable.get>,
+      BorrowedResource<Disposable> | undefined
+    >();
+  });
+
+  it("leaves nothing running when the first creation aborts", async () => {
+    await using run = testCreateRun();
+    // The creation observes an abort of its own, such as a dependency's Run.
+    const create: Task<Disposable> = () => {
+      // oxlint-disable-next-line typescript/only-throw-error -- AbortError is Task abort control flow.
+      throw createAbortError(testAbortReason);
+    };
+
+    const result = await run.abortable(createResettableResource(create));
+
+    assertErr(result);
+    assertType(AbortError, result.error);
+    assertSame(result.error.reason, testAbortReason);
+    assertLength(run.snapshot().children, 0);
+  });
+
+  it("cleans up before returning when the caller aborts initial creation", async () => {
+    await using run = testCreateRun();
+    const createStarted = Promise.withResolvers<void>();
+    const continueCreate = Promise.withResolvers<void>();
+    const disposalStarted = Promise.withResolvers<void>();
+    const continueDisposal = Promise.withResolvers<void>();
+    let disposeCount = 0;
+    let disposalFinished = false;
+    const create: Task<AsyncDisposable> = async () => {
+      createStarted.resolve();
+      await continueCreate.promise;
+      return ok({
+        [Symbol.asyncDispose]: async () => {
+          disposeCount++;
+          disposalStarted.resolve();
+          await continueDisposal.promise;
+          disposalFinished = true;
+        },
+      });
+    };
+
+    const creating = run.abortable(createResettableResource(create));
+    await createStarted.promise;
+    creating.abort(testAbortReason);
+    continueCreate.resolve();
+
+    const settled = creating.then(() => "settled" as const);
+    try {
+      assertSame(
+        await Promise.race([
+          disposalStarted.promise.then(() => "disposing" as const),
+          settled,
+        ]),
+        "disposing",
+      );
+      assertSame(
+        await Promise.race([settled, Promise.resolve("pending")]),
+        "pending",
+      );
+      assertFalse(disposalFinished);
+    } finally {
+      continueDisposal.resolve();
+    }
+
+    const result = await creating;
+    assertErr(result);
+    assertType(AbortError, result.error);
+    assertSame(result.error.reason, testAbortReason);
+    assertTrue(disposalFinished);
+    assertEqual(disposeCount, 1);
+    assertLength(run.snapshot().children, 0);
+    assertSame(run.getState().type, "Running");
+    assertEqual(
+      run.deps.leakDetector.getTrackedCount({ name: "ResettableResource" }),
+      0,
+    );
+    assertEqual(run.deps.reportDefect.getDefectsSnapshot(), []);
+  });
+
+  it("disposes the current resource before creating the next", async () => {
+    await using run = testCreateRun();
+    const events: Array<string> = [];
+    const create: Task<Disposable> = () => {
+      events.push("create");
+      return ok({
+        [Symbol.dispose]: () => {
+          events.push("dispose");
+        },
+      });
+    };
+
+    await using resettable = await run.ok(createResettableResource(create));
+    const first = resettable.get();
+
+    assertOk(await run(resettable.reset(first)), undefined);
+
+    assertEqual(events, ["create", "dispose", "create"]);
+    assertNotUndefined(resettable.get());
+    assertNotSame(resettable.get(), first);
+  });
+
+  it("waits for async disposal before creating one shared reset", async () => {
+    await using run = testCreateRun();
+    const disposalStarted = Promise.withResolvers<void>();
+    const continueDisposal = Promise.withResolvers<void>();
+    const events: Array<string> = [];
+    let createCount = 0;
+    const create: Task<AsyncDisposable> = () => {
+      const id = ++createCount;
+      events.push(`create ${id}`);
+      return ok({
+        [Symbol.asyncDispose]: async () => {
+          events.push(`dispose start ${id}`);
+          if (id === 1) {
+            disposalStarted.resolve();
+            await continueDisposal.promise;
+          }
+          events.push(`dispose end ${id}`);
+        },
+      });
+    };
+
+    await using resettable = await run.ok(createResettableResource(create));
+    const observed = resettable.get();
+    const first = run(resettable.reset(observed));
+    await disposalStarted.promise;
+    const second = run(resettable.reset(observed));
+
+    try {
+      assertSame(resettable.get(), undefined);
+      assertEqual(createCount, 1);
+    } finally {
+      continueDisposal.resolve();
+    }
+
+    assertOk(await first, undefined);
+    assertOk(await second, undefined);
+    assertNotUndefined(resettable.get());
+    assertEqual(events, [
+      "create 1",
+      "dispose start 1",
+      "dispose end 1",
+      "create 2",
+    ]);
+  });
+
+  it("has no current resource while a reset is in progress", async () => {
+    await using run = testCreateRun();
+    const createStarted = Promise.withResolvers<void>();
+    const gate = createGate();
+    let createCount = 0;
+    const create: Task<Disposable> = async (run) => {
+      if (++createCount > 1) {
+        createStarted.resolve();
+        await run.ok(gate.wait);
+      }
+      return ok({ [Symbol.dispose]: constVoid });
+    };
+
+    await using resettable = await run.ok(createResettableResource(create));
+    const resetting = run(resettable.reset(resettable.get()));
+    await createStarted.promise;
+
+    assertSame(resettable.get(), undefined);
+
+    gate.open();
+    assertOk(await resetting, undefined);
+    assertNotUndefined(resettable.get());
+  });
+
+  it("shares one reset between concurrent requests", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+
+    await using resettable = await run.ok(
+      createResettableResource(resources.create),
+    );
+    const observed = resettable.get();
+    const first = run(resettable.reset(observed));
+    const second = run(resettable.reset(observed));
+
+    assertOk(await first, undefined);
+    assertOk(await second, undefined);
+    assertEqual(resources.getCreateCount(), 2);
+    assertEqual(resources.getDisposeCount(), 1);
+
+    // A request for the current resource after the completed reset starts
+    // another one.
+    assertOk(await run(resettable.reset(resettable.get())), undefined);
+    assertEqual(resources.getCreateCount(), 3);
+    assertEqual(resources.getDisposeCount(), 2);
+  });
+
+  it("skips a reset when the observed resource is no longer current", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+
+    await using resettable = await run.ok(
+      createResettableResource(resources.create),
+    );
+    const first = resettable.get();
+    assertOk(await run(resettable.reset(first)), undefined);
+    const second = resettable.get();
+    assertNotSame(second, first);
+
+    // A late observer of the first resource does not reset the second.
+    assertOk(await run(resettable.reset(first)), undefined);
+
+    assertSame(resettable.get(), second);
+    assertEqual(resources.getCreateCount(), 2);
+    assertEqual(resources.getDisposeCount(), 1);
+  });
+
+  it("skips a request that observed no resource once the replacement succeeds", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+    const createStarted = Promise.withResolvers<void>();
+    const gate = createGate();
+    let createCount = 0;
+    const create: Task<Disposable> = async (run) => {
+      if (++createCount === 2) {
+        createStarted.resolve();
+        await run.ok(gate.wait);
+      }
+      return run(resources.create);
+    };
+
+    await using resettable = await run.ok(createResettableResource(create));
+    const active = run(resettable.reset(resettable.get()));
+    await createStarted.promise;
+    const observed = resettable.get();
+    assertSame(observed, undefined);
+    const queued = run(resettable.reset(observed));
+    gate.open();
+
+    assertOk(await active, undefined);
+    assertOk(await queued, undefined);
+    assertNotUndefined(resettable.get());
+    assertEqual(resources.getCreateCount(), 2);
+    assertEqual(resources.getDisposeCount(), 1);
+  });
+
+  it("create returning a reused object identity is a programmer error", async () => {
+    await using run = testCreateRun();
+    const resource: Disposable = { [Symbol.dispose]: constVoid };
+
+    const resettable = await run.ok(
+      createResettableResource(() => ok(resource)),
+    );
+    const first = resettable.get();
+
+    const result = await run.abortable(resettable.reset(first));
+
+    assertErr(result);
+    assertType(AbortError, result.error);
+    assertSame(result.error.reason.type, "PanicAbortReason");
+    assertInstanceOf(result.error.reason.defect, Error);
+    assertEqual(
+      result.error.reason.defect.message,
+      "ResettableResource create must return a fresh object identity.",
+    );
+    // The reused object was disposed before the check, so nothing is current.
+    assertSame(resettable.get(), undefined);
+    const defects = run.deps.reportDefect.getDefectsSnapshot();
+    assertLength(defects, 1);
+    assertSame(defects[0], result.error);
+  });
+
+  it("runs a reset to completion when the caller aborts its Fiber", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+    const createStarted = Promise.withResolvers<void>();
+    const gate = createGate();
+    let createCount = 0;
+    const create: Task<Disposable> = async (run) => {
+      if (++createCount > 1) {
+        createStarted.resolve();
+        await run.ok(gate.wait);
+      }
+      return run(resources.create);
+    };
+
+    await using resettable = await run.ok(createResettableResource(create));
+    const first = resettable.get();
+    const resetting = run.abortable(resettable.reset(first));
+    await createStarted.promise;
+
+    resetting.abort(testAbortReason);
+    gate.open();
+
+    assertOk(await resetting, undefined);
+    assertNotUndefined(resettable.get());
+    assertNotSame(resettable.get(), first);
+    assertEqual(resources.getCreateCount(), 2);
+    assertEqual(resources.getDisposeCount(), 1);
+  });
+
+  it("overprovided reset deps do not replace deps captured for create", async () => {
+    await using run = testCreateRun();
+
+    interface TestResource extends Disposable {
+      readonly value: string;
+    }
+    interface TestDep {
+      readonly value: string;
+    }
+
+    await using resettable = await run.ok(
+      createResettableResource<TestResource, TestDep>(({ deps }) =>
+        ok({ value: deps.value, [Symbol.dispose]: constVoid }),
+      ),
+      { value: "captured" },
+    );
+    const first = resettable.get();
+    assertEqual(first?.value, "captured");
+
+    assertOk(
+      await run(resettable.reset(first), { value: "replacement" }),
+      undefined,
+    );
+
+    assertEqual(resettable.get()?.value, "captured");
+    assertNotSame(resettable.get(), first);
+  });
+
+  it("disposes the current resource", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+
+    const resettable = await run.ok(createResettableResource(resources.create));
+    await resettable[Symbol.asyncDispose]();
+
+    assertEqual(resources.getDisposeCount(), 1);
+    assertSame(resettable.get(), undefined);
+  });
+
+  it("repeated disposal waits for the same async cleanup", async () => {
+    await using run = testCreateRun();
+    const disposalStarted = Promise.withResolvers<void>();
+    const continueDisposal = Promise.withResolvers<void>();
+    let disposeCount = 0;
+    let disposalFinished = false;
+    const resettable = await run.ok(
+      createResettableResource(() =>
+        ok({
+          [Symbol.asyncDispose]: async () => {
+            disposeCount++;
+            disposalStarted.resolve();
+            await continueDisposal.promise;
+            disposalFinished = true;
+          },
+        }),
+      ),
+    );
+
+    const first = resettable[Symbol.asyncDispose]();
+    await disposalStarted.promise;
+    const second = resettable[Symbol.asyncDispose]();
+
+    try {
+      assertSame(
+        await Promise.race([second, Promise.resolve("pending")]),
+        "pending",
+      );
+      assertFalse(disposalFinished);
+    } finally {
+      continueDisposal.resolve();
+      await Promise.all([first, second]);
+    }
+
+    assertTrue(disposalFinished);
+    assertSame(resettable.get(), undefined);
+    await resettable[Symbol.asyncDispose]();
+    assertEqual(disposeCount, 1);
+  });
+
+  it("reentrant disposal waits for the same cleanup", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+    const createStarted = Promise.withResolvers<void>();
+    const continueCreate = Promise.withResolvers<void>();
+    let createCount = 0;
+    let repeatedDisposal: PromiseLike<void> | undefined;
+    const create: Task<Disposable> = async (run) => {
+      const resource = await run.ok(resources.create);
+      if (++createCount > 1) {
+        using _onAbort = run.onAbort(() => {
+          repeatedDisposal = resettable[Symbol.asyncDispose]();
+        });
+        createStarted.resolve();
+        await continueCreate.promise;
+      }
+      return ok(resource);
+    };
+
+    const resettable = await run.ok(createResettableResource(create));
+    const resetting = run.abortable(resettable.reset(resettable.get()));
+    await createStarted.promise;
+    const disposal = resettable[Symbol.asyncDispose]();
+
+    try {
+      assertNotUndefined(repeatedDisposal);
+      assertSame(
+        await Promise.race([repeatedDisposal, Promise.resolve("pending")]),
+        "pending",
+      );
+    } finally {
+      continueCreate.resolve();
+      await Promise.all([disposal, repeatedDisposal]);
+    }
+
+    assertErr(await resetting);
+    assertSame(resettable.get(), undefined);
+    assertEqual(resources.getDisposeCount(), 2);
+  });
+
+  it("repeated disposal preserves the cleanup defect", async () => {
+    await using run = testCreateRun();
+    const defect = new Error("dispose failed");
+    let disposeCount = 0;
+    const resettable = await run.ok(
+      createResettableResource(() =>
+        ok({
+          [Symbol.dispose]: () => {
+            disposeCount++;
+            throw defect;
+          },
+        }),
+      ),
+    );
+
+    assertEqual(
+      run.deps.leakDetector.getTrackedCount({ name: "ResettableResource" }),
+      1,
+    );
+    const first = resettable[Symbol.asyncDispose]();
+    let disposalError: unknown;
+    await assertRejects(first, (error) => {
+      assertType(AbortError, error);
+      assertSame(error.reason.type, "PanicAbortReason");
+      assertSame(error.reason.defect, defect);
+      disposalError = error;
+    });
+
+    const second = resettable[Symbol.asyncDispose]();
+    await assertRejects(second, (error) => {
+      assertSame(error, disposalError);
+    });
+    assertEqual(disposeCount, 1);
+    const reportedDefects = run.deps.reportDefect.getDefectsSnapshot();
+    assertLength(reportedDefects, 1);
+    assertSame(reportedDefects[0], disposalError);
+    assertEqual(
+      run.deps.leakDetector.getTrackedCount({ name: "ResettableResource" }),
+      0,
+    );
+  });
+
+  it("is bounded by its Run", async () => {
+    const resources = createTestResources();
+    {
+      await using run = testCreateRun();
+      const resettable = await run.ok(
+        createResettableResource(resources.create),
+      );
+      assertNotUndefined(resettable.get());
+    }
+    assertEqual(resources.getDisposeCount(), 1);
+  });
+
+  it("aborts active and queued resets when disposed during async resource disposal", async () => {
+    await using run = testCreateRun();
+    const disposalStarted = Promise.withResolvers<void>();
+    const continueDisposal = Promise.withResolvers<void>();
+    let createCount = 0;
+    let disposeCount = 0;
+    const create: Task<AsyncDisposable> = () => {
+      createCount++;
+      return ok({
+        [Symbol.asyncDispose]: async () => {
+          disposeCount++;
+          disposalStarted.resolve();
+          await continueDisposal.promise;
+        },
+      });
+    };
+
+    await using resettable = await run.ok(createResettableResource(create));
+    const active = run.abortable(resettable.reset(resettable.get()));
+    await disposalStarted.promise;
+    const queued = run.abortable(resettable.reset(resettable.get()));
+    const disposal = resettable[Symbol.asyncDispose]();
+
+    try {
+      // Queued work aborts even while the active disposer is still blocked.
+      const result = await queued;
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, runDisposedAbortReason);
+      assertSame(resettable.get(), undefined);
+    } finally {
+      continueDisposal.resolve();
+    }
+
+    const result = await active;
+    assertErr(result);
+    assertType(AbortError, result.error);
+    assertSame(result.error.reason, runDisposedAbortReason);
+    await disposal;
+
+    assertEqual(createCount, 1);
+    assertEqual(disposeCount, 1);
+    assertSame(resettable.get(), undefined);
+  });
+
+  it("never exposes a resource returned after disposal started", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+    const createStarted = Promise.withResolvers<void>();
+    const continueCreate = Promise.withResolvers<void>();
+    let createCount = 0;
+    const create: Task<Disposable> = async (run) => {
+      const resource = await run.ok(resources.create);
+      if (++createCount > 1) {
+        createStarted.resolve();
+        await continueCreate.promise;
+      }
+      return ok(resource);
+    };
+
+    const resettable = await run.ok(createResettableResource(create));
+    const resetting = run.abortable(resettable.reset(resettable.get()));
+    await createStarted.promise;
+
+    const disposal = resettable[Symbol.asyncDispose]();
+    continueCreate.resolve();
+    // The reset settles through microtasks only; none of them may
+    // expose the late resource. The bound only guards against a hang.
+    const settled = resetting.then(() => "settled" as const);
+    for (let tick = 0; tick < 1000; tick++) {
+      assertSame(resettable.get(), undefined);
+      const outcome = await Promise.race([
+        settled,
+        Promise.resolve("tick" as const),
+      ]);
+      if (outcome === "settled") break;
+    }
+
+    const result = await resetting;
+    await disposal;
+    assertErr(result);
+    assertType(AbortError, result.error);
+    assertSame(result.error.reason, runDisposedAbortReason);
+    // The resource returned after disposal started never became current.
+    assertEqual(resources.getCreateCount(), 2);
+    assertEqual(resources.getDisposeCount(), 2);
+    assertSame(resettable.get(), undefined);
+  });
+
+  it("reset after disposal is a programmer error", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+
+    const resettable = await run.ok(createResettableResource(resources.create));
+    await resettable[Symbol.asyncDispose]();
+
+    const result = await run.abortable(resettable.reset(resettable.get()));
+
+    assertErr(result);
+    assertType(AbortError, result.error);
+    assertSame(result.error.reason.type, "PanicAbortReason");
+    assertInstanceOf(result.error.reason.defect, Error);
+    assertEqual(
+      result.error.reason.defect.message,
+      "Cannot use a disposed object.",
+    );
+    assertSame(resettable.get(), undefined);
+    assertEqual(resources.getCreateCount(), 1);
+    const defects = run.deps.reportDefect.getDefectsSnapshot();
+    assertLength(defects, 1);
+    assertSame(defects[0], result.error);
+  });
+
+  it("reset after disposal starts is a programmer error", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+
+    const resettable = await run.ok(createResettableResource(resources.create));
+    // Disposal rejects new work immediately, before its cleanup finishes.
+    const disposal = resettable[Symbol.asyncDispose]();
+
+    const result = await run.abortable(resettable.reset(resettable.get()));
+    await disposal;
+
+    assertErr(result);
+    assertType(AbortError, result.error);
+    assertSame(result.error.reason.type, "PanicAbortReason");
+    assertInstanceOf(result.error.reason.defect, Error);
+    assertEqual(
+      result.error.reason.defect.message,
+      "Cannot use a disposed object.",
+    );
+    assertEqual(resources.getCreateCount(), 1);
+    assertEqual(resources.getDisposeCount(), 1);
+    const defects = run.deps.reportDefect.getDefectsSnapshot();
+    assertLength(defects, 1);
+    assertSame(defects[0], result.error);
+  });
+
+  it("reset from an abort callback during disposal is a programmer error", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+    const createStarted = Promise.withResolvers<void>();
+    const continueCreate = Promise.withResolvers<void>();
+    let createCount = 0;
+    let resetFromAbort: AbortableFiber<void> | undefined;
+    const create: Task<Disposable> = async (creationRun) => {
+      const resource = await creationRun.ok(resources.create);
+      if (++createCount > 1) {
+        using _onAbort = creationRun.onAbort(() => {
+          resetFromAbort = run.abortable(resettable.reset(undefined));
+        });
+        createStarted.resolve();
+        await continueCreate.promise;
+      }
+      return ok(resource);
+    };
+
+    const resettable = await run.ok(createResettableResource(create));
+    const resetting = run.abortable(resettable.reset(resettable.get()));
+    await createStarted.promise;
+    const disposal = resettable[Symbol.asyncDispose]();
+
+    try {
+      assertNotUndefined(resetFromAbort);
+      const result = await resetFromAbort;
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertInstanceOf(result.error.reason.defect, Error);
+      assertEqual(
+        result.error.reason.defect.message,
+        "Cannot use a disposed object.",
+      );
+      assertSame(run.getState().type, "Aborted");
+      const defects = run.deps.reportDefect.getDefectsSnapshot();
+      assertLength(defects, 1);
+      assertSame(defects[0], result.error);
+    } finally {
+      continueCreate.resolve();
+      await disposal;
+    }
+
+    const result = await resetting;
+    assertErr(result);
+    assertType(AbortError, result.error);
+    assertSame(result.error.reason, runDisposedAbortReason);
+    assertSame(resettable.get(), undefined);
+    assertEqual(resources.getCreateCount(), 2);
+    assertEqual(resources.getDisposeCount(), 2);
+  });
+
+  it("aborts a reset requested during root abort propagation", async () => {
+    await using owner = testCreateRun();
+    await using caller = testCreateRun();
+    const resources = createTestResources();
+    const createStarted = Promise.withResolvers<void>();
+    const continueCreate = Promise.withResolvers<void>();
+    let createCount = 0;
+    let resetFromAbort: AbortableFiber<void> | undefined;
+    const create: Task<Disposable> = async (creationRun) => {
+      const resource = await creationRun.ok(resources.create);
+      if (++createCount > 1) {
+        using _onAbort = creationRun.onAbort(() => {
+          resetFromAbort = caller.abortable(resettable.reset(undefined));
+        });
+        createStarted.resolve();
+        await continueCreate.promise;
+      }
+      return ok(resource);
+    };
+
+    await using resettable = await owner.ok(createResettableResource(create));
+    const resetting = caller.abortable(resettable.reset(resettable.get()));
+    await createStarted.promise;
+    const queued = caller.abortable(resettable.reset(resettable.get()));
+    const disposal = owner[Symbol.asyncDispose]();
+
+    try {
+      assertNotUndefined(resetFromAbort);
+      const result = await resetFromAbort;
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, runDisposedAbortReason);
+      assertSame(caller.getState().type, "Running");
+      assertEqual(owner.deps.reportDefect.getDefectsSnapshot(), []);
+      assertEqual(caller.deps.reportDefect.getDefectsSnapshot(), []);
+    } finally {
+      continueCreate.resolve();
+      await disposal;
+    }
+
+    for (const result of [await resetting, await queued]) {
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, runDisposedAbortReason);
+    }
+    assertSame(resettable.get(), undefined);
+    assertEqual(resources.getCreateCount(), 2);
+    assertEqual(resources.getDisposeCount(), 2);
+  });
+
+  it("leaves no current resource when a reset's creation aborts", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+    let createCount = 0;
+    // The second creation aborts on its own, as a dependency's Run would.
+    const create: Task<Disposable> = (run) => {
+      if (++createCount === 2) {
+        // oxlint-disable-next-line typescript/only-throw-error -- AbortError is Task abort control flow.
+        throw createAbortError(testAbortReason);
+      }
+      return run(resources.create);
+    };
+
+    await using resettable = await run.ok(createResettableResource(create));
+    const first = resettable.get();
+
+    const result = await run.abortable(resettable.reset(first));
+    assertErr(result);
+    assertType(AbortError, result.error);
+    assertSame(result.error.reason, testAbortReason);
+    assertSame(resettable.get(), undefined);
+    assertEqual(resources.getDisposeCount(), 1);
+
+    // Nothing is current, so a later request for the first resource creates
+    // the next one.
+    assertOk(await run(resettable.reset(first)), undefined);
+    assertNotUndefined(resettable.get());
+    assertEqual(resources.getCreateCount(), 2);
+  });
+
+  it("runs a queued reset when the active reset's creation aborts", async () => {
+    await using run = testCreateRun();
+    const resources = createTestResources();
+    const createStarted = Promise.withResolvers<void>();
+    const gate = createGate();
+    let createCount = 0;
+    const create: Task<Disposable> = async (run) => {
+      if (++createCount === 2) {
+        createStarted.resolve();
+        await run.ok(gate.wait);
+        // oxlint-disable-next-line typescript/only-throw-error -- AbortError is Task abort control flow.
+        throw createAbortError(testAbortReason);
+      }
+      return run(resources.create);
+    };
+
+    await using resettable = await run.ok(createResettableResource(create));
+    const active = run.abortable(resettable.reset(resettable.get()));
+    await createStarted.promise;
+    // The queued request observes the absence during replacement.
+    const observed = resettable.get();
+    assertSame(observed, undefined);
+    const queued = run.abortable(resettable.reset(observed));
+    gate.open();
+
+    assertErr(await active);
+    // Nothing answered the queued request, so it creates the next resource.
+    assertOk(await queued, undefined);
+    assertNotUndefined(resettable.get());
+    assertEqual(resources.getCreateCount(), 2);
+  });
+
+  describe("leak detection", () => {
+    it("warns when an undisposed ResettableResource is garbage-collected", async () => {
+      await using run = testCreateRun();
+
+      await run.ok(createResettableResource(createTestResources().create));
+
+      assertEqual(run.deps.leakDetector.collect(), 1);
+      const entries = run.deps.console.getEntriesSnapshot();
+      assertLength(entries, 1);
+      assertEqual(entries[0].method, "warn");
+      assertEqual(
+        entries[0].args[0],
+        "ResettableResource was garbage-collected without cleanup. Tracked at:",
+      );
+    });
+
+    for (const owner of ["resource", "Run"]) {
+      it(`untracks after ${owner} disposal and stays tracked through resets`, async () => {
+        await using run = testCreateRun();
+        const resettable = await run.ok(
+          createResettableResource(createTestResources().create),
+        );
+
+        assertEqual(
+          run.deps.leakDetector.getTrackedCount({ name: "ResettableResource" }),
+          1,
+        );
+        await run.ok(resettable.reset(resettable.get()));
+        assertEqual(
+          run.deps.leakDetector.getTrackedCount({ name: "ResettableResource" }),
+          1,
+        );
+
+        await (owner === "resource" ? resettable : run)[Symbol.asyncDispose]();
+
+        assertEqual(
+          run.deps.leakDetector.getTrackedCount({ name: "ResettableResource" }),
+          0,
+        );
+        assertEqual(run.deps.leakDetector.collect(), 0);
+        assertEqual(run.deps.console.getEntriesSnapshot(), []);
+      });
+    }
   });
 });
 

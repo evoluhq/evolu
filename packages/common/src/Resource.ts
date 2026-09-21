@@ -1,5 +1,29 @@
 /**
- * Concurrency-safe helpers for efficient reuse of disposable resources.
+ * Concurrency-safe helpers for efficient reuse and replacement of disposable
+ * resources.
+ *
+ * ## Replacement policies
+ *
+ * Replacing a live resource has two policies.
+ *
+ * Exclusive replacement disposes the current resource and then creates the
+ * next, so at most one exists and there is an observable gap with none.
+ * {@link ResettableResource} implements it. Leases do not fit this policy: a
+ * reset is requested precisely when holders are stuck on a dead resource, so
+ * waiting for them inverts the purpose, and revoking them is safe only when the
+ * resource's own API is total after disposal, in which case a lease adds
+ * nothing.
+ *
+ * Overlapping replacement creates the next generation first and disposes the
+ * previous one when its last lease is released, so work in progress finishes on
+ * the generation it started with. It keeps the old generation when creation
+ * fails, at the cost of both existing for a while. It is not implemented. It
+ * belongs on {@link SharedResource} as an invalidate operation: mark the current
+ * generation stale, stop leasing it, dispose it on its last release, and create
+ * the next on the next acquire. Before that can ship,
+ * {@link SharedResourceByKey} must stop removing a key when its resource is
+ * disposed, and {@link SharedResourceByKeyWithClaims} must stop keeping one
+ * resource object per key for the lifetime of its claims.
  *
  * @module
  */
@@ -21,6 +45,8 @@ import {
   sleep,
   type AbortableFiber,
   type DisposableRun,
+  type Fiber,
+  type Run,
   type SemaphoreSnapshot,
   type Task,
 } from "./Task.ts";
@@ -46,6 +72,7 @@ import { type DistributiveOmit } from "./Types.ts";
  * APIs let that error propagate as a defect. The purpose of resource helpers is
  * to guarantee cleanup and prevent leaks.
  *
+ * @see {@link ResettableResource}
  * @see {@link SharedResource}
  * @see {@link createSharedResource}
  */
@@ -502,6 +529,208 @@ export const createSharedResource =
   };
 
 /**
+ * A {@link Resource} reset in place.
+ *
+ * Holds one current resource and resets it on request: the current resource is
+ * disposed first, then `create` runs again. At most one resource exists, and
+ * there is an observable gap with none. Consumers keep the ResettableResource
+ * and read the current resource through {@link ResettableResource.get | get}, so
+ * a reset needs no re-registration. A resource that cannot reset itself is the
+ * case for it. One that can, as `WebSocket.reconnect` does, keeps a stable
+ * identity and needs no wrapper.
+ *
+ * The ResettableResource keeps a stable identity while its current resource
+ * changes. {@link SharedResourceByKeyWithClaims} can retain it directly;
+ * consumers read the current resource through `get`.
+ *
+ * Repeated async disposal calls await the same cleanup and preserve any
+ * disposal failure.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertSame,
+ *   createRun,
+ *   createResettableResource,
+ *   ok,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface Connection extends Disposable {
+ *   readonly id: number;
+ *   readonly isClosed: () => boolean;
+ * }
+ *
+ * let nextId = 1;
+ * const createConnection: Task<Connection> = () => {
+ *   const id = nextId++;
+ *   let isClosed = false;
+ *   return ok({
+ *     id,
+ *     isClosed: () => isClosed,
+ *     [Symbol.dispose]: () => {
+ *       isClosed = true;
+ *     },
+ *   });
+ * };
+ *
+ * await using run = createRun();
+ * await using connection = await run.ok(
+ *   createResettableResource(createConnection),
+ * );
+ * const first = connection.get();
+ * assertEqual(first?.id, 1);
+ *
+ * await run.ok(connection.reset(first));
+ * assertSame(first?.isClosed(), true);
+ * assertEqual(connection.get()?.id, 2);
+ * ```
+ */
+export interface ResettableResource<
+  T extends Resource,
+> extends AsyncDisposable {
+  /**
+   * Returns the current resource, or `undefined` when there is none: while a
+   * reset is in progress, after a reset whose creation aborted, and after
+   * disposal. Callers treat every absence alike, as the resource's own
+   * not-ready state.
+   */
+  readonly get: () => BorrowedResource<T> | undefined;
+
+  /**
+   * Resets the current resource: disposes it, then creates the next one.
+   *
+   * A reset is requested because `observed` misbehaved, and it runs only while
+   * `observed` is still current or there is no current resource. A request that
+   * finds a different resource current returns without resetting, so every
+   * observer of one dead resource shares one reset, however late its request
+   * arrives. An `observed` of `undefined` is an observation of absence, as
+   * {@link ResettableResource.get | get} returns during a reset: the request
+   * runs only while nothing is current, so it retries an aborted creation and
+   * skips once a replacement exists.
+   *
+   * Resets are serialized. Owner disposal aborts a pending reset with
+   * `runDisposedAbortReason`, and a resource that `create` returns after
+   * disposal started is disposed and never becomes current.
+   *
+   * Resets follow the resource-owned {@link Run}'s lifecycle: an abort request
+   * can cancel them, and calling reset after that Run starts disposal is a
+   * programmer error. Aborting the caller's {@link Fiber} does not cancel a
+   * started reset; dependencies remain those captured at creation.
+   */
+  readonly reset: (observed: BorrowedResource<T> | undefined) => Task<void>;
+}
+
+/**
+ * Creates {@link ResettableResource}.
+ *
+ * The first resource is created before this Task returns; if that creation
+ * aborts, nothing is left running. If the caller's Fiber aborts during initial
+ * creation, this Task waits for creation to settle, disposes any created
+ * resource, and returns the abort instead of a resource.
+ *
+ * The `create` Task must not fail: the previous resource is already disposed
+ * when it runs, so a failure would leave nothing to fall back to. Handle
+ * recoverable failures inside `create`, or return a resource whose state models
+ * them.
+ *
+ * The resource's own API must model its not-ready state, as a reconnecting
+ * connection models "connecting": `get` returns `undefined` during a reset, and
+ * callers treat that absence the same way. A resource whose API assumes
+ * readiness gains nothing here; every caller would rebuild that state around
+ * it.
+ *
+ * As with {@link createSharedResource}, a returned resource must be live and
+ * independently owned, and `create` runs on a Run created from the Run that
+ * executes this Task, so dependencies are captured at creation time.
+ *
+ * Every successful `create` invocation must return a fresh object identity,
+ * never one returned earlier. A reset skips when the observed resource is no
+ * longer current, and that comparison is by identity; a reused object makes a
+ * stale observation match the replacement and reset it again.
+ *
+ * A reset runs `create` and the resource's disposer while holding a
+ * non-reentrant lock. Neither may directly or transitively await another
+ * {@link ResettableResource.reset | reset} of this ResettableResource, because
+ * that reset waits for the same lock.
+ */
+export const createResettableResource =
+  <T extends Resource, D>(
+    create: Task<T, never, D>,
+  ): Task<ResettableResource<T>, never, D> =>
+  async (run) => {
+    const { leakDetector } = run.deps;
+
+    let current: T | undefined;
+
+    await using disposer = new AsyncDisposableStack();
+    const resettableResourceRun = disposer.use(run.create());
+    const mutex = createMutex();
+    const resettableResourceHandle = {};
+
+    const resetFrom = (
+      observed: BorrowedResource<T> | undefined,
+    ): Task<void, never, D> =>
+      mutex.withLock(async (run) => {
+        // A resource other than the observed one is current. An aborted
+        // creation leaves no current resource, so a queued request still runs.
+        if (current !== undefined && (current as unknown) !== observed) {
+          return ok();
+        }
+        const previous = current;
+        await disposeCurrent();
+        const next = await run.ok(create);
+        assert(
+          next !== previous,
+          "ResettableResource create must return a fresh object identity.",
+        );
+        // A resource returned after disposal started is disposed here, so
+        // `get` never exposes it while owner finalization runs.
+        if (run.signal.aborted) {
+          await using _next: Resource = next;
+        }
+        run.signal.throwIfAborted();
+        current = next;
+        return ok();
+      });
+
+    const disposeCurrent = async (): Promise<void> => {
+      await using _resource: Resource | undefined = current;
+      current = undefined;
+    };
+    resettableResourceRun.defer(() => {
+      leakDetector.untrack(resettableResourceHandle);
+    });
+    resettableResourceRun.defer(disposeCurrent);
+
+    await resettableResourceRun.ok(resetFrom(undefined));
+    // The caller can abort independently of the resource-owned Run.
+    run.signal.throwIfAborted();
+
+    const resettableResource: ResettableResource<T> = {
+      get: () => current as unknown as BorrowedResource<T> | undefined,
+
+      reset: (observed) => () => resettableResourceRun(resetFrom(observed)),
+
+      [Symbol.asyncDispose]: () => resettableResourceRun[Symbol.asyncDispose](),
+    };
+
+    leakDetector.track(
+      resettableResource,
+      {
+        name: "ResettableResource",
+        isLeaked: () => resettableResourceRun.getState().type === "Running",
+      },
+      resettableResourceHandle,
+    );
+
+    disposer.move();
+    return ok(resettableResource);
+  };
+
+/**
  * Shared {@link Resource}s keyed by logical identity.
  *
  * A map-like registry of {@link SharedResource}s. Each key owns at most one
@@ -894,6 +1123,11 @@ export function createSharedResourceByKey<
  * Use {@link SharedResourceByKey} instead when callers only need independent
  * leases by key and the application does not need to associate those leases
  * with logical owners.
+ *
+ * One resource object per key is kept for the lifetime of its claims, and
+ * callbacks receive that object. A {@link ResettableResource} can be retained
+ * directly because its identity is stable; consumers read its current resource
+ * through {@link ResettableResource.get | get}.
  *
  * Two accounts can share a relay connection while one also uses a local-network
  * transport:
@@ -1486,17 +1720,3 @@ export const createSharedResourceByKeyWithClaims =
 
     return ok(sharedResourceByKeyWithClaims);
   };
-
-// TODO: Add a lease-based reloadable resource when a concrete use case needs
-// resource swapping. A ResourceRef-style get/set API is unsafe because set can
-// dispose a resource still held by a caller of get. Model resource generations
-// explicitly and distinguish two replacement policies, probably as separate
-// APIs rather than a boolean option:
-// - Overlapping: create and validate the replacement, publish it to new leases,
-//   then dispose the old generation after its existing leases drain. This
-//   supports zero-downtime reload and keeps the old generation when creation
-//   fails, but both generations temporarily exist.
-// - Exclusive: stop or queue new leases, drain and dispose the old generation,
-//   then create and publish the replacement. This guarantees at most one live
-//   resource, but introduces downtime and leaves no valid resource when creation
-//   fails unless the owner retries or recreates the old configuration.
