@@ -347,11 +347,8 @@ const AppEvoluContext: FC<
   const [appEvolu, setAppEvolu] = useState<Evolu.Evolu<typeof AppSchema>>();
 
   useEffect(() => {
-    const disposer = new AsyncDisposableStack();
-    const effectRun = disposer.use(run.create());
-
-    void effectRun(async (run) => {
-      const instance = await run(
+    const effect = run.daemon(async (run) => {
+      await using instance = await run.ok(
         Evolu.createEvolu(AppSchema, {
           appName: Evolu.AppName.orThrow("minimal-example"),
           appOwner,
@@ -361,14 +358,13 @@ const AppEvoluContext: FC<
           }),
         }),
       );
-      if (!instance.ok) return instance;
-      disposer.use(instance.value);
-      setAppEvolu(instance.value);
-      return Evolu.ok();
+      run.signal.throwIfAborted();
+      setAppEvolu(instance);
+      return await run(Evolu.waitForAbort);
     });
 
     return () => {
-      void disposer.disposeAsync();
+      void effect[Symbol.asyncDispose]();
     };
   }, [appOwner, run]);
 
