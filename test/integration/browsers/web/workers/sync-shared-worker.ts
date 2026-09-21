@@ -24,6 +24,9 @@ const run = createRun({
         output.postMessage({ type: "Send", url, data });
         return ok();
       },
+      reconnect: () => {
+        output.postMessage({ type: "Reconnect", url });
+      },
       [Symbol.asyncDispose]: () => Promise.resolve(),
     });
   },

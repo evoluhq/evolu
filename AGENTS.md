@@ -154,6 +154,13 @@ scripts with `node script.mts`. Run GitHub CLI commands with network access.
   those operations.
 - Create disposable objects with `disposable`. Pass the owned `DisposableStack`
   or `AsyncDisposableStack` when cleanup resources are involved.
+- Use `Time.now` for a moment recorded or displayed and `Time.performance.now`
+  for durations that drive behavior. Subtracting two `Time.now` readings compiles
+  but breaks under a clock adjustment. A deadline that must count time the device
+  spent suspended is the exception and keeps an absolute `Time.now` deadline, as
+  `createTime` does for long timeouts. Type a moment measured from as
+  `PerformanceTime` and subtract with `performanceDurationBetween`, except where
+  an unordered reading must be clamped rather than thrown on.
 
 ## Documentation and tests
 
@@ -185,6 +192,9 @@ scripts with `node script.mts`. Run GitHub CLI commands with network access.
 - Commit messages use sentence case, no `feat:`/`fix:` prefix or trailing period.
 - Published API/runtime changes require a changeset created with `pnpm changeset`:
   patch for fixes, minor for additions, major for breaking changes, even in previews.
+- Local-first APIs, including their platform and framework integrations, are not
+  stable yet. Incompatible changes to them do not require a major changeset; use
+  patch for fixes and minor for additions, and document migration impact.
 - Changesets are release notes. Start with a short, standalone, past-tense title
   without a trailing period. Explain observable behavior or migration impact;
   keep unrelated changes separate.

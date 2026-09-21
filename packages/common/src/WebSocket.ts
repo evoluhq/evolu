@@ -12,7 +12,8 @@ import type { Schedule } from "./Schedule.ts";
 import { exponential, jitter, maxDelay } from "./Schedule.ts";
 import type { RetryError, Task } from "./Task.ts";
 import { callback, retry } from "./Task.ts";
-import type { Millis } from "./Time.ts";
+import type { Duration, Millis, PerformanceTime } from "./Time.ts";
+import { durationToMillis, performanceDurationBetween } from "./Time.ts";
 import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.ts";
 
 /**
@@ -107,6 +108,27 @@ export interface WebSocket extends AsyncDisposable {
 
   /** Returns true if the WebSocket is open and ready to send data. */
   readonly isOpen: () => boolean;
+
+  /**
+   * Abandons the current connection and connects again.
+   *
+   * Use it when the connection is dead although it never closed, for example
+   * when a request stays unanswered. The wrapper cannot detect that by itself:
+   * no close or error event arrives, so its own reconnect never runs.
+   *
+   * The connection is dropped without waiting for a close handshake, and
+   * neither {@link WebSocketOptions.onClose} nor
+   * {@link WebSocketOptions.shouldRetryOnClose} is consulted, because the close
+   * is this call rather than something to learn about or veto. A connection
+   * that was open restarts the {@link WebSocketOptions.schedule}, as a close
+   * after {@link WebSocketOptions.healthyConnectionDuration} does; one that was
+   * still connecting keeps its backoff, having proved nothing.
+   *
+   * A connection already closing or closed is left to settle on its own, and
+   * after disposal this does nothing, so a timer or handler that outlives the
+   * connection is safe to call it from.
+   */
+  readonly reconnect: () => void;
 }
 
 /**
@@ -125,6 +147,29 @@ export interface WebSocketSendError extends Typed<"WebSocketSendError"> {}
  * @group Core
  */
 export type WebSocketReadyState = "connecting" | "open" | "closing" | "closed";
+
+/**
+ * What a {@link WebSocket} reports when a connection closes.
+ *
+ * These are the fields every platform provides. Evolu does not use the DOM
+ * `CloseEvent` type: React Native delivers its own close event and exposes no
+ * `CloseEvent` global, so promising the DOM type would promise an inheritance
+ * chain and an `instanceof` that do not hold there. A platform's own close
+ * event is structurally assignable to this, and {@link createWebSocket} passes
+ * it through unchanged, so a caller that knows its platform can narrow it.
+ *
+ * @group Core
+ */
+export interface WebSocketCloseEvent {
+  /** https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent/code */
+  readonly code: number;
+
+  /** https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent/reason */
+  readonly reason: string;
+
+  /** Whether the connection closed after a completed closing handshake. */
+  readonly wasClean: boolean;
+}
 
 /**
  * {@link Task} that creates a {@link WebSocket}.
@@ -164,14 +209,14 @@ export interface WebSocketOptions {
   readonly onError?: (error: WebSocketError) => void;
 
   /** Callback when the connection is closed. */
-  readonly onClose?: (event: CloseEvent) => void;
+  readonly onClose?: (event: WebSocketCloseEvent) => void;
 
   /**
    * Determines whether a closed connection should trigger a retry.
    *
    * Return false to stop retrying, for example on auth errors or maintenance.
    */
-  readonly shouldRetryOnClose?: (event: CloseEvent) => boolean;
+  readonly shouldRetryOnClose?: (event: WebSocketCloseEvent) => boolean;
 
   /** Callback when message data is received. */
   readonly onMessage?: (data: string | ArrayBuffer | Blob) => void;
@@ -181,6 +226,28 @@ export interface WebSocketOptions {
    * {@link webSocketReconnectSchedule}.
    */
   readonly schedule?: Schedule<Millis, WebSocketRetryError>;
+
+  /**
+   * How long a connection must stay open for its close to start
+   * {@link WebSocketOptions.schedule} over. Defaults to 30 seconds, the delay
+   * cap of {@link webSocketReconnectSchedule}.
+   *
+   * The schedule is stateful and spans every reconnect, so without this a
+   * client that has disconnected often keeps waiting the longest backoff delay
+   * forever, even after hours of healthy connection. A connection that outlasts
+   * the longest delay the schedule can produce shows the endpoint works, so the
+   * next disconnect starts from the base delay again. Shorter connections reset
+   * nothing, so an endpoint that accepts and immediately drops connections
+   * still backs off.
+   *
+   * Choose it with the schedule rather than on its own: it is the schedule's
+   * delay cap, which only the schedule knows. A schedule cannot be asked for
+   * that cap, which is why this is an option rather than something derived. The
+   * delays a schedule has already produced are no substitute, because a
+   * jittered one produces delays near zero early on, and a threshold that low
+   * would reset the backoff for exactly the endpoint it protects against.
+   */
+  readonly healthyConnectionDuration?: Duration;
 
   /**
    * For custom WebSocket implementations.
@@ -235,7 +302,19 @@ export interface WebSocketConnectionError extends Typed<"WebSocketConnectionErro
  * @group Errors
  */
 export type WebSocketRetryError =
-  WebSocketConnectError | WebSocketConnectionCloseError;
+  | WebSocketConnectError
+  | WebSocketConnectionCloseError
+  | WebSocketReconnectError;
+
+/**
+ * The error {@link WebSocket.reconnect} settles the current connection with.
+ *
+ * Reconnecting is not a close, so it carries no close event: nothing observed
+ * one to report.
+ *
+ * @group Errors
+ */
+export interface WebSocketReconnectError extends Typed<"WebSocketReconnectError"> {}
 
 /**
  * An error that occurs when the connection is closed by the server.
@@ -243,7 +322,7 @@ export type WebSocketRetryError =
  * @group Errors
  */
 export interface WebSocketConnectionCloseError extends Typed<"WebSocketConnectionCloseError"> {
-  readonly event: CloseEvent;
+  readonly event: WebSocketCloseEvent;
 }
 
 /**
@@ -258,6 +337,9 @@ export const webSocketReconnectSchedule: Schedule<Millis, WebSocketRetryError> =
   /*#__PURE__*/ jitter("100%")(
     /*#__PURE__*/ maxDelay("30s")(/*#__PURE__*/ exponential("100ms")),
   );
+
+/** The delay cap of {@link webSocketReconnectSchedule}. */
+const defaultHealthyConnectionDuration = /*#__PURE__*/ durationToMillis("30s");
 
 /**
  * Create a new {@link WebSocket}.
@@ -276,13 +358,20 @@ export const createWebSocket: CreateWebSocket =
       onMessage,
       onError,
       schedule = webSocketReconnectSchedule,
+      healthyConnectionDuration = defaultHealthyConnectionDuration,
       WebSocketConstructor = globalThis.WebSocket,
     } = {},
   ) =>
   async (run) => {
     await using disposer = new AsyncDisposableStack();
 
+    const healthyConnectionMillis = durationToMillis(healthyConnectionDuration);
+
     let socket: globalThis.WebSocket | null = null;
+    // Set by a close that proves the endpoint works and by `reconnect`, and
+    // consumed by the next schedule step.
+    let shouldResetSchedule = false;
+    let resolveConnect: ConnectResolve | null = null;
 
     const closeSocket = () => {
       if (!socket) return;
@@ -312,6 +401,7 @@ export const createWebSocket: CreateWebSocket =
      */
     const connect: Task<void, WebSocketRetryError> = callback(({ resolve }) => {
       closeSocket();
+      resolveConnect = resolve;
 
       socket = new WebSocketConstructor(
         url,
@@ -321,15 +411,29 @@ export const createWebSocket: CreateWebSocket =
       if (binaryType) socket.binaryType = binaryType;
 
       let isOpen = false;
+      // Monotonic: how long the connection lasted must not follow a system
+      // clock adjustment, which would reset the schedule for a connection that
+      // proved nothing, or withhold the reset from one that proved the
+      // endpoint works.
+      let openedAt: PerformanceTime | null = null;
 
       // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       socket.onopen = () => {
         isOpen = true;
+        openedAt = run.deps.time.performance.now();
         onOpen?.();
       };
 
       // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       socket.onclose = (event) => {
+        if (
+          openedAt !== null &&
+          performanceDurationBetween(
+            openedAt,
+            run.deps.time.performance.now(),
+          ) >= healthyConnectionMillis
+        )
+          shouldResetSchedule = true;
         onClose?.(event);
         if (shouldRetryOnClose(event)) {
           resolve(err({ type: "WebSocketConnectionCloseError", event }));
@@ -353,10 +457,33 @@ export const createWebSocket: CreateWebSocket =
         if (error.type === "WebSocketConnectError") resolve(err(error));
       };
 
-      return closeSocket;
+      return () => {
+        resolveConnect = null;
+        closeSocket();
+      };
     });
 
-    const retryFiber = disposer.use(run.daemon(retry(connect, schedule)));
+    /**
+     * Wraps `schedule` so a healthy connection starts its backoff over.
+     *
+     * `retry` builds one schedule step per call and `connect` settles only when
+     * a connection closes, so a single step would otherwise accumulate backoff
+     * across every close for this wrapper's lifetime.
+     */
+    const reconnectSchedule: Schedule<Millis, WebSocketRetryError> = (deps) => {
+      let step = schedule(deps);
+      return (error) => {
+        if (shouldResetSchedule) {
+          shouldResetSchedule = false;
+          step = schedule(deps);
+        }
+        return step(error);
+      };
+    };
+
+    const retryFiber = disposer.use(
+      run.daemon(retry(connect, reconnectSchedule)),
+    );
 
     // Report RetryError (schedule exhausted) via onError callback
     void retryFiber.then((result) => {
@@ -386,9 +513,33 @@ export const createWebSocket: CreateWebSocket =
         !disposables.disposed &&
         socket?.readyState === globalThis.WebSocket.OPEN,
 
+      reconnect: () => {
+        const resolve = resolveConnect;
+        if (disposables.disposed || !resolve || !socket) return;
+        // A closing or closed socket settles the connection on its own.
+        // Reconnecting it would discard `shouldRetryOnClose` and restart the
+        // schedule for a close that proved nothing. `onClose` and `onError`
+        // run before that settlement, so a handler can reach this.
+        if (
+          socket.readyState !== socket.CONNECTING &&
+          socket.readyState !== socket.OPEN
+        )
+          return;
+        // Only a connection that was open makes the backoff before it stale.
+        if (socket.readyState === socket.OPEN) shouldResetSchedule = true;
+        resolveConnect = null;
+        // Handlers are cleared before settling, so the abandoned connection
+        // reports nothing while `retry` waits out its delay.
+        closeSocket();
+        resolve(err({ type: "WebSocketReconnectError" }));
+      },
+
       [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   };
+
+/** The `resolve` a {@link callback} hands to the connect Task. */
+type ConnectResolve = (result: Result<void, WebSocketRetryError>) => void;
 
 /** Clones SharedArrayBuffer-backed Uint8Array values before WebSocket.send. */
 const ensureSendableData = (
@@ -411,16 +562,30 @@ const nativeToStringState: Record<number, WebSocketReadyState> = {
  * An inspectable in-memory {@link CreateWebSocket} for testing by
  * {@link testCreateWebSocket}.
  *
+ * Sockets report the states {@link createWebSocket} reports, including the
+ * `connecting` a socket is in before it opens and while the wrapper retries
+ * after a close or a {@link WebSocket.reconnect}. Only disposal ends in
+ * `closed`. The `closing` state is not modeled: no helper starts a close
+ * handshake.
+ *
  * @group Testing
  */
 export interface TestCreateWebSocket extends CreateWebSocket {
   readonly createdUrls: Array<string>;
+  /** URLs whose newest socket was reconnected, in call order. */
+  readonly reconnectedUrls: Array<string>;
   readonly sentMessages: Array<{
     readonly url: string;
     readonly data: BufferSource | Blob | string | globalThis.Uint8Array;
   }>;
   readonly message: (url: string, data: string | ArrayBuffer | Blob) => void;
   readonly open: (url: string) => void;
+  /**
+   * Reports the close event, with `code` defaulting to 1006, and leaves the
+   * socket connecting.
+   */
+  readonly close: (url: string, event?: Partial<WebSocketCloseEvent>) => void;
+  readonly error: (url: string, error: WebSocketError) => void;
 }
 
 /**
@@ -433,23 +598,21 @@ export const testCreateWebSocket = (
     /** Throw immediately when a socket is created. */
     readonly throwOnCreate?: boolean;
 
-    /** Initial open state of created sockets. Defaults to true. */
+    /**
+     * Whether created sockets start open, skipping
+     * {@link TestCreateWebSocket.open}. Defaults to true. A socket that does not
+     * start open is connecting.
+     */
     readonly isOpen?: boolean;
   } = {},
 ): TestCreateWebSocket => {
   const createdUrls: Array<string> = [];
+  const reconnectedUrls: Array<string> = [];
   const sentMessages: Array<{
     readonly url: string;
     readonly data: BufferSource | Blob | string | globalThis.Uint8Array;
   }> = [];
-  const stateByUrl = new Map<
-    string,
-    {
-      options: WebSocketOptions | undefined;
-      isOpen: boolean;
-      isDisposed: boolean;
-    }
-  >();
+  const stateByUrl = new Map<string, TestWebSocketState>();
 
   const getState = (url: string) => {
     const state = stateByUrl.get(url);
@@ -463,16 +626,18 @@ export const testCreateWebSocket = (
     }
 
     createdUrls.push(url);
-    stateByUrl.set(url, {
+    // A URL can be created again after its socket was disposed. Each socket
+    // keeps its own state; the helpers address the newest socket for a URL.
+    const state: TestWebSocketState = {
       options: socketOptions,
-      isOpen: options.isOpen ?? true,
+      readyState: (options.isOpen ?? true) ? "open" : "connecting",
       isDisposed: false,
-    });
+    };
+    stateByUrl.set(url, state);
 
     return ok({
       send: (data) => {
-        const state = getState(url);
-        if (state.isDisposed || !state.isOpen) {
+        if (state.isDisposed || state.readyState !== "open") {
           return err({ type: "WebSocketSendError" });
         }
         sentMessages.push({
@@ -482,21 +647,20 @@ export const testCreateWebSocket = (
         return ok();
       },
 
-      getReadyState: () => {
-        const state = getState(url);
-        if (state.isDisposed) return "closed";
-        return state.isOpen ? "open" : "closed";
-      },
+      getReadyState: () => (state.isDisposed ? "closed" : state.readyState),
 
-      isOpen: () => {
-        const state = getState(url);
-        return !state.isDisposed && state.isOpen;
+      isOpen: () => !state.isDisposed && state.readyState === "open",
+
+      reconnect: () => {
+        // A closed socket settles on its own, as in `createWebSocket`.
+        if (state.isDisposed || state.readyState === "closed") return;
+        state.readyState = "connecting";
+        reconnectedUrls.push(url);
       },
 
       [Symbol.asyncDispose]: () => {
-        const state = getState(url);
         state.isDisposed = true;
-        state.isOpen = false;
+        state.readyState = "closed";
         return Promise.resolve();
       },
     });
@@ -504,17 +668,46 @@ export const testCreateWebSocket = (
 
   return Object.assign(createWebSocket, {
     createdUrls,
+    reconnectedUrls,
     sentMessages,
     message: (url: string, data: string | ArrayBuffer | Blob) => {
       getState(url).options?.onMessage?.(data);
     },
     open: (url: string) => {
       const state = getState(url);
-      state.isOpen = true;
+      state.readyState = "open";
       state.options?.onOpen?.();
+    },
+    close: (url: string, event: Partial<WebSocketCloseEvent> = {}) => {
+      const state = getState(url);
+      state.readyState = "closed";
+      state.options?.onClose?.({
+        code: 1006,
+        reason: "",
+        wasClean: false,
+        ...event,
+      });
+      // `createWebSocket` still holds the closed socket while it reports the
+      // close, and drops it to retry once that settles. Anything the handler
+      // schedules therefore still reads `closed`; anything later reads
+      // `connecting`.
+      queueMicrotask(() => {
+        if (state.readyState === "closed" && !state.isDisposed)
+          state.readyState = "connecting";
+      });
+    },
+    error: (url: string, error: WebSocketError) => {
+      getState(url).options?.onError?.(error);
     },
   });
 };
+
+/** Mutable state of one socket created by {@link testCreateWebSocket}. */
+interface TestWebSocketState {
+  options: WebSocketOptions | undefined;
+  readyState: WebSocketReadyState;
+  isDisposed: boolean;
+}
 
 /**
  * A native {@link WebSocket} prepared for integration tests by
