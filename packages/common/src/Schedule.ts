@@ -23,6 +23,7 @@ import {
   durationToMillis,
   Millis,
   minMillis,
+  type PerformanceTime,
   PositiveMillis,
   saturateMillis,
   type TimeDep,
@@ -55,6 +56,15 @@ import type { Predicate } from "./Types.ts";
  * recurrences, not the initial execution. Time-based schedules establish their
  * time origin on the first step call, not when `schedule(deps)` creates the
  * step.
+ *
+ * They measure elapsed time on `Time.performance`, so a system clock adjustment
+ * cannot distort it. On platforms where that clock stops while the device
+ * sleeps, a suspended interval measures as little or no elapsed time, so a
+ * schedule does not see the gap the wall clock saw. A time box outlives the
+ * wall-clock deadline it was given, as {@link during} and {@link maxElapsed} do.
+ * {@link resetScheduleAfter} does not treat the sleep as inactivity, and
+ * {@link compensate}, {@link fixed} and {@link windowed} do not treat it as time
+ * to catch up on.
  *
  * ### Composing a retry policy
  *
@@ -433,7 +443,15 @@ export const fixed =
 /**
  * Internal per-step metrics computed from timestamps.
  *
- * The schedule computes this internally from deps.time.now().
+ * The schedule computes this internally from deps.time.performance.now(), so a
+ * system clock adjustment cannot shorten or lengthen a measured elapsed time.
+ * An interval the device spent suspended can measure as no elapsed time at
+ * all.
+ *
+ * A reading that precedes the one before it is clamped to zero rather than
+ * thrown on, which is why these subtract directly instead of using
+ * `performanceDurationBetween`. A schedule measures its own progress, so a
+ * clock that misbehaves must not fail the operation being scheduled.
  */
 interface ScheduleStepMetrics {
   /** Milliseconds elapsed since the first step. */
@@ -450,11 +468,11 @@ interface ScheduleStepMetrics {
 const createScheduleStepMetrics = (
   deps: TimeDep,
 ): (() => ScheduleStepMetrics) => {
-  let start: Millis | null = null;
-  let previous: Millis | null = null;
+  let start: PerformanceTime | null = null;
+  let previous: PerformanceTime | null = null;
 
   return () => {
-    const now = deps.time.now();
+    const now = deps.time.performance.now();
     start ??= now;
     const elapsed = saturateComputedMillis(now - start);
     const elapsedSincePrevious =

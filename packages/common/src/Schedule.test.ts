@@ -58,36 +58,62 @@ import {
 } from "./Schedule.ts";
 import { testCreateDeps } from "./Task.ts";
 import {
+  type Duration,
+  durationToMillis,
   maxMillis,
   Millis,
+  millisToDateIso,
   minMillis,
+  type PerformanceTime,
   PositiveMillis,
   testCreateTime,
 } from "./Time.ts";
 import { type DateIso, NonNegativeInt, Ratio } from "./Type.ts";
 
 // Helper to create scheduleDeps with controllable time
-const createScheduleDeps = (startAt = 0) => {
+const createScheduleDeps = () => {
   const deps = testCreateDeps();
-  const time = testCreateTime({ startAt: Millis.orThrow(startAt) });
+  const time = testCreateTime();
   return { ...deps, time };
 };
 
-const createScheduleDepsWithNow = (...times: ReadonlyArray<number>) => {
+/**
+ * Drives the clock schedules measure elapsed time on, including backwards, to
+ * exercise clamping a monotonic clock is not supposed to need.
+ */
+const createScheduleDepsWithElapsed = (...times: ReadonlyArray<number>) => {
   const deps = testCreateDeps();
   let index = 0;
-  const time = testCreateTime({ startAt: Millis.orThrow(times[0] ?? 0) });
-  function now(): Millis;
-  function now(type: "DateIso"): DateIso;
-  function now(type?: "DateIso"): Millis | DateIso {
-    if (type === "DateIso") return time.now(type);
-    return Millis.orThrow(times[Math.min(index++, times.length - 1)]);
-  }
+  const time = testCreateTime();
   return {
     ...deps,
     time: {
       ...time,
-      now,
+      performance: {
+        ...time.performance,
+        now: () =>
+          (times[Math.min(index++, times.length - 1)] ?? 0) as PerformanceTime,
+      },
+    },
+  };
+};
+
+/** Moves the wall clock without moving the clock schedules measure with. */
+const createScheduleDepsWithClockJump = () => {
+  const deps = testCreateDeps();
+  const time = testCreateTime();
+  let offset = 0;
+  function now(): Millis;
+  function now(type: "DateIso"): DateIso;
+  function now(type?: "DateIso"): Millis | DateIso {
+    const millis = Millis.orThrow(time.now() + offset);
+    return type === "DateIso" ? millisToDateIso(millis) : millis;
+  }
+  return {
+    ...deps,
+    time: { ...time, now },
+    jumpClock: (duration: Duration) => {
+      offset += durationToMillis(duration);
     },
   };
 };
@@ -526,7 +552,7 @@ describe("elapsed", () => {
   });
 
   it("returns zero elapsed time when time moves backwards", () => {
-    const deps = createScheduleDepsWithNow(100, 50);
+    const deps = createScheduleDepsWithElapsed(100, 50);
     const step = elapsed(deps);
 
     expectOk(step(undefined), [0, 0]);
@@ -683,7 +709,7 @@ describe("maxElapsed", () => {
 
   it("keeps terminal done when time moves backwards", () => {
     const step = maxElapsed("250ms")(exponential("100ms"))(
-      createScheduleDepsWithNow(0, 250, 0),
+      createScheduleDepsWithElapsed(0, 250, 0),
     );
 
     expectOk(step(undefined), [100, 100]);
@@ -919,7 +945,7 @@ describe("compensate", () => {
   });
 
   it("keeps full delay when time moves backwards", () => {
-    const deps = createScheduleDepsWithNow(100, 50);
+    const deps = createScheduleDepsWithElapsed(100, 50);
     const step = compensate(spaced("1s"))(deps);
 
     expectOk(step(undefined), [1000, 1000]);
@@ -1056,6 +1082,18 @@ describe("resetScheduleAfter", () => {
     deps.time.advance("1s");
     expectOk(step(undefined), [100, 100]);
     deps.time.advance("100ms");
+    expectOk(step(undefined), [200, 200]);
+  });
+
+  it("ignores a system clock adjustment", () => {
+    const deps = createScheduleDepsWithClockJump();
+    const step = resetScheduleAfter("1s")(exponential("100ms"))(deps);
+
+    expectOk(step(undefined), [100, 100]);
+    // An hour of wall clock passes while no time elapses.
+    const before = deps.time.now();
+    deps.jumpClock("1h");
+    assertEqual(deps.time.now() - before, 3_600_000);
     expectOk(step(undefined), [200, 200]);
   });
 

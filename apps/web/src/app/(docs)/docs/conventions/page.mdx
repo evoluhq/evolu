@@ -897,6 +897,40 @@ See [Dependency injection](/docs/dependency-injection) for synchronous examples
 and the [Task module](/docs/api-reference/common/Task) for asynchronous
 composition.
 
+### Timestamps and elapsed time
+
+`Time` exposes two clocks, and they are not interchangeable.
+
+`Time.now` is Unix epoch time. Use it for a moment that is recorded, displayed,
+or compared across devices, such as the close time in a status snapshot.
+
+`Time.performance.now` measures elapsed time and is unaffected by system clock
+adjustments. Use it for durations that drive behavior: how long a connection has
+been open, how long since the last attempt, whether a deadline has passed.
+
+Subtracting two `Time.now` readings is a bug even though it compiles. A clock
+correction changes the result, so an NTP sync after a device wakes can make a
+one-millisecond interval look like an hour, or hide an hour of silence behind a
+negative value. Neither failure reproduces on a developer machine.
+
+A deadline that must count time the device spent suspended is the exception.
+Depending on the platform, the monotonic clock can stop while the system sleeps,
+so a duration measured across sleep reports less than the time that passed. A
+delay that has to expire on schedule regardless of sleep therefore keeps an
+absolute `Time.now` deadline and accepts that a clock correction can shorten or
+lengthen it. `createTime` splits long timeouts this way, and its documentation
+states the trade-off. Choose the wall clock deliberately for such a deadline,
+never by reaching for the nearest `now`.
+
+Store a moment a duration is measured from as `PerformanceTime` rather than
+`Millis`, so the two clocks cannot be mixed by accident. The brands are
+distinct, so assigning one where the other belongs fails to compile, which is
+the only reliable guard. Subtraction erases the brand, so take the difference
+with `performanceDurationBetween`, which returns a `PerformanceDuration` and
+asserts the readings are ordered. Code that must tolerate an unordered reading,
+such as a schedule that keeps stepping rather than throwing, clamps the
+difference itself instead.
+
 ## Documentation
 
 JSDoc should explain behavior and intent without repeating TypeScript parameter
