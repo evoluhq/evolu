@@ -142,6 +142,9 @@ interface TestBundleJobOutput {
  * Bundles, executes, measures, and verifies named cases with every supported
  * bundler.
  *
+ * Both bundlers replace `process.env.NODE_ENV` with `"production"` so
+ * development-only branches are removed from the measured output.
+ *
  * The fixture must default-export either a value, a promise, or a function that
  * returns one. The resolved value must be structured-cloneable so it can cross
  * the worker boundary. All asynchronous work started by the fixture must be
@@ -411,6 +414,10 @@ const testViteBundler: TestBundler = {
       configFile: false,
       envDir: false,
       logLevel: "silent",
+      // Library mode preserves NODE_ENV unless it is explicitly defined.
+      define: {
+        "process.env.NODE_ENV": JSON.stringify("production"),
+      },
       resolve: {
         alias: Object.entries(aliases).map(([name, replacement]) => ({
           find: new RegExp(`^${escapeRegExp(name)}$`, "u"),

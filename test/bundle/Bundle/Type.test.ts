@@ -380,7 +380,7 @@ const fixtures: ReadonlyArray<{
 ];
 
 describe("Type tree shaking", { timeout: 60_000 }, () => {
-  it("bundles a realistic app using common Types", async () => {
+  it("bundles a realistic app using common Types", async (t) => {
     await rm(outputDirectory, { recursive: true, force: true });
     const results = await testBundle({
       cases: {
@@ -401,21 +401,10 @@ describe("Type tree shaking", { timeout: 60_000 }, () => {
       outputDirectory: resolve(outputDirectory, "RealApp"),
     });
 
-    assertEqual(results, {
-      "real app": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 9407,
-          rawSizeInBytes: 32989,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 9460,
-          rawSizeInBytes: 33428,
-        },
-      },
-    });
+    t.assert.snapshot(results);
   });
 
-  it("bundles only the validation and formatting code used by each Type", async () => {
+  it("bundles only the validation and formatting code used by each Type", async (t) => {
     const results = await testBundle({
       cases: Object.fromEntries(
         fixtures.map((fixture) => [
@@ -439,171 +428,10 @@ describe("Type tree shaking", { timeout: 60_000 }, () => {
       outputDirectory,
     });
 
-    assertEqual(results, {
-      "Array(String)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 2344,
-          rawSizeInBytes: 5995,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 2347,
-          rawSizeInBytes: 6063,
-        },
-      },
-      "InstanceOf(Error)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 1160,
-          rawSizeInBytes: 2554,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 1151,
-          rawSizeInBytes: 2586,
-        },
-      },
-      "Map(String, Number)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 2366,
-          rawSizeInBytes: 5935,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 2389,
-          rawSizeInBytes: 6014,
-        },
-      },
-      NonEmptyString: {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 1582,
-          rawSizeInBytes: 3667,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 1599,
-          rawSizeInBytes: 3729,
-        },
-      },
-      NumberFromString: {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 1708,
-          rawSizeInBytes: 4075,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 1732,
-          rawSizeInBytes: 4142,
-        },
-      },
-      "Object(NonEmptyString)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 3233,
-          rawSizeInBytes: 9664,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 3297,
-          rawSizeInBytes: 9792,
-        },
-      },
-      "Object(Number, Record(String, Number))": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 3855,
-          rawSizeInBytes: 12204,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 3889,
-          rawSizeInBytes: 12383,
-        },
-      },
-      "Record(String, Number)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 2486,
-          rawSizeInBytes: 6550,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 2484,
-          rawSizeInBytes: 6651,
-        },
-      },
-      "Set(String)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 2153,
-          rawSizeInBytes: 5247,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 2152,
-          rawSizeInBytes: 5314,
-        },
-      },
-      String: {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 1084,
-          rawSizeInBytes: 2360,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 1075,
-          rawSizeInBytes: 2391,
-        },
-      },
-      "Tuple(String, Number)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 2400,
-          rawSizeInBytes: 6137,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 2425,
-          rawSizeInBytes: 6217,
-        },
-      },
-      "Union(String, Number)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 2019,
-          rawSizeInBytes: 4969,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 2036,
-          rawSizeInBytes: 5054,
-        },
-      },
-      "discriminatedUnion(Created, Deleted)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 3961,
-          rawSizeInBytes: 12634,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 4012,
-          rawSizeInBytes: 12818,
-        },
-      },
-      "lazy(Object(Array))": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 4246,
-          rawSizeInBytes: 13316,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 4314,
-          rawSizeInBytes: 13487,
-        },
-      },
-      'templateLiteralParser(String, "px")': {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 3239,
-          rawSizeInBytes: 9046,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 3293,
-          rawSizeInBytes: 9176,
-        },
-      },
-      "typed(Pending)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 3376,
-          rawSizeInBytes: 10085,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 3419,
-          rawSizeInBytes: 10225,
-        },
-      },
-    });
+    t.assert.snapshot(results);
   });
 
-  it("bundles every selected locale and no unrelated Type formatter", async () => {
+  it("bundles every selected locale and no unrelated Type formatter", async (t) => {
     const results = await testBundle({
       cases: {
         "localizeTypes(Label)": {
@@ -640,21 +468,10 @@ describe("Type tree shaking", { timeout: 60_000 }, () => {
       outputDirectory: resolve(outputDirectory, "localizeTypes"),
     });
 
-    assertEqual(results, {
-      "localizeTypes(Label)": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 2348,
-          rawSizeInBytes: 6057,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 2368,
-          rawSizeInBytes: 6186,
-        },
-      },
-    });
+    t.assert.snapshot(results);
   });
 
-  it("bundles a realistic Todo list schema", async () => {
+  it("bundles a realistic Todo list schema", async (t) => {
     const results = await testBundle({
       cases: {
         "typed Todo list": {
@@ -686,17 +503,6 @@ describe("Type tree shaking", { timeout: 60_000 }, () => {
       outputDirectory: resolve(outputDirectory, "TodoList"),
     });
 
-    assertEqual(results, {
-      "typed Todo list": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 5398,
-          rawSizeInBytes: 17768,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 5444,
-          rawSizeInBytes: 18016,
-        },
-      },
-    });
+    t.assert.snapshot(results);
   });
 });

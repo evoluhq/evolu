@@ -95,6 +95,7 @@ Testing
 - `pnpm test:integration:nodejs` - Run Node.js integration tests without source coverage
 - `pnpm test:integration:browsers` - Run browser integrations in Chromium with coverage and in Firefox and WebKit for compatibility
 - `pnpm test:bundle` - Run production bundle and tree-shaking tests
+- `pnpm test:bundle:update` - Rebuild common and regenerate bundle-size snapshots
 - `pnpm test:jsdoc` - Compile and run documentation examples
 
 Unit, integration, and bundle test suites randomize execution order and print a

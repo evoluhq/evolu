@@ -176,11 +176,28 @@ E2E tests run separately from `pnpm test` and `pnpm verify`.
 
 Bundle tests invoke production bundlers and verify generated artifacts,
 tree-shaking, execution, and byte sizes. Run them with `pnpm test:bundle`.
+Both bundlers replace `process.env.NODE_ENV` with `"production"` to remove
+development-only branches before measuring.
 They use `node:test` without source coverage because their contract is the
 generated bundle rather than which source lines executed while producing it.
 They run in one test process because `testBundle` already isolates generated
 artifacts in Workers, while Node.js process isolation forwards test-harness
 arguments that nested Workers cannot use.
+
+Bundle-size expectations use Node.js snapshots in `*.test.ts.snapshot` files
+beside the tests. Normal runs compare the measured sizes without updating them.
+After an intentional size change or a bundler upgrade, regenerate them with:
+
+```sh
+pnpm test:bundle:update
+```
+
+This rebuilds `@evolu/common`, whose compiled output the homepage fixtures use,
+then runs the bundle suite with `--test-update-snapshots`. Bundle execution and
+tree-shaking assertions still run. Run updates without test filters: Node rewrites
+each snapshot file from the assertions reached in that run. After a successful
+update, review the snapshot diff, then run
+`pnpm test:bundle` to check the new expectations before committing the snapshots.
 
 React Native JavaScript compatibility was previously tested on Hermes by
 running selected shared unit tests through the experimental `vitest-mobile`

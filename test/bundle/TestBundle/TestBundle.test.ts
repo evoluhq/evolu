@@ -8,6 +8,7 @@ import {
   assertInstanceOf,
   assertNonNullable,
   assertRejectsInstanceOf,
+  assertSame,
   assertTrue,
 } from "../../../packages/common/src/Assert.ts";
 import { installPolyfills } from "../../../packages/common/src/Polyfills.ts";
@@ -45,7 +46,7 @@ describe("testBundle", { timeout: 30_000 }, () => {
     await rm(outputDirectory, { recursive: true, force: true });
   });
 
-  it("bundles, executes, verifies, measures, and identifies bundlers", async () => {
+  it("bundles, executes, verifies, measures, and identifies bundlers", async (t) => {
     const verificationMarker = "verification-code-must-not-be-bundled";
     const verify = (value: unknown, bundle: TestBundle): void => {
       assertEqual(value, { answer: 42, bigint: 1n });
@@ -64,25 +65,23 @@ describe("testBundle", { timeout: 30_000 }, () => {
     });
     assertType<typeof result, TestBundleResult>();
 
-    assertEqual(result, {
-      fixture: {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 65,
-          rawSizeInBytes: 70,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 68,
-          rawSizeInBytes: 72,
-        },
-      },
-      "fixture-copy": {
-        "vite@8.2.2": {
-          brotliSizeInBytes: 65,
-          rawSizeInBytes: 70,
-        },
-        "webpack@5.109.2": {
-          brotliSizeInBytes: 68,
-          rawSizeInBytes: 72,
+    t.assert.snapshot(result);
+  });
+
+  it("eliminates development-only code from production bundles", async () => {
+    await testBundle({
+      cases: {
+        production: {
+          entryPath: resolve(
+            import.meta.dirname,
+            "__fixtures__/TestBundleProduction.ts",
+          ),
+          verify: (value, bundle) => {
+            assertSame(value, "production");
+            assertFalse(
+              bundle.code.includes("development-code-must-be-eliminated"),
+            );
+          },
         },
       },
     });
