@@ -1667,6 +1667,124 @@ describe("Run", () => {
   });
 
   describe("state", () => {
+    for (const action of ["abort", "dispose", "panic"] as const) {
+      it(`publishes ancestor shutdown before descendant callbacks on ${action}`, async () => {
+        await using run = testCreateRun();
+        await using owner = run.create();
+        const continueTask = Promise.withResolvers<void>();
+        let statesDuringAbort: Array<ReturnType<Run["getState"]>> = [];
+        let snapshotsDuringAbort: Array<RunSnapshot> = [];
+        let signalsDuringAbort: Array<boolean> = [];
+        let rootStateDuringAbort: ReturnType<Run["getState"]> | undefined;
+        using _onAbort = run.onAbort(() => {
+          rootStateDuringAbort = run.getState();
+        });
+        const fiber = owner(async (childRun) => {
+          using _onAbort = childRun.onAbort(() => {
+            const runs = [run, owner, childRun];
+            statesDuringAbort = runs.map((run) => run.getState());
+            snapshotsDuringAbort = runs.map((run) => run.snapshot());
+            signalsDuringAbort = runs.map((run) => run.signal.aborted);
+          });
+          await continueTask.promise;
+          return ok();
+        });
+
+        try {
+          if (action === "abort") run.abort(testAbortReason);
+          else if (action === "dispose") run[Symbol.dispose]();
+          else run.panic(new Error("shutdown"));
+
+          const abortError: unknown = run.signal.reason;
+          assertType(AbortError, abortError);
+          assertLength(statesDuringAbort, 3);
+          assertLength(snapshotsDuringAbort, 3);
+          for (const [index, state] of statesDuringAbort.entries()) {
+            assertSame(state.type, "Aborted");
+            assertSame(state.abort.request, abortError.reason);
+            assertSame(
+              state.abort.observed,
+              index === 2 ? abortError.reason : null,
+            );
+            assertSame(snapshotsDuringAbort[index]?.state, state);
+          }
+          assertEqual(signalsDuringAbort, [false, false, true]);
+          assertNotUndefined(rootStateDuringAbort);
+          assertSame(rootStateDuringAbort.type, "Aborted");
+          assertSame(rootStateDuringAbort.abort.request, abortError.reason);
+          assertSame(rootStateDuringAbort.abort.observed, abortError.reason);
+        } finally {
+          continueTask.resolve();
+          assertOk(await fiber, undefined);
+        }
+      });
+    }
+
+    it("publishes masked disposal without replacing the earlier abort request", async () => {
+      await using run = testCreateRun();
+      const continueTask = Promise.withResolvers<void>();
+      let stateDuringAbort: ReturnType<Run["getState"]> | undefined;
+      const fiber = run.abortable(
+        unabortable(async (run) => {
+          // Keep the callback through normal Task finalization.
+          run.onAbort(() => {
+            stateDuringAbort = run.getState();
+          });
+          await continueTask.promise;
+          return ok();
+        }),
+      );
+
+      try {
+        fiber.abort(testAbortReason);
+        assertSame(stateDuringAbort, undefined);
+        assertEqual(fiber.run.getState(), {
+          type: "Aborted",
+          abort: { request: testAbortReason, observed: null },
+        });
+      } finally {
+        continueTask.resolve();
+      }
+
+      assertOk(await fiber, undefined);
+      assertEqual(stateDuringAbort, {
+        type: "Aborted",
+        abort: { request: testAbortReason, observed: runDisposedAbortReason },
+      });
+    });
+
+    it("preserves the state published by reentrant disposal during propagation", async () => {
+      await using run = testCreateRun();
+      await using owner = run.create();
+      const continueTask = Promise.withResolvers<void>();
+      let stateDuringAbort: ReturnType<Run["getState"]> | undefined;
+      using _onAbort = owner.onAbort(() => {
+        stateDuringAbort = owner.getState();
+      });
+      const fiber = owner(async (run) => {
+        using _onAbort = run.onAbort(() => {
+          owner[Symbol.dispose]();
+        });
+        await continueTask.promise;
+        return ok();
+      });
+
+      try {
+        run.abort(testAbortReason);
+        assertEqual(stateDuringAbort, {
+          type: "Aborted",
+          abort: { request: testAbortReason, observed: runDisposedAbortReason },
+        });
+        assertSame(owner.getState(), stateDuringAbort);
+        const abortError: unknown = owner.signal.reason;
+        assertType(AbortError, abortError);
+        assertSame(abortError.reason, runDisposedAbortReason);
+      } finally {
+        continueTask.resolve();
+        assertOk(await fiber, undefined);
+      }
+    });
+
     it("new Run starts in Running state", async () => {
       await using run = createRun();
 
@@ -1961,6 +2079,75 @@ describe("Run", () => {
   });
 
   describe("event reporting", () => {
+    it("emits one abort state event when a descendant disposes its owner", async () => {
+      await using run = testCreateRun({
+        runConfig: { eventsEnabled: createRef(true) },
+      });
+      await using owner = run.create();
+      const states: Array<ReturnType<Run["getState"]>> = [];
+      owner.onEvent = (event) => {
+        if (event.id === owner.id && event.data.type === "StateChanged")
+          states.push(event.data.state);
+      };
+      const continueTask = Promise.withResolvers<void>();
+      const fiber = owner(async (childRun) => {
+        using _onAbort = childRun.onAbort(() => {
+          owner[Symbol.dispose]();
+        });
+        await continueTask.promise;
+        return ok();
+      });
+
+      try {
+        run.abort(testAbortReason);
+        assertLength(states, 1);
+        assertSame(states[0], owner.getState());
+      } finally {
+        continueTask.resolve();
+        assertOk(await fiber, undefined);
+      }
+
+      await owner[Symbol.asyncDispose]();
+      assertEqual(
+        states.map((state) => state.type),
+        ["Aborted", "Settled"],
+      );
+      assertSame(states[1], owner.getState());
+    });
+
+    it("emits abort state after local callbacks when a callback disposes the Run", async () => {
+      await using run = testCreateRun({
+        runConfig: { eventsEnabled: createRef(true) },
+      });
+      await using owner = run.create();
+      const events: Array<string> = [];
+      owner.onEvent = (event) => {
+        if (
+          event.id === owner.id &&
+          event.data.type === "StateChanged" &&
+          event.data.state.type === "Aborted"
+        )
+          events.push("StateChanged");
+      };
+      using _first = owner.onAbort(() => {
+        events.push("first callback starts");
+        owner[Symbol.dispose]();
+        events.push("first callback ends");
+      });
+      using _second = owner.onAbort(() => {
+        events.push("second callback");
+      });
+
+      run.abort(testAbortReason);
+
+      assertEqual(events, [
+        "first callback starts",
+        "first callback ends",
+        "second callback",
+        "StateChanged",
+      ]);
+    });
+
     it("emits Run events only while eventsEnabled is true", async () => {
       const eventsEnabled = createRef(false);
       await using run = testCreateRun({ runConfig: { eventsEnabled } });

@@ -1,5 +1,10 @@
 import { assert, describe, expect, test, vi } from "vitest";
-import { assertContinuationAfterMicrotasks } from "../../../../packages/common/src/Assert.ts";
+import {
+  assertContinuationAfterMicrotasks,
+  assertEqual,
+  assertLength,
+  assertOk,
+} from "../../../../packages/common/src/Assert.ts";
 import { isServer } from "../../../../packages/common/src/Platform.ts";
 import { err, ok } from "../../../../packages/common/src/Result.ts";
 import { parseStackTrace } from "../../../../packages/common/src/StackTrace.ts";
@@ -10,6 +15,7 @@ import {
   createRun,
   runDisposedAbortReason,
   testCreateRun,
+  type RunSnapshot,
   type Task,
 } from "../../../../packages/common/src/Task.ts";
 import {
@@ -45,6 +51,44 @@ describe("createRun", () => {
 });
 
 describe("Run", () => {
+  test("publishes shutdown before native abort listeners run", async () => {
+    await using run = testCreateRun();
+    await using owner = run.create();
+    const continueTask = Promise.withResolvers<void>();
+    let snapshotsDuringAbort: Array<RunSnapshot> = [];
+    const fiber = owner(async (childRun) => {
+      childRun.signal.addEventListener(
+        "abort",
+        () => {
+          snapshotsDuringAbort = [run, owner, childRun].map((run) =>
+            run.snapshot(),
+          );
+        },
+        { once: true },
+      );
+      await continueTask.promise;
+      return ok();
+    });
+
+    const disposal = run[Symbol.asyncDispose]();
+    try {
+      assertLength(snapshotsDuringAbort, 3);
+      for (const [index, snapshot] of snapshotsDuringAbort.entries()) {
+        assertEqual(snapshot.state, {
+          type: "Aborted",
+          abort: {
+            request: runDisposedAbortReason,
+            observed: index === 2 ? runDisposedAbortReason : null,
+          },
+        });
+      }
+    } finally {
+      continueTask.resolve();
+      assertOk(await fiber, undefined);
+      await disposal;
+    }
+  });
+
   test("continues panic shutdown when defect reporter throws", async () => {
     const error = new Error("boom");
     const reporterDefect = new Error("reporter failed");

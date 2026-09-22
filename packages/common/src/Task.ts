@@ -1462,10 +1462,20 @@ export interface Run<D = unknown> {
     callback: (abortError: AbortError) => void,
   ) => Disposable | null;
 
-  /** Returns the current {@link RunState} of this {@link Run}. */
+  /**
+   * Returns the current {@link RunState} of this {@link Run}.
+   *
+   * Abort requests are recorded before propagating to descendants. Observed
+   * aborts are recorded before this Run's abort callbacks execute.
+   */
   readonly getState: () => RunState;
 
-  /** Creates a memoized recursive {@link RunSnapshot} of the current Run tree. */
+  /**
+   * Creates a memoized recursive {@link RunSnapshot} of the current Run tree.
+   *
+   * Reflects abort requests and observations with the same timing as
+   * {@link Run.getState}.
+   */
   readonly snapshot: () => RunSnapshot;
 
   /**
@@ -2481,6 +2491,7 @@ const createRunInternal = <D extends object>(
         : abortBehavior.abortMask;
 
   let state: RunState = runningRunState;
+  let publishedState: RunState = state;
   let exit: RunExit | undefined;
   let snapshot: RunSnapshot | undefined;
 
@@ -2533,6 +2544,13 @@ const createRunInternal = <D extends object>(
     }
   };
 
+  const publishState = (): void => {
+    // A nested disposal may have published this state before the outer abort.
+    if (publishedState === state) return;
+    publishedState = state;
+    emitEvent({ type: "StateChanged", state });
+  };
+
   // Reads abort reasons from the Run-owned controllers, which are only
   // aborted with AbortError.
   const currentAbort = (): RunAbortState["abort"] => ({
@@ -2542,17 +2560,10 @@ const createRunInternal = <D extends object>(
       : null,
   });
 
-  const commitState = (nextState: RunState): void => {
-    state = nextState;
-    emitEvent({ type: "StateChanged", state });
-  };
-
   const requestAbort = (reason: AbortReason = explicitAbortReason): void => {
     if (requestController.signal.aborted) return;
-    const abortError = createAbortError(reason);
-    requestController.abort(abortError);
-    if (abortMask === abortableMask) signalController.abort(abortError);
-    commitState({ type: "Aborted", abort: currentAbort() });
+    abortControllers(createAbortError(reason), abortMask === abortableMask);
+    publishState();
   };
 
   // The first provided exit claims the Run exit; later exits are ignored. A
@@ -2569,7 +2580,8 @@ const createRunInternal = <D extends object>(
 
     const settle = (): RunExit => {
       exit ??= ok(ok());
-      commitState({ type: "Settled", abort: currentAbort(), exit });
+      state = { type: "Settled", abort: currentAbort(), exit };
+      publishState();
       return exit;
     };
 
@@ -2590,12 +2602,37 @@ const createRunInternal = <D extends object>(
 
     const abortError = exit?.ok === false ? exit.error : runDisposedAbortError;
 
+    // If called from a local abort callback, let its abort operation finish
+    // dispatching callbacks before publishing the state.
     const { aborted } = signalController.signal;
-    requestController.abort(abortError);
-    signalController.abort(abortError);
-    if (!aborted) commitState({ type: "Aborted", abort: currentAbort() });
+    abortControllers(abortError, true);
+    if (!aborted) publishState();
 
     return disposePromise;
+  };
+
+  const abortControllers = (abortError: AbortError, observe: boolean): void => {
+    // Record the request before propagation invokes descendant callbacks.
+    if (!requestController.signal.aborted) {
+      state = {
+        type: "Aborted",
+        abort: { request: abortError.reason, observed: null },
+      };
+      requestController.abort(abortError);
+    }
+
+    // A descendant callback may have disposed this Run reentrantly. Preserve
+    // the first observed reason; otherwise record it before local callbacks.
+    if (observe && !signalController.signal.aborted) {
+      state = {
+        type: "Aborted",
+        abort: {
+          request: (requestController.signal.reason as AbortError).reason,
+          observed: abortError.reason,
+        },
+      };
+      signalController.abort(abortError);
+    }
   };
 
   // Custom deps replace parent custom deps, so defaults must be picked from
