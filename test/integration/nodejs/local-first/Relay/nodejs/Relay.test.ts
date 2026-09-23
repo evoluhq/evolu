@@ -431,9 +431,9 @@ describe("createRelay", () => {
     assertSame(await received(50), "close");
   });
 
-  it("keeps a connection whose replies to its own requests exceed 16 MB", async () => {
+  it("keeps a connection whose replies to its own requests exceed 16 MB", async (t) => {
     await using setup = await startTestRelay({ pingInterval: "50ms" });
-    const { console, time } = setup.run.deps;
+    const { time } = setup.run.deps;
     const url = `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`;
     {
       await using writer = await testSetupWebSocket(url);
@@ -462,6 +462,12 @@ describe("createRelay", () => {
     // rounds than 16 full replies, as one socket does for many owners, and
     // reads them slowly.
     const client = new WsWebSocket(url);
+    // A paused client never answers the relay's close at disposal, which would
+    // turn any failure below into a test timeout.
+    using disposer = new DisposableStack();
+    disposer.defer(() => {
+      client.terminate();
+    });
     await once(client, "open");
     const closed = once(client, "close");
     const roundCount = 30;
@@ -483,16 +489,21 @@ describe("createRelay", () => {
     });
     const roundBytes = round.unwrap();
     for (let index = 0; index < roundCount; index++) client.send(roundBytes);
-    // Each round subscribes before its reply is written.
-    await assertEventually(
-      () =>
-        console
-          .getEntriesSnapshot()
-          .filter(({ args }) => args[0] === "subscribe").length === roundCount,
+
+    // From here on, every send is the relay queuing a reply to this client.
+    const repliesQueued = Promise.withResolvers<void>();
+    let replyCount = 0;
+    // oxlint-disable-next-line typescript/unbound-method -- Called with each socket as `this` below.
+    const { send } = WsWebSocket.prototype;
+    t.mock.method(
+      WsWebSocket.prototype,
+      "send",
+      function (this: WsWebSocket, ...args: Parameters<typeof send>) {
+        send.apply(this, args);
+        if (++replyCount === roundCount) repliesQueued.resolve();
+      },
     );
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 100);
-    });
+    await repliesQueued.promise;
 
     time.advance("50ms");
     time.advance("50ms");
