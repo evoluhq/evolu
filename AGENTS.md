@@ -192,6 +192,11 @@ scripts with `node script.mts`. Run GitHub CLI commands with network access.
 - Commit messages use sentence case, no `feat:`/`fix:` prefix or trailing period.
 - Published API/runtime changes require a changeset created with `pnpm changeset`:
   patch for fixes, minor for additions, major for breaking changes, even in previews.
+- Changesets describe the final change relative to committed code. Do not create
+  separate changesets for review fixes, debugging, or iterations on uncommitted
+  work. Update the relevant existing changeset only if the final user-facing
+  behavior or version impact changes. Do not write release notes for bugs that
+  existed only in uncommitted code.
 - Local-first APIs, including their platform and framework integrations, are not
   stable yet. Incompatible changes to them do not require a major changeset; use
   patch for fixes and minor for additions, and document migration impact.
