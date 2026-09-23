@@ -682,7 +682,8 @@ const initializeDb =
     createBaseSqliteStorageTables({ sqlite });
 
     // Startup release reads drift quarantine by reason and timestamp. Created
-    // last so fresh and migrated databases list their indexes in one order.
+    // last, as the migration creates it, so Evolu's own indexes are listed in one
+    // order in fresh and migrated databases.
     sqlite.exec(sql`
       create index evolu_message_quarantine_reason_timestamp on evolu_message_quarantine (
         "reason",
