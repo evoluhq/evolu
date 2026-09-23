@@ -6374,4 +6374,32 @@ describe("database version", () => {
     await using run = testCreateRun({ lockManager: refused.lockManager });
     await using _lock = await run.ok(acquireLeaderLock(refused.workerName));
   });
+
+  it("refuses a newer database whose other schema objects this code cannot read", async () => {
+    await using dbSetup = await setupDb();
+    {
+      await using setup = await setupDbWorker({ dbSetup });
+      assertLength(setup.initOutputs, 1);
+    }
+    dbSetup.sqlite.exec(sql`update evolu_version set "dbVersion" = 3;`);
+    // A newer version can add a view that calls a function this code lacks.
+    dbSetup.sqlite.exec(sql`
+      create view evolu_future as
+        select evolu_future_function(1) as x;
+    `);
+
+    await using refused = await setupDbWorker({ dbSetup, expectRefused: true });
+    assertEqual(refused.initOutputs, [
+      {
+        type: "LeaderRefused",
+        name: refused.workerName,
+        error: {
+          type: "UnsupportedDbVersionError",
+          storedVersion: PositiveInt.orThrow(3),
+          supportedVersion: PositiveInt.orThrow(2),
+        },
+      },
+    ]);
+    assertEqual(refused.consoleEntryOrErrors, []);
+  });
 });

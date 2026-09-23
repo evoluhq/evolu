@@ -107,7 +107,6 @@ import type { Query, RowsByQueryMap } from "./Query.ts";
 import type { MutationChange, SqliteSchemaDep } from "./Schema.ts";
 import {
   ensureSqliteSchema,
-  getEvoluSqliteSchema,
   isLocalOnlyTable,
   QuarantineOrigin,
   QuarantineReason,
@@ -246,15 +245,18 @@ export const startDbWorker =
       baseSqliteStorage,
       timestampConfig: { maxDrift: defaultTimestampMaxDrift },
     };
-    const currentSchema = getEvoluSqliteSchema(dbDeps)();
     const startup = sqlite.transaction(
       (): Result<Timestamp, UnsupportedDbVersionError> => {
-        const versionColumns = getOwnProp(
-          currentSchema.tables,
-          "evolu_version",
+        // Only the version record is read before the version check, because a
+        // newer database can hold schema objects this code cannot read.
+        const { rows: versionColumnRows } = sqlite.exec<{ name: string }>(sql`
+          select "name" from pragma_table_info('evolu_version');
+        `);
+        const versionColumns = new Set(
+          versionColumnRows.map((row) => row.name),
         );
         let initialClock: Timestamp;
-        if (versionColumns === undefined) {
+        if (versionColumns.size === 0) {
           initialClock = createInitialTimestamp(dbDeps);
           initializeDb(dbDeps)(initialClock);
         } else {
@@ -266,7 +268,7 @@ export const startDbWorker =
           assertNonEmptyReadonlyArray(rows);
           initialClock = timestampBytesToTimestamp(firstInArray(rows).clock);
         }
-        ensureSqliteSchema(dbDeps)(initMessage.sqliteSchema, currentSchema);
+        ensureSqliteSchema(dbDeps)(initMessage.sqliteSchema);
         const released = releaseDriftQuarantine(dbDeps)(initialClock);
         if (released) {
           initialClock = released;
