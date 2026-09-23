@@ -10,7 +10,7 @@ unused `protocolVersion`. Existing databases are converted at startup. The
 database version covers Evolu's internal storage format and how stored data is
 interpreted. It is independent of the application schema, which still evolves
 append-only, and of the network protocol version. This release supports
-database version 1 and adds no migration.
+database version 2 and migrates older databases to it at startup.
 
 A newer database appears in two situations. After a deployment, a tab running
 the new app version migrates the database while an older tab is still open or
@@ -21,7 +21,7 @@ downgraded, including installing an older React Native build, after a newer
 version migrated the local data; then only the newer app helps. Only code from
 this release onward checks the version, so releases before it cannot be
 protected. Nothing produces a newer database yet: the first refusal can occur
-when a later release introduces version 2, so handle the error now.
+when a later release introduces version 3, so handle the error now.
 
 A database whose version is newer than the code supports is refused before
 Evolu reads the clock, touches the application schema, or replays quarantine.
@@ -64,8 +64,8 @@ const describeError = (error: EvoluError): string => {
 assertEqual(
   describeError({
     type: "UnsupportedDbVersionError",
-    storedVersion: PositiveInt.orThrow(2),
-    supportedVersion: PositiveInt.orThrow(1),
+    storedVersion: PositiveInt.orThrow(3),
+    supportedVersion: PositiveInt.orThrow(2),
   }),
   "Your data requires a newer app version. Close all tabs of this app, then open it again.",
 );
