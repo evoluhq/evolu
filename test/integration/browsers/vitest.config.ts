@@ -29,6 +29,7 @@ export default defineProject(({ mode }) => ({
       "test/integration/shared/Task/*.test.ts",
       "test/integration/shared/WebSocket/*.test.ts",
       "test/integration/browsers/Type/*.test.ts",
+      "test/integration/browsers/react/*.test.ts",
     ],
     name: "browser-integration",
     setupFiles: ["./test/integration/shared/_setup.ts"],

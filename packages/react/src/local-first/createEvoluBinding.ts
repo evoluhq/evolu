@@ -1,6 +1,6 @@
 "use client";
 
-import { constVoid, assert, emptyArray } from "@evolu/common";
+import { constVoid, assert, emptyArray, structuralLookup } from "@evolu/common";
 import type {
   Evolu,
   EvoluSchema,
@@ -87,11 +87,19 @@ export interface ReactBinding<S extends EvoluSchema = EvoluSchema> {
     }>,
   ) => QueryRows<R>;
 
-  /** Calls {@link Evolu.useOwner} on the current {@link Evolu} instance. */
+  /**
+   * Uses an Owner for sync through {@link Evolu.useOwner} while the component is
+   * mounted, and stops when it unmounts or the Evolu instance, owner, or
+   * transports change. A null owner uses none, for a component that waits for
+   * one.
+   *
+   * The owner and transports are compared by content, so recreating them on
+   * each render keeps the same registration.
+   */
   readonly useOwner: (
-    owner: Parameters<Evolu<S>["useOwner"]>[0],
+    owner: Parameters<Evolu<S>["useOwner"]>[0] | null,
     transports?: Parameters<Evolu<S>["useOwner"]>[1],
-  ) => ReturnType<Evolu<S>["useOwner"]>;
+  ) => void;
 }
 
 /**
@@ -194,12 +202,25 @@ export const createEvoluBinding = <
   };
 
   const useOwner = (
-    owner: Parameters<Evolu<S>["useOwner"]>[0],
+    owner: Parameters<Evolu<S>["useOwner"]>[0] | null,
     transports?: Parameters<Evolu<S>["useOwner"]>[1],
-  ): ReturnType<Evolu<S>["useOwner"]> => {
+  ): void => {
     const evolu = useEvolu();
+    // What identifies a registration: the keys, not other Owner fields.
+    const key =
+      owner &&
+      structuralLookup({
+        id: owner.id,
+        encryptionKey: owner.encryptionKey,
+        writeKey: "writeKey" in owner ? owner.writeKey : null,
+        transports: transports ?? null,
+      });
 
-    return evolu.useOwner(owner, transports);
+    useEffect(
+      () => (owner ? evolu.useOwner(owner, transports) : undefined),
+      // oxlint-disable-next-line react/exhaustive-deps -- The key stands for the owner and transports, which callers usually recreate on each render.
+      [evolu, key],
+    );
   };
 
   return {

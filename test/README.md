@@ -14,6 +14,7 @@ test/
   e2e/
   integration/
     browsers/
+      react/
       web/
     nodejs/
     shared/

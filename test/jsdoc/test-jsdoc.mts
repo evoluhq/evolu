@@ -60,6 +60,7 @@ export const testEvoluJSDocExamples = async (
         repositoryDirectory,
         "packages/common/src/local-first/index.ts",
       ),
+      "@evolu/react": join(repositoryDirectory, "packages/react/src/index.ts"),
       "@evolu/react-native": join(
         repositoryDirectory,
         "test/jsdoc/test-jsdoc-react-native.mts",
