@@ -47,6 +47,7 @@ import {
   UrlSafeString,
 } from "../Type.ts";
 import type {
+  BroadcastChannel,
   CreateBroadcastChannelDep,
   CreateMessageChannelDep,
 } from "../Worker.ts";
@@ -84,9 +85,11 @@ import type {
   EvoluInput,
   EvoluOutput,
   SharedWorkerDep,
+  SyncState,
+  syncStateToOwnerSyncStates,
 } from "./Shared.ts";
 import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
-import { DbChange } from "./Storage.ts";
+import { DbChange, type StorageQuotaError } from "./Storage.ts";
 import type { Timestamp, TimestampTimeOutOfRangeError } from "./Timestamp.ts";
 
 /**
@@ -817,6 +820,7 @@ export type UnuseOwner = () => void;
 export type EvoluError =
   | DecryptWithXChaCha20Poly1305Error
   | ProtocolError
+  | StorageQuotaError
   | TimestampTimeOutOfRangeError
   | UnknownError
   | UnsupportedDbVersionError;
@@ -907,6 +911,60 @@ export interface EvoluErrorDep {
 }
 
 /**
+ * Dependency wrapper for the shared {@link SyncState} store.
+ *
+ * @group Construction
+ */
+export interface SyncStateDep {
+  /**
+   * {@link ReadonlyStore} of the latest {@link SyncState} shared by all
+   * {@link Evolu} instances, or null before the shared worker sends its first
+   * snapshot. Derive what to show from it, such as one indicator per relay, or
+   * use {@link syncStateToOwnerSyncStates} for one state per owner.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import {
+   *   assertEqual,
+   *   createId,
+   *   createStore,
+   *   testCreateDeps,
+   * } from "@evolu/common";
+   * import type {
+   *   SyncState,
+   *   SyncStateDep,
+   * } from "@evolu/common/local-first";
+   *
+   * const openRelayLabels = (deps: SyncStateDep): ReadonlyArray<string> =>
+   *   (deps.syncState.get()?.transports ?? [])
+   *     .filter(({ readyState }) => readyState === "open")
+   *     .map(({ label }) => label);
+   *
+   * using syncState = createStore<SyncState | null>(null);
+   * assertEqual(openRelayLabels({ syncState }), []);
+   *
+   * const deps = testCreateDeps();
+   * syncState.set({
+   *   transports: [
+   *     {
+   *       id: createId<"SyncTransport">(deps),
+   *       label: "wss://relay.example",
+   *       readyState: "open",
+   *       openedAt: null,
+   *       closedAt: null,
+   *       error: null,
+   *     },
+   *   ],
+   *   tenants: [],
+   * });
+   * assertEqual(openRelayLabels({ syncState }), ["wss://relay.example"]);
+   * ```
+   */
+  readonly syncState: ReadonlyStore<SyncState | null>;
+}
+
+/**
  * Shared platform dependencies for creating {@link Evolu} instances.
  *
  * Includes platform adapters, the shared {@link EvoluErrorDep.evoluError} store,
@@ -917,6 +975,7 @@ export interface EvoluErrorDep {
 export type EvoluDeps = EvoluPlatformDeps &
   ConsoleDep &
   EvoluErrorDep &
+  SyncStateDep &
   Disposable;
 
 /**
@@ -942,8 +1001,8 @@ export type EvoluPlatformDeps = CreateDbWorkerDep &
  *
  * Call this once per platform and reuse the returned deps when creating
  * multiple Evolu instances. The returned deps object owns long-lived resources
- * such as worker channels and the shared {@link EvoluErrorDep.evoluError}
- * store.
+ * such as worker channels and the shared {@link EvoluErrorDep.evoluError} and
+ * {@link SyncStateDep.syncState} stores.
  *
  * Dispose it only during app shutdown.
  *
@@ -952,10 +1011,16 @@ export type EvoluPlatformDeps = CreateDbWorkerDep &
 export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   const { createBroadcastChannel, sharedWorker } = deps;
   const console = deps.console ?? createConsole();
+  // Opened when the worker names its channel.
+  let syncStateBroadcastChannel: BroadcastChannel<SyncState> | null = null;
 
   using disposer = new DisposableStack();
   disposer.use(sharedWorker);
   const evoluError = disposer.use(createStore<EvoluError | null>(null));
+  const syncState = disposer.use(createStore<SyncState | null>(null));
+  disposer.defer(() => {
+    syncStateBroadcastChannel?.[Symbol.dispose]();
+  });
 
   const consoleEntryOrErrorBroadcastChannel = disposer.use(
     createBroadcastChannel<ConsoleEntryOrError>(
@@ -1000,6 +1065,24 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
         console.error(message.error);
         break;
 
+      case "SyncStateChannel": {
+        assert(
+          !syncStateBroadcastChannel,
+          "The shared worker names its sync state channel once.",
+        );
+        // The worker is the channel's only sender, and one sender's messages
+        // arrive in order, so the last one is current.
+        syncStateBroadcastChannel = createBroadcastChannel<SyncState>(
+          message.name,
+        );
+        syncStateBroadcastChannel.onMessage = (state) => {
+          syncState.set(state);
+        };
+        // Asking only after listening misses no snapshot.
+        sharedWorker.port.postMessage({ type: "RequestSyncState" });
+        break;
+      }
+
       default:
         exhaustiveCheck(message);
     }
@@ -1019,6 +1102,7 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
       ...deps,
       console,
       evoluError,
+      syncState,
     },
     disposer,
   );

@@ -7,6 +7,11 @@ const playgrounds = [
     href: "/playgrounds/minimal",
   },
   {
+    name: "Sync",
+    description: "Keep syncing through relay outages with independent backups.",
+    href: "/playgrounds/sync",
+  },
+  {
     name: "Full-Featured",
     description: "A playground with many features.",
     href: "/playgrounds/full",

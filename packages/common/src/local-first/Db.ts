@@ -44,11 +44,7 @@ import {
   assertNotUndefined,
 } from "../Assert.ts";
 import type { ConsoleLevel } from "../Console.ts";
-import {
-  EncryptionKey,
-  type DecryptWithXChaCha20Poly1305Error,
-  type RandomBytesDep,
-} from "../Crypto.ts";
+import { EncryptionKey, type RandomBytesDep } from "../Crypto.ts";
 import { constFalse, constVoid } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import { acquireLeaderLock } from "../LockManager.ts";
@@ -105,15 +101,14 @@ import {
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
   SubscriptionFlags,
-  type ProtocolInvalidDataError,
   type ProtocolMessage,
-  type ProtocolTimestampMismatchError,
 } from "./Protocol.ts";
 import type { Query, RowsByQueryMap } from "./Query.ts";
 import type { MutationChange, SqliteSchemaDep } from "./Schema.ts";
 import {
   ensureSqliteSchema,
   getEvoluSqliteSchema,
+  isLocalOnlyTable,
   QuarantineOrigin,
   QuarantineReason,
   systemColumns,
@@ -294,14 +289,7 @@ export const startDbWorker =
     }
     const initialClock = startup.value;
 
-    const storage = createClientStorage(dbDeps)({
-      onError: (error) => {
-        consoleEntryOrErrorBroadcastChannel.postMessage({
-          type: "Error",
-          error,
-        });
-      },
-    });
+    const storage = createClientStorage(dbDeps);
     const dbWorkerRun = disposer.use(run.create({ storage }));
 
     port.postMessage({
@@ -395,16 +383,24 @@ export const startDbWorker =
               OwnerId,
               ProtocolMessage
             >();
+            const failedOwnerIds = new Set<OwnerId>();
 
+            // An unanswered attempt would block the tenant queue, so a failed
+            // owner is logged and reported instead of thrown.
             for (const owner of request.message.owners) {
               storage.setRequestContext(owner.encryptionKey);
-              protocolMessagesByOwnerId.set(
-                owner.id,
-                createProtocolMessageForSync({
-                  storage,
-                  console: deps.console,
-                })(owner.id, SubscriptionFlags.Subscribe),
-              );
+              try {
+                protocolMessagesByOwnerId.set(
+                  owner.id,
+                  createProtocolMessageForSync({ storage })(
+                    owner.id,
+                    SubscriptionFlags.Subscribe,
+                  ),
+                );
+              } catch (error) {
+                deps.console.error(error);
+                failedOwnerIds.add(owner.id);
+              }
             }
 
             postQueuedResponse({
@@ -412,6 +408,7 @@ export const startDbWorker =
               message: {
                 type: "CreateSyncMessages",
                 protocolMessagesByOwnerId,
+                failedOwnerIds,
               },
             });
             return;
@@ -874,170 +871,150 @@ interface ClientStorage extends Storage, BaseSqliteStorage {
   readonly didWriteMessages: () => boolean;
 }
 
-const createClientStorage =
-  (
-    deps: BaseSqliteStorageDep &
-      SqliteSchemaDep &
-      RandomBytesDep &
-      SqliteDep &
-      TimestampConfigDep,
-  ) =>
-  ({
-    onError,
-  }: {
-    onError: (
-      error:
-        | ProtocolInvalidDataError
-        | ProtocolTimestampMismatchError
-        | DecryptWithXChaCha20Poly1305Error
-        | TimestampTimeOutOfRangeError,
-    ) => void;
-  }): ClientStorage => {
-    let encryptionKey: EncryptionKey | null = null;
-    let didWriteMessages = false;
-    let writeContext: WriteContext | undefined;
+const createClientStorage = (
+  deps: BaseSqliteStorageDep &
+    RandomBytesDep &
+    SqliteDep &
+    SqliteSchemaDep &
+    TimestampConfigDep,
+): ClientStorage => {
+  let encryptionKey: EncryptionKey | null = null;
+  let didWriteMessages = false;
+  let writeContext: WriteContext | undefined;
 
-    const getEncryptionKey = (): EncryptionKey => {
-      assertNonNullable(
-        encryptionKey,
-        "ClientStorage encryption key must be set",
-      );
-      return encryptionKey;
-    };
-
-    return {
-      ...deps.baseSqliteStorage,
-
-      // SharedWorker waits for the response before dispatching another request,
-      // so asynchronous sync processing cannot overlap this request context.
-      setRequestContext: (nextEncryptionKey, nextWriteContext) => {
-        encryptionKey = nextEncryptionKey;
-        writeContext = nextWriteContext;
-        didWriteMessages = false;
-      },
-
-      didWriteMessages: () => didWriteMessages,
-
-      // Not implemented yet.
-      validateWriteKey: constFalse,
-      setWriteKey: constVoid,
-
-      writeMessages: (ownerIdBytes, encryptedMessages) => () => {
-        // TODO: Add quota checking for collaborative scenarios.
-        // When receiving messages from other owners via relay broadcast,
-        // check if this owner is within quota before accepting the data.
-        // This prevents an owner from exceeding storage limits when receiving
-        // data shared by other collaborators.
-
-        const messages: Array<CrdtMessage> = [];
-        const currentEncryptionKey = getEncryptionKey();
-
-        for (const message of encryptedMessages) {
-          const change = decryptAndDecodeDbChange(
-            message,
-            currentEncryptionKey,
-          );
-          if (!change.ok) {
-            onError(change.error);
-            return ok();
-          }
-          messages.push({ timestamp: message.timestamp, change: change.value });
-        }
-
-        assertNonNullable(writeContext);
-        const { clock, now } = writeContext;
-        let clockTimestamp = clock.get();
-        const receive = receiveTimestamp(deps);
-
-        // The clock is computed over every message, duplicates included, so a
-        // retry with the same inputs reports the same clock. Writes for
-        // timestamps already in the owner's set are skipped by applyMessages.
-        for (const message of messages) {
-          const nextTimestamp = receive(clockTimestamp, message.timestamp, now);
-          if (!nextTimestamp.ok) {
-            if (nextTimestamp.error.type !== "TimestampDriftError") {
-              onError(nextTimestamp.error);
-              return ok();
-            }
-            if (nextTimestamp.error.cause === "remote") continue;
-            clockTimestamp = nextTimestamp.error.timestamp;
-          } else clockTimestamp = nextTimestamp.value;
-        }
-
-        assertNonEmptyReadonlyArray(messages);
-
-        let wroteNewMessages = false;
-        deps.sqlite.transaction(() => {
-          wroteNewMessages = applyMessages(deps)(
-            ownerIdBytesToOwnerId(ownerIdBytes),
-            messages,
-            QuarantineOrigin.ReceivedMessage,
-            now,
-          );
-          saveClock(deps)(clockTimestamp);
-        });
-        clock.set(clockTimestamp);
-        // A batch of duplicates changes no table, so queries need no refresh.
-        if (wroteNewMessages) didWriteMessages = true;
-        return ok();
-      },
-
-      readDbChange: (ownerId, timestamp) => {
-        const result = deps.sqlite.exec<{
-          readonly table: string;
-          readonly id: IdBytes;
-          readonly column: string;
-          readonly value: SqliteValue;
-        }>(sql`
-          select "table", "id", "column", "value"
-          from evolu_history
-          where "ownerId" = ${ownerId} and "timestamp" = ${timestamp}
-          union all
-          select "table", "id", "column", "value"
-          from evolu_message_quarantine
-          where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
-        `);
-
-        const { rows } = result;
-        assertNonEmptyReadonlyArray(rows, "Every timestamp must have rows");
-        const firstRow = firstInArray(rows);
-
-        const values = createMutableRecord<string, SqliteValue>();
-        let isInsert: DbChange["isInsert"] = false;
-        let isDelete: DbChange["isDelete"] = null;
-
-        for (const r of rows) {
-          switch (r.column) {
-            case "createdAt":
-              isInsert = true;
-              break;
-            case "updatedAt":
-              isInsert = false;
-              break;
-            case "isDeleted":
-              assertType(SqliteBoolean, r.value);
-              isDelete = sqliteBooleanToBoolean(r.value);
-              break;
-            default:
-              values[r.column] = r.value;
-          }
-        }
-
-        const message: CrdtMessage = {
-          timestamp: timestampBytesToTimestamp(timestamp),
-          change: DbChange.orThrow({
-            table: firstRow.table,
-            id: idBytesToId(firstRow.id),
-            values,
-            isInsert,
-            isDelete,
-          }),
-        };
-
-        return encodeAndEncryptDbChange(deps)(message, getEncryptionKey());
-      },
-    };
+  const getEncryptionKey = (): EncryptionKey => {
+    assertNonNullable(
+      encryptionKey,
+      "ClientStorage encryption key must be set",
+    );
+    return encryptionKey;
   };
+
+  return {
+    ...deps.baseSqliteStorage,
+
+    // SharedWorker waits for the response before dispatching another request,
+    // so asynchronous sync processing cannot overlap this request context.
+    setRequestContext: (nextEncryptionKey, nextWriteContext) => {
+      encryptionKey = nextEncryptionKey;
+      writeContext = nextWriteContext;
+      didWriteMessages = false;
+    },
+
+    didWriteMessages: () => didWriteMessages,
+
+    // Not implemented yet.
+    validateWriteKey: constFalse,
+    setWriteKey: constVoid,
+
+    writeMessages: (ownerIdBytes, encryptedMessages) => () => {
+      // TODO: Add quota checking for collaborative scenarios.
+      // When receiving messages from other owners via relay broadcast,
+      // check if this owner is within quota before accepting the data.
+      // This prevents an owner from exceeding storage limits when receiving
+      // data shared by other collaborators.
+
+      const messages: Array<CrdtMessage> = [];
+      const currentEncryptionKey = getEncryptionKey();
+
+      for (const message of encryptedMessages) {
+        const change = decryptAndDecodeDbChange(message, currentEncryptionKey);
+        if (!change.ok) return err(change.error);
+        messages.push({ timestamp: message.timestamp, change: change.value });
+      }
+
+      assertNonNullable(writeContext);
+      const { clock, now } = writeContext;
+      let clockTimestamp = clock.get();
+      const receive = receiveTimestamp(deps);
+
+      // The clock is computed over every message, duplicates included, so a
+      // retry with the same inputs reports the same clock. Writes for
+      // timestamps already in the owner's set are skipped by applyMessages.
+      for (const message of messages) {
+        const nextTimestamp = receive(clockTimestamp, message.timestamp, now);
+        if (!nextTimestamp.ok) {
+          if (nextTimestamp.error.type !== "TimestampDriftError")
+            return err(nextTimestamp.error);
+          if (nextTimestamp.error.cause === "remote") continue;
+          clockTimestamp = nextTimestamp.error.timestamp;
+        } else clockTimestamp = nextTimestamp.value;
+      }
+
+      assertNonEmptyReadonlyArray(messages);
+
+      let wroteNewMessages = false;
+      deps.sqlite.transaction(() => {
+        wroteNewMessages = applyMessages(deps)(
+          ownerIdBytesToOwnerId(ownerIdBytes),
+          messages,
+          QuarantineOrigin.ReceivedMessage,
+          now,
+        );
+        saveClock(deps)(clockTimestamp);
+      });
+      clock.set(clockTimestamp);
+      // A batch of duplicates changes no table, so queries need no refresh.
+      if (wroteNewMessages) didWriteMessages = true;
+      return ok();
+    },
+
+    readDbChange: (ownerId, timestamp) => {
+      const result = deps.sqlite.exec<{
+        readonly table: string;
+        readonly id: IdBytes;
+        readonly column: string;
+        readonly value: SqliteValue;
+      }>(sql`
+        select "table", "id", "column", "value"
+        from evolu_history
+        where "ownerId" = ${ownerId} and "timestamp" = ${timestamp}
+        union all
+        select "table", "id", "column", "value"
+        from evolu_message_quarantine
+        where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
+      `);
+
+      const { rows } = result;
+      assertNonEmptyReadonlyArray(rows, "Every timestamp must have rows");
+      const firstRow = firstInArray(rows);
+
+      const values = createMutableRecord<string, SqliteValue>();
+      let isInsert: DbChange["isInsert"] = false;
+      let isDelete: DbChange["isDelete"] = null;
+
+      for (const r of rows) {
+        switch (r.column) {
+          case "createdAt":
+            isInsert = true;
+            break;
+          case "updatedAt":
+            isInsert = false;
+            break;
+          case "isDeleted":
+            assertType(SqliteBoolean, r.value);
+            isDelete = sqliteBooleanToBoolean(r.value);
+            break;
+          default:
+            values[r.column] = r.value;
+        }
+      }
+
+      const message: CrdtMessage = {
+        timestamp: timestampBytesToTimestamp(timestamp),
+        change: DbChange.orThrow({
+          table: firstRow.table,
+          id: idBytesToId(firstRow.id),
+          values,
+          isInsert,
+          isDelete,
+        }),
+      };
+
+      return encodeAndEncryptDbChange(deps)(message, getEncryptionKey());
+    },
+  };
+};
 
 const handleMutation =
   (
@@ -1067,7 +1044,7 @@ const handleMutation =
       let clockTimestamp = deps.clock.get();
 
       for (const change of message.changes) {
-        if (change.table.startsWith("_")) {
+        if (isLocalOnlyTable(change.table)) {
           applyLocalOnlyChange(deps)(change, now);
           continue;
         }

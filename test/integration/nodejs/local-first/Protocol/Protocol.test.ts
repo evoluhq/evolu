@@ -19,6 +19,7 @@ import {
   createTimestampsBuffer,
   defaultProtocolMessageRangesMaxSize,
   encodeAndEncryptDbChange,
+  ProtocolErrorCode,
   ProtocolMessageMaxSize,
   ProtocolMessageRangesMaxSize,
   MessageType,
@@ -177,6 +178,54 @@ test("createProtocolMessageForSync", async () => {
   );
 });
 
+test("a mismatched range too small to split returns its own timestamps", async () => {
+  await using setup = await setupSqliteAndRelayStorage();
+  const { run, storage } = setup;
+
+  const timestamps = testTimestampsAsc.slice(0, 40);
+  const messages = timestamps.map((t): EncryptedCrdtMessage => ({
+    timestamp: timestampBytesToTimestamp(t),
+    change: createEncryptedDbChange(run.deps, {
+      timestamp: timestampBytesToTimestamp(t),
+      change: createDbChange(run.deps),
+    }),
+  }));
+  assertNonEmptyArray(messages);
+  await run(storage.writeMessages(testAppOwnerIdBytes, messages));
+
+  // The mismatched range starts at index 20 and holds 20 timestamps, fewer
+  // than fingerprint buckets need, so the relay answers with its timestamps.
+  const request = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Request,
+  });
+  request.addRange({ type: RangeType.Skip, upperBound: timestamps[20] });
+  request.addRange({
+    type: RangeType.Fingerprint,
+    upperBound: InfiniteUpperBound,
+    fingerprint: timestampBytesToFingerprint(testTimestampsRandom[0]),
+  });
+
+  const expected = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Response,
+    errorCode: ProtocolErrorCode.NoError,
+  });
+  expected.addRange({ type: RangeType.Skip, upperBound: timestamps[20] });
+  const range: TimestampsRangeWithTimestampsBuffer = {
+    type: RangeType.Timestamps,
+    upperBound: InfiniteUpperBound,
+    timestamps: createTimestampsBuffer(),
+  };
+  for (const t of timestamps.slice(20)) {
+    range.timestamps.add(timestampBytesToTimestamp(t));
+  }
+  expected.addRange(range);
+
+  const response = await run.orThrow(
+    applyProtocolMessageAsRelay(request.unwrap()),
+  );
+  assertEqualBytes(response.message, expected.unwrap());
+});
+
 describe("ranges sizes", () => {
   it("31 timestamps", () => {
     const buffer = createProtocolMessageBuffer(testAppOwner.id, {
@@ -310,7 +359,7 @@ describe("E2E sync", { timeout: 15_000 }, () => {
           );
         }
 
-        if (!result.ok || result.value.type === "NoResponse") break;
+        if (!result.ok || result.value.type === "Converged") break;
         assertSame(result.value.type, "Response");
         message = result.value.message;
 
@@ -450,7 +499,7 @@ describe("E2E sync", { timeout: 15_000 }, () => {
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
     assertEqual(syncSteps, {
-      syncSizes: [334, 5138, 17190, 863219, 849394, 20],
+      syncSizes: [334, 5138, 21862, 863219, 849394, 20],
       syncSteps: 6,
     });
   });
@@ -479,12 +528,12 @@ describe("E2E sync", { timeout: 15_000 }, () => {
     );
     assertEqual(syncSteps, {
       syncSizes: [
-        334, 2273, 2269, 109560, 110666, 2261, 2288, 86968, 86539, 2223, 83506,
-        84468, 2363, 88993, 80232, 2306, 2236, 74243, 76596, 2212, 66106, 69320,
-        2272, 60714, 69510, 2281, 66667, 66254, 16675, 55667, 49997, 24616,
-        66810, 41573, 88461, 92513, 12225, 13894,
+        334, 2273, 2264, 84210, 91254, 2324, 2265, 89272, 85603, 2250, 88741,
+        88495, 2314, 2236, 76805, 84358, 2240, 68797, 73303, 2222, 67616, 76429,
+        2301, 63412, 72542, 2219, 72573, 64072, 2377, 2235, 64121, 60690, 35078,
+        59727, 32741, 116700, 107215, 7552, 6294, 20,
       ],
-      syncSteps: 38,
+      syncSteps: 40,
     });
   });
 

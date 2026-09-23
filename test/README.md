@@ -125,8 +125,8 @@ projects; register new Vitest suites in the appropriate project config.
 
 ## Browser E2E tests
 
-Playwright tests in `test/e2e` drive the actual Next.js minimal and full playgrounds in
-Chromium, including React, workers, and persistent WASM SQLite. They cover CRUD,
+Playwright tests in `test/e2e` drive the actual Next.js minimal, full, and sync
+playgrounds in Chromium, including React, workers, and persistent WASM SQLite. They cover CRUD,
 the mutation completion callback, reload persistence, live updates between
 tabs without Suspense hiding the loaded UI, and sync through a real relay
 between isolated browser contexts. The tab test records DOM removals and hiding
@@ -136,9 +136,12 @@ projects, mnemonic visibility, and the disabled unfinished actions. Its navigati
 test opens Trash for the first time after deleting a todo and checks that
 `startTransition` keeps the loaded UI visible while Trash's queries load. Both
 examples use the same DOM visibility observer to detect even brief Suspense hides.
+The sync playground tests restart the relay, add a backup relay, and check the
+connection and synchronization state while one relay is down and after it
+catches up.
 Each test gets fresh browser storage and a separate relay process with a
 temporary database directory, removed after the test. Tabs within a context
-share storage and workers; contexts within a test share only the relay.
+share storage and workers; contexts within a test share only the relays.
 Every test fails on uncaught browser errors and unexpected dialogs, including
 the examples' Evolu error alert; tests declare the dialogs they expect.
 
@@ -158,7 +161,8 @@ the built relay CLI; dev tests run its TypeScript source.
 Tests run sequentially because the relay address is embedded in the browser
 bundle. Each test replaces the relay at that address with fresh storage, so
 the example's temporary shared `testAppOwner` cannot connect unrelated tests.
-Keep ports 3100 and 4311 free and run only one E2E invocation at a time.
+Tests that need a backup relay start a second relay on the next port. Keep
+ports 3100, 4311, and 4312 free and run only one E2E invocation at a time.
 
 For faster local iteration, select the dev configuration, which starts a
 managed Next.js dev server without building the production app:

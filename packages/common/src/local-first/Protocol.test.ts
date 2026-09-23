@@ -4,8 +4,10 @@ import type { NonEmptyReadonlyArray } from "../Array.ts";
 import {
   assertEqual,
   assertEqualBytes,
+  assertErr,
   assertFalse,
   assertInstanceOf,
+  assertLength,
   assertNonNullable,
   assertOk,
   assertSame,
@@ -30,6 +32,7 @@ import {
   ProtocolMessageMaxSize,
   ProtocolErrorCode,
   createProtocolMessageFromCrdtMessages,
+  createProtocolMessageForSync,
   createTimestampsBuffer,
   decodeSqliteValue,
   decryptAndDecodeDbChange,
@@ -40,6 +43,7 @@ import {
   ProtocolValueType,
   protocolVersion,
   SubscriptionFlags,
+  type ProtocolError,
 } from "./Protocol.ts";
 import type {
   CrdtMessage,
@@ -51,17 +55,22 @@ import {
   DbChange,
   InfiniteUpperBound,
   RangeType,
+  timestampBytesToFingerprint,
   zeroFingerprint,
+  type StorageWriteMessagesError,
 } from "./Storage.ts";
 import { err, getOrThrow, ok } from "../Result.ts";
 import {
+  createAbortError,
   testCreateDeps,
   testCreateRun,
+  type InferTaskErr,
   type RunDefaultDeps,
   type TestRunDefaultDeps as TestDeps,
 } from "../Task.ts";
 import { maxMillis, Millis } from "../Time.ts";
 import {
+  assertType,
   createId,
   DateIsoFromDate,
   FiniteNumber,
@@ -540,6 +549,28 @@ const shouldNotBeCalledStorageDep: StorageDep = {
   },
 };
 
+test("createProtocolMessageForSync does not swallow unexpected fingerprint exceptions", () => {
+  const failure = new Error("fingerprint ranges unavailable");
+  const deps = {
+    ...testCreateDeps(),
+    storage: {
+      ...shouldNotBeCalledStorageDep.storage,
+      getSize: () => NonNegativeInt.orThrow(32),
+      fingerprintRanges: () => {
+        throw failure;
+      },
+    },
+  } satisfies StorageDep;
+
+  assertSame(
+    assertThrowsInstanceOf(
+      () => createProtocolMessageForSync(deps)(testAppOwner.id),
+      Error,
+    ),
+    failure,
+  );
+});
+
 test("createTimestampsBuffer maxTimestamp", () => {
   const buffer = createTimestampsBuffer();
   buffer.add(timestampBytesToTimestamp(maxTimestamp));
@@ -650,7 +681,7 @@ describe("createProtocolMessageBuffer", () => {
   });
 });
 
-test("parseProtocolHeader parses supported headers and rejects malformed ones", () => {
+test("parseProtocolHeader parses any version and rejects malformed ones", () => {
   const requestHeader = parseProtocolHeader(
     createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
@@ -698,16 +729,20 @@ test("parseProtocolHeader parses supported headers and rejects malformed ones", 
     }),
   );
 
-  const invalidVersionMessage = createProtocolMessageBuffer(testAppOwner.id, {
+  // Only the version and the owner ID are stable across versions, so another
+  // version parses to that prefix without a message type.
+  const otherVersionMessage = createProtocolMessageBuffer(testAppOwner.id, {
     version: PositiveInt.orThrow(2),
     messageType: MessageType.Request,
   }).unwrap();
-  const invalidVersion = parseProtocolHeader(invalidVersionMessage);
-  assertFalse(invalidVersion.ok);
-  if (!invalidVersion.ok) {
-    assertEqual(invalidVersion.error.type, "ProtocolInvalidDataError");
-    assertInstanceOf(invalidVersion.error.error, Error);
-  }
+  assertEqual(
+    parseProtocolHeader(otherVersionMessage),
+    ok({
+      type: "ProtocolHeader",
+      version: 2,
+      ownerId: testAppOwner.id,
+    }),
+  );
 
   const invalidTypeMessage = createBuffer();
   encodeNonNegativeInt(invalidTypeMessage, protocolVersion);
@@ -797,6 +832,43 @@ describe("E2E versioning", () => {
       }),
     );
   });
+
+  it("transport routes the non-initiator's mismatch reply", async () => {
+    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    const v2 = 2 as NonNegativeInt;
+
+    const clientMessage = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+    }).unwrap();
+
+    const relayResponse = await run.orThrow(
+      applyProtocolMessageAsRelay(clientMessage, {}, v2),
+    );
+
+    // The reply carries only the version and the owner ID, and the transport
+    // must route it rather than reject it as invalid data.
+    assertEqual(
+      parseProtocolHeader(relayResponse.message),
+      ok({
+        type: "ProtocolHeader",
+        version: 2,
+        ownerId: testAppOwner.id,
+      }),
+    );
+
+    const clientResult = await run(
+      applyProtocolMessageAsClient(relayResponse.message),
+    );
+    assertEqual(
+      clientResult,
+      err({
+        type: "ProtocolVersionError",
+        version: 2,
+        isInitiator: true,
+        ownerId: testAppOwner.id,
+      }),
+    );
+  });
 });
 
 describe("E2E errors", () => {
@@ -859,6 +931,62 @@ describe("E2E errors", () => {
       clientResult,
       err({ type: "ProtocolWriteKeyError", ownerId: testAppOwner.id }),
     );
+  });
+
+  it("rejected relay writes report quota and other causes distinctly", async () => {
+    const deps = testCreateDeps();
+    const initiatorMessage = createProtocolMessageFromCrdtMessages(deps)(
+      testAppOwner,
+      [
+        {
+          timestamp: timestampBytesToTimestamp(testTimestampsAsc[0]),
+          change: createDbChange(deps),
+        },
+      ],
+    );
+    /** Returns the relay's response and what it logged for the rejection. */
+    const relayResponseFor = async (error: StorageWriteMessagesError) => {
+      await using run = testCreateRun({
+        storage: {
+          ...shouldNotBeCalledStorageDep.storage,
+          validateWriteKey: () => true,
+          writeMessages: () => () => err(error),
+        },
+      } satisfies StorageDep);
+      const { message } = await run.orThrow(
+        applyProtocolMessageAsRelay(initiatorMessage),
+      );
+      return {
+        message,
+        logged: run.deps.console
+          .getEntriesSnapshot()
+          .map(({ method, args }) => ({ method, args })),
+      };
+    };
+
+    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    // A quota rejection is expected, so the relay does not log it.
+    const quota = await relayResponseFor({
+      type: "StorageQuotaError",
+      ownerId: testAppOwner.id,
+    });
+    assertEqual(
+      await run(applyProtocolMessageAsClient(quota.message)),
+      err({ type: "ProtocolQuotaError", ownerId: testAppOwner.id }),
+    );
+    assertEqual(quota.logged, []);
+    // Any other storage rejection is a relay write failure, not a quota, and
+    // the relay logs its cause.
+    const other = await relayResponseFor({
+      type: "TimestampTimeOutOfRangeError",
+    });
+    assertEqual(
+      await run(applyProtocolMessageAsClient(other.message)),
+      err({ type: "ProtocolWriteError", ownerId: testAppOwner.id }),
+    );
+    assertEqual(other.logged, [
+      { method: "error", args: [{ type: "TimestampTimeOutOfRangeError" }] },
+    ]);
   });
 });
 
@@ -1039,10 +1167,247 @@ describe("E2E relay options", () => {
       const result = await run(
         applyProtocolMessageAsClient(broadcastedMessage),
       );
-      assertOk(result, { type: "NoResponse" });
+      assertOk(result, { type: "Broadcast" });
     }
     assertTrue(writeMessagesCalled);
   });
+});
+
+describe("applyProtocolMessageAsClient results", () => {
+  const createResponse = () =>
+    createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Response,
+      errorCode: ProtocolErrorCode.NoError,
+    });
+
+  it("reports a response without ranges as converged", async () => {
+    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    const result = await run(
+      applyProtocolMessageAsClient(createResponse().unwrap(), {
+        writeKey: testAppOwner.writeKey,
+      }),
+    );
+    assertOk(result, { type: "Converged" });
+  });
+
+  it("reports matching ranges as converged", async () => {
+    const input = createResponse();
+    input.addRange({ type: RangeType.Skip, upperBound: InfiniteUpperBound });
+    let findLowerBoundCalled = false;
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        getSize: () => NonNegativeInt.orThrow(3),
+        findLowerBound: (_ownerId, _begin, end) => {
+          findLowerBoundCalled = true;
+          return end;
+        },
+      },
+    } satisfies StorageDep);
+    const result = await run(
+      applyProtocolMessageAsClient(input.unwrap(), {
+        writeKey: testAppOwner.writeKey,
+      }),
+    );
+    assertOk(result, { type: "Converged" });
+    assertTrue(findLowerBoundCalled);
+  });
+
+  it("reports a response without a write key as readonly", async () => {
+    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    const result = await run(
+      applyProtocolMessageAsClient(createResponse().unwrap()),
+    );
+    assertOk(result, { type: "Readonly" });
+  });
+
+  it("preserves expected storage write rejection causes", async () => {
+    const deps = testCreateDeps();
+    const input = createResponse();
+    input.addMessage(
+      createEncryptedCrdtMessage(deps, {
+        timestamp: timestampBytesToTimestamp(testTimestampsAsc[0]),
+        change: createDbChange(deps),
+      }),
+    );
+    const message = input.unwrap();
+
+    const errors: ReadonlyArray<StorageWriteMessagesError> = [
+      {
+        type: "DecryptWithXChaCha20Poly1305Error",
+        error: new Error("decryption failed"),
+      },
+      {
+        type: "ProtocolInvalidDataError",
+        data: Uint8Array.of(255),
+        error: new Error("decoding failed"),
+      },
+      {
+        type: "ProtocolTimestampMismatchError",
+        expected: timestampBytesToTimestamp(testTimestampsAsc[0]),
+        timestamp: timestampBytesToTimestamp(testTimestampsAsc[1]),
+      },
+      { type: "StorageQuotaError", ownerId: testAppOwner.id },
+      { type: "TimestampTimeOutOfRangeError" },
+    ];
+
+    for (const error of errors) {
+      await using run = testCreateRun({
+        storage: {
+          ...shouldNotBeCalledStorageDep.storage,
+          writeMessages: () => () => err(error),
+        },
+      } satisfies StorageDep);
+      const task = applyProtocolMessageAsClient(message, {
+        writeKey: testAppOwner.writeKey,
+      });
+      assertType<
+        InferTaskErr<typeof task>,
+        ProtocolError | StorageWriteMessagesError
+      >();
+      const result = await run(task);
+      assertErr(result);
+      assertSame(result.error, error);
+    }
+  });
+
+  it("reports a thrown write as failed", async () => {
+    const deps = testCreateDeps();
+    const input = createResponse();
+    input.addMessage(
+      createEncryptedCrdtMessage(deps, {
+        timestamp: timestampBytesToTimestamp(testTimestampsAsc[0]),
+        change: createDbChange(deps),
+      }),
+    );
+    const message = input.unwrap();
+    const failure = new Error("write failed");
+
+    await using throwingRun = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        // A throw from the call itself, before a Task runs. A throw inside the
+        // Task is a defect of the Run, not a write failure.
+        writeMessages: () => {
+          throw failure;
+        },
+      },
+    } satisfies StorageDep);
+    assertOk(
+      await throwingRun(
+        applyProtocolMessageAsClient(message, {
+          writeKey: testAppOwner.writeKey,
+        }),
+      ),
+      { type: "Failed", cause: "Write" },
+    );
+    // The result carries no cause, so the log is the only trace of it.
+    const entries = throwingRun.deps.console.getEntriesSnapshot();
+    assertLength(entries, 1);
+    assertSame(entries[0].method, "error");
+    assertLength(entries[0].args, 1);
+    assertSame(entries[0].args[0], failure);
+  });
+
+  it("reports a failed range reconciliation as failed", async () => {
+    const input = createResponse();
+    input.addRange({
+      type: RangeType.Fingerprint,
+      upperBound: InfiniteUpperBound,
+      fingerprint: zeroFingerprint,
+    });
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        getSize: () => {
+          throw new Error("storage unavailable");
+        },
+      },
+    } satisfies StorageDep);
+    const result = await run(
+      applyProtocolMessageAsClient(input.unwrap(), {
+        writeKey: testAppOwner.writeKey,
+      }),
+    );
+    assertOk(result, { type: "Failed", cause: "Sync" });
+  });
+});
+
+describe("split-range failures", () => {
+  for (const role of ["client", "relay"] as const) {
+    for (const method of ["fingerprintRanges", "iterate"] as const) {
+      for (const isAbort of [false, true]) {
+        it(`${role} ${isAbort ? "preserves aborts" : "reports sync failure"} from ${method}`, async () => {
+          const failure = isAbort
+            ? createAbortError({ type: "Stop" })
+            : new Error(`${method} unavailable`);
+          const input = createProtocolMessageBuffer(
+            testAppOwner.id,
+            role === "client"
+              ? {
+                  messageType: MessageType.Response,
+                  errorCode: ProtocolErrorCode.NoError,
+                }
+              : {
+                  messageType: MessageType.Request,
+                  writeKey: testAppOwner.writeKey,
+                },
+          );
+          input.addRange({
+            type: RangeType.Fingerprint,
+            upperBound: InfiniteUpperBound,
+            fingerprint: zeroFingerprint,
+          });
+          await using run = testCreateRun({
+            storage: {
+              ...shouldNotBeCalledStorageDep.storage,
+              getSize: () =>
+                NonNegativeInt.orThrow(method === "fingerprintRanges" ? 32 : 1),
+              findLowerBound: (_ownerId, _begin, end) => end,
+              fingerprint: () =>
+                timestampBytesToFingerprint(testTimestampsAsc[0]),
+              validateWriteKey: constTrue,
+              [method]: () => {
+                // oxlint-disable-next-line typescript/only-throw-error -- AbortError is Task abort control flow.
+                throw failure;
+              },
+            },
+          } satisfies StorageDep);
+          const message = input.unwrap();
+          const result =
+            role === "client"
+              ? await run.abortable(
+                  applyProtocolMessageAsClient(message, {
+                    writeKey: testAppOwner.writeKey,
+                  }),
+                )
+              : await run.abortable(applyProtocolMessageAsRelay(message));
+
+          if (isAbort) {
+            assertErr(result);
+            assertSame(result.error, failure);
+            assertEqual(run.deps.console.getEntriesSnapshot(), []);
+            return;
+          }
+          assertOk(result);
+          if (role === "client") {
+            assertEqual(result.value, { type: "Failed", cause: "Sync" });
+          } else {
+            assertSame(result.value.type, "Response");
+            assertErr(
+              await run(applyProtocolMessageAsClient(result.value.message)),
+              { type: "ProtocolSyncError", ownerId: testAppOwner.id },
+            );
+          }
+          const entries = run.deps.console.getEntriesSnapshot();
+          assertLength(entries, 1);
+          assertSame(entries[0].method, "error");
+          assertLength(entries[0].args, 1);
+          assertSame(entries[0].args[0], failure);
+        });
+      }
+    }
+  }
 });
 
 test("local mutation broadcasts contain every message in nonempty size-limited frames", async () => {

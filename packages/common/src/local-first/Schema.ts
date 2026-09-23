@@ -151,6 +151,15 @@ export type EvoluSchema = ReadonlyRecord<
 export type TableSchema = ReadonlyRecord<string, AnyStandardSchemaV1>;
 
 /**
+ * Whether a table is local-only: its name starts with an underscore, so its
+ * changes are stored without synchronization.
+ *
+ * @group Core
+ */
+export const isLocalOnlyTable = (table: string): boolean =>
+  table.startsWith("_");
+
+/**
  * Todo ID Type for {@link testEvoluSchema}.
  *
  * @group Testing

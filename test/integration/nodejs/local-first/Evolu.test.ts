@@ -7,6 +7,7 @@ import {
   assertNotUndefined,
   assertNonEmptyArray,
   assertSame,
+  assertInstanceOf,
 } from "../../../../packages/common/src/Assert.ts";
 import { describe, it } from "node:test";
 import { createConsoleStoreOutput } from "../../../../packages/common/src/Console.ts";
@@ -27,6 +28,7 @@ import {
   createOwnerWebSocketTransport,
   testAppOwner,
 } from "../../../../packages/common/src/local-first/Owner.ts";
+import { createProtocolBroadcastMessagesFromCrdtMessages } from "../../../../packages/common/src/local-first/Protocol.ts";
 import {
   createQueryBuilder,
   QuarantineOrigin,
@@ -39,7 +41,10 @@ import {
   type SharedWorker,
   type SharedWorkerInput,
   type SharedWorkerOutput,
+  type SyncState,
 } from "../../../../packages/common/src/local-first/Shared.ts";
+import { DbChange } from "../../../../packages/common/src/local-first/Storage.ts";
+import { createTimestamp } from "../../../../packages/common/src/local-first/Timestamp.ts";
 import {
   acquireLeaderLock,
   testCreateLockManager,
@@ -186,6 +191,7 @@ describe("Evolu integration", () => {
     );
     void run(initSharedWorker(sharedWorker.self));
     sharedWorker.connect();
+    const syncStateChannelNamed = Promise.withResolvers<string>();
     // Errors the SharedWorker sends to this tab only.
     const tabErrors: Array<EvoluError> = [];
     let tabErrorReported = Promise.withResolvers<void>();
@@ -198,6 +204,9 @@ describe("Evolu integration", () => {
           tabErrors.push(message.error);
           tabErrorReported.resolve();
           tabErrorReported = Promise.withResolvers<void>();
+          break;
+        case "SyncStateChannel":
+          syncStateChannelNamed.resolve(message.name);
           break;
         default:
           exhaustiveCheck(message);
@@ -241,11 +250,13 @@ describe("Evolu integration", () => {
         sharedWorker,
       }),
     );
+    const syncStateChannelName = await syncStateChannelNamed.promise;
     const disposables = disposer.move();
 
     return {
       connectLaterTab,
       createIntegrationEvolu,
+      syncStateChannelName,
       run: runWithEvoluDeps,
       /** Only the default shared-driver setup exposes a shared database. */
       getSharedSqlite: () => {
@@ -324,7 +335,8 @@ describe("Evolu integration", () => {
   /** Two relays whose stored message timestamps are readable per relay. */
   const setupRelays = async (
     namePrefix: string,
-    isOwnerWithinQuota: () => boolean | Promise<boolean> = () => true,
+    isOwnerWithinQuota: (relay: "a" | "b") => boolean | Promise<boolean> = () =>
+      true,
   ) => {
     const driversByName = new Map<string, SqliteDriver>();
     await using disposer = new AsyncDisposableStack();
@@ -343,13 +355,14 @@ describe("Evolu integration", () => {
     disposer.defer(() => {
       assertEqual(relayRun.deps.reportDefect.getDefects(), []);
     });
-    const setupRelay = async (name: string) => {
+    const setupRelay = async (suffix: "a" | "b") => {
+      const name = `${namePrefix}-${suffix}`;
       const relay = disposer.use(
         await relayRun.ok(
           createRelay({
             port: Port.orThrow(0),
             name: Name.orThrow(name),
-            isOwnerWithinQuota,
+            isOwnerWithinQuota: () => isOwnerWithinQuota(suffix),
           }),
         ),
       );
@@ -364,8 +377,8 @@ describe("Evolu integration", () => {
         },
       };
     };
-    const relayA = await setupRelay(`${namePrefix}-a`);
-    const relayB = await setupRelay(`${namePrefix}-b`);
+    const relayA = await setupRelay("a");
+    const relayB = await setupRelay("b");
     const disposables = disposer.move();
     return {
       relayA,
@@ -373,6 +386,86 @@ describe("Evolu integration", () => {
       [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
   };
+
+  it("reports a rejected encrypted batch once per apply with its concrete route error", async () => {
+    const socket = testCreateWebSocket();
+    await using setup = await setupRunWithEvoluDeps({
+      createWebSocket: socket,
+    });
+    const { run, createIntegrationEvolu } = setup;
+    await using _leaderLock = await run.ok(acquireLeaderLock("tab"));
+    using deps = createEvoluDeps({
+      ...run.deps,
+      sharedWorker: setup.connectLaterTab(),
+    });
+    await using evoluRun = run.create(deps);
+    await using evolu = await evoluRun.ok(createIntegrationEvolu);
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://rejected-batch.example",
+      ownerId: testAppOwner.id,
+    });
+    evolu.useOwner(testAppOwner, [transport]);
+    assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
+    await testWaitForWorkerMessage();
+    const sqlite = setup.getSharedSqlite();
+    const before = getSqliteSnapshot({ sqlite });
+    const messages = createProtocolBroadcastMessagesFromCrdtMessages(run.deps)(
+      testAppOwner,
+      [
+        {
+          timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+          change: DbChange.orThrow({
+            table: "todo",
+            id: createIdFromString("valid-before-corruption"),
+            values: { title: "Valid before corruption" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        },
+        {
+          timestamp: createTimestamp({ millis: Millis.orThrow(2) }),
+          change: DbChange.orThrow({
+            table: "todo",
+            id: createIdFromString("corrupted"),
+            values: { title: "Corrupted" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        },
+      ],
+    );
+    assertLength(messages, 1);
+    const corrupted = Uint8Array.from(messages[0]);
+    corrupted[corrupted.length - 1] ^= 0xff;
+    const errors: Array<EvoluError> = [];
+    let reported = Promise.withResolvers<void>();
+    using subscriptions = new DisposableStack();
+    subscriptions.defer(
+      deps.evoluError.subscribe(() => {
+        const error = deps.evoluError.get();
+        assertNotNull(error);
+        errors.push(error);
+        reported.resolve();
+      }),
+    );
+
+    for (let applied = 1; applied <= 2; applied++) {
+      socket.message(transport.url, corrupted.buffer);
+      await reported.promise;
+      await testWaitForWorkerMessage();
+      assertLength(errors, applied);
+      const error = deps.evoluError.get();
+      assertNotNull(error);
+      assertSame(error.type, "DecryptWithXChaCha20Poly1305Error");
+      assertInstanceOf(error.error, Error);
+      const route = deps.syncState.get()?.tenants[0]?.owners[0]?.routes[0];
+      assertNotUndefined(route);
+      assertSame(route.error?.type, "DecryptWithXChaCha20Poly1305Error");
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
+      assertEqual(getSqliteSnapshot({ sqlite }), before);
+      reported = Promise.withResolvers<void>();
+    }
+  });
 
   for (const instanceCount of [1, 2]) {
     const instanceLabel = instanceCount === 1 ? "instance" : "instances";
@@ -684,6 +777,142 @@ describe("Evolu integration", () => {
       assertEqual(relay.getTimestamps(), localTimestamps);
     }
     assertEqual(await first.loadQuery(todoTitlesQuery), [{ title }]);
+    assertEqual(device.setup.tabErrors, []);
+    assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("reconciles a local continuation copy before completing the sibling's other relay route", async () => {
+    let rejectB = true;
+    let rejectedB = 0;
+    const quotaEntered = Promise.withResolvers<void>();
+    const quota = Promise.withResolvers<boolean>();
+    await using relays = await setupRelays(
+      "evolu-local-continuation",
+      (relay) => {
+        if (relay === "a") return true;
+        if (rejectB) {
+          rejectedB++;
+          return false;
+        }
+        quotaEntered.resolve();
+        return quota.promise;
+      },
+    );
+    const { relayA, relayB } = relays;
+    let state: SyncState | null = null;
+    let onState: () => void = constVoid;
+    const getRoute = (name: Name, port: number) => {
+      const transport = state?.transports.find(
+        ({ label }) => label === `ws://127.0.0.1:${port}`,
+      );
+      return state?.tenants
+        .find((tenant) => tenant.name === name)
+        ?.owners.find(({ ownerId }) => ownerId === testAppOwner.id)
+        ?.routes.find(({ transportId }) => transportId === transport?.id);
+    };
+    const waitForState = async (predicate: () => boolean): Promise<void> => {
+      if (predicate()) return;
+      const changed = Promise.withResolvers<void>();
+      onState = () => {
+        if (predicate()) changed.resolve();
+      };
+      using _timeout = setTimeout(() => {
+        changed.reject(
+          new Error("Timed out waiting for the expected sync state"),
+        );
+      }, 5_000);
+      try {
+        await changed.promise;
+      } finally {
+        onState = constVoid;
+      }
+    };
+    await using device = await setupDevice({
+      createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+    });
+    using states = createBroadcastChannel<SyncState>(
+      device.setup.syncStateChannelName,
+    );
+    states.onMessage = (next) => {
+      state = next;
+      onState();
+    };
+    const createTenant = (appName: string) =>
+      device.setup.run.ok(
+        createEvolu(Schema, {
+          appName: AppName.orThrow(appName),
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+    const transportA = createOwnerWebSocketTransport({
+      url: `ws://127.0.0.1:${relayA.port}`,
+      ownerId: testAppOwner.id,
+    });
+    const transportB = createOwnerWebSocketTransport({
+      url: `ws://127.0.0.1:${relayB.port}`,
+      ownerId: testAppOwner.id,
+    });
+    await using source = await createTenant("ContinuationSource");
+    source.useOwner(testAppOwner, [transportB]);
+    await waitForState(
+      () => getRoute(source.name, relayB.port)?.complete === true,
+    );
+
+    // B rejects the mutation and its automatic retry, leaving the message
+    // stored only in the source database.
+    const title = NonEmptyTrimmedString100.orThrow("Historical local copy");
+    source.insert("todo", { title });
+    assertEqual(await source.loadQuery(todoTitlesQuery), [{ title }]);
+    await waitForState(
+      () =>
+        rejectedB === 2 &&
+        getRoute(source.name, relayB.port)?.error?.type ===
+          "ProtocolQuotaError",
+    );
+    assertEqual(relayB.getTimestamps(), []);
+
+    // The empty sibling legitimately converges with the still-empty relay B.
+    await using sibling = await createTenant("ContinuationSibling");
+    sibling.useOwner(testAppOwner, [transportB]);
+    await waitForState(
+      () => getRoute(sibling.name, relayB.port)?.complete === true,
+    );
+    assertEqual(await sibling.loadQuery(todoTitlesQuery), []);
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => quota.resolve(true));
+
+    // A new A route requests the source's historical message. Its continuation
+    // uploads only to A and delivers a local copy to the sibling. That copy
+    // requires a fresh B round; hold B's write to inspect the pending route.
+    rejectB = false;
+    source.useOwner(testAppOwner, [transportA]);
+    {
+      using _quotaTimeout = setTimeout(() => {
+        quotaEntered.reject(
+          new Error(
+            "Timed out waiting for the local continuation copy to reach relay B",
+          ),
+        );
+      }, 5_000);
+      await quotaEntered.promise;
+    }
+    assertEqual(await sibling.loadQuery(todoTitlesQuery), [{ title }]);
+    await waitForState(
+      () => getRoute(sibling.name, relayB.port)?.complete === false,
+    );
+    const pendingRoute = getRoute(sibling.name, relayB.port);
+    assertNotUndefined(pendingRoute);
+    assertFalse(pendingRoute.complete);
+    assertSame(pendingRoute.error, null);
+    assertEqual(relayB.getTimestamps(), []);
+
+    quota.resolve(true);
+    await waitForState(
+      () => getRoute(sibling.name, relayB.port)?.complete === true,
+    );
+    assertTrue(relayA.getTimestamps().length > 0);
+    assertEqual(relayB.getTimestamps(), relayA.getTimestamps());
     assertEqual(device.setup.tabErrors, []);
     assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
   });
@@ -1020,8 +1249,8 @@ describe("Evolu integration", () => {
             {
               column: "title",
               id: new Uint8Array([
-                50, 31, 231, 180, 49, 214, 154, 211, 212, 81, 200, 67, 99, 120,
-                205, 142,
+                162, 140, 107, 238, 5, 65, 113, 168, 236, 205, 236, 11, 39, 9,
+                170, 125,
               ]),
               ownerId: new Uint8Array([
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
@@ -1036,8 +1265,8 @@ describe("Evolu integration", () => {
             {
               column: "createdAt",
               id: new Uint8Array([
-                50, 31, 231, 180, 49, 214, 154, 211, 212, 81, 200, 67, 99, 120,
-                205, 142,
+                162, 140, 107, 238, 5, 65, 113, 168, 236, 205, 236, 11, 39, 9,
+                170, 125,
               ]),
               ownerId: new Uint8Array([
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
@@ -1093,7 +1322,7 @@ describe("Evolu integration", () => {
           rows: [
             {
               createdAt: "1970-01-01T00:00:00.000Z",
-              id: "Mh_ntDHWmtPUUchDY3jNjg",
+              id: "ooxr7gVBcajszewLJwmqfQ",
               isCompleted: null,
               isDeleted: null,
               ownerId: "BSf-8mxNjgk72yD-D7rr1A",

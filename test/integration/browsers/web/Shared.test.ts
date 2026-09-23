@@ -1,8 +1,14 @@
 import {
   assertEqual,
+  assertInstanceOf,
+  assertLength,
+  assertNotNull,
+  assertNotUndefined,
   assertSame,
   constVoid,
   createConsole,
+  createIdFromString,
+  createRandomBytes,
   createRun,
   id,
   PositiveInt,
@@ -12,6 +18,9 @@ import {
   createEvolu,
   createEvoluDeps,
   createOwnerWebSocketTransport,
+  createProtocolBroadcastMessagesFromCrdtMessages,
+  createTimestamp,
+  DbChange,
   testAppOwner,
   type DbWorkerInit,
   type SharedWorkerInput,
@@ -113,6 +122,102 @@ test("requestSync crosses browser worker ports while two clients retain the owne
   assertEqual(messages[2], messages[0]);
   assertSame(firstDeps.evoluError.get(), null);
   assertSame(secondDeps.evoluError.get(), null);
+});
+
+test("a rejected encrypted change retains its error across browser worker ports", async () => {
+  const workerName = `rejection-${crypto.randomUUID()}`;
+  const output = new BroadcastChannel(workerName);
+  const initial = Promise.withResolvers<void>();
+  output.addEventListener(
+    "message",
+    (event: MessageEvent<{ type: "Open" | "Send" }>) => {
+      if (event.data.type === "Send") initial.resolve();
+    },
+  );
+  using cleanup = new DisposableStack();
+  cleanup.defer(() => output.close());
+  using deps = createEvoluDeps({
+    console: createConsole({ level: "silent" }),
+    createBroadcastChannel,
+    createMessageChannel,
+    createDbWorker: () =>
+      createWorker<DbWorkerInit, never>(
+        new Worker(
+          new URL(
+            "../../../../packages/web/src/local-first/Db.worker.ts",
+            import.meta.url,
+          ),
+          { type: "module" },
+        ),
+      ),
+    lockManager: navigator.locks,
+    reloadApp: constVoid,
+    sharedWorker: createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
+      new SharedWorker(
+        new URL("./workers/sync-shared-worker.ts", import.meta.url),
+        { name: workerName, type: "module" },
+      ),
+    ),
+  });
+  await using run = createRun(deps);
+  await using evolu = await run.ok(
+    createEvolu(
+      { todo: { id: id("Todo") } },
+      {
+        appName: AppName.orThrow(`test-${crypto.randomUUID()}`),
+        appOwner: testAppOwner,
+        transports: [],
+        memoryOnly: true,
+      },
+    ),
+  );
+  const transport = createOwnerWebSocketTransport({
+    url: "wss://rejected-change.example",
+    ownerId: testAppOwner.id,
+  });
+  evolu.useOwner(testAppOwner, [transport]);
+  await initial.promise;
+
+  const broadcasts = createProtocolBroadcastMessagesFromCrdtMessages({
+    randomBytes: createRandomBytes(),
+  })(testAppOwner, [
+    {
+      timestamp: createTimestamp(),
+      change: DbChange.orThrow({
+        table: "todo",
+        id: createIdFromString("browser-rejected-change"),
+        values: {},
+        isInsert: true,
+        isDelete: null,
+      }),
+    },
+  ]);
+  assertLength(broadcasts, 1);
+  const corrupted = Uint8Array.from(broadcasts[0]);
+  corrupted[corrupted.length - 1] ^= 0xff;
+  const errorReported = Promise.withResolvers<void>();
+  const routeReported = Promise.withResolvers<void>();
+  cleanup.defer(deps.evoluError.subscribe(errorReported.resolve));
+  cleanup.defer(
+    deps.syncState.subscribe(() => {
+      const route = deps.syncState.get()?.tenants[0]?.owners[0]?.routes[0];
+      if (route?.error) routeReported.resolve();
+    }),
+  );
+  output.postMessage({
+    type: "Receive",
+    url: transport.url,
+    data: corrupted.buffer,
+  });
+  // The error and route snapshots arrive through independent channels.
+  await Promise.all([errorReported.promise, routeReported.promise]);
+  const error = deps.evoluError.get();
+  assertNotNull(error);
+  assertSame(error.type, "DecryptWithXChaCha20Poly1305Error");
+  assertInstanceOf(error.error, Error);
+  const route = deps.syncState.get()?.tenants[0]?.owners[0]?.routes[0];
+  assertNotUndefined(route);
+  assertSame(route.error?.type, "DecryptWithXChaCha20Poly1305Error");
 });
 
 test("a refused SharedWorker reports the error to a later client store", async () => {

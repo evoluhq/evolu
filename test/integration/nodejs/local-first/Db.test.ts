@@ -19,6 +19,7 @@ import {
   testCreateConsole,
   type ConsoleEntry,
   type ConsoleStoreOutput,
+  type TestConsole,
 } from "../../../../packages/common/src/Console.ts";
 import {
   constVoid,
@@ -309,6 +310,7 @@ const setupDbWorker = async ({
   sqliteSchema = defaultSqliteSchema,
   memoryOnly = true,
   time,
+  console = testCreateConsole({ level: "silent" }),
   onThrown,
   expectRefused = false,
 }: {
@@ -316,6 +318,7 @@ const setupDbWorker = async ({
   memoryOnly?: boolean;
   sqliteSchema?: SqliteSchema;
   time?: TestTime;
+  console?: TestConsole;
   onThrown?: (error: unknown) => void;
   /** The worker is expected to post LeaderRefused instead of LeaderAcquired. */
   expectRefused?: boolean;
@@ -330,7 +333,7 @@ const setupDbWorker = async ({
 
   const run = disposer.use(
     testCreateRun({
-      console: testCreateConsole({ level: "silent" }),
+      console,
       consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
       createBroadcastChannel: testCreateBroadcastChannel,
       createMessagePort:
@@ -1771,6 +1774,7 @@ describe("sync message flow", () => {
           attemptId: "dXpWgmgRSqCJV_tQPAS7Ug",
           response: {
             message: {
+              failedOwnerIds: new Set(),
               protocolMessagesByOwnerId: new Map([
                 [
                   "BSf-8mxNjgk72yD-D7rr1A",
@@ -2002,6 +2006,7 @@ describe("sync message flow", () => {
         attemptId: "uOCPavv1rW_A-VrpXIfUZA",
         response: {
           message: {
+            failedOwnerIds: new Set(),
             protocolMessagesByOwnerId: new Map([
               [
                 "BSf-8mxNjgk72yD-D7rr1A",
@@ -2027,6 +2032,60 @@ describe("sync message flow", () => {
         type: "OnQueuedResponse",
       },
     ]);
+  });
+
+  it("CreateSyncMessages logs and reports an owner whose message creation throws", async () => {
+    const injected = new Error("injected sync creation failure");
+    let armed = false;
+    await using dbSetup = await setupDb({
+      onExec: () => {
+        if (!armed) return;
+        armed = false;
+        throw injected;
+      },
+    });
+    const console = testCreateConsole({ level: "error" });
+    const thrown: Array<unknown> = [];
+    await using setup = await setupDbWorker({
+      dbSetup,
+      console,
+      onThrown: (error) => {
+        thrown.push(error);
+      },
+    });
+
+    // The first owner's first query fails.
+    armed = true;
+    setup.port.postMessage({
+      type: "Request",
+      attemptId: setup.createId(),
+      request: {
+        type: "ForSharedWorker",
+        message: {
+          type: "CreateSyncMessages",
+          owners: [testAppOwner, testDbAppOwner2],
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+
+    // The attempt is answered, so the shared worker's queue keeps running.
+    assertEqual(thrown, []);
+    assertLength(setup.outputs, 1);
+    const response = getQueuedSharedWorkerMessage(
+      setup.outputs,
+      "CreateSyncMessages",
+    );
+    assertEqual(response.failedOwnerIds, new Set([testAppOwner.id]));
+    assertEqual(
+      [...response.protocolMessagesByOwnerId.keys()],
+      [testDbAppOwner2.id],
+    );
+    const entries = console.getEntriesSnapshot();
+    assertLength(entries, 1);
+    assertSame(entries[0].method, "error");
+    assertEqual(entries[0].args, [injected]);
   });
 
   it("sync mutate batches same-owner changes and updates updatedAt", async () => {
@@ -2571,13 +2630,24 @@ describe("sync message flow", () => {
     });
   });
 
-  it("ApplySyncMessage emits Error for corrupted messages", async () => {
+  it("ApplySyncMessage returns the decryption error without storing a partially valid batch", async () => {
     await using setup = await setupDbWorker();
+    const clock = setup.getClock();
 
     const validMessage = await createBroadcastProtocolMessage([
       {
+        timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+        change: DbChange.orThrow({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "valid before corruption" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      },
+      {
         timestamp: createTimestamp({
-          millis: Millis.orThrow(1),
+          millis: Millis.orThrow(2),
           counter: 0 as never,
         }),
         change: DbChange.orThrow({
@@ -2601,30 +2671,16 @@ describe("sync message flow", () => {
       },
     });
 
-    assertLength(setup.consoleEntryOrErrors, 1);
-    const consoleEntryOrError = setup.consoleEntryOrErrors[0];
-    assertSame(consoleEntryOrError.type, "Error");
-    assertSame(
-      consoleEntryOrError.error.type,
-      "DecryptWithXChaCha20Poly1305Error",
-    );
-    assertInstanceOf(consoleEntryOrError.error.error, Error);
-    assertEqual(outputs, [
-      {
-        attemptId: "in2khoBFZNo9ESZlzuacxA",
-        response: {
-          message: {
-            clock: setup.getClock(),
-            didWriteMessages: false,
-            ownerId: "BSf-8mxNjgk72yD-D7rr1A",
-            result: { ok: true, value: { type: "Broadcast" } },
-            type: "ApplySyncMessage",
-          },
-          type: "ForSharedWorker",
-        },
-        type: "OnQueuedResponse",
-      },
-    ]);
+    await testWaitForWorkerMessage();
+    assertEqual(setup.consoleEntryOrErrors, []);
+    assertLength(outputs, 1);
+    const response = getQueuedSharedWorkerMessage(outputs, "ApplySyncMessage");
+    assertErr(response.result);
+    assertSame(response.result.error.type, "DecryptWithXChaCha20Poly1305Error");
+    assertInstanceOf(response.result.error.error, Error);
+    assertSame(response.ownerId, testAppOwner.id);
+    assertFalse(response.didWriteMessages);
+    assertEqual(response.clock, clock);
 
     assertEqual(getSqliteSnapshot(setup), {
       schema: {
@@ -3221,6 +3277,7 @@ describe("sync message flow", () => {
         attemptId: "in2khoBFZNo9ESZlzuacxA",
         response: {
           message: {
+            failedOwnerIds: new Set(),
             protocolMessagesByOwnerId: new Map([
               [
                 "BSf-8mxNjgk72yD-D7rr1A",
@@ -4946,10 +5003,8 @@ describe("timestamp range errors", () => {
     );
     await testWaitForWorkerMessage();
 
-    assertEqual(setup.consoleEntryOrErrors, [
-      { type: "Error", error: { type: "TimestampTimeOutOfRangeError" } },
-    ]);
-    assertOk(response.result, { type: "Broadcast" });
+    assertEqual(setup.consoleEntryOrErrors, []);
+    assertErr(response.result, { type: "TimestampTimeOutOfRangeError" });
     assertFalse(response.didWriteMessages);
     assertEqual(response.clock, clock);
     assertEqual(getSqliteSnapshot(setup), before);
@@ -5162,7 +5217,7 @@ describe("clock drift quarantine", () => {
             "ApplySyncMessage",
           );
           assertOk(response.result);
-          if (response.result.value.type === "NoResponse") {
+          if (response.result.value.type === "Converged") {
             completed = true;
             break;
           }

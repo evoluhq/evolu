@@ -8,11 +8,26 @@ import {
   type BrowserContext,
   type Dialog,
   type Page,
+  type TestInfo,
 } from "playwright/test";
 import { relayUrl } from "./playwright.config.mts";
 
 export interface E2eOptions {
   readonly relayEntry: string;
+}
+
+/** Controls the real relay while preserving its database across restarts. */
+export interface TestRelay {
+  readonly url: string;
+  /**
+   * Starts a stopped relay, adding `relayEnv` to its environment. A running
+   * relay is kept; passing `relayEnv` to it fails, because it would be
+   * ignored.
+   */
+  readonly start: (
+    relayEnv?: Readonly<Record<string, string>>,
+  ) => Promise<void>;
+  readonly stop: () => Promise<void>;
 }
 
 /**
@@ -32,85 +47,22 @@ export interface BrowserEvents {
 }
 
 export const test = /*#__PURE__*/ base.extend<
-  E2eOptions & { browserEvents: BrowserEvents; relay: void }
+  E2eOptions & {
+    browserEvents: BrowserEvents;
+    relay: TestRelay;
+    backupRelay: TestRelay;
+  }
 >({
   relayEntry: ["apps/relay/dist/src/index.js", { option: true }],
 
   relay: async ({ relayEntry }, runTest, testInfo) => {
-    const directory = await mkdtemp(join(tmpdir(), "evolu-e2e-relay-"));
-    const env = Object.fromEntries(
-      Object.entries(process.env).filter(
-        ([name]) =>
-          name.toUpperCase() !== "PORT" &&
-          !name.toUpperCase().startsWith("EVOLU_RELAY_"),
-      ),
-    );
-    const port = new URL(relayUrl).port;
-    const relay = spawn(
-      process.execPath,
-      [resolve(import.meta.dirname, "../..", relayEntry)],
-      {
-        cwd: directory,
-        env: { ...env, PORT: port },
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-    const closed = new Promise<void>((resolve) => {
-      relay.once("close", () => resolve());
-    });
-    let output = "";
-    let startupError: Error | undefined;
-    relay.once("error", (error) => {
-      startupError = error;
-    });
-    relay.stdout.setEncoding("utf8").on("data", (data: string) => {
-      output += data;
-    });
-    relay.stderr.setEncoding("utf8").on("data", (data: string) => {
-      output += data;
-    });
+    await setupRelay(relayUrl, relayEntry, runTest, testInfo);
+  },
 
-    let started = false;
-    try {
-      // Wait for this process, rather than an unrelated server on the port.
-      await expect
-        .poll(
-          () => {
-            if (startupError) throw startupError;
-            if (relay.exitCode !== null) throw new Error(output);
-            return output.includes(`Started on port ${port}`);
-          },
-          { message: "Relay startup", timeout: 10_000 },
-        )
-        .toBe(true);
-      started = true;
-      await runTest();
-    } finally {
-      const exitedDuringTest =
-        relay.exitCode !== null || relay.signalCode !== null;
-      relay.kill();
-      const forceKill = setTimeout(() => {
-        relay.kill("SIGKILL");
-      }, 5_000);
-      try {
-        await closed;
-      } finally {
-        clearTimeout(forceKill);
-        await rm(directory, { recursive: true, force: true });
-        await testInfo.attach("relay.log", {
-          body: output,
-          contentType: "text/plain",
-        });
-      }
-      if (started) {
-        // A relay defect sets a non-zero exit status without exiting.
-        expect(
-          exitedDuringTest,
-          `Relay exited during the test:\n${output}`,
-        ).toBe(false);
-        expect(relay.exitCode, `Relay shutdown status:\n${output}`).toBe(0);
-      }
-    }
+  backupRelay: async ({ relayEntry }, runTest, testInfo) => {
+    const url = new URL(relayUrl);
+    url.port = String(Number(url.port) + 1);
+    await setupRelay(url.href, relayEntry, runTest, testInfo);
   },
 
   browserEvents: async ({ browser, relay: _relay }, runTest) => {
@@ -169,6 +121,121 @@ export const test = /*#__PURE__*/ base.extend<
     await runTest(context);
   },
 });
+
+const setupRelay = async (
+  url: string,
+  relayEntry: string,
+  runTest: (relay: TestRelay) => Promise<void>,
+  testInfo: TestInfo,
+): Promise<void> => {
+  const directory = await mkdtemp(join(tmpdir(), "evolu-e2e-relay-"));
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) =>
+        name.toUpperCase() !== "PORT" &&
+        !name.toUpperCase().startsWith("EVOLU_RELAY_"),
+    ),
+  );
+  const port = new URL(url).port;
+  let relay: ReturnType<typeof spawn> | null = null;
+  let closed = Promise.resolve();
+  let output = "";
+  let started = false;
+
+  const start = async (
+    relayEnv: Readonly<Record<string, string>> = {},
+  ): Promise<void> => {
+    if (relay !== null) {
+      if (relay.exitCode === null && relay.signalCode === null) {
+        expect(
+          relayEnv,
+          "Stop the running relay before starting it with relayEnv",
+        ).toEqual({});
+        return;
+      }
+      // Report a crashed relay instead of treating it as running.
+      await stop();
+    }
+    const child = spawn(
+      process.execPath,
+      [resolve(import.meta.dirname, "../..", relayEntry)],
+      {
+        cwd: directory,
+        env: { ...env, ...relayEnv, PORT: port },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    relay = child;
+    closed = new Promise<void>((resolve) => {
+      child.once("close", () => resolve());
+    });
+    started = false;
+    let processOutput = "";
+    let startupError: Error | undefined;
+    child.once("error", (error) => {
+      startupError = error;
+    });
+    const recordOutput = (data: string): void => {
+      processOutput += data;
+      output += data;
+    };
+    for (const stream of [child.stdout, child.stderr]) {
+      stream.setEncoding("utf8").on("data", recordOutput);
+    }
+
+    // Wait for this process, rather than an unrelated server on the port.
+    await expect
+      .poll(
+        () => {
+          if (startupError) throw startupError;
+          if (child.exitCode !== null) throw new Error(processOutput);
+          return processOutput.includes(`Started on port ${port}`);
+        },
+        { message: "Relay startup", timeout: 10_000 },
+      )
+      .toBe(true);
+    started = true;
+  };
+
+  const stop = async (): Promise<void> => {
+    const child = relay;
+    if (child === null) return;
+    relay = null;
+    const exitedDuringTest =
+      child.exitCode !== null || child.signalCode !== null;
+    child.kill();
+    const forceKill = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, 5_000);
+    try {
+      await closed;
+    } finally {
+      clearTimeout(forceKill);
+    }
+    if (started) {
+      // A relay defect sets a non-zero exit status without exiting.
+      expect(exitedDuringTest, `Relay exited during the test:\n${output}`).toBe(
+        false,
+      );
+      expect(child.exitCode, `Relay shutdown status:\n${output}`).toBe(0);
+    }
+  };
+
+  try {
+    await start();
+    await runTest({ url: new URL(url).href, start, stop });
+  } finally {
+    try {
+      await stop();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+      await testInfo.attach(`relay-${port}.log`, {
+        body: output,
+        contentType: "text/plain",
+      });
+    }
+  }
+};
 
 /**
  * Adds a todo with Enter. The examples clear the input in the mutation's

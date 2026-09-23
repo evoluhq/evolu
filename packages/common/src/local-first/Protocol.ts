@@ -273,6 +273,7 @@ import {
   type RangeUpperBound,
   type SkipRange,
   type StorageDep,
+  type StorageWriteMessagesError,
   type TimestampsRange,
 } from "./Storage.ts";
 import {
@@ -369,18 +370,27 @@ export const MessageType = {
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
-/** Parsed protocol header for supported protocol messages. */
+/**
+ * The routing prefix of a {@link ProtocolMessage}.
+ *
+ * The version and the {@link OwnerId} begin every message of every protocol
+ * version. The message type follows them only in messages of this peer's
+ * version; the layout after the prefix is unknown for any other version.
+ */
 export interface ProtocolHeader extends Typed<"ProtocolHeader"> {
-  readonly version: 1;
+  readonly version: NonNegativeInt;
   readonly ownerId: OwnerId;
-  readonly messageType: MessageType;
+  /** Absent when `version` differs from {@link protocolVersion}. */
+  readonly messageType?: MessageType;
 }
 
 /**
- * Parses the protocol header needed for routing.
+ * Parses the {@link ProtocolHeader} a transport needs to route a message.
  *
- * Every protocol message begins with `protocolVersion`, `ownerId`, and
- * `messageType`.
+ * Parsing succeeds for versions this peer cannot process, because a
+ * non-initiator answers a version mismatch with only its version and the owner
+ * ID. Rejecting that reply here would drop it before
+ * {@link applyProtocolMessageAsClient} can report {@link ProtocolVersionError}.
  */
 export const parseProtocolHeader = (
   inputMessage: Uint8Array,
@@ -641,7 +651,7 @@ export const createProtocolBroadcastMessagesFromCrdtMessages =
 
 /** Creates a {@link ProtocolMessage} for sync. */
 export const createProtocolMessageForSync =
-  (deps: StorageDep & ConsoleDep) =>
+  (deps: StorageDep) =>
   (ownerId: OwnerId, subscriptionFlag?: SubscriptionFlag): ProtocolMessage => {
     const buffer = createProtocolMessageBuffer(ownerId, {
       messageType: MessageType.Request,
@@ -983,8 +993,8 @@ export interface ApplyProtocolMessageAsClientOptions {
 }
 
 /**
- * Result type for {@link applyProtocolMessageAsClient} that distinguishes
- * between responses to client requests and broadcast messages.
+ * Result of {@link applyProtocolMessageAsClient}: a continuation for the
+ * non-initiator.
  */
 export interface ApplyProtocolMessageAsClientResponse extends Typed<"Response"> {
   readonly message: ProtocolMessage;
@@ -992,14 +1002,44 @@ export interface ApplyProtocolMessageAsClientResponse extends Typed<"Response"> 
   readonly broadcast?: ProtocolMessage;
 }
 
-export interface ApplyProtocolMessageAsClientNoResponse extends Typed<"NoResponse"> {}
+/**
+ * Result of {@link applyProtocolMessageAsClient}: the response needed nothing
+ * more, because its ranges all matched or it carried none.
+ */
+export interface ApplyProtocolMessageAsClientConverged extends Typed<"Converged"> {}
 
+/**
+ * Result of {@link applyProtocolMessageAsClient}: a Broadcast message whose
+ * messages were written.
+ */
 export interface ApplyProtocolMessageAsClientBroadcast extends Typed<"Broadcast"> {}
+
+/**
+ * Result of {@link applyProtocolMessageAsClient}: the messages were written, but
+ * without a write key no ranges are reconciled.
+ */
+export interface ApplyProtocolMessageAsClientReadonly extends Typed<"Readonly"> {}
+
+/**
+ * Result of {@link applyProtocolMessageAsClient}: the protocol logged an
+ * exception thrown by calling the storage's `writeMessages` (`Write`) or a
+ * failed range reconciliation (`Sync`) to the console. An exception while the
+ * returned Task runs, as the built-in storages throw, is a defect that aborts
+ * the Run instead. Expected write rejections return the original
+ * {@link StorageWriteMessagesError} through {@link Result}. Reconciliation can
+ * fail after messages have been committed; that failure does not roll back the
+ * write.
+ */
+export interface ApplyProtocolMessageAsClientFailed extends Typed<"Failed"> {
+  readonly cause: "Write" | "Sync";
+}
 
 export type ApplyProtocolMessageAsClientResult =
   | ApplyProtocolMessageAsClientResponse
-  | ApplyProtocolMessageAsClientNoResponse
-  | ApplyProtocolMessageAsClientBroadcast;
+  | ApplyProtocolMessageAsClientConverged
+  | ApplyProtocolMessageAsClientBroadcast
+  | ApplyProtocolMessageAsClientReadonly
+  | ApplyProtocolMessageAsClientFailed;
 
 export const applyProtocolMessageAsClient =
   (
@@ -1007,12 +1047,7 @@ export const applyProtocolMessageAsClient =
     options: ApplyProtocolMessageAsClientOptions = {},
   ): Task<
     ApplyProtocolMessageAsClientResult,
-    | ProtocolInvalidDataError
-    | ProtocolSyncError
-    | ProtocolVersionError
-    | ProtocolWriteError
-    | ProtocolWriteKeyError
-    | ProtocolQuotaError,
+    ProtocolError | StorageWriteMessagesError,
     StorageDep
   > =>
   async (run) => {
@@ -1078,13 +1113,16 @@ export const applyProtocolMessageAsClient =
           const result = await run(
             storage.writeMessages(ownerIdBytes, messages),
           );
-          // Quota errors are handled by Storage; protocol just stops syncing.
-          if (!result.ok) return ok({ type: "NoResponse" });
+          if (!result.ok) return result;
         } catch (error) {
           if (AbortError.is(error)) throw error;
           run.deps.console.error(error);
-          return ok({ type: "NoResponse" });
+          return ok({ type: "Failed", cause: "Write" });
         }
+      }
+
+      if (messageType === MessageType.Broadcast) {
+        return ok({ type: "Broadcast" });
       }
 
       // Now: No writeKey, no sync.
@@ -1094,17 +1132,13 @@ export const applyProtocolMessageAsClient =
       // the sync will stop.
       const writeKey = options.writeKey;
       if (writeKey == null) {
-        return ok({ type: "NoResponse" });
-      }
-
-      if (messageType === MessageType.Broadcast) {
-        return ok({ type: "Broadcast" });
+        return ok({ type: "Readonly" });
       }
 
       const ranges = decodeRanges(input);
 
       if (!isNonEmptyArray(ranges)) {
-        return ok({ type: "NoResponse" });
+        return ok({ type: "Converged" });
       }
 
       const output = createProtocolMessageBuffer(ownerId, {
@@ -1121,10 +1155,9 @@ export const applyProtocolMessageAsClient =
         broadcast.addMessage(message);
       });
 
-      // Client sync error (handled via Storage) or no changes.
-      if (!result.ok || !result.value) {
-        return ok({ type: "NoResponse" });
-      }
+      // A failure was logged by sync.
+      if (!result.ok) return ok({ type: "Failed", cause: "Sync" });
+      if (!result.value) return ok({ type: "Converged" });
 
       return ok({
         type: "Response",
@@ -1252,9 +1285,13 @@ export const applyProtocolMessageAsRelay =
           );
 
           if (!result.ok) {
+            const isQuotaError = result.error.type === "StorageQuotaError";
+            if (!isQuotaError) run.deps.console.error(result.error);
             const message = createProtocolMessageBuffer(ownerId, {
               messageType: MessageType.Response,
-              errorCode: ProtocolErrorCode.QuotaError,
+              errorCode: isQuotaError
+                ? ProtocolErrorCode.QuotaError
+                : ProtocolErrorCode.WriteError,
             }).unwrap();
             return ok({ type: "Response", message });
           }
@@ -1349,7 +1386,7 @@ const parseProtocolHeaderFromBuffer = (input: Buffer): ProtocolHeader => {
   const [version, ownerId] = decodeVersionAndOwner(input);
 
   if (version !== protocolVersion) {
-    throw new ProtocolDecodeError(`Unsupported protocol version: ${version}`);
+    return { type: "ProtocolHeader", version, ownerId };
   }
 
   const messageTypeValue = input.shift();
@@ -1369,12 +1406,7 @@ const parseProtocolHeaderFromBuffer = (input: Buffer): ProtocolHeader => {
       throw new ProtocolDecodeError("Invalid MessageType");
   }
 
-  return {
-    type: "ProtocolHeader",
-    version: 1,
-    ownerId,
-    messageType,
-  };
+  return { type: "ProtocolHeader", version, ownerId, messageType };
 };
 
 /**
@@ -1521,13 +1553,19 @@ const sync =
             skipRange(range);
           } else if (output.canSplitRange()) {
             coalesceSkipsBeforeAdd();
-            splitRange(deps)(
-              ownerIdBytes,
-              lower,
-              upper,
-              currentUpperBound,
-              output,
-            );
+            try {
+              splitRange(deps)(
+                ownerIdBytes,
+                lower,
+                upper,
+                currentUpperBound,
+                output,
+              );
+            } catch (error) {
+              if (AbortError.is(error)) throw error;
+              deps.console.error(error);
+              return err(ProtocolErrorCode.SyncError);
+            }
           } else {
             return addFingerprintForRemainingRange(upper)
               ? ok(true)
@@ -1644,7 +1682,7 @@ const sync =
   };
 
 const splitRange =
-  (deps: StorageDep & ConsoleDep) =>
+  (deps: StorageDep) =>
   (
     ownerId: OwnerIdBytes,
     lower: NonNegativeInt,
@@ -1662,15 +1700,10 @@ const splitRange =
         timestamps: createTimestampsBuffer(),
       };
 
-      deps.storage.iterate(
-        ownerId,
-        zeroNonNegativeInt,
-        itemCount,
-        (timestamp) => {
-          range.timestamps.add(timestampBytesToTimestamp(timestamp));
-          return true;
-        },
-      );
+      deps.storage.iterate(ownerId, lower, upper, (timestamp) => {
+        range.timestamps.add(timestampBytesToTimestamp(timestamp));
+        return true;
+      });
 
       buffer.addRange(range);
       return;
@@ -1685,17 +1718,11 @@ const splitRange =
             ...buckets.value.map((b) => NonNegativeInt.orThrow(b + lower)),
           ];
 
-    let fingerprintRanges: ReadonlyArray<FingerprintRange>;
-    try {
-      fingerprintRanges = deps.storage.fingerprintRanges(
-        ownerId,
-        fingerprintRangesBuckets,
-        upperBound,
-      );
-    } catch (error) {
-      deps.console.error(error);
-      return;
-    }
+    const fingerprintRanges = deps.storage.fingerprintRanges(
+      ownerId,
+      fingerprintRangesBuckets,
+      upperBound,
+    );
 
     const rangesToUse =
       lower > 0 ? fingerprintRanges.slice(1) : fingerprintRanges;

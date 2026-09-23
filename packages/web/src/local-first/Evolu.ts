@@ -61,7 +61,8 @@ export const createEvoluDeps = (
           ? (message: SharedWorkerOutput | SharedWorkerUnsupported) => {
               switch (message.type) {
                 case "DbWorkerInit":
-                case "Error": {
+                case "Error":
+                case "SyncStateChannel": {
                   fn(message);
                   break;
                 }

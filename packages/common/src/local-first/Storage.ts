@@ -10,6 +10,7 @@ import { firstInArray, isNonEmptyArray } from "../Array.ts";
 import { assert, assertNonNullable } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import { concatBytes } from "../Bytes.ts";
+import type { DecryptWithXChaCha20Poly1305Error } from "../Crypto.ts";
 import { decrement } from "../Number.ts";
 import type { RandomDep } from "../Random.ts";
 import { err, ok } from "../Result.ts";
@@ -38,12 +39,17 @@ import {
 import type { Awaitable } from "../Types.ts";
 import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.ts";
 import { OwnerId, OwnerWriteKey } from "./Owner.ts";
+import type {
+  ProtocolInvalidDataError,
+  ProtocolTimestampMismatchError,
+} from "./Protocol.ts";
 import { systemColumnsWithId } from "./Schema.ts";
 import {
   createTimestamp,
   orderTimestampBytes,
   Timestamp,
   TimestampBytes,
+  type TimestampTimeOutOfRangeError,
 } from "./Timestamp.ts";
 
 /**
@@ -109,12 +115,18 @@ export interface StorageConfig {
 }
 
 /**
- * Evolu Storage.
+ * Replica storage used by Evolu's synchronization protocol.
  *
- * Evolu Protocol is agnostic to storage implementation—any storage can be
- * plugged in, as long as it implements this interface. Implementations must
- * handle their own errors; return values only indicate overall success or
- * failure.
+ * Protocol owns message framing, set reconciliation, and sync continuation.
+ * Storage owns batch acceptance, persistence, and the timestamp and fingerprint
+ * queries used by reconciliation. Protocol functions accept any implementation
+ * that satisfies this contract.
+ *
+ * {@link Storage.writeMessages} returns the {@link StorageWriteMessagesError}
+ * that made it store none of a batch. Implementations return expected write
+ * rejections without reporting them; the caller owns reporting. The client
+ * protocol forwards these errors unchanged, while the relay protocol maps them
+ * to wire error codes.
  *
  * The Storage API is synchronous because SQLite's synchronous API is the
  * fastest way to use SQLite. Synchronous bindings (like better-sqlite3) call
@@ -182,13 +194,16 @@ export interface Storage {
   /**
    * Write encrypted {@link CrdtMessage}s to storage.
    *
+   * Stores none of the messages and returns the cause when the batch cannot be
+   * accepted.
+   *
    * Must use a mutex per ownerId to ensure sequential processing and proper
    * protocol logic handling during sync operations.
    */
   readonly writeMessages: (
     ownerIdBytes: OwnerIdBytes,
     messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
-  ) => Task<void, StorageQuotaError>;
+  ) => Task<void, StorageWriteMessagesError>;
 
   /** Read encrypted {@link DbChange}s from storage. */
   readonly readDbChange: (
@@ -216,6 +231,24 @@ export interface StorageDep {
  */
 export interface StorageQuotaError
   extends OwnerError, Typed<"StorageQuotaError"> {}
+
+/**
+ * Expected reasons why {@link Storage.writeMessages} stored none of a batch.
+ *
+ * Each implementation returns the members that apply to it. The built-in relay
+ * storage currently stores opaque encrypted messages and rejects batches over
+ * quota. The built-in client storage decrypts and validates incoming messages
+ * before updating its clock and database tables. The contract permits quota
+ * checks on either side.
+ *
+ * @group Core
+ */
+export type StorageWriteMessagesError =
+  | DecryptWithXChaCha20Poly1305Error
+  | ProtocolInvalidDataError
+  | ProtocolTimestampMismatchError
+  | StorageQuotaError
+  | TimestampTimeOutOfRangeError;
 
 /**
  * A cryptographic hash used for efficiently comparing collections of
