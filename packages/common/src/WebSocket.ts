@@ -564,9 +564,10 @@ const nativeToStringState: Record<number, WebSocketReadyState> = {
  *
  * Sockets report the states {@link createWebSocket} reports, including the
  * `connecting` a socket is in before it opens and while the wrapper retries
- * after a close or a {@link WebSocket.reconnect}. Only disposal ends in
- * `closed`. The `closing` state is not modeled: no helper starts a close
- * handshake.
+ * after a close or a {@link WebSocket.reconnect}. While it retries,
+ * {@link WebSocket.reconnect} does nothing, as the wrapper has no socket until
+ * {@link TestCreateWebSocket.open}. Only disposal ends in `closed`. The
+ * `closing` state is not modeled: no helper starts a close handshake.
  *
  * @group Testing
  */
@@ -632,6 +633,7 @@ export const testCreateWebSocket = (
       options: socketOptions,
       readyState: (options.isOpen ?? true) ? "open" : "connecting",
       isDisposed: false,
+      isWaitingToRetry: false,
     };
     stateByUrl.set(url, state);
 
@@ -652,9 +654,16 @@ export const testCreateWebSocket = (
       isOpen: () => !state.isDisposed && state.readyState === "open",
 
       reconnect: () => {
-        // A closed socket settles on its own, as in `createWebSocket`.
-        if (state.isDisposed || state.readyState === "closed") return;
+        // A closed socket settles on its own, and a retrying wrapper has no
+        // socket, as in `createWebSocket`.
+        if (
+          state.isDisposed ||
+          state.readyState === "closed" ||
+          state.isWaitingToRetry
+        )
+          return;
         state.readyState = "connecting";
+        state.isWaitingToRetry = true;
         reconnectedUrls.push(url);
       },
 
@@ -676,6 +685,7 @@ export const testCreateWebSocket = (
     open: (url: string) => {
       const state = getState(url);
       state.readyState = "open";
+      state.isWaitingToRetry = false;
       state.options?.onOpen?.();
     },
     close: (url: string, event: Partial<WebSocketCloseEvent> = {}) => {
@@ -692,8 +702,10 @@ export const testCreateWebSocket = (
       // schedules therefore still reads `closed`; anything later reads
       // `connecting`.
       queueMicrotask(() => {
-        if (state.readyState === "closed" && !state.isDisposed)
+        if (state.readyState === "closed" && !state.isDisposed) {
           state.readyState = "connecting";
+          state.isWaitingToRetry = true;
+        }
       });
     },
     error: (url: string, error: WebSocketError) => {
@@ -707,6 +719,7 @@ interface TestWebSocketState {
   options: WebSocketOptions | undefined;
   readyState: WebSocketReadyState;
   isDisposed: boolean;
+  isWaitingToRetry: boolean;
 }
 
 /**

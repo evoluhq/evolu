@@ -1147,6 +1147,29 @@ describe("testCreateWebSocket", () => {
     expect(createTestWebSocket.reconnectedUrls).toEqual([]);
   });
 
+  test("reconnect does nothing while the wrapper waits to retry", async () => {
+    await using run = createRun();
+
+    const createTestWebSocket = testCreateWebSocket();
+    const url = "ws://retrying.example.com";
+
+    await using ws = await run.ok(createTestWebSocket(url));
+
+    createTestWebSocket.close(url);
+    await Promise.resolve();
+    ws.reconnect();
+    expect(createTestWebSocket.reconnectedUrls).toEqual([]);
+
+    createTestWebSocket.open(url);
+    ws.reconnect();
+    ws.reconnect();
+    expect(createTestWebSocket.reconnectedUrls).toEqual([url]);
+
+    createTestWebSocket.open(url);
+    ws.reconnect();
+    expect(createTestWebSocket.reconnectedUrls).toEqual([url, url]);
+  });
+
   test("addresses the newest socket for a URL created again", async () => {
     await using run = createRun();
 

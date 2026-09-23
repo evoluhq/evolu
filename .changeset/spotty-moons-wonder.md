@@ -41,7 +41,10 @@ Reconnecting carries no close event, because nothing observed one to report.
 `testCreateWebSocket` gained `close`, which closes the newest socket for a URL
 and reports a close event with code 1006 unless given other fields, `error`,
 which reports a WebSocket error, and `reconnect`, with `reconnectedUrls`
-recording the URLs it was called for. A URL can be created again after its
+recording the URLs it reconnected. As in `createWebSocket`, `reconnect` does
+nothing while the socket waits to retry after a close or a reconnect; `open`
+ends the wait.
+A URL can be created again after its
 socket was disposed; each socket keeps its own state and the helpers address the
 newest one.
 
