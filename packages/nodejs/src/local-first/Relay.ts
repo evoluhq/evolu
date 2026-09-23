@@ -122,6 +122,9 @@ export const createRelay =
     // Replies are not counted: their total follows the client's own requests.
     const unsentBroadcastBytesBySocket = new WeakMap<WebSocket, number>();
     let pingTimeoutId: TimeoutId | null = null;
+    // Disposal closes the connections first and disposes relayRun while they
+    // finish closing, so once it starts, handlers must not use relayRun.
+    let isDisposing = false;
 
     const server = disposer.use(createServer());
     server.once("close", () => {
@@ -172,6 +175,12 @@ export const createRelay =
 
     server.on("upgrade", (request, socket, head) => {
       socket.on("error", console.debug);
+
+      // A connection accepted now would be neither served nor closed.
+      if (isDisposing) {
+        socket.destroy();
+        return;
+      }
 
       const completeUpgrade = () => {
         socket.removeListener("error", console.debug);
@@ -317,7 +326,7 @@ export const createRelay =
       };
 
       ws.on("message", (message) => {
-        if (!Uint8Array.is(message)) return;
+        if (isDisposing || !Uint8Array.is(message)) return;
 
         void (async () => {
           const response = await relayRun.abortable(
@@ -338,9 +347,14 @@ export const createRelay =
         ownerSocketRelation.removeByB(ws);
         console.debug("ws close", wss.clients.size);
       });
+
+      // ws closes the connection itself after a frame it rejects, such as one
+      // over maxPayload. Without a listener, the error would crash the relay.
+      ws.on("error", console.debug);
     });
 
     disposer.defer(() => {
+      isDisposing = true;
       for (const client of wss.clients) {
         if (client.readyState === WebSocket.OPEN) {
           client.close(1000, "Evolu Relay shutting down");

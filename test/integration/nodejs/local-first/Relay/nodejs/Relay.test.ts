@@ -28,6 +28,7 @@ import {
   createProtocolMessageForUnsubscribe,
   createProtocolMessageFromCrdtMessages,
   createTimestampsBuffer,
+  defaultProtocolMessageMaxSize,
   InfiniteUpperBound,
   MessageType,
   RangeType,
@@ -706,6 +707,39 @@ describe("createRelay", () => {
     );
   });
 
+  it("keeps serving after a client sends a frame over the maximum payload", async () => {
+    await using setup = await setupRelay();
+    const { console, relay, ws } = setup;
+    console.clearEntries();
+    const closeCode = new Promise<number>((resolve) => {
+      ws.socket.addEventListener("close", (event) => resolve(event.code), {
+        once: true,
+      });
+    });
+
+    ws.send(new Uint8Array(defaultProtocolMessageMaxSize + 1));
+
+    assertSame(await closeCode, 1009);
+    const entry = console
+      .getEntriesSnapshot()
+      .find(({ args }) => args[0] instanceof RangeError);
+    assertNotUndefined(entry);
+    assertEqual(entry.path, ["relay"]);
+    assertSame(entry.method, "debug");
+
+    await using next = await testSetupWebSocket(
+      `ws://127.0.0.1:${relay.port}/?ownerId=${testAppOwner.id}`,
+    );
+    const response = next.waitForMessage();
+    next.send(
+      createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        subscriptionFlag: SubscriptionFlags.Subscribe,
+      }).unwrap(),
+    );
+    assertInstanceOf(await response, Uint8Array);
+  });
+
   it("ignores text websocket messages", async () => {
     await using setup = await setupRelay();
     const { driver, ws } = setup;
@@ -1285,5 +1319,77 @@ describe("createRelay", () => {
     run.deps.time.advance("2s");
     assertSame(ws.ping.mock.callCount(), 1);
     assertSame(ws.terminate.mock.callCount(), 0);
+  });
+
+  it("stops serving connections once it is disposed", async (t) => {
+    const { relayModule, server, wss } =
+      await loadRelayModuleWithMockedTransport(t.mock);
+
+    await using run = testCreateRun({
+      ...relayModule.createRelayDeps(),
+      console: testCreateConsole(),
+    });
+    const relay = await run.ok(
+      relayModule.createRelay({
+        port: Port.orThrow(0),
+        name: testName,
+        isOwnerAllowed: constTrue,
+        isOwnerWithinQuota: () => true,
+      }),
+    );
+
+    class FakeWebSocket extends EventEmitter {
+      readonly readyState = 1;
+      readonly close = t.mock.fn();
+      readonly send = t.mock.fn();
+    }
+
+    class FakeSocket extends EventEmitter {
+      destroyed = false;
+      readonly write = t.mock.fn((_chunk: string) => true);
+      readonly destroy = t.mock.fn(() => {
+        this.destroyed = true;
+      });
+    }
+
+    const ws = new FakeWebSocket();
+    wss.clients.add(ws);
+    wss.emit("connection", ws, { socket: new EventEmitter() });
+
+    // The server waits for its connections to finish closing after the relay
+    // disposed its Run, and meanwhile a closing client can still send and a
+    // new one can still connect.
+    const serverClosing = Promise.withResolvers<() => void>();
+    wss.close.mock.mockImplementation((callback: () => void) => {
+      serverClosing.resolve(callback);
+    });
+    const disposing = relay[Symbol.asyncDispose]();
+    const closeServer = await serverClosing.promise;
+    assertSame(ws.close.mock.callCount(), 1);
+
+    ws.emit(
+      "message",
+      createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        subscriptionFlag: SubscriptionFlags.Subscribe,
+      }).unwrap(),
+    );
+    // A rejection from processing the frame surfaces while this test runs.
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+    const socket = new FakeSocket();
+    server.emit(
+      "upgrade",
+      { url: `/?ownerId=${testAppOwner.id}` },
+      socket,
+      new Uint8Array(),
+    );
+    closeServer();
+    await disposing;
+
+    assertSame(ws.send.mock.callCount(), 0);
+    assertSame(socket.destroy.mock.callCount(), 1);
+    assertSame(wss.handleUpgrade.mock.callCount(), 0);
   });
 });
