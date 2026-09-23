@@ -1,4 +1,7 @@
 {
   "extends": "@evolu/typescript-config/library.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
   "references": [{ "path": "../common" }]
 }

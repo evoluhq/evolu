@@ -4,13 +4,16 @@ import type {
   OwnerTransport,
   ReadonlyOwner,
 } from "@evolu/common";
+import { onScopeDispose } from "vue";
 import { useEvolu } from "./useEvolu.ts";
 
 /**
  * Vue composable for Evolu `useOwner` method.
  *
  * Using an Owner means syncing it with the provided transports, or the
- * transports defined in Evolu config when transports are omitted.
+ * transports defined in Evolu config when transports are omitted. The owner is
+ * used until the current effect scope, such as the component, is disposed. A
+ * null owner uses none.
  */
 export const useOwner = (
   owner: ReadonlyOwner | Owner | null,
@@ -20,5 +23,5 @@ export const useOwner = (
 
   const evolu = useEvolu();
 
-  evolu.useOwner(owner, transports);
+  onScopeDispose(evolu.useOwner(owner, transports));
 };
