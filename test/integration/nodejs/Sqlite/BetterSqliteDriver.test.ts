@@ -68,6 +68,30 @@ describe("createBetterSqliteDriver", () => {
     assertEqual(deleteResult.changes, 2);
   });
 
+  it("exec returns rows and changes for writer queries with returning", async () => {
+    await using setup = await setupBetterSqlite();
+    const { sqlite } = setup;
+
+    sqlite.exec(sql`create table t (id integer primary key, name text);`);
+
+    const insert = sql`
+      insert into t (id, name)
+      values (${1}, ${"Alice"})
+      on conflict do nothing
+      returning id;
+    `;
+    assertEqual(sqlite.exec(insert), { rows: [{ id: 1 }], changes: 1 });
+    assertEqual(sqlite.exec(insert), { rows: [], changes: 0 });
+
+    sqlite.exec(sql`insert into t (id, name) values (${2}, ${"Bob"});`);
+    const update = sqlite.exec(sql`
+      update t
+      set name = upper(name)
+      returning name;
+    `);
+    assertEqual(update.changes, 2);
+  });
+
   it("export returns serialized database bytes", async () => {
     await using setup = await setupBetterSqlite();
     const { sqlite } = setup;

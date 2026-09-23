@@ -34,6 +34,8 @@ export const createBetterSqliteDriver: CreateSqliteDriver =
       ),
     );
 
+    const selectChanges = db.prepare("select changes()").pluck();
+
     const disposables = disposer.move();
 
     return ok({
@@ -43,7 +45,12 @@ export const createBetterSqliteDriver: CreateSqliteDriver =
 
         if (prepared.reader) {
           const rows = prepared.all(query.parameters) as Array<SqliteRow>;
-          return { rows, changes: 0 };
+          // A write with a returning clause returns rows too. A read keeps the
+          // count of the previous write, so it reports zero instead.
+          const changes = prepared.readonly
+            ? 0
+            : (selectChanges.get() as number);
+          return { rows, changes };
         }
 
         const changes = prepared.run(query.parameters).changes;
