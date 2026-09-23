@@ -9,8 +9,10 @@ import {
   ok,
   OwnerId,
   Port,
+  type PositiveDuration,
   type RandomDep,
   type Task,
+  type TimeoutId,
   type TimingSafeEqualDep,
   tryAsync,
   Uint8Array,
@@ -39,6 +41,26 @@ export interface NodeJsRelayConfig extends RelayConfig {
    * port.
    */
   readonly port?: Port;
+
+  /**
+   * How often the relay pings every connection with a WebSocket ping frame,
+   * which browsers answer automatically. A connection from which nothing has
+   * arrived since the previous ping is terminated, so an idle dead path is
+   * detected within two intervals. Any incoming data counts, so a slow upload
+   * that delays the answer keeps its connection. A connection with data still
+   * queued in the relay for it, such as a large reply on a slow link, is not
+   * pinged or terminated until the operating system takes the data, because the
+   * answer waits behind it; TCP ends such a connection if its path is dead. A
+   * connection is terminated instead of queuing a broadcast that would leave
+   * more than 16 MB of broadcasts unsent to it, whether its client stopped
+   * reading or reads more slowly than its owners' traffic arrives; the client
+   * reconciles after it reconnects. Replies to a client's own requests do not
+   * count, because their total follows its requests. Data the operating system
+   * already holds still delays the answer, so a link too slow to send it within
+   * an interval reconnects once, after the data ahead of the ping arrives. The
+   * traffic also keeps NAT mappings alive. Defaults to thirty seconds.
+   */
+  readonly pingInterval?: PositiveDuration;
 }
 
 export type RelayDeps = CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep;
@@ -78,6 +100,7 @@ export const createRelay =
     name = Name.orThrow("evolu-relay"),
     isOwnerAllowed,
     isOwnerWithinQuota,
+    pingInterval = "30s",
   }: NodeJsRelayConfig): Task<Relay, never, RelayDeps> =>
   async (run) => {
     await using disposer = new AsyncDisposableStack();
@@ -91,6 +114,14 @@ export const createRelay =
       createBaseSqliteStorageTables(deps);
       createRelayStorageTables(deps);
     }
+
+    // Connections that sent anything since the previous ping, or connected
+    // since.
+    const activeSockets = new WeakSet<WebSocket>();
+    // Broadcast bytes queued for each connection and not yet written to it.
+    // Replies are not counted: their total follows the client's own requests.
+    const unsentBroadcastBytesBySocket = new WeakMap<WebSocket, number>();
+    let pingTimeoutId: TimeoutId | null = null;
 
     const server = disposer.use(createServer());
     server.once("close", () => {
@@ -115,6 +146,29 @@ export const createRelay =
 
     const storage = createRelaySqliteStorage(deps)({ isOwnerWithinQuota });
     const relayRun = disposer.use(run.create({ storage }));
+
+    const pingClients = (): void => {
+      for (const client of wss.clients) {
+        if (client.readyState !== WebSocket.OPEN) continue;
+        // A client cannot answer before it receives the data queued ahead of
+        // the ping, such as a large reply on a slow link. The relay cannot
+        // see that data move, so it leaves the connection to TCP, which ends
+        // it if the path is dead.
+        if (client.bufferedAmount > 0) continue;
+        if (!activeSockets.has(client)) {
+          console.debug("terminating unresponsive connection");
+          client.terminate();
+          continue;
+        }
+        activeSockets.delete(client);
+        client.ping();
+      }
+      pingTimeoutId = run.deps.time.setTimeout(pingClients, pingInterval);
+    };
+    pingTimeoutId = run.deps.time.setTimeout(pingClients, pingInterval);
+    disposer.defer(() => {
+      if (pingTimeoutId !== null) run.deps.time.clearTimeout(pingTimeoutId);
+    });
 
     server.on("upgrade", (request, socket, head) => {
       socket.on("error", console.debug);
@@ -202,8 +256,14 @@ export const createRelay =
       })();
     });
 
-    wss.on("connection", (ws) => {
+    wss.on("connection", (ws, request) => {
       console.debug("on connection", wss.clients.size);
+      activeSockets.add(ws);
+      // Any incoming bytes count, not only pongs: a client's pong waits
+      // behind an upload it is still sending over a slow link.
+      request.socket.on("data", () => {
+        activeSockets.add(ws);
+      });
 
       const options: ApplyProtocolMessageAsRelayOptions = {
         subscribe: (ownerId) => {
@@ -226,9 +286,26 @@ export const createRelay =
 
         broadcast: (ownerId, message) => {
           for (const socket of ownerSocketRelation.iterateB(ownerId)) {
-            if (socket !== ws && socket.readyState === WebSocket.OPEN) {
-              socket.send(message, { binary: true });
+            if (socket === ws || socket.readyState !== WebSocket.OPEN) continue;
+            // A client that stopped reading would hold every broadcast for it
+            // forever, and one reading more slowly than its owners' traffic
+            // arrives never catches up. Either reconciles after it reconnects.
+            const unsent =
+              (unsentBroadcastBytesBySocket.get(socket) ?? 0) +
+              message.byteLength;
+            if (unsent > maxUnsentBroadcastBytes) {
+              console.debug("terminating connection behind on broadcasts");
+              socket.terminate();
+              continue;
             }
+            unsentBroadcastBytesBySocket.set(socket, unsent);
+            socket.send(message, { binary: true }, () => {
+              unsentBroadcastBytesBySocket.set(
+                socket,
+                (unsentBroadcastBytesBySocket.get(socket) ?? 0) -
+                  message.byteLength,
+              );
+            });
           }
 
           console.debug(
@@ -289,6 +366,13 @@ export const createRelay =
       [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   };
+
+/**
+ * Broadcast bytes a connection can have queued and unsent before the relay
+ * terminates it instead of queuing another, which bounds the memory a client
+ * that stopped reading holds.
+ */
+const maxUnsentBroadcastBytes = 16 * defaultProtocolMessageMaxSize;
 
 const HttpStatusTextByCode = {
   400: "Bad Request",

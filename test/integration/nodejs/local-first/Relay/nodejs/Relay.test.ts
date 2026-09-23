@@ -2,6 +2,7 @@ import {
   assertEqual,
   assertFalse,
   assertInstanceOf,
+  assertNonEmptyArray,
   assertNotNull,
   assertNotUndefined,
   assertSame,
@@ -26,14 +27,18 @@ import {
   createProtocolMessageBuffer,
   createProtocolMessageForUnsubscribe,
   createProtocolMessageFromCrdtMessages,
+  createTimestampsBuffer,
+  InfiniteUpperBound,
   MessageType,
+  RangeType,
   SubscriptionFlags,
   testAppOwner,
   testCreateCrdtMessage,
 } from "@evolu/common/local-first";
-import { EventEmitter } from "events";
+import { EventEmitter, once } from "events";
 import { existsSync, unlinkSync } from "fs";
 import { afterEach, describe, it, type TestContext } from "node:test";
+import { WebSocket as WsWebSocket } from "ws";
 import { installPolyfills } from "../../../../../../packages/common/src/Polyfills.ts";
 import {
   createRelayDeps,
@@ -196,6 +201,73 @@ const assertEventually = async (condition: () => boolean): Promise<void> => {
   assertTrue(condition());
 };
 
+/**
+ * Subscribes a client to the app owner. `broadcast` uploads frames of about 500
+ * KB from another connection, which the relay broadcasts to the client, and
+ * `received` resolves once the client has received that many in total, or once
+ * its connection closes.
+ */
+const setupSubscriber = async (
+  setup: Awaited<ReturnType<typeof startTestRelay>>,
+) => {
+  const url = `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`;
+  const subscriber = new WsWebSocket(url);
+  await once(subscriber, "open");
+  const closed = once(subscriber, "close").then(() => "close" as const);
+  subscriber.send(
+    createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      subscriptionFlag: SubscriptionFlags.Subscribe,
+    }).unwrap(),
+  );
+  await once(subscriber, "message");
+
+  let receivedCount = 0;
+  subscriber.on("message", () => {
+    receivedCount++;
+  });
+  const createId = testCreateId();
+  let frameCount = 0;
+
+  const broadcast = async (count: number): Promise<void> => {
+    await using writer = await testSetupWebSocket(url);
+    for (const frame of Array.from({ length: count }, () => frameCount++)) {
+      const messages = Array.from({ length: 80 }, (_, index) =>
+        testCreateCrdtMessage(
+          createId(),
+          frame * 100 + index + 1,
+          "x".repeat(8000),
+        ),
+      );
+      assertNonEmptyArray(messages);
+      const response = writer.waitForMessage();
+      writer.send(
+        createProtocolMessageFromCrdtMessages(setup.run.deps)(
+          testAppOwner,
+          messages,
+        ),
+      );
+      await response;
+    }
+  };
+
+  const received = (count: number): Promise<"received" | "close"> =>
+    Promise.race([
+      new Promise<"received">((resolve) => {
+        const check = () => {
+          if (receivedCount < count) return;
+          subscriber.off("message", check);
+          resolve("received");
+        };
+        subscriber.on("message", check);
+        check();
+      }),
+      closed,
+    ]);
+
+  return { subscriber, closed, broadcast, received };
+};
+
 describe("createRelay", () => {
   afterEach(() => {
     for (const suffix of [".db", ".db-shm", ".db-wal"]) {
@@ -225,6 +297,213 @@ describe("createRelay", () => {
       .rows[0] as { readonly count: number };
 
     assertEqual(row.count, 1);
+  });
+
+  it("pings connections and keeps those that answer", async () => {
+    await using setup = await startTestRelay({ pingInterval: "50ms" });
+    const { time } = setup.run.deps;
+    const client = new WsWebSocket(
+      `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
+    );
+    await once(client, "open");
+    const closed = once(client, "close");
+
+    // The client answers each ping automatically and sends nothing else, so
+    // only its pongs keep the connection.
+    for (let tick = 0; tick < 3; tick++) {
+      const outcome = Promise.race([
+        once(client, "ping").then(() => "ping"),
+        closed.then(() => "close"),
+      ]);
+      time.advance("50ms");
+      assertSame(await outcome, "ping");
+      // ws writes the automatic pong before emitting "ping". Any request to
+      // confirm the relay read it would count as data too, so wait real time
+      // before the next fake-clock tick, then one more event-loop turn: a
+      // stalled loop runs the timer before it polls the relay's socket.
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 50);
+      });
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    }
+    assertSame(client.readyState, WsWebSocket.OPEN);
+
+    client.close();
+    await closed;
+  });
+
+  it("terminates a connection that stops answering pings", async () => {
+    await using setup = await startTestRelay({ pingInterval: "50ms" });
+    const { time } = setup.run.deps;
+    const client = new WsWebSocket(
+      `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
+      { autoPong: false },
+    );
+    await once(client, "open");
+    const closed = once(client, "close");
+
+    // The first tick pings; the second finds no answer.
+    const ping = once(client, "ping");
+    time.advance("50ms");
+    await ping;
+    time.advance("50ms");
+
+    const [code] = (await closed) as [number];
+    assertSame(code, 1006);
+  });
+
+  it("keeps a connection that sends data while its pong is delayed", async () => {
+    await using setup = await startTestRelay({ pingInterval: "50ms" });
+    const { time } = setup.run.deps;
+    // The client never answers pings, as when its pong waits behind an
+    // upload on a slow link, but data keeps arriving.
+    const client = new WsWebSocket(
+      `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
+      { autoPong: false },
+    );
+    await once(client, "open");
+    const closed = once(client, "close");
+
+    for (let tick = 0; tick < 3; tick++) {
+      const outcome = Promise.race([
+        once(client, "ping").then(() => "ping"),
+        closed.then(() => "close"),
+      ]);
+      time.advance("50ms");
+      assertSame(await outcome, "ping");
+      // The client's ping is incoming data; the relay's automatic pong
+      // confirms it was received before the next fake-clock tick.
+      const pong = Promise.race([
+        once(client, "pong").then(() => "pong"),
+        closed.then(() => "close"),
+      ]);
+      client.ping();
+      assertSame(await pong, "pong");
+    }
+    assertSame(client.readyState, WsWebSocket.OPEN);
+
+    // Once data stops, the next tick pings and the one after terminates.
+    const ping = once(client, "ping");
+    time.advance("50ms");
+    await ping;
+    time.advance("50ms");
+    const [code] = (await closed) as [number];
+    assertSame(code, 1006);
+  });
+
+  it("keeps a connection until the data queued for it is sent", async () => {
+    await using setup = await startTestRelay({ pingInterval: "50ms" });
+    const { time } = setup.run.deps;
+    const { subscriber, closed, broadcast, received } =
+      await setupSubscriber(setup);
+
+    // The stalled reader stands in for a large frame crossing a slow link,
+    // and the broadcasts outgrow the socket buffers, so the rest waits on the
+    // relay together with any ping sent after them. No answer can arrive
+    // meanwhile, and neither tick terminates it.
+    subscriber.pause();
+    await broadcast(24);
+    time.advance("50ms");
+    time.advance("50ms");
+    subscriber.resume();
+    assertSame(await received(24), "received");
+
+    // Written broadcasts no longer count toward the cap, so a client that
+    // keeps reading receives more than 16 MB over its connection.
+    await broadcast(24);
+    assertSame(await received(48), "received");
+    assertSame(subscriber.readyState, WsWebSocket.OPEN);
+
+    subscriber.close();
+    await closed;
+  });
+
+  it("terminates a connection more than 16 MB behind on broadcasts", async () => {
+    await using setup = await startTestRelay();
+    const { subscriber, broadcast, received } = await setupSubscriber(setup);
+
+    subscriber.pause();
+    await broadcast(50);
+    subscriber.resume();
+    assertSame(await received(50), "close");
+  });
+
+  it("keeps a connection whose replies to its own requests exceed 16 MB", async () => {
+    await using setup = await startTestRelay({ pingInterval: "50ms" });
+    const { console, time } = setup.run.deps;
+    const url = `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`;
+    {
+      await using writer = await testSetupWebSocket(url);
+      const createId = testCreateId();
+      for (let frame = 0; frame < 2; frame++) {
+        const messages = Array.from({ length: 80 }, (_, index) =>
+          testCreateCrdtMessage(
+            createId(),
+            frame * 100 + index + 1,
+            "x".repeat(8000),
+          ),
+        );
+        assertNonEmptyArray(messages);
+        const response = writer.waitForMessage();
+        writer.send(
+          createProtocolMessageFromCrdtMessages(setup.run.deps)(
+            testAppOwner,
+            messages,
+          ),
+        );
+        await response;
+      }
+    }
+
+    // A client with nothing stored asks for the owner's history in more
+    // rounds than 16 full replies, as one socket does for many owners, and
+    // reads them slowly.
+    const client = new WsWebSocket(url);
+    await once(client, "open");
+    const closed = once(client, "close");
+    const roundCount = 30;
+    let receivedCount = 0;
+    const received = new Promise<"received">((resolve) => {
+      client.on("message", () => {
+        if (++receivedCount === roundCount) resolve("received");
+      });
+    });
+    client.pause();
+    const round = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      subscriptionFlag: SubscriptionFlags.Subscribe,
+    });
+    round.addRange({
+      type: RangeType.Timestamps,
+      upperBound: InfiniteUpperBound,
+      timestamps: createTimestampsBuffer(),
+    });
+    const roundBytes = round.unwrap();
+    for (let index = 0; index < roundCount; index++) client.send(roundBytes);
+    // Each round subscribes before its reply is written.
+    await assertEventually(
+      () =>
+        console
+          .getEntriesSnapshot()
+          .filter(({ args }) => args[0] === "subscribe").length === roundCount,
+    );
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 100);
+    });
+
+    time.advance("50ms");
+    time.advance("50ms");
+    client.resume();
+    assertSame(
+      await Promise.race([received, closed.then(() => "close")]),
+      "received",
+    );
+    assertSame(client.readyState, WsWebSocket.OPEN);
+
+    client.close();
+    await closed;
   });
 
   it("rejects websocket upgrades without ownerId", async () => {
@@ -912,7 +1191,7 @@ describe("createRelay", () => {
 
     const ws = new FakeSocket();
 
-    wss.emit("connection", ws);
+    wss.emit("connection", ws, { socket: new EventEmitter() });
     ws.emit("message", new ArrayBuffer(3));
 
     assertEqual(ws.send.mock.callCount(), 0);
@@ -948,7 +1227,7 @@ describe("createRelay", () => {
     const ws = new FakeSocket();
     const createId = testCreateId();
 
-    wss.emit("connection", ws);
+    wss.emit("connection", ws, { socket: new EventEmitter() });
     const createMessage = () =>
       createProtocolMessageFromCrdtMessages(run.deps)(testAppOwner, [
         testCreateCrdtMessage(createId(), 1, "Victoria"),
@@ -966,5 +1245,45 @@ describe("createRelay", () => {
     assertFalse(
       console.getEntriesSnapshot().some((entry) => entry.method === "error"),
     );
+  });
+
+  it("stops pinging when disposed", async (t) => {
+    const { relayModule, wss } = await loadRelayModuleWithMockedTransport(
+      t.mock,
+    );
+
+    await using run = testCreateRun({
+      ...relayModule.createRelayDeps(),
+      console: testCreateConsole(),
+    });
+    const relay = await run.ok(
+      relayModule.createRelay({
+        port: Port.orThrow(0),
+        name: testName,
+        isOwnerWithinQuota: () => true,
+        pingInterval: "1s",
+      }),
+    );
+
+    class FakeSocket extends EventEmitter {
+      readonly readyState = 1;
+      readonly bufferedAmount = 0;
+      readonly close = t.mock.fn();
+      readonly ping = t.mock.fn();
+      readonly terminate = t.mock.fn();
+    }
+
+    const ws = new FakeSocket();
+    wss.clients.add(ws);
+    wss.emit("connection", ws, { socket: new EventEmitter() });
+    run.deps.time.advance("1s");
+    assertSame(ws.ping.mock.callCount(), 1);
+
+    // The mocked server keeps the connection, so a surviving timer would
+    // terminate it at the next tick, as it sent nothing since the ping.
+    await relay[Symbol.asyncDispose]();
+    run.deps.time.advance("2s");
+    assertSame(ws.ping.mock.callCount(), 1);
+    assertSame(ws.terminate.mock.callCount(), 0);
   });
 });
