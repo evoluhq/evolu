@@ -247,14 +247,11 @@ export const sqliteQueryStringToSqliteQuery = (
 /**
  * Result of executing a SQLite query.
  *
- * `changes` must be the number of rows the statement inserted, updated, or
- * deleted. An insert skipped by `on conflict do nothing` reports zero changes,
- * so callers can distinguish it from an inserted row.
- *
  * @group Queries
  */
 export interface SqliteExecResult<R extends SqliteRow = SqliteRow> {
   readonly rows: ReadonlyArray<R>;
+  /** The number of rows an insert, update, or delete statement changed. */
   readonly changes: number;
 }
 
