@@ -17,8 +17,8 @@ exports[`Type tree shaking > bundles a realistic app using common Types 1`] = `
 {
   "real app": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 33428,
-      "brotliSizeInBytes": 9460
+      "rawSizeInBytes": 33382,
+      "brotliSizeInBytes": 9438
     },
     "vite@8.2.2": {
       "rawSizeInBytes": 32938,

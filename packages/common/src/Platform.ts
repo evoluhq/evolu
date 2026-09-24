@@ -134,7 +134,9 @@ export const testGlobalUncaughtErrors = (): TestGlobalErrors =>
 export const testGlobalUnhandledRejections = (): TestGlobalErrors =>
   createTestGlobalErrors("unhandledRejection");
 
-const settleSentinel = new Error("TestGlobalErrors.settle sentinel");
+const settleSentinel = /*#__PURE__*/ new Error(
+  "TestGlobalErrors.settle sentinel",
+);
 
 const createTestGlobalErrors = (
   kind: "uncaughtErrors" | "unhandledRejection",

@@ -1,7 +1,7 @@
-import { readdir, rm } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { describe, it } from "node:test";
-import { assertEqual } from "../../../packages/common/src/Assert.ts";
+import { assert, assertEqual } from "../../../packages/common/src/Assert.ts";
 import { installPolyfills } from "../../../packages/common/src/Polyfills.ts";
 import { testBundle } from "@evolu/nodejs/TestBundle";
 
@@ -38,5 +38,14 @@ describe("Homepage bundle sizes", () => {
     });
 
     t.assert.snapshot(results);
+
+    // Unused test helpers, including their module-level values, are dropped.
+    for (const file of await readdir(outputDirectory)) {
+      const code = await readFile(join(outputDirectory, file), "utf8");
+      assert(
+        !code.includes("TestGlobalErrors.settle sentinel"),
+        `${file} keeps the test error sentinel.`,
+      );
+    }
   });
 });

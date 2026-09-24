@@ -2,8 +2,8 @@ exports[`Homepage bundle sizes > bundle sizes 1`] = `
 {
   "Task": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 29455,
-      "brotliSizeInBytes": 9611
+      "rawSizeInBytes": 29409,
+      "brotliSizeInBytes": 9591
     },
     "vite@8.2.2": {
       "rawSizeInBytes": 24416,
