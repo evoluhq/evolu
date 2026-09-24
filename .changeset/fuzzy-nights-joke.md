@@ -15,7 +15,7 @@ the database worker starts with system time within the drift limit. Correcting
 time alone does not release quarantined changes in a running worker.
 
 Local mutations and incoming messages whose timestamps exceed the clock-drift
-limit (five minutes by default) are now stored in `evolu_message_quarantine`
+limit (five minutes) are now stored in `evolu_message_quarantine`
 and synchronized without being applied to application tables. Drift no longer
 blocks the local write queue or causes incoming messages to be rejected and
 repeatedly offered by sync. Mutations complete after storage commits, including
