@@ -25,7 +25,10 @@ const config = {
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    { name: "firefox", use: { browserName: "firefox" } },
+  ],
   webServer: {
     cwd: resolve(import.meta.dirname, "../.."),
     command:
