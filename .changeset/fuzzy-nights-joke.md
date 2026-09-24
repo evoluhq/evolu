@@ -56,10 +56,11 @@ Both return `TimestampError` for drift or range exhaustion, including after
 counter rollover. Success means the resulting timestamp is within both limits.
 `receiveTimestamp` also rejects remote drift before clock arithmetic.
 
-`TimestampDriftError.timestamp` replaces `next` with the complete timestamp.
-With `cause: "local"`, it is the failed operation's candidate, which the
-database uses for explicit recovery. With `cause: "remote"`, it is the received
-timestamp itself, which must not advance the clock.
+`TimestampDriftError.timestamp` replaces `next` with the complete timestamp,
+and the new `cause` field tells local drift from remote. With `cause: "local"`,
+`timestamp` is the failed operation's candidate, which the database uses for
+explicit recovery. With `cause: "remote"`, it is the received timestamp itself,
+which must not advance the clock.
 
 ```ts
 import { assertErr, Millis, type TimestampDriftError } from "@evolu/common";

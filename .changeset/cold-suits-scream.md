@@ -5,8 +5,7 @@
 Added timestamp drift and ordering helpers
 
 `isTimestampBeyondMaxDrift` checks whether timestamp milliseconds exceed the
-configured drift limit relative to a supplied time. Timestamp generation reuses
-this predicate without changing its drift-error contract.
+configured drift limit relative to a supplied time.
 
 `orderTimestamp` compares timestamps by milliseconds, counter, and node ID,
 matching their encoded byte order without serialization. Distinct objects with
