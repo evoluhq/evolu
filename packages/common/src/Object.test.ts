@@ -244,13 +244,12 @@ describe("filterObjectKeys", () => {
     >();
     assertEqual(selectedUsers, { u1: 1 });
 
-    const reject = () => {
+    void (() => {
       // @ts-expect-error filterObjectKeys requires an object source.
       filterObjectKeys("text", () => true);
       // @ts-expect-error Selected properties are readonly.
       selected.APP_PORT = "5000";
-    };
-    assertType<typeof reject, () => void>();
+    });
   });
 
   it("preserves descriptors without reading getters", () => {

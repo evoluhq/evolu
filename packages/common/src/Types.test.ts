@@ -199,17 +199,13 @@ test("isPromiseLike", () => {
   assertFalse(isPromiseLike(undefined));
   assertFalse(isPromiseLike("value"));
 
-  const narrow = (value: Awaitable<string>) => {
+  void ((value: Awaitable<string>) => {
     if (isPromiseLike(value)) {
       assertType<typeof value, PromiseLike<string>>();
     } else {
       assertType<typeof value, string>();
     }
-  };
-  assertType<
-    typeof narrow extends (...args: Array<never>) => unknown ? true : false,
-    true
-  >();
+  });
 });
 
 test("CompileTimeError", () => {

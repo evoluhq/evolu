@@ -602,7 +602,7 @@ describe("env", () => {
   });
 
   it("requires concrete field Types that encode to strings", () => {
-    const reject = (
+    void ((
       erased: TypeNode,
       reserved: Type<
         "CustomEnv",
@@ -663,10 +663,6 @@ describe("env", () => {
       env(template);
       // @ts-expect-error Environment properties must use fixed string keys.
       env({ [Symbol("invalidKey")]: String });
-    };
-    assertType<
-      typeof reject extends (...args: Array<never>) => void ? true : false,
-      true
-    >();
+    });
   });
 });

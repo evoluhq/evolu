@@ -4478,14 +4478,12 @@ describe("objectTag", () => {
     const outputType = TaggedValueInstance as
       typeof TaggedValueInstance | typeof _OtherValueInstance;
     const erasedOutputType: TypeNode = TaggedValueInstance;
-    const genericNameAssertion = <Name extends "Tagged" | "Other">(
-      name: Name,
-    ): Name => {
+    void (<Name extends "Tagged" | "Other">(name: Name): Name => {
       // @ts-expect-error An unresolved generic could be instantiated with a tag union.
       objectTag(name, TaggedValueInstance);
       return name;
-    };
-    const genericOutputAssertion = <
+    });
+    void (<
       OutputType extends
         typeof TaggedValueInstance | typeof _OtherValueInstance,
     >(
@@ -4494,7 +4492,7 @@ describe("objectTag", () => {
       // @ts-expect-error An unresolved generic could be instantiated with an output Type union.
       objectTag("Tagged", outputType);
       return outputType;
-    };
+    });
     void (() => {
       // @ts-expect-error A union does not identify one concrete object tag.
       objectTag(unionName, TaggedValueInstance);
@@ -4513,19 +4511,6 @@ describe("objectTag", () => {
       // @ts-expect-error The output Type must retain its concrete information.
       objectTag("Tagged", erasedOutputType);
     });
-
-    assertType<
-      typeof genericNameAssertion extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
-    assertType<
-      typeof genericOutputAssertion extends (...args: Array<never>) => unknown
-        ? true
-        : false,
-      true
-    >();
   });
 
   it("rejects an ObjectTag error inherited from the output Type", () => {
@@ -4758,11 +4743,10 @@ it("ValidateOutput accepts concrete Types and rejects unions of Type nodes", () 
   assertType<ValidateOutput<typeof String>, typeof String>();
   assertType<ValidateOutput<typeof Value>, typeof Value>();
   const uncertain = String as typeof String | typeof Number;
-  const reject = () => {
+  void (() => {
     // @ts-expect-error Output Type must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
     defineOutput(uncertain);
-  };
-  assertType<typeof reject, () => void>();
+  });
 });
 
 describe("literal", () => {
@@ -4778,7 +4762,7 @@ describe("literal", () => {
       prefix: Prefix & ValidateLiteral<Prefix>,
     ): Prefix => prefix;
     assertEqual(definePrefix("APP_"), "APP_");
-    const reject = () => {
+    void (() => {
       // @ts-expect-error Expected must be one concrete literal value.
       definePrefix("APP_" as string);
       // @ts-expect-error Expected must be one concrete literal value.
@@ -4787,8 +4771,7 @@ describe("literal", () => {
       definePrefix(TrimmedString.orThrow("APP_"));
       // @ts-expect-error Expected must be one concrete literal value.
       definePrefix("APP_" as `APP_${string}`);
-    };
-    assertType<typeof reject, () => void>();
+    });
   });
 
   const Hello = literal("Hello");
@@ -9709,13 +9692,11 @@ describe("BrandFactory", () => {
           const _unionBrand = "Todo" as "Todo" | "User";
           const _broadBrand = "Todo" as string;
           const _patternedBrand = "Todo" as `Todo${string}`;
-          const genericBrandAssertion = <B extends "Todo" | "User">(
-            brand: B,
-          ): B => {
+          void (<B extends "Todo" | "User">(brand: B): B => {
             // @ts-expect-error An unresolved generic brand might be a union.
             createId<B>(deps);
             return brand;
-          };
+          });
 
           void (() => {
             // @ts-expect-error A union would assign multiple brands to one Id.
@@ -9733,15 +9714,6 @@ describe("BrandFactory", () => {
             // @ts-expect-error A Todo Id must not satisfy a User Id API.
             const _userId: Id & Brand<"User"> = todoRandom;
           });
-
-          assertType<
-            typeof genericBrandAssertion extends (
-              ...args: Array<never>
-            ) => unknown
-              ? true
-              : false,
-            true
-          >();
         });
 
         it("validates the encoded representation", () => {
@@ -9797,13 +9769,11 @@ describe("BrandFactory", () => {
           const unionTable = "Todo" as "Todo" | "User";
           const broadTable = "Todo" as TypeName;
           const patternedTable = "Todo" as `Todo${string}`;
-          const genericTableAssertion = <Table extends "Todo" | "User">(
-            table: Table,
-          ): Table => {
+          void (<Table extends "Todo" | "User">(table: Table): Table => {
             // @ts-expect-error An unresolved generic table might be a union.
             id(table);
             return table;
-          };
+          });
           void (() => {
             // @ts-expect-error A union would assign multiple table brands to one Id.
             id(unionTable);
@@ -9812,15 +9782,6 @@ describe("BrandFactory", () => {
             // @ts-expect-error A template pattern does not identify one table.
             id(patternedTable);
           });
-
-          assertType<
-            typeof genericTableAssertion extends (
-              ...args: Array<never>
-            ) => unknown
-              ? true
-              : false,
-            true
-          >();
         });
 
         it("converts to and from its 16-byte representation", () => {
@@ -13385,16 +13346,14 @@ describe("tuple", () => {
       const uncertain: FormattableTypeNode = String;
       const widened: NonEmptyReadonlyArray<typeof String> = [String];
 
-      const validateUnionElement = <
-        Element extends typeof String | typeof Number,
-      >(
+      void (<Element extends typeof String | typeof Number>(
         element: Element,
       ): Element => {
         // @ts-expect-error An unresolved element might be a union of Types.
         tuple(element);
         return element;
-      };
-      const validateTupleSchema = <
+      });
+      void (<
         Elements extends
           readonly [typeof String] | readonly [typeof String, typeof Number],
       >(
@@ -13403,7 +13362,7 @@ describe("tuple", () => {
         // @ts-expect-error A union of Tuple schemas is not one concrete schema.
         tuple(...elements);
         return elements;
-      };
+      });
 
       void (() => {
         // @ts-expect-error A Tuple must contain at least one Type.
@@ -13413,19 +13372,6 @@ describe("tuple", () => {
         // @ts-expect-error A widened array is not a finite Tuple schema.
         tuple(...widened);
       });
-
-      assertType<
-        typeof validateUnionElement extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
-      assertType<
-        typeof validateTupleSchema extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
     });
   });
 
@@ -16134,15 +16080,13 @@ describe("object", () => {
       const numbersFromStrings = record(String, NumberFromString);
       const recordUnion = Math.random() > 0.5 ? Values : otherRecord;
       const erased: TypeNode = Values;
-      const genericRecordAssertion = <
-        Rest extends typeof Values | typeof otherRecord,
-      >(
+      void (<Rest extends typeof Values | typeof otherRecord>(
         rest: Rest,
       ): Rest => {
         // @ts-expect-error An unresolved generic could be instantiated with a Record Type union.
         object({}, rest);
         return rest;
-      };
+      });
       void (() => {
         object({ count: Number });
         object({ count: Number }, Values);
@@ -16174,12 +16118,6 @@ describe("object", () => {
       }
 
       assertSame(Model.record, Values);
-      assertType<
-        typeof genericRecordAssertion extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
       assertSame(Model.parent, null);
       assertType<
         typeof Model extends ObjectType<
@@ -18790,13 +18728,11 @@ describe("typed", () => {
       const recordUnion = Math.random() > 0.5 ? Values : UnknownValues;
       const erasedRecord: TypeNode = Values;
       const restrictedKeys = record(literal("value"), String);
-      const genericTagAssertion = <Tag extends "One" | "Two">(
-        tag: Tag,
-      ): Tag => {
+      void (<Tag extends "One" | "Two">(tag: Tag): Tag => {
         // @ts-expect-error An unresolved generic could be instantiated with a tag union.
         typed(tag);
         return tag;
-      };
+      });
       void (() => {
         // @ts-expect-error Type names start with an uppercase letter.
         typed("one");
@@ -18826,13 +18762,6 @@ describe("typed", () => {
         // @ts-expect-error Declared Inputs and Outputs must extend the Record value Type.
         typed("One", { value: Number }, Values);
       });
-
-      assertType<
-        typeof genericTagAssertion extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
     });
   });
 
@@ -22665,7 +22594,7 @@ describe("objectKeys", () => {
   });
 
   it("requires string key codecs and a concrete strict object", () => {
-    const reject = () => {
+    void (() => {
       // @ts-expect-error Key Output must be string.
       objectKeys(PortFromString);
       // @ts-expect-error objectKeys requires a strict Object Type without a record rest.
@@ -22677,8 +22606,7 @@ describe("objectKeys", () => {
         : object({ age: Number });
       // @ts-expect-error Output Type must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
       objectKeys(String)(objectType);
-    };
-    assertType<typeof reject, () => void>();
+    });
   });
 });
 
