@@ -1295,10 +1295,7 @@ export const createEvolu =
           case "RefreshQueries": {
             releaseUnsubscribedLoadingPromises();
 
-            const queries = new Set<Query>([
-              ...loadingPromisesByQuery.keys(),
-              ...subscribedQueriesRefCount.keys(),
-            ]);
+            const queries = new Set<Query>(subscribedQueriesRefCount.keys());
 
             if (isNonEmptySet(queries)) postMessage({ type: "Query", queries });
             break;

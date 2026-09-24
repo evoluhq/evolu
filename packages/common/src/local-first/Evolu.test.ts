@@ -2005,7 +2005,7 @@ describe("Evolu", () => {
       );
     });
 
-    it("RefreshQueries re-queries pending unsubscribed loadQuery", async () => {
+    it("RefreshQueries reads a pending unsubscribed loadQuery once, when it is subscribed", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs, postEvoluOutput } = setup;
       const evolu = await run.ok(testCreateEvolu);
@@ -2015,12 +2015,18 @@ describe("Evolu", () => {
 
       evoluInputs.length = 0;
       postEvoluOutput({ type: "RefreshQueries" });
+      await testWaitForWorkerMessage();
 
+      assertEqual(evoluInputs, []);
+
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
       await testWaitForWorkerMessage();
 
       assertEqual(evoluInputs, [
         { type: "Query", queries: new Set([todoTitleQuery]) },
       ]);
+
+      unsubscribe();
     });
 
     it("RefreshQueries re-queries subscribed query without loadQuery", async () => {
