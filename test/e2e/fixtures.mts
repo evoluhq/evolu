@@ -65,13 +65,17 @@ export const test = /*#__PURE__*/ base.extend<
     await setupRelay(url.href, relayEntry, runTest, testInfo);
   },
 
-  browserEvents: async ({ browser, relay: _relay }, runTest) => {
+  browserEvents: async (
+    { baseURL, browser, browserName, playwright, relay: _relay },
+    runTest,
+  ) => {
     const failures: Array<string> = [];
     const expectedDialogs: Array<{
       message: string;
       value: string | undefined;
     }> = [];
     const contexts: Array<BrowserContext> = [];
+    const webkitHomes: Array<string> = [];
 
     const recordFailure = (error: unknown) => {
       failures.push(String(error));
@@ -101,7 +105,22 @@ export const test = /*#__PURE__*/ base.extend<
     await runTest({
       watch,
       newContext: async () => {
-        const context = await browser.newContext();
+        let context: BrowserContext;
+        if (browserName === "webkit") {
+          // WebKit has OPFS only in persistent contexts, and on macOS they all
+          // share the home directory's website data unless it is overridden.
+          const home = await mkdtemp(join(tmpdir(), "evolu-e2e-webkit-"));
+          webkitHomes.push(home);
+          context = await playwright.webkit.launchPersistentContext(
+            join(home, "profile"),
+            {
+              ...(baseURL && { baseURL }),
+              env: { ...process.env, CFFIXED_USER_HOME: home },
+            },
+          );
+        } else {
+          context = await browser.newContext({ ...(baseURL && { baseURL }) });
+        }
         watch(context);
         contexts.push(context);
         return context;
@@ -112,13 +131,15 @@ export const test = /*#__PURE__*/ base.extend<
     });
 
     for (const context of contexts) await context.close();
+    for (const home of webkitHomes) {
+      await rm(home, { recursive: true, force: true });
+    }
     expect(failures, "Browser errors and unexpected dialogs").toEqual([]);
     expect(expectedDialogs, "Expected dialogs that did not appear").toEqual([]);
   },
 
-  context: async ({ browserEvents, context }, runTest) => {
-    browserEvents.watch(context);
-    await runTest(context);
+  context: async ({ browserEvents }, runTest) => {
+    await runTest(await browserEvents.newContext());
   },
 });
 
