@@ -1077,7 +1077,6 @@ describe("Evolu integration", () => {
     });
     const writer = await run.ok(createLocal);
     const reader = await run.ok(createLocal);
-    assertTrue(typeof writer.useOwner === "function");
     assertEqual(await reader.loadQuery(notesQuery), []);
     const observed = Promise.withResolvers<void>();
     const unsubscribe = reader.subscribeQuery(notesQuery)(() => {

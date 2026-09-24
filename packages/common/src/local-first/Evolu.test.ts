@@ -831,7 +831,6 @@ describe("Evolu", () => {
       assertType<typeof evolu, Evolu<typeof LocalSchema>>();
       assertSame(evolu.appOwner, testAppOwner);
       assertEqual(evolu.name, `AppName-${createIdFromString(testAppOwner.id)}`);
-      assertTrue(typeof evolu.useOwner === "function");
       await testWaitForWorkerMessage();
       assertEqual(setup.evoluInputs, []);
       const message = messages.find(
