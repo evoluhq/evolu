@@ -176,9 +176,9 @@ const dbVersion = PositiveInt.orThrow(2);
 /**
  * The stored database version is newer than this code supports. Newer code
  * created or migrated the database, which is left unchanged. This happens when
- * a tab running a newer deployment migrated the database while this tab still
- * runs older code, or when the app was downgraded after a newer version
- * migrated the local data. Update the app to a version that supports
+ * older code opens a database a newer build migrated, for example an older
+ * build loaded from a cache, or when the app was downgraded after a newer
+ * version migrated the local data. Update the app to a version that supports
  * `storedVersion` and close all its tabs.
  */
 export interface UnsupportedDbVersionError extends Typed<"UnsupportedDbVersionError"> {

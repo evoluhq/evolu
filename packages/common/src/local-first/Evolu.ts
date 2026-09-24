@@ -1011,8 +1011,9 @@ export type EvoluPlatformDeps = CreateDbWorkerDep &
 export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   const { createBroadcastChannel, sharedWorker } = deps;
   const console = deps.console ?? createConsole();
-  // Opened when the worker names its channel.
+  // Opened when the worker connects.
   let syncStateBroadcastChannel: BroadcastChannel<SyncState> | null = null;
+  let tabLeaderElection: Disposable | null = null;
 
   using disposer = new DisposableStack();
   disposer.use(sharedWorker);
@@ -1065,21 +1066,29 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
         console.error(message.error);
         break;
 
-      case "SyncStateChannel": {
-        assert(
-          !syncStateBroadcastChannel,
-          "The shared worker names its sync state channel once.",
-        );
+      case "Connected": {
+        assert(!syncStateBroadcastChannel, "The shared worker connects once.");
         // The worker is the channel's only sender, and one sender's messages
         // arrive in order, so the last one is current.
         syncStateBroadcastChannel = createBroadcastChannel<SyncState>(
-          message.name,
+          message.syncStateChannelName,
         );
         syncStateBroadcastChannel.onMessage = (state) => {
           syncState.set(state);
         };
         // Asking only after listening misses no snapshot.
         sharedWorker.port.postMessage({ type: "RequestSyncState" });
+        // Only this worker's tabs compete, so a tab of another worker never
+        // hosts its DbWorkers.
+        tabLeaderElection = acquireLeaderLockCallback(deps)(
+          `tab-${message.workerId}`,
+          () => {
+            sharedWorker.port.postMessage({
+              type: "AnnounceTabLeader",
+              consoleLevel: console.getLevel(),
+            });
+          },
+        );
         break;
       }
 
@@ -1088,14 +1097,9 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
     }
   };
 
-  disposer.use(
-    acquireLeaderLockCallback(deps)("tab", () => {
-      sharedWorker.port.postMessage({
-        type: "AnnounceTabLeader",
-        consoleLevel: console.getLevel(),
-      });
-    }),
-  );
+  disposer.defer(() => {
+    tabLeaderElection?.[Symbol.dispose]();
+  });
 
   return disposable<EvoluDeps>(
     {

@@ -71,6 +71,7 @@ import {
   createIdFromString,
   type DateIso,
   id,
+  idToIdBytes,
   Name,
   NonEmptyTrimmedString100,
   nullOr,
@@ -191,7 +192,10 @@ describe("Evolu integration", () => {
     );
     void run(initSharedWorker(sharedWorker.self));
     sharedWorker.connect();
-    const syncStateChannelNamed = Promise.withResolvers<string>();
+    const connected =
+      Promise.withResolvers<
+        Extract<SharedWorkerOutput, { type: "Connected" }>
+      >();
     // Errors the SharedWorker sends to this tab only.
     const tabErrors: Array<EvoluError> = [];
     let tabErrorReported = Promise.withResolvers<void>();
@@ -205,8 +209,8 @@ describe("Evolu integration", () => {
           tabErrorReported.resolve();
           tabErrorReported = Promise.withResolvers<void>();
           break;
-        case "SyncStateChannel":
-          syncStateChannelNamed.resolve(message.name);
+        case "Connected":
+          connected.resolve(message);
           break;
         default:
           exhaustiveCheck(message);
@@ -250,13 +254,14 @@ describe("Evolu integration", () => {
         sharedWorker,
       }),
     );
-    const syncStateChannelName = await syncStateChannelNamed.promise;
+    const { workerId, syncStateChannelName } = await connected.promise;
     const disposables = disposer.move();
 
     return {
       connectLaterTab,
       createIntegrationEvolu,
       syncStateChannelName,
+      workerId,
       run: runWithEvoluDeps,
       /** Only the default shared-driver setup exposes a shared database. */
       getSharedSqlite: () => {
@@ -393,7 +398,10 @@ describe("Evolu integration", () => {
       createWebSocket: socket,
     });
     const { run, createIntegrationEvolu } = setup;
-    await using _leaderLock = await run.ok(acquireLeaderLock("tab"));
+    // The existing tab hosts the leader; the later tab only joins its tenant.
+    await using _leaderLock = await run.ok(
+      acquireLeaderLock(`tab-${setup.workerId}`),
+    );
     using deps = createEvoluDeps({
       ...run.deps,
       sharedWorker: setup.connectLaterTab(),
@@ -1248,10 +1256,7 @@ describe("Evolu integration", () => {
           rows: [
             {
               column: "title",
-              id: new Uint8Array([
-                162, 140, 107, 238, 5, 65, 113, 168, 236, 205, 236, 11, 39, 9,
-                170, 125,
-              ]),
+              id: idToIdBytes(insertedId),
               ownerId: new Uint8Array([
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
@@ -1264,10 +1269,7 @@ describe("Evolu integration", () => {
             },
             {
               column: "createdAt",
-              id: new Uint8Array([
-                162, 140, 107, 238, 5, 65, 113, 168, 236, 205, 236, 11, 39, 9,
-                170, 125,
-              ]),
+              id: idToIdBytes(insertedId),
               ownerId: new Uint8Array([
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
@@ -1322,7 +1324,7 @@ describe("Evolu integration", () => {
           rows: [
             {
               createdAt: "1970-01-01T00:00:00.000Z",
-              id: "ooxr7gVBcajszewLJwmqfQ",
+              id: insertedId,
               isCompleted: null,
               isDeleted: null,
               ownerId: "BSf-8mxNjgk72yD-D7rr1A",
@@ -1711,7 +1713,9 @@ describe("Evolu integration", () => {
     assertEqual(setup.tabErrors, [error]);
 
     // The existing tab hosts the leader; the later tab only joins its tenant.
-    await using _leaderLock = await run.ok(acquireLeaderLock("tab"));
+    await using _leaderLock = await run.ok(
+      acquireLeaderLock(`tab-${setup.workerId}`),
+    );
     using lateDeps = createEvoluDeps({
       ...run.deps,
       sharedWorker: setup.connectLaterTab(),

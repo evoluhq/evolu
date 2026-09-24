@@ -51,6 +51,7 @@ import {
   type DbWorkerQueuedResponse,
   type EvoluInput,
   type EvoluOutput,
+  type SharedWorkerId,
   type SharedWorkerInput,
   type SharedWorkerOutput,
   type SyncRoute,
@@ -177,9 +178,10 @@ const setupSharedWorker = async ({
     testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
   );
   const sharedWorkerOutputs: Array<
-    Exclude<SharedWorkerOutput, { type: "SyncStateChannel" }>
+    Exclude<SharedWorkerOutput, { type: "Connected" }>
   > = [];
-  const syncStateChannelNamed = Promise.withResolvers<string>();
+  const connected =
+    Promise.withResolvers<Extract<SharedWorkerOutput, { type: "Connected" }>>();
   let sharedWorkerOutput = Promise.withResolvers<void>();
   const waitForSharedWorkerOutput = (): Promise<void> =>
     sharedWorkerOutput.promise;
@@ -205,15 +207,15 @@ const setupSharedWorker = async ({
   disposer.use(await run.ok(initSharedWorker(worker.self)));
   worker.connect();
   worker.port.onMessage = (output) => {
-    if (output.type === "SyncStateChannel") {
-      syncStateChannelNamed.resolve(output.name);
+    if (output.type === "Connected") {
+      connected.resolve(output);
       return;
     }
     sharedWorkerOutputs.push(output);
     sharedWorkerOutput.resolve();
     sharedWorkerOutput = Promise.withResolvers<void>();
   };
-  const syncStateChannelName = await syncStateChannelNamed.promise;
+  const { workerId, syncStateChannelName } = await connected.promise;
 
   const disposables = disposer.move();
 
@@ -329,6 +331,7 @@ const setupSharedWorker = async ({
   return {
     consoleStoreOutputEntry,
     sharedWorkerOutputs,
+    workerId,
     syncStateChannelName,
     run,
     worker,
@@ -374,16 +377,16 @@ const setupTab = (
   const channel = disposer.use(
     testCreateMessageChannel<SharedWorkerInput, SharedWorkerOutput>(),
   );
-  const outputs: Array<
-    Exclude<SharedWorkerOutput, { type: "SyncStateChannel" }>
-  > = [];
+  const outputs: Array<Exclude<SharedWorkerOutput, { type: "Connected" }>> = [];
+  const workerIds: Array<SharedWorkerId> = [];
   const syncStates: Array<SyncState> = [];
   channel.port1.onMessage = (output) => {
-    if (output.type === "SyncStateChannel") {
+    if (output.type === "Connected") {
+      workerIds.push(output.workerId);
       // As a tab does: listen on the worker's channel, then ask for a
       // snapshot.
       const syncStateChannel = disposer.use(
-        testCreateBroadcastChannel<SyncState>(output.name),
+        testCreateBroadcastChannel<SyncState>(output.syncStateChannelName),
       );
       syncStateChannel.onMessage = (state) => {
         syncStates.push(state);
@@ -395,7 +398,7 @@ const setupTab = (
   };
   assertNonNullable(setup.worker.self.onConnect);
   setup.worker.self.onConnect(channel.port2);
-  return { port: channel.port1, outputs, syncStates };
+  return { port: channel.port1, outputs, workerIds, syncStates };
 };
 
 /** Collects the sync state broadcasts. */
@@ -571,6 +574,196 @@ describe("AnnounceTabLeader", () => {
       method: "error",
       args: ["Unknown shared worker input", { type: "UnknownInput" }],
     });
+  });
+});
+
+describe("builds", () => {
+  /** Starts a worker without waiting for its build lock. */
+  const setupBuildWorker = (
+    lockManager: ReturnType<typeof testCreateLockManager>,
+    disposer: AsyncDisposableStack,
+  ) => {
+    const worker = disposer.use(
+      testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
+    );
+    const run = disposer.use(
+      testCreateRun({
+        consoleStoreOutputEntry: createStore<ConsoleEntry | null>(null),
+        createBroadcastChannel: testCreateBroadcastChannel,
+        createMessageChannel: testCreateMessageChannel,
+        lockManager,
+        createMessagePort: testCreateMessagePort,
+        createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
+      }),
+    );
+    const outputs: Array<SharedWorkerOutput> = [];
+    worker.port.onMessage = (output) => {
+      outputs.push(output);
+    };
+    const started = run.ok(initSharedWorker(worker.self));
+    worker.connect();
+    return { worker, outputs, started };
+  };
+
+  /** Answers a DbWorkerInit as a started DbWorker, so the tenant finishes. */
+  const answerDbWorkerInit = async (
+    output: SharedWorkerOutput | undefined,
+    disposer: AsyncDisposableStack,
+  ): Promise<void> => {
+    const init = getDbWorkerInit(output);
+    const port = disposer.use(
+      testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(init.port),
+    );
+    port.postMessage({
+      type: "LeaderAcquired",
+      name: init.name,
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+  };
+
+  it("answers no tab while a leader tab of an earlier release holds the lock", async () => {
+    await using disposer = new AsyncDisposableStack();
+    const lockManager = testCreateLockManager();
+    const mainThreadRun = disposer.use(testCreateRun({ lockManager }));
+    const legacyLeader = await mainThreadRun.ok(acquireLeaderLock("tab"));
+    const { worker, outputs, started } = setupBuildWorker(
+      lockManager,
+      disposer,
+    );
+    const id = testCreateId()<"EvoluInstance">();
+    disposer.use(await mainThreadRun.ok(acquireLeaderLock(id)));
+    const evoluChannel = disposer.use(
+      testCreateMessageChannel<EvoluOutput, EvoluInput>(),
+    );
+
+    worker.port.postMessage({
+      type: "AnnounceTabLeader",
+      consoleLevel: "debug",
+    });
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      id,
+      consoleLevel: "debug",
+      sqliteSchema: testSqliteSchema,
+      encryptionKey: testAppOwner.encryptionKey,
+      memoryOnly: false,
+      evoluPort: evoluChannel.port1.native,
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(outputs, []);
+
+    // The buffered messages are served once the lock is released.
+    await legacyLeader[Symbol.asyncDispose]();
+    disposer.use(await started);
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+    assertEqual(
+      outputs.map((output) => output.type),
+      ["Connected", "DbWorkerInit"],
+    );
+    await answerDbWorkerInit(outputs.at(1), disposer);
+  });
+
+  it("keeps a worker of another build waiting until it ends", async () => {
+    await using disposer = new AsyncDisposableStack();
+    const lockManager = testCreateLockManager();
+    const first = setupBuildWorker(lockManager, disposer);
+    const firstWorker = await first.started;
+    const second = setupBuildWorker(lockManager, disposer);
+    await testWaitForWorkerMessage();
+    assertEqual(
+      first.outputs.map((output) => output.type),
+      ["Connected"],
+    );
+    assertEqual(second.outputs, []);
+
+    await firstWorker[Symbol.asyncDispose]();
+    disposer.use(await second.started);
+    await testWaitForWorkerMessage();
+    assertEqual(
+      second.outputs.map((output) => output.type),
+      ["Connected"],
+    );
+  });
+
+  it("sends every tab the same workerId, which scopes their election", async () => {
+    await using setup = await setupSharedWorker();
+    using disposer = new DisposableStack();
+    const first = setupTab(setup, disposer);
+    const second = setupTab(setup, disposer);
+    await testWaitForWorkerMessage();
+    assertEqual(
+      [...first.workerIds, ...second.workerIds],
+      [setup.workerId, setup.workerId],
+    );
+  });
+
+  it("starts the DbWorker when a tab announces itself after a database is requested", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    await using run = testCreateRun({
+      lockManager: setup.run.deps.lockManager,
+    });
+    const id = testCreateId()<"EvoluInstance">();
+    await using _instance = await run.ok(acquireLeaderLock(id));
+    using evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+
+    setup.worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      id,
+      consoleLevel: "debug",
+      sqliteSchema: testSqliteSchema,
+      encryptionKey: testAppOwner.encryptionKey,
+      memoryOnly: false,
+      evoluPort: evoluChannel.port1.native,
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(setup.sharedWorkerOutputs, []);
+
+    setup.worker.port.postMessage({
+      type: "AnnounceTabLeader",
+      consoleLevel: "debug",
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(
+      setup.sharedWorkerOutputs.map((output) => output.type),
+      ["DbWorkerInit"],
+    );
+    await answerDbWorkerInit(setup.sharedWorkerOutputs.at(0), disposer);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("disposes while a database request waits for a tab leader", async () => {
+    await using setup = await setupSharedWorker();
+    await using run = testCreateRun({
+      lockManager: setup.run.deps.lockManager,
+    });
+    const id = testCreateId()<"EvoluInstance">();
+    await using _instance = await run.ok(acquireLeaderLock(id));
+    using evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+
+    setup.worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      id,
+      consoleLevel: "debug",
+      sqliteSchema: testSqliteSchema,
+      encryptionKey: testAppOwner.encryptionKey,
+      memoryOnly: false,
+      evoluPort: evoluChannel.port1.native,
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(setup.sharedWorkerOutputs, []);
+
+    // No DbWorker holds the database lock yet, so nothing is waited for.
+    await setup[Symbol.asyncDispose]();
+
+    // The build lock is free again.
+    await using _buildLock = await run.ok(acquireLeaderLock("tab"));
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
   });
 });
 
@@ -8043,6 +8236,45 @@ describe("with one evolu instance", () => {
       await disposing;
 
       assertTrue(disposed);
+    });
+
+    it("stops a replacement DbWorker that acquires the lock during tenant disposal", async () => {
+      await using setup = await setupSharedWorker();
+      await using disposer = new AsyncDisposableStack();
+      const { releaseDbWorkerLeader } = await setup.createEvolu({
+        releaseDbWorkerLeaderOnDispose: false,
+        autoDispose: false,
+      });
+      // A later tab leader hosts a replacement while the current DbWorker
+      // still runs, so the replacement waits for its lock.
+      const initDbWorker = await setupTabLeader(setup, disposer);
+      const replacementPort = disposer.use(
+        testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(initDbWorker.port),
+      );
+      const replacement = disposer.use(new AsyncDisposableStack());
+      const replacementInputs: Array<DbWorkerInput> = [];
+      replacementPort.onMessage = (input) => {
+        replacementInputs.push(input);
+        void replacement.disposeAsync();
+      };
+      const replacementRun = disposer.use(
+        testCreateRun({ lockManager: setup.run.deps.lockManager }),
+      );
+      const replacementLock = replacementRun.ok(acquireLeaderLock(testName));
+
+      const disposing = setup[Symbol.asyncDispose]();
+      await testWaitForWorkerMessage();
+      await releaseDbWorkerLeader();
+      replacement.use(await replacementLock);
+      replacementPort.postMessage({
+        type: "LeaderAcquired",
+        name: testName,
+        clock: createTimestamp(),
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(replacementInputs, [{ type: "Dispose" }]);
+      await disposing;
     });
 
     it("disposes cleanly when queued sync resumes during tenant disposal", async () => {

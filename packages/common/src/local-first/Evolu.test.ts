@@ -43,15 +43,21 @@ import {
   type EvoluInput,
   type EvoluOutput,
   type SharedWorker,
+  type SharedWorkerId,
   type SharedWorkerInput,
   type SharedWorkerOutput,
   type SyncState,
 } from "./Shared.ts";
-import { testCreateLockManager } from "../LockManager.ts";
+import {
+  acquireLeaderLock,
+  type LockManagerDep,
+  testCreateLockManager,
+} from "../LockManager.ts";
 import { installPolyfills } from "../Polyfills.ts";
 import { err, ok } from "../Result.ts";
 import { SqliteBoolean } from "../Sqlite.ts";
 import { explicitAbortReason, testCreateRun } from "../Task.ts";
+import { testCreateId } from "../Test.ts";
 import {
   assertType,
   createIdFromString,
@@ -224,6 +230,7 @@ describe("Evolu", () => {
   describe("createEvoluDeps", () => {
     const setupCreateEvoluDeps = async (
       console: TestConsole = testCreateConsole(),
+      lockManager: LockManagerDep["lockManager"] = testCreateLockManager(),
     ): Promise<{
       readonly deps: ReturnType<typeof createEvoluDeps>;
       readonly messages: Array<SharedWorkerInput>;
@@ -234,6 +241,11 @@ describe("Evolu", () => {
       readonly consoleEntryOrErrorBroadcastChannel: {
         readonly postMessage: (message: ConsoleEntryOrError) => void;
       };
+      /**
+       * Sends the worker's Connected message, as a worker holding its lock
+       * does.
+       */
+      readonly connect: (workerId: SharedWorkerId) => Promise<void>;
       readonly [Symbol.dispose]: () => void;
     }> => {
       using disposer = new DisposableStack();
@@ -258,7 +270,7 @@ describe("Evolu", () => {
           createDbWorker: testCreateWorker,
           createBroadcastChannel: testCreateBroadcastChannel,
           createMessageChannel: testCreateMessageChannel,
-          lockManager: testCreateLockManager(),
+          lockManager,
           sharedWorker: worker,
           reloadApp: constVoid,
           console,
@@ -267,9 +279,10 @@ describe("Evolu", () => {
 
       await testWaitForWorkerMessage();
 
-      assertLength(messages, 1);
-      assertSame(messages[0].type, "AnnounceTabLeader");
-      assertNotNull(sharedWorkerPort.value);
+      // A tab says nothing until its worker connects.
+      assertEqual(messages, []);
+      const port = sharedWorkerPort.value;
+      assertNotNull(port);
       const consoleEntryOrErrorBroadcastChannel = disposer.use(
         testCreateBroadcastChannel<ConsoleEntryOrError>(
           consoleEntryOrErrorBroadcastChannelName,
@@ -280,22 +293,56 @@ describe("Evolu", () => {
       return {
         deps,
         messages,
-        sharedWorkerPort: sharedWorkerPort.value,
+        sharedWorkerPort: port,
         consoleEntryOrErrorBroadcastChannel,
+        connect: async (workerId) => {
+          port.postMessage({
+            type: "Connected",
+            workerId,
+            syncStateChannelName: `evolu:sync-state:${workerId}`,
+          });
+          await testWaitForWorkerMessage();
+        },
         [Symbol.dispose]: () => disposables.dispose(),
       };
     };
 
-    it("posts AnnounceTabLeader with console level to worker", async () => {
+    it("announces itself as tab leader with its console level once its worker connects", async () => {
       const testConsole = testCreateConsole();
       using setup = await setupCreateEvoluDeps(testConsole);
-      const { messages } = setup;
+      const { messages, connect } = setup;
 
-      assertLength(messages, 1);
-      assertEqual(messages[0], {
-        type: "AnnounceTabLeader",
-        consoleLevel: testConsole.getLevel(),
-      });
+      await connect(testCreateId()<"SharedWorker">());
+
+      assertEqual(messages, [
+        { type: "RequestSyncState" },
+        { type: "AnnounceTabLeader", consoleLevel: testConsole.getLevel() },
+      ]);
+    });
+
+    it("competes for tab leadership only with tabs of its worker", async () => {
+      const lockManager = testCreateLockManager();
+      await using run = testCreateRun({ lockManager });
+      const createWorkerId = testCreateId();
+      const worker = createWorkerId<"SharedWorker">();
+      // The tab's worker holds this lock for its lifetime.
+      await using _workerBuildLock = await run.ok(acquireLeaderLock("tab"));
+      using first = await setupCreateEvoluDeps(undefined, lockManager);
+      using second = await setupCreateEvoluDeps(undefined, lockManager);
+      using ofOtherWorker = await setupCreateEvoluDeps(undefined, lockManager);
+      await first.connect(worker);
+      await second.connect(worker);
+      await ofOtherWorker.connect(createWorkerId<"SharedWorker">());
+      const isLeader = (setup: typeof first): boolean =>
+        setup.messages.some((message) => message.type === "AnnounceTabLeader");
+
+      assertTrue(isLeader(first));
+      assertFalse(isLeader(second));
+      assertTrue(isLeader(ofOtherWorker));
+
+      first[Symbol.dispose]();
+      await testWaitForWorkerMessage();
+      assertTrue(isLeader(second));
     });
 
     it("initializes db worker from shared worker init output", async () => {
@@ -389,6 +436,11 @@ describe("Evolu", () => {
           port.onMessage = (message) => {
             messages.push(message);
           };
+          port.postMessage({
+            type: "Connected",
+            workerId: testCreateId()<"SharedWorker">(),
+            syncStateChannelName: "evolu:sync-state:worker",
+          });
         };
         worker.connect();
 
@@ -404,8 +456,11 @@ describe("Evolu", () => {
         await testWaitForWorkerMessage();
 
         assertNotUndefined(deps.console);
-        assertLength(messages, 1);
-        assertSame(messages[0].type, "AnnounceTabLeader");
+        const messageTypes = ["RequestSyncState", "AnnounceTabLeader"];
+        assertEqual(
+          messages.map((message) => message.type),
+          messageTypes,
+        );
         using consoleEntryOrErrorBroadcastChannel =
           testCreateBroadcastChannel<ConsoleEntryOrError>(
             consoleEntryOrErrorBroadcastChannelName,
@@ -418,8 +473,10 @@ describe("Evolu", () => {
 
         await testWaitForWorkerMessage();
 
-        assertLength(messages, 1);
-        assertSame(messages[0].type, "AnnounceTabLeader");
+        assertEqual(
+          messages.map((message) => message.type),
+          messageTypes,
+        );
         assertEqual(deps.evoluError.get(), {
           type: "UnknownError",
           error: ["boom"],
@@ -452,9 +509,11 @@ describe("Evolu", () => {
 
     it("follows the sync state channel its worker names", async () => {
       using setup = await setupCreateEvoluDeps();
-      const { deps, messages, sharedWorkerPort } = setup;
-      const name = "evolu:sync-state:worker";
-      using channel = testCreateBroadcastChannel<SyncState>(name);
+      const { deps, messages, connect } = setup;
+      const workerId = testCreateId()<"SharedWorker">();
+      using channel = testCreateBroadcastChannel<SyncState>(
+        `evolu:sync-state:${workerId}`,
+      );
       using otherChannel = testCreateBroadcastChannel<SyncState>(
         "evolu:sync-state:other-worker",
       );
@@ -468,9 +527,8 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
       assertSame(deps.syncState.get(), null);
 
-      sharedWorkerPort.postMessage({ type: "SyncStateChannel", name });
-      await testWaitForWorkerMessage();
-      assertEqual(messages.at(-1), { type: "RequestSyncState" });
+      await connect(workerId);
+      assertEqual(messages.at(0), { type: "RequestSyncState" });
       channel.postMessage(createState("requested"));
       await testWaitForWorkerMessage();
       assertEqual(deps.syncState.get(), createState("requested"));
@@ -493,7 +551,11 @@ describe("Evolu", () => {
       >();
       worker.self.onConnect = (port) => {
         port.onMessage = constVoid;
-        port.postMessage({ type: "SyncStateChannel", name });
+        port.postMessage({
+          type: "Connected",
+          workerId: testCreateId()<"SharedWorker">(),
+          syncStateChannelName: name,
+        });
       };
       worker.connect();
       using channel = testCreateBroadcastChannel<SyncState>(name);
@@ -705,8 +767,9 @@ describe("Evolu", () => {
       worker.self.onConnect = (port) => {
         port.onMessage = constVoid;
         port.postMessage({
-          type: "SyncStateChannel",
-          name: "evolu:sync-state:worker",
+          type: "Connected",
+          workerId: testCreateId()<"SharedWorker">(),
+          syncStateChannelName: "evolu:sync-state:worker",
         });
       };
       worker.connect();

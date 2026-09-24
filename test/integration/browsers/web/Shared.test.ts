@@ -59,7 +59,10 @@ test("requestSync crosses browser worker ports while two clients retain the owne
     },
   );
   using cleanup = new DisposableStack();
-  cleanup.defer(() => output.close());
+  cleanup.defer(() => {
+    output.postMessage({ type: "Close" });
+    output.close();
+  });
 
   const setupClient = () =>
     createEvoluDeps({
@@ -135,7 +138,10 @@ test("a rejected encrypted change retains its error across browser worker ports"
     },
   );
   using cleanup = new DisposableStack();
-  cleanup.defer(() => output.close());
+  cleanup.defer(() => {
+    output.postMessage({ type: "Close" });
+    output.close();
+  });
   using deps = createEvoluDeps({
     console: createConsole({ level: "silent" }),
     createBroadcastChannel,
@@ -222,6 +228,12 @@ test("a rejected encrypted change retains its error across browser worker ports"
 
 test("a refused SharedWorker reports the error to a later client store", async () => {
   const workerName = `refusal-${crypto.randomUUID()}`;
+  const output = new BroadcastChannel(workerName);
+  using cleanup = new DisposableStack();
+  cleanup.defer(() => {
+    output.postMessage({ type: "Close" });
+    output.close();
+  });
   let dbWorkerCount = 0;
   const setupClient = () =>
     createEvoluDeps({
@@ -241,12 +253,11 @@ test("a refused SharedWorker reports the error to a later client store", async (
       },
       lockManager: navigator.locks,
       reloadApp: constVoid,
+      // The production Shared.worker.ts never releases the build lock, so the
+      // tests after this one would wait for it; the e2e suite covers it.
       sharedWorker: createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
         new SharedWorker(
-          new URL(
-            "../../../../packages/web/src/local-first/Shared.worker.ts",
-            import.meta.url,
-          ),
+          new URL("./workers/sync-shared-worker.ts", import.meta.url),
           { name: workerName, type: "module" },
         ),
       ),

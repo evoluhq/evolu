@@ -1,4 +1,5 @@
 import {
+  assertNonNullable,
   createConsole,
   createConsoleStoreOutput,
   createBroadcastChannel,
@@ -13,12 +14,14 @@ import {
   type ConsoleDep,
   type CreateSqliteDriverDep,
   type ReloadAppDep,
+  type SharedWorkerSelf,
 } from "@evolu/common";
 import type {
   CreateDbWorker,
   DbWorker,
   DbWorkerInit,
   EvoluDeps,
+  SharedWorker,
   SharedWorkerInput,
   SharedWorkerOutput,
 } from "@evolu/common/local-first";
@@ -28,6 +31,17 @@ import {
   startDbWorker,
 } from "@evolu/common/local-first";
 import { lockManager } from "./LockManager.ts";
+
+/**
+ * The in-process SharedWorker, one per JS runtime as a web SharedWorker is one
+ * per build per origin. It holds the build lock for the app's lifetime, so deps
+ * created again, for example after Fast Refresh, connect to it instead of
+ * starting a worker that would wait for that lock forever.
+ */
+let sharedWorkerSelf: SharedWorkerSelf<
+  SharedWorkerInput,
+  SharedWorkerOutput
+> | null = null;
 
 /** Creates Evolu dependencies for React Native. */
 export const createEvoluDeps = (
@@ -61,16 +75,32 @@ export const createEvoluDeps = (
       void dbWorkerRun(startDbWorker(self));
     });
 
-  const sharedWorker = createSharedWorker<
-    SharedWorkerInput,
-    SharedWorkerOutput
-  >((self) => {
-    const sharedWorkerRun = createWorkerRun();
-    void sharedWorkerRun(async (run) => {
-      await using _ = await run.ok(initSharedWorker(self));
-      return await run(waitForAbort);
-    });
-  });
+  let sharedWorker: SharedWorker;
+  if (sharedWorkerSelf) {
+    const channel = createMessageChannel<
+      SharedWorkerInput,
+      SharedWorkerOutput
+    >();
+    assertNonNullable(sharedWorkerSelf.onConnect);
+    sharedWorkerSelf.onConnect(channel.port2);
+    sharedWorker = {
+      port: channel.port1,
+      [Symbol.dispose]: () => {
+        channel[Symbol.dispose]();
+      },
+    };
+  } else {
+    sharedWorker = createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
+      (self) => {
+        sharedWorkerSelf = self;
+        const sharedWorkerRun = createWorkerRun();
+        void sharedWorkerRun(async (run) => {
+          await using _ = await run.ok(initSharedWorker(self));
+          return await run(waitForAbort);
+        });
+      },
+    );
+  }
 
   return createCommonEvoluDeps({
     ...deps,

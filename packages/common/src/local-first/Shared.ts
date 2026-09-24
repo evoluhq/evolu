@@ -1,6 +1,32 @@
 /**
  * Platform-agnostic Evolu SharedWorker.
  *
+ * ## Builds
+ *
+ * Tabs of different app builds can be open at once, for example an old tab
+ * during a deploy. Bundlers derive the worker script's URL from its content, so
+ * every build whose worker code differs gets its own SharedWorker, and all of
+ * them open the same databases. Only one may use them at a time: a request
+ * retried after another worker wrote from the same stored clock can reuse that
+ * write's timestamps and then is skipped as already stored.
+ *
+ * The worker therefore takes an origin-wide lock before it answers any tab and
+ * holds it for its lifetime. A worker of another build waits, with its tabs'
+ * messages buffered, until every tab of the first one is closed or reloaded and
+ * the browser ends it. The lock is the one that earlier releases take in their
+ * leader tab, so they are excluded too. An earlier release's worker can outlive
+ * its leader tab and resume once the lock is free; it computes new timestamps
+ * when it retries, so it cannot reuse another worker's.
+ *
+ * The tabs of one worker elect the host of its DbWorkers among themselves, with
+ * a lock scoped to the worker, so a tab of another worker never hosts them.
+ * Builds that differ only in DbWorker code share one SharedWorker, and a tab of
+ * either can host its DbWorkers.
+ *
+ * Safari suspends, rather than ends, a worker whose tabs are all in its
+ * back-forward cache, and the suspended worker keeps the lock. There, a waiting
+ * build also waits until Safari drops those pages.
+ *
  * ## Synchronization routing
  *
  * WebSocket transports are shared resources keyed by their configuration and
@@ -268,11 +294,14 @@ export type SharedWorkerOutput =
     }
   | {
       /**
-       * The name of the channel on which the worker broadcasts
-       * {@link SyncState}, sent to a connecting tab.
+       * Sent to a connecting tab once the worker holds the build lock; see
+       * Builds in this module's documentation. The tab elects the host of the
+       * worker's DbWorkers among the worker's tabs, scoped by `workerId`, and
+       * listens for {@link SyncState} on `syncStateChannelName`.
        */
-      readonly type: "SyncStateChannel";
-      readonly name: string;
+      readonly type: "Connected";
+      readonly workerId: SharedWorkerId;
+      readonly syncStateChannelName: string;
     };
 
 export type ConsoleEntryOrError =
@@ -836,6 +865,9 @@ interface TransportsDep {
 
 export type EvoluInstanceId = Id & Brand<"EvoluInstance">;
 
+/** Identifies one running SharedWorker instance. */
+export type SharedWorkerId = Id & Brand<"SharedWorker">;
+
 /** Initializes the platform-agnostic Evolu SharedWorker. */
 export const initSharedWorker =
   (
@@ -856,9 +888,10 @@ export const initSharedWorker =
     const postConsoleEntryOrError = (output: ConsoleEntryOrError): void => {
       consoleEntryOrErrorBroadcastChannel.postMessage(output);
     };
+    const workerId = createId<"SharedWorker">(deps);
     // Each worker broadcasts on its own channel, so a tab hears only the
     // worker its port connects to.
-    const syncStateChannelName = `evolu:sync-state:${createId(deps)}`;
+    const syncStateChannelName = `evolu:sync-state:${workerId}`;
     const syncStateBroadcastChannel = disposer.use(
       deps.createBroadcastChannel<SyncState>(syncStateChannelName),
     );
@@ -900,11 +933,16 @@ export const initSharedWorker =
           }
         };
         port.postMessage({
-          type: "SyncStateChannel",
-          name: syncStateChannelName,
+          type: "Connected",
+          workerId,
+          syncStateChannelName,
         });
       });
     };
+
+    // Released after every tenant and DbWorker is disposed. Earlier releases
+    // take the same lock in their leader tab; see Builds.
+    disposer.use(await run.ok(acquireLeaderLock("tab")));
 
     disposer.defer(
       deps.consoleStoreOutputEntry.subscribe(() => {
@@ -1382,9 +1420,10 @@ const createEvoluTenant =
     const dbWorkerInited = Promise.withResolvers<void>();
 
     const initDbWorker = (): void => {
-      if (startupError) return;
+      // Without a tab leader yet, the store subscription starts the DbWorker
+      // once a tab announces itself.
       const tabLeaderPort = deps.tabLeaderPortStore.get();
-      assertNonNullable(tabLeaderPort);
+      if (startupError || !tabLeaderPort) return;
 
       const dbWorkerChannel = deps.createMessageChannel<
         DbWorkerOutput,
@@ -1396,9 +1435,10 @@ const createEvoluTenant =
         switch (message.type) {
           case "LeaderAcquired": {
             assertNotSame(dbWorkerPort, currentDbWorkerPort);
-            if (startupError) {
-              // This worker was requested before the refusal. The tenant
-              // stays unavailable, so let it release the database lock.
+            if (startupError || isDisposing) {
+              // This worker was requested before the refusal or before
+              // disposal started. The tenant will not use it, so let it
+              // release the database lock.
               currentDbWorkerPort.postMessage({ type: "Dispose" });
               currentDbWorkerPort[Symbol.dispose]();
               break;
@@ -1621,6 +1661,7 @@ const createEvoluTenant =
 
     let sessionClock: Timestamp | null = null;
     let startupError: UnsupportedDbVersionError | null = null;
+    let isDisposing = false;
     // Each tab is told once during this tenant's lifetime, through its own
     // connection. Recreating the tenant after idle disposal retries startup
     // and may report the refusal again.
@@ -1666,6 +1707,7 @@ const createEvoluTenant =
     };
 
     disposer.defer(async () => {
+      isDisposing = true;
       dbWorkerPort?.postMessage({ type: "Dispose" });
       dbWorkerPort = null;
       activeDispatch = null;
@@ -1673,8 +1715,10 @@ const createEvoluTenant =
       // The DbWorker holds this tenant leader lock while it is alive. Tenant
       // disposal sends Dispose, then acquires the same lock to wait until the
       // DbWorker releases it: either because Dispose was delivered or because
-      // the hosting tab closed. The wait is unabortable because tenant disposal
-      // must finish even after tenantRun receives an abort request.
+      // the hosting tab closed. A worker requested from a later tab leader may
+      // be queued for the lock first; it is told to stop when it reports in.
+      // The wait is unabortable because tenant disposal must finish even after
+      // tenantRun receives an abort request.
       await using _ = await tenantRun.ok(acquireLeaderLock(name));
     });
 
@@ -2246,7 +2290,10 @@ const createEvoluTenant =
     // Initialize their state and helpers before starting it.
     disposer.defer(deps.tabLeaderPortStore.subscribe(initDbWorker));
     initDbWorker();
-    await dbWorkerInited.promise;
+    // Without a tab leader, requests queue until one announces itself and its
+    // DbWorker reports in. Waiting for that here would stall the registry's
+    // disposal, which cannot abort a resource still being created.
+    if (deps.tabLeaderPortStore.get()) await dbWorkerInited.promise;
 
     // Remove the tenant before any asynchronous disposal step can yield to a
     // snapshot or another tenant's route refresh.
@@ -2493,8 +2540,6 @@ const createEvoluTenant =
 
 // TODO: SharedWorker follow-ups.
 // - Complete the queue head when a DbWorker mutation returns an error.
-// - Ensure a single active SharedWorker across app versions and deployments,
-//   including when bundling changes the worker script URL.
 // - Rotate the node ID when a copied database is detected; see the Duplicate
 //   node IDs section in the Timestamp module.
 // - Detect DbWorker and port liveness so a worker-only crash resumes the queue.

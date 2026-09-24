@@ -12,16 +12,16 @@ interpreted. It is independent of the application schema, which still evolves
 append-only, and of the network protocol version. This release supports
 database version 2 and migrates older databases to it at startup.
 
-A newer database appears in two situations. After a deployment, a tab running
-the new app version migrates the database while an older tab is still open or
-a cached older build loads; when that older tab later hosts the database
-worker, its code meets a database it does not understand, which is why the
-recovery is closing all tabs rather than reloading one. Or the app is
-downgraded, including installing an older React Native build, after a newer
-version migrated the local data; then only the newer app helps. Only code from
-this release onward checks the version, so releases before it cannot be
-protected. Nothing produces a newer database yet: the first refusal can occur
-when a later release introduces version 3, so handle the error now.
+A newer database appears in two situations. After a deployment, the new app
+version migrates the database, and an older build then opens it, for example
+one loaded later from a cache. Its shared worker keeps running while any of its
+tabs is open, which is why the recovery is closing all tabs rather than
+reloading one. Or the app is downgraded, including installing an older React
+Native build, after a newer version migrated the local data; then only the newer
+app helps. Only code from this release onward checks the version, so releases
+before it cannot be protected. Nothing produces a newer database yet: the first
+refusal can occur when a later release introduces version 3, so handle the error
+now.
 
 A database whose version is newer than the code supports is refused before
 Evolu reads the clock, touches the application schema, or replays quarantine.

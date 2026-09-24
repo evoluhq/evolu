@@ -62,7 +62,7 @@ export const createEvoluDeps = (
               switch (message.type) {
                 case "DbWorkerInit":
                 case "Error":
-                case "SyncStateChannel": {
+                case "Connected": {
                   fn(message);
                   break;
                 }
