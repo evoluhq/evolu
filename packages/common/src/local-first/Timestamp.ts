@@ -170,9 +170,10 @@
  * It is an {@link EvoluError}. The application tells the user to fix the clock
  * and restart the app. On receipt, the batch is not written and the connection
  * continues; the timestamps are missing from the owner's set, so range
- * reconciliation resends the batch when a connection opens, as after a restart
- * or a reconnect. A manual sync trigger, planned as a public API, will allow
- * that without reconnecting. A local mutation that hits it is rolled back and
+ * reconciliation resends the batch in a later round. The shared worker requests
+ * one round after the failure; after that, a round runs when a connection
+ * opens, as after a restart or a reconnect, or when the application calls
+ * {@link Evolu.requestSync}. A local mutation that hits it is rolled back and
  * reported, but the database worker posts no queued response for it, so the
  * shared worker never completes that request: later requests for the database
  * wait, the mutation's completion callbacks stay registered, and replacing the
@@ -261,7 +262,7 @@ import {
   type Typed,
   Uint8Array,
 } from "../Type.ts";
-import type { EvoluError } from "./Evolu.ts";
+import type { Evolu, EvoluError } from "./Evolu.ts";
 
 export interface TimestampConfig {
   /**
