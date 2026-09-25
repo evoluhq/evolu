@@ -4438,7 +4438,9 @@ describe("transform", () => {
     const erased: FormattableTypeNode = PositiveNumber;
 
     void (() => {
-      // @ts-expect-error A parent must preserve its concrete Type.
+      // An erased parent exposes every error type, so the name check rejects it
+      // before the concrete Type check.
+      // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
       transform("ErasedParent", erased, Number, {
         from: () => ok(42),
         to: () => 42,
@@ -4462,7 +4464,7 @@ describe("transform", () => {
       parent: Parent,
       output: Output,
     ): readonly [Parent, Output] => {
-      // @ts-expect-error An unresolved generic parent might be a union.
+      // @ts-expect-error The name cannot be checked against an unresolved generic parent.
       transform("GenericParent", parent, Number, {
         from: () => ok(1),
         to: () => "1",
@@ -4473,6 +4475,23 @@ describe("transform", () => {
         to: (value) => value,
       });
       return [parent, output];
+    });
+  });
+
+  it("rejects a union of parent Types", () => {
+    const parent = String as typeof String | typeof TrimmedString;
+
+    void (() => {
+      transform(
+        "UnionParent",
+        // @ts-expect-error Parent must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+        parent,
+        Number,
+        {
+          from: () => ok(1),
+          to: () => "1",
+        },
+      );
     });
   });
 
