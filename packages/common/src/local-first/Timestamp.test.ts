@@ -6,6 +6,7 @@ import {
   assertNotSame,
   assertOk,
   assertSame,
+  assertThrowsInstanceOf,
   assertTrue,
 } from "../Assert.ts";
 import { increment } from "../Number.ts";
@@ -20,7 +21,6 @@ import type {
   TimestampBytes,
   TimestampConfigDep,
   TimestampDriftError,
-  TimestampTimeOutOfRangeError,
 } from "./Timestamp.ts";
 import {
   Counter,
@@ -576,7 +576,7 @@ describe("timestamp rollover boundaries", () => {
       );
     });
 
-    it(`${operation} permits the maximum millis and rejects rollover beyond it`, () => {
+    it(`${operation} permits the maximum millis and throws on rollover beyond it`, () => {
       const deps = {
         timestampConfig: { maxDrift: defaultTimestampMaxDrift },
         time: testCreateTime({ startAt: makeMillis(maxMillis - 1) }),
@@ -591,13 +591,12 @@ describe("timestamp rollover boundaries", () => {
         ),
         createTimestamp({ millis: maxMillis }),
       );
-      assertErr(
+      assertThrowsInstanceOf(() => {
         nextTimestamp(
           deps,
           createTimestamp({ millis: maxMillis, counter: maxCounter }),
-        ),
-        { type: "TimestampTimeOutOfRangeError" },
-      );
+        );
+      }, Error);
     });
 
     it(`${operation} checks rollover against the captured time`, () => {
@@ -618,11 +617,11 @@ describe("timestamp rollover boundaries", () => {
   it("exposes the failures of each operation", () => {
     assertType<
       ReturnType<ReturnType<typeof sendTimestamp>>,
-      Result<Timestamp, TimestampDriftError | TimestampTimeOutOfRangeError>
+      Result<Timestamp, TimestampDriftError>
     >();
     assertType<
       ReturnType<ReturnType<typeof receiveTimestamp>>,
-      Result<Timestamp, TimestampDriftError | TimestampTimeOutOfRangeError>
+      Result<Timestamp, TimestampDriftError>
     >();
     assertType<Parameters<typeof sendTimestamp>, [TimestampConfigDep]>();
     assertType<

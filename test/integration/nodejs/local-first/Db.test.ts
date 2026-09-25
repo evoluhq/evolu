@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
 import type { NonEmptyReadonlyArray } from "../../../../packages/common/src/Array.ts";
 import {
+  assert,
   assertEqual,
   assertErr,
   assertFalse,
@@ -457,6 +458,39 @@ const setupDbWorker = async ({
     workerName,
     [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
+};
+
+/** Starts a DbWorker on `dbSetup` and returns how its run ends. */
+const startDbWorkerUntilDone = async (dbSetup: DbSetup) => {
+  const self: WorkerSelf<DbWorkerInit> = {
+    postMessage: constVoid,
+    onMessage: null,
+    native: {} as WorkerSelf<DbWorkerInit>["native"],
+    [Symbol.dispose]: constVoid,
+  };
+  await using run = testCreateRun({
+    console: testCreateConsole({ level: "silent" }),
+    consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
+    createBroadcastChannel: testCreateBroadcastChannel,
+    createMessagePort,
+    lockManager: testCreateLockManager(),
+    createSqliteDriver: dbSetup.createSqliteDriver,
+    time: dbSetup.time,
+  });
+  // Returns a panic as an Err instead of rejecting.
+  const done = run.abortable(startDbWorker(self));
+  using channel = testCreateMessageChannel<DbWorkerOutput, DbWorkerInput>();
+  while (!self.onMessage) await testWaitForWorkerMessage();
+  self.onMessage({
+    type: "DbWorkerInit",
+    name: dbSetup.name,
+    consoleLevel: "silent",
+    sqliteSchema: defaultSqliteSchema,
+    encryptionKey: testAppOwner.encryptionKey,
+    memoryOnly: true,
+    port: channel.port1.native,
+  });
+  return await done;
 };
 
 const readStoredClock = (setup: DbWorkerSetup): Timestamp => {
@@ -4965,97 +4999,6 @@ const snapshotWithoutConfig = (
   tables: snapshot.tables.filter((table) => table.name !== "evolu_config"),
 });
 
-describe("timestamp range errors", () => {
-  it("reports a sync range error without storing the batch and still responds", async () => {
-    await using setup = await setupDbWorker();
-    const clock = {
-      ...setup.getClock(),
-      millis: maxMillis,
-      counter: maxCounter,
-    };
-    const now = setup.time.now();
-    setup.sqlite.exec(sql`
-      update evolu_config set clock = ${timestampToTimestampBytes(clock)};
-    `);
-    const before = getSqliteSnapshot(setup);
-    const inputMessage = await createBroadcastProtocolMessage([
-      {
-        // The remote timestamp passes drift checking; the local clock overflows.
-        timestamp: createTimestamp({ millis: now }),
-        change: DbChange.orThrow({
-          table: "testTable",
-          id: setup.createId(),
-          values: { name: "overflow" },
-          isInsert: true,
-          isDelete: null,
-        }),
-      },
-    ]);
-    const response = getQueuedSharedWorkerMessage(
-      await postRequest(
-        setup,
-        setupApplySyncRequest(inputMessage),
-        setup.createId(),
-        "response",
-        { clock, now },
-      ),
-      "ApplySyncMessage",
-    );
-    await testWaitForWorkerMessage();
-
-    assertEqual(setup.consoleEntryOrErrors, []);
-    assertErr(response.result, { type: "TimestampTimeOutOfRangeError" });
-    assertFalse(response.didWriteMessages);
-    assertEqual(response.clock, clock);
-    assertEqual(getSqliteSnapshot(setup), before);
-  });
-
-  it("reports a mutation range error, rolls back preceding writes, and sends no queued response", async () => {
-    await using setup = await setupDbWorker();
-    const clock = {
-      ...setup.getClock(),
-      millis: maxMillis,
-      counter: maxCounter,
-    };
-    const now = setup.time.now();
-    setup.sqlite.exec(sql`
-      update evolu_config set clock = ${timestampToTimestampBytes(clock)};
-    `);
-    const before = getSqliteSnapshot(setup);
-    const request = setupMutateRequest(setup.evoluInstanceId, [
-      createMutationChange({
-        table: "_localTable",
-        id: setup.createId(),
-        values: { value: "rolled back" },
-        isInsert: true,
-        isDelete: null,
-      }),
-      createMutationChange({
-        table: "testTable",
-        id: setup.createId(),
-        values: { name: "overflow" },
-        isInsert: true,
-        isDelete: null,
-      }),
-    ]);
-    const outputs = await postRequest(
-      setup,
-      request,
-      setup.createId(),
-      "activity",
-      { clock, now },
-    );
-    await testWaitForWorkerMessage();
-
-    assertEqual(setup.consoleEntryOrErrors, [
-      { type: "Error", error: { type: "TimestampTimeOutOfRangeError" } },
-    ]);
-    assertEqual(outputs, []);
-    assertEqual(setup.outputs, []);
-    assertEqual(getSqliteSnapshot(setup), before);
-  });
-});
-
 describe("clock drift quarantine", () => {
   for (const origin of ["local", "incoming"] as const) {
     it(`stores and forwards ${origin} drift, preserves retries, and releases it on restart once system time catches up`, async () => {
@@ -5527,7 +5470,7 @@ describe("clock drift quarantine", () => {
   for (const exhaustedCounter of [false, true]) {
     it(
       exhaustedCounter
-        ? "preserves quarantine when startup release would overflow the timestamp range"
+        ? "throws at startup and keeps quarantine when release would overflow the timestamp range"
         : "releases quarantine at maxMillis when the drift limit extends beyond it",
       async () => {
         await using dbSetup = await setupDb();
@@ -5582,15 +5525,45 @@ describe("clock drift quarantine", () => {
 
         // Valid system time plus the drift allowance exceeds maxMillis.
         dbSetup.time.advance(Millis.orThrow(maxMillis - 1));
+
+        if (exhaustedCounter) {
+          // Releasing would roll the counter past the ceiling, which only a
+          // clock this broken reaches, so startup throws and rolls back.
+          const before = getSqliteSnapshot(dbSetup);
+          const result = await startDbWorkerUntilDone(dbSetup);
+          assert(!result.ok, "Startup should fail.");
+          assertSame(result.error.type, "AbortError");
+          assertSame(result.error.reason.type, "PanicAbortReason");
+          assertEqual(getSqliteSnapshot(dbSetup), before);
+          assertEqual(
+            dbSetup.sqlite.exec(sql`
+              select "value", "reason"
+              from evolu_message_quarantine
+              where "column" = 'name'
+              order by "timestamp";
+            `).rows,
+            [
+              {
+                value: "releasable prefix",
+                reason: QuarantineReason.TimestampDrift,
+              },
+              { value: "ceiling", reason: QuarantineReason.TimestampDrift },
+            ],
+          );
+          return;
+        }
+
         await using restarted = await setupDbWorker({ dbSetup });
-        const expectedClock = exhaustedCounter
-          ? initialClock
-          : { ...initialClock, millis: maxMillis, counter: Counter.orThrow(1) };
+        const expectedClock = {
+          ...initialClock,
+          millis: maxMillis,
+          counter: Counter.orThrow(1),
+        };
         assertEqual(restarted.getClock(), expectedClock);
         assertEqual(readStoredClock(restarted), expectedClock);
         assertEqual(
           restarted.sqlite.exec(sql`select name from testTable;`).rows,
-          exhaustedCounter ? [] : [{ name: "ceiling" }],
+          [{ name: "ceiling" }],
         );
         assertEqual(
           restarted.sqlite.exec(sql`
@@ -5599,15 +5572,7 @@ describe("clock drift quarantine", () => {
             where "column" = 'name'
             order by "timestamp";
           `).rows,
-          exhaustedCounter
-            ? [
-                {
-                  value: "releasable prefix",
-                  reason: QuarantineReason.TimestampDrift,
-                },
-                { value: "ceiling", reason: QuarantineReason.TimestampDrift },
-              ]
-            : [],
+          [],
         );
         assertEqual(restarted.consoleEntryOrErrors, []);
       },

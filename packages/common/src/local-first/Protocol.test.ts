@@ -977,16 +977,17 @@ describe("E2E errors", () => {
     assertEqual(quota.logged, []);
     // Any other storage rejection is a relay write failure, not a quota, and
     // the relay logs its cause.
-    const other = await relayResponseFor({
-      type: "TimestampTimeOutOfRangeError",
-    });
+    const mismatch: StorageWriteMessagesError = {
+      type: "ProtocolTimestampMismatchError",
+      expected: timestampBytesToTimestamp(testTimestampsAsc[0]),
+      timestamp: timestampBytesToTimestamp(testTimestampsAsc[1]),
+    };
+    const other = await relayResponseFor(mismatch);
     assertEqual(
       await run(applyProtocolMessageAsClient(other.message)),
       err({ type: "ProtocolWriteError", ownerId: testAppOwner.id }),
     );
-    assertEqual(other.logged, [
-      { method: "error", args: [{ type: "TimestampTimeOutOfRangeError" }] },
-    ]);
+    assertEqual(other.logged, [{ method: "error", args: [mismatch] }]);
   });
 });
 
@@ -1248,7 +1249,6 @@ describe("applyProtocolMessageAsClient results", () => {
         timestamp: timestampBytesToTimestamp(testTimestampsAsc[1]),
       },
       { type: "StorageQuotaError", ownerId: testAppOwner.id },
-      { type: "TimestampTimeOutOfRangeError" },
     ];
 
     for (const error of errors) {

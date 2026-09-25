@@ -49,7 +49,7 @@ import { constFalse, constVoid } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import { acquireLeaderLock } from "../LockManager.ts";
 import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
-import { err, ok, type Result } from "../Result.ts";
+import { err, getOk, ok, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
   SqliteDep,
@@ -132,7 +132,7 @@ import {
   type CrdtMessage,
   type Storage,
 } from "./Storage.ts";
-import type { Timestamp, TimestampTimeOutOfRangeError } from "./Timestamp.ts";
+import type { Timestamp } from "./Timestamp.ts";
 import {
   createInitialTimestamp,
   defaultTimestampMaxDrift,
@@ -362,21 +362,13 @@ export const startDbWorker =
                 return ok();
               });
             } else {
-              const result = handleMutation({
-                ...dbDeps,
-                clock: context.clock,
-              })(request.message, now);
-              if (!result.ok) {
-                consoleEntryOrErrorBroadcastChannel.postMessage({
-                  type: "Error",
-                  error: result.error,
-                });
-                return;
-              }
               postQueuedResponse({
                 type: "ForEvolu",
                 id: request.id,
-                message: result.value,
+                message: handleMutation({
+                  ...dbDeps,
+                  clock: context.clock,
+                })(request.message, now),
               });
             }
             return;
@@ -740,11 +732,10 @@ const tryApplyQuarantinedMessages = (
  * Moves drift quarantine within the drift limit to schema quarantine for
  * application. Advances `clock` once per distinct timestamp in timestamp order,
  * using one captured system time, so later local changes sort after released
- * messages. Only timestamps within the drift limit are loaded. A range error
- * releases nothing. Returns the advanced clock, or `null` when nothing was
- * released. Runs inside the startup transaction, before saving the clock and
- * applying schema quarantine, so the SharedWorker learns the clock only after
- * release commits.
+ * messages. Only timestamps within the drift limit are loaded. Returns the
+ * advanced clock, or `null` when nothing was released. Runs inside the startup
+ * transaction, before saving the clock and applying schema quarantine, so the
+ * SharedWorker learns the clock only after release commits.
  */
 const releaseDriftQuarantine =
   (deps: SqliteDep & TimeDep & TimestampConfigDep) =>
@@ -776,15 +767,12 @@ const releaseDriftQuarantine =
       const next = receive(nextClock, remote, now);
       if (next.ok) {
         nextClock = next.value;
-      } else if (next.error.type === "TimestampDriftError") {
+      } else {
         assert(
           next.error.cause === "local",
           "The query bound excludes remote drift at the captured time.",
         );
         nextClock = next.error.timestamp;
-      } else {
-        // Every selected row stays quarantined on a range error.
-        return null;
       }
     }
 
@@ -940,8 +928,6 @@ const createClientStorage = (
       for (const message of messages) {
         const nextTimestamp = receive(clockTimestamp, message.timestamp, now);
         if (!nextTimestamp.ok) {
-          if (nextTimestamp.error.type !== "TimestampDriftError")
-            return err(nextTimestamp.error);
           if (nextTimestamp.error.cause === "remote") continue;
           clockTimestamp = nextTimestamp.error.timestamp;
         } else clockTimestamp = nextTimestamp.value;
@@ -1033,66 +1019,66 @@ const handleMutation =
   (
     message: ExtractTyped<EvoluInput, "Mutate">,
     now: Millis,
-  ): Result<
-    {
-      readonly type: "Mutate";
-      readonly clock: Timestamp;
-      readonly messagesByOwnerId: ReadonlyMap<
-        OwnerId,
-        NonEmptyReadonlyArray<CrdtMessage>
-      >;
-      readonly rowsByQuery: RowsByQueryMap;
-    },
-    TimestampTimeOutOfRangeError
-  > =>
-    deps.sqlite.transaction(() => {
-      const messagesByOwnerId = new Map<OwnerId, NonEmptyArray<CrdtMessage>>();
-      let clockTimestamp = deps.clock.get();
+  ): {
+    readonly type: "Mutate";
+    readonly clock: Timestamp;
+    readonly messagesByOwnerId: ReadonlyMap<
+      OwnerId,
+      NonEmptyReadonlyArray<CrdtMessage>
+    >;
+    readonly rowsByQuery: RowsByQueryMap;
+  } =>
+    getOk(
+      deps.sqlite.transaction(() => {
+        const messagesByOwnerId = new Map<
+          OwnerId,
+          NonEmptyArray<CrdtMessage>
+        >();
+        let clockTimestamp = deps.clock.get();
 
-      for (const change of message.changes) {
-        if (isLocalOnlyTable(change.table)) {
-          applyLocalOnlyChange(deps)(change, now);
-          continue;
+        for (const change of message.changes) {
+          if (isLocalOnlyTable(change.table)) {
+            applyLocalOnlyChange(deps)(change, now);
+            continue;
+          }
+
+          // A drifted change still receives the next timestamp; applyMessages
+          // stores it in quarantine instead of its table.
+          const nextTimestamp = sendTimestamp(deps)(clockTimestamp, now);
+          clockTimestamp = nextTimestamp.ok
+            ? nextTimestamp.value
+            : nextTimestamp.error.timestamp;
+
+          const { ownerId, ...dbChange } = change;
+          const message: CrdtMessage = {
+            timestamp: clockTimestamp,
+            change: dbChange,
+          };
+
+          const messages = messagesByOwnerId.get(ownerId);
+          if (messages) messages.push(message);
+          else messagesByOwnerId.set(ownerId, [message]);
         }
 
-        // A drifted change still receives the next timestamp; applyMessages
-        // stores it in quarantine instead of its table.
-        const nextTimestamp = sendTimestamp(deps)(clockTimestamp, now);
-        if (!nextTimestamp.ok) {
-          if (nextTimestamp.error.type !== "TimestampDriftError")
-            return err(nextTimestamp.error);
-          clockTimestamp = nextTimestamp.error.timestamp;
-        } else clockTimestamp = nextTimestamp.value;
+        for (const [ownerId, messages] of messagesByOwnerId) {
+          applyMessages(deps)(
+            ownerId,
+            messages,
+            QuarantineOrigin.LocalMutation,
+            now,
+          );
+        }
 
-        const { ownerId, ...dbChange } = change;
-        const message: CrdtMessage = {
-          timestamp: clockTimestamp,
-          change: dbChange,
-        };
+        if (messagesByOwnerId.size > 0) saveClock(deps)(clockTimestamp);
 
-        const messages = messagesByOwnerId.get(ownerId);
-        if (messages) messages.push(message);
-        else messagesByOwnerId.set(ownerId, [message]);
-      }
-
-      for (const [ownerId, messages] of messagesByOwnerId) {
-        applyMessages(deps)(
-          ownerId,
-          messages,
-          QuarantineOrigin.LocalMutation,
-          now,
-        );
-      }
-
-      if (messagesByOwnerId.size > 0) saveClock(deps)(clockTimestamp);
-
-      return ok({
-        type: "Mutate",
-        clock: clockTimestamp,
-        messagesByOwnerId,
-        rowsByQuery: loadQueries(deps)(message.subscribedQueries),
-      });
-    });
+        return ok({
+          type: "Mutate",
+          clock: clockTimestamp,
+          messagesByOwnerId,
+          rowsByQuery: loadQueries(deps)(message.subscribedQueries),
+        });
+      }),
+    );
 
 const applyLocalOnlyChange =
   (deps: SqliteDep) =>

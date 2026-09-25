@@ -69,12 +69,7 @@ import {
   testCreateCrdtMessage,
   type StorageWriteMessagesError,
 } from "./Storage.ts";
-import {
-  createTimestamp,
-  maxCounter,
-  maxNodeId,
-  type Timestamp,
-} from "./Timestamp.ts";
+import { createTimestamp, maxNodeId, type Timestamp } from "./Timestamp.ts";
 import { acquireLeaderLock, testCreateLockManager } from "../LockManager.ts";
 import { installPolyfills } from "../Polyfills.ts";
 import { ok } from "../Result.ts";
@@ -85,7 +80,6 @@ import { AbortError, sleep, testCreateDeps, testCreateRun } from "../Task.ts";
 import { testCreateId } from "../Test.ts";
 import {
   durationToMillis,
-  maxMillis,
   Millis,
   millisToDateIso,
   testCreateTime,
@@ -2048,7 +2042,6 @@ describe("sync state", () => {
         timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
       },
       { type: "StorageQuotaError", ownerId: testAppOwner.id },
-      { type: "TimestampTimeOutOfRangeError" },
     ];
     const failedApplies = [
       ...writeErrors.map((error) => ({
@@ -5118,59 +5111,6 @@ describe("with one evolu instance", () => {
           },
         },
       });
-    });
-
-    it("keeps later requests queued when a mutation reports a range error without responding", async () => {
-      await using setup = await setupSharedWorker();
-      const clock = createTimestamp({ millis: maxMillis, counter: maxCounter });
-      const { dbInputs, evoluChannel } = await setup.createEvolu({
-        initialClock: clock,
-      });
-      const outputs: Array<EvoluOutput> = [];
-      evoluChannel.port2.onMessage = (output) => {
-        outputs.push(output);
-      };
-      evoluChannel.port2.postMessage({
-        type: "Mutate",
-        changes: [
-          {
-            ownerId: testAppOwner.id,
-            ...DbChange.orThrow({
-              table: "todo",
-              id: createId(setup.run.deps),
-              values: { title: "overflow" },
-              isInsert: true,
-              isDelete: null,
-            }),
-          },
-        ],
-        onCompleteIds: [createId(setup.run.deps)],
-        subscribedQueries: new Set(),
-      });
-      await testWaitForWorkerMessage();
-      assertLength(dbInputs, 1);
-      const mutation = dbInputs[0];
-      assertTrue("clock" in mutation);
-      assertEqual(mutation.clock, clock);
-      assertSame(mutation.request.message.type, "Mutate");
-
-      // The DbWorker broadcasts this error without completing the request.
-      using errors = testCreateBroadcastChannel<ConsoleEntryOrError>(
-        consoleEntryOrErrorBroadcastChannelName,
-      );
-      errors.postMessage({
-        type: "Error",
-        error: { type: "TimestampTimeOutOfRangeError" },
-      });
-      evoluChannel.port2.postMessage({
-        type: "Query",
-        queries: createSet([testQuery]),
-      });
-      setup.run.deps.time.advance("10s");
-      await testWaitForWorkerMessage();
-
-      assertEqual(dbInputs, [mutation]);
-      assertEqual(outputs, []);
     });
 
     it("starts the next queued request after the first response arrives", async () => {

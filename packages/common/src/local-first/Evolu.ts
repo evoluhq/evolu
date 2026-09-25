@@ -91,7 +91,7 @@ import type {
 } from "./Shared.ts";
 import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
 import { DbChange, type StorageQuotaError } from "./Storage.ts";
-import type { Timestamp, TimestampTimeOutOfRangeError } from "./Timestamp.ts";
+import type { Timestamp } from "./Timestamp.ts";
 
 /**
  * Configuration for {@link createEvolu}.
@@ -823,7 +823,6 @@ export type EvoluError =
   | OtherBuildRunningError
   | ProtocolError
   | StorageQuotaError
-  | TimestampTimeOutOfRangeError
   | UnknownError
   | UnsupportedDbVersionError;
 

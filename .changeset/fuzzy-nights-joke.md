@@ -44,16 +44,15 @@ Local-only mutations avoid clock persistence. Duplicate deliveries skip message
 writes, and duplicate-only batches avoid rewriting owner usage. Clock persistence
 uses one guarded update, including on replay.
 
-Recovery APIs for messages further ahead remain future work. Range exhaustion
-at the timestamp ceiling still leaves a local mutation's queue waiting. Copied
+Recovery APIs for messages further ahead remain future work. Copied
 databases sharing an owner and node ID remain unsupported and can silently lose
 colliding changes even when `onComplete` fires. See the Timestamp module
 documentation for these limitations and the detailed drift and release rules.
 
 `sendTimestamp` and `receiveTimestamp` now take captured system time as an
 explicit `Millis` argument. Their dependencies contain only drift configuration.
-Both return `TimestampError` for drift or range exhaustion, including after
-counter rollover. Success means the resulting timestamp is within both limits.
+Both return `TimestampError` for drift, including after counter rollover.
+Success means the resulting timestamp is within the drift limit.
 `receiveTimestamp` also rejects remote drift before clock arithmetic.
 
 `TimestampDriftError.timestamp` replaces `next` with the complete timestamp,

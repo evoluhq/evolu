@@ -117,5 +117,4 @@ export type {
   TimestampBytes,
   TimestampDriftError,
   TimestampError,
-  TimestampTimeOutOfRangeError,
 } from "./local-first/Timestamp.ts";

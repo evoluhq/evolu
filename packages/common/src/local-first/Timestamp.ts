@@ -85,24 +85,23 @@
  * quarantined only when its own timestamp exceeds system time by more than the
  * limit. `receiveTimestamp` rejects that timestamp before calculating the next
  * clock, so the message keeps its original timestamp, quarantining it does not
- * advance the local clock, and a timestamp at the range ceiling is quarantined
- * rather than failing its batch with a range error. For a message within the
- * limit, the database applies the message and persists the next clock even if
- * an already-ahead local clock or counter rollover produces a timestamp beyond
- * the limit. An ahead local clock surfaces through local changes. A message
- * whose timestamp is already in the owner's set is not written again: it was
- * applied or quarantined before, and a duplicate cannot change that decision.
- * Quarantined messages count as stored for sync and can be forwarded normally;
- * each receiving device decides whether to apply or quarantine them. A
- * quarantined timestamp far in the future also becomes the owner's last stored
- * timestamp on every device and relay that stores it, so their later timestamps
- * take the slower insert path of the timestamp skiplist instead of append until
- * system time passes it. One device whose clock is set ahead is enough to cause
- * this for the whole owner. The cost is a constant factor per stored message,
- * the `insert` versus `append` workloads of the storage benchmark; ordering and
- * sync are unaffected. Relays store and forward messages without checking clock
- * drift: acceptance belongs to clients and must not depend on an honest relay
- * or its system clock.
+ * advance the local clock. For a message within the limit, the database applies
+ * the message and persists the next clock even if an already-ahead local clock
+ * or counter rollover produces a timestamp beyond the limit. An ahead local
+ * clock surfaces through local changes. A message whose timestamp is already in
+ * the owner's set is not written again: it was applied or quarantined before,
+ * and a duplicate cannot change that decision. Quarantined messages count as
+ * stored for sync and can be forwarded normally; each receiving device decides
+ * whether to apply or quarantine them. A quarantined timestamp far in the
+ * future also becomes the owner's last stored timestamp on every device and
+ * relay that stores it, so their later timestamps take the slower insert path
+ * of the timestamp skiplist instead of append until system time passes it. One
+ * device whose clock is set ahead is enough to cause this for the whole owner.
+ * The cost is a constant factor per stored message, the `insert` versus
+ * `append` workloads of the storage benchmark; ordering and sync are
+ * unaffected. Relays store and forward messages without checking clock drift:
+ * acceptance belongs to clients and must not depend on an honest relay or its
+ * system clock.
  *
  * Quarantine does not itself make sync fail: completing sync does not mean
  * every stored message has been applied to application tables.
@@ -159,30 +158,13 @@
  * old owner is abandoned. How relays treat an abandoned owner is not specified
  * yet.
  *
- * ### Range error
+ * ### Range ceiling
  *
- * {@link TimestampTimeOutOfRangeError} means counter rollover would move the
- * next logical timestamp past the {@link Millis} ceiling. `receiveTimestamp`
- * checks remote drift before arithmetic, so a far-future message is quarantined
- * before it can cause a range error. With ordinary system time and stored
- * timestamps, the database does not approach the range ceiling.
- *
- * It is an {@link EvoluError}. The application tells the user to fix the clock
- * and restart the app. On receipt, the batch is not written and the connection
- * continues; the timestamps are missing from the owner's set, so range
- * reconciliation resends the batch in a later round. The shared worker requests
- * one round after the failure; after that, a round runs when a connection
- * opens, as after a restart or a reconnect, or when the application calls
- * {@link Evolu.requestSync}. A local mutation that hits it is rolled back and
- * reported, but the database worker posts no queued response for it, so the
- * shared worker never completes that request: later requests for the database
- * wait, the mutation's completion callbacks stay registered, and replacing the
- * leader replays the request with the captured system time and fails the same
- * way; a restart discards the queue and the mutation. This is left as is
- * because the condition is unreachable with a real system clock. Completing the
- * queue requires a rejection response from the database worker that the shared
- * worker turns into queue completion and releases the mutation's completion
- * callbacks without invoking them.
+ * Counter rollover past the {@link Millis} ceiling, in August 10889, throws. The
+ * clock can get there only if the system clock came within the drift limit of
+ * the ceiling or the stored clock was tampered with, because `receiveTimestamp`
+ * checks remote drift before clock arithmetic. Such a clock is as broken as one
+ * past the ceiling, which {@link Millis} already rejects by throwing.
  *
  * ### Duplicate node IDs
  *
@@ -262,7 +244,6 @@ import {
   type Typed,
   Uint8Array,
 } from "../Type.ts";
-import type { Evolu, EvoluError } from "./Evolu.ts";
 
 export interface TimestampConfig {
   /**
@@ -281,7 +262,7 @@ export interface TimestampConfigDep {
 }
 
 /** Errors from advancing a {@link Timestamp}. */
-export type TimestampError = TimestampDriftError | TimestampTimeOutOfRangeError;
+export type TimestampError = TimestampDriftError;
 
 /**
  * A timestamp exceeds {@link TimestampConfig.maxDrift}.
@@ -301,8 +282,6 @@ export interface TimestampDriftError extends Typed<"TimestampDriftError"> {
   /** Captured system time used for the drift check. */
   readonly now: Millis;
 }
-
-export interface TimestampTimeOutOfRangeError extends Typed<"TimestampTimeOutOfRangeError"> {}
 
 export const Counter = /*#__PURE__*/ brand(
   "Counter",
@@ -496,8 +475,8 @@ export const createInitialTimestamp = (deps: RandomBytesDep): Timestamp => {
 /**
  * Advances a {@link Timestamp} for a local event.
  *
- * Counter exhaustion rolls into the next logical millisecond. Rollover past the
- * timestamp range returns {@link TimestampTimeOutOfRangeError}. The resulting
+ * Counter exhaustion rolls into the next logical millisecond, and rollover past
+ * the {@link Millis} ceiling throws; see the module documentation. The resulting
  * timestamp is checked for drift, including after rollover; a failure returns
  * {@link TimestampDriftError} with the candidate and `cause: "local"`. Pass the
  * request's captured system time so replay produces the same result.
@@ -527,9 +506,7 @@ export const sendTimestamp =
     let counter =
       millis === timestamp.millis ? increment(timestamp.counter) : minCounter;
     if (counter > maxCounter) {
-      const nextMillis = Millis.fromUnknown(increment(millis));
-      if (!nextMillis.ok) return err({ type: "TimestampTimeOutOfRangeError" });
-      millis = nextMillis.value;
+      millis = Millis.orThrow(increment(millis));
       counter = minCounter;
     }
     const nextTimestamp: Timestamp = {

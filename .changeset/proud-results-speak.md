@@ -55,12 +55,13 @@ const describeApply = (
 };
 
 const rejected = err<ClientApplyError>({
-  type: "TimestampTimeOutOfRangeError",
+  type: "DecryptWithXChaCha20Poly1305Error",
+  error: new Error("decryption failed"),
 });
 // @ts-expect-error Client apply errors now include storage rejections beyond ProtocolError.
 const _oldResult: Result<ApplyProtocolMessageAsClientResult, ProtocolError> =
   rejected;
-assertEqual(describeApply(rejected), "TimestampTimeOutOfRangeError");
+assertEqual(describeApply(rejected), "DecryptWithXChaCha20Poly1305Error");
 ```
 
 Fingerprint-query exceptions stop synchronization instead of producing

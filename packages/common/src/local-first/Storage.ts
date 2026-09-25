@@ -49,7 +49,6 @@ import {
   orderTimestampBytes,
   Timestamp,
   TimestampBytes,
-  type TimestampTimeOutOfRangeError,
 } from "./Timestamp.ts";
 
 /**
@@ -247,8 +246,7 @@ export type StorageWriteMessagesError =
   | DecryptWithXChaCha20Poly1305Error
   | ProtocolInvalidDataError
   | ProtocolTimestampMismatchError
-  | StorageQuotaError
-  | TimestampTimeOutOfRangeError;
+  | StorageQuotaError;
 
 /**
  * A cryptographic hash used for efficiently comparing collections of
