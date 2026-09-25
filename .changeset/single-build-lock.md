@@ -1,8 +1,8 @@
 ---
-"@evolu/common": patch
+"@evolu/common": minor
 "@evolu/react-native": patch
-"@evolu/react-web": patch
-"@evolu/web": patch
+"@evolu/react-web": minor
+"@evolu/web": minor
 ---
 
 Fixed a new app version not working while an older one was open in another tab
