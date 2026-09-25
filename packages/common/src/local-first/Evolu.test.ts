@@ -351,6 +351,16 @@ describe("Evolu", () => {
       assertSame(setup.deps.evoluError.get(), null);
     });
 
+    it("says nothing to a worker that reports it keeps databases in memory", async () => {
+      using setup = await setupCreateEvoluDeps();
+
+      setup.sharedWorkerPort.postMessage({ type: "StorageUnavailable" });
+      await testWaitForWorkerMessage();
+
+      assertEqual(setup.messages, []);
+      assertSame(setup.deps.evoluError.get(), null);
+    });
+
     it("announces itself as tab leader with its console level once its worker connects", async () => {
       const testConsole = testCreateConsole();
       using setup = await setupCreateEvoluDeps(testConsole);

@@ -1,4 +1,4 @@
-import { describe, it, type TestContext } from "node:test";
+import { describe, it, mock, type TestContext } from "node:test";
 import { sql as kyselySql } from "kysely";
 
 import {
@@ -156,9 +156,11 @@ const setupSharedWorker = async ({
   createWebSocket = testCreateWebSocket({ throwOnCreate: true }),
   time,
   seed,
+  isPersistentStorageAvailable,
 }: {
   createWebSocket?: CreateWebSocket;
   time?: TestTime;
+  isPersistentStorageAvailable?: () => Promise<boolean>;
   /**
    * Seeds the worker's random bytes, which are otherwise the same for every
    * worker.
@@ -196,6 +198,7 @@ const setupSharedWorker = async ({
       createWebSocket,
       ...(time && { time }),
       ...(seed && { randomBytes: testCreateDeps({ seed }).randomBytes }),
+      ...(isPersistentStorageAvailable && { isPersistentStorageAvailable }),
     }),
   );
 
@@ -569,6 +572,67 @@ describe("AnnounceTabLeader", () => {
       method: "error",
       args: ["Unknown shared worker input", { type: "UnknownInput" }],
     });
+  });
+});
+
+describe("storage", () => {
+  const isMemoryOnly = (output: SharedWorkerOutput | undefined): boolean =>
+    getDbWorkerInit(output).memoryOnly;
+
+  it("keeps every database in memory, replacements included, without persistent storage", async () => {
+    const isPersistentStorageAvailable = mock.fn(() => Promise.resolve(false));
+    await using setup = await setupSharedWorker({
+      isPersistentStorageAvailable,
+    });
+    using disposer = new DisposableStack();
+
+    // The first tab heard it right after Connected.
+    assertEqual(setup.sharedWorkerOutputs, [{ type: "StorageUnavailable" }]);
+    const first = await setup.createEvolu();
+    assertTrue(isMemoryOnly(setup.sharedWorkerOutputs.at(1)));
+
+    // A replacement DbWorker, as after its tab closed, keeps it in memory too.
+    await first.releaseDbWorkerLeader();
+    const tab = setupTab(setup, disposer);
+    tab.port.postMessage({ type: "AnnounceTabLeader", consoleLevel: "debug" });
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+    assertSame(tab.outputs.at(0)?.type, "StorageUnavailable");
+    const replacement = getDbWorkerInit(tab.outputs.at(1));
+    assertTrue(replacement.memoryOnly);
+    using leaderPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
+      replacement.port,
+    );
+    leaderPort.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+
+    assertSame(isPersistentStorageAvailable.mock.callCount(), 1);
+  });
+
+  it("keeps databases where the app configured them with persistent storage", async () => {
+    await using setup = await setupSharedWorker({
+      isPersistentStorageAvailable: () => Promise.resolve(true),
+    });
+
+    await setup.createEvolu();
+
+    assertEqual(
+      setup.sharedWorkerOutputs.map(({ type }) => type),
+      ["DbWorkerInit"],
+    );
+    assertFalse(isMemoryOnly(setup.sharedWorkerOutputs.at(0)));
+  });
+
+  it("keeps databases where the app configured them on platforms without the check", async () => {
+    await using setup = await setupSharedWorker();
+
+    await setup.createEvolu();
+
+    assertFalse(isMemoryOnly(setup.sharedWorkerOutputs.at(0)));
   });
 });
 

@@ -4,7 +4,7 @@ declare const self: DedicatedWorkerGlobalScope | SharedWorkerGlobalScope;
 import { installPolyfills } from "@evolu/common/polyfills";
 installPolyfills();
 
-import { createWebSocket, ok, waitForAbort } from "@evolu/common";
+import { createWebSocket, ok, tryAsync, waitForAbort } from "@evolu/common";
 import type {
   SharedWorkerInput,
   SharedWorkerOutput,
@@ -21,6 +21,9 @@ import {
 const run = createRun({
   ...createWorkerDeps(),
   createWebSocket,
+  // Safari's Private Browsing offers no OPFS; see Storage in the Shared module.
+  isPersistentStorageAvailable: async () =>
+    (await tryAsync(() => navigator.storage.getDirectory())).ok,
   lockManager: navigator.locks,
 });
 

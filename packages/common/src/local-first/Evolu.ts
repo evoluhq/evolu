@@ -1058,7 +1058,8 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
         break;
 
       case "Waiting":
-        // Platforms where builds coexist act on it; see Builds in the Shared
+      case "StorageUnavailable":
+        // Platform adapters act on these; see Builds and Storage in the Shared
         // module.
         break;
 

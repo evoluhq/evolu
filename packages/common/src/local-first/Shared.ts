@@ -62,6 +62,22 @@
  * back-forward cache, and the suspended worker keeps the lock. There, a waiting
  * build also waits until Safari drops those pages.
  *
+ * ## Storage
+ *
+ * A platform that can lack persistent storage, as a browser does in Safari's
+ * Private Browsing, provides {@link PersistentStorageDep}. The worker checks it
+ * once, after it takes the build lock and before any DbWorker starts. Without
+ * persistent storage, every DbWorker it starts keeps its database in memory,
+ * replacements included, and each tab that connects is told with
+ * `StorageUnavailable`. The decision holds for the worker's lifetime, so all
+ * its tabs see one mode, and the next worker checks again.
+ *
+ * The check cannot tell a private session from a storage failure, but memory
+ * loses nothing that refusing to start would have kept, and the persistent
+ * database stays untouched. Each DbWorker keeps its own memory, so when the tab
+ * hosting it closes, data that exists only locally or has not synced yet is
+ * lost, even though its replacement starts in memory too.
+ *
  * ## Synchronization routing
  *
  * WebSocket transports are shared resources keyed by their configuration and
@@ -356,6 +372,14 @@ export type SharedWorkerOutput =
       readonly type: "Connected";
       readonly workerId: SharedWorkerId;
       readonly syncStateChannelName: string;
+    }
+  | {
+      /**
+       * Sent to a connecting tab after `Connected` when the platform offers no
+       * persistent storage, so the worker keeps every database in memory; see
+       * Storage in this module's documentation.
+       */
+      readonly type: "StorageUnavailable";
     };
 
 export type ConsoleEntryOrError =
@@ -825,11 +849,22 @@ export type DbWorkerQueuedResponse =
           };
     };
 
+/**
+ * Tells whether the platform can store databases persistently.
+ *
+ * Only a platform that can lack persistent storage provides it, as a browser
+ * does in Safari's Private Browsing; see Storage in the Shared module.
+ */
+export interface PersistentStorageDep {
+  readonly isPersistentStorageAvailable: () => Promise<boolean>;
+}
+
 export type SharedWorkerDeps = WorkerDeps &
   CreateBroadcastChannelDep &
   CreateMessageChannelDep &
   CreateWebSocketDep &
-  LockManagerDep;
+  LockManagerDep &
+  Partial<PersistentStorageDep>;
 
 /**
  * Coordinates all instances of one named local database within a SharedWorker.
@@ -1072,6 +1107,9 @@ export const initSharedWorker =
           workerId,
           syncStateChannelName,
         });
+        if (isPersistentStorageUnavailable) {
+          port.postMessage({ type: "StorageUnavailable" });
+        }
       });
     };
 
@@ -1079,6 +1117,13 @@ export const initSharedWorker =
     // take the same lock in their leader tab; see Builds.
     disposer.use(await run.ok(acquireLeaderLock("tab")));
     starting.dispose();
+
+    // Checked once, before any DbWorker starts, so every DbWorker of this
+    // worker, replacements included, keeps its database in memory; see
+    // Storage.
+    const isPersistentStorageUnavailable =
+      deps.isPersistentStorageAvailable !== undefined &&
+      !(await deps.isPersistentStorageAvailable());
 
     disposer.defer(
       deps.consoleStoreOutputEntry.subscribe(() => {
@@ -1487,7 +1532,12 @@ export const initSharedWorker =
       await sharedWorkerRun.ok(
         createSharedResourceByKey(
           (message: ExtractTyped<SharedWorkerInput, "CreateEvolu">) =>
-            createEvoluTenant(message, currentTenantsByName),
+            createEvoluTenant(
+              isPersistentStorageUnavailable
+                ? { ...message, memoryOnly: true }
+                : message,
+              currentTenantsByName,
+            ),
           {
             idleDisposeAfter: "3s",
             lookup: (message) => message.name,

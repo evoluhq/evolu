@@ -139,6 +139,29 @@ describe("createEvoluDeps", () => {
     });
   });
 
+  describe("storage unavailable", () => {
+    const workerId = createIdFromString<"SharedWorker">("worker");
+
+    it("tells the app when its worker keeps databases in memory", () => {
+      const onStorageUnavailable = mock.fn<() => void>();
+      using setup = setupWebEvoluDeps({ onStorageUnavailable });
+      setup.connect(workerId);
+
+      setup.post({ type: "StorageUnavailable" });
+
+      assertSame(onStorageUnavailable.mock.callCount(), 1);
+    });
+
+    it("works without a callback", () => {
+      using setup = setupWebEvoluDeps();
+      setup.connect(workerId);
+
+      setup.post({ type: "StorageUnavailable" });
+
+      assertSame(setup.reloadApp.mock.callCount(), 0);
+    });
+  });
+
   describe("worker relaunch", () => {
     const firstWorkerId = createIdFromString<"SharedWorker">("first");
     const relaunchedWorkerId = createIdFromString<"SharedWorker">("relaunched");
@@ -312,6 +335,7 @@ const setupWebEvoluDeps = ({
   isSessionStorageAvailable = true,
   refusalReloads,
   reloadedFor,
+  onStorageUnavailable,
 }: {
   hasFocus?: boolean;
   isAutomaticReload?: boolean;
@@ -320,6 +344,7 @@ const setupWebEvoluDeps = ({
   refusalReloads?: string;
   /** The stored waiting workers, as a previous page load left them. */
   reloadedFor?: string;
+  onStorageUnavailable?: () => void;
 } = {}) => {
   using disposer = new DisposableStack();
   const sharedWorkerPort = createClosableNativePort<unknown>();
@@ -397,6 +422,7 @@ const setupWebEvoluDeps = ({
   const deps = createEvoluDeps({
     console: createConsole({ level: "silent" }),
     reloadApp,
+    ...(onStorageUnavailable && { onStorageUnavailable }),
   });
   const builds = channels.find(
     (channel) => channel.name === buildsBroadcastChannelName,

@@ -210,6 +210,7 @@ describe("Evolu integration", () => {
           tabErrorReported = Promise.withResolvers<void>();
           break;
         case "Waiting":
+        case "StorageUnavailable":
           break;
         case "Connected":
           connected.resolve(message);

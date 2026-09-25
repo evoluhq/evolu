@@ -38,6 +38,22 @@ export interface SharedWorkerUnsupportedDep {
   readonly onSharedWorkerUnsupported: () => void;
 }
 
+export interface StorageUnavailableDep {
+  /**
+   * Called when the browser offers no persistent storage, as in Safari's
+   * Private Browsing, so every database is kept in memory. See Storage in the
+   * Shared module of `@evolu/common`.
+   *
+   * The app keeps working. Data synced with a relay comes back, as on a new
+   * device, and nothing stays on the device once the tabs close. That suits
+   * someone checking their app on a borrowed phone, so a message such as
+   * "Nothing from this session is kept on this device." tells the user what to
+   * expect. Data that exists only locally, or has not synced yet, is lost when
+   * the tab hosting the database closes, even while other tabs stay open.
+   */
+  readonly onStorageUnavailable: () => void;
+}
+
 /**
  * Creates Evolu dependencies for the web platform.
  *
@@ -52,6 +68,11 @@ export interface SharedWorkerUnsupportedDep {
  * relaunched without its state, as WebKit does when the process hosting it
  * ends, also reloads at once.
  *
+ * Where the browser offers no persistent storage, as in Safari's Private
+ * Browsing, the database is kept in memory, and
+ * {@link StorageUnavailableDep.onStorageUnavailable} lets the app tell the
+ * user.
+ *
  * A custom {@link ReloadApp} replaces the default page reload, for example to
  * save state first. It should end by reloading the page, because the other
  * build waits until this tab reloads or closes.
@@ -59,7 +80,8 @@ export interface SharedWorkerUnsupportedDep {
 export const createEvoluDeps = (
   deps: Partial<ConsoleDep> &
     Partial<ReloadAppDep> &
-    Partial<SharedWorkerUnsupportedDep> = {},
+    Partial<SharedWorkerUnsupportedDep> &
+    Partial<StorageUnavailableDep> = {},
 ): EvoluDeps => {
   installOneTabSharedWorkerPolyfill();
   const reloadThisApp = deps.reloadApp ?? reloadApp;
@@ -189,6 +211,12 @@ export const createEvoluDeps = (
         buildsBroadcastChannel.postMessage({
           type: "BuildWaitingRequest",
         } satisfies BuildWaitingRequest);
+        break;
+      }
+
+      case "StorageUnavailable": {
+        deps.onStorageUnavailable?.();
+        forward(message);
         break;
       }
 
