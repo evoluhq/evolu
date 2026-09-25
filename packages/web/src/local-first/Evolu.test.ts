@@ -139,6 +139,31 @@ describe("createEvoluDeps", () => {
     });
   });
 
+  describe("worker relaunch", () => {
+    const firstWorkerId = createIdFromString<"SharedWorker">("first");
+    const relaunchedWorkerId = createIdFromString<"SharedWorker">("relaunched");
+
+    it("reloads at once when its worker connects again", () => {
+      using setup = setupWebEvoluDeps({ hasFocus: true });
+      setup.connect(firstWorkerId);
+
+      setup.connect(relaunchedWorkerId);
+
+      assertSame(setup.reloadApp.mock.callCount(), 1);
+      assertFalse(setup.isAutomaticReloadMarked());
+    });
+
+    it("reloads at once when its worker reports waiting again", () => {
+      using setup = setupWebEvoluDeps({ hasFocus: true });
+      setup.connect(firstWorkerId);
+
+      setup.post({ type: "Waiting", workerId: relaunchedWorkerId });
+
+      assertSame(setup.reloadApp.mock.callCount(), 1);
+      assertEqual(setup.builds.posted, [{ type: "BuildWaitingRequest" }]);
+    });
+  });
+
   describe("builds", () => {
     const createWorkerId = (name: string): SharedWorkerId =>
       createIdFromString<"SharedWorker">(name);

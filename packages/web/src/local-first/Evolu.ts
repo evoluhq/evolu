@@ -48,7 +48,9 @@ export interface SharedWorkerUnsupportedDep {
  * {@link UnsupportedDbVersionError} reloads once for each stored version, even
  * while the user is in it, because the server may now serve a build that
  * supports the database. The error is reported when the reloaded build refuses
- * it too, or when the tab has no session storage.
+ * it too, or when the tab has no session storage. A tab whose worker was
+ * relaunched without its state, as WebKit does when the process hosting it
+ * ends, also reloads at once.
  *
  * A custom {@link ReloadApp} replaces the default page reload, for example to
  * save state first. It should end by reloading the page, because the other
@@ -136,6 +138,19 @@ export const createEvoluDeps = (
     message: SharedWorkerOutput | SharedWorkerUnsupported,
     forward: (message: SharedWorkerOutput) => void,
   ): void => {
+    // WebKit can relaunch a SharedWorker without its state when the process
+    // hosting it ends, and connect the tabs' existing ports to the new worker
+    // (https://bugs.webkit.org/show_bug.cgi?id=318873). Only then does a
+    // connected tab hear again that its worker waits or connected. The tab's
+    // state ended with the old worker, so it reloads at once.
+    if (
+      connectedWorkerId !== null &&
+      (message.type === "Waiting" || message.type === "Connected")
+    ) {
+      reloadThisApp();
+      return;
+    }
+
     switch (message.type) {
       case "DbWorkerInit": {
         forward(message);
