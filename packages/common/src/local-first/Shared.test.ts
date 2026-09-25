@@ -4099,10 +4099,10 @@ describe("sync state", () => {
       try {
         while (latest().tenants.length > 0) await testWaitForWorkerMessage();
         await disposingSocket.promise;
-        // A frame on the already-disposed transport's socket publishes a
-        // snapshot while the stalled transport is still registered and its
-        // own socket is mid-disposal. The snapshot must not read that socket.
-        createWebSocket.message(transports[1].url, relayResponse());
+        // A frame the mid-disposal stalled socket still delivers publishes a
+        // snapshot while its transport is registered. The snapshot must not
+        // read that socket.
+        createWebSocket.message(transports[0].url, relayResponse());
         await testWaitForWorkerMessage();
         assertEqual(
           latest().transports.map((transport) => transport.readyState),

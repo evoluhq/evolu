@@ -567,7 +567,9 @@ const nativeToStringState: Record<number, WebSocketReadyState> = {
  * after a close or a {@link WebSocket.reconnect}. While it retries,
  * {@link WebSocket.reconnect} does nothing, as the wrapper has no socket until
  * {@link TestCreateWebSocket.open}. Only disposal ends in `closed`. The
- * `closing` state is not modeled: no helper starts a close handshake.
+ * `closing` state is not modeled: no helper starts a close handshake. The event
+ * helpers throw for a disposed socket, which cannot receive events:
+ * {@link createWebSocket} detaches its handlers on disposal.
  *
  * @group Testing
  */
@@ -680,16 +682,20 @@ export const testCreateWebSocket = (
     reconnectedUrls,
     sentMessages,
     message: (url: string, data: string | ArrayBuffer | Blob) => {
-      getState(url).options?.onMessage?.(data);
+      const state = getState(url);
+      assert(!state.isDisposed, `Test WebSocket for ${url} is disposed.`);
+      state.options?.onMessage?.(data);
     },
     open: (url: string) => {
       const state = getState(url);
+      assert(!state.isDisposed, `Test WebSocket for ${url} is disposed.`);
       state.readyState = "open";
       state.isWaitingToRetry = false;
       state.options?.onOpen?.();
     },
     close: (url: string, event: Partial<WebSocketCloseEvent> = {}) => {
       const state = getState(url);
+      assert(!state.isDisposed, `Test WebSocket for ${url} is disposed.`);
       state.readyState = "closed";
       state.options?.onClose?.({
         code: 1006,
@@ -709,7 +715,9 @@ export const testCreateWebSocket = (
       });
     },
     error: (url: string, error: WebSocketError) => {
-      getState(url).options?.onError?.(error);
+      const state = getState(url);
+      assert(!state.isDisposed, `Test WebSocket for ${url} is disposed.`);
+      state.options?.onError?.(error);
     },
   });
 };

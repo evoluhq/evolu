@@ -1120,11 +1120,12 @@ describe("testCreateWebSocket", () => {
     expect(ws.getReadyState()).toBe("connecting");
     expect(createTestWebSocket.reconnectedUrls).toEqual([url]);
 
-    // Only disposal ends in `closed`, and it outranks the helpers.
+    // Only disposal ends in `closed`, and a disposed socket takes no events.
     await ws[Symbol.asyncDispose]();
     expect(ws.getReadyState()).toBe("closed");
-    createTestWebSocket.open(url);
-    expect(ws.getReadyState()).toBe("closed");
+    expect(() => {
+      createTestWebSocket.open(url);
+    }).toThrow(`Test WebSocket for ${url} is disposed.`);
     expect(ws.isOpen()).toBe(false);
   });
 
@@ -1195,6 +1196,52 @@ describe("testCreateWebSocket", () => {
     // The disposed socket keeps its own state.
     expect(first.isOpen()).toBe(false);
     expect(second.isOpen()).toBe(true);
+  });
+
+  test("asserts when an event targets a disposed socket", async () => {
+    await using run = createRun();
+
+    const createTestWebSocket = testCreateWebSocket({ isOpen: false });
+    const url = "ws://disposed.example.com";
+    const events: Array<string> = [];
+
+    const ws = await run.ok(
+      createTestWebSocket(url, {
+        onOpen: () => {
+          events.push("open");
+        },
+        onMessage: () => {
+          events.push("message");
+        },
+        onClose: () => {
+          events.push("close");
+        },
+        onError: () => {
+          events.push("error");
+        },
+      }),
+    );
+    await ws[Symbol.asyncDispose]();
+
+    // createWebSocket detaches its handlers on disposal, so an event sent to
+    // a disposed socket is a mistake in the test.
+    const message = `Test WebSocket for ${url} is disposed.`;
+    expect(() => {
+      createTestWebSocket.open(url);
+    }).toThrow(message);
+    expect(() => {
+      createTestWebSocket.message(url, "payload");
+    }).toThrow(message);
+    expect(() => {
+      createTestWebSocket.close(url);
+    }).toThrow(message);
+    expect(() => {
+      createTestWebSocket.error(url, {
+        type: "WebSocketConnectError",
+        event: new Event("error"),
+      });
+    }).toThrow(message);
+    expect(events).toEqual([]);
   });
 
   test("asserts when opening or messaging an unknown socket", () => {
