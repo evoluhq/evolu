@@ -16,6 +16,7 @@ describe("emitted declarations", () => {
     ["defaulted properties", "defaults.mts"],
     ["local-first schema fixtures", "local-first.mts"],
     ["literal values, members, errors, and localization", "literals.mts"],
+    ["exported inferred Types", "exported-types.mts"],
   ])
     it(`preserves ${name}`, () => {
       const compiler = resolve(
@@ -30,6 +31,7 @@ describe("emitted declarations", () => {
           compiler,
           "--ignoreConfig",
           "--noEmit",
+          "--declaration",
           "--strict",
           "--exactOptionalPropertyTypes",
           "--skipLibCheck",

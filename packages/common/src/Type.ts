@@ -1014,7 +1014,16 @@ export const typeErrorToIssues = <T extends TypeNode>(
   ) as unknown as NonEmptyReadonlyArray<TypeIssue>;
 };
 
-interface TransparentTypeError {
+/**
+ * Marks a {@link TypeError} that wraps one nested error in `outputError` or
+ * `error`.
+ *
+ * {@link localizeTypes} requires formatters for the nested error instead of the
+ * wrapper. The marker property exists only in TypeScript.
+ *
+ * @group Core
+ */
+export interface TransparentTypeError {
   readonly [transparentTypeErrorSymbol]?: true;
 }
 
@@ -1956,7 +1965,15 @@ type NonRootErrors<T extends TypeNode> = T extends {
   ? T["Error"] | NonRootErrors<Parent>
   : never;
 
-interface FromParentOperations<
+/**
+ * The `.parent` suffixes of a {@link Type} `from` operation.
+ *
+ * Each `.parent` accepts the Output of the next Type toward the root and
+ * returns the errors of every boundary it adds.
+ *
+ * @group Core
+ */
+export interface FromParentOperations<
   Output,
   Error extends TypeError,
   Boundary extends TypeNode,
@@ -1972,7 +1989,15 @@ type ToOperation<Output, Input, Parent extends TypeNode> = ((
 ) => Input) &
   ToParentOperations<Output, Parent>;
 
-interface ToParentOperations<Output, Boundary extends TypeNode> {
+/**
+ * The `.parent` suffixes of a {@link Type} `to` operation.
+ *
+ * Each `.parent` encodes an Output only as far as the Output of the next Type
+ * toward the root.
+ *
+ * @group Core
+ */
+export interface ToParentOperations<Output, Boundary extends TypeNode> {
   readonly parent: ((value: Output) => Boundary["Output"]) &
     ([Boundary["parent"]] extends [infer Parent extends TypeNode]
       ? ToParentOperations<Output, Parent>
@@ -4162,6 +4187,19 @@ export type UnionError<
 > = [Error] extends [never] ? never : UnionErrorValue<Error, MemberError>;
 
 /**
+ * The shape of {@link UnionError} when at least one {@link union} member can
+ * fail.
+ *
+ * @group Unions
+ */
+export interface UnionErrorValue<
+  Error extends TypeError,
+  MemberError extends UnionMemberError<Error> = UnionMemberError<Error>,
+> extends TypeError<"Union"> {
+  readonly errors: NonEmptyReadonlyArray<MemberError>;
+}
+
+/**
  * An error returned by one {@link union} member and its index.
  *
  * @group Unions
@@ -4661,13 +4699,6 @@ type UnionMembersAreLiterals<
 type InfallibleTypeNode = TypeNode & {
   readonly [errorsSymbol]: never;
 };
-
-interface UnionErrorValue<
-  Error extends TypeError,
-  MemberError extends UnionMemberError<Error> = UnionMemberError<Error>,
-> extends TypeError<"Union"> {
-  readonly errors: NonEmptyReadonlyArray<MemberError>;
-}
 
 /**
  * The parsing {@link Type} returned by {@link templateLiteralParser}.
@@ -5199,7 +5230,18 @@ type TemplateLiteralCaptureFromStringError<T extends TypeNode> =
 
 declare const templateLiteralStringBrandSymbol: unique symbol;
 
-interface TemplateLiteralStringBrand<Parts extends TemplateLiteralParts> {
+/**
+ * Brands the string Output of a {@link templateLiteral} with a transformed
+ * capture Type.
+ *
+ * TypeScript cannot prove from a string literal alone that such a capture is
+ * canonically encoded, so the string must be validated or created with `to`.
+ *
+ * @group Template literals
+ */
+export interface TemplateLiteralStringBrand<
+  Parts extends TemplateLiteralParts,
+> {
   readonly [templateLiteralStringBrandSymbol]: Parts;
 }
 
@@ -9340,6 +9382,27 @@ export type ArrayItemsError<Error extends TypeError> = ArrayItemsErrorValue<
 >;
 
 /**
+ * The shape of {@link ArrayItemsError} and {@link ArrayElementsError}.
+ *
+ * Structural issues are included only when `IncludeStructuralIssues` is true
+ * because a typed boundary asserts the array structure.
+ *
+ * @group Collection
+ */
+export interface ArrayItemsErrorValue<
+  Error extends TypeError,
+  IncludeStructuralIssues extends boolean,
+> extends TypeError<"Array"> {
+  readonly reason: {
+    readonly kind: "Items";
+    readonly issues: NonEmptyReadonlyArray<
+      | (true extends IncludeStructuralIssues ? ArrayStructuralIssue : never)
+      | ArrayElementIssue<Error>
+    >;
+  };
+}
+
+/**
  * One structural or element issue found by {@link array}.
  *
  * @group Collection
@@ -9497,7 +9560,15 @@ type ArrayFromOperation<ElementType extends TypeNode> = [
       never
     >;
 
-interface ArrayFromParentOperations<
+/**
+ * The `.parent` suffixes of an {@link ArrayType} `from` operation.
+ *
+ * Each `.parent` accepts an array of the next element Output toward the root
+ * and returns the element errors of every boundary it adds.
+ *
+ * @group Collection
+ */
+export interface ArrayFromParentOperations<
   Output,
   Error extends TypeError,
   Boundary extends TypeNode,
@@ -9535,19 +9606,6 @@ type ArrayNodeError<ElementType extends TypeNode> = [
 
 type ArrayStructuralIssue =
   ArrayHoleIssue | ArrayAccessorIssue | ArrayExcessPropertyIssue;
-
-interface ArrayItemsErrorValue<
-  Error extends TypeError,
-  IncludeStructuralIssues extends boolean,
-> extends TypeError<"Array"> {
-  readonly reason: {
-    readonly kind: "Items";
-    readonly issues: NonEmptyReadonlyArray<
-      | (true extends IncludeStructuralIssues ? ArrayStructuralIssue : never)
-      | ArrayElementIssue<Error>
-    >;
-  };
-}
 
 const arrayTypeByElement = /*#__PURE__*/ new WeakMap<TypeNode, TypeNode>();
 
@@ -9903,6 +9961,27 @@ export type SetItemsError<Error extends TypeError> = SetItemsErrorValue<
 >;
 
 /**
+ * The shape of {@link SetItemsError} and {@link SetElementsError}.
+ *
+ * Structural issues are included only when `IncludeStructuralIssues` is true
+ * because a typed boundary asserts the Set structure.
+ *
+ * @group Collection
+ */
+export interface SetItemsErrorValue<
+  Error extends TypeError,
+  IncludeStructuralIssues extends boolean,
+> extends TypeError<"Set"> {
+  readonly reason: {
+    readonly kind: "Items";
+    readonly issues: NonEmptyReadonlyArray<
+      | (true extends IncludeStructuralIssues ? SetStructuralIssue : never)
+      | SetElementIssue<Error>
+    >;
+  };
+}
+
+/**
  * A {@link set} error containing element errors from a typed boundary.
  *
  * @group Collection
@@ -9967,7 +10046,15 @@ type SetFromOperation<ElementType extends TypeNode> = [
       never
     >;
 
-interface SetFromParentOperations<
+/**
+ * The `.parent` suffixes of a {@link SetType} `from` operation.
+ *
+ * Each `.parent` accepts a Set of the next element Output toward the root and
+ * returns the element errors of every boundary it adds.
+ *
+ * @group Collection
+ */
+export interface SetFromParentOperations<
   Output,
   Error extends TypeError,
   Boundary extends TypeNode,
@@ -9996,19 +10083,6 @@ type SetNodeError<ElementType extends TypeNode> = [
   : SetError<ElementType["Error"]>;
 
 type SetStructuralIssue = SetExcessPropertyIssue;
-
-interface SetItemsErrorValue<
-  Error extends TypeError,
-  IncludeStructuralIssues extends boolean,
-> extends TypeError<"Set"> {
-  readonly reason: {
-    readonly kind: "Items";
-    readonly issues: NonEmptyReadonlyArray<
-      | (true extends IncludeStructuralIssues ? SetStructuralIssue : never)
-      | SetElementIssue<Error>
-    >;
-  };
-}
 
 type HomogeneousCollectionName = "Array" | "Set";
 
@@ -10302,6 +10376,38 @@ export interface MapType<
 }
 
 /**
+ * The parent of a {@link MapType} whose key or value Type has a parent.
+ *
+ * Its key and value are the root Types of the child map's key and value, and it
+ * has no parent itself.
+ *
+ * @group Collection
+ */
+// The explicit null parent keeps the chain finite when a key or value root
+// cannot be resolved, such as a widened AnyType key or value.
+export interface RootMapType<
+  KeyType extends TypeNode,
+  ValueType extends TypeNode,
+> extends Type<
+  "Map",
+  ReadonlyMap<KeyType["Input"], ValueType["Input"]>,
+  ReadonlyMap<KeyType["Output"], ValueType["Output"]>,
+  MapError<InferErrors<KeyType>, InferErrors<ValueType>, never>,
+  null,
+  MapError<InferErrors<KeyType>, InferErrors<ValueType>, never>,
+  never,
+  CanonicalInputSubset<
+    ReadonlyMap<KeyType["Input"], ValueType["Input"]>,
+    ReadonlyMap<CanonicalInputOf<KeyType>, CanonicalInputOf<ValueType>>
+  >,
+  AllTypesUseIdentityEncoding<KeyType | ValueType>
+> {
+  readonly [reflectedTypesSymbol]?: KeyType | ValueType;
+  readonly key: KeyType;
+  readonly value: ValueType;
+}
+
+/**
  * Error returned while validating a {@link map} and its entries.
  *
  * @group Collection
@@ -10405,6 +10511,24 @@ export type MapEntriesError<
 > = [KeyError | ValueError | StructuralIssue] extends [never]
   ? never
   : MapEntriesErrorValue<KeyError, ValueError, StructuralIssue>;
+
+/**
+ * The entry error shape of {@link MapError} and {@link MapEntriesError}.
+ *
+ * @group Collection
+ */
+export interface MapEntriesErrorValue<
+  KeyError extends TypeError,
+  ValueError extends TypeError,
+  StructuralIssue extends MapStructuralIssue,
+> extends TypeError<"Map"> {
+  readonly reason: {
+    readonly kind: "Entries";
+    readonly issues: NonEmptyReadonlyArray<
+      MapKeyIssue<KeyError> | MapValueIssue<ValueError> | StructuralIssue
+    >;
+  };
+}
 
 /**
  * Map {@link Type} whose keys and values must match their respective Types.
@@ -10733,7 +10857,7 @@ type MapParent<KeyType extends TypeNode, ValueType extends TypeNode> = [
   KeyType["parent"] | ValueType["parent"],
 ] extends [null]
   ? null
-  : MapType<RootType<KeyType>, RootType<ValueType>>;
+  : RootMapType<RootType<KeyType>, RootType<ValueType>>;
 
 type MapNodeError<KeyType extends TypeNode, ValueType extends TypeNode> = [
   KeyType["parent"] | ValueType["parent"],
@@ -10771,19 +10895,6 @@ type MapStructuralIssue = MapExcessPropertyIssue | MapKeyCollisionIssue;
 
 type MapStructuralError =
   MapNotMapError | MapEntriesErrorValue<never, never, MapStructuralIssue>;
-
-interface MapEntriesErrorValue<
-  KeyError extends TypeError,
-  ValueError extends TypeError,
-  StructuralIssue extends MapStructuralIssue,
-> extends TypeError<"Map"> {
-  readonly reason: {
-    readonly kind: "Entries";
-    readonly issues: NonEmptyReadonlyArray<
-      MapKeyIssue<KeyError> | MapValueIssue<ValueError> | StructuralIssue
-    >;
-  };
-}
 
 const validateMapEntries = (
   input: ReadonlyMap<unknown, unknown>,
@@ -10912,6 +11023,31 @@ export interface TupleType<Elements extends TupleElements> extends Type<
 }
 
 /**
+ * The parent of a {@link TupleType} whose elements have parents.
+ *
+ * Its elements are the root Types of the child tuple's elements, and it has no
+ * parent itself.
+ *
+ * @group Collection
+ */
+// The explicit null parent keeps the chain finite when an element's root
+// cannot be resolved, such as a widened AnyType element.
+export interface RootTupleType<Elements extends TupleElements> extends Type<
+  "Tuple",
+  TupleShape<Elements, "Input">,
+  TupleShape<Elements, "Output">,
+  TupleError<Elements[number]["Error"]>,
+  null,
+  TupleError<Elements[number]["Error"]>,
+  never,
+  TupleShape<Elements, "CanonicalInput">,
+  AllTypesUseIdentityEncoding<Elements[number]>
+> {
+  readonly [reflectedTypesSymbol]?: Elements[number];
+  readonly elements: Elements;
+}
+
+/**
  * An error returned while validating a {@link tuple}.
  *
  * @group Collection
@@ -10955,6 +11091,27 @@ export type TupleItemsError<Error extends TypeError> = TupleItemsErrorValue<
   Error,
   true
 >;
+
+/**
+ * The shape of {@link TupleItemsError} and {@link TupleElementsError}.
+ *
+ * Structural issues are included only when `IncludeStructuralIssues` is true
+ * because a typed boundary asserts the tuple structure.
+ *
+ * @group Collection
+ */
+export interface TupleItemsErrorValue<
+  Error extends TypeError,
+  IncludeStructuralIssues extends boolean,
+> extends TypeError<"Tuple"> {
+  readonly reason: {
+    readonly kind: "Items";
+    readonly issues: NonEmptyReadonlyArray<
+      | (true extends IncludeStructuralIssues ? TupleStructuralIssue : never)
+      | TupleElementIssue<Error>
+    >;
+  };
+}
 
 /**
  * One structural or element issue found in a {@link tuple}.
@@ -11267,21 +11424,6 @@ type RootTupleElements<Elements extends TupleElements> = {
     : never;
 };
 
-type RootTupleType<Elements extends TupleElements> = Type<
-  "Tuple",
-  TupleShape<Elements, "Input">,
-  TupleShape<Elements, "Output">,
-  TupleError<Elements[number]["Error"]>,
-  null,
-  TupleError<Elements[number]["Error"]>,
-  never,
-  TupleShape<Elements, "CanonicalInput">,
-  AllTypesUseIdentityEncoding<Elements[number]>
-> & {
-  readonly [reflectedTypesSymbol]?: Elements[number];
-  readonly elements: Elements;
-};
-
 type TupleValidation<Elements extends TupleElements> = [
   ValidateTupleElements<Elements>,
 ] extends [never]
@@ -11315,19 +11457,6 @@ type TupleElementConcreteTypeError = CompileTimeError<
 
 type TupleStructuralIssue =
   TupleHoleIssue | TupleAccessorIssue | TupleExcessPropertyIssue;
-
-interface TupleItemsErrorValue<
-  Error extends TypeError,
-  IncludeStructuralIssues extends boolean,
-> extends TypeError<"Tuple"> {
-  readonly reason: {
-    readonly kind: "Items";
-    readonly issues: NonEmptyReadonlyArray<
-      | (true extends IncludeStructuralIssues ? TupleStructuralIssue : never)
-      | TupleElementIssue<Error>
-    >;
-  };
-}
 
 const validateTupleItems = (
   value: ReadonlyArray<unknown>,
@@ -11794,6 +11923,38 @@ export interface RecordType<
 }
 
 /**
+ * The parent of a {@link RecordType} whose key or value Type has a parent.
+ *
+ * Its key and value are the root Types of the child record's key and value, and
+ * it has no parent itself.
+ *
+ * @group Objects
+ */
+// The explicit null parent keeps the chain finite when a key or value root
+// cannot be resolved, such as a widened AnyType value.
+export interface RootRecordType<
+  KeyType extends TypeNode,
+  ValueType extends TypeNode,
+> extends Type<
+  "Record",
+  RecordShape<KeyType, ValueType, "Input">,
+  RecordShape<KeyType, ValueType, "Output">,
+  RecordError<InferErrors<KeyType>, InferErrors<ValueType>, never>,
+  null,
+  RecordError<InferErrors<KeyType>, InferErrors<ValueType>, never>,
+  never,
+  CanonicalInputSubset<
+    RecordShape<KeyType, ValueType, "Input">,
+    RecordShape<KeyType, ValueType, "CanonicalInput">
+  >,
+  AllTypesUseIdentityEncoding<KeyType | ValueType>
+> {
+  readonly [reflectedTypesSymbol]?: KeyType | ValueType;
+  readonly key: KeyType;
+  readonly value: ValueType;
+}
+
+/**
  * Error returned while validating a {@link record} and its entries.
  *
  * @group Objects
@@ -11851,6 +12012,24 @@ export type RecordEntriesError<
 > = [KeyError | ValueError | StructuralIssue] extends [never]
   ? never
   : RecordEntriesErrorValue<KeyError, ValueError, StructuralIssue>;
+
+/**
+ * The entry error shape of {@link RecordError} and {@link RecordEntriesError}.
+ *
+ * @group Objects
+ */
+export interface RecordEntriesErrorValue<
+  KeyError extends TypeError,
+  ValueError extends TypeError,
+  StructuralIssue extends RecordStructuralIssue,
+> extends TypeError<"Record"> {
+  readonly reason: {
+    readonly kind: "Entries";
+    readonly issues: NonEmptyReadonlyArray<
+      RecordKeyIssue<KeyError> | RecordValueIssue<ValueError> | StructuralIssue
+    >;
+  };
+}
 
 /**
  * An invalid key, value, or property structure in a {@link record}.
@@ -12370,7 +12549,7 @@ type RecordParent<KeyType extends TypeNode, ValueType extends TypeNode> = [
   KeyType["parent"] | ValueType["parent"],
 ] extends [null]
   ? null
-  : RecordType<RootType<KeyType>, RootType<ValueType>>;
+  : RootRecordType<RootType<KeyType>, RootType<ValueType>>;
 
 type RecordNodeError<KeyType extends TypeNode, ValueType extends TypeNode> = [
   KeyType["parent"] | ValueType["parent"],
@@ -12414,19 +12593,6 @@ type RecordKeyStringTypeError = CompileTimeError<
   "Type",
   "Record key Type Input and Output must extend string."
 >;
-
-interface RecordEntriesErrorValue<
-  KeyError extends TypeError,
-  ValueError extends TypeError,
-  StructuralIssue extends RecordStructuralIssue,
-> extends TypeError<"Record"> {
-  readonly reason: {
-    readonly kind: "Entries";
-    readonly issues: NonEmptyReadonlyArray<
-      RecordKeyIssue<KeyError> | RecordValueIssue<ValueError> | StructuralIssue
-    >;
-  };
-}
 
 const validateRecordEntries = (
   input: Readonly<Record<string, unknown>>,
@@ -13101,6 +13267,29 @@ export interface ObjectPropertiesError<
             RestError
           >);
   };
+}
+
+/**
+ * The `fromUnknown` error of an {@link object} Type without a {@link record}
+ * rest.
+ *
+ * It has the shape of {@link ObjectError} with the structural property errors
+ * already included in `Errors`.
+ *
+ * @group Objects
+ */
+// Object factories already know their structural property errors. Keeping that
+// expanded map avoids remapping it through ObjectError. Changes are measured by
+// `pnpm bench:type`.
+export interface StrictObjectFromUnknownError<
+  Errors extends {
+    readonly [Key in keyof Errors]: TypeError;
+  },
+> extends TypeError<"Object"> {
+  readonly reason:
+    | ObjectNotObjectError["reason"]
+    | ObjectUnexpectedPrototypeError["reason"]
+    | ObjectPropertiesError<Errors, ObjectExcessPropertyError>["reason"];
 }
 
 /**
@@ -14340,12 +14529,20 @@ type RootObjectProps<Props extends ObjectValueProps> = {
       : never;
 };
 
-type RootObjectRecord<Rest extends ObjectRecordTypeNode> = RecordType<
-  typeof String,
-  RootType<Rest["value"]>
->;
+// Like the runtime, reuse the Record's own parent, or the Record itself when it
+// has none.
+type RootObjectRecord<Rest extends ObjectRecordTypeNode> =
+  Rest["parent"] extends infer Parent extends ObjectRecordTypeNode
+    ? Parent
+    : Rest;
 
-interface ObjectWithRecordReflection<
+/**
+ * The declared properties and {@link record} rest of an {@link object} Type
+ * created with a Record.
+ *
+ * @group Objects
+ */
+export interface ObjectWithRecordReflection<
   Props extends ObjectValueProps,
   Rest extends ObjectRecordTypeNode,
 > {
@@ -14368,20 +14565,6 @@ type StrictObjectFromUnknownPropertyErrors<Props extends ObjectValueProps> = {
   readonly [Key in OptionalObjectKeys<Props>]:
     Props[Key][typeof errorsSymbol] | ObjectPropertyAccessError;
 };
-
-// Object factories already know their structural property errors. Keeping that
-// expanded map private avoids remapping it through the public ObjectError.
-// Changes are measured by `pnpm bench:type`.
-interface StrictObjectFromUnknownError<
-  Errors extends {
-    readonly [Key in keyof Errors]: TypeError;
-  },
-> extends TypeError<"Object"> {
-  readonly reason:
-    | ObjectNotObjectError["reason"]
-    | ObjectUnexpectedPrototypeError["reason"]
-    | ObjectPropertiesError<Errors, ObjectExcessPropertyError>["reason"];
-}
 
 type ObjectStructuralPropertyErrors<
   Errors extends {

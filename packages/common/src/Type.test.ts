@@ -315,6 +315,9 @@ import {
   type RecordNotRecordError,
   type RecordType,
   type RecordValueIssue,
+  type RootMapType,
+  type RootRecordType,
+  type RootTupleType,
   type SetElementIssue,
   type SetElementsError,
   type SetError,
@@ -13435,6 +13438,10 @@ describe("map", () => {
     assertTrue(Counts.is(output));
     assertFalse(Counts.is(input));
     assertSame(Counts.parent, map(String, String));
+    assertType<
+      typeof Counts.parent,
+      RootMapType<typeof String, typeof String>
+    >();
     assertOk(Counts.from.parent(input), output);
     assertType<
       typeof Counts,
@@ -13456,6 +13463,15 @@ describe("map", () => {
     });
     const unchanged = new Map([["one", 1]]);
     assertSame(map(String, TransparentNumber).to(unchanged), unchanged);
+  });
+
+  it("keeps the parent chain finite for widened keys and values", () => {
+    const createLazyMap = (element: AnyType) =>
+      lazy(() => map(element, element));
+    const Names = createLazyMap(String);
+    const names = new Map([["Ada", "Lovelace"]]);
+
+    assertOk(Names.fromUnknown(names), names);
   });
 
   it("rejects decoded key collisions and invalid encoding collisions", () => {
@@ -13746,6 +13762,10 @@ describe("tuple", () => {
           readonly [typeof String, typeof NumberFromString, typeof Positive]
         >
       >();
+      assertType<
+        typeof Entry.parent,
+        RootTupleType<readonly [typeof String, typeof String, typeof Number]>
+      >();
       assertType<typeof Entry.Input, readonly [string, string, number]>();
       assertType<
         typeof Entry.Output,
@@ -13764,6 +13784,13 @@ describe("tuple", () => {
           | typeof Positive.Error
         >
       >();
+    });
+
+    it("keeps the parent chain finite for widened elements", () => {
+      const createLazyTuple = (element: AnyType) => lazy(() => tuple(element));
+      const Names = createLazyTuple(String);
+
+      assertOk(Names.fromUnknown(["Ada"]), ["Ada"]);
     });
 
     it("creates a root Tuple without a parent", () => {
@@ -14703,6 +14730,10 @@ describe("record", () => {
       assertSame(transformed.Values.parent.key, String);
       assertSame(transformed.Values.parent.value, String);
       assertSame(transformed.Values.parent.parent, null);
+      assertType<
+        typeof transformed.Values.parent,
+        RootRecordType<typeof String, typeof String>
+      >();
       assertTrue("parent" in transformed.Values.from);
       assertType<
         "parent" extends keyof typeof transformed.Values.from ? true : false,
@@ -14761,6 +14792,14 @@ describe("record", () => {
             RecordAccessorIssue | RecordNonEnumerableIssue
           >
       >();
+    });
+
+    it("keeps the parent chain finite for widened values", () => {
+      const createLazyRecord = (element: AnyType) =>
+        lazy(() => record(String, element));
+      const Names = createLazyRecord(String);
+
+      assertOk(Names.fromUnknown({ ada: "Lovelace" }), { ada: "Lovelace" });
     });
 
     it("rejects every key in an empty key domain", () => {
