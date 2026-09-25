@@ -24,6 +24,7 @@
     "bench:json-codec": "node bench/json-codec/benchmark.mts",
     "bench:storage": "node bench/storage/benchmark.mts",
     "bench:type": "node bench/type/benchmark.mts",
+    "bench:type-runtime": "node bench/type-runtime/benchmark.mts",
     "check:packages": "node scripts/check-packages.mts",
     "start": "pnpm --filter @evolu/relay --filter web -r --parallel run start",
     "lint": "pnpm lint:oxlint && pnpm lint:sherif",

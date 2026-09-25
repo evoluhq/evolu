@@ -8,6 +8,8 @@ Benchmarks measure performance characteristics that ordinary correctness tests d
   encoding and decoding against msgpackr.
 - [Storage](./storage/README.md) measures SQLite timestamp Skiplist operations.
 - [Type](./type/README.md) measures deterministic TypeScript compiler work for Evolu Type APIs.
+- [Type runtime](./type-runtime/README.md) measures Evolu Type validation and
+  construction with the schemabenchmarks.dev Product workload.
 
 ## Commands
 

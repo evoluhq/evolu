@@ -1,0 +1,25 @@
+{
+  "baselines": [
+    {
+      "environment": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M5",
+        "nodeVersion": "24.20.0",
+        "batchSize": 100,
+        "repeatCount": 5,
+        "workloadSha256": "dc8f4c8030f0f5b667cdc137c85a787f8a3aeccf044d19ece67953bffe620823"
+      },
+      "measurementsNs": {
+        "create": 42111,
+        "isValid": 7095,
+        "isInvalid": 229,
+        "fromUnknownValid": 8587,
+        "fromUnknownInvalidFirst": 694,
+        "fromUnknownInvalidAll": 8911,
+        "standardValid": 8762,
+        "standardInvalid": 15031
+      }
+    }
+  ]
+}
