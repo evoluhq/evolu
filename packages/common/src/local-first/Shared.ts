@@ -16,7 +16,42 @@
  * the browser ends it. The lock is the one that earlier releases take in their
  * leader tab, so they are excluded too. An earlier release's worker can outlive
  * its leader tab and resume once the lock is free; it computes new timestamps
- * when it retries, so it cannot reuse another worker's.
+ * when it retries, so it cannot reuse another worker's. A tab of an earlier
+ * release that opens while a worker of this release runs gets no response to
+ * its database requests until it reloads, and until then it also blocks workers
+ * that start after this one ends.
+ *
+ * On the web, the wait is usually short, because tabs of the running build
+ * reload to load the build the server now serves:
+ *
+ * 1. A worker tells the tabs that connect before it holds the lock that they wait,
+ *    and such a tab announces the worker with {@link BuildWaiting}. It announces
+ *    again when a tab that connects asks with {@link BuildWaitingRequest}, so a
+ *    tab that started or connected after the first announcement learns of it
+ *    too.
+ * 2. A tab connected to another worker reloads with {@link ReloadApp}: at once if
+ *    the user is not in it, otherwise once they leave it, so a tab never
+ *    reloads while the user works in it. Focus can leave a page from a frame
+ *    without a window event, so such a tab checks once a second whether it
+ *    still has focus. A tab that still waits itself keeps the announcements it
+ *    receives and handles them once it connects, because the lock can pass to
+ *    its worker first.
+ * 3. A page that such a reload loaded never announces, and a tab reloads at most
+ *    once for each waiting worker, so two builds cannot keep reloading each
+ *    other, even when a reload loads the running build again. A tab without
+ *    session storage cannot record its reloads, so it does not reload.
+ *
+ * Only the web platform does this, because only there do builds coexist. A
+ * reload loses UI state the app did not persist, so apps keep drafts in
+ * local-only tables. A write a background tab has in flight can be lost, as
+ * when a tab crashes.
+ *
+ * The wait lasts while a tab of the running build does not reload: a tab of an
+ * earlier release, a tab Safari has frozen, a tab without session storage, or a
+ * tab whose reload loads the running build again, for example because another
+ * Evolu app shares the origin or a cache still serves the old build. A worker
+ * still waiting after three seconds reports {@link OtherBuildRunningError} to
+ * its tabs.
  *
  * The tabs of one worker elect the host of its DbWorkers among themselves, with
  * a lock scoped to the worker, so a tab of another worker never hosts them.
@@ -180,6 +215,7 @@ import {
   type LookupMap,
   type StructuralLookupKey,
 } from "../Lookup.ts";
+import type { ReloadApp } from "../Platform.ts";
 import { createRefCountedRelation } from "../Relation.ts";
 import {
   createSharedResourceByKey,
@@ -204,13 +240,20 @@ import {
   PositiveMillis,
   type Millis,
   type PerformanceTime,
+  type PositiveDuration,
   type TimeoutId,
 } from "../Time.ts";
 import {
   createId,
+  id,
+  literal,
+  object,
   type ExtractTyped,
   type Id,
+  type InferType,
+  type LiteralType,
   type Name,
+  type ObjectType,
   type Typed,
 } from "../Type.ts";
 import type { Callback } from "../Types.ts";
@@ -288,9 +331,20 @@ export type SharedWorkerInput =
 export type SharedWorkerOutput =
   | DbWorkerInit
   | {
-      /** Sent to one tab only: its database refused startup. */
+      /**
+       * Sent to one tab only: its database refused startup, or another build
+       * keeps this worker waiting.
+       */
       readonly type: "Error";
-      readonly error: UnsupportedDbVersionError;
+      readonly error: UnsupportedDbVersionError | OtherBuildRunningError;
+    }
+  | {
+      /**
+       * Sent to a tab that connects while the worker waits for the build lock;
+       * see Builds. `Connected` follows once the worker holds it.
+       */
+      readonly type: "Waiting";
+      readonly workerId: SharedWorkerId;
     }
   | {
       /**
@@ -316,6 +370,57 @@ export type ConsoleEntryOrError =
 
 export const consoleEntryOrErrorBroadcastChannelName =
   "evolu:console-entry-or-error";
+
+/** Identifies one running SharedWorker instance. */
+export const SharedWorkerId = /*#__PURE__*/ id("SharedWorker");
+export type SharedWorkerId = typeof SharedWorkerId.Output;
+
+/**
+ * The channel on which a tab announces its waiting worker with
+ * {@link BuildWaiting}; see Builds. Builds of different releases share it, so
+ * its name and messages never change.
+ */
+export const buildsBroadcastChannelName = "evolu:builds";
+
+/**
+ * Posted on {@link buildsBroadcastChannelName} by a tab whose worker waits for
+ * the build lock, unless an automatic reload loaded the page, when it starts
+ * waiting and for each {@link BuildWaitingRequest}. A tab connected to another
+ * worker reloads for it; see Builds.
+ */
+export const BuildWaiting: ObjectType<{
+  readonly type: LiteralType<"BuildWaiting">;
+  readonly workerId: typeof SharedWorkerId;
+}> = /*#__PURE__*/ object({
+  type: /*#__PURE__*/ literal("BuildWaiting"),
+  workerId: SharedWorkerId,
+});
+export interface BuildWaiting extends InferType<typeof BuildWaiting> {}
+
+/**
+ * Posted on {@link buildsBroadcastChannelName} by a tab once it connects, asking
+ * tabs whose worker waits to post {@link BuildWaiting} again; see Builds.
+ */
+export const BuildWaitingRequest: ObjectType<{
+  readonly type: LiteralType<"BuildWaitingRequest">;
+}> = /*#__PURE__*/ object({
+  type: /*#__PURE__*/ literal("BuildWaitingRequest"),
+});
+export interface BuildWaitingRequest extends InferType<
+  typeof BuildWaitingRequest
+> {}
+
+/**
+ * Another build of the app holds the local databases, and this tab waits until
+ * every tab of that build is closed or reloaded; see Builds.
+ *
+ * Tabs of the other build usually reload by themselves, so this is reported
+ * only when the wait lasts, for example because the user is still in a tab of
+ * the other build, or that tab runs an earlier release or is frozen by Safari.
+ * Apps can ask the user to close the app's other tabs. It is cleared once the
+ * wait ends.
+ */
+export interface OtherBuildRunningError extends Typed<"OtherBuildRunningError"> {}
 
 /**
  * A snapshot of the transports and databases the shared worker manages.
@@ -865,10 +970,16 @@ interface TransportsDep {
 
 export type EvoluInstanceId = Id & Brand<"EvoluInstance">;
 
-/** Identifies one running SharedWorker instance. */
-export type SharedWorkerId = Id & Brand<"SharedWorker">;
+// Long enough for another build's tabs to reload and its worker to end.
+const otherBuildRunningReportDelay: PositiveDuration = "3s";
 
-/** Initializes the platform-agnostic Evolu SharedWorker. */
+/**
+ * Initializes the platform-agnostic Evolu SharedWorker.
+ *
+ * The worker holds the build lock until it is disposed, so a platform connects
+ * every `createEvoluDeps` call in a JS runtime to one worker, as React Native
+ * does; see Builds.
+ */
 export const initSharedWorker =
   (
     self: SharedWorkerSelf<SharedWorkerInput, SharedWorkerOutput>,
@@ -898,8 +1009,32 @@ export const initSharedWorker =
 
     const sharedWorkerReady = Promise.withResolvers<void>();
 
+    // Until this worker holds the build lock, it tells connecting tabs that they
+    // wait, and reports a lasting wait to them; see Builds.
+    const starting = disposer.use(new DisposableStack());
+    const waitingTabPorts: Array<TabPort> = [];
+    let isOtherBuildRunning = false;
+    const reportOtherBuildRunning = (port: TabPort): void => {
+      port.postMessage({
+        type: "Error",
+        error: { type: "OtherBuildRunningError" },
+      });
+    };
+    const otherBuildRunningTimeoutId = deps.time.setTimeout(() => {
+      isOtherBuildRunning = true;
+      for (const port of waitingTabPorts) reportOtherBuildRunning(port);
+    }, otherBuildRunningReportDelay);
+    starting.defer(() => {
+      deps.time.clearTimeout(otherBuildRunningTimeoutId);
+    });
+
     // Register ASAP so the worker does not miss connections.
     self.onConnect = (port) => {
+      if (!starting.disposed) {
+        port.postMessage({ type: "Waiting", workerId });
+        waitingTabPorts.push(port);
+        if (isOtherBuildRunning) reportOtherBuildRunning(port);
+      }
       void sharedWorkerReady.promise.then(() => {
         // The underlying port buffers messages until onMessage is assigned.
         port.onMessage = (message) => {
@@ -943,6 +1078,7 @@ export const initSharedWorker =
     // Released after every tenant and DbWorker is disposed. Earlier releases
     // take the same lock in their leader tab; see Builds.
     disposer.use(await run.ok(acquireLeaderLock("tab")));
+    starting.dispose();
 
     disposer.defer(
       deps.consoleStoreOutputEntry.subscribe(() => {

@@ -1,4 +1,5 @@
 import {
+  assert,
   assertEqual,
   assertInstanceOf,
   assertLength,
@@ -33,6 +34,71 @@ import {
   createSharedWorker,
   createWorker,
 } from "../../../../packages/web/src/Worker.ts";
+
+test("a worker of another build tells its tab it waits until the first build closes", async () => {
+  // Workers with different names behave as the workers of two builds: they are
+  // separate instances that share the build lock.
+  const buildA = `build-a-${crypto.randomUUID()}`;
+  const buildB = `build-b-${crypto.randomUUID()}`;
+  const outputA = new BroadcastChannel(buildA);
+  const outputB = new BroadcastChannel(buildB);
+  using cleanup = new DisposableStack();
+  cleanup.defer(() => {
+    outputB.postMessage({ type: "Close" });
+    outputB.close();
+  });
+  let isBuildAClosed = false;
+  const closeBuildA = () => {
+    if (isBuildAClosed) return;
+    isBuildAClosed = true;
+    outputA.postMessage({ type: "Close" });
+    outputA.close();
+  };
+  // Disposed in reverse, so build A closes first even when the test fails.
+  cleanup.defer(closeBuildA);
+
+  const createBuildWorker = (name: string) => {
+    const worker = cleanup.use(
+      createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
+        new SharedWorker(
+          new URL("./workers/sync-shared-worker.ts", import.meta.url),
+          { name, type: "module" },
+        ),
+      ),
+    );
+    const outputs: Array<SharedWorkerOutput> = [];
+    let nextOutput = Promise.withResolvers<void>();
+    worker.port.onMessage = (output) => {
+      outputs.push(output);
+      nextOutput.resolve();
+      nextOutput = Promise.withResolvers<void>();
+    };
+    const waitForOutputs = async (count: number) => {
+      while (outputs.length < count) await nextOutput.promise;
+    };
+    return { outputs, waitForOutputs };
+  };
+
+  const a = createBuildWorker(buildA);
+  // A tab connecting to a starting worker may hear Waiting before Connected.
+  await a.waitForOutputs(1);
+  if (a.outputs[0]?.type === "Waiting") await a.waitForOutputs(2);
+  assertSame(a.outputs.at(-1)?.type, "Connected");
+
+  const b = createBuildWorker(buildB);
+  await b.waitForOutputs(1);
+  const [waiting] = b.outputs;
+  assertNotUndefined(waiting);
+  assert(waiting.type === "Waiting", "Expected a Waiting output.");
+
+  closeBuildA();
+  await b.waitForOutputs(2);
+  assertEqual(b.outputs[1], {
+    type: "Connected",
+    workerId: waiting.workerId,
+    syncStateChannelName: `evolu:sync-state:${waiting.workerId}`,
+  });
+});
 
 test("requestSync crosses browser worker ports while two clients retain the owner", async () => {
   const workerName = `sync-${crypto.randomUUID()}`;

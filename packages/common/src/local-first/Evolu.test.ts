@@ -307,6 +307,50 @@ describe("Evolu", () => {
       };
     };
 
+    it("reports an OtherBuildRunningError its worker sends and clears it once the worker connects", async () => {
+      using setup = await setupCreateEvoluDeps();
+
+      setup.sharedWorkerPort.postMessage({
+        type: "Error",
+        error: { type: "OtherBuildRunningError" },
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(setup.deps.evoluError.get(), {
+        type: "OtherBuildRunningError",
+      });
+
+      await setup.connect(testCreateId()<"SharedWorker">());
+      assertSame(setup.deps.evoluError.get(), null);
+    });
+
+    it("keeps another error when its worker connects", async () => {
+      using setup = await setupCreateEvoluDeps();
+      const error: UnsupportedDbVersionError = {
+        type: "UnsupportedDbVersionError",
+        storedVersion: PositiveInt.orThrow(3),
+        supportedVersion: PositiveInt.orThrow(2),
+      };
+
+      setup.sharedWorkerPort.postMessage({ type: "Error", error });
+      await testWaitForWorkerMessage();
+      await setup.connect(testCreateId()<"SharedWorker">());
+
+      assertEqual(setup.deps.evoluError.get(), error);
+    });
+
+    it("says nothing to a worker that reports it waits", async () => {
+      using setup = await setupCreateEvoluDeps();
+
+      setup.sharedWorkerPort.postMessage({
+        type: "Waiting",
+        workerId: testCreateId()<"SharedWorker">(),
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(setup.messages, []);
+      assertSame(setup.deps.evoluError.get(), null);
+    });
+
     it("announces itself as tab leader with its console level once its worker connects", async () => {
       const testConsole = testCreateConsole();
       using setup = await setupCreateEvoluDeps(testConsole);

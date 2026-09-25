@@ -16,5 +16,6 @@ export const reloadApp: ReloadApp = (url) => {
     return;
   }
 
-  location.replace(url ?? "/");
+  if (url === undefined) location.reload();
+  else location.replace(url);
 };

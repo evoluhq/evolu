@@ -77,10 +77,12 @@ export interface FlushSyncDep {
 /**
  * Reload the app in a platform-specific way.
  *
- * Use this after purging persistent storage to clear in-memory state and ensure
- * the app starts fresh. It does not purge storage itself.
+ * On the web, Evolu reloads tabs of a build when another build of the app waits
+ * for the local databases, so they load the build the server now serves. It can
+ * also clear in-memory state after persistent storage was purged; it does not
+ * purge storage itself.
  *
- * - Web: Redirects to the specified URL (defaults to `/`)
+ * - Web: Reloads the page, or loads the specified URL instead
  * - React Native: Restarts the app (URL ignored)
  *
  * @group Integration

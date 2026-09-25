@@ -84,6 +84,7 @@ import type {
   ConsoleEntryOrError,
   EvoluInput,
   EvoluOutput,
+  OtherBuildRunningError,
   SharedWorkerDep,
   SyncState,
   syncStateToOwnerSyncStates,
@@ -819,6 +820,7 @@ export type UnuseOwner = () => void;
  */
 export type EvoluError =
   | DecryptWithXChaCha20Poly1305Error
+  | OtherBuildRunningError
   | ProtocolError
   | StorageQuotaError
   | TimestampTimeOutOfRangeError
@@ -839,15 +841,18 @@ export interface EvoluErrorDep {
    * first {@link UnsupportedDbVersionError}. That refusal remains for the
    * lifetime of these dependencies, even if a tenant is disposed and recreated.
    * Later errors are still logged but do not replace it or notify this store's
-   * subscribers. Fresh dependencies start with a fresh error store.
+   * subscribers. Fresh dependencies start with a fresh error store. An
+   * {@link OtherBuildRunningError} reports a wait, so the store returns to
+   * `null` when the wait ends, unless another error replaced it.
    *
    * Subscribe once to show user-facing error messages across all instances.
    * While a refused database's tenant remains alive, the SharedWorker sends the
    * refusal to each tab once, including tabs that connect later, and starts no
    * replacement database workers. After all instances release that tenant and
    * it is disposed when idle, creating another instance retries startup and may
-   * send the refusal again. Show that blocking message outside any
-   * query-loading boundary, so pending queries do not hide it.
+   * send the refusal again. On the web, a refused tab first reloads once
+   * instead; see {@link UnsupportedDbVersionError}. Show that blocking message
+   * outside any query-loading boundary, so pending queries do not hide it.
    *
    * ### Example
    *
@@ -855,55 +860,41 @@ export interface EvoluErrorDep {
    * import {
    *   assertEqual,
    *   createStore,
-   *   PositiveInt,
    *   type EvoluError,
    * } from "@evolu/common";
    * import type { EvoluErrorDep } from "@evolu/common/local-first";
    *
+   * // The message for the current error, or null for none.
+   * const errorMessage = (error: EvoluError | null): string | null => {
+   *   if (!error) return null;
+   *   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The default handles every other EvoluError.
+   *   switch (error.type) {
+   *     case "UnsupportedDbVersionError":
+   *       return "Your data requires a newer version of this app. Please update it.";
+   *     case "OtherBuildRunningError":
+   *       return "This app is open in another tab with a different version. Close that tab to continue.";
+   *     default:
+   *       return "Something went wrong. Please try again.";
+   *   }
+   * };
+   *
    * // Stand-in for run.deps.evoluError from createEvoluDeps.
    * using evoluError = createStore<EvoluError | null>(null);
    * const deps = { evoluError } satisfies EvoluErrorDep;
-   * const displayedMessages: Array<string> = [];
-   * const showMessage = (message: string) => {
-   *   displayedMessages.push(message);
-   * };
+   * // What the app showed over time; null hides the message.
+   * const shown: Array<string | null> = [];
    *
    * deps.evoluError.subscribe(() => {
-   *   const error = deps.evoluError.get();
-   *   if (!error) return;
-   *
-   *   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The default intentionally handles every other EvoluError.
-   *   switch (error.type) {
-   *     case "TimestampTimeOutOfRangeError":
-   *       // Show guidance specific to the detected error.
-   *       showMessage(
-   *         "Your system clock appears incorrect. Fix it and restart the app.",
-   *       );
-   *       break;
-   *     case "UnsupportedDbVersionError":
-   *       showMessage(
-   *         "Your data requires a newer app version. Close all tabs of this app, then open it again.",
-   *       );
-   *       break;
-   *     default:
-   *       // Show a generic user message for other operational errors.
-   *       showMessage("Something went wrong. Please try again.");
-   *   }
+   *   shown.push(errorMessage(deps.evoluError.get()));
    * });
    *
-   * deps.evoluError.set({ type: "TimestampTimeOutOfRangeError" });
-   * assertEqual(displayedMessages, [
-   *   "Your system clock appears incorrect. Fix it and restart the app.",
-   * ]);
+   * // Another version keeps this tab waiting, then the wait ends.
+   * deps.evoluError.set({ type: "OtherBuildRunningError" });
+   * deps.evoluError.set(null);
    *
-   * deps.evoluError.set({
-   *   type: "UnsupportedDbVersionError",
-   *   storedVersion: PositiveInt.orThrow(3),
-   *   supportedVersion: PositiveInt.orThrow(2),
-   * });
-   * assertEqual(displayedMessages, [
-   *   "Your system clock appears incorrect. Fix it and restart the app.",
-   *   "Your data requires a newer app version. Close all tabs of this app, then open it again.",
+   * assertEqual(shown, [
+   *   "This app is open in another tab with a different version. Close that tab to continue.",
+   *   null,
    * ]);
    * ```
    */
@@ -1061,13 +1052,23 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
         break;
 
       case "Error":
-        // Sent to this tab only: its database refused startup.
+        // Sent to this tab only: its database refused startup, or its worker
+        // still waits for another build.
         setEvoluError(message.error);
         console.error(message.error);
         break;
 
+      case "Waiting":
+        // Platforms where builds coexist act on it; see Builds in the Shared
+        // module.
+        break;
+
       case "Connected": {
         assert(!syncStateBroadcastChannel, "The shared worker connects once.");
+        // The wait the error reported is over.
+        if (evoluError.get()?.type === "OtherBuildRunningError") {
+          evoluError.set(null);
+        }
         // The worker is the channel's only sender, and one sender's messages
         // arrive in order, so the last one is current.
         syncStateBroadcastChannel = createBroadcastChannel<SyncState>(

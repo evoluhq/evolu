@@ -178,8 +178,11 @@ const dbVersion = PositiveInt.orThrow(2);
  * created or migrated the database, which is left unchanged. This happens when
  * older code opens a database a newer build migrated, for example an older
  * build loaded from a cache, or when the app was downgraded after a newer
- * version migrated the local data. Update the app to a version that supports
- * `storedVersion` and close all its tabs.
+ * version migrated the local data. On the web, a refused tab reloads once for
+ * each stored version, so it loads the build the server now serves, and the
+ * error is reported when that build refuses too. Then close all tabs of the
+ * app, which lets a service worker replace a cached older build, or update the
+ * app to a version that supports `storedVersion`.
  */
 export interface UnsupportedDbVersionError extends Typed<"UnsupportedDbVersionError"> {
   readonly storedVersion: PositiveInt;

@@ -9,6 +9,7 @@ import {
   assertLength,
   assertNonEmptyArray,
   assertNonNullable,
+  assertNotNull,
   assertNotUndefined,
   assertNotSame,
   assertOk,
@@ -602,7 +603,24 @@ describe("builds", () => {
     };
     const started = run.ok(initSharedWorker(worker.self));
     worker.connect();
-    return { worker, outputs, started };
+    return { worker, run, outputs, started };
+  };
+
+  /** Connects another tab to a worker and records what the worker sends it. */
+  const connectTab = (
+    worker: ReturnType<typeof setupBuildWorker>["worker"],
+    disposer: AsyncDisposableStack,
+  ): Array<SharedWorkerOutput> => {
+    const channel = disposer.use(
+      testCreateMessageChannel<SharedWorkerInput, SharedWorkerOutput>(),
+    );
+    const outputs: Array<SharedWorkerOutput> = [];
+    channel.port1.onMessage = (output) => {
+      outputs.push(output);
+    };
+    assertNotNull(worker.self.onConnect);
+    worker.self.onConnect(channel.port2);
+    return outputs;
   };
 
   /** Answers a DbWorkerInit as a started DbWorker, so the tenant finishes. */
@@ -622,7 +640,7 @@ describe("builds", () => {
     await testWaitForWorkerMessage();
   };
 
-  it("answers no tab while a leader tab of an earlier release holds the lock", async () => {
+  it("serves no tab request while a leader tab of an earlier release holds the lock", async () => {
     await using disposer = new AsyncDisposableStack();
     const lockManager = testCreateLockManager();
     const mainThreadRun = disposer.use(testCreateRun({ lockManager }));
@@ -652,7 +670,10 @@ describe("builds", () => {
       evoluPort: evoluChannel.port1.native,
     });
     await testWaitForWorkerMessage();
-    assertEqual(outputs, []);
+    assertEqual(
+      outputs.map((output) => output.type),
+      ["Waiting"],
+    );
 
     // The buffered messages are served once the lock is released.
     await legacyLeader[Symbol.asyncDispose]();
@@ -661,9 +682,100 @@ describe("builds", () => {
     await testWaitForWorkerMessage();
     assertEqual(
       outputs.map((output) => output.type),
-      ["Connected", "DbWorkerInit"],
+      ["Waiting", "Connected", "DbWorkerInit"],
     );
-    await answerDbWorkerInit(outputs.at(1), disposer);
+    await answerDbWorkerInit(outputs.at(2), disposer);
+  });
+
+  it("tells tabs that connect before it holds the build lock that they wait", async () => {
+    await using disposer = new AsyncDisposableStack();
+    const lockManager = testCreateLockManager();
+    const mainThreadRun = disposer.use(testCreateRun({ lockManager }));
+    const otherBuild = await mainThreadRun.ok(acquireLeaderLock("tab"));
+    const { worker, outputs, started } = setupBuildWorker(
+      lockManager,
+      disposer,
+    );
+    const laterOutputs = connectTab(worker, disposer);
+    await testWaitForWorkerMessage();
+    const [waiting] = outputs;
+    assertNotUndefined(waiting);
+    assert(waiting.type === "Waiting", "Expected a Waiting output.");
+    const { workerId } = waiting;
+    assertEqual(laterOutputs, [{ type: "Waiting", workerId }]);
+
+    await otherBuild[Symbol.asyncDispose]();
+    disposer.use(await started);
+    await testWaitForWorkerMessage();
+    const connected: SharedWorkerOutput = {
+      type: "Connected",
+      workerId,
+      syncStateChannelName: `evolu:sync-state:${workerId}`,
+    };
+    assertEqual(outputs, [waiting, connected]);
+    assertEqual(laterOutputs, [waiting, connected]);
+
+    // Holding the lock, it connects tabs directly.
+    const lastOutputs = connectTab(worker, disposer);
+    await testWaitForWorkerMessage();
+    assertEqual(lastOutputs, [connected]);
+  });
+
+  it("reports OtherBuildRunningError to its tabs once the wait lasts three seconds", async () => {
+    await using disposer = new AsyncDisposableStack();
+    const lockManager = testCreateLockManager();
+    const mainThreadRun = disposer.use(testCreateRun({ lockManager }));
+    const otherBuild = await mainThreadRun.ok(acquireLeaderLock("tab"));
+    const { worker, run, outputs, started } = setupBuildWorker(
+      lockManager,
+      disposer,
+    );
+    const { time } = run.deps;
+    const otherBuildRunning: SharedWorkerOutput = {
+      type: "Error",
+      error: { type: "OtherBuildRunningError" },
+    };
+    await testWaitForWorkerMessage();
+
+    time.advance(Millis.orThrow(2_999));
+    await testWaitForWorkerMessage();
+    assertEqual(
+      outputs.map((output) => output.type),
+      ["Waiting"],
+    );
+
+    time.advance(Millis.orThrow(1));
+    await testWaitForWorkerMessage();
+    assertEqual(outputs.at(1), otherBuildRunning);
+
+    // A tab connecting after that is told at once.
+    const laterOutputs = connectTab(worker, disposer);
+    await testWaitForWorkerMessage();
+    assertEqual(laterOutputs.at(1), otherBuildRunning);
+
+    await otherBuild[Symbol.asyncDispose]();
+    disposer.use(await started);
+    await testWaitForWorkerMessage();
+    assertEqual(
+      [...outputs, ...laterOutputs].map((output) => output.type),
+      ["Waiting", "Error", "Connected", "Waiting", "Error", "Connected"],
+    );
+  });
+
+  it("reports no OtherBuildRunningError when the build lock is free", async () => {
+    await using disposer = new AsyncDisposableStack();
+    const lockManager = testCreateLockManager();
+    const { run, outputs, started } = setupBuildWorker(lockManager, disposer);
+    disposer.use(await started);
+    await testWaitForWorkerMessage();
+
+    run.deps.time.advance("5s");
+    await testWaitForWorkerMessage();
+    // The tab connected before the worker took the free lock.
+    assertEqual(
+      outputs.map((output) => output.type),
+      ["Waiting", "Connected"],
+    );
   });
 
   it("keeps a worker of another build waiting until it ends", async () => {
@@ -675,16 +787,19 @@ describe("builds", () => {
     await testWaitForWorkerMessage();
     assertEqual(
       first.outputs.map((output) => output.type),
-      ["Connected"],
+      ["Waiting", "Connected"],
     );
-    assertEqual(second.outputs, []);
+    assertEqual(
+      second.outputs.map((output) => output.type),
+      ["Waiting"],
+    );
 
     await firstWorker[Symbol.asyncDispose]();
     disposer.use(await second.started);
     await testWaitForWorkerMessage();
     assertEqual(
       second.outputs.map((output) => output.type),
-      ["Connected"],
+      ["Waiting", "Connected"],
     );
   });
 

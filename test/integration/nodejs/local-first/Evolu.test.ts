@@ -209,6 +209,8 @@ describe("Evolu integration", () => {
           tabErrorReported.resolve();
           tabErrorReported = Promise.withResolvers<void>();
           break;
+        case "Waiting":
+          break;
         case "Connected":
           connected.resolve(message);
           break;

@@ -6,8 +6,9 @@ import {
   PositiveInt,
   testStubGlobal,
 } from "@evolu/common";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { availableParallelism, isApplePlatform } from "./index.ts";
+import { reloadApp } from "./Platform.ts";
 
 for (const platform of ["macOS", "MacIntel", "iPhone", "iPad", "iPod"]) {
   test(`isApplePlatform recognizes ${platform}`, () => {
@@ -42,4 +43,31 @@ test("availableParallelism returns the validated browser value", () => {
 
   assertType<typeof parallelism, PositiveInt>();
   assertEqual(parallelism, 128);
+});
+
+test("reloadApp reloads the current page", () => {
+  const reload = mock.fn<() => void>();
+  const replace = mock.fn<(url: string) => void>();
+  using _document = testStubGlobal("document", {});
+  using _location = testStubGlobal("location", { reload, replace });
+
+  reloadApp();
+
+  assertEqual(reload.mock.callCount(), 1);
+  assertEqual(replace.mock.callCount(), 0);
+});
+
+test("reloadApp loads a given URL instead", () => {
+  const reload = mock.fn<() => void>();
+  const replace = mock.fn<(url: string) => void>();
+  using _document = testStubGlobal("document", {});
+  using _location = testStubGlobal("location", { reload, replace });
+
+  reloadApp("/signed-out");
+
+  assertEqual(
+    replace.mock.calls.map((call) => call.arguments),
+    [["/signed-out"]],
+  );
+  assertEqual(reload.mock.callCount(), 0);
 });

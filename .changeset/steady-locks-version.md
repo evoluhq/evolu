@@ -14,9 +14,9 @@ database version 2 and migrates older databases to it at startup.
 
 A newer database appears in two situations. After a deployment, the new app
 version migrates the database, and an older build then opens it, for example
-one loaded later from a cache. Its shared worker keeps running while any of its
-tabs is open, which is why the recovery is closing all tabs rather than
-reloading one. Or the app is downgraded, including installing an older React
+one loaded later from a cache. On the web, each refused tab reloads once for
+each stored version, so it loads the build the server now serves. Or the app is
+downgraded, including installing an older React
 Native build, after a newer version migrated the local data; then only the newer
 app helps. Only code from this release onward checks the version, so releases
 before it cannot be protected. Nothing produces a newer database yet: the first
@@ -45,8 +45,9 @@ resolves pending query loads with empty rows and rejects its pending export with
 `EvoluDisposedError`.
 
 Apps should observe `evoluError` outside query-loading UI and show a blocking
-message asking users to close all tabs of the app and reopen it for
-`UnsupportedDbVersionError`. Evolu does not automatically reload tabs or replace the SharedWorker.
+message for `UnsupportedDbVersionError`, such as asking users to update the app.
+On the web, it is reported only when the reloaded build refuses the database
+too, or when the tab has no session storage.
 
 ```ts
 import { assertEqual, PositiveInt, type EvoluError } from "@evolu/common";
@@ -55,7 +56,7 @@ const describeError = (error: EvoluError): string => {
   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The default handles every other EvoluError.
   switch (error.type) {
     case "UnsupportedDbVersionError":
-      return "Your data requires a newer app version. Close all tabs of this app, then open it again.";
+      return "Your data requires a newer version of this app. Please update it.";
     default:
       return "Something went wrong.";
   }
@@ -67,6 +68,6 @@ assertEqual(
     storedVersion: PositiveInt.orThrow(3),
     supportedVersion: PositiveInt.orThrow(2),
   }),
-  "Your data requires a newer app version. Close all tabs of this app, then open it again.",
+  "Your data requires a newer version of this app. Please update it.",
 );
 ```

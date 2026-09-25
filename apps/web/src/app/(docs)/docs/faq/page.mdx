@@ -135,6 +135,8 @@ evolu.upsert("document", { id: documentId, title, content });
 
 Evolu batches mutations queued in the same microtask and applies them in a SQLite transaction. The draft deletion and document upsert above are therefore applied together. Local tables use the same mutation and reactive query APIs as synced tables.
 
+Drafts in local tables also survive reloads and accidentally closed tabs, so keep anything a user would be sad to lose there. For example, when a tab loads a new version of your app whose Evolu workers changed, such as after an Evolu update, Evolu reloads the tabs still running the previous version.
+
 ## How do I integrate with external systems that have their own IDs?
 
 Use `createIdFromString` to convert external IDs into valid Evolu IDs. Using the schema and Evolu instance from [Get started](/docs/local-first):
