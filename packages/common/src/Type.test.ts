@@ -1171,6 +1171,263 @@ describe("Type operations", () => {
   });
 });
 
+describe("identity Types", () => {
+  // Transforms returning their input keep the Result-based container paths, so
+  // they show that containers of identity Types validate the same way.
+  const SameString = transform("SameString", String, String, {
+    from: (value) => ok(value),
+    to: (value) => value,
+  });
+  const SameNumber = transform("SameNumber", Number, Number, {
+    from: (value) => ok(value),
+    to: (value) => value,
+  });
+
+  const withProperty = <T extends object>(
+    value: T,
+    key: PropertyKey,
+    descriptor: PropertyDescriptor,
+  ): T => globalThis.Object.defineProperty(value, key, descriptor);
+  const accessor = { get: () => "value", enumerable: true };
+  const nonEnumerable = { value: "value", enumerable: false };
+  const symbol = globalThis.Symbol("key");
+
+  // A Map without own properties whose inherited iterator repeats keys.
+  const setupRepeatedKeyMap = (
+    entries: ReadonlyArray<readonly [unknown, unknown]>,
+  ): ReadonlyMap<unknown, unknown> =>
+    globalThis.Object.create(
+      globalThis.Object.create(Map.prototype, {
+        [globalThis.Symbol.iterator]: { value: () => entries.values() },
+      }) as object,
+    ) as ReadonlyMap<unknown, unknown>;
+
+  const assertSameValidation = (
+    identityType: TypeNode,
+    decodingType: TypeNode,
+    values: ReadonlyArray<unknown>,
+  ): void => {
+    for (const value of values) {
+      for (const options of [
+        { errors: "first" },
+        { errors: "all" },
+      ] satisfies ReadonlyArray<ValidationOptions>) {
+        const result = identityType.fromUnknown(value, options);
+        // Unlike assertEqual, this compares symbol keys of error records.
+        nodeAssert.deepStrictEqual(
+          result,
+          decodingType.fromUnknown(value, options),
+        );
+        if (result.ok) assertSame(result.value, value);
+      }
+      assertSame(identityType.is(value), decodingType.is(value));
+
+      // Output validation of a transform wraps its errors, so only the identity
+      // Type is expected to report its decoding error.
+      const outputError = (type: TypeNode) => {
+        try {
+          assertType(type, value);
+          return undefined;
+        } catch (error) {
+          return (error as Error).cause;
+        }
+      };
+      const result = identityType.fromUnknown(value);
+      nodeAssert.deepStrictEqual(
+        outputError(identityType),
+        result.ok ? undefined : result.error,
+      );
+      assertSame(outputError(decodingType) === undefined, result.ok);
+    }
+  };
+
+  it("validate collections like decoding collections", () => {
+    assertSameValidation(array(String), array(SameString), [
+      ["a", "b"],
+      ["a", 1, "b", 2],
+      globalThis.Object.assign(createMutableArray<unknown>(3), {
+        0: "a",
+        2: "b",
+      }),
+      withProperty(["a", "b"], 1, accessor),
+      globalThis.Object.assign(["a"], { extra: 1 }),
+      1,
+    ]);
+    assertSameValidation(set(String), set(SameString), [
+      new Set(["a", "b"]),
+      new Set(["a", 1, 2]),
+      withProperty(new Set(["a", 1]), "extra", { value: 1 }),
+      globalThis.Object.assign(new Set(["a", 1]), { extra: 1, other: 2 }),
+      1,
+    ]);
+    assertSameValidation(map(String, Number), map(SameString, SameNumber), [
+      new Map([["a", 1]]),
+      new Map<unknown, unknown>([
+        ["a", 1],
+        [1, "b"],
+        ["c", "d"],
+      ]),
+      withProperty(new Map<unknown, unknown>([[1, "b"]]), "extra", {
+        value: 1,
+      }),
+      globalThis.Object.assign(new Map<unknown, unknown>([[1, "b"]]), {
+        extra: 1,
+        other: 2,
+      }),
+      setupRepeatedKeyMap([
+        ["a", 1],
+        ["a", 2],
+      ]),
+      setupRepeatedKeyMap([
+        [1, 1],
+        [1, 2],
+      ]),
+      setupRepeatedKeyMap([
+        ["a", 1],
+        ["b", "x"],
+        [1, 2],
+        ["a", 2],
+      ]),
+      1,
+    ]);
+    assertSameValidation(tuple(String, Number), tuple(SameString, SameNumber), [
+      ["a", 1],
+      [1, "b"],
+      ["a"],
+      globalThis.Object.assign(["a", 1], { extra: 1 }),
+      1,
+    ]);
+  });
+
+  it("reject values without the expected class or tag", () => {
+    class User {
+      readonly name = "Ada";
+    }
+    const UserInstance = instanceOf(User);
+
+    assertFalse(Date.is(1));
+    assertEqual(
+      array(Date).fromUnknown([new globalThis.Date(0), 1], { errors: "all" }),
+      err({
+        type: "Array",
+        reason: {
+          kind: "Items",
+          issues: [
+            {
+              kind: "Element",
+              index: 1,
+              error: { type: "ObjectTag", expected: "Date", value: 1 },
+            },
+          ],
+        },
+      }),
+    );
+    assertEqual(
+      array(UserInstance).fromUnknown([new User(), 1], { errors: "all" }),
+      err({
+        type: "Array",
+        reason: {
+          kind: "Items",
+          issues: [
+            {
+              kind: "Element",
+              index: 1,
+              error: { type: "InstanceOf", constructorName: "User", value: 1 },
+            },
+          ],
+        },
+      }),
+    );
+  });
+
+  it("validate objects and records like decoding ones", () => {
+    const invalidObjects = [
+      1,
+      globalThis.Object.create({}),
+      {},
+      { a: "x", b: "x", c: 1, [symbol]: 1 },
+      withProperty({}, "a", accessor),
+      withProperty({}, "a", nonEnumerable),
+    ];
+    const invalidRecords = [
+      { a: 1, c: "y", [symbol]: 1 },
+      withProperty({ a: 1 }, "c", accessor),
+      withProperty({ a: 1 }, "c", nonEnumerable),
+    ];
+
+    assertSameValidation(
+      object({ a: Number, b: optional(String) }),
+      object({ a: SameNumber, b: optional(SameString) }),
+      [{ a: 1 }, { a: 1, b: "x" }, { b: "x", a: 1 }, ...invalidObjects],
+    );
+    assertSameValidation(
+      record(String, Number),
+      record(SameString, SameNumber),
+      [{ a: 1 }, new globalThis.Date(0), ...invalidObjects, ...invalidRecords],
+    );
+    for (const decodingType of [
+      object({ a: SameNumber }, record(String, Number)),
+      object({ a: Number }, record(String, SameNumber)),
+    ]) {
+      assertSameValidation(
+        object({ a: Number }, record(String, Number)),
+        decodingType,
+        [{ a: 1, c: 1 }, ...invalidObjects, ...invalidRecords],
+      );
+    }
+  });
+
+  it("copies identity Record properties into a decoded object", () => {
+    const Model = object(
+      { count: setupNumberFromString() },
+      record(String, union(String, Number)),
+    );
+
+    const result = Model.fromUnknown({ count: "1", first: 2, second: "3" });
+
+    assertOk(result, { count: 1, first: 2, second: "3" });
+    assertSame(globalThis.Object.getPrototypeOf(result.value), null);
+  });
+
+  it("validate unions like decoding unions", () => {
+    const Created = object({ type: literal("Created"), name: String });
+    const Deleted = object({ type: literal("Deleted"), id: Number });
+
+    assertSameValidation(
+      union(String, Number, null),
+      union(SameString, SameNumber, null),
+      ["a", 1, null, true],
+    );
+    // Lazy Types have no identity check, so this Union input validates
+    // members with Results.
+    assertSameValidation(
+      union(String, Number).parent,
+      union(
+        lazy(() => String),
+        Number,
+      ).parent,
+      ["a", 1, true],
+    );
+    assertSameValidation(
+      array(discriminatedUnion(Created, Deleted)),
+      array(
+        discriminatedUnion(
+          object({ type: literal("Created"), name: SameString }),
+          Deleted,
+        ),
+      ),
+      [
+        [
+          { type: "Created", name: "Ada" },
+          { type: "Deleted", id: 1 },
+        ],
+        [{ type: "Created", name: 1 }, { type: "Deleted" }, { type: "Moved" }],
+        [1],
+      ],
+    );
+  });
+});
+
 describe("Type.orThrow", () => {
   it("formats a returned validation error once and preserves its identity", () => {
     const cause = { type: "Text", value: "invalid" } as const;
@@ -1662,6 +1919,27 @@ describe("Standard Schema", () => {
         {
           message: "A Data Object has an unexpected prototype.",
           path: ["second"],
+        },
+      ],
+    });
+  });
+
+  it("prefixes nested JsonValue and Data issue paths", async () => {
+    const Model = object({ json: JsonValue, data: array(Data) });
+    const result = await Model["~standard"].validate({
+      json: { values: [globalThis.Number.NaN] },
+      data: [1, { value: /value/u }],
+    });
+
+    assertEqual(result, {
+      issues: [
+        {
+          message: "A JSON number must be finite.",
+          path: ["json", "values", 0],
+        },
+        {
+          message: "A Data Object has an unexpected prototype.",
+          path: ["data", 1, "value"],
         },
       ],
     });
@@ -3046,6 +3324,11 @@ describe("createType", () => {
       NonEmptyString.formatError({ type: "NonEmptyString", value: "" }),
       "Enter some text.",
     );
+    assertAssertionError(
+      () => assertType(NonEmptyString, ""),
+      "Expected NonEmptyString.",
+      { type: "NonEmptyString", value: "" },
+    );
   });
 
   it("asserts that validation callbacks preserve identity", () => {
@@ -3560,6 +3843,39 @@ describe("createTypeWithError", () => {
     assertEqual(typeErrorToIssues(custom.Settings, result.error), [
       { path: ["value"], message: "Custom value." },
     ]);
+  });
+
+  it("maps only invalid values inside structural Types", () => {
+    const mapError = mock.fn((cause: InferErrors<typeof String>) => ({
+      type: "Value" as const,
+      cause,
+    }));
+    const Values = array(
+      createTypeWithError("Value", String, mapError, () => "Invalid value."),
+    );
+    const valid = ["a", "b"];
+
+    assertOk(Values.fromUnknown(valid), valid);
+    assertSame(mapError.mock.callCount(), 0);
+    assertEqual(Values.fromUnknown(["a", 1]), {
+      ok: false,
+      error: {
+        type: "Array",
+        reason: {
+          kind: "Items",
+          issues: [
+            {
+              kind: "Element",
+              index: 1,
+              error: {
+                type: "Value",
+                cause: { type: "TypeOf", expected: "String", value: 1 },
+              },
+            },
+          ],
+        },
+      },
+    });
   });
 
   it("rejects transforming sources and incompatible error names", () => {
@@ -7004,6 +7320,70 @@ describe("brand", () => {
       Parameters<typeof UserId.formatError>[0],
       TypeOfError<"String">
     >();
+  });
+
+  it("refines decoded values and Outputs of a transformed base", () => {
+    const Positive = brand(
+      "Positive",
+      setupNumberFromString(),
+      (value) => (value > 0 ? ok() : err({ type: "Positive", value })),
+      formatTestTypeError,
+    );
+    const Small = brand(
+      "Small",
+      Positive,
+      (value) => (value < 10 ? ok() : err({ type: "Small", value })),
+      formatTestTypeError,
+    );
+
+    assertOk(Small.fromUnknown("5"), 5);
+    assertEqual(Small.fromUnknown("0"), err({ type: "Positive", value: 0 }));
+    assertEqual(Small.fromUnknown("50"), err({ type: "Small", value: 50 }));
+    assertTrue(Small.is(5));
+    assertFalse(Small.is(50));
+    assertAssertionError(() => assertType(Small, 50), "Expected Small.", {
+      type: "Small",
+      value: 50,
+    });
+    assertAssertionError(() => assertType(Small, "5"), "Expected Small.", {
+      type: "NumberFromString",
+      outputError: { type: "TypeOf", expected: "Number", value: "5" },
+    });
+  });
+
+  it("calls validators with only the value and without a receiver", () => {
+    const receivers = new Set<unknown>();
+    const argumentCounts = new Set<number>();
+    const Small = brand(
+      "Small",
+      Number,
+      function (this: unknown, value, ...rest: ReadonlyArray<unknown>) {
+        receivers.add(this);
+        argumentCounts.add(1 + rest.length);
+        return value < 10 ? ok() : err({ type: "Small", value });
+      },
+      formatTestTypeError,
+    );
+    // A default parameter keeps its default.
+    const SmallEven = brand(
+      "SmallEven",
+      Small,
+      (value, divisor = 2) =>
+        value % divisor === 0 ? ok() : err({ type: "SmallEven", value }),
+      formatTestTypeError,
+    );
+
+    assertOk(Small.fromUnknown(4), 4);
+    assertTrue(Small.is(4));
+    assertOk(SmallEven.fromUnknown(4), 4);
+    assertTrue(SmallEven.is(4));
+    assertEqual(SmallEven.fromUnknown(3), err({ type: "SmallEven", value: 3 }));
+    assertOk(array(SmallEven).fromUnknown([4]), [4]);
+    assertOk(object({ value: SmallEven }).fromUnknown({ value: 4 }), {
+      value: 4,
+    });
+    assertEqual([...receivers], [undefined]);
+    assertEqual([...argumentCounts], [1]);
   });
 
   it("rejects an unresolved generic infallible name", () => {
@@ -11012,6 +11392,66 @@ describe("array", () => {
       assertSame(array(array(Number)), array(array(Number)));
     });
 
+    it("reuses Array and Set Types of a frozen element Type", () => {
+      const Frozen = globalThis.Object.freeze(brand("Frozen", String));
+      const Frozens = array(Frozen);
+
+      assertSame(array(Frozen), Frozens);
+      assertSame(Frozens.element, Frozen);
+      assertSame(set(Frozen), set(Frozen));
+      assertOk(Frozens.fromUnknown(["a"]), ["a"]);
+    });
+
+    it("creates Array and Set Types of copied element Types", () => {
+      const Label = brand("Label", String);
+      const Labels = array(Label);
+      const LabelSet = set(Label);
+      const copies = [
+        { ...Label },
+        globalThis.Object.freeze({ ...Label }),
+        globalThis.Object.create(Label) as typeof Label,
+      ];
+
+      for (const copy of copies) {
+        const Copies = array(copy);
+        assertFalse(globalThis.Object.is(Copies, Labels));
+        assertSame(Copies.element, copy);
+        assertSame(array(copy), Copies);
+        assertSame(set(copy).element, copy);
+        assertSame(set(copy), set(copy));
+      }
+      assertSame(array(Label), Labels);
+      assertSame(set(Label), LabelSet);
+    });
+
+    it("keeps cached Collection Types out of localized element Types", () => {
+      const Label = minLength(1)(String);
+      const Labels = array(Label);
+      set(Label);
+      const LocalizedLabel = localizeTypes(
+        { Label },
+        {
+          test: {
+            MinLength1: () => "Localized MinLength1.",
+            String: () => "Localized String.",
+          },
+        },
+      ).test.Label;
+      const LocalizedLabels = array(LocalizedLabel);
+
+      assertFalse(globalThis.Object.is(LocalizedLabels, Labels));
+      assertSame(LocalizedLabels.element, LocalizedLabel);
+      assertSame(array(LocalizedLabel), LocalizedLabels);
+      assertSame(set(LocalizedLabel).element, LocalizedLabel);
+
+      const result = LocalizedLabels.fromUnknown(null);
+      assertErr(result);
+      assertEqual(
+        LocalizedLabels.formatError(result.error),
+        "A value null is not an array.",
+      );
+    });
+
     it("allows heterogeneous element issues in one error", () => {
       interface AError extends TypeError<"A"> {
         readonly value: number;
@@ -11242,6 +11682,35 @@ describe("array", () => {
         }),
       );
       assertEqual(reads, 0);
+    });
+
+    it("rejects index-like keys that are not canonical indices below the length", () => {
+      const Numbers = array(Number);
+      const keys = [
+        "",
+        "01",
+        "-0",
+        "1.0",
+        "4294967295",
+        "4294967296",
+        "12345678901",
+      ];
+      const value = globalThis.Object.assign(
+        [1],
+        globalThis.Object.fromEntries(keys.map((key) => [key, 1])),
+      );
+
+      assertFalse(Numbers.is(value));
+      assertEqual(
+        Numbers.fromUnknown(value, { errors: "all" }),
+        err({
+          type: "Array",
+          reason: {
+            kind: "Items",
+            issues: keys.map((key) => ({ kind: "ExcessProperty", key })),
+          },
+        }),
+      );
     });
 
     it("accepts ordinary Record elements through typed operations", () => {
@@ -14810,6 +15279,53 @@ describe("record", () => {
       );
     });
 
+    it("visits Proxy own keys in their listed order", () => {
+      const Values = record(String, Number);
+      const key = globalThis.Symbol("key");
+      const input = new Proxy(
+        { value: "wrong", [key]: 1 },
+        { ownKeys: () => [key, "value"] },
+      );
+
+      assertEqual(
+        Values.fromUnknown(input),
+        err({
+          type: "Record",
+          reason: {
+            kind: "Entries",
+            issues: [
+              {
+                kind: "Key",
+                key,
+                error: { type: "TypeOf", expected: "String", value: key },
+              },
+            ],
+          },
+        }),
+      );
+      assertFalse(Values.is(input));
+    });
+
+    it("rejects a symbol key listed first without reading descriptors", () => {
+      const key = globalThis.Symbol("key");
+      let reads = 0;
+      const input = new Proxy(
+        { value: 1, [key]: 1 },
+        {
+          ownKeys: () => [key, "value"],
+          getOwnPropertyDescriptor: (target, property) => {
+            reads++;
+            return Reflect.getOwnPropertyDescriptor(target, property);
+          },
+        },
+      );
+
+      assertFalse(record(String, Number).is(input));
+      assertEqual(reads, 0);
+      assertFalse(object({}, record(String, Number)).is(input));
+      assertEqual(reads, 0);
+    });
+
     it("collects key and value issues in own-key order", () => {
       const Values = record(literal("allowed"), Number);
       const input = { wrong: "x", allowed: "y" };
@@ -17433,6 +17949,48 @@ describe("object", () => {
       assertTrue(Model.is({ name: "Ada" }));
     });
 
+    it("compares own keys with the declared keys, not only their count", () => {
+      const Model = object({ name: String, role: String });
+      const reordered = { role: "admin", name: "Ada" };
+      const renamed: unknown = { name: "Ada", title: "admin" };
+
+      const reorderedResult = Model.fromUnknown(reordered);
+      assertOk(reorderedResult);
+      assertSame(reorderedResult.value, reordered);
+      assertTrue(Model.is(reordered));
+
+      const result = Model.fromUnknown(renamed, { errors: "all" });
+      assertEqual(
+        result,
+        err({
+          type: "Object",
+          reason: {
+            kind: "Properties",
+            errors: {
+              role: { type: "ObjectMissingProperty" },
+              title: { type: "ObjectExcessProperty" },
+            },
+          },
+        }),
+      );
+      assertErr(result);
+      assertSame(result.error.reason.kind, "Properties");
+      assertEqual(Reflect.ownKeys(result.error.reason.errors), [
+        "role",
+        "title",
+      ]);
+      assertFalse(Model.is(renamed));
+
+      // Position alone must not skip an undeclared key before declared ones.
+      const prefixed = { title: 1, name: "Ada", role: "admin" };
+      assertFalse(Model.is(prefixed));
+      assertFalse(
+        object({ name: String, role: String }, record(String, String)).is(
+          prefixed,
+        ),
+      );
+    });
+
     it("rejects non-enumerable and symbol excess properties", () => {
       const Model = object({ name: String });
       const symbol = globalThis.Symbol("excess");
@@ -17453,6 +18011,44 @@ describe("object", () => {
       assertEqual(result.error.reason.errors[symbol], errors[symbol]);
       assertFalse(Model.is(value));
       assertEqual(Reflect.ownKeys(errors), ["hidden", symbol]);
+    });
+
+    it("visits Proxy own keys in their listed order", () => {
+      const Model = object({ name: String });
+      const symbol = globalThis.Symbol("excess");
+      const value = new Proxy(
+        { name: "Ada", role: "admin", [symbol]: true },
+        { ownKeys: () => [symbol, "role", "name"] },
+      );
+
+      const result = Model.fromUnknown(value);
+      assertErr(result);
+      assertSame(result.error.reason.kind, "Properties");
+      assertEqual(Reflect.ownKeys(result.error.reason.errors), [symbol]);
+      assertFalse(Model.is(value));
+    });
+
+    it("copies earlier unchanged Record properties into a decoded object", () => {
+      const Model = object(
+        { count: Number },
+        record(String, union(Number, setupNumberFromString())),
+      );
+
+      const result = Model.fromUnknown({
+        count: 0,
+        first: 1,
+        second: "2",
+        third: 3,
+      });
+
+      assertOk(result, { count: 0, first: 1, second: 2, third: 3 });
+      assertSame(globalThis.Object.getPrototypeOf(result.value), null);
+      assertEqual(globalThis.Object.keys(result.value), [
+        "count",
+        "first",
+        "second",
+        "third",
+      ]);
     });
 
     it("rejects exotic declared and Record properties without reading them", () => {
@@ -17904,6 +18500,43 @@ describe("object", () => {
           kind: "Properties",
           errors: {
             label: { type: "TypeOf", expected: "String", value: 42 },
+          },
+        },
+      });
+    });
+
+    it("validates Record property Outputs without decoding them", () => {
+      const Model = object({}, record(String, setupNumberFromString()));
+      const invalid = {
+        first: 1,
+        second: "2",
+      } as unknown as typeof Model.Output;
+
+      assertAssertionError(() => Model.from(invalid), "Expected Object.", {
+        type: "Object",
+        reason: {
+          kind: "Properties",
+          errors: {
+            second: {
+              type: "Record",
+              reason: {
+                kind: "Entries",
+                issues: [
+                  {
+                    kind: "Value",
+                    key: "second",
+                    error: {
+                      type: "NumberFromString",
+                      outputError: {
+                        type: "TypeOf",
+                        expected: "Number",
+                        value: "2",
+                      },
+                    },
+                  },
+                ],
+              },
+            },
           },
         },
       });
@@ -20558,6 +21191,20 @@ describe("Data", () => {
       }),
     );
     assertFalse(Data.fromUnknown(sparse, { errors: "all" }).ok);
+
+    // The index after a hole is listed at an earlier position.
+    const trailing = createMutableArray<Data>(2);
+    trailing[1] = 1;
+    assertEqual(
+      Data.fromUnknown(trailing, { errors: "all" }),
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [{ kind: "Hole", path: [0] }],
+        },
+      }),
+    );
 
     let reads = 0;
     const accessor = createMutableArray<Data>(1);

@@ -11,14 +11,14 @@
         "workloadSha256": "dc8f4c8030f0f5b667cdc137c85a787f8a3aeccf044d19ece67953bffe620823"
       },
       "measurementsNs": {
-        "create": 42111,
-        "isValid": 7095,
-        "isInvalid": 229,
-        "fromUnknownValid": 8587,
-        "fromUnknownInvalidFirst": 694,
-        "fromUnknownInvalidAll": 8911,
-        "standardValid": 8762,
-        "standardInvalid": 15031
+        "create": 8521,
+        "isValid": 3111,
+        "isInvalid": 69,
+        "fromUnknownValid": 3087,
+        "fromUnknownInvalidFirst": 128,
+        "fromUnknownInvalidAll": 3498,
+        "standardValid": 3149,
+        "standardInvalid": 6324
       }
     }
   ]

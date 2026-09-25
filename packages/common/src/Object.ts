@@ -87,6 +87,11 @@ export const isPlainObject = (
 
   const prototype = Object.getPrototypeOf(value) as object | null;
   if (prototype === null) return true;
+  // This realm's Object.prototype has an immutable null prototype, so `in`
+  // checks the same own properties as the structural test below, faster.
+  if (prototype === Object.prototype) {
+    return "hasOwnProperty" in prototype && "isPrototypeOf" in prototype;
+  }
   return (
     Object.getPrototypeOf(prototype) === null &&
     Object.hasOwn(prototype, "hasOwnProperty") &&

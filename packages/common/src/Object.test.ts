@@ -1,6 +1,12 @@
 import nodeAssert from "node:assert/strict";
 import { describe, it, test } from "node:test";
-import { assertEqual, assertFalse, assertSame, assertTrue } from "./Assert.ts";
+import {
+  assertEqual,
+  assertFalse,
+  assertNonNullable,
+  assertSame,
+  assertTrue,
+} from "./Assert.ts";
 
 import type { Brand } from "./Brand.ts";
 import type { ReadonlyRecord } from "./Object.ts";
@@ -103,6 +109,22 @@ test("isPlainObject", () => {
     { value: () => false },
   );
   assertFalse(isPlainObject(Object.create(partialObjectPrototype)));
+});
+
+test("isPlainObject checks the root markers of Object.prototype", () => {
+  for (const key of ["hasOwnProperty", "isPrototypeOf"]) {
+    const descriptor = Object.getOwnPropertyDescriptor(Object.prototype, key);
+    assertNonNullable(descriptor);
+    Reflect.deleteProperty(Object.prototype, key);
+    try {
+      assertFalse(isPlainObject({}));
+      assertTrue(isPlainObject(Object.create(null)));
+    } finally {
+      // oxlint-disable-next-line eslint/no-extend-native -- Restores the built-in property this test deleted.
+      Object.defineProperty(Object.prototype, key, descriptor);
+    }
+  }
+  assertTrue(isPlainObject({}));
 });
 
 test("isFunction", () => {

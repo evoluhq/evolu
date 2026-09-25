@@ -484,7 +484,6 @@ import { safelyStringifyUnknownValue } from "./String.ts";
 import type { Task } from "./Task.ts";
 import type { TimeDep } from "./Time.ts";
 import {
-  instance,
   isInstance,
   type CompileTimeError,
   type Instance,
@@ -1007,10 +1006,12 @@ export const typeErrorToIssues = <T extends TypeNode>(
   error: InferErrors<NoInfer<T>>,
 ): NonEmptyReadonlyArray<TypeIssue> => {
   const runtimeType = type as unknown as RuntimeTypeNode;
-  return runtimeType[getRuntimeTypeIssuesSymbol](error, "all").map((issue) => ({
-    path: issue.path,
-    message: formatRuntimeTypeIssue(issue),
-  })) as unknown as NonEmptyReadonlyArray<TypeIssue>;
+  return runtimeType[getRuntimeTypeIssuesSymbol](error, "all", []).map(
+    (issue) => ({
+      path: issue.path,
+      message: formatRuntimeTypeIssue(issue),
+    }),
+  ) as unknown as NonEmptyReadonlyArray<TypeIssue>;
 };
 
 interface TransparentTypeError {
@@ -1046,30 +1047,38 @@ interface RuntimeTypeIssue {
   }>;
 }
 
+// Issues are created with their complete paths: `path` locates the value that
+// produced the error. It is a new array owned by the callee, so one issue can
+// use it as its path, and nested issues extend a copy.
 type RuntimeGetTypeIssues = (
   error: TypeError,
   mode: ValidationOptions["errors"],
+  path: ReadonlyArray<PropertyKey>,
 ) => NonEmptyReadonlyArray<RuntimeTypeIssue>;
 
 type RuntimeFormatTypeIssue = (issue: RuntimeTypeIssue) => string;
+
+// Copying a short path in a loop is about twice as fast as spreading it.
+const appendIssuePath = (
+  path: ReadonlyArray<PropertyKey>,
+  key: PropertyKey,
+): Array<PropertyKey> => {
+  const issuePath = createMutableArray<PropertyKey>(path.length + 1);
+  for (let index = 0; index < path.length; index++) {
+    issuePath[index] = path[index];
+  }
+  issuePath[path.length] = key;
+  return issuePath;
+};
 
 const singleRuntimeTypeIssue = (
   formatterName: TypeName,
   error: TypeError,
   defaultFormatter: TypeErrorFormatter<TypeError>,
-  path: ReadonlyArray<PropertyKey> = [],
+  path: ReadonlyArray<PropertyKey>,
 ): NonEmptyReadonlyArray<RuntimeTypeIssue> => [
   { name: formatterName, error, path, formatError: defaultFormatter },
 ];
-
-const prependRuntimeTypeIssuePath = (
-  key: PropertyKey,
-  issues: NonEmptyReadonlyArray<RuntimeTypeIssue>,
-): NonEmptyReadonlyArray<RuntimeTypeIssue> =>
-  issues.map((issue) => ({
-    ...issue,
-    path: [key, ...issue.path],
-  })) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
 
 type RuntimeCollectionIssue = {
   readonly kind: string;
@@ -1083,7 +1092,7 @@ const createCollectionRuntimeTypeIssues =
     defaultFormatter: TypeErrorFormatter<TypeError>,
     getNestedType: (issue: RuntimeCollectionIssue) => RuntimeTypeNode,
   ): RuntimeGetTypeIssues =>
-  (error, mode) => {
+  (error, mode, path) => {
     const reason = (
       error as TypeError & {
         readonly reason: {
@@ -1094,34 +1103,47 @@ const createCollectionRuntimeTypeIssues =
     ).reason;
 
     if (reason.kind !== issuesKind) {
-      return singleRuntimeTypeIssue(name, error, defaultFormatter);
+      return singleRuntimeTypeIssue(name, error, defaultFormatter, path);
     }
 
     const allIssues = reason.issues!;
-    const issues = mode === "first" ? ([allIssues[0]] as const) : allIssues;
+    const issueCount = mode === "first" ? 1 : allIssues.length;
+    const result: Array<RuntimeTypeIssue> = [];
 
-    return issues.flatMap((issue): ReadonlyArray<RuntimeTypeIssue> => {
-      const path = "key" in issue ? issue.key : issue.index;
+    for (let index = 0; index < issueCount; index++) {
+      const issue = allIssues[index];
+      const issuePath = appendIssuePath(
+        path,
+        "key" in issue ? issue.key : issue.index,
+      );
 
-      if (issue.error !== undefined) {
-        return prependRuntimeTypeIssuePath(
-          path,
-          getNestedType(issue)[getRuntimeTypeIssuesSymbol](issue.error, mode),
-        );
+      if (issue.error === undefined) {
+        result.push({
+          name,
+          error:
+            mode === "first"
+              ? error
+              : ({
+                  type: name,
+                  reason: { kind: issuesKind, issues: [issue] },
+                } as TypeError),
+          path: issuePath,
+          formatError: defaultFormatter,
+        });
+        continue;
       }
 
-      return singleRuntimeTypeIssue(
-        name,
-        mode === "first"
-          ? error
-          : ({
-              type: name,
-              reason: { kind: issuesKind, issues: [issue] },
-            } as TypeError),
-        defaultFormatter,
-        [path],
+      const nestedIssues = getNestedType(issue)[getRuntimeTypeIssuesSymbol](
+        issue.error,
+        mode,
+        issuePath,
       );
-    }) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
+      // Nested issues are a new array, so one visited issue returns them.
+      if (issueCount === 1) return nestedIssues;
+      for (const nestedIssue of nestedIssues) result.push(nestedIssue);
+    }
+
+    return result as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
   };
 
 const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
@@ -1131,28 +1153,33 @@ const formatRuntimeTypeIssue = (
   issue: RuntimeTypeIssue,
   formatIssue: RuntimeFormatTypeIssue = formatDefaultRuntimeTypeIssue,
 ): string => {
-  const summary = formatIssue(issue);
-  if (issue.alternatives === undefined) return summary;
+  let message = formatIssue(issue);
+  if (issue.alternatives === undefined) return message;
 
-  return [
-    summary,
-    ...issue.alternatives.flatMap(({ index, name, issues }) =>
-      issues.map((issue) => {
-        const path = issue.path
-          .map((key) =>
-            typeof key === "string"
-              ? `[${JSON.stringify(key)}]`
-              : `[${globalThis.String(key)}]`,
-          )
-          .join("");
-        const message = formatRuntimeTypeIssue(issue, formatIssue).replaceAll(
-          "\n",
-          "\n  ",
-        );
-        return `- ${index}: ${name}${path}: ${message}`;
-      }),
-    ),
-  ].join("\n");
+  // Each alternative issue starts a "- " line; continuation lines of a
+  // multi-line message are indented.
+  for (const { index, name, issues } of issue.alternatives) {
+    for (const alternativeIssue of issues) {
+      let path = "";
+      for (const key of alternativeIssue.path) {
+        path +=
+          typeof key === "string"
+            ? `[${JSON.stringify(key)}]`
+            : `[${globalThis.String(key)}]`;
+      }
+      const alternativeMessage = formatRuntimeTypeIssue(
+        alternativeIssue,
+        formatIssue,
+      );
+      // replaceAll is slow even without a match.
+      message += `\n- ${index}: ${name}${path}: ${
+        alternativeMessage.includes("\n")
+          ? alternativeMessage.replaceAll("\n", "\n  ")
+          : alternativeMessage
+      }`;
+    }
+  }
+  return message;
 };
 
 /**
@@ -1460,8 +1487,8 @@ const withFormatError = (
           })),
         }),
   });
-  const getTypeIssues: RuntimeGetTypeIssues = (error, mode) =>
-    source[getRuntimeTypeIssuesSymbol](error, mode).map(
+  const getTypeIssues: RuntimeGetTypeIssues = (error, mode, path) =>
+    source[getRuntimeTypeIssuesSymbol](error, mode, path).map(
       localizeIssue,
     ) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
   const derived = createTypeNode<RuntimeTypeNode>(
@@ -1473,8 +1500,11 @@ const withFormatError = (
     source[fromSymbol],
     source[encoderSymbol].parent ?? source[encoderSymbol],
     getTypeIssues,
-    undefined,
-    formatIssue,
+    {
+      formatIssue,
+      check: source[checkSymbol],
+      refinements: source[refinementsSymbol],
+    },
   );
 
   // Localization changes error rendering, not conversion semantics. Preserve
@@ -2203,24 +2233,31 @@ export function createType(
   fromParentOrFormatError: unknown,
   formatError?: TypeErrorFormatter<TypeError>,
 ): TypeNode {
-  return typeof fromUnknownOrParent === "function"
-    ? createRootType(
-        name,
-        assertRefinementIdentity(
-          fromUnknownOrParent as (value: unknown) => Result<unknown, TypeError>,
-        ),
-        fromParentOrFormatError as TypeErrorFormatter<TypeError>,
-      )
-    : createChildType(
-        name,
-        fromUnknownOrParent as RuntimeTypeNode,
-        assertRefinementIdentity(
-          fromParentOrFormatError as (
-            value: unknown,
-          ) => Result<unknown, TypeError>,
-        ),
-        formatError,
-      );
+  if (typeof fromUnknownOrParent === "function") {
+    const fromUnknown = assertRefinementIdentity(
+      fromUnknownOrParent as (value: unknown) => Result<unknown, TypeError>,
+    );
+    return createRootType(
+      name,
+      fromUnknown,
+      fromParentOrFormatError as TypeErrorFormatter<TypeError>,
+      {
+        // The asserted identity makes this an identity Type.
+        check: (value) => {
+          const result = fromUnknown(value);
+          return result.ok ? undefined : result.error;
+        },
+      },
+    );
+  }
+  return createChildType(
+    name,
+    fromUnknownOrParent as RuntimeTypeNode,
+    assertRefinementIdentity(
+      fromParentOrFormatError as (value: unknown) => Result<unknown, TypeError>,
+    ),
+    formatError,
+  );
 }
 
 const assertRefinementIdentity =
@@ -2290,15 +2327,26 @@ export const createTypeWithError = <
       : CompileTimeError<"Type", "Source Type must use identity encoding.">),
   mapError: (error: InferErrors<T>, value: unknown) => Error,
   formatError: TypeErrorFormatter<NoInfer<Error>>,
-): Type<Name, T["Output"], T["Output"], Error> =>
-  createRootType<Name, T["Output"], Error>(
+): Type<Name, T["Output"], T["Output"], Error> => {
+  const check = (type as unknown as RuntimeTypeNode)[checkSymbol];
+
+  return createRootType<Name, T["Output"], Error>(
     name,
     (value, options) => {
       const result = type.fromUnknown(value, options);
       return result.ok ? result : err(mapError(result.error, value));
     },
     formatError,
+    {
+      check:
+        check &&
+        ((value, options) => {
+          const error = check(value, options);
+          return error === undefined ? undefined : mapError(error, value);
+        }),
+    },
   );
+};
 
 const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
   name: Name,
@@ -2307,18 +2355,32 @@ const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
     options?: ValidationOptions,
   ) => Result<Output, Error>,
   formatError: TypeErrorFormatter<Error>,
-  getTypeIssues?: RuntimeGetTypeIssues,
+  {
+    getTypeIssues,
+    isOutput,
+    check,
+  }: {
+    getTypeIssues?: RuntimeGetTypeIssues;
+    // A predicate equivalent to `fromUnknown(value).ok` that avoids the Result.
+    isOutput?: (value: unknown) => boolean;
+    check?: RuntimeCheck | undefined;
+  } = {},
 ): Type<Name, Output, Output, Error, null, Error, never, Output> => {
   const runtimeFormatError = formatError as TypeErrorFormatter<TypeError>;
   const runtimeGetTypeIssues: RuntimeGetTypeIssues =
     getTypeIssues ??
-    ((error) =>
+    ((error, _mode, path) =>
       singleRuntimeTypeIssue(
         error.type === "TypeOf" ? name : error.type,
         error,
         runtimeFormatError,
+        path,
       ));
-  const is = (value: unknown): value is Output => fromUnknown(value).ok;
+  const is =
+    isOutput ??
+    (check
+      ? (value: unknown) => check(value, firstValidationOptions) === undefined
+      : (value: unknown) => fromUnknown(value).ok);
   const from: RuntimeOperation<Result<unknown, TypeError>> = (
     value: never,
     options = firstValidationOptions,
@@ -2339,7 +2401,7 @@ const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
   };
 
   return {
-    ...instance("Type"),
+    "~evolu/instance": "Type",
     name,
     parent: null,
     fromUnknown,
@@ -2349,15 +2411,32 @@ const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
     to,
     orThrow,
     orNull: to,
-    "~standard": createStandardSchemaProps(
-      fromUnknown,
-      runtimeGetTypeIssues,
-      formatDefaultRuntimeTypeIssue,
-    ),
+    "~standard": {
+      version: 1,
+      vendor: "evolu",
+      validate: (value: unknown) => {
+        const result = fromUnknown(value, allValidationOptions);
+
+        return result.ok
+          ? { value: result.value }
+          : {
+              issues: runtimeGetTypeIssues(result.error, "all", []).map(
+                (issue) => ({
+                  message: formatRuntimeTypeIssue(issue),
+                  path: issue.path,
+                }),
+              ),
+            };
+      },
+    } satisfies StandardSchemaV1.Props<unknown, unknown>,
     [outputValidationSymbol]: fromUnknown,
     [fromSymbol]: ok,
     [encoderSymbol]: identity,
     [getRuntimeTypeIssuesSymbol]: runtimeGetTypeIssues,
+    [checkSymbol]: check,
+    [refinementsSymbol]: undefined,
+    [arrayTypeSymbol]: undefined,
+    [setTypeSymbol]: undefined,
   } as unknown as Type<Name, Output, Output, Error, null, Error, never, Output>;
 };
 
@@ -2369,13 +2448,13 @@ const createChildType = <
 >(
   name: Name,
   parent: ParentType,
-  fromParent: (
-    value: ParentType["Output"],
-    options: ValidationOptions,
-  ) => Result<Output, Error>,
+  fromParent: (value: ParentType["Output"]) => Result<Output, Error>,
   formatOwnError?: TypeErrorFormatter<Error>,
   // Wrapped child errors can delegate their structured issues.
   getTypeIssuesOverride?: RuntimeGetTypeIssues,
+  // A refinement `fromParent` only checks the parent Output and returns
+  // `ok()`, so the child can return the parent Result unchanged.
+  isRefinement = false,
 ): Type<
   Name,
   ParentType["Input"],
@@ -2392,34 +2471,107 @@ const createChildType = <
   const getTypeIssues: RuntimeGetTypeIssues =
     getTypeIssuesOverride ??
     (formatOwnError
-      ? (error, mode) =>
+      ? (error, mode, path) =>
           error.type === name
-            ? singleRuntimeTypeIssue(name, error, defaultFormatter)
-            : typeParent[getRuntimeTypeIssuesSymbol](error, mode)
+            ? singleRuntimeTypeIssue(name, error, defaultFormatter, path)
+            : typeParent[getRuntimeTypeIssuesSymbol](error, mode, path)
       : typeParent[getRuntimeTypeIssuesSymbol]);
-  const validate = fromParent as (
-    value: unknown,
-    options: ValidationOptions,
-  ) => Result<unknown, Error>;
-  const mapFromParent = (
-    result: Result<unknown, TypeError>,
-    options: ValidationOptions,
-  ) => (result.ok ? validate(result.value, options) : result);
-  const fromParentOperation = mapRuntimeOperations(
-    typeParent[fromSymbol],
-    (operation) => mapRuntimeResult(operation, mapFromParent),
-  );
+  // Validators get only the value and no receiver (refinements are read into
+  // a local before a call), so default parameters, `arguments`, and `this`
+  // behave as in a direct call.
+  const validate = fromParent as Refinement;
+  // Returning the parent Result avoids allocating an equal Ok per layer.
+  const mapFromParent = isRefinement
+    ? (result: Result<unknown, TypeError>) => {
+        if (!result.ok) return result;
+        const refined = validate(result.value);
+        return refined.ok ? result : refined;
+      }
+    : (result: Result<unknown, TypeError>) =>
+        result.ok ? validate(result.value) : result;
+  // Parent operations are read once, so validation skips repeated property
+  // lookups on heterogeneous Type nodes.
+  const parentFromUnknown = typeParent.fromUnknown;
+  const parentValidateOutput = typeParent[outputValidationSymbol];
+  const parentFrom = typeParent[fromSymbol];
+  const fromParentOperation: RuntimeOperation<Result<unknown, TypeError>> = (
+    value: never,
+    options = firstValidationOptions,
+  ) => mapFromParent(parentFrom(value, options));
+  if (parentFrom.parent) {
+    fromParentOperation.parent = mapRuntimeOperations(
+      parentFrom.parent,
+      (operation) => mapRuntimeResult(operation, mapFromParent),
+    );
+  }
   const from = createFromOperation(fromParentOperation);
 
-  const fromUnknown = (
-    value: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) => mapFromParent(typeParent.fromUnknown(value, options), options);
-  const validateOutput = (
-    value: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) =>
-    mapFromParent(typeParent[outputValidationSymbol](value, options), options);
+  // Refinement children form a chain whose refinements run in order after
+  // its base, the nearest ancestor that is not a refinement, so nested
+  // refinements need no call per level.
+  const parentRefinements = isRefinement
+    ? typeParent[refinementsSymbol]
+    : undefined;
+  const refinements: ReadonlyArray<Refinement> = parentRefinements
+    ? [...parentRefinements, validate]
+    : [validate];
+  const refinementCount = refinements.length;
+  let base = typeParent as RuntimeTypeNode;
+  if (isRefinement) {
+    while (base[refinementsSymbol]) base = base.parent as RuntimeTypeNode;
+  }
+
+  const isBase = base.is;
+  const is = (value: unknown): boolean => {
+    if (!isBase(value)) return false;
+    for (let index = 0; index < refinementCount; index++) {
+      const refine = refinements[index];
+      if (!refine(value).ok) return false;
+    }
+    return true;
+  };
+  const baseCheck = base[checkSymbol];
+  // A child returns its parent Output unchanged, so a child of an identity
+  // Type is one too.
+  const check: RuntimeCheck | undefined =
+    baseCheck &&
+    ((value, options) => {
+      const error = baseCheck(value, options);
+      if (error !== undefined) return error;
+      for (let index = 0; index < refinementCount; index++) {
+        const refine = refinements[index];
+        const result = refine(value);
+        if (!result.ok) return result.error;
+      }
+      return undefined;
+    });
+  const validateBase = base.fromUnknown;
+  // Like nested refinement children, it returns the base Result or the first
+  // refinement Err. A single refinement is faster with its direct call.
+  const fromUnknown =
+    refinementCount > 1
+      ? (
+          value: unknown,
+          options: ValidationOptions = firstValidationOptions,
+        ) => {
+          const result = validateBase(value, options);
+          if (!result.ok) return result;
+          for (let index = 0; index < refinementCount; index++) {
+            const refine = refinements[index];
+            const refined = refine(result.value);
+            if (!refined.ok) return refined;
+          }
+          return result;
+        }
+      : (value: unknown, options: ValidationOptions = firstValidationOptions) =>
+          mapFromParent(parentFromUnknown(value, options));
+  // A root parent validates its Output with fromUnknown, and so does a child
+  // of such a parent.
+  const validateOutput =
+    parentValidateOutput === parentFromUnknown
+      ? fromUnknown
+      : (value: unknown, options: ValidationOptions = firstValidationOptions) =>
+          mapFromParent(parentValidateOutput(value, options));
   const to = identity;
 
   return createTypeNode<
@@ -2438,12 +2590,12 @@ const createChildType = <
     name,
     typeParent,
     fromUnknown,
-    (value) =>
-      typeParent.is(value) && validate(value, firstValidationOptions).ok,
+    is,
     validateOutput,
     from,
     to,
     getTypeIssues,
+    { check, refinements: isRefinement ? refinements : undefined },
   );
 };
 
@@ -2711,17 +2863,18 @@ export function transform(
     return parentValue;
   };
   const defaultFormatter = formatOwnError!;
-  const getTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+  const getTypeIssues: RuntimeGetTypeIssues = (error, mode, path) => {
     if (error.type !== name) {
-      return typeParent[getRuntimeTypeIssuesSymbol](error, mode);
+      return typeParent[getRuntimeTypeIssuesSymbol](error, mode, path);
     }
     if ("outputError" in error) {
       return typeOutput[getRuntimeTypeIssuesSymbol](
         error.outputError as TypeError,
         mode,
+        path,
       );
     }
-    return singleRuntimeTypeIssue(name, error, defaultFormatter);
+    return singleRuntimeTypeIssue(name, error, defaultFormatter, path);
   };
   const validateOutput: RuntimeOutputValidation = (value, options) => {
     const result = typeOutput[outputValidationSymbol](value, options);
@@ -2737,7 +2890,7 @@ export function transform(
     from,
     to,
     getTypeIssues,
-    { output: typeOutput },
+    { additionalProperties: { output: typeOutput } },
   );
 }
 
@@ -2783,6 +2936,57 @@ const fromSymbol: typeof fromSymbolType =
   /*#__PURE__*/ globalThis.Symbol() as typeof fromSymbolType;
 const templateLiteralSyntaxSymbol: typeof templateLiteralSyntaxSymbolType =
   /*#__PURE__*/ globalThis.Symbol() as typeof templateLiteralSyntaxSymbolType;
+// A Type node caches the Array and Set Types of itself as an element in these
+// own properties; a Type whose slot cannot be written, such as a frozen one,
+// uses the typeByElement WeakMaps. A WeakMap alone keeps each entry's value
+// alive through young-generation GCs, so every schema created at runtime would
+// be promoted.
+const arrayTypeSymbol = /*#__PURE__*/ globalThis.Symbol();
+const setTypeSymbol = /*#__PURE__*/ globalThis.Symbol();
+
+declare const checkSymbolType: unique symbol;
+declare const refinementsSymbolType: unique symbol;
+const checkSymbol: typeof checkSymbolType =
+  /*#__PURE__*/ globalThis.Symbol() as typeof checkSymbolType;
+const refinementsSymbol: typeof refinementsSymbolType =
+  /*#__PURE__*/ globalThis.Symbol() as typeof refinementsSymbolType;
+
+// Validation without a Result for identity Types, whose `fromUnknown` and
+// output validation both return the input itself on success, so one can
+// replace the other. A check returns their error or `undefined`, so
+// containers validate valid children without allocating. Only Types built
+// from identity Types have one.
+type RuntimeCheck = (
+  value: unknown,
+  options: ValidationOptions,
+) => TypeError | undefined;
+
+// The validators of a refinement chain, which run in order after its base.
+type Refinement = (value: unknown) => Result<unknown, TypeError>;
+
+// The `fromUnknown` of an identity Type.
+const checkToFromUnknown =
+  (check: RuntimeCheck) =>
+  (
+    value: unknown,
+    options: ValidationOptions = firstValidationOptions,
+  ): Result<unknown, TypeError> => {
+    const error = check(value, options);
+    return error === undefined ? ok(value) : err(error);
+  };
+
+// The checks of identity Types, or `undefined` if any Type is not one.
+const getRuntimeChecks = (
+  types: ReadonlyArray<RuntimeTypeNode>,
+): ReadonlyArray<RuntimeCheck> | undefined => {
+  const checks: Array<RuntimeCheck> = [];
+  for (const type of types) {
+    const check = type[checkSymbol];
+    if (check === undefined) return undefined;
+    checks.push(check);
+  }
+  return checks;
+};
 
 /**
  * Type-erased {@link Type} used to traverse and invoke heterogeneous Type nodes
@@ -2805,6 +3009,8 @@ type RuntimeTypeNode = Omit<TypeNode, typeof customFromSymbol> & {
   // assertion, avoiding repeated validation and preserving identity fast paths.
   readonly [encoderSymbolType]: RuntimeEncoder;
   readonly [getRuntimeTypeIssuesSymbolType]: RuntimeGetTypeIssues;
+  readonly [checkSymbolType]: RuntimeCheck | undefined;
+  readonly [refinementsSymbolType]: ReadonlyArray<Refinement> | undefined;
   readonly [templateLiteralSyntaxSymbolType]?: true;
 };
 
@@ -2851,23 +3057,17 @@ const createFromOperation = (
   return from;
 };
 
-const createToOperation = (
-  parent: RuntimeEncoder,
-  own: RuntimeEncoder,
-): RuntimeEncoder => {
-  const mapOwnToParent =
-    (operation: RuntimeEncoder): RuntimeEncoder =>
-    (value: never) =>
-      operation(own(value) as never);
-  const to = mapOwnToParent(parent);
-  const toParent = mapRuntimeResult(own, identity);
+// Composite Types read these operations of their Types on first use, so
+// construction allocates no arrays and validation skips property lookups on
+// heterogeneous Type nodes.
+const getFromUnknown = (
+  type: RuntimeTypeNode,
+): RuntimeTypeNode["fromUnknown"] => type.fromUnknown;
 
-  if (parent.parent) {
-    toParent.parent = mapRuntimeOperations(parent.parent, mapOwnToParent);
-  }
-  to.parent = toParent;
-  return to;
-};
+const getValidateOutput = (type: RuntimeTypeNode): RuntimeOutputValidation =>
+  type[outputValidationSymbol];
+
+const getIs = (type: RuntimeTypeNode): ((value: unknown) => boolean) => type.is;
 
 function getTerminalRuntimeNode<Value>(
   node: RuntimeOperation<Value>,
@@ -2891,44 +3091,84 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
   from: RuntimeOperation<Result<unknown, TypeError>>,
   ownTo: RuntimeEncoder,
   getTypeIssues: RuntimeGetTypeIssues,
-  additionalProperties?: Omit<
-    Node,
-    | keyof TypeNode
-    | typeof concreteTypeSymbol
-    | typeof reflectedTypesSymbol
-    | "formatError"
-    | "from"
-    | "to"
-    | "orThrow"
-    | "orNull"
-  >,
-  formatIssue: RuntimeFormatTypeIssue = formatDefaultRuntimeTypeIssue,
+  {
+    additionalProperties,
+    formatIssue = formatDefaultRuntimeTypeIssue,
+    check,
+    refinements,
+  }: {
+    additionalProperties?: Omit<
+      Node,
+      | keyof TypeNode
+      | typeof concreteTypeSymbol
+      | typeof reflectedTypesSymbol
+      | "formatError"
+      | "from"
+      | "to"
+      | "orThrow"
+      | "orNull"
+    >;
+    formatIssue?: RuntimeFormatTypeIssue;
+    check?: RuntimeCheck | undefined;
+    refinements?: ReadonlyArray<Refinement> | undefined;
+  } = {},
 ): Node => {
   const runtimeParent = parent as RuntimeTypeNode | null;
-  const to = runtimeParent
-    ? createToOperation(runtimeParent[encoderSymbol], ownTo)
-    : ownTo;
+  const parentTo = runtimeParent?.[encoderSymbol];
+  // Operations defined directly here share this call's closure context, so a
+  // Type node does not allocate one context per helper.
+  let to = ownTo;
+  if (parentTo) {
+    to = (value: never) => parentTo(ownTo(value) as never);
+    const toParent: RuntimeEncoder = (
+      value: never,
+      options = firstValidationOptions,
+    ) => ownTo(value, options);
+    if (parentTo.parent) {
+      toParent.parent = mapRuntimeOperations(
+        parentTo.parent,
+        (operation) => (value: never) => operation(ownTo(value) as never),
+      );
+    }
+    to.parent = toParent;
+  }
   const runtimeFormatError: TypeErrorFormatter<TypeError> =
     runtimeParent?.[getRuntimeTypeIssuesSymbol] === getTypeIssues
       ? runtimeParent.formatError
       : (error) =>
-          formatRuntimeTypeIssue(getTypeIssues(error, "first")[0], formatIssue);
-  const typedFrom = addRuntimeAssertions(
-    name,
-    is,
-    validateOutput,
-    parent,
-    from,
-  );
-
+          formatRuntimeTypeIssue(
+            getTypeIssues(error, "first", [])[0],
+            formatIssue,
+          );
+  const typedFrom: RuntimeOperation<Result<unknown, TypeError>> = (
+    value: never,
+    options = firstValidationOptions,
+  ) => {
+    assertTypeOutput(name, is, validateOutput, value, options);
+    return from(value, options);
+  };
+  if (from.parent) {
+    typedFrom.parent = addRuntimeAssertions(runtimeParent!, from.parent);
+  }
   const fromInput = getTerminalRuntimeNode(typedFrom);
-  const typedTo = mapRuntimeOperations(to, (operation) => (value: never) => {
+  const typedTo: RuntimeEncoder = (value: never) => {
     assertTypeOutput(name, is, validateOutput, value);
-    return operation(value);
-  });
+    return to(value);
+  };
+  if (to.parent) {
+    typedTo.parent = mapRuntimeOperations(
+      to.parent,
+      (operation) => (value: never) => {
+        assertTypeOutput(name, is, validateOutput, value);
+        return operation(value);
+      },
+    );
+  }
 
+  // A spread-free literal gets a fixed shape; spreading in the middle made
+  // every later property a slow generic definition.
   const type = {
-    ...instance("Type"),
+    "~evolu/instance": "Type",
     name,
     parent,
     fromUnknown,
@@ -2936,54 +3176,56 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
     is,
     from: typedFrom,
     to: typedTo,
-    orThrow: createRuntimeOrThrow(fromInput, runtimeFormatError),
-    orNull: mapRuntimeResult(fromInput, getOrNull),
-    "~standard": createStandardSchemaProps(
-      fromUnknown,
-      getTypeIssues,
-      formatIssue,
-    ),
-    ...additionalProperties,
+    orThrow: (value: never, options = firstValidationOptions): unknown => {
+      const result = fromInput(value, options);
+      if (result.ok) return result.value;
+
+      throw new Error(runtimeFormatError(result.error), {
+        cause: result.error,
+      });
+    },
+    orNull: (value: never, options = firstValidationOptions): unknown =>
+      getOrNull(fromInput(value, options)),
+    "~standard": {
+      version: 1,
+      vendor: "evolu",
+      validate: (value: unknown) => {
+        const result = fromUnknown(value, allValidationOptions);
+
+        return result.ok
+          ? { value: result.value }
+          : {
+              issues: getTypeIssues(result.error, "all", []).map((issue) => ({
+                message: formatRuntimeTypeIssue(issue, formatIssue),
+                path: issue.path,
+              })),
+            };
+      },
+    } satisfies StandardSchemaV1.Props<unknown, unknown>,
     [outputValidationSymbol]: validateOutput,
     [fromSymbol]: from,
     [encoderSymbol]: to,
     [getRuntimeTypeIssuesSymbol]: getTypeIssues,
-  } as unknown as Node;
+    [checkSymbol]: check,
+    [refinementsSymbol]: refinements,
+    [arrayTypeSymbol]: undefined,
+    [setTypeSymbol]: undefined,
+  };
+  if (additionalProperties !== undefined) {
+    globalThis.Object.assign(type, additionalProperties);
+  }
 
-  return type;
+  return type as unknown as Node;
 };
 
-const createStandardSchemaProps = (
-  fromUnknown: (
-    value: unknown,
-    options?: ValidationOptions,
-  ) => Result<unknown, TypeError>,
-  getTypeIssues: RuntimeGetTypeIssues,
-  formatIssue: RuntimeFormatTypeIssue,
-): StandardSchemaV1.Props<unknown, unknown> => ({
-  version: 1,
-  vendor: "evolu",
-  validate: (value) => {
-    const result = fromUnknown(value, allValidationOptions);
-
-    return result.ok
-      ? { value: result.value }
-      : {
-          issues: getTypeIssues(result.error, "all").map((issue) => ({
-            message: formatRuntimeTypeIssue(issue, formatIssue),
-            path: issue.path,
-          })),
-        };
-  },
-});
-
+// Each `from.parent` suffix asserts the Output of the next Type toward the
+// root before running the remaining pipeline.
 const addRuntimeAssertions = (
-  name: TypeName,
-  is: (value: unknown) => boolean,
-  validateOutput: RuntimeOutputValidation,
-  parent: TypeNode | null,
+  boundary: RuntimeTypeNode,
   operation: RuntimeOperation<Result<unknown, TypeError>>,
 ): RuntimeOperation<Result<unknown, TypeError>> => {
+  const { name, is } = boundary;
+  const validateOutput = boundary[outputValidationSymbol];
   const asserted: RuntimeOperation<Result<unknown, TypeError>> = (
     value: never,
     options = firstValidationOptions,
@@ -2993,13 +3235,8 @@ const addRuntimeAssertions = (
   };
 
   if (operation.parent) {
-    const typeParent = parent!;
-    const runtimeParent = typeParent as RuntimeTypeNode;
     asserted.parent = addRuntimeAssertions(
-      runtimeParent.name,
-      runtimeParent.is,
-      runtimeParent[outputValidationSymbol],
-      runtimeParent.parent,
+      boundary.parent as RuntimeTypeNode,
       operation.parent,
     );
   }
@@ -3016,6 +3253,7 @@ export const Unknown = /*#__PURE__*/ createRootType<"Unknown", unknown, never>(
   "Unknown",
   ok,
   identity,
+  { isOutput: () => true, check: () => undefined },
 );
 
 /**
@@ -3037,6 +3275,10 @@ export const Never = /*#__PURE__*/ createRootType(
   (value): Result<never, NeverError> => err({ type: "Never", value }),
   (error) =>
     `A value ${safelyStringifyUnknownValue(error.value)} is not valid for type Never.`,
+  {
+    isOutput: () => false,
+    check: (value): NeverError => ({ type: "Never", value }),
+  },
 );
 
 /**
@@ -3073,6 +3315,13 @@ const createTypeOfType = <Name extends keyof TypeOfOutputByName>(
         : err({ type: "TypeOf", expected: name, value }),
     (error) =>
       `A value ${safelyStringifyUnknownValue(error.value)} is not a ${typeOf}.`,
+    {
+      isOutput: (value) => typeof value === typeOf,
+      check: (value): TypeOfError<Name> | undefined =>
+        typeof value === typeOf
+          ? undefined
+          : { type: "TypeOf", expected: name, value },
+    },
   );
 };
 
@@ -3470,15 +3719,23 @@ export function objectTag(
 ): TypeNode {
   const formatError: TypeErrorFormatter<ObjectTagError> = (error) =>
     `A value ${safelyStringifyUnknownValue(error.value)} does not have the expected object tag ${safelyStringifyUnknownValue(error.expected)}.`;
+  const tag = `[object ${name}]`;
 
   if (outputType === undefined) {
     return createRootType(
       name,
       (value): Result<object, ObjectTagError> =>
-        hasObjectTag(value, name)
+        hasObjectTag(value, tag)
           ? ok(value as object)
           : err({ type: "ObjectTag", expected: name, value }),
       formatError,
+      {
+        isOutput: (value) => hasObjectTag(value, tag),
+        check: (value): ObjectTagError | undefined =>
+          hasObjectTag(value, tag)
+            ? undefined
+            : { type: "ObjectTag", expected: name, value },
+      },
     );
   }
 
@@ -3487,7 +3744,7 @@ export function objectTag(
       "ObjectTag",
       outputType,
       (value): Result<object & ObjectTag<TypeName>, ObjectTagError> =>
-        hasObjectTag(value, name)
+        hasObjectTag(value, tag)
           ? ok(value as object & ObjectTag<TypeName>)
           : err({ type: "ObjectTag", expected: name, value }),
       formatError,
@@ -3504,10 +3761,11 @@ interface ObjectTagOutputByName {
 
 declare const objectTagSymbol: unique symbol;
 
-const hasObjectTag = (value: unknown, expected: string): boolean =>
+// Takes the complete `[object Name]` tag, so hot calls build no string.
+const hasObjectTag = (value: unknown, tag: string): boolean =>
   value !== null &&
   (typeof value === "object" || typeof value === "function") &&
-  globalThis.Object.prototype.toString.call(value) === `[object ${expected}]`;
+  globalThis.Object.prototype.toString.call(value) === tag;
 
 /**
  * A realm-neutral JavaScript Date {@link Type} for trusted values.
@@ -3628,6 +3886,13 @@ export const instanceOf = <Constructor extends InstanceConstructor>(
       fromUnknown,
       (error) =>
         `A value ${safelyStringifyUnknownValue(error.value)} is not an instance of ${error.constructorName}.`,
+      {
+        isOutput: is,
+        check: (value): InstanceOfError | undefined =>
+          is(value)
+            ? undefined
+            : { type: "InstanceOf", constructorName, value },
+      },
     ),
     { constructor: concreteConstructor },
   );
@@ -3765,13 +4030,6 @@ export const literal = <const Expected extends Literal>(
 ): LiteralType<Expected> => {
   const literalExpected = expected as Expected;
 
-  const validate = (
-    value: unknown,
-  ): Result<Expected, LiteralError<Expected>> =>
-    value === literalExpected
-      ? ok(value as Expected)
-      : err({ type: "Literal", expected: literalExpected, value });
-
   const parent =
     typeof literalExpected === "string"
       ? String
@@ -3790,10 +4048,29 @@ export const literal = <const Expected extends Literal>(
       ? createChildType(
           "Literal",
           parent as unknown as RuntimeTypeNode,
-          validate,
+          (value): Result<void, LiteralError<Expected>> =>
+            value === literalExpected
+              ? ok()
+              : err({ type: "Literal", expected: literalExpected, value }),
           formatError,
+          undefined,
+          true,
         )
-      : createRootType("Literal", validate, formatError),
+      : createRootType(
+          "Literal",
+          (value): Result<Expected, LiteralError<Expected>> =>
+            value === literalExpected
+              ? ok(value as Expected)
+              : err({ type: "Literal", expected: literalExpected, value }),
+          formatError,
+          {
+            isOutput: (value) => value === literalExpected,
+            check: (value): LiteralError<Expected> | undefined =>
+              value === literalExpected
+                ? undefined
+                : { type: "Literal", expected: literalExpected, value },
+          },
+        ),
     {
       expected: literalExpected,
       [templateLiteralSyntaxSymbol]: true,
@@ -4004,14 +4281,10 @@ export function union(
       : literal(typeOrLiteral as never),
   ) as unknown as AtLeastTwoReadonlyArray<RuntimeTypeNode>;
   const inputMembers = members.map(getTerminalRuntimeNode);
-  const inputFrom = createUnionValidation(
-    inputMembers,
-    (member, value, options) => member.fromUnknown(value, options),
-  );
-  const inputValidateOutput = createUnionValidation(
-    inputMembers,
-    (member, value, options) => member[outputValidationSymbol](value, options),
-  );
+  const inputCheck = createUnionCheck(inputMembers);
+  const inputFrom = inputCheck
+    ? checkToFromUnknown(inputCheck)
+    : createUnionValidation(inputMembers, getFromUnknown);
   const getTypeIssues = createUnionRuntimeTypeIssues(members);
   const input = createTypeNode<
     UnionInputType<unknown, UnionErrorValue<TypeError>>
@@ -4019,29 +4292,43 @@ export function union(
     "Union",
     null,
     inputFrom,
-    (value) => inputMembers.some((member) => member.is(value)),
-    inputValidateOutput,
+    createUnionIs(inputMembers),
+    inputCheck
+      ? inputFrom
+      : createUnionValidation(inputMembers, getValidateOutput),
     ok,
     identity,
     createUnionRuntimeTypeIssues(inputMembers),
+    { check: inputCheck },
   );
-  const fromUnknown = createUnionValidation(members, (member, value, options) =>
-    member.fromUnknown(value, options),
+  // Literal members accept exactly their `===` equal values, so a match skips
+  // them.
+  const isLiteralUnion = typesOrLiterals.every(
+    (typeOrLiteral) =>
+      typeOrLiteral === null || typeof typeOrLiteral !== "object",
   );
-  const validateOutput = createUnionValidation(
-    members,
-    (member, value, options) => member[outputValidationSymbol](value, options),
-  );
-  const memberFromInputs = members.map((member) =>
-    getTerminalRuntimeNode(member[fromSymbol]),
-  );
-  const fromParent = createUnionValidation(
-    members,
-    (_member, value, options, index) =>
-      inputMembers[index].is(value)
-        ? memberFromInputs[index](value as never, options)
-        : undefined,
-  );
+  const isLiteral = (value: unknown): boolean =>
+    // oxlint-disable-next-line typescript/prefer-includes -- Like Literal validation, indexOf uses ===, so NaN never matches.
+    typesOrLiterals.indexOf(value as Literal) !== -1;
+  const checkMembers = createUnionCheck(members);
+  const check: RuntimeCheck | undefined =
+    checkMembers && isLiteralUnion
+      ? (value, options) =>
+          isLiteral(value) ? undefined : checkMembers(value, options)
+      : checkMembers;
+  const fromUnknown = check
+    ? checkToFromUnknown(check)
+    : createUnionValidation(members, getFromUnknown);
+  const validateOutput = check
+    ? fromUnknown
+    : createUnionValidation(members, getValidateOutput);
+  const fromParent = createUnionValidation(members, (member, index) => {
+    const memberFromInput = getTerminalRuntimeNode(member[fromSymbol]);
+    const inputIs = inputMembers[index].is;
+
+    return (value, options) =>
+      inputIs(value) ? memberFromInput(value as never, options) : undefined;
+  });
   const getOutputMember = (value: unknown) =>
     members.find((member) => member.is(value));
   const from = createFromOperation(fromParent);
@@ -4056,68 +4343,140 @@ export function union(
     "Union",
     input,
     fromUnknown,
-    (value) => members.some((member) => member.is(value)),
+    isLiteralUnion ? isLiteral : createUnionIs(members),
     validateOutput,
     from,
     to,
     getTypeIssues,
-    { members, [templateLiteralSyntaxSymbol]: true },
+    {
+      additionalProperties: { members, [templateLiteralSyntaxSymbol]: true },
+      check,
+    },
   );
 }
 
 const createUnionRuntimeTypeIssues =
   (members: ReadonlyArray<RuntimeTypeNode>): RuntimeGetTypeIssues =>
-  (error) => [
+  (error, _mode, path) => [
     {
       name: "Union",
       error,
-      path: [],
+      path,
       formatError: () => "A value does not match any allowed variant.",
+      // Alternative issue paths are relative to the Union value.
       alternatives: (error as UnionErrorValue<TypeError>).errors.map(
         ({ index, error }) => ({
           index,
           name: members[index].name,
-          issues: members[index][getRuntimeTypeIssuesSymbol](error, "all"),
+          issues: members[index][getRuntimeTypeIssuesSymbol](error, "all", []),
         }),
       ),
     },
   ];
 
-const createUnionValidation =
-  (
-    members: ReadonlyArray<RuntimeTypeNode>,
-    validateMember: (
-      member: RuntimeTypeNode,
-      value: unknown,
-      options: ValidationOptions,
-      index: number,
-    ) => Result<unknown, TypeError> | undefined,
-  ): ((
-    value: unknown,
-    options?: ValidationOptions,
-  ) => Result<unknown, UnionErrorValue<TypeError>>) =>
-  (value: unknown, options: ValidationOptions = firstValidationOptions) => {
+const createUnionIs = (
+  members: ReadonlyArray<RuntimeTypeNode>,
+): ((value: unknown) => boolean) => {
+  // Two members, as in nullOr, are checked without a loop.
+  if (members.length === 2) {
+    const firstIs = members[0].is;
+    const secondIs = members[1].is;
+    return (value) => firstIs(value) || secondIs(value);
+  }
+  let memberIs: ReadonlyArray<(value: unknown) => boolean> | undefined;
+
+  return (value) => {
+    const isMembers = (memberIs ??= members.map(getIs));
+    for (let index = 0; index < isMembers.length; index++) {
+      if (isMembers[index](value)) return true;
+    }
+    return false;
+  };
+};
+
+// A Union of identity Types returns the Result of the first valid member, so
+// it is an identity Type too.
+const createUnionCheck = (
+  members: ReadonlyArray<RuntimeTypeNode>,
+): RuntimeCheck | undefined => {
+  const checks = getRuntimeChecks(members);
+  if (checks === undefined) return undefined;
+
+  return (value, options) => {
+    // The same errors as createUnionValidation.
+    let first: UnionMemberError<TypeError> | undefined;
     let errors: Array<UnionMemberError<TypeError>> | undefined;
 
-    for (let index = 0; index < members.length; index++) {
-      const result = validateMember(members[index], value, options, index);
+    for (let index = 0; index < checks.length; index++) {
+      const error = checks[index](value, options);
+
+      if (error === undefined) return undefined;
+
+      if (first === undefined) {
+        first = { index, error };
+      } else if (options.errors === "all") {
+        (errors ??= [first]).push({ index, error });
+      }
+    }
+
+    assertNonNullable(first);
+    return {
+      type: "Union",
+      errors: (errors ?? [first]) as unknown as NonEmptyReadonlyArray<
+        UnionMemberError<TypeError>
+      >,
+    } satisfies UnionErrorValue<TypeError>;
+  };
+};
+
+type UnionMemberValidation = (
+  value: unknown,
+  options: ValidationOptions,
+) => Result<unknown, TypeError> | undefined;
+
+// A member validation returns `undefined` to skip its member.
+const createUnionValidation = (
+  members: ReadonlyArray<RuntimeTypeNode>,
+  getMemberValidation: (
+    member: RuntimeTypeNode,
+    index: number,
+  ) => UnionMemberValidation,
+): ((
+  value: unknown,
+  options?: ValidationOptions,
+) => Result<unknown, UnionErrorValue<TypeError>>) => {
+  let memberValidations: ReadonlyArray<UnionMemberValidation> | undefined;
+
+  return (value, options = firstValidationOptions) => {
+    const validations = (memberValidations ??=
+      members.map(getMemberValidation));
+    // A later member often matches (nullOr), so the error array is created
+    // only when a second member fails or the Union fails.
+    let first: UnionMemberError<TypeError> | undefined;
+    let errors: Array<UnionMemberError<TypeError>> | undefined;
+
+    for (let index = 0; index < validations.length; index++) {
+      const result = validations[index](value, options);
 
       if (result === undefined) continue;
       if (result.ok) return result;
 
-      if (errors === undefined || options.errors === "all") {
-        (errors ??= []).push({ index, error: result.error });
+      if (first === undefined) {
+        first = { index, error: result.error };
+      } else if (options.errors === "all") {
+        (errors ??= [first]).push({ index, error: result.error });
       }
     }
 
-    assertNonNullable(errors);
+    assertNonNullable(first);
     return err({
       type: "Union",
-      errors: errors as unknown as NonEmptyReadonlyArray<
+      errors: (errors ?? [first]) as unknown as NonEmptyReadonlyArray<
         UnionMemberError<TypeError>
       >,
     });
   };
+};
 
 /**
  * Union {@link Type} containing the supplied Type and `undefined`.
@@ -4631,17 +4990,19 @@ const createTemplateLiteralParserType = <
 
     return err({ type: "TemplateLiteral", value: stringResult.value });
   };
-  const getTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+  const getTypeIssues: RuntimeGetTypeIssues = (error, mode, path) => {
     if (error.type !== "TemplateLiteral") {
       return (String as unknown as RuntimeTypeNode)[getRuntimeTypeIssuesSymbol](
         error,
         mode,
+        path,
       );
     }
     if ("outputError" in error) {
       return runtimeOutput[getRuntimeTypeIssuesSymbol](
         error.outputError as TypeError,
         mode,
+        path,
       );
     }
     return singleRuntimeTypeIssue(
@@ -4649,6 +5010,7 @@ const createTemplateLiteralParserType = <
       error,
       ((error: TemplateLiteralError) =>
         `The value ${safelyStringifyUnknownValue(error.value)} does not match the template literal.`) as TypeErrorFormatter<TypeError>,
+      path,
     );
   };
   const canonicalStringFromUnknown = (
@@ -4676,7 +5038,7 @@ const createTemplateLiteralParserType = <
     canonicalStringFrom,
     identity,
     getTypeIssues,
-    reflection,
+    { additionalProperties: reflection },
   ) as TemplateLiteralType<Parts> & RuntimeTypeNode;
   const fromUnknown = (
     value: unknown,
@@ -4731,7 +5093,7 @@ const createTemplateLiteralParserType = <
     from,
     encodeCaptures,
     getTypeIssues,
-    reflection,
+    { additionalProperties: reflection },
   );
   (type.from as RuntimeOperation<Result<unknown, TypeError>>).parent =
     fromCanonicalString;
@@ -5314,10 +5676,10 @@ export function brand(
   return createChildType(
     name,
     parent as RuntimeTypeNode,
-    validate
-      ? (value: unknown) => flatMapResult(validate(value), () => ok(value))
-      : ok,
+    validate ?? (() => ok()),
     formatError,
+    undefined,
+    true,
   );
 }
 
@@ -9242,10 +9604,15 @@ const arrayRuntimeConfig: HomogeneousCollectionRuntimeConfig<
   ReadonlyArray<unknown>
 > = {
   name: "Array",
+  typeSymbol: arrayTypeSymbol,
   typeByElement: arrayTypeByElement,
   validate: validateArrayCollection,
   validateItems: (value, validateElement, options) =>
     validateArrayItems(value, validateElement, options, false),
+  check: (value, checkElement, options) =>
+    Array.isArray(value)
+      ? checkIndexedArrayItems("Array", value, checkElement, options)
+      : { type: "Array", reason: { kind: "NotArray", value } },
   encode: encodeArrayCollection,
   is: isArrayCollection,
   formatError: ((error: ArrayError) => {
@@ -9305,23 +9672,10 @@ const validateIndexedArrayItems = <Name extends IndexedArrayName>(
   options: ValidationOptions,
   checkStructure: boolean,
 ): Result<ReadonlyArray<unknown>, IndexedArrayItemsError<Name>> => {
-  let issues: Array<IndexedArrayIssue> | undefined;
+  let issues = checkStructure
+    ? getArrayExcessPropertyIssues(value, options)
+    : undefined;
   let output: Array<unknown> | undefined;
-
-  if (checkStructure) {
-    for (const key of Reflect.ownKeys(value)) {
-      if (key === "length") continue;
-      if (typeof key === "string") {
-        const index = globalThis.Number(key) >>> 0;
-        if (index < value.length && globalThis.String(index) === key) {
-          continue;
-        }
-      }
-
-      (issues ??= []).push({ kind: "ExcessProperty", key });
-      if (options.errors === "first") break;
-    }
-  }
 
   for (
     let index = 0;
@@ -9378,6 +9732,88 @@ const validateIndexedArrayItems = <Name extends IndexedArrayName>(
           issues: issues as unknown as NonEmptyReadonlyArray<IndexedArrayIssue>,
         },
       });
+};
+
+// Like validateIndexedArrayItems for identity elements, which leave the value
+// unchanged, so it returns only the error.
+const checkIndexedArrayItems = <Name extends IndexedArrayName>(
+  name: Name,
+  value: ReadonlyArray<unknown>,
+  check: (
+    value: unknown,
+    options: ValidationOptions,
+    index: number,
+  ) => TypeError | undefined,
+  options: ValidationOptions,
+): IndexedArrayItemsError<Name> | undefined => {
+  let issues = getArrayExcessPropertyIssues(value, options);
+
+  for (
+    let index = 0;
+    (issues === undefined || options.errors === "all") && index < value.length;
+    index++
+  ) {
+    const descriptor = globalThis.Object.getOwnPropertyDescriptor(value, index);
+
+    if (descriptor === undefined) {
+      (issues ??= []).push({ kind: "Hole", index });
+
+      if (options.errors === "first") break;
+      continue;
+    }
+    if (!("value" in descriptor)) {
+      (issues ??= []).push({ kind: "Accessor", index });
+
+      if (options.errors === "first") break;
+      continue;
+    }
+    const error = check(descriptor.value, options, index);
+    if (error === undefined) continue;
+
+    (issues ??= []).push({ kind: "Element", index, error });
+
+    if (options.errors === "first") break;
+  }
+
+  return issues === undefined
+    ? undefined
+    : {
+        type: name,
+        reason: {
+          kind: "Items",
+          issues: issues as unknown as NonEmptyReadonlyArray<IndexedArrayIssue>,
+        },
+      };
+};
+
+// Own keys other than indexes and `length` are excess properties.
+const getArrayExcessPropertyIssues = (
+  value: ReadonlyArray<unknown>,
+  options: ValidationOptions,
+): Array<IndexedArrayIssue> | undefined => {
+  let issues: Array<IndexedArrayIssue> | undefined;
+  const keys = Reflect.ownKeys(value);
+
+  for (let position = 0; position < keys.length; position++) {
+    const key = keys[position];
+    if (key === "length") continue;
+    if (typeof key === "string") {
+      // Ordinary arrays list their indexes first, in ascending order. Comparing
+      // the key first reads `length` only for an index key.
+      if (key === globalThis.String(position) && position < value.length) {
+        continue;
+      }
+      const index = globalThis.Number(key) >>> 0;
+      if (index < value.length && globalThis.String(index) === key) {
+        continue;
+      }
+    }
+
+    (issues ??= []).push({ kind: "ExcessProperty", key });
+    if (options.errors === "first") break;
+  }
+
+  return issues;
 };
 
 const copyArrayPrefix = (
@@ -9578,6 +10014,8 @@ type HomogeneousCollectionName = "Array" | "Set";
 
 interface HomogeneousCollectionRuntimeConfig<Collection> {
   readonly name: HomogeneousCollectionName;
+  readonly typeSymbol: symbol;
+  // Caches Collection Types of element Types whose own slot is read-only.
   readonly typeByElement: WeakMap<TypeNode, TypeNode>;
   readonly validate: (
     value: unknown,
@@ -9589,6 +10027,12 @@ interface HomogeneousCollectionRuntimeConfig<Collection> {
     validateElement: RuntimeOutputValidation,
     options: ValidationOptions,
   ) => Result<Collection, TypeError>;
+  // Like validate for identity elements, which leave the value unchanged.
+  readonly check: (
+    value: unknown,
+    checkElement: RuntimeCheck,
+    options: ValidationOptions,
+  ) => TypeError | undefined;
   readonly encode: (
     value: Collection,
     encodeElement: RuntimeEncoder,
@@ -9607,18 +10051,32 @@ const createHomogeneousCollectionType = <Collection>(
   typeElement: RuntimeTypeNode,
   config: HomogeneousCollectionRuntimeConfig<Collection>,
 ): TypeNode => {
-  const cached = config.typeByElement.get(typeElement);
+  const slot = (
+    typeElement as unknown as Readonly<
+      Record<symbol, (TypeNode & { readonly element: unknown }) | undefined>
+    >
+  )[config.typeSymbol];
+  // A copy of a Type, spread or with the Type as its prototype, has the slot
+  // of the original.
+  const cached =
+    slot !== undefined && slot.element === typeElement
+      ? slot
+      : config.typeByElement.get(typeElement);
 
   if (cached) return cached;
 
-  const fromUnknown = (
-    value: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) => config.validate(value, typeElement.fromUnknown, options);
-  const validateOutput = (
-    value: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) => config.validate(value, typeElement[outputValidationSymbol], options);
+  const checkElement = typeElement[checkSymbol];
+  const check: RuntimeCheck | undefined =
+    checkElement &&
+    ((value, options) => config.check(value, checkElement, options));
+  const fromUnknown = check
+    ? checkToFromUnknown(check)
+    : (value: unknown, options: ValidationOptions = firstValidationOptions) =>
+        config.validate(value, typeElement.fromUnknown, options);
+  const validateOutput = check
+    ? fromUnknown
+    : (value: unknown, options: ValidationOptions = firstValidationOptions) =>
+        config.validate(value, typeElement[outputValidationSymbol], options);
   const parent = typeElement.parent
     ? createHomogeneousCollectionType(
         typeElement.parent as RuntimeTypeNode,
@@ -9660,10 +10118,13 @@ const createHomogeneousCollectionType = <Collection>(
     from,
     to,
     getTypeIssues,
-    { element: typeElement },
+    { additionalProperties: { element: typeElement }, check },
   );
 
-  config.typeByElement.set(typeElement, type);
+  // A frozen element Type keeps its Collection Type in the WeakMap.
+  if (!Reflect.set(typeElement, config.typeSymbol, type)) {
+    config.typeByElement.set(typeElement, type);
+  }
 
   return type;
 };
@@ -9674,9 +10135,10 @@ const setRuntimeConfig: HomogeneousCollectionRuntimeConfig<
   ReadonlySet<unknown>
 > = {
   name: "Set",
+  typeSymbol: setTypeSymbol,
   typeByElement: setTypeByElement,
   validate: (value, validateElement, options) => {
-    if (!hasObjectTag(value, "Set")) {
+    if (!hasObjectTag(value, "[object Set]")) {
       return err({
         type: "Set",
         reason: { kind: "NotSet", value },
@@ -9691,6 +10153,41 @@ const setRuntimeConfig: HomogeneousCollectionRuntimeConfig<
   },
   validateItems: (value, validateElement, options) =>
     validateSetItems(value, validateElement, options, false),
+  check: (value, checkElement, options) => {
+    if (!hasObjectTag(value, "[object Set]")) {
+      return { type: "Set", reason: { kind: "NotSet", value } };
+    }
+    // The same issues as validateSetItems, without building an Output.
+    let issues:
+      Array<SetStructuralIssue | SetElementIssue<TypeError>> | undefined;
+
+    for (const key of Reflect.ownKeys(value as ReadonlySet<unknown>)) {
+      (issues ??= []).push({ kind: "ExcessProperty", key });
+      if (options.errors === "first") break;
+    }
+
+    let index = 0;
+    for (const item of value as ReadonlySet<unknown>) {
+      if (issues !== undefined && options.errors === "first") break;
+      const error = checkElement(item, options);
+      if (error !== undefined) {
+        (issues ??= []).push({ kind: "Element", index, error });
+      }
+      index++;
+    }
+
+    return issues === undefined
+      ? undefined
+      : {
+          type: "Set",
+          reason: {
+            kind: "Items",
+            issues: issues as unknown as NonEmptyReadonlyArray<
+              SetStructuralIssue | SetElementIssue<TypeError>
+            >,
+          },
+        };
+  },
   encode: (value, encodeElement) => {
     let changed = false;
     const output = new Set<unknown>();
@@ -9705,7 +10202,7 @@ const setRuntimeConfig: HomogeneousCollectionRuntimeConfig<
   },
   is: (value, isElement) => {
     if (
-      !hasObjectTag(value, "Set") ||
+      !hasObjectTag(value, "[object Set]") ||
       Reflect.ownKeys(value as object).length !== 0
     ) {
       return false;
@@ -9954,7 +10451,7 @@ export const map = <
     validateValue: RuntimeOutputValidation,
     options: ValidationOptions,
   ): Result<ReadonlyMap<unknown, unknown>, MapError> => {
-    if (!hasObjectTag(input, "Map")) {
+    if (!hasObjectTag(input, "[object Map]")) {
       return err({
         type: "Map",
         reason: { kind: "NotMap", value: input },
@@ -9968,20 +10465,109 @@ export const map = <
       true,
     );
   };
-  const fromUnknown = (
-    input: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) => validate(input, typeKey.fromUnknown, typeValue.fromUnknown, options);
-  const validateOutput = (
-    input: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) =>
-    validate(
-      input,
-      typeKey[outputValidationSymbol],
-      typeValue[outputValidationSymbol],
-      options,
-    );
+  const checkKey = typeKey[checkSymbol];
+  const checkValue = typeValue[checkSymbol];
+  // Like validate for identity keys and values, which leave the Map unchanged,
+  // so it returns only the error. A custom iterator can repeat a key, so
+  // collisions are still detected.
+  const check: RuntimeCheck | undefined =
+    checkKey &&
+    checkValue &&
+    ((input, options) => {
+      if (!hasObjectTag(input, "[object Map]")) {
+        return {
+          type: "Map",
+          reason: { kind: "NotMap", value: input },
+        } satisfies MapNotMapError;
+      }
+      const entries = input as ReadonlyMap<unknown, unknown>;
+      let issues:
+        Array<MapIssue<TypeError, TypeError, MapStructuralIssue>> | undefined;
+      const entryByKey = new Map<
+        unknown,
+        { readonly index: number; readonly key: unknown }
+      >();
+
+      for (const key of Reflect.ownKeys(entries)) {
+        (issues ??= []).push({ kind: "ExcessProperty", key });
+        if (options.errors === "first") break;
+      }
+
+      let index = 0;
+      for (const [inputKey, inputValue] of entries) {
+        if (issues !== undefined && options.errors === "first") break;
+
+        const keyError = checkKey(inputKey, options);
+        if (keyError !== undefined) {
+          (issues ??= []).push({
+            kind: "Key",
+            index,
+            key: inputKey,
+            error: keyError,
+          });
+          if (options.errors === "first") break;
+        }
+
+        const valueError = checkValue(inputValue, options);
+        if (valueError !== undefined) {
+          (issues ??= []).push({
+            kind: "Value",
+            index,
+            key: inputKey,
+            error: valueError,
+          });
+          if (options.errors === "first") break;
+        }
+
+        if (keyError === undefined) {
+          const previous = entryByKey.get(inputKey);
+
+          if (previous === undefined) {
+            entryByKey.set(inputKey, { index, key: inputKey });
+          } else {
+            (issues ??= []).push({
+              kind: "Collision",
+              index,
+              key: inputKey,
+              previousIndex: previous.index,
+              previousKey: previous.key,
+              outputKey: inputKey,
+            });
+            if (options.errors === "first") break;
+          }
+        }
+        index++;
+      }
+
+      return issues === undefined
+        ? undefined
+        : ({
+            type: "Map",
+            reason: {
+              kind: "Entries",
+              issues: issues as unknown as NonEmptyReadonlyArray<
+                MapIssue<TypeError, TypeError, MapStructuralIssue>
+              >,
+            },
+          } satisfies MapEntriesErrorValue<
+            TypeError,
+            TypeError,
+            MapStructuralIssue
+          >);
+    });
+  const fromUnknown = check
+    ? checkToFromUnknown(check)
+    : (input: unknown, options: ValidationOptions = firstValidationOptions) =>
+        validate(input, typeKey.fromUnknown, typeValue.fromUnknown, options);
+  const validateOutput = check
+    ? fromUnknown
+    : (input: unknown, options: ValidationOptions = firstValidationOptions) =>
+        validate(
+          input,
+          typeKey[outputValidationSymbol],
+          typeValue[outputValidationSymbol],
+          options,
+        );
   const formatError: TypeErrorFormatter<MapStructuralError> = (error) => {
     if (error.reason.kind === "NotMap")
       return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Map.`;
@@ -10052,7 +10638,7 @@ export const map = <
           return changed ? output : input;
         };
   const is = (input: unknown): boolean => {
-    if (!hasObjectTag(input, "Map")) {
+    if (!hasObjectTag(input, "[object Map]")) {
       return false;
     }
     if (Reflect.ownKeys(input as object).length !== 0) return false;
@@ -10066,44 +10652,56 @@ export const map = <
 
     return true;
   };
-  const getTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+  const getTypeIssues: RuntimeGetTypeIssues = (error, mode, path) => {
     const mapError = error as MapError;
     if (mapError.reason.kind !== "Entries") {
       return singleRuntimeTypeIssue(
         "Map",
         error,
         formatError as TypeErrorFormatter<TypeError>,
+        path,
       );
     }
 
     const allIssues = mapError.reason.issues;
     const issues = mode === "first" ? ([allIssues[0]] as const) : allIssues;
+    const result: Array<RuntimeTypeIssue> = [];
 
-    return issues.flatMap((issue): ReadonlyArray<RuntimeTypeIssue> => {
+    for (const issue of issues) {
       if (issue.kind === "Key" || issue.kind === "Value") {
-        return prependRuntimeTypeIssuePath(
-          issue.index,
-          prependRuntimeTypeIssuePath(
+        for (const nestedIssue of (issue.kind === "Key" ? typeKey : typeValue)[
+          getRuntimeTypeIssuesSymbol
+        ](
+          issue.error,
+          mode,
+          appendIssuePath(
+            appendIssuePath(path, issue.index),
             issue.kind === "Key" ? "key" : "value",
-            (issue.kind === "Key" ? typeKey : typeValue)[
-              getRuntimeTypeIssuesSymbol
-            ](issue.error, mode),
           ),
-        );
+        )) {
+          result.push(nestedIssue);
+        }
+        continue;
       }
 
-      return singleRuntimeTypeIssue(
-        "Map",
-        mode === "first"
-          ? error
-          : ({
-              type: "Map",
-              reason: { kind: "Entries", issues: [issue] },
-            } as TypeError),
-        formatError as TypeErrorFormatter<TypeError>,
-        [issue.kind === "ExcessProperty" ? issue.key : issue.index],
-      );
-    }) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
+      result.push({
+        name: "Map",
+        error:
+          mode === "first"
+            ? error
+            : ({
+                type: "Map",
+                reason: { kind: "Entries", issues: [issue] },
+              } as TypeError),
+        path: appendIssuePath(
+          path,
+          issue.kind === "ExcessProperty" ? issue.key : issue.index,
+        ),
+        formatError: formatError as TypeErrorFormatter<TypeError>,
+      });
+    }
+
+    return result as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
   };
   const type = createTypeNode<MapType<KeyType, ValueType>>(
     "Map",
@@ -10114,7 +10712,7 @@ export const map = <
     from,
     to,
     getTypeIssues,
-    { key: typeKey, value: typeValue },
+    { additionalProperties: { key: typeKey, value: typeValue }, check },
   );
 
   if (typeByValue === undefined) {
@@ -10504,26 +11102,48 @@ const createTupleType = (
       true,
     );
   };
-  const fromUnknown = (
-    value: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) =>
-    validate(
-      value,
-      (element, item, elementOptions) =>
-        element.fromUnknown(item, elementOptions),
-      options,
-    );
-  const validateOutput = (
-    value: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) =>
-    validate(
-      value,
-      (element, item, elementOptions) =>
-        element[outputValidationSymbol](item, elementOptions),
-      options,
-    );
+  const elementChecks = getRuntimeChecks(typeElements);
+  const checkElement =
+    elementChecks &&
+    ((item: unknown, options: ValidationOptions, index: number) =>
+      elementChecks[index](item, options));
+  // The same errors as validate, for identity elements.
+  const check: RuntimeCheck | undefined =
+    checkElement &&
+    ((value, options): TupleError | undefined => {
+      if (!Array.isArray(value)) {
+        return { type: "Tuple", reason: { kind: "NotArray", value } };
+      }
+      if (value.length !== expectedLength) {
+        return {
+          type: "Tuple",
+          reason: {
+            kind: "InvalidLength",
+            expected: expectedLength,
+            actual: value.length,
+          },
+        };
+      }
+      return checkIndexedArrayItems("Tuple", value, checkElement, options);
+    });
+  const fromUnknown = check
+    ? checkToFromUnknown(check)
+    : (value: unknown, options: ValidationOptions = firstValidationOptions) =>
+        validate(
+          value,
+          (element, item, elementOptions) =>
+            element.fromUnknown(item, elementOptions),
+          options,
+        );
+  const validateOutput = check
+    ? fromUnknown
+    : (value: unknown, options: ValidationOptions = firstValidationOptions) =>
+        validate(
+          value,
+          (element, item, elementOptions) =>
+            element[outputValidationSymbol](item, elementOptions),
+          options,
+        );
   const formatError: TypeErrorFormatter<TupleError> = (error) => {
     if (error.reason.kind === "NotArray")
       return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a tuple.`;
@@ -10616,7 +11236,7 @@ const createTupleType = (
     from,
     to,
     getTypeIssues,
-    { elements: typeElements },
+    { additionalProperties: { elements: typeElements }, check },
   );
 };
 
@@ -10887,24 +11507,29 @@ export type Digit1To59 = typeof Digit1To59.Output;
 
 const createObjectRuntimeTypeIssues =
   (
-    defaultFormatter: TypeErrorFormatter<TypeError>,
     props?: Readonly<Record<string, RuntimeObjectProperty>>,
     recordType?: RuntimeRecordTypeNode,
   ): RuntimeGetTypeIssues =>
-  (error, mode) => {
+  (error, mode, path) => {
     const objectError = error as ObjectError;
 
     if (objectError.reason.kind !== "Properties") {
-      return singleRuntimeTypeIssue("Object", error, defaultFormatter);
+      return singleRuntimeTypeIssue(
+        "Object",
+        error,
+        formatObjectError as TypeErrorFormatter<TypeError>,
+        path,
+      );
     }
 
     const propertyErrors = objectError.reason.errors;
     const keys = Reflect.ownKeys(propertyErrors);
-    const firstKey = keys[0];
-    assertNonNullable(firstKey);
-    const keysToVisit = mode === "first" ? [firstKey] : keys;
+    assertNonNullable(keys[0]);
+    const visitCount = mode === "first" ? 1 : keys.length;
+    const result: Array<RuntimeTypeIssue> = [];
 
-    return keysToVisit.flatMap((key) => {
+    for (let index = 0; index < visitCount; index++) {
+      const key = keys[index];
       const propertyError = (
         propertyErrors as Readonly<Partial<Record<PropertyKey, TypeError>>>
       )[key]!;
@@ -10935,24 +11560,67 @@ const createObjectRuntimeTypeIssues =
           } as TypeError;
         }
 
-        return singleRuntimeTypeIssue("Object", ownError, defaultFormatter, [
-          key,
-        ]);
+        result.push({
+          name: "Object",
+          error: ownError,
+          path: appendIssuePath(path, key),
+          // The issue error has this first key, so its message needs no key
+          // enumeration of the error record.
+          formatError: () => formatObjectPropertyError(key, propertyError),
+        });
+        continue;
       }
 
-      if (property !== undefined) {
-        return prependRuntimeTypeIssuePath(
-          key,
-          objectPropertyToType(property)[getRuntimeTypeIssuesSymbol](
-            propertyError,
-            mode,
-          ),
-        );
-      }
+      // A record property error adds its own key.
+      const nestedIssues =
+        property === undefined
+          ? recordType![getRuntimeTypeIssuesSymbol](
+              propertyError,
+              mode,
+              path.slice(),
+            )
+          : objectPropertyToType(property)[getRuntimeTypeIssuesSymbol](
+              propertyError,
+              mode,
+              appendIssuePath(path, key),
+            );
+      // Nested issues are a new array, so one visited issue returns them.
+      if (visitCount === 1) return nestedIssues;
+      for (const issue of nestedIssues) result.push(issue);
+    }
 
-      return recordType![getRuntimeTypeIssuesSymbol](propertyError, mode);
-    }) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
+    return result as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
   };
+
+const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
+  if (error.reason.kind !== "Properties")
+    return formatPlainObjectRootError(error.reason);
+  const key = Reflect.ownKeys(error.reason.errors).at(0);
+  assertNonNullable(key);
+  return formatObjectPropertyError(key, error.reason.errors[key]);
+};
+
+const formatObjectPropertyError = (
+  key: PropertyKey,
+  propertyError: TypeError | undefined,
+): string => {
+  assertNonNullable(propertyError);
+  if (propertyError.type === "ObjectPropertyAccess") {
+    switch ((propertyError as ObjectPropertyAccessError).reason) {
+      case "Accessor":
+        return "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
+      case "NonEnumerable":
+        return "An Object property must be enumerable. Make it enumerable or use a different Type.";
+    }
+  }
+  if (propertyError.type === "ObjectMissingProperty")
+    return `The required property ${safelyStringifyUnknownValue(key)} is missing.`;
+  if (typeof key === "symbol")
+    return "An Object property key must be a string. Remove the symbol property or use a different Type.";
+  if (propertyError.type === "ObjectExcessProperty")
+    return `The property ${safelyStringifyUnknownValue(key)} is not allowed. Remove it or use a different Type.`;
+  return `The property ${safelyStringifyUnknownValue(key)} is invalid.`;
+};
 
 const formatPlainObjectRootError = (
   reason:
@@ -10962,10 +11630,86 @@ const formatPlainObjectRootError = (
     ? `A value ${safelyStringifyUnknownValue(reason.value)} is not an object.`
     : "The value is an object, but an Object Output must be a plain object or have a null prototype.";
 
+// Ordinary objects list string keys before symbols, so without symbols the
+// names are the own keys, and cheaper than Reflect.ownKeys. A Proxy may list
+// symbols first, and Reflect.ownKeys keeps that order.
+const getOwnKeys = (value: object): ReadonlyArray<string | symbol> => {
+  const names = globalThis.Object.getOwnPropertyNames(value);
+  return globalThis.Object.getOwnPropertySymbols(value).length === 0
+    ? names
+    : Reflect.ownKeys(value);
+};
+
+// An `is` walk in own-key order fails at the first symbol key, after checking
+// the names before it. Ordinary objects list symbols last, but a Proxy may
+// list one first. Walking names is faster than walking mixed own keys.
+const getNamesBeforeSymbol = (value: object): ReadonlyArray<string> => {
+  const names: Array<string> = [];
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") break;
+    names.push(key);
+  }
+  return names;
+};
+
 type PlainObjectError = ObjectError<
   Readonly<Record<never, never>>,
   ObjectPropertyAccessError | ObjectExcessPropertyError
 >;
+
+const checkPlainObject = (
+  value: unknown,
+  options: ValidationOptions,
+): PlainObjectError | undefined => {
+  if (value === null || typeof value !== "object") {
+    return { type: "Object", reason: { kind: "NotObject", value } };
+  }
+  if (!isPlainObject(value)) {
+    return { type: "Object", reason: { kind: "UnexpectedPrototype", value } };
+  }
+
+  let errors: RuntimeObjectPropertyErrors | undefined;
+
+  for (const key of getOwnKeys(value)) {
+    let propertyError:
+      ObjectPropertyAccessError | ObjectExcessPropertyError | undefined;
+
+    if (typeof key !== "string") {
+      propertyError = { type: "ObjectExcessProperty" };
+    } else {
+      const descriptor = globalThis.Object.getOwnPropertyDescriptor(value, key);
+      assert(
+        descriptor !== undefined,
+        "Object property descriptor is missing.",
+      );
+
+      if (!("value" in descriptor)) {
+        propertyError = {
+          type: "ObjectPropertyAccess",
+          reason: "Accessor",
+        };
+      } else if (!descriptor.enumerable) {
+        propertyError = {
+          type: "ObjectPropertyAccess",
+          reason: "NonEnumerable",
+        };
+      }
+    }
+
+    if (propertyError === undefined) continue;
+
+    errors ??= createMutableRecord<string, TypeError>();
+    errors[key] = propertyError;
+    if (options.errors === "first") break;
+  }
+
+  return errors === undefined
+    ? undefined
+    : ({
+        type: "Object",
+        reason: { kind: "Properties", errors },
+      } as PlainObjectError);
+};
 
 /**
  * A {@link Type} for readonly plain objects with unknown property values.
@@ -10999,110 +11743,16 @@ const _Object: Type<
     value: unknown,
     options: ValidationOptions = firstValidationOptions,
   ): Result<Readonly<Record<string, unknown>>, PlainObjectError> => {
-    if (value === null || typeof value !== "object") {
-      return err({
-        type: "Object",
-        reason: { kind: "NotObject", value },
-      });
-    }
-    if (!isPlainObject(value)) {
-      return err({
-        type: "Object",
-        reason: { kind: "UnexpectedPrototype", value },
-      });
-    }
-
-    let errors: RuntimeObjectPropertyErrors | undefined;
-
-    for (const key of Reflect.ownKeys(value)) {
-      let propertyError:
-        ObjectPropertyAccessError | ObjectExcessPropertyError | undefined;
-
-      if (typeof key !== "string") {
-        propertyError = { type: "ObjectExcessProperty" };
-      } else {
-        const descriptor = globalThis.Object.getOwnPropertyDescriptor(
-          value,
-          key,
-        );
-        assert(
-          descriptor !== undefined,
-          "Object property descriptor is missing.",
-        );
-
-        if (!("value" in descriptor)) {
-          propertyError = {
-            type: "ObjectPropertyAccess",
-            reason: "Accessor",
-          };
-        } else if (!descriptor.enumerable) {
-          propertyError = {
-            type: "ObjectPropertyAccess",
-            reason: "NonEnumerable",
-          };
-        }
-      }
-
-      if (propertyError === undefined) continue;
-
-      errors ??= createMutableRecord<string, TypeError>();
-      errors[key] = propertyError;
-      if (options.errors === "first") break;
-    }
-
-    return errors === undefined
-      ? ok(value)
-      : err({
-          type: "Object",
-          reason: { kind: "Properties", errors },
-        } as PlainObjectError);
+    const error = checkPlainObject(value, options);
+    return error === undefined
+      ? ok(value as Readonly<Record<string, unknown>>)
+      : err(error);
   },
-  (error: ObjectError) => {
-    if (error.reason.kind !== "Properties")
-      return formatPlainObjectRootError(error.reason);
-    const key = Reflect.ownKeys(error.reason.errors).at(0);
-    assertNonNullable(key);
-    const propertyError = error.reason.errors[key];
-    assertNonNullable(propertyError);
-    if (propertyError.type === "ObjectPropertyAccess") {
-      switch ((propertyError as ObjectPropertyAccessError).reason) {
-        case "Accessor":
-          return "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
-        case "NonEnumerable":
-          return "An Object property must be enumerable. Make it enumerable or use a different Type.";
-      }
-    }
-    if (propertyError.type === "ObjectMissingProperty")
-      return `The required property ${safelyStringifyUnknownValue(key)} is missing.`;
-    if (typeof key === "symbol")
-      return "An Object property key must be a string. Remove the symbol property or use a different Type.";
-    if (propertyError.type === "ObjectExcessProperty")
-      return `The property ${safelyStringifyUnknownValue(key)} is not allowed. Remove it or use a different Type.`;
-    return `The property ${safelyStringifyUnknownValue(key)} is invalid.`;
+  formatObjectError,
+  {
+    getTypeIssues: /*#__PURE__*/ createObjectRuntimeTypeIssues(),
+    check: checkPlainObject,
   },
-  /*#__PURE__*/ createObjectRuntimeTypeIssues(((error: ObjectError) => {
-    if (error.reason.kind !== "Properties")
-      return formatPlainObjectRootError(error.reason);
-    const key = Reflect.ownKeys(error.reason.errors).at(0);
-    assertNonNullable(key);
-    const propertyError = error.reason.errors[key];
-    assertNonNullable(propertyError);
-    if (propertyError.type === "ObjectPropertyAccess") {
-      switch ((propertyError as ObjectPropertyAccessError).reason) {
-        case "Accessor":
-          return "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
-        case "NonEnumerable":
-          return "An Object property must be enumerable. Make it enumerable or use a different Type.";
-      }
-    }
-    if (propertyError.type === "ObjectMissingProperty")
-      return `The required property ${safelyStringifyUnknownValue(key)} is missing.`;
-    if (typeof key === "symbol")
-      return "An Object property key must be a string. Remove the symbol property or use a different Type.";
-    if (propertyError.type === "ObjectExcessProperty")
-      return `The property ${safelyStringifyUnknownValue(key)} is not allowed. Remove it or use a different Type.`;
-    return `The property ${safelyStringifyUnknownValue(key)} is invalid.`;
-  }) as TypeErrorFormatter<TypeError>),
 );
 
 // Avoid a local `Object` binding because Babel's CommonJS transform injects
@@ -11457,20 +12107,88 @@ export const record = <
       options,
     );
   };
-  const fromUnknown = (
-    input: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) => validate(input, typeKey.fromUnknown, typeValue.fromUnknown, options);
-  const validateOutput = (
-    input: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) =>
-    validate(
-      input,
-      typeKey[outputValidationSymbol],
-      typeValue[outputValidationSymbol],
-      options,
-    );
+  const checkKey = typeKey[checkSymbol];
+  const checkValue = typeValue[checkSymbol];
+  // The same errors as validate for identity keys and values. Own keys are
+  // unique, so identity keys never collide.
+  const check: RuntimeCheck | undefined =
+    checkKey &&
+    checkValue &&
+    ((input, options): RecordError | undefined => {
+      if (input === null || typeof input !== "object") {
+        return { type: "Record", reason: { kind: "NotRecord", value: input } };
+      }
+      if (!isPlainObject(input)) {
+        return {
+          type: "Record",
+          reason: { kind: "NotPlainRecord", value: input },
+        };
+      }
+      let issues:
+        | Array<RecordIssue<TypeError, TypeError, RecordStructuralIssue>>
+        | undefined;
+
+      for (const inputKey of getOwnKeys(input)) {
+        const keyError = checkKey(inputKey, options);
+
+        if (keyError !== undefined) {
+          (issues ??= []).push({ kind: "Key", key: inputKey, error: keyError });
+          if (options.errors === "first") break;
+        }
+
+        const descriptor = globalThis.Object.getOwnPropertyDescriptor(
+          input,
+          inputKey,
+        );
+        assert(
+          descriptor !== undefined,
+          "Record property descriptor is missing.",
+        );
+
+        if (!("value" in descriptor)) {
+          (issues ??= []).push({ kind: "Accessor", key: inputKey });
+          if (options.errors === "first") break;
+        } else if (!descriptor.enumerable) {
+          (issues ??= []).push({ kind: "NonEnumerable", key: inputKey });
+          if (options.errors === "first") break;
+        } else {
+          const valueError = checkValue(descriptor.value, options);
+          if (valueError !== undefined) {
+            (issues ??= []).push({
+              kind: "Value",
+              key: inputKey,
+              error: valueError,
+            });
+            if (options.errors === "first") break;
+          }
+        }
+      }
+
+      return issues === undefined
+        ? undefined
+        : {
+            type: "Record",
+            reason: {
+              kind: "Entries",
+              issues: issues as unknown as NonEmptyReadonlyArray<
+                RecordIssue<TypeError, TypeError, RecordStructuralIssue>
+              >,
+            },
+          };
+    });
+  const fromUnknown = check
+    ? checkToFromUnknown(check)
+    : (input: unknown, options: ValidationOptions = firstValidationOptions) =>
+        validate(input, typeKey.fromUnknown, typeValue.fromUnknown, options);
+  const validateOutput = check
+    ? fromUnknown
+    : (input: unknown, options: ValidationOptions = firstValidationOptions) =>
+        validate(
+          input,
+          typeKey[outputValidationSymbol],
+          typeValue[outputValidationSymbol],
+          options,
+        );
   const formatError: TypeErrorFormatter<RecordError> = (error) => {
     if (error.reason.kind === "NotRecord")
       return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Record.`;
@@ -11555,8 +12273,17 @@ export const record = <
     if (input === null || typeof input !== "object") return false;
     if (!isPlainObject(input)) return false;
 
-    for (const key of Reflect.ownKeys(input)) {
-      if (typeof key !== "string" || !typeKey.is(key)) return false;
+    // Separate name and symbol enumerations cost dictionary-mode inputs, such
+    // as null-prototype records, about 10% over one Reflect.ownKeys, which is
+    // much slower for ordinary objects.
+    const hasSymbols =
+      globalThis.Object.getOwnPropertySymbols(input).length !== 0;
+    const names = hasSymbols
+      ? getNamesBeforeSymbol(input)
+      : globalThis.Object.getOwnPropertyNames(input);
+    for (let index = 0; index < names.length; index++) {
+      const key = names[index];
+      if (!typeKey.is(key)) return false;
 
       const descriptor = globalThis.Object.getOwnPropertyDescriptor(input, key);
       if (
@@ -11569,7 +12296,7 @@ export const record = <
       if (!typeValue.is(descriptor.value)) return false;
     }
 
-    return true;
+    return !hasSymbols;
   };
   const getTypeIssues = createCollectionRuntimeTypeIssues(
     "Record",
@@ -11587,7 +12314,7 @@ export const record = <
     from,
     to,
     getTypeIssues,
-    { key: typeKey, value: typeValue },
+    { additionalProperties: { key: typeKey, value: typeValue }, check },
   );
 };
 
@@ -11722,7 +12449,7 @@ const validateRecordEntries = (
   const inputKeyByOutputKey = createMutableRecord<string, string | symbol>();
   let changed = false;
 
-  for (const inputKey of Reflect.ownKeys(input)) {
+  for (const inputKey of getOwnKeys(input)) {
     const keyResult = validateKey(inputKey, options);
 
     if (!keyResult.ok) {
@@ -12104,10 +12831,13 @@ export function withDefault(
         ? result
         : err({ type: "WithDefault", outputError: result.error });
     },
-    [getRuntimeTypeIssuesSymbol]: (error, mode) =>
+    [getRuntimeTypeIssuesSymbol]: (error, mode, path) =>
       error.type === "WithDefault" && "outputError" in error
-        ? ownGetTypeIssues(error.outputError as TypeError, mode)
-        : type[getRuntimeTypeIssuesSymbol](error, mode),
+        ? ownGetTypeIssues(error.outputError as TypeError, mode, path)
+        : type[getRuntimeTypeIssuesSymbol](error, mode, path),
+    // Output validation wraps errors, so a copied check would not match it.
+    [checkSymbol]: undefined,
+    [refinementsSymbol]: undefined,
   };
 
   const operations: RuntimeDefaultOperations = {
@@ -12624,23 +13354,40 @@ type ObjectProperty = ObjectProps[string];
 const createObjectType = (
   props: ObjectProps,
   recordType?: RuntimeRecordTypeNode,
+  // A parent Object Type reuses the key order of its child.
+  keys: ReadonlyArray<string> = globalThis.Object.keys(props),
 ): ObjectTypeNode => {
   const runtimeProps = props as Readonly<Record<string, RuntimeObjectProperty>>;
-  const defaultProperty =
-    globalThis.Object.values(runtimeProps).find(isDefaultProperty);
-  if (defaultProperty) {
-    return defaultProperty[defaultPropertySymbol].createObject(
-      props,
-      recordType,
-    );
-  }
-  const keys = globalThis.Object.keys(runtimeProps);
+  const keyCount = keys.length;
+  const propertyTypes = createMutableArray<RuntimeTypeNode>(keyCount);
+  const optionalFlags = createMutableArray<boolean>(keyCount);
 
+  for (let index = 0; index < keyCount; index++) {
+    const property = runtimeProps[keys[index]];
+    if (isDefaultProperty(property)) {
+      return property[defaultPropertySymbol].createObject(props, recordType);
+    }
+    const isOptional = isOptionalProperty(property);
+    const type = isOptional ? property.type : property;
+    propertyTypes[index] = type;
+    optionalFlags[index] = isOptional;
+  }
+  const propertyChecks = propertyTypes.map((type) => type[checkSymbol]);
+  const recordCheck = recordType?.value[checkSymbol];
+  // When every property and Record value Type is an identity Type, validation
+  // never changes a value.
+  const isIdentity =
+    !propertyChecks.includes(undefined) &&
+    (recordType === undefined || recordCheck !== undefined);
+  let isOutputs: ReadonlyArray<(value: unknown) => boolean> | undefined;
+
+  // Returns `undefined` for a valid input it did not change, so a valid
+  // identity Object allocates no Result.
   const validate = (
     value: unknown,
     options: ValidationOptions,
     exactOutput: boolean,
-  ): Result<Readonly<Record<string, unknown>>, ObjectError> => {
+  ): Result<Readonly<Record<string, unknown>>, ObjectError> | undefined => {
     if (value === null || typeof value !== "object") {
       return err({
         type: "Object",
@@ -12654,137 +13401,166 @@ const createObjectType = (
         reason: { kind: "UnexpectedPrototype", value: input },
       });
     }
+    const ownKeys = getOwnKeys(input);
+    // Descriptors by visit index let a copy-on-write Output reuse the values
+    // already read. Only a property without a check can change its value.
+    const descriptors = isIdentity
+      ? undefined
+      : createMutableArray<PropertyDescriptor | undefined>(
+          keyCount + ownKeys.length,
+        );
     let errors: RuntimeObjectPropertyErrors | undefined;
     let output: Record<string | symbol, unknown> | undefined;
-    const inputDescriptorByKey = new Map<
-      string | symbol,
-      PropertyDescriptor | undefined
-    >();
+    // Own keys that are exactly the declared keys in their order leave the
+    // undeclared-key loop nothing to visit. A first-mode stop leaves the flag
+    // unchecked, but then that loop does not run either.
+    let ownKeysAreDeclared = ownKeys.length === keyCount;
 
-    for (const key of keys) inputDescriptorByKey.set(key, undefined);
-    for (const key of Reflect.ownKeys(input)) {
-      inputDescriptorByKey.set(key, undefined);
-    }
-
-    const setError = (key: string | symbol, error: TypeError): void => {
-      errors ??= createMutableRecord<string, TypeError>();
-      errors[key] = error;
-    };
-
-    for (const [key] of inputDescriptorByKey) {
-      const property =
-        typeof key === "string" && globalThis.Object.hasOwn(runtimeProps, key)
-          ? runtimeProps[key]
-          : undefined;
+    for (
+      let index = 0;
+      (errors === undefined || options.errors !== "first") && index < keyCount;
+      index++
+    ) {
+      const key = keys[index];
+      if (ownKeysAreDeclared && ownKeys[index] !== key) {
+        ownKeysAreDeclared = false;
+      }
       const descriptor = globalThis.Object.getOwnPropertyDescriptor(input, key);
-      inputDescriptorByKey.set(key, descriptor);
+      if (descriptors !== undefined) descriptors[index] = descriptor;
+      let error: TypeError | ObjectPropertyAccessError;
 
       if (descriptor === undefined) {
-        assert(property !== undefined, "Object property is missing.");
-        if (isOptionalProperty(property)) {
-          continue;
-        }
-        setError(key, { type: "ObjectMissingProperty" });
-        if (options.errors === "first") break;
-        continue;
-      }
-
-      if (property === undefined && recordType === undefined) {
-        setError(key, {
-          type: "ObjectExcessProperty",
-        } satisfies ObjectExcessPropertyError);
-        if (options.errors === "first") break;
-        continue;
-      }
-
-      if (property === undefined && typeof key !== "string") {
-        setError(
-          key,
-          createRecordPropertyError({
-            kind: "Key",
-            key,
-            error: {
-              type: "TypeOf",
-              expected: "String",
-              value: key,
-            },
-          }),
-        );
-        if (options.errors === "first") break;
-        continue;
-      }
-
-      if (!("value" in descriptor)) {
-        const propertyError: ObjectPropertyAccessError = {
+        if (optionalFlags[index]) continue;
+        error = { type: "ObjectMissingProperty" };
+      } else if (!("value" in descriptor)) {
+        error = {
           type: "ObjectPropertyAccess",
           reason: "Accessor",
-        };
-        setError(key, propertyError);
-        if (options.errors === "first") break;
-        continue;
-      }
-      if (!descriptor.enumerable) {
-        const propertyError: ObjectPropertyAccessError = {
+        } satisfies ObjectPropertyAccessError;
+      } else if (!descriptor.enumerable) {
+        error = {
           type: "ObjectPropertyAccess",
           reason: "NonEnumerable",
-        };
-        setError(key, propertyError);
-        if (options.errors === "first") break;
-        continue;
-      }
-      const propertyValue: unknown = descriptor.value;
+        } satisfies ObjectPropertyAccessError;
+      } else {
+        const propertyValue: unknown = descriptor.value;
+        const check = propertyChecks[index];
 
-      const propertyType =
-        property === undefined
-          ? recordType!.value
-          : objectPropertyToType(property);
-      const result = exactOutput
-        ? propertyType[outputValidationSymbol](propertyValue, options)
-        : propertyType.fromUnknown(propertyValue, options);
-
-      if (!result.ok) {
-        setError(
-          key,
-          property === undefined
-            ? createRecordPropertyError({
-                kind: "Value",
-                key,
-                error: result.error,
-              })
-            : result.error,
-        );
-        if (options.errors === "first") break;
-        continue;
-      }
-
-      if (errors !== undefined) continue;
-      if (exactOutput) continue;
-      if (
-        output === undefined &&
-        globalThis.Object.is(result.value, propertyValue)
-      ) {
-        continue;
-      }
-
-      if (output === undefined) {
-        output = globalThis.Object.create(null) as Record<
-          string | symbol,
-          unknown
-        >;
-
-        for (const [previousKey, previousDescriptor] of inputDescriptorByKey) {
-          if (previousKey === key) break;
-
-          if (
-            previousDescriptor !== undefined &&
-            "value" in previousDescriptor &&
-            previousDescriptor.enumerable
-          ) {
-            output[previousKey] = previousDescriptor.value;
+        if (check !== undefined) {
+          const propertyError = check(propertyValue, options);
+          if (propertyError === undefined) {
+            if (output !== undefined && errors === undefined) {
+              output[key] = propertyValue;
+            }
+            continue;
           }
+          error = propertyError;
+        } else {
+          const result = exactOutput
+            ? propertyTypes[index][outputValidationSymbol](
+                propertyValue,
+                options,
+              )
+            : propertyTypes[index].fromUnknown(propertyValue, options);
+
+          if (result.ok) {
+            if (errors !== undefined || exactOutput) continue;
+            if (output === undefined) {
+              if (globalThis.Object.is(result.value, propertyValue)) continue;
+              output = copyVisitedProperties(descriptors!, ownKeys, index);
+            }
+            output[key] = result.value;
+            continue;
+          }
+          error = result.error;
         }
       }
-      output[key] = result.value;
+
+      errors ??= createMutableRecord<string, TypeError>();
+      errors[key] = error;
+    }
+    const ownKeyEnd = ownKeysAreDeclared ? 0 : ownKeys.length;
+
+    for (
+      let position = 0;
+      (errors === undefined || options.errors !== "first") &&
+      position < ownKeyEnd;
+      position++
+    ) {
+      const key = ownKeys[position];
+      const index = keyCount + position;
+      if (
+        typeof key === "string" &&
+        // Own keys usually follow the declared order.
+        ((position < keyCount && key === keys[position]) ||
+          globalThis.Object.hasOwn(runtimeProps, key))
+      ) {
+        if (descriptors !== undefined) descriptors[index] = undefined;
+        continue;
+      }
+      const descriptor = globalThis.Object.getOwnPropertyDescriptor(input, key);
+      assert(descriptor !== undefined, "Object property is missing.");
+      if (descriptors !== undefined) descriptors[index] = descriptor;
+      let error: TypeError | ObjectPropertyAccessError;
+
+      if (recordType === undefined) {
+        error = {
+          type: "ObjectExcessProperty",
+        } satisfies ObjectExcessPropertyError;
+      } else if (typeof key !== "string") {
+        error = createRecordPropertyError({
+          kind: "Key",
+          key,
+          error: { type: "TypeOf", expected: "String", value: key },
+        });
+      } else if (!("value" in descriptor)) {
+        error = {
+          type: "ObjectPropertyAccess",
+          reason: "Accessor",
+        } satisfies ObjectPropertyAccessError;
+      } else if (!descriptor.enumerable) {
+        error = {
+          type: "ObjectPropertyAccess",
+          reason: "NonEnumerable",
+        } satisfies ObjectPropertyAccessError;
+      } else {
+        const propertyValue: unknown = descriptor.value;
+        let valueError: TypeError;
+
+        if (recordCheck !== undefined) {
+          const checkError = recordCheck(propertyValue, options);
+          if (checkError === undefined) {
+            if (output !== undefined && errors === undefined) {
+              output[key] = propertyValue;
+            }
+            continue;
+          }
+          valueError = checkError;
+        } else {
+          const result = exactOutput
+            ? recordType.value[outputValidationSymbol](propertyValue, options)
+            : recordType.value.fromUnknown(propertyValue, options);
+
+          if (result.ok) {
+            if (errors !== undefined || exactOutput) continue;
+            if (output === undefined) {
+              if (globalThis.Object.is(result.value, propertyValue)) continue;
+              output = copyVisitedProperties(descriptors!, ownKeys, index);
+            }
+            output[key] = result.value;
+            continue;
+          }
+          valueError = result.error;
+        }
+        error = createRecordPropertyError({
+          kind: "Value",
+          key,
+          error: valueError,
+        });
+      }
+
+      errors ??= createMutableRecord<string, TypeError>();
+      errors[key] = error;
     }
 
     if (errors !== undefined) {
@@ -12794,90 +13570,95 @@ const createObjectType = (
       });
     }
 
-    if (output === undefined) return ok(input);
-    return ok(output);
+    return output === undefined ? undefined : ok(output);
   };
+  // Properties visited before `end` are valid and unchanged, so a new Output
+  // starts with their values.
+  const copyVisitedProperties = (
+    descriptors: ReadonlyArray<PropertyDescriptor | undefined>,
+    ownKeys: ReadonlyArray<string | symbol>,
+    end: number,
+  ): Record<string | symbol, unknown> => {
+    const output = globalThis.Object.create(null) as Record<
+      string | symbol,
+      unknown
+    >;
+    for (let index = 0; index < end; index++) {
+      const descriptor = descriptors[index];
+      if (descriptor === undefined) continue;
+      output[index < keyCount ? keys[index] : ownKeys[index - keyCount]] =
+        descriptor.value;
+    }
+    return output;
+  };
+  // An identity Object builds no Output, so its validation returns an Err or
+  // `undefined`.
+  const check: RuntimeCheck | undefined = isIdentity
+    ? (value, options) => {
+        const result = validate(value, options, false);
+        return result?.ok === false ? result.error : undefined;
+      }
+    : undefined;
   const fromUnknown = (
     value: unknown,
     options: ValidationOptions = firstValidationOptions,
-  ) => validate(value, options, false);
-  const validateOutput = (
-    value: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) => validate(value, options, true);
-  const formatError: TypeErrorFormatter<ObjectError> = (error) => {
-    if (error.reason.kind !== "Properties")
-      return formatPlainObjectRootError(error.reason);
-    const key = Reflect.ownKeys(error.reason.errors).at(0);
-    assertNonNullable(key);
-    const propertyError = error.reason.errors[key];
-    assertNonNullable(propertyError);
-    if (propertyError.type === "ObjectPropertyAccess") {
-      switch ((propertyError as ObjectPropertyAccessError).reason) {
-        case "Accessor":
-          return "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
-        case "NonEnumerable":
-          return "An Object property must be enumerable. Make it enumerable or use a different Type.";
-      }
-    }
-    if (propertyError.type === "ObjectMissingProperty")
-      return `The required property ${safelyStringifyUnknownValue(key)} is missing.`;
-    if (typeof key === "symbol")
-      return "An Object property key must be a string. Remove the symbol property or use a different Type.";
-    if (propertyError.type === "ObjectExcessProperty")
-      return `The property ${safelyStringifyUnknownValue(key)} is not allowed. Remove it or use a different Type.`;
-    return `The property ${safelyStringifyUnknownValue(key)} is invalid.`;
-  };
-  const rootProps = createMutableRecord<string, RuntimeObjectProperty>();
+  ) =>
+    validate(value, options, false) ??
+    ok(value as Readonly<Record<string, unknown>>);
+  const validateOutput = isIdentity
+    ? fromUnknown
+    : (value: unknown, options: ValidationOptions = firstValidationOptions) =>
+        validate(value, options, true) ??
+        ok(value as Readonly<Record<string, unknown>>);
   let hasNonRootType = false;
   let canSkipTo =
     recordType === undefined || recordType.value[encoderSymbol] === identity;
 
-  for (const key of keys) {
-    const property = runtimeProps[key];
-    const type = objectPropertyToType(property);
+  for (let index = 0; index < keyCount; index++) {
+    const type = propertyTypes[index];
 
     if (type[encoderSymbol] !== identity) canSkipTo = false;
-
-    const rootType = getTerminalRuntimeNode(type);
-    if (rootType !== type) hasNonRootType = true;
-
-    rootProps[key] = isOptionalProperty(property)
-      ? optional(rootType as RuntimeTypeNode & ConcreteTypeNode)
-      : rootType;
+    if (type.parent != null) hasNonRootType = true;
   }
 
-  const parent =
-    hasNonRootType || recordType?.parent
-      ? createObjectType(
-          rootProps,
-          (recordType?.parent ?? recordType) as
-            RuntimeRecordTypeNode | undefined,
-        )
-      : null;
-  const inputFromByKey = createMutableRecord<
-    string,
-    RuntimeOperation<Result<unknown, TypeError>>
-  >();
+  let parent: ObjectTypeNode | null = null;
+  if (hasNonRootType || recordType?.parent) {
+    const rootProps = createMutableRecord<string, RuntimeObjectProperty>();
 
-  for (const key of keys) {
-    inputFromByKey[key] = getTerminalRuntimeNode(
-      objectPropertyToType(runtimeProps[key])[fromSymbol],
+    for (let index = 0; index < keyCount; index++) {
+      const rootType = getTerminalRuntimeNode(propertyTypes[index]);
+      rootProps[keys[index]] = optionalFlags[index]
+        ? optional(rootType as RuntimeTypeNode & ConcreteTypeNode)
+        : rootType;
+    }
+    parent = createObjectType(
+      rootProps,
+      (recordType?.parent ?? recordType) as RuntimeRecordTypeNode | undefined,
+      keys,
     );
   }
+  let inputFroms:
+    ReadonlyArray<RuntimeOperation<Result<unknown, TypeError>>> | undefined;
   const recordValueFromInput = recordType
     ? getTerminalRuntimeNode(recordType.value[fromSymbol])
     : undefined;
   const fromParent: RuntimeOperation<Result<unknown, TypeError>> | undefined =
     parent
       ? (value: never, options: ValidationOptions = firstValidationOptions) => {
+          const propertyFroms = (inputFroms ??= propertyTypes.map((type) =>
+            getTerminalRuntimeNode(type[fromSymbol]),
+          ));
           let errors: RuntimeObjectPropertyErrors | undefined;
           let output: Record<string, unknown> | undefined;
 
-          for (const key of keys) {
+          for (let index = 0; index < keyCount; index++) {
+            const key = keys[index];
             if (!globalThis.Object.hasOwn(value, key)) continue;
             const propertyValue: unknown = value[key];
-            const result = inputFromByKey[key](propertyValue as never, options);
+            const result = propertyFroms[index](
+              propertyValue as never,
+              options,
+            );
 
             if (result.ok) {
               if (!globalThis.Object.is(result.value, propertyValue)) {
@@ -12934,12 +13715,13 @@ const createObjectType = (
     : (value: Readonly<Record<string, unknown>>) => {
         let output: Record<string, unknown> | undefined;
 
-        for (const key of keys) {
+        for (let index = 0; index < keyCount; index++) {
+          const key = keys[index];
           if (!globalThis.Object.hasOwn(value, key)) continue;
           const propertyValue = value[key];
-          const encoded = objectPropertyToType(runtimeProps[key])[
-            encoderSymbol
-          ](propertyValue as never);
+          const encoded = propertyTypes[index][encoderSymbol](
+            propertyValue as never,
+          );
 
           if (!globalThis.Object.is(encoded, propertyValue)) {
             (output ??= createMutableRecord(value))[key] = encoded;
@@ -12962,55 +13744,89 @@ const createObjectType = (
 
         return output ?? value;
       };
-  const is = (value: unknown): boolean => {
-    if (value === null || typeof value !== "object") return false;
-    if (!isPlainObject(value)) return false;
+  const isDeclared = (value: object): boolean => {
+    const isProperties = (isOutputs ??= propertyTypes.map(getIs));
 
-    for (const key of keys) {
-      const property = runtimeProps[key];
-      const descriptor = globalThis.Object.getOwnPropertyDescriptor(value, key);
+    for (let index = 0; index < keyCount; index++) {
+      const descriptor = globalThis.Object.getOwnPropertyDescriptor(
+        value,
+        keys[index],
+      );
 
       if (descriptor === undefined) {
-        if (!isOptionalProperty(property)) return false;
+        if (!optionalFlags[index]) return false;
         continue;
       }
 
       if (
         !("value" in descriptor) ||
         !descriptor.enumerable ||
-        !objectPropertyToType(property).is(descriptor.value)
+        !isProperties[index](descriptor.value)
       ) {
         return false;
       }
-    }
-
-    for (const key of Reflect.ownKeys(value)) {
-      if (
-        typeof key === "string" &&
-        globalThis.Object.hasOwn(runtimeProps, key)
-      ) {
-        continue;
-      }
-      if (recordType === undefined || typeof key !== "string") return false;
-
-      const descriptor = globalThis.Object.getOwnPropertyDescriptor(value, key);
-      if (
-        descriptor === undefined ||
-        !("value" in descriptor) ||
-        !descriptor.enumerable
-      ) {
-        return false;
-      }
-      if (!recordType.value.is(descriptor.value)) return false;
     }
 
     return true;
   };
-  const getTypeIssues = createObjectRuntimeTypeIssues(
-    formatError as TypeErrorFormatter<TypeError>,
-    runtimeProps,
-    recordType,
-  );
+  // Separate predicates keep each small; one shared by both cases was up to
+  // 5% slower in either.
+  const is =
+    recordType === undefined
+      ? (value: unknown): boolean => {
+          if (value === null || typeof value !== "object") return false;
+          if (!isPlainObject(value) || !isDeclared(value)) return false;
+
+          // Checking names has no effects without a Record, so symbols, which
+          // fail, are counted after them.
+          const names = globalThis.Object.getOwnPropertyNames(value);
+          for (let position = 0; position < names.length; position++) {
+            const key = names[position];
+            if (
+              !(position < keyCount && key === keys[position]) &&
+              !globalThis.Object.hasOwn(runtimeProps, key)
+            ) {
+              return false;
+            }
+          }
+
+          return globalThis.Object.getOwnPropertySymbols(value).length === 0;
+        }
+      : (value: unknown): boolean => {
+          if (value === null || typeof value !== "object") return false;
+          if (!isPlainObject(value) || !isDeclared(value)) return false;
+
+          const hasSymbols =
+            globalThis.Object.getOwnPropertySymbols(value).length !== 0;
+          const names = hasSymbols
+            ? getNamesBeforeSymbol(value)
+            : globalThis.Object.getOwnPropertyNames(value);
+          for (let position = 0; position < names.length; position++) {
+            const key = names[position];
+            if (
+              (position < keyCount && key === keys[position]) ||
+              globalThis.Object.hasOwn(runtimeProps, key)
+            ) {
+              continue;
+            }
+
+            const descriptor = globalThis.Object.getOwnPropertyDescriptor(
+              value,
+              key,
+            );
+            if (
+              descriptor === undefined ||
+              !("value" in descriptor) ||
+              !descriptor.enumerable
+            ) {
+              return false;
+            }
+            if (!recordType.value.is(descriptor.value)) return false;
+          }
+
+          return !hasSymbols;
+        };
+  const getTypeIssues = createObjectRuntimeTypeIssues(runtimeProps, recordType);
 
   return createTypeNode<ObjectTypeNode>(
     "Object",
@@ -13021,12 +13837,15 @@ const createObjectType = (
     from,
     to,
     getTypeIssues,
-    recordType
-      ? {
-          props: runtimeProps,
-          record: recordType as unknown as RecordTypeNode,
-        }
-      : { props: runtimeProps },
+    {
+      additionalProperties: recordType
+        ? {
+            props: runtimeProps,
+            record: recordType as unknown as RecordTypeNode,
+          }
+        : { props: runtimeProps },
+      check,
+    },
   );
 };
 
@@ -13055,7 +13874,7 @@ const createDefaultObjectType = (
         type.name,
         type[outputValidationSymbol],
         type.formatError,
-        type[getRuntimeTypeIssuesSymbol],
+        { getTypeIssues: type[getRuntimeTypeIssuesSymbol] },
       );
       outputProps[key] =
         optionalPropertySymbol in property
@@ -13114,13 +13933,14 @@ const createDefaultObjectType = (
     createFromOperation(fromParent),
     to,
     createObjectRuntimeTypeIssues(
-      source.formatError,
       props as Readonly<Record<string, RuntimeObjectProperty>>,
       recordType,
     ),
-    recordType
-      ? { props, record: recordType as unknown as RecordTypeNode }
-      : { props },
+    {
+      additionalProperties: recordType
+        ? { props, record: recordType as unknown as RecordTypeNode }
+        : { props },
+    },
   );
 };
 
@@ -13137,7 +13957,7 @@ const snapshotObjectProps = (
     "Object schema properties must be own string-keyed data properties.";
   assert(isPlainObject(props), errorMessage);
 
-  for (const key of Reflect.ownKeys(props)) {
+  for (const key of getOwnKeys(props)) {
     const descriptor = globalThis.Object.getOwnPropertyDescriptor(props, key);
     assert(
       typeof key === "string" &&
@@ -14029,16 +14849,18 @@ export const objectKeys =
         ? result
         : err({ type: "ObjectKeys", outputError: result.error });
     };
-    const getTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+    const getTypeIssues: RuntimeGetTypeIssues = (error, mode, path) => {
       if ("outputError" in error) {
         return runtimeOutput[getRuntimeTypeIssuesSymbol](
           error.outputError as TypeError,
           mode,
+          path,
         );
       }
       return input[getRuntimeTypeIssuesSymbol](
         (error as ObjectKeysError<T>).error,
         mode,
+        path,
       );
     };
     return createTypeNode<ObjectKeysType<Key, T>>(
@@ -14050,7 +14872,7 @@ export const objectKeys =
       createFromOperation(fromUnknown),
       to,
       getTypeIssues,
-      { key, output: type },
+      { additionalProperties: { key, output: type } },
     );
   };
 
@@ -14748,26 +15570,29 @@ export function discriminatedUnion(
   const routeUnknown = (
     value: unknown,
   ): Result<RuntimeDiscriminatedUnionMember, DiscriminatedUnionError> => {
-    const objectResult: Result<
-      Readonly<Record<string, unknown>>,
-      ObjectNotObjectError | ObjectUnexpectedPrototypeError
-    > = value === null || typeof value !== "object"
-      ? err({ type: "Object", reason: { kind: "NotObject", value } })
-      : !isPlainObject(value)
-        ? err({
-            type: "Object",
-            reason: { kind: "UnexpectedPrototype", value },
-          })
-        : ok(value);
-
-    if (!objectResult.ok) {
+    if (value === null || typeof value !== "object") {
       return err({
         type: "DiscriminatedUnion",
-        reason: { kind: "Object", error: objectResult.error },
+        reason: {
+          kind: "Object",
+          error: { type: "Object", reason: { kind: "NotObject", value } },
+        },
+      });
+    }
+    if (!isPlainObject(value)) {
+      return err({
+        type: "DiscriminatedUnion",
+        reason: {
+          kind: "Object",
+          error: {
+            type: "Object",
+            reason: { kind: "UnexpectedPrototype", value },
+          },
+        },
       });
     }
 
-    const input = objectResult.value;
+    const input = value as Readonly<Record<string, unknown>>;
     const descriptor = globalThis.Object.getOwnPropertyDescriptor(input, key);
     let discriminator: unknown;
 
@@ -14808,22 +15633,24 @@ export function discriminatedUnion(
 
     return ok(member);
   };
+  const createMemberError = (
+    member: RuntimeDiscriminatedUnionMember,
+    error: TypeError,
+  ): DiscriminatedUnionMemberError => ({
+    type: "DiscriminatedUnion",
+    reason: {
+      kind: "Member",
+      discriminator: (
+        member.props[key] as LiteralType<DiscriminatedUnionLiteral>
+      ).expected,
+      error,
+    },
+  });
   const wrapMemberResult = (
     member: RuntimeDiscriminatedUnionMember,
     result: Result<unknown, TypeError>,
   ): Result<unknown, DiscriminatedUnionMemberError> =>
-    result.ok
-      ? result
-      : err({
-          type: "DiscriminatedUnion",
-          reason: {
-            kind: "Member",
-            discriminator: (
-              member.props[key] as LiteralType<DiscriminatedUnionLiteral>
-            ).expected,
-            error: result.error,
-          },
-        });
+    result.ok ? result : err(createMemberError(member, result.error));
   const validateUnknown = (
     value: unknown,
     options: ValidationOptions = firstValidationOptions,
@@ -14876,7 +15703,7 @@ export function discriminatedUnion(
     }
   };
   const defaultFormatter = formatError as TypeErrorFormatter<TypeError>;
-  const getTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+  const getTypeIssues: RuntimeGetTypeIssues = (error, mode, path) => {
     const discriminatedUnionError = error as DiscriminatedUnionError;
 
     if (discriminatedUnionError.reason.kind === "Member") {
@@ -14884,7 +15711,7 @@ export function discriminatedUnion(
       const member = membersByDiscriminator.get(reason.discriminator);
       assertNonNullable(member);
 
-      return member[getRuntimeTypeIssuesSymbol](reason.error, mode);
+      return member[getRuntimeTypeIssuesSymbol](reason.error, mode, path);
     }
     if (
       discriminatedUnionError.reason.kind === "PropertyAccess" ||
@@ -14894,7 +15721,7 @@ export function discriminatedUnion(
         "DiscriminatedUnion",
         discriminatedUnionError,
         defaultFormatter,
-        [discriminatedUnionError.reason.key],
+        appendIssuePath(path, discriminatedUnionError.reason.key),
       );
     }
 
@@ -14902,6 +15729,7 @@ export function discriminatedUnion(
       "DiscriminatedUnion",
       error,
       defaultFormatter,
+      path,
     );
   };
   const parentFromUnknown = (value: unknown, options?: ValidationOptions) =>
@@ -14921,8 +15749,19 @@ export function discriminatedUnion(
     ok,
     parentTo,
     getTypeIssues,
-    { key, members },
+    { additionalProperties: { key, members } },
   );
+  // Identity members return the input itself, and so does routing.
+  const check: RuntimeCheck | undefined =
+    getRuntimeChecks(members) &&
+    ((value, options) => {
+      const routeResult = routeUnknown(value);
+      if (!routeResult.ok) return routeResult.error;
+
+      const member = routeResult.value;
+      const error = member[checkSymbol]!(value, options);
+      return error === undefined ? undefined : createMemberError(member, error);
+    });
   const fromUnknown = (value: unknown, options?: ValidationOptions) =>
     validateUnknown(value, options, false, false);
   const validateOutput = (value: unknown, options?: ValidationOptions) =>
@@ -14948,7 +15787,7 @@ export function discriminatedUnion(
     from,
     to,
     getTypeIssues,
-    { key, members },
+    { additionalProperties: { key, members }, check },
   );
 }
 
@@ -15348,7 +16187,8 @@ export function lazy(getType: Thunk<TypeNode>): TypeNode {
     (value, options) => resolve().root[outputValidationSymbol](value, options),
     ok,
     parentTo,
-    (error, mode) => resolve().root[getRuntimeTypeIssuesSymbol](error, mode),
+    (error, mode, path) =>
+      resolve().root[getRuntimeTypeIssuesSymbol](error, mode, path),
   );
   const fromUnknown = (
     value: unknown,
@@ -15368,7 +16208,8 @@ export function lazy(getType: Thunk<TypeNode>): TypeNode {
       resolve().target[outputValidationSymbol](value, options),
     from,
     (value) => resolve().target[encoderSymbol](value),
-    (error, mode) => resolve().target[getRuntimeTypeIssuesSymbol](error, mode),
+    (error, mode, path) =>
+      resolve().target[getRuntimeTypeIssuesSymbol](error, mode, path),
   );
   lazyTypeNodes.add(parent);
   lazyTypeNodes.add(type);
@@ -15629,9 +16470,17 @@ const validateData = (
 
     if (kind === "Array") {
       const array = value as ReadonlyArray<unknown>;
-      for (const key of Reflect.ownKeys(array)) {
+      const keys = Reflect.ownKeys(array);
+
+      for (let position = 0; position < keys.length; position++) {
+        const key = keys[position];
         if (key === "length") continue;
         if (typeof key === "string") {
+          // Ordinary arrays list their indexes first, in ascending order.
+          // Comparing the key first reads `length` only for an index key.
+          if (key === globalThis.String(position) && position < array.length) {
+            continue;
+          }
           const index = globalThis.Number(key) >>> 0;
           if (index < array.length && globalThis.String(index) === key) {
             continue;
@@ -15675,7 +16524,7 @@ const validateData = (
         children.push({ value: descriptor.value, path: childPath });
       }
     } else if (kind === "Object") {
-      for (const key of Reflect.ownKeys(value)) {
+      for (const key of getOwnKeys(value)) {
         const childPath = dataChildPath(path, key);
 
         if (typeof key === "symbol") {
@@ -15810,7 +16659,7 @@ const validateData = (
       });
 };
 
-const getDataRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+const getDataRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode, path) => {
   const dataError = error as DataError;
   const issues =
     mode === "first"
@@ -15826,7 +16675,8 @@ const getDataRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
             type: "Data",
             reason: { kind: "Issues", issues: [issue] },
           },
-    path: issue.path,
+    // A root issue shares the path array of its error.
+    path: path.length === 0 ? issue.path : [...path, ...issue.path],
     formatError: ((error: DataError) => {
       const issue = error.reason.issues[0];
       switch (issue.kind) {
@@ -15880,6 +16730,12 @@ export const Data: DataType = /*#__PURE__*/ createTypeNode<DataType>(
   ok,
   identity,
   getDataRuntimeTypeIssues,
+  {
+    check: (value, options) => {
+      const result = validateData(value, options);
+      return result.ok ? undefined : result.error;
+    },
+  },
 );
 
 /**
@@ -16256,9 +17112,17 @@ const validateJsonValue = (
       [];
 
     if (isArray) {
-      for (const key of Reflect.ownKeys(value)) {
+      const keys = Reflect.ownKeys(value);
+
+      for (let position = 0; position < keys.length; position++) {
+        const key = keys[position];
         if (key === "length") continue;
         if (typeof key === "string") {
+          // Ordinary arrays list their indexes first, in ascending order.
+          // Comparing the key first reads `length` only for an index key.
+          if (key === globalThis.String(position) && position < value.length) {
+            continue;
+          }
           const index = globalThis.Number(key) >>> 0;
           if (index < value.length && globalThis.String(index) === key) {
             continue;
@@ -16313,7 +17177,7 @@ const validateJsonValue = (
         });
       }
     } else {
-      for (const key of Reflect.ownKeys(value)) {
+      for (const key of getOwnKeys(value)) {
         const childPath = jsonValueChildPath(path, key);
 
         if (typeof key === "symbol") {
@@ -16386,7 +17250,11 @@ const validateJsonValue = (
       });
 };
 
-const getJsonValueRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+const getJsonValueRuntimeTypeIssues: RuntimeGetTypeIssues = (
+  error,
+  mode,
+  path,
+) => {
   const jsonValueError = error as JsonValueError;
   const issues =
     mode === "first"
@@ -16402,7 +17270,7 @@ const getJsonValueRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
             type: "JsonValue",
             reason: { kind: "Issues", issues: [issue] },
           },
-    path: issue.path,
+    path: path.length === 0 ? issue.path : [...path, ...issue.path],
     formatError: ((error: JsonValueError) => {
       const issue = error.reason.issues[0];
       switch (issue.kind) {
@@ -16542,6 +17410,12 @@ export const JsonValue: JsonValueType =
     ok,
     identity,
     getJsonValueRuntimeTypeIssues,
+    {
+      check: (value, options) => {
+        const result = validateJsonValue(value, options);
+        return result.ok ? undefined : result.error;
+      },
+    },
   );
 
 /**
@@ -16743,15 +17617,17 @@ export const json = <T extends ConcreteTypeNode, Name extends TypeName>(
   }
 
   const runtimeType = type as unknown as RuntimeTypeNode;
-  const getTypeIssues: RuntimeGetTypeIssues = (error, mode) =>
+  const getTypeIssues: RuntimeGetTypeIssues = (error, mode, path) =>
     error.type === name
       ? runtimeType[getRuntimeTypeIssuesSymbol](
           (error as JsonTypeError).error,
           mode,
+          path,
         )
       : (Json as unknown as RuntimeTypeNode)[getRuntimeTypeIssuesSymbol](
           error,
           mode,
+          path,
         );
   const jsonToTypeOutput = (
     value: Json,
