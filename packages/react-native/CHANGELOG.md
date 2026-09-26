@@ -1,5 +1,117 @@
 # @evolu/react-native
 
+## 16.0.3
+
+### Patch Changes
+
+- ecd1c0d: Fixed defect reports that showed only "[object Object]"
+
+  The browser and React Native `createRun` passed a panic's `AbortError`, a plain
+  object, to the platform's error reporter, which shows it only as
+  "[object Object]" or similar. A worker's error reaches its page, including an
+  error tracker listening there, as that text alone, so when a database worker
+  failed, nothing said why. Both now report an `Error` from the new
+  `defectToError`: a panic reports its defect, and any other value that is not an
+  `Error` is described in one whose cause is what was reported. A `DOMException`,
+  which Chromium reports from a worker without its name or message, is described
+  with both.
+
+  A custom `reportDefect`, such as one passing defects to an error tracker, can
+  use `defectToError` too:
+
+  ```ts
+  import { assertSame, createRun, defectToError } from "@evolu/common";
+
+  const errors: Array<Error> = [];
+  await using run = createRun({
+    reportDefect: (reported) => {
+      errors.push(defectToError(reported));
+    },
+  });
+  const defect = new Error("boom");
+
+  run.panic(defect);
+
+  assertSame(errors[0], defect);
+  ```
+
+- e7d27be: Fixed a new app version not working while an older one was open in another tab
+
+  After a deploy that updated Evolu, opening the app while an older version was
+  open in another tab could leave the new tab unresponsive.
+
+  Now only one version of an app uses the local database at a time. When a new
+  version opens, tabs of the old version reload by themselves. A tab the user is
+  in reloads when they leave it. A reload loses unsaved UI state, so keep drafts
+  in local-only tables.
+
+  If an old version keeps running, for example in a tab of an Evolu release
+  before this one, the new tab waits and reports the new `OtherBuildRunningError`.
+  Apps can show a message asking the user to close the app's other tabs. The
+  error clears by itself when the wait ends. An exhaustive `switch` over
+  `EvoluError` needs a case for it.
+
+  ```ts
+  import { assertEqual, type EvoluError } from "@evolu/common";
+
+  const isOtherBuildRunning = (error: EvoluError | null): boolean =>
+    error?.type === "OtherBuildRunningError";
+
+  assertEqual(isOtherBuildRunning({ type: "OtherBuildRunningError" }), true);
+  ```
+
+  The web `createEvoluDeps` accepts a custom `reloadApp`, for example to save
+  state first; it must still reload the page, because the other build waits until
+  this tab reloads or closes. The default one now reloads the current page instead
+  of loading `/`. The React web
+  `createEvoluDeps` now accepts the same options as the web one, including
+  `onSharedWorkerUnsupported`.
+
+  Update `@evolu/web` together with `@evolu/common`; with an older `@evolu/web`,
+  queries never complete. A custom platform adapter must forward the new
+  `Connected` and `Error` shared worker messages and handle the new `Waiting`
+  message. One that runs the shared worker in-process must connect every
+  `createEvoluDeps` call in a JS runtime to one worker, as React Native does,
+  because the worker holds the build lock until it is disposed. On React Native,
+  Evolu keeps working after Fast Refresh recreates its dependencies.
+
+- Updated dependencies [f0101ca]
+- Updated dependencies [fdac39e]
+- Updated dependencies [ecbac00]
+- Updated dependencies [b506c9b]
+- Updated dependencies [fdac39e]
+- Updated dependencies [d2973b9]
+- Updated dependencies [b75abfa]
+- Updated dependencies [69b756c]
+- Updated dependencies [5a671b2]
+- Updated dependencies [e270e42]
+- Updated dependencies [ef320ff]
+- Updated dependencies [5a671b2]
+- Updated dependencies [09b1b5c]
+- Updated dependencies [fdac39e]
+- Updated dependencies [0770038]
+- Updated dependencies [e270e42]
+- Updated dependencies [f52d66b]
+- Updated dependencies [d2973b9]
+- Updated dependencies [fdac39e]
+- Updated dependencies [11ccc28]
+- Updated dependencies [2e139eb]
+- Updated dependencies [0624d35]
+- Updated dependencies [ecd1c0d]
+- Updated dependencies [568358b]
+- Updated dependencies [237fd7f]
+- Updated dependencies [e7d27be]
+- Updated dependencies [2e139eb]
+- Updated dependencies [daf6295]
+- Updated dependencies [d2973b9]
+- Updated dependencies [ba8c493]
+- Updated dependencies [8e23edb]
+- Updated dependencies [cb92aa9]
+- Updated dependencies [fdac39e]
+- Updated dependencies [cf68cee]
+  - @evolu/common@8.11.0
+  - @evolu/react@11.1.0
+
 ## 16.0.2
 
 ### Patch Changes

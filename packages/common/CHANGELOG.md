@@ -1,5 +1,1056 @@
 # @evolu/common
 
+## 8.11.0
+
+### Minor Changes
+
+- ecbac00: Fixed local synchronization between databases
+
+  Named databases with writable registrations for the same owner now receive each other's mutation and continuation uploads locally, including while relay sockets are closed or a relay's quota check is pending. Large mutation batches are split into complete frames.
+
+  Added `createProtocolBroadcastMessagesFromCrdtMessages` for producing all broadcast frames from a mutation batch. Client protocol responses can also include a `broadcast` companion containing their uploaded messages.
+
+  ```ts
+  import {
+    assertSame,
+    createId,
+    getOrThrow,
+    testCreateDeps,
+  } from "@evolu/common";
+  import {
+    createProtocolBroadcastMessagesFromCrdtMessages,
+    MessageType,
+    parseProtocolHeader,
+    testAppOwner,
+    testCreateCrdtMessage,
+  } from "@evolu/common/local-first";
+
+  const deps = testCreateDeps();
+  const broadcasts = createProtocolBroadcastMessagesFromCrdtMessages(deps)(
+    testAppOwner,
+    [testCreateCrdtMessage(createId(deps), 1, "Ada")],
+  );
+  assertSame(broadcasts.length, 1);
+  assertSame(
+    getOrThrow(parseProtocolHeader(broadcasts[0])).messageType,
+    MessageType.Broadcast,
+  );
+  ```
+
+- fdac39e: Added sync state
+
+  `createEvoluDeps` exposes `deps.syncState`, a `ReadonlyStore<SyncState | null>`
+  beside `evoluError`, shared by every Evolu instance and kept current by the
+  shared worker; a tab never receives snapshots from a worker of another app
+  version. A snapshot lists every transport with an opaque id, a label that is
+  the URL without its query, the ready state, and the last open, close, and error
+  times; and every database with its owner registrations, each marked writable or
+  readonly, with the transports claimed for the owner and, for a writable owner,
+  one route per transport saying whether the database is reconciled with that
+  relay: `complete`, `completeAt`, `lastSentAt`, `lastReceivedAt`, and the last
+  `error`, whose `type` is a protocol error, the original storage write
+  rejection, `WriteFailed`, or `SyncFailed`. Local-only writes leave completed
+  routes complete; `isLocalOnlyTable` tells whether a table is local-only.
+
+  A failed route retries at most once by itself before it completes again;
+  further retries wait for `requestSync` or a reconnect.
+
+  `syncStateToOwnerSyncStates` folds the routes into one `initial`, `syncing`,
+  `synced`, `offline`, or `error` state per database and owner with the last
+  synced time, the newest error, and each relay's transport, route, and own
+  `syncing`, `synced`, `offline`, or `error` status. The completion rules are
+  documented in the Shared module. The
+  [Sync playground](https://www.evolu.dev/playgrounds/sync) shows the state of
+  two relays while one goes down and catches up.
+
+  ```ts
+  import {
+    assertEqual,
+    createId,
+    createStore,
+    testCreateDeps,
+  } from "@evolu/common";
+  import type { SyncState, SyncStateDep } from "@evolu/common/local-first";
+
+  const openRelayLabels = (deps: SyncStateDep): ReadonlyArray<string> =>
+    (deps.syncState.get()?.transports ?? [])
+      .filter(({ readyState }) => readyState === "open")
+      .map(({ label }) => label);
+
+  using syncState = createStore<SyncState | null>(null);
+  assertEqual(openRelayLabels({ syncState }), []);
+
+  const deps = testCreateDeps();
+  syncState.set({
+    transports: [
+      {
+        id: createId<"SyncTransport">(deps),
+        label: "wss://relay.example",
+        readyState: "open",
+        openedAt: null,
+        closedAt: null,
+        error: null,
+      },
+    ],
+    tenants: [],
+  });
+  assertEqual(openRelayLabels({ syncState }), ["wss://relay.example"]);
+  ```
+
+- d2973b9: Restarted WebSocket reconnect backoff after a healthy connection
+
+  `createWebSocket` builds its retry schedule once, and a connection settles only
+  when it closes, so backoff accumulated across every disconnect for the lifetime
+  of the socket and never returned to the base delay. With the default schedule a
+  client that had disconnected around nine times waited up to thirty seconds
+  before every later reconnect, however long it had been connected in between.
+
+  A connection that stays open for thirty seconds, the delay cap of
+  `webSocketReconnectSchedule`, now starts the schedule over, because it outlasted
+  the longest delay that schedule can produce. Shorter connections reset nothing,
+  so an endpoint that accepts and immediately drops connections still backs off.
+  The new `healthyConnectionDuration` option sets that threshold, for a custom
+  `schedule` whose delay cap is not thirty seconds; choose it with the schedule,
+  since it is the schedule's cap and only the schedule knows it.
+
+  The threshold is measured on a monotonic clock, so a system clock adjustment
+  cannot make a connection look healthy or keep a healthy one from being
+  recognized.
+
+  ```ts
+  import {
+    assertEqual,
+    exponential,
+    jitter,
+    maxDelay,
+    type WebSocketOptions,
+  } from "@evolu/common";
+
+  // A schedule capped at one minute restarts after a one-minute connection.
+  const options: WebSocketOptions = {
+    schedule: jitter("100%")(maxDelay("1m")(exponential("100ms"))),
+    healthyConnectionDuration: "1m",
+  };
+  assertEqual(options.healthyConnectionDuration, "1m");
+  ```
+
+- 69b756c: Added timestamp drift and ordering helpers
+
+  `isTimestampBeyondMaxDrift` checks whether timestamp milliseconds exceed the
+  configured drift limit relative to a supplied time.
+
+  `orderTimestamp` compares timestamps by milliseconds, counter, and node ID,
+  matching their encoded byte order without serialization. Distinct objects with
+  identical fields compare as equal.
+
+  ```ts
+  import { assertEqual, assertFalse, assertTrue, Millis } from "@evolu/common";
+  import {
+    createTimestamp,
+    isTimestampBeyondMaxDrift,
+    orderTimestamp,
+  } from "@evolu/common/local-first";
+
+  const now = Millis.orThrow(100);
+  const timestamp = createTimestamp({ millis: now });
+  const later = createTimestamp({ millis: Millis.orThrow(111) });
+  assertEqual(orderTimestamp(timestamp, later), -1);
+  assertEqual(orderTimestamp(timestamp, { ...timestamp }), 0);
+
+  const isBeyondMaxDrift = isTimestampBeyondMaxDrift({
+    timestampConfig: { maxDrift: 10 },
+  });
+  assertFalse(isBeyondMaxDrift(Millis.orThrow(110), now));
+  assertTrue(isBeyondMaxDrift(later.millis, now));
+  ```
+
+- ef320ff: Added createResettableResource
+
+  `createResettableResource` holds one resource created by a Task and replaces it
+  in place: `reset(observed)` disposes the current resource and runs `create`
+  again, and `get` returns the current resource, or `undefined` while there is
+  none. Consumers keep the same object across replacements. A reset is skipped
+  when a resource other than `observed` is current, so every observer of one
+  failed resource shares a single reset.
+
+  At most one resource exists, so there is a gap with none while a reset runs;
+  the resource's own API must model it, as a reconnecting connection models
+  "connecting". `create` must not fail and must return a fresh object each time.
+  The `ResettableResource` and `createResettableResource` API docs describe
+  cancellation, disposal, and locking.
+
+  ```ts
+  import {
+    assertEqual,
+    assertSame,
+    createRun,
+    createResettableResource,
+    ok,
+    type Task,
+  } from "@evolu/common";
+
+  interface Connection extends Disposable {
+    readonly id: number;
+    readonly isClosed: () => boolean;
+  }
+
+  let nextId = 1;
+  const createConnection: Task<Connection> = () => {
+    const id = nextId++;
+    let isClosed = false;
+    return ok({
+      id,
+      isClosed: () => isClosed,
+      [Symbol.dispose]: () => {
+        isClosed = true;
+      },
+    });
+  };
+
+  await using run = createRun();
+  await using connection = await run.ok(
+    createResettableResource(createConnection),
+  );
+  const first = connection.get();
+  assertEqual(first?.id, 1);
+
+  await run.ok(connection.reset(first));
+  assertSame(first?.isClosed(), true);
+  assertEqual(connection.get()?.id, 2);
+
+  // A late observer of the first connection does not reset the second.
+  await run.ok(connection.reset(first));
+  assertEqual(connection.get()?.id, 2);
+  ```
+
+- 5a671b2: Fixed writes failing when the device clock is wrong
+
+  TLDR: A wrong device clock can give changes future timestamps, which can
+  override edits made later on other devices. Correcting system time can leave
+  Evolu's logical clock ahead, because it never moves backwards. Previously,
+  clock drift could fail writes and stall the write queue. A full app restart
+  discarded the blocked mutation without necessarily fixing the drift. Now those
+  changes are saved in quarantine while writes and sync continue. Apps can query
+  quarantine to show users what is waiting. Eligible changes are applied when
+  the database worker starts with system time within the drift limit. Correcting
+  time alone does not release quarantined changes in a running worker.
+
+  Local mutations and incoming messages whose timestamps exceed the clock-drift
+  limit (five minutes) are now stored in `evolu_message_quarantine`
+  and synchronized without being applied to application tables. Drift no longer
+  blocks the local write queue or causes incoming messages to be rejected and
+  repeatedly offered by sync. Mutations complete after storage commits, including
+  offline; `onComplete` can fire while the change remains quarantined. Apps can
+  query quarantine to show pending changes. Quarantining an incoming message
+  does not advance the local clock.
+  Incoming messages within the limit still apply when the local logical clock
+  is ahead.
+
+  `TimestampDriftError` is no longer an `EvoluError`, so drift is not reported
+  through the `evoluError` store. Remove any `case "TimestampDriftError"` from
+  switches over `EvoluError`. An app that showed a clock warning for it now gets
+  no error: after a device's clock that ran ahead is set back by more than five
+  minutes, the user's new changes are quarantined, and they appear only when the
+  database worker starts with system time within five minutes of their
+  timestamps. To tell users about changes waiting on a clock, subscribe to
+  a drift-quarantine query as in the tested example on `QuarantineReason`, whose
+  `origin` column tells the user's own changes from received ones.
+
+  Existing databases are migrated at startup. The migration adds
+  the quarantine columns `reason` (schema or timestamp drift), `origin` (local
+  mutation or received message), and `quarantinedAt` (captured system time), plus
+  the index that startup release reads. `createQuery` types the whole table;
+  `QuarantineReason` and `QuarantineOrigin` export the persisted codes. See the
+  tested example on `QuarantineReason`. An earlier release that opens a migrated
+  database applies its drift-quarantined changes at once, so rolling back past
+  this release can make that device diverge until system time passes their
+  timestamps.
+
+  Drift quarantine is released only when the database worker starts, once the
+  message's timestamp is within the drift limit. Unknown columns remain in schema
+  quarantine until a schema update. Duplicate delivery does not release messages.
+  Subscribed queries refresh when the database worker is replaced, so changes
+  released at its startup become visible.
+
+  Recovery APIs for messages further ahead remain future work. Copied
+  databases sharing an owner and node ID remain unsupported and can silently lose
+  colliding changes even when `onComplete` fires. See the Timestamp module
+  documentation for these limitations and the detailed drift and release rules.
+
+  `sendTimestamp` and `receiveTimestamp` now take captured system time as an
+  explicit `Millis` argument. Their dependencies contain only drift configuration.
+  Both return `TimestampError` for drift, including after counter rollover.
+  Success means the resulting timestamp is within the drift limit.
+  `receiveTimestamp` also rejects remote drift before clock arithmetic.
+
+  `TimestampDriftError.timestamp` replaces `next` with the complete timestamp,
+  and the new `cause` field tells local drift from remote. With `cause: "local"`,
+  `timestamp` is the failed operation's candidate, which the database uses for
+  explicit recovery. With `cause: "remote"`, it is the received timestamp itself,
+  which must not advance the clock.
+
+  ```ts
+  import {
+    assertErr,
+    Millis,
+    type EvoluError,
+    type TimestampDriftError,
+  } from "@evolu/common";
+  import {
+    Counter,
+    createTimestamp,
+    receiveTimestamp,
+    sendTimestamp,
+  } from "@evolu/common/local-first";
+
+  const deps = { timestampConfig: { maxDrift: 300000 } };
+  const now = Millis.orThrow(0);
+  const local = createTimestamp();
+  const future = createTimestamp({ millis: Millis.orThrow(300001) });
+  assertErr(sendTimestamp(deps)(future, now), {
+    type: "TimestampDriftError",
+    timestamp: { ...future, counter: Counter.orThrow(1) },
+    cause: "local",
+    now,
+  });
+
+  assertErr(receiveTimestamp(deps)(local, future, now), {
+    type: "TimestampDriftError",
+    timestamp: future,
+    cause: "remote",
+    now,
+  });
+
+  const _previousCalls = () => {
+    // @ts-expect-error sendTimestamp now requires captured milliseconds.
+    sendTimestamp(deps)(local);
+    // @ts-expect-error receiveTimestamp now requires captured milliseconds.
+    receiveTimestamp(deps)(local, future);
+  };
+
+  // @ts-expect-error TimestampDriftError.next was replaced by timestamp.
+  type _PreviousNext = TimestampDriftError["next"];
+
+  const _isPreviousDriftError = (error: EvoluError): boolean =>
+    // @ts-expect-error TimestampDriftError is no longer an EvoluError.
+    error.type === "TimestampDriftError";
+  ```
+
+- d2973b9: Reported WebSocket close events as `WebSocketCloseEvent`
+
+  Close events are now reported as `WebSocketCloseEvent`, Evolu's own `code`,
+  `reason` and `wasClean`, rather than the DOM `CloseEvent`. React Native
+  delivers its own close event and exposes no `CloseEvent` global, so the DOM
+  type promised an inheritance chain and an `instanceof` that do not hold there,
+  and constructing one was not portable.
+
+  A platform's close event is structurally assignable to the new type and is
+  passed through unchanged, so reading it is unaffected; a handler annotated
+  `(event: CloseEvent) => ...` must drop that annotation or narrow the value
+  itself. This applies to `onClose`, `shouldRetryOnClose`, and
+  `WebSocketConnectionCloseError`.
+
+  ```ts
+  import {
+    assertEqual,
+    type WebSocketCloseEvent,
+    type WebSocketOptions,
+  } from "@evolu/common";
+
+  const closeCodes: Array<number> = [];
+  const options: WebSocketOptions = {
+    onClose: (event: WebSocketCloseEvent) => {
+      closeCodes.push(event.code);
+    },
+    shouldRetryOnClose: (event) => event.code !== 1000,
+  };
+
+  const event: WebSocketCloseEvent = {
+    code: 1006,
+    reason: "",
+    wasClean: false,
+  };
+  options.onClose?.(event);
+  assertEqual(closeCodes, [1006]);
+  assertEqual(options.shouldRetryOnClose?.(event), true);
+  ```
+
+- fdac39e: Distinguished converged and failed client protocol results
+
+  `applyProtocolMessageAsClient` returned `NoResponse` for a converged round, a
+  rejected storage write, a failed range reconciliation, and a missing write key
+  alike. It now returns `Converged`, `Readonly`, or `Failed` instead, and reports
+  a `Broadcast` before checking for a write key.
+  `ApplyProtocolMessageAsClientNoResponse` is removed; code that handled
+  `NoResponse` must handle these results instead. `Failed` with cause `Write` now
+  identifies a logged exception thrown by calling the storage's `writeMessages`;
+  an exception while its Task runs, as the built-in storages throw, aborts the run
+  instead; cause `Sync` identifies a logged range reconciliation failure, which
+  may follow committed writes.
+
+  Expected write rejections return the original `StorageWriteMessagesError`
+  through `Err`. Direct callers handle these in `result.error`, where they
+  previously received a successful `NoResponse`. `Storage` implementations return
+  these errors without reporting them, and the shared worker reports them through
+  `evoluError`. A relay still answers a rejected write that is not a quota error
+  with `ProtocolWriteError`.
+
+  `Storage.writeMessages` returns `StorageWriteMessagesError` instead of only
+  `StorageQuotaError`. Implementations may return any subset, while callers must
+  handle every member. `EvoluError` now includes `StorageQuotaError`, a member of
+  `StorageWriteMessagesError` that the built-in client storage does not return
+  yet, so exhaustive handling of `EvoluError` must add it.
+
+  Fingerprint-query exceptions stop synchronization instead of producing
+  incomplete ranges. `createProtocolMessageForSync` propagates them to its caller
+  and no longer requires `ConsoleDep`. While creating a round, the database worker
+  logs the exception and still answers, so other owners keep synchronizing, and
+  sync state reports `SyncFailed` for the failed owner's routes. While applying a
+  frame, clients report `Failed` with cause `Sync`, and relays send a
+  `ProtocolSyncError` response.
+
+  ```ts
+  import {
+    assertEqual,
+    assertType,
+    err,
+    type InferTaskErr,
+    type Result,
+  } from "@evolu/common";
+  import type {
+    applyProtocolMessageAsClient,
+    ApplyProtocolMessageAsClientResult,
+    ProtocolError,
+    StorageWriteMessagesError,
+  } from "@evolu/common/local-first";
+
+  type ClientApplyError = InferTaskErr<
+    ReturnType<typeof applyProtocolMessageAsClient>
+  >;
+  assertType<ClientApplyError, ProtocolError | StorageWriteMessagesError>();
+
+  const describeApply = (
+    result: Result<ApplyProtocolMessageAsClientResult, ClientApplyError>,
+  ): string => {
+    if (!result.ok) return result.error.type;
+    return result.value.type;
+  };
+
+  const rejected = err<ClientApplyError>({
+    type: "DecryptWithXChaCha20Poly1305Error",
+    error: new Error("decryption failed"),
+  });
+  // @ts-expect-error Client apply errors now include storage rejections beyond ProtocolError.
+  const _oldResult: Result<ApplyProtocolMessageAsClientResult, ProtocolError> =
+    rejected;
+  assertEqual(describeApply(rejected), "DecryptWithXChaCha20Poly1305Error");
+  ```
+
+- 0624d35: Fixed apps that stayed blank where the browser offers no storage
+
+  Safari's Private Browsing offers no OPFS, so Evolu could not open its database
+  there, and the app waited forever without reporting an error. Evolu now checks
+  storage once when its shared worker starts, and without it keeps every database
+  in memory. Data synced with a relay comes back, as on a new device, and nothing
+  stays on the device afterwards, which suits checking your app on a borrowed
+  phone. A persistent database the browser cannot reach right now is left
+  untouched. Data that exists only locally, or has not synced yet, is lost when
+  the tab hosting the database closes, even while other tabs stay open.
+
+  The new `onStorageUnavailable` option of the web and React web
+  `createEvoluDeps` tells the app, so it can tell the user, for example "Nothing
+  from this session is kept on this device."
+
+  A custom platform adapter must handle the new `StorageUnavailable` shared
+  worker message in an exhaustive switch, and a platform that can lack persistent
+  storage can give the shared worker `isPersistentStorageAvailable`.
+
+- ecd1c0d: Fixed defect reports that showed only "[object Object]"
+
+  The browser and React Native `createRun` passed a panic's `AbortError`, a plain
+  object, to the platform's error reporter, which shows it only as
+  "[object Object]" or similar. A worker's error reaches its page, including an
+  error tracker listening there, as that text alone, so when a database worker
+  failed, nothing said why. Both now report an `Error` from the new
+  `defectToError`: a panic reports its defect, and any other value that is not an
+  `Error` is described in one whose cause is what was reported. A `DOMException`,
+  which Chromium reports from a worker without its name or message, is described
+  with both.
+
+  A custom `reportDefect`, such as one passing defects to an error tracker, can
+  use `defectToError` too:
+
+  ```ts
+  import { assertSame, createRun, defectToError } from "@evolu/common";
+
+  const errors: Array<Error> = [];
+  await using run = createRun({
+    reportDefect: (reported) => {
+      errors.push(defectToError(reported));
+    },
+  });
+  const defect = new Error("boom");
+
+  run.panic(defect);
+
+  assertSame(errors[0], defect);
+  ```
+
+- 568358b: Reported timestamp insertion results
+
+  `BaseSqliteStorage.insertTimestamp` now returns `true` for a new timestamp and
+  `false` for a duplicate. Calls that ignore the result continue to work; custom
+  storage implementations must return whether they inserted the timestamp.
+
+  ```ts
+  import { assertType } from "@evolu/common";
+  import type { BaseSqliteStorage } from "@evolu/common/local-first";
+
+  assertType<ReturnType<BaseSqliteStorage["insertTimestamp"]>, boolean>();
+  ```
+
+- e7d27be: Fixed a new app version not working while an older one was open in another tab
+
+  After a deploy that updated Evolu, opening the app while an older version was
+  open in another tab could leave the new tab unresponsive.
+
+  Now only one version of an app uses the local database at a time. When a new
+  version opens, tabs of the old version reload by themselves. A tab the user is
+  in reloads when they leave it. A reload loses unsaved UI state, so keep drafts
+  in local-only tables.
+
+  If an old version keeps running, for example in a tab of an Evolu release
+  before this one, the new tab waits and reports the new `OtherBuildRunningError`.
+  Apps can show a message asking the user to close the app's other tabs. The
+  error clears by itself when the wait ends. An exhaustive `switch` over
+  `EvoluError` needs a case for it.
+
+  ```ts
+  import { assertEqual, type EvoluError } from "@evolu/common";
+
+  const isOtherBuildRunning = (error: EvoluError | null): boolean =>
+    error?.type === "OtherBuildRunningError";
+
+  assertEqual(isOtherBuildRunning({ type: "OtherBuildRunningError" }), true);
+  ```
+
+  The web `createEvoluDeps` accepts a custom `reloadApp`, for example to save
+  state first; it must still reload the page, because the other build waits until
+  this tab reloads or closes. The default one now reloads the current page instead
+  of loading `/`. The React web
+  `createEvoluDeps` now accepts the same options as the web one, including
+  `onSharedWorkerUnsupported`.
+
+  Update `@evolu/web` together with `@evolu/common`; with an older `@evolu/web`,
+  queries never complete. A custom platform adapter must forward the new
+  `Connected` and `Error` shared worker messages and handle the new `Waiting`
+  message. One that runs the shared worker in-process must connect every
+  `createEvoluDeps` call in a JS runtime to one worker, as React Native does,
+  because the worker holds the build lock until it is disposed. On React Native,
+  Evolu keeps working after Fast Refresh recreates its dependencies.
+
+- daf6295: Added explicit synchronization requests for active owners
+
+  Call `evolu.requestSync(ownerId)` after resolving a relay quota error to retry locally
+  stored changes. It requests a fresh reconciliation through the owner's active
+  transports while preserving connections and subscriptions, including those shared
+  by multiple instances or tabs. The call returns immediately; errors continue
+  through the existing Evolu error store. It acts only on an owner with a
+  writable registration in this database; other owner IDs are ignored.
+
+  Requests skip sync-message creation while all of the owner's transports are
+  closed. Synchronization starts automatically when a transport opens.
+
+  ```ts
+  import { assertType, type Evolu, type OwnerId } from "@evolu/common";
+
+  // Call after successfully increasing the affected owner's relay quota.
+  const onQuotaIncreased = (evolu: Evolu, ownerId: OwnerId) => {
+    evolu.requestSync(ownerId);
+  };
+
+  assertType<
+    typeof onQuotaIncreased,
+    (evolu: Evolu, ownerId: OwnerId) => void
+  >();
+  ```
+
+- d2973b9: Reconnected WebSocket connections that stop answering
+
+  A connection can stay open while nothing reaches the other end: no close or
+  error event arrives, so the WebSocket's own retry never runs and sync stalls
+  indefinitely. The shared worker now reconnects a socket when a request for an
+  owner has been outstanding for ninety seconds with no Response for that owner
+  received since, long enough for a 1 MB request or reply to arrive at about 90
+  kbit/s. Each timeout doubles the connection's timeout for every request on it,
+  also after reconnecting, up to twenty-four minutes, so downloading a large
+  history over an even slower link still finishes. The timeout belongs to the
+  connection because a reply for one owner can wait behind another owner's large
+  frame on it. A grown timeout lasts while a request is outstanding on the
+  connection or a database synchronizing through it is not yet reconciled with the
+  relay, because the small replies that start a recovery arrive quickly even on a
+  link too slow for the large frame after them. The connection is abandoned
+  without waiting for its closing handshake and a new one starts with a fresh
+  retry schedule; the transport reports that moment as its close time, because the
+  socket reports no close for it. The timeout is measured on a monotonic clock, so
+  a system clock adjustment cannot make a request look timed out or keep one from
+  being recognized. Transport close and error events are logged at debug level.
+
+  `WebSocket` gained `reconnect` for that, which callers use when they know the
+  connection is dead although it never closed. Reconnecting drops the connection
+  without waiting for a close handshake, consults neither `onClose` nor
+  `shouldRetryOnClose`, and does nothing after disposal, on a connection that is
+  already closing or closed, or while the wrapper is waiting to retry. A
+  connection that was open restarts the retry schedule; one that never opened
+  keeps its backoff, having proved nothing.
+
+  `reconnect` is a required member of `WebSocket`, so an implementation of
+  `CreateWebSocket` other than `createWebSocket`, such as a test double or a
+  custom transport, must add it. It settles the abandoned connection with the new
+  `WebSocketReconnectError`, which widens `WebSocketRetryError`: a `shouldRetry`
+  or `schedule` that switches exhaustively over that union must handle it.
+  Reconnecting carries no close event, because nothing observed one to report.
+
+  `testCreateWebSocket` gained `close`, which closes the newest socket for a URL
+  and reports a close event with code 1006 unless given other fields, and
+  `error`, which reports a WebSocket error. Its sockets implement `reconnect`, and
+  the new `reconnectedUrls` records, in call order, the URLs whose socket was
+  reconnected. As in `createWebSocket`, `reconnect` does nothing while the socket
+  waits to retry after a close or a reconnect; `open` ends the wait. A URL can be
+  created again after its socket was disposed; each socket keeps its own state and
+  the helpers address the newest one. The event helpers `message`, `open`,
+  `close`, and `error` throw for a disposed socket, because `createWebSocket`
+  delivers no events after disposal; `message` and `open` previously invoked the
+  handlers anyway.
+
+  Its sockets also report `connecting`, which they previously could not.
+  `createWebSocket` reports `connecting` before a socket opens and for as long as
+  it retries after a close, and ends in `closed` only when disposed; the double
+  reported `closed` for all of that, so a test could assert a state the real
+  wrapper never produces. Sockets still start `open` by default;
+  `{ isOpen: false }` now starts them `connecting`. A socket returns to
+  `connecting` after `reconnect`, and after `close` stays `closed` for whatever
+  the `onClose` handler schedules before becoming `connecting` again, matching
+  when `createWebSocket` drops the closed socket. Assertions that expected
+  `closed` in those places expect `connecting` now.
+
+  ```ts
+  import {
+    assertEqual,
+    assertOk,
+    createRun,
+    ok,
+    testCreateWebSocket,
+    type WebSocket,
+    type WebSocketRetryError,
+  } from "@evolu/common";
+
+  const createWebSocket = testCreateWebSocket();
+  await using run = createRun();
+  const result = await run(createWebSocket("wss://relay.example"));
+  assertOk(result);
+  await using socket = result.value;
+
+  socket.reconnect();
+  assertEqual(socket.getReadyState(), "connecting");
+  assertEqual(createWebSocket.reconnectedUrls, ["wss://relay.example"]);
+
+  // A reconnect while waiting to retry does nothing; `open` ends the wait.
+  socket.reconnect();
+  assertEqual(createWebSocket.reconnectedUrls, ["wss://relay.example"]);
+  createWebSocket.open("wss://relay.example");
+  assertEqual(socket.getReadyState(), "open");
+
+  const socketMembers = {
+    send: () => ok(),
+    getReadyState: () => "open" as const,
+    isOpen: () => true,
+    [Symbol.asyncDispose]: () => Promise.resolve(),
+  };
+  // @ts-expect-error A custom WebSocket without reconnect is rejected.
+  const _customSocketWithoutReconnect: WebSocket = socketMembers;
+  const _customSocket: WebSocket = { ...socketMembers, reconnect: () => {} };
+
+  const retryErrorLabel = (error: WebSocketRetryError): string => {
+    switch (error.type) {
+      case "WebSocketConnectError":
+        return "connect";
+      case "WebSocketConnectionCloseError":
+        return "close";
+      case "WebSocketReconnectError":
+        return "reconnect";
+    }
+  };
+  assertEqual(
+    retryErrorLabel({ type: "WebSocketReconnectError" }),
+    "reconnect",
+  );
+  ```
+
+- ba8c493: Added database versioning with startup refusal
+
+  Evolu now records a database version, `dbVersion`, in its `evolu_version`
+  table instead of the unused `protocolVersion`, and converts existing databases
+  at startup. The version covers Evolu's internal storage format and how stored
+  data is interpreted. It is independent of the application schema, which still
+  evolves append-only, and of the network protocol version. This release supports
+  database version 2 and migrates older databases to it.
+
+  A database newer than the code supports appears when an older build opens data
+  a newer one migrated: after a deployment, for example when an older build is
+  loaded later from a cache, or after a downgrade, including installing an older
+  React Native build. Evolu refuses such a database before writing anything, and
+  every tab using it gets `UnsupportedDbVersionError` in `evoluError`, where it
+  stays for the lifetime of the dependencies. Queries and exports of that
+  database stay pending, and mutation `onComplete` callbacks do not run. The
+  `EvoluErrorDep` API docs describe when the refusal is reported again. Only code
+  from this release onward checks the version, so earlier releases are not
+  protected. Nothing produces a newer database yet; the first refusal can come
+  when a later release introduces version 3, so handle the error now.
+
+  On the web, a refused tab reloads once for each stored version, so it loads the
+  build the server now serves. The error is reported only when the reloaded build
+  refuses the database too, or when the tab has no session storage.
+
+  Apps should observe `evoluError` outside query-loading UI and show a blocking
+  message for `UnsupportedDbVersionError`, such as asking users to update the
+  app. An exhaustive `switch` over `EvoluError` needs a case for it.
+
+  ```ts
+  import { assertEqual, PositiveInt, type EvoluError } from "@evolu/common";
+
+  const describeError = (error: EvoluError): string => {
+    // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The default handles every other EvoluError.
+    switch (error.type) {
+      case "UnsupportedDbVersionError":
+        return "Your data requires a newer version of this app. Please update it.";
+      default:
+        return "Something went wrong.";
+    }
+  };
+
+  assertEqual(
+    describeError({
+      type: "UnsupportedDbVersionError",
+      storedVersion: PositiveInt.orThrow(3),
+      supportedVersion: PositiveInt.orThrow(2),
+    }),
+    "Your data requires a newer version of this app. Please update it.",
+  );
+  ```
+
+- cf68cee: Added reusable local-first test fixtures
+
+  Exported `testEvoluSchema`, `TestEvoluSchema`, `TestTodoId`, `TestProjectId`,
+  `testTodoId`, and `testProjectId` for deterministic tests and examples with
+  project-linked or independent todos, and `testLocalOnlyEvoluSchema`, which
+  stores app owners in a local-only `_appOwner` table with operational keys,
+  optional recovery secrets, and optional names. Also exported the existing
+  `testAppName` from the common entrypoint.
+
+  ```ts
+  import {
+    assertOk,
+    createEvolu,
+    testAppName,
+    testAppOwner,
+    testEvoluSchema,
+    testLocalOnlyEvoluSchema,
+    testProjectId,
+    testTodoId,
+  } from "@evolu/common";
+
+  assertOk(testEvoluSchema.todo.id.from(testTodoId), testTodoId);
+  assertOk(testEvoluSchema.todo.projectId.from(testProjectId), testProjectId);
+
+  const _createAccounts = createEvolu(testLocalOnlyEvoluSchema, {
+    appName: testAppName,
+    appOwner: testAppOwner,
+    transports: [],
+  });
+  ```
+
+### Patch Changes
+
+- f0101ca: Reduced SQL template parameter validation overhead
+
+  The `sql` tagged template now validates only numeric parameters with `FiniteNumber`,
+  continuing to reject `NaN` and infinities while trusting the declared input types
+  for strings, blobs, and `null`. Invalid numbers now report `FiniteNumber` validation
+  errors directly.
+
+- fdac39e: Fixed redundant messages when reconciling small mismatched ranges
+
+  A mismatched range with too few timestamps to split into fingerprints was
+  answered with timestamps from the start of the owner's history instead of the
+  range's own. Synchronization still converged, but the other side resent every
+  message in that range. The range's own timestamps are now sent.
+
+- b506c9b: Fixed synchronization routing across relays and databases
+
+  A relay's response now continues only with that relay, and a round started by
+  a socket opening or by a transport's first use goes only through that
+  transport. Previously every such message was sent to all of the owner's
+  relays. Owner messages received from one relay are now reconciled with the
+  owner's other relays in the same session, instead of waiting for a reconnect. A
+  database's first writable owner registration also reconciles its
+  existing history through connections already claimed by other databases. A
+  database using another already claimed connection starts its own reconciliation.
+  Explicit `requestSync` calls and mutation uploads still reach every open
+  transport. After a leader replacement, the owner's relays are reconciled again,
+  because a response reporting stored messages may have been lost.
+
+- b75abfa: Removed `TimestampTimeOutOfRangeError`
+
+  The error stood for a system clock past the last time Evolu timestamps can
+  represent, in August 10889, but `Time.now` already throws for such a clock, so
+  Evolu never reported it.
+
+  `TimestampTimeOutOfRangeError` is no longer an `EvoluError` or a
+  `TimestampError`, which is now only `TimestampDriftError`. Remove any
+  `case "TimestampTimeOutOfRangeError"` from switches over these errors.
+
+- 5a671b2: Fixed owner filtering and selection in history query types
+
+  Queries over `evolu_history` now expose the existing `ownerId` column as
+  `OwnerIdBytes`, allowing typed selection and filtering by owner. No database
+  migration is required.
+
+  ```ts
+  import {
+    assertType,
+    createQueryBuilder,
+    type OwnerIdBytes,
+    ownerIdToOwnerIdBytes,
+    testAppOwner,
+    testEvoluSchema,
+    type TimestampBytes,
+  } from "@evolu/common";
+
+  const createQuery = createQueryBuilder(testEvoluSchema);
+  const historyQuery = createQuery((db) =>
+    db
+      .selectFrom("evolu_history")
+      .select(["ownerId", "timestamp"])
+      .where("ownerId", "=", ownerIdToOwnerIdBytes(testAppOwner.id)),
+  );
+
+  assertType<
+    typeof historyQuery.Row,
+    { ownerId: OwnerIdBytes; timestamp: TimestampBytes }
+  >();
+  ```
+
+- e270e42: Fixed TS2589 for lazy maps and records of widened Types
+
+  A `map` or `record` whose key or value was a widened `AnyType`, such as a
+  factory parameter, failed to compile with TS2589 "Type instantiation is
+  excessively deep and possibly infinite". Its parent Type was the same map or
+  record Type again, so the parent chain never ended. The parent of a map or
+  record whose key or value has a parent is now a `RootMapType` or
+  `RootRecordType` without a parent of its own. For concrete key and value Types,
+  it is identical to the previous `MapType` or `RecordType` parent, including its
+  errors and localization.
+
+  ```ts
+  import {
+    assertOk,
+    lazy,
+    map,
+    record,
+    String,
+    type AnyType,
+  } from "@evolu/common";
+
+  const createLazyMap = (element: AnyType) => lazy(() => map(element, element));
+  const createLazyRecord = (element: AnyType) =>
+    lazy(() => record(String, element));
+
+  const names = new Map([["Ada", "Lovelace"]]);
+  assertOk(createLazyMap(String).fromUnknown(names), names);
+  assertOk(createLazyRecord(String).fromUnknown({ ada: "Lovelace" }), {
+    ada: "Lovelace",
+  });
+  ```
+
+- 09b1b5c: Refreshed queries invalidated before subscription
+
+  Queries now catch up when a mutation or incoming sync invalidates a loaded result before its listener subscribes. This prevents an empty or stale UI during startup. Previously loaded rows remain available without suspending while the subscription refreshes them. Pending reads retain their promise identity, and valid cached reads are reused.
+
+- fdac39e: Fixed writes waiting for the next synchronization round to upload
+
+  A mutation was uploaded only through the writing Evolu instance's own writable
+  registrations. A write from an instance that had not registered the owner as
+  writable, or one that its database worker answered after the instance was
+  disposed, was committed locally but reached the relays and the other databases
+  using the owner only with the next synchronization round. Such a write is now
+  uploaded as soon as the database worker answers it, through any writable
+  registration of the owner in the same database. A write answered after its
+  instance was disposed also refreshes the queries of the database's other
+  instances.
+
+- 0770038: Fixed received changes being applied to local-only tables
+
+  Tables whose names start with an underscore are local-only: their changes are
+  never synced. A received change to such a table, which only non-standard code
+  can send, was still applied, overwriting the device's local data. It is now
+  kept in quarantine, stored for sync but never applied.
+
+- e270e42: Fixed declaration emit for exported Types
+
+  Projects that emit declarations, such as libraries compiled with
+  `declaration: true` or bundled with tsdown, failed with TS4023 when they
+  exported an inferred Type or Type operation. For example,
+  `export const Product = object({ tags: array(String), type: union("a", "b") })`
+  referenced error interfaces that `@evolu/common` did not export, so TypeScript
+  could not name them in the emitted declarations.
+
+  Every interface that inferred Types and their `from` and `to` operations
+  reference is now exported: `TransparentTypeError`, `FromParentOperations`,
+  `ToParentOperations`, `UnionErrorValue`, `ArrayItemsErrorValue`,
+  `ArrayFromParentOperations`, `SetItemsErrorValue`, `SetFromParentOperations`,
+  `MapEntriesErrorValue`, `TupleItemsErrorValue`, `RootTupleType`,
+  `RecordEntriesErrorValue`, `StrictObjectFromUnknownError`,
+  `ObjectWithRecordReflection`, and `TemplateLiteralStringBrand`. Such
+  declarations now emit without changes to the consuming code.
+
+- f52d66b: Fixed schedules measuring elapsed time on the system clock
+
+  Schedules computed how much time had passed from `Time.now`, which is Unix
+  epoch time and follows system clock adjustments. A clock correction, such as an
+  NTP sync after a device wakes, therefore changed how a running schedule behaved:
+  a forward adjustment could reset a schedule that had just stepped, end a
+  time-boxed one early, or collapse a compensated delay to zero, and a backward
+  adjustment could keep a schedule running long past its limit.
+
+  Elapsed time now comes from `Time.performance`, which measures elapsed time and
+  is unaffected by clock adjustments. This applies to `elapsed`, `during`,
+  `fixed`, `windowed`, `maxElapsed`, `compensate`, and `resetScheduleAfter`.
+  Delays and outputs are unchanged; only the clock they are measured against is.
+
+  The monotonic clock has its own limit: on platforms where it stops while the
+  device sleeps, a suspended interval measures as little or no elapsed time, so
+  `during` and `maxElapsed` outlive the wall-clock deadline they were given and
+  `resetScheduleAfter` does not treat the sleep as inactivity.
+
+- 11ccc28: Fixed stale Run state inside abort callbacks
+
+  Abort callbacks could previously see their Run or shutting-down ancestors as
+  `Running`, because state updates happened after callbacks executed.
+
+  `Run.getState()` and `Run.snapshot()` now expose the abort request before
+  descendant callbacks execute, and the observed abort before the Run's own
+  callbacks execute.
+
+  A recorded request does not mean the Run's signal has aborted: ancestors can
+  still have `observed: null` during descendant callbacks, and abort masks can
+  delay observation.
+
+  Disposing an ancestor Run from an abort callback no longer emits duplicate
+  `StateChanged` events for that Run.
+
+- 2e139eb: Fixed timestamp counter overflow after the clock ran ahead of wall time
+
+  When the 16-bit counter of a Hybrid Logical Clock timestamp is exhausted, the
+  timestamp now advances the logical millisecond by one and resets the counter.
+  The result is still checked against the five-minute drift limit, and rollover
+  past the last representable time, in August 10889, throws.
+  Previously, once the clock was ahead of wall time, for example after syncing
+  with a device whose clock is fast, every local write shared one millisecond and
+  a large batch failed with a counter overflow that left the write queue pending.
+
+  `TimestampCounterOverflowError` was removed and is no longer a `TimestampError`
+  or an `EvoluError`; remove any `case "TimestampCounterOverflowError"` from
+  switches over these errors.
+
+- 237fd7f: Fixed registrations of one owner with different access or transports
+
+  Readonly and writable registrations for the same owner now retain their own capabilities and transport leases. Adding writable access starts synchronization even when readonly access already exists; removing the last writable registration stops synchronization while any readonly registrations keep their connections. Disposing an Evolu instance that used one owner through several transport sets now releases every set instead of failing on the second one.
+
+- 2e139eb: Fixed writes stored twice after the tab hosting the database closed
+
+  When the tab hosting the database closed or crashed while a write was in
+  progress, Evolu retried the write in another tab with new timestamps. A write
+  that had already been saved was then stored and synced again as a second change,
+  and a retried write to a local-only table rewrote its `createdAt` or `updatedAt`
+  with a later time. A retried write now reuses the timestamps and time of its
+  first attempt, so it is stored once.
+
+- 8e23edb: Made Type validation and construction faster
+
+  Types validate with fewer allocations and less reflection while returning the
+  same results, errors, issues, and messages. On the schemabenchmarks.dev Product
+  schema, `fromUnknown` of valid data is about 2.8 times faster, and of invalid
+  data about 5 times with the default first-error mode and 2.5 times with all
+  errors. `is` is about 2.3 times faster for valid data and 3.3 times for invalid
+  data, `~standard.validate` about 2.4 to 2.8 times, and creating the schema about
+  5 times.
+
+  Object keys are enumerated with `getOwnPropertyNames` and `getOwnPropertySymbols`
+  instead of one `Reflect.ownKeys` call, so a Proxy's `ownKeys` trap can run more
+  than once per validation. Type nodes have more internal symbol-keyed own
+  properties. Bundles that use Types grow by about 0.1 to 1.6 KB brotli.
+
+- fdac39e: Reported relay protocol version mismatches instead of dropping them
+
+  A relay answers a request from another protocol version with only its version
+  and the owner ID. The client rejected that reply as invalid data, so the
+  mismatch was never reported. `parseProtocolHeader` now parses the version and
+  owner ID of any version and reads the message type only for the supported one,
+  and the reply is reported as `ProtocolVersionError` through `evoluError`.
+  `ProtocolHeader.version` is a `NonNegativeInt` and `messageType` is optional.
+  Direct callers must handle an absent `messageType` before using it.
+
+  ```ts
+  import {
+    assertEqual,
+    assertType,
+    createBuffer,
+    encodeNonNegativeInt,
+    getOrThrow,
+    NonNegativeInt,
+  } from "@evolu/common";
+  import {
+    createProtocolMessageBuffer,
+    MessageType,
+    ownerIdToOwnerIdBytes,
+    parseProtocolHeader,
+    protocolVersion,
+    testAppOwner,
+    type ProtocolHeader,
+  } from "@evolu/common/local-first";
+
+  assertType<ProtocolHeader["version"], NonNegativeInt>();
+
+  const readMessageType = (header: ProtocolHeader): MessageType | null => {
+    // @ts-expect-error A parsed version is no longer restricted to the literal 1.
+    const _oldVersion: 1 = header.version;
+    // @ts-expect-error A different protocol version has no parsed message type.
+    const _oldMessageType: MessageType = header.messageType;
+
+    if (header.messageType === undefined) return null;
+    return header.messageType;
+  };
+
+  // A version-mismatch reply contains only the version and owner ID.
+  const otherVersion = NonNegativeInt.orThrow(protocolVersion + 1);
+  const reply = createBuffer();
+  encodeNonNegativeInt(reply, otherVersion);
+  reply.extend(ownerIdToOwnerIdBytes(testAppOwner.id));
+  const header = getOrThrow(parseProtocolHeader(reply.unwrap()));
+  assertEqual(header.version, otherVersion);
+  assertEqual(header.ownerId, testAppOwner.id);
+  assertEqual(readMessageType(header), null);
+
+  const request = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Request,
+  }).unwrap();
+  assertEqual(
+    readMessageType(getOrThrow(parseProtocolHeader(request))),
+    MessageType.Request,
+  );
+  ```
+
 ## 8.10.0
 
 ### Minor Changes

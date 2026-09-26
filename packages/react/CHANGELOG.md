@@ -1,5 +1,69 @@
 # @evolu/react
 
+## 11.1.0
+
+### Minor Changes
+
+- cb92aa9: Fixed useOwner registering the owner again on every render
+
+  The React binding's `useOwner` called `Evolu.useOwner` while rendering and
+  never released the registration, so every render added one and unmounting did
+  not stop syncing. It now registers in an effect and releases the registration
+  when the component unmounts or the owner or transports change. Owners and
+  transports are compared by content, so recreating them on each render keeps the
+  same registration. A `null` owner uses none, for a component that waits for one.
+
+  The hook no longer returns `UnuseOwner`; the component's lifetime ends the
+  registration. Remove calls to its returned function, and call `Evolu.useOwner`
+  directly to control a registration outside a component.
+
+  ```ts
+  import { assertType, type Owner, type ReadonlyOwner } from "@evolu/common";
+  import { createEvoluBinding } from "@evolu/react";
+
+  const { useOwner } = createEvoluBinding();
+
+  assertType<Parameters<typeof useOwner>[0], ReadonlyOwner | Owner | null>();
+  assertType<ReturnType<typeof useOwner>, void>();
+  ```
+
+### Patch Changes
+
+- Updated dependencies [f0101ca]
+- Updated dependencies [fdac39e]
+- Updated dependencies [ecbac00]
+- Updated dependencies [b506c9b]
+- Updated dependencies [fdac39e]
+- Updated dependencies [d2973b9]
+- Updated dependencies [b75abfa]
+- Updated dependencies [69b756c]
+- Updated dependencies [5a671b2]
+- Updated dependencies [e270e42]
+- Updated dependencies [ef320ff]
+- Updated dependencies [5a671b2]
+- Updated dependencies [09b1b5c]
+- Updated dependencies [fdac39e]
+- Updated dependencies [0770038]
+- Updated dependencies [e270e42]
+- Updated dependencies [f52d66b]
+- Updated dependencies [d2973b9]
+- Updated dependencies [fdac39e]
+- Updated dependencies [11ccc28]
+- Updated dependencies [2e139eb]
+- Updated dependencies [0624d35]
+- Updated dependencies [ecd1c0d]
+- Updated dependencies [568358b]
+- Updated dependencies [237fd7f]
+- Updated dependencies [e7d27be]
+- Updated dependencies [2e139eb]
+- Updated dependencies [daf6295]
+- Updated dependencies [d2973b9]
+- Updated dependencies [ba8c493]
+- Updated dependencies [8e23edb]
+- Updated dependencies [fdac39e]
+- Updated dependencies [cf68cee]
+  - @evolu/common@8.11.0
+
 ## 11.0.3
 
 ### Patch Changes

@@ -1,5 +1,109 @@
 # @evolu/react-web
 
+## 3.1.0
+
+### Minor Changes
+
+- 0624d35: Fixed apps that stayed blank where the browser offers no storage
+
+  Safari's Private Browsing offers no OPFS, so Evolu could not open its database
+  there, and the app waited forever without reporting an error. Evolu now checks
+  storage once when its shared worker starts, and without it keeps every database
+  in memory. Data synced with a relay comes back, as on a new device, and nothing
+  stays on the device afterwards, which suits checking your app on a borrowed
+  phone. A persistent database the browser cannot reach right now is left
+  untouched. Data that exists only locally, or has not synced yet, is lost when
+  the tab hosting the database closes, even while other tabs stay open.
+
+  The new `onStorageUnavailable` option of the web and React web
+  `createEvoluDeps` tells the app, so it can tell the user, for example "Nothing
+  from this session is kept on this device."
+
+  A custom platform adapter must handle the new `StorageUnavailable` shared
+  worker message in an exhaustive switch, and a platform that can lack persistent
+  storage can give the shared worker `isPersistentStorageAvailable`.
+
+- e7d27be: Fixed a new app version not working while an older one was open in another tab
+
+  After a deploy that updated Evolu, opening the app while an older version was
+  open in another tab could leave the new tab unresponsive.
+
+  Now only one version of an app uses the local database at a time. When a new
+  version opens, tabs of the old version reload by themselves. A tab the user is
+  in reloads when they leave it. A reload loses unsaved UI state, so keep drafts
+  in local-only tables.
+
+  If an old version keeps running, for example in a tab of an Evolu release
+  before this one, the new tab waits and reports the new `OtherBuildRunningError`.
+  Apps can show a message asking the user to close the app's other tabs. The
+  error clears by itself when the wait ends. An exhaustive `switch` over
+  `EvoluError` needs a case for it.
+
+  ```ts
+  import { assertEqual, type EvoluError } from "@evolu/common";
+
+  const isOtherBuildRunning = (error: EvoluError | null): boolean =>
+    error?.type === "OtherBuildRunningError";
+
+  assertEqual(isOtherBuildRunning({ type: "OtherBuildRunningError" }), true);
+  ```
+
+  The web `createEvoluDeps` accepts a custom `reloadApp`, for example to save
+  state first; it must still reload the page, because the other build waits until
+  this tab reloads or closes. The default one now reloads the current page instead
+  of loading `/`. The React web
+  `createEvoluDeps` now accepts the same options as the web one, including
+  `onSharedWorkerUnsupported`.
+
+  Update `@evolu/web` together with `@evolu/common`; with an older `@evolu/web`,
+  queries never complete. A custom platform adapter must forward the new
+  `Connected` and `Error` shared worker messages and handle the new `Waiting`
+  message. One that runs the shared worker in-process must connect every
+  `createEvoluDeps` call in a JS runtime to one worker, as React Native does,
+  because the worker holds the build lock until it is disposed. On React Native,
+  Evolu keeps working after Fast Refresh recreates its dependencies.
+
+### Patch Changes
+
+- Updated dependencies [f0101ca]
+- Updated dependencies [fdac39e]
+- Updated dependencies [ecbac00]
+- Updated dependencies [b506c9b]
+- Updated dependencies [e45a549]
+- Updated dependencies [fdac39e]
+- Updated dependencies [d2973b9]
+- Updated dependencies [b75abfa]
+- Updated dependencies [69b756c]
+- Updated dependencies [5a671b2]
+- Updated dependencies [e270e42]
+- Updated dependencies [ef320ff]
+- Updated dependencies [a0c716a]
+- Updated dependencies [5a671b2]
+- Updated dependencies [09b1b5c]
+- Updated dependencies [fdac39e]
+- Updated dependencies [0770038]
+- Updated dependencies [e270e42]
+- Updated dependencies [f52d66b]
+- Updated dependencies [d17ce92]
+- Updated dependencies [d2973b9]
+- Updated dependencies [fdac39e]
+- Updated dependencies [11ccc28]
+- Updated dependencies [2e139eb]
+- Updated dependencies [0624d35]
+- Updated dependencies [ecd1c0d]
+- Updated dependencies [568358b]
+- Updated dependencies [237fd7f]
+- Updated dependencies [e7d27be]
+- Updated dependencies [2e139eb]
+- Updated dependencies [daf6295]
+- Updated dependencies [d2973b9]
+- Updated dependencies [ba8c493]
+- Updated dependencies [8e23edb]
+- Updated dependencies [fdac39e]
+- Updated dependencies [cf68cee]
+  - @evolu/common@8.11.0
+  - @evolu/web@3.2.0
+
 ## 3.0.3
 
 ### Patch Changes
