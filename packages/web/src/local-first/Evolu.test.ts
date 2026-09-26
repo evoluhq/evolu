@@ -7,6 +7,7 @@ import {
   createConsole,
   createIdFromString,
   PositiveInt,
+  testName,
   testStubGlobal,
   type NativeMessagePort,
   type ReloadApp,
@@ -14,12 +15,15 @@ import {
 } from "@evolu/common";
 import {
   buildsBroadcastChannelName,
+  testAppOwner,
   type BuildWaiting,
   type BuildWaitingRequest,
+  type DbWorkerInput,
+  type DbWorkerOutput,
   type SharedWorkerId,
   type SharedWorkerOutput,
 } from "@evolu/common/local-first";
-import { describe, it, mock } from "node:test";
+import { describe, it, mock, type Mock } from "node:test";
 import { createEvoluDeps } from "./Evolu.ts";
 
 describe("createEvoluDeps", () => {
@@ -41,6 +45,11 @@ describe("createEvoluDeps", () => {
       return nativeDbWorker;
     });
     using _worker = testStubGlobal("Worker", Worker);
+    using _addEventListener = testStubGlobal("addEventListener", () => {});
+    using _removeEventListener = testStubGlobal(
+      "removeEventListener",
+      () => {},
+    );
 
     using deps = createEvoluDeps({
       onSharedWorkerUnsupported,
@@ -158,6 +167,61 @@ describe("createEvoluDeps", () => {
 
       setup.post({ type: "StorageUnavailable" });
 
+      assertSame(setup.reloadApp.mock.callCount(), 0);
+    });
+  });
+
+  describe("back-forward cache", () => {
+    const workerId = createIdFromString<"SharedWorker">("cached");
+
+    it("ends its part as if it closed when the page enters the cache", async () => {
+      using setup = setupWebEvoluDeps();
+      setup.connect(workerId);
+      await setup.waitForTabLeadership();
+      setup.startDbWorker();
+
+      setup.dispatchPageTransition("pagehide", true);
+      await waitForMacrotask();
+
+      assertSame(setup.dbWorkers[0]?.terminate.mock.callCount(), 1);
+      assertSame(setup.sharedWorkerPort.close.mock.callCount(), 1);
+      assertTrue(await isLockAvailable(`evolu-leaderlock-tab-${workerId}`));
+      assertSame(setup.reloadApp.mock.callCount(), 0);
+    });
+
+    it("reloads once when the page is restored from the cache", () => {
+      using setup = setupWebEvoluDeps();
+      setup.dispatchPageTransition("pageshow", false);
+
+      setup.dispatchPageTransition("pagehide", true);
+      setup.dispatchPageTransition("pageshow", true);
+      setup.dispatchPageTransition("pageshow", true);
+
+      assertSame(setup.reloadApp.mock.callCount(), 1);
+      assertFalse(setup.isAutomaticReloadMarked());
+    });
+
+    it("ignores a pagehide that does not enter the cache", () => {
+      using setup = setupWebEvoluDeps();
+      setup.startDbWorker();
+
+      setup.dispatchPageTransition("pagehide", false);
+      setup.dispatchPageTransition("pageshow", true);
+
+      assertSame(setup.dbWorkers[0]?.terminate.mock.callCount(), 0);
+      assertSame(setup.sharedWorkerPort.close.mock.callCount(), 0);
+      assertSame(setup.reloadApp.mock.callCount(), 0);
+    });
+
+    it("ends its DbWorkers when disposed, and then ignores the cache", () => {
+      using setup = setupWebEvoluDeps();
+      setup.startDbWorker();
+
+      setup.disposeDeps();
+      setup.dispatchPageTransition("pagehide", true);
+      setup.dispatchPageTransition("pageshow", true);
+
+      assertSame(setup.dbWorkers[0]?.terminate.mock.callCount(), 1);
       assertSame(setup.reloadApp.mock.callCount(), 0);
     });
   });
@@ -359,10 +423,24 @@ const setupWebEvoluDeps = ({
       },
     ),
   );
+  const dbWorkers: Array<{ readonly terminate: Mock<() => void> }> = [];
   const Worker = mock.fn(function () {
-    return createClosableNativePort();
+    const dbWorker = {
+      ...createClosableNativePort(),
+      terminate: mock.fn<() => void>(),
+    };
+    dbWorkers.push(dbWorker);
+    return dbWorker;
   });
   disposer.use(testStubGlobal("Worker", Worker));
+  // Page lifecycle events such as pagehide and pageshow.
+  const page = new EventTarget();
+  disposer.use(
+    testStubGlobal("addEventListener", page.addEventListener.bind(page)),
+  );
+  disposer.use(
+    testStubGlobal("removeEventListener", page.removeEventListener.bind(page)),
+  );
   const channels: Array<{
     readonly name: string;
     readonly posted: Array<unknown>;
@@ -439,7 +517,42 @@ const setupWebEvoluDeps = ({
     reloadApp,
     sharedWorkerPort,
     post,
+    dbWorkers,
     getDbWorkerCount: (): number => Worker.mock.callCount(),
+    /** Starts a DbWorker in this tab, as the SharedWorker asks its leader. */
+    startDbWorker: (): void => {
+      post({
+        type: "DbWorkerInit",
+        name: testName,
+        consoleLevel: "silent",
+        sqliteSchema: { tables: {}, indexes: [] },
+        encryptionKey: testAppOwner.encryptionKey,
+        memoryOnly: false,
+        port: createClosableNativePort() as unknown as NativeMessagePort<
+          DbWorkerOutput,
+          DbWorkerInput
+        >,
+      });
+    },
+    /** Waits until this tab wins the election and announces itself. */
+    waitForTabLeadership: async (): Promise<void> => {
+      const isAnnounced = (): boolean =>
+        sharedWorkerPort.postMessage.mock.calls.some(
+          ({ arguments: [message] }) =>
+            (message as { readonly type?: unknown }).type ===
+            "AnnounceTabLeader",
+        );
+      for (let turn = 0; turn < 100 && !isAnnounced(); turn += 1) {
+        await waitForMacrotask();
+      }
+      assertTrue(isAnnounced());
+    },
+    dispatchPageTransition: (
+      type: "pagehide" | "pageshow",
+      persisted: boolean,
+    ): void => {
+      page.dispatchEvent(Object.assign(new Event(type), { persisted }));
+    },
     isAutomaticReloadMarked: (): boolean =>
       sessionItems.has(automaticReloadKey),
     getReloadedFor: (): string | null =>
@@ -474,6 +587,14 @@ const setupWebEvoluDeps = ({
 const automaticReloadKey = "evolu:automatic-reload";
 const reloadedForKey = "evolu:reloaded-for";
 const refusalReloadKey = "evolu:refusal-reloads";
+
+const waitForMacrotask = (): Promise<void> =>
+  new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+
+const isLockAvailable = (name: string): Promise<boolean> =>
+  navigator.locks.request(name, { ifAvailable: true }, (lock) => lock !== null);
 
 const createClosableNativePort = <Output = never>() => ({
   close: mock.fn(),

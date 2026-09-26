@@ -60,7 +60,8 @@
  *
  * Safari suspends, rather than ends, a worker whose tabs are all in its
  * back-forward cache, and the suspended worker keeps the lock. There, a waiting
- * build also waits until Safari drops those pages.
+ * build also waits until Safari drops those pages, or until the user goes back
+ * to one of them, which reloads it on the web.
  *
  * ## Storage
  *
@@ -75,8 +76,9 @@
  * The check cannot tell a private session from a storage failure, but memory
  * loses nothing that refusing to start would have kept, and the persistent
  * database stays untouched. Each DbWorker keeps its own memory, so when the tab
- * hosting it closes, data that exists only locally or has not synced yet is
- * lost, even though its replacement starts in memory too.
+ * hosting it closes, or on the web navigates away, data that exists only
+ * locally or has not synced yet is lost, even though its replacement starts in
+ * memory too.
  *
  * ## Synchronization routing
  *

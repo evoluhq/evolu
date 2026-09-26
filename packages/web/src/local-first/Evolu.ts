@@ -49,7 +49,8 @@ export interface StorageUnavailableDep {
    * someone checking their app on a borrowed phone, so a message such as
    * "Nothing from this session is kept on this device." tells the user what to
    * expect. Data that exists only locally, or has not synced yet, is lost when
-   * the tab hosting the database closes, even while other tabs stay open.
+   * the tab hosting the database closes or navigates away, even while other
+   * tabs stay open.
    */
   readonly onStorageUnavailable: () => void;
 }
@@ -68,6 +69,11 @@ export interface StorageUnavailableDep {
  * relaunched without its state, as WebKit does when the process hosting it
  * ends, also reloads at once.
  *
+ * When the page enters the browser's back-forward cache, as Safari does on
+ * every navigation away, this tab ends its part as if it closed: it stops the
+ * database workers it hosts, so another tab takes them over, and it reloads if
+ * the user comes back to it.
+ *
  * Where the browser offers no persistent storage, as in Safari's Private
  * Browsing, the database is kept in memory, and
  * {@link StorageUnavailableDep.onStorageUnavailable} lets the app tell the
@@ -75,7 +81,8 @@ export interface StorageUnavailableDep {
  *
  * A custom {@link ReloadApp} replaces the default page reload, for example to
  * save state first. It should end by reloading the page, because the other
- * build waits until this tab reloads or closes.
+ * build waits until this tab reloads or closes, and a page restored from the
+ * back-forward cache cannot work until it reloads.
  */
 export const createEvoluDeps = (
   deps: Partial<ConsoleDep> &
@@ -236,12 +243,22 @@ export const createEvoluDeps = (
     }
   };
 
-  const createDbWorker: CreateDbWorker = () =>
-    createWorker<DbWorkerInit, never>(
+  // Disposing the deps ends the DbWorkers this tab hosts, which releases their
+  // database locks for the tab that takes over.
+  const dbWorkers = new Set<Disposable>();
+  disposer.defer(() => {
+    for (const dbWorker of dbWorkers) dbWorker[Symbol.dispose]();
+  });
+
+  const createDbWorker: CreateDbWorker = () => {
+    const dbWorker = createWorker<DbWorkerInit, never>(
       new Worker(new URL("Db.worker.js", import.meta.url), {
         type: "module",
       }),
     );
+    dbWorkers.add(dbWorker);
+    return dbWorker;
+  };
 
   const webSharedWorker = createSharedWorker<
     SharedWorkerInput,
@@ -282,6 +299,25 @@ export const createEvoluDeps = (
       sharedWorker,
     }),
   );
+
+  // A page entering the back-forward cache is frozen with its DbWorkers, which
+  // keep their database locks, so the other tabs would stall. WebKit also
+  // releases the page's own locks, so a restored page would work with state
+  // the other tabs gave up on. The page therefore ends its part as if it
+  // closed, and reloads when it is shown again.
+  const reloadRestoredPage = (event: PageTransitionEvent): void => {
+    if (event.persisted) reloadThisApp();
+  };
+  const handlePageHide = (event: PageTransitionEvent): void => {
+    if (!event.persisted) return;
+    addEventListener("pageshow", reloadRestoredPage, { once: true });
+    disposables.dispose();
+  };
+  addEventListener("pagehide", handlePageHide);
+  disposer.defer(() => {
+    removeEventListener("pagehide", handlePageHide);
+  });
+
   const disposables = disposer.move();
 
   return {
