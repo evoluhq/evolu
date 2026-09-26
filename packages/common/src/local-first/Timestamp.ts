@@ -115,9 +115,10 @@
  * their workers restart, regardless of delivery timing.
  *
  * On the web, the tab holding the leader lock hosts the database worker. When
- * that tab closes or reloads, a tab taking over leadership starts a
- * replacement, and other open tabs refresh their subscribed queries. Reloading
- * a non-leader tab does not restart the database worker.
+ * that tab closes, reloads, or enters the browser's back-forward cache, a tab
+ * taking over leadership starts a replacement, and other open tabs refresh
+ * their subscribed queries. Reloading a non-leader tab does not restart the
+ * database worker.
  *
  * Release checks use one captured system time. The logical clock advances over
  * distinct released timestamps in timestamp order, as receipts do, so later
@@ -126,9 +127,13 @@
  * device stamped before accepting or releasing it. Columns the schema does not
  * define move to schema quarantine and are applied after a schema update.
  * Duplicate delivery does not release: the timestamp is already in the owner's
- * set. Release during a running database worker's session is outside this
- * change's scope. Correcting system time does not trigger release; eligible
- * messages are released when the database worker next starts.
+ * set. Release during a running database worker's session is not implemented.
+ * Correcting system time does not trigger release; eligible messages are
+ * released when the database worker next starts. Until then, a later message
+ * from one author can be visible while an earlier one is not, so an application
+ * can see a row that refers to one still in quarantine. Devices each within the
+ * limit can also be up to twice the limit apart, so a message one of them
+ * accepted can be quarantined by the other.
  *
  * Release runs before the database worker reports its clock, so fresh requests
  * start from the clock advanced by release. The stored clock never moves
@@ -157,6 +162,24 @@
  * migrating the owner's visible state to a new owner with fresh timestamps; the
  * old owner is abandoned. How relays treat an abandoned owner is not specified
  * yet.
+ *
+ * On the device whose clock ran ahead, fresh timestamps first need a clock
+ * reset. The database clock is shared by all owners and never moves backwards,
+ * so after that device's system time is corrected, every later timestamp is
+ * still at least as far ahead, for every owner, including a new one.
+ * Re-authored rows and a migration to a new owner would be quarantined too.
+ * Recovery there therefore starts by resetting the clock to system time with a
+ * fresh random node ID, which keeps timestamps stamped after the reset distinct
+ * from the future ones. The SharedWorker must adopt the reset clock although it
+ * is older than its session clock, and, like node ID rotation, the reset runs
+ * as its own request, never inside a replayed write. The reset is never
+ * automatic, because a clock that fell back, as after a dead clock battery,
+ * looks the same, and resetting then would stamp changes in the past. Nor is it
+ * a standalone action: after it, local edits to columns holding future-stamped
+ * values are stored but lose last-writer-wins without being quarantined, so the
+ * reset belongs only inside the migration to a new owner. Such a device can be
+ * recognized by local-origin drift quarantine whose timestamps exceed their
+ * quarantine time by about the skew.
  *
  * ### Range ceiling
  *
@@ -247,9 +270,10 @@ import {
 
 export interface TimestampConfig {
   /**
-   * Maximum physical clock drift allowed in ms.
+   * How far in ms a timestamp may be ahead of system time.
    *
-   * The default value is 5 * 60 * 1000 (5 minutes).
+   * The database uses {@link defaultTimestampMaxDrift}; it is not configurable.
+   * A timestamp behind system time is never drift.
    */
   readonly maxDrift: number;
 }
@@ -293,29 +317,14 @@ export const minCounter = 0 as Counter;
 export const maxCounter = 65535 as Counter;
 
 /**
- * A NodeId uniquely identifies an owner's device. Generated once per device
- * using cryptographic randomness.
+ * A NodeId identifies the database that stamped a timestamp. It is 64 random
+ * bits, generated when the database is created and persisted in its clock.
  *
- * Collision probability (birthday paradox):
- *
- * - 1,000 devices: ~0.00000000000271% (negligible).
- * - 1M devices: ~0.00000271% (1 in 37M chance).
- * - 135M devices: ~1% chance.
- * - 4.29B devices: ~50% chance.
- *
- * https://lemire.me/blog/2019/12/12/are-64-bit-random-identifiers-free-from-collision
- *
- * What happens if different devices generate the same NodeId?
- *
- * If devices with the same NodeId use different owners, no issues occur.
- *
- * If devices with the same NodeId use the same owner, problems only arise when
- * they generate CRDT messages with identical timestamps (same millis, counter,
- * and NodeId). In this case, the protocol sync algorithm treats them as the
- * same message: the first will be synced with the relay, while the affected
- * message will not be delivered. The affected devices will see different data
- * yet they will think they are synced. This is extremely rare and can be
- * resolved by resetting one device to generate a new NodeId.
+ * Only databases that share an owner can collide, so random collisions are
+ * negligible. Identical timestamps (same millis, counter, and NodeId) are the
+ * same message to sync: one of the changes is lost, and the affected devices
+ * see different data while they appear synced. The realistic case is a copied
+ * database, described in the Timestamp module's Duplicate node IDs section.
  */
 export const NodeId = /*#__PURE__*/ regex("NodeId", /^[a-f0-9]{16}$/u)(String);
 export type NodeId = typeof NodeId.Output;
@@ -354,11 +363,12 @@ export const nodeIdBytesToNodeId = (nodeIdBytes: NodeIdBytes): NodeId =>
  * clocks while staying close to physical time for better human
  * interpretability.
  *
- * The counter component ensures causality is maintained even when physical
- * clocks are imperfect. When clocks drift or operations occur concurrently, the
- * counter increments to establish a total order. This means Evolu achieves
- * well-defined, eventually-consistent behavior regardless of physical clock
- * accuracy.
+ * The counter gives a total order and preserves causality for accepted
+ * messages: when clocks differ within the drift limit or operations occur
+ * concurrently, it increments so later writes sort after what the device has
+ * seen. Messages beyond the drift limit wait in quarantine, and devices
+ * converge once system time is within the limit of those messages and the
+ * database worker restarts. See the Timestamp module's Clock drift section.
  *
  * When the 16-bit counter is exhausted, the logical millisecond advances by one
  * and the counter resets to zero. The resulting timestamp must still fit within

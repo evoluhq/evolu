@@ -76,7 +76,7 @@ import type {
   IndexesConfig,
   Mutation,
   MutationChange,
-  QuarantineReason,
+  MutationOptions,
   ValidateSchema,
 } from "./Schema.ts";
 import { evoluSchemaToSqliteSchema } from "./Schema.ts";
@@ -371,16 +371,8 @@ export interface Evolu<
    *
    * Pass `onComplete` when follow-up work must wait until the mutation is
    * stored and subscribed queries reflect it. It never runs when the database
-   * is unavailable; see {@link Evolu.loadQuery}.
-   *
-   * Stored does not always mean visible. A change quarantined for
-   * {@link QuarantineReason.TimestampDrift} is stored in
-   * `evolu_message_quarantine` without changing application rows. `onComplete`
-   * still fires after storage commits; no drift error is reported. Applications
-   * can subscribe to the quarantine table; those query results reflect the
-   * change before `onComplete` runs. See the
-   * {@link @evolu/common!"local-first/Timestamp" | Timestamp module} for drift
-   * and release behavior.
+   * is unavailable; see {@link Evolu.loadQuery}. A stored change is not always
+   * visible; see {@link MutationOptions.onComplete}.
    *
    * ### Example
    *

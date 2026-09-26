@@ -10,7 +10,6 @@ system clock before using it, so only a system clock set to within minutes of
 that date, or a tampered database, could reach it. Evolu now throws there, as
 it already does for a system clock past that date.
 
-`TimestampTimeOutOfRangeError` is no longer an `EvoluError`, a
-`StorageWriteMessagesError`, or a `TimestampError`, which is now only
-`TimestampDriftError`. Remove any `case "TimestampTimeOutOfRangeError"` from
-switches over these errors.
+`TimestampTimeOutOfRangeError` is no longer an `EvoluError` or a
+`TimestampError`, which is now only `TimestampDriftError`. Remove any
+`case "TimestampTimeOutOfRangeError"` from switches over these errors.

@@ -24,9 +24,15 @@
  * {@link UnsupportedDbVersionError}. The refusal returns from the startup
  * transaction before anything is written and is posted to the SharedWorker; the
  * worker then exits and releases its resources. The single version row is
- * created in the same transaction as the other system tables. Code released
- * before the version record existed never reads it and cannot be protected by
- * it.
+ * created in the same transaction as the other system tables.
+ *
+ * Code released before the version record existed never reads it. It recognizes
+ * an initialized database by the `evolu_version` table alone, so it opens a
+ * newer database and replays all quarantine regardless of reason, applying
+ * drift quarantine at once without advancing the clock. Renaming the table
+ * would make such code fail at startup instead. That was declined: the replay
+ * needs drift quarantine and an earlier release on the same device at once, and
+ * failing would break a rollback to an earlier release outright.
  *
  * @module
  */

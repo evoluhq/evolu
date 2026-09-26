@@ -500,9 +500,19 @@ export type Mutation<S extends EvoluSchema, Kind extends MutationKind> = <
  */
 export interface MutationOptions {
   /**
-   * Called after the mutation is completed and the local state is updated.
-   * Useful for triggering side effects (e.g., notifications, UI updates) after
-   * insert, update, or upsert.
+   * Called after the mutation's changes are stored and subscribed queries
+   * reflect them. Useful for follow-up work (e.g., notifications, navigation)
+   * after insert, update, or upsert. It never runs when the database is
+   * unavailable.
+   *
+   * Stored does not always mean visible. A change quarantined for
+   * {@link QuarantineReason.TimestampDrift} is stored in
+   * `evolu_message_quarantine` without changing application rows. `onComplete`
+   * still fires after storage commits; no drift error is reported. Applications
+   * can subscribe to the quarantine table; those query results reflect the
+   * change before `onComplete` runs. See the
+   * {@link @evolu/common!"local-first/Timestamp" | Timestamp module} for drift
+   * and release behavior.
    */
   readonly onComplete?: () => void;
 

@@ -1,5 +1,5 @@
 ---
-"@evolu/common": patch
+"@evolu/common": minor
 ---
 
 Fixed writes failing when the device clock is wrong
@@ -20,17 +20,29 @@ and synchronized without being applied to application tables. Drift no longer
 blocks the local write queue or causes incoming messages to be rejected and
 repeatedly offered by sync. Mutations complete after storage commits, including
 offline; `onComplete` can fire while the change remains quarantined. Apps can
-query quarantine to show pending changes. Drift is not reported through
-`EvoluError`. Quarantining an incoming message does not advance the local clock.
+query quarantine to show pending changes. Quarantining an incoming message
+does not advance the local clock.
 Incoming messages within the limit still apply when the local logical clock
 is ahead.
+
+`TimestampDriftError` is no longer an `EvoluError`, so drift is not reported
+through the `evoluError` store. Remove any `case "TimestampDriftError"` from
+switches over `EvoluError`. An app that showed a clock warning for it now gets
+no error: after a device's clock that ran ahead is set back, the user's own
+changes are quarantined, and they do not appear until system time reaches
+their timestamps. To tell users about changes waiting on a clock, subscribe to
+a drift-quarantine query as in the tested example on `QuarantineReason`, whose
+`origin` column tells the user's own changes from received ones.
 
 Databases at version 1 are migrated to version 2 at startup. The migration adds
 the quarantine columns `reason` (schema or timestamp drift), `origin` (local
 mutation or received message), and `quarantinedAt` (captured system time), plus
 the index that startup release reads. `createQuery` types the whole table;
 `QuarantineReason` and `QuarantineOrigin` export the persisted codes. See the
-tested example on `QuarantineReason`.
+tested example on `QuarantineReason`. An earlier release that opens a migrated
+database applies its drift-quarantined changes at once, so rolling back past
+this release can make that device diverge until system time passes their
+timestamps.
 
 Drift quarantine is released only when the database worker starts, once the
 message's timestamp is within the drift limit. Startup loads only drift
@@ -62,7 +74,12 @@ explicit recovery. With `cause: "remote"`, it is the received timestamp itself,
 which must not advance the clock.
 
 ```ts
-import { assertErr, Millis, type TimestampDriftError } from "@evolu/common";
+import {
+  assertErr,
+  Millis,
+  type EvoluError,
+  type TimestampDriftError,
+} from "@evolu/common";
 import {
   Counter,
   createTimestamp,
@@ -97,4 +114,8 @@ const _previousCalls = () => {
 
 // @ts-expect-error TimestampDriftError.next was replaced by timestamp.
 type _PreviousNext = TimestampDriftError["next"];
+
+const _isPreviousDriftError = (error: EvoluError): boolean =>
+  // @ts-expect-error TimestampDriftError is no longer an EvoluError.
+  error.type === "TimestampDriftError";
 ```
