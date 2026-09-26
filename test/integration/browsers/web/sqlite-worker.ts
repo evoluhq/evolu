@@ -21,6 +21,8 @@ const workerScope = globalThis as never as {
 
 let driver: SqliteDriver | null = null;
 let lockRelease = null as PromiseWithResolvers<void> | null;
+// A pool file held open, as by a DbWorker that ended without closing it.
+let heldPoolFile: FileSystemSyncAccessHandle | null = null;
 
 const createDriver = async (cmd: {
   readonly name?: string;
@@ -52,7 +54,9 @@ workerScope.onmessage = (e: MessageEvent) => {
         | "export"
         | "dispose"
         | "deleteDatabase"
-        | "disposeAndClose";
+        | "disposeAndClose"
+        | "holdPoolFile"
+        | "releasePoolFile";
       readonly name?: string;
       readonly encryptionKey?: Uint8Array;
       readonly lockName?: string;
@@ -145,6 +149,27 @@ workerScope.onmessage = (e: MessageEvent) => {
           lockRelease = null;
           workerScope.postMessage({ ok: true });
           setTimeout(() => workerScope.close(), 0);
+          break;
+        }
+        case "holdPoolFile": {
+          if (!cmd.name) throw new Error("Name required");
+          const root = await navigator.storage.getDirectory();
+          const poolDirectory = await root.getDirectoryHandle(`.${cmd.name}`);
+          const opaqueDirectory =
+            await poolDirectory.getDirectoryHandle(".opaque");
+          for await (const handle of opaqueDirectory.values()) {
+            if (handle.kind !== "file") continue;
+            heldPoolFile = await handle.createSyncAccessHandle();
+            break;
+          }
+          if (!heldPoolFile) throw new Error("No pool file");
+          workerScope.postMessage({ ok: true });
+          break;
+        }
+        case "releasePoolFile": {
+          heldPoolFile?.close();
+          heldPoolFile = null;
+          workerScope.postMessage({ ok: true });
           break;
         }
       }

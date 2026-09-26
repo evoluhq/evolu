@@ -82,6 +82,8 @@ const createWorkerDriver = () => {
     dispose: () => send({ type: "dispose" }),
     deleteDatabase: () => send({ type: "deleteDatabase" }),
     disposeAndClose: () => send({ type: "disposeAndClose" }),
+    holdPoolFile: (name: string) => send({ type: "holdPoolFile", name }),
+    releasePoolFile: () => send({ type: "releasePoolFile" }),
     terminate: () => {
       w.terminate();
     },
@@ -290,6 +292,47 @@ describe("createWasmSqliteDriver", () => {
           } finally {
             secondDriver.terminate();
             await waitForLock(`${lockName}-second`);
+          }
+        },
+        timeout,
+      );
+
+      test(
+        "opens OPFS database once an ended worker releases its pool file",
+        async () => {
+          const name = `heldPoolFile${Date.now()}`;
+          const firstDriver = createWorkerDriver();
+          const holder = createWorkerDriver();
+          const secondDriver = createWorkerDriver();
+
+          try {
+            assertWorkerOk(await firstDriver.create(name));
+            await firstDriver.exec("CREATE TABLE t (data TEXT)");
+            await firstDriver.exec("INSERT INTO t (data) VALUES (?)", ["held"]);
+            assertWorkerOk(await firstDriver.dispose());
+            assertWorkerOk(await holder.holdPoolFile(name));
+
+            const createSecondResult = secondDriver.create(name);
+            const isCreatedWhileHeld = await Promise.race([
+              createSecondResult.then(() => true),
+              new Promise<false>((resolve) => {
+                setTimeout(() => {
+                  resolve(false);
+                }, 300);
+              }),
+            ]);
+            expect(isCreatedWhileHeld).toBe(false);
+
+            assertWorkerOk(await holder.releasePoolFile());
+            assertWorkerOk(await createSecondResult);
+
+            const queryResult = await secondDriver.exec("SELECT data FROM t");
+            assertWorkerOk(queryResult);
+            expect(queryResult.data?.rows).toEqual([{ data: "held" }]);
+          } finally {
+            firstDriver.terminate();
+            holder.terminate();
+            secondDriver.terminate();
           }
         },
         timeout,

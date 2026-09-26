@@ -1,13 +1,101 @@
 import {
+  AbortError,
+  assert,
   assertEqual,
   assertEqualBytes,
+  assertSame,
   assertTrue,
+  assertType,
   EncryptionKey,
   Name,
   sql,
   testCreateRun,
 } from "@evolu/common";
 import { describe, it, mock } from "node:test";
+
+// OPFS with an optional pool directory. Each pool file lists the error names
+// its next openings reject with, in order.
+const opfsMock = (() => {
+  const state = {
+    closedAccessHandleCount: 0,
+    directoryNames: [] as Array<string>,
+    getDirectoryCount: 0,
+    hasOpaqueDirectory: true,
+    openedAccessHandleCount: 0,
+    poolFiles: null as Array<Array<string>> | null,
+  };
+
+  const opaqueDirectory = {
+    // for await also iterates a sync iterable.
+    values: function* () {
+      yield { kind: "directory" };
+      for (const errorNames of state.poolFiles ?? [])
+        yield {
+          kind: "file",
+          createSyncAccessHandle: () => {
+            const errorName = errorNames.shift();
+            if (errorName !== undefined)
+              return Promise.reject(new DOMException("Held", errorName));
+            state.openedAccessHandleCount += 1;
+            return Promise.resolve({
+              close: () => {
+                state.closedAccessHandleCount += 1;
+              },
+            });
+          },
+        };
+    },
+  };
+
+  const poolDirectory = {
+    getDirectoryHandle: (name: string) => {
+      state.directoryNames.push(name);
+      return state.hasOpaqueDirectory
+        ? Promise.resolve(opaqueDirectory)
+        : Promise.reject(new DOMException("Missing", "NotFoundError"));
+    },
+  };
+
+  const root = {
+    getDirectoryHandle: (name: string) => {
+      state.directoryNames.push(name);
+      return state.poolFiles
+        ? Promise.resolve(poolDirectory)
+        : Promise.reject(new DOMException("Missing", "NotFoundError"));
+    },
+  };
+
+  Object.defineProperty(navigator, "storage", {
+    configurable: true,
+    value: {
+      getDirectory: () => {
+        state.getDirectoryCount += 1;
+        return Promise.resolve(root);
+      },
+    },
+  });
+
+  return {
+    reset: (
+      poolFiles: Array<Array<string>> | null = null,
+      { hasOpaqueDirectory = true } = {},
+    ) => {
+      state.closedAccessHandleCount = 0;
+      state.directoryNames.length = 0;
+      state.getDirectoryCount = 0;
+      state.hasOpaqueDirectory = hasOpaqueDirectory;
+      state.openedAccessHandleCount = 0;
+      state.poolFiles = poolFiles;
+    },
+    state,
+  };
+})();
+
+// Lets resolved mocks settle before test time advances.
+const flushMicrotasks = (): Promise<void> =>
+  new Promise((resolve) => {
+    setImmediate(resolve);
+  });
 
 const sqliteMock = (() => {
   class PreparedStatement {
@@ -115,6 +203,7 @@ const sqliteMock = (() => {
     consoleWarn: mock.fn<typeof console.warn>(),
     pool,
     reset: () => {
+      opfsMock.reset();
       state.closedDatabases.length = 0;
       state.createdDatabases.length = 0;
       state.deletedFilenames.length = 0;
@@ -193,6 +282,7 @@ describe("createWasmSqliteDriver coverage helpers", () => {
 
     assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 0);
     assertEqual(sqliteMock.state.createdDatabases[0]?.filename, ":memory:");
+    assertEqual(opfsMock.state.getDirectoryCount, 0);
   });
 
   it("executes non-prepared query and exports database", async () => {
@@ -352,5 +442,91 @@ describe("createWasmSqliteDriver coverage helpers", () => {
         "PRAGMA cipher = 'sqlcipher';",
       ),
     );
+  });
+});
+
+describe("createWasmSqliteDriver held pool files", () => {
+  for (const errorName of ["InvalidStateError", "NoModificationAllowedError"])
+    it(`sets up the pool once a file held with ${errorName} is released`, async () => {
+      sqliteMock.reset();
+      opfsMock.reset([[], [errorName, errorName]]);
+
+      await using run = testCreateRun();
+      const driver = run.ok(createWasmSqliteDriver(Name.orThrow("MockPlain")));
+      await flushMicrotasks();
+
+      assertEqual(opfsMock.state.directoryNames, [".MockPlain", ".opaque"]);
+      run.deps.time.advance("49ms");
+      await flushMicrotasks();
+      assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 0);
+
+      // The retry delay doubles after each held pass.
+      run.deps.time.advance("1ms");
+      await flushMicrotasks();
+      run.deps.time.advance("99ms");
+      await flushMicrotasks();
+      assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 0);
+
+      run.deps.time.advance("1ms");
+      using _driver = await driver;
+
+      // The free file opens on each of the three passes, the held one once.
+      assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 1);
+      assertEqual(opfsMock.state.openedAccessHandleCount, 4);
+      assertEqual(opfsMock.state.closedAccessHandleCount, 4);
+    });
+
+  it("sets up the pool at once when its directory has no files yet", async () => {
+    sqliteMock.reset();
+    opfsMock.reset([], { hasOpaqueDirectory: false });
+
+    await using run = testCreateRun();
+    using _driver = await run.ok(
+      createWasmSqliteDriver(Name.orThrow("MockPlain")),
+    );
+
+    assertEqual(opfsMock.state.directoryNames, [".MockPlain", ".opaque"]);
+    assertEqual(opfsMock.state.openedAccessHandleCount, 0);
+    assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 1);
+  });
+
+  it("warns once when pool files stay held for five seconds", async () => {
+    sqliteMock.reset();
+    opfsMock.reset([Array.from({ length: 12 }, () => "InvalidStateError")]);
+
+    await using run = testCreateRun();
+    const driver = run.ok(createWasmSqliteDriver(Name.orThrow("MockPlain")));
+    for (let second = 0; second < 12; second += 1) {
+      await flushMicrotasks();
+      run.deps.time.advance("1s");
+    }
+    using _driver = await driver;
+
+    const warnings = run.deps.console
+      .getEntriesSnapshot()
+      .filter((entry) => entry.method === "warn");
+    assertEqual(
+      warnings.map((entry) => entry.args),
+      [
+        [
+          "Waiting for an ended DbWorker to release the files of database MockPlain.",
+        ],
+      ],
+    );
+  });
+
+  it("fails before setting up the pool when a file cannot be opened", async () => {
+    sqliteMock.reset();
+    opfsMock.reset([["UnknownError"]]);
+
+    await using run = testCreateRun();
+    const result = await run.abortable(
+      createWasmSqliteDriver(Name.orThrow("MockPlain")),
+    );
+
+    assert(!result.ok, "Expected the driver to fail.");
+    assertType(AbortError, result.error);
+    assertSame(result.error.reason.type, "PanicAbortReason");
+    assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 0);
   });
 });
