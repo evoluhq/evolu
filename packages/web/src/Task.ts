@@ -6,6 +6,7 @@
 
 import {
   createRun as createCommonRun,
+  defectToError,
   type DisposableRun,
   type Run,
   type RunCustomDeps,
@@ -14,13 +15,16 @@ import {
 /**
  * Creates a root {@link Run} for the browser.
  *
- * Defects are reported with the browser's global `reportError`. A custom
- * `reportDefect` dependency overrides the browser default.
+ * Defects are reported with the browser's global `reportError` as an `Error`
+ * from {@link defectToError}, because browsers show any other value only as
+ * unhelpful text. A custom `reportDefect` dependency overrides the browser
+ * default.
  *
  * ### Example
  *
  * ```ts
  * import {
+ *   assertEqual,
  *   createConsole,
  *   createConsoleFormatter,
  *   ok,
@@ -36,7 +40,7 @@ import {
  * await using run = createRun({ console });
  * const appPromise = run.ok(() => ok("started"));
  *
- * expect(await appPromise).toBe("started");
+ * assertEqual(await appPromise, "started");
  * ```
  */
 export function createRun(): DisposableRun;
@@ -49,7 +53,7 @@ export function createRun<D extends object>(
   deps?: RunCustomDeps<D>,
 ): DisposableRun | DisposableRun<D> {
   const reportDefect = (reported: unknown): void => {
-    reportError(reported);
+    reportError(defectToError(reported));
   };
 
   return deps === undefined

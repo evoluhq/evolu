@@ -686,6 +686,7 @@ import {
   type RandomBytesDep,
 } from "./Crypto.ts";
 import { eqArraySameValue } from "./Eq.ts";
+import type { defectToError } from "./Error.ts";
 import { constTrue, constVoid, identity } from "./Function.ts";
 import type { fetch, NativeFetch, NativeFetchDep } from "./Http.ts";
 import {
@@ -2095,8 +2096,9 @@ export interface ReportDefectDep {
  * platforms without native global error reporting. Browser adapters use the
  * native
  * {@link https://developer.mozilla.org/en-US/docs/Web/API/Window/reportError | reportError}
- * API; other platform adapters can use platform-specific reporting and preserve
- * nested panic defects as cause or detail data.
+ * API, and other platform adapters can use platform-specific reporting.
+ * Adapters report an `Error` from {@link defectToError}, which such reporting
+ * shows readably.
  *
  * @group Run
  */

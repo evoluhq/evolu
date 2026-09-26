@@ -4,6 +4,8 @@
  * @module
  */
 
+import { safelyStringifyUnknownValue } from "./String.ts";
+import { AbortError, type createRun, type ReportDefect } from "./Task.ts";
 import { type InferType, typed, type TypedType, Unknown } from "./Type.ts";
 
 /**
@@ -83,4 +85,73 @@ export const createUnknownError = (error: unknown): UnknownError => {
       };
     }
   }
+};
+
+/**
+ * Converts a reported defect to an `Error` that a host error reporter shows
+ * readably.
+ *
+ * Hosts such as browsers and React Native show a reported value that is not an
+ * `Error` only as text such as "[object Object]", and a worker's error reaches
+ * its page, including an error tracker listening there, as that text alone. A
+ * panic reports a plain {@link AbortError}, so its defect is converted instead.
+ * An `Error` is returned as it is, including one from another realm, such as an
+ * iframe. A `DOMException` is described in an `Error` with its name and
+ * message, because Chromium reports one from a worker without them. Any other
+ * value is described in an `Error` whose cause is what was reported.
+ *
+ * Platform {@link createRun} adapters use it for their default reporting. A
+ * custom {@link ReportDefect} can use it too, such as before passing a defect to
+ * an error tracker.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertSame,
+ *   createRun,
+ *   defectToError,
+ * } from "@evolu/common";
+ *
+ * const errors: Array<Error> = [];
+ * await using run = createRun({
+ *   reportDefect: (reported) => {
+ *     errors.push(defectToError(reported));
+ *   },
+ * });
+ * const defect = new Error("boom");
+ *
+ * run.panic(defect);
+ *
+ * assertSame(errors[0], defect);
+ * assertEqual(
+ *   defectToError({ type: "UnexpectedState" }).message,
+ *   'Defect: {"type":"UnexpectedState"}',
+ * );
+ * ```
+ */
+export const defectToError = (reported: unknown): Error => {
+  const defect =
+    AbortError.is(reported) && reported.reason.type === "PanicAbortReason"
+      ? reported.reason.defect
+      : reported;
+  // The internal tag survives crossing realms, such as from an iframe, where
+  // instanceof fails.
+  const tag = Object.prototype.toString.call(defect);
+  // Chromium reports a DOMException from a worker without its name or message,
+  // so it is described in an Error.
+  if (tag === "[object DOMException]") {
+    const { name, message } = defect as Error;
+    return new Error(`${name}: ${message}`, { cause: defect });
+  }
+  if (defect instanceof Error || tag === "[object Error]") {
+    return defect as Error;
+  }
+  // A value with a cycle or a bigint falls back to String, often
+  // "[object Object]", and a nested Error shows as "{}". That is enough:
+  // Evolu's own defects are Errors, and the cause still holds the value.
+  return new Error(`Defect: ${safelyStringifyUnknownValue(defect)}`, {
+    cause: reported,
+  });
 };

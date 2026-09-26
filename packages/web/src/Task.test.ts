@@ -1,14 +1,9 @@
-import {
-  assertEqual,
-  assertNonNullable,
-  assertTrue,
-  testStubGlobal,
-} from "@evolu/common";
+import { assertEqual, assertSame, testStubGlobal } from "@evolu/common";
 import { describe, it, mock } from "node:test";
 import { createRun } from "./Task.ts";
 
 describe("createRun", () => {
-  it("createRun reports defects with global reportError", async () => {
+  it("createRun reports a panic's defect with global reportError", async () => {
     const reportError = mock.fn<(error: unknown) => void>();
     using _reportError = testStubGlobal("reportError", reportError);
     await using run = createRun();
@@ -17,13 +12,7 @@ describe("createRun", () => {
     run.panic(defect);
 
     assertEqual(reportError.mock.callCount(), 1);
-    const reported = reportError.mock.calls[0]?.arguments[0];
-    assertNonNullable(reported);
-    assertTrue(typeof reported === "object");
-    assertEqual(Reflect.get(reported, "reason"), {
-      type: "PanicAbortReason",
-      defect,
-    });
+    assertSame(reportError.mock.calls[0]?.arguments[0], defect);
   });
 
   it("createRun preserves a custom reportDefect", async () => {

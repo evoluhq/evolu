@@ -6,6 +6,7 @@
 
 import {
   createRun as createCommonRun,
+  defectToError,
   reportDefectAfterMicrotask,
   type DisposableRun,
   type Run,
@@ -15,9 +16,11 @@ import {
 /**
  * Creates a root {@link Run} for React Native.
  *
- * Defects are reported with React Native's global `ErrorUtils.reportError`. A
- * custom `reportDefect` dependency overrides the React Native default. The
- * platform-independent microtask reporter is used when `ErrorUtils` is absent.
+ * Defects are reported with React Native's global `ErrorUtils.reportError` as
+ * an `Error` from {@link defectToError}, because React Native shows any other
+ * value only as unhelpful text. A custom `reportDefect` dependency overrides
+ * the React Native default. The platform-independent microtask reporter is used
+ * when `ErrorUtils` is absent.
  *
  * ### Example
  *
@@ -52,11 +55,12 @@ export function createRun<D extends object>(
   deps?: RunCustomDeps<D>,
 ): DisposableRun | DisposableRun<D> {
   const reportDefect = (reported: unknown): void => {
+    const error = defectToError(reported);
     if (globalThis.ErrorUtils) {
       // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Report through the React Native host API on the global object even if a realm lexical binding shadows it.
-      globalThis.ErrorUtils.reportError(reported);
+      globalThis.ErrorUtils.reportError(error);
     } else {
-      reportDefectAfterMicrotask(reported);
+      reportDefectAfterMicrotask(error);
     }
   };
 

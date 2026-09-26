@@ -1,7 +1,15 @@
 import { describe, it } from "node:test";
-import { assertEqual, assertFalse, assertSame, assertTrue } from "./Assert.ts";
+import { runInNewContext } from "node:vm";
+import {
+  assertEqual,
+  assertFalse,
+  assertInstanceOf,
+  assertSame,
+  assertTrue,
+} from "./Assert.ts";
 
-import { UnknownError, createUnknownError } from "./Error.ts";
+import { UnknownError, createUnknownError, defectToError } from "./Error.ts";
+import { createRun } from "./Task.ts";
 import { assertType, Object, String } from "./Type.ts";
 
 describe("createUnknownError", () => {
@@ -114,5 +122,70 @@ describe("createUnknownError", () => {
     assertEqual(result.type, "UnknownError");
     const actual = result.error as Circular;
     assertSame(actual.self, actual);
+  });
+});
+
+describe("defectToError", () => {
+  it("converts a panic to its Error defect", async () => {
+    const reported: Array<unknown> = [];
+    await using run = createRun({
+      reportDefect: (defect) => {
+        reported.push(defect);
+      },
+    });
+    const defect = new Error("boom");
+
+    run.panic(defect);
+
+    assertSame(defectToError(reported[0]), defect);
+  });
+
+  it("returns an Error from another realm as it is", () => {
+    const defect: unknown = runInNewContext(
+      'new TypeError("other realm failed")',
+    );
+    assertFalse(defect instanceof Error);
+
+    assertSame(defectToError(defect), defect);
+  });
+
+  it("describes a DOMException with its name and message", () => {
+    const defect = new DOMException("dom failed", "NotFoundError");
+
+    const error = defectToError(defect);
+
+    assertEqual(error.message, "NotFoundError: dom failed");
+    assertSame(error.cause, defect);
+  });
+
+  it("describes a panic's defect that is not an Error", async () => {
+    const reported: Array<unknown> = [];
+    await using run = createRun({
+      reportDefect: (defect) => {
+        reported.push(defect);
+      },
+    });
+
+    const abortError = run.panic({ type: "UnexpectedState", count: 1 });
+
+    const error = defectToError(reported[0]);
+    assertInstanceOf(error, Error);
+    assertEqual(error.message, 'Defect: {"type":"UnexpectedState","count":1}');
+    assertSame(error.cause, abortError);
+  });
+
+  it("describes an AbortError that is not a panic", () => {
+    const abortError = {
+      type: "AbortError",
+      reason: { type: "OtherAbortReason" },
+    } as const;
+
+    const error = defectToError(abortError);
+
+    assertEqual(
+      error.message,
+      'Defect: {"type":"AbortError","reason":{"type":"OtherAbortReason"}}',
+    );
+    assertSame(error.cause, abortError);
   });
 });
