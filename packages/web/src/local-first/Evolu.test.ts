@@ -249,6 +249,50 @@ describe("createEvoluDeps", () => {
       assertSame(setup.reloadApp.mock.callCount(), 1);
       assertEqual(setup.builds.posted, [{ type: "BuildWaitingRequest" }]);
     });
+
+    it("reloads at once when a waiting tab's worker connects as another worker", () => {
+      using setup = setupWebEvoluDeps({ hasFocus: true });
+      setup.post({ type: "Waiting", workerId: firstWorkerId });
+      setup.post({ type: "Error", error: { type: "OtherBuildRunningError" } });
+
+      setup.connect(relaunchedWorkerId);
+
+      assertSame(setup.reloadApp.mock.callCount(), 1);
+      assertFalse(setup.isAutomaticReloadMarked());
+      // The relaunched worker's Connected is not forwarded, so the tab neither
+      // clears the wait nor elects a leader for a worker without its databases.
+      assertEqual(setup.deps.evoluError.get(), {
+        type: "OtherBuildRunningError",
+      });
+      assertEqual(setup.builds.posted, [
+        { type: "BuildWaiting", workerId: firstWorkerId },
+      ]);
+    });
+
+    it("reloads at once when a waiting tab's worker waits as another worker", () => {
+      using setup = setupWebEvoluDeps({ hasFocus: true });
+      setup.post({ type: "Waiting", workerId: firstWorkerId });
+
+      setup.post({ type: "Waiting", workerId: relaunchedWorkerId });
+
+      assertSame(setup.reloadApp.mock.callCount(), 1);
+      assertEqual(setup.builds.posted, [
+        { type: "BuildWaiting", workerId: firstWorkerId },
+      ]);
+    });
+
+    it("does not reload when its waiting worker connects", () => {
+      using setup = setupWebEvoluDeps({ hasFocus: true });
+      setup.post({ type: "Waiting", workerId: firstWorkerId });
+
+      setup.connect(firstWorkerId);
+
+      assertSame(setup.reloadApp.mock.callCount(), 0);
+      assertEqual(setup.builds.posted, [
+        { type: "BuildWaiting", workerId: firstWorkerId },
+        { type: "BuildWaitingRequest" },
+      ]);
+    });
   });
 
   describe("builds", () => {

@@ -169,12 +169,16 @@ export const createEvoluDeps = (
   ): void => {
     // WebKit can relaunch a SharedWorker without its state when the process
     // hosting it ends, and connect the tabs' existing ports to the new worker
-    // (https://bugs.webkit.org/show_bug.cgi?id=318873). Only then does a
-    // connected tab hear again that its worker waits or connected. The tab's
-    // state ended with the old worker, so it reloads at once.
+    // (https://bugs.webkit.org/show_bug.cgi?id=318873). A worker tells a tab
+    // at most once that it waits and once that it connected, both with its own
+    // id, so only then does a tab hear from a worker with another id. The
+    // tab's state, including the databases it asked for while it waited, ended
+    // with the old worker, so it reloads at once.
+    const knownWorkerId = connectedWorkerId ?? waitingWorkerId;
     if (
-      connectedWorkerId !== null &&
-      (message.type === "Waiting" || message.type === "Connected")
+      (message.type === "Waiting" || message.type === "Connected") &&
+      knownWorkerId !== null &&
+      message.workerId !== knownWorkerId
     ) {
       reloadThisApp();
       return;
