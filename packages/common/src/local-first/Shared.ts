@@ -51,7 +51,9 @@
  * tab whose reload loads the running build again, for example because another
  * Evolu app shares the origin or a cache still serves the old build. A worker
  * still waiting after three seconds reports {@link OtherBuildRunningError} to
- * its tabs.
+ * its tabs. Every build broadcasts console entries and errors on
+ * {@link consoleEntryOrErrorBroadcastChannelName}, so a waiting tab also prints
+ * the running build's output and reports its errors as its own `evoluError`.
  *
  * The tabs of one worker elect the host of its DbWorkers among themselves, with
  * a lock scoped to the worker, so a tab of another worker never hosts them.
