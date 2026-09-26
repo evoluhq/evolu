@@ -5624,6 +5624,74 @@ describe("clock drift quarantine", () => {
     );
   }
 
+  it("releases drift quarantine under last-writer-wins against edits applied before release", async () => {
+    await using dbSetup = await setupDb();
+    const rowId = dbSetup.createId();
+    const nameAt = (millis: number, name: string, isInsert = false) => ({
+      timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
+      change: DbChange.orThrow({
+        table: "testTable",
+        id: rowId,
+        values: { name },
+        isInsert,
+        isDelete: false,
+      }),
+    });
+    const readName = (setup: DbSetup) =>
+      setup.sqlite.exec(sql`select name from testTable;`).rows;
+    const readQuarantinedTimestamps = (setup: DbSetup) =>
+      setup.sqlite.exec(sql`
+        select distinct timestamp from evolu_message_quarantine;
+      `).rows.length;
+
+    {
+      await using setup = await setupDbWorker({ dbSetup });
+      // At 0, "earlier" applies and "released", 600 s ahead, is quarantined.
+      await postRequest(
+        setup,
+        setupApplySyncRequest(
+          await createBroadcastProtocolMessage([
+            nameAt(1000, "earlier", true),
+            nameAt(600_000, "released"),
+          ]),
+        ),
+      );
+      assertEqual(readName(setup), [{ name: "earlier" }]);
+
+      // At 700 s, without a restart, "later" at 900 s is within the limit and
+      // applies, while "last" at 1500 s is quarantined.
+      setup.time.advance(Millis.orThrow(700_000));
+      await postRequest(
+        setup,
+        setupApplySyncRequest(
+          await createBroadcastProtocolMessage([
+            nameAt(900_000, "later"),
+            nameAt(1_500_000, "last"),
+          ]),
+        ),
+      );
+      assertEqual(readName(setup), [{ name: "later" }]);
+      assertSame(readQuarantinedTimestamps(setup), 2);
+    }
+
+    dbSetup.time.advance(Millis.orThrow(100_000));
+    {
+      // At 800 s, "released" is within the limit and is released, but "later"
+      // is newer, so it keeps the column. "last" is still ahead.
+      await using restarted = await setupDbWorker({ dbSetup });
+      assertEqual(readName(restarted), [{ name: "later" }]);
+      assertSame(readQuarantinedTimestamps(restarted), 1);
+    }
+
+    dbSetup.time.advance(Millis.orThrow(500_000));
+    {
+      // At 1300 s, "last" is released and, being newest, wins.
+      await using restarted = await setupDbWorker({ dbSetup });
+      assertEqual(readName(restarted), [{ name: "last" }]);
+      assertSame(readQuarantinedTimestamps(restarted), 0);
+    }
+  });
+
   it("uses one startup time sample to release the exact drift boundary and retain the next timestamp", async () => {
     await using dbSetup = await setupDb();
     {

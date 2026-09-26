@@ -60,7 +60,10 @@ import {
   type SqliteDriverOptions,
   type SqliteDriver,
 } from "../../../../packages/common/src/Sqlite.ts";
-import { testCreateRun } from "../../../../packages/common/src/Task.ts";
+import {
+  testCreateDeps,
+  testCreateRun,
+} from "../../../../packages/common/src/Task.ts";
 import {
   Millis,
   millisToDateIso,
@@ -133,10 +136,17 @@ describe("Evolu integration", () => {
     time,
     createSqliteDriver,
     createWebSocket = testCreateWebSocket({ throwOnCreate: true }),
+    seed,
   }: {
     time?: TestTime;
     createSqliteDriver?: CreateSqliteDriver;
     createWebSocket?: CreateWebSocket;
+    /**
+     * Seeds the DbWorker's randomness, which creates the database's node ID.
+     * Devices of one owner need different seeds, because devices sharing a node
+     * ID act as a copied database and can silently lose changes.
+     */
+    seed?: string;
   } = {}) => {
     await using disposer = new AsyncDisposableStack();
 
@@ -174,6 +184,9 @@ describe("Evolu integration", () => {
 
     const workerRun = disposer.use(
       testCreateRun({
+        ...(seed !== undefined && {
+          randomBytes: testCreateDeps({ seed }).randomBytes,
+        }),
         consoleStoreOutputEntry: consoleStoreOutput.entry,
         createBroadcastChannel,
         createMessagePort,
@@ -281,11 +294,11 @@ describe("Evolu integration", () => {
   };
 
   /** One SharedWorker observing its relay frames and native socket cleanup. */
-  const setupDevice = async (
-    options: {
-      createSqliteDriver?: CreateSqliteDriver;
-    } = {},
-  ) => {
+  const setupDevice = async (options: {
+    createSqliteDriver?: CreateSqliteDriver;
+    /** Distinct per device, so each device's database has its own node ID. */
+    seed: string;
+  }) => {
     let constructedCount = 0;
     let closedCount = 0;
     let onAllClosed: () => void = constVoid;
@@ -643,7 +656,7 @@ describe("Evolu integration", () => {
     });
 
     // The first device stores its change on relay A only.
-    await using firstDevice = await setupDevice();
+    await using firstDevice = await setupDevice({ seed: "first" });
     await using first = await firstDevice.setup.run.ok(
       firstDevice.setup.createIntegrationEvolu,
     );
@@ -674,7 +687,7 @@ describe("Evolu integration", () => {
 
     // A second device with an empty database learns the change from relay A
     // and reconciles it with relay B without a reconnect or requestSync.
-    await using secondDevice = await setupDevice();
+    await using secondDevice = await setupDevice({ seed: "second" });
     const propagated = Promise.withResolvers<void>();
     secondDevice.setOnMessage(() => {
       if (relayB.getTimestamps().length === localTimestamps.length)
@@ -707,6 +720,7 @@ describe("Evolu integration", () => {
     });
     const tenantDriversByName = new Map<Name, SqliteDriver>();
     await using device = await setupDevice({
+      seed: "device",
       createSqliteDriver: (name) => async (run) => {
         const result = await run(testCreateSqliteDep.createSqliteDriver(name));
         if (result.ok) tenantDriversByName.set(name, result.value);
@@ -839,6 +853,7 @@ describe("Evolu integration", () => {
       }
     };
     await using device = await setupDevice({
+      seed: "device",
       createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
     });
     using states = createBroadcastChannel<SyncState>(
@@ -936,6 +951,7 @@ describe("Evolu integration", () => {
       return quota.promise;
     });
     await using device = await setupDevice({
+      seed: "device",
       createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
     });
     const createTenant = (appName: string) =>

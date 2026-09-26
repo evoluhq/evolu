@@ -5,7 +5,6 @@ import {
   assertFalse,
   assertNotSame,
   assertOk,
-  assertSame,
   assertThrowsInstanceOf,
   assertTrue,
 } from "../Assert.ts";
@@ -13,8 +12,7 @@ import { increment } from "../Number.ts";
 import { orderNumber } from "../Order.ts";
 import type { Result } from "../Result.ts";
 import { testCreateDeps } from "../Task.ts";
-import type { TimeDep } from "../Time.ts";
-import { maxMillis, Millis, minMillis, testCreateTime } from "../Time.ts";
+import { maxMillis, Millis, minMillis } from "../Time.ts";
 import { assertType } from "../Type.ts";
 import type {
   Timestamp,
@@ -174,19 +172,13 @@ describe("isTimestampBeyondMaxDrift", () => {
   });
 });
 
-const deps0: TimeDep & TimestampConfigDep = {
+const config: TimestampConfigDep = {
   timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-  time: testCreateTime({ startAt: minMillis }),
-};
-
-const deps1: TimeDep & TimestampConfigDep = {
-  timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-  time: testCreateTime({ startAt: (minMillis + 1) as Millis }),
 };
 
 describe("sendTimestamp", () => {
   it("sends monotonically with a monotonic clock", () => {
-    assertOk(sendTimestamp(deps1)(createTimestamp(), deps1.time.now()), {
+    assertOk(sendTimestamp(config)(createTimestamp(), makeMillis(1)), {
       counter: 0,
       millis: 1,
       nodeId: "0000000000000000",
@@ -194,7 +186,7 @@ describe("sendTimestamp", () => {
   });
 
   it("sends monotonically with a stuttering clock", () => {
-    assertOk(sendTimestamp(deps0)(createTimestamp(), deps0.time.now()), {
+    assertOk(sendTimestamp(config)(createTimestamp(), minMillis), {
       counter: 1,
       millis: 0,
       nodeId: "0000000000000000",
@@ -203,9 +195,9 @@ describe("sendTimestamp", () => {
 
   it("sends monotonically with a regressing clock", () => {
     assertOk(
-      sendTimestamp(deps0)(
+      sendTimestamp(config)(
         createTimestamp({ millis: makeMillis(minMillis + 1) }),
-        deps0.time.now(),
+        minMillis,
       ),
       {
         counter: 1,
@@ -216,35 +208,27 @@ describe("sendTimestamp", () => {
   });
 
   it("continues past a full counter with fixed wall time", () => {
-    const deps = {
-      time: testCreateTime(),
-      timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-    };
     let timestamp = createTimestamp();
     for (let i = 0; i <= maxCounter; i++) {
-      const next = sendTimestamp(deps)(timestamp, deps.time.now());
+      const next = sendTimestamp(config)(timestamp, minMillis);
       assertOk(next);
       timestamp = next.value;
     }
     assertEqual(timestamp, createTimestamp({ millis: makeMillis(1) }));
     assertOk(
-      sendTimestamp(deps)(timestamp, deps.time.now()),
+      sendTimestamp(config)(timestamp, minMillis),
       createTimestamp({ millis: makeMillis(1), counter: Counter.orThrow(1) }),
     );
   });
 
   it("continues past a full counter while the clock is ahead of advancing wall time", () => {
-    // Wall time advances by one millisecond per read, while the clock stays two
+    // Wall time advances by one millisecond per send, while the clock stays two
     // minutes ahead, as after receiving a timestamp from a fast peer. Every
     // send keeps the pinned millis, so the counter alone must carry ordering.
-    const deps = {
-      time: testCreateTime({ autoIncrement: "sync" }),
-      timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-    };
     const pinnedMillis = makeMillis(2 * 60 * 1000);
     let timestamp = createTimestamp({ millis: pinnedMillis });
     for (let i = 0; i <= maxCounter; i++) {
-      const next = sendTimestamp(deps)(timestamp, deps.time.now());
+      const next = sendTimestamp(config)(timestamp, makeMillis(i));
       assertOk(next);
       assertEqual(
         orderTimestampBytes(
@@ -260,16 +244,15 @@ describe("sendTimestamp", () => {
       timestamp,
       createTimestamp({ millis: makeMillis(pinnedMillis + 1) }),
     );
-    assertEqual(deps.time.now(), makeMillis(maxCounter + 1));
   });
 
   it("returns TimestampDriftError for an ahead local clock", () => {
     assertErr(
-      sendTimestamp(deps0)(
+      sendTimestamp(config)(
         createTimestamp({
           millis: makeMillis(minMillis + defaultTimestampMaxDrift + 1),
         }),
-        deps0.time.now(),
+        minMillis,
       ),
       {
         type: "TimestampDriftError",
@@ -301,10 +284,10 @@ describe("receiveTimestamp", () => {
 
   it("uses a wall clock later than both timestamps", () => {
     assertOk(
-      receiveTimestamp(deps1)(
+      receiveTimestamp(config)(
         makeNode1Timestamp(),
         makeNode2Timestamp(),
-        deps1.time.now(),
+        makeMillis(1),
       ),
       {
         counter: 0,
@@ -317,10 +300,10 @@ describe("receiveTimestamp", () => {
   describe("wall clock is behind", () => {
     it("increments the maximum counter when millis are equal", () => {
       assertOk(
-        receiveTimestamp(deps1)(
+        receiveTimestamp(config)(
           makeNode1Timestamp(1, 0),
           makeNode2Timestamp(1, 1),
-          deps1.time.now(),
+          makeMillis(1),
         ),
         {
           counter: 2,
@@ -330,10 +313,10 @@ describe("receiveTimestamp", () => {
       );
 
       assertOk(
-        receiveTimestamp(deps0)(
+        receiveTimestamp(config)(
           makeNode1Timestamp(1, 1),
           makeNode2Timestamp(1, 0),
-          deps0.time.now(),
+          minMillis,
         ),
         {
           counter: 2,
@@ -345,10 +328,10 @@ describe("receiveTimestamp", () => {
 
     it("increments the counter when local millis is later", () => {
       assertOk(
-        receiveTimestamp(deps0)(
+        receiveTimestamp(config)(
           makeNode1Timestamp(2),
           makeNode2Timestamp(1),
-          deps0.time.now(),
+          minMillis,
         ),
         {
           counter: 1,
@@ -360,10 +343,10 @@ describe("receiveTimestamp", () => {
 
     it("increments the counter when remote millis is later", () => {
       assertOk(
-        receiveTimestamp(deps0)(
+        receiveTimestamp(config)(
           makeNode1Timestamp(1),
           makeNode2Timestamp(2),
-          deps0.time.now(),
+          minMillis,
         ),
         {
           counter: 1,
@@ -375,12 +358,12 @@ describe("receiveTimestamp", () => {
 
     it("returns local drift when an accepted remote timestamp leaves the clock ahead", () => {
       assertErr(
-        receiveTimestamp(deps0)(
+        receiveTimestamp(config)(
           createTimestamp({
             millis: makeMillis(minMillis + defaultTimestampMaxDrift + 1),
           }),
           makeNode2Timestamp(),
-          deps0.time.now(),
+          minMillis,
         ),
         {
           type: "TimestampDriftError",
@@ -395,16 +378,12 @@ describe("receiveTimestamp", () => {
     });
 
     it("rejects remote drift without a separate caller check", () => {
-      const deps = {
-        time: testCreateTime(),
-        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-      };
       const remote = createTimestamp({
         millis: makeMillis(minMillis + defaultTimestampMaxDrift + 1),
       });
       const local = makeNode2Timestamp();
       const before = { ...local };
-      assertErr(receiveTimestamp(deps)(local, remote, deps.time.now()), {
+      assertErr(receiveTimestamp(config)(local, remote, minMillis), {
         type: "TimestampDriftError",
         timestamp: remote,
         cause: "remote",
@@ -414,16 +393,12 @@ describe("receiveTimestamp", () => {
     });
 
     it("rejects remote drift before arithmetic at the range ceiling", () => {
-      const deps = {
-        time: testCreateTime(),
-        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-      };
       const remote = createTimestamp({
         millis: maxMillis,
         counter: maxCounter,
       });
       assertErr(
-        receiveTimestamp(deps)(createTimestamp(), remote, deps.time.now()),
+        receiveTimestamp(config)(createTimestamp(), remote, minMillis),
         {
           type: "TimestampDriftError",
           timestamp: remote,
@@ -435,18 +410,16 @@ describe("receiveTimestamp", () => {
 
     it("uses the configured drift boundary, including a zero limit", () => {
       for (const maxDrift of [0, 10]) {
-        const deps = {
-          time: testCreateTime({ startAt: makeMillis(100) }),
-          timestampConfig: { maxDrift },
-        };
+        const deps = { timestampConfig: { maxDrift } };
+        const now = makeMillis(100);
         const local = makeNode1Timestamp();
         const accepted = makeNode2Timestamp(100 + maxDrift);
         assertOk(
-          receiveTimestamp(deps)(local, accepted, deps.time.now()),
+          receiveTimestamp(deps)(local, accepted, now),
           makeNode1Timestamp(100 + maxDrift, 1),
         );
         const rejected = makeNode2Timestamp(101 + maxDrift);
-        assertErr(receiveTimestamp(deps)(local, rejected, deps.time.now()), {
+        assertErr(receiveTimestamp(deps)(local, rejected, now), {
           type: "TimestampDriftError",
           timestamp: rejected,
           cause: "remote",
@@ -475,13 +448,9 @@ describe("receiveTimestamp", () => {
       ["later remote millis", 0, 1, 0, maxCounter],
     ] as const) {
       it(`rolls over for ${label}`, () => {
-        const deps = {
-          timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-          time: testCreateTime(),
-        };
         const local = makeNode1Timestamp(localMillis, localCounter);
         const remote = makeNode2Timestamp(remoteMillis, remoteCounter);
-        const result = receiveTimestamp(deps)(local, remote, deps.time.now());
+        const result = receiveTimestamp(config)(local, remote, minMillis);
         assertOk(result, makeNode1Timestamp(2, 0));
         const bytes = timestampToTimestampBytes(result.value);
         assertEqual(
@@ -495,15 +464,11 @@ describe("receiveTimestamp", () => {
       });
     }
     it("resets exhausted counters when wall time is newer", () => {
-      const deps = {
-        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-        time: testCreateTime({ startAt: makeMillis(2) }),
-      };
       assertOk(
-        receiveTimestamp(deps)(
+        receiveTimestamp(config)(
           makeNode1Timestamp(1, maxCounter),
           makeNode2Timestamp(1, maxCounter),
-          deps.time.now(),
+          makeMillis(2),
         ),
         makeNode1Timestamp(2, 0),
       );
@@ -513,28 +478,20 @@ describe("receiveTimestamp", () => {
 
 describe("timestamp rollover boundaries", () => {
   for (const operation of ["send", "receive"] as const) {
-    const nextTimestamp = (
-      deps: TimeDep & TimestampConfigDep,
-      timestamp: Timestamp,
-    ) =>
+    const nextTimestamp = (timestamp: Timestamp, now = minMillis) =>
       operation === "send"
-        ? sendTimestamp(deps)(timestamp, deps.time.now())
-        : receiveTimestamp(deps)(timestamp, timestamp, deps.time.now());
+        ? sendTimestamp(config)(timestamp, now)
+        : receiveTimestamp(config)(timestamp, timestamp, now);
 
     it(`${operation} uses the last counter before rolling over`, () => {
-      const deps = {
-        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-        time: testCreateTime(),
-      };
       const lastCounter = createTimestamp({ counter: maxCounter });
       assertOk(
         nextTimestamp(
-          deps,
           createTimestamp({ counter: Counter.orThrow(maxCounter - 1) }),
         ),
         lastCounter,
       );
-      const result = nextTimestamp(deps, lastCounter);
+      const result = nextTimestamp(lastCounter);
       assertOk(result, createTimestamp({ millis: makeMillis(1) }));
       assertEqual(
         timestampBytesToTimestamp(timestampToTimestampBytes(result.value)),
@@ -543,13 +500,8 @@ describe("timestamp rollover boundaries", () => {
     });
 
     it(`${operation} permits rollover at the drift limit and rejects the next millisecond`, () => {
-      const deps = {
-        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-        time: testCreateTime(),
-      };
       assertOk(
         nextTimestamp(
-          deps,
           createTimestamp({
             millis: makeMillis(defaultTimestampMaxDrift - 1),
             counter: maxCounter,
@@ -559,7 +511,6 @@ describe("timestamp rollover boundaries", () => {
       );
       assertErr(
         nextTimestamp(
-          deps,
           createTimestamp({
             millis: makeMillis(defaultTimestampMaxDrift),
             counter: maxCounter,
@@ -577,40 +528,23 @@ describe("timestamp rollover boundaries", () => {
     });
 
     it(`${operation} permits the maximum millis and throws on rollover beyond it`, () => {
-      const deps = {
-        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-        time: testCreateTime({ startAt: makeMillis(maxMillis - 1) }),
-      };
+      const now = makeMillis(maxMillis - 1);
       assertOk(
         nextTimestamp(
-          deps,
           createTimestamp({
             millis: makeMillis(maxMillis - 1),
             counter: maxCounter,
           }),
+          now,
         ),
         createTimestamp({ millis: maxMillis }),
       );
       assertThrowsInstanceOf(() => {
         nextTimestamp(
-          deps,
           createTimestamp({ millis: maxMillis, counter: maxCounter }),
+          now,
         );
       }, Error);
-    });
-
-    it(`${operation} checks rollover against the captured time`, () => {
-      const deps = {
-        timestampConfig: { maxDrift: 0 },
-        time: testCreateTime({ autoIncrement: "sync" }),
-      };
-      assertErr(nextTimestamp(deps, createTimestamp({ counter: maxCounter })), {
-        type: "TimestampDriftError",
-        timestamp: createTimestamp({ millis: makeMillis(1) }),
-        cause: "local",
-        now: minMillis,
-      });
-      assertSame(deps.time.now(), 1);
     });
   }
 
