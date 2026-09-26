@@ -1,5 +1,283 @@
 # @evolu/web
 
+## 3.2.0
+
+### Minor Changes
+
+- 0624d35: Fixed apps that stayed blank where the browser offers no storage
+
+  Safari's Private Browsing offers no OPFS, so Evolu could not open its database
+  there, and the app waited forever without reporting an error. Evolu now checks
+  storage once when its shared worker starts, and without it keeps every database
+  in memory. Data synced with a relay comes back, as on a new device, and nothing
+  stays on the device afterwards, which suits checking your app on a borrowed
+  phone. A persistent database the browser cannot reach right now is left
+  untouched. Data that exists only locally, or has not synced yet, is lost when
+  the tab hosting the database closes, even while other tabs stay open.
+
+  The new `onStorageUnavailable` option of the web and React web
+  `createEvoluDeps` tells the app, so it can tell the user, for example "Nothing
+  from this session is kept on this device."
+
+  A custom platform adapter must handle the new `StorageUnavailable` shared
+  worker message in an exhaustive switch, and a platform that can lack persistent
+  storage can give the shared worker `isPersistentStorageAvailable`.
+
+- e7d27be: Fixed a new app version not working while an older one was open in another tab
+
+  After a deploy that updated Evolu, opening the app while an older version was
+  open in another tab could leave the new tab unresponsive.
+
+  Now only one version of an app uses the local database at a time. When a new
+  version opens, tabs of the old version reload by themselves. A tab the user is
+  in reloads when they leave it. A reload loses unsaved UI state, so keep drafts
+  in local-only tables.
+
+  If an old version keeps running, for example in a tab of an Evolu release
+  before this one, the new tab waits and reports the new `OtherBuildRunningError`.
+  Apps can show a message asking the user to close the app's other tabs. The
+  error clears by itself when the wait ends. An exhaustive `switch` over
+  `EvoluError` needs a case for it.
+
+  ```ts
+  import { assertEqual, type EvoluError } from "@evolu/common";
+
+  const isOtherBuildRunning = (error: EvoluError | null): boolean =>
+    error?.type === "OtherBuildRunningError";
+
+  assertEqual(isOtherBuildRunning({ type: "OtherBuildRunningError" }), true);
+  ```
+
+  The web `createEvoluDeps` accepts a custom `reloadApp`, for example to save
+  state first; it must still reload the page, because the other build waits until
+  this tab reloads or closes. The default one now reloads the current page instead
+  of loading `/`. The React web
+  `createEvoluDeps` now accepts the same options as the web one, including
+  `onSharedWorkerUnsupported`.
+
+  Update `@evolu/web` together with `@evolu/common`; with an older `@evolu/web`,
+  queries never complete. A custom platform adapter must forward the new
+  `Connected` and `Error` shared worker messages and handle the new `Waiting`
+  message. One that runs the shared worker in-process must connect every
+  `createEvoluDeps` call in a JS runtime to one worker, as React Native does,
+  because the worker holds the build lock until it is disposed. On React Native,
+  Evolu keeps working after Fast Refresh recreates its dependencies.
+
+### Patch Changes
+
+- e45a549: Fixed tabs that stopped working after Safari relaunched Evolu's shared worker
+
+  When the process hosting Evolu's shared worker ends, WebKit can start the
+  worker again without its state and connect the open tabs to it
+  ([WebKit bug 318873](https://bugs.webkit.org/show_bug.cgi?id=318873)). Those
+  tabs stopped working until the user reloaded them. A tab now reloads by itself
+  when a relaunched worker contacts it, including a tab that was still waiting
+  for another build.
+
+- fdac39e: Added sync state
+
+  `createEvoluDeps` exposes `deps.syncState`, a `ReadonlyStore<SyncState | null>`
+  beside `evoluError`, shared by every Evolu instance and kept current by the
+  shared worker; a tab never receives snapshots from a worker of another app
+  version. A snapshot lists every transport with an opaque id, a label that is
+  the URL without its query, the ready state, and the last open, close, and error
+  times; and every database with its owner registrations, each marked writable or
+  readonly, with the transports claimed for the owner and, for a writable owner,
+  one route per transport saying whether the database is reconciled with that
+  relay: `complete`, `completeAt`, `lastSentAt`, `lastReceivedAt`, and the last
+  `error`, whose `type` is a protocol error, the original storage write
+  rejection, `WriteFailed`, or `SyncFailed`. Local-only writes leave completed
+  routes complete; `isLocalOnlyTable` tells whether a table is local-only.
+
+  A failed route retries at most once by itself before it completes again;
+  further retries wait for `requestSync` or a reconnect.
+
+  `syncStateToOwnerSyncStates` folds the routes into one `initial`, `syncing`,
+  `synced`, `offline`, or `error` state per database and owner with the last
+  synced time, the newest error, and each relay's transport, route, and own
+  `syncing`, `synced`, `offline`, or `error` status. The completion rules are
+  documented in the Shared module. The
+  [Sync playground](https://www.evolu.dev/playgrounds/sync) shows the state of
+  two relays while one goes down and catches up.
+
+  ```ts
+  import {
+    assertEqual,
+    createId,
+    createStore,
+    testCreateDeps,
+  } from "@evolu/common";
+  import type { SyncState, SyncStateDep } from "@evolu/common/local-first";
+
+  const openRelayLabels = (deps: SyncStateDep): ReadonlyArray<string> =>
+    (deps.syncState.get()?.transports ?? [])
+      .filter(({ readyState }) => readyState === "open")
+      .map(({ label }) => label);
+
+  using syncState = createStore<SyncState | null>(null);
+  assertEqual(openRelayLabels({ syncState }), []);
+
+  const deps = testCreateDeps();
+  syncState.set({
+    transports: [
+      {
+        id: createId<"SyncTransport">(deps),
+        label: "wss://relay.example",
+        readyState: "open",
+        openedAt: null,
+        closedAt: null,
+        error: null,
+      },
+    ],
+    tenants: [],
+  });
+  assertEqual(openRelayLabels({ syncState }), ["wss://relay.example"]);
+  ```
+
+- a0c716a: Fixed tabs that stalled or stopped saving after Safari's back-forward cache
+
+  Safari keeps a page the user navigates away from frozen in its back-forward
+  cache. When that page's tab hosted the database, the app's other tabs, and any
+  tab opened later, waited until the page was restored or dropped. When the user
+  went back, the page looked normal but silently dropped every write. A page
+  entering the back-forward cache now stops the database workers it hosts, so
+  another tab takes the database over as if the tab had closed, and a page
+  restored from the cache reloads.
+
+  As when a tab closes, data kept only in memory, as in Safari's Private
+  Browsing, is lost when the tab hosting the database navigates away. A cached
+  page of an older build still keeps a newer build waiting until Safari drops the
+  page or the user goes back to it.
+
+- d17ce92: Fixed losing or failing to open a database right after the tab hosting it closed
+
+  When the tab hosting a database closed or crashed, the browser could hand the
+  database to another tab before it released the database files; Safari
+  releases them in no set order. Opening the database there failed, and
+  SQLite's cleanup after the failure tried to delete the database directory. The
+  still-open files usually prevented that, but a file released in between let it
+  delete the device's local data. Evolu now waits
+  until every database file can be opened before it opens the database, and
+  logs a warning when the wait lasts longer than five seconds.
+
+- ecd1c0d: Fixed defect reports that showed only "[object Object]"
+
+  The browser and React Native `createRun` passed a panic's `AbortError`, a plain
+  object, to the platform's error reporter, which shows it only as
+  "[object Object]" or similar. A worker's error reaches its page, including an
+  error tracker listening there, as that text alone, so when a database worker
+  failed, nothing said why. Both now report an `Error` from the new
+  `defectToError`: a panic reports its defect, and any other value that is not an
+  `Error` is described in one whose cause is what was reported. A `DOMException`,
+  which Chromium reports from a worker without its name or message, is described
+  with both.
+
+  A custom `reportDefect`, such as one passing defects to an error tracker, can
+  use `defectToError` too:
+
+  ```ts
+  import { assertSame, createRun, defectToError } from "@evolu/common";
+
+  const errors: Array<Error> = [];
+  await using run = createRun({
+    reportDefect: (reported) => {
+      errors.push(defectToError(reported));
+    },
+  });
+  const defect = new Error("boom");
+
+  run.panic(defect);
+
+  assertSame(errors[0], defect);
+  ```
+
+- ba8c493: Added database versioning with startup refusal
+
+  Evolu now records a database version, `dbVersion`, in its `evolu_version`
+  table instead of the unused `protocolVersion`, and converts existing databases
+  at startup. The version covers Evolu's internal storage format and how stored
+  data is interpreted. It is independent of the application schema, which still
+  evolves append-only, and of the network protocol version. This release supports
+  database version 2 and migrates older databases to it.
+
+  A database newer than the code supports appears when an older build opens data
+  a newer one migrated: after a deployment, for example when an older build is
+  loaded later from a cache, or after a downgrade, including installing an older
+  React Native build. Evolu refuses such a database before writing anything, and
+  every tab using it gets `UnsupportedDbVersionError` in `evoluError`, where it
+  stays for the lifetime of the dependencies. Queries and exports of that
+  database stay pending, and mutation `onComplete` callbacks do not run. The
+  `EvoluErrorDep` API docs describe when the refusal is reported again. Only code
+  from this release onward checks the version, so earlier releases are not
+  protected. Nothing produces a newer database yet; the first refusal can come
+  when a later release introduces version 3, so handle the error now.
+
+  On the web, a refused tab reloads once for each stored version, so it loads the
+  build the server now serves. The error is reported only when the reloaded build
+  refuses the database too, or when the tab has no session storage.
+
+  Apps should observe `evoluError` outside query-loading UI and show a blocking
+  message for `UnsupportedDbVersionError`, such as asking users to update the
+  app. An exhaustive `switch` over `EvoluError` needs a case for it.
+
+  ```ts
+  import { assertEqual, PositiveInt, type EvoluError } from "@evolu/common";
+
+  const describeError = (error: EvoluError): string => {
+    // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The default handles every other EvoluError.
+    switch (error.type) {
+      case "UnsupportedDbVersionError":
+        return "Your data requires a newer version of this app. Please update it.";
+      default:
+        return "Something went wrong.";
+    }
+  };
+
+  assertEqual(
+    describeError({
+      type: "UnsupportedDbVersionError",
+      storedVersion: PositiveInt.orThrow(3),
+      supportedVersion: PositiveInt.orThrow(2),
+    }),
+    "Your data requires a newer version of this app. Please update it.",
+  );
+  ```
+
+- Updated dependencies [f0101ca]
+- Updated dependencies [fdac39e]
+- Updated dependencies [ecbac00]
+- Updated dependencies [b506c9b]
+- Updated dependencies [fdac39e]
+- Updated dependencies [d2973b9]
+- Updated dependencies [b75abfa]
+- Updated dependencies [69b756c]
+- Updated dependencies [5a671b2]
+- Updated dependencies [e270e42]
+- Updated dependencies [ef320ff]
+- Updated dependencies [5a671b2]
+- Updated dependencies [09b1b5c]
+- Updated dependencies [fdac39e]
+- Updated dependencies [0770038]
+- Updated dependencies [e270e42]
+- Updated dependencies [f52d66b]
+- Updated dependencies [d2973b9]
+- Updated dependencies [fdac39e]
+- Updated dependencies [11ccc28]
+- Updated dependencies [2e139eb]
+- Updated dependencies [0624d35]
+- Updated dependencies [ecd1c0d]
+- Updated dependencies [568358b]
+- Updated dependencies [237fd7f]
+- Updated dependencies [e7d27be]
+- Updated dependencies [2e139eb]
+- Updated dependencies [daf6295]
+- Updated dependencies [d2973b9]
+- Updated dependencies [ba8c493]
+- Updated dependencies [8e23edb]
+- Updated dependencies [fdac39e]
+- Updated dependencies [cf68cee]
+  - @evolu/common@8.11.0
+
 ## 3.1.2
 
 ### Patch Changes
