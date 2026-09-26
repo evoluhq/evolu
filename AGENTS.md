@@ -40,9 +40,10 @@ scripts with `node script.mts`. Run GitHub CLI commands with network access.
   to affected files or packages. Repository-wide type-checking is allowed because
   it is fast. Do not run full test suites
   merely because a change touches exports, multiple packages, or infrastructure.
-- Do not run `pnpm verify` unless the user explicitly requests it. Full verification
-  belongs to the user's pre-commit workflow. Do not reproduce it by running all
-  its component commands separately.
+- Do not run `pnpm verify` unless the user explicitly requests it. Full
+  verification runs in CI, on pull requests and on every push to main, not
+  locally before each commit or push. Do not reproduce it by running all its
+  component commands separately.
 - For implementation changes, use `pnpm test:node "<test-file-or-glob>"`; quote
   globs. For Vitest suites, select the owning project and relevant test files
   from its configuration and follow `test/README.md`.

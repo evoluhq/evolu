@@ -112,4 +112,4 @@ Release
 
 Verify
 
-- `pnpm verify` - Run all checks (build, lint, test) before commit
+- `pnpm verify` - Run all checks (build, lint, test) locally; CI runs them on pull requests and pushes to main
