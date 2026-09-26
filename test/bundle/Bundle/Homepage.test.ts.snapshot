@@ -6,8 +6,8 @@ exports[`Homepage bundle sizes > bundle sizes 1`] = `
       "brotliSizeInBytes": 10707
     },
     "vite@8.2.2": {
-      "rawSizeInBytes": 28726,
-      "brotliSizeInBytes": 9167
+      "rawSizeInBytes": 28722,
+      "brotliSizeInBytes": 9162
     }
   },
   "Type": {
