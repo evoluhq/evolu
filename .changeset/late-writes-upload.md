@@ -2,7 +2,7 @@
 "@evolu/common": patch
 ---
 
-Uploaded writes through the database's owner registrations
+Fixed writes waiting for the next synchronization round to upload
 
 A mutation was uploaded only through the writing Evolu instance's own writable
 registrations. A write from an instance that had not registered the owner as

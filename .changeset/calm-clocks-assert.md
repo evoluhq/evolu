@@ -4,11 +4,9 @@
 
 Removed `TimestampTimeOutOfRangeError`
 
-The error reported a timestamp past the last time Evolu timestamps can
-represent, in August 10889. Evolu checks every received timestamp against the
-system clock before using it, so only a system clock set to within minutes of
-that date, or a tampered database, could reach it. Evolu now throws there, as
-it already does for a system clock past that date.
+The error stood for a system clock past the last time Evolu timestamps can
+represent, in August 10889, but `Time.now` already throws for such a clock, so
+Evolu never reported it.
 
 `TimestampTimeOutOfRangeError` is no longer an `EvoluError` or a
 `TimestampError`, which is now only `TimestampDriftError`. Remove any

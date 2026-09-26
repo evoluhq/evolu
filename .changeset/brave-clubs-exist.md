@@ -4,7 +4,7 @@
 
 Fixed local synchronization between databases
 
-Named databases with writable registrations for the same owner now receive each other's mutation and continuation uploads locally, including while relay sockets are closed or a relay's quota check is pending. Large mutation batches are split into complete frames, and duplicate receipts do not start extra relay rounds.
+Named databases with writable registrations for the same owner now receive each other's mutation and continuation uploads locally, including while relay sockets are closed or a relay's quota check is pending. Large mutation batches are split into complete frames.
 
 Added `createProtocolBroadcastMessagesFromCrdtMessages` for producing all broadcast frames from a mutation batch. Client protocol responses can also include a `broadcast` companion containing their uploaded messages.
 

@@ -15,3 +15,24 @@ passed through unchanged, so reading it is unaffected; a handler annotated
 `(event: CloseEvent) => ...` must drop that annotation or narrow the value
 itself. This applies to `onClose`, `shouldRetryOnClose`, and
 `WebSocketConnectionCloseError`.
+
+```ts
+import {
+  assertEqual,
+  type WebSocketCloseEvent,
+  type WebSocketOptions,
+} from "@evolu/common";
+
+const closeCodes: Array<number> = [];
+const options: WebSocketOptions = {
+  onClose: (event: WebSocketCloseEvent) => {
+    closeCodes.push(event.code);
+  },
+  shouldRetryOnClose: (event) => event.code !== 1000,
+};
+
+const event: WebSocketCloseEvent = { code: 1006, reason: "", wasClean: false };
+options.onClose?.(event);
+assertEqual(closeCodes, [1006]);
+assertEqual(options.shouldRetryOnClose?.(event), true);
+```

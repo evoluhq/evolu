@@ -4,37 +4,18 @@
 
 Added createResettableResource
 
-`createResettableResource` holds one resource created by a Task and resets it
-on request: `reset` disposes the current resource, then runs `create` again,
-and `get` returns the current one, or `undefined` while there is none.
-Consumers keep the same resettable object and read each replacement through `get`.
-A reset takes the resource that misbehaved and runs only while that resource is
-still current or none is, so every observer of one dead resource shares one
-reset, however late its request arrives. An observed `undefined`, as `get`
-returns during a reset, retries an aborted creation and skips once a
-replacement exists.
+`createResettableResource` holds one resource created by a Task and replaces it
+in place: `reset(observed)` disposes the current resource and runs `create`
+again, and `get` returns the current resource, or `undefined` while there is
+none. Consumers keep the same object across replacements. A reset is skipped
+when a resource other than `observed` is current, so every observer of one
+failed resource shares a single reset.
 
-The `create` Task must not fail, because the previous resource is already
-disposed when it runs. It must return a live, independently owned resource with
-a fresh object identity, never one returned earlier, because a reset decides by
-identity whether its observation is stale. Returning a reused identity is a
-programmer error.
-
-Resets run on the Run the factory creates for the resource, so aborting the
-caller's Fiber does not cancel a started reset. Disposal aborts pending resets,
-and calling reset after disposal starts is a programmer error. If the caller
-aborts during initial creation, the factory waits for creation to settle,
-disposes any created resource, and returns the abort. Repeated disposal calls
-await the same cleanup and preserve any disposal failure. Undisposed resettable
-resources are tracked for development-time leak warnings.
-
-Exclusive replacement is the only policy this implements: the current resource
-is disposed before the next is created, so at most one exists and there is an
-observable gap with none. The resource's own API must model that gap, as a
-reconnecting connection models "connecting".
-
-Creation and disposal run under the reset's lock and must not await another
-reset of the same resource, because the lock is non-reentrant.
+At most one resource exists, so there is a gap with none while a reset runs;
+the resource's own API must model it, as a reconnecting connection models
+"connecting". `create` must not fail and must return a fresh object each time.
+The `ResettableResource` and `createResettableResource` API docs describe
+cancellation, disposal, and locking.
 
 ```ts
 import {

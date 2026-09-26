@@ -21,12 +21,26 @@ Apps can show a message asking the user to close the app's other tabs. The
 error clears by itself when the wait ends. An exhaustive `switch` over
 `EvoluError` needs a case for it.
 
-The web `createEvoluDeps` accepts a custom `reloadApp`, and the default one now
-reloads the current page instead of loading `/`. The React web
+```ts
+import { assertEqual, type EvoluError } from "@evolu/common";
+
+const isOtherBuildRunning = (error: EvoluError | null): boolean =>
+  error?.type === "OtherBuildRunningError";
+
+assertEqual(isOtherBuildRunning({ type: "OtherBuildRunningError" }), true);
+```
+
+The web `createEvoluDeps` accepts a custom `reloadApp`, for example to save
+state first; it must still reload the page, because the other build waits until
+this tab reloads or closes. The default one now reloads the current page instead
+of loading `/`. The React web
 `createEvoluDeps` now accepts the same options as the web one, including
 `onSharedWorkerUnsupported`.
 
 Update `@evolu/web` together with `@evolu/common`; with an older `@evolu/web`,
 queries never complete. A custom platform adapter must forward the new
-`Connected` message. On React Native, Evolu keeps working after Fast Refresh
-recreates its dependencies.
+`Connected` and `Error` shared worker messages and handle the new `Waiting`
+message. One that runs the shared worker in-process must connect every
+`createEvoluDeps` call in a JS runtime to one worker, as React Native does,
+because the worker holds the build lock until it is disposed. On React Native,
+Evolu keeps working after Fast Refresh recreates its dependencies.

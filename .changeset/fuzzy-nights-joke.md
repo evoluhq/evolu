@@ -28,13 +28,14 @@ is ahead.
 `TimestampDriftError` is no longer an `EvoluError`, so drift is not reported
 through the `evoluError` store. Remove any `case "TimestampDriftError"` from
 switches over `EvoluError`. An app that showed a clock warning for it now gets
-no error: after a device's clock that ran ahead is set back, the user's own
-changes are quarantined, and they do not appear until system time reaches
-their timestamps. To tell users about changes waiting on a clock, subscribe to
+no error: after a device's clock that ran ahead is set back by more than five
+minutes, the user's new changes are quarantined, and they appear only when the
+database worker starts with system time within five minutes of their
+timestamps. To tell users about changes waiting on a clock, subscribe to
 a drift-quarantine query as in the tested example on `QuarantineReason`, whose
 `origin` column tells the user's own changes from received ones.
 
-Databases at version 1 are migrated to version 2 at startup. The migration adds
+Existing databases are migrated at startup. The migration adds
 the quarantine columns `reason` (schema or timestamp drift), `origin` (local
 mutation or received message), and `quarantinedAt` (captured system time), plus
 the index that startup release reads. `createQuery` types the whole table;
@@ -45,16 +46,10 @@ this release can make that device diverge until system time passes their
 timestamps.
 
 Drift quarantine is released only when the database worker starts, once the
-message's timestamp is within the drift limit. Startup loads only drift
-timestamps within that limit. Unknown columns remain in schema quarantine until a
-schema update. Duplicate delivery does not release messages.
-Subscribed queries refresh when the database worker is replaced, and clocks
-remain monotonic across replacement and replay, including when an empty
-`memoryOnly` replacement reports an older clock.
-
-Local-only mutations avoid clock persistence. Duplicate deliveries skip message
-writes, and duplicate-only batches avoid rewriting owner usage. Clock persistence
-uses one guarded update, including on replay.
+message's timestamp is within the drift limit. Unknown columns remain in schema
+quarantine until a schema update. Duplicate delivery does not release messages.
+Subscribed queries refresh when the database worker is replaced, so changes
+released at its startup become visible.
 
 Recovery APIs for messages further ahead remain future work. Copied
 databases sharing an owner and node ID remain unsupported and can silently lose

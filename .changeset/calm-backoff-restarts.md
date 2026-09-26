@@ -21,3 +21,20 @@ since it is the schedule's cap and only the schedule knows it.
 The threshold is measured on a monotonic clock, so a system clock adjustment
 cannot make a connection look healthy or keep a healthy one from being
 recognized.
+
+```ts
+import {
+  assertEqual,
+  exponential,
+  jitter,
+  maxDelay,
+  type WebSocketOptions,
+} from "@evolu/common";
+
+// A schedule capped at one minute restarts after a one-minute connection.
+const options: WebSocketOptions = {
+  schedule: jitter("100%")(maxDelay("1m")(exponential("100ms"))),
+  healthyConnectionDuration: "1m",
+};
+assertEqual(options.healthyConnectionDuration, "1m");
+```

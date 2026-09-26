@@ -1,5 +1,5 @@
 ---
-"@evolu/react": patch
+"@evolu/react": minor
 ---
 
 Fixed useOwner registering the owner again on every render

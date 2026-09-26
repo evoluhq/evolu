@@ -8,7 +8,8 @@ Call `evolu.requestSync(ownerId)` after resolving a relay quota error to retry l
 stored changes. It requests a fresh reconciliation through the owner's active
 transports while preserving connections and subscriptions, including those shared
 by multiple instances or tabs. The call returns immediately; errors continue
-through the existing Evolu error store.
+through the existing Evolu error store. It acts only on an owner with a
+writable registration in this database; other owner IDs are ignored.
 
 Requests skip sync-message creation while all of the owner's transports are
 closed. Synchronization starts automatically when a transport opens.

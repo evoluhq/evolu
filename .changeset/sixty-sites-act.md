@@ -2,12 +2,11 @@
 "@evolu/common": patch
 ---
 
-Made database writes safe to replay after leader replacement
+Fixed writes stored twice after the tab hosting the database closed
 
-Pending writes use the same clock and time inputs across DbWorker replacement,
-preventing duplicate CRDT changes and changes to local-only system columns.
-SharedWorker ignores stale attempts and adopts the committed clock even when
-the originating instance has closed.
-
-Queued writes remain in memory. This change does not add worker-crash detection
-or completion for existing error paths that leave requests pending.
+When the tab hosting the database closed or crashed while a write was in
+progress, Evolu retried the write in another tab with new timestamps. A write
+that had already been saved was then stored and synced again as a second change,
+and a retried write to a local-only table rewrote its `createdAt` or `updatedAt`
+with a later time. A retried write now reuses the timestamps and time of its
+first attempt, so it is stored once.

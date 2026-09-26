@@ -39,18 +39,20 @@ or `schedule` that switches exhaustively over that union must handle it.
 Reconnecting carries no close event, because nothing observed one to report.
 
 `testCreateWebSocket` gained `close`, which closes the newest socket for a URL
-and reports a close event with code 1006 unless given other fields, `error`,
-which reports a WebSocket error, and `reconnect`, with `reconnectedUrls`
-recording the URLs it reconnected. As in `createWebSocket`, `reconnect` does
-nothing while the socket waits to retry after a close or a reconnect; `open`
-ends the wait.
-A URL can be created again after its
-socket was disposed; each socket keeps its own state and the helpers address the
-newest one.
+and reports a close event with code 1006 unless given other fields, and
+`error`, which reports a WebSocket error. Its sockets implement `reconnect`, and
+the new `reconnectedUrls` records, in call order, the URLs whose socket was
+reconnected. As in `createWebSocket`, `reconnect` does nothing while the socket
+waits to retry after a close or a reconnect; `open` ends the wait. A URL can be
+created again after its socket was disposed; each socket keeps its own state and
+the helpers address the newest one. The event helpers `message`, `open`,
+`close`, and `error` throw for a disposed socket, because `createWebSocket`
+delivers no events after disposal; `message` and `open` previously invoked the
+handlers anyway.
 
 Its sockets also report `connecting`, which they previously could not.
 `createWebSocket` reports `connecting` before a socket opens and for as long as
-it retries after a close, and reaches `closed` only when disposed; the double
+it retries after a close, and ends in `closed` only when disposed; the double
 reported `closed` for all of that, so a test could assert a state the real
 wrapper never produces. Sockets still start `open` by default;
 `{ isOpen: false }` now starts them `connecting`. A socket returns to
@@ -58,3 +60,53 @@ wrapper never produces. Sockets still start `open` by default;
 the `onClose` handler schedules before becoming `connecting` again, matching
 when `createWebSocket` drops the closed socket. Assertions that expected
 `closed` in those places expect `connecting` now.
+
+```ts
+import {
+  assertEqual,
+  assertOk,
+  createRun,
+  ok,
+  testCreateWebSocket,
+  type WebSocket,
+  type WebSocketRetryError,
+} from "@evolu/common";
+
+const createWebSocket = testCreateWebSocket();
+await using run = createRun();
+const result = await run(createWebSocket("wss://relay.example"));
+assertOk(result);
+await using socket = result.value;
+
+socket.reconnect();
+assertEqual(socket.getReadyState(), "connecting");
+assertEqual(createWebSocket.reconnectedUrls, ["wss://relay.example"]);
+
+// A reconnect while waiting to retry does nothing; `open` ends the wait.
+socket.reconnect();
+assertEqual(createWebSocket.reconnectedUrls, ["wss://relay.example"]);
+createWebSocket.open("wss://relay.example");
+assertEqual(socket.getReadyState(), "open");
+
+const socketMembers = {
+  send: () => ok(),
+  getReadyState: () => "open" as const,
+  isOpen: () => true,
+  [Symbol.asyncDispose]: () => Promise.resolve(),
+};
+// @ts-expect-error A custom WebSocket without reconnect is rejected.
+const _customSocketWithoutReconnect: WebSocket = socketMembers;
+const _customSocket: WebSocket = { ...socketMembers, reconnect: () => {} };
+
+const retryErrorLabel = (error: WebSocketRetryError): string => {
+  switch (error.type) {
+    case "WebSocketConnectError":
+      return "connect";
+    case "WebSocketConnectionCloseError":
+      return "close";
+    case "WebSocketReconnectError":
+      return "reconnect";
+  }
+};
+assertEqual(retryErrorLabel({ type: "WebSocketReconnectError" }), "reconnect");
+```
