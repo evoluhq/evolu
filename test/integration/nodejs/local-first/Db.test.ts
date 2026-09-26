@@ -3492,6 +3492,51 @@ describe("sync message flow", () => {
 });
 
 describe("quarantine replay", () => {
+  it("keeps a received change to a local-only table in quarantine", async () => {
+    await using dbSetup = await setupDb();
+    const protocolMessage = await createBroadcastProtocolMessage([
+      {
+        timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+        change: DbChange.orThrow({
+          table: "_localTable",
+          id: dbSetup.createId(),
+          values: { value: "remote" },
+          isInsert: true,
+          isDelete: false,
+        }),
+      },
+    ]);
+    const expectedQuarantine = [
+      { column: "createdAt", value: new Date(1).toISOString() },
+      { column: "isDeleted", value: 0 },
+      { column: "value", value: "remote" },
+    ].map((row) => ({
+      ...row,
+      reason: QuarantineReason.Schema,
+      origin: QuarantineOrigin.ReceivedMessage,
+      quarantinedAt: 0,
+    }));
+
+    {
+      await using setup = await setupDbWorker({ dbSetup });
+      await postRequest(setup, setupApplySyncRequest(protocolMessage));
+      assertEqual(
+        setup.sqlite.exec(sql`select * from "_localTable";`).rows,
+        [],
+      );
+      assertEqual(readQuarantineRows(setup), expectedQuarantine);
+    }
+    {
+      // Startup replays schema quarantine and still does not apply it.
+      await using restarted = await setupDbWorker({ dbSetup });
+      assertEqual(
+        restarted.sqlite.exec(sql`select * from "_localTable";`).rows,
+        [],
+      );
+      assertEqual(readQuarantineRows(restarted), expectedQuarantine);
+    }
+  });
+
   it("applies quarantined columns after schema expansion", async () => {
     await using dbSetup = await setupDb();
 

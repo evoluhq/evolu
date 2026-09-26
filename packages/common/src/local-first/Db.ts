@@ -791,6 +791,10 @@ const releaseDriftQuarantine =
 const validateColumnValue =
   (deps: SqliteSchemaDep) =>
   (table: string, column: string, _value: SqliteValue): boolean => {
+    // Local-only tables never sync, so a received change to one comes from
+    // non-standard code. It stays in quarantine, stored for sync but never
+    // applied.
+    if (isLocalOnlyTable(table)) return false;
     const schemaColumns = getOwnProp(deps.sqliteSchema.tables, table);
     return (
       schemaColumns != null &&

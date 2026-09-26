@@ -358,7 +358,9 @@ export type IndexesConfig = (
 export const QuarantineReason = {
   /**
    * The message has a table or column the current schema does not define. It is
-   * applied automatically once a schema update defines them.
+   * applied automatically once a schema update defines them. A received change
+   * to a {@link isLocalOnlyTable | local-only} table is also stored here and is
+   * never applied.
    */
   Schema: 0,
   /**
