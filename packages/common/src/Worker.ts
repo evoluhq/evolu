@@ -39,9 +39,9 @@ export interface SharedWorker<Input, Output = never> extends Disposable {
  *
  * Note: There is no reliable way to detect when a port is closed or
  * disconnected. Calling `postMessage` on a disposed port does not throw — it
- * silently fails. To detect dead ports, use a heartbeat pattern where the other
- * end periodically sends "alive" messages and stale ports are pruned after a
- * timeout.
+ * silently fails. To detect that the other end is gone, let it hold a Web Lock
+ * for its lifetime and request the same lock: the browser grants it once the
+ * holder releases it or its context closes, with no timeout to tune.
  *
  * @group Core
  * @see https://developer.mozilla.org/en-US/docs/Web/API/MessagePort
