@@ -18,9 +18,11 @@ pnpm bench:type
 ```
 
 Default mode runs the complete matrix and compares it with the compatible
-committed baseline. Prefer filtered runs locally after changing Type declarations
-or individual workloads. Pass one or more `--filter` options to select fixture
-names or workload prefixes:
+committed baseline. Run it after changing `packages/common/src`: the fixtures
+import modules beyond Type declarations, so any declaration can shift the
+committed metrics, and CI fails on the difference. Use filtered runs while
+iterating on individual workloads. Pass one or more `--filter` options to select
+fixture names or workload prefixes:
 
 ```bash
 pnpm bench:type --filter=array-child-all
@@ -31,8 +33,7 @@ pnpm bench:type --filter=template-literal-canonical-input
 
 A filtered run reports the same diagnostics and compares any matching committed
 measurements, but it cannot update the baseline. Baseline updates remain
-complete-matrix operations. Run the full suite locally when updating baselines or
-investigating broad regressions; otherwise rely on CI for the complete matrix.
+complete-matrix operations.
 
 The benchmark uses Evolu Tasks and the platform's available parallelism to run independent
 TypeScript compiler processes concurrently. Each compiler runs with

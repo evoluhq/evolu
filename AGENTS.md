@@ -52,10 +52,11 @@ scripts with `node script.mts`. Run GitHub CLI commands with network access.
   check TypeScript types.
 - After changing documentation examples, run `pnpm test:jsdoc <changed-file>`.
   The default suite covers configured sources, not every documentation page.
-- After changing Type declarations, run
-  `pnpm bench:type --filter=<affected-workload>` for relevant local workloads.
-  CI runs the full suite. Reserve full benchmark runs and baseline updates for
-  explicit user requests. See [benchmark usage](bench/type/README.md#running).
+- After changing `packages/common/src` outside tests, run `pnpm bench:type`.
+  Its programs import modules beyond Type declarations, so any declaration can
+  shift the committed metrics, and the full comparison takes under a minute.
+  Update baselines only when the user explicitly requests it. See
+  [benchmark usage](bench/type/README.md#running).
 - After changing storage algorithms, SQL, indexes, or query plans, select the
   relevant storage tests. `pnpm bench:storage` does not support workload filters;
   run it only when explicitly requested by the user.
