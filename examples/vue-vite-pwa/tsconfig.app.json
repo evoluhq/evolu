@@ -7,7 +7,11 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    // In the monorepo, @evolu/vue gets its own nested copy of vue, whose Ref
+    // type templates do not unwrap. Resolve every vue import to this app's
+    // copy, which the monorepo hoists to its root.
+    "paths": { "vue": ["./node_modules/vue", "../../node_modules/vue"] }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
 }

@@ -19,9 +19,9 @@ import {
   waitForAbort,
   type Evolu,
   type EvoluConfig,
-  type EvoluPlatformDeps,
   type Run,
 } from "@evolu/common";
+import type { EvoluPlatformDeps } from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
@@ -83,6 +83,7 @@ const setupEffect = async ({ waitForDisposal = false } = {}) => {
       sharedWorker,
     }),
   );
+  type TestRun = typeof run;
   const created = Promise.withResolvers<AppEvolu>();
   const continueCreation = Promise.withResolvers<void>();
   const disposalStarted = Promise.withResolvers<void>();
@@ -121,7 +122,7 @@ const setupEffect = async ({ waitForDisposal = false } = {}) => {
     "appOwner",
     "setAppEvolu",
   ]) as (
-    run: Run<EvoluPlatformDeps>,
+    run: TestRun,
     api: typeof evolu,
     schema: typeof AppSchema,
     owner: typeof testAppOwner,
