@@ -34,6 +34,7 @@ import {
   IdBytes,
   type InferType,
   NonEmptyTrimmedString100,
+  type NonEmptyTrimmedString1000,
   Null,
   nullOr,
   object,
@@ -42,6 +43,7 @@ import {
   type withDefault,
 } from "../Type.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
+import type { Evolu, maxMutationSize } from "./Evolu.ts";
 import type { AppOwner, OwnerIdBytes } from "./Owner.ts";
 import {
   OwnerEncryptionKey,
@@ -475,8 +477,17 @@ export type MutationKind = "insert" | "update" | "upsert";
  * inadvertently generate a large volume of CRDT messages. Each mutation
  * produces exactly one {@link CrdtMessage} containing all provided columns.
  *
- * Mutations never fail — values are already validated by the caller, and
- * changes are stored locally in SQLite.
+ * Each mutation must fit within {@link maxMutationSize}. Give every column a
+ * Type with a maximum length, such as {@link NonEmptyTrimmedString1000} or
+ * `maxLength(100_000)(Uint8Array)`, so that a table's largest values add up to
+ * less than the limit and input that is too large is rejected where it enters
+ * the app. A larger mutation throws before anything is saved, so the code after
+ * it does not run. Check unbounded input with {@link Evolu.getMutationSize}.
+ * Large binary data, such as images or videos, does not belong in a single
+ * mutation; a chunked API for it is planned.
+ *
+ * Binary values are copied when the mutation is made, so later changes to a
+ * `Uint8Array` do not change what is saved.
  *
  * - **insert**: all non-nullable columns required, nullable columns optional,
  *   `id` omitted (auto-generated)

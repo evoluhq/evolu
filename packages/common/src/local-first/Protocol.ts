@@ -103,9 +103,9 @@
  * fit within the limit, the protocol automatically continues synchronization in
  * subsequent rounds using range-based reconciliation.
  *
- * Database mutations are limited to 640KB, which is smaller than the protocol
- * message limit to ensure efficient sync with
- * {@link defaultProtocolMessageRangesMaxSize}.
+ * Each mutation is limited to {@link maxMutationSize}, so every change fits one
+ * message of {@link defaultProtocolMessageMaxSize} next to the largest ranges
+ * section.
  *
  * ## Why Binary?
  *
@@ -249,7 +249,7 @@ import {
   zeroNonNegativeInt,
 } from "../Type.ts";
 import type { Predicate } from "../Types.ts";
-import type { Evolu } from "./Evolu.ts";
+import type { Evolu, maxMutationSize } from "./Evolu.ts";
 import {
   type Owner,
   type OwnerError,
@@ -1856,30 +1856,7 @@ export const encodeAndEncryptDbChange =
   (message: CrdtMessage, key: EncryptionKey): EncryptedDbChange => {
     const buffer = createBuffer();
 
-    encodeNonNegativeInt(buffer, protocolVersion);
-
-    // Encode the timestamp to prevent tampering (e.g., a malicious relay
-    // assigning this EncryptedDbChange to a different EncryptedCrdtMessage)
-    buffer.extend(timestampToTimestampBytes(message.timestamp));
-
-    encodeFlags(buffer, [
-      message.change.isInsert,
-      // Encode nullable boolean as two flags: presence + value.
-      message.change.isDelete != null,
-      message.change.isDelete ?? false,
-    ]);
-
-    encodeString(buffer, message.change.table);
-    buffer.extend(idToIdBytes(message.change.id));
-
-    const entries = objectToEntries(message.change.values);
-
-    encodeLength(buffer, entries);
-    for (const [column, value] of entries) {
-      assertNotUndefined(value);
-      encodeString(buffer, column);
-      encodeSqliteValue(buffer, value);
-    }
+    encodeDbChange(buffer, message);
 
     // Add PADMÉ padding (ignored during decoding)
     buffer.extend(createPadmePadding(buffer.getLength()));
@@ -1896,6 +1873,41 @@ export const encodeAndEncryptDbChange =
 
     return buffer.unwrap() as EncryptedDbChange;
   };
+
+/**
+ * Encodes a {@link CrdtMessage} as {@link encodeAndEncryptDbChange} does before
+ * padding and encryption.
+ *
+ * {@link Evolu.getMutationSize} measures mutations with this encoding, so
+ * {@link maxMutationSize} limits exactly what is encoded, and every change
+ * within it fits one protocol message.
+ */
+export const encodeDbChange = (buffer: Buffer, message: CrdtMessage): void => {
+  encodeNonNegativeInt(buffer, protocolVersion);
+
+  // Encode the timestamp to prevent tampering (e.g., a malicious relay
+  // assigning this EncryptedDbChange to a different EncryptedCrdtMessage)
+  buffer.extend(timestampToTimestampBytes(message.timestamp));
+
+  encodeFlags(buffer, [
+    message.change.isInsert,
+    // Encode nullable boolean as two flags: presence + value.
+    message.change.isDelete != null,
+    message.change.isDelete ?? false,
+  ]);
+
+  encodeString(buffer, message.change.table);
+  buffer.extend(idToIdBytes(message.change.id));
+
+  const entries = objectToEntries(message.change.values);
+
+  encodeLength(buffer, entries);
+  for (const [column, value] of entries) {
+    assertNotUndefined(value);
+    encodeString(buffer, column);
+    encodeSqliteValue(buffer, value);
+  }
+};
 
 /**
  * Decrypts and decodes an {@link EncryptedCrdtMessage} using the provided

@@ -15,6 +15,7 @@ import {
   assertNonEmptyReadonlyArray,
   assertNotUndefined,
 } from "../Assert.ts";
+import { createBuffer } from "../Bytes.ts";
 import { createCallbacks } from "../Callbacks.ts";
 import type { ConsoleDep } from "../Console.ts";
 import { createConsole } from "../Console.ts";
@@ -28,11 +29,20 @@ import {
   type LockManagerDep,
 } from "../LockManager.ts";
 import { createMicrotaskBatch } from "../Microtask.ts";
+import {
+  createMutableRecord,
+  objectToEntries,
+  type ReadonlyRecord,
+} from "../Object.ts";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.ts";
 import { createRefCountByKey } from "../RefCount.ts";
 import { err, ok } from "../Result.ts";
 import { isNonEmptySet } from "../Set.ts";
-import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.ts";
+import {
+  SqliteBoolean,
+  sqliteBooleanToBoolean,
+  type SqliteValue,
+} from "../Sqlite.ts";
 import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.ts";
 import { createStore } from "../Store.ts";
 import type { Task } from "../Task.ts";
@@ -41,8 +51,9 @@ import {
   createId,
   createIdFromString,
   type ExtractTyped,
-  type Id,
+  Id,
   Name,
+  PositiveInt,
   type TypeError,
   UrlSafeString,
 } from "../Type.ts";
@@ -61,7 +72,12 @@ import type {
   SyncOwner,
 } from "./Owner.ts";
 import { createOwnerWebSocketTransport } from "./Owner.ts";
-import type { ProtocolError, ProtocolQuotaError } from "./Protocol.ts";
+import {
+  encodeDbChange,
+  type ProtocolError,
+  type ProtocolQuotaError,
+  type ProtocolVersionError,
+} from "./Protocol.ts";
 import type {
   Queries,
   QueriesToQueryRowsPromises,
@@ -77,9 +93,10 @@ import type {
   Mutation,
   MutationChange,
   MutationOptions,
+  MutationValues,
   ValidateSchema,
 } from "./Schema.ts";
-import { evoluSchemaToSqliteSchema } from "./Schema.ts";
+import { evoluSchemaToSqliteSchema, isLocalOnlyTable } from "./Schema.ts";
 import type {
   ConsoleEntryOrError,
   EvoluInput,
@@ -91,7 +108,7 @@ import type {
 } from "./Shared.ts";
 import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
 import { DbChange, type StorageQuotaError } from "./Storage.ts";
-import type { Timestamp } from "./Timestamp.ts";
+import { createTimestamp, type Timestamp } from "./Timestamp.ts";
 
 /**
  * Configuration for {@link createEvolu}.
@@ -493,6 +510,41 @@ export interface Evolu<
   readonly upsert: Mutation<S, "upsert">;
 
   /**
+   * Returns the size of a mutation of `table` with `values`, measured as
+   * {@link maxMutationSize} describes.
+   *
+   * Use it to check values that column Types do not bound before mutating, or
+   * to show how much of the limit a mutation uses. It accepts any of the
+   * table's columns, so the values of an insert, update, or upsert fit, and it
+   * ignores `id` and `isDeleted`, which are not columns. Mutations of
+   * local-only tables are measured too, although they are exempt from the
+   * limit.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import {
+   *   assertType,
+   *   type Evolu,
+   *   maxMutationSize,
+   *   type NonEmptyTrimmedString100,
+   *   type TestEvoluSchema,
+   * } from "@evolu/common";
+   *
+   * const fitsTodo = (
+   *   evolu: Evolu<TestEvoluSchema>,
+   *   title: NonEmptyTrimmedString100,
+   * ) => evolu.getMutationSize("todo", { title }) <= maxMutationSize;
+   *
+   * assertType<ReturnType<typeof fitsTodo>, boolean>();
+   * ```
+   */
+  readonly getMutationSize: <TableName extends keyof S>(
+    table: TableName,
+    values: Partial<MutationValues<S[TableName], "update">>,
+  ) => PositiveInt;
+
+  /**
    * Load {@link Query} and return a promise with {@link QueryRows}.
    *
    * The returned promise always resolves successfully because all data are
@@ -808,6 +860,36 @@ export type UnuseOwner = () => void;
 /**
  * Represents errors that can occur in {@link Evolu}.
  *
+ * Apps show them from {@link EvoluErrorDep.evoluError}.
+ *
+ * An error that leaves the app unusable deserves a modal dialog, which moves
+ * focus into itself and restores it when closed. Any other error is a status
+ * message: show it in a region with `role="alert"`, which screen readers
+ * announce without moving focus, so the user keeps working and a background tab
+ * shows it when the user returns. Avoid `alert()`, which blocks the page, once
+ * in every open tab.
+ *
+ * - {@link UnsupportedDbVersionError} blocks the app: the local data needs a newer
+ *   version of it. Ask the user to update the app or close all its tabs.
+ * - {@link OtherBuildRunningError} blocks the app while it lasts: another version
+ *   of the app holds the local data. Ask the user to close the app's other
+ *   tabs. It clears when the wait ends.
+ * - {@link ProtocolError} does not block the app: sync with a relay failed for an
+ *   owner, because the relay rejected or failed a request, or sent data that
+ *   could not be decoded or verified; sync state shows the affected routes. A
+ *   {@link ProtocolQuotaError} needs more relay quota, then
+ *   {@link Evolu.requestSync}; a {@link ProtocolVersionError} needs an app or
+ *   relay update.
+ * - {@link StorageQuotaError} does not block the app: a storage or billing quota
+ *   was exceeded, so a batch of an owner's changes was not stored. The built-in
+ *   client storage does not report it yet; a relay's quota arrives as
+ *   {@link ProtocolQuotaError}.
+ * - {@link DecryptWithXChaCha20Poly1305Error} does not block the app: changes
+ *   received for an owner could not be decrypted, so none of their batch was
+ *   stored.
+ * - {@link UnknownError} does not block the app: Evolu logged an unexpected
+ *   failure. Show a generic message.
+ *
  * @group Core
  */
 export type EvoluError =
@@ -817,6 +899,54 @@ export type EvoluError =
   | StorageQuotaError
   | UnknownError
   | UnsupportedDbVersionError;
+
+/**
+ * The largest {@link Mutation}, in bytes.
+ *
+ * A mutation's size is its change as encoded for sync: the table name, the ID,
+ * and every column name and value, with a few bytes of overhead. A string takes
+ * at most three bytes per UTF-16 code unit. Every mutation within the limit
+ * fits one protocol message, so it can always sync. A larger mutation throws
+ * and is not saved. Mutations of local-only tables are exempt, because they
+ * never sync. Measure a mutation in advance with {@link Evolu.getMutationSize}.
+ *
+ * @group Core
+ */
+export const maxMutationSize: PositiveInt =
+  /*#__PURE__*/ PositiveInt.orThrow(640_000);
+
+/** Measures a mutation as {@link maxMutationSize} describes. */
+const measureMutation = (
+  table: string,
+  values: ReadonlyRecord<string, SqliteValue | undefined>,
+): PositiveInt => {
+  const columns = createMutableRecord<string, SqliteValue>();
+  for (const [column, value] of objectToEntries(values)) {
+    if (value !== undefined && column !== "id" && column !== "isDeleted") {
+      columns[column] = value;
+    }
+  }
+
+  // Measuring with the protocol's encoding keeps the limit and the message size
+  // from disagreeing. A separate formula would save the tab about 3 KB
+  // compressed, but it would be a second encoding to keep in sync, and it
+  // would have to overcount.
+  const buffer = createBuffer();
+  encodeDbChange(buffer, {
+    // Every timestamp and ID takes 16 bytes, and the flags always take one.
+    timestamp: createTimestamp(),
+    change: DbChange.orThrow({
+      table,
+      id: mutationSizeId,
+      values: columns,
+      isInsert: true,
+      isDelete: null,
+    }),
+  });
+  return buffer.getLength() as PositiveInt;
+};
+
+const mutationSizeId = /*#__PURE__*/ Id.orThrow("A".repeat(22));
 
 /**
  * Dependency wrapper for the shared {@link EvoluError} store.
@@ -1396,6 +1526,41 @@ export const createEvolu =
           `Invalid DbChange for table '${String(table)}'.`,
         );
 
+        // Copy binary values, so what is saved is what was passed: the caller
+        // can change a Uint8Array before the batch is sent, a view of a
+        // resizable buffer can grow, and a view of a shared buffer cannot be
+        // sent to a SharedWorker at all. Node's Buffer passes validation and
+        // its slice shares memory, so only the constructor copies reliably.
+        for (const [column, value] of objectToEntries(dbChange.values)) {
+          if (typeof value === "object" && value !== null) {
+            changeValues[column] = new Uint8Array(value);
+          }
+        }
+
+        // A change over maxMutationSize could never sync, and a shared worker
+        // hosting two databases would stop all work of that database. Correct
+        // apps bound column Types, so it is a programmer error and throws like
+        // the DbChange check above, before batching: it gets no timestamp, the
+        // database worker never sees it, and the code after the call does not
+        // run, so a form keeps its input and no row refers to the missing one.
+        //
+        // Rejected: reporting it through evoluError, which lets that code run
+        // as if the mutation was saved; checking in the database worker, which
+        // gets it already batched and cannot reach the call site; quarantine,
+        // which holds changes stored for sync; and skipping it in sync, which
+        // keeps range fingerprints disagreeing. Received changes are not
+        // checked, and oversized changes stored before this limit are not
+        // recovered, which needs a history-aware design.
+        //
+        // Local-only tables never sync, so they have no limit.
+        if (!isLocalOnlyTable(dbChange.table)) {
+          const size = measureMutation(dbChange.table, dbChange.values);
+          assert(
+            size <= maxMutationSize,
+            `The mutation of table '${dbChange.table}' is ${size} bytes, over maxMutationSize (${maxMutationSize}). Bound the Types of its columns or check it with evolu.getMutationSize.`,
+          );
+        }
+
         mutateBatch.push({
           change: { ...dbChange, ownerId: options?.ownerId ?? appOwner.id },
           onComplete: options?.onComplete,
@@ -1483,6 +1648,12 @@ export const createEvolu =
           insert: createMutation("insert"),
           update: createMutation("update"),
           upsert: createMutation("upsert"),
+
+          getMutationSize: (table, values) =>
+            measureMutation(
+              String(table),
+              values as ReadonlyRecord<string, SqliteValue | undefined>,
+            ),
 
           loadQuery,
           loadQueries: <Q extends Queries<S>>(

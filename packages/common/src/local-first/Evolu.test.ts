@@ -13,8 +13,10 @@ import {
   assertThrowsInstanceOf,
   assertTrue,
 } from "../Assert.ts";
+import * as fc from "fast-check";
 import { describe, it } from "node:test";
 import type { Brand } from "../Brand.ts";
+import { createBuffer } from "../Bytes.ts";
 import type { ConsoleEntry, TestConsole } from "../Console.ts";
 import { testCreateConsole } from "../Console.ts";
 import { constVoid } from "../Function.ts";
@@ -25,6 +27,7 @@ import {
   createEvoluDeps,
   type Evolu,
   type EvoluConfig,
+  maxMutationSize,
   testAppName,
   type EvoluPlatformDeps,
 } from "./Evolu.ts";
@@ -34,6 +37,17 @@ import {
   createSharedOwner,
   testAppOwner,
 } from "./Owner.ts";
+import {
+  createProtocolBroadcastMessagesFromCrdtMessages,
+  createProtocolMessageBuffer,
+  createProtocolMessageFromCrdtMessages,
+  createTimestampsBuffer,
+  encodeAndEncryptDbChange,
+  encodeDbChange,
+  MessageType,
+  ProtocolErrorCode,
+  ProtocolMessageRangesMaxSize,
+} from "./Protocol.ts";
 import { createQueryBuilder } from "./Schema.ts";
 import {
   consoleEntryOrErrorBroadcastChannelName,
@@ -56,19 +70,24 @@ import {
 import { installPolyfills } from "../Polyfills.ts";
 import { err, ok } from "../Result.ts";
 import { SqliteBoolean } from "../Sqlite.ts";
-import { explicitAbortReason, testCreateRun } from "../Task.ts";
+import { explicitAbortReason, testCreateDeps, testCreateRun } from "../Task.ts";
 import { testCreateId } from "../Test.ts";
 import {
   assertType,
   createIdFromString,
+  FiniteNumber,
   id,
   NonEmptyTrimmedString100,
   nullOr,
   PositiveInt,
+  String as StringType,
   testName,
   Name,
+  Uint8Array as Uint8ArrayType,
 } from "../Type.ts";
 import type { ExtractTyped } from "../Type.ts";
+import { DbChange } from "./Storage.ts";
+import { createTimestamp, type NodeId } from "./Timestamp.ts";
 import {
   testCreateBroadcastChannel,
   testCreateMessageChannel,
@@ -2444,6 +2463,294 @@ describe("Evolu", () => {
           type: "Mutate",
         },
       ]);
+    });
+  });
+
+  describe("mutation size", () => {
+    const NoteId = id("Note");
+    const note = {
+      id: NoteId,
+      body: nullOr(StringType),
+      data: nullOr(Uint8ArrayType),
+      count: nullOr(FiniteNumber),
+    };
+    const SizeSchema = { note, _note: note };
+
+    const createSizeEvolu = createEvolu(SizeSchema, {
+      appName: testAppName,
+      appOwner: testAppOwner,
+      transports: [],
+    });
+
+    const noteId = NoteId.orThrow(createIdFromString("note"));
+
+    const getChanges = (inputs: ReadonlyArray<EvoluInput>) =>
+      inputs.flatMap((input) => (input.type === "Mutate" ? input.changes : []));
+
+    const tooLargeMessage = (size: number) =>
+      `The mutation of table 'note' is ${size} bytes, over maxMutationSize (640000). Bound the Types of its columns or check it with evolu.getMutationSize.`;
+
+    // The length of a blob that makes a note exactly maxMutationSize. Its
+    // length varint takes three bytes, two more than an empty blob's.
+    const getDataAtLimitLength = (evolu: Evolu<typeof SizeSchema>) =>
+      maxMutationSize -
+      evolu.getMutationSize("note", { data: new Uint8Array() }) -
+      2;
+
+    it("getMutationSize measures the change as it is encoded", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const evolu = await setup.run.ok(createSizeEvolu);
+
+      const values = {
+        body: "Milk",
+        data: new Uint8Array(10),
+        count: FiniteNumber.orThrow(0.1),
+      };
+      const buffer = createBuffer();
+      encodeDbChange(buffer, {
+        timestamp: createTimestamp(),
+        change: DbChange.orThrow({
+          table: "note",
+          id: noteId,
+          values,
+          isInsert: false,
+          isDelete: true,
+        }),
+      });
+      assertEqual(evolu.getMutationSize("note", values), buffer.getLength());
+
+      // `id` and `isDeleted` are not columns.
+      assertEqual(
+        evolu.getMutationSize("note", { id: noteId, isDeleted: 1 }),
+        evolu.getMutationSize("note", {}),
+      );
+
+      // @ts-expect-error Only the schema's tables can be measured.
+      evolu.getMutationSize("unknown", {});
+      // @ts-expect-error Values must match their column's Type.
+      evolu.getMutationSize("note", { body: 1 });
+    });
+
+    it("encodes no string in more than three bytes per code unit", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const evolu = await setup.run.ok(createSizeEvolu);
+
+      const assertAtMostThreeBytesPerCodeUnit = (value: string) => {
+        // A string also takes a length varint of up to three bytes, besides
+        // the type tag that null takes too.
+        assertTrue(
+          evolu.getMutationSize("note", { body: value }) -
+            evolu.getMutationSize("note", { body: null }) <=
+            3 * value.length + 3,
+        );
+      };
+
+      for (const value of [
+        "",
+        "€".repeat(200_000),
+        "😀".repeat(1_000),
+        "\uD800".repeat(1_000),
+        // JSON takes exactly three bytes per code unit here.
+        "0.1",
+        `[${"0.1,".repeat(999)}0.1]`,
+        "[".repeat(1_001) + "]".repeat(1_001),
+        noteId,
+        "2024-01-01T00:00:00.000Z",
+      ]) {
+        assertAtMostThreeBytesPerCodeUnit(value);
+      }
+
+      fc.assert(
+        fc.property(
+          fc.oneof(fc.string(), fc.string({ unit: "binary" }), fc.json()),
+          assertAtMostThreeBytesPerCodeUnit,
+        ),
+        { numRuns: 2_000 },
+      );
+    });
+
+    it("rejects a mutation over maxMutationSize before batching it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(createSizeEvolu);
+
+      const dataAtLimitLength = getDataAtLimitLength(evolu);
+      const atLimit = { data: new Uint8Array(dataAtLimitLength) };
+      assertEqual(evolu.getMutationSize("note", atLimit), maxMutationSize);
+      const completed: Array<string> = [];
+
+      const { id } = evolu.insert("note", atLimit, {
+        onComplete: () => {
+          completed.push("at limit");
+        },
+      });
+      const error = assertThrowsInstanceOf(
+        () =>
+          evolu.insert(
+            "note",
+            { data: new Uint8Array(dataAtLimitLength + 1) },
+            {
+              onComplete: () => {
+                completed.push("over limit");
+              },
+            },
+          ),
+        Error,
+      );
+      assertEqual(error.message, tooLargeMessage(maxMutationSize + 1));
+
+      await testWaitForWorkerMessage();
+
+      // The mutation made before the rejected one is sent as usual.
+      assertEqual(
+        getChanges(evoluInputs).map((change) => change.id),
+        [id],
+      );
+      const mutate = evoluInputs.find((input) => input.type === "Mutate");
+      assertNotUndefined(mutate);
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map(),
+        onCompleteIds: mutate.onCompleteIds,
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(completed, ["at limit"]);
+    });
+
+    it("lets plain text use the whole limit at a byte per character", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(createSizeEvolu);
+
+      // Spaces keep the text from being encoded as Base64Url, which is smaller.
+      // A long text's length varint takes two more bytes than a short one's.
+      const length =
+        maxMutationSize - evolu.getMutationSize("note", { body: " " }) - 1;
+      assertEqual(
+        evolu.getMutationSize("note", { body: " ".repeat(length) }),
+        maxMutationSize,
+      );
+      assertTrue(length > 639_900);
+
+      evolu.update("note", { id: noteId, body: " ".repeat(length) });
+      const error = assertThrowsInstanceOf(
+        () =>
+          evolu.update("note", { id: noteId, body: " ".repeat(length + 1) }),
+        Error,
+      );
+      assertEqual(error.message, tooLargeMessage(maxMutationSize + 1));
+
+      await testWaitForWorkerMessage();
+      assertLength(getChanges(evoluInputs), 1);
+    });
+
+    it("saves a copy of each binary value", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(createSizeEvolu);
+
+      const resizable = new ArrayBuffer(3, { maxByteLength: 8 });
+      const growing = new Uint8Array(resizable);
+      growing.set([1, 2, 3]);
+      const shared = new Uint8Array(new SharedArrayBuffer(3));
+      shared.set([4, 5, 6]);
+      const nodeBuffer = Buffer.from([7, 8, 9]);
+
+      evolu.insert("note", { data: growing });
+      evolu.insert("note", { data: shared });
+      evolu.insert("note", { data: nodeBuffer });
+
+      // Changes made before the batch is sent do not reach it.
+      resizable.resize(8);
+      growing.fill(0);
+      shared.fill(0);
+      nodeBuffer.fill(0);
+
+      await testWaitForWorkerMessage();
+
+      const saved = getChanges(evoluInputs).map((change) => change.values.data);
+      assertEqual(saved, [
+        new Uint8Array([1, 2, 3]),
+        new Uint8Array([4, 5, 6]),
+        new Uint8Array([7, 8, 9]),
+      ]);
+      for (const data of saved) {
+        assert(data instanceof Uint8Array, "Expected a Uint8Array.");
+        assertSame(Object.getPrototypeOf(data), Uint8Array.prototype);
+        assertFalse(data.buffer instanceof SharedArrayBuffer);
+        assertFalse((data.buffer as ArrayBuffer).resizable);
+      }
+    });
+
+    it("does not limit local-only tables but copies their binary values", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(createSizeEvolu);
+
+      const data = new Uint8Array(maxMutationSize + 1);
+      evolu.insert("_note", { data });
+      data[0] = 1;
+
+      await testWaitForWorkerMessage();
+
+      const [change] = getChanges(evoluInputs);
+      assertNotUndefined(change);
+      const saved = change.values.data;
+      assert(saved instanceof Uint8Array, "Expected a Uint8Array.");
+      assertNotSame(saved, data);
+      assertEqual(saved.byteLength, maxMutationSize + 1);
+      assertEqual(saved[0], 0);
+    });
+
+    it("fits a change at the limit into one message next to the largest ranges section", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const evolu = await setup.run.ok(createSizeEvolu);
+      const deps = testCreateDeps();
+      const values = { data: new Uint8Array(getDataAtLimitLength(evolu)) };
+      assertEqual(evolu.getMutationSize("note", values), maxMutationSize);
+
+      const message = {
+        timestamp: createTimestamp(),
+        change: DbChange.orThrow({
+          table: "note",
+          id: noteId,
+          values,
+          isInsert: true,
+          isDelete: null,
+        }),
+      };
+
+      // A request and a broadcast assert that the change fits.
+      createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [message]);
+      createProtocolBroadcastMessagesFromCrdtMessages(deps)(testAppOwner, [
+        message,
+      ]);
+
+      // A relay's response can pair it with the largest ranges section.
+      const rangesMaxSize = ProtocolMessageRangesMaxSize.orThrow(100_000);
+      const timestamps = createTimestampsBuffer();
+      for (let index = 1; timestamps.getLength() < 99_900; index++) {
+        timestamps.add(
+          createTimestamp({
+            millis: createTimestamp().millis,
+            nodeId: index.toString(16).padStart(16, "0") as NodeId,
+          }),
+        );
+      }
+      const response = createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Response,
+        errorCode: ProtocolErrorCode.NoError,
+        rangesMaxSize,
+      });
+      assertTrue(
+        response.canAddTimestampsRangeAndMessage(timestamps, {
+          timestamp: message.timestamp,
+          change: encodeAndEncryptDbChange(deps)(
+            message,
+            testAppOwner.encryptionKey,
+          ),
+        }),
+      );
     });
   });
 

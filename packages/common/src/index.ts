@@ -52,7 +52,12 @@ export * from "./Worker.ts";
 
 // Local-first essentials.
 export type { UnsupportedDbVersionError } from "./local-first/Db.ts";
-export { AppName, createEvolu, testAppName } from "./local-first/Evolu.ts";
+export {
+  AppName,
+  createEvolu,
+  maxMutationSize,
+  testAppName,
+} from "./local-first/Evolu.ts";
 export type {
   AppNameError,
   Evolu,
