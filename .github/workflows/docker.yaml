@@ -70,16 +70,24 @@ jobs:
               ;;
           esac
 
+      # npm's CDN caches each package's version list for up to five minutes, and
+      # a new release can take longer to appear, so wait until npm serves the
+      # relay and each @evolu package it depends on, as npm install sees them.
       - name: Wait for npm to serve @evolu/relay@${{ env.VERSION }}
         if: steps.image.outputs.published == 'false'
         run: |
-          for _ in $(seq 1 30); do
-            if [ "$(npm view "@evolu/relay@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
-              exit 0
-            fi
+          is_served() {
+            [ "$(npm view "@evolu/relay@$VERSION" version 2>/dev/null)" = "$VERSION" ] || return 1
+            dependencies=$(npm view "@evolu/relay@$VERSION" dependencies --json 2>/dev/null) || return 1
+            for package in $(jq -r 'to_entries[] | select(.key | startswith("@evolu/")) | "\(.key)@\(.value)"' <<< "$dependencies"); do
+              [ -n "$(npm view "$package" version 2>/dev/null)" ] || return 1
+            done
+          }
+          for _ in $(seq 1 90); do
+            if is_served; then exit 0; fi
             sleep 10
           done
-          echo "@evolu/relay@$VERSION is not on npm"
+          echo "npm did not serve @evolu/relay@$VERSION and its @evolu dependencies within 15 minutes" >&2
           exit 1
 
       - uses: actions/checkout@v6
