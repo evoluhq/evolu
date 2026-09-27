@@ -1,5 +1,97 @@
 # @evolu/common
 
+## 8.12.0
+
+### Minor Changes
+
+- 66ee0c8: Added a size limit for mutations
+
+  A mutation larger than `maxMutationSize`, 640,000 bytes, now throws before
+  anything is saved, so the code after it does not run. Previously such a change
+  was saved but might never sync: every sync round asked for it again, and a
+  shared worker hosting two databases stopped all work of that database, its
+  queries, writes, and sync.
+
+  The size is the change as encoded for sync, before padding and encryption, so
+  plain text can use the whole limit at a byte per character. No string takes more
+  than three bytes per UTF-16 code unit. Mutations of local-only tables are
+  exempt. Give columns Types with a maximum length, so input that is too large is
+  rejected where it enters the app, and check unbounded input with
+  `evolu.getMutationSize`, which is typed by the schema. Binary values are now
+  copied when a mutation is made, so later changes to a `Uint8Array` do not change
+  what is saved.
+
+  ```ts
+  import {
+    assertType,
+    type Evolu,
+    maxMutationSize,
+    type NonEmptyTrimmedString100,
+    type TestEvoluSchema,
+  } from "@evolu/common";
+
+  // Checks a mutation before making it.
+  const fitsTodo = (
+    evolu: Evolu<TestEvoluSchema>,
+    title: NonEmptyTrimmedString100,
+  ) => evolu.getMutationSize("todo", { title }) <= maxMutationSize;
+
+  assertType<ReturnType<typeof fitsTodo>, boolean>();
+  ```
+
+- 58182e2: Added concatByteArrays
+
+  `concatByteArrays` copies an array of Uint8Arrays into one. Unlike
+  `concatBytes`, which takes each array as a separate argument and overflows the
+  call stack when many arrays are spread into it, it works for any number of
+  arrays.
+
+  ```ts
+  import { assertEqual, concatByteArrays } from "@evolu/common";
+
+  const chunks = Array.from({ length: 200_000 }, () => new Uint8Array([1]));
+
+  assertEqual(concatByteArrays(chunks).length, 200_000);
+  ```
+
+### Patch Changes
+
+- 29e1187: Fixed deeply nested JSON text stopping a database
+
+  A string value that parses as JSON nested more than 1,000 levels deep, which
+  takes only 2,002 characters such as `[[[…]]]`, made encoding its change for sync
+  throw. The mutation was saved, but the error stopped the database: its later
+  queries, writes, and sync never completed, and every sync round failed on the
+  same change. Such a value is now encoded as a plain string, so it syncs, and a
+  change already stored syncs on the next round.
+
+- 58182e2: Fixed two ways one message could crash a relay
+
+  An owner's first write whose changes were all empty made the relay compute a
+  stored size of zero bytes and treat it as a defect, and a batch of more than
+  about 125,000 messages overflowed the call stack. Either way, the relay's shared
+  Run panicked, so every later connection failed. The relay now handles both.
+  `StorageConfig.isOwnerWithinQuota` receives the stored size as a
+  `NonNegativeInt`, because it can be zero; a callback that annotates it as
+  `PositiveInt` must use `NonNegativeInt` instead.
+
+  ```ts
+  import { assertFalse, NonNegativeInt, testAppOwner } from "@evolu/common";
+  import type { StorageConfig } from "@evolu/common/local-first";
+
+  const config: StorageConfig = {
+    isOwnerWithinQuota: (_ownerId, requiredBytes: NonNegativeInt) =>
+      requiredBytes <= 1_000_000,
+  };
+
+  assertFalse(
+    await config.isOwnerWithinQuota(
+      testAppOwner.id,
+      NonNegativeInt.orThrow(2_000_000),
+    ),
+  );
+  ```
+
 ## 8.11.0
 
 ### Minor Changes
