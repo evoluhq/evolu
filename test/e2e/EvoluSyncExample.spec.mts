@@ -1,4 +1,4 @@
-import { expect, type Page } from "playwright/test";
+import { expect, type Locator, type Page } from "playwright/test";
 import { addTodo, test } from "./fixtures.mts";
 
 // A client retries with a jittered backoff that grows with the downtime, up to
@@ -180,6 +180,11 @@ test("validates relay URLs and removes configured relays", async ({
   const add = relays.getByRole("button", { name: "Add relay", exact: true });
   const error = relays.getByRole("alert");
   await expect(relays.getByRole("listitem")).toHaveCount(1);
+  // Clicks land by position, so wait until the relay list above the form stops
+  // growing as the worker reports the relay and its first round.
+  await expect(
+    page.getByText("1 of 1 relay up to date", { exact: true }),
+  ).toBeVisible();
 
   await input.fill("https://not-a-relay.example");
   await add.click();
@@ -231,12 +236,7 @@ test("shows relays added by another tab without letting this tab remove them", a
     name: "Relays",
     exact: true,
   });
-  await otherRelays
-    .getByRole("textbox", { name: "Relay URL", exact: true })
-    .fill(backupRelay.url);
-  await otherRelays
-    .getByRole("button", { name: "Add relay", exact: true })
-    .click();
+  await addRelay(otherRelays, backupRelay.url);
 
   const relays = page.getByRole("region", { name: "Relays", exact: true });
   const sharedRelay = relays
@@ -300,10 +300,7 @@ test("keeps syncing through a backup relay and catches up the restarted primary"
 }) => {
   test.slow();
   await page.goto("/playgrounds/sync");
-  await page
-    .getByRole("textbox", { name: "Relay URL", exact: true })
-    .fill(backupRelay.url);
-  await page.getByRole("button", { name: "Add relay", exact: true }).click();
+  await addRelay(page, backupRelay.url);
   await expect(
     page.getByText("2 of 2 relays up to date", { exact: true }),
   ).toBeVisible();
@@ -319,12 +316,7 @@ test("keeps syncing through a backup relay and catches up the restarted primary"
   const backupContext = await browserEvents.newContext();
   const backupReader = await backupContext.newPage();
   await backupReader.goto(page.url());
-  await backupReader
-    .getByRole("textbox", { name: "Relay URL", exact: true })
-    .fill(backupRelay.url);
-  await backupReader
-    .getByRole("button", { name: "Add relay", exact: true })
-    .click();
+  await addRelay(backupReader, backupRelay.url);
   await expect(
     backupReader.getByRole("checkbox", {
       name: "Written while the primary was down",
@@ -384,6 +376,16 @@ test("shows a relay's sync error until the relay accepts the write", async ({
   await expect(status).toHaveText("Synced", afterRestart);
   await expect(relays.getByText("Up to date", { exact: true })).toBeVisible();
 });
+
+// Submits with Enter rather than a click, because Playwright clicks by position
+// and, while a page starts, the relay list above the form grows as the worker
+// reports each relay, which can move the button away from a click in flight.
+const addRelay = async (scope: Page | Locator, url: string): Promise<void> => {
+  const input = scope.getByRole("textbox", { name: "Relay URL", exact: true });
+  await input.fill(url);
+  await input.press("Enter");
+  await expect(input).toHaveValue("");
+};
 
 const addItem = async (page: Page, title: string): Promise<void> => {
   const input = page.getByRole("textbox", { name: "New item", exact: true });
