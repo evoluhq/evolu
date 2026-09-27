@@ -190,6 +190,7 @@ import {
 import type { Brand } from "../Brand.ts";
 import {
   type Buffer,
+  BufferError,
   createBuffer,
   createRunLengthEncoder,
   decodeFlags,
@@ -2069,21 +2070,30 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
       }
 
       const json = Json.from.parent(value);
-      // Only encode as Json if it survives JSON.parse/JSON.stringify round-trip.
-      // Some valid JSON strings like "-0E0" get normalized to "0" during parsing,
-      // which would cause data corruption if we don't verify round-trip safety.
-      if (json.ok && JSON.stringify(jsonToJsonValue(json.value)) === value) {
+      if (json.ok) {
+        const jsonValue = jsonToJsonValue(json.value);
         jsonBuffer.reset();
         try {
-          encodeJsonValue(jsonBuffer, jsonToJsonValue(json.value));
-          const jsonBytes = jsonBuffer.unwrap();
-          encodeNonNegativeInt(buffer, ProtocolValueType.Json);
-          encodeLength(buffer, jsonBytes);
-          buffer.extend(jsonBytes);
+          // Encoding first rejects nesting deeper than decoding allows, before
+          // the recursive JSON.stringify below could overflow the stack. Such
+          // a value is encoded as a plain string.
+          encodeJsonValue(jsonBuffer, jsonValue);
+          // Only encode as Json if it survives JSON.parse/JSON.stringify
+          // round-trip. Some valid JSON strings like "-0E0" get normalized to
+          // "0" during parsing, which would cause data corruption if we don't
+          // verify round-trip safety.
+          if (JSON.stringify(jsonValue) === value) {
+            const jsonBytes = jsonBuffer.unwrap();
+            encodeNonNegativeInt(buffer, ProtocolValueType.Json);
+            encodeLength(buffer, jsonBytes);
+            buffer.extend(jsonBytes);
+            return;
+          }
+        } catch (error) {
+          if (!(error instanceof BufferError)) throw error;
         } finally {
           jsonBuffer.reset();
         }
-        return;
       }
 
       const base64Url = Base64Url.from.parent(value);

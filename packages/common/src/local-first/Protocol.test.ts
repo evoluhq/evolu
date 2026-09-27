@@ -207,6 +207,23 @@ test("encodeSqliteValue/decodeSqliteValue preserves an own __proto__ JSON object
   assertEqual(decodeSqliteValue(buffer), value);
 });
 
+test("encodeSqliteValue encodes JSON nested deeper than decoding allows as a string", () => {
+  for (const [depth, type] of [
+    [1_000, ProtocolValueType.Json],
+    [1_001, ProtocolValueType.String],
+    // Deep enough to overflow the stack of a recursive JSON.stringify.
+    [20_000, ProtocolValueType.String],
+  ] as const) {
+    const value = "[".repeat(depth) + "]".repeat(depth);
+    const buffer = createBuffer();
+
+    encodeSqliteValue(buffer, value);
+
+    assertEqual(buffer.unwrap()[0], type);
+    assertEqual(decodeSqliteValue(buffer), value);
+  }
+});
+
 test("encodeSqliteValue/decodeSqliteValue property tests", () => {
   const deps = testCreateDeps();
   // Property test: round-trip encoding/decoding should preserve the value
