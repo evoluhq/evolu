@@ -7,7 +7,7 @@ export const metadata = {
 
 Evolu Relay provides sync and backup for Evolu apps. Evolu apps can use multiple relays simultaneously. For resilience, it's recommended to use two relays: a fast primary "home/company" relay (on‑prem or close to users) and a geographically distant secondary relay if the primary relay fails (hardware failure, network issues, etc.).
 
-Evolu apps can combine self‑hosted relays with cloud relays. Evolu Relay is stateless, so it can run in any serverless cloud environment (AWS Lambda, Cloudflare Workers, etc.), allowing Evolu apps to work even when major cloud providers go down.
+Evolu apps can combine self‑hosted relays with cloud relays. The relay's logic is platform-independent and needs only SQLite and WebSockets. The reference relay runs on Node.js, but an adapter could run it on platforms such as Cloudflare Durable Objects. Relays on different providers keep Evolu apps syncing even when a major cloud provider goes down.
 
 Direct peer‑to‑peer (P2P) sync between clients is technically possible and on our roadmap; implementation awaits additional local transports like Bluetooth, Wi‑Fi, LAN, etc.
 
