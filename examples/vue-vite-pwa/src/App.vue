@@ -20,6 +20,7 @@ import {
 } from "@evolu/common";
 import { createEvoluDeps, createRun } from "@evolu/web";
 import { provideEvolu, useQuery } from "@evolu/vue";
+import { onUnmounted, shallowRef } from "vue";
 
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Output;
@@ -77,12 +78,13 @@ const todoCategories = createQuery((db) =>
 
 const run = createRun(createEvoluDeps());
 
-run.deps.evoluError.subscribe(() => {
-  const error = run.deps.evoluError.get();
-  if (!error) return;
-
-  alert("🚨 Evolu error occurred! Check the console.");
-});
+// `evoluError` is shared by all Evolu instances created from these deps.
+const evoluError = shallowRef(run.deps.evoluError.get());
+onUnmounted(
+  run.deps.evoluError.subscribe(() => {
+    evoluError.value = run.deps.evoluError.get();
+  }),
+);
 
 const evolu = await run.ok(
   createEvolu(DatabaseSchema, {
@@ -183,6 +185,9 @@ function onPriorityChange(event: Event, id: TodoId) {
 
 <template>
   <main>
+    <p v-if="evoluError" role="alert">
+      Evolu error: {{ evoluError.type }}. See the console for details.
+    </p>
     <h1>Categories</h1>
     <table>
       <thead>

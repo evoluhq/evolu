@@ -1,13 +1,20 @@
 <script lang="ts">
   import * as Evolu from "@evolu/common";
   import { appOwnerState, queryState } from "@evolu/svelte";
-  import { evolu, todosQuery, type TodoId } from "./evolu";
+  import { evolu, evoluError, todosQuery, type TodoId } from "./evolu";
 
   const allTodos = queryState(evolu, () => todosQuery);
 
   const appOwner = appOwnerState(evolu);
 
   const { insert, update } = evolu;
+
+  let error = $state(evoluError.get());
+  $effect(() =>
+    evoluError.subscribe(() => {
+      error = evoluError.get();
+    }),
+  );
 
   let newTodoTitle = $state("");
   let showMnemonic = $state(false);
@@ -92,6 +99,12 @@
     <div class="header">
       <h1>Minimal Todo App (Evolu + Svelte + Vite + PWA)</h1>
     </div>
+
+    {#if error}
+      <p class="evolu-error" role="alert">
+        Evolu error: {error.type}. See the console for details.
+      </p>
+    {/if}
 
     <!-- Todos Section -->
     <div class="todos-section">
@@ -203,6 +216,15 @@
 </div>
 
 <style>
+  .evolu-error {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    background: #fef2f2;
+    color: #991b1b;
+    font-size: 0.875rem;
+  }
+
   .app-container {
     min-height: 100vh;
     padding: 2rem;

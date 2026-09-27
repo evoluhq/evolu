@@ -6,7 +6,7 @@ import { createEvoluDeps } from "@evolu/react-web";
 import { createRun } from "@evolu/web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import { clsx } from "clsx";
-import { Suspense, use, useState, type FC } from "react";
+import { Suspense, use, useState, useSyncExternalStore, type FC } from "react";
 
 // Any Standard Schema library can be used.
 const AppSchema = {
@@ -57,44 +57,51 @@ const run = createRun(
   }),
 );
 
-/**
- * `evoluError` is shared by all Evolu instances. Subscribe once for user-facing
- * error messages.
- */
-run.deps.evoluError.subscribe(() => {
-  const error = run.deps.evoluError.get();
-  if (!error) return;
-
-  alert("🚨 Evolu error occurred! Check the console.");
-});
-
 const { EvoluContext, useEvolu, useQuery } =
   createEvoluBinding<typeof AppSchema>();
 
-export const EvoluMinimalExample: FC = () => (
-  <div className="min-h-screen px-8 py-8">
-    <div className="mx-auto max-w-md">
-      <div className="mb-2 flex items-center justify-between pb-4">
-        <h1 className="w-full text-center text-xl font-semibold text-gray-900">
-          Minimal Todo App
-        </h1>
+export const EvoluMinimalExample: FC = () => {
+  // `evoluError` is shared by all Evolu instances created from these deps.
+  const error = useSyncExternalStore(
+    run.deps.evoluError.subscribe,
+    run.deps.evoluError.get,
+    Evolu.constNull,
+  );
+
+  return (
+    <div className="min-h-screen px-8 py-8">
+      <div className="mx-auto max-w-md">
+        <div className="mb-2 flex items-center justify-between pb-4">
+          <h1 className="w-full text-center text-xl font-semibold text-gray-900">
+            Minimal Todo App
+          </h1>
+        </div>
+
+        <p className="mb-6 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+          This example uses a shared test identity. Visitors connected to the
+          same relay share its data. Use only sample data.
+        </p>
+
+        {error && (
+          <p
+            role="alert"
+            className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-800"
+          >
+            Evolu error: {error.type}. See the console for details.
+          </p>
+        )}
+
+        <Suspense>
+          {/*
+            Suspense delivers great UX (no loading flickers) and DX (no loading
+            states to manage). Highly recommended with Evolu.
+          */}
+          <App />
+        </Suspense>
       </div>
-
-      <p className="mb-6 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
-        This example uses a shared test identity. Visitors connected to the same
-        relay share its data. Use only sample data.
-      </p>
-
-      <Suspense>
-        {/*
-          Suspense delivers great UX (no loading flickers) and DX (no loading
-          states to manage). Highly recommended with Evolu.
-        */}
-        <App />
-      </Suspense>
     </div>
-  </div>
-);
+  );
+};
 
 const appPromise = run.ok(
   Evolu.createEvolu(AppSchema, {

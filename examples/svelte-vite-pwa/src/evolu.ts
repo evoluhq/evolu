@@ -27,12 +27,8 @@ export const todosQuery = /*#__PURE__*/ createQuery((db) =>
 
 const run = createRun(evoluSvelteDeps);
 
-run.deps.evoluError.subscribe(() => {
-  const error = run.deps.evoluError.get();
-  if (!error) return;
-
-  alert("🚨 Evolu error occurred! Check the console.");
-});
+/** Shared by all Evolu instances created from these deps. */
+export const evoluError = run.deps.evoluError;
 
 // oxlint-disable evolu/require-pure-annotation -- Creates the application singleton and its owned runtime resources.
 export const evolu = await run.ok(

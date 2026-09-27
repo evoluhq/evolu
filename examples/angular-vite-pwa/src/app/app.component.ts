@@ -14,6 +14,15 @@ import { PwaBadgeComponent } from "./pwa-badge.component";
           </h1>
         </div>
 
+        @if (appService.evoluError(); as error) {
+          <p
+            role="alert"
+            class="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-800"
+          >
+            Evolu error: {{ error.type }}. See the console for details.
+          </p>
+        }
+
         @if (appService.isLoading()) {
           <div class="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
             <p class="text-sm text-gray-600">Loading todos…</p>

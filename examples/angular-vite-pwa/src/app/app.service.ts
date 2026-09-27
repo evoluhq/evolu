@@ -7,7 +7,7 @@ import {
   NonEmptyTrimmedString100,
   sqliteTrue,
 } from "@evolu/common";
-import { EVOLU } from "./app.config";
+import { EVOLU, EVOLU_ERROR } from "./app.config";
 import { Schema, TodoId } from "./schema";
 
 const createQuery = createQueryBuilder(Schema);
@@ -24,6 +24,7 @@ const todosQuery = createQuery((db) =>
 @Injectable({ providedIn: "root" })
 export class AppService implements OnDestroy {
   private readonly evolu = inject(EVOLU);
+  private readonly evoluErrorStore = inject(EVOLU_ERROR);
   private readonly unsubscribes: Array<() => void> = [];
 
   readonly todos = signal<ReadonlyArray<InferRow<typeof todosQuery>>>([]);
@@ -32,7 +33,14 @@ export class AppService implements OnDestroy {
 
   readonly isLoading = signal(true);
 
+  readonly evoluError = signal(this.evoluErrorStore.get());
+
   constructor() {
+    this.unsubscribes.push(
+      this.evoluErrorStore.subscribe(() => {
+        this.evoluError.set(this.evoluErrorStore.get());
+      }),
+    );
     this.initializeData();
     this.initializeAppOwner();
   }

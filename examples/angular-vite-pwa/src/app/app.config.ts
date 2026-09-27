@@ -19,13 +19,6 @@ const run = createRun(
   }),
 );
 
-run.deps.evoluError.subscribe(() => {
-  const error = run.deps.evoluError.get();
-  if (!error) return;
-
-  alert("🚨 Evolu error occurred! Check the console.");
-});
-
 const evolu = await run.ok(
   Evolu.createEvolu(Schema, {
     appName: Evolu.AppName.orThrow("angular-vite-pwa-minimal"),
@@ -43,10 +36,16 @@ export const EVOLU = /*#__PURE__*/ new InjectionToken<
   Evolu.Evolu<typeof Schema>
 >("Evolu");
 
+// Shared by all Evolu instances created from these deps.
+export const EVOLU_ERROR = /*#__PURE__*/ new InjectionToken<
+  Evolu.ReadonlyStore<Evolu.EvoluError | null>
+>("EvoluError");
+
 export const appConfig: ApplicationConfig = {
   providers: [
     /*#__PURE__*/ provideBrowserGlobalErrorListeners(),
     /*#__PURE__*/ provideZonelessChangeDetection(),
     { provide: EVOLU, useValue: evolu },
+    { provide: EVOLU_ERROR, useValue: run.deps.evoluError },
   ],
 };

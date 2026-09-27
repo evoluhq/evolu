@@ -11,6 +11,7 @@ import {
   use,
   useEffect,
   useState,
+  useSyncExternalStore,
   type FC,
   type PropsWithChildren,
 } from "react";
@@ -75,17 +76,6 @@ const run = createRun(
   }),
 );
 
-/**
- * `evoluError` is shared by all Evolu instances. Subscribe once for user-facing
- * error messages.
- */
-run.deps.evoluError.subscribe(() => {
-  const error = run.deps.evoluError.get();
-  if (!error) return;
-
-  alert("🚨 Evolu error occurred! Check the console.");
-});
-
 const { RunContext, useRun } = createRunBinding<typeof run>();
 const device = createEvoluBinding<typeof DeviceSchema>();
 const app = createEvoluBinding<typeof AppSchema>();
@@ -100,25 +90,43 @@ const devicePromise = run.ok(
   }),
 );
 
-export const EvoluMultitenantExample: FC = () => (
-  <div className="min-h-screen px-8 py-8">
-    <div className="mx-auto max-w-md">
-      <div className="mb-2 flex items-center justify-between pb-4">
-        <h1 className="w-full text-center text-xl font-semibold text-gray-900">
-          Multitenant Todo App
-        </h1>
-      </div>
+export const EvoluMultitenantExample: FC = () => {
+  // `evoluError` is shared by all Evolu instances created from these deps.
+  const error = useSyncExternalStore(
+    run.deps.evoluError.subscribe,
+    run.deps.evoluError.get,
+    Evolu.constNull,
+  );
 
-      <RunContext value={run}>
-        <Suspense>
-          <DeviceEvoluContext>
-            <App />
-          </DeviceEvoluContext>
-        </Suspense>
-      </RunContext>
+  return (
+    <div className="min-h-screen px-8 py-8">
+      <div className="mx-auto max-w-md">
+        <div className="mb-2 flex items-center justify-between pb-4">
+          <h1 className="w-full text-center text-xl font-semibold text-gray-900">
+            Multitenant Todo App
+          </h1>
+        </div>
+
+        <RunContext value={run}>
+          {error && (
+            <p
+              role="alert"
+              className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-800"
+            >
+              Evolu error: {error.type}. See the console for details.
+            </p>
+          )}
+
+          <Suspense>
+            <DeviceEvoluContext>
+              <App />
+            </DeviceEvoluContext>
+          </Suspense>
+        </RunContext>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const DeviceEvoluContext: FC<PropsWithChildren> = ({ children }) => {
   const deviceEvolu = use(devicePromise);

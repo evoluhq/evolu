@@ -3,6 +3,7 @@
 import {
   AppName,
   booleanToSqliteBoolean,
+  constNull,
   createConsole,
   createConsoleFormatter,
   createEvolu,
@@ -45,6 +46,7 @@ import {
   Suspense,
   use,
   useState,
+  useSyncExternalStore,
   type FC,
   type KeyboardEvent,
 } from "react";
@@ -104,17 +106,6 @@ const console = createConsole({
 // Create Run with dependencies for React Web.
 const run = createRun(createEvoluDeps({ console }));
 
-/**
- * `evoluError` is shared by all Evolu instances created from this `deps`.
- * Subscribe once for user-facing error messages.
- */
-run.deps.evoluError.subscribe(() => {
-  const error = run.deps.evoluError.get();
-  if (!error) return;
-
-  alert("🚨 Evolu error occurred! Check the console.");
-});
-
 const { EvoluContext, useEvolu, useQuery, useQueries } =
   createEvoluBinding<typeof AppSchema>();
 
@@ -147,25 +138,45 @@ const evoluFiber = run.ok(
   }),
 );
 
-export const EvoluFullExample: FC = () => (
-  <div className="min-h-screen px-8 py-8">
-    <div className="mx-auto max-w-md min-w-sm md:min-w-md">
-      <p className="mb-6 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
-        This example uses a shared test identity. Visitors connected to the same
-        relay share its data. Use only sample data. History, account restore,
-        reset, and backup download are not implemented in this example yet.
-      </p>
-      <Suspense>
-        {/*
-          Suspense handles initial loading. Evolu's query cache prevents live
-          updates from suspending again; startTransition below keeps the current
-          view visible while a newly selected tab loads its queries.
-        */}
-        <Root />
-      </Suspense>
+export const EvoluFullExample: FC = () => {
+  // `evoluError` is shared by all Evolu instances created from these deps.
+  const error = useSyncExternalStore(
+    run.deps.evoluError.subscribe,
+    run.deps.evoluError.get,
+    constNull,
+  );
+
+  return (
+    <div className="min-h-screen px-8 py-8">
+      <div className="mx-auto max-w-md min-w-sm md:min-w-md">
+        <p className="mb-6 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+          This example uses a shared test identity. Visitors connected to the
+          same relay share its data. Use only sample data. History, account
+          restore, reset, and backup download are not implemented in this
+          example yet.
+        </p>
+        {error && (
+          <p
+            role="alert"
+            className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-800"
+          >
+            Evolu error: {error.type}. See the console for details.
+          </p>
+        )}
+
+        <Suspense>
+          {/*
+            Suspense handles initial loading. Evolu's query cache prevents
+            live updates from suspending again; startTransition below keeps
+            the current view visible while a newly selected tab loads its
+            queries.
+          */}
+          <Root />
+        </Suspense>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const Root: FC = () => (
   <EvoluContext value={use(evoluFiber)}>
