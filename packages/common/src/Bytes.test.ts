@@ -23,6 +23,7 @@ import {
   ByteSizeLiteralTiB,
   byteSizeToByteLength,
   type ByteSize,
+  concatByteArrays,
   createBuffer,
   createRunLengthEncoder,
   decodeFlags,
@@ -93,6 +94,32 @@ describe("BufferError", () => {
     assertInstanceOf(error, BufferError);
     assertEqual(error.name, "BufferError");
     assertEqual(error.message, "test error");
+  });
+});
+
+describe("concatByteArrays", () => {
+  it("copies arrays into one", () => {
+    const first = new Uint8Array([1]);
+    const result = concatByteArrays([
+      first,
+      new Uint8Array(),
+      new Uint8Array([2, 3]),
+    ]);
+    assertEqual(result, new Uint8Array([1, 2, 3]));
+    assertEqual(concatByteArrays([]), new Uint8Array());
+
+    first[0] = 9;
+    assertEqual(result[0], 1);
+  });
+
+  it("copies more arrays than a call can spread", () => {
+    const arrays = Array.from(
+      { length: 200_000 },
+      (_, index) => new Uint8Array([index % 256]),
+    );
+    const result = concatByteArrays(arrays);
+    assertEqual(result.length, 200_000);
+    assertEqual(result[199_999], 199_999 % 256);
   });
 });
 

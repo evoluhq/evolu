@@ -17,7 +17,7 @@ import { err, ok } from "../Result.ts";
 import type { SqliteDep } from "../Sqlite.ts";
 import { sql } from "../Sqlite.ts";
 import { createMutexByKey } from "../Task.ts";
-import { Name, PositiveInt, uint8ArrayToBase64Url } from "../Type.ts";
+import { Name, NonNegativeInt, uint8ArrayToBase64Url } from "../Type.ts";
 import { isPromiseLike, type Awaitable } from "../Types.ts";
 import {
   OwnerId,
@@ -246,7 +246,9 @@ export const createRelaySqliteStorage =
               (sum, m) => sum + m.change.length,
               0,
             );
-            const newStoredBytes = PositiveInt.orThrow(
+            // A sum of lengths can be zero. Throwing here would panic the
+            // relay's shared Run.
+            const newStoredBytes = NonNegativeInt.orThrow(
               (usage.storedBytes ?? 0) + incomingBytes,
             );
 

@@ -5,6 +5,7 @@ import {
   assertEqualBytes,
   assertFalse,
   assertLength,
+  assertNonEmptyReadonlyArray,
   assertOk,
   assertSame,
   assertTrue,
@@ -434,6 +435,22 @@ test("findLowerBound", async () => {
     ),
     2,
   );
+});
+
+test("getExistingTimestamps takes more timestamps than a call can spread", async () => {
+  await using setup = await setupSqliteAndStorage();
+  const { storage } = setup;
+
+  const timestamps = Array.from({ length: 200_000 }, (_, i) =>
+    timestampToTimestampBytes(createTimestamp({ millis: (i + 1) as Millis })),
+  );
+  assertNonEmptyReadonlyArray(timestamps);
+  const existing = timestamps[123_456];
+  storage.insertTimestamp(testAppOwnerIdBytes, existing, "append");
+
+  assertEqual(storage.getExistingTimestamps(testAppOwnerIdBytes, timestamps), [
+    existing,
+  ]);
 });
 
 test("iterate", async () => {

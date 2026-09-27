@@ -145,6 +145,22 @@ describe("writeMessages", () => {
     assertEqual(getStoredBytes({ sqlite })(testAppOwnerIdBytes), 3);
   });
 
+  it("stores an owner's first batch of empty changes without a panic", async () => {
+    await using setup = await setupSqliteAndRelayStorage();
+    const { run, storage, sqlite } = setup;
+
+    await run.orThrow(
+      storage.writeMessages(testAppOwnerIdBytes, [createTestMessage(0)]),
+    );
+    assertEqual(getStoredBytes({ sqlite })(testAppOwnerIdBytes), 0);
+
+    // The Run survives, so later writes still work.
+    await run.orThrow(
+      storage.writeMessages(testAppOwnerIdBytes, [createTestMessage()]),
+    );
+    assertEqual(getStoredBytes({ sqlite })(testAppOwnerIdBytes), 3);
+  });
+
   it("accumulates storedBytes across multiple writes", async () => {
     await using setup = await setupSqliteAndRelayStorage();
     const { run, storage, sqlite } = setup;

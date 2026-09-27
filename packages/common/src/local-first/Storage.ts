@@ -9,7 +9,7 @@ import type { NonEmptyReadonlyArray } from "../Array.ts";
 import { firstInArray, isNonEmptyArray } from "../Array.ts";
 import { assert, assertNonNullable } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
-import { concatBytes } from "../Bytes.ts";
+import { concatByteArrays } from "../Bytes.ts";
 import type { DecryptWithXChaCha20Poly1305Error } from "../Crypto.ts";
 import { decrement } from "../Number.ts";
 import type { RandomDep } from "../Random.ts";
@@ -109,7 +109,7 @@ export interface StorageConfig {
    */
   readonly isOwnerWithinQuota: (
     ownerId: OwnerId,
-    requiredBytes: PositiveInt,
+    requiredBytes: NonNegativeInt,
   ) => Awaitable<boolean>;
 }
 
@@ -581,7 +581,9 @@ export const createBaseSqliteStorage = (
   },
 
   getExistingTimestamps: (ownerIdBytes, timestampsBytes) => {
-    const concatenatedTimestamps = concatBytes(...timestampsBytes);
+    // A batch can hold hundreds of thousands of timestamps, too many to spread
+    // into concatBytes.
+    const concatenatedTimestamps = concatByteArrays(timestampsBytes);
 
     const result = deps.sqlite.exec<{
       timestampBytes: TimestampBytes;
@@ -1808,7 +1810,7 @@ export const updateOwnerUsage =
   (deps: SqliteDep) =>
   (
     ownerIdBytes: OwnerIdBytes,
-    storedBytes: PositiveInt,
+    storedBytes: NonNegativeInt,
     firstTimestamp: TimestampBytes,
     lastTimestamp: TimestampBytes,
   ): void => {

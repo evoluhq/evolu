@@ -20,7 +20,11 @@
  * @module
  */
 
-import { bytesToUtf8, utf8ToBytes } from "@noble/ciphers/utils.js";
+import {
+  bytesToUtf8,
+  concatBytes as nobleConcatBytes,
+  utf8ToBytes,
+} from "@noble/ciphers/utils.js";
 import { assert } from "./Assert.ts";
 import { err, ok, type Result } from "./Result.ts";
 import { safelyStringifyUnknownValue } from "./String.ts";
@@ -44,8 +48,60 @@ import {
   union,
   type UnionError,
 } from "./Type.ts";
-export { bytesToHex, concatBytes, hexToBytes } from "@noble/ciphers/utils.js";
+export { bytesToHex, hexToBytes } from "@noble/ciphers/utils.js";
 export { bytesToUtf8, utf8ToBytes };
+
+/**
+ * Copies several Uint8Arrays into one.
+ *
+ * Each array is a separate argument, so it is meant for a few arrays. Spreading
+ * many arrays into it overflows the call stack; use {@link concatByteArrays}
+ * when their count is not bounded.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, concatBytes } from "@evolu/common";
+ *
+ * assertEqual(
+ *   concatBytes(new Uint8Array([1]), new Uint8Array([2, 3])),
+ *   new Uint8Array([1, 2, 3]),
+ * );
+ * ```
+ */
+export const concatBytes: typeof nobleConcatBytes = nobleConcatBytes;
+
+/**
+ * Copies an array of Uint8Arrays into one.
+ *
+ * Unlike {@link concatBytes}, it takes the arrays as one array, so it works for
+ * any number of them, such as the timestamps of a batch received from a peer.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, concatByteArrays } from "@evolu/common";
+ *
+ * assertEqual(
+ *   concatByteArrays([new Uint8Array([1]), new Uint8Array([2, 3])]),
+ *   new Uint8Array([1, 2, 3]),
+ * );
+ * ```
+ */
+export const concatByteArrays = (
+  arrays: ReadonlyArray<Uint8Array>,
+): Uint8Array => {
+  let length = 0;
+  for (const array of arrays) length += array.length;
+
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const array of arrays) {
+    result.set(array, offset);
+    offset += array.length;
+  }
+  return result;
+};
 
 /**
  * Custom error for {@link Buffer}-related failures like premature end of data.
