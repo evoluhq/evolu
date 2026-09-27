@@ -17,15 +17,24 @@ npx @evolu/relay
 ## Run with Docker
 
 ```bash
-docker run --rm -p 4000:4000 -v evolu-relay-data:/app/data docker.io/evoluhq/relay:4
+docker run -d --restart unless-stopped -p 4000:4000 -v evolu-relay-data:/app/data docker.io/evoluhq/relay:4
 ```
 
 For Docker Compose, download the repository's
-[`docker-compose.yml`](https://github.com/evoluhq/evolu/blob/main/apps/relay/docker-compose.yml)
-and run `docker compose up` from the directory containing that file.
+[`docker-compose.yml`](https://github.com/evoluhq/evolu/blob/main/apps/relay/docker-compose.yml),
+which sets the same restart policy, and run `docker compose up` from the
+directory containing that file.
 
 Tags follow the npm package version: `4.0.0`, `4.0`, `4`, and `latest` for the
 newest stable release. Prerelease versions only get their full version tag.
+
+## Restarts
+
+A defect, a bug the relay cannot recover from, makes it close its connections
+and exit with code 1, because it cannot prove that its shared state is still
+intact. Run it under something that restarts it: the Docker restart policy
+above, the Compose file, or a service manager such as systemd for the npm
+package. Clients reconnect and sync what they missed.
 
 ## Configure
 
@@ -55,7 +64,7 @@ The Docker health check follows `PORT`. Use a fixed, nonzero port in Docker;
 The image exposes port 4000, so map a custom port explicitly:
 
 ```bash
-docker run --rm -e PORT=4001 -p 4001:4001 -v evolu-relay-data:/app/data docker.io/evoluhq/relay:4
+docker run -d --restart unless-stopped -e PORT=4001 -p 4001:4001 -v evolu-relay-data:/app/data docker.io/evoluhq/relay:4
 ```
 
 To add authorization or integrate the relay into your own server, use the

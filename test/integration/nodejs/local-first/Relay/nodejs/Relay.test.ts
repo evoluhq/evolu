@@ -1,4 +1,5 @@
 import {
+  AbortError,
   assertEqual,
   assertFalse,
   assertInstanceOf,
@@ -10,11 +11,13 @@ import {
   assertType,
   constFalse,
   constTrue,
+  createPanicAbortReason,
   Port,
   sql,
   testCreateConsole,
   testCreateDeps,
   testCreateId,
+  testCreateReportDefect,
   testCreateRun,
   testName,
   testSetupWebSocket,
@@ -35,6 +38,7 @@ import {
   SubscriptionFlags,
   testAppOwner,
   testCreateCrdtMessage,
+  type Relay,
 } from "@evolu/common/local-first";
 import { EventEmitter, once } from "events";
 import { existsSync, unlinkSync } from "fs";
@@ -44,6 +48,7 @@ import { installPolyfills } from "../../../../../../packages/common/src/Polyfill
 import {
   createRelayDeps,
   createRelay,
+  runMain,
   testSendWebSocketUpgradeRequest,
   testSetupWebSocketUpgradeRequest,
   type NodeJsRelayConfig,
@@ -716,6 +721,61 @@ describe("createRelay", () => {
     await assertEventually(() =>
       console.getEntriesSnapshot().some((entry) => entry.method === "error"),
     );
+  });
+
+  it("closes its connections and exits when a defect panics it", async (t) => {
+    const previousExitCode = process.exitCode;
+    t.after(() => {
+      process.exitCode = previousExitCode;
+    });
+    const defect = new Error("defect in quota check");
+    const reportDefect = testCreateReportDefect();
+    const started = Promise.withResolvers<Relay>();
+
+    // Run the relay as the relay app does, so the panic ends its main Task.
+    const exited = runMain({
+      ...createRelayDeps(),
+      console: testCreateConsole(),
+      reportDefect,
+    })(async (run) => {
+      const relay = await run(
+        createRelay({
+          port: Port.orThrow(0),
+          name: testName,
+          isOwnerWithinQuota: () => {
+            throw defect;
+          },
+        }),
+      );
+      if (relay.ok) started.resolve(relay.value);
+      return relay;
+    });
+
+    const { port } = await started.promise;
+    await using ws = await testSetupWebSocket(
+      `ws://127.0.0.1:${port}/?ownerId=${testAppOwner.id}`,
+    );
+    const closeCode = new Promise<number>((resolve) => {
+      ws.socket.addEventListener("close", (event) => resolve(event.code), {
+        once: true,
+      });
+    });
+
+    ws.send(
+      createProtocolMessageFromCrdtMessages(testCreateDeps())(testAppOwner, [
+        testCreateCrdtMessage(testCreateId()(), 1, "Victoria"),
+      ]),
+    );
+
+    // A defect leaves shared state unproven, so the relay closes every
+    // connection and exits with an error for a supervisor to restart it,
+    // instead of serving on.
+    const reported = await reportDefect.next();
+    assertTrue(AbortError.is(reported));
+    assertEqual(reported.reason, createPanicAbortReason(defect));
+    assertSame(await closeCode, 1000);
+    await exited;
+    assertSame(process.exitCode, 1);
   });
 
   it("keeps serving after a client sends a frame over the maximum payload", async () => {
