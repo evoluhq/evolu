@@ -66,7 +66,7 @@ Start dev
 
 Examples
 
-> **Note**: To work on examples with local packages, run `examples:toggle-deps` first.
+> **Note**: Examples use the local packages. To try them with the published packages, run `pnpm examples:toggle-deps` and choose production; choose development to switch back.
 
 - `pnpm examples:react-nextjs:dev` - Dev server for React Next.js example
 - `pnpm examples:react-vite-pwa:dev` - Dev server for React Vite PWA example
