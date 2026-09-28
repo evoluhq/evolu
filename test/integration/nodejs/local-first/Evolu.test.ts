@@ -1,18 +1,20 @@
 import {
+  assert,
   assertEqual,
   assertFalse,
+  assertInstanceOf,
   assertTrue,
   assertLength,
   assertNotNull,
   assertNotUndefined,
   assertNonEmptyArray,
   assertSame,
-  assertInstanceOf,
 } from "../../../../packages/common/src/Assert.ts";
 import { describe, it } from "node:test";
 import { createConsoleStoreOutput } from "../../../../packages/common/src/Console.ts";
 import {
   constVoid,
+  disposable,
   exhaustiveCheck,
 } from "../../../../packages/common/src/Function.ts";
 import type { DbWorkerInit } from "../../../../packages/common/src/local-first/Db.ts";
@@ -25,6 +27,8 @@ import {
   testAppName,
 } from "../../../../packages/common/src/local-first/Evolu.ts";
 import {
+  createAppOwner,
+  createOwnerSecret,
   createOwnerWebSocketTransport,
   testAppOwner,
 } from "../../../../packages/common/src/local-first/Owner.ts";
@@ -142,9 +146,11 @@ describe("Evolu integration", () => {
     createSqliteDriver?: CreateSqliteDriver;
     createWebSocket?: CreateWebSocket;
     /**
-     * Seeds the DbWorker's randomness, which creates the database's node ID.
-     * Devices of one owner need different seeds, because devices sharing a node
-     * ID act as a copied database and can silently lose changes.
+     * Seeds the DbWorker's randomness, which creates the database's node ID,
+     * and the tab's, which names the SharedWorker's sync state channel. Devices
+     * of one owner need different seeds, because devices sharing a node ID act
+     * as a copied database and can silently lose changes, and devices sharing a
+     * channel receive each other's sync state.
      */
     seed?: string;
   } = {}) => {
@@ -154,6 +160,9 @@ describe("Evolu integration", () => {
 
     const run = disposer.use(
       testCreateRun({
+        ...(seed !== undefined && {
+          randomBytes: testCreateDeps({ seed: `${seed}-tab` }).randomBytes,
+        }),
         // console: createConsole({ level: "debug" }),
         consoleStoreOutputEntry: consoleStoreOutput.entry,
         createBroadcastChannel,
@@ -408,7 +417,57 @@ describe("Evolu integration", () => {
     };
   };
 
-  it("reports a rejected encrypted batch once per apply with its concrete route error", async () => {
+  /**
+   * Keeps the latest sync state a worker publishes and waits for a predicate
+   * over it, failing after 5 seconds.
+   */
+  const setupSyncStates = (syncStateChannelName: string) => {
+    let state: SyncState | null = null;
+    let onState: () => void = constVoid;
+    const disposer = new DisposableStack();
+    const channel = disposer.use(
+      createBroadcastChannel<SyncState>(syncStateChannelName),
+    );
+    channel.onMessage = (next) => {
+      state = next;
+      onState();
+    };
+    return disposable(
+      {
+        getState: (): SyncState | null => state,
+        waitForState: async (predicate: () => boolean): Promise<void> => {
+          if (predicate()) return;
+          const changed = Promise.withResolvers<void>();
+          onState = () => {
+            if (predicate()) changed.resolve();
+          };
+          using _timeout = setTimeout(() => {
+            changed.reject(
+              new Error("Timed out waiting for the expected sync state"),
+            );
+          }, 5_000);
+          try {
+            await changed.promise;
+          } finally {
+            onState = constVoid;
+          }
+        },
+      },
+      disposer,
+    );
+  };
+
+  /**
+   * The app owner with another encryption key, as a writer that has the owner's
+   * write key but a wrong encryption key uses it.
+   */
+  const createForeignOwner = (seed: string) => ({
+    ...testAppOwner,
+    encryptionKey: createAppOwner(createOwnerSecret(testCreateDeps({ seed })))
+      .encryptionKey,
+  });
+
+  it("stores the valid changes of a partly undecryptable batch and shows the skip on its route", async () => {
     const socket = testCreateWebSocket();
     await using setup = await setupRunWithEvoluDeps({
       createWebSocket: socket,
@@ -425,14 +484,12 @@ describe("Evolu integration", () => {
     await using evoluRun = run.create(deps);
     await using evolu = await evoluRun.ok(createIntegrationEvolu);
     const transport = createOwnerWebSocketTransport({
-      url: "wss://rejected-batch.example",
+      url: "wss://skipped-change-batch.example",
       ownerId: testAppOwner.id,
     });
     evolu.useOwner(testAppOwner, [transport]);
     assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
     await testWaitForWorkerMessage();
-    const sqlite = setup.getSharedSqlite();
-    const before = getSqliteSnapshot({ sqlite });
     const messages = createProtocolBroadcastMessagesFromCrdtMessages(run.deps)(
       testAppOwner,
       [
@@ -461,34 +518,195 @@ describe("Evolu integration", () => {
     assertLength(messages, 1);
     const corrupted = Uint8Array.from(messages[0]);
     corrupted[corrupted.length - 1] ^= 0xff;
-    const errors: Array<EvoluError> = [];
-    let reported = Promise.withResolvers<void>();
+    const getRoute = () =>
+      deps.syncState.get()?.tenants[0]?.owners[0]?.routes[0];
+    const routeFailed = Promise.withResolvers<void>();
     using subscriptions = new DisposableStack();
     subscriptions.defer(
-      deps.evoluError.subscribe(() => {
-        const error = deps.evoluError.get();
-        assertNotNull(error);
-        errors.push(error);
-        reported.resolve();
+      deps.syncState.subscribe(() => {
+        if (getRoute()?.error) routeFailed.resolve();
       }),
     );
 
-    for (let applied = 1; applied <= 2; applied++) {
-      socket.message(transport.url, corrupted.buffer);
-      await reported.promise;
-      await testWaitForWorkerMessage();
-      assertLength(errors, applied);
-      const error = deps.evoluError.get();
-      assertNotNull(error);
-      assertSame(error.type, "DecryptWithXChaCha20Poly1305Error");
-      assertInstanceOf(error.error, Error);
-      const route = deps.syncState.get()?.tenants[0]?.owners[0]?.routes[0];
-      assertNotUndefined(route);
-      assertSame(route.error?.type, "DecryptWithXChaCha20Poly1305Error");
-      assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
-      assertEqual(getSqliteSnapshot({ sqlite }), before);
-      reported = Promise.withResolvers<void>();
+    socket.message(transport.url, corrupted.buffer);
+    {
+      using _routeTimeout = setTimeout(() => {
+        routeFailed.reject(new Error("Timed out waiting for the route error"));
+      }, 5_000);
+      await routeFailed.promise;
     }
+    await testWaitForWorkerMessage();
+
+    // The valid change is stored, and the undecryptable one is skipped and
+    // shown on the route instead of reported as an Evolu error.
+    assertSame(getRoute()?.error?.type, "DecryptWithXChaCha20Poly1305Error");
+    assertEqual(await evolu.loadQuery(todoTitlesQuery), [
+      { title: "Valid before corruption" },
+    ]);
+    assertSame(deps.evoluError.get(), null);
+  });
+
+  it("uploads through a relay that holds a change it cannot decrypt", async () => {
+    await using relays = await setupRelays("evolu-foreign-change");
+    const { relayA } = relays;
+    const transport = createOwnerWebSocketTransport({
+      url: `ws://127.0.0.1:${relayA.port}`,
+      ownerId: testAppOwner.id,
+    });
+
+    // A writer with the owner's write key but another encryption key stores a
+    // change on the relay that the owner cannot decrypt.
+    const foreignOwner = createForeignOwner("foreign-change");
+    await using foreignDevice = await setupDevice({ seed: "foreign" });
+    await using foreign = await foreignDevice.setup.run.ok(
+      createEvolu(Schema, {
+        appName: testAppName,
+        appOwner: foreignOwner,
+        transports: [],
+      }),
+    );
+    foreign.insert("todo", {
+      title: NonEmptyTrimmedString100.orThrow("Foreign"),
+    });
+    await foreign.loadQuery(todoTitlesQuery);
+    const seeded = Promise.withResolvers<void>();
+    foreignDevice.setOnMessage(() => {
+      if (relayA.getTimestamps().length > 0) seeded.resolve();
+    });
+    foreign.useOwner(foreignOwner, [transport]);
+    {
+      using _seedingTimeout = setTimeout(() => {
+        seeded.reject(
+          new Error("Timed out waiting for the relay to receive the change"),
+        );
+      }, 5_000);
+      await seeded.promise;
+    }
+    const foreignTimestamps = relayA.getTimestamps();
+
+    // The owner's device made a change before it connected. With a small
+    // history, the relay answers the first request with the foreign change
+    // and asks for the device's change in the same reply.
+    await using device = await setupDevice({ seed: "owner" });
+    using states = setupSyncStates(device.setup.syncStateChannelName);
+    const getRoute = () => states.getState()?.tenants[0]?.owners[0]?.routes[0];
+    await using evolu = await device.setup.run.ok(
+      device.setup.createIntegrationEvolu,
+    );
+    const title = NonEmptyTrimmedString100.orThrow("Made before connecting");
+    evolu.insert("todo", { title });
+    assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title }]);
+    const localTimestamps = device.setup
+      .getSharedSqlite()
+      .exec(sql` select distinct timestamp from evolu_history; `).rows;
+    const uploaded = Promise.withResolvers<void>();
+    device.setOnMessage(() => {
+      if (
+        relayA.getTimestamps().length ===
+        foreignTimestamps.length + localTimestamps.length
+      )
+        uploaded.resolve();
+    });
+    evolu.useOwner(testAppOwner, [transport]);
+    {
+      using _uploadTimeout = setTimeout(() => {
+        uploaded.reject(
+          new Error("Timed out waiting for the relay to receive the upload"),
+        );
+      }, 5_000);
+      await uploaded.promise;
+    }
+
+    // The foreign change was skipped, and the route keeps its error with the
+    // cause, which crosses the sync state channel.
+    assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title }]);
+    await testWaitForWorkerMessage();
+    const route = getRoute();
+    assertNotUndefined(route);
+    const { error } = route;
+    assert(
+      error?.type === "DecryptWithXChaCha20Poly1305Error",
+      "The route should show the decryption error.",
+    );
+    assertInstanceOf(error.error, Error);
+    assertFalse(route.complete);
+    assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("fails the relay route of a database that skips a sibling's local copy", async () => {
+    await using relays = await setupRelays("evolu-skipped-local-copy");
+    const { relayA } = relays;
+    const transport = createOwnerWebSocketTransport({
+      url: `ws://127.0.0.1:${relayA.port}`,
+      ownerId: testAppOwner.id,
+    });
+    await using device = await setupDevice({
+      seed: "device",
+      createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+    });
+    using states = setupSyncStates(device.setup.syncStateChannelName);
+    const getRoute = (name: Name) =>
+      states
+        .getState()
+        ?.tenants.find((tenant) => tenant.name === name)
+        ?.owners.find(({ ownerId }) => ownerId === testAppOwner.id)?.routes[0];
+    const errorTypes: Array<string> = [];
+    using errors = createBroadcastChannel<ConsoleEntryOrError>(
+      consoleEntryOrErrorBroadcastChannelName,
+    );
+    errors.onMessage = (entry) => {
+      if (entry.type === "Error") errorTypes.push(entry.error.type);
+    };
+
+    // Two databases of one device use the same owner ID with different
+    // encryption keys, so neither can decrypt the other's changes.
+    const foreignOwner = createForeignOwner("skipped-local-copy");
+    await using receiver = await device.setup.run.ok(
+      createEvolu(Schema, {
+        appName: AppName.orThrow("SkippedCopyReceiver"),
+        appOwner: testAppOwner,
+        transports: [],
+      }),
+    );
+    await using foreign = await device.setup.run.ok(
+      createEvolu(Schema, {
+        appName: AppName.orThrow("SkippedCopyForeign"),
+        appOwner: foreignOwner,
+        transports: [],
+      }),
+    );
+    receiver.useOwner(testAppOwner, [transport]);
+    foreign.useOwner(foreignOwner, [transport]);
+    await states.waitForState(
+      () =>
+        getRoute(receiver.name)?.complete === true &&
+        getRoute(foreign.name)?.complete === true,
+    );
+
+    // The foreign change reaches the receiver as a local copy, which it skips.
+    // The round that the skip requests gets the change from the relay, which
+    // fails the receiver's route instead of letting it read complete.
+    const title = NonEmptyTrimmedString100.orThrow("Foreign");
+    foreign.insert("todo", { title });
+    assertEqual(await foreign.loadQuery(todoTitlesQuery), [{ title }]);
+    await states.waitForState(
+      () =>
+        getRoute(receiver.name)?.error?.type ===
+          "DecryptWithXChaCha20Poly1305Error" &&
+        getRoute(foreign.name)?.complete === true,
+    );
+    await testWaitForWorkerMessage();
+
+    const route = getRoute(receiver.name);
+    assertNotUndefined(route);
+    assertFalse(route.complete);
+    assertSame(getRoute(foreign.name)?.error, null);
+    assertEqual(await receiver.loadQuery(todoTitlesQuery), []);
+    assertLength(relayA.getTimestamps(), 1);
+    // Skips are shown on routes, not reported as errors.
+    assertEqual(errorTypes, []);
+    assertEqual(device.setup.tabErrors, []);
+    assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
   });
 
   for (const instanceCount of [1, 2]) {
@@ -824,9 +1042,13 @@ describe("Evolu integration", () => {
       },
     );
     const { relayA, relayB } = relays;
-    let state: SyncState | null = null;
-    let onState: () => void = constVoid;
+    await using device = await setupDevice({
+      seed: "device",
+      createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+    });
+    using states = setupSyncStates(device.setup.syncStateChannelName);
     const getRoute = (name: Name, port: number) => {
+      const state = states.getState();
       const transport = state?.transports.find(
         ({ label }) => label === `ws://127.0.0.1:${port}`,
       );
@@ -834,34 +1056,6 @@ describe("Evolu integration", () => {
         .find((tenant) => tenant.name === name)
         ?.owners.find(({ ownerId }) => ownerId === testAppOwner.id)
         ?.routes.find(({ transportId }) => transportId === transport?.id);
-    };
-    const waitForState = async (predicate: () => boolean): Promise<void> => {
-      if (predicate()) return;
-      const changed = Promise.withResolvers<void>();
-      onState = () => {
-        if (predicate()) changed.resolve();
-      };
-      using _timeout = setTimeout(() => {
-        changed.reject(
-          new Error("Timed out waiting for the expected sync state"),
-        );
-      }, 5_000);
-      try {
-        await changed.promise;
-      } finally {
-        onState = constVoid;
-      }
-    };
-    await using device = await setupDevice({
-      seed: "device",
-      createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
-    });
-    using states = createBroadcastChannel<SyncState>(
-      device.setup.syncStateChannelName,
-    );
-    states.onMessage = (next) => {
-      state = next;
-      onState();
     };
     const createTenant = (appName: string) =>
       device.setup.run.ok(
@@ -881,7 +1075,7 @@ describe("Evolu integration", () => {
     });
     await using source = await createTenant("ContinuationSource");
     source.useOwner(testAppOwner, [transportB]);
-    await waitForState(
+    await states.waitForState(
       () => getRoute(source.name, relayB.port)?.complete === true,
     );
 
@@ -890,7 +1084,7 @@ describe("Evolu integration", () => {
     const title = NonEmptyTrimmedString100.orThrow("Historical local copy");
     source.insert("todo", { title });
     assertEqual(await source.loadQuery(todoTitlesQuery), [{ title }]);
-    await waitForState(
+    await states.waitForState(
       () =>
         rejectedB === 2 &&
         getRoute(source.name, relayB.port)?.error?.type ===
@@ -901,7 +1095,7 @@ describe("Evolu integration", () => {
     // The empty sibling legitimately converges with the still-empty relay B.
     await using sibling = await createTenant("ContinuationSibling");
     sibling.useOwner(testAppOwner, [transportB]);
-    await waitForState(
+    await states.waitForState(
       () => getRoute(sibling.name, relayB.port)?.complete === true,
     );
     assertEqual(await sibling.loadQuery(todoTitlesQuery), []);
@@ -924,7 +1118,7 @@ describe("Evolu integration", () => {
       await quotaEntered.promise;
     }
     assertEqual(await sibling.loadQuery(todoTitlesQuery), [{ title }]);
-    await waitForState(
+    await states.waitForState(
       () => getRoute(sibling.name, relayB.port)?.complete === false,
     );
     const pendingRoute = getRoute(sibling.name, relayB.port);
@@ -934,7 +1128,7 @@ describe("Evolu integration", () => {
     assertEqual(relayB.getTimestamps(), []);
 
     quota.resolve(true);
-    await waitForState(
+    await states.waitForState(
       () => getRoute(sibling.name, relayB.port)?.complete === true,
     );
     assertTrue(relayA.getTimestamps().length > 0);

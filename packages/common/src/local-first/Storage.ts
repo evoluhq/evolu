@@ -10,7 +10,6 @@ import { firstInArray, isNonEmptyArray } from "../Array.ts";
 import { assert, assertNonNullable } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import { concatByteArrays } from "../Bytes.ts";
-import type { DecryptWithXChaCha20Poly1305Error } from "../Crypto.ts";
 import { decrement } from "../Number.ts";
 import type { RandomDep } from "../Random.ts";
 import { err, ok } from "../Result.ts";
@@ -39,10 +38,6 @@ import {
 import type { Awaitable } from "../Types.ts";
 import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.ts";
 import { OwnerId, OwnerWriteKey } from "./Owner.ts";
-import type {
-  ProtocolInvalidDataError,
-  ProtocolTimestampMismatchError,
-} from "./Protocol.ts";
 import { systemColumnsWithId } from "./Schema.ts";
 import {
   createTimestamp,
@@ -194,7 +189,10 @@ export interface Storage {
    * Write encrypted {@link CrdtMessage}s to storage.
    *
    * Stores none of the messages and returns the cause when the batch cannot be
-   * accepted.
+   * accepted. A client storage that cannot decrypt, verify, or decode a message
+   * skips it and stores the rest, as the built-in client storage does, because
+   * the peer offers the message again in every round, and rejecting the batch
+   * would end each round.
    *
    * Must use a mutex per ownerId to ensure sequential processing and proper
    * protocol logic handling during sync operations.
@@ -234,19 +232,16 @@ export interface StorageQuotaError
 /**
  * Expected reasons why {@link Storage.writeMessages} stored none of a batch.
  *
- * Each implementation returns the members that apply to it. The built-in relay
- * storage currently stores opaque encrypted messages and rejects batches over
- * quota. The built-in client storage decrypts and validates incoming messages
- * before updating its clock and database tables. The contract permits quota
- * checks on either side.
+ * The built-in relay storage stores opaque encrypted messages and rejects
+ * batches over quota. The built-in client storage decrypts and validates
+ * incoming messages before updating its clock and database tables. It skips a
+ * message that fails instead of rejecting its batch, and sync state shows the
+ * failure without ending the sync round, so a message is never a reason to
+ * reject a batch. The contract permits quota checks on either side.
  *
  * @group Core
  */
-export type StorageWriteMessagesError =
-  | DecryptWithXChaCha20Poly1305Error
-  | ProtocolInvalidDataError
-  | ProtocolTimestampMismatchError
-  | StorageQuotaError;
+export type StorageWriteMessagesError = StorageQuotaError;
 
 /**
  * A cryptographic hash used for efficiently comparing collections of

@@ -3,15 +3,16 @@ import {
   assertEqual,
   assertInstanceOf,
   assertLength,
-  assertNotNull,
   assertNotUndefined,
   assertSame,
   constVoid,
   createConsole,
   createIdFromString,
+  createQueryBuilder,
   createRandomBytes,
   createRun,
   id,
+  Millis,
   PositiveInt,
 } from "@evolu/common";
 import {
@@ -193,8 +194,8 @@ test("requestSync crosses browser worker ports while two clients retain the owne
   assertSame(secondDeps.evoluError.get(), null);
 });
 
-test("a rejected encrypted change retains its error across browser worker ports", async () => {
-  const workerName = `rejection-${crypto.randomUUID()}`;
+test("a skipped encrypted change fails its route across browser worker ports while the rest of its batch is stored", async () => {
+  const workerName = `skipped-change-${crypto.randomUUID()}`;
   const output = new BroadcastChannel(workerName);
   const initial = Promise.withResolvers<void>();
   output.addEventListener(
@@ -232,44 +233,46 @@ test("a rejected encrypted change retains its error across browser worker ports"
     ),
   });
   await using run = createRun(deps);
+  const schema = { todo: { id: id("Todo") } };
   await using evolu = await run.ok(
-    createEvolu(
-      { todo: { id: id("Todo") } },
-      {
-        appName: AppName.orThrow(`test-${crypto.randomUUID()}`),
-        appOwner: testAppOwner,
-        transports: [],
-        memoryOnly: true,
-      },
-    ),
+    createEvolu(schema, {
+      appName: AppName.orThrow(`test-${crypto.randomUUID()}`),
+      appOwner: testAppOwner,
+      transports: [],
+      memoryOnly: true,
+    }),
+  );
+  const todoIdsQuery = createQueryBuilder(schema)((db) =>
+    db.selectFrom("todo").select("id"),
   );
   const transport = createOwnerWebSocketTransport({
-    url: "wss://rejected-change.example",
+    url: "wss://skipped-change.example",
     ownerId: testAppOwner.id,
   });
   evolu.useOwner(testAppOwner, [transport]);
   await initial.promise;
 
+  const createMessage = (name: string, millis: number) => ({
+    timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
+    change: DbChange.orThrow({
+      table: "todo",
+      id: createIdFromString(name),
+      values: {},
+      isInsert: true,
+      isDelete: null,
+    }),
+  });
   const broadcasts = createProtocolBroadcastMessagesFromCrdtMessages({
     randomBytes: createRandomBytes(),
   })(testAppOwner, [
-    {
-      timestamp: createTimestamp(),
-      change: DbChange.orThrow({
-        table: "todo",
-        id: createIdFromString("browser-rejected-change"),
-        values: {},
-        isInsert: true,
-        isDelete: null,
-      }),
-    },
+    createMessage("browser-valid-change", 1),
+    createMessage("browser-skipped-change", 2),
   ]);
   assertLength(broadcasts, 1);
+  // Corrupting the last byte alters only the last change's ciphertext.
   const corrupted = Uint8Array.from(broadcasts[0]);
   corrupted[corrupted.length - 1] ^= 0xff;
-  const errorReported = Promise.withResolvers<void>();
   const routeReported = Promise.withResolvers<void>();
-  cleanup.defer(deps.evoluError.subscribe(errorReported.resolve));
   cleanup.defer(
     deps.syncState.subscribe(() => {
       const route = deps.syncState.get()?.tenants[0]?.owners[0]?.routes[0];
@@ -281,15 +284,23 @@ test("a rejected encrypted change retains its error across browser worker ports"
     url: transport.url,
     data: corrupted.buffer,
   });
-  // The error and route snapshots arrive through independent channels.
-  await Promise.all([errorReported.promise, routeReported.promise]);
-  const error = deps.evoluError.get();
-  assertNotNull(error);
-  assertSame(error.type, "DecryptWithXChaCha20Poly1305Error");
-  assertInstanceOf(error.error, Error);
+  // The DbWorker's response, whose skipped error holds an Error, crosses the
+  // worker ports and fails the route.
+  await routeReported.promise;
   const route = deps.syncState.get()?.tenants[0]?.owners[0]?.routes[0];
   assertNotUndefined(route);
-  assertSame(route.error?.type, "DecryptWithXChaCha20Poly1305Error");
+  const { error } = route;
+  assert(
+    error?.type === "DecryptWithXChaCha20Poly1305Error",
+    "The route should show the decryption error.",
+  );
+  // The cause crosses the sync state channel too.
+  assertInstanceOf(error.error, Error);
+  // The valid change is stored, and the skip is not an EvoluError.
+  assertEqual(await evolu.loadQuery(todoIdsQuery), [
+    { id: createIdFromString("browser-valid-change") },
+  ]);
+  assertSame(deps.evoluError.get(), null);
 });
 
 test("a refused SharedWorker reports the error to a later client store", async () => {

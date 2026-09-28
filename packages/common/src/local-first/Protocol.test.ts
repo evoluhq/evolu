@@ -950,7 +950,7 @@ describe("E2E errors", () => {
     );
   });
 
-  it("rejected relay writes report quota and other causes distinctly", async () => {
+  it("reports a rejected relay write as a quota and a thrown one as a write failure", async () => {
     const deps = testCreateDeps();
     const initiatorMessage = createProtocolMessageFromCrdtMessages(deps)(
       testAppOwner,
@@ -961,50 +961,48 @@ describe("E2E errors", () => {
         },
       ],
     );
-    /** Returns the relay's response and what it logged for the rejection. */
-    const relayResponseFor = async (error: StorageWriteMessagesError) => {
+    /** Returns the relay's response and what it logged for the write. */
+    const relayResponseFor = async (
+      writeMessages: StorageDep["storage"]["writeMessages"],
+    ) => {
       await using run = testCreateRun({
         storage: {
           ...shouldNotBeCalledStorageDep.storage,
           validateWriteKey: () => true,
-          writeMessages: () => () => err(error),
+          writeMessages,
         },
       } satisfies StorageDep);
       const { message } = await run.orThrow(
         applyProtocolMessageAsRelay(initiatorMessage),
       );
-      return {
-        message,
-        logged: run.deps.console
-          .getEntriesSnapshot()
-          .map(({ method, args }) => ({ method, args })),
-      };
+      return { message, logged: run.deps.console.getEntriesSnapshot() };
     };
 
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
     // A quota rejection is expected, so the relay does not log it.
-    const quota = await relayResponseFor({
-      type: "StorageQuotaError",
-      ownerId: testAppOwner.id,
-    });
+    const quota = await relayResponseFor(
+      () => () => err({ type: "StorageQuotaError", ownerId: testAppOwner.id }),
+    );
     assertEqual(
       await run(applyProtocolMessageAsClient(quota.message)),
       err({ type: "ProtocolQuotaError", ownerId: testAppOwner.id }),
     );
     assertEqual(quota.logged, []);
-    // Any other storage rejection is a relay write failure, not a quota, and
-    // the relay logs its cause.
-    const mismatch: StorageWriteMessagesError = {
-      type: "ProtocolTimestampMismatchError",
-      expected: timestampBytesToTimestamp(testTimestampsAsc[0]),
-      timestamp: timestampBytesToTimestamp(testTimestampsAsc[1]),
-    };
-    const other = await relayResponseFor(mismatch);
+    // A thrown write is a relay write failure, not a quota, and the relay
+    // logs it.
+    const failure = new Error("write failed");
+    const thrown = await relayResponseFor(() => {
+      throw failure;
+    });
     assertEqual(
-      await run(applyProtocolMessageAsClient(other.message)),
+      await run(applyProtocolMessageAsClient(thrown.message)),
       err({ type: "ProtocolWriteError", ownerId: testAppOwner.id }),
     );
-    assertEqual(other.logged, [{ method: "error", args: [mismatch] }]);
+    assertEqual(
+      thrown.logged.map(({ method }) => method),
+      ["error"],
+    );
+    assertSame(thrown.logged[0]?.args[0], failure);
   });
 });
 
@@ -1239,7 +1237,7 @@ describe("applyProtocolMessageAsClient results", () => {
     assertOk(result, { type: "Readonly" });
   });
 
-  it("preserves expected storage write rejection causes", async () => {
+  it("preserves a storage write rejection", async () => {
     const deps = testCreateDeps();
     const input = createResponse();
     input.addMessage(
@@ -1250,42 +1248,26 @@ describe("applyProtocolMessageAsClient results", () => {
     );
     const message = input.unwrap();
 
-    const errors: ReadonlyArray<StorageWriteMessagesError> = [
-      {
-        type: "DecryptWithXChaCha20Poly1305Error",
-        error: new Error("decryption failed"),
+    const error: StorageWriteMessagesError = {
+      type: "StorageQuotaError",
+      ownerId: testAppOwner.id,
+    };
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        writeMessages: () => () => err(error),
       },
-      {
-        type: "ProtocolInvalidDataError",
-        data: Uint8Array.of(255),
-        error: new Error("decoding failed"),
-      },
-      {
-        type: "ProtocolTimestampMismatchError",
-        expected: timestampBytesToTimestamp(testTimestampsAsc[0]),
-        timestamp: timestampBytesToTimestamp(testTimestampsAsc[1]),
-      },
-      { type: "StorageQuotaError", ownerId: testAppOwner.id },
-    ];
-
-    for (const error of errors) {
-      await using run = testCreateRun({
-        storage: {
-          ...shouldNotBeCalledStorageDep.storage,
-          writeMessages: () => () => err(error),
-        },
-      } satisfies StorageDep);
-      const task = applyProtocolMessageAsClient(message, {
-        writeKey: testAppOwner.writeKey,
-      });
-      assertType<
-        InferTaskErr<typeof task>,
-        ProtocolError | StorageWriteMessagesError
-      >();
-      const result = await run(task);
-      assertErr(result);
-      assertSame(result.error, error);
-    }
+    } satisfies StorageDep);
+    const task = applyProtocolMessageAsClient(message, {
+      writeKey: testAppOwner.writeKey,
+    });
+    assertType<
+      InferTaskErr<typeof task>,
+      ProtocolError | StorageWriteMessagesError
+    >();
+    const result = await run(task);
+    assertErr(result);
+    assertSame(result.error, error);
   });
 
   it("reports a thrown write as failed", async () => {

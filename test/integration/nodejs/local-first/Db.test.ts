@@ -36,12 +36,14 @@ import {
   ownerIdToOwnerIdBytes,
   testAppOwner,
   type Owner,
+  type OwnerEncryptionKey,
 } from "../../../../packages/common/src/local-first/Owner.ts";
 import {
   applyProtocolMessageAsRelay,
   createProtocolMessageBuffer,
   createProtocolMessageFromCrdtMessages,
   decryptAndDecodeDbChange,
+  defaultProtocolMessageMaxSize,
   encodeAndEncryptDbChange,
   MessageType,
   ProtocolErrorCode,
@@ -62,7 +64,12 @@ import type {
   EvoluInstanceId,
 } from "../../../../packages/common/src/local-first/Shared.ts";
 import { consoleEntryOrErrorBroadcastChannelName } from "../../../../packages/common/src/local-first/Shared.ts";
-import { DbChange } from "../../../../packages/common/src/local-first/Storage.ts";
+import {
+  type CrdtMessage,
+  DbChange,
+  type EncryptedCrdtMessage,
+  type EncryptedDbChange,
+} from "../../../../packages/common/src/local-first/Storage.ts";
 import {
   createTimestamp,
   Counter,
@@ -124,7 +131,11 @@ import {
   type WorkerSelf,
 } from "../../../../packages/common/src/Worker.ts";
 import { createBetterSqliteDriver } from "../../../../packages/nodejs/src/Sqlite.ts";
-import { setupSqliteAndRelayStorage, testCreateSqliteDep } from "../_deps.ts";
+import {
+  setupSqliteAndRelayStorage,
+  testCreateSqliteDep,
+  type TestSqliteAndRelayStorageSetup,
+} from "../_deps.ts";
 
 installPolyfills();
 
@@ -2455,6 +2466,7 @@ describe("sync message flow", () => {
             message: {
               clock: setup.getClock(),
               didWriteMessages: true,
+              skippedError: null,
               ownerId: "BSf-8mxNjgk72yD-D7rr1A",
               result: { ok: true, value: { type: "Broadcast" } },
               type: "ApplySyncMessage",
@@ -2664,141 +2676,341 @@ describe("sync message flow", () => {
     });
   });
 
-  it("ApplySyncMessage returns the decryption error without storing a partially valid batch", async () => {
-    await using setup = await setupDbWorker();
-    const clock = setup.getClock();
-
-    const validMessage = await createBroadcastProtocolMessage([
-      {
-        timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
-        change: DbChange.orThrow({
-          table: "testTable",
-          id: setup.createId(),
-          values: { name: "valid before corruption" },
-          isInsert: true,
-          isDelete: null,
-        }),
-      },
-      {
-        timestamp: createTimestamp({
-          millis: Millis.orThrow(2),
-          counter: 0 as never,
-        }),
-        change: DbChange.orThrow({
-          table: "testTable",
-          id: setup.createId(),
-          values: { name: "corrupted" },
-          isInsert: true,
-          isDelete: null,
-        }),
-      },
-    ]);
-    const corruptedMessage = Uint8Array.from(validMessage);
-    corruptedMessage[corruptedMessage.length - 1] ^= 0xff;
-
-    const outputs = await postRequest(setup, {
-      type: "ForSharedWorker",
-      message: {
-        type: "ApplySyncMessage",
-        owner: testAppOwner,
-        inputMessage: corruptedMessage,
-      },
+  describe("ApplySyncMessage with a change it cannot decrypt, verify, or decode", () => {
+    const createMessage = (
+      setup: DbWorkerSetup,
+      millis: number,
+      name: string,
+    ): CrdtMessage => ({
+      timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
+      change: DbChange.orThrow({
+        table: "testTable",
+        id: setup.createId(),
+        values: { name },
+        isInsert: true,
+        isDelete: null,
+      }),
     });
 
-    await testWaitForWorkerMessage();
-    assertEqual(setup.consoleEntryOrErrors, []);
-    assertLength(outputs, 1);
-    const response = getQueuedSharedWorkerMessage(outputs, "ApplySyncMessage");
-    assertErr(response.result);
-    assertSame(response.result.error.type, "DecryptWithXChaCha20Poly1305Error");
-    assertInstanceOf(response.result.error.error, Error);
-    assertSame(response.ownerId, testAppOwner.id);
-    assertFalse(response.didWriteMessages);
-    assertEqual(response.clock, clock);
+    /**
+     * Applies a Broadcast of messages, each encrypted with its own key and sent
+     * under its own timestamp unless another is given, or already encrypted.
+     */
+    const applyBroadcast = async (
+      setup: DbWorkerSetup,
+      messages: ReadonlyArray<
+        | readonly [CrdtMessage, OwnerEncryptionKey, Timestamp?]
+        | EncryptedCrdtMessage
+      >,
+    ) => {
+      const deps = testCreateDeps();
+      const buffer = createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Broadcast,
+      });
+      for (const entry of messages) {
+        if ("change" in entry) {
+          buffer.addMessage(entry);
+          continue;
+        }
+        const [message, key, timestamp = message.timestamp] = entry;
+        buffer.addMessage({
+          timestamp,
+          change: encodeAndEncryptDbChange(deps)(message, key),
+        });
+      }
+      const outputs = await postRequest(
+        setup,
+        setupApplySyncRequest(buffer.unwrap()),
+      );
+      await testWaitForWorkerMessage();
+      assertEqual(setup.consoleEntryOrErrors, []);
+      assertLength(outputs, 1);
+      return getQueuedSharedWorkerMessage(outputs, "ApplySyncMessage");
+    };
 
-    assertEqual(getSqliteSnapshot(setup), {
-      schema: {
-        indexes: [
-          {
-            name: "evolu_history_ownerId_timestamp",
-            sql: 'create index evolu_history_ownerId_timestamp on evolu_history (\n          "ownerId",\n          "timestamp"\n        )',
-          },
-          {
-            name: "evolu_history_ownerId_table_id_column_timestampDesc",
-            sql: 'create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (\n          "ownerId",\n          "table",\n          "id",\n          "column",\n          "timestamp" desc\n        )',
-          },
-          {
-            name: "evolu_timestamp_index",
-            sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
-          },
-          quarantineIndex,
+    it("stores the valid changes and skips the ones it cannot decrypt or verify", async () => {
+      await using setup = await setupDbWorker();
+      const before = createMessage(setup, 1, "before");
+      const after = createMessage(setup, 3, "after");
+
+      // The foreign change is encrypted with another owner's key, and the
+      // newest one replays an authentic change under another timestamp, so
+      // both fail while the changes around them do not.
+      const response = await applyBroadcast(setup, [
+        [before, testAppOwner.encryptionKey],
+        [createMessage(setup, 2, "foreign"), testDbAppOwner2.encryptionKey],
+        [after, testAppOwner.encryptionKey],
+        [
+          before,
+          testAppOwner.encryptionKey,
+          createTimestamp({ millis: Millis.orThrow(4) }),
         ],
-        tables: {
-          _localTable: new Set([
-            "id",
-            "createdAt",
-            "updatedAt",
-            "isDeleted",
-            "ownerId",
-            "value",
-          ]),
-          evolu_config: new Set(["clock"]),
-          evolu_history: new Set([
-            "ownerId",
-            "table",
-            "id",
-            "column",
-            "timestamp",
-            "value",
-          ]),
-          evolu_message_quarantine: new Set([
-            "ownerId",
-            "timestamp",
-            "table",
-            "id",
-            "column",
-            "value",
-            "reason",
-            "origin",
-            "quarantinedAt",
-          ]),
-          evolu_timestamp: new Set(["ownerId", "t", "h1", "h2", "c", "l"]),
-          evolu_usage: new Set([
-            "ownerId",
-            "storedBytes",
-            "firstTimestamp",
-            "lastTimestamp",
-          ]),
-          evolu_version: new Set(["dbVersion"]),
-          testTable: new Set([
-            "id",
-            "createdAt",
-            "updatedAt",
-            "isDeleted",
-            "ownerId",
-            "name",
-          ]),
-        },
-      },
-      tables: [
-        { name: "evolu_version", rows: [{ dbVersion: 2 }] },
+      ]);
+
+      // The first skipped change is reported beside a successful result, so
+      // the round it came in continues.
+      assertOk(response.result);
+      const { skippedError } = response;
+      assert(
+        skippedError?.type === "DecryptWithXChaCha20Poly1305Error",
+        "The foreign change should be reported first.",
+      );
+      assertInstanceOf(skippedError.error, Error);
+      assertSame(response.ownerId, testAppOwner.id);
+      assertTrue(response.didWriteMessages);
+      // The newest change is skipped, so the clock stops at the newest valid
+      // one.
+      assertSame(response.clock.millis, after.timestamp.millis);
+
+      const { tables } = getSqliteSnapshot(setup);
+      const rowsOf = (name: string) =>
+        tables.find((table) => table.name === name)?.rows;
+      assertEqual(
+        rowsOf("testTable")
+          ?.map((row) => row.name)
+          .toSorted(),
+        ["after", "before"],
+      );
+      // Skipped changes leave no timestamp, so they never enter the owner's set
+      // that sync reconciles and forwards.
+      assertEqual(
+        rowsOf("evolu_timestamp")?.map((row) => row.t),
+        [
+          timestampToTimestampBytes(before.timestamp),
+          timestampToTimestampBytes(after.timestamp),
+        ],
+      );
+      assertEqual(rowsOf("evolu_message_quarantine"), []);
+    });
+
+    it("stores the valid change and skips one it cannot decode", async () => {
+      await using setup = await setupDbWorker();
+      const valid = createMessage(setup, 1, "valid");
+
+      // The malformed change is too short to hold even its nonce.
+      const response = await applyBroadcast(setup, [
+        [valid, testAppOwner.encryptionKey],
         {
-          name: "evolu_config",
-          rows: [
-            {
-              clock: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 0, 197, 43, 199, 155, 149, 57, 12, 87,
-              ]),
-            },
-          ],
+          timestamp: createTimestamp({ millis: Millis.orThrow(2) }),
+          change: Uint8Array.of(1) as EncryptedDbChange,
         },
-        { name: "evolu_history", rows: [] },
-        { name: "evolu_message_quarantine", rows: [] },
-        { name: "evolu_timestamp", rows: [] },
-        { name: "evolu_usage", rows: [] },
-        { name: "testTable", rows: [] },
-        { name: "_localTable", rows: [] },
-      ],
+      ]);
+
+      assertOk(response.result);
+      assertSame(response.skippedError?.type, "ProtocolInvalidDataError");
+      assertTrue(response.didWriteMessages);
+      assertEqual(
+        getSqliteSnapshot(setup)
+          .tables.find((table) => table.name === "evolu_timestamp")
+          ?.rows.map((row) => row.t),
+        [timestampToTimestampBytes(valid.timestamp)],
+      );
+    });
+
+    it("changes nothing when it cannot decrypt any change", async () => {
+      await using setup = await setupDbWorker();
+      const clock = setup.getClock();
+      const snapshot = getSqliteSnapshot(setup);
+
+      const response = await applyBroadcast(setup, [
+        [createMessage(setup, 1, "foreign"), testDbAppOwner2.encryptionKey],
+      ]);
+
+      assertOk(response.result);
+      assertSame(
+        response.skippedError?.type,
+        "DecryptWithXChaCha20Poly1305Error",
+      );
+      assertFalse(response.didWriteMessages);
+      assertEqual(response.clock, clock);
+      assertEqual(getSqliteSnapshot(setup), snapshot);
+    });
+
+    it("reports a skipped change only for the request that skipped it", async () => {
+      await using setup = await setupDbWorker();
+      await applyBroadcast(setup, [
+        [createMessage(setup, 1, "foreign"), testDbAppOwner2.encryptionKey],
+      ]);
+
+      const response = await applyBroadcast(setup, [
+        [createMessage(setup, 2, "valid"), testAppOwner.encryptionKey],
+      ]);
+
+      assertOk(response.result);
+      assertSame(response.skippedError, null);
+      assertTrue(response.didWriteMessages);
+    });
+
+    /**
+     * Stores the messages on the relay, each uploaded by a writer with the
+     * owner's write key and the given encryption key.
+     */
+    const storeOnRelay = async (
+      relay: TestSqliteAndRelayStorageSetup,
+      messages: ReadonlyArray<readonly [CrdtMessage, OwnerEncryptionKey]>,
+    ) => {
+      const deps = testCreateDeps();
+      for (const [message, encryptionKey] of messages) {
+        await relay.run.orThrow(
+          applyProtocolMessageAsRelay(
+            createProtocolMessageFromCrdtMessages(deps)(
+              { ...testAppOwner, encryptionKey },
+              [message],
+            ),
+          ),
+        );
+      }
+    };
+
+    /**
+     * Runs a round between the client and the relay until the client converges,
+     * and returns the skipped error types and the relay's reply sizes.
+     */
+    const syncWithRelay = async (
+      setup: DbWorkerSetup,
+      relay: TestSqliteAndRelayStorageSetup,
+    ) => {
+      const sync = getQueuedSharedWorkerMessage(
+        await postRequest(setup, {
+          type: "ForSharedWorker",
+          message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+        }),
+        "CreateSyncMessages",
+      ).protocolMessagesByOwnerId.get(testAppOwner.id);
+      assertNotUndefined(sync);
+      let message = sync;
+      const skippedErrorTypes: Array<string> = [];
+      const replySizes: Array<number> = [];
+      for (let step = 0; step < 20; step++) {
+        const relayResponse = await relay.run.orThrow(
+          applyProtocolMessageAsRelay(message),
+        );
+        replySizes.push(relayResponse.message.byteLength);
+        const response = getQueuedSharedWorkerMessage(
+          await postRequest(
+            setup,
+            setupApplySyncRequest(relayResponse.message),
+          ),
+          "ApplySyncMessage",
+        );
+        assertOk(response.result);
+        if (response.skippedError)
+          skippedErrorTypes.push(response.skippedError.type);
+        if (response.result.value.type === "Converged")
+          return { skippedErrorTypes, replySizes };
+        assertSame(response.result.value.type, "Response");
+        message = response.result.value.message;
+      }
+      throw new Error("The round did not converge.");
+    };
+
+    /** Asserts that the relay holds the client's change. */
+    const assertOnRelay = (
+      relay: TestSqliteAndRelayStorageSetup,
+      message: CrdtMessage,
+    ) => {
+      assertOk(
+        decryptAndDecodeDbChange(
+          {
+            timestamp: message.timestamp,
+            change: relay.storage.readDbChange(
+              testAppOwnerIdBytes,
+              timestampToTimestampBytes(message.timestamp),
+            ),
+          },
+          testAppOwner.encryptionKey,
+        ),
+        message.change,
+      );
+    };
+
+    it("finishes a round with a relay that keeps offering a change it cannot decrypt", async () => {
+      await using setup = await setupDbWorker();
+      await using relay = await setupSqliteAndRelayStorage();
+      const local = createMessage(setup, 1, "local");
+      await applyBroadcast(setup, [[local, testAppOwner.encryptionKey]]);
+
+      // A writer with the owner's write key but another encryption key stored
+      // a change on the relay beside a valid one.
+      await storeOnRelay(relay, [
+        [createMessage(setup, 2, "foreign"), testDbAppOwner2.encryptionKey],
+        [createMessage(setup, 3, "remote"), testAppOwner.encryptionKey],
+      ]);
+
+      // The client skips the foreign change each time the relay offers it, yet
+      // the round still converges instead of offering it forever.
+      const { skippedErrorTypes } = await syncWithRelay(setup, relay);
+      assertEqual(
+        [...new Set(skippedErrorTypes)],
+        ["DecryptWithXChaCha20Poly1305Error"],
+      );
+
+      // Everything else synced both ways.
+      assertEqual(
+        setup.sqlite
+          .exec<{ name: string }>(sql`
+            select name from testTable order by name;
+          `)
+          .rows.map((row) => row.name),
+        ["local", "remote"],
+      );
+      assertOnRelay(relay, local);
+      assertEqual(setup.consoleEntryOrErrors, []);
+    });
+
+    it("finishes a download split into several replies around changes it cannot decrypt", async () => {
+      await using setup = await setupDbWorker();
+      await using relay = await setupSqliteAndRelayStorage();
+      const local = createMessage(setup, 1, "local");
+      await applyBroadcast(setup, [[local, testAppOwner.encryptionKey]]);
+
+      // The valid changes exceed one reply, and foreign changes precede and
+      // follow them.
+      const remoteCount = 12;
+      const remoteName = "remote".padEnd(100_000, ".");
+      await storeOnRelay(relay, [
+        [createMessage(setup, 2, "foreign"), testDbAppOwner2.encryptionKey],
+        ...Array.from(
+          { length: remoteCount },
+          (_, index) =>
+            [
+              createMessage(setup, 3 + index, remoteName),
+              testAppOwner.encryptionKey,
+            ] as const,
+        ),
+        [
+          createMessage(setup, 3 + remoteCount, "foreign"),
+          testDbAppOwner2.encryptionKey,
+        ],
+      ]);
+
+      const { skippedErrorTypes, replySizes } = await syncWithRelay(
+        setup,
+        relay,
+      );
+      assert(
+        replySizes.reduce((sum, size) => sum + size, 0) >
+          defaultProtocolMessageMaxSize,
+        "The download should need several replies.",
+      );
+      // The later reply offers the first foreign change again, before the
+      // second, and each reply reports only its first skipped change.
+      assertEqual(skippedErrorTypes, [
+        "DecryptWithXChaCha20Poly1305Error",
+        "DecryptWithXChaCha20Poly1305Error",
+      ]);
+
+      // Every valid change synced both ways.
+      assertEqual(
+        setup.sqlite
+          .exec<{ name: string }>(sql`
+            select name from testTable order by name;
+          `)
+          .rows.map((row) => (row.name === remoteName ? "remote" : row.name)),
+        ["local", ...Array.from({ length: remoteCount }, () => "remote")],
+      );
+      assertOnRelay(relay, local);
+      assertEqual(setup.consoleEntryOrErrors, []);
     });
   });
 
@@ -3392,6 +3604,7 @@ describe("sync message flow", () => {
             message: {
               clock: setup.getClock(),
               didWriteMessages: false,
+              skippedError: null,
               ownerId: "BSf-8mxNjgk72yD-D7rr1A",
               result: {
                 ok: true,
@@ -3577,6 +3790,7 @@ describe("quarantine replay", () => {
               message: {
                 clock: setup.getClock(),
                 didWriteMessages: true,
+                skippedError: null,
                 ownerId: "BSf-8mxNjgk72yD-D7rr1A",
                 result: { ok: true, value: { type: "Broadcast" } },
                 type: "ApplySyncMessage",
@@ -4443,6 +4657,7 @@ describe("quarantine replay", () => {
               message: {
                 clock: setup.getClock(),
                 didWriteMessages: true,
+                skippedError: null,
                 ownerId: testAppOwner.id,
                 result: {
                   ok: true,

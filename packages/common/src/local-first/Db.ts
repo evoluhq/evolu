@@ -40,6 +40,7 @@
 import {
   appendToArray,
   firstInArray,
+  isNonEmptyArray,
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
@@ -50,7 +51,11 @@ import {
   assertNotUndefined,
 } from "../Assert.ts";
 import type { ConsoleLevel } from "../Console.ts";
-import { EncryptionKey, type RandomBytesDep } from "../Crypto.ts";
+import {
+  EncryptionKey,
+  type DecryptWithXChaCha20Poly1305Error,
+  type RandomBytesDep,
+} from "../Crypto.ts";
 import { constFalse, constVoid } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import { acquireLeaderLock } from "../LockManager.ts";
@@ -107,7 +112,9 @@ import {
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
   SubscriptionFlags,
+  type ProtocolInvalidDataError,
   type ProtocolMessage,
+  type ProtocolTimestampMismatchError,
 } from "./Protocol.ts";
 import type { Query, RowsByQueryMap } from "./Query.ts";
 import type { MutationChange, SqliteSchemaDep } from "./Schema.ts";
@@ -362,6 +369,7 @@ export const startDbWorker =
                     clock: context.clock.get(),
                     ownerId: owner.id,
                     didWriteMessages: storage.didWriteMessages(),
+                    skippedError: storage.skippedError(),
                     result,
                   },
                 });
@@ -478,8 +486,10 @@ interface WriteContext extends ClockDep {
  *
  * Local-only mutations and sync requests that do not invoke `writeMessages`
  * skip this. Successfully processed batches in `writeMessages` call this even
- * when every message is duplicated or quarantined. Duplicate receipts within
- * the drift limit can advance the clock without storing new messages.
+ * when every message is duplicated or quarantined, but not when every message
+ * was skipped, because a skipped message does not affect the clock. Duplicate
+ * receipts within the drift limit can advance the clock without storing new
+ * messages.
  */
 const saveClock =
   (deps: SqliteDep) =>
@@ -873,6 +883,15 @@ interface ClientStorage extends Storage, BaseSqliteStorage {
     writeContext?: WriteContext,
   ) => void;
   readonly didWriteMessages: () => boolean;
+  /**
+   * The first error of a message that {@link Storage.writeMessages} skipped in
+   * this request, or null.
+   */
+  readonly skippedError: () =>
+    | DecryptWithXChaCha20Poly1305Error
+    | ProtocolInvalidDataError
+    | ProtocolTimestampMismatchError
+    | null;
 }
 
 const createClientStorage = (
@@ -884,6 +903,7 @@ const createClientStorage = (
 ): ClientStorage => {
   let encryptionKey: EncryptionKey | null = null;
   let didWriteMessages = false;
+  let skippedError: ReturnType<ClientStorage["skippedError"]> = null;
   let writeContext: WriteContext | undefined;
 
   const getEncryptionKey = (): EncryptionKey => {
@@ -903,9 +923,11 @@ const createClientStorage = (
       encryptionKey = nextEncryptionKey;
       writeContext = nextWriteContext;
       didWriteMessages = false;
+      skippedError = null;
     },
 
     didWriteMessages: () => didWriteMessages,
+    skippedError: () => skippedError,
 
     // Not implemented yet.
     validateWriteKey: constFalse,
@@ -921,20 +943,41 @@ const createClientStorage = (
       const messages: Array<CrdtMessage> = [];
       const currentEncryptionKey = getEncryptionKey();
 
+      // Each message is authenticated on its own, so one this client cannot
+      // decrypt, verify, or decode is skipped while the rest are stored. A
+      // relay can serve anything, and anyone with the owner's write key can
+      // store anything on a relay, so Evolu cannot tell who is at fault; the
+      // SharedWorker shows the skip on the route.
+      //
+      // A skipped message leaves nothing, not even its timestamp. A stored
+      // timestamp would stop this client from fetching the real change with
+      // that timestamp from another relay, and quarantine rows are synced to
+      // other relays. The relay offers the message again on each sync, so once
+      // this client is fixed, the next sync stores it.
+      //
+      // The error is not returned, because that would end the round: the
+      // relay's ranges would go unanswered, so changes it lacks might never be
+      // uploaded to it, and every round would end the same way.
       for (const message of encryptedMessages) {
         const change = decryptAndDecodeDbChange(message, currentEncryptionKey);
-        if (!change.ok) return err(change.error);
+        if (!change.ok) {
+          skippedError ??= change.error;
+          continue;
+        }
         messages.push({ timestamp: message.timestamp, change: change.value });
       }
+
+      if (!isNonEmptyArray(messages)) return ok();
 
       assertNonNullable(writeContext);
       const { clock, now } = writeContext;
       let clockTimestamp = clock.get();
       const receive = receiveTimestamp(deps);
 
-      // The clock is computed over every message, duplicates included, so a
-      // retry with the same inputs reports the same clock. Writes for
-      // timestamps already in the owner's set are skipped by applyMessages.
+      // The clock is computed over every message that was not skipped,
+      // duplicates included, so a retry with the same inputs reports the same
+      // clock. Writes for timestamps already in the owner's set are skipped by
+      // applyMessages.
       for (const message of messages) {
         const nextTimestamp = receive(clockTimestamp, message.timestamp, now);
         if (!nextTimestamp.ok) {
@@ -942,8 +985,6 @@ const createClientStorage = (
           clockTimestamp = nextTimestamp.error.timestamp;
         } else clockTimestamp = nextTimestamp.value;
       }
-
-      assertNonEmptyReadonlyArray(messages);
 
       let wroteNewMessages = false;
       deps.sqlite.transaction(() => {

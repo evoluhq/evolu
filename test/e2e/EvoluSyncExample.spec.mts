@@ -368,7 +368,7 @@ test("shows a relay's sync error until the relay accepts the write", async ({
   await addItem(page, "Over quota");
   await expect(status).toHaveText("Sync error");
   await expect(
-    relays.getByText("Sync failed: ProtocolQuotaError", { exact: true }),
+    relays.getByText("Sync error: ProtocolQuotaError", { exact: true }),
   ).toBeVisible();
 
   await relay.stop();

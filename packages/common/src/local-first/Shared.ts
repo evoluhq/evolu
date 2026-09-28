@@ -100,7 +100,8 @@
  * writable registrations for its owner, whichever instance made it, even one
  * disposed before the database worker answered. When a relay frame stores new
  * messages, the tenant requests a round through each other transport claimed
- * for the owner, so data learned from one relay reaches the others. A closed
+ * for the owner, so data learned from one relay reaches the others, except
+ * through a route that skipped a message, as described below. A closed
  * transport reconciles when it opens, and a replacement leader reconciles every
  * transport again, because a response reporting stored messages may have been
  * lost.
@@ -109,10 +110,11 @@
  * also delivers it as local Broadcast frames to every other tenant with
  * writable access to the owner, even while sockets are closed. A copy keeps the
  * uploader's target, and a recipient that stores new continuation messages
- * reconciles them through the transports outside that target. Local delivery
- * forwards uploads, including historical messages sent during reconciliation,
- * but does not reconcile local database histories with each other. That waits
- * until replication scopes and retention semantics are defined.
+ * reconciles them through the transports outside that target, except through a
+ * route that skipped a message. Local delivery forwards uploads, including
+ * historical messages sent during reconciliation, but does not reconcile local
+ * database histories with each other. That waits until replication scopes and
+ * retention semantics are defined.
  *
  * ## Sync state
  *
@@ -156,19 +158,29 @@
  * - The tenant has sent a round through the transport since the last event that
  *   requires one: its first use of the transport for the owner, the socket
  *   opening, an explicit request, a replacement leader, or storing messages
- *   from another transport. No failed or aborted result has arrived on the
- *   route since.
+ *   from another transport, unless the route skipped a message. No failed or
+ *   aborted result has arrived on the route since.
+ * - No result that skipped a received message has arrived on the route since a
+ *   round was last requested through it, and since that request, no messages
+ *   have been stored from another transport, directly or through a sibling copy
+ *   uploaded outside this transport, and no sibling copy has failed to apply or
+ *   skipped a message.
+ *
+ * A route is settled when every condition except the last holds, so a complete
+ * route is settled too. A settled route that is incomplete has ended its
+ * reconciliation, but its relay may offer a message the database skipped, or
+ * messages stored elsewhere may not have reached it.
  *
  * A reconciliation chain ends only with a converged result, a failure, an
  * abort, a dropped frame, or a continuation that finds the socket closed, and
  * relay errors reach every applying tenant, so these conditions mean every
  * chain, including this tenant's, converged. A local Broadcast from a sibling
  * tenant holds every route of its owner until it is applied, because it arrives
- * without a request of its own; one that fails to apply requires a round
- * through every transport.
+ * without a request of its own; one that fails to apply or skips a message
+ * requires a round through every transport whose route has not skipped one.
  *
  * A failed result on a route requests one round through it. Any further failure
- * before the route completes waits for an explicit request or a reopen, so a
+ * before the route settles waits for an explicit request or a reopen, so a
  * persistent failure cannot loop; a converged reply in between does not end the
  * wait, because it may answer another tenant's round on the shared socket. An
  * aborted apply leaves its routes incomplete without a retry. An exception
@@ -177,6 +189,17 @@
  * exceptions remain unsupported and can panic the database worker. A frame the
  * relay silently drops, such as invalid data, leaves the count above zero until
  * the liveness rule below replaces the socket.
+ *
+ * A result that skipped a received message the database could not decrypt,
+ * verify, or decode records the error on the route, which shows it as
+ * {@link SyncRoute.error} describes, without ending its chain, so it requests no
+ * round, and the relay offers the message again in every round through the
+ * route until the database stores a message with that timestamp. The messages
+ * received elsewhere that the last condition names request no round through
+ * such a route, even while a requested round checks it again, because each
+ * round would download every skipped message again. The next round that a first
+ * use of the transport for the owner, an explicit request, a reopen, a
+ * replacement leader, or a failure sends through the route reconciles them.
  *
  * ### Liveness
  *
@@ -196,11 +219,13 @@
  * The timeout belongs to the transport, not to an owner, because a small reply
  * for one owner can wait behind another owner's large frame on the socket. A
  * grown timeout lasts while a request is outstanding on the socket or a
- * database that has not refused startup has an incomplete route through it,
- * including one waiting after a failure, and ends with the transport. A reply's
- * speed proves nothing, because a recovery on a slow link starts with small
- * replies that arrive quickly. The reopen resets the counts and starts the open
- * rounds, so a dropped frame delays a route instead of stranding it.
+ * database that has not refused startup has an unsettled route through it,
+ * including one waiting after a failure, and ends with the transport. A settled
+ * route that is incomplete does not count, because its reconciliation has
+ * ended. A reply's speed proves nothing, because a recovery on a slow link
+ * starts with small replies that arrive quickly. The reopen resets the counts
+ * and starts the open rounds, so a dropped frame delays a route instead of
+ * stranding it.
  *
  * The shared worker sends nothing while idle, so a path that dies then may go
  * unnoticed until its next request; until then, changes from other devices stop
@@ -226,7 +251,10 @@ import {
 } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
-import type { EncryptionKey } from "../Crypto.ts";
+import type {
+  DecryptWithXChaCha20Poly1305Error,
+  EncryptionKey,
+} from "../Crypto.ts";
 import { disposable, exhaustiveCheck } from "../Function.ts";
 import { acquireLeaderLock, type LockManagerDep } from "../LockManager.ts";
 import {
@@ -303,7 +331,9 @@ import {
   parseProtocolHeader,
   type ApplyProtocolMessageAsClientResult,
   type ProtocolError,
+  type ProtocolInvalidDataError,
   type ProtocolMessage,
+  type ProtocolTimestampMismatchError,
 } from "./Protocol.ts";
 import {
   makePatches,
@@ -520,26 +550,37 @@ export interface SyncRoute {
    * a failure, or null. Aborted processing does not update this timestamp.
    */
   readonly lastReceivedAt: Millis | null;
-  /** The last failed result on the route; cleared when the route completes. */
+  /**
+   * The error the route shows, or null. Until the route settles, it is the
+   * failure since the route last settled or, without one, the skipped message.
+   * A route that settles incomplete shows its skipped message, even after a
+   * later failure it recovered from. Cleared when the route completes.
+   */
   readonly error: SyncRouteError | null;
 }
 
-export interface SyncRouteError {
-  readonly type: SyncRouteErrorType;
-  readonly at: Millis;
-}
-
 /**
- * A {@link ProtocolError} or the original {@link StorageWriteMessagesError} type
- * for a rejected write. `WriteFailed` means a `writeMessages` call that threw,
- * logged by the protocol, and `SyncFailed` means a logged failure while
- * creating a round or reconciling ranges.
+ * The error a {@link SyncRoute} shows, with the time it arrived.
+ *
+ * It is the error itself, so it carries its details, such as the expected and
+ * actual timestamps of a {@link ProtocolTimestampMismatchError}. A skipped
+ * message adds {@link DecryptWithXChaCha20Poly1305Error}. A
+ * {@link ProtocolInvalidDataError} leaves out its data, which can be a whole
+ * frame. `WriteFailed` means a `writeMessages` call that threw, logged by the
+ * protocol, and `SyncFailed` means a logged failure while creating a round or
+ * reconciling ranges.
  */
-export type SyncRouteErrorType =
-  | ProtocolError["type"]
-  | StorageWriteMessagesError["type"]
-  | "WriteFailed"
-  | "SyncFailed";
+export type SyncRouteError = (
+  | Exclude<ProtocolError, ProtocolInvalidDataError>
+  | Omit<ProtocolInvalidDataError, "data">
+  | StorageWriteMessagesError
+  | DecryptWithXChaCha20Poly1305Error
+  | Typed<"WriteFailed">
+  | Typed<"SyncFailed">
+) & { readonly at: Millis };
+
+/** The type of a {@link SyncRouteError}. */
+export type SyncRouteErrorType = SyncRouteError["type"];
 
 /**
  * One owner's standing with its relays in one database, derived from
@@ -576,9 +617,9 @@ export interface RelaySyncState {
 }
 
 /**
- * The status of a {@link RelaySyncState}: `error` when its route failed and has
- * not completed since, `synced` when the route is complete, `syncing` while the
- * transport is open, and `offline` otherwise.
+ * The status of a {@link RelaySyncState}: `error` when its route failed or
+ * skipped a message and has not completed since, `synced` when the route is
+ * complete, `syncing` while the transport is open, and `offline` otherwise.
  */
 export type RelaySyncStatus = "syncing" | "synced" | "offline" | "error";
 
@@ -846,6 +887,15 @@ export type DbWorkerQueuedResponse =
             readonly clock: Timestamp;
             readonly ownerId: OwnerId;
             readonly didWriteMessages: boolean;
+            /**
+             * The first error of a received message the DbWorker skipped while
+             * storing the rest, or null. It does not end the round.
+             */
+            readonly skippedError:
+              | DecryptWithXChaCha20Poly1305Error
+              | ProtocolInvalidDataError
+              | ProtocolTimestampMismatchError
+              | null;
             readonly result: Result<
               ApplyProtocolMessageAsClientResult,
               ProtocolError | StorageWriteMessagesError | AbortError
@@ -909,8 +959,13 @@ interface TenantSyncState {
   }>;
 }
 
-interface TenantSyncRoute extends Omit<SyncRoute, "transportId"> {
+/** A tenant's route, with its transport still keyed. */
+interface TenantSyncRoute {
   readonly transportKey: StructuralLookupKey;
+  readonly progress: RouteProgress;
+  readonly completeAt: Millis | null;
+  readonly lastSentAt: Millis | null;
+  readonly lastReceivedAt: Millis | null;
 }
 
 /**
@@ -954,6 +1009,101 @@ const isTargetTransport = (
   transport: OwnerTransport,
 ): boolean =>
   target.type === "AllTransports" || target.key === structuralLookup(transport);
+
+/**
+ * A tenant's progress toward completing a route, per the Synchronization
+ * completion rules. Events move the route to `Pending`, which keeps what the
+ * route must remember until it settles, except that messages stored elsewhere
+ * leave a `Settled` route settled. Refreshing the routes settles a `Pending`
+ * route once the tenant's reconciliation conditions hold, and returns a settled
+ * or complete route to `Pending` when they no longer hold.
+ */
+type RouteProgress = PendingRoute | SettledRoute | CompleteRoute;
+
+/**
+ * A route whose reconciliation has not ended, or has not been evaluated since
+ * an event.
+ */
+interface PendingRoute extends Typed<"Pending"> {
+  /** A round must be sent through the route before it can settle. */
+  readonly roundRequired: boolean;
+  /**
+   * The failure since the route settled, or null. A further failure requests no
+   * round until the route settles.
+   */
+  readonly failure: SyncRouteError | null;
+  /** The route's skipped message, or null. */
+  readonly skip: RouteSkip | null;
+}
+
+/**
+ * A message a route skipped. Its relay offers the message again in every round,
+ * so messages received elsewhere request no round through the route.
+ */
+interface RouteSkip {
+  readonly error: SyncRouteError;
+  /**
+   * A round was requested through the route since the skip, and no messages
+   * received elsewhere have been stored since that request, so the route
+   * completes if it settles first.
+   */
+  readonly isRechecking: boolean;
+}
+
+/**
+ * A route whose reconciliation has ended, but whose relay may offer a skipped
+ * message or lack messages stored elsewhere, so it is incomplete.
+ */
+interface SettledRoute extends Typed<"Settled"> {
+  readonly error: SyncRouteError;
+}
+
+interface CompleteRoute extends Typed<"Complete"> {}
+
+const routeToPending = (progress: RouteProgress): PendingRoute => {
+  switch (progress.type) {
+    case "Pending":
+      return progress;
+    case "Settled":
+      return {
+        type: "Pending",
+        roundRequired: false,
+        failure: null,
+        skip: { error: progress.error, isRechecking: false },
+      };
+    case "Complete":
+      return {
+        type: "Pending",
+        roundRequired: false,
+        failure: null,
+        skip: null,
+      };
+  }
+};
+
+/** Converts an error to a {@link SyncRouteError}, leaving out bulky data. */
+const errorToSyncRouteError = (
+  error:
+    | ProtocolError
+    | StorageWriteMessagesError
+    | DecryptWithXChaCha20Poly1305Error
+    | Typed<"WriteFailed">
+    | Typed<"SyncFailed">,
+  at: Millis,
+): SyncRouteError => {
+  if (error.type !== "ProtocolInvalidDataError") return { ...error, at };
+  const { data: _data, ...rest } = error;
+  return { ...rest, at };
+};
+
+const failRoute = (
+  progress: RouteProgress,
+  failure: SyncRouteError,
+): PendingRoute => ({
+  ...routeToPending(progress),
+  roundRequired: true,
+  failure,
+});
 
 type EvoluTenantDeps = SharedWorkerDeps &
   PostConsoleEntryOrErrorDep &
@@ -1156,7 +1306,7 @@ export const initSharedWorker =
        * another, so a reply can wait behind another owner's large frame. It
        * doubles after each timeout and survives reconnects until nothing is
        * outstanding and every route through the transport of a database that
-       * has not refused startup is complete.
+       * has not refused startup has settled.
        */
       timeout: PositiveMillis;
       socket: WebSocket | null;
@@ -1199,6 +1349,11 @@ export const initSharedWorker =
             error,
           }),
         );
+        // A grown timeout lasts while a request is outstanding on the socket
+        // or a database that has not refused startup has an unsettled route
+        // through it. Every change to either publishes, including a route that
+        // goes away without settling.
+        const unsettledTransportIds = new Set<SyncTransportId>();
         const tenants = [...currentTenantsByName.values()].map(
           (tenant): SyncTenant => {
             const { name, refused, owners } = tenant.getSyncTenant();
@@ -1213,30 +1368,42 @@ export const initSharedWorker =
                     const entry = transportsByKey.get(key);
                     return entry ? [entry.id] : [];
                   }),
-                  routes: routes.flatMap(({ transportKey, ...route }) => {
-                    const entry = transportsByKey.get(transportKey);
-                    return entry ? [{ transportId: entry.id, ...route }] : [];
-                  }),
+                  routes: routes.flatMap(
+                    ({
+                      transportKey,
+                      progress,
+                      ...times
+                    }): Array<SyncRoute> => {
+                      const entry = transportsByKey.get(transportKey);
+                      if (!entry) return [];
+                      if (!refused && progress.type === "Pending")
+                        unsettledTransportIds.add(entry.id);
+                      return [
+                        {
+                          transportId: entry.id,
+                          complete: progress.type === "Complete",
+                          error:
+                            progress.type === "Pending"
+                              ? (progress.failure ??
+                                progress.skip?.error ??
+                                null)
+                              : progress.type === "Settled"
+                                ? progress.error
+                                : null,
+                          ...times,
+                        },
+                      ];
+                    },
+                  ),
                 }),
               ),
             };
           },
         );
-        // A grown timeout lasts while a request is outstanding on the socket
-        // or a database that has not refused startup has an incomplete route
-        // through it. Every change to either publishes, including a route that
-        // goes away without completing.
-        const incompleteTransportIds = new Set<SyncTransportId>();
-        for (const { refused, owners } of tenants) {
-          if (refused) continue;
-          for (const { routes } of owners)
-            for (const { transportId, complete } of routes)
-              if (!complete) incompleteTransportIds.add(transportId);
-        }
         for (const entry of transportsByKey.values())
           if (
             entry.outstandingByOwnerId.size === 0 &&
-            !incompleteTransportIds.has(entry.id)
+            !unsettledTransportIds.has(entry.id)
           )
             entry.timeout = syncRequestTimeout;
         syncStateBroadcastChannel.postMessage({ transports, tenants });
@@ -2006,13 +2173,10 @@ const createEvoluTenant =
     };
 
     interface RouteState {
-      /** A round must be sent through the route before it can be complete. */
-      roundRequired: boolean;
-      complete: boolean;
+      progress: RouteProgress;
       completeAt: Millis | null;
       lastSentAt: Millis | null;
       lastReceivedAt: Millis | null;
-      error: SyncRouteError | null;
     }
     const routesByOwnerIdByKey = new Map<
       StructuralLookupKey,
@@ -2031,12 +2195,15 @@ const createEvoluTenant =
       let route = routesByOwnerId.get(ownerId);
       if (!route) {
         route = {
-          roundRequired: true,
-          complete: false,
+          progress: {
+            type: "Pending",
+            roundRequired: true,
+            failure: null,
+            skip: null,
+          },
           completeAt: null,
           lastSentAt: null,
           lastReceivedAt: null,
-          error: null,
         };
         routesByOwnerId.set(ownerId, route);
       }
@@ -2101,18 +2268,29 @@ const createEvoluTenant =
           const hasQueuedWrite = pendingWriteCountByOwnerId.has(ownerId);
           // A refused database synchronizes nothing, and refusal discards its
           // queued writes without uploading them.
-          const complete =
+          const isReconciled =
             startupError === null &&
             isOpen &&
             deps.syncRequests.getOutstanding(ownerId, key) === 0 &&
             !hasQueuedApply &&
-            !hasQueuedWrite &&
-            !route.roundRequired;
-          if (complete && !route.complete) {
+            !hasQueuedWrite;
+          // Settling drops the failure, so the next one requests a round
+          // again. A route with a skip it is not rechecking settles without
+          // completing, because its relay may offer the skipped message or
+          // lack messages stored elsewhere.
+          const pending = routeToPending(route.progress);
+          const progress: RouteProgress =
+            !isReconciled || pending.roundRequired
+              ? pending
+              : pending.skip && !pending.skip.isRechecking
+                ? { type: "Settled", error: pending.skip.error }
+                : { type: "Complete" };
+          if (
+            progress.type === "Complete" &&
+            route.progress.type !== "Complete"
+          )
             route.completeAt = deps.time.now();
-            route.error = null;
-          }
-          route.complete = complete;
+          route.progress = progress;
         }
       }
     };
@@ -2144,8 +2322,10 @@ const createEvoluTenant =
                 .get(structuralLookup(transport))
                 ?.get(ownerId);
               if (!route) return;
-              route.roundRequired = true;
-              route.error = { type: "SyncFailed", at: now };
+              route.progress = failRoute(route.progress, {
+                type: "SyncFailed",
+                at: now,
+              });
             });
           }
           deps.publishSyncState();
@@ -2159,7 +2339,14 @@ const createEvoluTenant =
           const { ownerId, result } = response.message;
           const error = result.ok ? null : result.error;
           const isAborted = error?.type === "AbortError";
-          let failure: SyncRouteErrorType | null = null;
+          // An aborted apply reports no skipped message.
+          const skippedError = isAborted ? null : response.message.skippedError;
+          let failure:
+            | ProtocolError
+            | StorageWriteMessagesError
+            | Typed<"WriteFailed">
+            | Typed<"SyncFailed">
+            | null = null;
           if (isAborted) {
             // An abort proves no convergence. A local sibling copy affects
             // every route; a relay frame affects only its source route.
@@ -2168,17 +2355,23 @@ const createEvoluTenant =
               const key = structuralLookup(transport);
               if (source.type === "Transport" && source.key !== key) return;
               const route = routesByOwnerIdByKey.get(key)?.get(ownerId);
-              if (route) route.roundRequired = true;
+              if (route)
+                route.progress = {
+                  ...routeToPending(route.progress),
+                  roundRequired: true,
+                };
             });
           } else if (error !== null) {
-            failure = error.type;
+            failure = error;
             deps.postConsoleEntryOrError({
               type: "Error",
               error,
             });
           } else if (result.ok && result.value.type === "Failed") {
-            failure =
-              result.value.cause === "Write" ? "WriteFailed" : "SyncFailed";
+            failure = {
+              type:
+                result.value.cause === "Write" ? "WriteFailed" : "SyncFailed",
+            };
           }
           if (source.type === "Transport") {
             // A registration or claim may have been removed while this apply
@@ -2188,39 +2381,53 @@ const createEvoluTenant =
               const now = deps.time.now();
               // An aborted apply applied nothing.
               if (!isAborted) route.lastReceivedAt = now;
+              // A skipped message fails the route but not the round, whose
+              // response below is still sent, so it requests no round. The
+              // relay offers the message again in every later round, so the
+              // route stays incomplete until a round requested through it
+              // settles without skipping a message and without messages stored
+              // elsewhere since that request.
+              if (skippedError !== null)
+                route.progress = {
+                  ...routeToPending(route.progress),
+                  skip: {
+                    error: errorToSyncRouteError(skippedError, now),
+                    isRechecking: false,
+                  },
+                };
               if (failure !== null) {
-                // The first failure since the route completed requests one
+                // The first failure since the route settled requests one
                 // round. Further failures wait for an explicit request or a
                 // reopen, even after a converged reply, which may answer
                 // another request.
-                if (route.error === null)
+                const requestsRetry =
+                  route.progress.type !== "Pending" ||
+                  route.progress.failure === null;
+                route.progress = failRoute(
+                  route.progress,
+                  errorToSyncRouteError(failure, now),
+                );
+                if (requestsRetry)
                   requestCreateSyncMessages(new Set([ownerId]), source);
-                route.roundRequired = true;
-                route.error = { type: failure, at: now };
               }
             }
-          } else if (failure !== null) {
-            // A sibling's messages were not stored; rounds fetch them from
-            // the relays.
-            requestCreateSyncMessages(new Set([ownerId]), allTransports);
+          } else if (failure !== null || skippedError !== null) {
+            // Some of a sibling's messages were not stored; rounds fetch them
+            // from the relays, whose routes then fail for any this database
+            // skips.
+            requestRoundsForReceivedMessages(ownerId, {
+              except: null,
+              afterQueuedWrites: true,
+            });
           }
 
           if (response.message.didWriteMessages) {
             refreshQueries();
             // Reconcile newly stored messages through each other transport.
-            // Rounds toward the same transport coalesce whatever their source.
-            const keys: Array<StructuralLookupKey> = [];
-            deps.transports.forEachResourceForClaim(ownerId, (_, transport) => {
-              if (isTargetTransport(target, transport)) return;
-              keys.push(structuralLookup(transport));
+            requestRoundsForReceivedMessages(ownerId, {
+              except: target,
+              afterQueuedWrites: false,
             });
-            for (const key of keys) {
-              requestCreateSyncMessages(
-                new Set([ownerId]),
-                { type: "Transport", key },
-                { afterQueuedWrites: false },
-              );
-            }
           }
 
           if (result.ok) {
@@ -2299,12 +2506,58 @@ const createEvoluTenant =
             deps.syncRequests.noteSent(ownerId, key);
             const route = getRoute(ownerId, key);
             route.lastSentAt = deps.time.now();
-            if (isRound) route.roundRequired = false;
+            if (isRound)
+              route.progress = {
+                ...routeToPending(route.progress),
+                roundRequired: false,
+              };
           },
         );
       }
       // Sends raise counters shared by every tenant; one refresh covers them.
       if (protocolMessagesByOwnerId.size > 0) deps.refreshAllSyncRoutes();
+    };
+
+    /**
+     * Requests a round through each transport claimed for the owner outside
+     * `except`, after messages from elsewhere were stored or a sibling copy was
+     * not fully stored. Rounds toward the same transport coalesce whatever
+     * their source. A route that skipped a message gets none, because its relay
+     * would offer that message again, and a route rechecking one stops
+     * rechecking, because its round may have read the database before this
+     * event. A later requested round through such a route reconciles it.
+     */
+    const requestRoundsForReceivedMessages = (
+      ownerId: OwnerId,
+      {
+        except,
+        afterQueuedWrites,
+      }: { except: SyncTarget | null; afterQueuedWrites: boolean },
+    ): void => {
+      const keys: Array<StructuralLookupKey> = [];
+      deps.transports.forEachResourceForClaim(ownerId, (_, transport) => {
+        if (except && isTargetTransport(except, transport)) return;
+        const key = structuralLookup(transport);
+        const route = routesByOwnerIdByKey.get(key)?.get(ownerId);
+        if (route?.progress.type === "Settled") return;
+        if (route?.progress.type === "Pending" && route.progress.skip) {
+          // A round already requested may have read the database before these
+          // messages were stored, so it can no longer complete the route.
+          route.progress = {
+            ...route.progress,
+            skip: { ...route.progress.skip, isRechecking: false },
+          };
+          return;
+        }
+        keys.push(key);
+      });
+      for (const key of keys) {
+        requestCreateSyncMessages(
+          new Set([ownerId]),
+          { type: "Transport", key },
+          { afterQueuedWrites },
+        );
+      }
     };
 
     /** The keys of every transport claimed for the owner, by any database. */
@@ -2341,11 +2594,18 @@ const createEvoluTenant =
       if (startupError) return;
       const usedOwnersById = getUsedOwnersById(ownerIds);
       // Opening, storing messages from another transport, a failure, and an
-      // explicit request each require a new round before completion.
+      // explicit request each require a new round before completion. The
+      // round also checks again whether the relay holds a skipped message.
       for (const ownerId of usedOwnersById.keys()) {
         deps.transports.forEachResourceForClaim(ownerId, (_, transport) => {
           if (!isTargetTransport(target, transport)) return;
-          getRoute(ownerId, structuralLookup(transport)).roundRequired = true;
+          const route = getRoute(ownerId, structuralLookup(transport));
+          const pending = routeToPending(route.progress);
+          route.progress = {
+            ...pending,
+            roundRequired: true,
+            skip: pending.skip && { ...pending.skip, isRechecking: true },
+          };
         });
       }
       refreshSyncRoutes();
@@ -2507,14 +2767,7 @@ const createEvoluTenant =
                     // Registration and claim changes refresh routes before yielding.
                     // Snapshot reads must not create missing routes.
                     assertNotUndefined(route);
-                    return {
-                      transportKey: key,
-                      complete: route.complete,
-                      completeAt: route.completeAt,
-                      lastSentAt: route.lastSentAt,
-                      lastReceivedAt: route.lastReceivedAt,
-                      error: route.error,
-                    };
+                    return { transportKey: key, ...route };
                   })
                 : [],
             }),

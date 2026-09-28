@@ -75,7 +75,9 @@ import { createOwnerWebSocketTransport } from "./Owner.ts";
 import {
   encodeDbChange,
   type ProtocolError,
+  type ProtocolInvalidDataError,
   type ProtocolQuotaError,
+  type ProtocolTimestampMismatchError,
   type ProtocolVersionError,
 } from "./Protocol.ts";
 import type {
@@ -818,9 +820,12 @@ export interface Evolu<
    *
    * Reconciles locally stored changes, including writes previously rejected
    * with {@link ProtocolQuotaError}, through the owner's active transports. Call
-   * this after the relay provider confirms additional quota is available.
-   * Existing connections and {@link Evolu.useOwner} registrations are retained,
-   * including registrations shared by multiple instances or tabs.
+   * this after the relay provider confirms additional quota is available. It
+   * also checks again the changes this database skipped from the owner's
+   * relays, and sends such a relay the changes received from other relays,
+   * which otherwise wait for its next sync, such as after a reconnect. Existing
+   * connections and {@link Evolu.useOwner} registrations are retained, including
+   * registrations shared by multiple instances or tabs.
    *
    * The owner must have an active writable registration in this database.
    * Unregistered or read-only owners are ignored. Requests are skipped while
@@ -828,8 +833,9 @@ export interface Evolu<
    * reopen. Disposal drops locally buffered requests. Calling a disposed
    * instance throws, like other Evolu operations.
    *
-   * Returns immediately, without waiting for synchronization to complete.
-   * Errors are reported through {@link EvoluErrorDep.evoluError}.
+   * Returns immediately, without waiting for synchronization to complete. A
+   * skipped change is shown on its relay's route in sync state; other errors
+   * are reported through {@link EvoluErrorDep.evoluError}.
    *
    * ### Example
    *
@@ -875,8 +881,8 @@ export type UnuseOwner = () => void;
  *   of the app holds the local data. Ask the user to close the app's other
  *   tabs. It clears when the wait ends.
  * - {@link ProtocolError} does not block the app: sync with a relay failed for an
- *   owner, because the relay rejected or failed a request, or sent data that
- *   could not be decoded or verified; sync state shows the affected routes. A
+ *   owner, because the relay rejected or failed a request, or sent a frame that
+ *   could not be decoded; sync state shows the affected routes. A
  *   {@link ProtocolQuotaError} needs more relay quota, then
  *   {@link Evolu.requestSync}; a {@link ProtocolVersionError} needs an app or
  *   relay update.
@@ -884,16 +890,34 @@ export type UnuseOwner = () => void;
  *   was exceeded, so a batch of an owner's changes was not stored. The built-in
  *   client storage does not report it yet; a relay's quota arrives as
  *   {@link ProtocolQuotaError}.
- * - {@link DecryptWithXChaCha20Poly1305Error} does not block the app: changes
- *   received for an owner could not be decrypted, so none of their batch was
- *   stored.
  * - {@link UnknownError} does not block the app: Evolu logged an unexpected
  *   failure. Show a generic message.
+ *
+ * A received change that was not created with the owner's encryption key, was
+ * altered afterwards, or cannot be decoded by this app version is skipped
+ * without an error, while everything else still syncs. The relay offers it
+ * again in every round, so sync state shows it on that relay's route instead,
+ * as the {@link DecryptWithXChaCha20Poly1305Error},
+ * {@link ProtocolTimestampMismatchError}, or {@link ProtocolInvalidDataError} of
+ * the first change skipped in a reply, with its details. Once this database
+ * stores a valid change with that timestamp, for example from another relay,
+ * the relay no longer offers its copy, and the route completes with its next
+ * sync, such as after a reconnect or {@link Evolu.requestSync}, during which no
+ * changes arrive from other relays. If you don't trust that relay, stop using
+ * it for the owner. For owners that use the default transports, such as
+ * {@link Evolu.appOwner} when {@link EvoluConfig.transports} is not empty,
+ * replace the relay there; an empty list stops syncing the app owner and makes
+ * {@link Evolu.useOwner} require explicit transports. For an owner you passed
+ * explicit transports to {@link Evolu.useOwner}, call its {@link UnuseOwner} and
+ * use it again without that relay. Do this wherever the owner is used, such as
+ * in every tab, because the owner syncs through every transport any of its uses
+ * claims. If every route of the owner shows
+ * {@link DecryptWithXChaCha20Poly1305Error} and your code creates or shares the
+ * owner, check the owner's keys.
  *
  * @group Core
  */
 export type EvoluError =
-  | DecryptWithXChaCha20Poly1305Error
   | OtherBuildRunningError
   | ProtocolError
   | StorageQuotaError

@@ -327,7 +327,8 @@ const syncDescriptions: Readonly<Record<OwnerSyncStatus, string>> = {
   syncing: "Reconciling this database with its connected relays.",
   synced: "Up to date with the connected relays.",
   offline: "No relay is connected. You can keep editing locally.",
-  error: "A synchronization request failed. See the relay details below.",
+  error:
+    "A relay failed or holds a change this database cannot read. See the relay details below.",
 };
 
 const SyncStatus: FC = () => {
@@ -510,7 +511,7 @@ const SyncStatus: FC = () => {
                 </div>
                 <p className="mt-3 text-sm">
                   {error
-                    ? `Sync failed: ${error.type}`
+                    ? `Sync error: ${error.type}`
                     : isComplete
                       ? "Up to date"
                       : isConnected

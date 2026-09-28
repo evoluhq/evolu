@@ -28,6 +28,15 @@
  * - {@link OwnerEncryptionKey}: the symmetric key that protects the data.
  * - {@link OwnerWriteKey}: the rotatable token that authorizes writes.
  *
+ * Only holders of the encryption key can create an owner's changes. Each change
+ * is encrypted and authenticated together with its timestamp, so a relay, or
+ * anyone who can write to a relay for the owner, can store bytes for the owner
+ * but cannot forge or move a change. A client stores only the changes it can
+ * decrypt, verify, and decode, and syncs only what it stored. It skips any
+ * other change, which sync state shows on the route of the relay that holds it,
+ * and the relay offers it again on each sync until the client stores a valid
+ * change with that timestamp.
+ *
  * @module
  */
 
