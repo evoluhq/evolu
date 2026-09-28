@@ -1,7 +1,6 @@
 import { type Metadata } from "next";
 
 import { Layout } from "@/components/Layout";
-import allSections from "@/data/sections.json";
 
 import "@/styles/tailwind.css";
 
@@ -17,5 +16,5 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }): React.ReactElement {
-  return <Layout allSections={allSections}>{children}</Layout>;
+  return <Layout>{children}</Layout>;
 }

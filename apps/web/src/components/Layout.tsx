@@ -5,21 +5,28 @@ import { Header } from "@/components/Header";
 import { Logo } from "@/components/Logo";
 import { Navigation } from "@/components/Navigation";
 import { type Section, SectionProvider } from "@/components/SectionProvider";
+import sections from "@/data/sections.json";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// Imported by this client module rather than passed from the server layout: a
+// prop would serialize the whole map into every docs page's RSC payload, while
+// the import ships it once in a cached chunk. Sending only the current page's
+// sections would need page data to reach this persistent layout before the
+// sidebar renders, which works only by relying on Next internals (a React.cache
+// promise shared with a parallel-route slot).
+const sectionsByRoute: Readonly<Record<string, Array<Section>>> = sections;
+
 export const Layout = ({
   children,
-  allSections,
 }: {
   children: React.ReactNode;
-  allSections: Record<string, Array<Section>>;
 }): React.ReactElement => {
   const pathname = usePathname();
 
   return (
-    <SectionProvider sections={allSections[pathname] ?? []}>
+    <SectionProvider sections={sectionsByRoute[pathname] ?? []}>
       <div className="h-full lg:ml-72 xl:ml-80">
         <motion.header
           layoutScroll
