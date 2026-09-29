@@ -101,6 +101,12 @@ scripts with `node script.mts`. Run GitHub CLI commands with network access.
 - Use meaningful local constants for complex nested expressions.
 - Use interfaces and `createX` factories instead of classes. Model domain objects
   as plain data; use `Typed` for tags and `typed` or `object` for validation.
+- Make invalid states unrepresentable. When fields constrain each other, use a
+  union of `Typed` variants, each holding only the fields valid for it, not
+  independent booleans and nullable or optional fields. Do not store values
+  derivable from sibling fields, such as a status beside the data it summarizes.
+  Both rules apply to public outputs, such as snapshots; do not flatten an
+  internal union into booleans at the API boundary.
 - Inside factories, order declarations as: derived constants/assertions, mutable
   variables, owned resources, listeners/timers, local functions, returned API.
   Respect the synchronous initialization constraint above.

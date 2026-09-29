@@ -646,6 +646,73 @@ Avoid a `class Counter` with a public `value` field and an `increment()`
 method. The class exposes its state and mixes the contract with the
 implementation.
 
+## Make invalid states unrepresentable
+
+When an object's fields constrain each other, model it as a union of `Typed`
+variants, each holding only the fields valid for it. With independent booleans
+and nullable or optional fields, every combination type-checks, so each reader
+has to learn which ones can happen, and a test fixture or example can build one
+that never does. With a union, consumers [switch](#switch-exhaustiveness) on
+`type` and access only the fields of the matched variant.
+
+Do not store a value derivable from sibling fields, such as a status beside the
+data it summarizes. Derive it with a function, so it cannot disagree with its
+source.
+
+Both rules apply to public outputs, such as snapshots, not only to internal
+state. When internal state is already a union, publish the union rather than
+flattening it into booleans at the API boundary.
+
+```ts
+import { assertEqual, Millis, type Typed } from "@evolu/common";
+
+type Upload = PendingUpload | CompleteUpload | FailedUpload;
+
+interface PendingUpload extends Typed<"Pending"> {}
+
+interface CompleteUpload extends Typed<"Complete"> {
+  readonly completedAt: Millis;
+}
+
+interface FailedUpload extends Typed<"Failed"> {
+  readonly error: UploadError;
+}
+
+interface UploadError extends Typed<"UploadError"> {
+  readonly reason: string;
+}
+
+// Derived from the uploads rather than stored beside them.
+const uploadsToUploadError = (
+  uploads: ReadonlyArray<Upload>,
+): UploadError | null =>
+  uploads.find((upload) => upload.type === "Failed")?.error ?? null;
+
+const error: UploadError = { type: "UploadError", reason: "Quota exceeded" };
+const uploads: ReadonlyArray<Upload> = [
+  { type: "Complete", completedAt: Millis.orThrow(1000) },
+  { type: "Failed", error },
+  { type: "Pending" },
+];
+
+assertEqual(uploadsToUploadError(uploads), error);
+assertEqual(uploadsToUploadError([{ type: "Pending" }]), null);
+
+// @ts-expect-error A complete upload requires its completion time.
+const _incomplete: Upload = { type: "Complete" };
+
+const _completeWithError: Upload = {
+  type: "Complete",
+  completedAt: Millis.orThrow(1000),
+  // @ts-expect-error A complete upload has no error.
+  error,
+};
+```
+
+Avoid an `interface Upload` with independent `isComplete`, `completedAt`, and
+`error` fields. It accepts a complete upload with an error or without its
+completion time.
+
 ## Disposing
 
 Create disposable objects with
