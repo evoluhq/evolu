@@ -316,7 +316,7 @@ const OwnerActions: FC = () => {
           <Button disabled title="Restore from Mnemonic" />
           <Button disabled title="Reset All Data" />
           <Button
-            title="Download Backup"
+            title="Download Database"
             onClick={handleDownloadDatabaseClick}
           />
         </div>

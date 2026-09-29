@@ -709,6 +709,9 @@ export interface Evolu<
   /**
    * Exports the SQLite database file.
    *
+   * The exported file is not encrypted, even when the local database is. Any
+   * SQLite tool can read all local data from it, so treat it as plaintext.
+   *
    * Exports are sequential: concurrent calls share one pending export instead
    * of starting parallel exports.
    *

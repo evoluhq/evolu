@@ -156,7 +156,7 @@ test("shows the test mnemonic and labels unfinished account actions", async ({
   for (const name of [
     "Restore from Mnemonic",
     "Reset All Data",
-    "Download Backup",
+    "Download Database",
   ]) {
     await expect(
       page.getByRole("button", { name, exact: true }),

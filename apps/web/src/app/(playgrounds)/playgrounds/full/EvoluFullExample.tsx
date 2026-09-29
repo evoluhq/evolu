@@ -694,7 +694,7 @@ const AccountTab: FC = () => {
         <div className="flex gap-2">
           <Button disabled title="Restore from Mnemonic" />
           <Button disabled title="Reset All Data" />
-          <Button disabled title="Download Backup" />
+          <Button disabled title="Download Database" />
         </div>
       </div>
     </div>
