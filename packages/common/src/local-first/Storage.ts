@@ -38,7 +38,9 @@ import {
 import type { Awaitable } from "../Types.ts";
 import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.ts";
 import { OwnerId, OwnerWriteKey } from "./Owner.ts";
+import type { ProtocolQuotaError } from "./Protocol.ts";
 import { systemColumnsWithId } from "./Schema.ts";
+import type { syncStateToOwnerSyncStatus } from "./Shared.ts";
 import {
   createTimestamp,
   orderTimestampBytes,
@@ -67,9 +69,10 @@ export interface StorageConfig {
    * The callback returns a boolean rather than an error because error handling
    * and logging are the responsibility of the callback implementation.
    *
-   * Relay deployments configure this callback. Client applications can observe
-   * a denied relay write as a `ProtocolQuotaError` by subscribing once to the
-   * shared `EvoluErrorDep.evoluError` store returned by `createEvoluDeps`.
+   * Relay deployments configure this callback. Client applications observe a
+   * denied relay write as a {@link ProtocolQuotaError} in the `failure` of that
+   * relay's route, which {@link syncStateToOwnerSyncStatus} reports as the
+   * owner's `Error` status.
    *
    * ### Example
    *
@@ -235,9 +238,10 @@ export interface StorageQuotaError
  * The built-in relay storage stores opaque encrypted messages and rejects
  * batches over quota. The built-in client storage decrypts and validates
  * incoming messages before updating its clock and database tables. It skips a
- * message that fails instead of rejecting its batch, and sync state shows the
- * failure without ending the sync round, so a message is never a reason to
- * reject a batch. The contract permits quota checks on either side.
+ * message that fails instead of rejecting its batch, and sync state shows it as
+ * the route's `skippedError` without ending the sync round, so a message is
+ * never a reason to reject a batch. The contract permits quota checks on either
+ * side.
  *
  * @group Core
  */

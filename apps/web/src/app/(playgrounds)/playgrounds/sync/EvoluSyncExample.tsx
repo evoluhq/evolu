@@ -22,9 +22,12 @@ import {
   type Millis,
 } from "@evolu/common";
 import {
-  syncStateToOwnerSyncStates,
+  relaySyncStateToStatus,
+  syncStateToOwnerSyncStatus,
+  syncStateToRelaySyncStates,
   type OwnerSyncStatus,
   type RelaySyncState,
+  type SyncConnection,
   type SyncRouteError,
 } from "@evolu/common/local-first";
 import { createEvoluBinding } from "@evolu/react";
@@ -314,21 +317,27 @@ const Items: FC = () => {
   );
 };
 
-const syncLabels: Readonly<Record<OwnerSyncStatus, string>> = {
-  initial: "Starting",
-  syncing: "Syncing",
-  synced: "Synced",
-  offline: "Offline",
-  error: "Sync error",
+const syncLabels: Readonly<Record<OwnerSyncStatus["type"], string>> = {
+  NoRelays: "Starting",
+  Syncing: "Syncing",
+  Synced: "Synced",
+  Offline: "Offline",
+  Error: "Sync error",
 };
 
-const syncDescriptions: Readonly<Record<OwnerSyncStatus, string>> = {
-  initial: "Waiting for the first synchronization round.",
-  syncing: "Reconciling this database with its connected relays.",
-  synced: "Up to date with the connected relays.",
-  offline: "No relay is connected. You can keep editing locally.",
-  error:
+const syncDescriptions: Readonly<Record<OwnerSyncStatus["type"], string>> = {
+  NoRelays: "Setting up its relays.",
+  Syncing: "Connecting to its relays or reconciling this database with them.",
+  Synced: "Up to date with the connected relays.",
+  Offline: "No relay is connected. You can keep editing locally.",
+  Error:
     "A relay failed or holds a change this database cannot read. See the relay details below.",
+};
+
+const connectionLabels: Readonly<Record<SyncConnection["type"], string>> = {
+  Connecting: "Connecting",
+  Open: "Connected",
+  Disconnected: "Disconnected",
 };
 
 const SyncStatus: FC = () => {
@@ -345,13 +354,23 @@ const SyncStatus: FC = () => {
     constNull,
   );
   const tenant = snapshot?.tenants.find(({ name }) => name === evolu.name);
-  const state =
-    snapshot &&
-    syncStateToOwnerSyncStates(snapshot).find(
-      ({ name, ownerId }) =>
-        name === evolu.name && ownerId === evolu.appOwner.id,
-    );
-  const status = state?.status ?? "initial";
+  const status = syncStateToOwnerSyncStatus(
+    snapshot,
+    evolu.name,
+    evolu.appOwner.id,
+  );
+  const relayStates = syncStateToRelaySyncStates(
+    snapshot,
+    evolu.name,
+    evolu.appOwner.id,
+  );
+  const syncedAt = relayStates.reduce<Millis | null>(
+    (newest, { route: { completeAt } }) =>
+      completeAt !== null && (newest === null || completeAt > newest)
+        ? completeAt
+        : newest,
+    null,
+  );
   // Databases can spell one relay differently, such as without a trailing
   // slash, and each spelling gets its own connection. Show one per relay,
   // combining the state of its connections. Remove with evoluhq/evolu#710.
@@ -364,20 +383,22 @@ const SyncStatus: FC = () => {
       error: SyncRouteError | null;
     }
   >();
-  for (const relay of state?.relays ?? []) {
+  for (const relay of relayStates) {
     const { transport, route } = relay;
     const parsed = trySync(() => new URL(transport.label));
     const url = parsed.ok ? parsed.value.href : transport.label;
     const other = relaysByUrl.get(url);
+    const relayStatus = relaySyncStateToStatus(relay);
     const error =
-      route.error && (!other?.error || route.error.at > other.error.at)
-        ? route.error
+      relayStatus.type === "Error" &&
+      (!other?.error || relayStatus.error.at > other.error.at)
+        ? relayStatus.error
         : (other?.error ?? null);
     relaysByUrl.set(url, {
       // Details show this page's connection when another database shares it.
       relay: other && transport.label !== url ? other.relay : relay,
-      isConnected: transport.readyState === "open" || !!other?.isConnected,
-      isComplete: relay.status === "synced" || !!other?.isComplete,
+      isConnected: transport.connection.type === "Open" || !!other?.isConnected,
+      isComplete: route.type === "Complete" || !!other?.isComplete,
       error,
     });
   }
@@ -422,33 +443,33 @@ const SyncStatus: FC = () => {
         <span role="status">
           <StatusBadge
             tone={
-              tenant?.refused
+              tenant?.type === "Refused"
                 ? "error"
                 : isLocalOnly
                   ? "neutral"
-                  : status === "error"
+                  : status.type === "Error"
                     ? "error"
-                    : status === "synced"
+                    : status.type === "Synced"
                       ? "success"
-                      : status === "offline"
+                      : status.type === "Offline"
                         ? "neutral"
                         : "progress"
             }
           >
-            {tenant?.refused
+            {tenant?.type === "Refused"
               ? "Database unavailable"
               : isLocalOnly
                 ? "Local only"
-                : syncLabels[status]}
+                : syncLabels[status.type]}
           </StatusBadge>
         </span>
       </div>
       <p className="mt-3 text-sm leading-6 text-zinc-600">
-        {tenant?.refused
-          ? "This database could not start."
+        {tenant?.type === "Refused"
+          ? `This database could not start: ${tenant.error.type}.`
           : isLocalOnly
             ? "Add a relay to synchronize this in-memory database."
-            : syncDescriptions[status]}
+            : syncDescriptions[status.type]}
       </p>
       <div className="mt-4 rounded-xl bg-zinc-50 p-4 text-sm">
         <p className="font-medium">
@@ -472,7 +493,7 @@ const SyncStatus: FC = () => {
       <dl className="mt-4 flex justify-between gap-3 text-sm">
         <dt className="text-zinc-500">Last successful sync</dt>
         <dd>
-          <Timestamp value={state?.syncedAt ?? null} />
+          <Timestamp value={syncedAt} />
         </dd>
       </dl>
 
@@ -488,7 +509,10 @@ const SyncStatus: FC = () => {
             ([
               url,
               {
-                relay: { transport, route },
+                relay: {
+                  transport: { connection },
+                  route,
+                },
                 isConnected,
                 isComplete,
                 error,
@@ -502,11 +526,7 @@ const SyncStatus: FC = () => {
                   <StatusBadge tone={isConnected ? "success" : "neutral"}>
                     {isConnected
                       ? "Connected"
-                      : transport.readyState === "connecting"
-                        ? "Connecting"
-                        : transport.readyState === "closing"
-                          ? "Disconnecting"
-                          : "Disconnected"}
+                      : connectionLabels[connection.type]}
                   </StatusBadge>
                 </div>
                 <p className="mt-3 text-sm">
@@ -523,14 +543,26 @@ const SyncStatus: FC = () => {
                     Connection and sync details
                   </summary>
                   <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-2">
-                    <dt>Last connected</dt>
-                    <dd>
-                      <Timestamp value={transport.openedAt} />
-                    </dd>
-                    <dt>Last disconnected</dt>
-                    <dd>
-                      <Timestamp value={transport.closedAt} />
-                    </dd>
+                    {connection.type === "Open" && (
+                      <>
+                        <dt>Connected since</dt>
+                        <dd>
+                          <Timestamp value={connection.openedAt} />
+                        </dd>
+                      </>
+                    )}
+                    {connection.type === "Disconnected" && (
+                      <>
+                        <dt>Disconnected since</dt>
+                        <dd>
+                          <Timestamp value={connection.disconnectedAt} />
+                        </dd>
+                        <dt>Last connected</dt>
+                        <dd>
+                          <Timestamp value={connection.openedAt} />
+                        </dd>
+                      </>
+                    )}
                     <dt>Last request</dt>
                     <dd>
                       <Timestamp value={route.lastSentAt} />
@@ -540,10 +572,10 @@ const SyncStatus: FC = () => {
                       <Timestamp value={route.lastReceivedAt} />
                     </dd>
                   </dl>
-                  {transport.error && (
+                  {connection.type !== "Connecting" && connection.error && (
                     <p className="mt-3 wrap-break-word">
-                      Last connection error: {transport.error.type} at{" "}
-                      <Timestamp value={transport.error.at} />. This history is
+                      Last connection error: {connection.error.type} at{" "}
+                      <Timestamp value={connection.error.at} />. This history is
                       retained after reconnecting.
                     </p>
                   )}

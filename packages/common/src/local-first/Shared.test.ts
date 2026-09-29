@@ -19,6 +19,8 @@ import {
 import { createBuffer, encodeNonNegativeInt } from "../Bytes.ts";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
 import type { DecryptWithXChaCha20Poly1305Error } from "../Crypto.ts";
+import { createUnknownError, UnknownError } from "../Error.ts";
+import { isPlainObject } from "../Object.ts";
 import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
 import {
   createAppOwner,
@@ -46,8 +48,10 @@ import {
   type MutationChange,
 } from "./Schema.ts";
 import {
-  syncStateToOwnerSyncStates,
   consoleEntryOrErrorBroadcastChannelName,
+  relaySyncStateToStatus,
+  syncStateToOwnerSyncStatus,
+  syncStateToRelaySyncStates,
   type EvoluInstanceId,
   initSharedWorker,
   type ConsoleEntryOrError,
@@ -59,6 +63,12 @@ import {
   type SharedWorkerId,
   type SharedWorkerInput,
   type SharedWorkerOutput,
+  type CompleteSyncRoute,
+  type OwnerSyncStatus,
+  type PendingSyncRoute,
+  type RelaySyncStatus,
+  type SettledSyncRoute,
+  type SyncConnection,
   type SyncRoute,
   type SyncState,
   type SyncTransportId,
@@ -421,6 +431,16 @@ const setupSyncStates = (
     return state;
   };
   return { states, latest };
+};
+
+/** The owners of a database that has not refused startup. */
+const ownersOf = (
+  state: SyncState,
+  tenantName: Name = testName,
+): ReadonlyArray<SyncTenantOwner> => {
+  const tenant = state.tenants.find(({ name }) => name === tenantName);
+  assert(tenant?.type === "Active", "Expected an active tenant.");
+  return tenant.owners;
 };
 
 type TestEvoluInstance = Awaited<ReturnType<SharedWorkerSetup["createEvolu"]>>;
@@ -982,21 +1002,21 @@ describe("sync state", () => {
     assertEqual(state.transports[0].label, "/relay");
     assertEqual(state.tenants, [
       {
+        type: "Active",
         name: testName,
-        refused: false,
         owners: [
           {
+            type: "Writable",
             ownerId: testAppOwner.id,
-            writable: true,
-            transportIds: [state.transports[0].id],
             routes: [
               {
+                type: "Pending",
                 transportId: state.transports[0].id,
-                complete: false,
+                failure: null,
+                skippedError: null,
                 completeAt: null,
                 lastSentAt: null,
                 lastReceivedAt: null,
-                error: null,
               },
             ],
           },
@@ -1022,14 +1042,13 @@ describe("sync state", () => {
     assertLength(tab.syncStates, 1);
   });
 
-  it("includes transitions without an event in the next snapshot", async () => {
-    const createWebSocket = testCreateWebSocket({ isOpen: false });
-    await using setup = await setupSharedWorker({ createWebSocket });
-    using disposer = new DisposableStack();
-    const { latest } = setupSyncStates(setup, disposer);
-    const { evoluChannel } = await setup.createEvolu();
+  /** Registers the app owner through one transport of the instance's database. */
+  const setupAppOwnerTransport = async (
+    { evoluChannel }: Pick<TestEvoluInstance, "evoluChannel">,
+    url: string,
+  ) => {
     const transport = createOwnerWebSocketTransport({
-      url: "wss://relay.example",
+      url,
       ownerId: testAppOwner.id,
     });
     evoluChannel.port2.postMessage({
@@ -1042,21 +1061,184 @@ describe("sync state", () => {
       ],
     });
     await testWaitForWorkerMessage();
+    return transport;
+  };
+
+  it("publishes a transport as Connecting until its first connection opens", async () => {
+    const createWebSocket = testCreateWebSocket({ isOpen: false });
+    await using setup = await setupSharedWorker({ createWebSocket });
+    using disposer = new DisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const { time } = setup.run.deps;
+    const instance = await setup.createEvolu();
+    const transport = await setupAppOwnerTransport(
+      instance,
+      "wss://relay.example/sync",
+    );
+
+    const { id } = latest().transports[0];
+    assertEqual(latest().transports, [
+      {
+        type: "WebSocket",
+        id,
+        label: "wss://relay.example/sync",
+        connection: { type: "Connecting" },
+      },
+    ]);
+    // A first connection is work in progress, not an outage.
+    assertEqual(
+      syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
+      { type: "Syncing" },
+    );
+
+    time.advance("1s");
     createWebSocket.open(transport.url);
     await testWaitForWorkerMessage();
-    createWebSocket.close(transport.url);
-    await testWaitForWorkerMessage();
-    assertSame(latest().transports[0].readyState, "closed");
-
-    // The socket then starts reconnecting without an event, so nothing
-    // publishes it until the next snapshot, here one a connecting tab asks
-    // for, which reaches every tab.
-    setupTab(setup, disposer);
-    await testWaitForWorkerMessage();
-    assertSame(latest().transports[0].readyState, "connecting");
+    assertEqual(latest().transports[0], {
+      type: "WebSocket",
+      id,
+      label: "wss://relay.example/sync",
+      connection: { type: "Open", openedAt: time.now(), error: null },
+    });
   });
 
-  it("publishes transport and registration changes", async () => {
+  it("keeps when a transport disconnected while its reconnects fail", async () => {
+    const createWebSocket = testCreateWebSocket({ isOpen: false });
+    await using setup = await setupSharedWorker({ createWebSocket });
+    using disposer = new DisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const { time } = setup.run.deps;
+    const instance = await setup.createEvolu();
+    const transport = await setupAppOwnerTransport(
+      instance,
+      "wss://relay.example",
+    );
+    createWebSocket.open(transport.url);
+    await testWaitForWorkerMessage();
+    const openedAt = time.now();
+
+    time.advance("1s");
+    createWebSocket.close(transport.url);
+    await testWaitForWorkerMessage();
+    const disconnectedAt = time.now();
+    assertEqual(latest().transports[0].connection, {
+      type: "Disconnected",
+      disconnectedAt,
+      openedAt,
+      error: null,
+    });
+    assertEqual(
+      syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
+      { type: "Offline" },
+    );
+
+    // A failed reconnect attempt records its error, not a new disconnect.
+    time.advance("1s");
+    createWebSocket.error(transport.url, {
+      type: "WebSocketConnectError",
+      event: new Event("error"),
+    });
+    await testWaitForWorkerMessage();
+    const error = { type: "WebSocketConnectError", at: time.now() } as const;
+    const disconnected = {
+      type: "Disconnected",
+      disconnectedAt,
+      openedAt,
+      error,
+    } as const;
+    assertEqual(latest().transports[0].connection, disconnected);
+
+    // The socket starts reconnecting without an event, and a snapshot a
+    // connecting tab asks for, which reaches every tab, reads the same.
+    const published = latest();
+    setupTab(setup, disposer);
+    await testWaitForWorkerMessage();
+    assertNotSame(latest(), published);
+    assertEqual(latest().transports[0].connection, disconnected);
+
+    // The error stays after the transport opens again.
+    time.advance("1s");
+    createWebSocket.open(transport.url);
+    await testWaitForWorkerMessage();
+    const reopenedAt = time.now();
+    assertEqual(latest().transports[0].connection, {
+      type: "Open",
+      openedAt: reopenedAt,
+      error,
+    });
+
+    // A close records no error, so the earlier one stays.
+    time.advance("1s");
+    createWebSocket.close(transport.url);
+    await testWaitForWorkerMessage();
+    assertEqual(latest().transports[0].connection, {
+      type: "Disconnected",
+      disconnectedAt: time.now(),
+      openedAt: reopenedAt,
+      error,
+    });
+  });
+
+  it("disconnects an open transport at a connection error before its close", async () => {
+    const createWebSocket = testCreateWebSocket({ isOpen: false });
+    await using setup = await setupSharedWorker({ createWebSocket });
+    using disposer = new DisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const { time } = setup.run.deps;
+    const instance = await setup.createEvolu();
+    const transport = await setupAppOwnerTransport(
+      instance,
+      "wss://relay.example",
+    );
+    createWebSocket.open(transport.url);
+    await testWaitForWorkerMessage();
+    const openedAt = time.now();
+
+    // The socket is closed when the error arrives, and its close follows.
+    time.advance("1s");
+    createWebSocket.error(transport.url, {
+      type: "WebSocketConnectionError",
+      event: new Event("error"),
+    });
+    await testWaitForWorkerMessage();
+    const disconnected = {
+      type: "Disconnected",
+      disconnectedAt: time.now(),
+      openedAt,
+      error: { type: "WebSocketConnectionError", at: time.now() },
+    } as const;
+    assertEqual(latest().transports[0].connection, disconnected);
+
+    time.advance("1s");
+    createWebSocket.close(transport.url);
+    await testWaitForWorkerMessage();
+    assertEqual(latest().transports[0].connection, disconnected);
+
+    // A reopened connection keeps the error until a later one replaces it.
+    time.advance("1s");
+    createWebSocket.open(transport.url);
+    await testWaitForWorkerMessage();
+    const reopenedAt = time.now();
+    assertEqual(latest().transports[0].connection, {
+      type: "Open",
+      openedAt: reopenedAt,
+      error: disconnected.error,
+    });
+    time.advance("1s");
+    createWebSocket.error(transport.url, {
+      type: "WebSocketConnectionError",
+      event: new Event("error"),
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(latest().transports[0].connection, {
+      type: "Disconnected",
+      disconnectedAt: time.now(),
+      openedAt: reopenedAt,
+      error: { type: "WebSocketConnectionError", at: time.now() },
+    });
+  });
+
+  it("publishes a readonly owner with transports and a writable owner with routes only", async () => {
     const createWebSocket = testCreateWebSocket({ isOpen: false });
     await using setup = await setupSharedWorker({ createWebSocket });
     using disposer = new DisposableStack();
@@ -1094,96 +1276,64 @@ describe("sync state", () => {
     await testWaitForWorkerMessage();
 
     const registered = latest();
-    assertEqual(
-      registered.transports.map(({ label, readyState, error }) => ({
-        label,
-        readyState,
-        error,
-      })),
-      [
-        {
-          label: "wss://relay.example/sync",
-          readyState: "connecting",
-          error: null,
-        },
-        {
-          label: "wss://relay.example/sync",
-          readyState: "connecting",
-          error: null,
-        },
-      ],
-    );
     const [writableId, readonlyId] = registered.transports.map(({ id }) => id);
+    assertEqual(registered.transports, [
+      {
+        type: "WebSocket",
+        id: writableId,
+        label: "wss://relay.example/sync",
+        connection: { type: "Connecting" },
+      },
+      {
+        type: "WebSocket",
+        id: readonlyId,
+        label: "wss://relay.example/sync",
+        connection: { type: "Connecting" },
+      },
+    ]);
+    assertEqual(registered.tenants, [
+      {
+        type: "Active",
+        name: testName,
+        owners: [
+          {
+            type: "Writable",
+            ownerId: testAppOwner.id,
+            routes: [
+              {
+                type: "Pending",
+                transportId: writableId,
+                failure: null,
+                skippedError: null,
+                completeAt: null,
+                lastSentAt: null,
+                lastReceivedAt: null,
+              },
+            ],
+          },
+          {
+            type: "Readonly",
+            ownerId: readonlyOwner.id,
+            transportIds: [readonlyId],
+          },
+        ],
+      },
+    ]);
+    // A readonly owner is not synced here, and no relay syncs it.
     assertEqual(
-      registered.tenants.map(({ name, refused, owners }) => ({
-        name,
-        refused,
-        owners: owners.map(({ routes, ...owner }) => ({
-          ...owner,
-          routeCount: routes.length,
-        })),
-      })),
-      [
-        {
-          name: testName,
-          refused: false,
-          owners: [
-            {
-              ownerId: testAppOwner.id,
-              writable: true,
-              transportIds: [writableId],
-              routeCount: 1,
-            },
-            {
-              ownerId: readonlyOwner.id,
-              writable: false,
-              transportIds: [readonlyId],
-              routeCount: 0,
-            },
-          ],
-        },
-      ],
+      syncStateToOwnerSyncStatus(registered, testName, readonlyOwner.id),
+      { type: "NoRelays" },
     );
-
-    createWebSocket.open(writableTransport.url);
-    await testWaitForWorkerMessage();
-    assertSame(latest().transports[0].readyState, "open");
-    assertEqual(latest().transports[0].openedAt, time.now());
-
-    time.advance("1s");
-    createWebSocket.close(writableTransport.url, { code: 1006 });
-    await testWaitForWorkerMessage();
-    // The close is published while the socket is still closed.
-    assertSame(latest().transports[0].readyState, "closed");
-    assertEqual(latest().transports[0].closedAt, time.now());
-
-    const error: WebSocketError = {
-      type: "WebSocketConnectError",
-      event: new Event("error"),
-    };
-    createWebSocket.error(writableTransport.url, error);
-    await testWaitForWorkerMessage();
-    // By the next publish the socket has been dropped and is being retried.
-    assertSame(latest().transports[0].readyState, "connecting");
-    assertEqual(latest().transports[0].error, {
-      type: "WebSocketConnectError",
-      at: time.now(),
-    });
-    const lastError = latest().transports[0].error;
-    time.advance("1s");
-    createWebSocket.open(writableTransport.url);
-    await testWaitForWorkerMessage();
-    assertSame(latest().transports[0].readyState, "open");
-    assertEqual(latest().transports[0].openedAt, time.now());
-    assertEqual(latest().transports[0].error, lastError);
 
     evoluChannel.port2.postMessage({
       type: "UseOwner",
       actions: [{ owner: readonlyRegistration, action: "remove" }],
     });
     await testWaitForWorkerMessage();
+    const [tenant] = latest().tenants;
+    assert(tenant?.type === "Active", "Expected an active tenant.");
     assertEqual(
-      latest().tenants[0].owners.map(({ ownerId }) => ownerId),
+      tenant.owners.map(({ ownerId }) => ownerId),
       [testAppOwner.id],
     );
 
@@ -1199,7 +1349,7 @@ describe("sync state", () => {
     // follows after its own idle period.
     await instance[Symbol.asyncDispose]();
     assertEqual(latest().tenants, [
-      { name: testName, refused: false, owners: [] },
+      { type: "Active", name: testName, owners: [] },
     ]);
     time.advance("3s");
     await testWaitForWorkerMessage();
@@ -1228,14 +1378,22 @@ describe("sync state", () => {
       transportIndex = 0,
       ownerId: OwnerId = testAppOwner.id,
     ): SyncRoute => {
-      const tenant = state.tenants.find(({ name }) => name === tenantName);
-      assertNotUndefined(tenant);
-      const owner = tenant.owners.find((owner) => owner.ownerId === ownerId);
-      assertNotUndefined(owner);
+      const owner = ownersOf(state, tenantName).find(
+        (owner) => owner.ownerId === ownerId,
+      );
+      assert(owner?.type === "Writable", "Expected a writable owner.");
       const route = owner.routes[transportIndex];
       assertNotUndefined(route);
       return route;
     };
+
+    /** The route's failure, which only a Pending route has. */
+    const failureOf = (route: SyncRoute): SyncRouteError | null =>
+      route.type === "Pending" ? route.failure : null;
+
+    /** The change the route skipped, which a Complete route never has. */
+    const skippedErrorOf = (route: SyncRoute): SyncRouteError | null =>
+      route.type === "Complete" ? null : route.skippedError;
 
     /** Posts a mutation for the owner without answering it. */
     const queueMutation = async (
@@ -1347,17 +1505,18 @@ describe("sync state", () => {
       });
       await testWaitForWorkerMessage();
       // The first claim requested a round that is not sent yet.
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
 
       await respondToSyncRound(instance, createWebSocket);
       const sentAt = time.now();
       assertEqual(routeOf(latest()), {
+        type: "Pending",
         transportId: latest().transports[0].id,
-        complete: false,
+        failure: null,
+        skippedError: null,
         completeAt: null,
         lastSentAt: sentAt,
         lastReceivedAt: null,
-        error: null,
       });
 
       // The relay answers with nothing to reconcile.
@@ -1365,35 +1524,35 @@ describe("sync state", () => {
       createWebSocket.message(transport.url, relayResponse());
       await testWaitForWorkerMessage();
       // Received but not applied yet.
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
       await respondToApplySync(instance, false, {
         ok: true,
         value: { type: "Converged" },
       });
       assertEqual(routeOf(latest()), {
+        type: "Complete",
         transportId: latest().transports[0].id,
-        complete: true,
         completeAt: time.now(),
         lastSentAt: sentAt,
         lastReceivedAt: time.now(),
-        error: null,
       });
       const completeAt = time.now();
 
       // A mutation needs only its upload answered.
       time.advance("1s");
       await postMutation(instance, setup.run);
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
       createWebSocket.message(transport.url, relayResponse());
       await testWaitForWorkerMessage();
       await respondToApplySync(instance, false, {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
       // Completing again after the upload restamps the time.
-      assertEqual(routeOf(latest()).completeAt, time.now());
-      assertNotSame(routeOf(latest()).completeAt, completeAt);
+      const recompletedAt = time.now();
+      assertEqual(routeOf(latest()).completeAt, recompletedAt);
+      assertNotSame(recompletedAt, completeAt);
 
       // A rejected upload marks the route until a new round converges.
       time.advance("1s");
@@ -1404,18 +1563,21 @@ describe("sync state", () => {
         ok: false,
         error: { type: "ProtocolQuotaError", ownerId: testAppOwner.id },
       });
-      assertFalse(routeOf(latest()).complete);
-      assertEqual(routeOf(latest()).error, {
+      const quotaFailed = routeOf(latest());
+      assertSame(quotaFailed.type, "Pending");
+      assertEqual(quotaFailed.failure, {
         type: "ProtocolQuotaError",
         ownerId: testAppOwner.id,
         at: time.now(),
       });
+      // The route keeps when it last became complete.
+      assertSame(quotaFailed.completeAt, recompletedAt);
 
       // The failure requested the round that clears it.
       time.advance("1s");
       await testWaitForWorkerMessage();
       await respondToSyncRound(instance, createWebSocket);
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
       createWebSocket.message(transport.url, relayResponse());
       await testWaitForWorkerMessage();
       await respondToApplySync(instance, false, {
@@ -1423,12 +1585,11 @@ describe("sync state", () => {
         value: { type: "Converged" },
       });
       assertEqual(routeOf(latest()), {
+        type: "Complete",
         transportId: latest().transports[0].id,
-        complete: true,
         completeAt: time.now(),
         lastSentAt: time.now(),
         lastReceivedAt: time.now(),
-        error: null,
       });
     });
 
@@ -1476,7 +1637,7 @@ describe("sync state", () => {
         value: { type: "Converged" },
       });
       assertTrue(baseTime.now() > completedAt);
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
       assertSame(routeOf(latest()).lastReceivedAt, completedAt);
       assertSame(routeOf(latest()).completeAt, completedAt);
     });
@@ -1509,7 +1670,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
 
       const publish = setupDeferredSyncStatePublication(
         t,
@@ -1554,9 +1715,8 @@ describe("sync state", () => {
         await testWaitForWorkerMessage();
       }
       assertTrue(states.length > publishedCount);
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
       assertSame(routeOf(latest()).completeAt, completedAt);
-      assertSame(routeOf(latest()).error, null);
     });
 
     it("forgets released routes before a new registration without reading a snapshot", async (t) => {
@@ -1582,7 +1742,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
       assertNotSame(routeOf(latest()).completeAt, null);
 
       const publish = setupDeferredSyncStatePublication(
@@ -1611,10 +1771,11 @@ describe("sync state", () => {
       // No snapshot observed the registration gap. The next one must still
       // show a fresh route, whose new round has not been sent.
       const route = routeOf(latest());
-      assertFalse(route.complete);
+      assertSame(route.type, "Pending");
       assertSame(route.completeAt, null);
       assertSame(route.lastSentAt, null);
-      assertSame(route.error, null);
+      assertSame(route.failure, null);
+      assertSame(route.skippedError, null);
     });
 
     for (const removed of [
@@ -1687,10 +1848,12 @@ describe("sync state", () => {
             queries: createSet([testQuery]),
           });
           await testWaitForWorkerMessage();
+          const [ownerAfterRemoval] = ownersOf(latest());
           assertFalse(
-            latest().tenants[0].owners[0].routes.some(
-              ({ transportId }) => transportId === sourceTransportId,
-            ),
+            ownerAfterRemoval?.type === "Writable" &&
+              ownerAfterRemoval.routes.some(
+                ({ transportId }) => transportId === sourceTransportId,
+              ),
           );
           createWebSocket.sentMessages.splice(0);
 
@@ -1714,10 +1877,9 @@ describe("sync state", () => {
           );
 
           // Losing the route must not discard an accepted database response.
-          assertEqual(
-            errors,
-            outcome === "error" ? [{ type: "Error", error }] : [],
-          );
+          // The route is gone, so a late relay failure is dropped: it is not
+          // posted as an error, and no remaining route shows it.
+          assertEqual(errors, []);
           assertEqual(outputs, [{ type: "RefreshQueries" }]);
           assertEqual(
             createWebSocket.sentMessages.splice(0),
@@ -1725,15 +1887,17 @@ describe("sync state", () => {
               ? [{ url: sourceTransport.url, data: continuation }]
               : [],
           );
-          const owner = latest().tenants[0].owners[0];
-          assertSame(owner.writable, keepsWritable);
-          assertSame(owner.routes.length, keepsWritable ? 1 : 0);
+          const [owner] = ownersOf(latest());
+          assertSame(owner?.type, keepsWritable ? "Writable" : "Readonly");
+          const routes = owner?.type === "Writable" ? owner.routes : [];
+          assertSame(routes.length, keepsWritable ? 1 : 0);
           assertFalse(
-            owner.routes.some(
-              ({ transportId }) => transportId === sourceTransportId,
-            ),
+            routes.some(({ transportId }) => transportId === sourceTransportId),
           );
-          for (const route of owner.routes) assertSame(route.error, null);
+          for (const route of routes) {
+            assertSame(failureOf(route), null);
+            assertSame(skippedErrorOf(route), null);
+          }
 
           const query = instance.dbInputs.at(-1);
           assertNotUndefined(query);
@@ -1799,7 +1963,7 @@ describe("sync state", () => {
           value: { type: "Converged" },
         });
         const otherRoute = routeOf(latest(), testName, 1);
-        assertTrue(otherRoute.complete);
+        assertSame(otherRoute.type, "Complete");
         createWebSocket.message(transport.url, relayResponse());
         await testWaitForWorkerMessage();
         const inputCount = instance.dbInputs.length;
@@ -1810,12 +1974,16 @@ describe("sync state", () => {
 
         // Receiving the answer consumed the outstanding request, but the
         // aborted apply did not establish convergence or a domain error.
-        assertFalse(routeOf(latest()).complete);
+        assertSame(routeOf(latest()).type, "Pending");
         assertSame(routeOf(latest()).completeAt, null);
         // Nothing was applied, so the route reports no received frame.
         assertSame(routeOf(latest()).lastReceivedAt, null);
-        assertSame(routeOf(latest()).error, null);
-        assertSame(syncStateToOwnerSyncStates(latest())[0]?.status, "syncing");
+        assertSame(failureOf(routeOf(latest())), null);
+        assertSame(skippedErrorOf(routeOf(latest())), null);
+        assertEqual(
+          syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
+          { type: "Syncing" },
+        );
         // The frame came from one relay, so the other route stays complete.
         assertEqual(routeOf(latest(), testName, 1), otherRoute);
         await testWaitForWorkerMessage();
@@ -1828,7 +1996,7 @@ describe("sync state", () => {
           ok: true,
           value: { type: "Converged" },
         });
-        assertFalse(routeOf(latest()).complete);
+        assertSame(routeOf(latest()).type, "Pending");
       });
     }
 
@@ -1859,7 +2027,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
 
       // The database worker logged an exception while creating the round.
       instance.evoluChannel.port2.postMessage({
@@ -1890,12 +2058,15 @@ describe("sync state", () => {
       // Nothing is sent or retried until an explicit request or a reopen.
       assertEqual(createWebSocket.sentMessages, []);
       assertLength(instance.dbInputs, inputCount);
-      assertFalse(routeOf(latest()).complete);
-      assertEqual(routeOf(latest()).error, {
+      assertSame(routeOf(latest()).type, "Pending");
+      assertEqual(failureOf(routeOf(latest())), {
         type: "SyncFailed",
         at: setup.run.deps.time.now(),
       });
-      assertSame(syncStateToOwnerSyncStates(latest())[0]?.status, "error");
+      assertSame(
+        syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id).type,
+        "Error",
+      );
 
       // SyncFailed counts as the route's failure, so a later failed apply
       // requests no round either.
@@ -1908,7 +2079,7 @@ describe("sync state", () => {
       await respondToApplySync(instance, false, { ok: false, error });
       await testWaitForWorkerMessage();
       assertLength(instance.dbInputs, inputCount + 1);
-      assertSame(routeOf(latest()).error?.type, error.type);
+      assertSame(failureOf(routeOf(latest()))?.type, error.type);
 
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
@@ -1922,8 +2093,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
-      assertSame(routeOf(latest()).error, null);
+      assertSame(routeOf(latest()).type, "Complete");
     });
 
     it("reports SyncFailed only on the routes of the failed round's target", async () => {
@@ -1956,8 +2126,8 @@ describe("sync state", () => {
           value: { type: "Converged" },
         });
       }
-      assertTrue(routeOf(latest(), testName, 0).complete);
-      assertTrue(routeOf(latest(), testName, 1).complete);
+      assertSame(routeOf(latest(), testName, 0).type, "Complete");
+      assertSame(routeOf(latest(), testName, 1).type, "Complete");
 
       // The first transport reopens, and the database worker fails to create
       // the round through it.
@@ -1984,13 +2154,12 @@ describe("sync state", () => {
       });
       await testWaitForWorkerMessage();
 
-      assertFalse(routeOf(latest(), testName, 0).complete);
-      assertEqual(routeOf(latest(), testName, 0).error, {
+      assertSame(routeOf(latest(), testName, 0).type, "Pending");
+      assertEqual(failureOf(routeOf(latest(), testName, 0)), {
         type: "SyncFailed",
         at: setup.run.deps.time.now(),
       });
-      assertTrue(routeOf(latest(), testName, 1).complete);
-      assertSame(routeOf(latest(), testName, 1).error, null);
+      assertSame(routeOf(latest(), testName, 1).type, "Complete");
     });
 
     it("keeps SyncFailed when a round fails after an earlier round was sent", async () => {
@@ -2052,14 +2221,14 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertFalse(routeOf(latest()).complete);
-      assertEqual(routeOf(latest()).error, {
+      assertSame(routeOf(latest()).type, "Pending");
+      assertEqual(failureOf(routeOf(latest())), {
         type: "SyncFailed",
         at: setup.run.deps.time.now(),
       });
     });
 
-    it("keeps completeAt while a route stays complete", async () => {
+    it("keeps completeAt in a complete route and carries it into Pending", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       using disposer = new DisposableStack();
@@ -2086,7 +2255,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
       const { completeAt } = routeOf(latest());
       assertNonNullable(completeAt);
 
@@ -2112,8 +2281,41 @@ describe("sync state", () => {
       });
       await testWaitForWorkerMessage();
       await respondToSyncRound(instance, createWebSocket, testAppOwner2);
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
       assertSame(routeOf(latest()).completeAt, completeAt);
+
+      // A route that becomes Pending again keeps when it last became
+      // complete.
+      setup.run.deps.time.advance("5s");
+      await queueMutation(instance);
+      const pending = routeOf(latest());
+      assertSame(pending.type, "Pending");
+      assertSame(pending.completeAt, completeAt);
+
+      // So does a route that settles with a skipped change, and the Pending
+      // route a request to check it again makes of it.
+      await answerMutation(instance, setup.run);
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await respondToApplySync(
+        instance,
+        false,
+        { ok: true, value: { type: "Converged" } },
+        skippedError,
+      );
+      await testWaitForWorkerMessage();
+      const settled = routeOf(latest());
+      assertSame(settled.type, "Settled");
+      assertSame(settled.completeAt, completeAt);
+
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ ownerId: testAppOwner.id, action: "sync" }],
+      });
+      await testWaitForWorkerMessage();
+      const rechecking = routeOf(latest());
+      assertSame(rechecking.type, "Pending");
+      assertSame(rechecking.completeAt, completeAt);
     });
 
     const failedApplies = [
@@ -2137,7 +2339,7 @@ describe("sync state", () => {
       errorType: SyncRouteError["type"];
     }>;
     for (const { result, errorType } of failedApplies) {
-      it(`reports ${errorType} and requests only one round after repeated failure`, async () => {
+      it(`shows ${errorType} on its route and requests only one round after repeated failure`, async () => {
         const createWebSocket = testCreateWebSocket();
         await using setup = await setupSharedWorker({ createWebSocket });
         using disposer = new DisposableStack();
@@ -2149,9 +2351,6 @@ describe("sync state", () => {
         errorChannel.onMessage = (output) => {
           errors.push(output);
         };
-        const expectedErrors: ReadonlyArray<ConsoleEntryOrError> = result.ok
-          ? []
-          : [{ type: "Error", error: result.error }];
         const instance = await setup.createEvolu();
         const transport = createOwnerWebSocketTransport({
           url: "wss://failed-apply.example",
@@ -2173,13 +2372,17 @@ describe("sync state", () => {
         await testWaitForWorkerMessage();
         await respondToApplySync(instance, false, result);
 
-        // The failure is reported and one round is requested through the route.
-        assertEqual(errors, expectedErrors);
-        assertEqual(routeOf(latest()).error, {
+        // The route shows the failure, which is not posted as an error, and
+        // one round is requested through the route.
+        assertEqual(errors, []);
+        assertEqual(failureOf(routeOf(latest())), {
           ...(result.ok ? { type: errorType } : result.error),
           at: setup.run.deps.time.now(),
         });
-        assertSame(syncStateToOwnerSyncStates(latest())[0]?.status, "error");
+        assertSame(
+          syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id).type,
+          "Error",
+        );
         await testWaitForWorkerMessage();
         assertEqual(await respondToSyncRound(instance, createWebSocket), [
           transport.url,
@@ -2191,10 +2394,13 @@ describe("sync state", () => {
 
         // A repeated failure waits for an explicit request or a reopen.
         await testWaitForWorkerMessage();
-        assertEqual(errors, [...expectedErrors, ...expectedErrors]);
+        assertEqual(errors, []);
         assertLength(instance.dbInputs, inputCount);
-        assertFalse(routeOf(latest()).complete);
-        assertSame(syncStateToOwnerSyncStates(latest())[0]?.status, "error");
+        assertSame(routeOf(latest()).type, "Pending");
+        assertSame(
+          syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id).type,
+          "Error",
+        );
 
         // An upload is not a round, so its answer does not clear the failure.
         await postMutation(instance, setup.run);
@@ -2208,8 +2414,8 @@ describe("sync state", () => {
           ok: true,
           value: { type: "Converged" },
         });
-        assertFalse(routeOf(latest()).complete);
-        assertSame(routeOf(latest()).error?.type, errorType);
+        assertSame(routeOf(latest()).type, "Pending");
+        assertSame(failureOf(routeOf(latest()))?.type, errorType);
 
         // An explicit request starts the round that clears the failure.
         instance.evoluChannel.port2.postMessage({
@@ -2224,9 +2430,8 @@ describe("sync state", () => {
           ok: true,
           value: { type: "Converged" },
         });
-        assertTrue(routeOf(latest()).complete);
-        assertSame(routeOf(latest()).error, null);
-        assertEqual(errors, [...expectedErrors, ...expectedErrors]);
+        assertSame(routeOf(latest()).type, "Complete");
+        assertEqual(errors, []);
       });
     }
 
@@ -2268,7 +2473,7 @@ describe("sync state", () => {
         return { errors, instance, latest, transport };
       };
 
-      it("fails the route while its round continues", async () => {
+      it("records the skip on the route while its round continues", async () => {
         const createWebSocket = testCreateWebSocket();
         await using setup = await setupSharedWorker({ createWebSocket });
         using disposer = new DisposableStack();
@@ -2287,15 +2492,26 @@ describe("sync state", () => {
         );
 
         // The response is sent, so the round continues, while the skipped
-        // message fails the route with its details, without an Evolu error. No
-        // other round is requested, because this one continues.
+        // message is recorded as the route's skippedError with its details,
+        // which is neither a failure nor an Evolu error. No other round is
+        // requested, because this one continues.
         assertEqual(createWebSocket.sentMessages.splice(0), [
           { url: transport.url, data: response },
         ]);
         assertEqual(errors, []);
-        assertEqual(routeOf(latest()).error, {
-          ...skippedError,
-          at: setup.run.deps.time.now(),
+        const receivedAt = setup.run.deps.time.now();
+        assertEqual(routeOf(latest()), {
+          type: "Pending",
+          transportId: latest().transports[0].id,
+          failure: null,
+          skippedError: {
+            ...skippedError,
+            error: createUnknownError(skippedError.error),
+            at: receivedAt,
+          },
+          completeAt: null,
+          lastSentAt: receivedAt,
+          lastReceivedAt: receivedAt,
         });
         await testWaitForWorkerMessage();
         assertLength(instance.dbInputs, inputCount);
@@ -2320,10 +2536,13 @@ describe("sync state", () => {
         await testWaitForWorkerMessage();
         assertLength(instance.dbInputs, inputCount + 1);
         assertEqual(errors, []);
-        assertFalse(routeOf(latest()).complete);
-        assertEqual(routeOf(latest()).error, {
-          ...mismatch,
-          at: setup.run.deps.time.now(),
+        assertEqual(routeOf(latest()), {
+          type: "Settled",
+          transportId: latest().transports[0].id,
+          skippedError: { ...mismatch, at: setup.run.deps.time.now() },
+          completeAt: null,
+          lastSentAt: receivedAt,
+          lastReceivedAt: setup.run.deps.time.now(),
         });
 
         // Once the relay stops serving it, an explicit request completes the
@@ -2340,8 +2559,7 @@ describe("sync state", () => {
           ok: true,
           value: { type: "Converged" },
         });
-        assertTrue(routeOf(latest()).complete);
-        assertSame(routeOf(latest()).error, null);
+        assertSame(routeOf(latest()).type, "Complete");
       });
 
       it("leaves its route the error that ended its round", async () => {
@@ -2365,13 +2583,21 @@ describe("sync state", () => {
           skippedError,
         );
 
-        // Only the error that ended the round is reported, and it fails the
-        // route without its data, which requests one round, as any failure
-        // does.
-        assertEqual(errors, [{ type: "Error", error }]);
-        assertEqual(routeOf(latest()).error, {
+        // Nothing is posted as an error. The route shows the error that ended
+        // the round, without its data, which requests one round, as any
+        // failure does.
+        assertEqual(errors, []);
+        const failed = routeOf(latest());
+        assertSame(failed.type, "Pending");
+        assertEqual(failed.failure, {
           type: error.type,
-          error: error.error,
+          error: createUnknownError(error.error),
+          at: setup.run.deps.time.now(),
+        });
+        // The skipped message stays visible beside the failure.
+        assertEqual(failed.skippedError, {
+          ...skippedError,
+          error: createUnknownError(skippedError.error),
           at: setup.run.deps.time.now(),
         });
         await testWaitForWorkerMessage();
@@ -2387,8 +2613,7 @@ describe("sync state", () => {
           ok: true,
           value: { type: "Converged" },
         });
-        assertTrue(routeOf(latest()).complete);
-        assertSame(routeOf(latest()).error, null);
+        assertSame(routeOf(latest()).type, "Complete");
       });
 
       it("does not hide a Failed result", async () => {
@@ -2410,7 +2635,7 @@ describe("sync state", () => {
         // The route shows the failure that ended the round, which requests
         // one round, as any failure does. The DbWorker already logged it.
         assertEqual(errors, []);
-        assertSame(routeOf(latest()).error?.type, "SyncFailed");
+        assertSame(failureOf(routeOf(latest()))?.type, "SyncFailed");
         await testWaitForWorkerMessage();
         assertEqual(await respondToSyncRound(instance, createWebSocket), [
           transport.url,
@@ -2469,13 +2694,13 @@ describe("sync state", () => {
           { ok: true, value: { type: "Converged" } },
           skippedError,
         );
-        assertSame(routeOf(latest()).error?.type, error.type);
+        assertSame(failureOf(routeOf(latest()))?.type, error.type);
         createWebSocket.message(transport.url, relayResponse());
         await testWaitForWorkerMessage();
         await respondToApplySync(instance, false, { ok: false, error });
         await testWaitForWorkerMessage();
         assertLength(instance.dbInputs, inputCount + 2);
-        assertFalse(routeOf(latest()).complete);
+        assertSame(routeOf(latest()).type, "Pending");
       });
 
       it("leaves a later failure its round", async () => {
@@ -2510,7 +2735,7 @@ describe("sync state", () => {
         createWebSocket.message(transport.url, relayResponse());
         await testWaitForWorkerMessage();
         await respondToApplySync(instance, false, { ok: false, error });
-        assertSame(routeOf(latest()).error?.type, error.type);
+        assertSame(failureOf(routeOf(latest()))?.type, error.type);
         await testWaitForWorkerMessage();
         assertEqual(await respondToSyncRound(instance, createWebSocket), [
           transport.url,
@@ -2523,7 +2748,7 @@ describe("sync state", () => {
         await respondToApplySync(instance, false, { ok: false, error });
         await testWaitForWorkerMessage();
         assertLength(instance.dbInputs, inputCount);
-        assertFalse(routeOf(latest()).complete);
+        assertSame(routeOf(latest()).type, "Pending");
       });
 
       it("lets a failure request a round after a retry skips the message again", async () => {
@@ -2562,8 +2787,8 @@ describe("sync state", () => {
           { ok: true, value: { type: "Converged" } },
           skippedError,
         );
-        assertFalse(routeOf(latest()).complete);
-        assertSame(routeOf(latest()).error?.type, skippedError.type);
+        assertSame(routeOf(latest()).type, "Settled");
+        assertSame(skippedErrorOf(routeOf(latest()))?.type, skippedError.type);
 
         // The retry's reconciliation has ended, so a later failure requests a
         // round again, although the skipped message keeps the route
@@ -2574,6 +2799,73 @@ describe("sync state", () => {
         assertEqual(await respondToSyncRound(instance, createWebSocket), [
           transport.url,
         ]);
+      });
+
+      it("publishes a caught Error inside a skipped change as an UnknownError", async () => {
+        const createWebSocket = testCreateWebSocket();
+        await using setup = await setupSharedWorker({ createWebSocket });
+        using disposer = new DisposableStack();
+        const { instance, latest } = await setupRelayReply(
+          setup,
+          disposer,
+          createWebSocket,
+        );
+        await respondToApplySync(
+          instance,
+          false,
+          { ok: true, value: { type: "Converged" } },
+          {
+            type: "DecryptWithXChaCha20Poly1305Error",
+            error: new Error("invalid tag", { cause: new Error("tag") }),
+          },
+        );
+
+        // Sync state stays plain data, which tabs compare by content.
+        const skipped = skippedErrorOf(routeOf(latest()));
+        assert(
+          skipped?.type === "DecryptWithXChaCha20Poly1305Error",
+          "The route should show the skipped change.",
+        );
+        const { error } = skipped;
+        assert(
+          UnknownError.is(error) &&
+            isPlainObject(error.error) &&
+            isPlainObject(error.error.cause),
+          "The Error and its cause should be plain objects in an UnknownError.",
+        );
+        assertSame(error.error.message, "invalid tag");
+        assertSame(error.error.cause.message, "tag");
+      });
+
+      it("publishes a caught Error inside a failure as an UnknownError", async () => {
+        const createWebSocket = testCreateWebSocket();
+        await using setup = await setupSharedWorker({ createWebSocket });
+        using disposer = new DisposableStack();
+        const { instance, latest } = await setupRelayReply(
+          setup,
+          disposer,
+          createWebSocket,
+        );
+        await respondToApplySync(instance, false, {
+          ok: false,
+          error: {
+            type: "ProtocolInvalidDataError",
+            data: Uint8Array.of(255),
+            error: new Error("invalid varint"),
+          },
+        });
+
+        const failure = failureOf(routeOf(latest()));
+        assert(
+          failure?.type === "ProtocolInvalidDataError",
+          "The route should show the failure.",
+        );
+        const { error } = failure;
+        assert(
+          UnknownError.is(error) && isPlainObject(error.error),
+          "The Error should be a plain object in an UnknownError.",
+        );
+        assertSame(error.error.message, "invalid varint");
       });
 
       it("keeps its skip through an aborted apply", async () => {
@@ -2591,10 +2883,10 @@ describe("sync state", () => {
           { ok: true, value: { type: "Converged" } },
           skippedError,
         );
-        assertSame(routeOf(latest()).error?.type, skippedError.type);
+        assertSame(skippedErrorOf(routeOf(latest()))?.type, skippedError.type);
 
         // An abort proves nothing about the skipped message, so the route
-        // still shows it.
+        // still shows it, and it is not a failure.
         createWebSocket.message(transport.url, relayResponse());
         await testWaitForWorkerMessage();
         await respondToApplySync(instance, false, {
@@ -2602,8 +2894,9 @@ describe("sync state", () => {
           error: { type: "AbortError", reason: { type: "Stop" } },
         });
         assertEqual(errors, []);
-        assertFalse(routeOf(latest()).complete);
-        assertSame(routeOf(latest()).error?.type, skippedError.type);
+        assertSame(routeOf(latest()).type, "Pending");
+        assertSame(skippedErrorOf(routeOf(latest()))?.type, skippedError.type);
+        assertSame(failureOf(routeOf(latest())), null);
       });
 
       it("is ignored for an aborted apply", async () => {
@@ -2626,12 +2919,13 @@ describe("sync state", () => {
         );
 
         assertEqual(errors, []);
-        assertSame(routeOf(latest()).error, null);
-        assertFalse(routeOf(latest()).complete);
+        assertSame(failureOf(routeOf(latest())), null);
+        assertSame(skippedErrorOf(routeOf(latest())), null);
+        assertSame(routeOf(latest()).type, "Pending");
       });
     });
 
-    it("reports a write rejection only for the active attempt after leader replacement", async () => {
+    it("applies a write rejection only for the active attempt after leader replacement", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       using disposer = new DisposableStack();
@@ -2709,28 +3003,29 @@ describe("sync state", () => {
       } satisfies DbWorkerOutput;
 
       // The retired port and an obsolete attempt on the live port must both
-      // leave the active replay and its error reporting untouched.
+      // leave the active replay and its route untouched.
       first.dbWorkerPort.postMessage(response);
       dbWorkerPort.postMessage(response);
       await testWaitForWorkerMessage();
       assertEqual(errors, []);
-      assertSame(routeOf(latest()).error, null);
+      assertSame(failureOf(routeOf(latest())), null);
+      assertSame(skippedErrorOf(routeOf(latest())), null);
       assertLength(dbInputs, 1);
 
       const currentResponse = { ...response, attemptId: replay.attemptId };
       dbWorkerPort.postMessage(currentResponse);
       await testWaitForWorkerMessage();
-      assertEqual(errors, [{ type: "Error", error }]);
-      assertEqual(routeOf(latest()).error, {
-        ...error,
-        at: setup.run.deps.time.now(),
-      });
+      const routeError = { ...error, at: setup.run.deps.time.now() };
+      assertEqual(errors, []);
+      assertEqual(failureOf(routeOf(latest())), routeError);
       assertLength(dbInputs, 2);
 
-      // A duplicate completion is stale as soon as its attempt is accepted.
+      // A duplicate completion is stale as soon as its attempt is accepted,
+      // so the route keeps the time of the accepted one.
+      setup.run.deps.time.advance("1s");
       dbWorkerPort.postMessage(currentResponse);
       await testWaitForWorkerMessage();
-      assertEqual(errors, [{ type: "Error", error }]);
+      assertEqual(failureOf(routeOf(latest())), routeError);
       assertLength(dbInputs, 2);
       const replacement = { dbInputs, dbWorkerPort };
       await respondToSyncRound(replacement, createWebSocket);
@@ -2740,9 +3035,8 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
-      assertSame(routeOf(latest()).error, null);
-      assertEqual(errors, [{ type: "Error", error }]);
+      assertSame(routeOf(latest()).type, "Complete");
+      assertEqual(errors, []);
     });
 
     it("keeps an aborted sibling apply incomplete without scheduling recovery", async () => {
@@ -2779,7 +3073,7 @@ describe("sync state", () => {
           });
         }
       }
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
       const completeAt = routeOf(latest()).completeAt;
 
       await postMutation(second, setup.run);
@@ -2806,10 +3100,11 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
       assertSame(routeOf(latest()).completeAt, completeAt);
-      assertSame(routeOf(latest()).error, null);
-      assertTrue(routeOf(latest(), secondName).complete);
+      assertSame(failureOf(routeOf(latest())), null);
+      assertSame(skippedErrorOf(routeOf(latest())), null);
+      assertSame(routeOf(latest(), secondName).type, "Complete");
       await testWaitForWorkerMessage();
       assertLength(first.dbInputs, inputCount);
     });
@@ -2878,6 +3173,34 @@ describe("sync state", () => {
       return { source, sibling, siblingName, transports };
     };
 
+    it("completes a route when its sibling continuation copy is applied", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const { sibling, siblingName } = await setupSiblingContinuation(
+        setup,
+        createWebSocket,
+      );
+      const queued = routeOf(latest(), siblingName, 1);
+      assertSame(queued.type, "Pending");
+
+      // The route through the other relay completes when the copy is applied,
+      // which is later than its last frame.
+      setup.run.deps.time.advance("1s");
+      await respondToApplySync(sibling, false, {
+        ok: true,
+        value: { type: "Broadcast" },
+      });
+      assertEqual(routeOf(latest(), siblingName, 1), {
+        type: "Complete",
+        transportId: queued.transportId,
+        completeAt: setup.run.deps.time.now(),
+        lastSentAt: queued.lastSentAt,
+        lastReceivedAt: queued.lastReceivedAt,
+      });
+    });
+
     it("keeps every route incomplete after aborting a sibling continuation copy", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
@@ -2908,10 +3231,11 @@ describe("sync state", () => {
 
       for (const index of [0, 1]) {
         const route = routeOf(latest(), siblingName, index);
-        assertFalse(route.complete);
+        assertSame(route.type, "Pending");
         assertSame(route.completeAt, completeAt[index]);
-        assertSame(route.error, null);
-        assertTrue(routeOf(latest(), testName, index).complete);
+        assertSame(route.failure, null);
+        assertSame(route.skippedError, null);
+        assertSame(routeOf(latest(), testName, index).type, "Complete");
       }
       await testWaitForWorkerMessage();
       assertLength(sibling.dbInputs, inputCount);
@@ -2959,8 +3283,8 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertFalse(routeOf(latest()).complete);
-      assertFalse(routeOf(latest(), secondName).complete);
+      assertSame(routeOf(latest()).type, "Pending");
+      assertSame(routeOf(latest(), secondName).type, "Pending");
 
       createWebSocket.message(transport.url, relayResponse());
       await testWaitForWorkerMessage();
@@ -2968,13 +3292,13 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertFalse(routeOf(latest(), secondName).complete);
+      assertSame(routeOf(latest(), secondName).type, "Pending");
       await respondToApplySync(second, false, {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
-      assertTrue(routeOf(latest(), secondName).complete);
+      assertSame(routeOf(latest()).type, "Complete");
+      assertSame(routeOf(latest(), secondName).type, "Complete");
     });
 
     it("keeps routes incomplete until a sibling's continuation copy reconciles the other relays", async () => {
@@ -3005,12 +3329,10 @@ describe("sync state", () => {
           (candidate) => candidate.label === label,
         );
         assertNotUndefined(transport);
-        const tenant = state.tenants.find(({ name }) => name === tenantName);
-        assertNotUndefined(tenant);
-        const owner = tenant.owners.find(
+        const owner = ownersOf(state, tenantName).find(
           ({ ownerId }) => ownerId === testAppOwner.id,
         );
-        assertNotUndefined(owner);
+        assert(owner?.type === "Writable", "Expected a writable owner.");
         const route = owner.routes.find(
           ({ transportId }) => transportId === transport.id,
         );
@@ -3043,7 +3365,7 @@ describe("sync state", () => {
       }
       for (const label of [labelA, labelB]) {
         for (const name of [testName, siblingName]) {
-          assertTrue(routeAt(label, name).complete);
+          assertSame(routeAt(label, name).type, "Complete");
         }
       }
       const siblingCompleteAt = routeAt(labelB, siblingName).completeAt;
@@ -3075,10 +3397,11 @@ describe("sync state", () => {
 
       // Relay B neither sent nor was sent anything, so only the queued local
       // copy can hold the sibling's route through B.
-      assertFalse(routeAt(labelB, siblingName).complete);
+      assertSame(routeAt(labelB, siblingName).type, "Pending");
       assertSame(routeAt(labelB, siblingName).completeAt, siblingCompleteAt);
-      assertSame(routeAt(labelB, siblingName).error, null);
-      assertTrue(routeAt(labelB, testName).complete);
+      assertSame(failureOf(routeAt(labelB, siblingName)), null);
+      assertSame(skippedErrorOf(routeAt(labelB, siblingName)), null);
+      assertSame(routeAt(labelB, testName).type, "Complete");
 
       // The copy was uploaded only through A. Storing it requires a new round
       // through B, and local delivery does not count as a frame received on A.
@@ -3088,13 +3411,13 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Broadcast" },
       });
-      assertFalse(routeAt(labelB, siblingName).complete);
+      assertSame(routeAt(labelB, siblingName).type, "Pending");
       assertSame(routeAt(labelB, siblingName).completeAt, siblingCompleteAt);
       assertSame(routeAt(labelA, siblingName).lastReceivedAt, lastReceivedAt);
       assertEqual(await respondToSyncRound(sibling, createWebSocket), [
         transports[1].url,
       ]);
-      assertFalse(routeAt(labelB, siblingName).complete);
+      assertSame(routeAt(labelB, siblingName).type, "Pending");
       createWebSocket.message(transports[1].url, relayResponse());
       await testWaitForWorkerMessage();
       for (const instance of [source, sibling]) {
@@ -3103,7 +3426,7 @@ describe("sync state", () => {
           value: { type: "Converged" },
         });
       }
-      assertTrue(routeAt(labelB, siblingName).complete);
+      assertSame(routeAt(labelB, siblingName).type, "Complete");
     });
 
     for (const fractional of [false, true]) {
@@ -3141,6 +3464,7 @@ describe("sync state", () => {
         await testWaitForWorkerMessage();
         createWebSocket.open(transport.url);
         await testWaitForWorkerMessage();
+        const openedAt = time.now();
         await respondToSyncRound(instance, createWebSocket);
         await postMutation(instance, setup.run);
 
@@ -3159,7 +3483,7 @@ describe("sync state", () => {
         time.advance("5s");
         await testWaitForWorkerMessage();
         assertEqual(createWebSocket.reconnectedUrls, []);
-        assertSame(latest().transports[0].closedAt, null);
+        assertSame(latest().transports[0].connection.type, "Open");
 
         // Nothing arrives for a whole timeout: the socket reconnects.
         time.advance(Millis.orThrow(84_999));
@@ -3169,8 +3493,14 @@ describe("sync state", () => {
         await testWaitForWorkerMessage();
         assertEqual(createWebSocket.createdUrls, [transport.url]);
         assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
-        assertSame(latest().transports[0].readyState, "connecting");
-        assertEqual(latest().transports[0].closedAt, time.now());
+        // The socket reports no close for a reconnect, so the transport
+        // disconnects when the request times out.
+        assertEqual(latest().transports[0].connection, {
+          type: "Disconnected",
+          disconnectedAt: time.now(),
+          openedAt,
+          error: null,
+        });
 
         // The reopen forgets the unanswered request and starts a round.
         createWebSocket.open(transport.url);
@@ -3182,7 +3512,7 @@ describe("sync state", () => {
           ok: true,
           value: { type: "Converged" },
         });
-        assertTrue(routeOf(latest()).complete);
+        assertSame(routeOf(latest()).type, "Complete");
       });
     }
 
@@ -3288,7 +3618,7 @@ describe("sync state", () => {
       time.advance("1s");
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
-      assertSame(latest().transports[0].readyState, "connecting");
+      assertSame(latest().transports[0].connection.type, "Disconnected");
     });
 
     it("stops timing a request when its socket closes", async () => {
@@ -3314,6 +3644,7 @@ describe("sync state", () => {
       await testWaitForWorkerMessage();
       createWebSocket.open(transport.url);
       await testWaitForWorkerMessage();
+      const openedAt = time.now();
       await respondToSyncRound(instance, createWebSocket);
 
       // The request dies with its connection, and the WebSocket's own retry
@@ -3321,12 +3652,17 @@ describe("sync state", () => {
       time.advance("10s");
       createWebSocket.close(transport.url);
       await testWaitForWorkerMessage();
-      const { closedAt } = latest().transports[0];
-      assertEqual(closedAt, time.now());
+      const disconnected = {
+        type: "Disconnected",
+        disconnectedAt: time.now(),
+        openedAt,
+        error: null,
+      } as const;
+      assertEqual(latest().transports[0].connection, disconnected);
       time.advance("2m");
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.reconnectedUrls, []);
-      assertSame(latest().transports[0].closedAt, closedAt);
+      assertEqual(latest().transports[0].connection, disconnected);
     });
 
     it("leaves a complete route incomplete when its socket closes", async () => {
@@ -3356,13 +3692,62 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
 
       createWebSocket.close(transport.url);
       await testWaitForWorkerMessage();
-      assertSame(latest().transports[0].readyState, "closed");
-      assertFalse(routeOf(latest()).complete);
-      assertSame(syncStateToOwnerSyncStates(latest())[0]?.status, "offline");
+      assertSame(latest().transports[0].connection.type, "Disconnected");
+      assertSame(routeOf(latest()).type, "Pending");
+      assertEqual(
+        syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
+        { type: "Offline" },
+      );
+    });
+
+    it("disconnects a first connection that fails without a close", async () => {
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const { time } = setup.run.deps;
+      const instance = await setup.createEvolu();
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://first-connection.example",
+        ownerId: testAppOwner.id,
+      });
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            owner: { owner: testAppOwner, transports: [transport] },
+            action: "add",
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(
+        syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
+        { type: "Syncing" },
+      );
+
+      // A browser reports a failed attempt only as an error, because the
+      // socket stops listening before its close arrives.
+      time.advance("1s");
+      createWebSocket.error(transport.url, {
+        type: "WebSocketConnectError",
+        event: new Event("error"),
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(latest().transports[0].connection, {
+        type: "Disconnected",
+        disconnectedAt: time.now(),
+        openedAt: null,
+        error: { type: "WebSocketConnectError", at: time.now() },
+      });
+      assertEqual(
+        syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
+        { type: "Offline" },
+      );
     });
 
     /**
@@ -3539,7 +3924,7 @@ describe("sync state", () => {
         { ok: true, value: { type: "Converged" } },
         skippedError,
       );
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Settled");
 
       // The next request gets the base timeout.
       instance.evoluChannel.port2.postMessage({
@@ -3612,7 +3997,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
       await respondToApplySync(second, false, {
         ok: true,
         value: {
@@ -3679,8 +4064,8 @@ describe("sync state", () => {
           value: { type: "Converged" },
         });
       }
-      assertTrue(routeOf(latest()).complete);
-      assertFalse(routeOf(latest(), Name.orThrow("second")).complete);
+      assertSame(routeOf(latest()).type, "Complete");
+      assertSame(routeOf(latest(), Name.orThrow("second")).type, "Pending");
 
       // The second database stops using the owner without completing, which
       // leaves no incomplete route, so the base timeout applies again.
@@ -3790,7 +4175,10 @@ describe("sync state", () => {
           value: { type: "Converged" },
         });
       }
-      assertTrue(routeOf(latest(), testName, 0, testAppOwner2.id).complete);
+      assertSame(
+        routeOf(latest(), testName, 0, testAppOwner2.id).type,
+        "Complete",
+      );
 
       // The app owner's round goes unanswered, so the socket is replaced, and
       // the other owner's route through it is no longer reconciled.
@@ -3803,7 +4191,10 @@ describe("sync state", () => {
       time.advance(Millis.orThrow(90_000));
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
-      assertFalse(routeOf(latest(), testName, 0, testAppOwner2.id).complete);
+      assertSame(
+        routeOf(latest(), testName, 0, testAppOwner2.id).type,
+        "Pending",
+      );
     });
 
     it("restores a relay's base timeout while another relay of the owner is down", async () => {
@@ -3844,8 +4235,8 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest(), testName, 0).complete);
-      assertFalse(routeOf(latest(), testName, 1).complete);
+      assertSame(routeOf(latest(), testName, 0).type, "Complete");
+      assertSame(routeOf(latest(), testName, 1).type, "Pending");
 
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
@@ -3930,8 +4321,11 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
-      assertFalse(routeOf(latest(), testName, 0, testAppOwner2.id).complete);
+      assertSame(routeOf(latest()).type, "Complete");
+      assertSame(
+        routeOf(latest(), testName, 0, testAppOwner2.id).type,
+        "Pending",
+      );
 
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
@@ -3986,14 +4380,15 @@ describe("sync state", () => {
       using leaderPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
         init.port,
       );
+      const error: UnsupportedDbVersionError = {
+        type: "UnsupportedDbVersionError",
+        storedVersion: PositiveInt.orThrow(2),
+        supportedVersion: PositiveInt.orThrow(1),
+      };
       leaderPort.postMessage({
         type: "LeaderRefused",
         name: refusedName,
-        error: {
-          type: "UnsupportedDbVersionError",
-          storedVersion: PositiveInt.orThrow(2),
-          supportedVersion: PositiveInt.orThrow(1),
-        },
+        error,
       });
       await testWaitForWorkerMessage();
       const context = { setup, instance, createWebSocket, url: transport.url };
@@ -4010,8 +4405,12 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
-      assertFalse(routeOf(latest(), refusedName).complete);
+      assertSame(routeOf(latest()).type, "Complete");
+      // The refused database publishes no route.
+      assertEqual(
+        latest().tenants.find(({ name }) => name === refusedName),
+        { type: "Refused", name: refusedName, error },
+      );
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [{ ownerId: testAppOwner.id, action: "sync" }],
@@ -4091,7 +4490,10 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest(), testName, 0, testAppOwner2.id).complete);
+      assertSame(
+        routeOf(latest(), testName, 0, testAppOwner2.id).type,
+        "Complete",
+      );
       createWebSocket.message(transport.url, relayResponse());
       await testWaitForWorkerMessage();
       await respondToApplySync(instance, false, {
@@ -4153,7 +4555,8 @@ describe("sync state", () => {
       const completeRoutes = (): Array<boolean> =>
         owners.flatMap((owner) =>
           transports.map(
-            (_, index) => routeOf(latest(), testName, index, owner.id).complete,
+            (_, index) =>
+              routeOf(latest(), testName, index, owner.id).type === "Complete",
           ),
         );
       assertEqual(completeRoutes(), [true, true, true, true]);
@@ -4223,7 +4626,8 @@ describe("sync state", () => {
       }
       const completeRoutes = (): Array<boolean> =>
         [testAppOwner, testAppOwner2].map(
-          (owner) => routeOf(latest(), testName, 0, owner.id).complete,
+          (owner) =>
+            routeOf(latest(), testName, 0, owner.id).type === "Complete",
         );
       assertEqual(completeRoutes(), [true, true]);
 
@@ -4336,7 +4740,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
 
       let changeReads = 0;
       const changeHandler: ProxyHandler<MutationChange> = {
@@ -4369,7 +4773,7 @@ describe("sync state", () => {
         });
       }
       await testWaitForWorkerMessage();
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
 
       // A transport error publishes another snapshot without enqueuing or
       // completing database work. The pending queue must not be rescanned.
@@ -4382,7 +4786,7 @@ describe("sync state", () => {
       await testWaitForWorkerMessage();
       assertTrue(states.length > publishedCount);
       assertSame(changeReads, 0);
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
     });
 
     it("publishes no sync state for a local-only mutation", async () => {
@@ -4416,7 +4820,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
       const publishedCount = states.length;
 
       instance.evoluChannel.port2.postMessage({
@@ -4451,7 +4855,7 @@ describe("sync state", () => {
       // The response was handled without publishing.
       assertSame(evoluOutputs.at(-1)?.type, "OnPatchesByQuery");
       assertSame(states.length, publishedCount);
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
     });
 
     it("refreshes routes once per sync round, however many transports it reaches", async () => {
@@ -4538,30 +4942,30 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
 
       // A write for another owner leaves the route alone.
       await queueMutation(instance, testAppOwner2.id);
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
 
       // The owner's write waits behind it. Its upload is sent only once the
       // database worker answers it, so the route is incomplete from now on.
       await queueMutation(instance);
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
       await answerMutation(instance, setup.run, testAppOwner2.id);
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
       assertLength(createWebSocket.sentMessages.splice(0), 0);
 
       await answerMutation(instance, setup.run);
       assertLength(createWebSocket.sentMessages.splice(0), 1);
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
       createWebSocket.message(transport.url, relayResponse());
       await testWaitForWorkerMessage();
       await respondToApplySync(instance, false, {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
     });
 
     it("keeps a route complete while a local-only mutation is queued and completed", async () => {
@@ -4593,7 +4997,7 @@ describe("sync state", () => {
         value: { type: "Converged" },
       });
       const completedRoute = routeOf(latest());
-      assertTrue(completedRoute.complete);
+      assertSame(completedRoute.type, "Complete");
 
       setup.run.deps.time.advance("1s");
       instance.evoluChannel.port2.postMessage({
@@ -4743,13 +5147,13 @@ describe("sync state", () => {
         while (latest().tenants.length > 0) await testWaitForWorkerMessage();
         await disposingSocket.promise;
         // A frame the mid-disposal stalled socket still delivers publishes a
-        // snapshot while its transport is registered. The snapshot must not
-        // read that socket.
+        // snapshot while its transport is registered. The transport keeps the
+        // connection its last event left, without reading that socket.
         createWebSocket.message(transports[0].url, relayResponse());
         await testWaitForWorkerMessage();
         assertEqual(
-          latest().transports.map((transport) => transport.readyState),
-          ["connecting"],
+          latest().transports.map(({ connection }) => connection.type),
+          ["Disconnected"],
         );
       } finally {
         continueDisposing.resolve();
@@ -4976,7 +5380,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
 
       // A sibling instance writes and is disposed before the write is
       // answered.
@@ -5038,14 +5442,14 @@ describe("sync state", () => {
       // The surviving registration uploads the write; the route waits for
       // the answer.
       assertLength(createWebSocket.sentMessages.splice(0), 1);
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
       createWebSocket.message(transport.url, relayResponse());
       await testWaitForWorkerMessage();
       await respondToApplySync(instance, false, {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
     });
 
     it("uploads a write from an instance without a registration", async () => {
@@ -5076,7 +5480,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
 
       // A sibling instance of the same database has no registration.
       const siblingId = createId<"EvoluInstance">(setup.run.deps);
@@ -5137,14 +5541,14 @@ describe("sync state", () => {
         createWebSocket.sentMessages.splice(0).map(({ url }) => url),
         [transport.url],
       );
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
       createWebSocket.message(transport.url, relayResponse());
       await testWaitForWorkerMessage();
       await respondToApplySync(instance, false, {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
     });
 
     it("requires a round when a sibling database's messages fail to apply", async () => {
@@ -5183,8 +5587,8 @@ describe("sync state", () => {
           value: { type: "Converged" },
         });
       }
-      assertTrue(routeOf(latest()).complete);
-      assertTrue(routeOf(latest(), secondName).complete);
+      assertSame(routeOf(latest()).type, "Complete");
+      assertSame(routeOf(latest(), secondName).type, "Complete");
 
       // The second database's write reaches the first one locally but is not
       // stored there. The relay answers the upload before the first database
@@ -5196,7 +5600,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest(), secondName).complete);
+      assertSame(routeOf(latest(), secondName).type, "Complete");
       await respondToApplySync(first, false, {
         ok: false,
         error: { type: "StorageQuotaError", ownerId: testAppOwner.id },
@@ -5206,7 +5610,7 @@ describe("sync state", () => {
         value: { type: "Converged" },
       });
       // Nothing is outstanding, yet the failure requires a round.
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
 
       // The round requested by the failure fetches the messages again.
       await respondToSyncRound(first, createWebSocket);
@@ -5220,7 +5624,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Complete");
     });
 
     it("retries every route after a sibling continuation copy fails without blaming its source relay", async () => {
@@ -5249,8 +5653,9 @@ describe("sync state", () => {
       });
       for (const index of [0, 1]) {
         const route = routeOf(latest(), siblingName, index);
-        assertFalse(route.complete);
-        assertSame(route.error, null);
+        assertSame(route.type, "Pending");
+        assertSame(route.failure, null);
+        assertSame(route.skippedError, null);
         assertSame(route.lastReceivedAt, lastReceivedAt[index]);
       }
       await respondToApplySync(sibling, false, {
@@ -5274,9 +5679,99 @@ describe("sync state", () => {
         }
       }
       for (const index of [0, 1]) {
-        assertTrue(routeOf(latest(), siblingName, index).complete);
+        assertSame(routeOf(latest(), siblingName, index).type, "Complete");
       }
     });
+
+    const siblingCopyOutcomes = [
+      {
+        outcome: "error",
+        result: {
+          ok: false,
+          error: {
+            type: "ProtocolInvalidDataError",
+            data: Uint8Array.of(255),
+            error: "decoding failed",
+          },
+        },
+        skipped: null,
+        posted: {
+          type: "ProtocolInvalidDataError",
+          error: createUnknownError("decoding failed"),
+        },
+      },
+      {
+        outcome: "skip",
+        result: { ok: true, value: { type: "Broadcast" } },
+        skipped: skippedError,
+        posted: {
+          ...skippedError,
+          error: createUnknownError(skippedError.error),
+        },
+      },
+      {
+        outcome: "Failed result",
+        result: { ok: true, value: { type: "Failed", cause: "Write" } },
+        skipped: null,
+        posted: null,
+      },
+      {
+        outcome: "abort",
+        result: {
+          ok: false,
+          error: { type: "AbortError", reason: { type: "Stop" } },
+        },
+        skipped: null,
+        posted: null,
+      },
+    ] satisfies ReadonlyArray<{
+      outcome: string;
+      result: ApplySyncResponse["result"];
+      skipped: DecryptWithXChaCha20Poly1305Error | null;
+      posted:
+        | Omit<ProtocolInvalidDataError, "data">
+        | DecryptWithXChaCha20Poly1305Error
+        | null;
+    }>;
+    for (const { outcome, result, skipped, posted } of siblingCopyOutcomes) {
+      it(`${posted === null ? "does not post" : "posts an UnknownError for"} a sibling continuation copy's ${outcome}`, async () => {
+        const createWebSocket = testCreateWebSocket();
+        await using setup = await setupSharedWorker({ createWebSocket });
+        const errors: Array<ConsoleEntryOrError> = [];
+        using errorChannel = testCreateBroadcastChannel<ConsoleEntryOrError>(
+          consoleEntryOrErrorBroadcastChannelName,
+        );
+        errorChannel.onMessage = (output) => {
+          if (output.type === "Error") errors.push(output);
+        };
+        const { sibling } = await setupSiblingContinuation(
+          setup,
+          createWebSocket,
+        );
+
+        await respondToApplySync(sibling, false, result, skipped);
+
+        // No relay sent the copy, so no route can show its problem. An error
+        // or a skip means a bug and is posted as an unexpected failure,
+        // without the frame, as a route shows it. The protocol already logged
+        // a Failed result, and the tab turns that log into an unexpected
+        // failure, so it is not posted again. An abort is not a failure.
+        assertEqual(
+          errors,
+          posted === null
+            ? []
+            : [
+                {
+                  type: "Error",
+                  error: createUnknownError({
+                    ...posted,
+                    at: setup.run.deps.time.now(),
+                  }),
+                },
+              ],
+        );
+      });
+    }
 
     it("retries every route after a sibling continuation copy skips a message", async () => {
       const createWebSocket = testCreateWebSocket();
@@ -5329,8 +5824,8 @@ describe("sync state", () => {
       assertLength(sibling.dbInputs, inputCount + transports.length);
       for (const index of [0, 1]) {
         const route = routeOf(latest(), siblingName, index);
-        assertFalse(route.complete);
-        assertSame(route.error?.type, skippedError.type);
+        assertSame(route.type, "Settled");
+        assertSame(route.skippedError.type, skippedError.type);
       }
 
       // Another copy that skips a message requests no round, because each
@@ -5395,8 +5890,8 @@ describe("sync state", () => {
           value: { type: "Converged" },
         });
       }
-      assertTrue(routeOf(latest(), testName, 0).complete);
-      assertTrue(routeOf(latest(), testName, 1).complete);
+      assertSame(routeOf(latest(), testName, 0).type, "Complete");
+      assertSame(routeOf(latest(), testName, 1).type, "Complete");
 
       // Messages stored from the first relay invalidate the second route.
       createWebSocket.message(transports[0].url, relayResponse());
@@ -5405,8 +5900,8 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest(), testName, 0).complete);
-      assertFalse(routeOf(latest(), testName, 1).complete);
+      assertSame(routeOf(latest(), testName, 0).type, "Complete");
+      assertSame(routeOf(latest(), testName, 1).type, "Pending");
 
       assertEqual(await respondToSyncRound(instance, createWebSocket), [
         transports[1].url,
@@ -5417,7 +5912,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest(), testName, 1).complete);
+      assertSame(routeOf(latest(), testName, 1).type, "Complete");
     });
 
     /**
@@ -5477,8 +5972,8 @@ describe("sync state", () => {
         disposer,
         createWebSocket,
       );
-      assertTrue(routeOf(latest(), testName, 0).complete);
-      assertFalse(routeOf(latest(), testName, 1).complete);
+      assertSame(routeOf(latest(), testName, 0).type, "Complete");
+      assertSame(routeOf(latest(), testName, 1).type, "Settled");
 
       // Messages stored from the first relay request no round through the
       // second, whose relay would offer the skipped message again.
@@ -5490,8 +5985,8 @@ describe("sync state", () => {
         value: { type: "Converged" },
       });
       assertLength(instance.dbInputs, inputCount);
-      assertTrue(routeOf(latest(), testName, 0).complete);
-      assertFalse(routeOf(latest(), testName, 1).complete);
+      assertSame(routeOf(latest(), testName, 0).type, "Complete");
+      assertSame(routeOf(latest(), testName, 1).type, "Settled");
 
       // Messages stored from the second relay still reconcile through the
       // first.
@@ -5537,7 +6032,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertFalse(routeOf(latest(), testName, 1).complete);
+      assertSame(routeOf(latest(), testName, 1).type, "Settled");
 
       // The next request checks it again with those messages and completes
       // the route once the relay no longer offers the skipped message.
@@ -5553,8 +6048,7 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertTrue(routeOf(latest(), testName, 1).complete);
-      assertSame(routeOf(latest(), testName, 1).error, null);
+      assertSame(routeOf(latest(), testName, 1).type, "Complete");
     });
 
     it("keeps a route's skip when the database fails to create a requested round", async () => {
@@ -5591,7 +6085,7 @@ describe("sync state", () => {
         },
       });
       await testWaitForWorkerMessage();
-      assertSame(routeOf(latest(), testName, 1).error?.type, "SyncFailed");
+      assertSame(failureOf(routeOf(latest(), testName, 1))?.type, "SyncFailed");
 
       // The failed route keeps its skip, so messages stored from the first
       // relay still request no round through the second.
@@ -5614,7 +6108,10 @@ describe("sync state", () => {
         disposer,
         createWebSocket,
       );
-      assertSame(routeOf(latest(), testName, 1).error?.type, skippedError.type);
+      assertSame(
+        skippedErrorOf(routeOf(latest(), testName, 1))?.type,
+        skippedError.type,
+      );
 
       // A failure on the second route requests a round that checks the relay
       // again, but messages stored from the first relay meanwhile keep it from
@@ -5626,8 +6123,13 @@ describe("sync state", () => {
         error: { type: "ProtocolQuotaError", ownerId: testAppOwner.id },
       });
       assertSame(
-        routeOf(latest(), testName, 1).error?.type,
+        failureOf(routeOf(latest(), testName, 1))?.type,
         "ProtocolQuotaError",
+      );
+      // The skip stays visible beside the failure.
+      assertSame(
+        skippedErrorOf(routeOf(latest(), testName, 1))?.type,
+        skippedError.type,
       );
       assertEqual(await respondToSyncRound(instance, createWebSocket), [
         transports[1].url,
@@ -5647,269 +6149,651 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
-      assertFalse(routeOf(latest(), testName, 1).complete);
-      assertSame(routeOf(latest(), testName, 1).error?.type, skippedError.type);
+      assertSame(routeOf(latest(), testName, 1).type, "Settled");
+      assertSame(
+        skippedErrorOf(routeOf(latest(), testName, 1))?.type,
+        skippedError.type,
+      );
     });
 
-    it("never completes a route after a replacement leader refused startup", async () => {
+    it("publishes a refused database with its error and no owners", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       using disposer = new DisposableStack();
       const { latest } = setupSyncStates(setup, disposer);
-      const { time } = setup.run.deps;
       const instance = await setup.createEvolu({
         releaseDbWorkerLeaderOnDispose: false,
-      });
-      const transport = createOwnerWebSocketTransport({
-        url: "wss://refused-route.example",
-        ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
           {
-            owner: { owner: testAppOwner, transports: [transport] },
+            owner: {
+              owner: testAppOwner,
+              transports: [
+                createOwnerWebSocketTransport({
+                  url: "wss://refused-route.example",
+                  ownerId: testAppOwner.id,
+                }),
+              ],
+            },
             action: "add",
           },
         ],
       });
       await testWaitForWorkerMessage();
-      await respondToSyncRound(instance, createWebSocket);
-      createWebSocket.message(transport.url, relayResponse());
-      await testWaitForWorkerMessage();
-      await respondToApplySync(instance, false, {
-        ok: true,
-        value: { type: "Converged" },
-      });
-      assertTrue(routeOf(latest()).complete);
-      const completeAt = routeOf(latest()).completeAt;
-
-      // The queued write alone keeps the route incomplete.
-      time.advance("1s");
-      await queueMutation(instance);
-      assertFalse(routeOf(latest()).complete);
+      assertSame(routeOf(latest()).type, "Pending");
       await instance.releaseDbWorkerLeader();
 
       const init = await setupTabLeader(setup, disposer);
       using leaderPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
         init.port,
       );
-      leaderPort.postMessage({
-        type: "LeaderRefused",
-        name: testName,
-        error: {
-          type: "UnsupportedDbVersionError",
-          storedVersion: PositiveInt.orThrow(2),
-          supportedVersion: PositiveInt.orThrow(1),
-        },
-      });
+      const error: UnsupportedDbVersionError = {
+        type: "UnsupportedDbVersionError",
+        storedVersion: PositiveInt.orThrow(2),
+        supportedVersion: PositiveInt.orThrow(1),
+      };
+      leaderPort.postMessage({ type: "LeaderRefused", name: testName, error });
       await testWaitForWorkerMessage();
 
-      // Refusal discards the write, which is never uploaded.
-      assertTrue(latest().tenants[0].refused);
-      assertFalse(routeOf(latest()).complete);
-      assertSame(routeOf(latest()).completeAt, completeAt);
-
-      // Later refreshes, such as a relay frame, keep it incomplete.
-      createWebSocket.message(transport.url, relayResponse());
-      await testWaitForWorkerMessage();
-      assertFalse(routeOf(latest()).complete);
+      // Nothing the refused database holds syncs, so it publishes its error
+      // instead of its registrations, and no relay syncs its owner.
+      const refused: ReadonlyArray<SyncTenant> = [
+        { type: "Refused", name: testName, error },
+      ];
+      assertEqual(latest().tenants, refused);
+      assertEqual(
+        syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
+        { type: "NoRelays" },
+      );
+      assertEqual(
+        syncStateToRelaySyncStates(latest(), testName, testAppOwner.id),
+        [],
+      );
     });
   });
 });
 
-describe("syncStateToOwnerSyncStates", () => {
-  const deps = testCreateDeps();
-  const openA = createId<"SyncTransport">(deps);
-  const openB = createId<"SyncTransport">(deps);
-  const closedId = createId<"SyncTransport">(deps);
-  const connectingId = createId<"SyncTransport">(deps);
-  const createTransport = (
-    id: SyncTransportId,
-    readyState: SyncTransport["readyState"],
-  ): SyncTransport => ({
-    id,
-    label: "wss://relay.example",
-    readyState,
-    openedAt: null,
-    closedAt: null,
-    error: null,
-  });
-  const transports = [
-    createTransport(openA, "open"),
-    createTransport(openB, "open"),
-    createTransport(closedId, "closed"),
-    createTransport(connectingId, "connecting"),
-  ];
-  const createRoute = (
-    transportId: SyncTransportId,
-    route: Partial<Omit<SyncRoute, "transportId">> = {},
-  ): SyncRoute => ({
-    transportId,
-    complete: false,
-    completeAt: null,
-    lastSentAt: null,
-    lastReceivedAt: null,
-    error: null,
-    ...route,
-  });
-  const createOwner = (
-    ownerId: OwnerId,
-    routes: ReadonlyArray<SyncRoute>,
-    writable = true,
-  ): SyncTenantOwner => ({
-    ownerId,
-    writable,
-    transportIds: routes.map(({ transportId }) => transportId),
-    routes,
-  });
-  const createState = (tenants: ReadonlyArray<SyncTenant>): SyncState => ({
-    transports,
-    tenants,
-  });
-  const statusOf = (routes: ReadonlyArray<SyncRoute>): string => {
-    const [owner] = syncStateToOwnerSyncStates(
-      createState([
-        {
-          name: testName,
-          refused: false,
-          owners: [createOwner(testAppOwner.id, routes)],
-        },
-      ]),
-    );
-    assertNotUndefined(owner);
-    return owner.status;
-  };
-  const failure = (at: number): SyncRouteError => ({
-    type: "ProtocolQuotaError",
-    ownerId: testAppOwner.id,
-    at: Millis.orThrow(at),
-  });
+const derivationDeps = testCreateDeps();
+const connectingId = createId<"SyncTransport">(derivationDeps);
+const openId = createId<"SyncTransport">(derivationDeps);
+const otherOpenId = createId<"SyncTransport">(derivationDeps);
+const disconnectedId = createId<"SyncTransport">(derivationDeps);
 
-  it("derives the status from the routes and their transports", () => {
-    assertSame(statusOf([]), "initial");
-    assertSame(statusOf([createRoute(closedId)]), "offline");
-    assertSame(statusOf([createRoute(connectingId)]), "offline");
-    assertSame(statusOf([createRoute(openA)]), "syncing");
-    assertSame(statusOf([createRoute(openA, { complete: true })]), "synced");
-    // A complete route counts even while another socket is closed.
-    assertSame(
-      statusOf([createRoute(openA, { complete: true }), createRoute(closedId)]),
-      "synced",
-    );
-    // Work in progress on an open socket shows before a completed route.
-    assertSame(
-      statusOf([createRoute(openA, { complete: true }), createRoute(openB)]),
-      "syncing",
-    );
-    // A failure shows before both.
-    assertSame(
-      statusOf([
-        createRoute(openA, { complete: true }),
-        createRoute(openB, { error: failure(1) }),
-      ]),
-      "error",
-    );
-  });
+const connectingConnection: SyncConnection = { type: "Connecting" };
+const openConnection: SyncConnection = {
+  type: "Open",
+  openedAt: Millis.orThrow(1000),
+  error: null,
+};
+const disconnectedConnection: SyncConnection = {
+  type: "Disconnected",
+  disconnectedAt: Millis.orThrow(2000),
+  openedAt: Millis.orThrow(1000),
+  error: null,
+};
 
-  it("reports the newest completion and error", () => {
-    const routes = [
-      createRoute(openA, {
-        completeAt: Millis.orThrow(3000),
-        error: { type: "WriteFailed", at: Millis.orThrow(1000) },
-      }),
-      createRoute(openB, {
-        complete: true,
-        completeAt: Millis.orThrow(2000),
-      }),
-      createRoute(closedId, {
-        completeAt: Millis.orThrow(1000),
-        error: failure(4000),
-      }),
-    ];
-    const [owner] = syncStateToOwnerSyncStates(
-      createState([
-        {
-          name: testName,
-          refused: false,
-          owners: [createOwner(testAppOwner.id, routes)],
-        },
-      ]),
-    );
-    assertEqual(owner, {
+const createSyncTransport = (
+  id: SyncTransportId,
+  connection: SyncConnection,
+): SyncTransport => ({
+  type: "WebSocket",
+  id,
+  label: "wss://relay.example",
+  connection,
+});
+
+const syncTransports = [
+  createSyncTransport(connectingId, connectingConnection),
+  createSyncTransport(openId, openConnection),
+  createSyncTransport(otherOpenId, openConnection),
+  createSyncTransport(disconnectedId, disconnectedConnection),
+] as const;
+
+const createPendingRoute = (
+  transportId: SyncTransportId,
+  route: Partial<Omit<PendingSyncRoute, "type" | "transportId">> = {},
+): PendingSyncRoute => ({
+  type: "Pending",
+  transportId,
+  failure: null,
+  skippedError: null,
+  completeAt: null,
+  lastSentAt: null,
+  lastReceivedAt: null,
+  ...route,
+});
+
+const createSettledRoute = (
+  transportId: SyncTransportId,
+  skippedError: SyncRouteError,
+): SettledSyncRoute => ({
+  type: "Settled",
+  transportId,
+  skippedError,
+  completeAt: null,
+  lastSentAt: Millis.orThrow(1500),
+  lastReceivedAt: Millis.orThrow(1600),
+});
+
+const createCompleteRoute = (
+  transportId: SyncTransportId,
+): CompleteSyncRoute => ({
+  type: "Complete",
+  transportId,
+  completeAt: Millis.orThrow(3000),
+  lastSentAt: Millis.orThrow(2500),
+  lastReceivedAt: Millis.orThrow(3000),
+});
+
+const quotaFailure = (at: number): SyncRouteError => ({
+  type: "ProtocolQuotaError",
+  ownerId: testAppOwner.id,
+  at: Millis.orThrow(at),
+});
+
+const skippedChange = (at: number): SyncRouteError => ({
+  type: "DecryptWithXChaCha20Poly1305Error",
+  error: "wrong encryption key",
+  at: Millis.orThrow(at),
+});
+
+const derivationRefusal: UnsupportedDbVersionError = {
+  type: "UnsupportedDbVersionError",
+  storedVersion: PositiveInt.orThrow(2),
+  supportedVersion: PositiveInt.orThrow(1),
+};
+
+/** A snapshot whose database syncs the app owner through `routes`. */
+const createRoutesState = (routes: ReadonlyArray<SyncRoute>): SyncState => ({
+  transports: syncTransports,
+  tenants: [
+    {
+      type: "Active",
       name: testName,
-      ownerId: testAppOwner.id,
-      status: "error",
-      syncedAt: Millis.orThrow(3000),
-      error: failure(4000),
-      relays: [
-        { transport: transports[0], route: routes[0], status: "error" },
-        { transport: transports[1], route: routes[1], status: "synced" },
-        { transport: transports[2], route: routes[2], status: "error" },
+      owners: [{ type: "Writable", ownerId: testAppOwner.id, routes }],
+    },
+  ],
+});
+
+const ownerStatusOf = (routes: ReadonlyArray<SyncRoute>): OwnerSyncStatus =>
+  syncStateToOwnerSyncStatus(
+    createRoutesState(routes),
+    testName,
+    testAppOwner.id,
+  );
+
+describe("SyncState", () => {
+  it("accepts only states the shared worker can be in", () => {
+    const transportId = openId;
+    const ownerId = testAppOwner.id;
+
+    const connections: ReadonlyArray<SyncConnection> = [
+      { type: "Connecting" },
+      {
+        type: "Connecting",
+        // @ts-expect-error A first connection has no error; one that failed is Disconnected.
+        error: null,
+      },
+      { type: "Open", openedAt: Millis.orThrow(1000), error: null },
+      // @ts-expect-error An open connection has openedAt, when it opened.
+      { type: "Open", error: null },
+    ];
+
+    const routes: ReadonlyArray<SyncRoute> = [
+      {
+        type: "Complete",
+        transportId,
+        completeAt: Millis.orThrow(1000),
+        lastSentAt: Millis.orThrow(900),
+        lastReceivedAt: null,
+      },
+      // @ts-expect-error A complete route has when it became complete.
+      {
+        type: "Complete",
+        transportId,
+        completeAt: null,
+        lastSentAt: Millis.orThrow(900),
+        lastReceivedAt: null,
+      },
+      // @ts-expect-error A complete route has sent a round, so it has when it last sent.
+      {
+        type: "Complete",
+        transportId,
+        completeAt: Millis.orThrow(1000),
+        lastSentAt: null,
+        lastReceivedAt: null,
+      },
+      {
+        type: "Complete",
+        transportId,
+        completeAt: Millis.orThrow(1000),
+        lastSentAt: Millis.orThrow(900),
+        lastReceivedAt: null,
+        // @ts-expect-error A complete route has no failure.
+        failure: null,
+      },
+      {
+        type: "Settled",
+        transportId,
+        skippedError: skippedChange(1000),
+        completeAt: null,
+        lastSentAt: Millis.orThrow(900),
+        lastReceivedAt: null,
+      },
+      // @ts-expect-error A settled route has sent a round, so it has when it last sent.
+      {
+        type: "Settled",
+        transportId,
+        skippedError: skippedChange(1000),
+        completeAt: null,
+        lastSentAt: null,
+        lastReceivedAt: null,
+      },
+      {
+        type: "Settled",
+        transportId,
+        // @ts-expect-error A settled route has the skipped change that keeps it incomplete.
+        skippedError: null,
+        completeAt: null,
+        lastSentAt: Millis.orThrow(900),
+        lastReceivedAt: null,
+      },
+    ];
+
+    const owners: ReadonlyArray<SyncTenantOwner> = [
+      { type: "Readonly", ownerId, transportIds: [transportId] },
+      {
+        type: "Readonly",
+        ownerId,
+        transportIds: [transportId],
+        // @ts-expect-error A readonly owner has no routes; its database does not sync it.
+        routes: [],
+      },
+    ];
+
+    const tenants: ReadonlyArray<SyncTenant> = [
+      { type: "Refused", name: testName, error: derivationRefusal },
+      {
+        type: "Refused",
+        name: testName,
+        error: derivationRefusal,
+        // @ts-expect-error A refused database has no owners; nothing it holds syncs.
+        owners: [],
+      },
+    ];
+
+    assertLength(connections, 4);
+    assertLength(routes, 7);
+    assertLength(owners, 2);
+    assertLength(tenants, 2);
+
+    const transport = createSyncTransport(openId, openConnection);
+    // @ts-expect-error A transport has no readyState; its connection tells whether it is open.
+    assertSame(transport.readyState, undefined);
+  });
+});
+
+describe("syncStateToRelaySyncStates", () => {
+  it("pairs each route with its transport in route order", () => {
+    const routes = [
+      createPendingRoute(disconnectedId),
+      createCompleteRoute(openId),
+      createPendingRoute(connectingId),
+    ];
+    assertEqual(
+      syncStateToRelaySyncStates(
+        createRoutesState(routes),
+        testName,
+        testAppOwner.id,
+      ),
+      [
+        { transport: syncTransports[3], route: routes[0] },
+        { transport: syncTransports[1], route: routes[1] },
+        { transport: syncTransports[0], route: routes[2] },
       ],
+    );
+  });
+
+  it("returns none without an active database or a writable owner", () => {
+    const state = createRoutesState([createCompleteRoute(openId)]);
+    const secondName = Name.orThrow("second");
+    const withTenant = (tenant: SyncTenant): SyncState => ({
+      transports: syncTransports,
+      tenants: [tenant],
+    });
+
+    assertEqual(
+      syncStateToRelaySyncStates(null, testName, testAppOwner.id),
+      [],
+    );
+    assertEqual(
+      syncStateToRelaySyncStates(state, secondName, testAppOwner.id),
+      [],
+    );
+    assertEqual(
+      syncStateToRelaySyncStates(state, testName, testAppOwner2.id),
+      [],
+    );
+    assertEqual(
+      syncStateToRelaySyncStates(
+        withTenant({
+          type: "Refused",
+          name: testName,
+          error: derivationRefusal,
+        }),
+        testName,
+        testAppOwner.id,
+      ),
+      [],
+    );
+    assertEqual(
+      syncStateToRelaySyncStates(
+        withTenant({
+          type: "Active",
+          name: testName,
+          owners: [
+            {
+              type: "Readonly",
+              ownerId: testAppOwner.id,
+              transportIds: [openId],
+            },
+          ],
+        }),
+        testName,
+        testAppOwner.id,
+      ),
+      [],
+    );
+  });
+});
+
+describe("relaySyncStateToStatus", () => {
+  it("tells the status of every route on every connection", () => {
+    for (const transport of [
+      syncTransports[0],
+      syncTransports[1],
+      syncTransports[3],
+    ]) {
+      const statusOf = (route: SyncRoute): RelaySyncStatus =>
+        relaySyncStateToStatus({ transport, route });
+      const { id } = transport;
+
+      assertEqual(statusOf(createCompleteRoute(id)), { type: "Synced" });
+      assertEqual(statusOf(createSettledRoute(id, skippedChange(2000))), {
+        type: "Error",
+        error: skippedChange(2000),
+      });
+      assertEqual(
+        statusOf(createPendingRoute(id)),
+        transport.connection.type === "Disconnected"
+          ? { type: "Offline" }
+          : { type: "Syncing" },
+      );
+      assertEqual(
+        statusOf(createPendingRoute(id, { skippedError: skippedChange(2000) })),
+        { type: "Error", error: skippedChange(2000) },
+      );
+      // A failure shows before a skipped change, even a newer one.
+      assertEqual(
+        statusOf(
+          createPendingRoute(id, {
+            failure: quotaFailure(1000),
+            skippedError: skippedChange(2000),
+          }),
+        ),
+        { type: "Error", error: quotaFailure(1000) },
+      );
+    }
+  });
+});
+
+describe("syncStateToOwnerSyncStatus", () => {
+  it("reports NoRelays without a route that syncs the owner", () => {
+    const noRelays = { type: "NoRelays" } as const;
+    const withTenant = (tenant: SyncTenant): SyncState => ({
+      transports: syncTransports,
+      tenants: [tenant],
+    });
+
+    assertEqual(
+      syncStateToOwnerSyncStatus(null, testName, testAppOwner.id),
+      noRelays,
+    );
+    assertEqual(
+      syncStateToOwnerSyncStatus(
+        createRoutesState([createCompleteRoute(openId)]),
+        Name.orThrow("second"),
+        testAppOwner.id,
+      ),
+      noRelays,
+    );
+    assertEqual(
+      syncStateToOwnerSyncStatus(
+        withTenant({
+          type: "Refused",
+          name: testName,
+          error: derivationRefusal,
+        }),
+        testName,
+        testAppOwner.id,
+      ),
+      noRelays,
+    );
+    assertEqual(
+      syncStateToOwnerSyncStatus(
+        withTenant({
+          type: "Active",
+          name: testName,
+          owners: [
+            {
+              type: "Readonly",
+              ownerId: testAppOwner.id,
+              transportIds: [openId],
+            },
+          ],
+        }),
+        testName,
+        testAppOwner.id,
+      ),
+      noRelays,
+    );
+    // Routes are briefly empty while the owner's transports are claimed.
+    assertEqual(ownerStatusOf([]), noRelays);
+  });
+
+  it("counts a first connection as Syncing and a lost one as Offline", () => {
+    assertEqual(ownerStatusOf([createPendingRoute(connectingId)]), {
+      type: "Syncing",
+    });
+    assertEqual(ownerStatusOf([createPendingRoute(openId)]), {
+      type: "Syncing",
+    });
+    assertEqual(ownerStatusOf([createPendingRoute(disconnectedId)]), {
+      type: "Offline",
     });
   });
 
-  it("pairs each route with its transport and a status", () => {
-    const routes = [
-      createRoute(connectingId),
-      createRoute(openB, { complete: true }),
-      createRoute(openA),
-      createRoute(closedId),
-    ];
-    const [owner] = syncStateToOwnerSyncStates(
-      createState([
-        {
-          name: testName,
-          refused: false,
-          owners: [createOwner(testAppOwner.id, routes)],
-        },
+  it("ranks Error over Syncing over Synced over Offline", () => {
+    // A complete route counts even while another relay is offline.
+    assertEqual(
+      ownerStatusOf([
+        createPendingRoute(disconnectedId),
+        createCompleteRoute(openId),
       ]),
+      { type: "Synced" },
     );
-    assertNotUndefined(owner);
-    // Relays keep the order of the routes, whatever the transport order.
-    assertEqual(owner.relays, [
-      { transport: transports[3], route: routes[0], status: "offline" },
-      { transport: transports[1], route: routes[1], status: "synced" },
-      { transport: transports[0], route: routes[2], status: "syncing" },
-      { transport: transports[2], route: routes[3], status: "offline" },
-    ]);
+    // Work in progress shows before a relay that is already up to date.
+    assertEqual(
+      ownerStatusOf([
+        createCompleteRoute(openId),
+        createPendingRoute(otherOpenId),
+      ]),
+      { type: "Syncing" },
+    );
+    // An error shows before all of them.
+    assertEqual(
+      ownerStatusOf([
+        createCompleteRoute(openId),
+        createPendingRoute(otherOpenId),
+        createPendingRoute(disconnectedId, { failure: quotaFailure(1000) }),
+      ]),
+      { type: "Error", error: quotaFailure(1000) },
+    );
+    // So does a skipped change on a pending route, such as a settled one
+    // whose relay then disconnected, alone or next to a complete relay.
+    const skippedOnPending = createPendingRoute(disconnectedId, {
+      skippedError: skippedChange(1000),
+    });
+    assertEqual(ownerStatusOf([skippedOnPending]), {
+      type: "Error",
+      error: skippedChange(1000),
+    });
+    assertEqual(
+      ownerStatusOf([createCompleteRoute(openId), skippedOnPending]),
+      { type: "Error", error: skippedChange(1000) },
+    );
   });
 
-  it("reports each writable owner of each running database", () => {
+  it("does not hide an older failure behind a newer skipped change on another relay", () => {
+    // A skipped change is stamped again by every reply that skips it, and the
+    // app can act on a quota failure.
+    assertEqual(
+      ownerStatusOf([
+        createPendingRoute(openId, { failure: quotaFailure(1000) }),
+        createSettledRoute(otherOpenId, skippedChange(5000)),
+      ]),
+      { type: "Error", error: quotaFailure(1000) },
+    );
+    // Among failures, and without one among skipped changes, the newest shows.
+    assertEqual(
+      ownerStatusOf([
+        createPendingRoute(openId, { failure: quotaFailure(1000) }),
+        createPendingRoute(otherOpenId, {
+          failure: { type: "WriteFailed", at: Millis.orThrow(2000) },
+        }),
+      ]),
+      {
+        type: "Error",
+        error: { type: "WriteFailed", at: Millis.orThrow(2000) },
+      },
+    );
+    assertEqual(
+      ownerStatusOf([
+        createSettledRoute(openId, skippedChange(3000)),
+        createPendingRoute(otherOpenId, { skippedError: skippedChange(1000) }),
+      ]),
+      { type: "Error", error: skippedChange(3000) },
+    );
+    // The newest wins in either route order.
+    assertEqual(
+      ownerStatusOf([
+        createPendingRoute(openId, {
+          failure: { type: "WriteFailed", at: Millis.orThrow(2000) },
+        }),
+        createPendingRoute(otherOpenId, { failure: quotaFailure(1000) }),
+      ]),
+      {
+        type: "Error",
+        error: { type: "WriteFailed", at: Millis.orThrow(2000) },
+      },
+    );
+    assertEqual(
+      ownerStatusOf([
+        createPendingRoute(openId, { skippedError: skippedChange(1000) }),
+        createSettledRoute(otherOpenId, skippedChange(3000)),
+      ]),
+      { type: "Error", error: skippedChange(3000) },
+    );
+  });
+
+  it("finds the owner in the named database", () => {
     const secondName = Name.orThrow("second");
-    const states = syncStateToOwnerSyncStates(
-      createState([
+    const state: SyncState = {
+      transports: syncTransports,
+      tenants: [
         {
+          type: "Active",
           name: testName,
-          refused: false,
           owners: [
-            createOwner(testAppOwner.id, [
-              createRoute(openA, { complete: true }),
-            ]),
-            // A readonly registration never synchronizes.
-            createOwner(testAppOwner2.id, [], false),
+            {
+              type: "Writable",
+              ownerId: testAppOwner.id,
+              routes: [createCompleteRoute(openId)],
+            },
           ],
         },
         {
+          type: "Active",
           name: secondName,
-          refused: false,
-          owners: [createOwner(testAppOwner2.id, [createRoute(openB)])],
+          owners: [
+            {
+              type: "Writable",
+              ownerId: testAppOwner.id,
+              routes: [createPendingRoute(disconnectedId)],
+            },
+          ],
         },
-        // A refused database synchronizes nothing, whatever it registered.
-        {
-          name: Name.orThrow("refused"),
-          refused: true,
-          owners: [createOwner(testAppOwner.id, [createRoute(openA)])],
-        },
-      ]),
-    );
-    assertEqual(
-      states.map(({ name, ownerId, status }) => ({ name, ownerId, status })),
-      [
-        { name: testName, ownerId: testAppOwner.id, status: "synced" },
-        { name: secondName, ownerId: testAppOwner2.id, status: "syncing" },
       ],
+    };
+    assertEqual(syncStateToOwnerSyncStatus(state, testName, testAppOwner.id), {
+      type: "Synced",
+    });
+    assertEqual(
+      syncStateToOwnerSyncStatus(state, secondName, testAppOwner.id),
+      { type: "Offline" },
+    );
+  });
+
+  it("gives the same status object while the status is unchanged", () => {
+    for (const routes of [
+      [],
+      [createPendingRoute(openId)],
+      [createCompleteRoute(openId)],
+      [createPendingRoute(disconnectedId)],
+    ]) {
+      // Each call derives from a new snapshot, as bindings receive them.
+      assertSame(ownerStatusOf(routes), ownerStatusOf(routes));
+    }
+
+    // An Error status is the same object for the same error object, which the
+    // store keeps between snapshots while it is unchanged, for the owner and
+    // for each relay alike.
+    const failure = quotaFailure(1000);
+    const failedRoute = createPendingRoute(openId, { failure });
+    const errorStatus = ownerStatusOf([failedRoute]);
+    assertSame(
+      ownerStatusOf([createCompleteRoute(otherOpenId), failedRoute]),
+      errorStatus,
+    );
+    assertSame(
+      relaySyncStateToStatus({
+        transport: createSyncTransport(openId, openConnection),
+        route: failedRoute,
+      }),
+      errorStatus,
+    );
+    const skipped = skippedChange(2000);
+    assertSame(
+      ownerStatusOf([createSettledRoute(openId, skipped)]),
+      ownerStatusOf([createPendingRoute(openId, { skippedError: skipped })]),
+    );
+    assertSame(
+      relaySyncStateToStatus({
+        transport: createSyncTransport(openId, openConnection),
+        route: createSettledRoute(openId, skipped),
+      }),
+      ownerStatusOf([createSettledRoute(openId, skipped)]),
+    );
+
+    // An equal error in a new object, which the store never hands over while
+    // the error is unchanged, gives a new status.
+    assertNotSame(
+      ownerStatusOf([
+        createPendingRoute(openId, { failure: quotaFailure(1000) }),
+      ]),
+      errorStatus,
     );
   });
 });
@@ -7370,6 +8254,8 @@ describe("with one evolu instance", () => {
     it("routes a relay's version-mismatch reply to the tenant", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const { dbInputs, evoluChannel } = instance;
       const { time } = setup.run.deps;
@@ -7429,10 +8315,16 @@ describe("with one evolu instance", () => {
         ok: false,
         error: versionError,
       });
-      assertEqual(consoleEntryOrErrors.at(-1), {
-        type: "Error",
-        error: versionError,
+      // The route shows it with its details; it is not posted as an error.
+      const [owner] = ownersOf(latest());
+      assert(owner?.type === "Writable", "Expected a writable owner.");
+      const [route] = owner.routes;
+      assertSame(route?.type, "Pending");
+      assertEqual(route.failure, {
+        ...versionError,
+        at: time.now(),
       });
+      assertFalse(consoleEntryOrErrors.some(({ type }) => type === "Error"));
 
       // The failure requests one round; the same reply to it requests none.
       assertEqual(await respondToSyncRound(instance, createWebSocket), [
@@ -8141,14 +9033,8 @@ describe("with one evolu instance", () => {
       assertTrue(
         evoluOutputs.some((output) => output.type === "RefreshQueries"),
       );
-      assertEqual(consoleEntryOrErrors.at(-1), {
-        type: "Error",
-        error: {
-          type: "ProtocolInvalidDataError",
-          data: new Uint8Array(),
-          error: "boom",
-        },
-      });
+      // The route shows the failure; it is not posted as an error.
+      assertFalse(consoleEntryOrErrors.some(({ type }) => type === "Error"));
 
       // The failure requested one round through the route.
       const retryRoundInput = dbInputs.at(-1);
@@ -9572,7 +10458,7 @@ describe("startup refusal", () => {
     });
     await testWaitForWorkerMessage();
     assertEqual(latest().tenants, [
-      { name: testName, refused: true, owners: [] },
+      { type: "Refused", name: testName, error: refusal },
     ]);
   });
 

@@ -1,7 +1,14 @@
 <script lang="ts">
   import * as Evolu from "@evolu/common";
+  import { syncStateToOwnerSyncStatus } from "@evolu/common/local-first";
   import { appOwnerState, queryState } from "@evolu/svelte";
-  import { evolu, evoluError, todosQuery, type TodoId } from "./evolu";
+  import {
+    evolu,
+    evoluError,
+    syncState,
+    todosQuery,
+    type TodoId,
+  } from "./evolu";
 
   const allTodos = queryState(evolu, () => todosQuery);
 
@@ -15,6 +22,36 @@
       error = evoluError.get();
     }),
   );
+
+  let currentSyncState = $state.raw(syncState.get());
+  $effect(() =>
+    syncState.subscribe(() => {
+      currentSyncState = syncState.get();
+    }),
+  );
+
+  /**
+   * Tells the user when changes can't leave this device, and nothing while
+   * sync works. See `OwnerSyncStatus` in `@evolu/common/local-first`.
+   */
+  const syncMessage = $derived.by(() => {
+    // `syncState` lists every database, even other tabs', so this finds the
+    // app owner of this one.
+    const status = syncStateToOwnerSyncStatus(
+      currentSyncState,
+      evolu.name,
+      evolu.appOwner.id,
+    );
+    // An app that sells relay quota offers more for a ProtocolQuotaError, then
+    // calls `evolu.requestSync(evolu.appOwner.id)`.
+    return status.type === "Offline"
+      ? "Offline. Your changes are saved on this device."
+      : status.type === "Error"
+        ? status.error.type === "ProtocolQuotaError"
+          ? "Sync is paused because the sync server is full. Your changes are saved on this device."
+          : `Sync error: ${status.error.type}. Your changes are saved on this device.`
+        : null;
+  });
 
   let newTodoTitle = $state("");
   let showMnemonic = $state(false);
@@ -105,6 +142,14 @@
         Evolu error: {error.type}. See the console for details.
       </p>
     {/if}
+
+    <!-- Always mounted: screen readers announce changes only in a live region
+    that already exists. -->
+    <div role="status">
+      {#if syncMessage}
+        <p class="sync-status">{syncMessage}</p>
+      {/if}
+    </div>
 
     <!-- Todos Section -->
     <div class="todos-section">
@@ -222,6 +267,12 @@
     border-radius: 0.375rem;
     background: #fef2f2;
     color: #991b1b;
+    font-size: 0.875rem;
+  }
+
+  .sync-status {
+    margin-bottom: 1rem;
+    color: #4b5563;
     font-size: 0.875rem;
   }
 

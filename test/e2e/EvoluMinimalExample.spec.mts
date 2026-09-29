@@ -1,6 +1,6 @@
 import { expect } from "playwright/test";
 import { expectStaysVisible } from "./expectStaysVisible.mts";
-import { addTodo, test } from "./fixtures.mts";
+import { addTodo, afterRestart, test } from "./fixtures.mts";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/playgrounds/minimal");
@@ -140,4 +140,32 @@ test("syncs between isolated browser contexts through the relay", async ({
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByRole("listitem")).toHaveCount(0);
   await expect(otherPage.getByRole("listitem")).toHaveCount(0);
+});
+
+test("shows when changes can't leave this device", async ({ page, relay }) => {
+  test.slow();
+  // One always-mounted live region shows the sync line, empty while sync works.
+  const syncStatus = page.getByRole("status");
+  // Sync problems are not alerts, not even the example's evoluError alert.
+  // Next.js adds a route announcer alert, empty without client navigation, so
+  // count only alerts with text.
+  const syncAlert = page.getByRole("alert").filter({ hasText: /\S/u });
+
+  await relay.stop();
+  await expect(syncStatus).toHaveText(
+    "Offline. Your changes are saved on this device.",
+  );
+
+  // A one-byte quota rejects every write.
+  await relay.start({ EVOLU_RELAY_MAX_OWNER_BYTES: "1B" });
+  await expect(syncStatus).toBeEmpty(afterRestart);
+  await addTodo(page, "Over quota");
+  await expect(syncStatus).toHaveText(
+    "Sync is paused because the sync server is full. Your changes are saved on this device.",
+  );
+  await expect(syncAlert).toHaveCount(0);
+
+  await relay.stop();
+  await relay.start();
+  await expect(syncStatus).toBeEmpty(afterRestart);
 });

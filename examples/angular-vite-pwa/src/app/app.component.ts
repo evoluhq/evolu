@@ -23,6 +23,14 @@ import { PwaBadgeComponent } from "./pwa-badge.component";
           </p>
         }
 
+        <!-- Always mounted: screen readers announce changes only in a live
+        region that already exists. -->
+        <div role="status">
+          @if (appService.syncMessage(); as message) {
+            <p class="mb-4 text-sm text-gray-600">{{ message }}</p>
+          }
+        </div>
+
         @if (appService.isLoading()) {
           <div class="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
             <p class="text-sm text-gray-600">Loading todos…</p>

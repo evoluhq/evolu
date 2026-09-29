@@ -1,11 +1,12 @@
-import { assertEqual } from "@evolu/common";
+import { assertEqual, assertThrows, assertTrue } from "@evolu/common";
 import {
   createOwnerWebSocketTransport,
   testAppOwner,
   type Evolu,
 } from "@evolu/common/local-first";
 import { test } from "node:test";
-import { createApp, effectScope, type EffectScope } from "vue";
+import { createApp, createSSRApp, effectScope, type EffectScope } from "vue";
+import { renderToString } from "vue/server-renderer";
 import { EvoluContext } from "./provideEvolu.ts";
 import { useOwner } from "./useOwner.ts";
 
@@ -33,7 +34,7 @@ const setupUseOwner = () => {
     return scope;
   };
 
-  return { calls, runInScope };
+  return { calls, evolu, runInScope };
 };
 
 const transports = [
@@ -53,6 +54,33 @@ test("releases the owner when its scope is disposed", () => {
 
   scope.stop();
   assertEqual(calls, ["use", "unuse"]);
+});
+
+test("uses no owner during server rendering", async () => {
+  const { calls, evolu } = setupUseOwner();
+  const app = createSSRApp({
+    setup: () => {
+      // oxlint-disable-next-line react/rules-of-hooks -- A Vue composable runs in setup.
+      useOwner(testAppOwner, transports);
+      return () => null;
+    },
+  });
+  app.provide(EvoluContext, evolu);
+
+  await renderToString(app);
+  assertEqual(calls, []);
+});
+
+test("throws outside a component or app", () => {
+  assertThrows(
+    () => {
+      useOwner(testAppOwner, transports);
+    },
+    (thrown) => {
+      assertTrue(thrown instanceof Error);
+      assertTrue(thrown.message.startsWith("Could not find Evolu context"));
+    },
+  );
 });
 
 test("uses no owner when it is null", () => {

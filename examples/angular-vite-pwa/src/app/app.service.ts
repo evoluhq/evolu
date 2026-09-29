@@ -1,13 +1,15 @@
-import { Injectable, OnDestroy, inject, signal } from "@angular/core";
+import { Injectable, OnDestroy, computed, inject, signal } from "@angular/core";
 import {
   booleanToSqliteBoolean,
   createQueryBuilder,
   InferRow,
+  KyselyNotNull,
   Mnemonic,
   NonEmptyTrimmedString100,
   sqliteTrue,
 } from "@evolu/common";
-import { EVOLU, EVOLU_ERROR } from "./app.config";
+import { syncStateToOwnerSyncStatus } from "@evolu/common/local-first";
+import { EVOLU, EVOLU_ERROR, EVOLU_SYNC_STATE } from "./app.config";
 import { Schema, TodoId } from "./schema";
 
 const createQuery = createQueryBuilder(Schema);
@@ -18,6 +20,7 @@ const todosQuery = createQuery((db) =>
     .select(["id", "title", "isCompleted"])
     .where("isDeleted", "is not", sqliteTrue)
     .where("title", "is not", null)
+    .$narrowType<{ title: KyselyNotNull }>()
     .orderBy("createdAt"),
 );
 
@@ -25,6 +28,7 @@ const todosQuery = createQuery((db) =>
 export class AppService implements OnDestroy {
   private readonly evolu = inject(EVOLU);
   private readonly evoluErrorStore = inject(EVOLU_ERROR);
+  private readonly syncStateStore = inject(EVOLU_SYNC_STATE);
   private readonly unsubscribes: Array<() => void> = [];
 
   readonly todos = signal<ReadonlyArray<InferRow<typeof todosQuery>>>([]);
@@ -35,10 +39,39 @@ export class AppService implements OnDestroy {
 
   readonly evoluError = signal(this.evoluErrorStore.get());
 
+  private readonly syncState = signal(this.syncStateStore.get());
+
+  /**
+   * Tells the user when changes can't leave this device, and nothing while sync
+   * works. See `OwnerSyncStatus` in `@evolu/common/local-first`.
+   */
+  readonly syncMessage = computed(() => {
+    // `syncState` is shared by all Evolu instances created from these deps
+    // and lists every database, even other tabs', so this finds the app
+    // owner of this one.
+    const status = syncStateToOwnerSyncStatus(
+      this.syncState(),
+      this.evolu.name,
+      this.evolu.appOwner.id,
+    );
+    // An app that sells relay quota offers more for a ProtocolQuotaError, then
+    // calls `this.evolu.requestSync(this.evolu.appOwner.id)`.
+    return status.type === "Offline"
+      ? "Offline. Your changes are saved on this device."
+      : status.type === "Error"
+        ? status.error.type === "ProtocolQuotaError"
+          ? "Sync is paused because the sync server is full. Your changes are saved on this device."
+          : `Sync error: ${status.error.type}. Your changes are saved on this device.`
+        : null;
+  });
+
   constructor() {
     this.unsubscribes.push(
       this.evoluErrorStore.subscribe(() => {
         this.evoluError.set(this.evoluErrorStore.get());
+      }),
+      this.syncStateStore.subscribe(() => {
+        this.syncState.set(this.syncStateStore.get());
       }),
     );
     this.initializeData();

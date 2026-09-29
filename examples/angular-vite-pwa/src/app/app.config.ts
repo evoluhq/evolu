@@ -41,11 +41,18 @@ export const EVOLU_ERROR = /*#__PURE__*/ new InjectionToken<
   Evolu.ReadonlyStore<Evolu.EvoluError | null>
 >("EvoluError");
 
+// Shared by all Evolu instances created from these deps, and lists every
+// database, even other tabs'.
+export const EVOLU_SYNC_STATE = /*#__PURE__*/ new InjectionToken<
+  Evolu.ReadonlyStore<Evolu.SyncState | null>
+>("EvoluSyncState");
+
 export const appConfig: ApplicationConfig = {
   providers: [
     /*#__PURE__*/ provideBrowserGlobalErrorListeners(),
     /*#__PURE__*/ provideZonelessChangeDetection(),
     { provide: EVOLU, useValue: evolu },
     { provide: EVOLU_ERROR, useValue: run.deps.evoluError },
+    { provide: EVOLU_SYNC_STATE, useValue: run.deps.syncState },
   ],
 };

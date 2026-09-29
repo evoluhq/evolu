@@ -148,7 +148,12 @@ const App: FC = () => {
       <AppOwners appOwners={appOwners} selectedAppOwner={selectedAppOwner} />
       {selectedAppOwner && (
         <AppEvoluContext key={selectedAppOwner.id} appOwner={selectedAppOwner}>
-          <Todos />
+          <SyncStatus />
+          {/* The todos load in their own boundary, so the status line's live
+              region is already mounted when the first status arrives. */}
+          <Suspense fallback={<AppLoading />}>
+            <Todos />
+          </Suspense>
         </AppEvoluContext>
       )}
     </div>
@@ -378,11 +383,7 @@ const AppEvoluContext: FC<
 
   if (!appEvolu) return <AppLoading />;
 
-  return (
-    <app.EvoluContext value={appEvolu}>
-      <Suspense fallback={<AppLoading />}>{children}</Suspense>
-    </app.EvoluContext>
-  );
+  return <app.EvoluContext value={appEvolu}>{children}</app.EvoluContext>;
 };
 
 const AppLoading: FC = () => (
@@ -390,6 +391,36 @@ const AppLoading: FC = () => (
     <p className="text-sm text-gray-600">Opening app...</p>
   </div>
 );
+
+/**
+ * Tells the user when the selected tenant's changes can't leave this device,
+ * and shows nothing while sync works. See `OwnerSyncStatus` in
+ * `@evolu/common/local-first`.
+ */
+const SyncStatus: FC = () => {
+  const run = useRun();
+  // Sync state is shared by every Evolu instance created from these deps, so
+  // the hook takes its store and finds this tenant's app owner in it.
+  const status = app.useOwnerSyncStatus(run.deps.syncState);
+  // An app that sells relay quota offers more for a ProtocolQuotaError, then
+  // calls `evolu.requestSync(evolu.appOwner.id)`.
+  const message =
+    status.type === "Offline"
+      ? "Offline. Your changes are saved on this device."
+      : status.type === "Error"
+        ? status.error.type === "ProtocolQuotaError"
+          ? "Sync is paused because the sync server is full. Your changes are saved on this device."
+          : `Sync error: ${status.error.type}. Your changes are saved on this device.`
+        : null;
+
+  return (
+    // Always mounted: screen readers announce changes only in a live region
+    // that already exists.
+    <div role="status">
+      {message && <p className="mb-4 text-sm text-gray-600">{message}</p>}
+    </div>
+  );
+};
 
 /** Trims user input and validates it as a todo title. */
 const parseTodoTitle = (value: string) =>

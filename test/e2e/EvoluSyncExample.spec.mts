@@ -1,10 +1,5 @@
 import { expect, type Locator, type Page } from "playwright/test";
-import { addTodo, test } from "./fixtures.mts";
-
-// A client retries with a jittered backoff that grows with the downtime, up to
-// 30 seconds, so the first check after a relay restarts waits that long plus a
-// round, in a test given more time.
-const afterRestart = { timeout: 35_000 };
+import { addTodo, afterRestart, test } from "./fixtures.mts";
 
 test("shows connection and synchronization state while editing items", async ({
   page,
@@ -21,9 +16,8 @@ test("shows connection and synchronization state while editing items", async ({
     .getByRole("status");
   const relays = page.getByRole("region", { name: "Relays", exact: true });
   await expect(status).toHaveText("Offline");
-  await expect(
-    relays.getByText(/^(?:Connecting|Disconnected)$/u),
-  ).toBeVisible();
+  // A failed first connection stays disconnected while it reconnects.
+  await expect(relays.getByText("Disconnected", { exact: true })).toBeVisible();
 
   await relay.start();
   await expect(status).toHaveText("Synced", afterRestart);

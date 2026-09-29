@@ -38,19 +38,21 @@ changes, which no relay can forge. Sync state shows the skip on that relay's
 route, which stays incomplete. Every round through that relay downloads its
 skipped changes again, so changes the client receives from other relays start
 no round through it; they reach it with its next sync, such as after a
-reconnect or `evolu.requestSync`. Use the route's error to tell the user, or
-stop syncing the owner through that relay. If every route of the owner shows
-`DecryptWithXChaCha20Poly1305Error` and your code creates or shares the owner,
-check the owner's keys.
+reconnect or `evolu.requestSync`. The owner's `Error` status tells the user;
+an app can also stop syncing the owner through that relay. If every route of
+the owner shows `DecryptWithXChaCha20Poly1305Error` and your code creates or
+shares the owner, check the owner's keys.
 
-A skipped change is no longer reported through `evoluError`, because the relay
-offers it again in every round, so `DecryptWithXChaCha20Poly1305Error` is no
-longer an `EvoluError`. Watch sync state instead: the relay's route `error` is
-the `DecryptWithXChaCha20Poly1305Error`, `ProtocolTimestampMismatchError`, or
-`ProtocolInvalidDataError` of the first change skipped in a reply, unless a
-failure since the route last settled is shown instead.
+A change skipped from a relay is no longer reported through `evoluError`,
+because the relay offers it again in every round, so
+`DecryptWithXChaCha20Poly1305Error` is no longer an `EvoluError`. Watch sync
+state instead: the relay's route holds the `DecryptWithXChaCha20Poly1305Error`,
+`ProtocolTimestampMismatchError`, or `ProtocolInvalidDataError` of the first
+change skipped in a reply as `skippedError`, and a route whose reconciliation
+ends with it is `Settled`; a failure since the route last settled is its
+`failure`.
 
-A route's `error` is now the error itself with `at`, so it carries the details
+A `SyncRouteError` is now the error itself with `at`, so it carries the details
 of every route failure, not only its `type`, which works as before. A
 `ProtocolInvalidDataError` leaves out its data, which can be a whole frame. Code
 that creates a `SyncRouteError`, such as a test fixture, must include the

@@ -18,7 +18,9 @@ import { type InferType, typed, type TypedType, Unknown } from "./Type.ts";
  * The `error` property contains error details (including `message`, `stack`,
  * and `cause` if available), a string, or a fallback value.
  *
- * Use {@link createUnknownError} to create instances.
+ * Use {@link createUnknownError} to create instances. It turns an `Error` into a
+ * plain object, so the error can be posted between workers, for example in sync
+ * state, with its message and stack.
  */
 export const UnknownError: TypedType<
   "UnknownError",
@@ -31,9 +33,13 @@ export interface UnknownError extends InferType<typeof UnknownError> {}
 /**
  * Creates an {@link UnknownError} from an unknown error.
  *
- * Error objects cannot be directly structured-cloned (for worker messaging) or
- * JSON-serialized because their properties (`message`, `stack`, `cause`) are
- * non-enumerable. This function extracts those properties into a plain object.
+ * An `Error` becomes a plain object of its own properties, such as `message`
+ * and `stack`. A `cause` that is an `Error` is converted the same way, a
+ * function is dropped, and any other property is kept as it is. An `Error`'s
+ * properties are not enumerable, so JSON and comparisons by content miss them,
+ * and a structured clone creates a new `Error`. Any other value is
+ * structured-cloned, or described by `String` when it cannot be, or as
+ * `"[Unserializable Object]"` when even that throws.
  */
 export const createUnknownError = (error: unknown): UnknownError => {
   const convertError = (err: Error): Record<string, unknown> => {

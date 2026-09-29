@@ -1,15 +1,24 @@
 "use client";
 
-import { constVoid, assert, emptyArray, structuralLookup } from "@evolu/common";
-import type {
-  Evolu,
-  EvoluSchema,
-  Queries,
-  QueriesToQueryRows,
-  QueriesToQueryRowsPromises,
-  Query,
-  QueryRows,
-  Row,
+import {
+  constVoid,
+  assert,
+  emptyArray,
+  structuralLookup,
+  type ReadonlyStore,
+} from "@evolu/common";
+import {
+  syncStateToOwnerSyncStatus,
+  type Evolu,
+  type EvoluSchema,
+  type OwnerSyncStatus,
+  type Queries,
+  type QueriesToQueryRows,
+  type QueriesToQueryRowsPromises,
+  type Query,
+  type QueryRows,
+  type Row,
+  type SyncState,
 } from "@evolu/common/local-first";
 import {
   createContext,
@@ -100,6 +109,25 @@ export interface ReactBinding<S extends EvoluSchema = EvoluSchema> {
     owner: Parameters<Evolu<S>["useOwner"]>[0] | null,
     transports?: Parameters<Evolu<S>["useOwner"]>[1],
   ) => void;
+
+  /**
+   * Returns the {@link OwnerSyncStatus} of an owner in the database of the
+   * {@link Evolu} instance from `EvoluContext`, and re-renders when it changes,
+   * not with every snapshot. Without an owner, it is the status of
+   * {@link Evolu.appOwner}. Otherwise pass the owner `useOwner` takes; a null
+   * owner, for a component that waits for one, gives `NoRelays`. Pass the
+   * {@link @evolu/common!"local-first/Evolu".SyncStateDep.syncState | SyncStateDep.syncState}
+   * store of the deps the instance was created with, because the context holds
+   * only the instance. Before the first snapshot and during server rendering,
+   * it returns `NoRelays`. See {@link OwnerSyncStatus} for what to show.
+   */
+  readonly useOwnerSyncStatus: {
+    (syncState: ReadonlyStore<SyncState | null>): OwnerSyncStatus;
+    (
+      syncState: ReadonlyStore<SyncState | null>,
+      owner: Parameters<Evolu<S>["useOwner"]>[0] | null,
+    ): OwnerSyncStatus;
+  };
 }
 
 /**
@@ -223,6 +251,35 @@ export const createEvoluBinding = <
     );
   };
 
+  const useOwnerSyncStatus: ReactBinding<S>["useOwnerSyncStatus"] = (
+    syncState: ReadonlyStore<SyncState | null>,
+    owner?: Parameters<Evolu<S>["useOwner"]>[0] | null,
+  ): OwnerSyncStatus => {
+    const evolu = useEvolu();
+    const { name } = evolu;
+    // Only the overload without an owner leaves it undefined.
+    const id =
+      owner === undefined
+        ? evolu.appOwner.id
+        : owner === null
+          ? null
+          : owner.id;
+
+    const statusOf = (state: SyncState | null): OwnerSyncStatus =>
+      id === null
+        ? noRelaysSyncStatus
+        : syncStateToOwnerSyncStatus(state, name, id);
+
+    // A status keeps its object while it is unchanged, so React re-renders only
+    // when it changes. Server rendering has no snapshot, which gives the same
+    // NoRelays object that hydration starts from.
+    return useSyncExternalStore(
+      syncState.subscribe,
+      () => statusOf(syncState.get()),
+      () => statusOf(null),
+    );
+  };
+
   return {
     EvoluContext,
     useEvolu,
@@ -230,5 +287,8 @@ export const createEvoluBinding = <
     useQueries,
     useQuerySubscription,
     useOwner,
+    useOwnerSyncStatus,
   };
 };
+
+const noRelaysSyncStatus: OwnerSyncStatus = { type: "NoRelays" };

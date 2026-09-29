@@ -3,5 +3,6 @@ export * from "./EvoluProvider.ts";
 export * from "./provideEvolu.ts";
 export * from "./useEvolu.ts";
 export * from "./useOwner.ts";
+export * from "./useOwnerSyncStatus.ts";
 export * from "./useQueries.ts";
 export * from "./useQuery.ts";

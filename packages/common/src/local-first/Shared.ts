@@ -53,7 +53,9 @@
  * still waiting after three seconds reports {@link OtherBuildRunningError} to
  * its tabs. Every build broadcasts console entries and errors on
  * {@link consoleEntryOrErrorBroadcastChannelName}, so a waiting tab also prints
- * the running build's output and reports its errors as its own `evoluError`.
+ * the running build's output, reports each {@link UnknownError} it sends as its
+ * own `evoluError`, and only logs any other error, such as an older build's
+ * sync error.
  *
  * The tabs of one worker elect the host of its DbWorkers among themselves, with
  * a lock scoped to the worker, so a tab of another worker never hosts them.
@@ -120,17 +122,24 @@
  *
  * The shared worker publishes one plain snapshot, {@link SyncState}, of every
  * transport it manages and every database and owner registration it holds, with
- * one route per writable registration and transport, as specified below.
- * {@link syncStateToOwnerSyncStates} derives one state per database and owner.
+ * one route per writable registration and transport, as specified below. Each
+ * part is a union of the states the worker keeps for it: a transport's
+ * connection, a database that is active or refused startup, a writable or
+ * readonly owner, and a pending, settled, or complete route. A transport's
+ * events drive its connection, so publishing never reads a socket.
+ *
+ * Apps show users an owner's {@link OwnerSyncStatus}, which
+ * {@link syncStateToOwnerSyncStatus} derives. A view of each relay pairs each
+ * route with its transport by {@link syncStateToRelaySyncStates} and tells the
+ * relay's status by {@link relaySyncStateToStatus}. Snapshots store neither, so
+ * a status never disagrees with the routes it comes from.
  *
  * Each worker broadcasts snapshots on its own channel, whose name a connecting
  * tab receives through its port, so a tab never hears another worker, such as
  * one of a different app version, and
  * {@link SyncStateDep.syncState | deps.syncState} keeps the last snapshot. The
- * worker publishes after every change it observes; a transition without an
- * event, such as a closed socket starting to reconnect, appears with the next
- * snapshot. The snapshot lives in worker memory only, so a new worker starts
- * empty.
+ * worker publishes after every change it observes. The snapshot lives in worker
+ * memory only, so a new worker starts empty.
  *
  * ## Synchronization completion
  *
@@ -169,7 +178,8 @@
  * A route is settled when every condition except the last holds, so a complete
  * route is settled too. A settled route that is incomplete has ended its
  * reconciliation, but its relay may offer a message the database skipped, or
- * messages stored elsewhere may not have reached it.
+ * messages stored elsewhere may not have reached it; it is published as
+ * {@link SettledSyncRoute}.
  *
  * A reconciliation chain ends only with a converged result, a failure, an
  * abort, a dropped frame, or a continuation that finds the socket closed, and
@@ -191,15 +201,15 @@
  * the liveness rule below replaces the socket.
  *
  * A result that skipped a received message the database could not decrypt,
- * verify, or decode records the error on the route, which shows it as
- * {@link SyncRoute.error} describes, without ending its chain, so it requests no
- * round, and the relay offers the message again in every round through the
- * route until the database stores a message with that timestamp. The messages
- * received elsewhere that the last condition names request no round through
- * such a route, even while a requested round checks it again, because each
- * round would download every skipped message again. The next round that a first
- * use of the transport for the owner, an explicit request, a reopen, a
- * replacement leader, or a failure sends through the route reconciles them.
+ * verify, or decode records the error on the route as its `skippedError`,
+ * without ending its chain, so it requests no round, and the relay offers the
+ * message again in every round through the route until the database stores a
+ * message with that timestamp. The messages received elsewhere that the last
+ * condition names request no round through such a route, even while a requested
+ * round checks it again, because each round would download every skipped
+ * message again. The next round that a first use of the transport for the
+ * owner, an explicit request, a reopen, a replacement leader, or a failure
+ * sends through the route reconciles them.
  *
  * ### Liveness
  *
@@ -255,6 +265,7 @@ import type {
   DecryptWithXChaCha20Poly1305Error,
   EncryptionKey,
 } from "../Crypto.ts";
+import { createUnknownError, type UnknownError } from "../Error.ts";
 import { disposable, exhaustiveCheck } from "../Function.ts";
 import { acquireLeaderLock, type LockManagerDep } from "../LockManager.ts";
 import {
@@ -309,7 +320,6 @@ import type {
   CreateWebSocketDep,
   WebSocket,
   WebSocketError,
-  WebSocketReadyState,
 } from "../WebSocket.ts";
 import type {
   SharedWorker as CommonSharedWorker,
@@ -321,7 +331,7 @@ import type {
   WorkerDeps,
 } from "../Worker.ts";
 import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
-import type { EvoluError, SyncStateDep } from "./Evolu.ts";
+import type { Evolu, SyncStateDep } from "./Evolu.ts";
 import type { Owner, OwnerId, OwnerTransport, SyncOwner } from "./Owner.ts";
 import {
   createProtocolBroadcastMessagesFromCrdtMessages,
@@ -333,6 +343,7 @@ import {
   type ProtocolError,
   type ProtocolInvalidDataError,
   type ProtocolMessage,
+  type ProtocolQuotaError,
   type ProtocolTimestampMismatchError,
 } from "./Protocol.ts";
 import {
@@ -423,7 +434,7 @@ export type ConsoleEntryOrError =
     }
   | {
       readonly type: "Error";
-      readonly error: EvoluError;
+      readonly error: UnknownError;
     };
 
 export const consoleEntryOrErrorBroadcastChannelName =
@@ -481,31 +492,31 @@ export interface BuildWaitingRequest extends InferType<
 export interface OtherBuildRunningError extends Typed<"OtherBuildRunningError"> {}
 
 /**
- * A snapshot of the transports and databases the shared worker manages.
- *
- * See the Sync state section of this module's documentation.
+ * A snapshot of the transports and databases the shared worker manages. Each
+ * part is a union of the states the worker keeps for it, so each part holds
+ * only the fields valid for its state. Apps derive what to show with
+ * {@link syncStateToOwnerSyncStatus}; see Sync state in this module's
+ * documentation.
  */
 export interface SyncState {
   readonly transports: ReadonlyArray<SyncTransport>;
   readonly tenants: ReadonlyArray<SyncTenant>;
 }
 
-/** One WebSocket, shared by every owner and database claiming it. */
-export interface SyncTransport {
-  /** Opaque and stable for the transport's lifetime, across socket replacements. */
+/**
+ * One transport, shared by every owner and database claiming it. Its `type` is
+ * the kind of transport, and its {@link SyncConnection} tells whether it is
+ * connected.
+ */
+export type SyncTransport = WebSocketSyncTransport;
+
+/** A WebSocket {@link SyncTransport}. */
+export interface WebSocketSyncTransport extends Typed<"WebSocket"> {
+  /** Opaque and stable for the transport's lifetime, across reconnects. */
   readonly id: SyncTransportId;
-  /** The URL without its query, which carries the owner ID. */
+  /** The relay URL without the owner-specific query. */
   readonly label: string;
-  readonly readyState: WebSocketReadyState;
-  /** When the connection last opened, or null before its first open. */
-  readonly openedAt: Millis | null;
-  /** When the connection last closed, or null before its first close. */
-  readonly closedAt: Millis | null;
-  /**
-   * The last error, retained after a successful reconnect; null if none. Errors
-   * while reconnecting are routine.
-   */
-  readonly error: SyncTransportError | null;
+  readonly connection: SyncConnection;
 }
 
 export type SyncTransportId = Id & Brand<"SyncTransport">;
@@ -515,58 +526,172 @@ export interface SyncTransportError {
   readonly at: Millis;
 }
 
-/** One named local database and the owners it registered. */
-export interface SyncTenant {
+/**
+ * The connection of a {@link SyncTransport}: `Connecting` until its first
+ * connection opens or fails, `Open` while a connection is open, and
+ * `Disconnected` from a close, a failure, or an unanswered request that
+ * replaced the connection, until a connection opens again. It never returns to
+ * `Connecting`. The transport's events drive these states.
+ */
+export type SyncConnection =
+  ConnectingSyncConnection | OpenSyncConnection | DisconnectedSyncConnection;
+
+/**
+ * A first connection, which has neither opened nor failed. A connection to a
+ * host that drops packets stays here until the operating system or browser
+ * gives up on it, which can take a minute or more.
+ */
+export interface ConnectingSyncConnection extends Typed<"Connecting"> {}
+
+/** An open connection. */
+export interface OpenSyncConnection extends Typed<"Open"> {
+  /** When this connection opened. */
+  readonly openedAt: Millis;
+  /** The last error of an earlier connection or attempt, or null. */
+  readonly error: SyncTransportError | null;
+}
+
+/**
+ * No connection: a connection closed or failed, or the relay did not answer a
+ * request in time. The transport reconnects by itself.
+ */
+export interface DisconnectedSyncConnection extends Typed<"Disconnected"> {
+  /** When it disconnected. Failed reconnect attempts leave it unchanged. */
+  readonly disconnectedAt: Millis;
+  /** When the last connection opened, or null when none has. */
+  readonly openedAt: Millis | null;
+  /**
+   * The last error, or null. A close or an unanswered request records none, so
+   * it can come from an earlier connection. Errors while reconnecting are
+   * routine.
+   */
+  readonly error: SyncTransportError | null;
+}
+
+/** One named local database: `Active`, or `Refused` when it refused startup. */
+export type SyncTenant = ActiveSyncTenant | RefusedSyncTenant;
+
+/**
+ * A database that has not refused startup, including one still starting, with
+ * the owners its instances registered.
+ */
+export interface ActiveSyncTenant extends Typed<"Active"> {
   readonly name: Name;
-  /** The database refused startup, so nothing it holds synchronizes. */
-  readonly refused: boolean;
   readonly owners: ReadonlyArray<SyncTenantOwner>;
 }
 
-export interface SyncTenantOwner {
+/**
+ * A database that refused startup, so nothing it holds syncs. Its tabs also
+ * receive the error through `evoluError`.
+ */
+export interface RefusedSyncTenant extends Typed<"Refused"> {
+  readonly name: Name;
+  readonly error: UnsupportedDbVersionError;
+}
+
+/**
+ * An owner registered by any instance of an {@link ActiveSyncTenant}: `Writable`
+ * when any registration holds its write key, otherwise `Readonly`.
+ */
+export type SyncTenantOwner = WritableSyncTenantOwner | ReadonlySyncTenantOwner;
+
+/**
+ * An owner the database syncs, with one route per transport claimed for it by
+ * this or any other database. Routes are briefly empty while the owner's
+ * transports are being claimed.
+ */
+export interface WritableSyncTenantOwner extends Typed<"Writable"> {
   readonly ownerId: OwnerId;
-  /** A readonly registration holds transports but never synchronizes. */
-  readonly writable: boolean;
-  /** Every transport claimed for the owner, by any database. */
-  readonly transportIds: ReadonlyArray<SyncTransportId>;
-  /** One route per transport for a writable owner; none for a readonly one. */
   readonly routes: ReadonlyArray<SyncRoute>;
 }
 
 /**
- * One database's use of one owner through one transport. See the
- * Synchronization completion section of this module's documentation.
+ * An owner registered only without its write key. Its registrations hold
+ * transports, which other databases' routes for the owner use, but this
+ * database does not sync it.
  */
-export interface SyncRoute {
+export interface ReadonlySyncTenantOwner extends Typed<"Readonly"> {
+  readonly ownerId: OwnerId;
+  /** Every transport claimed for the owner, by any database. */
+  readonly transportIds: ReadonlyArray<SyncTransportId>;
+}
+
+/**
+ * One database's use of one owner through one transport: `Pending` until its
+ * reconciliation ends, then `Complete`, or `Settled` while its relay offers a
+ * change the database skipped. See Synchronization completion in this module's
+ * documentation.
+ */
+export type SyncRoute = PendingSyncRoute | SettledSyncRoute | CompleteSyncRoute;
+
+/**
+ * A route whose reconciliation has not ended: its transport is not open, a
+ * request or a received frame is outstanding, a replicated write is queued, or
+ * a round must still be sent through it.
+ */
+export interface PendingSyncRoute extends Typed<"Pending"> {
   readonly transportId: SyncTransportId;
-  /** Whether the database is reconciled with the relay for the owner. */
-  readonly complete: boolean;
+  /**
+   * The failure since the route last settled, or null. The first one requests a
+   * round; a further one waits for {@link Evolu.requestSync} or a reopen.
+   */
+  readonly failure: SyncRouteError | null;
+  /**
+   * The first change skipped in the latest reply that skipped one, or null. The
+   * relay offers it again in every round through the route until this database
+   * stores a change with that timestamp.
+   */
+  readonly skippedError: SyncRouteError | null;
   /** When the route last became complete, or null. */
   readonly completeAt: Millis | null;
   /** When this database last sent a request through the route, or null. */
   readonly lastSentAt: Millis | null;
   /**
    * When processing a frame from the route last finished, successfully or with
-   * a failure, or null. Aborted processing does not update this timestamp.
+   * a failure, or null. Aborted processing does not update it.
    */
   readonly lastReceivedAt: Millis | null;
-  /**
-   * The error the route shows, or null. Until the route settles, it is the
-   * failure since the route last settled or, without one, the skipped message.
-   * A route that settles incomplete shows its skipped message, even after a
-   * later failure it recovered from. Cleared when the route completes.
-   */
-  readonly error: SyncRouteError | null;
 }
 
 /**
- * The error a {@link SyncRoute} shows, with the time it arrived.
+ * A route whose reconciliation ended while its relay offers a change the
+ * database skipped, so it is incomplete. Changes stored from other relays
+ * request no round through it; the next round requested through it, such as by
+ * {@link Evolu.requestSync} or a reopen, checks it again.
+ */
+export interface SettledSyncRoute extends Typed<"Settled"> {
+  readonly transportId: SyncTransportId;
+  /** The first change skipped in the latest reply that skipped one. */
+  readonly skippedError: SyncRouteError;
+  /** When the route last became complete, or null. */
+  readonly completeAt: Millis | null;
+  /** When this database last sent a request through the route. */
+  readonly lastSentAt: Millis;
+  /** When processing a frame from the route last finished, or null. */
+  readonly lastReceivedAt: Millis | null;
+}
+
+/** A route on which the database is reconciled with the relay for the owner. */
+export interface CompleteSyncRoute extends Typed<"Complete"> {
+  readonly transportId: SyncTransportId;
+  /** When the route became complete. */
+  readonly completeAt: Millis;
+  /** When this database last sent a request through the route. */
+  readonly lastSentAt: Millis;
+  /** When processing a frame from the route last finished, or null. */
+  readonly lastReceivedAt: Millis | null;
+}
+
+/**
+ * A failure or a skipped change of a {@link SyncRoute}, with the time it
+ * arrived.
  *
  * It is the error itself, so it carries its details, such as the expected and
  * actual timestamps of a {@link ProtocolTimestampMismatchError}. A skipped
  * message adds {@link DecryptWithXChaCha20Poly1305Error}. A
  * {@link ProtocolInvalidDataError} leaves out its data, which can be a whole
- * frame. `WriteFailed` means a `writeMessages` call that threw, logged by the
+ * frame. The caught value in the `error` of either is an {@link UnknownError}.
+ * `WriteFailed` means a `writeMessages` call that threw, logged by the
  * protocol, and `SyncFailed` means a logged failure while creating a round or
  * reconciling ranges.
  */
@@ -583,52 +708,336 @@ export type SyncRouteError = (
 export type SyncRouteErrorType = SyncRouteError["type"];
 
 /**
- * One owner's standing with its relays in one database, derived from
- * {@link SyncState} by {@link syncStateToOwnerSyncStates}.
- */
-export interface OwnerSyncState {
-  readonly name: Name;
-  readonly ownerId: OwnerId;
-  readonly status: OwnerSyncStatus;
-  /** When a route of the owner last became complete, or null. */
-  readonly syncedAt: Millis | null;
-  /** The newest route error of the owner, or null. */
-  readonly error: SyncRouteError | null;
-  /** Each relay of the owner, in the order of its routes. */
-  readonly relays: ReadonlyArray<RelaySyncState>;
-}
-
-/**
- * The status of an {@link OwnerSyncState}: the first of `error`, `syncing`,
- * `synced`, and `offline` that one of its relays has, or `initial` before the
- * owner has a relay. Work in progress on an open transport shows before a relay
- * that is already up to date.
- */
-export type OwnerSyncStatus = "initial" | RelaySyncStatus;
-
-/**
- * One relay of an {@link OwnerSyncState}: a transport and the database's route
- * through it.
+ * One relay of an owner in one database: a transport and the database's route
+ * through it, from {@link syncStateToRelaySyncStates}. Its status comes from
+ * {@link relaySyncStateToStatus} and is not stored beside them.
  */
 export interface RelaySyncState {
   readonly transport: SyncTransport;
   readonly route: SyncRoute;
-  readonly status: RelaySyncStatus;
 }
 
 /**
- * The status of a {@link RelaySyncState}: `error` when its route failed or
- * skipped a message and has not completed since, `synced` when the route is
- * complete, `syncing` while the transport is open, and `offline` otherwise.
+ * What an app shows users about syncing one owner of one database, from
+ * {@link syncStateToOwnerSyncStatus} or the React and Vue `useOwnerSyncStatus`.
+ *
+ * Its variants:
+ *
+ * - `NoRelays`: nothing syncs the owner here. There is no snapshot yet, the
+ *   owner's transports are still being set up, the app uses no relays for it,
+ *   it is registered only as readonly, or the database refused startup, which
+ *   `evoluError` reports.
+ * - `Syncing`: a relay connects for the first time or reconciles. A first
+ *   connection to a host that drops packets stays `Syncing` until the platform
+ *   gives up on it, which can take a minute.
+ * - `Synced`: a relay is up to date, and none syncs.
+ * - `Offline`: every relay is disconnected. Evolu keeps reconnecting, up to 30
+ *   seconds apart, so `Offline` can briefly outlast the outage.
+ * - `Error`: a relay failed or offers a change this database skipped. `error` is
+ *   the newest failure, or without one, the newest skipped change: a failure
+ *   stops syncing through its relay, while a skipped change leaves out only
+ *   that change.
+ *
+ * Evolu saves changes on the device before they sync, so sync needs no UI while
+ * it works: show nothing for `NoRelays`, `Syncing`, and `Synced`. An indicator
+ * that changes with every edit distracts, and screen readers announce each
+ * change.
+ *
+ * For `Offline` and `Error`, show one quiet line that lasts as long as the
+ * status, not a dialog, which interrupts, or a toast, which disappears while
+ * the problem lasts. Say that changes are saved on this device. Evolu reports
+ * `Offline` at once; an app may wait a few seconds before showing it, because
+ * brief disconnections, such as waking from sleep, reconnect quickly. For
+ * `Error`, write actionable text for the error types the app can act on, such
+ * as a {@link ProtocolQuotaError}: the relay stores no more data for the owner,
+ * so offer more quota, such as a plan upgrade, then call
+ * {@link Evolu.requestSync} with the owner's ID. For any other error, show
+ * generic text that names the error type, which helps when the user reports
+ * it.
+ *
+ * Render the line inside one element with `role="status"` that stays mounted:
+ * screen readers announce changes only in a live region that already exists,
+ * and a polite announcement fits a status that loses nothing. Do not use
+ * `role="alert"`.
+ *
+ * Show the app owner's status once for the whole app, such as below the header,
+ * and another owner's status where the app shows that owner's data. Each Evolu
+ * instance finds its own status by {@link Evolu.name}, so an app with several
+ * databases shows the status of the one the user works in.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, Millis } from "@evolu/common";
+ * import {
+ *   testAppOwner,
+ *   type OwnerSyncStatus,
+ * } from "@evolu/common/local-first";
+ *
+ * // What to tell the user, or null while sync works or is not used.
+ * const syncStatusToMessage = (status: OwnerSyncStatus): string | null => {
+ *   switch (status.type) {
+ *     case "NoRelays":
+ *     case "Syncing":
+ *     case "Synced":
+ *       return null;
+ *     case "Offline":
+ *       return "Offline. Your changes are saved on this device.";
+ *     case "Error":
+ *       return status.error.type === "ProtocolQuotaError"
+ *         ? "Sync is paused because the sync server is full. Your changes are saved on this device."
+ *         : `Sync error: ${status.error.type}. Your changes are saved on this device.`;
+ *   }
+ * };
+ *
+ * assertEqual(syncStatusToMessage({ type: "Synced" }), null);
+ * assertEqual(
+ *   syncStatusToMessage({ type: "Offline" }),
+ *   "Offline. Your changes are saved on this device.",
+ * );
+ * assertEqual(
+ *   syncStatusToMessage({
+ *     type: "Error",
+ *     error: {
+ *       type: "ProtocolQuotaError",
+ *       ownerId: testAppOwner.id,
+ *       at: Millis.orThrow(1000),
+ *     },
+ *   }),
+ *   "Sync is paused because the sync server is full. Your changes are saved on this device.",
+ * );
+ * assertEqual(
+ *   syncStatusToMessage({
+ *     type: "Error",
+ *     error: { type: "SyncFailed", at: Millis.orThrow(1000) },
+ *   }),
+ *   "Sync error: SyncFailed. Your changes are saved on this device.",
+ * );
+ * ```
  */
-export type RelaySyncStatus = "syncing" | "synced" | "offline" | "error";
+export type OwnerSyncStatus = NoRelaysSyncStatus | RelaySyncStatus;
 
 /**
- * Folds the routes of every writable owner registration of every running
- * database in a {@link SyncState} into one {@link OwnerSyncState} per database
- * and owner, which pairs each route with its transport as a
- * {@link RelaySyncState}. A database that refused startup and a readonly
- * registration synchronize nothing, so they are left out.
+ * The status of a {@link RelaySyncState}, from {@link relaySyncStateToStatus}:
+ * `Error` when its route has a failure or a skipped change, the failure first;
+ * otherwise `Synced` when the route is complete, `Syncing` while the
+ * transport's connection is `Connecting` or `Open`, and `Offline` while it is
+ * `Disconnected`.
+ */
+export type RelaySyncStatus =
+  SyncingSyncStatus | SyncedSyncStatus | OfflineSyncStatus | ErrorSyncStatus;
+
+/** Evolu reports no relay syncing the owner in the database. */
+export interface NoRelaysSyncStatus extends Typed<"NoRelays"> {}
+
+/** A relay makes its first connection or reconciles. */
+export interface SyncingSyncStatus extends Typed<"Syncing"> {}
+
+/** A relay is reconciled with the database for the owner. */
+export interface SyncedSyncStatus extends Typed<"Synced"> {}
+
+/** Relays are disconnected and reconnecting, so changes wait on this device. */
+export interface OfflineSyncStatus extends Typed<"Offline"> {}
+
+/** A route failed or holds a change the database skipped. */
+export interface ErrorSyncStatus extends Typed<"Error"> {
+  /**
+   * The failure, or without one, the skipped change. For an owner, the newest
+   * failure of any relay, or without one, the newest skipped change.
+   */
+  readonly error: SyncRouteError;
+}
+
+/**
+ * Tells what an app shows about syncing an owner in a database: `Error` when a
+ * relay has one, holding the newest failure of any relay or, without one, the
+ * newest skipped change; otherwise the first of `Syncing`, `Synced`, and
+ * `Offline` that a relay has, or `NoRelays`. Accepts null, the store's value
+ * before the first snapshot. See {@link OwnerSyncStatus} for what to show.
+ *
+ * The same status is the same object: statuses other than `Error` are shared
+ * constants, and an `Error` status is the same object for the same error
+ * object, which {@link SyncStateDep.syncState} keeps between snapshots while it
+ * is unchanged. So compare statuses with `===`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertSame,
+ *   createId,
+ *   createUnknownError,
+ *   Millis,
+ *   testCreateDeps,
+ *   testName,
+ * } from "@evolu/common";
+ * import {
+ *   syncStateToOwnerSyncStatus,
+ *   testAppOwner,
+ *   type PendingSyncRoute,
+ *   type SyncConnection,
+ *   type SyncRoute,
+ *   type SyncState,
+ *   type SyncTransportId,
+ * } from "@evolu/common/local-first";
+ *
+ * const deps = testCreateDeps();
+ * const primaryId = createId<"SyncTransport">(deps);
+ * const backupId = createId<"SyncTransport">(deps);
+ *
+ * const stateOf = (
+ *   connections: ReadonlyArray<SyncConnection>,
+ *   routes: ReadonlyArray<SyncRoute>,
+ * ): SyncState => ({
+ *   transports: connections.map((connection, index) => ({
+ *     type: "WebSocket",
+ *     id: index === 0 ? primaryId : backupId,
+ *     label: "wss://relay.example",
+ *     connection,
+ *   })),
+ *   tenants: [
+ *     {
+ *       type: "Active",
+ *       name: testName,
+ *       owners: [{ type: "Writable", ownerId: testAppOwner.id, routes }],
+ *     },
+ *   ],
+ * });
+ * const pending = (transportId: SyncTransportId): PendingSyncRoute => ({
+ *   type: "Pending",
+ *   transportId,
+ *   failure: null,
+ *   skippedError: null,
+ *   completeAt: null,
+ *   lastSentAt: null,
+ *   lastReceivedAt: null,
+ * });
+ * const statusOf = (state: SyncState | null) =>
+ *   syncStateToOwnerSyncStatus(state, testName, testAppOwner.id);
+ *
+ * // Before the first snapshot, nothing syncs the owner.
+ * assertEqual(statusOf(null), { type: "NoRelays" });
+ *
+ * // A first connection is syncing; a lost one is offline.
+ * const connecting: SyncConnection = { type: "Connecting" };
+ * assertEqual(statusOf(stateOf([connecting], [pending(primaryId)])), {
+ *   type: "Syncing",
+ * });
+ * const disconnected: SyncConnection = {
+ *   type: "Disconnected",
+ *   disconnectedAt: Millis.orThrow(2000),
+ *   openedAt: Millis.orThrow(1000),
+ *   error: null,
+ * };
+ * assertEqual(statusOf(stateOf([disconnected], [pending(primaryId)])), {
+ *   type: "Offline",
+ * });
+ *
+ * // A quota failure on one relay shows before a newer skipped change on
+ * // another, because the app can act on it.
+ * const quotaError = {
+ *   type: "ProtocolQuotaError",
+ *   ownerId: testAppOwner.id,
+ *   at: Millis.orThrow(3000),
+ * } as const;
+ * const open: SyncConnection = {
+ *   type: "Open",
+ *   openedAt: Millis.orThrow(3400),
+ *   error: null,
+ * };
+ * assertEqual(
+ *   statusOf(
+ *     stateOf(
+ *       [disconnected, open],
+ *       [
+ *         { ...pending(primaryId), failure: quotaError },
+ *         {
+ *           type: "Settled",
+ *           transportId: backupId,
+ *           skippedError: {
+ *             type: "DecryptWithXChaCha20Poly1305Error",
+ *             error: createUnknownError(new Error("invalid tag")),
+ *             at: Millis.orThrow(4000),
+ *           },
+ *           completeAt: null,
+ *           lastSentAt: Millis.orThrow(3500),
+ *           lastReceivedAt: Millis.orThrow(4000),
+ *         },
+ *       ],
+ *     ),
+ *   ),
+ *   { type: "Error", error: quotaError },
+ * );
+ *
+ * // The same error gives the same status object.
+ * const quotaState = stateOf(
+ *   [disconnected],
+ *   [{ ...pending(primaryId), failure: quotaError }],
+ * );
+ * assertSame(statusOf(quotaState), statusOf(quotaState));
+ * ```
+ */
+export const syncStateToOwnerSyncStatus = (
+  state: SyncState | null,
+  name: Name,
+  ownerId: OwnerId,
+): OwnerSyncStatus => {
+  let failure: SyncRouteError | null = null;
+  let skippedError: SyncRouteError | null = null;
+  let isSyncing = false;
+  let isSynced = false;
+  let isOffline = false;
+  for (const relay of syncStateToRelaySyncStates(state, name, ownerId)) {
+    const { route } = relay;
+    // A failure stops syncing through its relay, and a skipped change is
+    // stamped again by every reply that skips it, so a newer skipped change
+    // must not hide an older failure the app can act on.
+    if (
+      route.type === "Pending" &&
+      route.failure &&
+      (!failure || route.failure.at > failure.at)
+    )
+      failure = route.failure;
+    if (
+      route.type !== "Complete" &&
+      route.skippedError &&
+      (!skippedError || route.skippedError.at > skippedError.at)
+    )
+      skippedError = route.skippedError;
+    const status = relaySyncStateToStatus(relay);
+    switch (status.type) {
+      case "Error":
+        break;
+      case "Syncing":
+        isSyncing = true;
+        break;
+      case "Synced":
+        isSynced = true;
+        break;
+      case "Offline":
+        isOffline = true;
+        break;
+      default:
+        exhaustiveCheck(status);
+    }
+  }
+  const error = failure ?? skippedError;
+  return error
+    ? syncRouteErrorToSyncStatus(error)
+    : isSyncing
+      ? syncingSyncStatus
+      : isSynced
+        ? syncedSyncStatus
+        : isOffline
+          ? offlineSyncStatus
+          : noRelaysSyncStatus;
+};
+
+/**
+ * Pairs each route of an owner in a database with its transport, in route
+ * order. Returns none for a null snapshot, a missing or refused database, and a
+ * missing or readonly owner.
  *
  * ### Example
  *
@@ -641,7 +1050,8 @@ export type RelaySyncStatus = "syncing" | "synced" | "offline" | "error";
  *   testName,
  * } from "@evolu/common";
  * import {
- *   syncStateToOwnerSyncStates,
+ *   relaySyncStateToStatus,
+ *   syncStateToRelaySyncStates,
  *   testAppOwner,
  *   type SyncRoute,
  *   type SyncState,
@@ -650,99 +1060,106 @@ export type RelaySyncStatus = "syncing" | "synced" | "offline" | "error";
  *
  * const deps = testCreateDeps();
  * const transport: SyncTransport = {
+ *   type: "WebSocket",
  *   id: createId<"SyncTransport">(deps),
  *   label: "wss://relay.example",
- *   readyState: "open",
- *   openedAt: null,
- *   closedAt: null,
- *   error: null,
+ *   connection: {
+ *     type: "Open",
+ *     openedAt: Millis.orThrow(800),
+ *     error: null,
+ *   },
  * };
  * const route: SyncRoute = {
+ *   type: "Complete",
  *   transportId: transport.id,
- *   complete: true,
  *   completeAt: Millis.orThrow(1000),
  *   lastSentAt: Millis.orThrow(900),
  *   lastReceivedAt: Millis.orThrow(1000),
- *   error: null,
  * };
  * const state: SyncState = {
  *   transports: [transport],
  *   tenants: [
  *     {
+ *       type: "Active",
  *       name: testName,
- *       refused: false,
  *       owners: [
- *         {
- *           ownerId: testAppOwner.id,
- *           writable: true,
- *           transportIds: [transport.id],
- *           routes: [route],
- *         },
+ *         { type: "Writable", ownerId: testAppOwner.id, routes: [route] },
  *       ],
  *     },
  *   ],
  * };
  *
- * assertEqual(syncStateToOwnerSyncStates(state), [
- *   {
- *     name: testName,
- *     ownerId: testAppOwner.id,
- *     status: "synced",
- *     syncedAt: Millis.orThrow(1000),
- *     error: null,
- *     relays: [{ transport, route, status: "synced" }],
- *   },
- * ]);
+ * const relays = syncStateToRelaySyncStates(
+ *   state,
+ *   testName,
+ *   testAppOwner.id,
+ * );
+ * assertEqual(relays, [{ transport, route }]);
+ * assertEqual(relays.map(relaySyncStateToStatus), [{ type: "Synced" }]);
+ * assertEqual(
+ *   syncStateToRelaySyncStates(null, testName, testAppOwner.id),
+ *   [],
+ * );
  * ```
  */
-export const syncStateToOwnerSyncStates = (
-  state: SyncState,
-): ReadonlyArray<OwnerSyncState> => {
-  const transportById = new Map(
-    state.transports.map((transport) => [transport.id, transport]),
-  );
-  return state.tenants.flatMap(({ name, refused, owners }) =>
-    refused
-      ? []
-      : owners.flatMap(({ ownerId, writable, routes }) => {
-          if (!writable) return [];
-          let syncedAt: Millis | null = null;
-          let error: SyncRouteError | null = null;
-          const relays: Array<RelaySyncState> = [];
-          for (const route of routes) {
-            if (
-              route.completeAt !== null &&
-              (syncedAt === null || route.completeAt > syncedAt)
-            )
-              syncedAt = route.completeAt;
-            if (
-              route.error !== null &&
-              (error === null || route.error.at > error.at)
-            )
-              error = route.error;
-            // A snapshot lists the transport of every route.
-            const transport = transportById.get(route.transportId);
-            assertNonNullable(transport);
-            relays.push({
-              transport,
-              route,
-              status:
-                route.error !== null
-                  ? "error"
-                  : route.complete
-                    ? "synced"
-                    : transport.readyState === "open"
-                      ? "syncing"
-                      : "offline",
-            });
-          }
-          const status: OwnerSyncStatus =
-            (["error", "syncing", "synced", "offline"] as const).find(
-              (candidate) => relays.some((relay) => relay.status === candidate),
-            ) ?? "initial";
-          return [{ name, ownerId, status, syncedAt, error, relays }];
-        }),
-  );
+export const syncStateToRelaySyncStates = (
+  state: SyncState | null,
+  name: Name,
+  ownerId: OwnerId,
+): ReadonlyArray<RelaySyncState> => {
+  const tenant = state?.tenants.find((tenant) => tenant.name === name);
+  if (!state || tenant?.type !== "Active") return emptyArray;
+  const owner = tenant.owners.find((owner) => owner.ownerId === ownerId);
+  if (owner?.type !== "Writable") return emptyArray;
+  return owner.routes.map((route) => {
+    // A snapshot lists the transport of every route.
+    const transport = state.transports.find(
+      ({ id }) => id === route.transportId,
+    );
+    assertNonNullable(transport);
+    return { transport, route };
+  });
+};
+
+/** Tells the status of one relay; a failure shows before a skipped change. */
+export const relaySyncStateToStatus = ({
+  transport,
+  route,
+}: RelaySyncState): RelaySyncStatus => {
+  switch (route.type) {
+    case "Complete":
+      return syncedSyncStatus;
+    case "Settled":
+      return syncRouteErrorToSyncStatus(route.skippedError);
+    case "Pending": {
+      const error = route.failure ?? route.skippedError;
+      if (error) return syncRouteErrorToSyncStatus(error);
+      return transport.connection.type === "Disconnected"
+        ? offlineSyncStatus
+        : syncingSyncStatus;
+    }
+  }
+};
+
+// Every status keeps its reference while it is unchanged, so bindings compare
+// statuses with `===`. The store shares an unchanged error object between
+// snapshots, and an error gives the same Error status object.
+const noRelaysSyncStatus: NoRelaysSyncStatus = { type: "NoRelays" };
+const syncingSyncStatus: SyncingSyncStatus = { type: "Syncing" };
+const syncedSyncStatus: SyncedSyncStatus = { type: "Synced" };
+const offlineSyncStatus: OfflineSyncStatus = { type: "Offline" };
+const errorSyncStatusByError = /*#__PURE__*/ new WeakMap<
+  SyncRouteError,
+  ErrorSyncStatus
+>();
+
+const syncRouteErrorToSyncStatus = (error: SyncRouteError): ErrorSyncStatus => {
+  let status = errorSyncStatusByError.get(error);
+  if (!status) {
+    status = { type: "Error", error };
+    errorSyncStatusByError.set(error, status);
+  }
+  return status;
 };
 
 export type EvoluInput =
@@ -948,22 +1365,29 @@ interface EvoluTenant extends AsyncDisposable {
 }
 
 /** A tenant's part of {@link SyncState}, with its transports still keyed. */
-interface TenantSyncState {
+type TenantSyncState = ActiveTenantSyncState | RefusedSyncTenant;
+
+interface ActiveTenantSyncState extends Typed<"Active"> {
   readonly name: Name;
-  readonly refused: boolean;
-  readonly owners: ReadonlyArray<{
-    readonly ownerId: OwnerId;
-    readonly writable: boolean;
-    readonly transportKeys: ReadonlyArray<StructuralLookupKey>;
-    readonly routes: ReadonlyArray<TenantSyncRoute>;
-  }>;
+  readonly owners: ReadonlyArray<TenantSyncOwner>;
+}
+
+type TenantSyncOwner = WritableTenantSyncOwner | ReadonlyTenantSyncOwner;
+
+interface WritableTenantSyncOwner extends Typed<"Writable"> {
+  readonly ownerId: OwnerId;
+  readonly routes: ReadonlyArray<TenantSyncRoute>;
+}
+
+interface ReadonlyTenantSyncOwner extends Typed<"Readonly"> {
+  readonly ownerId: OwnerId;
+  readonly transportKeys: ReadonlyArray<StructuralLookupKey>;
 }
 
 /** A tenant's route, with its transport still keyed. */
 interface TenantSyncRoute {
   readonly transportKey: StructuralLookupKey;
   readonly progress: RouteProgress;
-  readonly completeAt: Millis | null;
   readonly lastSentAt: Millis | null;
   readonly lastReceivedAt: Millis | null;
 }
@@ -983,6 +1407,39 @@ const syncRequestTimeout = PositiveMillis.orThrow(90_000);
  * {@link syncRequestTimeout}, which covers a 1 MB frame at about 6 kbit/s.
  */
 const maxSyncRequestTimeout = PositiveMillis.orThrow(16 * syncRequestTimeout);
+
+const connectingSyncConnection: ConnectingSyncConnection = {
+  type: "Connecting",
+};
+
+/**
+ * A connection already disconnected keeps when it disconnected, so failed
+ * reconnect attempts only record their error.
+ */
+const disconnectSyncConnection = (
+  connection: SyncConnection,
+  at: Millis,
+  error: SyncTransportError | null,
+): DisconnectedSyncConnection => {
+  switch (connection.type) {
+    case "Connecting":
+      return {
+        type: "Disconnected",
+        disconnectedAt: at,
+        openedAt: null,
+        error,
+      };
+    case "Open":
+      return {
+        type: "Disconnected",
+        disconnectedAt: at,
+        openedAt: connection.openedAt,
+        error: error ?? connection.error,
+      };
+    case "Disconnected":
+      return error ? { ...connection, error } : connection;
+  }
+};
 
 /** Where the protocol messages produced by a queued sync request are sent. */
 type SyncTarget =
@@ -1034,6 +1491,8 @@ interface PendingRoute extends Typed<"Pending"> {
   readonly failure: SyncRouteError | null;
   /** The route's skipped message, or null. */
   readonly skip: RouteSkip | null;
+  /** When the route last became complete, or null. */
+  readonly completeAt: Millis | null;
 }
 
 /**
@@ -1056,9 +1515,12 @@ interface RouteSkip {
  */
 interface SettledRoute extends Typed<"Settled"> {
   readonly error: SyncRouteError;
+  readonly completeAt: Millis | null;
 }
 
-interface CompleteRoute extends Typed<"Complete"> {}
+interface CompleteRoute extends Typed<"Complete"> {
+  readonly completeAt: Millis;
+}
 
 const routeToPending = (progress: RouteProgress): PendingRoute => {
   switch (progress.type) {
@@ -1070,6 +1532,7 @@ const routeToPending = (progress: RouteProgress): PendingRoute => {
         roundRequired: false,
         failure: null,
         skip: { error: progress.error, isRechecking: false },
+        completeAt: progress.completeAt,
       };
     case "Complete":
       return {
@@ -1077,11 +1540,16 @@ const routeToPending = (progress: RouteProgress): PendingRoute => {
         roundRequired: false,
         failure: null,
         skip: null,
+        completeAt: progress.completeAt,
       };
   }
 };
 
-/** Converts an error to a {@link SyncRouteError}, leaving out bulky data. */
+/**
+ * Converts an error to a {@link SyncRouteError}: a caught value becomes an
+ * {@link UnknownError}, and a {@link ProtocolInvalidDataError} leaves out its
+ * data.
+ */
 const errorToSyncRouteError = (
   error:
     | ProtocolError
@@ -1091,9 +1559,15 @@ const errorToSyncRouteError = (
     | Typed<"SyncFailed">,
   at: Millis,
 ): SyncRouteError => {
-  if (error.type !== "ProtocolInvalidDataError") return { ...error, at };
-  const { data: _data, ...rest } = error;
-  return { ...rest, at };
+  // A caught value inside an error becomes an UnknownError, and a
+  // ProtocolInvalidDataError leaves out its data, which can be a whole frame.
+  if (error.type === "ProtocolInvalidDataError") {
+    const { data: _data, ...rest } = error;
+    return { ...rest, error: createUnknownError(rest.error), at };
+  }
+  if (error.type === "DecryptWithXChaCha20Poly1305Error")
+    return { ...error, error: createUnknownError(error.error), at };
+  return { ...error, at };
 };
 
 const failRoute = (
@@ -1310,9 +1784,8 @@ export const initSharedWorker =
        */
       timeout: PositiveMillis;
       socket: WebSocket | null;
-      openedAt: Millis | null;
-      closedAt: Millis | null;
-      error: SyncTransportError | null;
+      /** Socket events drive it, so publishing never reads the socket. */
+      connection: SyncConnection;
       /** Armed while a request is outstanding on an open socket. */
       timeoutId: TimeoutId | null;
     }
@@ -1331,22 +1804,11 @@ export const initSharedWorker =
         isPublishScheduled = false;
         if (isDisposed) return;
         const transports = [...transportsByKey.values()].map(
-          ({
+          ({ id, label, connection }): SyncTransport => ({
+            type: "WebSocket",
             id,
             label,
-            socket,
-            openedAt,
-            closedAt,
-            error,
-          }): SyncTransport => ({
-            id,
-            label,
-            // The transport drops its socket before disposal, so this never
-            // reads a disposed one.
-            readyState: socket?.getReadyState() ?? "connecting",
-            openedAt,
-            closedAt,
-            error,
+            connection,
           }),
         );
         // A grown timeout lasts while a request is outstanding on the socket
@@ -1356,46 +1818,74 @@ export const initSharedWorker =
         const unsettledTransportIds = new Set<SyncTransportId>();
         const tenants = [...currentTenantsByName.values()].map(
           (tenant): SyncTenant => {
-            const { name, refused, owners } = tenant.getSyncTenant();
+            const state = tenant.getSyncTenant();
+            if (state.type === "Refused") return state;
             return {
-              name,
-              refused,
-              owners: owners.map(
-                ({ ownerId, writable, transportKeys, routes }) => ({
-                  ownerId,
-                  writable,
-                  transportIds: transportKeys.flatMap((key) => {
-                    const entry = transportsByKey.get(key);
-                    return entry ? [entry.id] : [];
-                  }),
-                  routes: routes.flatMap(
-                    ({
-                      transportKey,
-                      progress,
-                      ...times
-                    }): Array<SyncRoute> => {
-                      const entry = transportsByKey.get(transportKey);
-                      if (!entry) return [];
-                      if (!refused && progress.type === "Pending")
-                        unsettledTransportIds.add(entry.id);
-                      return [
-                        {
-                          transportId: entry.id,
-                          complete: progress.type === "Complete",
-                          error:
-                            progress.type === "Pending"
-                              ? (progress.failure ??
-                                progress.skip?.error ??
-                                null)
-                              : progress.type === "Settled"
-                                ? progress.error
-                                : null,
-                          ...times,
+              type: "Active",
+              name: state.name,
+              owners: state.owners.map((owner): SyncTenantOwner =>
+                owner.type === "Readonly"
+                  ? {
+                      type: "Readonly",
+                      ownerId: owner.ownerId,
+                      transportIds: owner.transportKeys.flatMap((key) => {
+                        const entry = transportsByKey.get(key);
+                        return entry ? [entry.id] : [];
+                      }),
+                    }
+                  : {
+                      type: "Writable",
+                      ownerId: owner.ownerId,
+                      routes: owner.routes.flatMap(
+                        ({
+                          transportKey,
+                          progress,
+                          lastSentAt,
+                          lastReceivedAt,
+                        }): Array<SyncRoute> => {
+                          const entry = transportsByKey.get(transportKey);
+                          if (!entry) return [];
+                          const transportId = entry.id;
+                          if (progress.type !== "Pending") {
+                            // Only a sent round settles a route or completes
+                            // it.
+                            assertNonNullable(lastSentAt);
+                            return [
+                              progress.type === "Complete"
+                                ? {
+                                    type: "Complete",
+                                    transportId,
+                                    completeAt: progress.completeAt,
+                                    lastSentAt,
+                                    lastReceivedAt,
+                                  }
+                                : {
+                                    type: "Settled",
+                                    transportId,
+                                    skippedError: progress.error,
+                                    completeAt: progress.completeAt,
+                                    lastSentAt,
+                                    lastReceivedAt,
+                                  },
+                            ];
+                          }
+                          // Only a database that has not refused startup
+                          // publishes routes.
+                          unsettledTransportIds.add(transportId);
+                          return [
+                            {
+                              type: "Pending",
+                              transportId,
+                              failure: progress.failure,
+                              skippedError: progress.skip?.error ?? null,
+                              completeAt: progress.completeAt,
+                              lastSentAt,
+                              lastReceivedAt,
+                            },
+                          ];
                         },
-                      ];
+                      ),
                     },
-                  ),
-                }),
               ),
             };
           },
@@ -1462,10 +1952,14 @@ export const initSharedWorker =
         );
         // Reconnecting abandons the connection and starts a fresh retry
         // schedule. The socket reports no close for it, so the transport
-        // records the moment here.
+        // disconnects here.
         entry.socket?.reconnect();
-        // `now` is monotonic; the reported close time is wall clock.
-        entry.closedAt = deps.time.now();
+        // `now` is monotonic; the reported time is wall clock.
+        entry.connection = disconnectSyncConnection(
+          entry.connection,
+          deps.time.now(),
+          null,
+        );
         refreshAllSyncRoutes();
         publishSyncState();
       }, delay);
@@ -1513,9 +2007,7 @@ export const initSharedWorker =
               outstandingByOwnerId: new Map(),
               timeout: syncRequestTimeout,
               socket: null,
-              openedAt: null,
-              closedAt: null,
-              error: null,
+              connection: connectingSyncConnection,
               timeoutId: null,
             };
             await using disposer = new AsyncDisposableStack();
@@ -1538,7 +2030,16 @@ export const initSharedWorker =
                   // answered.
                   entry.outstandingByOwnerId.clear();
                   clearSyncRequestTimeout(entry);
-                  entry.openedAt = run.deps.time.now();
+                  // A connection that opens keeps the last error of an earlier
+                  // one.
+                  entry.connection = {
+                    type: "Open",
+                    openedAt: run.deps.time.now(),
+                    error:
+                      entry.connection.type === "Connecting"
+                        ? null
+                        : entry.connection.error,
+                  };
                   publishSyncState();
                   const ownerIds = transports.getClaimsForResource(transport);
                   console.debug("transportOpen", {
@@ -1562,7 +2063,11 @@ export const initSharedWorker =
                     code: event.code,
                     wasClean: event.wasClean,
                   });
-                  entry.closedAt = run.deps.time.now();
+                  entry.connection = disconnectSyncConnection(
+                    entry.connection,
+                    run.deps.time.now(),
+                    null,
+                  );
                   clearSyncRequestTimeout(entry);
                   refreshAllSyncRoutes();
                   publishSyncState();
@@ -1573,10 +2078,17 @@ export const initSharedWorker =
                     url: transport.url,
                     type: error.type,
                   });
-                  entry.error = {
-                    type: error.type,
-                    at: run.deps.time.now(),
-                  };
+                  // Every error disconnects. A browser reports a failed
+                  // attempt only as an error, because the socket stops
+                  // listening before its close arrives. A connection error
+                  // arrives once the socket is closed, before its close, and
+                  // exhausted retries end reconnecting.
+                  const now = run.deps.time.now();
+                  entry.connection = disconnectSyncConnection(
+                    entry.connection,
+                    now,
+                    { type: error.type, at: now },
+                  );
                   refreshAllSyncRoutes();
                   publishSyncState();
                 },
@@ -1641,9 +2153,8 @@ export const initSharedWorker =
             // LIFO: the transport drops its timer and its socket reference
             // before the socket is disposed. `disposable` guards every method
             // of the socket the claims lease, and disposing the socket awaits
-            // its retry, so a `publishSyncState` microtask can run while this
-            // entry is still registered. It must find no socket rather than
-            // read a disposed one.
+            // its retry, so this entry stays registered meanwhile. It keeps its
+            // last connection and holds no socket to reconnect.
             disposer.defer(() => {
               clearSyncRequestTimeout(entry);
               entry.socket = null;
@@ -2174,7 +2685,6 @@ const createEvoluTenant =
 
     interface RouteState {
       progress: RouteProgress;
-      completeAt: Millis | null;
       lastSentAt: Millis | null;
       lastReceivedAt: Millis | null;
     }
@@ -2200,8 +2710,8 @@ const createEvoluTenant =
             roundRequired: true,
             failure: null,
             skip: null,
+            completeAt: null,
           },
-          completeAt: null,
           lastSentAt: null,
           lastReceivedAt: null,
         };
@@ -2266,10 +2776,7 @@ const createEvoluTenant =
           // worker answers it. Local-only changes create no synchronization
           // work.
           const hasQueuedWrite = pendingWriteCountByOwnerId.has(ownerId);
-          // A refused database synchronizes nothing, and refusal discards its
-          // queued writes without uploading them.
           const isReconciled =
-            startupError === null &&
             isOpen &&
             deps.syncRequests.getOutstanding(ownerId, key) === 0 &&
             !hasQueuedApply &&
@@ -2279,18 +2786,18 @@ const createEvoluTenant =
           // completing, because its relay may offer the skipped message or
           // lack messages stored elsewhere.
           const pending = routeToPending(route.progress);
-          const progress: RouteProgress =
+          route.progress =
             !isReconciled || pending.roundRequired
               ? pending
               : pending.skip && !pending.skip.isRechecking
-                ? { type: "Settled", error: pending.skip.error }
-                : { type: "Complete" };
-          if (
-            progress.type === "Complete" &&
-            route.progress.type !== "Complete"
-          )
-            route.completeAt = deps.time.now();
-          route.progress = progress;
+                ? {
+                    type: "Settled",
+                    error: pending.skip.error,
+                    completeAt: pending.completeAt,
+                  }
+                : route.progress.type === "Complete"
+                  ? route.progress
+                  : { type: "Complete", completeAt: deps.time.now() };
         }
       }
     };
@@ -2362,11 +2869,10 @@ const createEvoluTenant =
                 };
             });
           } else if (error !== null) {
+            // A relay's error shows on its route, not as an EvoluError,
+            // because it belongs to one relay and often repeats in every
+            // round. A sibling copy's error is reported below.
             failure = error;
-            deps.postConsoleEntryOrError({
-              type: "Error",
-              error,
-            });
           } else if (result.ok && result.value.type === "Failed") {
             failure = {
               type:
@@ -2381,12 +2887,13 @@ const createEvoluTenant =
               const now = deps.time.now();
               // An aborted apply applied nothing.
               if (!isAborted) route.lastReceivedAt = now;
-              // A skipped message fails the route but not the round, whose
-              // response below is still sent, so it requests no round. The
-              // relay offers the message again in every later round, so the
-              // route stays incomplete until a round requested through it
-              // settles without skipping a message and without messages stored
-              // elsewhere since that request.
+              // A skipped message is recorded as the route's skip, not a
+              // failure, and does not end the round, whose response below is
+              // still sent, so it requests no round. The relay offers the
+              // message again in every later round, so the route stays
+              // incomplete until a round requested through it settles without
+              // skipping a message and without messages stored elsewhere since
+              // that request.
               if (skippedError !== null)
                 route.progress = {
                   ...routeToPending(route.progress),
@@ -2412,9 +2919,24 @@ const createEvoluTenant =
               }
             }
           } else if (failure !== null || skippedError !== null) {
+            // A sibling's copy comes from this worker, not from a relay, so no
+            // route shows its failure. It is a Broadcast, which carries no
+            // relay error, so an error or a skip means a bug, such as
+            // databases holding different keys for the owner, and is reported
+            // as an unexpected failure. A Failed result was logged, which
+            // reports it already. An error is the failure, which is never an
+            // abort, and like a route, the report leaves out its frame.
+            const unexpected = error !== null ? failure : skippedError;
+            if (unexpected !== null)
+              deps.postConsoleEntryOrError({
+                type: "Error",
+                error: createUnknownError(
+                  errorToSyncRouteError(unexpected, deps.time.now()),
+                ),
+              });
             // Some of a sibling's messages were not stored; rounds fetch them
-            // from the relays, whose routes then fail for any this database
-            // skips.
+            // from the relays, whose routes then record a skip for any message
+            // this database skips.
             requestRoundsForReceivedMessages(ownerId, {
               except: null,
               afterQueuedWrites: true,
@@ -2753,26 +3275,32 @@ const createEvoluTenant =
     });
     const tenant = disposable<EvoluTenant>(
       {
-        getSyncTenant: () => ({
-          name,
-          refused: startupError !== null,
-          owners: getSyncOwners().map(
-            ({ ownerId, writable, transportKeys }) => ({
-              ownerId,
-              writable,
-              transportKeys,
-              routes: writable
-                ? transportKeys.map((key): TenantSyncRoute => {
-                    const route = routesByOwnerIdByKey.get(key)?.get(ownerId);
-                    // Registration and claim changes refresh routes before yielding.
-                    // Snapshot reads must not create missing routes.
-                    assertNotUndefined(route);
-                    return { transportKey: key, ...route };
-                  })
-                : [],
-            }),
-          ),
-        }),
+        getSyncTenant: () =>
+          startupError
+            ? { type: "Refused", name, error: startupError }
+            : {
+                type: "Active",
+                name,
+                owners: getSyncOwners().map(
+                  ({ ownerId, writable, transportKeys }): TenantSyncOwner =>
+                    writable
+                      ? {
+                          type: "Writable",
+                          ownerId,
+                          routes: transportKeys.map((key): TenantSyncRoute => {
+                            const route = routesByOwnerIdByKey
+                              .get(key)
+                              ?.get(ownerId);
+                            // Registration and claim changes refresh routes
+                            // before yielding. Snapshot reads must not create
+                            // missing routes.
+                            assertNotUndefined(route);
+                            return { transportKey: key, ...route };
+                          }),
+                        }
+                      : { type: "Readonly", ownerId, transportKeys },
+                ),
+              },
 
         refreshSyncRoutes,
 

@@ -48,7 +48,7 @@ const run = createRun(
   }),
 );
 
-const { EvoluContext, useEvolu, useQuery } =
+const { EvoluContext, useEvolu, useOwnerSyncStatus, useQuery } =
   createEvoluBinding<typeof AppSchema>();
 
 const appPromise = run.ok(
@@ -102,10 +102,43 @@ export const EvoluMinimalExample: FC = () => {
 
 const App: FC = () => (
   <EvoluContext value={use(appPromise)}>
-    <Todos />
-    <OwnerActions />
+    <SyncStatus />
+    {/* The todos load in their own boundary, so the status line's live region
+        is already mounted when the first status arrives. */}
+    <Suspense>
+      <Todos />
+      <OwnerActions />
+    </Suspense>
   </EvoluContext>
 );
+
+/**
+ * Tells the user when changes can't leave this device, and shows nothing while
+ * sync works. See `OwnerSyncStatus` in `@evolu/common/local-first`.
+ */
+const SyncStatus: FC = () => {
+  // Sync state is shared by every Evolu instance created from these deps, so
+  // the hook takes its store and finds this database's app owner in it.
+  const status = useOwnerSyncStatus(run.deps.syncState);
+  // An app that sells relay quota offers more for a ProtocolQuotaError, then
+  // calls `evolu.requestSync(evolu.appOwner.id)`.
+  const message =
+    status.type === "Offline"
+      ? "Offline. Your changes are saved on this device."
+      : status.type === "Error"
+        ? status.error.type === "ProtocolQuotaError"
+          ? "Sync is paused because the sync server is full. Your changes are saved on this device."
+          : `Sync error: ${status.error.type}. Your changes are saved on this device.`
+        : null;
+
+  return (
+    // Always mounted: screen readers announce changes only in a live region
+    // that already exists.
+    <div role="status">
+      {message && <p className="mb-4 text-sm text-gray-600">{message}</p>}
+    </div>
+  );
+};
 
 const parseTodoTitle = (value: string) =>
   Evolu.NonEmptyTrimmedString100.fromUnknown(value.trim());

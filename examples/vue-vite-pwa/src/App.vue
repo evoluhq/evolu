@@ -19,8 +19,8 @@ import {
   union,
 } from "@evolu/common";
 import { createEvoluDeps, createRun } from "@evolu/web";
-import { provideEvolu, useQuery } from "@evolu/vue";
-import { onUnmounted, shallowRef } from "vue";
+import { provideEvolu, useOwnerSyncStatus, useQuery } from "@evolu/vue";
+import { computed, onUnmounted, shallowRef } from "vue";
 
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Output;
@@ -98,6 +98,27 @@ const evolu = await run.ok(
 );
 
 provideEvolu(evolu);
+
+// Sync state is shared by all Evolu instances created from these deps, so the
+// composable takes its store and finds this database's app owner in it.
+const syncStatus = useOwnerSyncStatus(run.deps.syncState);
+
+/**
+ * Tells the user when changes can't leave this device, and nothing while sync
+ * works. See `OwnerSyncStatus` in `@evolu/common/local-first`.
+ */
+const syncMessage = computed(() => {
+  const status = syncStatus.value;
+  // An app that sells relay quota offers more for a ProtocolQuotaError, then
+  // calls `evolu.requestSync(evolu.appOwner.id)`.
+  return status.type === "Offline"
+    ? "Offline. Your changes are saved on this device."
+    : status.type === "Error"
+      ? status.error.type === "ProtocolQuotaError"
+        ? "Sync is paused because the sync server is full. Your changes are saved on this device."
+        : `Sync error: ${status.error.type}. Your changes are saved on this device.`
+      : null;
+});
 
 const allTodos = useQuery(todosWithCategories);
 const allCategories = useQuery(todoCategories);
@@ -188,6 +209,11 @@ function onPriorityChange(event: Event, id: TodoId) {
     <p v-if="evoluError" role="alert">
       Evolu error: {{ evoluError.type }}. See the console for details.
     </p>
+    <!-- Always mounted: screen readers announce changes only in a live region
+    that already exists. -->
+    <div role="status">
+      <p v-if="syncMessage">{{ syncMessage }}</p>
+    </div>
     <h1>Categories</h1>
     <table>
       <thead>

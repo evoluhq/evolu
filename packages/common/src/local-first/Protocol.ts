@@ -465,8 +465,9 @@ export interface ProtocolWriteKeyError
   extends OwnerError, Typed<"ProtocolWriteKeyError"> {}
 
 /**
- * Error indicating a serious relay-side write failure. Clients should log this
- * error and show a generic sync error to the user.
+ * Error indicating a serious relay-side write failure. Sync state shows it as
+ * the failure of that relay's route; apps show a generic sync error for the
+ * owner's `Error` status.
  */
 export interface ProtocolWriteError
   extends OwnerError, Typed<"ProtocolWriteError"> {}
@@ -489,8 +490,9 @@ export interface ProtocolQuotaError
   extends OwnerError, Typed<"ProtocolQuotaError"> {}
 
 /**
- * Error indicating a serious relay-side synchronization failure. Clients should
- * log this error and show a generic sync error to the user.
+ * Error indicating a serious relay-side synchronization failure. Sync state
+ * shows it as the failure of that relay's route; apps show a generic sync error
+ * for the owner's `Error` status.
  */
 export interface ProtocolSyncError
   extends OwnerError, Typed<"ProtocolSyncError"> {}

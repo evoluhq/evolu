@@ -306,6 +306,169 @@ export const excludeProp = <T extends object, K extends keyof T>(
 };
 
 /**
+ * Returns `next` with every part deep-equal to the same part of `previous`
+ * replaced by that part, or `previous` itself when the two are deep-equal.
+ *
+ * It keeps the identity of data that arrives as a new copy, such as a
+ * structured clone posted between workers, so unchanged parts can be compared
+ * with `===`, and a UI updates only what changed. Plain objects, arrays, and
+ * `Uint8Array`s are compared by their contents, and any other value by
+ * identity. The contents of a plain object are the properties an object spread
+ * copies. A changed object or array is returned as a new ordinary one. It walks
+ * the data as a tree, so a part referenced from several places is compared at
+ * each place, and a part that a cycle leads back to is returned as it is in
+ * `next`.
+ *
+ * An array item is compared with the previous item at its index, so removing or
+ * inserting an item compares every item after it with a different one. When
+ * `itemToKey` returns a key for an item, such as its ID, the item is compared
+ * with the previous item of the same key instead. Keys are compared as `Map`
+ * keys are, so each should be unique in its array; an item whose key several
+ * previous items share is compared with the last of them.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertNotSame,
+ *   assertSame,
+ *   isPlainObject,
+ *   shareStructure,
+ * } from "@evolu/common";
+ *
+ * const previous = {
+ *   user: { name: "Alice" },
+ *   todos: [{ title: "Buy milk" }],
+ * };
+ *
+ * // An equal copy gives the previous value back.
+ * assertSame(
+ *   shareStructure(previous, structuredClone(previous)),
+ *   previous,
+ * );
+ *
+ * // A change keeps every unchanged part.
+ * const next = shareStructure(previous, {
+ *   user: { name: "Alice" },
+ *   todos: [{ title: "Buy bread" }],
+ * });
+ * assertNotSame(next, previous);
+ * assertSame(next.user, previous.user);
+ * assertNotSame(next.todos, previous.todos);
+ *
+ * // A key compares each todo with the previous todo of the same ID.
+ * const todos = [
+ *   { id: 1, title: "Buy milk" },
+ *   { id: 2, title: "Walk the dog" },
+ * ];
+ * const remaining = shareStructure(
+ *   todos,
+ *   [{ id: 2, title: "Walk the dog" }],
+ *   (todo) => (isPlainObject(todo) ? todo.id : undefined),
+ * );
+ * assertSame(remaining[0], todos[1]);
+ * ```
+ */
+export const shareStructure = <T>(
+  previous: T,
+  next: T,
+  itemToKey?: (item: unknown) => unknown,
+): T => {
+  // The arrays and plain objects of `next` being compared, each with whether a
+  // cycle led back to it.
+  const isCycledByPart = new Map<object, boolean>();
+
+  const share = (previous: unknown, next: unknown): unknown => {
+    if (Object.is(previous, next)) return previous;
+
+    if (Array.isArray(previous) && Array.isArray(next)) {
+      const previousItems: ReadonlyArray<unknown> = previous;
+      return visit(next, () => {
+        // Array.from visits holes, which map would skip or keep as holes.
+        const previousByKey =
+          itemToKey &&
+          new Map(Array.from(previousItems, (item) => [itemToKey(item), item]));
+        let isEqual = previousItems.length === next.length;
+        const shared = Array.from(next, (item: unknown, index) => {
+          const key = itemToKey?.(item);
+          const previousItem =
+            key === undefined ? previousItems[index] : previousByKey?.get(key);
+          const sharedItem = share(previousItem, item);
+          if (!Object.is(sharedItem, previousItems[index])) isEqual = false;
+          return sharedItem;
+        });
+        return isEqual ? previousItems : shared;
+      });
+    }
+
+    if (isPlainObject(previous) && isPlainObject(next))
+      return visit(next, () => {
+        const keys = ownEnumerableKeys(next);
+        let isEqual = keys.length === ownEnumerableKeys(previous).length;
+        // Object.fromEntries defines each key, so `__proto__` stays own data.
+        const shared = Object.fromEntries(
+          keys.map((key) => {
+            const hasPrevious = Object.prototype.propertyIsEnumerable.call(
+              previous,
+              key,
+            );
+            const previousValue = hasPrevious
+              ? (previous as Record<PropertyKey, unknown>)[key]
+              : undefined;
+            const value = share(
+              previousValue,
+              (next as Record<PropertyKey, unknown>)[key],
+            );
+            if (!hasPrevious || !Object.is(value, previousValue))
+              isEqual = false;
+            return [key, value];
+          }),
+        );
+        return isEqual ? previous : shared;
+      });
+
+    // An indexed loop compares bytes far faster than `every`.
+    if (previous instanceof Uint8Array && next instanceof Uint8Array) {
+      if (previous.length !== next.length) return next;
+      for (let index = 0; index < previous.length; index++)
+        if (previous[index] !== next[index]) return next;
+      return previous;
+    }
+
+    return next;
+  };
+
+  // A cycle refers back to the part of `next` itself, so the part it leads back
+  // to is returned as it is, which keeps the cycle intact.
+  const visit = (part: object, compare: () => unknown): unknown => {
+    if (isCycledByPart.has(part)) {
+      isCycledByPart.set(part, true);
+      return part;
+    }
+    isCycledByPart.set(part, false);
+    const shared = compare();
+    const isCycled = isCycledByPart.get(part);
+    isCycledByPart.delete(part);
+    return isCycled ? part : shared;
+  };
+
+  return share(previous, next) as T;
+};
+
+// The keys an object spread copies: own enumerable strings and symbols.
+const ownEnumerableKeys = (object: object): ReadonlyArray<PropertyKey> => {
+  const symbols = Object.getOwnPropertySymbols(object);
+  return symbols.length === 0
+    ? Object.keys(object)
+    : [
+        ...Object.keys(object),
+        ...symbols.filter((symbol) =>
+          Object.prototype.propertyIsEnumerable.call(object, symbol),
+        ),
+      ];
+};
+
+/**
  * Creates a mutable Record.
  *
  * Use it to build a Record locally through mutation, avoiding repeated object

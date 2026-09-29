@@ -1,7 +1,6 @@
 import {
   assert,
   assertEqual,
-  assertInstanceOf,
   assertLength,
   assertNotUndefined,
   assertSame,
@@ -12,8 +11,10 @@ import {
   createRandomBytes,
   createRun,
   id,
+  isPlainObject,
   Millis,
   PositiveInt,
+  UnknownError,
 } from "@evolu/common";
 import {
   AppName,
@@ -23,6 +24,7 @@ import {
   createProtocolBroadcastMessagesFromCrdtMessages,
   createTimestamp,
   DbChange,
+  syncStateToRelaySyncStates,
   testAppOwner,
   type DbWorkerInit,
   type SharedWorkerInput,
@@ -194,7 +196,7 @@ test("requestSync crosses browser worker ports while two clients retain the owne
   assertSame(secondDeps.evoluError.get(), null);
 });
 
-test("a skipped encrypted change fails its route across browser worker ports while the rest of its batch is stored", async () => {
+test("a skipped encrypted change shows on its route across browser worker ports while the rest of its batch is stored", async () => {
   const workerName = `skipped-change-${crypto.randomUUID()}`;
   const output = new BroadcastChannel(workerName);
   const initial = Promise.withResolvers<void>();
@@ -272,11 +274,18 @@ test("a skipped encrypted change fails its route across browser worker ports whi
   // Corrupting the last byte alters only the last change's ciphertext.
   const corrupted = Uint8Array.from(broadcasts[0]);
   corrupted[corrupted.length - 1] ^= 0xff;
+  const getRoute = () =>
+    syncStateToRelaySyncStates(
+      deps.syncState.get(),
+      evolu.name,
+      testAppOwner.id,
+    )[0]?.route;
   const routeReported = Promise.withResolvers<void>();
   cleanup.defer(
     deps.syncState.subscribe(() => {
-      const route = deps.syncState.get()?.tenants[0]?.owners[0]?.routes[0];
-      if (route?.error) routeReported.resolve();
+      const route = getRoute();
+      if (route?.type === "Pending" && route.skippedError)
+        routeReported.resolve();
     }),
   );
   output.postMessage({
@@ -285,17 +294,24 @@ test("a skipped encrypted change fails its route across browser worker ports whi
     data: corrupted.buffer,
   });
   // The DbWorker's response, whose skipped error holds an Error, crosses the
-  // worker ports and fails the route.
+  // worker ports and records the skip on the route. The route's request is
+  // never answered, so it stays pending, and a skip is not a failure.
   await routeReported.promise;
-  const route = deps.syncState.get()?.tenants[0]?.owners[0]?.routes[0];
-  assertNotUndefined(route);
-  const { error } = route;
+  const route = getRoute();
+  assert(route?.type === "Pending", "The route should stay pending.");
+  assertSame(route.failure, null);
+  const { skippedError } = route;
   assert(
-    error?.type === "DecryptWithXChaCha20Poly1305Error",
+    skippedError?.type === "DecryptWithXChaCha20Poly1305Error",
     "The route should show the decryption error.",
   );
-  // The cause crosses the sync state channel too.
-  assertInstanceOf(error.error, Error);
+  // The cause crosses the sync state channel too, as plain data.
+  const { error } = skippedError;
+  assert(
+    UnknownError.is(error) && isPlainObject(error.error),
+    "The cause should be plain data in an UnknownError.",
+  );
+  assertSame(error.error.message, "invalid tag");
   // The valid change is stored, and the skip is not an EvoluError.
   assertEqual(await evolu.loadQuery(todoIdsQuery), [
     { id: createIdFromString("browser-valid-change") },

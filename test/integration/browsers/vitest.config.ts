@@ -30,6 +30,7 @@ export default defineProject(({ mode }) => ({
       "test/integration/shared/WebSocket/*.test.ts",
       "test/integration/browsers/Type/*.test.ts",
       "test/integration/browsers/react/*.test.ts",
+      "test/integration/browsers/vue/*.test.ts",
     ],
     name: "browser-integration",
     setupFiles: ["./test/integration/shared/_setup.ts"],

@@ -2,7 +2,6 @@ import {
   assert,
   assertEqual,
   assertFalse,
-  assertInstanceOf,
   assertTrue,
   assertLength,
   assertNotNull,
@@ -12,6 +11,7 @@ import {
 } from "../../../../packages/common/src/Assert.ts";
 import { describe, it } from "node:test";
 import { createConsoleStoreOutput } from "../../../../packages/common/src/Console.ts";
+import { UnknownError } from "../../../../packages/common/src/Error.ts";
 import {
   constVoid,
   disposable,
@@ -41,6 +41,7 @@ import {
 import {
   consoleEntryOrErrorBroadcastChannelName,
   initSharedWorker,
+  syncStateToRelaySyncStates,
   type ConsoleEntryOrError,
   type SharedWorker,
   type SharedWorkerInput,
@@ -53,6 +54,7 @@ import {
   acquireLeaderLock,
   testCreateLockManager,
 } from "../../../../packages/common/src/LockManager.ts";
+import { isPlainObject } from "../../../../packages/common/src/Object.ts";
 import { installPolyfills } from "../../../../packages/common/src/Polyfills.ts";
 import { ok } from "../../../../packages/common/src/Result.ts";
 import {
@@ -519,27 +521,40 @@ describe("Evolu integration", () => {
     const corrupted = Uint8Array.from(messages[0]);
     corrupted[corrupted.length - 1] ^= 0xff;
     const getRoute = () =>
-      deps.syncState.get()?.tenants[0]?.owners[0]?.routes[0];
-    const routeFailed = Promise.withResolvers<void>();
+      syncStateToRelaySyncStates(
+        deps.syncState.get(),
+        evolu.name,
+        testAppOwner.id,
+      )[0]?.route;
+    const routeSkipped = Promise.withResolvers<void>();
     using subscriptions = new DisposableStack();
     subscriptions.defer(
       deps.syncState.subscribe(() => {
-        if (getRoute()?.error) routeFailed.resolve();
+        const route = getRoute();
+        if (route?.type === "Pending" && route.skippedError)
+          routeSkipped.resolve();
       }),
     );
 
     socket.message(transport.url, corrupted.buffer);
     {
       using _routeTimeout = setTimeout(() => {
-        routeFailed.reject(new Error("Timed out waiting for the route error"));
+        routeSkipped.reject(
+          new Error("Timed out waiting for the route's skipped change"),
+        );
       }, 5_000);
-      await routeFailed.promise;
+      await routeSkipped.promise;
     }
     await testWaitForWorkerMessage();
 
     // The valid change is stored, and the undecryptable one is skipped and
-    // shown on the route instead of reported as an Evolu error.
-    assertSame(getRoute()?.error?.type, "DecryptWithXChaCha20Poly1305Error");
+    // shown on the route instead of reported as an Evolu error. The route's
+    // request is never answered, so it stays pending, and a skip is not a
+    // failure.
+    const route = getRoute();
+    assert(route?.type === "Pending", "The route should stay pending.");
+    assertSame(route.failure, null);
+    assertSame(route.skippedError?.type, "DecryptWithXChaCha20Poly1305Error");
     assertEqual(await evolu.loadQuery(todoTitlesQuery), [
       { title: "Valid before corruption" },
     ]);
@@ -589,10 +604,15 @@ describe("Evolu integration", () => {
     // and asks for the device's change in the same reply.
     await using device = await setupDevice({ seed: "owner" });
     using states = setupSyncStates(device.setup.syncStateChannelName);
-    const getRoute = () => states.getState()?.tenants[0]?.owners[0]?.routes[0];
     await using evolu = await device.setup.run.ok(
       device.setup.createIntegrationEvolu,
     );
+    const getRoute = () =>
+      syncStateToRelaySyncStates(
+        states.getState(),
+        evolu.name,
+        testAppOwner.id,
+      )[0]?.route;
     const title = NonEmptyTrimmedString100.orThrow("Made before connecting");
     evolu.insert("todo", { title });
     assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title }]);
@@ -617,23 +637,28 @@ describe("Evolu integration", () => {
       await uploaded.promise;
     }
 
-    // The foreign change was skipped, and the route keeps its error with the
-    // cause, which crosses the sync state channel.
+    // The foreign change was skipped, so the route settles without completing
+    // and keeps the skip with its cause, which crosses the sync state channel
+    // as plain data.
     assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title }]);
-    await testWaitForWorkerMessage();
+    await states.waitForState(() => getRoute()?.type === "Settled");
     const route = getRoute();
-    assertNotUndefined(route);
-    const { error } = route;
+    assert(route?.type === "Settled", "The route should settle.");
+    const { skippedError } = route;
     assert(
-      error?.type === "DecryptWithXChaCha20Poly1305Error",
+      skippedError.type === "DecryptWithXChaCha20Poly1305Error",
       "The route should show the decryption error.",
     );
-    assertInstanceOf(error.error, Error);
-    assertFalse(route.complete);
+    const { error } = skippedError;
+    assert(
+      UnknownError.is(error) && isPlainObject(error.error),
+      "The cause should be plain data in an UnknownError.",
+    );
+    assertSame(error.error.message, "invalid tag");
     assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
   });
 
-  it("fails the relay route of a database that skips a sibling's local copy", async () => {
+  it("settles the relay route of a database that skips a sibling's local copy without completing it", async () => {
     await using relays = await setupRelays("evolu-skipped-local-copy");
     const { relayA } = relays;
     const transport = createOwnerWebSocketTransport({
@@ -646,16 +671,14 @@ describe("Evolu integration", () => {
     });
     using states = setupSyncStates(device.setup.syncStateChannelName);
     const getRoute = (name: Name) =>
-      states
-        .getState()
-        ?.tenants.find((tenant) => tenant.name === name)
-        ?.owners.find(({ ownerId }) => ownerId === testAppOwner.id)?.routes[0];
-    const errorTypes: Array<string> = [];
+      syncStateToRelaySyncStates(states.getState(), name, testAppOwner.id)[0]
+        ?.route;
+    const postedErrors: Array<EvoluError> = [];
     using errors = createBroadcastChannel<ConsoleEntryOrError>(
       consoleEntryOrErrorBroadcastChannelName,
     );
     errors.onMessage = (entry) => {
-      if (entry.type === "Error") errorTypes.push(entry.error.type);
+      if (entry.type === "Error") postedErrors.push(entry.error);
     };
 
     // Two databases of one device use the same owner ID with different
@@ -679,32 +702,38 @@ describe("Evolu integration", () => {
     foreign.useOwner(foreignOwner, [transport]);
     await states.waitForState(
       () =>
-        getRoute(receiver.name)?.complete === true &&
-        getRoute(foreign.name)?.complete === true,
+        getRoute(receiver.name)?.type === "Complete" &&
+        getRoute(foreign.name)?.type === "Complete",
     );
 
     // The foreign change reaches the receiver as a local copy, which it skips.
     // The round that the skip requests gets the change from the relay, which
-    // fails the receiver's route instead of letting it read complete.
+    // settles the receiver's route with the skip instead of completing it.
     const title = NonEmptyTrimmedString100.orThrow("Foreign");
     foreign.insert("todo", { title });
     assertEqual(await foreign.loadQuery(todoTitlesQuery), [{ title }]);
     await states.waitForState(
       () =>
-        getRoute(receiver.name)?.error?.type ===
-          "DecryptWithXChaCha20Poly1305Error" &&
-        getRoute(foreign.name)?.complete === true,
+        getRoute(receiver.name)?.type === "Settled" &&
+        getRoute(foreign.name)?.type === "Complete",
     );
     await testWaitForWorkerMessage();
 
     const route = getRoute(receiver.name);
-    assertNotUndefined(route);
-    assertFalse(route.complete);
-    assertSame(getRoute(foreign.name)?.error, null);
+    assert(route?.type === "Settled", "The receiver's route should settle.");
+    assertSame(route.skippedError.type, "DecryptWithXChaCha20Poly1305Error");
+    assertSame(getRoute(foreign.name)?.type, "Complete");
     assertEqual(await receiver.loadQuery(todoTitlesQuery), []);
     assertLength(relayA.getTimestamps(), 1);
-    // Skips are shown on routes, not reported as errors.
-    assertEqual(errorTypes, []);
+    // The relay's copy of the skipped change is shown on the route. The local
+    // copy has no route, so its skip is reported as an unexpected failure.
+    assertLength(postedErrors, 1);
+    const [posted] = postedErrors;
+    assert(
+      posted?.type === "UnknownError" && isPlainObject(posted.error),
+      "The local copy's skip should be posted as an UnknownError.",
+    );
+    assertSame(posted.error.type, "DecryptWithXChaCha20Poly1305Error");
     assertEqual(device.setup.tabErrors, []);
     assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
   });
@@ -815,24 +844,39 @@ describe("Evolu integration", () => {
       await opened.promise;
       await testWaitForWorkerMessage();
 
-      const rejected = Promise.withResolvers<void>();
+      using states = setupSyncStates(setup.syncStateChannelName);
+      const getRoute = () =>
+        syncStateToRelaySyncStates(
+          states.getState(),
+          evolu.name,
+          testAppOwner.id,
+        )[0]?.route;
+      const postedErrors: Array<EvoluError> = [];
       using errors = createBroadcastChannel<ConsoleEntryOrError>(
         consoleEntryOrErrorBroadcastChannelName,
       );
       errors.onMessage = (message) => {
-        if (
-          message.type === "Error" &&
-          message.error.type === "ProtocolQuotaError"
-        ) {
-          assertSame(message.error.ownerId, testAppOwner.id);
-          rejected.resolve();
-        }
+        if (message.type === "Error") postedErrors.push(message.error);
       };
       const title = NonEmptyTrimmedString100.orThrow(
         "Rejected while quota was exhausted",
       );
       evolu.insert("todo", { title });
-      await rejected.promise;
+      // The rejection fails the relay's route; it is not an EvoluError.
+      await states.waitForState(() => {
+        const route = getRoute();
+        return (
+          route?.type === "Pending" &&
+          route.failure?.type === "ProtocolQuotaError"
+        );
+      });
+      const route = getRoute();
+      assert(
+        route?.type === "Pending" &&
+          route.failure?.type === "ProtocolQuotaError",
+        "The route should show the quota rejection.",
+      );
+      assertSame(route.failure.ownerId, testAppOwner.id);
       assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title }]);
       assertEqual(
         driver.exec(sql`select timestamp from evolu_message;`).rows,
@@ -856,6 +900,7 @@ describe("Evolu integration", () => {
       assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title }]);
       assertSame(socketCount, 1);
       assertSame(openCount, 1);
+      assertEqual(postedErrors, []);
     });
   }
 
@@ -1047,16 +1092,10 @@ describe("Evolu integration", () => {
       createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
     });
     using states = setupSyncStates(device.setup.syncStateChannelName);
-    const getRoute = (name: Name, port: number) => {
-      const state = states.getState();
-      const transport = state?.transports.find(
-        ({ label }) => label === `ws://127.0.0.1:${port}`,
-      );
-      return state?.tenants
-        .find((tenant) => tenant.name === name)
-        ?.owners.find(({ ownerId }) => ownerId === testAppOwner.id)
-        ?.routes.find(({ transportId }) => transportId === transport?.id);
-    };
+    const getRoute = (name: Name, port: number) =>
+      syncStateToRelaySyncStates(states.getState(), name, testAppOwner.id).find(
+        ({ transport }) => transport.label === `ws://127.0.0.1:${port}`,
+      )?.route;
     const createTenant = (appName: string) =>
       device.setup.run.ok(
         createEvolu(Schema, {
@@ -1076,7 +1115,7 @@ describe("Evolu integration", () => {
     await using source = await createTenant("ContinuationSource");
     source.useOwner(testAppOwner, [transportB]);
     await states.waitForState(
-      () => getRoute(source.name, relayB.port)?.complete === true,
+      () => getRoute(source.name, relayB.port)?.type === "Complete",
     );
 
     // B rejects the mutation and its automatic retry, leaving the message
@@ -1084,19 +1123,21 @@ describe("Evolu integration", () => {
     const title = NonEmptyTrimmedString100.orThrow("Historical local copy");
     source.insert("todo", { title });
     assertEqual(await source.loadQuery(todoTitlesQuery), [{ title }]);
-    await states.waitForState(
-      () =>
+    await states.waitForState(() => {
+      const route = getRoute(source.name, relayB.port);
+      return (
         rejectedB === 2 &&
-        getRoute(source.name, relayB.port)?.error?.type ===
-          "ProtocolQuotaError",
-    );
+        route?.type === "Pending" &&
+        route.failure?.type === "ProtocolQuotaError"
+      );
+    });
     assertEqual(relayB.getTimestamps(), []);
 
     // The empty sibling legitimately converges with the still-empty relay B.
     await using sibling = await createTenant("ContinuationSibling");
     sibling.useOwner(testAppOwner, [transportB]);
     await states.waitForState(
-      () => getRoute(sibling.name, relayB.port)?.complete === true,
+      () => getRoute(sibling.name, relayB.port)?.type === "Complete",
     );
     assertEqual(await sibling.loadQuery(todoTitlesQuery), []);
     using cleanup = new DisposableStack();
@@ -1119,17 +1160,17 @@ describe("Evolu integration", () => {
     }
     assertEqual(await sibling.loadQuery(todoTitlesQuery), [{ title }]);
     await states.waitForState(
-      () => getRoute(sibling.name, relayB.port)?.complete === false,
+      () => getRoute(sibling.name, relayB.port)?.type === "Pending",
     );
     const pendingRoute = getRoute(sibling.name, relayB.port);
-    assertNotUndefined(pendingRoute);
-    assertFalse(pendingRoute.complete);
-    assertSame(pendingRoute.error, null);
+    assert(pendingRoute?.type === "Pending", "The route should be pending.");
+    assertSame(pendingRoute.failure, null);
+    assertSame(pendingRoute.skippedError, null);
     assertEqual(relayB.getTimestamps(), []);
 
     quota.resolve(true);
     await states.waitForState(
-      () => getRoute(sibling.name, relayB.port)?.complete === true,
+      () => getRoute(sibling.name, relayB.port)?.type === "Complete",
     );
     assertTrue(relayA.getTimestamps().length > 0);
     assertEqual(relayB.getTimestamps(), relayA.getTimestamps());

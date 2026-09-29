@@ -3,8 +3,16 @@ import * as Evolu from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
 import { createRun } from "@evolu/react-native";
 import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
-import { Suspense, use, useState, type FC, type ReactElement } from "react";
 import {
+  Suspense,
+  use,
+  useEffect,
+  useState,
+  type FC,
+  type ReactElement,
+} from "react";
+import {
+  AccessibilityInfo,
   ScrollView,
   StyleSheet,
   Text,
@@ -55,7 +63,7 @@ const todosQuery = createQuery((db) =>
 // Extract the row type from the query for type-safe component props.
 type TodosRow = typeof todosQuery.Row;
 
-const { EvoluContext, useEvolu, useQuery } =
+const { EvoluContext, useEvolu, useOwnerSyncStatus, useQuery } =
   createEvoluBinding<typeof AppSchema>();
 
 const console = Evolu.createConsole({
@@ -190,6 +198,7 @@ const App: FC<{
   evoluFiber: EvoluFiber;
 }> = ({ evoluFiber }) => (
   <EvoluContext value={use(evoluFiber)}>
+    <SyncStatus />
     <Todos />
     <OwnerActions />
 
@@ -200,6 +209,34 @@ const App: FC<{
     {/* <AuthActions /> */}
   </EvoluContext>
 );
+
+/**
+ * Tells the user when changes can't leave this device, and shows nothing while
+ * sync works. See `OwnerSyncStatus` in `@evolu/common/local-first`. It's
+ * rendered inline rather than with `Alert`, which would interrupt.
+ */
+const SyncStatus: FC = () => {
+  // Sync state is shared by every Evolu instance created from this `deps`, so
+  // the hook takes its store and finds this database's app owner in it.
+  const status = useOwnerSyncStatus(deps.syncState);
+  // An app that sells relay quota offers more for a ProtocolQuotaError, then
+  // calls `evolu.requestSync(evolu.appOwner.id)`.
+  const message =
+    status.type === "Offline"
+      ? "Offline. Your changes are saved on this device."
+      : status.type === "Error"
+        ? status.error.type === "ProtocolQuotaError"
+          ? "Sync is paused because the sync server is full. Your changes are saved on this device."
+          : `Sync error: ${status.error.type}. Your changes are saved on this device.`
+        : null;
+
+  // iOS has no polite live region, so announce each new message explicitly.
+  useEffect(() => {
+    if (message) AccessibilityInfo.announceForAccessibility(message);
+  }, [message]);
+
+  return message ? <Text style={styles.syncStatus}>{message}</Text> : null;
+};
 
 const Todos: FC = () => {
   // useQuery returns live data - component re-renders when data changes.
@@ -548,6 +585,12 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     fontSize: 14,
     lineHeight: 20,
+  },
+  syncStatus: {
+    color: "#4b5563",
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
   },
   todosContainer: {
     backgroundColor: "#ffffff",

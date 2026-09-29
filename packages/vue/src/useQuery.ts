@@ -6,11 +6,17 @@ import {
   type Row,
 } from "@evolu/common/local-first";
 import { onScopeDispose, type Ref, shallowReadonly, shallowRef } from "vue";
+import { isServerRendering } from "./isServerRendering.ts";
 import { useEvolu } from "./useEvolu.ts";
 
 /**
  * Load and subscribe to the query, returning a ref that stays in sync with
  * Evolu changes.
+ *
+ * During server rendering, it only loads the query, so the rows are empty, as
+ * on the client before the query loads. Server rendering starts when the server
+ * renderer does, so a call on the server before that, such as from a store that
+ * a router guard uses first, subscribes as on the client.
  *
  * ### Example
  *
@@ -50,7 +56,7 @@ export const useQuery = <S extends EvoluSchema, R extends Row>(
     rows.value = result;
   });
 
-  if (!options.once) {
+  if (!options.once && !isServerRendering()) {
     const unsubscribe = evolu.subscribeQuery(query)(() => {
       rows.value = evolu.getQueryRows(query);
     });

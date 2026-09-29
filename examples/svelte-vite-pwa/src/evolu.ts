@@ -30,6 +30,9 @@ const run = createRun(evoluSvelteDeps);
 /** Shared by all Evolu instances created from these deps. */
 export const evoluError = run.deps.evoluError;
 
+/** Shared by all Evolu instances created from these deps. */
+export const syncState = run.deps.syncState;
+
 // oxlint-disable evolu/require-pure-annotation -- Creates the application singleton and its owned runtime resources.
 export const evolu = await run.ok(
   Evolu.createEvolu(Schema, {

@@ -31,6 +31,13 @@ export interface TestRelay {
 }
 
 /**
+ * Options for the first check after a relay restarts. A client retries with a
+ * jittered backoff that grows with the downtime, up to 30 seconds, so the check
+ * waits that long plus a round, in a test given more time.
+ */
+export const afterRestart = { timeout: 35_000 };
+
+/**
  * Fails the test on uncaught browser errors and unexpected dialogs in every
  * watched context, and accepts the dialogs a test declares.
  */

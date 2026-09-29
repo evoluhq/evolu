@@ -31,7 +31,9 @@ import {
 import { createMicrotaskBatch } from "../Microtask.ts";
 import {
   createMutableRecord,
+  isPlainObject,
   objectToEntries,
+  shareStructure,
   type ReadonlyRecord,
 } from "../Object.ts";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.ts";
@@ -104,12 +106,15 @@ import type {
   EvoluInput,
   EvoluOutput,
   OtherBuildRunningError,
+  OwnerSyncStatus,
+  PendingSyncRoute,
   SharedWorkerDep,
   SyncState,
-  syncStateToOwnerSyncStates,
+  syncStateToOwnerSyncStatus,
+  syncStateToRelaySyncStates,
 } from "./Shared.ts";
 import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
-import { DbChange, type StorageQuotaError } from "./Storage.ts";
+import { DbChange } from "./Storage.ts";
 import { createTimestamp, type Timestamp } from "./Timestamp.ts";
 
 /**
@@ -833,9 +838,9 @@ export interface Evolu<
    * reopen. Disposal drops locally buffered requests. Calling a disposed
    * instance throws, like other Evolu operations.
    *
-   * Returns immediately, without waiting for synchronization to complete. A
-   * skipped change is shown on its relay's route in sync state; other errors
-   * are reported through {@link EvoluErrorDep.evoluError}.
+   * Returns immediately, without waiting for synchronization to complete. The
+   * owner's routes in sync state show a failure, such as a quota rejection, as
+   * `failure`, and a skipped change as `skippedError`.
    *
    * ### Example
    *
@@ -864,9 +869,11 @@ export interface Evolu<
 export type UnuseOwner = () => void;
 
 /**
- * Represents errors that can occur in {@link Evolu}.
+ * Represents app-level errors that can occur in {@link Evolu}.
  *
- * Apps show them from {@link EvoluErrorDep.evoluError}.
+ * Apps show them from {@link EvoluErrorDep.evoluError}. Problems a relay causes
+ * while syncing an owner are not EvoluErrors; see below. An unexpected failure
+ * while syncing is an {@link UnknownError}.
  *
  * An error that leaves the app unusable deserves a modal dialog, which moves
  * focus into itself and restores it when closed. Any other error is a status
@@ -880,31 +887,31 @@ export type UnuseOwner = () => void;
  * - {@link OtherBuildRunningError} blocks the app while it lasts: another version
  *   of the app holds the local data. Ask the user to close the app's other
  *   tabs. It clears when the wait ends.
- * - {@link ProtocolError} does not block the app: sync with a relay failed for an
- *   owner, because the relay rejected or failed a request, or sent a frame that
- *   could not be decoded; sync state shows the affected routes. A
- *   {@link ProtocolQuotaError} needs more relay quota, then
- *   {@link Evolu.requestSync}; a {@link ProtocolVersionError} needs an app or
- *   relay update.
- * - {@link StorageQuotaError} does not block the app: a storage or billing quota
- *   was exceeded, so a batch of an owner's changes was not stored. The built-in
- *   client storage does not report it yet; a relay's quota arrives as
- *   {@link ProtocolQuotaError}.
  * - {@link UnknownError} does not block the app: Evolu logged an unexpected
  *   failure. Show a generic message.
  *
+ * A problem syncing an owner through a relay belongs to that relay and often
+ * repeats in every round, so sync state shows it on the relay's route, as its
+ * {@link PendingSyncRoute.failure} with its details, and apps show it as the
+ * owner's `Error` {@link OwnerSyncStatus}. When the relay rejected or failed a
+ * request, or sent a frame that could not be decoded, the route shows a
+ * {@link ProtocolError}. A {@link ProtocolQuotaError} needs more relay quota,
+ * then {@link Evolu.requestSync}, and a {@link ProtocolVersionError} needs an app
+ * or relay update.
+ *
  * A received change that was not created with the owner's encryption key, was
- * altered afterwards, or cannot be decoded by this app version is skipped
- * without an error, while everything else still syncs. The relay offers it
- * again in every round, so sync state shows it on that relay's route instead,
- * as the {@link DecryptWithXChaCha20Poly1305Error},
+ * altered afterwards, or cannot be decoded by this app version is skipped,
+ * while everything else still syncs. The relay offers it again in every round,
+ * so the route shows it as its `skippedError`: the
+ * {@link DecryptWithXChaCha20Poly1305Error},
  * {@link ProtocolTimestampMismatchError}, or {@link ProtocolInvalidDataError} of
- * the first change skipped in a reply, with its details. Once this database
- * stores a valid change with that timestamp, for example from another relay,
- * the relay no longer offers its copy, and the route completes with its next
- * sync, such as after a reconnect or {@link Evolu.requestSync}, during which no
- * changes arrive from other relays. If you don't trust that relay, stop using
- * it for the owner. For owners that use the default transports, such as
+ * the first change skipped in a reply, with its details. The owner's status is
+ * `Error` with it too, unless a relay has a failure. Once this database stores
+ * a valid change with that timestamp, for example from another relay, the relay
+ * no longer offers its copy, and the route completes with its next sync, such
+ * as after a reconnect or {@link Evolu.requestSync}, during which no changes
+ * arrive from other relays. If you don't trust that relay, stop using it for
+ * the owner. For owners that use the default transports, such as
  * {@link Evolu.appOwner} when {@link EvoluConfig.transports} is not empty,
  * replace the relay there; an empty list stops syncing the app owner and makes
  * {@link Evolu.useOwner} require explicit transports. For an owner you passed
@@ -918,11 +925,7 @@ export type UnuseOwner = () => void;
  * @group Core
  */
 export type EvoluError =
-  | OtherBuildRunningError
-  | ProtocolError
-  | StorageQuotaError
-  | UnknownError
-  | UnsupportedDbVersionError;
+  OtherBuildRunningError | UnknownError | UnsupportedDbVersionError;
 
 /**
  * The largest {@link Mutation}, in bytes.
@@ -1012,13 +1015,12 @@ export interface EvoluErrorDep {
    * // The message for the current error, or null for none.
    * const errorMessage = (error: EvoluError | null): string | null => {
    *   if (!error) return null;
-   *   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The default handles every other EvoluError.
    *   switch (error.type) {
    *     case "UnsupportedDbVersionError":
    *       return "Your data requires a newer version of this app. Please update it.";
    *     case "OtherBuildRunningError":
    *       return "This app is open in another tab with a different version. Close that tab to continue.";
-   *     default:
+   *     case "UnknownError":
    *       return "Something went wrong. Please try again.";
    *   }
    * };
@@ -1055,8 +1057,15 @@ export interface SyncStateDep {
   /**
    * {@link ReadonlyStore} of the latest {@link SyncState} shared by all
    * {@link Evolu} instances, or null before the shared worker sends its first
-   * snapshot. Derive what to show from it, such as one indicator per relay, or
-   * use {@link syncStateToOwnerSyncStates} for one state per owner.
+   * snapshot. It lists every database the shared worker serves, including other
+   * tabs', so an app finds its own by {@link Evolu.name}. Apps show users an
+   * owner's {@link OwnerSyncStatus}, from {@link syncStateToOwnerSyncStatus} or a
+   * framework binding's `useOwnerSyncStatus`; views of each relay use
+   * {@link syncStateToRelaySyncStates}.
+   *
+   * Each snapshot keeps the previous snapshot's object for every part that did
+   * not change, and a snapshot equal to the previous one leaves the store
+   * unchanged, so parts and derived statuses can be compared with `===`.
    *
    * ### Example
    *
@@ -1065,6 +1074,7 @@ export interface SyncStateDep {
    *   assertEqual,
    *   createId,
    *   createStore,
+   *   Millis,
    *   testCreateDeps,
    * } from "@evolu/common";
    * import type {
@@ -1074,7 +1084,7 @@ export interface SyncStateDep {
    *
    * const openRelayLabels = (deps: SyncStateDep): ReadonlyArray<string> =>
    *   (deps.syncState.get()?.transports ?? [])
-   *     .filter(({ readyState }) => readyState === "open")
+   *     .filter(({ connection }) => connection.type === "Open")
    *     .map(({ label }) => label);
    *
    * using syncState = createStore<SyncState | null>(null);
@@ -1084,12 +1094,14 @@ export interface SyncStateDep {
    * syncState.set({
    *   transports: [
    *     {
+   *       type: "WebSocket",
    *       id: createId<"SyncTransport">(deps),
    *       label: "wss://relay.example",
-   *       readyState: "open",
-   *       openedAt: null,
-   *       closedAt: null,
-   *       error: null,
+   *       connection: {
+   *         type: "Open",
+   *         openedAt: Millis.orThrow(1000),
+   *         error: null,
+   *       },
    *     },
    *   ],
    *   tenants: [],
@@ -1179,11 +1191,15 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
         }
         break;
 
-      case "Error":
-        setEvoluError(message.error);
+      case "Error": {
+        // Every build shares this channel, so another build's worker can post
+        // an error type this build does not post, such as an older build's
+        // sync error. That build's own tabs show it, so this tab only logs it.
+        if (message.error.type === "UnknownError") setEvoluError(message.error);
         // Keep typed errors visible in logs as operational failures.
         console.error(message.error);
         break;
+      }
 
       default:
         exhaustiveCheck(message);
@@ -1221,7 +1237,15 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
           message.syncStateChannelName,
         );
         syncStateBroadcastChannel.onMessage = (state) => {
-          syncState.set(state);
+          // Every snapshot arrives as a new structured clone, so its unchanged
+          // parts get the previous snapshot's objects back, and an unchanged
+          // snapshot leaves the store as it is.
+          const previous = syncState.get();
+          syncState.set(
+            previous
+              ? shareStructure(previous, state, syncStateItemToKey)
+              : state,
+          );
         };
         // Asking only after listening misses no snapshot.
         sharedWorker.port.postMessage({ type: "RequestSyncState" });
@@ -1258,6 +1282,14 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
     disposer,
   );
 };
+
+// Transports, tenants, owners, and routes come and go, so each is compared
+// with its previous self by its ID: a transport's id, a tenant's name, an
+// owner's ownerId, or a route's transportId. A wrong key only loses sharing.
+const syncStateItemToKey = (item: unknown): unknown =>
+  isPlainObject(item)
+    ? (item.id ?? item.name ?? item.ownerId ?? item.transportId)
+    : undefined;
 
 /**
  * Creates an {@link Evolu} instance from {@link EvoluSchema} and

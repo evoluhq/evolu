@@ -61,6 +61,7 @@ import {
   type SharedWorkerInput,
   type SharedWorkerOutput,
   type SyncState,
+  syncStateToOwnerSyncStatus,
 } from "./Shared.ts";
 import {
   acquireLeaderLock,
@@ -72,6 +73,7 @@ import { err, ok } from "../Result.ts";
 import { SqliteBoolean } from "../Sqlite.ts";
 import { explicitAbortReason, testCreateDeps, testCreateRun } from "../Task.ts";
 import { testCreateId } from "../Test.ts";
+import { Millis } from "../Time.ts";
 import {
   assertType,
   createIdFromString,
@@ -592,7 +594,7 @@ describe("Evolu", () => {
       );
       const createState = (label: string): SyncState => ({
         transports: [],
-        tenants: [{ name: Name.orThrow(label), refused: false, owners: [] }],
+        tenants: [{ type: "Active", name: Name.orThrow(label), owners: [] }],
       });
 
       // Nothing reaches the tab before its worker names the channel.
@@ -614,6 +616,214 @@ describe("Evolu", () => {
       otherChannel.postMessage(createState("other"));
       await testWaitForWorkerMessage();
       assertEqual(deps.syncState.get(), createState("changed"));
+    });
+
+    it("keeps the unchanged parts of each sync state snapshot", async () => {
+      using setup = await setupCreateEvoluDeps();
+      const { deps, connect } = setup;
+      const workerId = testCreateId()<"SharedWorker">();
+      using channel = testCreateBroadcastChannel<SyncState>(
+        `evolu:sync-state:${workerId}`,
+      );
+      await connect(workerId);
+      let notificationCount = 0;
+      deps.syncState.subscribe(() => {
+        notificationCount++;
+      });
+      const transportId = testCreateId()<"SyncTransport">();
+      // Every snapshot is a new structured clone. The worker wraps a caught
+      // Error inside an error in an UnknownError, whose cause can hold the
+      // bytes of a received change.
+      const createState = (
+        lastSentAt: number,
+        message = "wrong key",
+      ): SyncState => ({
+        transports: [
+          {
+            type: "WebSocket",
+            id: transportId,
+            label: "wss://relay.example",
+            connection: {
+              type: "Open",
+              openedAt: Millis.orThrow(1000),
+              error: null,
+            },
+          },
+        ],
+        tenants: [
+          {
+            type: "Active",
+            name: testName,
+            owners: [
+              {
+                type: "Writable",
+                ownerId: testAppOwner.id,
+                routes: [
+                  {
+                    type: "Settled",
+                    transportId,
+                    skippedError: {
+                      type: "DecryptWithXChaCha20Poly1305Error",
+                      error: {
+                        type: "UnknownError",
+                        error: {
+                          message,
+                          cause: { values: { photo: Uint8Array.of(1, 2, 3) } },
+                        },
+                      },
+                      at: Millis.orThrow(1500),
+                    },
+                    completeAt: null,
+                    lastSentAt: Millis.orThrow(lastSentAt),
+                    lastReceivedAt: Millis.orThrow(1500),
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      const routeOf = (state: SyncState | null) => {
+        const tenant = state?.tenants[0];
+        assert(tenant?.type === "Active", "The tenant should be active.");
+        const owner = tenant.owners[0];
+        assert(owner?.type === "Writable", "The owner should be writable.");
+        const route = owner.routes[0];
+        assert(route?.type === "Settled", "The route should be settled.");
+        return route;
+      };
+      const statusOf = (state: SyncState | null) =>
+        syncStateToOwnerSyncStatus(state, testName, testAppOwner.id);
+
+      channel.postMessage(createState(1000));
+      await testWaitForWorkerMessage();
+      const first = deps.syncState.get();
+      assertNotNull(first);
+      assertSame(notificationCount, 1);
+
+      // An equal snapshot leaves the store unchanged.
+      channel.postMessage(createState(1000));
+      await testWaitForWorkerMessage();
+      assertSame(deps.syncState.get(), first);
+      assertSame(notificationCount, 1);
+
+      // A changed route gets a new object, and every unchanged part keeps the
+      // previous one, so the owner's status is the same object.
+      channel.postMessage(createState(2000));
+      await testWaitForWorkerMessage();
+      const second = deps.syncState.get();
+      assertNotNull(second);
+      assertNotSame(second, first);
+      assertSame(notificationCount, 2);
+      assertSame(second.transports, first.transports);
+      assertNotSame(routeOf(second), routeOf(first));
+      assertSame(routeOf(second).skippedError, routeOf(first).skippedError);
+      assertSame(statusOf(second), statusOf(first));
+
+      // An error with another message is a new error and a new status.
+      channel.postMessage(createState(2000, "tampered"));
+      await testWaitForWorkerMessage();
+      const third = deps.syncState.get();
+      assertNotSame(routeOf(third).skippedError, routeOf(second).skippedError);
+      assertNotSame(statusOf(third), statusOf(second));
+    });
+
+    it("keeps each part of a sync state snapshot when one before it goes away", async () => {
+      using setup = await setupCreateEvoluDeps();
+      const { deps, connect } = setup;
+      const createId = testCreateId();
+      const workerId = createId<"SharedWorker">();
+      using channel = testCreateBroadcastChannel<SyncState>(
+        `evolu:sync-state:${workerId}`,
+      );
+      await connect(workerId);
+      const removedTransportId = createId<"SyncTransport">();
+      const transportId = createId<"SyncTransport">();
+      const at = Millis.orThrow(1000);
+      // The full snapshot lists a transport, tenant, owner, and route before
+      // each part the other snapshot keeps. Only the kept route has an error.
+      const createState = (isFull: boolean): SyncState => ({
+        transports: [removedTransportId, transportId]
+          .slice(isFull ? 0 : 1)
+          .map((id) => ({
+            type: "WebSocket",
+            id,
+            label: `wss://${id}.example`,
+            connection: { type: "Open", openedAt: at, error: null },
+          })),
+        tenants: [
+          ...(isFull
+            ? [
+                {
+                  type: "Active" as const,
+                  name: Name.orThrow("removed"),
+                  owners: [],
+                },
+              ]
+            : []),
+          {
+            type: "Active",
+            name: testName,
+            owners: [
+              ...(isFull
+                ? [
+                    {
+                      type: "Writable" as const,
+                      ownerId: createId<"OwnerId">(),
+                      routes: [],
+                    },
+                  ]
+                : []),
+              {
+                type: "Writable",
+                ownerId: testAppOwner.id,
+                routes: [
+                  ...(isFull
+                    ? [
+                        {
+                          type: "Complete" as const,
+                          transportId: removedTransportId,
+                          completeAt: at,
+                          lastSentAt: at,
+                          lastReceivedAt: at,
+                        },
+                      ]
+                    : []),
+                  {
+                    type: "Pending",
+                    transportId,
+                    failure: {
+                      type: "ProtocolQuotaError",
+                      ownerId: testAppOwner.id,
+                      at,
+                    },
+                    skippedError: null,
+                    completeAt: null,
+                    lastSentAt: at,
+                    lastReceivedAt: at,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      const statusOf = (state: SyncState | null) =>
+        syncStateToOwnerSyncStatus(state, testName, testAppOwner.id);
+
+      channel.postMessage(createState(true));
+      await testWaitForWorkerMessage();
+      const full = deps.syncState.get();
+      assertNotNull(full);
+      assertSame(statusOf(full).type, "Error");
+
+      channel.postMessage(createState(false));
+      await testWaitForWorkerMessage();
+      const kept = deps.syncState.get();
+      assertNotNull(kept);
+      assertEqual(kept, createState(false));
+      assertSame(kept.transports[0], full.transports[1]);
+      assertSame(statusOf(kept), statusOf(full));
     });
 
     it("listens on its worker's channel before asking for a snapshot", async () => {
@@ -725,6 +935,29 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       assertEqual(deps.evoluError.get(), error);
+    });
+
+    it("only logs a sync error that an older build broadcasts", async () => {
+      const testConsole = testCreateConsole();
+      using setup = await setupCreateEvoluDeps(testConsole);
+      const { deps, consoleEntryOrErrorBroadcastChannel } = setup;
+      const error = {
+        type: "ProtocolQuotaError",
+        ownerId: testAppOwner.id,
+      } as const;
+
+      consoleEntryOrErrorBroadcastChannel.postMessage({
+        type: "Error",
+        // @ts-expect-error A ConsoleEntryOrError Error carries only an UnknownError, but a still-running worker of an older build posts a ProtocolQuotaError.
+        error,
+      });
+
+      await testWaitForWorkerMessage();
+
+      assertSame(deps.evoluError.get(), null);
+      assertEqual(testConsole.getEntriesSnapshot(), [
+        { method: "error", path: [], args: [error] },
+      ]);
     });
 
     for (const source of ["SharedWorker", "Error", "ConsoleEntry"] as const) {
