@@ -25,6 +25,7 @@ Evolu's API is designed to prevent developers from accidentally leaking sensitiv
 
 - **No public data options**: There is no API to mark data as "public" or "unencrypted"
 - **No configuration required**: Developers cannot disable encryption or create security vulnerabilities through misconfiguration
+- **Explicit plaintext export**: `exportDatabase` is the one API that returns unencrypted data. It returns the local database as a plain SQLite file so users can open their data in any SQLite tool, so apps should treat that file as sensitive
 
 ## Traffic analysis protection
 
