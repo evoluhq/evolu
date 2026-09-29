@@ -47,6 +47,16 @@ Kept.
 ### Returning resources from Tasks
 
 Also kept.
+
+#### Returns
+
+Removed.
+
+<a id="name"></a>
+
+### name
+
+Member kept.
 `,
     );
 
@@ -62,6 +72,8 @@ Also kept.
     assert.match(fixed, /## Example/u);
     assert.match(fixed, /### Returning resources from Tasks/u);
     assert.match(fixed, /Also kept\./u);
+    assert.doesNotMatch(fixed, /Removed\./u);
+    assert.match(fixed, /<a id="name"><\/a>\n\n### name\n\nMember kept\./u);
     assert.match(
       await fs.readFile(path.join(sourceDir, "page.mdx"), "utf8"),
       /## Packages\n\nPackage/u,

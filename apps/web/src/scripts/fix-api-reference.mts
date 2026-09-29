@@ -178,6 +178,9 @@ const fixMdxFile = (
   let skipUntilLevel = 0;
 
   for (const line of lines) {
+    // TypeDoc emits a member's anchor before its heading, so it ends the
+    // previous member's skipped section.
+    if (/^<a id="[^"]+"><\/a>$/u.test(line)) skipUntilLevel = 0;
     const headingMatch = /^(#{2,4}) /u.exec(line);
     if (headingMatch) {
       const level = headingMatch[1].length;
