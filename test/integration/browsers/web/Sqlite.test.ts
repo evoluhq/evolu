@@ -7,17 +7,11 @@ import {
 } from "@evolu/common";
 import { installPolyfills } from "@evolu/common/polyfills";
 import { describe, expect, test } from "vitest";
-import { server } from "vitest/browser";
 import { createWasmSqliteDriver } from "../../../../packages/web/src/Sqlite.ts";
 
 installPolyfills();
 
 const testName = Name.orThrow("Test");
-
-// Playwright's Linux WebKit does not expose the sync access handles required
-// by the OPFS SQLite VFS.
-const isLinuxWebKit =
-  server.browser === "webkit" && server.platform === "linux";
 
 type WorkerResponse =
   | { readonly ok: true; readonly data?: Record<string, unknown> }
@@ -214,7 +208,7 @@ describe("createWasmSqliteDriver", () => {
     });
   });
 
-  describe.skipIf(isLinuxWebKit)("opfs", () => {
+  describe("opfs", () => {
     const timeout = 30_000;
 
     describe("worker lifecycle", () => {
