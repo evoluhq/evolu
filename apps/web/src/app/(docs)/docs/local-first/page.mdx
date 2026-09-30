@@ -54,7 +54,9 @@ npm install @evolu/common @evolu/web
 
 <ConditionalPlatformAlert platform={["Expo"]} type="warning">
   **Expo Go is not supported** as it requires native dependencies
-  (`react-native-quick-crypto`).
+  (`react-native-quick-crypto`). **Expo web is not supported** either, because
+  Metro can't bundle Evolu's web workers. For the web, use `@evolu/react-web`
+  with a web bundler such as Vite or Next.js, and share the schema and queries.
 </ConditionalPlatformAlert>
 
 <ConditionalPlatformAlert platform={["React Native"]} type="info">
