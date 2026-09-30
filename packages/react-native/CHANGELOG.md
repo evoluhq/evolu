@@ -1,5 +1,37 @@
 # @evolu/react-native
 
+## 16.0.4
+
+### Patch Changes
+
+- 3a83a48: Closed a failed shared worker so the app can be opened again
+
+  When a defect stopped Evolu's shared worker, tabs opened afterwards connected
+  to the failed worker and never loaded their data, even after a reload while
+  another tab of the app stayed open. On React Native, deps created again
+  connected to it too. The failed worker now closes, so the next tab or deps start
+  a new one. Closing each open database also no longer reports an extra "Cannot
+  use a disposed object." defect after the original one. Each DbWorker now stops
+  once its shared worker ends, so a custom platform setup must give the shared
+  worker and its DbWorkers the same `LockManager`, as the web and React Native
+  setups do.
+
+  An `UnknownError` in `evoluError` leaves Evolu in an unknown state, so the app
+  can only ask the user to close the tab. The documentation now says so instead of
+  suggesting to try again.
+
+- Updated dependencies [9e5a033]
+- Updated dependencies [428350e]
+- Updated dependencies [428350e]
+- Updated dependencies [6257650]
+- Updated dependencies [eeaa3c5]
+- Updated dependencies [6257650]
+- Updated dependencies [428350e]
+- Updated dependencies [3a83a48]
+- Updated dependencies [36f9f81]
+  - @evolu/common@8.13.0
+  - @evolu/react@11.2.0
+
 ## 16.0.3
 
 ### Patch Changes

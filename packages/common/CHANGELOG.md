@@ -1,5 +1,406 @@
 # @evolu/common
 
+## 8.13.0
+
+### Minor Changes
+
+- 428350e: Added a sync status for apps and made sync state exact
+
+  `syncStateToOwnerSyncStatus` in `@evolu/common/local-first` tells what an app
+  shows about syncing one owner of one database: `NoRelays`, `Syncing`, `Synced`,
+  `Offline`, or `Error` with its error. The error is the newest failure of any
+  relay or, without one, the newest skipped change, because a failure stops
+  syncing through its relay while a skipped change leaves out only that change.
+  It takes the value of `deps.syncState`, which is null until the first snapshot,
+  `evolu.name`, and the owner's ID. The React binding from `createEvoluBinding`
+  has `useOwnerSyncStatus`, and `@evolu/vue` exports one. Both take the
+  `deps.syncState` store of the deps the Evolu instance was created with. Without
+  an owner, they return the app owner's status; otherwise they take the owner
+  `useOwner` takes, and a null owner, for a component that waits for one, gives
+  `NoRelays`. They update only when the status changes, not with every snapshot.
+
+  `deps.syncState` now keeps the previous snapshot's object for every part that
+  did not change, even when a part listed before it goes away, and a snapshot
+  equal to the previous one no longer notifies subscribers.
+  `syncStateToOwnerSyncStatus` returns the same object while the status is
+  unchanged, so statuses can be compared with `===` in any framework, such as in
+  an Angular `computed` or a Svelte `$derived`. The value caught inside a route's
+  error, such as what a failed decryption threw, is an `UnknownError`, whose
+  `error` holds its message, stack, and cause.
+
+  The documentation of `OwnerSyncStatus` describes what to show, and the examples
+  follow it. Evolu saves changes on the device before they sync, so show nothing
+  while sync works. For `Offline` and `Error`, show one quiet line saying that
+  changes are saved on this device, inside one element with `role="status"` that
+  stays mounted, not with `role="alert"`. For `Error`, write actionable text for
+  the error types the app handles, such as `ProtocolQuotaError`, and generic text
+  otherwise.
+
+  A relay's first connection now counts as `Syncing`, not `Offline`, so apps no
+  longer show offline on every start until the relay connects. A relay is
+  `Offline` once a connection fails or closes, until a connection opens again.
+
+  Sync state is now made of unions, so each part holds only the fields valid for
+  its state, and it no longer stores values derived from others. Code reading it
+  stops compiling where it has to change:
+
+  - `syncStateToOwnerSyncStates` and `OwnerSyncState` are removed. The `type` of
+    `syncStateToOwnerSyncStatus(state, name, ownerId)` replaces `status`:
+    `"initial"` becomes `NoRelays`, which also covers a missing snapshot,
+    database, or owner, and `"syncing"`, `"synced"`, `"offline"`, and `"error"`
+    become `Syncing`, `Synced`, `Offline`, and `Error`, whose `error` replaces the
+    owner's `error`. To list every database and owner, as
+    `syncStateToOwnerSyncStates` did, pass the `name` of each `Active` tenant in
+    `state.tenants` with the `ownerId` of each of its `Writable` owners.
+  - `syncStateToRelaySyncStates(state, name, ownerId)` replaces `relays`, and
+    `relaySyncStateToStatus(relay)` replaces `relay.status`. The newest
+    `completeAt` of their routes replaces `syncedAt`.
+  - A transport's `type` is its kind, `WebSocket`, and its `connection` replaces
+    `readyState`, `openedAt`, `closedAt`, and `error`. It is `Connecting` only
+    before the first connection opens or fails, `Open` with `openedAt`, or
+    `Disconnected` with `disconnectedAt` and the last `openedAt`, if any. Both
+    `Open` and `Disconnected` keep the last `error`. A transport becomes
+    `Disconnected` when a connection closes or fails or a request goes
+    unanswered, and failed reconnect attempts keep the time it disconnected. A
+    closing transport is `Open` until it closes.
+  - A tenant is `Active` with `owners`, or `Refused` with its
+    `UnsupportedDbVersionError` and no owners, instead of having `refused`.
+  - An owner is `Writable` with `routes`, or `Readonly` with `transportIds`,
+    instead of having `writable`. A writable owner's transport IDs are the
+    `transportId` of its routes.
+  - A route is `Pending`, `Settled`, or `Complete` instead of having `complete`
+    and `error`. `Pending` holds both its `failure` and its `skippedError`,
+    `Settled` holds the `skippedError` that keeps it incomplete, `completeAt` is
+    required on `Complete`, and `lastSentAt` is required on `Settled` and
+    `Complete`.
+
+  ```ts
+  import {
+    assertEqual,
+    createId,
+    Millis,
+    testCreateDeps,
+    testName,
+  } from "@evolu/common";
+  import {
+    syncStateToOwnerSyncStatus,
+    testAppOwner,
+    type SyncState,
+    type SyncTenant,
+    type SyncTransport,
+  } from "@evolu/common/local-first";
+
+  const deps = testCreateDeps();
+  const transportId = createId<"SyncTransport">(deps);
+  const state: SyncState = {
+    transports: [
+      {
+        type: "WebSocket",
+        id: transportId,
+        label: "wss://relay.example",
+        connection: {
+          type: "Disconnected",
+          disconnectedAt: Millis.orThrow(2000),
+          openedAt: Millis.orThrow(1000),
+          error: null,
+        },
+      },
+    ],
+    tenants: [
+      {
+        type: "Active",
+        name: testName,
+        owners: [
+          {
+            type: "Writable",
+            ownerId: testAppOwner.id,
+            routes: [
+              {
+                type: "Pending",
+                transportId,
+                failure: null,
+                skippedError: null,
+                completeAt: Millis.orThrow(1500),
+                lastSentAt: Millis.orThrow(1800),
+                lastReceivedAt: Millis.orThrow(1500),
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  // @ts-expect-error A transport has no readyState; its connection tells whether it is open.
+  type _ReadyState = SyncTransport["readyState"];
+  assertEqual(state.transports[0]?.connection.type, "Disconnected");
+
+  const _tenant: SyncTenant = {
+    type: "Active",
+    name: testName,
+    // @ts-expect-error A tenant has no refused flag; its type tells whether it refused startup.
+    refused: false,
+    owners: [],
+  };
+  assertEqual(state.tenants[0]?.type, "Active");
+
+  const status = syncStateToOwnerSyncStatus(state, testName, testAppOwner.id);
+  // @ts-expect-error An owner sync status is an object; compare its type.
+  const _isOffline = status === "offline";
+  assertEqual(status, { type: "Offline" });
+  ```
+
+- 428350e: Added shareStructure to keep the unchanged parts of copied data
+
+  `shareStructure(previous, next)` returns `next` with every part deep-equal to
+  the same part of `previous` replaced by that part, or `previous` itself when the
+  two are deep-equal, except that a part a cycle leads back to is returned as it
+  is in `next`. Data that arrives as a new copy, such as a structured clone
+  posted between workers, then keeps the objects of its unchanged parts, so they
+  can be compared with `===`, and a UI updates only what changed. Plain objects,
+  arrays, and `Uint8Array`s are compared by their contents, and any other value
+  by identity.
+
+  An array item is compared with the previous item at its index. The optional
+  `itemToKey` compares it with the previous item of the same key instead, such as
+  its ID, so an item keeps its object when an item before it is removed.
+
+  ```ts
+  import {
+    assertNotSame,
+    assertSame,
+    isPlainObject,
+    shareStructure,
+  } from "@evolu/common";
+
+  const previous = {
+    user: { name: "Alice" },
+    todos: [
+      { id: 1, title: "Buy milk" },
+      { id: 2, title: "Walk the dog" },
+    ],
+  };
+
+  // An equal copy gives the previous value back.
+  assertSame(shareStructure(previous, structuredClone(previous)), previous);
+
+  // Todos compared by ID keep their objects when a todo before them is removed.
+  const next = shareStructure(
+    previous,
+    { user: { name: "Alice" }, todos: [{ id: 2, title: "Walk the dog" }] },
+    (item) => (isPlainObject(item) ? item.id : undefined),
+  );
+  assertNotSame(next, previous);
+  assertSame(next.user, previous.user);
+  assertSame(next.todos[0], previous.todos[1]);
+  ```
+
+- 6257650: Added `unregister` to `Callbacks`
+
+  `Callbacks.unregister` removes a registered callback without executing it, for
+  a request whose response will never come.
+
+  ```ts
+  import { assertSame, createCallbacks, testCreateDeps } from "@evolu/common";
+
+  using callbacks = createCallbacks(testCreateDeps());
+  let calls = 0;
+  const id = callbacks.register(() => {
+    calls++;
+  });
+
+  // The response will never come, so the callback is removed without running.
+  callbacks.unregister(id);
+  callbacks.execute(id);
+  assertSame(calls, 0);
+  ```
+
+### Patch Changes
+
+- 9e5a033: Stopped reporting aborts during resource cleanup as defects
+
+  When a Task was aborted while an `await using` resource was open and the
+  resource's cleanup also observed the abort, for example by awaiting a Fiber or
+  disposing a DisposableRun whose finalizer defected, JavaScript threw a
+  `SuppressedError` holding only AbortErrors. The Run reported it as a defect and
+  panicked, so aborting one `AbortableFiber` disposed the whole Run tree, and a
+  panic or a DisposableRun finalizer defect was reported a second time. Such a
+  `SuppressedError` is now an abort, as the same cleanup in `try`/`finally` is:
+  the Task aborts with the last cleanup AbortError. A DisposableRun finalizer that
+  rejects with an AbortError, such as one awaiting another DisposableRun whose
+  finalizer defected, is no longer reported either; async disposal rejects with
+  that AbortError. A `SuppressedError` containing any other error is still
+  reported whole.
+
+- 6257650: Reported a mutation that could not be stored instead of stalling its database
+
+  When SQLite failed to store a mutation, for example because the disk was full,
+  the database worker never answered it. Every later query, mutation, and export
+  of that database then waited in every tab until the tab running the database
+  worker closed, and `evoluError` reported nothing. Now the mutation rolls back
+  as before and later requests run. The tab that made it gets an `UnknownError`
+  in `evoluError`, or every tab does when its Evolu instance was disposed first.
+
+  The mutation is not saved, and neither are the other mutations in its batch,
+  usually those made in the same synchronous block, because they are stored in
+  one transaction. Their `onComplete` callbacks do not run.
+
+- eeaa3c5: Removed `isIdle` from semaphore and shared resource snapshots
+
+  `SemaphoreSnapshot` and `SharedResourceSnapshot` no longer have `isIdle`,
+  because it only repeated what their other fields show. This affects the
+  snapshots of semaphores, mutexes, mutex refs, their keyed variants, and shared
+  resources. A semaphore snapshot is idle when `taken` is 0 and `waiters` is
+  empty. A shared resource snapshot is idle when `leaseCount` is 0,
+  `hasResource` and `idleDisposePending` are false, and its `mutex` snapshot is
+  idle. `Semaphore.isIdle()` and the keyed `isIdle(key)` functions are
+  unchanged.
+
+  ```ts
+  import { assertSame, assertTrue, createSemaphore } from "@evolu/common";
+
+  const semaphore = createSemaphore(2);
+  const snapshot = semaphore.snapshot();
+
+  // @ts-expect-error SemaphoreSnapshot no longer has isIdle.
+  assertSame(snapshot.isIdle, undefined);
+
+  assertTrue(snapshot.taken === 0 && snapshot.waiters.length === 0);
+  assertTrue(semaphore.isIdle());
+  ```
+
+- 428350e: Moved sync errors from evoluError to sync state
+
+  A problem syncing an owner through a relay belongs to that relay and often
+  repeats in every round, so it no longer goes to the global `evoluError` store.
+  `ProtocolError` and `StorageQuotaError` are no longer `EvoluError` members, so
+  `EvoluError` holds only app-level errors: `OtherBuildRunningError`,
+  `UnknownError`, and `UnsupportedDbVersionError`. An unexpected failure while
+  syncing, which Evolu logs, is still an `UnknownError`.
+
+  Sync state shows each sync problem with its details on the relay's route, as
+  the route's `failure`, or `skippedError` for a skipped change, and as the
+  owner's `Error` status. Because sync state shows them, tabs no longer log them
+  to the console. Apps that reacted to one of these errors through
+  `evoluError` read it there instead: a `ProtocolQuotaError` still means more
+  relay quota, then `evolu.requestSync`, and a `ProtocolVersionError` still means
+  an app or relay update. An app that showed every `evoluError` no longer shows
+  these problems. Show them from sync state instead, as the examples do: use
+  `useOwnerSyncStatus` from the React binding that `createEvoluBinding` returns
+  or from `@evolu/vue`, or `syncStateToOwnerSyncStatus`, and show the `Error`
+  status. `evoluError` reported these problems for every owner of every database,
+  but a status covers one owner of one database, so an app that handled them for
+  other owners checks each owner it syncs: with `useOwnerSyncStatus` where it
+  shows that owner's data, or with `syncStateToOwnerSyncStatus` for each
+  `Writable` owner of its database.
+
+  ```ts
+  import { assertTrue, Millis, type EvoluError } from "@evolu/common";
+  import {
+    testAppOwner,
+    type OwnerSyncStatus,
+  } from "@evolu/common/local-first";
+
+  const ownerId = testAppOwner.id;
+
+  // @ts-expect-error A ProtocolQuotaError is no longer an EvoluError.
+  const _evoluError: EvoluError = { type: "ProtocolQuotaError", ownerId };
+
+  // Sync state shows it as the owner's Error status instead.
+  const needsQuota = (status: OwnerSyncStatus): boolean =>
+    status.type === "Error" && status.error.type === "ProtocolQuotaError";
+
+  assertTrue(
+    needsQuota({
+      type: "Error",
+      error: { type: "ProtocolQuotaError", ownerId, at: Millis.orThrow(1000) },
+    }),
+  );
+  ```
+
+  Evolu databases in one app that sync the same owner hand each other the changes
+  they send, without waiting for a relay, so such a copy has no route. If applying
+  a copy fails or skips a change, which only a bug can cause, such as the two
+  databases holding different keys for the owner, `evoluError` reports it as an
+  `UnknownError`.
+
+- 3a83a48: Closed a failed shared worker so the app can be opened again
+
+  When a defect stopped Evolu's shared worker, tabs opened afterwards connected
+  to the failed worker and never loaded their data, even after a reload while
+  another tab of the app stayed open. On React Native, deps created again
+  connected to it too. The failed worker now closes, so the next tab or deps start
+  a new one. Closing each open database also no longer reports an extra "Cannot
+  use a disposed object." defect after the original one. Each DbWorker now stops
+  once its shared worker ends, so a custom platform setup must give the shared
+  worker and its DbWorkers the same `LockManager`, as the web and React Native
+  setups do.
+
+  An `UnknownError` in `evoluError` leaves Evolu in an unknown state, so the app
+  can only ask the user to close the tab. The documentation now says so instead of
+  suggesting to try again.
+
+- 36f9f81: Fixed one unreadable change stopping sync through a relay
+
+  When a relay sent a change the client could not decrypt, verify, or decode, the
+  client stored none of the batch that held it and ended the sync round. The relay
+  offered the same change in every round, so reconciliation through that relay
+  stopped: some changes made offline or before connecting never reached the
+  relay, and a download split into several replies stalled.
+
+  The client now stores every change it can decrypt, verify, and decode, skips the
+  others, and continues the round, so everything else still syncs through that
+  relay. A change is skipped when:
+
+  - It was not created with the owner's encryption key, or was altered
+    afterwards. A faulty or malicious relay, anyone who can write to a relay for
+    the owner, or a client with a wrong key can send such a change.
+  - An authentic change was replayed under another timestamp.
+  - It is malformed, or it decrypts but this app version cannot decode it.
+
+  A skipped change leaves nothing behind, not even its timestamp, because a stored
+  timestamp would stop the client from ever fetching the real change with that
+  timestamp from another relay. It is not quarantined either, because quarantine
+  is synced to other relays. Skipping loses nothing: the relay keeps the change
+  and offers it again on each sync, so once the receiving client is fixed, for
+  example by updating the app or correcting its keys, the next sync stores it. A
+  change that a client encrypted with a wrong key stays unreadable, because a
+  relay never replaces a change it already holds for that timestamp. Once the
+  client stores a valid change with that timestamp, for example from another
+  relay, the relay no longer offers its copy, and the route completes with a later
+  sync through that relay during which no changes arrive from other relays.
+
+  Evolu cannot tell who is at fault, so it neither stops syncing the owner, which
+  would let one bad actor stop sync through every relay, nor drops the valid
+  changes, which no relay can forge. Sync state shows the skip on that relay's
+  route, which stays incomplete. Every round through that relay downloads its
+  skipped changes again, so changes the client receives from other relays start
+  no round through it; they reach it with its next sync, such as after a
+  reconnect or `evolu.requestSync`. The owner's `Error` status tells the user;
+  an app can also stop syncing the owner through that relay. If every route of
+  the owner shows `DecryptWithXChaCha20Poly1305Error` and your code creates or
+  shares the owner, check the owner's keys.
+
+  A change skipped from a relay is no longer reported through `evoluError`,
+  because the relay offers it again in every round, so
+  `DecryptWithXChaCha20Poly1305Error` is no longer an `EvoluError`. Watch sync
+  state instead: the relay's route holds the `DecryptWithXChaCha20Poly1305Error`,
+  `ProtocolTimestampMismatchError`, or `ProtocolInvalidDataError` of the first
+  change skipped in a reply as `skippedError`, and a route whose reconciliation
+  ends with it is `Settled`; a failure since the route last settled is its
+  `failure`.
+
+  A `SyncRouteError` is now the error itself with `at`, so it carries the details
+  of every route failure, not only its `type`, which works as before. A
+  `ProtocolInvalidDataError` leaves out its data, which can be a whole frame. Code
+  that creates a `SyncRouteError`, such as a test fixture, must include the
+  error's own fields, for example the `ownerId` of a `ProtocolQuotaError`, and an
+  interface can no longer extend it.
+
+  `StorageWriteMessagesError` now holds only `StorageQuotaError`. A custom client
+  `Storage` skips a message it cannot decrypt, verify, or decode instead of
+  rejecting its batch, as the built-in client storage does.
+
 ## 8.12.0
 
 ### Minor Changes
