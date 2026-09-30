@@ -193,6 +193,22 @@ describe("createWasmSqliteDriver", () => {
       expect(rows.rows).toEqual([{ name: "A" }, { name: "B" }]);
     });
 
+    test("reuses a prepared statement after its step fails", async () => {
+      await using setup = await setupWasmSqlite();
+      const { sqlite } = setup;
+
+      sqlite.exec(sql`create table t (name text not null);`);
+      const insert = (name: string | null) =>
+        sqlite.exec(sql.prepared`insert into t (name) values (${name});`);
+
+      expect(() => insert(null)).toThrow(/NOT NULL/u);
+      insert("Alice");
+
+      expect(sqlite.exec(sql`select name from t;`).rows).toEqual([
+        { name: "Alice" },
+      ]);
+    });
+
     test("export returns database bytes", async () => {
       await using setup = await setupWasmSqlite();
       const { sqlite } = setup;

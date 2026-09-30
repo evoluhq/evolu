@@ -195,10 +195,12 @@
  * wait, because it may answer another tenant's round on the shared socket. An
  * aborted apply leaves its routes incomplete without a retry. An exception
  * while the database worker creates a round is logged there and fails the
- * round's routes with `SyncFailed` without a retry; other unexpected SQLite
- * exceptions remain unsupported and can panic the database worker. A frame the
- * relay silently drops, such as invalid data, leaves the count above zero until
- * the liveness rule below replaces the socket.
+ * round's routes with `SyncFailed` without a retry. A mutation that throws is
+ * rolled back and reported as an {@link UnknownError} to the tab that made it,
+ * or to every tab when its Evolu instance was disposed first. Other unexpected
+ * SQLite exceptions remain unsupported and can panic the database worker. A
+ * frame the relay silently drops, such as invalid data, leaves the count above
+ * zero until the liveness rule below replaces the socket.
  *
  * A result that skipped a received message the database could not decrypt,
  * verify, or decode records the error on the route as its `skippedError`,
@@ -393,11 +395,12 @@ export type SharedWorkerOutput =
   | DbWorkerInit
   | {
       /**
-       * Sent to one tab only: its database refused startup, or another build
-       * keeps this worker waiting.
+       * Sent to one tab only: its database refused startup, a mutation it made
+       * could not be stored, or another build keeps this worker waiting.
        */
       readonly type: "Error";
-      readonly error: UnsupportedDbVersionError | OtherBuildRunningError;
+      readonly error:
+        OtherBuildRunningError | UnknownError | UnsupportedDbVersionError;
     }
   | {
       /**
@@ -1202,6 +1205,11 @@ export type EvoluOutput =
   | {
       readonly type: "OnExport";
       readonly file: Uint8Array<ArrayBuffer>;
+    }
+  | {
+      /** The mutation with these onComplete callbacks could not be stored. */
+      readonly type: "OnMutateFailed";
+      readonly onCompleteIds: ReadonlyArray<Id>;
     };
 
 export type DbWorkerInput =
@@ -1277,6 +1285,11 @@ export type DbWorkerQueuedResponse =
               NonEmptyReadonlyArray<CrdtMessage>
             >;
             readonly rowsByQuery: RowsByQueryMap;
+          }
+        | {
+            /** The mutation threw, so it rolled back and nothing was stored. */
+            readonly type: "MutateFailed";
+            readonly error: UnknownError;
           }
         | {
             readonly type: "Query";
@@ -2674,12 +2687,40 @@ const createEvoluTenant =
           break;
         }
 
+        case "MutateFailed": {
+          // The tab shows it, and the instance releases the mutation's
+          // onComplete callbacks without running them. A write outlives its
+          // instance, so without one, every tab is told.
+          //
+          // A replay after leader replacement can fail although the earlier
+          // leader committed the write and only its answer was lost. The tab
+          // then shows an error for a stored write, and its onComplete
+          // callbacks never run. Nothing is lost or reused: the replacement
+          // adopted the stored clock, refreshed every instance's queries, and
+          // reconciles every used owner.
+          const { error } = response.message;
+          if (instance) {
+            assertSame(first.message.type, "Mutate");
+            instance.tabPort.postMessage({ type: "Error", error });
+            instance.port.postMessage({
+              type: "OnMutateFailed",
+              onCompleteIds: first.message.onCompleteIds,
+            });
+          } else {
+            deps.postConsoleEntryOrError({ type: "Error", error });
+          }
+          break;
+        }
+
         case "Export":
           instance?.port.postMessage(
             { type: "OnExport", file: response.message.file },
             [response.message.file.buffer],
           );
           break;
+
+        default:
+          exhaustiveCheck(response.message);
       }
     };
 
@@ -3510,14 +3551,14 @@ const createEvoluTenant =
 //     })
 
 // TODO: SharedWorker follow-ups.
-// - Complete the queue head when a DbWorker mutation returns an error.
 // - Rotate the node ID when a copied database is detected; see the Duplicate
 //   node IDs section in the Timestamp module.
 // - Detect DbWorker and port liveness so a worker-only crash resumes the queue.
 //   Defer panicked-worker restart until failure detection and recovery are
-//   defined, accounting for SQLite WASM's detection limits. Normal SQLite
-//   operations are expected not to throw; user-defined UNIQUE indexes, which
-//   can make replicated writes fail, are planned to be forbidden.
+//   defined, accounting for SQLite WASM's detection limits. A mutation that
+//   throws is answered, but other SQLite operations are expected not to throw;
+//   user-defined UNIQUE indexes, which can make replicated writes fail, are
+//   planned to be forbidden.
 // - Split worker protocol types and the EvoluTenant implementation into focused
 //   modules.
 // - Remove the obsolete commented protocol block above.

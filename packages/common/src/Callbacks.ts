@@ -13,7 +13,8 @@ import type { Callback } from "./Types.ts";
  * Request-response correlation for callbacks across boundaries.
  *
  * Stores callbacks with unique IDs and executes them once with an optional
- * argument. Executed callbacks are automatically removed.
+ * argument. Executed callbacks are automatically removed. A callback whose
+ * response will never come is removed with `unregister`.
  *
  * This is useful for correlating asynchronous request-response operations
  * across boundaries where callback functions cannot be passed directly (e.g.,
@@ -41,6 +42,14 @@ import type { Callback } from "./Types.ts";
  * });
  * callbacks.execute(noArgumentId);
  * callbacks.execute(noArgumentId);
+ * assertEqual(noArgumentCalls, 1);
+ *
+ * // A callback whose response will never come
+ * const failedId = callbacks.register(() => {
+ *   noArgumentCalls++;
+ * });
+ * callbacks.unregister(failedId);
+ * callbacks.execute(failedId);
  * assertEqual(noArgumentCalls, 1);
  *
  * // Typed callback
@@ -71,6 +80,9 @@ export interface Callbacks<T = undefined> extends Disposable {
   readonly execute: T extends undefined
     ? (id: Id) => undefined
     : (id: Id, arg: T) => undefined;
+
+  /** Removes a callback associated with the given ID without executing it. */
+  readonly unregister: (id: Id) => void;
 }
 
 /** Creates a {@link Callbacks} registry for managing callbacks. */
@@ -100,6 +112,10 @@ export const createCallbacks = <T = undefined>(
     },
 
     execute,
+
+    unregister: (id) => {
+      callbackMap.delete(id);
+    },
 
     [Symbol.dispose]: () => {
       callbackMap.clear();

@@ -1867,6 +1867,50 @@ describe("Evolu", () => {
       assertEqual(called, 0);
     });
 
+    it("releases the onComplete callbacks of a failed mutation without running them", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      let called = 0;
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("First failed") },
+        {
+          onComplete: () => {
+            called += 1;
+          },
+        },
+      );
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Second failed") },
+        {
+          onComplete: () => {
+            called += 10;
+          },
+        },
+      );
+
+      await testWaitForWorkerMessage();
+
+      const mutate = evoluInputs[0] as ExtractTyped<EvoluInput, "Mutate">;
+      const { onCompleteIds } = mutate;
+      assertLength(onCompleteIds, 2);
+
+      postEvoluOutput({ type: "OnMutateFailed", onCompleteIds });
+      // Patches naming released callbacks find nothing to run.
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map(),
+        onCompleteIds,
+      });
+
+      await testWaitForWorkerMessage();
+
+      assertEqual(called, 0);
+    });
+
     it("executes mutate onComplete callback when query patches are received", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs, postEvoluOutput } = setup;

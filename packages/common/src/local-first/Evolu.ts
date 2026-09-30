@@ -395,8 +395,10 @@ export interface Evolu<
    *
    * Pass `onComplete` when follow-up work must wait until the mutation is
    * stored and subscribed queries reflect it. It never runs when the database
-   * is unavailable; see {@link Evolu.loadQuery}. A stored change is not always
-   * visible; see {@link MutationOptions.onComplete}.
+   * is unavailable; see {@link Evolu.loadQuery}. It also never runs when the
+   * mutation could not be stored, which {@link EvoluErrorDep.evoluError}
+   * reports. A stored change is not always visible; see
+   * {@link MutationOptions.onComplete}.
    *
    * ### Example
    *
@@ -888,7 +890,8 @@ export type UnuseOwner = () => void;
  *   of the app holds the local data. Ask the user to close the app's other
  *   tabs. It clears when the wait ends.
  * - {@link UnknownError} does not block the app: Evolu logged an unexpected
- *   failure. Show a generic message.
+ *   failure, such as a mutation that could not be stored. Show a generic
+ *   message.
  *
  * A problem syncing an owner through a relay belongs to that relay and often
  * repeats in every round, so sync state shows it on the relay's route, as its
@@ -1213,8 +1216,9 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
         break;
 
       case "Error":
-        // Sent to this tab only: its database refused startup, or its worker
-        // still waits for another build.
+        // Sent to this tab only: its database refused startup, a mutation it
+        // made could not be stored, or its worker still waits for another
+        // build.
         setEvoluError(message.error);
         console.error(message.error);
         break;
@@ -1487,6 +1491,14 @@ export const createEvolu =
             );
             exportDatabasePending.resolve(message.file);
             exportDatabasePending = null;
+            break;
+          }
+
+          case "OnMutateFailed": {
+            // The tab reports the failure, and these callbacks never run.
+            for (const onCompleteId of message.onCompleteIds) {
+              onMutateCompleteCallbacks.unregister(onCompleteId);
+            }
             break;
           }
 

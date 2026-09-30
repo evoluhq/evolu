@@ -7174,6 +7174,148 @@ describe("with one evolu instance", () => {
       assertEqual(evoluOutputs, []);
     });
 
+    it("tells the tab about a failed mutation and runs the next request", async () => {
+      await using setup = await setupSharedWorker();
+      const { createEvolu, run, sharedWorkerOutputs } = setup;
+      const { time } = run.deps;
+      const { dbInputs, dbWorkerPort, evoluChannel, id } = await createEvolu();
+      const outputs: Array<EvoluOutput> = [];
+      evoluChannel.port2.onMessage = (output) => {
+        outputs.push(output);
+      };
+      using errors = testCreateBroadcastChannel<ConsoleEntryOrError>(
+        consoleEntryOrErrorBroadcastChannelName,
+      );
+      const broadcastErrors: Array<ConsoleEntryOrError> = [];
+      errors.onMessage = (output) => {
+        if (output.type === "Error") broadcastErrors.push(output);
+      };
+
+      const onCompleteId = createId(run.deps);
+      evoluChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [
+          {
+            ownerId: testAppOwner.id,
+            ...testCreateCrdtMessage(createId(run.deps), 1, "failed").change,
+          },
+        ],
+        onCompleteIds: [onCompleteId],
+        subscribedQueries: new Set([testQuery]),
+      });
+      evoluChannel.port2.postMessage({
+        type: "Query",
+        queries: createSet([testQuery]),
+      });
+      time.advance("10s");
+      await testWaitForWorkerMessage();
+
+      const mutateInput = dbInputs.at(-1);
+      assertNotUndefined(mutateInput);
+      assertSame(mutateInput.request.message.type, "Mutate");
+      const outputCount = sharedWorkerOutputs.length;
+      const error = createUnknownError(new Error("database or disk is full"));
+
+      dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: mutateInput.attemptId,
+        response: {
+          type: "ForEvolu",
+          id,
+          message: { type: "MutateFailed", error },
+        },
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(sharedWorkerOutputs.slice(outputCount), [
+        { type: "Error", error },
+      ]);
+      assertEqual(broadcastErrors, []);
+      assertEqual(outputs, [
+        { type: "OnMutateFailed", onCompleteIds: [onCompleteId] },
+      ]);
+      const queryInput = dbInputs.at(-1);
+      assertNotUndefined(queryInput);
+      assertSame(queryInput.request.message.type, "Query");
+    });
+
+    it("tells every tab about a failed mutation whose instance was disposed", async () => {
+      await using setup = await setupSharedWorker();
+      const { createEvolu, run, sharedWorkerOutputs, worker } = setup;
+      const instance = await createEvolu();
+
+      // A sibling instance writes and is disposed before the write is
+      // answered.
+      const siblingId = createId<"EvoluInstance">(run.deps);
+      const siblingDisposer = new AsyncDisposableStack();
+      siblingDisposer.use(await run.ok(acquireLeaderLock(siblingId)));
+      using siblingChannel = testCreateMessageChannel<
+        EvoluOutput,
+        EvoluInput
+      >();
+      worker.port.postMessage({
+        type: "CreateEvolu",
+        id: siblingId,
+        name: testName,
+        consoleLevel: "debug",
+        sqliteSchema: testSqliteSchema,
+        encryptionKey: testAppOwner.encryptionKey,
+        memoryOnly: false,
+        evoluPort: siblingChannel.port1.native,
+      });
+      await testWaitForWorkerMessage();
+      siblingChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [
+          {
+            ownerId: testAppOwner.id,
+            ...testCreateCrdtMessage(createId(run.deps), 1, "failed").change,
+          },
+        ],
+        onCompleteIds: [createId(run.deps)],
+        subscribedQueries: new Set(),
+      });
+      await testWaitForWorkerMessage();
+      const mutateInput = instance.dbInputs.at(-1);
+      assertNotUndefined(mutateInput);
+      assertSame(mutateInput.request.type, "ForEvolu");
+      assertSame(mutateInput.request.id, siblingId);
+      await siblingDisposer.disposeAsync();
+      await testWaitForWorkerMessage();
+
+      using errors = testCreateBroadcastChannel<ConsoleEntryOrError>(
+        consoleEntryOrErrorBroadcastChannelName,
+      );
+      const broadcasts: Array<ConsoleEntryOrError> = [];
+      errors.onMessage = (output) => {
+        broadcasts.push(output);
+      };
+      const evoluOutputs: Array<EvoluOutput> = [];
+      instance.evoluChannel.port2.onMessage = (output) => {
+        evoluOutputs.push(output);
+      };
+      siblingChannel.port2.onMessage = (output) => {
+        evoluOutputs.push(output);
+      };
+      const outputCount = sharedWorkerOutputs.length;
+      const error = createUnknownError(new Error("database or disk is full"));
+
+      instance.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: mutateInput.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: siblingId,
+          message: { type: "MutateFailed", error },
+        },
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(broadcasts, [{ type: "Error", error }]);
+      assertEqual(sharedWorkerOutputs.slice(outputCount), []);
+      assertEqual(evoluOutputs, []);
+    });
+
     it("forwards export responses back to the evolu port", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run } = setup;

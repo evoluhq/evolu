@@ -22,6 +22,7 @@ import {
   type ConsoleStoreOutput,
   type TestConsole,
 } from "../../../../packages/common/src/Console.ts";
+import { createUnknownError } from "../../../../packages/common/src/Error.ts";
 import {
   constVoid,
   disposable,
@@ -5174,15 +5175,21 @@ describe("write replay", () => {
           assertTrue(failed);
           assertEqual(getSqliteSnapshot(setup), before);
           assertEqual(setup.getClock(), context.clock);
+          assertEqual(thrown, []);
+          assertLength(setup.outputs, 1);
+          const output = setup.outputs[0];
+          assertSame(output.type, "OnQueuedResponse");
           if (kind === "local") {
-            assertEqual(thrown, [injected]);
-            assertEqual(setup.outputs, []);
+            assertEqual(output.response, {
+              type: "ForEvolu",
+              id: setup.evoluInstanceId,
+              message: {
+                type: "MutateFailed",
+                error: createUnknownError(injected),
+              },
+            });
             assertEqual(setup.consoleEntryOrErrors, []);
           } else {
-            assertEqual(thrown, []);
-            assertLength(setup.outputs, 1);
-            const output = setup.outputs[0];
-            assertSame(output.type, "OnQueuedResponse");
             assertSame(output.response.message.type, "ApplySyncMessage");
             assertFalse(output.response.message.didWriteMessages);
             assertEqual(output.response.message.clock, context.clock);
@@ -6274,9 +6281,19 @@ describe("quarantine transactions", () => {
       assertFalse(failCommit);
       assertEqual(getSqliteSnapshot(setup), before);
       assertEqual(setup.consoleEntryOrErrors, []);
+      assertEqual(thrown, []);
       if (origin === "local") {
-        assertEqual(thrown, [injected]);
-        assertEqual(setup.outputs, []);
+        assertLength(setup.outputs, 1);
+        const output = setup.outputs[0];
+        assertSame(output.type, "OnQueuedResponse");
+        assertEqual(output.response, {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: {
+            type: "MutateFailed",
+            error: createUnknownError(injected),
+          },
+        });
       } else {
         const response = getQueuedSharedWorkerMessage(
           setup.outputs,

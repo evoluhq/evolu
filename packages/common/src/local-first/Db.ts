@@ -56,11 +56,12 @@ import {
   type DecryptWithXChaCha20Poly1305Error,
   type RandomBytesDep,
 } from "../Crypto.ts";
+import { createUnknownError } from "../Error.ts";
 import { constFalse, constVoid } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import { acquireLeaderLock } from "../LockManager.ts";
 import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
-import { err, getOk, ok, type Result } from "../Result.ts";
+import { err, getOk, ok, trySync, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
   SqliteDep,
@@ -376,13 +377,23 @@ export const startDbWorker =
                 return ok();
               });
             } else {
+              // SQLite can fail a write the app cannot prevent, such as on a
+              // full disk. The transaction has rolled back, so the mutation is
+              // answered, or every later request of this database would wait.
+              const mutation = trySync(
+                () =>
+                  handleMutation({
+                    ...dbDeps,
+                    clock: context.clock,
+                  })(request.message, now),
+                createUnknownError,
+              );
               postQueuedResponse({
                 type: "ForEvolu",
                 id: request.id,
-                message: handleMutation({
-                  ...dbDeps,
-                  clock: context.clock,
-                })(request.message, now),
+                message: mutation.ok
+                  ? mutation.value
+                  : { type: "MutateFailed", error: mutation.error },
               });
             }
             return;

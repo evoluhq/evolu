@@ -43,7 +43,7 @@ import {
   type withDefault,
 } from "../Type.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
-import type { Evolu, maxMutationSize } from "./Evolu.ts";
+import type { Evolu, EvoluErrorDep, maxMutationSize } from "./Evolu.ts";
 import type { AppOwner, OwnerIdBytes } from "./Owner.ts";
 import {
   OwnerEncryptionKey,
@@ -514,7 +514,13 @@ export interface MutationOptions {
    * Called after the mutation's changes are stored and subscribed queries
    * reflect them. Useful for follow-up work (e.g., notifications, navigation)
    * after insert, update, or upsert. It never runs when the database is
-   * unavailable.
+   * unavailable or the mutation could not be stored, which
+   * {@link EvoluErrorDep.evoluError} reports.
+   *
+   * An Evolu instance stores its mutations in batches, each in one transaction.
+   * A batch holds the mutations made before Evolu sends it in a microtask,
+   * usually one synchronous block, and {@link Evolu.requestSync} sends it early.
+   * When one mutation cannot be stored, none of its batch is.
    *
    * Stored does not always mean visible. A change quarantined for
    * {@link QuarantineReason.TimestampDrift} is stored in

@@ -117,10 +117,6 @@ const sqliteMock = (() => {
       return { data: "prepared" };
     }
 
-    reset(): void {
-      this.resetCount += 1;
-    }
-
     finalize(): void {
       this.finalized = true;
     }
@@ -193,6 +189,10 @@ const sqliteMock = (() => {
   const sqlite3 = {
     capi: {
       sqlite3_js_db_export: mock.fn(() => new Uint8Array([1, 2, 3])),
+      sqlite3_reset: mock.fn((statement: PreparedStatement) => {
+        statement.resetCount += 1;
+        return 0;
+      }),
       sqlite3mc_vfs_create: mock.fn(),
     },
     installOpfsSAHPoolVfs: mock.fn(() => Promise.resolve(pool)),
@@ -217,6 +217,7 @@ const sqliteMock = (() => {
       pool.unpauseVfs.mock.resetCalls();
       pool.unlink.mock.resetCalls();
       sqlite3.capi.sqlite3_js_db_export.mock.resetCalls();
+      sqlite3.capi.sqlite3_reset.mock.resetCalls();
       sqlite3.capi.sqlite3mc_vfs_create.mock.resetCalls();
       sqlite3.installOpfsSAHPoolVfs.mock.resetCalls();
     },

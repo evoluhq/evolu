@@ -375,6 +375,13 @@ export const createSqlite =
             console.debug("begin");
             driver.exec(sql`begin;`);
 
+            // After errors such as SQLITE_FULL or SQLITE_IOERR, SQLite may roll
+            // back the transaction itself, and this rollback then fails with
+            // "no transaction is active". Disposal wraps both in a
+            // SuppressedError whose `suppressed` holds the original error. The
+            // data is consistent and nothing is lost.
+            // TODO: Rethink this when Evolu detects SQLITE_FULL, which needs
+            // the original error, not the failed rollback.
             using rollback = new DisposableStack();
             let shouldRollback = true;
             rollback.defer(() => {

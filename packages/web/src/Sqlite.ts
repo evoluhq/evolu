@@ -178,18 +178,24 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
         const prepared = cache.get(query);
 
         if (prepared) {
-          if (query.parameters.length > 0) prepared.bind(query.parameters);
+          try {
+            if (query.parameters.length > 0) prepared.bind(query.parameters);
 
-          const rows = [];
-          while (prepared.step()) {
-            rows.push(prepared.get({}));
+            const rows = [];
+            while (prepared.step()) {
+              rows.push(prepared.get({}));
+            }
+
+            return {
+              rows: rows as ReadonlyArray<SqliteRow>,
+              changes: db.changes(),
+            };
+          } finally {
+            // SQLite refuses to bind a statement whose step failed until it is
+            // reset. That reset returns the step's error again, which
+            // PreparedStatement.reset would throw over the original one.
+            sqlite3.capi.sqlite3_reset(prepared);
           }
-          prepared.reset();
-
-          return {
-            rows: rows as ReadonlyArray<SqliteRow>,
-            changes: db.changes(),
-          };
         }
 
         const rows = db.exec(query.sql, {

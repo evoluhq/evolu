@@ -64,3 +64,23 @@ test("Callbacks dispose clears pending callbacks", () => {
 
   assertFalse(called);
 });
+
+test("Callbacks unregister removes a callback without executing it", () => {
+  const deps = testCreateDeps();
+  const callbacks = createCallbacks(deps);
+
+  let calls = 0;
+  const unregisteredId = callbacks.register(() => {
+    calls++;
+  });
+  const keptId = callbacks.register(() => {
+    calls += 10;
+  });
+
+  callbacks.unregister(unregisteredId);
+  callbacks.execute(unregisteredId);
+  assertSame(calls, 0);
+
+  callbacks.execute(keptId);
+  assertSame(calls, 10);
+});
