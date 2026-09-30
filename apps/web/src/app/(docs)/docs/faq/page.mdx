@@ -12,6 +12,7 @@ Frequently asked questions about Evolu.
 ## Questions
 
 - [What is the SQLite database size limit?](#what-is-the-sqlite-database-size-limit)
+- [Will my data stay on the device?](#will-my-data-stay-on-the-device)
 - [How can I check the current database filesize?](#how-can-i-check-the-current-database-filesize)
 - [How to delete OPFS Sqlite in browser?](#how-to-delete-opfs-sqlite-in-browser)
 - [How do I create ORM-like relations (nest related rows in queries)?](#how-do-i-create-orm-like-relations-nest-related-rows-in-queries)
@@ -23,6 +24,81 @@ Frequently asked questions about Evolu.
 ## What is the SQLite database size limit?
 
 The size limit depends on the storage quotas and eviction criteria of the browser or platform in use. For detailed information, refer to the [Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria) documentation.
+
+## Will my data stay on the device?
+
+It depends on the platform, and a browser never promises it. Each Evolu instance
+tells what it knows for sure with `evolu.devicePersistence`:
+
+- `Persisted`: the database is the app's own file, as in React Native.
+- `NotPersisted`: the database is kept in memory, because the `memoryOnly`
+  option asks for it or the browser offers no persistent storage. Data synced
+  with a relay comes back, as on a new device, but changes that have not synced
+  are lost when the tab hosting the database closes.
+- `Unknown`: the browser stores the database, but it may delete it.
+
+Show the user a notice for `NotPersisted`, and never tell them their data is
+saved on the device unless it is `Persisted`. The
+[examples](/docs/examples) show both.
+
+### How Evolu detects missing storage
+
+Evolu's shared worker calls `navigator.storage.getDirectory()` once, before any
+database starts. If it fails, for any reason, every database of that worker is
+kept in memory until the worker ends. The check cannot tell private browsing
+from a storage failure, and it does not need to: memory keeps working, and a
+persistent database the browser cannot reach stays untouched.
+
+| Browser                                         | Private browsing                                                                 | Evolu reports  |
+| ----------------------------------------------- | -------------------------------------------------------------------------------- | -------------- |
+| Safari on macOS, iOS, and iPadOS                | No OPFS: `getDirectory()` rejects with `UnknownError`                            | `NotPersisted` |
+| Other iOS and iPadOS browsers built on WebKit   | The same as Safari                                                               | `NotPersisted` |
+| Firefox                                         | No OPFS since Firefox 109: `getDirectory()` rejects with `SecurityError`         | `NotPersisted` |
+| Chrome, Edge, and other Chromium-based browsers | OPFS is kept in memory and deleted when the incognito session ends, undetectably | `Unknown`      |
+
+### Why a browser may delete stored data
+
+- **Safari deletes it after seven days without a visit.** With tracking
+  prevention on, the default, Safari deletes all data a site's scripts stored,
+  including OPFS, after seven days of Safari use without the user interacting
+  with the site. Web apps added to the Home Screen are exempt. See
+  [Full Third-Party Cookie Blocking and
+  More](https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/).
+- **Browsers delete it when disk space runs low.** Chrome, Firefox, and Safari
+  delete the least recently used sites' data first, unless the site's storage is
+  persistent. See [Storage quotas and eviction
+  criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria).
+- **Users can clear site data at any time.**
+
+Only changes that have not synced exist nowhere else, so an app that syncs with
+a relay loses at most those.
+
+### Persistent storage
+
+A site whose storage is persistent keeps it when disk space runs low. After the
+first local change of a database the browser stores, Evolu asks the browser
+once per tab with
+[`navigator.storage.persist()`](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/persist):
+
+- Chrome decides silently, granting it to sites the user installed, bookmarked,
+  uses often, or allows to send notifications.
+- Firefox asks the user, so every tab asks until the user allows it.
+- Safari decides silently, granting it mainly to Home Screen web apps.
+
+Evolu asks after the first change, not on page load, because only unsynced
+changes need it, and Firefox's prompt makes sense to the user only after they
+saved something. To ask at another moment, or never, pass your own
+`requestPersistentStorage` to `createEvoluDeps`:
+
+```ts
+import { constVoid } from "@evolu/common";
+import { createEvoluDeps } from "@evolu/web";
+
+const deps = createEvoluDeps({ requestPersistentStorage: constVoid });
+```
+
+A user who wants nothing kept on the device needs the app to offer the
+`memoryOnly` option.
 
 ## How can I check the current database filesize?
 

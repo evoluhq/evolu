@@ -1,5 +1,6 @@
 import {
   exhaustiveCheck,
+  tryAsync,
   trySync,
   type ConsoleDep,
   type ReloadApp,
@@ -10,7 +11,9 @@ import type {
   SharedWorker as CommonSharedWorker,
   CreateDbWorker,
   DbWorkerInit,
+  Evolu,
   EvoluDeps,
+  RequestPersistentStorageDep,
   SharedWorkerId,
   SharedWorkerInput,
   SharedWorkerOutput,
@@ -38,23 +41,6 @@ export interface SharedWorkerUnsupportedDep {
   readonly onSharedWorkerUnsupported: () => void;
 }
 
-export interface StorageUnavailableDep {
-  /**
-   * Called when the browser offers no persistent storage, as in Safari's
-   * Private Browsing, so every database is kept in memory. See Storage in the
-   * Shared module of `@evolu/common`.
-   *
-   * The app keeps working. Data synced with a relay comes back, as on a new
-   * device, and nothing stays on the device once the tabs close. That suits
-   * someone checking their app on a borrowed phone, so a message such as
-   * "Nothing from this session is kept on this device." tells the user what to
-   * expect. Data that exists only locally, or has not synced yet, is lost when
-   * the tab hosting the database closes or navigates away, even while other
-   * tabs stay open.
-   */
-  readonly onStorageUnavailable: () => void;
-}
-
 /**
  * Creates Evolu dependencies for the web platform.
  *
@@ -75,9 +61,20 @@ export interface StorageUnavailableDep {
  * the user comes back to it.
  *
  * Where the browser offers no persistent storage, as in Safari's Private
- * Browsing, the database is kept in memory, and
- * {@link StorageUnavailableDep.onStorageUnavailable} lets the app tell the
- * user.
+ * Browsing or a Firefox private window, the database is kept in memory, and
+ * {@link Evolu.devicePersistence} resolves to `NotPersisted`, so the app can
+ * tell the user. Data that exists only locally, or has not synced yet, is lost
+ * when the tab hosting the database closes or navigates away, even while other
+ * tabs stay open.
+ *
+ * After the first local mutation of a database the browser stores, this tab
+ * asks the browser once with `navigator.storage.persist()` not to delete the
+ * site's data when disk space runs low. Chrome and Safari decide silently, and
+ * Firefox asks the user, so every tab asks until the user allows it. A custom
+ * {@link RequestPersistentStorageDep.requestPersistentStorage} replaces the
+ * request, for example with `constVoid` to never ask. See [Will my data stay on
+ * the
+ * device?](https://www.evolu.dev/docs/faq#will-my-data-stay-on-the-device).
  *
  * A custom {@link ReloadApp} replaces the default page reload, for example to
  * save state first. It should end by reloading the page, because the other
@@ -88,7 +85,7 @@ export const createEvoluDeps = (
   deps: Partial<ConsoleDep> &
     Partial<ReloadAppDep> &
     Partial<SharedWorkerUnsupportedDep> &
-    Partial<StorageUnavailableDep> = {},
+    Partial<RequestPersistentStorageDep> = {},
 ): EvoluDeps => {
   installOneTabSharedWorkerPolyfill();
   const reloadThisApp = deps.reloadApp ?? reloadApp;
@@ -110,6 +107,7 @@ export const createEvoluDeps = (
   const earlyAnnouncedWorkerIds = new Set<SharedWorkerId>();
   // Checks whether the user left this tab while another build waits.
   let focusCheckId: ReturnType<typeof setInterval> | null = null;
+  let isPersistentStorageRequested = false;
 
   using disposer = new DisposableStack();
   const buildsBroadcastChannel = disposer.use(
@@ -225,12 +223,6 @@ export const createEvoluDeps = (
         break;
       }
 
-      case "StorageUnavailable": {
-        deps.onStorageUnavailable?.();
-        forward(message);
-        break;
-      }
-
       case "SharedWorkerUnsupported": {
         if (deps.onSharedWorkerUnsupported) {
           deps.onSharedWorkerUnsupported();
@@ -292,8 +284,18 @@ export const createEvoluDeps = (
     },
   };
 
+  const requestPersistentStorage = (): void => {
+    if (isPersistentStorageRequested) return;
+    isPersistentStorageRequested = true;
+    void tryAsync(async () => {
+      if (await navigator.storage.persisted()) return;
+      await navigator.storage.persist();
+    });
+  };
+
   const evoluDeps = disposer.use(
     createCommonEvoluDeps({
+      requestPersistentStorage,
       ...deps,
       createDbWorker,
       createBroadcastChannel,

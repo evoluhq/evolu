@@ -173,6 +173,7 @@ describe("Evolu integration", () => {
         createMessageChannel,
         createMessagePort,
         createWebSocket,
+        getDevicePersistence: () => Promise.resolve("Unknown" as const),
         lockManager,
         ...(time && { time }),
       }),
@@ -236,7 +237,6 @@ describe("Evolu integration", () => {
           tabErrorReported = Promise.withResolvers<void>();
           break;
         case "Waiting":
-        case "StorageUnavailable":
           break;
         case "Connected":
           connected.resolve(message);
@@ -1814,6 +1814,7 @@ describe("Evolu integration", () => {
       createMessageChannel,
       createMessagePort,
       createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
+      getDevicePersistence: () => Promise.resolve("Unknown" as const),
       lockManager: testCreateLockManager(),
     });
 

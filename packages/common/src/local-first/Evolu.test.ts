@@ -372,16 +372,6 @@ describe("Evolu", () => {
       assertSame(setup.deps.evoluError.get(), null);
     });
 
-    it("says nothing to a worker that reports it keeps databases in memory", async () => {
-      using setup = await setupCreateEvoluDeps();
-
-      setup.sharedWorkerPort.postMessage({ type: "StorageUnavailable" });
-      await testWaitForWorkerMessage();
-
-      assertEqual(setup.messages, []);
-      assertSame(setup.deps.evoluError.get(), null);
-    });
-
     it("announces itself as tab leader with its console level once its worker connects", async () => {
       const testConsole = testCreateConsole();
       using setup = await setupCreateEvoluDeps(testConsole);
@@ -1499,6 +1489,106 @@ describe("Evolu", () => {
         });
         assertSame(evoluInputs[1]?.type, "Mutate");
       });
+    });
+  });
+
+  describe("device persistence", () => {
+    const setupPersistenceRequests = async () => {
+      let requestCount = 0;
+      const setup = await setupRunWithEvoluDeps({
+        requestPersistentStorage: () => {
+          requestCount += 1;
+        },
+      });
+      return Object.assign(setup, { getRequestCount: () => requestCount });
+    };
+
+    it("resolves devicePersistence to what its tenant sends", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const evolu = await setup.run.ok(testCreateEvolu);
+
+      setup.postEvoluOutput({
+        type: "OnDevicePersistence",
+        devicePersistence: "NotPersisted",
+      });
+
+      assertSame(await evolu.devicePersistence, "NotPersisted");
+    });
+
+    it("resolves devicePersistence to Unknown when disposed before its tenant sends it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const evolu = await setup.run.ok(testCreateEvolu);
+
+      await evolu[Symbol.asyncDispose]();
+
+      assertSame(await evolu.devicePersistence, "Unknown");
+    });
+
+    it("requests persistent storage once, after the first mutation, when devicePersistence is Unknown", async () => {
+      await using setup = await setupPersistenceRequests();
+      const evolu = await setup.run.ok(testCreateEvolu);
+      setup.postEvoluOutput({
+        type: "OnDevicePersistence",
+        devicePersistence: "Unknown",
+      });
+      await evolu.devicePersistence;
+      await testWaitForWorkerMessage();
+      assertSame(setup.getRequestCount(), 0);
+
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("A") });
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("B") });
+      await testWaitForWorkerMessage();
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("C") });
+      await testWaitForWorkerMessage();
+
+      assertSame(setup.getRequestCount(), 1);
+    });
+
+    it("requests persistent storage once devicePersistence resolves after the first mutation", async () => {
+      await using setup = await setupPersistenceRequests();
+      const evolu = await setup.run.ok(testCreateEvolu);
+
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("A") });
+      await testWaitForWorkerMessage();
+      assertSame(setup.getRequestCount(), 0);
+
+      setup.postEvoluOutput({
+        type: "OnDevicePersistence",
+        devicePersistence: "Unknown",
+      });
+      await evolu.devicePersistence;
+      await testWaitForWorkerMessage();
+
+      assertSame(setup.getRequestCount(), 1);
+    });
+
+    for (const devicePersistence of ["Persisted", "NotPersisted"] as const) {
+      it(`does not request persistent storage when devicePersistence is ${devicePersistence}`, async () => {
+        await using setup = await setupPersistenceRequests();
+        const evolu = await setup.run.ok(testCreateEvolu);
+        setup.postEvoluOutput({
+          type: "OnDevicePersistence",
+          devicePersistence,
+        });
+
+        evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("A") });
+        await evolu.devicePersistence;
+        await testWaitForWorkerMessage();
+
+        assertSame(setup.getRequestCount(), 0);
+      });
+    }
+
+    it("does not request persistent storage after disposal", async () => {
+      await using setup = await setupPersistenceRequests();
+      const evolu = await setup.run.ok(testCreateEvolu);
+
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("A") });
+      await evolu[Symbol.asyncDispose]();
+      await evolu.devicePersistence;
+      await testWaitForWorkerMessage();
+
+      assertSame(setup.getRequestCount(), 0);
     });
   });
 

@@ -42,9 +42,13 @@ addUncaughtErrorListener(self, (error) => {
 const run = createRun({
   ...createWorkerDeps(),
   createWebSocket,
-  // Safari's Private Browsing offers no OPFS; see Storage in the Shared module.
-  isPersistentStorageAvailable: async () =>
-    (await tryAsync(() => navigator.storage.getDirectory())).ok,
+  // Safari's Private Browsing and Firefox's private windows offer no OPFS, and
+  // a browser may delete it, as Chrome's incognito does when the session ends;
+  // see Storage in the Shared module.
+  getDevicePersistence: async () =>
+    (await tryAsync(() => navigator.storage.getDirectory())).ok
+      ? "Unknown"
+      : "NotPersisted",
   lockManager: navigator.locks,
 });
 

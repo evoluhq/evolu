@@ -23,6 +23,13 @@ import { PwaBadgeComponent } from "./pwa-badge.component";
           </p>
         }
 
+        @if (appService.isNotPersisted()) {
+          <p class="mb-4 text-sm text-gray-600">
+            Your data isn't kept on this device. Changes that haven't synced are
+            lost when you close this tab.
+          </p>
+        }
+
         <!-- Always mounted: screen readers announce changes only in a live
         region that already exists. -->
         <div role="status">

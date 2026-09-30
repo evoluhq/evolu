@@ -39,6 +39,13 @@ export class AppService implements OnDestroy {
 
   readonly evoluError = signal(this.evoluErrorStore.get());
 
+  /**
+   * Whether this device doesn't keep the data, because of the `memoryOnly`
+   * option or a browser without persistent storage, as in private browsing. See
+   * `DevicePersistence` in `@evolu/common/local-first`.
+   */
+  readonly isNotPersisted = signal(false);
+
   private readonly syncState = signal(this.syncStateStore.get());
 
   /**
@@ -57,11 +64,11 @@ export class AppService implements OnDestroy {
     // An app that sells relay quota offers more for a ProtocolQuotaError, then
     // calls `this.evolu.requestSync(this.evolu.appOwner.id)`.
     return status.type === "Offline"
-      ? "Offline. Your changes are saved on this device."
+      ? "Offline. Changes will sync when you're back online."
       : status.type === "Error"
         ? status.error.type === "ProtocolQuotaError"
-          ? "Sync is paused because the sync server is full. Your changes are saved on this device."
-          : `Sync error: ${status.error.type}. Your changes are saved on this device.`
+          ? "Sync is paused because the sync server is full."
+          : `Sync error: ${status.error.type}.`
         : null;
   });
 
@@ -76,6 +83,10 @@ export class AppService implements OnDestroy {
     );
     this.initializeData();
     this.initializeAppOwner();
+    // Resolves once the database starts.
+    void this.evolu.devicePersistence.then((devicePersistence) => {
+      this.isNotPersisted.set(devicePersistence === "NotPersisted");
+    });
   }
 
   ngOnDestroy(): void {

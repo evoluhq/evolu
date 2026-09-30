@@ -1,10 +1,14 @@
 import { expect } from "playwright/test";
 import { expectStaysVisible } from "./expectStaysVisible.mts";
-import { addTodo, afterRestart, test } from "./fixtures.mts";
+import { addTodo, afterRestart, countPersistCalls, test } from "./fixtures.mts";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/playgrounds/minimal");
   await expect(page.getByPlaceholder("Add a new todo...")).toBeVisible();
+  // The notice shares the input's Suspense boundary, so it would show by now.
+  await expect(
+    page.getByText("Your data isn't kept on this device"),
+  ).toHaveCount(0);
   await expect(page.getByRole("listitem")).toHaveCount(0);
 });
 
@@ -34,6 +38,20 @@ test("creates, completes, renames, and deletes a todo", async ({
 
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByRole("listitem")).toHaveCount(0);
+});
+
+test("asks the browser to keep the site's data after the first change", async ({
+  page,
+}) => {
+  const persistCallCount = await countPersistCalls(page);
+  await page.reload();
+  await expect(page.getByPlaceholder("Add a new todo...")).toBeVisible();
+  expect(await persistCallCount()).toBe(0);
+
+  await addTodo(page, "First");
+  await expect.poll(persistCallCount).toBe(1);
+  await addTodo(page, "Second");
+  expect(await persistCallCount()).toBe(1);
 });
 
 test("keeps todos and deletions after reload", async ({ page }) => {
@@ -153,7 +171,7 @@ test("shows when changes can't leave this device", async ({ page, relay }) => {
 
   await relay.stop();
   await expect(syncStatus).toHaveText(
-    "Offline. Your changes are saved on this device.",
+    "Offline. Changes will sync when you're back online.",
   );
 
   // A one-byte quota rejects every write.
@@ -161,7 +179,7 @@ test("shows when changes can't leave this device", async ({ page, relay }) => {
   await expect(syncStatus).toBeEmpty(afterRestart);
   await addTodo(page, "Over quota");
   await expect(syncStatus).toHaveText(
-    "Sync is paused because the sync server is full. Your changes are saved on this device.",
+    "Sync is paused because the sync server is full.",
   );
   await expect(syncAlert).toHaveCount(0);
 

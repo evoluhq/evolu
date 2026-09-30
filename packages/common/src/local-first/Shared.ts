@@ -69,13 +69,20 @@
  *
  * ## Storage
  *
- * A platform that can lack persistent storage, as a browser does in Safari's
- * Private Browsing, provides {@link PersistentStorageDep}. The worker checks it
- * once, after it takes the build lock and before any DbWorker starts. Without
- * persistent storage, every DbWorker it starts keeps its database in memory,
- * replacements included, and each tab that connects is told with
- * `StorageUnavailable`. The decision holds for the worker's lifetime, so all
- * its tabs see one mode, and the next worker checks again.
+ * The platform tells the worker with {@link DevicePersistenceDep} what it can
+ * promise about stored databases. The worker asks once, after it takes the
+ * build lock and before any DbWorker starts. A browser checks whether it can
+ * open the origin private file system, which Safari's Private Browsing and
+ * Firefox's private windows refuse. Without persistent storage, every DbWorker
+ * the worker starts keeps its database in memory, replacements included. The
+ * decision holds for the worker's lifetime, so all its tabs see one mode, and
+ * the next worker checks again.
+ *
+ * A tenant tells each instance it adds its {@link Evolu.devicePersistence}:
+ * `NotPersisted` when its database is kept in memory, because of the platform
+ * or {@link EvoluConfig.memoryOnly}, otherwise what the platform promised.
+ * Instances of one name share the tenant, so a later instance gets the mode the
+ * first one chose.
  *
  * The check cannot tell a private session from a storage failure, but memory
  * loses nothing that refusing to start would have kept, and the persistent
@@ -333,7 +340,12 @@ import type {
   WorkerDeps,
 } from "../Worker.ts";
 import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
-import type { Evolu, SyncStateDep } from "./Evolu.ts";
+import type {
+  DevicePersistence,
+  Evolu,
+  EvoluConfig,
+  SyncStateDep,
+} from "./Evolu.ts";
 import type { Owner, OwnerId, OwnerTransport, SyncOwner } from "./Owner.ts";
 import {
   createProtocolBroadcastMessagesFromCrdtMessages,
@@ -420,14 +432,6 @@ export type SharedWorkerOutput =
       readonly type: "Connected";
       readonly workerId: SharedWorkerId;
       readonly syncStateChannelName: string;
-    }
-  | {
-      /**
-       * Sent to a connecting tab after `Connected` when the platform offers no
-       * persistent storage, so the worker keeps every database in memory; see
-       * Storage in this module's documentation.
-       */
-      readonly type: "StorageUnavailable";
     };
 
 export type ConsoleEntryOrError =
@@ -741,22 +745,23 @@ export interface RelaySyncState {
  *   stops syncing through its relay, while a skipped change leaves out only
  *   that change.
  *
- * Evolu saves changes on the device before they sync, so sync needs no UI while
- * it works: show nothing for `NoRelays`, `Syncing`, and `Synced`. An indicator
- * that changes with every edit distracts, and screen readers announce each
- * change.
+ * Evolu stores changes in the local database before they sync, so sync needs no
+ * UI while it works: show nothing for `NoRelays`, `Syncing`, and `Synced`. An
+ * indicator that changes with every edit distracts, and screen readers announce
+ * each change.
  *
  * For `Offline` and `Error`, show one quiet line that lasts as long as the
  * status, not a dialog, which interrupts, or a toast, which disappears while
- * the problem lasts. Say that changes are saved on this device. Evolu reports
- * `Offline` at once; an app may wait a few seconds before showing it, because
- * brief disconnections, such as waking from sleep, reconnect quickly. For
- * `Error`, write actionable text for the error types the app can act on, such
- * as a {@link ProtocolQuotaError}: the relay stores no more data for the owner,
- * so offer more quota, such as a plan upgrade, then call
- * {@link Evolu.requestSync} with the owner's ID. For any other error, show
- * generic text that names the error type, which helps when the user reports
- * it.
+ * the problem lasts. Do not say that changes are saved on this device unless
+ * {@link Evolu.devicePersistence} is `Persisted`: a browser may keep them only
+ * for a private session or delete them later. Evolu reports `Offline` at once;
+ * an app may wait a few seconds before showing it, because brief
+ * disconnections, such as waking from sleep, reconnect quickly. For `Error`,
+ * write actionable text for the error types the app can act on, such as a
+ * {@link ProtocolQuotaError}: the relay stores no more data for the owner, so
+ * offer more quota, such as a plan upgrade, then call {@link Evolu.requestSync}
+ * with the owner's ID. For any other error, show generic text that names the
+ * error type, which helps when the user reports it.
  *
  * Render the line inside one element with `role="status"` that stays mounted:
  * screen readers announce changes only in a live region that already exists,
@@ -785,18 +790,18 @@ export interface RelaySyncState {
  *     case "Synced":
  *       return null;
  *     case "Offline":
- *       return "Offline. Your changes are saved on this device.";
+ *       return "Offline. Changes will sync when you're back online.";
  *     case "Error":
  *       return status.error.type === "ProtocolQuotaError"
- *         ? "Sync is paused because the sync server is full. Your changes are saved on this device."
- *         : `Sync error: ${status.error.type}. Your changes are saved on this device.`;
+ *         ? "Sync is paused because the sync server is full."
+ *         : `Sync error: ${status.error.type}.`;
  *   }
  * };
  *
  * assertEqual(syncStatusToMessage({ type: "Synced" }), null);
  * assertEqual(
  *   syncStatusToMessage({ type: "Offline" }),
- *   "Offline. Your changes are saved on this device.",
+ *   "Offline. Changes will sync when you're back online.",
  * );
  * assertEqual(
  *   syncStatusToMessage({
@@ -807,14 +812,14 @@ export interface RelaySyncState {
  *       at: Millis.orThrow(1000),
  *     },
  *   }),
- *   "Sync is paused because the sync server is full. Your changes are saved on this device.",
+ *   "Sync is paused because the sync server is full.",
  * );
  * assertEqual(
  *   syncStatusToMessage({
  *     type: "Error",
  *     error: { type: "SyncFailed", at: Millis.orThrow(1000) },
  *   }),
- *   "Sync error: SyncFailed. Your changes are saved on this device.",
+ *   "Sync error: SyncFailed.",
  * );
  * ```
  */
@@ -1210,6 +1215,11 @@ export type EvoluOutput =
       /** The mutation with these onComplete callbacks could not be stored. */
       readonly type: "OnMutateFailed";
       readonly onCompleteIds: ReadonlyArray<Id>;
+    }
+  | {
+      /** Sent once, when the tenant adds the instance; see Storage. */
+      readonly type: "OnDevicePersistence";
+      readonly devicePersistence: DevicePersistence;
     };
 
 export type DbWorkerInput =
@@ -1334,21 +1344,22 @@ export type DbWorkerQueuedResponse =
     };
 
 /**
- * Tells whether the platform can store databases persistently.
+ * Tells what the platform can promise about the databases it stores.
  *
- * Only a platform that can lack persistent storage provides it, as a browser
- * does in Safari's Private Browsing; see Storage in the Shared module.
+ * `NotPersisted` means the platform offers no persistent storage now, as a
+ * browser does in Safari's Private Browsing or a Firefox private window, so the
+ * worker keeps every database in memory; see Storage in the Shared module.
  */
-export interface PersistentStorageDep {
-  readonly isPersistentStorageAvailable: () => Promise<boolean>;
+export interface DevicePersistenceDep {
+  readonly getDevicePersistence: () => Promise<DevicePersistence>;
 }
 
 export type SharedWorkerDeps = WorkerDeps &
   CreateBroadcastChannelDep &
   CreateMessageChannelDep &
   CreateWebSocketDep &
-  LockManagerDep &
-  Partial<PersistentStorageDep>;
+  DevicePersistenceDep &
+  LockManagerDep;
 
 /**
  * Coordinates all instances of one named local database within a SharedWorker.
@@ -1748,9 +1759,6 @@ export const initSharedWorker =
           workerId,
           syncStateChannelName,
         });
-        if (isPersistentStorageUnavailable) {
-          port.postMessage({ type: "StorageUnavailable" });
-        }
       });
     };
 
@@ -1766,12 +1774,10 @@ export const initSharedWorker =
     disposer.use(await run.ok(acquireLeaderLock("tab")));
     starting.dispose();
 
-    // Checked once, before any DbWorker starts, so every DbWorker of this
-    // worker, replacements included, keeps its database in memory; see
-    // Storage.
-    const isPersistentStorageUnavailable =
-      deps.isPersistentStorageAvailable !== undefined &&
-      !(await deps.isPersistentStorageAvailable());
+    // Checked once, before any DbWorker starts, so without persistent
+    // storage every DbWorker of this worker, replacements included, keeps its
+    // database in memory; see Storage.
+    const platformDevicePersistence = await deps.getDevicePersistence();
 
     disposer.defer(
       deps.consoleStoreOutputEntry.subscribe(() => {
@@ -2233,14 +2239,17 @@ export const initSharedWorker =
     const tenantsByName = disposer.use(
       await sharedWorkerRun.ok(
         createSharedResourceByKey(
-          (message: ExtractTyped<SharedWorkerInput, "CreateEvolu">) =>
-            createEvoluTenant(
-              isPersistentStorageUnavailable
-                ? { ...message, memoryOnly: true }
-                : message,
+          (message: ExtractTyped<SharedWorkerInput, "CreateEvolu">) => {
+            const memoryOnly =
+              message.memoryOnly ||
+              platformDevicePersistence === "NotPersisted";
+            return createEvoluTenant(
+              { ...message, memoryOnly },
+              memoryOnly ? "NotPersisted" : platformDevicePersistence,
               currentTenantsByName,
               workerId,
-            ),
+            );
+          },
           {
             idleDisposeAfter: "3s",
             lookup: (message) => message.name,
@@ -2269,6 +2278,7 @@ const createEvoluTenant =
       encryptionKey,
       memoryOnly,
     }: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
+    devicePersistence: DevicePersistence,
     currentTenantsByName: Map<Name, BorrowedResource<EvoluTenant>>,
     workerId: SharedWorkerId,
   ): Task<EvoluTenant, never, EvoluTenantDeps> =>
@@ -3403,6 +3413,12 @@ const createEvoluTenant =
           disposer.use(instance.port);
           disposer.defer(() => {
             instance.port.onMessage = null;
+          });
+          // Instances of one name share the tenant, so each learns the mode
+          // the first one chose.
+          instance.port.postMessage({
+            type: "OnDevicePersistence",
+            devicePersistence,
           });
 
           // The main-thread Evolu instance holds this per-instance leader lock

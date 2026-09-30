@@ -148,26 +148,59 @@ describe("createEvoluDeps", () => {
     });
   });
 
-  describe("storage unavailable", () => {
-    const workerId = createIdFromString<"SharedWorker">("worker");
-
-    it("tells the app when its worker keeps databases in memory", () => {
-      const onStorageUnavailable = mock.fn<() => void>();
-      using setup = setupWebEvoluDeps({ onStorageUnavailable });
-      setup.connect(workerId);
-
-      setup.post({ type: "StorageUnavailable" });
-
-      assertSame(onStorageUnavailable.mock.callCount(), 1);
+  describe("persistent storage request", () => {
+    const setupStorage = (isPersisted: boolean) => ({
+      persisted: mock.fn(() => Promise.resolve(isPersisted)),
+      persist: mock.fn(() => Promise.resolve(true)),
     });
 
-    it("works without a callback", () => {
-      using setup = setupWebEvoluDeps();
-      setup.connect(workerId);
+    it("asks the browser once to keep the site's data", async () => {
+      const storage = setupStorage(false);
+      using setup = setupWebEvoluDeps({ storage });
 
-      setup.post({ type: "StorageUnavailable" });
+      setup.deps.requestPersistentStorage?.();
+      setup.deps.requestPersistentStorage?.();
+      await waitForMacrotask();
 
-      assertSame(setup.reloadApp.mock.callCount(), 0);
+      assertSame(storage.persisted.mock.callCount(), 1);
+      assertSame(storage.persist.mock.callCount(), 1);
+    });
+
+    it("does not ask when the site's data is already persistent", async () => {
+      const storage = setupStorage(true);
+      using setup = setupWebEvoluDeps({ storage });
+
+      setup.deps.requestPersistentStorage?.();
+      await waitForMacrotask();
+
+      assertSame(storage.persist.mock.callCount(), 0);
+    });
+
+    it("ignores a browser that refuses to answer", async () => {
+      const storage = {
+        persisted: mock.fn(() =>
+          Promise.reject(new TypeError("Storage is disabled.")),
+        ),
+        persist: mock.fn(() => Promise.resolve(true)),
+      };
+      using setup = setupWebEvoluDeps({ storage });
+
+      setup.deps.requestPersistentStorage?.();
+      await waitForMacrotask();
+
+      assertSame(storage.persist.mock.callCount(), 0);
+    });
+
+    it("uses the app's request instead", async () => {
+      const storage = setupStorage(false);
+      const requestPersistentStorage = mock.fn<() => void>();
+      using setup = setupWebEvoluDeps({ storage, requestPersistentStorage });
+
+      setup.deps.requestPersistentStorage?.();
+      await waitForMacrotask();
+
+      assertSame(requestPersistentStorage.mock.callCount(), 1);
+      assertSame(storage.persisted.mock.callCount(), 0);
     });
   });
 
@@ -443,7 +476,8 @@ const setupWebEvoluDeps = ({
   isSessionStorageAvailable = true,
   refusalReloads,
   reloadedFor,
-  onStorageUnavailable,
+  storage,
+  requestPersistentStorage,
 }: {
   hasFocus?: boolean;
   isAutomaticReload?: boolean;
@@ -452,7 +486,9 @@ const setupWebEvoluDeps = ({
   refusalReloads?: string;
   /** The stored waiting workers, as a previous page load left them. */
   reloadedFor?: string;
-  onStorageUnavailable?: () => void;
+  /** Stands in for `navigator.storage`. */
+  storage?: Pick<StorageManager, "persist" | "persisted">;
+  requestPersistentStorage?: () => void;
 } = {}) => {
   using disposer = new DisposableStack();
   const sharedWorkerPort = createClosableNativePort<unknown>();
@@ -539,12 +575,17 @@ const setupWebEvoluDeps = ({
   );
   let hasFocus = initialHasFocus;
   disposer.use(testStubGlobal("document", { hasFocus: () => hasFocus }));
+  if (storage) {
+    disposer.use(
+      testStubGlobal("navigator", { locks: navigator.locks, storage }),
+    );
+  }
   const reloadApp = mock.fn<ReloadApp>();
 
   const deps = createEvoluDeps({
     console: createConsole({ level: "silent" }),
     reloadApp,
-    ...(onStorageUnavailable && { onStorageUnavailable }),
+    ...(requestPersistentStorage && { requestPersistentStorage }),
   });
   const builds = channels.find(
     (channel) => channel.name === buildsBroadcastChannelName,

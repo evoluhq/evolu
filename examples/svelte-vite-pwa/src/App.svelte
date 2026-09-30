@@ -45,11 +45,11 @@
     // An app that sells relay quota offers more for a ProtocolQuotaError, then
     // calls `evolu.requestSync(evolu.appOwner.id)`.
     return status.type === "Offline"
-      ? "Offline. Your changes are saved on this device."
+      ? "Offline. Changes will sync when you're back online."
       : status.type === "Error"
         ? status.error.type === "ProtocolQuotaError"
-          ? "Sync is paused because the sync server is full. Your changes are saved on this device."
-          : `Sync error: ${status.error.type}. Your changes are saved on this device.`
+          ? "Sync is paused because the sync server is full."
+          : `Sync error: ${status.error.type}.`
         : null;
   });
 
@@ -142,6 +142,17 @@
         Evolu error: {error.type}. See the console for details.
       </p>
     {/if}
+
+    <!-- Resolves once the database starts. See `DevicePersistence` in
+    `@evolu/common/local-first`. -->
+    {#await evolu.devicePersistence then devicePersistence}
+      {#if devicePersistence === "NotPersisted"}
+        <p class="sync-status">
+          Your data isn't kept on this device. Changes that haven't synced are
+          lost when you close this tab.
+        </p>
+      {/if}
+    {/await}
 
     <!-- Always mounted: screen readers announce changes only in a live region
     that already exists. -->

@@ -64,6 +64,8 @@ export const createEvoluDeps = (
       createMessagePort,
       createWebSocket,
       createSqliteDriver: deps.createSqliteDriver,
+      // Databases are files the app owns.
+      getDevicePersistence: () => Promise.resolve("Persisted" as const),
       lockManager,
       randomBytes: createRandomBytes(),
     });

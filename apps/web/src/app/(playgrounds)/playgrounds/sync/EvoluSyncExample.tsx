@@ -207,6 +207,7 @@ const App: FC = () => (
           Changes are saved locally first.
         </p>
         <Suspense fallback={<p role="status">Loading items…</p>}>
+          <DevicePersistenceNotice />
           <Items />
         </Suspense>
       </section>
@@ -214,6 +215,24 @@ const App: FC = () => (
     </div>
   </EvoluContext>
 );
+
+/**
+ * Tells the user when this device doesn't keep their data, and shows nothing
+ * otherwise. That happens with the `memoryOnly` option, or where the browser
+ * offers no persistent storage, as in Safari's Private Browsing or a Firefox
+ * private window. See `DevicePersistence` in `@evolu/common/local-first`.
+ */
+const DevicePersistenceNotice: FC = () => {
+  // Resolves once the database starts.
+  const devicePersistence = use(useEvolu().devicePersistence);
+  if (devicePersistence !== "NotPersisted") return null;
+  return (
+    <p className="mb-4 text-sm text-zinc-600">
+      Your data isn&apos;t kept on this device. Changes that haven&apos;t synced
+      are lost when you close this tab.
+    </p>
+  );
+};
 
 const Items: FC = () => {
   const items = useQuery(itemsQuery);

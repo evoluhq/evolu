@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import {
   expect,
   test as base,
+  type Browser,
   type BrowserContext,
   type Dialog,
   type Page,
@@ -46,6 +47,11 @@ export interface BrowserEvents {
   /** Creates a watched context that closes when the test ends. */
   readonly newContext: () => Promise<BrowserContext>;
   /**
+   * Creates a watched private browsing context that closes when the test ends.
+   * Firefox and WebKit offer no OPFS there, while Chromium's incognito does.
+   */
+  readonly newPrivateContext: () => Promise<BrowserContext>;
+  /**
    * Accepts the next dialog after checking its message; a prompt receives
    * `value`. Any other dialog, including the examples' Evolu error alert, is
    * dismissed and fails the test.
@@ -82,6 +88,7 @@ export const test = /*#__PURE__*/ base.extend<
       value: string | undefined;
     }> = [];
     const contexts: Array<BrowserContext> = [];
+    const privateBrowsers: Array<Browser> = [];
     const webkitHomes: Array<string> = [];
 
     const recordFailure = (error: unknown) => {
@@ -109,6 +116,12 @@ export const test = /*#__PURE__*/ base.extend<
       for (const page of context.pages()) page.on("dialog", handleDialog);
     };
 
+    const track = (context: BrowserContext): BrowserContext => {
+      watch(context);
+      contexts.push(context);
+      return context;
+    };
+
     await runTest({
       watch,
       newContext: async () => {
@@ -128,9 +141,24 @@ export const test = /*#__PURE__*/ base.extend<
         } else {
           context = await browser.newContext({ ...(baseURL && { baseURL }) });
         }
-        watch(context);
-        contexts.push(context);
-        return context;
+        return track(context);
+      },
+      newPrivateContext: async () => {
+        if (browserName !== "firefox") {
+          // Playwright's ephemeral contexts are Chromium's incognito and
+          // WebKit's private browsing.
+          return track(
+            await browser.newContext({ ...(baseURL && { baseURL }) }),
+          );
+        }
+        // Firefox makes its windows private only with this pref at launch.
+        const privateBrowser = await playwright.firefox.launch({
+          firefoxUserPrefs: { "browser.privatebrowsing.autostart": true },
+        });
+        privateBrowsers.push(privateBrowser);
+        return track(
+          await privateBrowser.newContext({ ...(baseURL && { baseURL }) }),
+        );
       },
       acceptNextDialog: (message, value) => {
         expectedDialogs.push({ message, value });
@@ -138,6 +166,7 @@ export const test = /*#__PURE__*/ base.extend<
     });
 
     for (const context of contexts) await context.close();
+    for (const privateBrowser of privateBrowsers) await privateBrowser.close();
     for (const home of webkitHomes) {
       await rm(home, { recursive: true, force: true });
     }
@@ -263,6 +292,28 @@ const setupRelay = async (
       });
     }
   }
+};
+
+/**
+ * Counts `navigator.storage.persist()` calls from the next page load on,
+ * answering each without asking, so Firefox shows no permission prompt.
+ */
+export const countPersistCalls = async (
+  page: Page,
+): Promise<() => Promise<number>> => {
+  await page.addInitScript(() => {
+    const counter = StorageManager as unknown as { persistCalls: number };
+    counter.persistCalls = 0;
+    StorageManager.prototype.persist = () => {
+      counter.persistCalls += 1;
+      return Promise.resolve(false);
+    };
+  });
+  return () =>
+    page.evaluate(
+      () =>
+        (StorageManager as unknown as { persistCalls: number }).persistCalls,
+    );
 };
 
 /**

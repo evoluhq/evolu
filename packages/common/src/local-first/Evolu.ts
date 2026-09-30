@@ -386,6 +386,37 @@ export interface Evolu<
   readonly appOwner: AppOwner;
 
   /**
+   * Whether this device keeps the database, resolved once the shared worker
+   * serves it, or `Unknown` if this instance is disposed first.
+   *
+   * Apps tell the user when it is `NotPersisted`, because then data that has
+   * not synced is lost when the database closes. Apps must not tell the user
+   * that data is saved on the device when it is `Unknown`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { assertEqual } from "@evolu/common";
+   * import type { DevicePersistence } from "@evolu/common/local-first";
+   *
+   * // The notice for `await evolu.devicePersistence`, or null for none.
+   * const persistenceNotice = (
+   *   devicePersistence: DevicePersistence,
+   * ): string | null =>
+   *   devicePersistence === "NotPersisted"
+   *     ? "Your data isn't kept on this device. Changes that haven't synced are lost when you close this tab."
+   *     : null;
+   *
+   * assertEqual(persistenceNotice("Unknown"), null);
+   * assertEqual(
+   *   persistenceNotice("NotPersisted"),
+   *   "Your data isn't kept on this device. Changes that haven't synced are lost when you close this tab.",
+   * );
+   * ```
+   */
+  readonly devicePersistence: Promise<DevicePersistence>;
+
+  /**
    * Inserts a row and returns the generated {@link Id}.
    *
    * All non-nullable columns are required, nullable columns are optional, and
@@ -874,6 +905,28 @@ export interface Evolu<
 export type UnuseOwner = () => void;
 
 /**
+ * Whether this device keeps an {@link Evolu} database, stating only what Evolu
+ * knows for sure.
+ *
+ * - `Persisted`: the platform stores it in the app's own file, as React Native
+ *   does.
+ * - `NotPersisted`: it is kept in memory, because {@link EvoluConfig.memoryOnly}
+ *   asks for that or the platform offers no persistent storage, as a browser
+ *   does in Safari's Private Browsing or a Firefox private window. Data that
+ *   has not synced is lost when the database closes.
+ * - `Unknown`: it is stored, but the platform may delete it. A browser can keep
+ *   storage only for a private session, as Chrome's incognito does without
+ *   telling the app, delete it after a while or when disk space runs low, and
+ *   let the user clear it.
+ *
+ * See [Will my data stay on the
+ * device?](https://www.evolu.dev/docs/faq#will-my-data-stay-on-the-device).
+ *
+ * @group Core
+ */
+export type DevicePersistence = "Persisted" | "NotPersisted" | "Unknown";
+
+/**
  * Represents app-level errors that can occur in {@link Evolu}.
  *
  * Apps show them from {@link EvoluErrorDep.evoluError}. Problems a relay causes
@@ -1126,6 +1179,20 @@ export interface SyncStateDep {
 }
 
 /**
+ * Asks the platform to keep stored databases until the user deletes them.
+ *
+ * Only unsynced local changes exist nowhere else, so each {@link Evolu} instance
+ * calls it after its first local mutation, when its
+ * {@link Evolu.devicePersistence} is `Unknown`. A platform provides it when its
+ * storage can be deleted without the user, as a browser's can.
+ *
+ * @group Construction
+ */
+export interface RequestPersistentStorageDep {
+  readonly requestPersistentStorage: () => void;
+}
+
+/**
  * Shared platform dependencies for creating {@link Evolu} instances.
  *
  * Includes platform adapters, the shared {@link EvoluErrorDep.evoluError} store,
@@ -1143,7 +1210,7 @@ export type EvoluDeps = EvoluPlatformDeps &
  * Platform-specific dependencies required to create {@link EvoluDeps}.
  *
  * Provides worker and channel adapters plus optional platform integrations for
- * logging and synchronous UI flush.
+ * logging, synchronous UI flush, and persistent storage requests.
  *
  * @group Construction
  */
@@ -1154,7 +1221,8 @@ export type EvoluPlatformDeps = CreateDbWorkerDep &
   ReloadAppDep &
   SharedWorkerDep &
   Partial<ConsoleDep> &
-  Partial<FlushSyncDep>;
+  Partial<FlushSyncDep> &
+  Partial<RequestPersistentStorageDep>;
 
 /**
  * Creates shared dependencies used by all {@link createEvolu} instances on a
@@ -1234,9 +1302,7 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
         break;
 
       case "Waiting":
-      case "StorageUnavailable":
-        // Platform adapters act on these; see Builds and Storage in the Shared
-        // module.
+        // Platform adapters act on it; see Builds in the Shared module.
         break;
 
       case "Connected": {
@@ -1423,6 +1489,13 @@ export const createEvolu =
       exportDatabasePending = null;
     });
 
+    const devicePersistence = Promise.withResolvers<DevicePersistence>();
+    // A disposed instance never hears from its tenant, so awaiters settle.
+    disposer.defer(() => {
+      devicePersistence.resolve("Unknown");
+    });
+    let isPersistentStorageRequested = false;
+
     let postMessage: (input: EvoluInput) => void;
 
     // Scope worker/channel wiring and keep only postMessage outside.
@@ -1511,6 +1584,10 @@ export const createEvolu =
             }
             break;
           }
+
+          case "OnDevicePersistence":
+            devicePersistence.resolve(message.devicePersistence);
+            break;
 
           default:
             exhaustiveCheck(message);
@@ -1639,6 +1716,18 @@ export const createEvolu =
           );
         }
 
+        // Only unsynced local changes exist nowhere else, so the first one is
+        // when asking the platform to keep them starts to matter. Asking on
+        // load would show Firefox's permission prompt to every visitor.
+        if (!isPersistentStorageRequested) {
+          isPersistentStorageRequested = true;
+          void devicePersistence.promise.then((persistence) => {
+            if (persistence === "Unknown" && !disposed) {
+              run.deps.requestPersistentStorage?.();
+            }
+          });
+        }
+
         mutateBatch.push({
           change: { ...dbChange, ownerId: options?.ownerId ?? appOwner.id },
           onComplete: options?.onComplete,
@@ -1722,6 +1811,7 @@ export const createEvolu =
         {
           name,
           appOwner,
+          devicePersistence: devicePersistence.promise,
 
           insert: createMutation("insert"),
           update: createMutation("update"),

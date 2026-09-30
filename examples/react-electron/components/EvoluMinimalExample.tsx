@@ -106,11 +106,30 @@ const App: FC = () => (
     {/* The todos load in their own boundary, so the status line's live region
         is already mounted when the first status arrives. */}
     <Suspense>
+      <DevicePersistenceNotice />
       <Todos />
       <OwnerActions />
     </Suspense>
   </EvoluContext>
 );
+
+/**
+ * Tells the user when this device doesn't keep their data, and shows nothing
+ * otherwise. That happens with the `memoryOnly` option, or where the browser
+ * offers no persistent storage, as in Safari's Private Browsing or a Firefox
+ * private window. See `DevicePersistence` in `@evolu/common/local-first`.
+ */
+const DevicePersistenceNotice: FC = () => {
+  // Resolves once the database starts.
+  const devicePersistence = use(useEvolu().devicePersistence);
+  if (devicePersistence !== "NotPersisted") return null;
+  return (
+    <p className="mb-4 text-sm text-gray-600">
+      Your data isn&apos;t kept on this device. Changes that haven&apos;t synced
+      are lost when you close this tab.
+    </p>
+  );
+};
 
 /**
  * Tells the user when changes can't leave this device, and shows nothing while
@@ -124,11 +143,11 @@ const SyncStatus: FC = () => {
   // calls `evolu.requestSync(evolu.appOwner.id)`.
   const message =
     status.type === "Offline"
-      ? "Offline. Your changes are saved on this device."
+      ? "Offline. Changes will sync when you're back online."
       : status.type === "Error"
         ? status.error.type === "ProtocolQuotaError"
-          ? "Sync is paused because the sync server is full. Your changes are saved on this device."
-          : `Sync error: ${status.error.type}. Your changes are saved on this device.`
+          ? "Sync is paused because the sync server is full."
+          : `Sync error: ${status.error.type}.`
         : null;
 
   return (

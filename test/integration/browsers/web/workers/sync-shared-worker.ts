@@ -14,6 +14,7 @@ installPolyfills();
 const output = new BroadcastChannel(self.name);
 const run = createRun({
   ...createWorkerDeps(),
+  getDevicePersistence: () => Promise.resolve("Unknown" as const),
   lockManager: navigator.locks,
   createWebSocket: (url: string, options?: WebSocketOptions) => () => {
     const onMessage = (
