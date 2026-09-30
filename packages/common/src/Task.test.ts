@@ -9278,7 +9278,6 @@ describe("Semaphore", () => {
             taken: 1,
             waiters: [],
             available: 0,
-            isIdle: false,
           });
 
           await completeTask.promise;
@@ -9295,7 +9294,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
     });
   });
@@ -9328,7 +9326,6 @@ describe("Semaphore", () => {
             taken: 2,
             waiters: [],
             available: 1,
-            isIdle: false,
           });
           return ok("value");
         }),
@@ -9370,7 +9367,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [{ permits: 1 }],
         available: 0,
-        isIdle: false,
       });
       assertEqual(events, ["first acquired"]);
 
@@ -9389,7 +9385,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 2,
-        isIdle: true,
       });
     });
 
@@ -9414,7 +9409,6 @@ describe("Semaphore", () => {
         taken: 1,
         waiters: [{ permits: 1 }],
         available: 0,
-        isIdle: false,
       });
 
       fiber.abort(testAbortReason);
@@ -9426,7 +9420,6 @@ describe("Semaphore", () => {
         taken: 1,
         waiters: [],
         available: 0,
-        isIdle: false,
       });
       assertFalse(taskStarted);
 
@@ -9449,7 +9442,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 2,
-        isIdle: true,
       });
     });
 
@@ -9466,7 +9458,6 @@ describe("Semaphore", () => {
             taken: 2,
             waiters: [],
             available: 0,
-            isIdle: false,
           });
           return err("error");
         }),
@@ -9479,7 +9470,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 2,
-        isIdle: true,
       });
     });
 
@@ -9497,7 +9487,6 @@ describe("Semaphore", () => {
             taken: 2,
             waiters: [],
             available: 0,
-            isIdle: false,
           });
           taskStarted.resolve();
           await run.ok(
@@ -9519,7 +9508,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 2,
-        isIdle: true,
       });
     });
   });
@@ -9552,7 +9540,6 @@ describe("Semaphore", () => {
             taken: 2,
             waiters: [],
             available: 0,
-            isIdle: false,
           });
           return ok("value");
         }),
@@ -9565,7 +9552,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 2,
-        isIdle: true,
       });
     });
 
@@ -9590,7 +9576,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
     });
 
@@ -9610,7 +9595,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [{ permits: 2 }],
         available: 0,
-        isIdle: false,
       });
 
       const result = await run(
@@ -9643,7 +9627,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [{ permits: 2 }],
         available: 1,
-        isIdle: false,
       });
 
       const result = await run(
@@ -9673,7 +9656,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
     });
 
@@ -9691,7 +9673,6 @@ describe("Semaphore", () => {
             taken: 1,
             waiters: [],
             available: 0,
-            isIdle: false,
           });
           taskStarted.resolve();
           await run.ok(
@@ -9713,7 +9694,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
     });
   });
@@ -9759,7 +9739,6 @@ describe("Semaphore", () => {
         taken: 1,
         waiters: [{ permits: 1 }],
         available: 0,
-        isIdle: false,
       });
       assertEqual(events, ["waiting"]);
 
@@ -9790,7 +9769,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [{ permits: 2 }],
         available: 0,
-        isIdle: false,
       });
 
       const smallerFiber = run(async (run) => {
@@ -9806,7 +9784,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [{ permits: 2 }, { permits: 1 }],
         available: 0,
-        isIdle: false,
       });
       assertEqual(events, ["larger requesting", "smaller requesting"]);
 
@@ -9820,7 +9797,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [{ permits: 2 }, { permits: 1 }],
         available: 0,
-        isIdle: false,
       });
 
       firstPermit.release();
@@ -9856,7 +9832,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [{ permits: 2 }],
         available: 1,
-        isIdle: false,
       });
 
       const smallerFiber = run(async (run) => {
@@ -9913,7 +9888,6 @@ describe("Semaphore", () => {
         taken: 3,
         waiters: [{ permits: 2 }, { permits: 1 }],
         available: 0,
-        isIdle: false,
       });
 
       secondPermit.release();
@@ -9930,7 +9904,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [{ permits: 2 }],
         available: 1,
-        isIdle: false,
       });
 
       firstPermit.release();
@@ -9957,7 +9930,6 @@ describe("Semaphore", () => {
           taken: 2,
           waiters: [],
           available: 0,
-          isIdle: false,
         });
       }
 
@@ -9967,7 +9939,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 2,
-        isIdle: true,
       });
     });
 
@@ -9985,7 +9956,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
     });
 
@@ -10004,7 +9974,6 @@ describe("Semaphore", () => {
         taken: 1,
         waiters: [{ permits: 1 }],
         available: 0,
-        isIdle: false,
       });
 
       waiterFiber.abort(testAbortReason);
@@ -10016,7 +9985,6 @@ describe("Semaphore", () => {
         taken: 1,
         waiters: [],
         available: 0,
-        isIdle: false,
       });
     });
 
@@ -10039,7 +10007,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [{ permits: 2 }, { permits: 1 }],
         available: 0,
-        isIdle: false,
       });
 
       largerFiber.abort(testAbortReason);
@@ -10052,7 +10019,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [],
         available: 1,
-        isIdle: false,
       });
 
       firstPermit.release();
@@ -10077,7 +10043,6 @@ describe("Semaphore", () => {
         taken: 1,
         waiters: [{ permits: 1 }, { permits: 1 }],
         available: 0,
-        isIdle: false,
       });
 
       firstWaiterFiber.abort(testAbortReason);
@@ -10089,7 +10054,6 @@ describe("Semaphore", () => {
         taken: 1,
         waiters: [{ permits: 1 }],
         available: 0,
-        isIdle: false,
       });
 
       firstPermit.release();
@@ -10101,7 +10065,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
     });
   });
@@ -10133,7 +10096,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [{ permits: 2 }],
         available: 0,
-        isIdle: false,
       });
       assertEqual(events, ["waiting"]);
 
@@ -10147,7 +10109,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 2,
-        isIdle: true,
       });
     });
 
@@ -10166,7 +10127,6 @@ describe("Semaphore", () => {
         taken: 2,
         waiters: [],
         available: 0,
-        isIdle: false,
       });
 
       permit.release();
@@ -10177,7 +10137,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
     });
   });
@@ -10194,7 +10153,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 2,
-        isIdle: true,
       });
 
       const firstPermit = await run.ok(semaphore.take(1));
@@ -10209,7 +10167,6 @@ describe("Semaphore", () => {
         taken: 1,
         waiters: [{ permits: 2 }],
         available: 0,
-        isIdle: false,
       });
 
       firstPermit.release();
@@ -10221,7 +10178,6 @@ describe("Semaphore", () => {
         taken: 0,
         waiters: [],
         available: 2,
-        isIdle: true,
       });
     });
   });
@@ -10299,7 +10255,6 @@ describe("Mutex", () => {
         taken: 1,
         waiters: [{ permits: 1 }],
         available: 0,
-        isIdle: false,
       });
       assertEqual(events, ["first acquired"]);
 
@@ -10318,7 +10273,6 @@ describe("Mutex", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
     });
 
@@ -10335,7 +10289,6 @@ describe("Mutex", () => {
             taken: 1,
             waiters: [],
             available: 0,
-            isIdle: false,
           });
           return err("error");
         }),
@@ -10348,7 +10301,6 @@ describe("Mutex", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
       assertEqual(await run(mutex.withLock(() => ok("next"))), ok("next"));
     });
@@ -10367,7 +10319,6 @@ describe("Mutex", () => {
             taken: 1,
             waiters: [],
             available: 0,
-            isIdle: false,
           });
           taskStarted.resolve();
           await run.ok(
@@ -10389,7 +10340,6 @@ describe("Mutex", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
       assertEqual(await run(mutex.withLock(() => ok("next"))), ok("next"));
     });
@@ -10407,7 +10357,6 @@ describe("Mutex", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
 
       const completeFirstTask = Promise.withResolvers<void>();
@@ -10431,7 +10380,6 @@ describe("Mutex", () => {
         taken: 1,
         waiters: [{ permits: 1 }],
         available: 0,
-        isIdle: false,
       });
 
       completeFirstTask.resolve();
@@ -10444,7 +10392,6 @@ describe("Mutex", () => {
         taken: 0,
         waiters: [],
         available: 1,
-        isIdle: true,
       });
     });
   });
@@ -10532,7 +10479,6 @@ describe("SemaphoreByKey", () => {
         taken: 1,
         waiters: [{ permits: 1 }],
         available: 0,
-        isIdle: false,
       });
       assertEqual(events, ["first acquired"]);
 
@@ -10703,7 +10649,6 @@ describe("SemaphoreByKey", () => {
         taken: 1,
         waiters: [],
         available: 0,
-        isIdle: false,
       });
 
       completeTask.resolve();
@@ -10796,7 +10741,6 @@ describe("SemaphoreByKey", () => {
         taken: 1,
         waiters: [{ permits: 1 }],
         available: 0,
-        isIdle: false,
       });
 
       secondFiber.abort(testAbortReason);
@@ -10808,7 +10752,6 @@ describe("SemaphoreByKey", () => {
         taken: 1,
         waiters: [],
         available: 0,
-        isIdle: false,
       });
 
       completeFirstTask.resolve();
@@ -10896,7 +10839,6 @@ describe("MutexByKey", () => {
         taken: 1,
         waiters: [{ permits: 1 }],
         available: 0,
-        isIdle: false,
       });
       assertEqual(events, ["first acquired"]);
 
@@ -11006,7 +10948,6 @@ describe("MutexByKey", () => {
         taken: 1,
         waiters: [],
         available: 0,
-        isIdle: false,
       });
 
       completeTask.resolve();
@@ -11151,8 +11092,15 @@ describe("MutexRef", () => {
     const gate = createGate();
     const ref = createMutexRef(0);
     const started = Promise.withResolvers<void>();
+    const idleSnapshot = {
+      policy: "fifo",
+      permits: 1,
+      taken: 0,
+      waiters: [],
+      available: 1,
+    };
 
-    assertTrue(ref.snapshot().isIdle);
+    assertEqual(ref.snapshot(), idleSnapshot);
 
     const fiber = run(
       ref.update((current) => async (run) => {
@@ -11170,13 +11118,12 @@ describe("MutexRef", () => {
       taken: 1,
       waiters: [],
       available: 0,
-      isIdle: false,
     });
 
     gate.open();
 
     assertEqual(await fiber, ok());
-    assertTrue(ref.snapshot().isIdle);
+    assertEqual(ref.snapshot(), idleSnapshot);
   });
 
   it("types: operations infer error and deps from the updater", () => {

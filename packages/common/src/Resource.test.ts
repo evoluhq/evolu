@@ -77,7 +77,6 @@ const idleMutexSnapshot = {
   taken: 0,
   waiters: [],
   available: 1,
-  isIdle: true,
 };
 
 describe("BorrowedResource", () => {
@@ -672,7 +671,6 @@ describe("SharedResource", () => {
       );
 
       assertEqual(sharedResource.snapshot(), {
-        isIdle: true,
         leaseCount: 0,
         hasResource: false,
         idleDisposePending: false,
@@ -682,7 +680,6 @@ describe("SharedResource", () => {
       const lease = await run.ok(sharedResource.acquire);
 
       assertEqual(sharedResource.snapshot(), {
-        isIdle: false,
         leaseCount: 1,
         hasResource: true,
         idleDisposePending: false,
@@ -692,7 +689,6 @@ describe("SharedResource", () => {
       lease.release();
 
       assertEqual(sharedResource.snapshot(), {
-        isIdle: false,
         leaseCount: 0,
         hasResource: true,
         idleDisposePending: true,
@@ -713,7 +709,6 @@ describe("SharedResource", () => {
       lease.release();
 
       assertEqual(sharedResource.snapshot(), {
-        isIdle: false,
         leaseCount: 0,
         hasResource: true,
         idleDisposePending: false,
@@ -723,14 +718,13 @@ describe("SharedResource", () => {
           taken: 1,
           waiters: [],
           available: 0,
-          isIdle: false,
         },
       });
 
       await disposed;
     });
 
-    it("reports not idle while creating the first resource", async () => {
+    it("reports the held mutex while creating the first resource", async () => {
       await using run = testCreateRun();
       const gate = createGate();
 
@@ -742,11 +736,22 @@ describe("SharedResource", () => {
       );
 
       const acquire = run.ok(sharedResource.acquire);
-      const isIdleWhileCreating = sharedResource.snapshot().isIdle;
+      const snapshotWhileCreating = sharedResource.snapshot();
       gate.open();
       await acquire;
 
-      assertFalse(isIdleWhileCreating);
+      assertEqual(snapshotWhileCreating, {
+        leaseCount: 0,
+        hasResource: false,
+        idleDisposePending: false,
+        mutex: {
+          policy: "fifo",
+          permits: 1,
+          taken: 1,
+          waiters: [],
+          available: 0,
+        },
+      });
     });
 
     it("reports mutex waiters during a contended acquire", async () => {
@@ -953,9 +958,12 @@ describe("SharedResource", () => {
       await sharedResource[Symbol.asyncDispose]();
 
       assertEqual(resources.getDisposeCount(), 1);
-      const snapshot = sharedResource.snapshot();
-      assertTrue(snapshot.isIdle);
-      assertFalse(snapshot.idleDisposePending);
+      assertEqual(sharedResource.snapshot(), {
+        leaseCount: 0,
+        hasResource: false,
+        idleDisposePending: false,
+        mutex: idleMutexSnapshot,
+      });
     });
 
     it("awaits async resource disposal", async () => {
@@ -2774,7 +2782,6 @@ describe("SharedResourceByKey", () => {
           [
             "a",
             {
-              isIdle: false,
               leaseCount: 2,
               hasResource: true,
               idleDisposePending: false,
@@ -2784,7 +2791,6 @@ describe("SharedResourceByKey", () => {
           [
             "b",
             {
-              isIdle: false,
               leaseCount: 1,
               hasResource: true,
               idleDisposePending: false,
@@ -5412,7 +5418,6 @@ describe("SharedResourceByKeyWithClaims", () => {
           [
             "a",
             {
-              isIdle: false,
               leaseCount: 3,
               hasResource: true,
               idleDisposePending: false,
@@ -5422,7 +5427,6 @@ describe("SharedResourceByKeyWithClaims", () => {
           [
             "b",
             {
-              isIdle: false,
               leaseCount: 1,
               hasResource: true,
               idleDisposePending: false,

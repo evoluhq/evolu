@@ -279,12 +279,6 @@ export interface SharedResource<T extends Resource> extends AsyncDisposable {
 
 /** Snapshot returned by {@link SharedResource.snapshot}. */
 export interface SharedResourceSnapshot {
-  /**
-   * Whether the resource has no current value, no leases, no pending idle
-   * disposal, and no acquisition in progress.
-   */
-  readonly isIdle: boolean;
-
   /** Current active lease count. */
   readonly leaseCount: NonNegativeInt;
 
@@ -498,20 +492,12 @@ export const createSharedResource =
         return await run(callback(lease.resource, lease.created));
       },
 
-      snapshot: () => {
-        const mutexSnapshot = mutex.snapshot();
-        return {
-          isIdle:
-            heldLeases.size === 0 &&
-            !current &&
-            !idleDisposeFiber &&
-            mutexSnapshot.isIdle,
-          leaseCount: NonNegativeInt.orThrow(heldLeases.size),
-          hasResource: current !== undefined,
-          idleDisposePending: idleDisposeFiber !== undefined,
-          mutex: mutexSnapshot,
-        };
-      },
+      snapshot: () => ({
+        leaseCount: NonNegativeInt.orThrow(heldLeases.size),
+        hasResource: current !== undefined,
+        idleDisposePending: idleDisposeFiber !== undefined,
+        mutex: mutex.snapshot(),
+      }),
 
       [Symbol.asyncDispose]: () => sharedResourceRun[Symbol.asyncDispose](),
     };

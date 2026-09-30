@@ -5751,9 +5751,6 @@ export interface SemaphoreSnapshot {
    * is `0` until enough permits are released.
    */
   readonly available: NonNegativeInt;
-
-  /** Whether no permits are held and no requests are queued. */
-  readonly isIdle: boolean;
 }
 
 /**
@@ -5936,7 +5933,6 @@ export const createSemaphore = (
       available: NonNegativeInt.orThrow(
         !isGreedy && waiters.size > 0 ? 0 : Math.max(0, permits - taken),
       ),
-      isIdle: isIdle(),
     }),
     isIdle,
   };
