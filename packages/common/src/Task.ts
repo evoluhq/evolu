@@ -485,7 +485,9 @@
  * ## Glossary
  *
  * - **Defect** — a thrown or rejected value other than {@link AbortError}, rather
- *   than a declared {@link Result} error.
+ *   than a declared {@link Result} error. A `SuppressedError` nesting only
+ *   AbortErrors, thrown when `await using` cleanup observes the abort a Task is
+ *   propagating, is an abort, like the same cleanup in `try`/`finally`.
  * - **Outcome** — a Fiber's settlement: resolution with the Task {@link Result},
  *   or rejection with {@link AbortError}. The original defect is reported
  *   through {@link ReportDefectDep} whether or not the Fiber is observed; the
@@ -1536,7 +1538,9 @@ export interface DisposableRun<D = unknown>
    * Sync disposal starts cleanup without waiting and does not throw finalizer
    * defects synchronously. Async disposal awaits cleanup. If a finalizer
    * defects, the defect is reported once, and every async disposal call rejects
-   * with the same already-reported {@link AbortError}.
+   * with the same already-reported {@link AbortError}. A finalizer that rejects
+   * with an AbortError, for example by awaiting another DisposableRun whose
+   * finalizer defected, is not reported; async disposal rejects with it.
    *
    * Calling `defer` after disposal starts is a programmer error.
    *
@@ -2012,10 +2016,10 @@ export const testAbortError = /*#__PURE__*/ createAbortError(testAbortReason);
 /**
  * Abort reason recorded when a defect panics the root {@link Run}.
  *
- * A defect is a thrown or rejected value other than {@link AbortError}.
- * Recoverable domain errors belong in {@link Result}. Bugs and unrecoverable
- * failures, such as storage engine errors the {@link Task} cannot usefully
- * handle, may throw or reject.
+ * A defect is a thrown or rejected value other than {@link AbortError} or a
+ * `SuppressedError` nesting only AbortErrors. Recoverable domain errors belong
+ * in {@link Result}. Bugs and unrecoverable failures, such as storage engine
+ * errors the {@link Task} cannot usefully handle, may throw or reject.
  *
  * {@link Run.onEvent} handler defects are different: event handlers are
  * monitoring code, so their defects are reported globally but do not panic the
@@ -2593,7 +2597,7 @@ const createRunInternal = <D extends object>(
         try {
           await finalizersToDispose.disposeAsync();
         } catch (error: unknown) {
-          finalizerAbortError = root.panic(error);
+          finalizerAbortError = thrownToAbortError(error) ?? root.panic(error);
           exit ??= err(finalizerAbortError);
         }
         return settle();
@@ -2738,7 +2742,7 @@ const createRunInternal = <D extends object>(
 
         exit = ok(result as UnknownResult);
       } catch (error: unknown) {
-        exit = err(AbortError.is(error) ? error : root.panic(error));
+        exit = err(thrownToAbortError(error) ?? root.panic(error));
       }
 
       // Internal Child Run disposal cannot reject; finalizer defects become Err
@@ -2893,7 +2897,7 @@ const createRunInternal = <D extends object>(
 
   run[Symbol.asyncDispose] = async (): Promise<void> => {
     await dispose();
-    // oxlint-disable-next-line typescript/only-throw-error -- AbortError is Task abort control flow; rethrowing it avoids reporting the finalizer defect twice in Task code.
+    // oxlint-disable-next-line typescript/only-throw-error -- AbortError is Task abort control flow; rethrowing the finalizer AbortError avoids reporting a defect twice in Task code.
     if (finalizerAbortError) throw finalizerAbortError;
   };
 
@@ -2905,6 +2909,40 @@ const createRunInternal = <D extends object>(
 
   return run;
 };
+
+// Cleanup that observes the abort a Task is propagating, for example a
+// DisposableRun whose finalizer defected rejecting with its already-reported
+// AbortError, makes `await using` throw a SuppressedError. When every nested
+// value is an AbortError, it is abort control flow like the same cleanup in
+// try/finally, so the latest error wins: `error`, the last cleanup failure.
+const thrownToAbortError = (thrown: unknown): AbortError | null => {
+  // Nothing here may throw out of runTask's catch. Inspecting the thrown value
+  // can throw, for example from a getter, so the value is then a defect.
+  try {
+    // A loop, not recursion: each failing cleanup nests one more
+    // SuppressedError, and a deep chain would overflow the stack.
+    const values: Array<unknown> = [thrown];
+    while (values.length > 0) {
+      const value = values.pop();
+      if (isSuppressedError(value)) values.push(value.error, value.suppressed);
+      else if (!AbortError.is(value)) return null;
+    }
+    let latest = thrown;
+    while (isSuppressedError(latest)) latest = latest.error;
+    return latest as AbortError;
+  } catch {
+    return null;
+  }
+};
+
+// The internal tag survives crossing realms, such as from an iframe, where
+// instanceof fails. The name also matches TypeScript's downleveled `using`,
+// which captures SuppressedError when a module evaluates, before
+// installPolyfills, and without a native one throws a plain Error named
+// SuppressedError.
+const isSuppressedError = (value: unknown): value is SuppressedError =>
+  Object.prototype.toString.call(value) === "[object Error]" &&
+  (value as Error).name === "SuppressedError";
 
 const withTaskMeta =
   (meta: TaskMeta) =>

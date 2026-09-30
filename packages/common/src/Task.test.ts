@@ -1,4 +1,5 @@
 import { describe, it, mock } from "node:test";
+import { runInNewContext } from "node:vm";
 import {
   assertEqual,
   assertErr,
@@ -671,6 +672,211 @@ describe("Run", () => {
         assertSame(panicAbortError, run.signal.reason);
       },
     );
+  });
+
+  describe("SuppressedError from cleanup", () => {
+    const cleanupAbortError = createAbortError({
+      type: "CleanupAbortReason",
+    });
+    const throwCleanupAbortError = (): void => {
+      AbortSignal.abort(cleanupAbortError).throwIfAborted();
+    };
+
+    it("aborts an AbortableFiber whose cleanup observes the abort", async () => {
+      await using run = testCreateRun();
+
+      const fiber = run.abortable(async (run) => {
+        await using stack = new AsyncDisposableStack();
+        stack.defer(async () => {
+          await run(waitForAbort);
+        });
+        await run(waitForAbort);
+        return ok();
+      });
+      fiber.abort(testAbortReason);
+
+      assertEqual(await fiber, err(testAbortError));
+      assertEqual(run.deps.reportDefect.getDefects(), []);
+      assertFalse(run.signal.aborted);
+    });
+
+    it("reports only the panic when cleanup observes its abort", async () => {
+      await using run = testCreateRun();
+
+      const fiber = run(async (run) => {
+        await using stack = new AsyncDisposableStack();
+        stack.defer(async () => {
+          await run(waitForAbort);
+        });
+        await run(waitForAbort);
+        return ok();
+      });
+      const panicAbortError = run.panic(new Error("boom"));
+
+      await assertRejects(fiber, panicAbortError);
+      assertEqual(run.deps.reportDefect.getDefects(), [panicAbortError]);
+    });
+
+    it("aborts with the last cleanup AbortError as try/finally does", async () => {
+      await using run = testCreateRun();
+
+      const usingFiber = run.abortable(async (run) => {
+        using _resource = { [Symbol.dispose]: throwCleanupAbortError };
+        await run(waitForAbort);
+        return ok();
+      });
+      const finallyFiber = run.abortable(async (run) => {
+        try {
+          await run(waitForAbort);
+        } finally {
+          throwCleanupAbortError();
+        }
+        return ok();
+      });
+      usingFiber.abort(testAbortReason);
+      finallyFiber.abort(testAbortReason);
+
+      assertEqual(await usingFiber, err(cleanupAbortError));
+      assertEqual(await finallyFiber, err(cleanupAbortError));
+      assertEqual(run.deps.reportDefect.getDefects(), []);
+    });
+
+    it("reports a created Run finalizer defect once during abort", async () => {
+      await using run = testCreateRun();
+      const defect = new Error("finalizer failed");
+
+      const fiber = run.abortable(async (run) => {
+        await using createdRun = run.create();
+        createdRun.defer(() => {
+          throw defect;
+        });
+        await run(waitForAbort);
+        return ok();
+      });
+      fiber.abort(testAbortReason);
+
+      const result = await fiber;
+      assertErr(result);
+      assertPanicAbortError(result.error, defect);
+      assertEqual(run.deps.reportDefect.getDefects(), [result.error]);
+    });
+
+    it("reports a cleanup defect during abort as the whole SuppressedError", async () => {
+      await using run = testCreateRun();
+      const defect = new Error("cleanup failed");
+
+      const fiber = run.abortable(async (run) => {
+        using _resource = {
+          [Symbol.dispose]: () => {
+            throw defect;
+          },
+        };
+        await run(waitForAbort);
+        return ok();
+      });
+      fiber.abort(testAbortReason);
+
+      const result = await fiber;
+      assertErr(result);
+      assertType(AbortError, result.error);
+      const suppressedError = result.error.reason.defect;
+      assertInstanceOf(suppressedError, SuppressedError);
+      assertSame(suppressedError.error, defect);
+      assertEqual(suppressedError.suppressed, testAbortError);
+      assertEqual(run.deps.reportDefect.getDefects(), [result.error]);
+    });
+
+    it("reports a Task defect whose cleanup then aborts as the whole SuppressedError", async () => {
+      await using run = testCreateRun();
+      const defect = new Error("task failed");
+
+      const fiber = run.abortable(() => {
+        using _resource = { [Symbol.dispose]: throwCleanupAbortError };
+        throw defect;
+      });
+
+      const result = await fiber;
+      assertErr(result);
+      assertType(AbortError, result.error);
+      const suppressedError = result.error.reason.defect;
+      assertInstanceOf(suppressedError, SuppressedError);
+      assertEqual(suppressedError.error, cleanupAbortError);
+      assertSame(suppressedError.suppressed, defect);
+      assertEqual(run.deps.reportDefect.getDefects(), [result.error]);
+    });
+
+    it("aborts when thousands of cleanups observe the abort", async () => {
+      await using run = testCreateRun();
+
+      const fiber = run.abortable(async (run) => {
+        using stack = new DisposableStack();
+        // Each failing cleanup nests one more SuppressedError.
+        for (let i = 0; i < 20_000; i++) stack.defer(throwCleanupAbortError);
+        await run(waitForAbort);
+        return ok();
+      });
+      fiber.abort(testAbortReason);
+
+      assertEqual(await fiber, err(cleanupAbortError));
+      assertEqual(run.deps.reportDefect.getDefects(), []);
+      assertFalse(run.signal.aborted);
+    });
+
+    it("recognizes a downleveled SuppressedError by its name", async () => {
+      await using run = testCreateRun();
+      // TypeScript's downleveled `using` throws this without a native
+      // SuppressedError.
+      const suppressedError = Object.assign(
+        new Error("An error was suppressed during disposal."),
+        {
+          name: "SuppressedError",
+          error: testAbortError,
+          suppressed: testAbortError,
+        },
+      );
+
+      const fiber = run.abortable(() => {
+        throw suppressedError;
+      });
+
+      assertEqual(await fiber, err(testAbortError));
+      assertEqual(run.deps.reportDefect.getDefects(), []);
+    });
+
+    it("recognizes a SuppressedError from another realm", async () => {
+      await using run = testCreateRun();
+      const suppressedError = runInNewContext(
+        "new SuppressedError(error, suppressed)",
+        { error: testAbortError, suppressed: testAbortError },
+      ) as SuppressedError;
+
+      const fiber = run.abortable(() => {
+        throw suppressedError;
+      });
+
+      assertEqual(await fiber, err(testAbortError));
+      assertEqual(run.deps.reportDefect.getDefects(), []);
+      assertFalse(run.signal.aborted);
+    });
+
+    it("reports a defect whose inspection throws", async () => {
+      await using run = testCreateRun();
+      const defect = new Error("task failed");
+      Object.defineProperty(defect, "name", {
+        get: () => {
+          throw new Error("name getter failed");
+        },
+      });
+
+      const fiber = run.abortable(() => {
+        throw defect;
+      });
+
+      const result = await fiber;
+      assertErr(result);
+      assertPanicAbortError(result.error, defect);
+      assertEqual(run.deps.reportDefect.getDefects(), [result.error]);
+    });
   });
 
   describe("lifecycle", () => {
@@ -2968,6 +3174,24 @@ describe("DisposableRun", () => {
       assertTrue(error.message.includes("Cannot use a disposed object."));
 
       await run[Symbol.asyncDispose]();
+    });
+
+    it("reports a finalizer defect once when another finalizer awaits its Run", async () => {
+      const run = testCreateRun();
+      const createdRun = run.create();
+      const defect = new Error("finalizer failed");
+
+      createdRun.defer(() => {
+        throw defect;
+      });
+      run.defer(() => createdRun[Symbol.asyncDispose]());
+
+      await assertRejects(run[Symbol.asyncDispose](), (disposalError) => {
+        assertPanicAbortError(disposalError, defect);
+        assertEqual(run.deps.reportDefect.getDefectsSnapshot(), [
+          disposalError,
+        ]);
+      });
     });
 
     it("reports multiple finalizer defects as SuppressedError", async () => {
