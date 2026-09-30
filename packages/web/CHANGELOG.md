@@ -1,5 +1,78 @@
 # @evolu/web
 
+## 3.3.0
+
+### Minor Changes
+
+- d91b559: Reported uncaught shared worker errors in every tab
+
+  Browsers never pass a shared worker's uncaught errors to a page's error
+  handlers, so an unexpected failure of Evolu's shared worker, which can stop all
+  its work, left `evoluError` empty. The shared worker now posts each uncaught
+  error, unhandled rejection, and Task defect to every tab, which logs it and sets
+  it as an `UnknownError` in `evoluError`. An app that forwards `evoluError` to an
+  error tracker from each tab reports such an error once per tab. Where a
+  dedicated worker stands in for a missing SharedWorker, its page also still
+  receives the uncaught errors from the browser.
+
+  The new `addUncaughtErrorListener` passes each uncaught error and unhandled
+  rejection of a worker global scope to a listener, including the defects of a
+  Run from `createRun`, so any shared worker can send them to its pages.
+
+  ```ts
+  import { assertEqual } from "@evolu/common";
+  import { addUncaughtErrorListener } from "@evolu/web";
+
+  const messages: Array<string> = [];
+  // A worker passes its global scope, `self`.
+  const scope = new EventTarget();
+  using _listener = addUncaughtErrorListener(scope, (error) => {
+    messages.push(error.message);
+  });
+
+  scope.dispatchEvent(
+    Object.assign(new Event("error"), { error: new Error("unexpected") }),
+  );
+  assertEqual(messages, ["unexpected"]);
+  ```
+
+### Patch Changes
+
+- 3a83a48: Closed a failed shared worker so the app can be opened again
+
+  When a defect stopped Evolu's shared worker, tabs opened afterwards connected
+  to the failed worker and never loaded their data, even after a reload while
+  another tab of the app stayed open. On React Native, deps created again
+  connected to it too. The failed worker now closes, so the next tab or deps start
+  a new one. Closing each open database also no longer reports an extra "Cannot
+  use a disposed object." defect after the original one. Each DbWorker now stops
+  once its shared worker ends, so a custom platform setup must give the shared
+  worker and its DbWorkers the same `LockManager`, as the web and React Native
+  setups do.
+
+  An `UnknownError` in `evoluError` leaves Evolu in an unknown state, so the app
+  can only ask the user to close the tab. The documentation now says so instead of
+  suggesting to try again.
+
+- 6257650: Fixed a failed SQLite statement breaking its later uses on the web
+
+  The web SQLite driver reuses prepared statements. When running one failed, for
+  example on a constraint violation or a full disk, the driver did not reset it,
+  so every later use of that statement failed with `SQLITE_MISUSE` until the page
+  reloaded. The statement is now reset after every run, so later queries and
+  writes that use it work.
+
+- Updated dependencies [9e5a033]
+- Updated dependencies [428350e]
+- Updated dependencies [428350e]
+- Updated dependencies [6257650]
+- Updated dependencies [eeaa3c5]
+- Updated dependencies [6257650]
+- Updated dependencies [428350e]
+- Updated dependencies [3a83a48]
+- Updated dependencies [36f9f81]
+  - @evolu/common@8.13.0
+
 ## 3.2.0
 
 ### Minor Changes
