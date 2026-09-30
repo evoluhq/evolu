@@ -1,30 +1,38 @@
-# React + TypeScript + Vite
+# React Electron
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Evolu runs in Electron's renderer process like in any Chromium browser, with
+`@evolu/react-web`, as shown in this example. Its React component is the same
+minimal todo app as the web examples.
 
-Currently, two official plugins are available:
+## Quick start
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+# From the repository root...
+pnpm install
+pnpm --filter "@example/react-electron^..." build
 
-## Expanding the ESLint configuration
+# Start a local relay on ws://localhost:4000, which the example syncs with in
+# development
+pnpm relay
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: "latest",
-    sourceType: "module",
-    project: ["./tsconfig.json", "./tsconfig.node.json"],
-    tsconfigRootDir: __dirname,
-  },
-};
+# In another terminal, start Vite and Electron
+pnpm --filter @example/react-electron dev
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+Run pnpm from the repository root. This directory has its own
+`pnpm-workspace.yaml` for using the example outside the monorepo, so pnpm run
+inside it treats it as a separate workspace, where the monorepo's catalogs and
+`workspace:*` packages do not resolve.
+
+## Using the example outside the monorepo
+
+Run `pnpm examples:toggle-deps` to switch the examples to published packages,
+then copy this directory elsewhere and run `pnpm install`. Its
+`pnpm-workspace.yaml` sets `nodeLinker: hoisted`, which Electron needs, and
+allows the build scripts of `electron` and `esbuild`.
+
+## Packaging
+
+The `_build` script type-checks, builds with Vite, and packages the app with
+[electron-builder](https://www.electron.build), configured in
+[`electron-builder.json5`](electron-builder.json5).
