@@ -34,7 +34,7 @@ import { lockManager } from "./LockManager.ts";
 
 /**
  * The in-process SharedWorker, one per JS runtime as a web SharedWorker is one
- * per build per origin. It holds the build lock for the app's lifetime, so deps
+ * per build per origin. It holds the build lock until it panics, so deps
  * created again, for example after Fast Refresh, connect to it instead of
  * starting a worker that would wait for that lock forever.
  */
@@ -95,6 +95,11 @@ export const createEvoluDeps = (
         sharedWorkerSelf = self;
         const sharedWorkerRun = createWorkerRun();
         void sharedWorkerRun(async (run) => {
+          // After a panic, deps created again start another worker, which
+          // waits for this one's build lock.
+          using _onAbort = run.onAbort(() => {
+            sharedWorkerSelf = null;
+          });
           await using _ = await run.ok(initSharedWorker(self));
           return await run(waitForAbort);
         });

@@ -306,7 +306,11 @@ const setupDb = async ({
   };
 };
 
+const testSharedWorkerId = testCreateId()<"SharedWorker">();
+
 interface DbWorkerSetup extends DbSetup {
+  /** Ends the SharedWorker that requested the DbWorker. */
+  readonly endSharedWorker: () => Promise<void>;
   readonly getClock: () => Timestamp;
   readonly initOutputs: ReadonlyArray<DbWorkerOutput>;
   readonly lockManager: LockManagerDep["lockManager"];
@@ -343,6 +347,12 @@ const setupDbWorker = async ({
     disposer.use(await setupDb(time == null ? undefined : { time }));
   const lockManager = testCreateLockManager();
   const workerName = dbSetup.name;
+  // As the SharedWorker that requested the DbWorker, which leads for its ID
+  // while it runs.
+  const sharedWorkerRun = disposer.use(testCreateRun({ lockManager }));
+  const sharedWorkerLock = disposer.use(
+    await sharedWorkerRun.ok(acquireLeaderLock(testSharedWorkerId)),
+  );
 
   const run = disposer.use(
     testCreateRun({
@@ -436,6 +446,7 @@ const setupDbWorker = async ({
     sqliteSchema,
     encryptionKey: testAppOwner.encryptionKey,
     memoryOnly,
+    sharedWorkerId: testSharedWorkerId,
     port: channel.port1.native,
   });
 
@@ -459,6 +470,9 @@ const setupDbWorker = async ({
 
   return {
     ...dbSetup,
+    endSharedWorker: async () => {
+      await sharedWorkerLock[Symbol.asyncDispose]();
+    },
     getClock,
     initOutputs,
     lockManager,
@@ -500,6 +514,7 @@ const startDbWorkerUntilDone = async (dbSetup: DbSetup) => {
     sqliteSchema: defaultSqliteSchema,
     encryptionKey: testAppOwner.encryptionKey,
     memoryOnly: true,
+    sharedWorkerId: testSharedWorkerId,
     port: channel.port1.native,
   });
   return await done;
@@ -782,10 +797,25 @@ describe("worker startup", () => {
     assertNotUndefined(lock);
   });
 
+  it("releases leadership after its SharedWorker ends", async () => {
+    await using setup = await setupDbWorker();
+    await using run = testCreateRun({ lockManager: setup.lockManager });
+
+    // As after a panic, which can lose the Dispose the SharedWorker posted.
+    await setup.endSharedWorker();
+
+    await using lock = await run.ok(acquireLeaderLock(setup.workerName));
+    assertNotUndefined(lock);
+  });
+
   it("disposes worker self after dispose message", async () => {
     await using disposer = new AsyncDisposableStack();
     const dbSetup = disposer.use(await setupDb());
     const lockManager = testCreateLockManager();
+    const sharedWorkerRun = disposer.use(testCreateRun({ lockManager }));
+    disposer.use(
+      await sharedWorkerRun.ok(acquireLeaderLock(testSharedWorkerId)),
+    );
     const workerSelfDisposed = Promise.withResolvers<void>();
     let workerSelfDisposeCount = 0;
     const self: WorkerSelf<DbWorkerInit> = {
@@ -825,6 +855,7 @@ describe("worker startup", () => {
       sqliteSchema: defaultSqliteSchema,
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: true,
+      sharedWorkerId: testSharedWorkerId,
       port: channel.port1.native,
     });
 

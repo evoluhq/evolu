@@ -159,6 +159,8 @@ describe("Evolu integration", () => {
     await using disposer = new AsyncDisposableStack();
 
     const consoleStoreOutput = createConsoleStoreOutput();
+    // DbWorkers stop once their SharedWorker no longer holds its lock.
+    const lockManager = testCreateLockManager();
 
     const run = disposer.use(
       testCreateRun({
@@ -171,7 +173,7 @@ describe("Evolu integration", () => {
         createMessageChannel,
         createMessagePort,
         createWebSocket,
-        lockManager: testCreateLockManager(),
+        lockManager,
         ...(time && { time }),
       }),
     );
@@ -201,7 +203,7 @@ describe("Evolu integration", () => {
         consoleStoreOutputEntry: consoleStoreOutput.entry,
         createBroadcastChannel,
         createMessagePort,
-        lockManager: testCreateLockManager(),
+        lockManager,
         createSqliteDriver: createSqliteDriver ?? createSharedSqliteDriver,
       }),
     );

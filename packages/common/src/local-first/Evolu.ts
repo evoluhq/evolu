@@ -1005,9 +1005,12 @@ export interface EvoluErrorDep {
    * instead; see {@link UnsupportedDbVersionError}. Show that blocking message
    * outside any query-loading boundary, so pending queries do not hide it.
    *
-   * Some errors reach every tab, such as an unexpected failure of the shared
-   * worker. An app that forwards this store to an error tracker from each tab
-   * then reports such an error once per tab.
+   * An {@link UnknownError} leaves Evolu in an unknown state, so the app can
+   * only ask the user to close the tab. A failed shared worker closes itself,
+   * so the app opened again starts a new one. Some errors reach every tab, such
+   * as an unexpected failure of the shared worker. An app that forwards this
+   * store to an error tracker from each tab then reports such an error once per
+   * tab.
    *
    * ### Example
    *
@@ -1028,7 +1031,7 @@ export interface EvoluErrorDep {
    *     case "OtherBuildRunningError":
    *       return "This app is open in another tab with a different version. Close that tab to continue.";
    *     case "UnknownError":
-   *       return "Something went wrong. Please try again.";
+   *       return "Something went wrong. Please close this tab and open the app again.";
    *   }
    * };
    *

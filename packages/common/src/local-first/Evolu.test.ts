@@ -430,6 +430,7 @@ describe("Evolu", () => {
         tables: { todo: new Set(["title"]) },
         indexes: [],
       };
+      const sharedWorkerId = testCreateId()<"SharedWorker">();
       const sharedWorkerPort: {
         value: MessagePort<SharedWorkerOutput, SharedWorkerInput> | null;
       } = { value: null };
@@ -470,6 +471,7 @@ describe("Evolu", () => {
           sqliteSchema,
           encryptionKey: testAppOwner.encryptionKey,
           memoryOnly: true,
+          sharedWorkerId,
           port: dbWorkerChannel.port1.native,
         },
         [dbWorkerChannel.port1.native],
@@ -485,6 +487,7 @@ describe("Evolu", () => {
         sqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: true,
+        sharedWorkerId,
         port: dbWorkerChannel.port1.native,
       });
 

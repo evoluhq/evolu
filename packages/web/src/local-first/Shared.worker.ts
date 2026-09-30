@@ -50,9 +50,12 @@ const run = createRun({
 
 void run(async (run) => {
   if ("onconnect" in self) {
-    await using _ = await run.ok(
-      initSharedWorker(createSharedWorkerSelf(self)),
-    );
+    // A panic closes the worker, so tabs that connect later start another.
+    using workerSelf = createSharedWorkerSelf<
+      SharedWorkerInput,
+      SharedWorkerOutput
+    >(self);
+    await using _ = await run.ok(initSharedWorker(workerSelf));
     return await run(waitForAbort);
   }
 

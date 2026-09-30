@@ -59,7 +59,10 @@ import {
 import { createUnknownError } from "../Error.ts";
 import { constFalse, constVoid } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
-import { acquireLeaderLock } from "../LockManager.ts";
+import {
+  acquireLeaderLock,
+  acquireLeaderLockCallback,
+} from "../LockManager.ts";
 import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
 import { err, getOk, ok, trySync, type Result } from "../Result.ts";
 import type {
@@ -132,6 +135,7 @@ import type {
   DbWorkerOutput,
   DbWorkerQueuedResponse,
   EvoluInput,
+  SharedWorkerId,
 } from "./Shared.ts";
 import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
 import {
@@ -170,6 +174,11 @@ export interface DbWorkerInit {
   readonly sqliteSchema: SqliteSchema;
   readonly encryptionKey: EncryptionKey;
   readonly memoryOnly: boolean;
+  /**
+   * The SharedWorker that requested this DbWorker. It leads for this ID while
+   * it runs, so the DbWorker stops serving once it can lead for it.
+   */
+  readonly sharedWorkerId: SharedWorkerId;
   readonly port: NativeMessagePort<DbWorkerOutput, DbWorkerInput>;
 }
 
@@ -205,8 +214,8 @@ export interface UnsupportedDbVersionError extends Typed<"UnsupportedDbVersionEr
 
 /**
  * Starts the platform-agnostic Evolu DbWorker and owns its resources until
- * startup is refused, the worker receives a dispose message, or its {@link Run}
- * is aborted.
+ * startup is refused, the worker receives a dispose message, the SharedWorker
+ * that requested it ends, or its {@link Run} is aborted.
  */
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
@@ -297,7 +306,7 @@ export const startDbWorker =
     );
     if (!startup.ok) {
       // Nothing was written. Returning lets the disposer close SQLite and
-      // release the database lock, which the SharedWorker's tenant disposal
+      // release the database lock, which the next DbWorker for this database
       // waits on. The tab leader lock is unaffected.
       port.postMessage({
         type: "LeaderRefused",
@@ -460,8 +469,17 @@ export const startDbWorker =
           }
         };
 
+        // Stops once the SharedWorker no longer leads for its ID, which the
+        // platform releases when it closes, because Firefox can lose a Dispose
+        // posted right before that.
+        const sharedWorkerEnded = acquireLeaderLockCallback(deps)(
+          initMessage.sharedWorkerId,
+          () => resolve(ok()),
+        );
+
         return () => {
           port.onMessage = null;
+          sharedWorkerEnded[Symbol.dispose]();
         };
       }),
     );

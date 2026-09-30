@@ -182,7 +182,9 @@ const setupSharedWorker = async ({
   seed?: string;
 } = {}) => {
   await using disposer = new AsyncDisposableStack();
-  const createTestId = testCreateId();
+  // Instance IDs name leader locks, as the worker's ID does, so they come from
+  // another seed than the worker's randomness, which would repeat one of them.
+  const tabDeps = testCreateDeps({ seed: "tab" });
 
   const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
   const worker = disposer.use(
@@ -245,7 +247,7 @@ const setupSharedWorker = async ({
     initialClock?: Timestamp;
   } = {}) => {
     const instanceDisposables = new AsyncDisposableStack();
-    const id = createTestId<"EvoluInstance">();
+    const id = createId<"EvoluInstance">(tabDeps);
     const dbInputs: Array<Exclude<DbWorkerInput, { type: "Dispose" }>> = [];
     const dbDisposeInputs: Array<Extract<DbWorkerInput, { type: "Dispose" }>> =
       [];
@@ -10147,30 +10149,6 @@ describe("with one evolu instance", () => {
       assertEqual(setup.run.deps.reportDefect.getDefects(), []);
     });
 
-    it("waits for DbWorker leader lock during tenant disposal", async () => {
-      await using setup = await setupSharedWorker();
-      const { createEvolu } = setup;
-      const { dbDisposeInputs, releaseDbWorkerLeader } = await createEvolu({
-        releaseDbWorkerLeaderOnDispose: false,
-        autoDispose: false,
-      });
-      let disposed = false;
-
-      const disposing = setup[Symbol.asyncDispose]().then(() => {
-        disposed = true;
-      });
-
-      await testWaitForWorkerMessage();
-
-      assertEqual(dbDisposeInputs, [{ type: "Dispose" }]);
-      assertFalse(disposed);
-
-      await releaseDbWorkerLeader();
-      await disposing;
-
-      assertTrue(disposed);
-    });
-
     it("stops a replacement DbWorker that acquires the lock during tenant disposal", async () => {
       await using setup = await setupSharedWorker();
       await using disposer = new AsyncDisposableStack();
@@ -10208,6 +10186,29 @@ describe("with one evolu instance", () => {
 
       assertEqual(replacementInputs, [{ type: "Dispose" }]);
       await disposing;
+    });
+
+    it("leads for its ID until disposed, so its DbWorkers stop without Dispose", async () => {
+      await using setup = await setupSharedWorker();
+      await setup.createEvolu();
+      assertSame(
+        getDbWorkerInit(setup.sharedWorkerOutputs.at(0)).sharedWorkerId,
+        setup.workerId,
+      );
+      await using run = testCreateRun({
+        lockManager: setup.run.deps.lockManager,
+      });
+      let isLeader = false;
+      const leading = run.ok(acquireLeaderLock(setup.workerId)).then((lock) => {
+        isLeader = true;
+        return lock;
+      });
+      await testWaitForWorkerMessage();
+      assertFalse(isLeader);
+
+      await setup[Symbol.asyncDispose]();
+
+      await using _lock = await leading;
     });
 
     it("disposes cleanly when queued sync resumes during tenant disposal", async () => {
@@ -10288,6 +10289,178 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       assertEqual(createWebSocket.createdUrls, []);
+    });
+
+    it("releases a transport claimed while its instance is disposed and drops queued changes", async () => {
+      const createWebSocket = testCreateWebSocket();
+      const creating = Promise.withResolvers<void>();
+      const continueCreating = Promise.withResolvers<void>();
+      await using setup = await setupSharedWorker({
+        createWebSocket: (url, options) => async (run) => {
+          creating.resolve();
+          await continueCreating.promise;
+          return run(createWebSocket(url, options));
+        },
+      });
+      const instance = await setup.createEvolu({ autoDispose: false });
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://claim-during-dispose.example",
+        ownerId: testAppOwner.id,
+      });
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transport] },
+          },
+        ],
+      });
+      // Queued behind the claim in flight.
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: {
+              owner: testAppOwner,
+              transports: [
+                createOwnerWebSocketTransport({
+                  url: "wss://queued-during-dispose.example",
+                  ownerId: testAppOwner.id,
+                }),
+              ],
+            },
+          },
+        ],
+      });
+      await creating.promise;
+
+      await instance[Symbol.asyncDispose]();
+      continueCreating.resolve();
+      await testWaitForWorkerMessage();
+
+      assertEqual(createWebSocket.sentMessages.at(-1), {
+        url: transport.url,
+        data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+      });
+      assertEqual(createWebSocket.createdUrls, [transport.url]);
+      assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+    });
+
+    it("reports nothing when the root Run is disposed before the worker", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const instance = await setup.createEvolu();
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://root-dispose.example",
+        ownerId: testAppOwner.id,
+      });
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transport] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(createWebSocket.createdUrls, [transport.url]);
+
+      // As a runtime shutting down while the worker's stack is still owned.
+      await setup.run[Symbol.asyncDispose]();
+
+      assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+    });
+
+    it("reports only the panic when it disposes a tenant with an instance", async () => {
+      // The default test WebSocket throws on create, which panics the root.
+      await using setup = await setupSharedWorker();
+      const instance = await setup.createEvolu();
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: {
+              owner: testAppOwner,
+              transports: [
+                createOwnerWebSocketTransport({
+                  url: "wss://root-panic.example",
+                  ownerId: testAppOwner.id,
+                }),
+              ],
+            },
+          },
+        ],
+      });
+      const panic = await setup.run.deps.reportDefect.next();
+      await setup.run[Symbol.asyncDispose]();
+
+      assertEqual(setup.run.deps.reportDefect.getDefects(), [panic]);
+      // The tenant still tells its DbWorker to stop.
+      await testWaitForWorkerMessage();
+      assertEqual(instance.dbDisposeInputs, [{ type: "Dispose" }]);
+      assert(AbortError.is(panic), "Expected an AbortError.");
+      assert(panic.reason.type === "PanicAbortReason", "Expected a panic.");
+      assertInstanceOf(panic.reason.defect, Error);
+      assertEqual(
+        panic.reason.defect.message,
+        "testCreateWebSocket is configured to throw on create",
+      );
+    });
+
+    it("starts the DbWorker of a reopened database while the previous one still holds its lock", async () => {
+      await using setup = await setupSharedWorker();
+      await using disposer = new AsyncDisposableStack();
+      const closed = await setup.createEvolu({ autoDispose: false });
+      // As a DbWorker that got Dispose but is still closing the database.
+      await closed.releaseDbWorkerLeader();
+      const previousDbWorkerRun = disposer.use(
+        testCreateRun({ lockManager: setup.run.deps.lockManager }),
+      );
+      const previousDbWorkerLock = await previousDbWorkerRun.ok(
+        acquireLeaderLock(testName),
+      );
+      await closed[Symbol.asyncDispose]();
+      setup.run.deps.time.advance("3s");
+      await testWaitForWorkerMessage();
+
+      let isReopened = false;
+      let isLeader = false;
+      const reopening = setup
+        .createEvoluBeforeDbWorkerLeader({ autoDispose: false })
+        .then((instance) => {
+          isReopened = true;
+          return instance;
+        });
+      disposer.defer(async () => {
+        await previousDbWorkerLock[Symbol.asyncDispose]();
+        const instance = await reopening;
+        if (!isLeader) await instance.acquireDbWorkerLeader();
+        await instance[Symbol.asyncDispose]();
+      });
+      await testWaitForWorkerMessage();
+      await testWaitForWorkerMessage();
+
+      assertTrue(isReopened);
+      const reopened = await reopening;
+      // Its requests wait until its own DbWorker holds the lock.
+      reopened.evoluChannel.port2.postMessage({
+        type: "Query",
+        queries: createSet([testQuery]),
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(reopened.dbInputs, []);
+
+      await previousDbWorkerLock[Symbol.asyncDispose]();
+      await reopened.acquireDbWorkerLeader();
+      isLeader = true;
+      assertEqual(
+        reopened.dbInputs.map(({ type }) => type),
+        ["Request"],
+      );
     });
 
     it("releases pending instance lock if tenant disposal wins the acquisition race", async () => {

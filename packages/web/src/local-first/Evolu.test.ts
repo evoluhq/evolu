@@ -572,6 +572,7 @@ const setupWebEvoluDeps = ({
         sqliteSchema: { tables: {}, indexes: [] },
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
+        sharedWorkerId: createIdFromString<"SharedWorker">("worker"),
         port: createClosableNativePort() as unknown as NativeMessagePort<
           DbWorkerOutput,
           DbWorkerInput

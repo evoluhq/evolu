@@ -1754,8 +1754,15 @@ export const initSharedWorker =
       });
     };
 
-    // Released after every tenant and DbWorker is disposed. Earlier releases
-    // take the same lock in their leader tab; see Builds.
+    // Held while this worker runs. Its DbWorkers stop once they can take it,
+    // because a Dispose posted right before this worker closes can be lost, as
+    // in Firefox. Taken before the build lock, so nothing delays the end of
+    // starting once that lock is held.
+    disposer.use(await run.ok(acquireLeaderLock(workerId)));
+
+    // Released after every tenant is disposed and has told its DbWorker to
+    // stop. Earlier releases take the same lock in their leader tab; see
+    // Builds.
     disposer.use(await run.ok(acquireLeaderLock("tab")));
     starting.dispose();
 
@@ -2232,6 +2239,7 @@ export const initSharedWorker =
                 ? { ...message, memoryOnly: true }
                 : message,
               currentTenantsByName,
+              workerId,
             ),
           {
             idleDisposeAfter: "3s",
@@ -2262,6 +2270,7 @@ const createEvoluTenant =
       memoryOnly,
     }: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
     currentTenantsByName: Map<Name, BorrowedResource<EvoluTenant>>,
+    workerId: SharedWorkerId,
   ): Task<EvoluTenant, never, EvoluTenantDeps> =>
   async (run) => {
     await using disposer = new AsyncDisposableStack();
@@ -2432,6 +2441,7 @@ const createEvoluTenant =
           sqliteSchema,
           encryptionKey,
           memoryOnly,
+          sharedWorkerId: workerId,
           port: dbWorkerChannel.port1.native,
         },
         [dbWorkerChannel.port1.native],
@@ -2587,20 +2597,16 @@ const createEvoluTenant =
       }
     };
 
-    disposer.defer(async () => {
+    // Disposal does not wait for the DbWorker. It holds the database lock
+    // until Dispose arrives, its tab closes, or this worker ends, and the next
+    // DbWorker for this database, of this worker or another build, waits for
+    // that lock before it reads the clock. A requested DbWorker that reports
+    // in later gets Dispose from the isDisposing check.
+    disposer.defer(() => {
       isDisposing = true;
       dbWorkerPort?.postMessage({ type: "Dispose" });
       dbWorkerPort = null;
       activeDispatch = null;
-
-      // The DbWorker holds this tenant leader lock while it is alive. Tenant
-      // disposal sends Dispose, then acquires the same lock to wait until the
-      // DbWorker releases it: either because Dispose was delivered or because
-      // the hosting tab closed. A worker requested from a later tab leader may
-      // be queued for the lock first; it is told to stop when it reports in.
-      // The wait is unabortable because tenant disposal must finish even after
-      // tenantRun receives an abort request.
-      await using _ = await tenantRun.ok(acquireLeaderLock(name));
     });
 
     const handleResponseForEvolu = (
@@ -3375,19 +3381,19 @@ const createEvoluTenant =
 
           disposer.defer(instance.onDisposed);
 
-          disposer.defer(async () => {
-            await tenantRun(
-              instance.useOwnerMutex.withLock(() => {
-                for (const leases of instance.ownerRegistrations.values()) {
-                  for (const lease of leases) lease?.release();
-                }
-                instance.ownerRegistrations.clear();
-                deps.refreshAllSyncRoutes();
-                deps.publishSyncState();
-                return ok();
-              }),
-            );
+          disposer.defer(() => {
+            for (const leases of instance.ownerRegistrations.values()) {
+              for (const lease of leases) lease?.release();
+            }
+            instance.ownerRegistrations.clear();
+            deps.refreshAllSyncRoutes();
+            deps.publishSyncState();
           });
+          // Cleanup starts no Task, because a root abort may dispose every Run
+          // first. Disposed before the claims above are released, this Run
+          // aborts queued UseOwner batches and waits for the running one, whose
+          // transport claim cannot be aborted, so the release sees every lease.
+          const instanceRun = disposer.use(tenantRun.create());
 
           disposer.defer(() => {
             instancesById.delete(instance.id);
@@ -3403,7 +3409,7 @@ const createEvoluTenant =
           // while it is alive. Acquiring the same lock here means the main
           // thread instance was disposed or its tab closed, so the tenant-side
           // instance must dispose itself.
-          void tenantRun
+          void instanceRun
             .abortable(acquireLeaderLock(message.id))
             .then((lock) => {
               if (!lock.ok) return;
@@ -3444,7 +3450,7 @@ const createEvoluTenant =
                 break;
               }
               case "UseOwner": {
-                void tenantRun(
+                void instanceRun(
                   instance.useOwnerMutex.withLock(async (run) => {
                     for (const action of message.actions) {
                       switch (action.action) {
