@@ -252,7 +252,7 @@
             Reset All Data
           </button>
           <button onclick={handleDownloadDatabaseClick} class="owner-btn">
-            Download Backup
+            Download Database
           </button>
         </div>
       </div>

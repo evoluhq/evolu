@@ -342,7 +342,7 @@ const OwnerActions: FC = () => {
           />
           <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
           <Button
-            title="Download Backup"
+            title="Download Database"
             onClick={handleDownloadDatabaseClick}
           />
         </div>

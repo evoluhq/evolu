@@ -154,7 +154,7 @@ import { PwaBadgeComponent } from "./pwa-badge.component";
                 (click)="handleDownloadDatabase()"
                 class="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
               >
-                Download Backup
+                Download Database
               </button>
             </div>
           </div>
