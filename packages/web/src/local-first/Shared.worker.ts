@@ -4,19 +4,40 @@ declare const self: DedicatedWorkerGlobalScope | SharedWorkerGlobalScope;
 import { installPolyfills } from "@evolu/common/polyfills";
 installPolyfills();
 
-import { createWebSocket, ok, tryAsync, waitForAbort } from "@evolu/common";
+import {
+  createUnknownError,
+  createWebSocket,
+  ok,
+  tryAsync,
+  waitForAbort,
+} from "@evolu/common";
 import type {
+  ConsoleEntryOrError,
   SharedWorkerInput,
   SharedWorkerOutput,
 } from "@evolu/common/local-first";
-import { initSharedWorker } from "@evolu/common/local-first";
+import {
+  consoleEntryOrErrorBroadcastChannelName,
+  initSharedWorker,
+} from "@evolu/common/local-first";
 import type { SharedWorkerUnsupported } from "./Evolu.ts";
 import { createRun } from "../Task.ts";
 import {
+  addUncaughtErrorListener,
+  createBroadcastChannel,
   createOneTabSharedWorkerSelfPolyfill,
   createSharedWorkerSelf,
   createWorkerDeps,
 } from "../Worker.ts";
+
+const errors = createBroadcastChannel<ConsoleEntryOrError>(
+  consoleEntryOrErrorBroadcastChannelName,
+);
+// Each tab logs an uncaught error, including a Run defect, and sets it as its
+// evoluError.
+addUncaughtErrorListener(self, (error) => {
+  errors.postMessage({ type: "Error", error: createUnknownError(error) });
+});
 
 const run = createRun({
   ...createWorkerDeps(),

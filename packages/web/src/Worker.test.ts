@@ -1,5 +1,7 @@
 import {
   assertEqual,
+  assertFalse,
+  assertLength,
   assertNonNullable,
   assertSame,
   assertThrowsInstanceOf,
@@ -9,6 +11,7 @@ import {
 } from "@evolu/common";
 import { describe, it, mock, test } from "node:test";
 import {
+  addUncaughtErrorListener,
   createBroadcastChannel,
   createOneTabSharedWorkerSelfPolyfill,
   createMessageChannel,
@@ -448,6 +451,62 @@ test("createSharedWorkerSelf asserts when a connection arrives before onConnect 
     error.message,
     "onConnect must be set before receiving connections",
   );
+});
+
+describe("addUncaughtErrorListener", () => {
+  const dispatch = (
+    scope: EventTarget,
+    type: "error" | "unhandledrejection",
+    fields: object,
+  ): Event => {
+    const event = Object.assign(new Event(type, { cancelable: true }), fields);
+    scope.dispatchEvent(event);
+    return event;
+  };
+
+  it("passes uncaught errors and unhandled rejections without canceling them", () => {
+    const scope = new EventTarget();
+    const listener = mock.fn<(error: Error) => void>();
+    using _listener = addUncaughtErrorListener(scope, listener);
+    const error = new Error("uncaught");
+    const reason = new Error("rejected");
+
+    const errorEvent = dispatch(scope, "error", { error });
+    const rejectionEvent = dispatch(scope, "unhandledrejection", { reason });
+
+    const errors = listener.mock.calls.map((call) => call.arguments[0]);
+    assertLength(errors, 2);
+    assertSame(errors[0], error);
+    assertSame(errors[1], reason);
+    assertFalse(errorEvent.defaultPrevented);
+    assertFalse(rejectionEvent.defaultPrevented);
+  });
+
+  it("passes a thrown non-Error as an Error", () => {
+    const scope = new EventTarget();
+    const listener = mock.fn<(error: Error) => void>();
+    using _listener = addUncaughtErrorListener(scope, listener);
+
+    dispatch(scope, "error", { error: null });
+    dispatch(scope, "unhandledrejection", { reason: "rejected" });
+
+    assertEqual(
+      listener.mock.calls.map((call) => call.arguments[0].message),
+      ["Defect: null", 'Defect: "rejected"'],
+    );
+  });
+
+  it("stops passing errors after disposal", () => {
+    const scope = new EventTarget();
+    const listener = mock.fn<(error: Error) => void>();
+    const uncaughtErrorListener = addUncaughtErrorListener(scope, listener);
+
+    uncaughtErrorListener[Symbol.dispose]();
+    dispatch(scope, "error", { error: new Error("uncaught") });
+    dispatch(scope, "unhandledrejection", { reason: new Error("rejected") });
+
+    assertSame(listener.mock.callCount(), 0);
+  });
 });
 
 test("createWorkerDeps stores console output entries and exposes createMessagePort", () => {

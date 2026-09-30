@@ -1005,6 +1005,10 @@ export interface EvoluErrorDep {
    * instead; see {@link UnsupportedDbVersionError}. Show that blocking message
    * outside any query-loading boundary, so pending queries do not hide it.
    *
+   * Some errors reach every tab, such as an unexpected failure of the shared
+   * worker. An app that forwards this store to an error tracker from each tab
+   * then reports such an error once per tab.
+   *
    * ### Example
    *
    * ```ts

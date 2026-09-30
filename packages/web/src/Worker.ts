@@ -18,8 +18,10 @@ import {
   assertNonNullable,
   createConsole,
   createConsoleStoreOutput,
+  defectToError,
   disposable,
 } from "@evolu/common";
+import type { createRun } from "./Task.ts";
 
 /** Creates a {@link Worker} from a Web Worker. */
 export const createWorker = <Input, Output>(
@@ -159,7 +161,9 @@ export const createWorkerSelf = <Input, Output = never>(
  * Creates an Evolu {@link SharedWorkerSelf} from a Web `SharedWorkerGlobalScope`
  * (`self` inside a shared worker).
  *
- * Disposing closes the shared worker scope for all connected clients.
+ * Disposing closes the shared worker scope for all connected clients. Browsers
+ * never pass a shared worker's uncaught errors to its pages; see
+ * {@link addUncaughtErrorListener}.
  */
 export const createSharedWorkerSelf = <Input, Output = never>(
   nativeSelf: SharedWorkerGlobalScope,
@@ -269,6 +273,67 @@ export const createOneTabSharedWorkerSelfPolyfill = <Input, Output = never>(
     },
     [Symbol.dispose]: () => disposables.dispose(),
   };
+};
+
+/**
+ * Passes each uncaught error and unhandled rejection of a worker global scope
+ * to `listener` as an `Error` from {@link defectToError}.
+ *
+ * Browsers never pass a shared worker's uncaught errors to a page's error
+ * handlers, and no worker passes its unhandled rejections to its page. A shared
+ * worker calls this with its global scope, `self`, to send them to its pages,
+ * for example over a BroadcastChannel. Defects of a Run from {@link createRun}
+ * arrive too, because it reports them with `reportError`, which dispatches
+ * "error" on the global scope.
+ *
+ * The events stay uncanceled, so the browser still logs them, and a dedicated
+ * worker still passes its uncaught errors to its page. The listeners stay until
+ * disposal, so they also receive errors after a Run's panic.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual } from "@evolu/common";
+ * import { addUncaughtErrorListener } from "@evolu/web";
+ *
+ * const messages: Array<string> = [];
+ * // A worker passes its global scope, `self`.
+ * const scope = new EventTarget();
+ * using _listener = addUncaughtErrorListener(scope, (error) => {
+ *   messages.push(error.message);
+ * });
+ *
+ * scope.dispatchEvent(
+ *   Object.assign(new Event("error"), { error: new Error("unexpected") }),
+ * );
+ * assertEqual(messages, ["unexpected"]);
+ * ```
+ */
+export const addUncaughtErrorListener = (
+  scope: EventTarget,
+  listener: (error: Error) => void,
+): Disposable => {
+  using disposer = new DisposableStack();
+  const { signal } = disposer.adopt(new AbortController(), (controller) => {
+    controller.abort();
+  });
+
+  scope.addEventListener(
+    "error",
+    (event) => {
+      listener(defectToError((event as ErrorEvent).error));
+    },
+    { signal },
+  );
+  scope.addEventListener(
+    "unhandledrejection",
+    (event) => {
+      listener(defectToError((event as PromiseRejectionEvent).reason));
+    },
+    { signal },
+  );
+
+  return disposable({}, disposer);
 };
 
 /** Creates deps shared by web worker entry points. */
