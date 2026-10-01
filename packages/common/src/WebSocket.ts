@@ -7,7 +7,7 @@
 import { assert } from "./Assert.ts";
 import { constTrue } from "./Function.ts";
 import type { Result } from "./Result.ts";
-import { err, ok } from "./Result.ts";
+import { err, ok, trySync } from "./Result.ts";
 import type { Schedule } from "./Schedule.ts";
 import { exponential, jitter, maxDelay } from "./Schedule.ts";
 import type { RetryError, Task } from "./Task.ts";
@@ -266,9 +266,23 @@ export interface WebSocketOptions {
  * @group Errors
  */
 export type WebSocketError =
+  | WebSocketCreateError
   | WebSocketConnectError
   | WebSocketConnectionError
   | RetryError<WebSocketRetryError>;
+
+/**
+ * An error that occurs when the platform's WebSocket constructor throws, for
+ * example for a URL it rejects, a `ws:` URL on an `https:` page, or a Content
+ * Security Policy that blocks the URL. These fail the same way on every
+ * attempt, so the {@link WebSocket} stops connecting. The thrown value is not
+ * always an `Error`.
+ *
+ * @group Errors
+ */
+export interface WebSocketCreateError extends Typed<"WebSocketCreateError"> {
+  readonly error: unknown;
+}
 
 /**
  * An error that occurs when a connection cannot be established due to a network
@@ -344,6 +358,9 @@ const defaultHealthyConnectionDuration = /*#__PURE__*/ durationToMillis("30s");
 /**
  * Create a new {@link WebSocket}.
  *
+ * When the platform's WebSocket constructor throws, `onError` receives a
+ * {@link WebSocketCreateError} and the WebSocket stops connecting.
+ *
  * @group Core
  */
 export const createWebSocket: CreateWebSocket =
@@ -403,10 +420,22 @@ export const createWebSocket: CreateWebSocket =
       closeSocket();
       resolveConnect = resolve;
 
-      socket = new WebSocketConstructor(
-        url,
-        String.is(protocols) ? protocols : protocols && [...protocols],
+      const created = trySync(
+        () =>
+          new WebSocketConstructor(
+            url,
+            String.is(protocols) ? protocols : protocols && [...protocols],
+          ),
       );
+      // A throw that escaped this Task would panic the Run, which in Evolu's
+      // SharedWorker stops sync for every tab.
+      if (!created.ok) {
+        resolveConnect = null;
+        onError?.({ type: "WebSocketCreateError", error: created.error });
+        resolve(ok());
+        return;
+      }
+      socket = created.value;
 
       if (binaryType) socket.binaryType = binaryType;
 

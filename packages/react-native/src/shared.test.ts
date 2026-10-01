@@ -89,14 +89,13 @@ describe("createEvoluDeps", () => {
         },
       ),
     );
-    // The WebSocket constructor throws a SyntaxError for a URL with a
-    // fragment, which panics the worker's root Run.
-    evolu.useOwner(testAppOwner, [
-      createOwnerWebSocketTransport({
-        url: "wss://panic.example/#",
-        ownerId: testAppOwner.id,
-      }),
-    ]);
+    // The same transport twice in one claim is a defect that panics the
+    // worker's root Run.
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://panic.example",
+      ownerId: testAppOwner.id,
+    });
+    evolu.useOwner(testAppOwner, [transport, transport]);
     await panicked.promise;
 
     // Deps connected to the failed worker would never get sync state.

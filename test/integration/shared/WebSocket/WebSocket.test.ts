@@ -363,6 +363,59 @@ describe("createWebSocket", () => {
     expect(errors[0]?.type).toBe("WebSocketConnectError");
   });
 
+  test("reports a throwing constructor and stops connecting", async () => {
+    await using run = testCreateRun();
+    const errors: Array<WebSocketError> = [];
+    // Firefox throws a non-Error exception for a URL a CSP blocks.
+    const thrown = { name: "NS_ERROR_CONTENT_BLOCKED" };
+    let constructed = 0;
+    const ThrowingWebSocket = function () {
+      constructed++;
+      // oxlint-disable-next-line typescript/only-throw-error -- Mimics the non-Error exception Firefox throws.
+      throw thrown;
+    } as unknown as typeof WebSocket;
+
+    await using _ws = await run.ok(
+      createWebSocket("ws://example.com", {
+        // Would retry twice if the throw were a retryable failure.
+        schedule: take(2)(spaced("1ms")),
+        WebSocketConstructor: ThrowingWebSocket,
+        onError: (error) => {
+          errors.push(error);
+        },
+      }),
+    );
+    // The schedule waits on the fake clock, so each step advances it past a
+    // retry delay and then lets the retry run.
+    for (let step = 0; step < 3; step++) {
+      run.deps.time.advance("1ms");
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+
+    expect(errors).toEqual([{ type: "WebSocketCreateError", error: thrown }]);
+    expect(constructed).toBe(1);
+    expect(run.deps.reportDefect.getDefects()).toEqual([]);
+  });
+
+  test("reports a URL the platform rejects without a defect", async () => {
+    await using run = testCreateRun();
+    const errors: Array<WebSocketError> = [];
+
+    // Every platform's WebSocket constructor throws for a fragment.
+    await using _ws = await run.ok(
+      createWebSocket("ws://example.com/#fragment", {
+        onError: (error) => {
+          errors.push(error);
+        },
+      }),
+    );
+
+    expect(errors.map(({ type }) => type)).toEqual(["WebSocketCreateError"]);
+    expect(run.deps.reportDefect.getDefects()).toEqual([]);
+  });
+
   test("calls onClose when server closes connection", async () => {
     await using run = createRun();
 

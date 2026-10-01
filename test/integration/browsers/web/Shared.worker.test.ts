@@ -104,21 +104,19 @@ const panicSharedWorker = async ({
       UnknownError.is(error) &&
       isPlainObject(error.error) &&
       typeof error.error.message === "string" &&
-      error.error.message.startsWith("SyntaxError")
+      error.error.message.includes("lookup duplicates")
     )
       panicReported.resolve();
   });
 
-  // The WebSocket constructor throws a SyntaxError for a URL with a fragment,
-  // which panics the worker's root Run. The panic also releases the build lock
-  // that the production worker otherwise holds, which would block later tests.
-  // If that throw stops panicking, these tests need another panic.
-  evolu.useOwner(testAppOwner, [
-    createOwnerWebSocketTransport({
-      url: "wss://panic.example/#",
-      ownerId: testAppOwner.id,
-    }),
-  ]);
+  // The same transport twice in one claim is a defect that panics the worker's
+  // root Run. The panic also releases the build lock that the production worker
+  // otherwise holds, which would block later tests.
+  const transport = createOwnerWebSocketTransport({
+    url: "wss://panic.example",
+    ownerId: testAppOwner.id,
+  });
+  evolu.useOwner(testAppOwner, [transport, transport]);
 
   await panicReported.promise;
 
