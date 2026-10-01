@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -265,6 +267,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρο Name.`;
 
+/** Formats an EmailError in Greek. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη διεύθυνση ηλεκτρονικού ταχυδρομείου.`;
+
 /** Formats a MnemonicError in Greek. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη αγγλική μνημονική φράση BIP39.`;
@@ -276,6 +282,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formats a TableIdError in Greek. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρο Id για τον πίνακα ${error.table}.`;
+
+/** Formats a UuidError in Greek. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι κανονικό UUID με πεζά γράμματα.`;
 
 /** Formats a NonNegativeError in Greek. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

@@ -212,6 +212,12 @@ export const formatNameError: Type.TypeErrorFormatter<Type.NameError> = (
 ) =>
   `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest prawidłową nazwą.`;
 
+/** Formats an EmailError in Polish. */
+export const formatEmailError: Type.TypeErrorFormatter<Type.EmailError> = (
+  error,
+) =>
+  `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest prawidłowym adresem e-mail.`;
+
 /** Formats a MnemonicError in Polish. */
 export const formatMnemonicError: Type.TypeErrorFormatter<
   Type.MnemonicError
@@ -227,6 +233,12 @@ export const formatTableIdError: Type.TypeErrorFormatter<Type.TableIdError> = (
   error,
 ) =>
   `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest prawidłowym Id tabeli ${error.table}.`;
+
+/** Formats a UuidError in Polish. */
+export const formatUuidError: Type.TypeErrorFormatter<Type.UuidError> = (
+  error,
+) =>
+  `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest kanonicznym UUID zapisanym małymi literami.`;
 
 /** Formats a NonNegativeError in Polish. */
 export const formatNonNegativeError: Type.TypeErrorFormatter<

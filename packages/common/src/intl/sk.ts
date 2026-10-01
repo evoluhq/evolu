@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatValueMustBe = (value: unknown, expected: string): string =>
@@ -227,6 +229,9 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 /** Formats a NameError in Slovak. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platný názov.`;
+/** Formats an EmailError in Slovak. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platná e-mailová adresa.`;
 /** Formats a MnemonicError in Slovak. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platná anglická mnemotechnická fráza BIP39.`;
@@ -236,6 +241,9 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formats a TableIdError in Slovak. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platné Id pre tabuľku ${safelyStringifyUnknownValue(error.table)}.`;
+/** Formats a UuidError in Slovak. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je kanonické UUID zapísané malými písmenami.`;
 /** Formats a NonNegativeError in Slovak. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,

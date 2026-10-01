@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatValueMustBe = (value: unknown, expected: string): string =>
@@ -258,6 +260,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Değer ${safelyStringifyUnknownValue(error.value)} geçerli bir Name değildir.`;
 
+/** Formats an EmailError in Turkish. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Değer ${safelyStringifyUnknownValue(error.value)} geçerli bir e-posta adresi değildir.`;
+
 /** Formats a MnemonicError in Turkish. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Değer ${safelyStringifyUnknownValue(error.value)} geçerli bir İngilizce BIP39 anımsatıcı değildir.`;
@@ -269,6 +275,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formats a TableIdError in Turkish. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Değer ${safelyStringifyUnknownValue(error.value)} ${error.table} tablosu için geçerli bir Id değildir.`;
+
+/** Formats a UuidError in Turkish. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Değer ${safelyStringifyUnknownValue(error.value)} kurallı bir küçük harfli UUID değildir.`;
 
 /** Formats a NonNegativeError in Turkish. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

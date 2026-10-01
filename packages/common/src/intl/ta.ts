@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -258,6 +260,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் Name அல்ல.`;
 
+/** EmailError-ஐ தமிழில் வடிவமைக்கிறது. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் மின்னஞ்சல் முகவரி அல்ல.`;
+
 /** MnemonicError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் ஆங்கில BIP39 mnemonic அல்ல.`;
@@ -269,6 +275,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** TableIdError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} table ${error.table}-க்கான செல்லுபடியாகும் Id அல்ல.`;
+
+/** UuidError-ஐ தமிழில் வடிவமைக்கிறது. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சிற்றெழுத்துகளிலான ஒரு canonical UUID அல்ல.`;
 
 /** NonNegativeError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

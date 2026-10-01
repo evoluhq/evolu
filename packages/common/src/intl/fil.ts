@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -259,6 +261,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na Name.`;
 
+/** Fino-format ang EmailError sa Filipino. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na email address.`;
+
 /** Fino-format ang MnemonicError sa Filipino. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na English BIP39 mnemonic.`;
@@ -270,6 +276,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Fino-format ang TableIdError sa Filipino. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na Id para sa table na ${error.table}.`;
+
+/** Fino-format ang UuidError sa Filipino. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi canonical na UUID na nasa maliliit na titik.`;
 
 /** Fino-format ang NonNegativeError sa Filipino. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

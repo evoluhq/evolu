@@ -194,7 +194,7 @@
  * ```
  *
  * Evolu includes dozens of predefined Types and Type factories. Use Types such
- * as {@link Age}, {@link PositiveInt}, {@link DateIso},
+ * as {@link Age}, {@link PositiveInt}, {@link DateIso}, {@link Email}, {@link Uuid},
  * {@link NonEmptyTrimmedString100}, {@link Base64Url}, and {@link Json} directly.
  * Build domain Types with factories such as {@link brand}, {@link typed},
  * {@link minLength}, {@link maxLength}, {@link array}, {@link object},
@@ -448,7 +448,7 @@
  *
  * @module
  */
-import { utf8ToBytes } from "@noble/ciphers/utils.js";
+import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/ciphers/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
@@ -7599,6 +7599,74 @@ export const Name = /*#__PURE__*/ brand(
 export type Name = typeof Name.Output;
 
 /**
+ * Error returned when a string is not a valid {@link Email}.
+ *
+ * @group String
+ */
+export interface EmailError extends TypeError<"Email"> {
+  readonly value: string;
+}
+
+/**
+ * Email address as defined by the WHATWG HTML Standard.
+ *
+ * Email accepts a [valid email
+ * address](https://html.spec.whatwg.org/multipage/input.html#valid-e-mail-address),
+ * the syntax browsers enforce for `<input type="email">`. The HTML Standard
+ * deliberately departs from RFC 5322: it rejects quoted local parts, comments,
+ * IP address literals, and whitespace, and it accepts only ASCII. Use the ASCII
+ * (`xn--`) form of internationalized domains.
+ *
+ * Email does not normalize. The local part is case-sensitive, so different
+ * Email strings can still reach the same mailbox, and only a delivered message
+ * proves that an address exists.
+ *
+ * The HTML Standard limits each domain label to 63 characters but sets no total
+ * length. SMTP limits an address to 254 characters; compose
+ * `maxLength(254)(Email)` when that limit matters.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   Email,
+ *   maxLength,
+ * } from "@evolu/common";
+ *
+ * assertOk(Email.fromUnknown("ada@example.com"), "ada@example.com");
+ * assertOk(Email.fromUnknown("Ada@Example.com"), "Ada@Example.com");
+ *
+ * const invalid = Email.fromUnknown("Ada <ada@example.com>");
+ * assertErr(invalid);
+ * assertEqual(invalid.error, {
+ *   type: "Email",
+ *   value: "Ada <ada@example.com>",
+ * });
+ *
+ * const SmtpEmail = maxLength(254)(Email);
+ * assertErr(SmtpEmail.fromUnknown(`${"a".repeat(251)}@b.c`));
+ * ```
+ *
+ * @group String
+ */
+export const Email = /*#__PURE__*/ brand(
+  "Email",
+  String,
+  (value) =>
+    /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/u.test(
+      value,
+    )
+      ? ok()
+      : err<EmailError>({ type: "Email", value }),
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid email address.`,
+);
+export type Email = typeof Email.Output;
+
+/**
  * Stable valid {@link Name} for tests and internal fixtures.
  *
  * @group String
@@ -7966,6 +8034,134 @@ export const idToIdBytes = (value: Id): IdBytes =>
  */
 export const idBytesToId = (value: IdBytes): Id =>
   uint8ArrayToBase64Url(value) as unknown as Id;
+
+/**
+ * Error returned when a string is not a canonical {@link Uuid}.
+ *
+ * @group String
+ */
+export interface UuidError extends TypeError<"Uuid"> {
+  readonly value: string;
+}
+
+/**
+ * UUID in its canonical lowercase text form, as defined by [RFC
+ * 9562](https://www.rfc-editor.org/rfc/rfc9562).
+ *
+ * Uuid accepts 32 lowercase hexadecimal digits in the 8-4-4-4-12 layout, as
+ * produced by `crypto.randomUUID()`. It accepts every version and variant,
+ * including the Nil and Max UUIDs, so every 128-bit value has exactly one
+ * Uuid.
+ *
+ * RFC 9562 reads UUIDs in any case. Uuid requires lowercase so that equal UUIDs
+ * are equal strings; lowercase text from other sources before validating it.
+ *
+ * Convert a Uuid to an {@link Id} with {@link uuidToId} and back with
+ * {@link idToUuid}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, assertErr, assertOk, Uuid } from "@evolu/common";
+ *
+ * const value = "0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d";
+ * assertOk(Uuid.fromUnknown(value), value);
+ *
+ * const uppercase = value.toUpperCase();
+ * const invalid = Uuid.fromUnknown(uppercase);
+ * assertErr(invalid);
+ * assertEqual(invalid.error, { type: "Uuid", value: uppercase });
+ * assertOk(Uuid.fromUnknown(uppercase.toLowerCase()), value);
+ * ```
+ *
+ * @group String
+ */
+export const Uuid = /*#__PURE__*/ brand(
+  "Uuid",
+  String,
+  (value) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(
+      value,
+    )
+      ? ok()
+      : err<UuidError>({ type: "Uuid", value }),
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a canonical lowercase UUID.`,
+);
+export type Uuid = typeof Uuid.Output;
+
+/**
+ * Converts a {@link Uuid} to the {@link Id} with the same 16 bytes.
+ *
+ * Use this to store records whose external keys are UUIDs. Unlike
+ * {@link createIdFromString}, the mapping is reversible with {@link idToUuid}, so
+ * the original UUID does not need its own column. A time-based UUID, such as
+ * version 1, 6, or 7, keeps its creation time in the Id.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   idToUuid,
+ *   Uuid,
+ *   uuidToId,
+ *   type Brand,
+ *   type Id,
+ * } from "@evolu/common";
+ *
+ * const uuid = Uuid.orThrow("0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d");
+ * const todoId = uuidToId<"Todo">(uuid);
+ *
+ * assertEqual(todoId, "AZCm9Iw-eyqdQV5veoucDQ");
+ * assertType<typeof todoId, Id & Brand<"Todo">>();
+ * assertEqual(idToUuid(todoId), uuid);
+ * ```
+ *
+ * @group String
+ */
+export const uuidToId = <B extends string = never>(
+  value: Uuid,
+  ..._validation: IdBrandValidation<B>
+): CreatedId<B> =>
+  idBytesToId(hexToBytes(value.replaceAll("-", "")) as IdBytes) as CreatedId<B>;
+
+/**
+ * Converts an {@link Id} to the {@link Uuid} with the same 16 bytes.
+ *
+ * The result is a Uuid of any version or variant, because Ids created by
+ * {@link createId} are random 128-bit values. Ids created by
+ * {@link createIdAsUuidv7} convert to version 7 UUIDs.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   createIdAsUuidv7,
+ *   createRandomBytes,
+ *   createTime,
+ *   idToUuid,
+ *   uuidToId,
+ * } from "@evolu/common";
+ *
+ * const id = createIdAsUuidv7({
+ *   randomBytes: createRandomBytes(),
+ *   time: createTime(),
+ * });
+ * const uuid = idToUuid(id);
+ *
+ * assertEqual(uuid[14], "7");
+ * assertEqual(uuidToId(uuid), id);
+ * ```
+ *
+ * @group String
+ */
+export const idToUuid = (value: Id): Uuid => {
+  const hex = bytesToHex(idToIdBytes(value));
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as Uuid;
+};
 
 /**
  * Error returned when a string is not a canonical {@link Int64String}.

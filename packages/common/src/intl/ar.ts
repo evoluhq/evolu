@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -225,6 +227,9 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 /** Formats a NameError in Arabic. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست Name صالحة.`;
+/** Formats an EmailError in Arabic. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان بريد إلكتروني صالحاً.`;
 /** Formats a MnemonicError in Arabic. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عبارة BIP39 إنجليزية صالحة.`;
@@ -234,6 +239,9 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formats a TableIdError in Arabic. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست Id صالحة للجدول ${error.table}.`;
+/** Formats a UuidError in Arabic. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست UUID معيارياً بأحرف صغيرة.`;
 /** Formats a NonNegativeError in Arabic. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,

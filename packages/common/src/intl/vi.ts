@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -225,6 +227,9 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 /** Định dạng NameError bằng tiếng Việt. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là Name hợp lệ.`;
+/** Định dạng EmailError bằng tiếng Việt. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là địa chỉ email hợp lệ.`;
 /** Định dạng MnemonicError bằng tiếng Việt. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là cụm từ gợi nhớ BIP39 tiếng Anh hợp lệ.`;
@@ -234,6 +239,9 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Định dạng TableIdError bằng tiếng Việt. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là Id hợp lệ cho bảng ${error.table}.`;
+/** Định dạng UuidError bằng tiếng Việt. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là UUID chữ thường chính tắc.`;
 /** Định dạng NonNegativeError bằng tiếng Việt. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,

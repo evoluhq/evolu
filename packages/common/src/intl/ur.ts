@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -224,6 +226,9 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 /** NameError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست Name نہیں ہے۔`;
+/** EmailError کو اردو میں فارمیٹ کرتا ہے۔ */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} درست ای میل ایڈریس نہیں ہے۔`;
 /** MnemonicError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست انگریزی BIP39 mnemonic نہیں ہے۔`;
@@ -233,6 +238,9 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** TableIdError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} جدول ${error.table} کے لیے درست Id نہیں ہے۔`;
+/** UuidError کو اردو میں فارمیٹ کرتا ہے۔ */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} چھوٹے حروف والا canonical UUID نہیں ہے۔`;
 /** NonNegativeError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,

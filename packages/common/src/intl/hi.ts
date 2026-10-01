@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -258,6 +260,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य Name नहीं है।`;
 
+/** EmailError को हिंदी में format करता है। */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} मान्य ईमेल पता नहीं है।`;
+
 /** MnemonicError को हिंदी में format करता है। */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य अंग्रेज़ी BIP39 mnemonic नहीं है।`;
@@ -269,6 +275,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** TableIdError को हिंदी में format करता है। */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} table ${error.table} के लिए मान्य Id नहीं है।`;
+
+/** UuidError को हिंदी में format करता है। */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} छोटे अक्षरों वाला canonical UUID नहीं है।`;
 
 /** NonNegativeError को हिंदी में format करता है। */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

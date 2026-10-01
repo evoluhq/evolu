@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -259,6 +261,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な Name ではありません。`;
 
+/** EmailError を日本語でフォーマットします。 */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は有効なメールアドレスではありません。`;
+
 /** MnemonicError を日本語でフォーマットします。 */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な英語の BIP39 ニーモニックではありません。`;
@@ -270,6 +276,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** TableIdError を日本語でフォーマットします。 */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} はテーブル ${error.table} の有効な Id ではありません。`;
+
+/** UuidError を日本語でフォーマットします。 */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は正規形式の小文字 UUID ではありません。`;
 
 /** NonNegativeError を日本語でフォーマットします。 */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

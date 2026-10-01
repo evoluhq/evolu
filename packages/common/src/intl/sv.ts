@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -259,6 +261,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} är inte ett giltigt Name.`;
 
+/** Formaterar ett EmailError på svenska. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en giltig e-postadress.`;
+
 /** Formaterar ett MnemonicError på svenska. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en giltig engelsk BIP39-mnemonisk fras.`;
@@ -270,6 +276,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formaterar ett TableIdError på svenska. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} är inte ett giltigt Id för tabellen ${error.table}.`;
+
+/** Formaterar ett UuidError på svenska. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte ett kanoniskt UUID med små bokstäver.`;
 
 /** Formaterar ett NonNegativeError på svenska. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

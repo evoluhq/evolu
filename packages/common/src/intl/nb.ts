@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -200,12 +202,16 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig Base64Url-streng.`;
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldig Name.`;
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig e-postadresse.`;
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldig engelsk BIP39-mnemonisk uttrykk.`;
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig Id.`;
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig Id for tabellen ${error.table}.`;
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en kanonisk UUID med små bokstaver.`;
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>

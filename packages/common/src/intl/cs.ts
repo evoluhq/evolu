@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatValueMustBe = (value: unknown, expected: string): string =>
@@ -258,6 +260,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný název.`;
 
+/** Formats an EmailError in Czech. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná e-mailová adresa.`;
+
 /** Formats a MnemonicError in Czech. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná anglická BIP39 mnemotechnická fráze.`;
@@ -269,6 +275,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formats a TableIdError in Czech. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platné Id pro tabulku ${safelyStringifyUnknownValue(error.table)}.`;
+
+/** Formats a UuidError in Czech. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být kanonické UUID zapsané malými písmeny.`;
 
 /** Formats a NonNegativeError in Czech. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

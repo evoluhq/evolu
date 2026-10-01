@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -257,6 +259,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו Name חוקי.`;
 
+/** מעצב שגיאת EmailError בעברית. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת אימייל חוקית.`;
+
 /** מעצב שגיאת MnemonicError בעברית. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו מנמוניקת BIP39 חוקית באנגלית.`;
@@ -268,6 +274,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** מעצב שגיאת TableIdError בעברית. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו Id חוקי עבור הטבלה ${error.table}.`;
+
+/** מעצב שגיאת UuidError בעברית. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו UUID קנוני באותיות קטנות.`;
 
 /** מעצב שגיאת NonNegativeError בעברית. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

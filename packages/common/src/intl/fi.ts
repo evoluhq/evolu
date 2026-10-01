@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -258,6 +260,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen Name.`;
 
+/** Muotoilee EmailError-virheen suomeksi. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen sähköpostiosoite.`;
+
 /** Muotoilee MnemonicError-virheen suomeksi. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen englanninkielinen BIP39-muistisanasarja.`;
@@ -269,6 +275,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Muotoilee TableIdError-virheen suomeksi. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen Id taululle ${error.table}.`;
+
+/** Muotoilee UuidError-virheen suomeksi. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kanoninen pienillä kirjaimilla kirjoitettu UUID.`;
 
 /** Muotoilee NonNegativeError-virheen suomeksi. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

@@ -103,6 +103,7 @@ import {
   Digit1To59,
   Digit1To99,
   discriminatedUnion,
+  Email,
   EvoluType,
   finite,
   FiniteNumber,
@@ -121,6 +122,7 @@ import {
   idBytesTypeValueLength,
   id,
   idToIdBytes,
+  idToUuid,
   json,
   Json,
   JsonArray,
@@ -216,6 +218,8 @@ import {
   UnknownResult,
   uint8ArrayToBase64Url,
   UrlSafeString,
+  Uuid,
+  uuidToId,
   zeroNonNegativeInt,
   type AnyType,
   type ArrayElementIssue,
@@ -239,6 +243,7 @@ import {
   type DiscriminatedUnionMemberError,
   type DiscriminatedUnionMemberIssue,
   type DiscriminatedUnionType,
+  type EmailError,
   type EvoluTypeError,
   type ExtractTyped,
   type FiniteError,
@@ -354,6 +359,7 @@ import {
   type UnionInputType,
   type UnionMemberError,
   type UnionType,
+  type UuidError,
   type ValidationOptions,
   type ValidateLiteral,
   type ValidateOutput,
@@ -545,6 +551,7 @@ describe("Type", () => {
       Digit1To51,
       Digit1To59,
       Digit1To99,
+      Email,
       EvoluType,
       FiniteNumber,
       Function,
@@ -601,6 +608,7 @@ describe("Type", () => {
       UnknownNextResult,
       UnknownResult,
       UrlSafeString,
+      Uuid,
     } as const satisfies Readonly<Record<ExportedTypeKey, TypeNode>>;
 
     const IntrospectionRoot = createType(
@@ -679,6 +687,7 @@ describe("Type", () => {
       "DateIsoFromDate",
       "DecimalString",
       "DiscriminatedUnion",
+      "Email",
       "EvoluType",
       "Finite",
       "Function",
@@ -753,6 +762,7 @@ describe("Type", () => {
       "Unknown",
       "Uppercased",
       "UrlSafeString",
+      "Uuid",
     ] as const;
 
     assertType<
@@ -10013,6 +10023,122 @@ describe("BrandFactory", () => {
         });
       });
 
+      describe("Email", () => {
+        // Single-address cases from the WebKit and Chromium
+        // ValidityState-typeMismatch-email.js tests, without the cases that
+        // test the browser's whitespace sanitization.
+        it("accepts valid email addresses as defined by the HTML Standard", () => {
+          for (const value of [
+            "something@something.com",
+            "someone@localhost.localdomain",
+            "someone@127.0.0.1",
+            "a@b.b",
+            "a/b@domain.com",
+            "{}@domain.com",
+            "m*'!%@something.sa",
+            "tu!!7n7.ad##0!!!@company.ca",
+            "%@com.com",
+            "!#$%&'*+/=?^_`{|}~.-@com.com",
+            ".wooly@example.com",
+            "wo..oly@example.com",
+            "someone@do-ma-in.com",
+            "somebody@example",
+            "Ada@Example.COM",
+            "a@xn--maana-pta.com",
+            `${"a".repeat(64)}@p.com`,
+            `a@${"p".repeat(63)}.${"c".repeat(63)}`,
+          ]) {
+            assertEqual(Email.fromUnknown(value), ok(value));
+          }
+          assertType<typeof Email.Output, string & Brand<"Email">>();
+        });
+
+        it("rejects invalid email addresses", () => {
+          for (const value of [
+            "invalid:email@example.com",
+            "@somewhere.com",
+            "example.com",
+            "@@example.com",
+            "a space@example.com",
+            "something@ex..ample.com",
+            "a\b@c",
+            "someone@somewhere.com.",
+            '""test\blah""@example.com',
+            '"testblah"@example.com',
+            "someone@somewhere.com@",
+            "someone@somewhere_com",
+            "someone@some:where.com",
+            ".",
+            "F/s/f/a@feo+re.com",
+            "some+long+email+address@some+host-weird-/looking.com",
+            "a @p.com",
+            "a\t@p.com",
+            "a\u000B@p.com",
+            "a\u000C@p.com",
+            "a @p.com",
+            "a　@p.com",
+            "ddjk-s-jk@asl-.com",
+            "someone@do-.com",
+            "somebody@-.com",
+            `a@${"p".repeat(64)}.com`,
+            `a@p.${"c".repeat(64)}`,
+            " a@p.com",
+            "a@p.com\n",
+            "a@[127.0.0.1]",
+            "mañana@example.com",
+            "a@mañana.com",
+            "",
+          ]) {
+            assertEqual(
+              Email.fromUnknown(value),
+              err({ type: "Email", value }),
+            );
+          }
+          assertEqual(
+            Email.formatError({ type: "Email", value: "example.com" }),
+            'The value "example.com" is not a valid email address.',
+          );
+          assertType<typeof Email.Error, EmailError>();
+        });
+      });
+
+      describe("Uuid", () => {
+        it("accepts canonical lowercase UUIDs of every version and variant", () => {
+          for (const value of [
+            "20354d7a-e4fe-47af-8ff6-187bca92f3f9",
+            "0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d",
+            "00000000-0000-0000-0000-000000000000",
+            "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "01234567-89ab-0def-0123-456789abcdef",
+          ]) {
+            assertEqual(Uuid.fromUnknown(value), ok(value));
+          }
+          assertType<typeof Uuid.Output, string & Brand<"Uuid">>();
+        });
+
+        it("rejects non-canonical text", () => {
+          for (const value of [
+            "20354D7A-E4FE-47AF-8FF6-187BCA92F3F9",
+            "20354d7a-e4fe-47af-8ff6-187bca92f3F9",
+            "{20354d7a-e4fe-47af-8ff6-187bca92f3f9}",
+            "urn:uuid:20354d7a-e4fe-47af-8ff6-187bca92f3f9",
+            "20354d7ae4fe47af8ff6187bca92f3f9",
+            "20354d7a-e4fe-47af-8ff6-187bca92f3f",
+            "20354d7a-e4fe-47af-8ff6-187bca92f3f9 ",
+            "g0354d7a-e4fe-47af-8ff6-187bca92f3f9",
+            "invalid",
+            "",
+          ]) {
+            assertEqual(Uuid.fromUnknown(value), err({ type: "Uuid", value }));
+          }
+          assertEqual(
+            Uuid.formatError({ type: "Uuid", value: "invalid" }),
+            'The value "invalid" is not a canonical lowercase UUID.',
+          );
+          assertType<typeof Uuid.Error, UuidError>();
+        });
+      });
+
       describe("SimplePassword", () => {
         it("requires trimmed text containing between 8 and 64 characters", () => {
           assertEqual(
@@ -10194,6 +10320,46 @@ describe("BrandFactory", () => {
           assertLength(bytes, 16);
           assertEqual(idBytesTypeValueLength, 16);
           assertSame(idBytesToId(bytes), value);
+        });
+
+        it("converts to and from a Uuid with the same bytes", () => {
+          const deps = testCreateDeps();
+          const uuid = Uuid.orThrow("0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d");
+          const value = uuidToId(uuid);
+
+          assertEqual(value, "AZCm9Iw-eyqdQV5veoucDQ");
+          assertEqualBytes(
+            idToIdBytes(value),
+            new globalThis.Uint8Array([
+              0x01, 0x90, 0xa6, 0xf4, 0x8c, 0x3e, 0x7b, 0x2a, 0x9d, 0x41, 0x5e,
+              0x6f, 0x7a, 0x8b, 0x9c, 0x0d,
+            ]),
+          );
+          assertSame(idToUuid(value), uuid);
+
+          for (const id of [
+            createId(deps),
+            createIdAsUuidv7(deps),
+            createIdFromString("uuid"),
+            uuidToId(Uuid.orThrow("00000000-0000-0000-0000-000000000000")),
+            uuidToId(Uuid.orThrow("ffffffff-ffff-ffff-ffff-ffffffffffff")),
+          ]) {
+            const converted = idToUuid(id);
+            assertTrue(Uuid.is(converted));
+            assertSame(uuidToId(converted), id);
+          }
+          assertEqual(idToUuid(createIdAsUuidv7(deps))[14], "7");
+
+          const todoId = uuidToId<"Todo">(uuid);
+          assertType<typeof value, Id>();
+          assertType<typeof todoId, Id & Brand<"Todo">>();
+          assertType<ReturnType<typeof idToUuid>, Uuid>();
+          void (() => {
+            // @ts-expect-error A union would assign multiple brands to one Id.
+            uuidToId<"Todo" | "User">(uuid);
+            // @ts-expect-error uuidToId accepts only a validated Uuid.
+            uuidToId("0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d");
+          });
         });
       });
 

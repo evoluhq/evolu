@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -258,6 +260,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हे वैध Name नाही.`;
 
+/** Formats an EmailError in Marathi. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध ईमेल पत्ता नाही.`;
+
 /** Formats a MnemonicError in Marathi. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध इंग्रजी BIP39 mnemonic नाही.`;
@@ -269,6 +275,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formats a TableIdError in Marathi. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हा table ${error.table} साठी वैध Id नाही.`;
+
+/** Formats a UuidError in Marathi. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा लहान अक्षरांतील canonical UUID नाही.`;
 
 /** Formats a NonNegativeError in Marathi. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

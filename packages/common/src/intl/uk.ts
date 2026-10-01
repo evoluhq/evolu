@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const typeOfNames = {
@@ -262,6 +264,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим Name.`;
 
+/** Форматує EmailError українською. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою адресою електронної пошти.`;
+
 /** Форматує MnemonicError українською. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою англійською мнемонічною фразою BIP39.`;
@@ -273,6 +279,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Форматує TableIdError українською. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим Id для таблиці ${error.table}.`;
+
+/** Форматує UuidError українською. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є канонічним UUID у нижньому регістрі.`;
 
 /** Форматує NonNegativeError українською. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

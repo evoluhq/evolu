@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -254,6 +256,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 Name。`;
 
+/** 以繁體中文格式化 EmailError。 */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的電子郵件地址。`;
+
 /** 以繁體中文格式化 MnemonicError。 */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的英文 BIP39 助記詞。`;
@@ -265,6 +271,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** 以繁體中文格式化 TableIdError。 */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是資料表 ${error.table} 的有效 Id。`;
+
+/** 以繁體中文格式化 UuidError。 */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是標準小寫 UUID。`;
 
 /** 以繁體中文格式化 NonNegativeError。 */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

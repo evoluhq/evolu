@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -258,6 +260,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک Name معتبر نیست.`;
 
+/** EmailError را به فارسی قالب‌بندی می‌کند. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی ایمیل معتبر نیست.`;
+
 /** MnemonicError را به فارسی قالب‌بندی می‌کند. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک عبارت یادسپاری انگلیسی BIP39 معتبر نیست.`;
@@ -269,6 +275,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** TableIdError را به فارسی قالب‌بندی می‌کند. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک Id معتبر برای جدول ${error.table} نیست.`;
+
+/** UuidError را به فارسی قالب‌بندی می‌کند. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک UUID کانونی با حروف کوچک نیست.`;
 
 /** NonNegativeError را به فارسی قالب‌بندی می‌کند. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

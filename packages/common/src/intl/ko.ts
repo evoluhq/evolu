@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -256,6 +258,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 Name이 아닙니다.`;
 
+/** EmailError를 한국어로 포맷합니다. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 유효한 이메일 주소가 아닙니다.`;
+
 /** MnemonicError를 한국어로 포맷합니다. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 영어 BIP39 니모닉이 아닙니다.`;
@@ -267,6 +273,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** TableIdError를 한국어로 포맷합니다. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.table} 테이블에 유효한 Id가 아닙니다.`;
+
+/** UuidError를 한국어로 포맷합니다. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 정규 소문자 UUID가 아닙니다.`;
 
 /** NonNegativeError를 한국어로 포맷합니다. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

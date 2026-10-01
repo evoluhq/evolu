@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -259,6 +261,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un Name valid.`;
 
+/** Formatează un EmailError în română. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă de e-mail validă.`;
+
 /** Formatează un MnemonicError în română. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o frază mnemonică BIP39 în engleză validă.`;
@@ -270,6 +276,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formatează un TableIdError în română. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un Id valid pentru tabelul ${error.table}.`;
+
+/** Formatează un UuidError în română. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un UUID canonic cu litere mici.`;
 
 /** Formatează un NonNegativeError în română. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

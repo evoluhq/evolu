@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -256,6 +258,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ Name ที่ถูกต้อง`;
 
+/** จัดรูปแบบ EmailError เป็นภาษาไทย */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ที่อยู่อีเมลที่ถูกต้อง`;
+
 /** จัดรูปแบบ MnemonicError เป็นภาษาไทย */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ mnemonic BIP39 ภาษาอังกฤษที่ถูกต้อง`;
@@ -267,6 +273,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** จัดรูปแบบ TableIdError เป็นภาษาไทย */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ Id ที่ถูกต้องสำหรับตาราง ${error.table}`;
+
+/** จัดรูปแบบ UuidError เป็นภาษาไทย */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ UUID ตัวพิมพ์เล็กรูปแบบมาตรฐาน`;
 
 /** จัดรูปแบบ NonNegativeError เป็นภาษาไทย */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

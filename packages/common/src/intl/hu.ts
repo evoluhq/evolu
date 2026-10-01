@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -200,12 +202,16 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes Base64Url karakterlánc.`;
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes név.`;
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes e-mail-cím.`;
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes angol BIP39 mnemonikus kifejezés.`;
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes Id.`;
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes Id a(z) ${error.table} táblához.`;
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem kanonikus, kisbetűs UUID.`;
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>

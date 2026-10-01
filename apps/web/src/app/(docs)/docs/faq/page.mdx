@@ -233,6 +233,21 @@ This ensures that multiple clients creating records with the same external ident
 
 **Important**: This transformation uses the first 16 bytes of SHA-256 hash of the string bytes, therefore it's not possible to recover the original external string. If you need to preserve the original external ID, store it in a separate column.
 
+When the external IDs are UUIDs, use `uuidToId` instead. A UUID and an Evolu ID are both 16 bytes, so the conversion is reversible with `idToUuid`, and the original ID doesn't need its own column:
+
+```ts
+import { assertEqual, idToUuid, Uuid, uuidToId } from "@evolu/common";
+
+const externalId = Uuid.orThrow("0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d");
+const todoId = uuidToId<"Todo">(externalId);
+
+// Later, when talking to the external system:
+const uuid = idToUuid(todoId);
+assertEqual(uuid, externalId);
+```
+
+`Uuid` accepts only the canonical lowercase form, so lowercase UUIDs from other sources before validating them. A time-based UUID, such as version 7, keeps its creation time in the Evolu ID.
+
 ## How do I seed initial data like country lists or default categories?
 
 Evolu previously had an automatic seeding feature that ran when an AppOwner was created, but it was removed because Evolu syncs all changes immediately. Every page visit would generate and sync data to the relay, creating unnecessary traffic. Automatic seeding opens a DoS vulnerability where bots or users could repeatedly trigger data creation by simply visiting the page.

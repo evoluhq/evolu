@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -258,6 +260,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljavno ime.`;
 
+/** Formats an EmailError in Slovene. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljaven e-poštni naslov.`;
+
 /** Formats a MnemonicError in Slovene. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljaven angleški mnemonik BIP39.`;
@@ -269,6 +275,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formats a TableIdError in Slovene. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljaven Id za tabelo ${error.table}.`;
+
+/** Formats a UuidError in Slovene. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni kanonični UUID, zapisan z malimi črkami.`;
 
 /** Formats a NonNegativeError in Slovene. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

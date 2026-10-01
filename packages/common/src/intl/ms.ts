@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -225,6 +227,9 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 /** Formats a NameError in Malay. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan Name yang sah.`;
+/** Formats an EmailError in Malay. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat e-mel yang sah.`;
 /** Formats a MnemonicError in Malay. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan mnemonik BIP39 bahasa Inggeris yang sah.`;
@@ -234,6 +239,9 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formats a TableIdError in Malay. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan Id yang sah untuk jadual ${error.table}.`;
+/** Formats a UuidError in Malay. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan UUID kanonik dalam huruf kecil.`;
 /** Formats a NonNegativeError in Malay. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,

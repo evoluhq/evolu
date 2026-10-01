@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -257,6 +259,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ Name নয়।`;
 
+/** Formats an EmailError in Bengali. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ ইমেল ঠিকানা নয়।`;
+
 /** Formats a MnemonicError in Bengali. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ ইংরেজি BIP39 mnemonic নয়।`;
@@ -268,6 +274,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** Formats a TableIdError in Bengali. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি ${error.table} table-এর জন্য বৈধ Id নয়।`;
+
+/** Formats a UuidError in Bengali. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি ছোট হাতের অক্ষরে লেখা canonical UUID নয়।`;
 
 /** Formats a NonNegativeError in Bengali. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

@@ -143,6 +143,8 @@ export const formatBase64UrlError: T.TypeErrorFormatter<T.Base64UrlError> = (
   `Thamani ${safelyStringifyUnknownValue(error.value)} si mfuatano halali wa Base64Url.`;
 export const formatNameError: T.TypeErrorFormatter<T.NameError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si Name halali.`;
+export const formatEmailError: T.TypeErrorFormatter<T.EmailError> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si anwani halali ya barua pepe.`;
 export const formatMnemonicError: T.TypeErrorFormatter<T.MnemonicError> = (
   error,
 ) =>
@@ -153,6 +155,8 @@ export const formatTableIdError: T.TypeErrorFormatter<T.TableIdError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si Id halali ya jedwali ${error.table}.`;
+export const formatUuidError: T.TypeErrorFormatter<T.UuidError> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si UUID ya kanoniki yenye herufi ndogo.`;
 export const formatNonNegativeError: T.TypeErrorFormatter<
   T.NonNegativeError
 > = (error) =>

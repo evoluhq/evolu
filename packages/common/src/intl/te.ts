@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -258,6 +260,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే Name కాదు.`;
 
+/** EmailErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే ఇమెయిల్ చిరునామా కాదు.`;
+
 /** MnemonicErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే ఆంగ్ల BIP39 mnemonic కాదు.`;
@@ -269,6 +275,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** TableIdErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} పట్టిక ${error.table} కు చెల్లుబాటు అయ్యే Id కాదు.`;
+
+/** UuidErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చిన్న అక్షరాలలోని ప్రామాణిక UUID కాదు.`;
 
 /** NonNegativeErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (

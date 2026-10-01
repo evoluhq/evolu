@@ -23,6 +23,7 @@ import type {
   DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EmailError,
   EvoluTypeError,
   FiniteError,
   GreaterThanError,
@@ -74,6 +75,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
+  UuidError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -258,6 +260,10 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ Name അല്ല.`;
 
+/** EmailError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ ഇമെയിൽ വിലാസം അല്ല.`;
+
 /** MnemonicError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ ഇംഗ്ലീഷ് BIP39 mnemonic അല്ല.`;
@@ -269,6 +275,10 @@ export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
 /** TableIdError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} table ${error.table}-നുള്ള സാധുവായ Id അല്ല.`;
+
+/** UuidError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ചെറിയ അക്ഷരങ്ങളിലുള്ള canonical UUID അല്ല.`;
 
 /** NonNegativeError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
