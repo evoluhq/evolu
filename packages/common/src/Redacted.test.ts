@@ -3,21 +3,19 @@ import { describe, it, test } from "node:test";
 import {
   assertEqual,
   assertFalse,
+  assertNotUndefined,
   assertThrowsInstanceOf,
   assertTrue,
-} from "../../../../packages/common/src/Assert.ts";
-import type { Brand } from "../../../../packages/common/src/Brand.ts";
-import {
-  createRedacted,
-  isRedacted,
-  revealRedacted,
-} from "../../../../packages/common/src/Redacted.ts";
-import type { Redacted } from "../../../../packages/common/src/Redacted.ts";
+} from "./Assert.ts";
+import type { Brand } from "./Brand.ts";
+import { constVoid } from "./Function.ts";
+import { installPolyfills } from "./Polyfills.ts";
+import { createRedacted, isRedacted, revealRedacted } from "./Redacted.ts";
+import type { Redacted } from "./Redacted.ts";
 
 describe("createRedacted hides value", () => {
   it("from toString", () => {
     const secret = createRedacted("my-secret-key");
-    // oxlint-disable-next-line typescript/no-base-to-string
     assertEqual(secret.toString(), "<redacted>");
   });
 
@@ -44,7 +42,7 @@ describe("createRedacted hides value", () => {
 
   it("in string interpolation", () => {
     const secret = createRedacted("my-secret-key");
-    assertEqual(`API key: ${secret}`, "API key: <redacted>"); // oxlint-disable-line typescript/no-base-to-string, typescript/restrict-template-expressions -- This test verifies Redacted's implicit string conversion.
+    assertEqual(`API key: ${secret}`, "API key: <redacted>"); // oxlint-disable-line typescript/restrict-template-expressions -- This test verifies Redacted's implicit string conversion.
   });
 });
 
@@ -77,6 +75,16 @@ describe("revealRedacted", () => {
   it("retrieves undefined", () => {
     assertEqual(revealRedacted(createRedacted(undefined)), undefined);
   });
+
+  it("throws for a structured clone", () => {
+    const clone = structuredClone(createRedacted("sensitive"));
+
+    assertFalse(isRedacted(clone));
+    assertEqual(
+      assertThrowsInstanceOf(() => revealRedacted(clone), Error).message,
+      "Redacted value was not in registry",
+    );
+  });
 });
 
 describe("isRedacted", () => {
@@ -96,16 +104,17 @@ describe("isRedacted", () => {
   });
 });
 
-test("Redacted is branded - plain objects cannot be assigned", () => {
-  const valid = createRedacted("secret");
-
-  // Valid assignment works
-  const assigned: Redacted<string> = valid;
+test("Redacted is branded", () => {
+  const assigned: Redacted<string> = createRedacted("secret");
   assertEqual(revealRedacted(assigned), "secret");
 
-  // Plain object cannot be assigned to Redacted (brand prevents it)
-  // @ts-expect-error - {} is not assignable to Redacted<string>
-  const _fake: Redacted<string> = {};
+  // @ts-expect-error Only createRedacted produces the Redacted brand.
+  const _fake: Redacted<string> = {
+    Type: "secret",
+    toString: () => "<redacted>",
+    toJSON: () => "<redacted>",
+    [Symbol.dispose]: constVoid,
+  };
 });
 
 test("branded inner type provides type-level distinction", () => {
@@ -132,34 +141,6 @@ test("branded inner type provides type-level distinction", () => {
   useApiKey(createRedacted("plain-string"));
 });
 
-test("Redacted JSDoc example", () => {
-  // Define branded types for your secrets
-  type ApiKey = string & Brand<"ApiKey">;
-  type DbPassword = string & Brand<"DbPassword">;
-
-  // Wrap it with Redacted for safe passing
-  type RedactedApiKey = Redacted<ApiKey>;
-
-  // Create a redacted secret
-  const apiKey: ApiKey = "secret-123" as ApiKey;
-  const redactedKey: RedactedApiKey = createRedacted(apiKey);
-
-  // oxlint-disable-next-line typescript/no-base-to-string
-  assertEqual(String(redactedKey), "<redacted>");
-  assertEqual(revealRedacted(redactedKey), "secret-123");
-
-  // Type safety: RedactedApiKey ≠ RedactedDbPassword
-  const fetchUser = (key: RedactedApiKey) => {
-    const value: ApiKey = revealRedacted(key);
-    return value;
-  };
-
-  assertEqual(fetchUser(redactedKey), "secret-123");
-
-  // @ts-expect-error - RedactedDbPassword is not assignable to RedactedApiKey
-  fetchUser(createRedacted("x" as DbPassword));
-});
-
 describe("Disposable", () => {
   it("Symbol.dispose removes value from registry", () => {
     const secret = createRedacted("sensitive");
@@ -182,11 +163,63 @@ describe("Disposable", () => {
       assertEqual(revealRedacted(secret), "sensitive");
     }
 
-    // After scope exits, the secret should be wiped
+    // After the scope exits, the secret can no longer be revealed.
     assertEqual(
       assertThrowsInstanceOf(() => revealRedacted(secretRef), Error).message,
       "Redacted value was not in registry",
     );
+  });
+
+  it("disposes through a detached dispose method", () => {
+    const secret = createRedacted("sensitive");
+
+    {
+      using stack = new DisposableStack();
+      stack.defer(secret[Symbol.dispose]);
+    }
+
+    assertEqual(
+      assertThrowsInstanceOf(() => revealRedacted(secret), Error).message,
+      "Redacted value was not in registry",
+    );
+  });
+
+  it("is disposable when Symbol.dispose is installed after import", () => {
+    // Apps call installPolyfills after their imports are evaluated, so a
+    // polyfilled Symbol.dispose appears only after this module has loaded.
+    const symbolDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "Symbol",
+    );
+    assertNotUndefined(symbolDescriptor);
+    const nativeSymbol = Symbol;
+    const symbolWithoutDispose = ((description?: string) =>
+      nativeSymbol(description)) as unknown as SymbolConstructor;
+    for (const key of Reflect.ownKeys(nativeSymbol)) {
+      if (key === "dispose" || key === "asyncDispose") continue;
+      if (Object.hasOwn(symbolWithoutDispose, key)) continue;
+      const descriptor = Object.getOwnPropertyDescriptor(nativeSymbol, key);
+      assertNotUndefined(descriptor);
+      Object.defineProperty(symbolWithoutDispose, key, descriptor);
+    }
+    Object.defineProperty(globalThis, "Symbol", {
+      ...symbolDescriptor,
+      value: symbolWithoutDispose,
+    });
+
+    try {
+      installPolyfills();
+
+      const secret = createRedacted("sensitive");
+      secret[Symbol.dispose]();
+
+      assertEqual(
+        assertThrowsInstanceOf(() => revealRedacted(secret), Error).message,
+        "Redacted value was not in registry",
+      );
+    } finally {
+      Object.defineProperty(globalThis, "Symbol", symbolDescriptor);
+    }
   });
 
   it("isRedacted still returns true after dispose", () => {

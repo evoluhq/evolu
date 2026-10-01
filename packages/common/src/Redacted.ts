@@ -17,13 +17,17 @@ import type { Brand } from "./Brand.ts";
  *
  * For type-level distinction between different secrets, use branded types.
  *
- * The actual value lives in a `WeakMap`, so it never appears as a property and
- * is automatically garbage collected when the wrapper is dropped. This is
- * better than a class with a private field because private fields are still
- * visible in devtools. Symbols can't be used because they don't support custom
- * `toString`.
+ * Redacted guards against accidental exposure, such as logs, error reports, and
+ * serialized payloads. It does not hide the value from a debugger: DevTools and
+ * heap snapshots can still reach it.
  *
- * Implements `Disposable` for automatic cleanup via the `using` syntax.
+ * A structured clone, such as a `postMessage` to a worker, does not copy the
+ * hidden value and arrives as an empty object. Reveal the value before posting
+ * it, and wrap it again on arrival if the receiver passes it to app code.
+ *
+ * Implements `Disposable`, so the `using` syntax detaches the value when the
+ * scope ends. Disposal does not overwrite the value or release other references
+ * to it.
  *
  * ### Example
  *
@@ -47,7 +51,6 @@ import type { Brand } from "./Brand.ts";
  * using redactedKey: RedactedApiKey = createRedacted(apiKey);
  * const fetchUser = (key: RedactedApiKey): ApiKey => revealRedacted(key);
  *
- * // oxlint-disable-next-line typescript/no-base-to-string -- Redacted intentionally implements a safe custom toString.
  * assertEqual(redactedKey.toString(), "<redacted>");
  * assertEqual(
  *   JSON.stringify({ apiKey: redactedKey }),
@@ -63,18 +66,32 @@ import type { Brand } from "./Brand.ts";
  *   using key = createRedacted(apiKey);
  *   return key;
  * })();
- * // Leaving the `using` scope removes the value from memory.
+ * // Leaving the `using` scope detaches the value, so revealing it throws.
  * assertErr(trySync(() => revealRedacted(disposedKey)));
  * ```
  */
 export interface Redacted<A> extends Brand<"Redacted">, Disposable {
-  /** The inner type. Useful for inference via `typeof redacted.Type`. */
+  /**
+   * The inner type. This is a type-only phantom property. Use it through
+   * `typeof redacted.Type`; it does not exist at runtime.
+   */
   readonly Type: A;
+  readonly toString: () => "<redacted>";
+  readonly toJSON: () => "<redacted>";
 }
 
 /** Creates a {@link Redacted} wrapper for a sensitive value. */
 export const createRedacted = <A>(value: A): Redacted<A> => {
-  const redacted = Object.create(proto) as Redacted<A>;
+  // Symbol.dispose is read here rather than in proto because installPolyfills
+  // runs after imported modules are evaluated. An arrow function also keeps a
+  // detached dispose method working.
+  const redacted = Object.create(proto, {
+    [Symbol.dispose]: {
+      value: () => {
+        registry.delete(redacted);
+      },
+    },
+  }) as Redacted<A>;
   registry.set(redacted, value);
   return redacted;
 };
@@ -83,11 +100,15 @@ const proto = {
   toString: () => redactedString,
   toJSON: () => redactedString,
   [Symbol.for("nodejs.util.inspect.custom")]: () => redactedString,
-  [Symbol.dispose](this: Redacted<unknown>) {
-    registry.delete(this);
-  },
 };
 const redactedString = "<redacted>";
+
+// The value lives in a WeakMap, so it is never a property: previews,
+// enumeration, and serialization cannot show it, and it is garbage collected
+// with the wrapper. A private field would show when DevTools expands the
+// object. The wrapper is an object, not a symbol, because a symbol cannot
+// customize toString or toJSON. DevTools can still reach the registry through
+// the scopes of the wrapper's functions.
 const registry = new WeakMap<Redacted<unknown>, unknown>();
 
 /**
@@ -96,6 +117,8 @@ const registry = new WeakMap<Redacted<unknown>, unknown>();
  * This is a separate function rather than a method on {@link Redacted} to make
  * access visually explicit and easy to grep in code reviews. Accessing
  * sensitive values should feel intentional, not convenient.
+ *
+ * Throws when the wrapper was disposed or is a structured clone.
  */
 export const revealRedacted = <A>(redacted: Redacted<A>): A => {
   assert(registry.has(redacted), "Redacted value was not in registry");
