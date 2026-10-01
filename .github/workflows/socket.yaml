@@ -20,6 +20,8 @@ concurrency:
 
 jobs:
   socket-security:
+    # Comments on plain issues have no pull request to scan.
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     permissions:
       issues: write
       contents: read
@@ -27,17 +29,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # For PRs, fetch one additional commit for proper diff analysis
           fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
       - name: Install Socket CLI
-        run: pip install socketsecurity --upgrade
+        run: pip install socketsecurity==2.10.7
 
       - name: Run Socket Security Scan
         env:

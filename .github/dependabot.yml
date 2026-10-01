@@ -1,0 +1,16 @@
+# Keeps the commit SHAs that workflows pin GitHub Actions to up to date.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: weekly
+    # A release waits a week before Dependabot proposes it.
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
