@@ -76,6 +76,7 @@
     "prettier-plugin-sql-cst": "^0.22.1",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "sherif": "1.13.0",
+    "shiki": "^4.4.3",
     "typedoc": "^0.28.18",
     "typedoc-plugin-markdown": "^4.11.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

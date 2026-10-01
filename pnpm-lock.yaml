@@ -102,6 +102,9 @@ importers:
       sherif:
         specifier: 1.13.0
         version: 1.13.0
+      shiki:
+        specifier: ^4.4.3
+        version: 4.4.3
       typedoc:
         specifier: ^0.28.18
         version: 0.28.20(@typescript/typescript6@6.0.2)

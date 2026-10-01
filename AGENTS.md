@@ -33,6 +33,8 @@ This is a pnpm TypeScript monorepo. Use the Node.js version in `.nvmrc`.
 Look up less common commands in [package.json](package.json), and test-runner
 details in [test/README.md](test/README.md) when needed. Run standalone TypeScript
 scripts with `node script.mts`. Run GitHub CLI commands with network access.
+To render a documented code example as an image for a post, run
+`node scripts/code-image.mts --help`.
 
 ## Verification
 
