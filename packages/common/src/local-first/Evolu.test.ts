@@ -35,6 +35,8 @@ import {
   createOwnerSecret,
   createOwnerWebSocketTransport,
   createSharedOwner,
+  createSharedReadonlyOwner,
+  type Owner,
   testAppOwner,
 } from "./Owner.ts";
 import {
@@ -123,6 +125,13 @@ const testOwnerTransport = createOwnerWebSocketTransport({
   url: "wss://example.com",
   ownerId: testAppOwner.id,
 });
+
+/** {@link testAppOwner} as useOwner posts it, without its type and mnemonic. */
+const testPostedAppOwner: Owner = {
+  id: testAppOwner.id,
+  encryptionKey: testAppOwner.encryptionKey,
+  writeKey: testAppOwner.writeKey,
+};
 
 const createQuery = createQueryBuilder(Schema);
 
@@ -1178,7 +1187,7 @@ describe("Evolu", () => {
         {
           action: "add",
           owner: {
-            owner: testAppOwner,
+            owner: testPostedAppOwner,
             transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
           },
         },
@@ -1260,7 +1269,14 @@ describe("Evolu", () => {
         const { run, evoluInputs } = setup;
         const evolu = await run.ok(testCreateEvolu);
         const sharedOwner = createSharedOwner(createOwnerSecret(run.deps));
-        const owner = { owner: sharedOwner, transports: [testOwnerTransport] };
+        const owner = {
+          owner: {
+            id: sharedOwner.id,
+            encryptionKey: sharedOwner.encryptionKey,
+            writeKey: sharedOwner.writeKey,
+          },
+          transports: [testOwnerTransport],
+        };
         assertNotSame(sharedOwner.id, evolu.appOwner.id);
 
         const unuse = evolu.useOwner(sharedOwner, [testOwnerTransport]);
@@ -1340,7 +1356,7 @@ describe("Evolu", () => {
             actions: [
               {
                 owner: {
-                  owner: testAppOwner,
+                  owner: testPostedAppOwner,
                   transports: [testOwnerTransport],
                 },
                 action: "add",
@@ -1376,7 +1392,45 @@ describe("Evolu", () => {
             actions: [
               {
                 owner: {
-                  owner: testAppOwner,
+                  owner: testPostedAppOwner,
+                  transports: [testOwnerTransport],
+                },
+                action: "add",
+              },
+            ],
+          },
+        ]);
+      });
+
+      it("posts only the owner id and keys", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const readonlyOwner = createSharedReadonlyOwner(
+          createSharedOwner(createOwnerSecret(run.deps)),
+        );
+
+        evolu.useOwner(testAppOwner, [testOwnerTransport]);
+        evolu.useOwner(readonlyOwner, [testOwnerTransport]);
+        await testWaitForWorkerMessage();
+
+        assertEqual(evoluInputs, [
+          {
+            type: "UseOwner",
+            actions: [
+              {
+                owner: {
+                  owner: testPostedAppOwner,
+                  transports: [testOwnerTransport],
+                },
+                action: "add",
+              },
+              {
+                owner: {
+                  owner: {
+                    id: readonlyOwner.id,
+                    encryptionKey: readonlyOwner.encryptionKey,
+                  },
                   transports: [testOwnerTransport],
                 },
                 action: "add",
@@ -1404,14 +1458,14 @@ describe("Evolu", () => {
             actions: [
               {
                 owner: {
-                  owner: testAppOwner,
+                  owner: testPostedAppOwner,
                   transports: [testOwnerTransport],
                 },
                 action: "add",
               },
               {
                 owner: {
-                  owner: testAppOwner,
+                  owner: testPostedAppOwner,
                   transports: [testOwnerTransport],
                 },
                 action: "remove",
@@ -1447,7 +1501,7 @@ describe("Evolu", () => {
             actions: [
               {
                 owner: {
-                  owner: testAppOwner,
+                  owner: testPostedAppOwner,
                   transports: [testOwnerTransport],
                 },
                 action: "remove",
@@ -1480,7 +1534,7 @@ describe("Evolu", () => {
           actions: [
             {
               owner: {
-                owner: testAppOwner,
+                owner: testPostedAppOwner,
                 transports: [testOwnerTransport],
               },
               action: "add",

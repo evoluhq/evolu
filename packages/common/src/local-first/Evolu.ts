@@ -1772,8 +1772,14 @@ export const createEvolu =
         "useOwner requires explicit non-empty transports when config.transports is empty.",
       );
 
+      // Post only what workers use. Forwarding the caller's object would copy
+      // an AppOwner's mnemonic into every worker.
+      const { id, encryptionKey } = owner;
       const syncOwner: SyncOwner = {
-        owner,
+        owner:
+          "writeKey" in owner
+            ? { id, encryptionKey, writeKey: owner.writeKey }
+            : { id, encryptionKey },
         transports: effectiveTransports,
       };
 
