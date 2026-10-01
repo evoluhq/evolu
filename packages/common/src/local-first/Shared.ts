@@ -3578,9 +3578,7 @@ const createEvoluTenant =
 // - Detect DbWorker and port liveness so a worker-only crash resumes the queue.
 //   Defer panicked-worker restart until failure detection and recovery are
 //   defined, accounting for SQLite WASM's detection limits. A mutation that
-//   throws is answered, but other SQLite operations are expected not to throw;
-//   user-defined UNIQUE indexes, which can make replicated writes fail, are
-//   planned to be forbidden.
+//   throws is answered, but other SQLite operations are expected not to throw.
 // - Split worker protocol types and the EvoluTenant implementation into focused
 //   modules.
 // - Remove the obsolete commented protocol block above.

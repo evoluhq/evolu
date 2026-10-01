@@ -4,6 +4,7 @@ import {
   assertErr,
   assertOk,
   assertSame,
+  assertThrowsInstanceOf,
   assertType,
   createEvolu,
   createQueryBuilder,
@@ -27,7 +28,7 @@ import {
   type TimestampBytes,
 } from "../index.ts";
 import type { EvoluPlatformDeps } from "./Evolu.ts";
-import type { ValidateSchema } from "./Schema.ts";
+import { evoluSchemaToSqliteSchema, type ValidateSchema } from "./Schema.ts";
 
 test("history queries select and filter by ownerId bytes", () => {
   const createQuery = createQueryBuilder(testEvoluSchema);
@@ -42,6 +43,84 @@ test("history queries select and filter by ownerId bytes", () => {
     typeof query.Row,
     { ownerId: OwnerIdBytes; timestamp: TimestampBytes }
   >();
+});
+
+test("evoluSchemaToSqliteSchema compiles ordinary indexes", () => {
+  const sqliteSchema = evoluSchemaToSqliteSchema(testEvoluSchema, (create) => [
+    create("todoTitle").on("todo").column("title"),
+    create("todoProjectIdTitle").on("todo").columns(["projectId", "title"]),
+    create("todoTitleNotNull")
+      .on("todo")
+      .column("title")
+      .where("title", "is not", null),
+  ]);
+
+  assertEqual(sqliteSchema.indexes, [
+    {
+      name: "todoTitle",
+      sql: 'create index "todoTitle" on "todo" ("title")',
+    },
+    {
+      name: "todoProjectIdTitle",
+      sql: 'create index "todoProjectIdTitle" on "todo" ("projectId", "title")',
+    },
+    {
+      name: "todoTitleNotNull",
+      sql: 'create index "todoTitleNotNull" on "todo" ("title") where "title" is not null',
+    },
+  ]);
+});
+
+test("evoluSchemaToSqliteSchema rejects unique indexes", () => {
+  const error = assertThrowsInstanceOf(
+    () =>
+      evoluSchemaToSqliteSchema(testEvoluSchema, (create) => [
+        create("todoUniqueTitle").on("todo").column("title").unique(),
+      ]),
+    Error,
+  );
+
+  assertEqual(
+    error.message,
+    "Unique indexes are not supported because they can prevent synchronization.",
+  );
+});
+
+test("evoluSchemaToSqliteSchema rejects composite unique indexes", () => {
+  const error = assertThrowsInstanceOf(
+    () =>
+      evoluSchemaToSqliteSchema(testEvoluSchema, (create) => [
+        create("todoUniqueProjectIdTitle")
+          .on("todo")
+          .columns(["projectId", "title"])
+          .unique(),
+      ]),
+    Error,
+  );
+
+  assertEqual(
+    error.message,
+    "Unique indexes are not supported because they can prevent synchronization.",
+  );
+});
+
+test("evoluSchemaToSqliteSchema rejects partial unique indexes", () => {
+  const error = assertThrowsInstanceOf(
+    () =>
+      evoluSchemaToSqliteSchema(testEvoluSchema, (create) => [
+        create("todoUniqueTitleNotNull")
+          .on("todo")
+          .column("title")
+          .where("title", "is not", null)
+          .unique(),
+      ]),
+    Error,
+  );
+
+  assertEqual(
+    error.message,
+    "Unique indexes are not supported because they can prevent synchronization.",
+  );
 });
 
 test("testEvoluSchema supports project-linked and independent todos", () => {

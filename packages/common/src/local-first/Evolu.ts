@@ -195,6 +195,10 @@ export interface EvoluConfig {
   /**
    * Use the `indexes` option to define SQLite indexes.
    *
+   * Unique indexes are rejected with an assertion because concurrent offline
+   * writes can violate uniqueness during synchronization. See
+   * [Uniqueness](https://www.evolu.dev/docs/schema#uniqueness).
+   *
    * Table and column names are not typed because Kysely doesn't support it.
    *
    * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346

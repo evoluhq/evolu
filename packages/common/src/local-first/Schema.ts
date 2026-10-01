@@ -6,7 +6,7 @@
 
 import * as Kysely from "kysely";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { assertNonNullable } from "../Assert.ts";
+import { assert, assertNonNullable } from "../Assert.ts";
 import { getOwnProp, mapObject, type ReadonlyRecord } from "../Object.ts";
 import {
   eqSqliteIndex,
@@ -298,6 +298,9 @@ export type ValidateSchema<S extends EvoluSchema> =
 
 /**
  * Defines SQLite indexes with Kysely's index builder.
+ *
+ * Unique indexes are not supported because concurrent offline writes can
+ * violate uniqueness during synchronization.
  *
  * @group SQLite
  */
@@ -800,10 +803,17 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
   );
 
   const indexes = indexesConfig
-    ? indexesConfig(createIndex).map((index): SqliteIndex => ({
-        name: index.toOperationNode().name.name,
-        sql: index.compile().sql,
-      }))
+    ? indexesConfig(createIndex).map((index): SqliteIndex => {
+        const node = index.toOperationNode();
+        assert(
+          !node.unique,
+          "Unique indexes are not supported because they can prevent synchronization.",
+        );
+        return {
+          name: node.name.name,
+          sql: index.compile().sql,
+        };
+      })
     : [];
 
   return { tables, indexes };

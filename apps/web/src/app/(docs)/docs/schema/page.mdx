@@ -34,6 +34,16 @@ Evolu automatically adds the system columns `createdAt`, `updatedAt`, `isDeleted
 
 Evolu mutations accept already validated values so they do not run column validators again. Validate untrusted input with your chosen Standard Schema-compatible library before passing its output to Evolu's `insert`, `update`, or `upsert`.
 
+## Uniqueness
+
+Evolu is a distributed system that allows independent offline edits. Guaranteeing global uniqueness of arbitrary user-chosen values, such as names or email addresses, requires coordinating which writes are accepted. A device that is offline cannot coordinate with the other devices before accepting an edit. Evolu therefore rejects user-defined unique [indexes](/docs/indexes).
+
+Two devices sharing a database can independently create an item with the same name while offline. Each item has a different `id`. After synchronization, both devices contain both items. The devices agree on the data; deciding whether those items represent the same real-world entity belongs to the application and its users.
+
+Often, repeated values are valid: two different people can have the same name. When duplicates matter, make them visible in the UI and provide a way to resolve them. For example, a contacts app can let users merge a duplicate contact's details into another contact and soft-delete the duplicate. Synced tables retain their [history](/docs/time-travel), including soft deletes, so the changes remain available after reconciliation.
+
+A centralized server can enforce uniqueness among the records it accepts, but that does not guarantee that those records correctly identify real-world entities. An identifier can be assigned or recorded incorrectly. Evolu preserves concurrent edits so applications can represent these situations and help users correct them.
+
 ## Versioning
 
 A local-first app cannot assume that all its instances use the latest app schema: users update the app at different times.

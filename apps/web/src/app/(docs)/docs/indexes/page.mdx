@@ -56,6 +56,8 @@ const evolu = await run.ok(
 
 Evolu handles this automatically—it will create any new indexes you define and drop those no longer present in the `indexes` array.
 
+Unique indexes are rejected because concurrent offline writes can violate uniqueness during synchronization. See [Uniqueness](/docs/schema#uniqueness) for how to handle duplicate business values.
+
 <Heading level={2} id="recommendations">
   Recommendations
 </Heading>
