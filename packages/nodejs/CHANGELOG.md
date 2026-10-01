@@ -1,5 +1,23 @@
 # @evolu/nodejs
 
+## 4.1.1
+
+### Patch Changes
+
+- 93f2a30: Fixed createTimingSafeEqual throwing for arrays of different lengths
+
+  The Node.js `TimingSafeEqual` passed arrays straight to `node:crypto`, which
+  throws `ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH` when their lengths differ. It now
+  returns `false`, as `TimingSafeEqual` documents.
+
+- Updated dependencies [fb4c82f]
+- Updated dependencies [9dbf790]
+- Updated dependencies [d1e22b4]
+- Updated dependencies [bc56001]
+- Updated dependencies [d1e22b4]
+- Updated dependencies [4d7e66b]
+  - @evolu/common@8.15.0
+
 ## 4.1.0
 
 ### Minor Changes
