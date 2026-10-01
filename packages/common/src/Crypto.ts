@@ -363,7 +363,8 @@ export const createPadmePadding = (length: NonNegativeInt): Uint8Array => {
 /**
  * Performs a timing-safe comparison of two Uint8Arrays. Returns true if they
  * are equal, false otherwise. Takes constant time regardless of where the
- * arrays differ.
+ * arrays differ. Arrays of different lengths are unequal, and the comparison
+ * does not hide their lengths.
  *
  * @group Comparison
  * @see https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b
