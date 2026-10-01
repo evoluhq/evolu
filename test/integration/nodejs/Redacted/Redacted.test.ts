@@ -7,9 +7,7 @@ import {
   assertTrue,
 } from "../../../../packages/common/src/Assert.ts";
 import type { Brand } from "../../../../packages/common/src/Brand.ts";
-import { eqString } from "../../../../packages/common/src/Eq.ts";
 import {
-  createEqRedacted,
   createRedacted,
   isRedacted,
   revealRedacted,
@@ -132,23 +130,6 @@ test("branded inner type provides type-level distinction", () => {
 
   // @ts-expect-error - Redacted<string> is not assignable to Redacted<ApiKey>
   useApiKey(createRedacted("plain-string"));
-});
-
-describe("createEqRedacted", () => {
-  type ApiKey = string & Brand<"ApiKey">;
-  const eqRedactedApiKey = createEqRedacted<ApiKey>(eqString);
-
-  it("returns true for equal values", () => {
-    const a = createRedacted("x" as ApiKey);
-    const b = createRedacted("x" as ApiKey);
-    assertTrue(eqRedactedApiKey(a, b));
-  });
-
-  it("returns false for different values", () => {
-    const a = createRedacted("x" as ApiKey);
-    const b = createRedacted("y" as ApiKey);
-    assertFalse(eqRedactedApiKey(a, b));
-  });
 });
 
 test("Redacted JSDoc example", () => {

@@ -6,7 +6,6 @@
 
 import { assert } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
-import type { Eq } from "./Eq.ts";
 
 /**
  * A wrapper type that prevents sensitive values from being accidentally exposed
@@ -108,36 +107,3 @@ export const isRedacted = (value: unknown): value is Redacted<unknown> =>
   typeof value === "object" &&
   value !== null &&
   Object.getPrototypeOf(value) === proto;
-
-/**
- * Creates an {@link Eq} for {@link Redacted} values based on an equality function
- * for the underlying type.
- *
- * ### Example
- *
- * ```ts
- * import {
- *   assertFalse,
- *   assertTrue,
- *   createEqRedacted,
- *   createRedacted,
- *   eqString,
- *   type Brand,
- * } from "@evolu/common";
- *
- * type ApiKey = string & Brand<"ApiKey">;
- * const eqRedactedApiKey = createEqRedacted<ApiKey>(eqString);
- *
- * // Apply brands only after validation or at another trusted boundary.
- * using a = createRedacted("x" as ApiKey);
- * using b = createRedacted("x" as ApiKey);
- * using c = createRedacted("y" as ApiKey);
- *
- * assertTrue(eqRedactedApiKey(a, b));
- * assertFalse(eqRedactedApiKey(a, c));
- * ```
- */
-export const createEqRedacted =
-  <A>(eq: Eq<A>): Eq<Redacted<A>> =>
-  (x, y) =>
-    eq(revealRedacted(x), revealRedacted(y));
