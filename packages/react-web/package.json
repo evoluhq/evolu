@@ -49,7 +49,7 @@
     "user-agent-data-types": "^0.4.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.15.0",
+    "@evolu/common": "^8.15.1",
     "@evolu/web": "^3.4.0",
     "react": ">=19",
     "react-dom": ">=19"
