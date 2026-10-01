@@ -1,5 +1,132 @@
 # @evolu/common
 
+## 8.15.0
+
+### Minor Changes
+
+- fb4c82f: Reported a WebSocket the platform refuses to create instead of panicking
+
+  When the platform's WebSocket constructor threw, for example for a URL with a
+  fragment, a `ws:` URL on an `https:` page, or a Content Security Policy that
+  blocks the URL, the throw panicked the Run that created the WebSocket. In
+  Evolu's shared worker, that stopped sync for every tab. `createWebSocket` now
+  reports it to `onError` as the new `WebSocketCreateError`, holding the thrown
+  value, and stops connecting, because such a URL fails the same way on every
+  attempt. In Evolu, the relay shows a `WebSocketCreateError` as its connection
+  error in sync state, and other relays keep syncing.
+
+  `WebSocketError` has a new member, so code that switches exhaustively over
+  `WebSocketError["type"]` needs a case for `WebSocketCreateError`.
+
+- 4d7e66b: Added Email and Uuid Types, and conversions between Uuid and Id
+
+  `Email` accepts a valid email address as the WHATWG HTML Standard defines it,
+  the same rule browsers enforce for `<input type="email">`. It does not
+  normalize, and it accepts only ASCII, so use the `xn--` form of
+  internationalized domains. Compose `maxLength(254)(Email)` to enforce SMTP's
+  length limit.
+
+  `Uuid` accepts an RFC 9562 UUID of any version or variant in its canonical
+  lowercase form, so equal UUIDs are equal strings. Lowercase UUIDs from other
+  sources before validating them.
+
+  `uuidToId` and `idToUuid` convert between a `Uuid` and the `Id` with the same 16
+  bytes. Unlike `createIdFromString`, the conversion is reversible, so records
+  whose external keys are UUIDs don't need a separate column for the original key.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    Email,
+    idToUuid,
+    Uuid,
+    uuidToId,
+  } from "@evolu/common";
+
+  assertOk(Email.fromUnknown("ada@example.com"), "ada@example.com");
+  assertErr(Email.fromUnknown("Ada <ada@example.com>"));
+
+  const uuid = Uuid.orThrow("0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d");
+  const todoId = uuidToId<"Todo">(uuid);
+
+  assertEqual(idToUuid(todoId), uuid);
+  ```
+
+### Patch Changes
+
+- 9dbf790: Removed createEqRedacted
+
+  `createEqRedacted` accepted any equality function, and its documentation
+  compared secrets with `eqString`, which returns at the first different
+  character. Comparing a secret with untrusted input that way can leak it through
+  timing, and a timing-safe comparison exists only for bytes, so no generic
+  version could be safe. The function also revealed values implicitly, while
+  `Redacted` asks for every reveal to be explicit.
+
+  This removal ships as a patch because the function was unsafe to use as
+  documented. To compare two trusted values, reveal both explicitly. To check a
+  secret against untrusted input, compare bytes with a constant-time
+  `TimingSafeEqual` implementation.
+
+  ```ts
+  import {
+    assertFalse,
+    assertTrue,
+    createRedacted,
+    eqString,
+    revealRedacted,
+    type Brand,
+  } from "@evolu/common";
+  // @ts-expect-error createEqRedacted is no longer exported.
+  import type { createEqRedacted as _createEqRedacted } from "@evolu/common";
+
+  type ApiKey = string & Brand<"ApiKey">;
+
+  using a = createRedacted("x" as ApiKey);
+  using b = createRedacted("x" as ApiKey);
+  using c = createRedacted("y" as ApiKey);
+
+  assertTrue(eqString(revealRedacted(a), revealRedacted(b)));
+  assertFalse(eqString(revealRedacted(a), revealRedacted(c)));
+  ```
+
+- d1e22b4: Declared toString and toJSON on Redacted
+
+  The `Redacted` interface now declares the `toString` and `toJSON` methods its
+  values already had. Both return `"<redacted>"`, so type-aware linters no longer
+  report `no-base-to-string` when a Redacted value is stringified.
+
+  ```ts
+  import { assertEqual, assertType, createRedacted } from "@evolu/common";
+
+  using secret = createRedacted("sensitive");
+
+  assertType<ReturnType<typeof secret.toString>, "<redacted>">();
+  assertEqual(String(secret), "<redacted>");
+  ```
+
+- bc56001: Stopped copying the AppOwner mnemonic into workers
+
+  `useOwner` posted the owner object it received to the shared worker, which
+  passed it on to the database worker. For an `AppOwner`, including the one Evolu
+  uses automatically when transports are configured, that copied its mnemonic
+  into both workers, which never read it. `useOwner` now posts only the owner's
+  id, encryption key, and write key.
+
+- d1e22b4: Fixed disposing Redacted values on runtimes that need the Symbol.dispose polyfill
+
+  Redacted read `Symbol.dispose` when its module loaded. Apps call
+  `installPolyfills()` from their entry point, but imported modules are evaluated
+  before that call runs. On runtimes without a native `Symbol.dispose`, such as
+  Safari, wrappers therefore had no dispose method: `using` threw
+  `Object not disposable`, and the secret stayed revealable. Each wrapper now gets
+  its dispose method when it is created.
+
+  A detached dispose method, as in `stack.defer(secret[Symbol.dispose])`, now also
+  disposes the wrapper. Before, it did nothing.
+
 ## 8.14.0
 
 ### Minor Changes
