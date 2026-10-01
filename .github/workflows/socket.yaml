@@ -20,8 +20,12 @@ concurrency:
 
 jobs:
   socket-security:
-    # Comments on plain issues have no pull request to scan.
-    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    # Dependabot runs get no secrets, so the scan would fail; Socket's GitHub
+    # App still checks their pull requests. Comments on plain issues have no
+    # pull request to scan.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'issue_comment' || github.event.issue.pull_request)
     permissions:
       issues: write
       contents: read
