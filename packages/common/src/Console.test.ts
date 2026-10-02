@@ -205,19 +205,17 @@ describe("createConsole", () => {
     assertEqual(output.entries[0].formattedArgs, ["prefix", "message"]);
   });
 
-  it("write bypasses level filtering", () => {
+  it("write filters replayed entries by level", () => {
     const output = createTestOutput();
-    const console = createConsole({ output, level: "silent" });
+    const console = createConsole({ output, level: "info" });
 
-    const entry: ConsoleEntry = {
-      method: "debug",
-      path: ["worker"],
-      args: ["replayed"],
-    };
-    console.write(entry);
+    console.write({ method: "debug", path: ["worker"], args: ["dropped"] });
+    console.write({ method: "error", path: ["worker"], args: ["replayed"] });
 
-    assertLength(output.entries, 1);
-    assertEqual(output.entries[0].entry, entry);
+    assertEqual(
+      output.entries.map((e) => e.entry.args[0]),
+      ["replayed"],
+    );
   });
 
   it("write passes formatter to output", () => {

@@ -241,8 +241,10 @@ const setupSharedWorker = async ({
     autoDispose = true,
     initialClock = createTimestamp(),
     memoryOnly = false,
+    consoleLevel = "debug",
   }: {
     tenantName?: Name;
+    consoleLevel?: ConsoleLevel;
     memoryOnly?: boolean;
     evoluChannel?: TestMessageChannel<EvoluOutput, EvoluInput>;
     releaseDbWorkerLeaderOnDispose?: boolean;
@@ -288,7 +290,7 @@ const setupSharedWorker = async ({
       type: "CreateEvolu",
       name: tenantName,
       id,
-      consoleLevel: "debug",
+      consoleLevel,
       sqliteSchema: testSqliteSchema,
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly,
@@ -620,6 +622,37 @@ describe("AnnounceTabLeader", () => {
       method: "error",
       args: ["Unknown shared worker input", { type: "UnknownInput" }],
     });
+  });
+
+  it("applies the tab leader's console level to the worker's console", async () => {
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+
+    worker.port.postMessage({
+      type: "AnnounceTabLeader",
+      consoleLevel: "warn",
+    });
+    await testWaitForWorkerMessage();
+
+    assertEqual(run.deps.console.getLevel(), "warn");
+  });
+
+  it("logs each tenant at the console level of the Evolu that created it", async () => {
+    await using setup = await setupSharedWorker();
+    const { console } = setup.run.deps;
+    const quietName = Name.orThrow("quiet");
+
+    await setup.createEvolu({ consoleLevel: "info" });
+    await setup.createEvolu({ tenantName: quietName, consoleLevel: "warn" });
+
+    const infoTenantNames = new Set(
+      console
+        .getEntriesSnapshot()
+        .filter(({ method }) => method === "info")
+        .map(({ path }) => path[0]),
+    );
+    assertTrue(infoTenantNames.has(testName));
+    assertFalse(infoTenantNames.has(quietName));
   });
 });
 

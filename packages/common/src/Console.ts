@@ -136,9 +136,9 @@ export interface Console {
   readonly error: (...args: ReadonlyArray<unknown>) => void;
 
   /**
-   * Writes a pre-built {@link ConsoleEntry} directly to the output, bypassing
-   * level filtering. Used to replay entries from another context (e.g., a
-   * SharedWorker) where filtering was already applied.
+   * Writes a pre-built {@link ConsoleEntry} to the output if this console's
+   * level allows its method. Used to replay entries from another context, such
+   * as a worker, that filtered them by its own level.
    */
   readonly write: (entry: ConsoleEntry) => void;
 }
@@ -406,11 +406,13 @@ const createConsoleWithInheritedLevel = ({
 
   const getLevel = (): ConsoleLevel => ownLevel ?? getInheritedLevel();
 
+  const isEnabled = (method: ConsoleMethod): boolean =>
+    levelOrder[method] >= levelOrder[getLevel()];
+
   const createMethod =
     (method: ConsoleMethod) =>
     (...args: ReadonlyArray<unknown>): void => {
-      if (levelOrder[method] >= levelOrder[getLevel()])
-        output.write({ method, path, args }, formatter);
+      if (isEnabled(method)) output.write({ method, path, args }, formatter);
     };
 
   return {
@@ -436,7 +438,7 @@ const createConsoleWithInheritedLevel = ({
     error: createMethod("error"),
 
     write: (entry) => {
-      output.write(entry, formatter);
+      if (isEnabled(entry.method)) output.write(entry, formatter);
     },
   };
 };

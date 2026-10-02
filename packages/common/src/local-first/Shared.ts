@@ -1701,7 +1701,7 @@ export const initSharedWorker =
         port.onMessage = (message) => {
           switch (message.type) {
             case "AnnounceTabLeader": {
-              console.setLevel(message.consoleLevel);
+              deps.console.setLevel(message.consoleLevel);
               tabLeaderPortStore.set(port);
               console.info("tabLeaderAnnounced");
               break;
@@ -2182,6 +2182,7 @@ const createEvoluTenant =
 
     const { deps } = run;
     const console = deps.console.child(name).child("SharedWorker");
+    console.setLevel(consoleLevel);
 
     interface EvoluInstance extends AsyncDisposable {
       readonly id: EvoluInstanceId;

@@ -19,6 +19,7 @@ import {
   createConsoleStoreOutput,
   testCreateConsole,
   type ConsoleEntry,
+  type ConsoleLevel,
   type ConsoleStoreOutput,
   type TestConsole,
 } from "../../../../packages/common/src/Console.ts";
@@ -328,6 +329,7 @@ const setupDbWorker = async ({
   memoryOnly = true,
   time,
   console = testCreateConsole({ level: "silent" }),
+  consoleLevel = console.getLevel(),
   onThrown,
   expectRefused = false,
 }: {
@@ -336,6 +338,8 @@ const setupDbWorker = async ({
   sqliteSchema?: SqliteSchema;
   time?: TestTime;
   console?: TestConsole;
+  /** The app's level, which DbWorkerInit carries. */
+  consoleLevel?: ConsoleLevel;
   onThrown?: (error: unknown) => void;
   /** The worker is expected to post LeaderRefused instead of LeaderAcquired. */
   expectRefused?: boolean;
@@ -442,7 +446,7 @@ const setupDbWorker = async ({
   worker.postMessage({
     type: "DbWorkerInit",
     name: workerName,
-    consoleLevel: "silent",
+    consoleLevel,
     sqliteSchema,
     encryptionKey: testAppOwner.encryptionKey,
     memoryOnly,
@@ -629,6 +633,20 @@ const getQueuedSharedWorkerMessage = <
 };
 
 describe("worker startup", () => {
+  it("logs at the console level of the app that started it", async () => {
+    const console = testCreateConsole({ level: "silent" });
+    await using _setup = await setupDbWorker({
+      console,
+      consoleLevel: "trace",
+    });
+
+    assertTrue(
+      console
+        .getEntriesSnapshot()
+        .some(({ method, path }) => method === "trace" && path[0] === "sql"),
+    );
+  });
+
   it("startDbWorker waits for initialization and disposes self when aborted", async () => {
     await using dbSetup = await setupDb();
     let workerSelfDisposeCount = 0;
@@ -2107,59 +2125,62 @@ describe("sync message flow", () => {
     ]);
   });
 
-  it("CreateSyncMessages logs and reports an owner whose message creation throws", async () => {
-    const injected = new Error("injected sync creation failure");
-    let armed = false;
-    await using dbSetup = await setupDb({
-      onExec: () => {
-        if (!armed) return;
-        armed = false;
-        throw injected;
-      },
-    });
-    const console = testCreateConsole({ level: "error" });
-    const thrown: Array<unknown> = [];
-    await using setup = await setupDbWorker({
-      dbSetup,
-      console,
-      onThrown: (error) => {
-        thrown.push(error);
-      },
-    });
-
-    // The first owner's first query fails.
-    armed = true;
-    setup.port.postMessage({
-      type: "Request",
-      attemptId: setup.createId(),
-      request: {
-        type: "ForSharedWorker",
-        message: {
-          type: "CreateSyncMessages",
-          owners: [testAppOwner, testDbAppOwner2],
+  // A silent app still gets the error, which its tab reports as UnknownError.
+  for (const consoleLevel of ["error", "silent"] as const)
+    it(`CreateSyncMessages logs and reports an owner whose message creation throws at ${consoleLevel}`, async () => {
+      const injected = new Error("injected sync creation failure");
+      let armed = false;
+      await using dbSetup = await setupDb({
+        onExec: () => {
+          if (!armed) return;
+          armed = false;
+          throw injected;
         },
-      },
-    });
-    await testWaitForWorkerMessage();
-    await testWaitForWorkerMessage();
+      });
+      const console = testCreateConsole({ level: "error" });
+      const thrown: Array<unknown> = [];
+      await using setup = await setupDbWorker({
+        dbSetup,
+        console,
+        consoleLevel,
+        onThrown: (error) => {
+          thrown.push(error);
+        },
+      });
 
-    // The attempt is answered, so the shared worker's queue keeps running.
-    assertEqual(thrown, []);
-    assertLength(setup.outputs, 1);
-    const response = getQueuedSharedWorkerMessage(
-      setup.outputs,
-      "CreateSyncMessages",
-    );
-    assertEqual(response.failedOwnerIds, new Set([testAppOwner.id]));
-    assertEqual(
-      [...response.protocolMessagesByOwnerId.keys()],
-      [testDbAppOwner2.id],
-    );
-    const entries = console.getEntriesSnapshot();
-    assertLength(entries, 1);
-    assertSame(entries[0].method, "error");
-    assertEqual(entries[0].args, [injected]);
-  });
+      // The first owner's first query fails.
+      armed = true;
+      setup.port.postMessage({
+        type: "Request",
+        attemptId: setup.createId(),
+        request: {
+          type: "ForSharedWorker",
+          message: {
+            type: "CreateSyncMessages",
+            owners: [testAppOwner, testDbAppOwner2],
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+      await testWaitForWorkerMessage();
+
+      // The attempt is answered, so the shared worker's queue keeps running.
+      assertEqual(thrown, []);
+      assertLength(setup.outputs, 1);
+      const response = getQueuedSharedWorkerMessage(
+        setup.outputs,
+        "CreateSyncMessages",
+      );
+      assertEqual(response.failedOwnerIds, new Set([testAppOwner.id]));
+      assertEqual(
+        [...response.protocolMessagesByOwnerId.keys()],
+        [testDbAppOwner2.id],
+      );
+      const entries = console.getEntriesSnapshot();
+      assertLength(entries, 1);
+      assertSame(entries[0].method, "error");
+      assertEqual(entries[0].args, [injected]);
+    });
 
   it("sync mutate batches same-owner changes and updates updatedAt", async () => {
     await using setup = await setupDbWorker();

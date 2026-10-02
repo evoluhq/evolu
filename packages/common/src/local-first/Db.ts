@@ -229,6 +229,13 @@ export const startDbWorker =
         self.onMessage = (message) => resolve(ok(message));
       }),
     );
+    // Tabs report the errors this worker logs as an UnknownError, so it
+    // forwards them even for a silent app, whose tabs do not print them.
+    deps.console.setLevel(
+      initMessage.consoleLevel === "silent"
+        ? "error"
+        : initMessage.consoleLevel,
+    );
 
     const port = disposer.use(
       deps.createMessagePort<DbWorkerOutput, DbWorkerInput>(initMessage.port),
