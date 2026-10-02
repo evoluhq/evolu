@@ -40,11 +40,11 @@ package. Clients reconnect and sync what they missed.
 
 The relay reads `PORT` and Relay-specific `EVOLU_RELAY_*` environment variables:
 
-| Variable                      | Default  | Description                                                                                     |
-| ----------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `PORT`                        | `4000`   | The TCP port to listen on, also supplied by hosting platforms.                                  |
-| `EVOLU_RELAY_MAX_OWNER_BYTES` | No limit | The storage quota per owner, as a size literal such as `10MiB`.                                 |
-| `EVOLU_RELAY_LOG_LEVEL`       | `log`    | The console level, from `trace` to `silent`. `debug` also logs connections and every SQL query. |
+| Variable                      | Default  | Description                                                                                          |
+| ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `PORT`                        | `4000`   | The TCP port to listen on, also supplied by hosting platforms.                                       |
+| `EVOLU_RELAY_MAX_OWNER_BYTES` | No limit | The storage quota per owner, as a size literal such as `10MiB`.                                      |
+| `EVOLU_RELAY_LOG_LEVEL`       | `log`    | The console level, from `trace` to `silent`. `debug` also logs connections, `trace` every SQL query. |
 
 Quota values use `ByteSizeLiteral`, such as `0B`, `512KiB`, or `1.5GiB`.
 Bare byte counts such as `1048576` are not accepted; use `1MiB` instead.

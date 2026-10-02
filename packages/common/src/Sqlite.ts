@@ -343,7 +343,7 @@ export const createSqlite =
       disposable<Sqlite>(
         {
           exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
-            console.debug({ query });
+            console.trace({ query });
 
             const label =
               query.options?.logQueryExecutionTime === true
@@ -367,12 +367,12 @@ export const createSqlite =
               );
             }
 
-            console.debug({ result });
+            console.trace({ result });
             return result as SqliteExecResult<R>;
           },
 
           transaction: ((callback: () => Result<unknown, unknown> | void) => {
-            console.debug("begin");
+            console.trace("begin");
             driver.exec(sql`begin;`);
 
             // After errors such as SQLITE_FULL or SQLITE_IOERR, SQLite may roll
@@ -386,14 +386,14 @@ export const createSqlite =
             let shouldRollback = true;
             rollback.defer(() => {
               if (!shouldRollback) return;
-              console.debug("rollback");
+              console.trace("rollback");
               driver.exec(sql`rollback;`);
             });
 
             const result = callback();
             if (result != null && !result.ok) return result;
 
-            console.debug("commit");
+            console.trace("commit");
             driver.exec(sql`commit;`);
             shouldRollback = false;
 

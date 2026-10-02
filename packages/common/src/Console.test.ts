@@ -322,6 +322,18 @@ describe("createNativeConsoleOutput", () => {
     assertSame(logSpy.mock.calls[0].this, nativeConsole);
   });
 
+  it("writes trace entries with native debug", (t) => {
+    const debugSpy = t.mock.method(nativeConsole, "debug", () => undefined);
+    const traceSpy = t.mock.method(nativeConsole, "trace", () => undefined);
+    const output = createNativeConsoleOutput();
+
+    output.write({ method: "trace", path: [], args: ["query"] });
+
+    assertEqual(debugSpy.mock.calls[0].arguments, ["query"]);
+    assertSame(debugSpy.mock.calls[0].this, nativeConsole);
+    assertLength(traceSpy.mock.calls, 0);
+  });
+
   it("applies formatter", (t) => {
     const logSpy = t.mock.method(nativeConsole, "info", () => undefined);
     const output = createNativeConsoleOutput();

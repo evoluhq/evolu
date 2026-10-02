@@ -162,8 +162,8 @@ describe("transactions", () => {
     assertEqual(rows.rows, []);
 
     const entries = console.getEntriesSnapshot();
-    const debugLogs = entries.filter((e) => e.method === "debug");
-    assertTrue(debugLogs.map((e) => e.args[0]).includes("rollback"));
+    const traceLogs = entries.filter((e) => e.method === "trace");
+    assertTrue(traceLogs.map((e) => e.args[0]).includes("rollback"));
   });
 
   it("transaction fails and rolls back on callback error", async () => {
@@ -184,15 +184,17 @@ describe("transactions", () => {
     assertEqual(rows.rows, []);
 
     const entries = console.getEntriesSnapshot();
-    const debugLogs = entries.filter((e) => e.method === "debug");
-    assertTrue(debugLogs.map((e) => e.args[0]).includes("rollback"));
+    const traceLogs = entries.filter((e) => e.method === "trace");
+    assertTrue(traceLogs.map((e) => e.args[0]).includes("rollback"));
   });
 
   it("transaction succeeds and commits", async () => {
     await using setup = await setupSqlite();
-    const { sqlite } = setup;
+    const { run, sqlite } = setup;
+    const { console } = run.deps;
 
     sqlite.exec(sql`create table a (data);`);
+    console.clearEntries();
 
     const result = sqlite.transaction(() => {
       sqlite.exec(sql`insert into a (data) values (${"bar"});`);
@@ -200,6 +202,22 @@ describe("transactions", () => {
     });
 
     assertOk(result, undefined);
+    assertEqual(
+      console
+        .getEntriesSnapshot()
+        .map(({ method, args }) => [
+          method,
+          typeof args[0] === "object" && args[0] !== null
+            ? Object.keys(args[0])
+            : args[0],
+        ]),
+      [
+        ["trace", "begin"],
+        ["trace", ["query"]],
+        ["trace", ["result"]],
+        ["trace", "commit"],
+      ],
+    );
 
     const rows = sqlite.exec(sql`select * from a;`);
     assertEqual(rows.rows, [{ data: "bar" }]);

@@ -124,7 +124,7 @@ export interface Console {
    */
   readonly child: (name: string) => Console;
 
-  /** Outputs a stack trace. */
+  /** Most detailed execution flow, such as every SQL query. */
   readonly trace: (...args: ReadonlyArray<unknown>) => void;
 
   /** Development diagnostics. */
@@ -186,7 +186,7 @@ export interface ConsoleDep {
  * Setting a level enables all logs at that level and above (ordered by
  * severity):
  *
- * - `"trace"` — Stack traces and detailed execution flow
+ * - `"trace"` — Most detailed execution flow, such as every SQL query
  * - `"debug"` — Development diagnostics, timers, counters
  * - `"log"` — General-purpose messages
  * - `"info"` — Operational milestones (startup, shutdown)
@@ -512,6 +512,9 @@ const createConsoleWithInheritedLevel = ({
  * Use {@link createConsoleFormatter} with {@link ConsoleConfig.formatter} for
  * timestamps and path prefixes.
  *
+ * Trace entries are written with native `console.debug`, because native
+ * `console.trace` prints a stack trace with every call.
+ *
  * ### Example
  *
  * ```ts
@@ -536,7 +539,7 @@ export const createNativeConsoleOutput = (): ConsoleOutput => ({
       ConsoleMethod,
       (...args: Array<unknown>) => void
     >;
-    nativeConsole[entry.method](...args);
+    nativeConsole[entry.method === "trace" ? "debug" : entry.method](...args);
   },
 });
 
