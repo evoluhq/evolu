@@ -1,4 +1,5 @@
 import {
+  acquireLeaderLock,
   assertEqual,
   assertFalse,
   assertNonNullable,
@@ -7,6 +8,7 @@ import {
   createConsole,
   createIdFromString,
   PositiveInt,
+  testCreateRun,
   testName,
   testStubGlobal,
   type NativeMessagePort,
@@ -220,6 +222,39 @@ describe("createEvoluDeps", () => {
       assertSame(setup.sharedWorkerPort.close.mock.callCount(), 1);
       assertTrue(await isLockAvailable(`evolu-leaderlock-tab-${workerId}`));
       assertSame(setup.reloadApp.mock.callCount(), 0);
+    });
+
+    it("releases the locks of its Evolu instances when the page enters the cache", async () => {
+      using setup = setupWebEvoluDeps();
+      await using run = testCreateRun({
+        lockManager: setup.deps.lockManager,
+      });
+      await using _instanceLock = await run.ok(
+        acquireLeaderLock("cached-instance"),
+      );
+      assertFalse(await isLockAvailable("evolu-leaderlock-cached-instance"));
+
+      setup.dispatchPageTransition("pagehide", true);
+      await waitForMacrotask();
+
+      assertTrue(await isLockAvailable("evolu-leaderlock-cached-instance"));
+    });
+
+    it("releases at once a lock granted after the page entered the cache", async () => {
+      using setup = setupWebEvoluDeps();
+      const name = "evolu-granted-after-cache";
+      const held = Promise.withResolvers<void>();
+      const holding = navigator.locks.request(name, () => held.promise);
+      const callback = mock.fn<LockGrantedCallback<void>>();
+      const request = setup.deps.lockManager.request(name, callback);
+
+      setup.dispatchPageTransition("pagehide", true);
+      held.resolve();
+      await holding;
+      await request;
+
+      assertSame(callback.mock.callCount(), 0);
+      assertTrue(await isLockAvailable(name));
     });
 
     it("reloads once when the page is restored from the cache", () => {

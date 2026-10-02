@@ -57,8 +57,9 @@ export interface SharedWorkerUnsupportedDep {
  *
  * When the page enters the browser's back-forward cache, as Safari does on
  * every navigation away, this tab ends its part as if it closed: it stops the
- * database workers it hosts, so another tab takes them over, and it reloads if
- * the user comes back to it.
+ * database workers it hosts, so another tab takes them over, the shared worker
+ * ends this tab's Evolu instances, and the tab reloads if the user comes back
+ * to it.
  *
  * Where the browser offers no persistent storage, as in Safari's Private
  * Browsing or a Firefox private window, the database is kept in memory, and
@@ -293,6 +294,44 @@ export const createEvoluDeps = (
     });
   };
 
+  // Disposing the deps releases the locks this page holds through them, as
+  // closing the page would, and a lock granted afterwards is released at once.
+  // The SharedWorker learns that an Evolu instance ended when it gets the lock
+  // the instance holds. Chrome keeps the locks of a page in its back-forward
+  // cache, and a request made before the page entered the cache waits until
+  // Chrome drops the page (https://issues.chromium.org/issues/567630881), so
+  // the SharedWorker would keep syncing the owners of a cached tab's instances
+  // and rerunning their queries.
+  let areLocksReleased = false;
+  const locksReleased = Promise.withResolvers<void>();
+  disposer.defer(() => {
+    areLocksReleased = true;
+    locksReleased.resolve();
+  });
+
+  function requestLock<T>(
+    name: string,
+    callback: LockGrantedCallback<T>,
+  ): Promise<Awaited<T>>;
+  function requestLock<T>(
+    name: string,
+    options: LockOptions,
+    callback: LockGrantedCallback<T>,
+  ): Promise<Awaited<T>>;
+  function requestLock(
+    name: string,
+    ...args:
+      | [LockGrantedCallback<unknown>]
+      | [LockOptions, LockGrantedCallback<unknown>]
+  ): Promise<unknown> {
+    const [options, callback] = args.length === 1 ? [{}, args[0]] : args;
+    return navigator.locks.request(name, options, (lock) =>
+      areLocksReleased
+        ? undefined
+        : Promise.race([callback(lock), locksReleased.promise]),
+    );
+  }
+
   const evoluDeps = disposer.use(
     createCommonEvoluDeps({
       requestPersistentStorage,
@@ -300,7 +339,10 @@ export const createEvoluDeps = (
       createDbWorker,
       createBroadcastChannel,
       createMessageChannel,
-      lockManager: navigator.locks,
+      lockManager: {
+        query: () => navigator.locks.query(),
+        request: requestLock,
+      },
       reloadApp: reloadThisApp,
       sharedWorker,
     }),
