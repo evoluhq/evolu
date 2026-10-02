@@ -461,9 +461,7 @@ const setupDbWorker = async ({
     assertLength(initOutputs, 1);
     assertSame(initOutputs[0].type, "LeaderRefused");
   } else {
-    assertEqual(initOutputs, [
-      { clock: getClock(), type: "LeaderAcquired", name: workerName },
-    ]);
+    assertEqual(initOutputs, [{ clock: getClock(), type: "LeaderAcquired" }]);
   }
 
   const disposables = disposer.move();
@@ -698,7 +696,6 @@ describe("worker startup", () => {
       {
         clock: setup.getClock(),
         type: "LeaderAcquired",
-        name: setup.workerName,
       },
     ]);
     assertEqual(getSqliteSnapshot(setup), {
@@ -889,7 +886,6 @@ describe("worker startup", () => {
       {
         clock: setup.getClock(),
         type: "LeaderAcquired",
-        name: setup.workerName,
       },
     ]);
     assertEqual(sqliteDriverOptions, [
@@ -6700,7 +6696,6 @@ describe("database version", () => {
     assertEqual(refused.initOutputs, [
       {
         type: "LeaderRefused",
-        name: refused.workerName,
         error: {
           type: "UnsupportedDbVersionError",
           storedVersion: PositiveInt.orThrow(3),
@@ -6733,7 +6728,6 @@ describe("database version", () => {
     assertEqual(refused.initOutputs, [
       {
         type: "LeaderRefused",
-        name: refused.workerName,
         error: {
           type: "UnsupportedDbVersionError",
           storedVersion: PositiveInt.orThrow(3),

@@ -310,7 +310,6 @@ export const startDbWorker =
       // waits on. The tab leader lock is unaffected.
       port.postMessage({
         type: "LeaderRefused",
-        name: initMessage.name,
         error: startup.error,
       });
       return ok();
@@ -322,7 +321,6 @@ export const startDbWorker =
 
     port.postMessage({
       type: "LeaderAcquired",
-      name: initMessage.name,
       clock: initialClock,
     });
 

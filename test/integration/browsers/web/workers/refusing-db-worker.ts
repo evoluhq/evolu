@@ -20,7 +20,6 @@ worker.onMessage = (message) => {
   using port = createMessagePort<DbWorkerOutput, DbWorkerInput>(message.port);
   port.postMessage({
     type: "LeaderRefused",
-    name: message.name,
     error: {
       type: "UnsupportedDbVersionError",
       storedVersion: PositiveInt.orThrow(2),

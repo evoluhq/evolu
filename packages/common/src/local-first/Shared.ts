@@ -102,18 +102,19 @@
  * another tenant's request is still a valid reconciliation step.
  *
  * Traffic goes only where it is needed. A continuation returns to the transport
- * that produced the response, and a round started by a socket opening or by a
- * tenant's first use of a transport for an owner goes through that transport.
- * Explicit synchronization requests and mutation uploads go to every open
- * transport claimed for the owner. A write uploads through the database's
- * writable registrations for its owner, whichever instance made it, even one
- * disposed before the database worker answered. When a relay frame stores new
- * messages, the tenant requests a round through each other transport claimed
- * for the owner, so data learned from one relay reaches the others, except
- * through a route that skipped a message, as described below. A closed
- * transport reconciles when it opens, and a replacement leader reconciles every
- * transport again, because a response reporting stored messages may have been
- * lost.
+ * that produced the response, a round started by a socket opening or by a
+ * transport's first claim for an owner goes through that transport, and a
+ * tenant's first writable registration of an owner starts one through each
+ * transport already claimed for it. Explicit synchronization requests and
+ * mutation uploads go to every open transport claimed for the owner. A write
+ * uploads through the database's writable registrations for its owner,
+ * whichever instance made it, even one disposed before the database worker
+ * answered. When a relay frame stores new messages, the tenant requests a round
+ * through each other transport claimed for the owner, so data learned from one
+ * relay reaches the others, except through a route that skipped a message, as
+ * described below. A closed transport reconciles when it opens, and a
+ * replacement leader reconciles every transport again, because a response
+ * reporting stored messages may have been lost.
  *
  * Relays omit the sending socket when broadcasting an upload, so the uploader
  * also delivers it as local Broadcast frames to every other tenant with
@@ -128,12 +129,13 @@
  * ## Sync state
  *
  * The shared worker publishes one plain snapshot, {@link SyncState}, of every
- * transport it manages and every database and owner registration it holds, with
- * one route per writable registration and transport, as specified below. Each
- * part is a union of the states the worker keeps for it: a transport's
- * connection, a database that is active or refused startup, a writable or
- * readonly owner, and a pending, settled, or complete route. A transport's
- * events drive its connection, so publishing never reads a socket.
+ * transport it manages and every database it holds, with the owners its
+ * instances registered and, for each writable owner, one route per transport
+ * claimed for the owner by any database, as specified below. Each part is a
+ * union of the states the worker keeps for it: a transport's connection, a
+ * database that is active or refused startup, a writable or readonly owner, and
+ * a pending, settled, or complete route. A transport's events drive its
+ * connection, so publishing never reads a socket.
  *
  * Apps show users an owner's {@link OwnerSyncStatus}, which
  * {@link syncStateToOwnerSyncStatus} derives. A view of each relay pairs each
@@ -172,10 +174,10 @@
  * - The tenant has no replicated write for the owner queued, because its upload
  *   is sent only after the database worker answers it.
  * - The tenant has sent a round through the transport since the last event that
- *   requires one: its first use of the transport for the owner, the socket
- *   opening, an explicit request, a replacement leader, or storing messages
- *   from another transport, unless the route skipped a message. No failed or
- *   aborted result has arrived on the route since.
+ *   requires one: the route's creation, the socket opening, an explicit
+ *   request, a replacement leader, or storing messages from another transport,
+ *   unless the route skipped a message. No failed or aborted result has arrived
+ *   on the route since.
  * - No result that skipped a received message has arrived on the route since a
  *   round was last requested through it, and since that request, no messages
  *   have been stored from another transport, directly or through a sibling copy
@@ -197,7 +199,8 @@
  * requires a round through every transport whose route has not skipped one.
  *
  * A failed result on a route requests one round through it. Any further failure
- * before the route settles waits for an explicit request or a reopen, so a
+ * before the route settles requests no round of its own and waits for the next
+ * round another event requests, such as an explicit request or a reopen, so a
  * persistent failure cannot loop; a converged reply in between does not end the
  * wait, because it may answer another tenant's round on the shared socket. An
  * aborted apply leaves its routes incomplete without a retry. An exception
@@ -216,9 +219,8 @@
  * message with that timestamp. The messages received elsewhere that the last
  * condition names request no round through such a route, even while a requested
  * round checks it again, because each round would download every skipped
- * message again. The next round that a first use of the transport for the
- * owner, an explicit request, a reopen, a replacement leader, or a failure
- * sends through the route reconciles them.
+ * message again. The next round that an explicit request, a reopen, a
+ * replacement leader, or a failure sends through the route reconciles them.
  *
  * ### Liveness
  *
@@ -296,13 +298,7 @@ import { ok, type Result } from "../Result.ts";
 import type { NonEmptyReadonlySet } from "../Set.ts";
 import type { SqliteSchema } from "../Sqlite.ts";
 import { createStore, type Store } from "../Store.ts";
-import {
-  AbortError,
-  createMutex,
-  unabortable,
-  type Mutex,
-  type Task,
-} from "../Task.ts";
+import { AbortError, createMutex, unabortable, type Task } from "../Task.ts";
 import {
   performanceDurationBetween,
   PositiveMillis,
@@ -334,6 +330,7 @@ import type {
   SharedWorker as CommonSharedWorker,
   CreateBroadcastChannelDep,
   CreateMessageChannelDep,
+  CreateMessagePortDep,
   MessagePort,
   NativeMessagePort,
   SharedWorkerSelf,
@@ -402,6 +399,8 @@ export type SharedWorkerInput =
       readonly memoryOnly: boolean;
       readonly evoluPort: NativeMessagePort<EvoluOutput, EvoluInput>;
     };
+
+export type EvoluInstanceId = Id & Brand<"EvoluInstance">;
 
 export type SharedWorkerOutput =
   | DbWorkerInit
@@ -639,8 +638,10 @@ export type SyncRoute = PendingSyncRoute | SettledSyncRoute | CompleteSyncRoute;
 export interface PendingSyncRoute extends Typed<"Pending"> {
   readonly transportId: SyncTransportId;
   /**
-   * The failure since the route last settled, or null. The first one requests a
-   * round; a further one waits for {@link Evolu.requestSync} or a reopen.
+   * The failure since the route last settled, or null. The first failure in a
+   * reply requests one round through the route; a later one, or a failure to
+   * create a round, waits for the next round another event requests, such as
+   * {@link Evolu.requestSync} or a reopen.
    */
   readonly failure: SyncRouteError | null;
   /**
@@ -674,8 +675,11 @@ export interface SettledSyncRoute extends Typed<"Settled"> {
   readonly completeAt: Millis | null;
   /** When this database last sent a request through the route. */
   readonly lastSentAt: Millis;
-  /** When processing a frame from the route last finished, or null. */
-  readonly lastReceivedAt: Millis | null;
+  /**
+   * When processing a frame from the route last finished. Never null, because
+   * the reply that skipped the change set it.
+   */
+  readonly lastReceivedAt: Millis;
 }
 
 /** A route on which the database is reconciled with the relay for the owner. */
@@ -697,22 +701,22 @@ export interface CompleteSyncRoute extends Typed<"Complete"> {
  * actual timestamps of a {@link ProtocolTimestampMismatchError}. A skipped
  * message adds {@link DecryptWithXChaCha20Poly1305Error}. A
  * {@link ProtocolInvalidDataError} leaves out its data, which can be a whole
- * frame. The caught value in the `error` of either is an {@link UnknownError}.
- * `WriteFailed` means a `writeMessages` call that threw, logged by the
+ * frame. `WriteFailed` means a `writeMessages` call that threw, logged by the
  * protocol, and `SyncFailed` means a logged failure while creating a round or
  * reconciling ranges.
  */
 export type SyncRouteError = (
   | Exclude<ProtocolError, ProtocolInvalidDataError>
-  | Omit<ProtocolInvalidDataError, "data">
+  | (Omit<ProtocolInvalidDataError, "data" | "error"> & {
+      readonly error: UnknownError;
+    })
   | StorageWriteMessagesError
-  | DecryptWithXChaCha20Poly1305Error
+  | (Omit<DecryptWithXChaCha20Poly1305Error, "error"> & {
+      readonly error: UnknownError;
+    })
   | Typed<"WriteFailed">
   | Typed<"SyncFailed">
 ) & { readonly at: Millis };
-
-/** The type of a {@link SyncRouteError}. */
-export type SyncRouteErrorType = SyncRouteError["type"];
 
 /**
  * One relay of an owner in one database: a transport and the database's route
@@ -1267,13 +1271,11 @@ export type DbWorkerReadRequest =
 export type DbWorkerOutput =
   | {
       readonly type: "LeaderAcquired";
-      readonly name: Name;
       readonly clock: Timestamp;
     }
   | {
       /** Startup was refused; the worker is releasing its resources. */
       readonly type: "LeaderRefused";
-      readonly name: Name;
       readonly error: UnsupportedDbVersionError;
     }
   | {
@@ -1372,7 +1374,7 @@ interface EvoluTenant extends AsyncDisposable {
     onDisposed: () => void,
   ) => void;
 
-  readonly getSyncTenant: () => TenantSyncState;
+  readonly getSyncTenant: () => SyncTenant;
 
   readonly refreshSyncRoutes: () => void;
 
@@ -1386,34 +1388,6 @@ interface EvoluTenant extends AsyncDisposable {
     inputMessage: Uint8Array,
     source: ApplySyncMessageSource,
   ) => void;
-}
-
-/** A tenant's part of {@link SyncState}, with its transports still keyed. */
-type TenantSyncState = ActiveTenantSyncState | RefusedSyncTenant;
-
-interface ActiveTenantSyncState extends Typed<"Active"> {
-  readonly name: Name;
-  readonly owners: ReadonlyArray<TenantSyncOwner>;
-}
-
-type TenantSyncOwner = WritableTenantSyncOwner | ReadonlyTenantSyncOwner;
-
-interface WritableTenantSyncOwner extends Typed<"Writable"> {
-  readonly ownerId: OwnerId;
-  readonly routes: ReadonlyArray<TenantSyncRoute>;
-}
-
-interface ReadonlyTenantSyncOwner extends Typed<"Readonly"> {
-  readonly ownerId: OwnerId;
-  readonly transportKeys: ReadonlyArray<StructuralLookupKey>;
-}
-
-/** A tenant's route, with its transport still keyed. */
-interface TenantSyncRoute {
-  readonly transportKey: StructuralLookupKey;
-  readonly progress: RouteProgress;
-  readonly lastSentAt: Millis | null;
-  readonly lastReceivedAt: Millis | null;
 }
 
 /**
@@ -1538,7 +1512,7 @@ interface RouteSkip {
  * message or lack messages stored elsewhere, so it is incomplete.
  */
 interface SettledRoute extends Typed<"Settled"> {
-  readonly error: SyncRouteError;
+  readonly skippedError: SyncRouteError;
   readonly completeAt: Millis | null;
 }
 
@@ -1551,19 +1525,15 @@ const routeToPending = (progress: RouteProgress): PendingRoute => {
     case "Pending":
       return progress;
     case "Settled":
-      return {
-        type: "Pending",
-        roundRequired: false,
-        failure: null,
-        skip: { error: progress.error, isRechecking: false },
-        completeAt: progress.completeAt,
-      };
     case "Complete":
       return {
         type: "Pending",
         roundRequired: false,
         failure: null,
-        skip: null,
+        skip:
+          progress.type === "Settled"
+            ? { error: progress.skippedError, isRechecking: false }
+            : null,
         completeAt: progress.completeAt,
       };
   }
@@ -1572,7 +1542,7 @@ const routeToPending = (progress: RouteProgress): PendingRoute => {
 /**
  * Converts an error to a {@link SyncRouteError}: a caught value becomes an
  * {@link UnknownError}, and a {@link ProtocolInvalidDataError} leaves out its
- * data.
+ * data, which can be a whole frame.
  */
 const errorToSyncRouteError = (
   error:
@@ -1583,8 +1553,6 @@ const errorToSyncRouteError = (
     | Typed<"SyncFailed">,
   at: Millis,
 ): SyncRouteError => {
-  // A caught value inside an error becomes an UnknownError, and a
-  // ProtocolInvalidDataError leaves out its data, which can be a whole frame.
   if (error.type === "ProtocolInvalidDataError") {
     const { data: _data, ...rest } = error;
     return { ...rest, error: createUnknownError(rest.error), at };
@@ -1603,13 +1571,21 @@ const failRoute = (
   failure,
 });
 
-type EvoluTenantDeps = SharedWorkerDeps &
+type EvoluTenantDeps = CreateMessageChannelDep &
+  CreateMessagePortDep &
+  GetSyncTransportIdDep &
+  LockManagerDep &
   PostConsoleEntryOrErrorDep &
   PublishSyncStateDep &
   RefreshAllSyncRoutesDep &
   SyncRequestsDep &
   TabLeaderPortStoreDep &
   TransportsDep;
+
+interface GetSyncTransportIdDep {
+  /** Returns the ID of a claimed transport, which always exists. */
+  readonly getSyncTransportId: (key: StructuralLookupKey) => SyncTransportId;
+}
 
 interface PostConsoleEntryOrErrorDep {
   readonly postConsoleEntryOrError: Callback<ConsoleEntryOrError>;
@@ -1654,8 +1630,6 @@ interface TransportsDep {
     WebSocket
   >;
 }
-
-export type EvoluInstanceId = Id & Brand<"EvoluInstance">;
 
 // Long enough for another build's tabs to reload and its worker to end.
 const otherBuildRunningReportDelay: PositiveDuration = "3s";
@@ -1837,85 +1811,23 @@ export const initSharedWorker =
             connection,
           }),
         );
+        const tenants = [...currentTenantsByName.values()].map((tenant) =>
+          tenant.getSyncTenant(),
+        );
         // A grown timeout lasts while a request is outstanding on the socket
         // or a database that has not refused startup has an unsettled route
         // through it. Every change to either publishes, including a route that
         // goes away without settling.
         const unsettledTransportIds = new Set<SyncTransportId>();
-        const tenants = [...currentTenantsByName.values()].map(
-          (tenant): SyncTenant => {
-            const state = tenant.getSyncTenant();
-            if (state.type === "Refused") return state;
-            return {
-              type: "Active",
-              name: state.name,
-              owners: state.owners.map((owner): SyncTenantOwner =>
-                owner.type === "Readonly"
-                  ? {
-                      type: "Readonly",
-                      ownerId: owner.ownerId,
-                      transportIds: owner.transportKeys.flatMap((key) => {
-                        const entry = transportsByKey.get(key);
-                        return entry ? [entry.id] : [];
-                      }),
-                    }
-                  : {
-                      type: "Writable",
-                      ownerId: owner.ownerId,
-                      routes: owner.routes.flatMap(
-                        ({
-                          transportKey,
-                          progress,
-                          lastSentAt,
-                          lastReceivedAt,
-                        }): Array<SyncRoute> => {
-                          const entry = transportsByKey.get(transportKey);
-                          if (!entry) return [];
-                          const transportId = entry.id;
-                          if (progress.type !== "Pending") {
-                            // Only a sent round settles a route or completes
-                            // it.
-                            assertNonNullable(lastSentAt);
-                            return [
-                              progress.type === "Complete"
-                                ? {
-                                    type: "Complete",
-                                    transportId,
-                                    completeAt: progress.completeAt,
-                                    lastSentAt,
-                                    lastReceivedAt,
-                                  }
-                                : {
-                                    type: "Settled",
-                                    transportId,
-                                    skippedError: progress.error,
-                                    completeAt: progress.completeAt,
-                                    lastSentAt,
-                                    lastReceivedAt,
-                                  },
-                            ];
-                          }
-                          // Only a database that has not refused startup
-                          // publishes routes.
-                          unsettledTransportIds.add(transportId);
-                          return [
-                            {
-                              type: "Pending",
-                              transportId,
-                              failure: progress.failure,
-                              skippedError: progress.skip?.error ?? null,
-                              completeAt: progress.completeAt,
-                              lastSentAt,
-                              lastReceivedAt,
-                            },
-                          ];
-                        },
-                      ),
-                    },
-              ),
-            };
-          },
-        );
+        for (const tenant of tenants) {
+          if (tenant.type !== "Active") continue;
+          for (const owner of tenant.owners) {
+            if (owner.type !== "Writable") continue;
+            for (const route of owner.routes)
+              if (route.type === "Pending")
+                unsettledTransportIds.add(route.transportId);
+          }
+        }
         for (const entry of transportsByKey.values())
           if (
             entry.outstandingByOwnerId.size === 0 &&
@@ -1994,7 +1906,7 @@ export const initSharedWorker =
     const syncRequests: SyncRequests = {
       noteSent: (ownerId, key) => {
         const entry = transportsByKey.get(key);
-        if (!entry) return;
+        assertNonNullable(entry);
         const outstanding = entry.outstandingByOwnerId.get(ownerId);
         if (outstanding) outstanding.count++;
         else
@@ -2021,6 +1933,7 @@ export const initSharedWorker =
         >(
           (transport) => async (run) => {
             const key = structuralLookup(transport);
+            const target: SyncTarget = { type: "Transport", key };
             // The query carries the owner ID; WebSocket accepts URLs that
             // URL() rejects, so the label is derived without parsing.
             const queryIndex = transport.url.indexOf("?");
@@ -2038,10 +1951,10 @@ export const initSharedWorker =
             };
             await using disposer = new AsyncDisposableStack();
             // Registered before the socket, so an aborted creation also
-            // forgets the transport.
+            // forgets the transport. No claim exists while a transport is
+            // created or torn down, so neither changes a route.
             disposer.defer(() => {
               transportsByKey.delete(key);
-              refreshAllSyncRoutes();
               publishSyncState();
             });
             transportsByKey.set(key, entry);
@@ -2073,13 +1986,8 @@ export const initSharedWorker =
                     ownerIds: [...ownerIds],
                   });
 
-                  const target: SyncTarget = {
-                    type: "Transport",
-                    key: structuralLookup(transport),
-                  };
-                  forEachTenant((tenant) => {
+                  for (const tenant of currentTenantsByName.values())
                     tenant.requestCreateSyncMessages(ownerIds, target);
-                  });
                   refreshAllSyncRoutes();
                 },
 
@@ -2119,7 +2027,7 @@ export const initSharedWorker =
                   publishSyncState();
                 },
 
-                onMessage(data) {
+                onMessage: (data) => {
                   if (!(data instanceof ArrayBuffer)) return;
 
                   const message = new Uint8Array(data);
@@ -2159,16 +2067,12 @@ export const initSharedWorker =
                     publishSyncState();
                   }
 
-                  forEachTenant((tenant) => {
+                  for (const tenant of currentTenantsByName.values())
                     tenant.requestApplySyncMessage(
                       headerResult.value.ownerId,
                       message,
-                      {
-                        type: "Transport",
-                        key: structuralLookup(transport),
-                      },
+                      target,
                     );
-                  });
                   // Do not complete a sibling after decrementing the shared
                   // counter but before its apply has been queued.
                   refreshAllSyncRoutes();
@@ -2178,18 +2082,15 @@ export const initSharedWorker =
             disposer.use(socket);
             // LIFO: the transport drops its timer and its socket reference
             // before the socket is disposed. `disposable` guards every method
-            // of the socket the claims lease, and disposing the socket awaits
-            // its retry, so this entry stays registered meanwhile. It keeps its
+            // of the socket lent to claims, and disposing the socket awaits its
+            // retry, so this entry stays registered meanwhile. It keeps its
             // last connection and holds no socket to reconnect.
             disposer.defer(() => {
               clearSyncRequestTimeout(entry);
               entry.socket = null;
-              refreshAllSyncRoutes();
             });
             const disposables = disposer.move();
             entry.socket = socket;
-            refreshAllSyncRoutes();
-            publishSyncState();
             // `disposable` replaces the socket's disposal method in place, but
             // `disposer.use` above already captured the original, so disposing
             // `disposables` disposes the socket rather than recursing.
@@ -2202,9 +2103,8 @@ export const initSharedWorker =
                   type: "Transport",
                   key: structuralLookup(transport),
                 };
-                forEachTenant((tenant) => {
+                for (const tenant of currentTenantsByName.values())
                   tenant.requestCreateSyncMessages(new Set([ownerId]), target);
-                });
               }
               refreshAllSyncRoutes();
             },
@@ -2227,6 +2127,11 @@ export const initSharedWorker =
     const sharedWorkerRun = disposer.use(
       run.create({
         ...deps,
+        getSyncTransportId: (key: StructuralLookupKey) => {
+          const entry = transportsByKey.get(key);
+          assertNonNullable(entry);
+          return entry.id;
+        },
         postConsoleEntryOrError,
         publishSyncState,
         refreshAllSyncRoutes,
@@ -2239,17 +2144,13 @@ export const initSharedWorker =
     const tenantsByName = disposer.use(
       await sharedWorkerRun.ok(
         createSharedResourceByKey(
-          (message: ExtractTyped<SharedWorkerInput, "CreateEvolu">) => {
-            const memoryOnly =
-              message.memoryOnly ||
-              platformDevicePersistence === "NotPersisted";
-            return createEvoluTenant(
-              { ...message, memoryOnly },
-              memoryOnly ? "NotPersisted" : platformDevicePersistence,
+          (message: ExtractTyped<SharedWorkerInput, "CreateEvolu">) =>
+            createEvoluTenant(
+              message,
+              message.memoryOnly ? "NotPersisted" : platformDevicePersistence,
               currentTenantsByName,
               workerId,
-            );
-          },
+            ),
           {
             idleDisposeAfter: "3s",
             lookup: (message) => message.name,
@@ -2259,12 +2160,6 @@ export const initSharedWorker =
     );
 
     sharedWorkerReady.resolve();
-
-    const forEachTenant = (
-      callback: Callback<BorrowedResource<EvoluTenant>>,
-    ): void => {
-      for (const tenant of currentTenantsByName.values()) callback(tenant);
-    };
 
     return ok(disposer.move());
   };
@@ -2276,7 +2171,6 @@ const createEvoluTenant =
       consoleLevel,
       sqliteSchema,
       encryptionKey,
-      memoryOnly,
     }: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
     devicePersistence: DevicePersistence,
     currentTenantsByName: Map<Name, BorrowedResource<EvoluTenant>>,
@@ -2296,11 +2190,9 @@ const createEvoluTenant =
         SyncOwner,
         Array<ClaimLease | null>
       >;
-      readonly onDisposed: () => void;
       readonly port: MessagePort<EvoluOutput, EvoluInput>;
       readonly tabPort: TabPort;
-      readonly useOwnerMutex: Mutex;
-      rowsByQuery: Map<Query, ReadonlyArray<Row>>;
+      readonly rowsByQuery: Map<Query, ReadonlyArray<Row>>;
     }
 
     const instancesById = disposer.adopt(
@@ -2362,13 +2254,10 @@ const createEvoluTenant =
             // owners reconcile through every transport again.
             if (replacesLeader) {
               refreshQueries();
-              const usedOwnerIds = new Set<OwnerId>();
-              for (const instance of instancesById.values()) {
-                for (const { owner } of instance.ownerRegistrations.keys()) {
-                  usedOwnerIds.add(owner.id);
-                }
-              }
-              requestCreateSyncMessages(usedOwnerIds, allTransports);
+              requestCreateSyncMessages(
+                new Set(getSyncOwners().map(({ ownerId }) => ownerId)),
+                allTransports,
+              );
             }
             console.info("leaderAcquired");
             dbWorkerInited.resolve();
@@ -2390,7 +2279,6 @@ const createEvoluTenant =
             pendingApplyCountForAllRoutesByOwnerId.clear();
             ownerTransportApplyRelation.clear();
             startupError = message.error;
-            refreshSyncRoutes();
             deps.publishSyncState();
             console.info("leaderRefused", message.error);
             for (const instance of instancesById.values()) {
@@ -2440,6 +2328,8 @@ const createEvoluTenant =
             runQueue();
             break;
           }
+          default:
+            exhaustiveCheck(message);
         }
       };
 
@@ -2450,7 +2340,7 @@ const createEvoluTenant =
           consoleLevel,
           sqliteSchema,
           encryptionKey,
-          memoryOnly,
+          memoryOnly: devicePersistence === "NotPersisted",
           sharedWorkerId: workerId,
           port: dbWorkerChannel.port1.native,
         },
@@ -2477,8 +2367,7 @@ const createEvoluTenant =
           readonly request: ExtractTyped<DbWorkerWriteRequest, "ForEvolu">;
           /** Owners of its changes to replicated tables. */
           readonly replicatedOwnerIds: ReadonlySet<OwnerId>;
-          now?: Millis;
-          clock?: Timestamp;
+          capturedInputs?: CapturedWriteInputs;
         }
       | {
           readonly type: "CreateSyncMessages";
@@ -2495,9 +2384,12 @@ const createEvoluTenant =
             "ForSharedWorker"
           >;
           readonly source: ApplySyncMessageSource;
-          now?: Millis;
-          clock?: Timestamp;
+          capturedInputs?: CapturedWriteInputs;
         };
+    interface CapturedWriteInputs {
+      readonly clock: Timestamp;
+      readonly now: Millis;
+    }
     const queue: Array<QueueEntry> = [];
     const pendingWriteCountByOwnerId = new Map<OwnerId, number>();
     const pendingApplyCountForAllRoutesByOwnerId = new Map<OwnerId, number>();
@@ -2589,14 +2481,15 @@ const createEvoluTenant =
       if (entry.type === "Write" || entry.type === "ApplySyncMessage") {
         // A write captures its inputs on first dispatch, so a retry after
         // leader replacement reproduces the same timestamps.
-        entry.now ??= run.deps.time.now();
-        entry.clock ??= sessionClock;
+        entry.capturedInputs ??= {
+          clock: sessionClock,
+          now: run.deps.time.now(),
+        };
         dbWorkerPort.postMessage({
           type: "Request",
           attemptId,
           request: entry.request,
-          clock: entry.clock,
-          now: entry.now,
+          ...entry.capturedInputs,
         });
       } else {
         dbWorkerPort.postMessage({
@@ -2631,18 +2524,15 @@ const createEvoluTenant =
         case "Mutate":
         case "Query": {
           if (instance) {
-            const nextRowsByQuery = new Map(instance.rowsByQuery);
             const patchesByQuery = new Map<Query, ReadonlyArray<Patch>>();
 
             for (const [query, rows] of response.message.rowsByQuery) {
-              nextRowsByQuery.set(query, rows);
               patchesByQuery.set(
                 query,
                 makePatches(instance.rowsByQuery.get(query), rows),
               );
+              instance.rowsByQuery.set(query, rows);
             }
-
-            instance.rowsByQuery = nextRowsByQuery;
 
             instance.port.postMessage({
               type: "OnPatchesByQuery",
@@ -2750,18 +2640,10 @@ const createEvoluTenant =
       Map<OwnerId, RouteState>
     >();
 
-    const getRoute = (
-      ownerId: OwnerId,
-      key: StructuralLookupKey,
-    ): RouteState => {
-      let routesByOwnerId = routesByOwnerIdByKey.get(key);
-      if (!routesByOwnerId) {
-        routesByOwnerId = new Map();
-        routesByOwnerIdByKey.set(key, routesByOwnerId);
-      }
-      let route = routesByOwnerId.get(ownerId);
-      if (!route) {
-        route = {
+    const getRoute = (ownerId: OwnerId, key: StructuralLookupKey): RouteState =>
+      routesByOwnerIdByKey
+        .getOrInsertComputed(key, () => new Map())
+        .getOrInsertComputed(ownerId, () => ({
           progress: {
             type: "Pending",
             roundRequired: true,
@@ -2771,11 +2653,7 @@ const createEvoluTenant =
           },
           lastSentAt: null,
           lastReceivedAt: null,
-        };
-        routesByOwnerId.set(ownerId, route);
-      }
-      return route;
-    };
+        }));
 
     const getSyncOwners = () => {
       const ownersById = new Map<OwnerId, { writable: boolean }>();
@@ -2849,7 +2727,7 @@ const createEvoluTenant =
               : pending.skip && !pending.skip.isRechecking
                 ? {
                     type: "Settled",
-                    error: pending.skip.error,
+                    skippedError: pending.skip.error,
                     completeAt: pending.completeAt,
                   }
                 : route.progress.type === "Complete"
@@ -2876,8 +2754,9 @@ const createEvoluTenant =
           );
           const { failedOwnerIds } = response.message;
           if (failedOwnerIds.size === 0) break;
-          // A retry would likely fail the same way, so the routes wait for an
-          // explicit request or a reopen.
+          // A retry would likely fail the same way, so the routes wait for the
+          // next round another event requests, such as an explicit request or
+          // a reopen.
           const now = deps.time.now();
           for (const ownerId of failedOwnerIds) {
             deps.transports.forEachResourceForClaim(ownerId, (_, transport) => {
@@ -2961,9 +2840,9 @@ const createEvoluTenant =
                 };
               if (failure !== null) {
                 // The first failure since the route settled requests one
-                // round. Further failures wait for an explicit request or a
-                // reopen, even after a converged reply, which may answer
-                // another request.
+                // round. Further failures wait for the next round another event
+                // requests, such as an explicit request or a reopen, even after
+                // a converged reply, which may answer another request.
                 const requestsRetry =
                   route.progress.type !== "Pending" ||
                   route.progress.failure === null;
@@ -3255,21 +3134,12 @@ const createEvoluTenant =
             "writeKey" in syncOwner.owner &&
             !getUsedOwnersById(new Set([ownerId])).has(ownerId);
           // A transport first claimed for the owner starts every tenant's
-          // round through onFirstClaimAdded. A joining tenant also reconciles
-          // its existing history through the owner's already claimed transports.
-          // Later registrations reconcile only transports newly used here:
-          // earlier rounds may predate writes from an unregistered instance.
-          const claimedKeys = new Set(getClaimedKeys(ownerId));
-          const usedKeys = new Set<StructuralLookupKey>();
-          for (const { ownerRegistrations } of instancesById.values()) {
-            for (const [usedSyncOwner, leases] of ownerRegistrations) {
-              if (usedSyncOwner.owner.id !== ownerId) continue;
-              if (!leases.some((lease) => lease !== null)) continue;
-              for (const transport of usedSyncOwner.transports) {
-                usedKeys.add(structuralLookup(transport));
-              }
-            }
-          }
+          // round through onFirstClaimAdded. A tenant's first writable
+          // registration reconciles its existing history through the
+          // transports already claimed for the owner. Later writes upload
+          // through every claimed transport, whichever instance made them, so
+          // later registrations need no round.
+          const claimedKeys = getClaimedKeys(ownerId);
           const leases = instance.ownerRegistrations.getOrInsertComputed(
             syncOwner,
             () => [],
@@ -3289,17 +3159,12 @@ const createEvoluTenant =
             }
             deps.refreshAllSyncRoutes();
           }
-          const keysToSync = isFirstWritableUse
-            ? claimedKeys
-            : syncOwner.transports
-                .map(structuralLookup)
-                .filter((key) => claimedKeys.has(key) && !usedKeys.has(key));
-          for (const key of keysToSync) {
-            requestCreateSyncMessages(new Set([ownerId]), {
-              type: "Transport",
-              key,
-            });
-          }
+          if (isFirstWritableUse)
+            for (const key of claimedKeys)
+              requestCreateSyncMessages(new Set([ownerId]), {
+                type: "Transport",
+                key,
+              });
         } else {
           const claimLeases = instance.ownerRegistrations.get(syncOwner);
           assertNotUndefined(claimLeases);
@@ -3339,12 +3204,12 @@ const createEvoluTenant =
                 type: "Active",
                 name,
                 owners: getSyncOwners().map(
-                  ({ ownerId, writable, transportKeys }): TenantSyncOwner =>
+                  ({ ownerId, writable, transportKeys }): SyncTenantOwner =>
                     writable
                       ? {
                           type: "Writable",
                           ownerId,
-                          routes: transportKeys.map((key): TenantSyncRoute => {
+                          routes: transportKeys.map((key): SyncRoute => {
                             const route = routesByOwnerIdByKey
                               .get(key)
                               ?.get(ownerId);
@@ -3352,10 +3217,49 @@ const createEvoluTenant =
                             // before yielding. Snapshot reads must not create
                             // missing routes.
                             assertNotUndefined(route);
-                            return { transportKey: key, ...route };
+                            const transportId = deps.getSyncTransportId(key);
+                            const { progress, lastSentAt, lastReceivedAt } =
+                              route;
+                            if (progress.type === "Pending")
+                              return {
+                                type: "Pending",
+                                transportId,
+                                failure: progress.failure,
+                                skippedError: progress.skip?.error ?? null,
+                                completeAt: progress.completeAt,
+                                lastSentAt,
+                                lastReceivedAt,
+                              };
+                            // Only a sent round settles a route or completes
+                            // it.
+                            assertNonNullable(lastSentAt);
+                            if (progress.type === "Complete")
+                              return {
+                                type: "Complete",
+                                transportId,
+                                completeAt: progress.completeAt,
+                                lastSentAt,
+                                lastReceivedAt,
+                              };
+                            // Only a received reply records a skip.
+                            assertNonNullable(lastReceivedAt);
+                            return {
+                              type: "Settled",
+                              transportId,
+                              skippedError: progress.skippedError,
+                              completeAt: progress.completeAt,
+                              lastSentAt,
+                              lastReceivedAt,
+                            };
                           }),
                         }
-                      : { type: "Readonly", ownerId, transportKeys },
+                      : {
+                          type: "Readonly",
+                          ownerId,
+                          transportIds: transportKeys.map(
+                            deps.getSyncTransportId,
+                          ),
+                        },
                 ),
               },
 
@@ -3381,15 +3285,13 @@ const createEvoluTenant =
               message.evoluPort,
             ),
             tabPort,
-            onDisposed,
             rowsByQuery: new Map<Query, ReadonlyArray<Row>>(),
-            useOwnerMutex: createMutex(),
             [Symbol.asyncDispose]: () => disposer.disposeAsync(),
           };
 
           instancesById.set(instance.id, instance);
 
-          disposer.defer(instance.onDisposed);
+          disposer.defer(onDisposed);
 
           disposer.defer(() => {
             for (const leases of instance.ownerRegistrations.values()) {
@@ -3404,6 +3306,7 @@ const createEvoluTenant =
           // aborts queued UseOwner batches and waits for the running one, whose
           // transport claim cannot be aborted, so the release sees every lease.
           const instanceRun = disposer.use(tenantRun.create());
+          const useOwnerMutex = createMutex();
 
           disposer.defer(() => {
             instancesById.delete(instance.id);
@@ -3467,7 +3370,7 @@ const createEvoluTenant =
               }
               case "UseOwner": {
                 void instanceRun(
-                  instance.useOwnerMutex.withLock(async (run) => {
+                  useOwnerMutex.withLock(async (run) => {
                     for (const action of message.actions) {
                       switch (action.action) {
                         case "sync":
@@ -3508,6 +3411,8 @@ const createEvoluTenant =
                 );
                 break;
               }
+              default:
+                exhaustiveCheck(message);
             }
           };
 
@@ -3549,40 +3454,16 @@ const createEvoluTenant =
     return ok(tenant);
   };
 
-//   | (Typed<"reset"> & {
-//       readonly onCompleteId: CallbackId;
-//       readonly reload: boolean;
-//       readonly restore?: {
-//         readonly sqliteSchema: SqliteSchema;
-//         readonly mnemonic: Mnemonic;
-//       };
-//     })
-//   | (Typed<"ensureSqliteSchema"> & {
-//       readonly sqliteSchema: SqliteSchema;
-//     })
-//   | (Typed<"export"> & {
-//       readonly onCompleteId: CallbackId;
-//     })
-//   | (Typed<"useOwner"> & {
-//       readonly use: boolean;
-//       readonly owner: SyncOwner;
-//     });
-//   | (Typed<"onReset"> & {
-//       readonly onCompleteId: CallbackId;
-//       readonly reload: boolean;
-//     })
-
 // TODO: SharedWorker follow-ups.
 // - Rotate the node ID when a copied database is detected; see the Duplicate
 //   node IDs section in the Timestamp module.
 // - Detect DbWorker and port liveness so a worker-only crash resumes the queue.
 //   Defer panicked-worker restart until failure detection and recovery are
-//   defined, accounting for SQLite WASM's detection limits. A mutation that
-//   throws is answered, but other SQLite operations are expected not to throw.
+//   defined, accounting for SQLite WASM's detection limits. Mutations, round
+//   creation, and frame application are answered when SQLite throws; a query
+//   or an export that throws is not, and stops the database's queue.
 // - Split worker protocol types and the EvoluTenant implementation into focused
 //   modules.
-// - Remove the obsolete commented protocol block above.
-// - Propagate invalid protocol messages to sync state.
 // - Bound sync state publishing during a bulk catch-up: every sent and applied
 //   frame changes a route timestamp, so each frame broadcasts a full snapshot
 //   to every tab. Throttling needs a wall-clock policy and a deterministic way

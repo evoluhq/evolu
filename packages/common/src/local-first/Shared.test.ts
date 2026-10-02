@@ -270,7 +270,6 @@ const setupSharedWorker = async ({
       dbWorkerPort.postMessage({
         clock: initialClock,
         type: "LeaderAcquired",
-        name: tenantName,
       });
       await testWaitForWorkerMessage();
     };
@@ -666,7 +665,6 @@ describe("storage", () => {
     );
     leaderPort.postMessage({
       type: "LeaderAcquired",
-      name: testName,
       clock: createTimestamp(),
     });
     await testWaitForWorkerMessage();
@@ -787,7 +785,6 @@ describe("builds", () => {
     );
     port.postMessage({
       type: "LeaderAcquired",
-      name: init.name,
       clock: createTimestamp(),
     });
     await testWaitForWorkerMessage();
@@ -3042,7 +3039,6 @@ describe("sync state", () => {
       };
       dbWorkerPort.postMessage({
         type: "LeaderAcquired",
-        name: testName,
         clock: createTimestamp(),
       });
       await testWaitForWorkerMessage();
@@ -4456,7 +4452,6 @@ describe("sync state", () => {
       };
       leaderPort.postMessage({
         type: "LeaderRefused",
-        name: refusedName,
         error,
       });
       await testWaitForWorkerMessage();
@@ -6263,7 +6258,7 @@ describe("sync state", () => {
         storedVersion: PositiveInt.orThrow(2),
         supportedVersion: PositiveInt.orThrow(1),
       };
-      leaderPort.postMessage({ type: "LeaderRefused", name: testName, error });
+      leaderPort.postMessage({ type: "LeaderRefused", error });
       await testWaitForWorkerMessage();
 
       // Nothing the refused database holds syncs, so it publishes its error
@@ -6364,7 +6359,7 @@ const quotaFailure = (at: number): SyncRouteError => ({
 
 const skippedChange = (at: number): SyncRouteError => ({
   type: "DecryptWithXChaCha20Poly1305Error",
-  error: "wrong encryption key",
+  error: createUnknownError("wrong encryption key"),
   at: Millis.orThrow(at),
 });
 
@@ -6449,7 +6444,7 @@ describe("SyncState", () => {
         skippedError: skippedChange(1000),
         completeAt: null,
         lastSentAt: Millis.orThrow(900),
-        lastReceivedAt: null,
+        lastReceivedAt: Millis.orThrow(1000),
       },
       // @ts-expect-error A settled route has sent a round, so it has when it last sent.
       {
@@ -6458,6 +6453,15 @@ describe("SyncState", () => {
         skippedError: skippedChange(1000),
         completeAt: null,
         lastSentAt: null,
+        lastReceivedAt: Millis.orThrow(1000),
+      },
+      // @ts-expect-error A settled route has received the reply that skipped its change, so it has when it last received.
+      {
+        type: "Settled",
+        transportId,
+        skippedError: skippedChange(1000),
+        completeAt: null,
+        lastSentAt: Millis.orThrow(900),
         lastReceivedAt: null,
       },
       {
@@ -6467,7 +6471,7 @@ describe("SyncState", () => {
         skippedError: null,
         completeAt: null,
         lastSentAt: Millis.orThrow(900),
-        lastReceivedAt: null,
+        lastReceivedAt: Millis.orThrow(1000),
       },
     ];
 
@@ -6493,8 +6497,25 @@ describe("SyncState", () => {
       },
     ];
 
+    const errors: ReadonlyArray<SyncRouteError> = [
+      skippedChange(1000),
+      {
+        type: "DecryptWithXChaCha20Poly1305Error",
+        // @ts-expect-error A caught value in a route error is an UnknownError.
+        error: "wrong encryption key",
+        at: Millis.orThrow(1000),
+      },
+      {
+        type: "ProtocolInvalidDataError",
+        // @ts-expect-error A caught value in a route error is an UnknownError.
+        error: "invalid frame",
+        at: Millis.orThrow(1000),
+      },
+    ];
+
     assertLength(connections, 4);
-    assertLength(routes, 7);
+    assertLength(routes, 8);
+    assertLength(errors, 3);
     assertLength(owners, 2);
     assertLength(tenants, 2);
 
@@ -7234,7 +7255,6 @@ describe("with one evolu instance", () => {
       dbWorkerPort.postMessage({
         clock: createTimestamp(),
         type: "LeaderAcquired",
-        name: testName,
       });
       await disposePromise;
       await testWaitForWorkerMessage();
@@ -8235,7 +8255,7 @@ describe("with one evolu instance", () => {
       ]);
     });
 
-    it("reconciles a tenant's later writes when it first uses an already claimed transport", async () => {
+    it("uploads an unregistered sibling's write through every claimed transport, so later registrations start no round", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       const first = await setup.createEvolu();
@@ -8359,23 +8379,15 @@ describe("with one evolu instance", () => {
       second.dbInputs.length = 0;
 
       // The tenant already has a writable registration through A, and B's
-      // global claim remains active. Its first local use of B needs a new round.
+      // global claim remains active. The sibling's registrations of B start no
+      // round, because its write already went through B, and construct no
+      // socket.
       siblingChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "add", owner: syncOwnerB }],
-      });
-      await testWaitForWorkerMessage();
-      assertSame(first.dbInputs.length, 1);
-      assertEqual(await respondToSyncRound(first, createWebSocket), [
-        transportB.url,
-      ]);
-      assertEqual(second.dbInputs, []);
-      first.dbInputs.length = 0;
-
-      // Repeated use does not start another round or construct another socket.
-      siblingChannel.port2.postMessage({
-        type: "UseOwner",
-        actions: [{ action: "add", owner: syncOwnerB }],
+        actions: [
+          { action: "add", owner: syncOwnerB },
+          { action: "add", owner: syncOwnerB },
+        ],
       });
       await testWaitForWorkerMessage();
       assertEqual(first.dbInputs, []);
@@ -9764,7 +9776,6 @@ describe("with one evolu instance", () => {
         };
         port.postMessage({
           type: "LeaderAcquired",
-          name: testName,
           clock: committedClock,
         });
         await testWaitForWorkerMessage();
@@ -9915,7 +9926,6 @@ describe("with one evolu instance", () => {
       };
       dbWorkerPort.postMessage({
         type: "LeaderAcquired",
-        name: testName,
         clock: createTimestamp(),
       });
       await testWaitForWorkerMessage();
@@ -9983,7 +9993,6 @@ describe("with one evolu instance", () => {
       dbWorkerPort.postMessage({
         clock: createTimestamp({ nodeId: maxNodeId }),
         type: "LeaderAcquired",
-        name: testName,
       });
       await testWaitForWorkerMessage();
       // A replacement leader refreshes every instance's subscribed queries.
@@ -10116,7 +10125,6 @@ describe("with one evolu instance", () => {
       const startupClock = createTimestamp({ millis: Millis.orThrow(1000) });
       port.postMessage({
         type: "LeaderAcquired",
-        name: testName,
         clock: startupClock,
       });
       await testWaitForWorkerMessage();
@@ -10257,7 +10265,6 @@ describe("with one evolu instance", () => {
       replacement.use(await replacementLock);
       replacementPort.postMessage({
         type: "LeaderAcquired",
-        name: testName,
         clock: createTimestamp(),
       });
       await testWaitForWorkerMessage();
@@ -10846,7 +10853,6 @@ describe("startup refusal", () => {
     const instance = await setup.createEvoluBeforeDbWorkerLeader();
     instance.dbWorkerPort.postMessage({
       type: "LeaderRefused",
-      name: testName,
       error: refusal,
     });
     await testWaitForWorkerMessage();
@@ -10884,7 +10890,6 @@ describe("startup refusal", () => {
 
     instance.dbWorkerPort.postMessage({
       type: "LeaderRefused",
-      name: testName,
       error: refusal,
     });
     await testWaitForWorkerMessage();
@@ -11008,7 +11013,6 @@ describe("startup refusal", () => {
     };
     leaderPort.postMessage({
       type: "LeaderRefused",
-      name: testName,
       error: refusal,
     });
     await testWaitForWorkerMessage();
@@ -11055,13 +11059,11 @@ describe("startup refusal", () => {
 
     instance.dbWorkerPort.postMessage({
       type: "LeaderRefused",
-      name: testName,
       error: refusal,
     });
     await testWaitForWorkerMessage();
     leaderPort.postMessage({
       type: "LeaderAcquired",
-      name: testName,
       clock: createTimestamp(),
     });
     await testWaitForWorkerMessage();
