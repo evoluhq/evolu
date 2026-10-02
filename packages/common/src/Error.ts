@@ -34,31 +34,57 @@ export interface UnknownError extends InferType<typeof UnknownError> {}
  * Creates an {@link UnknownError} from an unknown error.
  *
  * An `Error` becomes a plain object of its own properties, such as `message`
- * and `stack`. A `cause` that is an `Error` is converted the same way, a
- * function is dropped, and any other property is kept as it is. An `Error`'s
- * properties are not enumerable, so JSON and comparisons by content miss them,
- * and a structured clone creates a new `Error`. Any other value is
- * structured-cloned, or described by `String` when it cannot be, or as
- * `"[Unserializable Object]"` when even that throws.
+ * and `stack`, plus its `name`, `message`, and `stack` when they are inherited,
+ * as in a `DOMException`. A property that is an `Error`, such as `cause`, is
+ * converted the same way, an array, such as the `errors` of an
+ * `AggregateError`, is converted element by element, a function is dropped, and
+ * any other property is kept when it can be structured-cloned, or described as
+ * a string when it cannot. Reference cycles through errors and arrays stay
+ * cycles in the result. An `Error`'s properties are not enumerable, so JSON and
+ * comparisons by content miss them, and a structured clone creates a new
+ * `Error`. Any other value is structured-cloned, or described by `String` when
+ * it cannot be, or as `"[Unserializable Object]"` when even that throws.
  */
 export const createUnknownError = (error: unknown): UnknownError => {
-  const convertError = (err: Error): Record<string, unknown> => {
-    const result: Record<string, unknown> = Object.getOwnPropertyNames(
-      err,
-    ).reduce<Record<string, unknown>>((acc, key) => {
+  // An UnknownError is posted between workers, so its values must clone.
+  // Each error and array is converted once and registered before its values,
+  // so a reference cycle becomes a cycle in the result instead of endless
+  // recursion, and structured cloning preserves it.
+  const converted = new Map<object, unknown>();
+
+  const convertValue = (value: unknown): unknown => {
+    if (value instanceof Error) return convertError(value);
+    if (Array.isArray(value)) {
+      const known = converted.get(value);
+      if (known !== undefined) return known;
+      const result: Array<unknown> = [];
+      converted.set(value, result);
+      for (const element of value) result.push(convertValue(element));
+      return result;
+    }
+    try {
+      structuredClone(value);
+      return value;
+    } catch {
+      return safelyStringifyUnknownValue(value);
+    }
+  };
+
+  const convertError = (err: Error): unknown => {
+    const known = converted.get(err);
+    if (known !== undefined) return known;
+    const result: Record<string, unknown> = {};
+    converted.set(err, result);
+    for (const key of Object.getOwnPropertyNames(err)) {
       const value = (err as never)[key] as unknown;
-      if (key === "cause" && value instanceof Error) {
-        // Recursively process the `cause` property
-        acc[key] = convertError(value);
-      } else if (typeof value !== "function") {
-        acc[key] = value;
-      }
-      return acc;
-    }, {});
-    // Firefox defines `stack` as a getter on Error.prototype, not as an own
-    // property, so getOwnPropertyNames misses it. Explicitly include it.
-    if (err.stack !== undefined && !("stack" in result)) {
-      result.stack = err.stack;
+      if (typeof value !== "function") result[key] = convertValue(value);
+    }
+    // A DOMException keeps `name` and `message` on its prototype, and Firefox
+    // defines `stack` as a getter on Error.prototype, so getOwnPropertyNames
+    // misses them. Explicitly include them.
+    for (const key of ["name", "message", "stack"] as const) {
+      const value = err[key];
+      if (value !== undefined && !(key in result)) result[key] = value;
     }
     return result;
   };

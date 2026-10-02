@@ -50,6 +50,7 @@ import {
 } from "./Schema.ts";
 import {
   consoleEntryOrErrorBroadcastChannelName,
+  postConsoleEntry,
   relaySyncStateToStatus,
   syncStateToOwnerSyncStatus,
   syncStateToRelaySyncStates,
@@ -78,7 +79,7 @@ import {
   type SyncTenantOwner,
   type SyncTransport,
 } from "./Shared.ts";
-import type { NativeMessagePort } from "../Worker.ts";
+import type { BroadcastChannel, NativeMessagePort } from "../Worker.ts";
 import {
   DbChange,
   testCreateCrdtMessage,
@@ -589,6 +590,27 @@ describe("AnnounceTabLeader", () => {
       assertEqual(outputs, [{ type: "ConsoleEntry", entry }]);
     });
 
+    it("delivers a console entry argument that cannot be cloned as a string", async () => {
+      await using setup = await setupSharedWorker();
+      const { consoleStoreOutputEntry, announceTabLeader } = setup;
+      const { outputs } = await announceTabLeader();
+
+      consoleStoreOutputEntry.set({
+        method: "info",
+        path: ["test"],
+        args: [{ attempt: 2, retry: () => undefined }],
+      });
+
+      await testWaitForWorkerMessage();
+
+      assertEqual(outputs, [
+        {
+          type: "ConsoleEntry",
+          entry: { method: "info", path: ["test"], args: ['{"attempt":2}'] },
+        },
+      ]);
+    });
+
     it("ignores null console store updates", async () => {
       await using setup = await setupSharedWorker();
       const { consoleStoreOutputEntry, announceTabLeader } = setup;
@@ -653,6 +675,48 @@ describe("AnnounceTabLeader", () => {
     );
     assertTrue(infoTenantNames.has(testName));
     assertFalse(infoTenantNames.has(quietName));
+  });
+
+  it("posts console entry arguments that cannot be cloned as strings", () => {
+    const messages: Array<ConsoleEntryOrError> = [];
+    // Like a native BroadcastChannel, this one clones each message.
+    const channel: BroadcastChannel<ConsoleEntryOrError> = {
+      postMessage: (message) => {
+        messages.push(structuredClone(message));
+      },
+      onMessage: null,
+      [Symbol.dispose]: () => undefined,
+    };
+
+    const error = new Error("boom", {
+      cause: { attempt: 2, retry: () => undefined },
+    });
+
+    postConsoleEntry(channel, {
+      method: "error",
+      path: ["sql"],
+      args: ["failed", { attempt: 2, retry: () => undefined }, error],
+    });
+
+    assertEqual(messages, [
+      {
+        type: "ConsoleEntry",
+        entry: {
+          method: "error",
+          path: ["sql"],
+          args: [
+            "failed",
+            '{"attempt":2}',
+            {
+              name: "Error",
+              message: "boom",
+              stack: error.stack,
+              cause: '{"attempt":2}',
+            },
+          ],
+        },
+      },
+    ]);
   });
 });
 

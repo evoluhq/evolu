@@ -24,8 +24,10 @@ import {
   createProtocolBroadcastMessagesFromCrdtMessages,
   createTimestamp,
   DbChange,
+  postConsoleEntry,
   syncStateToRelaySyncStates,
   testAppOwner,
+  type ConsoleEntryOrError,
   type DbWorkerInit,
   type SharedWorkerInput,
   type SharedWorkerOutput,
@@ -37,6 +39,29 @@ import {
   createSharedWorker,
   createWorker,
 } from "../../../../packages/web/src/Worker.ts";
+
+test("posts console entry arguments the browser cannot clone as strings", async () => {
+  const name = `console-${crypto.randomUUID()}`;
+  using sender = createBroadcastChannel<ConsoleEntryOrError>(name);
+  using receiver = createBroadcastChannel<ConsoleEntryOrError>(name);
+  const received = Promise.withResolvers<ConsoleEntryOrError>();
+  receiver.onMessage = received.resolve;
+
+  postConsoleEntry(sender, {
+    method: "error",
+    path: ["sql"],
+    args: ["failed", { attempt: 2, retry: constVoid }],
+  });
+
+  assertEqual(await received.promise, {
+    type: "ConsoleEntry",
+    entry: {
+      method: "error",
+      path: ["sql"],
+      args: ["failed", '{"attempt":2}'],
+    },
+  });
+});
 
 test("a worker of another build tells its tab it waits until the first build closes", async () => {
   // Workers with different names behave as the workers of two builds: they are

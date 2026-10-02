@@ -656,6 +656,9 @@ export const testCreateMessagePort: CreateMessagePort = <Input, Output = never>(
 /**
  * Creates an in-memory {@link BroadcastChannel} for testing.
  *
+ * Like a native channel, it structured-clones each message, so posting a value
+ * that cannot be cloned throws.
+ *
  * @group Testing
  */
 export const testCreateBroadcastChannel = <Input, Output = Input>(
@@ -667,7 +670,9 @@ export const testCreateBroadcastChannel = <Input, Output = Input>(
   const disposables = disposer.move();
 
   return {
-    postMessage: channel.postMessage,
+    postMessage: (message) => {
+      channel.postMessage(structuredClone(message));
+    },
     get onMessage() {
       return channel.onMessage;
     },

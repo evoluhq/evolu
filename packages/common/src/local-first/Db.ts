@@ -137,7 +137,10 @@ import type {
   EvoluInput,
   SharedWorkerId,
 } from "./Shared.ts";
-import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
+import {
+  consoleEntryOrErrorBroadcastChannelName,
+  postConsoleEntry,
+} from "./Shared.ts";
 import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
@@ -249,11 +252,7 @@ export const startDbWorker =
     disposer.defer(
       deps.consoleStoreOutputEntry.subscribe(() => {
         const entry = deps.consoleStoreOutputEntry.get();
-        if (entry)
-          consoleEntryOrErrorBroadcastChannel.postMessage({
-            type: "ConsoleEntry",
-            entry,
-          });
+        if (entry) postConsoleEntry(consoleEntryOrErrorBroadcastChannel, entry);
       }),
     );
 

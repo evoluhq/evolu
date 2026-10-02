@@ -707,6 +707,27 @@ describe("worker startup", () => {
     assertEqual(setup.consoleEntryOrErrors, [{ type: "ConsoleEntry", entry }]);
   });
 
+  it("forwards a console entry argument that cannot be cloned as a string", async () => {
+    await using setup = await setupDbWorker();
+    const writeEntry = setup.consoleStoreOutput.write as (
+      entry: ConsoleEntry | null,
+    ) => void;
+
+    writeEntry({
+      method: "info",
+      path: ["DbWorker"],
+      args: [{ attempt: 2, retry: () => undefined }],
+    });
+    await testWaitForWorkerMessage();
+
+    assertEqual(setup.consoleEntryOrErrors, [
+      {
+        type: "ConsoleEntry",
+        entry: { method: "info", path: ["DbWorker"], args: ['{"attempt":2}'] },
+      },
+    ]);
+  });
+
   it("acquires leadership and initializes SQLite", async () => {
     await using setup = await setupDbWorker();
 

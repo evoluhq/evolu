@@ -294,10 +294,11 @@ import {
   type ClaimLease,
   type SharedResourceByKeyWithClaims,
 } from "../Resource.ts";
-import { ok, type Result } from "../Result.ts";
+import { ok, trySync, type Result } from "../Result.ts";
 import type { NonEmptyReadonlySet } from "../Set.ts";
 import type { SqliteSchema } from "../Sqlite.ts";
 import { createStore, type Store } from "../Store.ts";
+import { safelyStringifyUnknownValue } from "../String.ts";
 import { AbortError, createMutex, unabortable, type Task } from "../Task.ts";
 import {
   performanceDurationBetween,
@@ -327,6 +328,7 @@ import type {
   WebSocketError,
 } from "../WebSocket.ts";
 import type {
+  BroadcastChannel,
   SharedWorker as CommonSharedWorker,
   CreateBroadcastChannelDep,
   CreateMessageChannelDep,
@@ -445,6 +447,39 @@ export type ConsoleEntryOrError =
 
 export const consoleEntryOrErrorBroadcastChannelName =
   "evolu:console-entry-or-error";
+
+/**
+ * Posts a {@link ConsoleEntry} to tabs on a channel named
+ * {@link consoleEntryOrErrorBroadcastChannelName}.
+ *
+ * An argument that cannot be structured-cloned is replaced: an `Error` by the
+ * plain object {@link createUnknownError} makes of it, and any other value, such
+ * as an object holding a function, by a string. Logging such a value in a
+ * worker therefore does not throw.
+ */
+export const postConsoleEntry = (
+  channel: BroadcastChannel<ConsoleEntryOrError>,
+  entry: ConsoleEntry,
+): void => {
+  // A native BroadcastChannel throws a DataCloneError synchronously, into
+  // whatever called the console.
+  const posted = trySync(() =>
+    channel.postMessage({ type: "ConsoleEntry", entry }),
+  );
+  if (posted.ok) return;
+  channel.postMessage({
+    type: "ConsoleEntry",
+    entry: {
+      ...entry,
+      args: entry.args.map((arg) => {
+        if (trySync(() => structuredClone(arg)).ok) return arg;
+        return arg instanceof Error
+          ? createUnknownError(arg).error
+          : safelyStringifyUnknownValue(arg);
+      }),
+    },
+  });
+};
 
 /** Identifies one running SharedWorker instance. */
 export const SharedWorkerId = /*#__PURE__*/ id("SharedWorker");
@@ -1756,7 +1791,7 @@ export const initSharedWorker =
     disposer.defer(
       deps.consoleStoreOutputEntry.subscribe(() => {
         const entry = deps.consoleStoreOutputEntry.get();
-        if (entry) postConsoleEntryOrError({ type: "ConsoleEntry", entry });
+        if (entry) postConsoleEntry(consoleEntryOrErrorBroadcastChannel, entry);
       }),
     );
 
