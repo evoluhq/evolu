@@ -41,7 +41,7 @@ import {
   type Relay,
 } from "@evolu/common/local-first";
 import { EventEmitter, once } from "events";
-import { existsSync, unlinkSync } from "fs";
+import { closeSync, existsSync, openSync, unlinkSync, writeSync } from "fs";
 import { afterEach, describe, it, type TestContext } from "node:test";
 import { WebSocket as WsWebSocket } from "ws";
 import { installPolyfills } from "../../../../../../packages/common/src/Polyfills.ts";
@@ -547,6 +547,55 @@ describe("createRelay", () => {
     );
 
     assertEqual(response.statusCode, 401);
+  });
+
+  it("answers health checks while its database responds", async () => {
+    await using setup = await startTestRelay();
+
+    const response = await fetch(`http://127.0.0.1:${setup.relay.port}/health`);
+
+    assertEqual(response.status, 200);
+    assertEqual(await response.json(), { status: "ok" });
+  });
+
+  it("answers HEAD health checks with a query string", async () => {
+    await using setup = await startTestRelay();
+
+    const response = await fetch(
+      `http://127.0.0.1:${setup.relay.port}/health?probe=1`,
+      { method: "HEAD" },
+    );
+
+    assertEqual(response.status, 200);
+    assertEqual(await response.text(), "");
+  });
+
+  it("answers health checks with 503 when its database file is corrupted", async () => {
+    await using setup = await startTestRelay();
+    const file = openSync(`${testName}.db`, "r+");
+    writeSync(file, new Uint8Array(4096), 0, 4096, 0);
+    closeSync(file);
+
+    const response = await fetch(`http://127.0.0.1:${setup.relay.port}/health`);
+
+    assertEqual(response.status, 503);
+    assertEqual(await response.json(), { status: "error" });
+    const errors = setup.console
+      .getEntriesSnapshot()
+      .filter(({ method }) => method === "error");
+    assertEqual(
+      errors.map(({ path, args }) => [path, args[0]]),
+      [[["relay"], "health check failed"]],
+    );
+  });
+
+  it("answers other plain HTTP requests with Upgrade Required", async () => {
+    await using setup = await startTestRelay();
+
+    const response = await fetch(`http://127.0.0.1:${setup.relay.port}/`);
+
+    assertEqual(response.status, 426);
+    assertEqual(response.headers.get("upgrade"), "websocket");
   });
 
   it("accepts websocket upgrades when owner authorization is disabled", async () => {

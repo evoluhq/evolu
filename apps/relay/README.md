@@ -60,8 +60,11 @@ never fall back to defaults. `EVOLU_RELAY_PORT` is not supported; use `PORT`.
 PORT=4001 EVOLU_RELAY_MAX_OWNER_BYTES=10MiB npx @evolu/relay
 ```
 
-The Docker health check follows `PORT`. Use a fixed, nonzero port in Docker;
-`PORT=0` selects an unpredictable port that the health check cannot discover.
+For uptime monitors and load balancers, the relay answers `GET` and `HEAD`
+requests for `/health` with status 200 while its database file can be read and
+with status 503 otherwise. The Docker health check requests it on `PORT`. Use a
+fixed, nonzero port in Docker; `PORT=0` selects an unpredictable port that the
+health check cannot discover.
 The image exposes port 4000, so map a custom port explicitly:
 
 ```bash

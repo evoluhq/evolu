@@ -14,7 +14,9 @@ import {
   type Task,
   type TimeoutId,
   type TimingSafeEqualDep,
+  sql,
   tryAsync,
+  trySync,
   Uint8Array,
 } from "@evolu/common";
 import {
@@ -78,6 +80,12 @@ export const createRelayDeps = (): RelayDeps => ({
  * Use {@link createRelayDeps} to create dependencies for better-sqlite3, or
  * provide a custom SQLite driver implementation.
  *
+ * For uptime monitors and container health checks, the relay answers `GET` and
+ * `HEAD` requests for `/health` with status 200 and `{"status":"ok"}` while its
+ * database file can be read, and with status 503 and `{"status":"error"}`
+ * otherwise. Other plain HTTP requests get status 426, because the relay serves
+ * only WebSocket connections.
+ *
  * ### Example
  *
  * ```ts
@@ -129,6 +137,29 @@ export const createRelay =
     const server = disposer.use(createServer());
     server.once("close", () => {
       console.info("HTTP server closed");
+    });
+
+    // Without this handler, a plain HTTP request would get no response.
+    server.on("request", (request, response) => {
+      const path = request.url?.split("?")[0];
+      if (
+        path === "/health" &&
+        (request.method === "GET" || request.method === "HEAD")
+      ) {
+        // A running process is not enough; the database file must be
+        // readable. Unlike `select 1`, reading the schema reads the file.
+        const check = trySync(() =>
+          sqlite.exec(sql`select count(*) from sqlite_schema;`),
+        );
+        if (!check.ok) console.error("health check failed", check.error);
+        response.writeHead(check.ok ? 200 : 503, {
+          "content-type": "application/json",
+        });
+        response.end(JSON.stringify({ status: check.ok ? "ok" : "error" }));
+        return;
+      }
+      response.writeHead(426, { connection: "Upgrade", upgrade: "websocket" });
+      response.end();
     });
 
     const wss = disposer.adopt(
