@@ -1773,8 +1773,9 @@ export const initSharedWorker =
 
     // Held while this worker runs. Its DbWorkers stop once they can take it,
     // because a Dispose posted right before this worker closes can be lost, as
-    // in Firefox. Taken before the build lock, so nothing delays the end of
-    // starting once that lock is held.
+    // in Firefox (https://bugzilla.mozilla.org/show_bug.cgi?id=2077609). Taken
+    // before the build lock, so nothing delays the end of starting once that
+    // lock is held.
     disposer.use(await run.ok(acquireLeaderLock(workerId)));
 
     // Released after every tenant is disposed and has told its DbWorker to

@@ -475,7 +475,8 @@ export const startDbWorker =
 
         // Stops once the SharedWorker no longer leads for its ID, which the
         // platform releases when it closes, because Firefox can lose a Dispose
-        // posted right before that.
+        // posted right before that
+        // (https://bugzilla.mozilla.org/show_bug.cgi?id=2077609).
         const sharedWorkerEnded = acquireLeaderLockCallback(deps)(
           initMessage.sharedWorkerId,
           () => resolve(ok()),

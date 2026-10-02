@@ -78,7 +78,8 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
           );
           if (!accessHandle.ok) {
             // WebKit rejects a held file with InvalidStateError, other
-            // engines with NoModificationAllowedError, as the spec says.
+            // engines with NoModificationAllowedError, as the spec says
+            // (https://bugs.webkit.org/show_bug.cgi?id=326135).
             // WebKit also uses InvalidStateError for a closed or invalid
             // handle and a stopped context. A retry opens fresh handles from
             // a new listing, and a stopped context ends the loop with its
