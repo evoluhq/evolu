@@ -6932,6 +6932,70 @@ describe("with one evolu instance", () => {
       });
     });
 
+    it("coalesces sync rounds requested before a tab leader starts the DbWorker", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const id = testCreateId()<"EvoluInstance">();
+      await using _instanceLock = await setup.run.ok(acquireLeaderLock(id));
+      using evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://before-leader.example",
+        ownerId: testAppOwner.id,
+      });
+
+      // Without a tab leader, the tenant starts without a DbWorker.
+      setup.worker.port.postMessage({
+        type: "CreateEvolu",
+        name: testName,
+        id,
+        consoleLevel: "debug",
+        sqliteSchema: testSqliteSchema,
+        encryptionKey: testAppOwner.encryptionKey,
+        memoryOnly: false,
+        evoluPort: evoluChannel.port1.native,
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(setup.sharedWorkerOutputs, []);
+
+      // The first claim through an open transport queues a round, and the
+      // transport reopening requests the same round again. Nothing is
+      // dispatched before a leader, so the queued round absorbs it.
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transport] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      createWebSocket.close(transport.url);
+      createWebSocket.open(transport.url);
+      await testWaitForWorkerMessage();
+
+      const init = await setupTabLeader(setup, disposer);
+      const dbWorkerPort = disposer.use(
+        testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(init.port),
+      );
+      const dbInputs: Array<ExtractTyped<DbWorkerInput, "Request">> = [];
+      dbWorkerPort.onMessage = (input) => {
+        if (input.type === "Request") dbInputs.push(input);
+      };
+      dbWorkerPort.postMessage({
+        type: "LeaderAcquired",
+        clock: createTimestamp(),
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(
+        await respondToSyncRound({ dbInputs, dbWorkerPort }, createWebSocket),
+        [transport.url],
+      );
+      assertLength(dbInputs, 1);
+    });
+
     it("starts the next queued request after the first response arrives", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run } = setup;

@@ -2205,155 +2205,7 @@ const createEvoluTenant =
       },
     );
 
-    let dbWorkerPort = null as MessagePort<
-      DbWorkerInput,
-      DbWorkerOutput
-    > | null;
     const dbWorkerInited = Promise.withResolvers<void>();
-
-    const initDbWorker = (): void => {
-      // Without a tab leader yet, the store subscription starts the DbWorker
-      // once a tab announces itself.
-      const tabLeaderPort = deps.tabLeaderPortStore.get();
-      if (startupError || !tabLeaderPort) return;
-
-      const dbWorkerChannel = deps.createMessageChannel<
-        DbWorkerOutput,
-        DbWorkerInput
-      >();
-      const currentDbWorkerPort = dbWorkerChannel.port2;
-
-      currentDbWorkerPort.onMessage = (message) => {
-        switch (message.type) {
-          case "LeaderAcquired": {
-            assertNotSame(dbWorkerPort, currentDbWorkerPort);
-            if (startupError || isDisposing) {
-              // This worker was requested before the refusal or before
-              // disposal started. The tenant will not use it, so let it
-              // release the database lock.
-              currentDbWorkerPort.postMessage({ type: "Dispose" });
-              currentDbWorkerPort[Symbol.dispose]();
-              break;
-            }
-            const replacesLeader = dbWorkerPort !== null;
-            dbWorkerPort?.[Symbol.dispose]();
-            dbWorkerPort = currentDbWorkerPort;
-            activeDispatch = null;
-            // A replacement may advance the clock by releasing quarantine, or
-            // start behind it with an empty memoryOnly database. Keep the
-            // greater clock; pending writes retain their captured inputs.
-            if (
-              sessionClock === null ||
-              orderTimestamp(sessionClock, message.clock) === -1
-            ) {
-              sessionClock = message.clock;
-            }
-            // A replacement leader may have committed writes whose responses
-            // were lost, and may have released quarantine at startup. A lost
-            // response may also have reported stored owner messages, so the
-            // owners reconcile through every transport again.
-            if (replacesLeader) {
-              refreshQueries();
-              requestCreateSyncMessages(
-                new Set(getSyncOwners().map(({ ownerId }) => ownerId)),
-                allTransports,
-              );
-            }
-            console.info("leaderAcquired");
-            dbWorkerInited.resolve();
-            runQueue();
-            break;
-          }
-          case "LeaderRefused": {
-            assertNotSame(dbWorkerPort, currentDbWorkerPort);
-            // The worker refused startup and is releasing its resources.
-            // Requests stay unanswered until their instances are disposed.
-            // Keep the tenant unavailable, tell each connected tab once, and
-            // tell tabs that connect later without starting another worker.
-            dbWorkerPort?.[Symbol.dispose]();
-            dbWorkerPort = null;
-            currentDbWorkerPort[Symbol.dispose]();
-            activeDispatch = null;
-            queue.length = 0;
-            pendingWriteCountByOwnerId.clear();
-            pendingApplyCountForAllRoutesByOwnerId.clear();
-            ownerTransportApplyRelation.clear();
-            startupError = message.error;
-            deps.publishSyncState();
-            console.info("leaderRefused", message.error);
-            for (const instance of instancesById.values()) {
-              reportRefusal(instance.tabPort, message.error);
-            }
-            dbWorkerInited.resolve();
-            break;
-          }
-          case "OnQueuedResponse": {
-            if (activeDispatch?.attemptId !== message.attemptId) return;
-            const { entry } = activeDispatch;
-            const { response } = message;
-            if (
-              response.message.type === "Mutate" ||
-              response.message.type === "ApplySyncMessage"
-            ) {
-              // Replays report their computed clock, which a replacement
-              // leader may have passed at startup. Keep the greater clock.
-              assertNonNullable(sessionClock);
-              if (orderTimestamp(sessionClock, response.message.clock) === -1) {
-                sessionClock = response.message.clock;
-              }
-            }
-            switch (entry.type) {
-              case "Read":
-              case "Write":
-                assertSame(response.type, "ForEvolu");
-                handleResponseForEvolu(response, entry.request);
-                break;
-              case "CreateSyncMessages":
-              case "ApplySyncMessage":
-                assertSame(response.type, "ForSharedWorker");
-                handleResponseForSharedWorker(response, entry);
-                break;
-              default:
-                exhaustiveCheck(entry);
-            }
-            const head = queue.shift();
-            assertNonNullable(head);
-            updatePendingWork(head, -1);
-            activeDispatch = null;
-            // Follow-up uploads and retries are already queued or sent. Only
-            // now can removing the completed head establish convergence.
-            refreshSyncRoutes();
-            if (entry.type === "Write" && entry.replicatedOwnerIds.size > 0)
-              deps.publishSyncState();
-            runQueue();
-            break;
-          }
-          default:
-            exhaustiveCheck(message);
-        }
-      };
-
-      tabLeaderPort.postMessage(
-        {
-          type: "DbWorkerInit",
-          name,
-          consoleLevel,
-          sqliteSchema,
-          encryptionKey,
-          memoryOnly: devicePersistence === "NotPersisted",
-          sharedWorkerId: workerId,
-          port: dbWorkerChannel.port1.native,
-        },
-        [dbWorkerChannel.port1.native],
-      );
-    };
-
-    const refreshQueries = (exceptInstanceId?: EvoluInstanceId): void => {
-      for (const [id, instance] of instancesById) {
-        if (id === exceptInstanceId) continue;
-        instance.port.postMessage({ type: "RefreshQueries" });
-      }
-    };
 
     // Sync requests keep their target or source on the entry: the DbWorker
     // does not need it, and a replacement leader replays the same entry.
@@ -2390,6 +2242,32 @@ const createEvoluTenant =
       readonly clock: Timestamp;
       readonly now: Millis;
     }
+
+    /**
+     * The tenant's database worker: `Starting` until one leads, then `Leading`,
+     * which a replacement leader replaces. `Refused` is final, and `Disposed`
+     * changes only to `Refused`, when a worker requested earlier refuses
+     * startup.
+     */
+    type DbWorkerState =
+      Typed<"Starting"> | LeadingDbWorker | RefusedDbWorker | Typed<"Disposed">;
+
+    interface LeadingDbWorker extends Typed<"Leading"> {
+      readonly port: MessagePort<DbWorkerInput, DbWorkerOutput>;
+      /** The greatest clock the tenant's leading database workers reported. */
+      clock: Timestamp;
+      /** The dispatched queue head, which stays queued until it is answered. */
+      activeDispatch: {
+        readonly entry: QueueEntry;
+        readonly attemptId: Id;
+      } | null;
+    }
+
+    interface RefusedDbWorker extends Typed<"Refused"> {
+      readonly error: UnsupportedDbVersionError;
+    }
+
+    let dbWorker: DbWorkerState = { type: "Starting" };
     const queue: Array<QueueEntry> = [];
     const pendingWriteCountByOwnerId = new Map<OwnerId, number>();
     const pendingApplyCountForAllRoutesByOwnerId = new Map<OwnerId, number>();
@@ -2398,6 +2276,182 @@ const createEvoluTenant =
       OwnerId,
       StructuralLookupKey
     >();
+
+    // Each tab is told once during this tenant's lifetime, through its own
+    // connection. Recreating the tenant after idle disposal retries startup
+    // and may report the refusal again.
+    const refusedTabPorts = new WeakSet<TabPort>();
+
+    interface RouteState {
+      progress: RouteProgress;
+      lastSentAt: Millis | null;
+      lastReceivedAt: Millis | null;
+    }
+    const routesByOwnerIdByKey = new Map<
+      StructuralLookupKey,
+      Map<OwnerId, RouteState>
+    >();
+
+    // Disposal does not wait for the DbWorker. It holds the database lock
+    // until Dispose arrives, its tab closes, or this worker ends, and the next
+    // DbWorker for this database, of this worker or another build, waits for
+    // that lock before it reads the clock. A requested DbWorker that reports
+    // in later gets Dispose, and a refused tenant stays refused, so it keeps
+    // dropping requests.
+    disposer.defer(() => {
+      if (dbWorker.type === "Leading")
+        dbWorker.port.postMessage({ type: "Dispose" });
+      if (dbWorker.type !== "Refused") dbWorker = { type: "Disposed" };
+    });
+
+    const initDbWorker = (): void => {
+      // Without a tab leader yet, the store subscription starts the DbWorker
+      // once a tab announces itself.
+      const tabLeaderPort = deps.tabLeaderPortStore.get();
+      if (dbWorker.type === "Refused" || !tabLeaderPort) return;
+
+      const dbWorkerChannel = deps.createMessageChannel<
+        DbWorkerOutput,
+        DbWorkerInput
+      >();
+      const currentDbWorkerPort = dbWorkerChannel.port2;
+
+      currentDbWorkerPort.onMessage = (message) => {
+        switch (message.type) {
+          case "LeaderAcquired": {
+            const previous = dbWorker;
+            if (previous.type === "Leading")
+              assertNotSame(previous.port, currentDbWorkerPort);
+            if (previous.type === "Refused" || previous.type === "Disposed") {
+              // This worker was requested before the refusal or before
+              // disposal started. The tenant will not use it, so let it
+              // release the database lock.
+              currentDbWorkerPort.postMessage({ type: "Dispose" });
+              currentDbWorkerPort[Symbol.dispose]();
+              break;
+            }
+            if (previous.type === "Leading") previous.port[Symbol.dispose]();
+            dbWorker = {
+              type: "Leading",
+              port: currentDbWorkerPort,
+              // A replacement may advance the clock by releasing quarantine,
+              // or start behind it with an empty memoryOnly database. Keep the
+              // greater clock; pending writes retain their captured inputs.
+              clock:
+                previous.type !== "Leading" ||
+                orderTimestamp(previous.clock, message.clock) === -1
+                  ? message.clock
+                  : previous.clock,
+              activeDispatch: null,
+            };
+            // A replacement leader may have committed writes whose responses
+            // were lost, and may have released quarantine at startup. A lost
+            // response may also have reported stored owner messages, so the
+            // owners reconcile through every transport again.
+            if (previous.type === "Leading") {
+              refreshQueries();
+              requestCreateSyncMessages(
+                new Set(getSyncOwners().map(({ ownerId }) => ownerId)),
+                allTransports,
+              );
+            }
+            console.info("leaderAcquired");
+            dbWorkerInited.resolve();
+            runQueue();
+            break;
+          }
+          case "LeaderRefused": {
+            // The worker refused startup and is releasing its resources.
+            // Requests stay unanswered until their instances are disposed.
+            // Keep the tenant unavailable, tell each connected tab once, and
+            // tell tabs that connect later without starting another worker.
+            if (dbWorker.type === "Leading") {
+              assertNotSame(dbWorker.port, currentDbWorkerPort);
+              dbWorker.port[Symbol.dispose]();
+            }
+            currentDbWorkerPort[Symbol.dispose]();
+            queue.length = 0;
+            pendingWriteCountByOwnerId.clear();
+            pendingApplyCountForAllRoutesByOwnerId.clear();
+            ownerTransportApplyRelation.clear();
+            dbWorker = { type: "Refused", error: message.error };
+            deps.publishSyncState();
+            console.info("leaderRefused", message.error);
+            for (const instance of instancesById.values()) {
+              reportRefusal(instance.tabPort, message.error);
+            }
+            dbWorkerInited.resolve();
+            break;
+          }
+          case "OnQueuedResponse": {
+            const leading = dbWorker;
+            if (
+              leading.type !== "Leading" ||
+              leading.activeDispatch?.attemptId !== message.attemptId
+            )
+              return;
+            const { entry } = leading.activeDispatch;
+            const { response } = message;
+            // Replays report their computed clock, which a replacement leader
+            // may have passed at startup. Keep the greater clock.
+            if (
+              (response.message.type === "Mutate" ||
+                response.message.type === "ApplySyncMessage") &&
+              orderTimestamp(leading.clock, response.message.clock) === -1
+            )
+              leading.clock = response.message.clock;
+            switch (entry.type) {
+              case "Read":
+              case "Write":
+                assertSame(response.type, "ForEvolu");
+                handleResponseForEvolu(response, entry.request);
+                break;
+              case "CreateSyncMessages":
+              case "ApplySyncMessage":
+                assertSame(response.type, "ForSharedWorker");
+                handleResponseForSharedWorker(response, entry);
+                break;
+              default:
+                exhaustiveCheck(entry);
+            }
+            const head = queue.shift();
+            assertNonNullable(head);
+            updatePendingWork(head, -1);
+            leading.activeDispatch = null;
+            // Follow-up uploads and retries are already queued or sent. Only
+            // now can removing the completed head establish convergence.
+            refreshSyncRoutes();
+            if (entry.type === "Write" && entry.replicatedOwnerIds.size > 0)
+              deps.publishSyncState();
+            runQueue();
+            break;
+          }
+          default:
+            exhaustiveCheck(message);
+        }
+      };
+
+      tabLeaderPort.postMessage(
+        {
+          type: "DbWorkerInit",
+          name,
+          consoleLevel,
+          sqliteSchema,
+          encryptionKey,
+          memoryOnly: devicePersistence === "NotPersisted",
+          sharedWorkerId: workerId,
+          port: dbWorkerChannel.port1.native,
+        },
+        [dbWorkerChannel.port1.native],
+      );
+    };
+
+    const refreshQueries = (exceptInstanceId?: EvoluInstanceId): void => {
+      for (const [id, instance] of instancesById) {
+        if (id === exceptInstanceId) continue;
+        instance.port.postMessage({ type: "RefreshQueries" });
+      }
+    };
 
     const updatePendingCount = <K>(
       counts: Map<K, number>,
@@ -2452,13 +2506,6 @@ const createEvoluTenant =
       queue.push(entry);
     };
 
-    let sessionClock: Timestamp | null = null;
-    let startupError: UnsupportedDbVersionError | null = null;
-    let isDisposing = false;
-    // Each tab is told once during this tenant's lifetime, through its own
-    // connection. Recreating the tenant after idle disposal retries startup
-    // and may report the refusal again.
-    const refusedTabPorts = new WeakSet<TabPort>();
     const reportRefusal = (
       tabPort: TabPort,
       error: UnsupportedDbVersionError,
@@ -2467,50 +2514,37 @@ const createEvoluTenant =
       refusedTabPorts.add(tabPort);
       tabPort.postMessage({ type: "Error", error });
     };
-    let activeDispatch: {
-      readonly entry: QueueEntry;
-      readonly attemptId: Id;
-    } | null = null;
-
     const runQueue = (): void => {
-      if (activeDispatch || !isNonEmptyArray(queue) || !dbWorkerPort) return;
-      assertNonNullable(sessionClock);
+      if (
+        dbWorker.type !== "Leading" ||
+        dbWorker.activeDispatch ||
+        !isNonEmptyArray(queue)
+      )
+        return;
       const entry = firstInArray(queue);
       const attemptId = createId(run.deps);
-      activeDispatch = { entry, attemptId };
+      dbWorker.activeDispatch = { entry, attemptId };
       if (entry.type === "Write" || entry.type === "ApplySyncMessage") {
         // A write captures its inputs on first dispatch, so a retry after
         // leader replacement reproduces the same timestamps.
         entry.capturedInputs ??= {
-          clock: sessionClock,
+          clock: dbWorker.clock,
           now: run.deps.time.now(),
         };
-        dbWorkerPort.postMessage({
+        dbWorker.port.postMessage({
           type: "Request",
           attemptId,
           request: entry.request,
           ...entry.capturedInputs,
         });
       } else {
-        dbWorkerPort.postMessage({
+        dbWorker.port.postMessage({
           type: "Request",
           attemptId,
           request: entry.request,
         });
       }
     };
-
-    // Disposal does not wait for the DbWorker. It holds the database lock
-    // until Dispose arrives, its tab closes, or this worker ends, and the next
-    // DbWorker for this database, of this worker or another build, waits for
-    // that lock before it reads the clock. A requested DbWorker that reports
-    // in later gets Dispose from the isDisposing check.
-    disposer.defer(() => {
-      isDisposing = true;
-      dbWorkerPort?.postMessage({ type: "Dispose" });
-      dbWorkerPort = null;
-      activeDispatch = null;
-    });
 
     const handleResponseForEvolu = (
       response: ExtractTyped<DbWorkerQueuedResponse, "ForEvolu">,
@@ -2629,16 +2663,6 @@ const createEvoluTenant =
           exhaustiveCheck(response.message);
       }
     };
-
-    interface RouteState {
-      progress: RouteProgress;
-      lastSentAt: Millis | null;
-      lastReceivedAt: Millis | null;
-    }
-    const routesByOwnerIdByKey = new Map<
-      StructuralLookupKey,
-      Map<OwnerId, RouteState>
-    >();
 
     const getRoute = (ownerId: OwnerId, key: StructuralLookupKey): RouteState =>
       routesByOwnerIdByKey
@@ -3049,7 +3073,7 @@ const createEvoluTenant =
         afterQueuedWrites?: boolean;
       } = {},
     ): void => {
-      if (startupError) return;
+      if (dbWorker.type === "Refused") return;
       const usedOwnersById = getUsedOwnersById(ownerIds);
       // Opening, storing messages from another transport, a failure, and an
       // explicit request each require a new round before completion. The
@@ -3088,10 +3112,14 @@ const createEvoluTenant =
             ({ type }) => type === "Write" || type === "ApplySyncMessage",
           )
         : -1;
+      const dispatchedEntry =
+        dbWorker.type === "Leading"
+          ? dbWorker.activeDispatch?.entry
+          : undefined;
       const isQueued = queue.some(
         (entry, index) =>
           index > lastWriteIndex &&
-          entry !== activeDispatch?.entry &&
+          entry !== dispatchedEntry &&
           entry.type === "CreateSyncMessages" &&
           (entry.target.type === "AllTransports" ||
             (target.type === "Transport" && entry.target.key === target.key)) &&
@@ -3198,8 +3226,8 @@ const createEvoluTenant =
     const tenant = disposable<EvoluTenant>(
       {
         getSyncTenant: () =>
-          startupError
-            ? { type: "Refused", name, error: startupError }
+          dbWorker.type === "Refused"
+            ? { type: "Refused", name, error: dbWorker.error }
             : {
                 type: "Active",
                 name,
@@ -3338,7 +3366,7 @@ const createEvoluTenant =
             });
 
           instance.port.onMessage = (message) => {
-            if (startupError) return;
+            if (dbWorker.type === "Refused") return;
             switch (message.type) {
               case "Query":
               case "Export": {
@@ -3416,13 +3444,14 @@ const createEvoluTenant =
             }
           };
 
-          if (startupError) reportRefusal(instance.tabPort, startupError);
+          if (dbWorker.type === "Refused")
+            reportRefusal(instance.tabPort, dbWorker.error);
         },
 
         requestCreateSyncMessages,
 
         requestApplySyncMessage: (ownerId, inputMessage, source): void => {
-          if (startupError) return;
+          if (dbWorker.type === "Refused") return;
           const owner = getUsedOwnersById(new Set([ownerId])).get(ownerId);
           if (!owner) return;
 
