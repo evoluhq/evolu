@@ -2136,20 +2136,21 @@ export type RunDefaultDeps = ConsoleDep &
 /**
  * Creates {@link RunDefaultDeps}.
  *
+ * The leak detector reports to the provided console, or to a default one.
+ *
  * @group Run
  */
-export const createRunDefaultDeps = (): RunDefaultDeps => {
-  const console = createConsole();
-  return {
-    console,
-    leakDetector: isDev ? createLeakDetector({ console }) : noopLeakDetector,
-    nativeFetch: globalThis.fetch.bind(globalThis),
-    randomBytes: createRandomBytes(),
-    random: createRandom(),
-    reportDefect: reportDefectAfterMicrotask,
-    time: createTime(),
-  };
-};
+export const createRunDefaultDeps = ({
+  console = createConsole(),
+}: Partial<ConsoleDep> = {}): RunDefaultDeps => ({
+  console,
+  leakDetector: isDev ? createLeakDetector({ console }) : noopLeakDetector,
+  nativeFetch: globalThis.fetch.bind(globalThis),
+  randomBytes: createRandomBytes(),
+  random: createRandom(),
+  reportDefect: reportDefectAfterMicrotask,
+  time: createTime(),
+});
 
 /**
  * Factory type for creating root {@link DisposableRun} instances.
@@ -2198,7 +2199,7 @@ export const createRun: CreateRun = <D extends object>(
   deps?: RunCustomDeps<D>,
 ): DisposableRun<D> =>
   createRunInternal<D>({
-    ...createRunDefaultDeps(),
+    ...createRunDefaultDeps(deps),
     ...deps,
   } as RunDefaultDeps & D);
 
@@ -2406,8 +2407,11 @@ export function testCreateRun<D extends object>(
 export function testCreateRun<D extends object>(
   deps?: TestRunDefaultDeps | RunCustomDeps<D>,
 ): DisposableRun<TestRunDefaultDeps & D> {
+  // As in createRun, the default leak detector reports to a passed console.
+  const { console }: Partial<ConsoleDep> = deps ?? {};
   return createRunInternal<TestRunDefaultDeps & D>({
     ...testCreateDeps(),
+    ...(console && { leakDetector: testCreateLeakDetector({ console }) }),
     ...deps,
   } as TestRunDefaultDeps & D);
 }

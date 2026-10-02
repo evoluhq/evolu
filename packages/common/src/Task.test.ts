@@ -19,6 +19,7 @@ import {
 } from "./Assert.ts";
 
 import { emptyArray, type NonEmptyReadonlyArray } from "./Array.ts";
+import { testCreateConsole } from "./Console.ts";
 import { emptyRecord } from "./Object.ts";
 import type { Int1To100OrPositiveInt } from "./Number.ts";
 import { none, some, type Option } from "./Option.ts";
@@ -1638,6 +1639,51 @@ describe("Run", () => {
       firstRun.deps.console.setLevel("silent");
 
       assertSame(secondRun.deps.console.getLevel(), secondRunLevel);
+    });
+
+    it("reports leaks to the console passed to createRun", async () => {
+      const console = testCreateConsole();
+      let report: ((leak: unknown) => void) | undefined;
+      // Captures the callback that garbage collection would call.
+      using _registry = testStubGlobal(
+        "FinalizationRegistry",
+        function (callback: (leak: unknown) => void) {
+          report = callback;
+          return { register: () => undefined, unregister: () => undefined };
+        },
+      );
+      await using _run = createRun({ console });
+
+      assertNotUndefined(report);
+      report({ name: "Lease", isLeaked: () => true, stack: "stack" });
+
+      assertEqual(console.getEntriesSnapshot(), [
+        {
+          method: "warn",
+          path: [],
+          args: [
+            "Lease was garbage-collected without cleanup. Tracked at:",
+            "stack",
+          ],
+        },
+      ]);
+    });
+
+    it("reports leaks to the console passed to testCreateRun", async () => {
+      const console = testCreateConsole();
+      await using run = testCreateRun({ console });
+
+      run.deps.leakDetector.track(
+        {},
+        { name: "Lease", isLeaked: () => true },
+        {},
+      );
+
+      assertEqual(run.deps.leakDetector.collect(), 1);
+      assertEqual(
+        console.getEntriesSnapshot().map(({ args }) => args[0]),
+        ["Lease was garbage-collected without cleanup. Tracked at:"],
+      );
     });
 
     it("lets custom deps override defaults in createRun", async () => {
