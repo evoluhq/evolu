@@ -1,5 +1,34 @@
 # @evolu/nodejs
 
+## 4.2.0
+
+### Minor Changes
+
+- 20e329e: Added a health endpoint to the relay
+
+  `createRelay` now answers `GET` and `HEAD` requests for `/health` with status
+  200 and `{"status":"ok"}` while its database file can be read, and with status
+  503 and `{"status":"error"}` otherwise, so uptime monitors and load balancers
+  can check a relay. Other plain HTTP requests get status 426 instead of no
+  response at all. The relay's Docker image now checks `/health` instead of only
+  opening a TCP connection, so a relay that cannot read its database file is
+  reported unhealthy.
+
+### Patch Changes
+
+- Updated dependencies [a09e87b]
+- Updated dependencies [90b0c0b]
+- Updated dependencies [a09e87b]
+- Updated dependencies [f7e9439]
+- Updated dependencies [a09e87b]
+- Updated dependencies [1137d52]
+- Updated dependencies [2b2c7fb]
+- Updated dependencies [90b0c0b]
+- Updated dependencies [eb06ba1]
+- Updated dependencies [1137d52]
+- Updated dependencies [0e95535]
+  - @evolu/common@8.16.0
+
 ## 4.1.1
 
 ### Patch Changes

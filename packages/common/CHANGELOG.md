@@ -1,5 +1,172 @@
 # @evolu/common
 
+## 8.16.0
+
+### Minor Changes
+
+- a09e87b: Removed unused Console APIs
+
+  `Console` no longer has `children`, `name`, or the `dir`, `table`, `time`,
+  `timeLog`, `timeEnd`, `count`, and `countReset` methods. `ConsoleConfig` no
+  longer has `name`, and `ConsoleMethod` has only the six level methods. The
+  removed methods did not survive forwarding from a worker: a tab replaying a
+  timer measured the gap between the replayed entries, not the timed work.
+
+  To migrate:
+
+  - Instead of setting a level on each of `children`, set it on the parent, which
+    its children follow.
+  - Instead of `Console.name`, use the last element of an entry's `path`. Remove
+    `ConsoleConfig.name`, which never appeared in entries.
+  - Instead of `time`, `timeLog`, and `timeEnd`, measure with
+    `time.performance.now()` and log the duration. Instead of `dir`, `table`,
+    `count`, and `countReset`, log the value, or your own counter, with `debug`.
+
+- 2b2c7fb: Moved SQL logs to the trace level
+
+  SQLite logged every query, its result, and each `begin`, `commit`, and
+  `rollback` at the `debug` level, so `debug` output was dominated by SQL. These
+  logs now use `trace`. Set the console level to `"trace"` to see them.
+
+  `createNativeConsoleOutput` now writes trace entries with native
+  `console.debug`, because native `console.trace` printed a stack trace with every
+  call. To log a stack, pass `new Error().stack` as an argument.
+
+- 90b0c0b: Fixed logging a value that cannot be cloned in a worker throwing
+
+  Workers post each console entry to tabs, and a browser throws a
+  `DataCloneError` for a value it cannot clone, such as an object holding a
+  function. The error reached the code that logged the value. Both workers now
+  post entries with the new `postConsoleEntry`, which replaces such an `Error`
+  with the plain object `createUnknownError` makes of it, and any other such value
+  with a string.
+
+  `testCreateBroadcastChannel` now structured-clones each message like a native
+  channel, so a test that posts a value that cannot be cloned fails as it would
+  in a browser.
+
+- eb06ba1: Fixed web workers ignoring the app's console level
+
+  The database worker and each app's console in the SharedWorker logged at the
+  default `log` level, whatever level the app's console had. A web app at `debug`
+  never saw its database's sync logs, such as `requestSync` and
+  `sendProtocolMessage`, an app at `trace` never saw SQL logs, and an app at
+  `silent` still printed messages such as `leaderAcquired`. Each database worker
+  and each app's SharedWorker console now use the level of the app that started
+  them, and the rest of the SharedWorker uses the level of the tab that hosts its
+  database workers.
+
+  `Console.write` now drops entries below the console's level, so a tab prints the
+  entries its workers forward only at its own level. The database worker of a
+  `silent` app forwards errors, so unexpected failures set `evoluError`. On React
+  Native, where workers already used the app's level, such failures of a `silent`
+  app were lost and now set `evoluError`.
+
+- 0e95535: Fixed the leak detector ignoring the console passed to createRun
+
+  `createRun` built its development leak detector with a default console of its
+  own, so a worker's leak warnings never reached the console the worker passed,
+  and its tabs never saw them. The leak detector now reports to the console passed
+  to `createRun`, and `createRunDefaultDeps` accepts a `console` for the same
+  purpose. `testCreateRun` does the same, so a test that passes a console sees the
+  warnings of `leakDetector.collect()` there.
+
+### Patch Changes
+
+- a09e87b: Fixed relative console timestamps showing a negative duration
+
+  A relative timestamp from `createConsoleFormatter` printed `+-0.500s` when the
+  clock was set back or `startTime` was ahead of the clock. It now shows `+0.000s`.
+
+- 90b0c0b: Fixed UnknownError holding values that cannot be cloned
+
+  `createUnknownError` kept an error's properties other than functions as they
+  were, so an `Error` whose `cause` held a function produced an `UnknownError`
+  that could not be posted between workers, and the SharedWorker threw while
+  reporting such an uncaught error to its tabs. Such a property is now described
+  as a string, and an `Error` in a property or in an array, such as the `errors`
+  of an `AggregateError`, is converted like the error itself. An error that is its
+  own `cause` no longer overflows the stack; reference cycles stay cycles. An
+  inherited `name` and `message`, as in a `DOMException` such as
+  `QuotaExceededError`, are now included too.
+
+- f7e9439: Fixed child consoles ignoring their parent's level
+
+  A child console copied the level its parent was created with, so `setLevel` on
+  a parent reached none of its children. A child without its own level now
+  follows its parent's current level, including later changes. A level set on the
+  child itself still takes precedence, and `setLevel(null)` makes the child follow
+  its parent again.
+
+- a09e87b: Fixed logQueryExecutionTime measuring the wrong time
+
+  The `logQueryExecutionTime` query option logged with `console.time` at the
+  `debug` level, so it printed nothing at the default level, and a tab replaying a
+  worker's timer measured the gap between the replayed entries instead of the
+  query. It now logs `[logQueryExecutionTime]` with the query and its duration at
+  the `log` level, like `logExplainQueryPlan`.
+
+- 1137d52: Stopped starting a sync round when a database registers an owner again
+
+  When a database that already syncs an owner registers it again, for example
+  from another instance, through a relay another database already uses for the
+  owner, it no longer starts a round through that relay. Every write of the
+  database already uploads through each relay claimed for the owner, whichever
+  instance made it, so the round reconciled nothing new. It only rechecked a route
+  that had skipped a change or failed, which `Evolu.requestSync`, a reconnect, or
+  a replacement database worker still do.
+
+- 1137d52: Narrowed sync route types to what the shared worker publishes
+
+  The `error` of a `ProtocolInvalidDataError` or a
+  `DecryptWithXChaCha20Poly1305Error` in a `SyncRouteError` is now typed as
+  `UnknownError`, which the shared worker always published, so apps no longer
+  need to check it at runtime. `SettledSyncRoute.lastReceivedAt` is now `Millis`,
+  because the reply that skipped the change always set it. The unused
+  `SyncRouteErrorType` alias was removed; use `SyncRouteError["type"]` instead.
+  Code that builds these values, such as a test fixture, now wraps the caught
+  value with `createUnknownError` and gives a settled route its received time.
+
+  ```ts
+  import {
+    assertEqual,
+    assertType,
+    createUnknownError,
+    Millis,
+    type UnknownError,
+  } from "@evolu/common";
+  import type {
+    SettledSyncRoute,
+    SyncRouteError,
+  } from "@evolu/common/local-first";
+  // @ts-expect-error SyncRouteErrorType is no longer exported.
+  import type { SyncRouteErrorType as _SyncRouteErrorType } from "@evolu/common/local-first";
+
+  const skipped: SyncRouteError = {
+    type: "DecryptWithXChaCha20Poly1305Error",
+    error: createUnknownError(new Error("wrong encryption key")),
+    at: Millis.orThrow(1000),
+  };
+  if (skipped.type === "DecryptWithXChaCha20Poly1305Error")
+    assertType<typeof skipped.error, UnknownError>();
+
+  const _rawError: SyncRouteError = {
+    type: "DecryptWithXChaCha20Poly1305Error",
+    // @ts-expect-error A caught value in a route error is an UnknownError.
+    error: "wrong encryption key",
+    at: Millis.orThrow(1000),
+  };
+
+  // @ts-expect-error A settled route has received the reply that skipped its change.
+  const _unreceived: SettledSyncRoute["lastReceivedAt"] = null;
+  const lastReceivedAt: SettledSyncRoute["lastReceivedAt"] =
+    Millis.orThrow(1000);
+  assertEqual(lastReceivedAt, 1000);
+
+  const errorType: SyncRouteError["type"] = skipped.type;
+  assertEqual(errorType, "DecryptWithXChaCha20Poly1305Error");
+  ```
+
 ## 8.15.1
 
 ### Patch Changes
