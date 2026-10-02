@@ -1,5 +1,45 @@
 # @evolu/relay
 
+## 4.2.0
+
+### Minor Changes
+
+- 9081fc0: Added EVOLU_RELAY_LOG_LEVEL to set the relay's log level
+
+  The relay reads its console level from `EVOLU_RELAY_LOG_LEVEL`: `trace`,
+  `debug`, `log`, `info`, `warn`, `error`, or `silent`, defaulting to `log`.
+  Before, connection events were logged only at `debug`, which could not be
+  enabled without rebuilding the image. `debug` logs each connection, and `trace`
+  also every SQL query. An unknown level stops the relay with a validation error,
+  like other invalid `EVOLU_RELAY_*` variables.
+
+### Patch Changes
+
+- 20e329e: Added a health endpoint to the relay
+
+  `createRelay` now answers `GET` and `HEAD` requests for `/health` with status
+  200 and `{"status":"ok"}` while its database file can be read, and with status
+  503 and `{"status":"error"}` otherwise, so uptime monitors and load balancers
+  can check a relay. Other plain HTTP requests get status 426 instead of no
+  response at all. The relay's Docker image now checks `/health` instead of only
+  opening a TCP connection, so a relay that cannot read its database file is
+  reported unhealthy.
+
+- Updated dependencies [a09e87b]
+- Updated dependencies [20e329e]
+- Updated dependencies [90b0c0b]
+- Updated dependencies [a09e87b]
+- Updated dependencies [f7e9439]
+- Updated dependencies [a09e87b]
+- Updated dependencies [1137d52]
+- Updated dependencies [2b2c7fb]
+- Updated dependencies [90b0c0b]
+- Updated dependencies [eb06ba1]
+- Updated dependencies [1137d52]
+- Updated dependencies [0e95535]
+  - @evolu/common@8.16.0
+  - @evolu/nodejs@4.2.0
+
 ## 4.1.5
 
 ### Patch Changes
