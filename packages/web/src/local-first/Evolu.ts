@@ -348,11 +348,12 @@ export const createEvoluDeps = (
     }),
   );
 
-  // A page entering the back-forward cache is frozen with its DbWorkers, which
-  // keep their database locks, so the other tabs would stall. WebKit also
-  // releases the page's own locks, so a restored page would work with state
-  // the other tabs gave up on. The page therefore ends its part as if it
-  // closed, and reloads when it is shown again.
+  // A page entering the back-forward cache is frozen with its DbWorkers, and
+  // WebKit keeps their database locks while the page is cached
+  // (https://bugs.webkit.org/show_bug.cgi?id=316904), so the other tabs would
+  // stall. WebKit also releases the page's own locks, so a restored page would
+  // work with state the other tabs gave up on. The page therefore ends its part
+  // as if it closed, and reloads when it is shown again.
   const reloadRestoredPage = (event: PageTransitionEvent): void => {
     if (event.persisted) reloadThisApp();
   };

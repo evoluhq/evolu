@@ -37,8 +37,9 @@ export const installPolyfills = (): void => {
    * This module intentionally owns `DisposableStack` and `AsyncDisposableStack`
    * polyfills instead of depending on `es-shims/DisposableStack` at runtime.
    *
-   * Evolu originally used the upstream package, but WebKit hit a known async
-   * disposal completion bug (`completion["?"]` crash, see issue #9). The local
+   * Evolu originally used the upstream package, but WebKit, which needs the
+   * polyfill, hit its async disposal completion bug (`completion["?"]` crash,
+   * https://github.com/es-shims/DisposableStack/issues/9). The local
    * implementation applies the fix and keeps behavior deterministic across
    * runtimes used by Evolu.
    *

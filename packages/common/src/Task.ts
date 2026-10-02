@@ -1798,9 +1798,10 @@ export interface AbortReason extends InferType<typeof AbortReason> {}
  * Helpers that abort their own child Tasks should catch or normalize AbortError
  * before it escapes the helper boundary. The reason carries typed domain data.
  *
- * WebKit fetch rejects with its own abort error instead of `signal.reason`.
- * Native wrappers should treat `signal.reason` as the source of truth and
- * normalize aborts to AbortError.
+ * WebKit fetch rejects with its own abort error instead of `signal.reason`
+ * ([WebKit bug 246069](https://bugs.webkit.org/show_bug.cgi?id=246069)). Native
+ * wrappers should treat `signal.reason` as the source of truth and normalize
+ * aborts to AbortError.
  *
  * @group Core
  */

@@ -53,9 +53,11 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
       // DbWorker that ended without closing it, because its tab closed,
       // crashed or navigated away, can hold pool files after the lock has
       // passed on: WebKit releases a terminated worker's locks and its files
-      // separately, in no set order. sqlite-wasm cannot set up a pool with a
-      // held file, and it then deletes the pool directory, which the held file
-      // usually but not always prevents. Only a worker that has ended can hold
+      // separately, in no set order
+      // (https://bugs.webkit.org/show_bug.cgi?id=301520). sqlite-wasm cannot
+      // set up a pool with a held file, and it then deletes the pool
+      // directory, which the held file usually but not always prevents. Only
+      // a worker that has ended can hold
       // the files, and it can only release them, so the pool is set up once
       // every file opens.
       const canOpenPoolFiles = async (): Promise<boolean> => {

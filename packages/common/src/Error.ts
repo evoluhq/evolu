@@ -172,7 +172,9 @@ export const defectToError = (reported: unknown): Error => {
   // instanceof fails.
   const tag = Object.prototype.toString.call(defect);
   // Chromium reports a DOMException from a worker without its name or message,
-  // so it is described in an Error.
+  // so it is described in an Error. Its fix covered only exceptions thrown in
+  // classic workers (https://issues.chromium.org/issues/41241359); Chrome 154
+  // still drops both for reportError and for a module worker's evaluation.
   if (tag === "[object DOMException]") {
     const { name, message } = defect as Error;
     return new Error(`${name}: ${message}`, { cause: defect });
