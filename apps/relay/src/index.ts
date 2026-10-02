@@ -9,6 +9,7 @@ import {
   optional,
   Port,
   PortFromString,
+  union,
   withDefault,
 } from "@evolu/common";
 import { installPolyfills } from "@evolu/common/polyfills";
@@ -21,6 +22,9 @@ installPolyfills();
 const RelayEnv = env({
   port: withDefault(optional(PortFromString), Port.orThrow(4000)),
   EVOLU_RELAY: {
+    logLevel: optional(
+      union("trace", "debug", "log", "info", "warn", "error", "silent"),
+    ),
     maxOwnerBytes: optional(ByteSizeLiteral),
   },
 });
@@ -28,7 +32,6 @@ const RelayEnv = env({
 const deps = {
   ...createRelayDeps(),
   console: createConsole({
-    // level: "debug",
     formatter: createConsoleFormatter()({
       timestampFormat: "relative",
     }),
@@ -37,6 +40,7 @@ const deps = {
 
 await runMain(deps)((run) => {
   const config = RelayEnv.orThrow(process.env, { errors: "all" });
+  if (config.logLevel !== undefined) run.deps.console.setLevel(config.logLevel);
   const maxOwnerBytes =
     config.maxOwnerBytes === undefined
       ? undefined

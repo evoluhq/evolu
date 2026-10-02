@@ -55,7 +55,7 @@ const setupRelayProcess = (env: ReadonlyRecord<string, string>) => {
 };
 
 describe("relay configuration", () => {
-  it("validates startup configuration and applies quotas", async (t) => {
+  it("validates startup configuration and applies quotas and the log level", async (t) => {
     const previousEnv = process.env;
     const previousExitCode = process.exitCode;
     t.after(() => {
@@ -121,6 +121,18 @@ describe("relay configuration", () => {
         ),
         aboveLimit,
       );
+    }
+
+    for (const [level, expectedLevel] of [
+      [undefined, "trace"],
+      ["debug", "debug"],
+      ["silent", "silent"],
+    ] as const) {
+      process.env = level === undefined ? {} : { EVOLU_RELAY_LOG_LEVEL: level };
+      // The test console starts at trace, which an absent level keeps.
+      await using run = testCreateRun();
+      assertOk(await run(main));
+      assertSame(run.deps.console.getLevel(), expectedLevel);
     }
 
     process.env = { PORT: "65536", EVOLU_RELAY_MAX_OWNER_BYTES: "invalid" };
@@ -218,6 +230,17 @@ describe("relay configuration", () => {
     assertEqual(result.status, 1);
     assertTrue(
       result.output.includes('The value "invalid" is not a decimal integer.'),
+    );
+    assertFalse(result.createdData);
+  });
+
+  it("rejects an unknown log level before creating a database", () => {
+    const result = setupRelayProcess({ EVOLU_RELAY_LOG_LEVEL: "verbose" });
+    assertEqual(result.status, 1);
+    assertTrue(
+      result.output.includes(
+        'The value "verbose" is not strictly equal to the expected literal: silent.',
+      ),
     );
     assertFalse(result.createdData);
   });
