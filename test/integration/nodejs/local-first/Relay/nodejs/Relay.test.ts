@@ -21,6 +21,7 @@ import {
   testCreateRun,
   testName,
   testSetupWebSocket,
+  type ConsoleEntry,
   type CreateSqliteDriver,
   type SqliteDriver,
 } from "@evolu/common";
@@ -1163,8 +1164,10 @@ describe("createRelay", () => {
     );
     await writerResponse2;
 
+    // Each snapshot drains the console, so entries are collected across polls.
+    const entries: Array<ConsoleEntry> = [];
     await assertEventually(() => {
-      const entries = console.getEntriesSnapshot();
+      entries.push(...console.getEntriesSnapshot());
 
       return (
         entries.some(
