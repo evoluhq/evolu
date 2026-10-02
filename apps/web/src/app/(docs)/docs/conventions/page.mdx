@@ -1007,6 +1007,12 @@ an exported symbol. Avoid pipe characters in the first sentence because TypeDoc
 inserts that sentence into Markdown tables. Do not make alignment-only JSDoc
 edits.
 
+Code that works around a bug in a browser, runtime, or dependency explains it in
+a `//` comment at the workaround, not in public JSDoc. Describe the behavior it
+handles and link the upstream issue, such as a WebKit, Chromium, or Mozilla bug,
+so a maintainer knows why the code exists and can check whether it is still
+needed.
+
 ### Executable examples
 
 Write every TypeScript code fence as a standalone, deterministic example that

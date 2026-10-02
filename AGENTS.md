@@ -177,6 +177,8 @@ To render a documented code example as an image for a post, run
 - JSDoc explains behavior without repeating types. No `@param`, `@return`, or
   `@example`; use `### Example`. Link the first exported-symbol mention with
   `{@link}`. Avoid pipes in the first sentence and alignment-only edits.
+- A workaround for a browser, runtime, or dependency bug gets a `//` comment
+  at the code describing the behavior and linking the upstream issue.
 - TypeScript examples are standalone and deterministic, with explicit imports
   and assertions. Prefix intentionally unused declarations with `_`, but never
   declarations that are used.
