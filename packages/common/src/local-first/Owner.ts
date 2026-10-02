@@ -48,6 +48,9 @@ import {
   createSlip21,
   EncryptionKey,
   Entropy16,
+  Entropy20,
+  Entropy24,
+  Entropy28,
   Entropy32,
   testCreateRandomBytes,
 } from "../Crypto.ts";
@@ -62,6 +65,7 @@ import {
   Mnemonic,
   NonNegativeInt,
   type Typed,
+  union,
 } from "../Type.ts";
 import type { EncryptedDbChange, Storage } from "./Storage.ts";
 import { TimestampBytes } from "./Timestamp.ts";
@@ -172,18 +176,33 @@ export const createOwnerWriteKey = (deps: RandomBytesDep): OwnerWriteKey =>
   deps.randomBytes.create(16) as OwnerWriteKey;
 
 /**
- * 32 bytes of cryptographic entropy used to derive {@link Owner} keys.
+ * BIP-39 entropy used to derive {@link Owner} keys.
  *
- * Can be created using {@link createOwnerSecret} or converted from a
- * {@link Mnemonic} using {@link mnemonicToOwnerSecret}.
+ * A {@link Mnemonic} represents an OwnerSecret, so each valid mnemonic converts
+ * to exactly one secret with {@link mnemonicToOwnerSecret} and back with
+ * {@link ownerSecretToMnemonic}. A 24-word mnemonic holds 32 bytes, a 12-word
+ * mnemonic holds 16 bytes, and 15, 18, and 21 words hold 20, 24, and 28 bytes.
+ *
+ * {@link createOwnerSecret} generates 32 random bytes, which keep the owner
+ * post-quantum safe. The {@link OwnerId} is public and derived from the secret,
+ * so anyone who stores an owner's encrypted data can test guesses of the secret
+ * offline, and a quantum computer needs only about the square root of the
+ * guesses. 32 random bytes leave about 128 bits of security, while 16 bytes
+ * leave about 64. A secret derived from a smaller root, such as a 20-word
+ * SLIP-39 share, is no stronger than that root, whatever its length. Shorter
+ * secrets are accepted for owners created outside Evolu, typically from 12-word
+ * mnemonics.
  *
  * @group Core
  */
-export const OwnerSecret = /*#__PURE__*/ brand("OwnerSecret", Entropy32);
+export const OwnerSecret = /*#__PURE__*/ brand(
+  "OwnerSecret",
+  /*#__PURE__*/ union(Entropy16, Entropy20, Entropy24, Entropy28, Entropy32),
+);
 export type OwnerSecret = typeof OwnerSecret.Output;
 
 /**
- * Creates a cryptographically random {@link OwnerSecret}.
+ * Creates a cryptographically random 32-byte {@link OwnerSecret}.
  *
  * @group Core
  */
@@ -210,12 +229,12 @@ export const ownerSecretToMnemonic = (secret: OwnerSecret): Mnemonic =>
   bip39.entropyToMnemonic(secret, wordlist) as Mnemonic;
 
 /**
- * Converts a {@link Mnemonic} to an {@link OwnerSecret}.
+ * Converts a {@link Mnemonic} to the {@link OwnerSecret} it represents.
  *
  * @group Core
  */
 export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
-  bip39.mnemonicToEntropy(mnemonic, wordlist) as OwnerSecret;
+  OwnerSecret.orThrow(bip39.mnemonicToEntropy(mnemonic, wordlist));
 
 /**
  * Creates an {@link Owner} from a {@link OwnerSecret} using SLIP-21 key

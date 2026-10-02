@@ -1,12 +1,21 @@
+import { bytesToHex } from "@noble/hashes/utils.js";
+import * as bip39 from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { eqData } from "../Eq.ts";
 import { test } from "node:test";
-import { assertEqual, assertFalse, assertNotUndefined } from "../Assert.ts";
+import {
+  assertEqual,
+  assertFalse,
+  assertNotUndefined,
+  assertTrue,
+} from "../Assert.ts";
 
 import {
   createAppOwner,
   createOwnerSecret,
   deriveShardOwner,
   mnemonicToOwnerSecret,
+  OwnerSecret,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
   ownerSecretToMnemonic,
@@ -14,6 +23,7 @@ import {
   testOwnerSecret,
 } from "./Owner.ts";
 import { testCreateDeps } from "../Task.ts";
+import { Mnemonic } from "../Type.ts";
 
 const testOwnerSecret2 = createOwnerSecret(testCreateDeps({ seed: "owner-2" }));
 
@@ -29,6 +39,47 @@ test("ownerSecretToMnemonic and mnemonicToOwnerSecret are inverses", () => {
   const backToSecret = mnemonicToOwnerSecret(mnemonic);
 
   assertEqual(backToSecret, secret);
+});
+
+test("mnemonicToOwnerSecret converts every BIP-39 mnemonic length", () => {
+  for (const [words, bytes] of [
+    [12, 16],
+    [15, 20],
+    [18, 24],
+    [21, 28],
+    [24, 32],
+  ] as const) {
+    const entropy = new Uint8Array(bytes).fill(words);
+    const mnemonic = Mnemonic.orThrow(
+      bip39.entropyToMnemonic(entropy, wordlist),
+    );
+    const secret = mnemonicToOwnerSecret(mnemonic);
+
+    assertEqual(mnemonic.split(" ").length, words);
+    assertTrue(OwnerSecret.is(secret));
+    assertEqual(secret, entropy);
+    assertEqual(ownerSecretToMnemonic(secret), mnemonic);
+  }
+});
+
+test("OwnerSecret rejects lengths that no mnemonic holds", () => {
+  assertFalse(OwnerSecret.is(new Uint8Array(17)));
+  assertFalse(OwnerSecret.is(new Uint8Array(64)));
+});
+
+test("createAppOwner derives fixed keys from a 12-word mnemonic", () => {
+  const owner = createAppOwner(
+    mnemonicToOwnerSecret(
+      Mnemonic.orThrow("all all all all all all all all all all all all"),
+    ),
+  );
+
+  assertEqual(owner.id, "njGMKFwCtldekpIYmB-VKA");
+  assertEqual(
+    bytesToHex(owner.encryptionKey),
+    "d9cae8d1e141e9f4824ba9b56b9b991d242c1a37f48a146053c3d69f432c5599",
+  );
+  assertEqual(bytesToHex(owner.writeKey), "8d77d62517c4d525223647a189261ab2");
 });
 
 test("createAppOwner is deterministic", () => {

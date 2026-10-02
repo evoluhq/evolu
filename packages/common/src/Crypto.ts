@@ -103,12 +103,28 @@ export const Entropy16 = /*#__PURE__*/ length(16)(Entropy);
 export type Entropy16 = typeof Entropy16.Output;
 
 /**
+ * Cryptographic entropy of exactly 20 bytes.
+ *
+ * @group Random bytes
+ */
+export const Entropy20 = /*#__PURE__*/ length(20)(Entropy);
+export type Entropy20 = typeof Entropy20.Output;
+
+/**
  * Cryptographic entropy of exactly 24 bytes.
  *
  * @group Random bytes
  */
 export const Entropy24 = /*#__PURE__*/ length(24)(Entropy);
 export type Entropy24 = typeof Entropy24.Output;
+
+/**
+ * Cryptographic entropy of exactly 28 bytes.
+ *
+ * @group Random bytes
+ */
+export const Entropy28 = /*#__PURE__*/ length(28)(Entropy);
+export type Entropy28 = typeof Entropy28.Output;
 
 /**
  * Cryptographic entropy of exactly 32 bytes.
@@ -150,14 +166,18 @@ export const testCreateRandomBytes = (deps: RandomLibDep): RandomBytes =>
   }) as RandomBytes;
 
 /**
- * SLIP21.
+ * Derives a 32-byte key from a seed and a path using
+ * [SLIP-21](https://github.com/satoshilabs/slips/blob/master/slip-0021.md).
  *
- * https://github.com/satoshilabs/slips/blob/master/slip-0021.md
+ * Derived keys are no stronger than the seed. A 16-byte seed gives 128 bits of
+ * security, or about 64 against a quantum computer, whatever the output length.
+ * Use a 32-byte random seed for keys that must stay safe against a quantum
+ * computer.
  *
  * @group Key derivation
  */
 export const createSlip21 = (
-  seed: Entropy16 | Entropy32 | Entropy64,
+  seed: Entropy16 | Entropy20 | Entropy24 | Entropy28 | Entropy32 | Entropy64,
   path: ReadonlyArray<string | number>,
 ): Entropy32 => {
   let currentNode = hmac(

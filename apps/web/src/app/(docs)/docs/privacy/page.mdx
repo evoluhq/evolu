@@ -61,8 +61,42 @@ If maximum privacy is required (e.g., hiding interaction cadence), an applicatio
 
 ## Post-quantum resistance
 
-The Evolu Relay is post-quantum safe, so "harvest now, decrypt later" attacks (where adversaries collect encrypted data today to decrypt with future quantum computers) are not possible. Unlike public-key cryptography systems that use asymmetric encryption (which quantum computers could potentially break), the relay uses only symmetric encryption.
+In a "harvest now, decrypt later" attack, an adversary collects encrypted data today and waits for a quantum computer to decrypt it. Encrypted data can be collected by a relay operator, by anyone who breaches a relay, or by anyone recording network traffic. Evolu is designed so that such data stays encrypted.
 
-The Evolu Relay never sees or stores public keys—it only handles symmetrically encrypted data. Symmetric encryption algorithms are considered quantum-safe.
+### Why symmetric encryption
+
+A large quantum computer running Shor's algorithm could break public-key cryptography such as RSA and elliptic curves. Evolu sync doesn't rely on it. Changes are encrypted with XChaCha20-Poly1305 under a 256-bit symmetric key, and the Evolu Relay never sees or stores public keys.
+
+The best known quantum attack on symmetric cryptography is Grover's algorithm, which searches N possibilities in about √N steps. That halves the bits of security, so a 256-bit key keeps about 128 bits.
+
+### Where the keys come from
+
+Each owner's keys are derived from its owner secret with SLIP-21 (HMAC-SHA512):
+
+- **OwnerId**: the public identifier that relays see
+- **Encryption key**: the 256-bit key that encrypts the owner's changes
+- **Write key**: a token relays check before accepting changes; it controls who can write, not who can read
+
+Because the derivation is deterministic and the OwnerId is public, an attacker doesn't need to search 256-bit encryption keys. Anyone holding an owner's encrypted data and OwnerId can test guesses of the owner secret offline. The entropy of the owner secret therefore sets the security of everything derived from it.
+
+### How much entropy is enough
+
+`createOwnerSecret` generates 32 random bytes, shown to users as a 24-word mnemonic. Against a quantum computer, that leaves about 128 bits of security, which matches NIST's highest post-quantum category (at least as hard as breaking AES-256). NIST still accepts its lowest category (AES-128) because Grover's algorithm parallelizes poorly, but Evolu targets the highest because local-first data may need to stay private for decades.
+
+| Owner secret | Mnemonic | Classical security | Quantum security |
+| ------------ | -------- | ------------------ | ---------------- |
+| 32 bytes     | 24 words | 256 bits           | about 128 bits   |
+| 16 bytes     | 12 words | 128 bits           | about 64 bits    |
+
+Evolu also accepts owner secrets of 16 to 28 bytes (12 to 21 words), for example for owners created by other apps. A 16-byte secret still gives 128 bits of security against classical computers, which is far beyond any classical attack, but leaves less margin against a future quantum computer. That can be the right trade-off: a 12-word or 20-word backup is easier for users to write down and check, and not every app's data needs to stay private for decades. A mobile wallet meant for small amounts is an example. Its Bitcoin keys rely on elliptic curves that a quantum computer could break anyway, so a longer backup phrase would cost usability without removing that risk.
+
+Length alone is not entropy. A secret derived from a smaller root is no stronger than the root, because derivation can't add randomness. For example, a 32-byte owner secret derived from a 20-word SLIP-39 share, which holds 16 bytes, has only 128 bits of entropy.
+
+When data must stay private long term:
+
+- Create owner secrets with `createOwnerSecret`, or restore them from the 24-word mnemonic Evolu shows.
+- If you derive owners from your own root secret, give that root at least 256 bits of entropy, such as a 24-word BIP-39 mnemonic or a 33-word SLIP-39 share.
+
+### Collaboration
 
 For collaboration, asymmetric cryptography is required, and asymmetric cryptography can be vulnerable to quantum attacks. Detailed documentation will be provided soon.
