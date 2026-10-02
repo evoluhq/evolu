@@ -114,19 +114,35 @@ describe("createConsole", () => {
     );
   });
 
-  it("child inherits level at creation (static)", () => {
+  it("child without own level follows its parent's level", () => {
     const output = createTestOutput();
     const console = createConsole({ output, level: "info" });
-    const child = console.child("relay");
+    const grandchild = console.child("relay").child("db");
 
-    // Child inherits "info" level
-    child.debug("ignored");
-    child.info("logged");
-
-    // Parent change doesn't affect child (static inheritance)
+    grandchild.debug("ignored");
     console.setLevel("debug");
-    child.debug("still ignored");
+    grandchild.debug("logged");
 
+    assertEqual(grandchild.getLevel(), "debug");
+    assertFalse(grandchild.hasOwnLevel());
+    assertEqual(
+      output.entries.map((e) => e.entry.args[0]),
+      ["logged"],
+    );
+  });
+
+  it("grandchild follows its parent's own level", () => {
+    const output = createTestOutput();
+    const console = createConsole({ output, level: "info" });
+    const relay = console.child("relay");
+    const db = relay.child("db");
+
+    relay.setLevel("debug");
+    db.debug("logged");
+    assertEqual(db.getLevel(), "debug");
+
+    relay.setLevel(null);
+    assertEqual(db.getLevel(), "info");
     assertEqual(
       output.entries.map((e) => e.entry.args[0]),
       ["logged"],
@@ -139,9 +155,9 @@ describe("createConsole", () => {
     const child = console.child("relay");
 
     child.setLevel("debug");
+    console.setLevel("error");
     child.debug("logged");
-    // parent still at "info"
-    console.debug("ignored");
+    console.warn("ignored");
 
     assertEqual(
       output.entries.map((e) => e.entry.args[0]),
@@ -160,6 +176,9 @@ describe("createConsole", () => {
     child.setLevel(null);
     assertFalse(child.hasOwnLevel());
     assertEqual(child.getLevel(), "info");
+
+    console.setLevel("warn");
+    assertEqual(child.getLevel(), "warn");
   });
 
   it("child adds path", () => {
@@ -720,17 +739,13 @@ describe("testCreateConsole", () => {
     assertEqual(console.getEntriesSnapshot()[0].path, ["relay", "db"]);
   });
 
-  it("child inherits level at creation (static)", () => {
+  it("child without own level follows its parent's level", () => {
     const console = testCreateConsole({ level: "info" });
     const child = console.child("relay");
 
-    // Child inherits "info" level
     child.debug("ignored");
-    child.info("logged");
-
-    // Parent change doesn't affect child
     console.setLevel("debug");
-    child.debug("still ignored");
+    child.debug("logged");
 
     assertEqual(
       console.getEntriesSnapshot().map((e) => e.args[0]),

@@ -54,9 +54,7 @@ import {
  *   createConsole,
  *   createConsoleArrayOutput,
  *   Data,
- *   type Console,
  *   type ConsoleEntry,
- *   type ConsoleLevel,
  * } from "@evolu/common";
  *
  * const entries: Array<ConsoleEntry> = [];
@@ -75,16 +73,11 @@ import {
  * assertType(Data, args);
  * assertEqual(args, ["Creating instance", { config: { port: 4000 } }]);
  *
- * const setLevelRecursive = (
- *   console: Console,
- *   level: ConsoleLevel,
- * ): void => {
- *   console.setLevel(level);
- *   for (const child of console.children) setLevelRecursive(child, level);
- * };
- * setLevelRecursive(root, "warn");
- * assertEqual(root.getLevel(), "warn");
- * assertEqual(relay.getLevel(), "warn");
+ * // Children without their own level follow their parent.
+ * const db = root.child("db");
+ * root.setLevel("warn");
+ * assertEqual(db.getLevel(), "warn");
+ * assertEqual(relay.getLevel(), "silent");
  * ```
  *
  * Console intentionally does not use {@link Task}. Logging must be as fast as
@@ -107,7 +100,8 @@ export interface Console {
    * Returns the effective log level.
    *
    * If this console has its own level set via {@link Console.setLevel}, returns
-   * that. Otherwise returns the inherited level from creation time.
+   * that. Otherwise returns its parent's current level, or
+   * {@link ConsoleConfig.level} for a root console.
    */
   readonly getLevel: () => ConsoleLevel;
 
@@ -125,8 +119,8 @@ export interface Console {
   /**
    * Creates a child console with the given name added to the path.
    *
-   * Child inherits the parent's configured level (not any runtime override).
-   * Use {@link Console.children} to access all children for batch operations.
+   * A child without its own level follows its parent's level, including later
+   * changes.
    */
   readonly child: (name: string) => Console;
 
@@ -432,11 +426,32 @@ export const createConsole = ({
   output = createNativeConsoleOutput(),
   path = [],
   formatter,
-}: ConsoleConfig = {}): Console => {
+}: ConsoleConfig = {}): Console =>
+  createConsoleWithInheritedLevel({
+    name,
+    getInheritedLevel: () => level,
+    output,
+    path,
+    formatter,
+  });
+
+const createConsoleWithInheritedLevel = ({
+  name,
+  getInheritedLevel,
+  output,
+  path,
+  formatter,
+}: {
+  name: string;
+  getInheritedLevel: () => ConsoleLevel;
+  output: ConsoleOutput;
+  path: ReadonlyArray<string>;
+  formatter: ConsoleFormatter | undefined;
+}): Console => {
   const childrenSet = new Set<Console>();
   let ownLevel: ConsoleLevel | null = null;
 
-  const getLevel = (): ConsoleLevel => ownLevel ?? level;
+  const getLevel = (): ConsoleLevel => ownLevel ?? getInheritedLevel();
 
   const createMethod =
     (
@@ -464,12 +479,12 @@ export const createConsole = ({
     hasOwnLevel: () => ownLevel !== null,
 
     child: (name) => {
-      const childConsole = createConsole({
+      const childConsole = createConsoleWithInheritedLevel({
         name,
-        level,
+        getInheritedLevel: getLevel,
         output,
         path: [...path, name],
-        ...(formatter && { formatter }),
+        formatter,
       });
       childrenSet.add(childConsole);
       return childConsole;
