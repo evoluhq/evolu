@@ -4,7 +4,6 @@
  * @module
  */
 
-import { objectFrom } from "./Object.ts";
 import type { ReadonlyStore } from "./Store.ts";
 import { createStore } from "./Store.ts";
 import type { Task } from "./Task.ts";
@@ -90,12 +89,6 @@ import {
  * @see {@link createConsole}
  */
 export interface Console {
-  /** Name of this console. Empty for root. */
-  readonly name: string;
-
-  /** Child consoles created via {@link Console.child}. */
-  readonly children: ReadonlySet<Console>;
-
   /**
    * Returns the effective log level.
    *
@@ -142,27 +135,6 @@ export interface Console {
   /** Failures requiring immediate attention. */
   readonly error: (...args: ReadonlyArray<unknown>) => void;
 
-  /** Displays an object with expandable properties. Level: debug. */
-  readonly dir: (item: unknown) => void;
-
-  /** Displays tabular data. Level: debug. */
-  readonly table: (data: unknown) => void;
-
-  /** Starts a timer with the given label. Level: debug. */
-  readonly time: (label: string) => void;
-
-  /** Logs elapsed time for a timer. Level: debug. */
-  readonly timeLog: (label: string, ...args: ReadonlyArray<unknown>) => void;
-
-  /** Ends a timer and logs elapsed time. Level: debug. */
-  readonly timeEnd: (label: string) => void;
-
-  /** Increments and logs a counter. Level: debug. */
-  readonly count: (label?: string) => void;
-
-  /** Resets a counter. Level: debug. */
-  readonly countReset: (label?: string) => void;
-
   /**
    * Writes a pre-built {@link ConsoleEntry} directly to the output, bypassing
    * level filtering. Used to replay entries from another context (e.g., a
@@ -187,7 +159,7 @@ export interface ConsoleDep {
  * severity):
  *
  * - `"trace"` — Most detailed execution flow, such as every SQL query
- * - `"debug"` — Development diagnostics, timers, counters
+ * - `"debug"` — Development diagnostics
  * - `"log"` — General-purpose messages
  * - `"info"` — Operational milestones (startup, shutdown)
  * - `"warn"` — Recoverable issues that may need attention
@@ -227,19 +199,7 @@ export interface ConsoleEntry {
  * @group Core
  */
 export type ConsoleMethod =
-  | "trace"
-  | "debug"
-  | "log"
-  | "info"
-  | "warn"
-  | "error"
-  | "dir"
-  | "table"
-  | "time"
-  | "timeLog"
-  | "timeEnd"
-  | "count"
-  | "countReset";
+  "trace" | "debug" | "log" | "info" | "warn" | "error";
 
 /**
  * Output destination for {@link Console}.
@@ -272,9 +232,6 @@ export type ConsoleFormatter = (entry: ConsoleEntry) => ReadonlyArray<unknown>;
  * @group Core
  */
 export interface ConsoleConfig {
-  /** Name of this console. Defaults to empty string. */
-  readonly name?: string;
-
   /** Initial log level. Defaults to `"log"`. */
   readonly level?: ConsoleLevel;
 
@@ -314,7 +271,8 @@ export interface ConsoleFormatterConfig {
   readonly timestampFormat?: ConsoleEntryTimestampFormat;
 
   /**
-   * Start time for relative timestamps. Defaults to first entry timestamp.
+   * Start time for relative timestamps. Defaults to the time the first entry is
+   * formatted.
    *
    * Pass a {@link Millis} value to use a custom start time, useful when multiple
    * consoles should share the same relative timeline.
@@ -421,14 +379,12 @@ const levelOrder: Record<ConsoleLevel, number> = {
  * @group Core
  */
 export const createConsole = ({
-  name = "",
   level = "log",
   output = createNativeConsoleOutput(),
   path = [],
   formatter,
 }: ConsoleConfig = {}): Console =>
   createConsoleWithInheritedLevel({
-    name,
     getInheritedLevel: () => level,
     output,
     path,
@@ -436,68 +392,48 @@ export const createConsole = ({
   });
 
 const createConsoleWithInheritedLevel = ({
-  name,
   getInheritedLevel,
   output,
   path,
   formatter,
 }: {
-  name: string;
   getInheritedLevel: () => ConsoleLevel;
   output: ConsoleOutput;
   path: ReadonlyArray<string>;
   formatter: ConsoleFormatter | undefined;
 }): Console => {
-  const childrenSet = new Set<Console>();
   let ownLevel: ConsoleLevel | null = null;
 
   const getLevel = (): ConsoleLevel => ownLevel ?? getInheritedLevel();
 
   const createMethod =
-    (
-      method: ConsoleMethod,
-      methodLevel: ConsoleLevel,
-      formatter?: ConsoleFormatter,
-    ) =>
+    (method: ConsoleMethod) =>
     (...args: ReadonlyArray<unknown>): void => {
-      if (levelOrder[methodLevel] >= levelOrder[getLevel()])
+      if (levelOrder[method] >= levelOrder[getLevel()])
         output.write({ method, path, args }, formatter);
     };
 
-  const levelMethod = (method: ConsoleLevel & ConsoleMethod) =>
-    createMethod(method, method, formatter);
-
-  const debugMethod = (method: ConsoleMethod) => createMethod(method, "debug");
-
   return {
-    name,
-    children: childrenSet,
     getLevel,
     setLevel: (level) => {
       ownLevel = level;
     },
     hasOwnLevel: () => ownLevel !== null,
 
-    child: (name) => {
-      const childConsole = createConsoleWithInheritedLevel({
-        name,
+    child: (name) =>
+      createConsoleWithInheritedLevel({
         getInheritedLevel: getLevel,
         output,
         path: [...path, name],
         formatter,
-      });
-      childrenSet.add(childConsole);
-      return childConsole;
-    },
+      }),
 
-    ...objectFrom(
-      ["trace", "debug", "log", "info", "warn", "error"],
-      levelMethod,
-    ),
-    ...objectFrom(
-      ["dir", "table", "time", "timeLog", "timeEnd", "count", "countReset"],
-      debugMethod,
-    ),
+    trace: createMethod("trace"),
+    debug: createMethod("debug"),
+    log: createMethod("log"),
+    info: createMethod("info"),
+    warn: createMethod("warn"),
+    error: createMethod("error"),
 
     write: (entry) => {
       output.write(entry, formatter);
@@ -535,11 +471,9 @@ export const createNativeConsoleOutput = (): ConsoleOutput => ({
   write: (entry, formatter) => {
     const args = formatter ? formatter(entry) : entry.args;
     // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Write to the global object console even if a realm lexical binding shadows it.
-    const nativeConsole = globalThis.console as unknown as Record<
-      ConsoleMethod,
-      (...args: Array<unknown>) => void
-    >;
-    nativeConsole[entry.method === "trace" ? "debug" : entry.method](...args);
+    globalThis.console[entry.method === "trace" ? "debug" : entry.method](
+      ...args,
+    );
   },
 });
 
@@ -610,7 +544,11 @@ export const createConsoleFormatter =
           timestamp = "";
           break;
         case "relative":
-          timestamp = `+${formatMillisAsDuration((now - startTime) as Millis)}`;
+          // A clock set back, or a startTime ahead of now, must not print a
+          // negative duration.
+          timestamp = `+${formatMillisAsDuration(
+            Math.max(0, now - startTime) as Millis,
+          )}`;
           break;
         case "absolute":
           timestamp = formatMillisAsClockTime(now);
@@ -727,8 +665,8 @@ export const createMultiOutput = (
 /**
  * Creates a {@link TestConsole} that captures all output for testing.
  *
- * Unlike {@link createConsole}, this doesn't require dependencies and captures
- * entries in memory.
+ * Captures entries in memory and defaults to the `"trace"` level, so tests see
+ * every entry.
  *
  * ### Example
  *

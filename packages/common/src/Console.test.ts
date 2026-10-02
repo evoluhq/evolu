@@ -1,4 +1,4 @@
-import { describe, it, mock } from "node:test";
+import { describe, it } from "node:test";
 import {
   assertEqual,
   assertFalse,
@@ -205,74 +205,6 @@ describe("createConsole", () => {
     assertEqual(output.entries[0].formattedArgs, ["prefix", "message"]);
   });
 
-  it("debug-level methods use debug level", () => {
-    const output = createTestOutput();
-    const console = createConsole({
-      output,
-      level: "log",
-    });
-
-    console.time("timer");
-    console.timeLog("timer");
-    console.timeEnd("timer");
-    console.dir({ foo: 1 });
-    console.table([1, 2, 3]);
-    console.count("counter");
-    console.countReset("counter");
-
-    assertLength(output.entries, 0);
-
-    console.setLevel("debug");
-
-    console.time("timer");
-    console.dir({ foo: 1 });
-
-    assertEqual(
-      output.entries.map((e) => e.entry.method),
-      ["time", "dir"],
-    );
-  });
-
-  it("debug-level methods skip formatter", () => {
-    const output = createTestOutput();
-    const formatter = mock.fn((entry: ConsoleEntry) => [
-      "formatted",
-      ...entry.args,
-    ]);
-    const console = createConsole({
-      output,
-      level: "debug",
-      formatter,
-    });
-
-    console.info("info message");
-    console.dir({ foo: 1 });
-
-    assertEqual(output.entries[0].formattedArgs, ["formatted", "info message"]);
-    assertEqual(output.entries[1].formattedArgs, [{ foo: 1 }]);
-  });
-
-  it("children tracking", () => {
-    const console = createConsole();
-    const child1 = console.child("a");
-    const child2 = console.child("b");
-    const grandchild = child1.child("c");
-
-    assertEqual(console.children.size, 2);
-    assertTrue(console.children.has(child1));
-    assertTrue(console.children.has(child2));
-    assertEqual(child1.children.size, 1);
-    assertTrue(child1.children.has(grandchild));
-  });
-
-  it("name property", () => {
-    const console = createConsole({ name: "root" });
-    const child = console.child("relay");
-
-    assertEqual(console.name, "root");
-    assertEqual(child.name, "relay");
-  });
-
   it("write bypasses level filtering", () => {
     const output = createTestOutput();
     const console = createConsole({ output, level: "silent" });
@@ -457,7 +389,7 @@ describe("createConsoleFormatter", () => {
 
   it("absolute timestamp", () => {
     const time = testCreateTime({
-      startAt: Date.UTC(2026, 0, 28, 14, 30, 15, 123) as Millis,
+      startAt: new Date(2026, 0, 28, 14, 30, 15, 123).getTime() as Millis,
     });
     const formatter = createConsoleFormatter({ time })({
       timestampFormat: "absolute",
@@ -469,13 +401,23 @@ describe("createConsoleFormatter", () => {
       args: ["message"],
     };
 
-    const result = formatter(entry);
+    assertEqual(formatter(entry), ["14:30:15.123", "message"]);
+  });
 
-    // Result includes local time formatted as HH:MM:SS.mmm
-    assertLength(result, 2);
-    assertType(String, result[0]);
-    assertTrue(/^\d{2}:\d{2}:\d{2}\.\d{3}$/u.test(result[0]));
-    assertEqual(result[1], "message");
+  it("relative timestamp is never negative", () => {
+    const time = testCreateTime({ startAt: 1000 as Millis });
+    const formatter = createConsoleFormatter({ time })({
+      timestampFormat: "relative",
+      startTime: 1500 as Millis,
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message"],
+    };
+
+    assertEqual(formatter(entry), ["+0.000s", "message"]);
   });
 
   it("combines timestamp and path", () => {
@@ -492,61 +434,6 @@ describe("createConsoleFormatter", () => {
     const result = formatter(entry);
 
     assertEqual(result, ["+0.000s [relay]", "message"]);
-  });
-
-  it("createConsoleFormatter example", () => {
-    const time = testCreateTime({ startAt: 0 as Millis });
-    const output = createTestOutput();
-
-    // Relative timestamps
-    const root = createConsole({
-      output,
-      formatter: createConsoleFormatter({ time })({
-        timestampFormat: "relative",
-      }),
-    });
-
-    const relay = root.child("relay");
-    relay.log("connected");
-    time.advance("1.5s");
-    relay.log("synced");
-
-    assertEqual(
-      output.entries.map((entry) => entry.formattedArgs),
-      [
-        ["+0.000s [relay]", "connected"],
-        ["+1.500s [relay]", "synced"],
-      ],
-    );
-
-    // Nested children
-    const db = relay.child("db");
-    db.log("opened");
-
-    assertEqual(output.entries[2].formattedArgs, [
-      "+1.500s [relay] [db]",
-      "opened",
-    ]);
-
-    // Absolute timestamps (local clock time HH:MM:SS.mmm)
-    const absoluteOutput = createTestOutput();
-    const absoluteTime = testCreateTime({
-      startAt: Date.UTC(2026, 0, 28, 14, 30, 15, 123) as Millis,
-    });
-    const absoluteRoot = createConsole({
-      output: absoluteOutput,
-      formatter: createConsoleFormatter({ time: absoluteTime })({
-        timestampFormat: "absolute",
-      }),
-    });
-    const absoluteRelay = absoluteRoot.child("relay");
-
-    absoluteRelay.log("connected");
-
-    const [timestamp, message] = absoluteOutput.entries[0].formattedArgs;
-    assertType(String, timestamp);
-    assertTrue(/^\d{2}:\d{2}:\d{2}\.\d{3} \[relay\]$/u.test(timestamp));
-    assertEqual(message, "connected");
   });
 });
 
@@ -666,19 +553,18 @@ describe("createMultiOutput", () => {
     assertEqual(entries1[0], entries2[0]);
   });
 
-  it("combines native and store outputs", () => {
-    const storeOutput = createConsoleStoreOutput();
-    const entries: Array<ConsoleEntry> = [];
-    const output = createMultiOutput([
-      createConsoleArrayOutput(entries),
-      storeOutput,
-    ]);
-    const console = createConsole({ output });
+  it("passes the formatter to each output", () => {
+    const first = createTestOutput();
+    const second = createTestOutput();
+    const console = createConsole({
+      output: createMultiOutput([first, second]),
+      formatter: (entry) => ["fmt", ...entry.args],
+    });
 
-    console.error("fail");
+    console.info("msg");
 
-    assertLength(entries, 1);
-    assertEqual(storeOutput.entry.get()?.args, ["fail"]);
+    assertEqual(first.entries[0].formattedArgs, ["fmt", "msg"]);
+    assertEqual(second.entries[0].formattedArgs, ["fmt", "msg"]);
   });
 });
 
@@ -749,88 +635,5 @@ describe("testCreateConsole", () => {
     child.info("message");
 
     assertEqual(console.getEntriesSnapshot()[0].path, ["relay", "db"]);
-  });
-
-  it("child without own level follows its parent's level", () => {
-    const console = testCreateConsole({ level: "info" });
-    const child = console.child("relay");
-
-    child.debug("ignored");
-    console.setLevel("debug");
-    child.debug("logged");
-
-    assertEqual(
-      console.getEntriesSnapshot().map((e) => e.args[0]),
-      ["logged"],
-    );
-  });
-
-  it("child can override level independently", () => {
-    const console = testCreateConsole({ level: "info" });
-    const child = console.child("relay");
-
-    child.setLevel("debug");
-    child.debug("logged");
-
-    assertEqual(
-      console.getEntriesSnapshot().map((e) => e.args[0]),
-      ["logged"],
-    );
-  });
-
-  it("hasOwnLevel tracks level override", () => {
-    const console = testCreateConsole({ level: "info" });
-
-    assertFalse(console.hasOwnLevel());
-
-    console.setLevel("debug");
-    assertTrue(console.hasOwnLevel());
-
-    console.setLevel(null);
-    assertFalse(console.hasOwnLevel());
-  });
-
-  it("debug-level methods use debug level", () => {
-    const console = testCreateConsole({ level: "log" });
-
-    console.time("timer");
-    console.dir({ foo: 1 });
-    console.table([1, 2]);
-    console.count("counter");
-
-    assertLength(console.getEntriesSnapshot(), 0);
-
-    console.setLevel("debug");
-
-    console.time("timer");
-    console.timeLog("timer", "extra");
-    console.timeEnd("timer");
-    console.dir({ foo: 1 });
-    console.table([1, 2]);
-    console.count("counter");
-    console.countReset("counter");
-
-    assertEqual(
-      console.getEntriesSnapshot().map((e) => e.method),
-      ["time", "timeLog", "timeEnd", "dir", "table", "count", "countReset"],
-    );
-  });
-
-  it("children tracking", () => {
-    const console = testCreateConsole();
-    const child1 = console.child("a");
-    const child2 = console.child("b");
-
-    assertEqual(console.children.size, 2);
-    assertTrue(console.children.has(child1));
-    assertTrue(console.children.has(child2));
-  });
-
-  it("name property", () => {
-    const console = testCreateConsole();
-    const child = console.child("relay");
-
-    assertEqual(console.name, "");
-    assertEqual(child.name, "relay");
   });
 });

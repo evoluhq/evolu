@@ -9,6 +9,3 @@ a parent reached none of its children. A child without its own level now
 follows its parent's current level, including later changes. A level set on the
 child itself still takes precedence, and `setLevel(null)` makes the child follow
 its parent again.
-
-Code that set the level on every child via `Console.children` can call
-`setLevel` on the parent instead.

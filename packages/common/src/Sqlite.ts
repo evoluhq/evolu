@@ -14,6 +14,7 @@ import { createMutableRecord, objectToEntries } from "./Object.ts";
 import type { Result } from "./Result.ts";
 import { ok } from "./Result.ts";
 import { type Task, testCreateRun, type TestRunDep } from "./Task.ts";
+import { performanceDurationBetween } from "./Time.ts";
 import {
   array,
   type ArrayType,
@@ -330,7 +331,7 @@ export const createSqlite =
     options?: SqliteDriverOptions,
   ): Task<Sqlite, never, CreateSqliteDriverDep> =>
   async (run) => {
-    const { createSqliteDriver } = run.deps;
+    const { createSqliteDriver, time } = run.deps;
     const console = run.deps.console.child("sql");
     await using disposer = new AsyncDisposableStack();
 
@@ -345,14 +346,21 @@ export const createSqlite =
           exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
             console.trace({ query });
 
-            const label =
+            const start =
               query.options?.logQueryExecutionTime === true
-                ? `SqliteQueryExecutionTime ${query.sql}`
+                ? time.performance.now()
                 : null;
-
-            if (label !== null) console.time(label);
             const result = driver.exec(query);
-            if (label !== null) console.timeEnd(label);
+            if (start !== null) {
+              const duration = performanceDurationBetween(
+                start,
+                time.performance.now(),
+              );
+              console.log("[logQueryExecutionTime]", {
+                query,
+                duration: `${duration.toFixed(3)}ms`,
+              });
+            }
 
             if (query.options?.logExplainQueryPlan) {
               const result = driver.exec({

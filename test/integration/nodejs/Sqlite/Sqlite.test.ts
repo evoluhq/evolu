@@ -46,7 +46,8 @@ import {
   FiniteNumber,
   testName,
 } from "../../../../packages/common/src/Type.ts";
-import { setupSqlite } from "../_deps.ts";
+import { testCreateTime } from "../../../../packages/common/src/Time.ts";
+import { setupSqlite, testCreateSqliteDep } from "../_deps.ts";
 
 describe("eqSqliteValue", () => {
   it("equal Uint8Arrays return true", () => {
@@ -400,21 +401,32 @@ describe("export", () => {
   });
 });
 
-test("logQueryExecutionTime logs timing", async () => {
-  await using setup = await setupSqlite();
-  const { run, sqlite } = setup;
-  const { console } = run.deps;
+test("logQueryExecutionTime logs the query and its duration", async () => {
+  // Each clock reading advances the clock by 1ms.
+  await using run = testCreateRun({
+    ...testCreateSqliteDep,
+    time: testCreateTime({ autoIncrement: "sync" }),
+  });
+  await using sqlite = await run.ok(createSqlite(testName, { mode: "memory" }));
+  const query = {
+    ...sql`select 1;`,
+    options: { logQueryExecutionTime: true },
+  };
 
-  sqlite.exec(sql`create table a (data);`);
+  sqlite.exec(query);
 
-  const query = sql`select * from a;`;
-  sqlite.exec({ ...query, options: { logQueryExecutionTime: true } });
-
-  const entries = console.getEntriesSnapshot();
-  const timeLogs = entries.filter((e) => e.method === "time");
-  assertTrue(timeLogs.length > 0);
-  const timeEndLogs = entries.filter((e) => e.method === "timeEnd");
-  assertTrue(timeEndLogs.length > 0);
+  assertEqual(
+    run.deps.console
+      .getEntriesSnapshot()
+      .filter(({ method }) => method === "log"),
+    [
+      {
+        method: "log",
+        path: ["sql"],
+        args: ["[logQueryExecutionTime]", { query, duration: "1.000ms" }],
+      },
+    ],
+  );
 });
 
 describe("logExplainQueryPlan", () => {
