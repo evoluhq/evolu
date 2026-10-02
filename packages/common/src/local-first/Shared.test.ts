@@ -1941,6 +1941,32 @@ describe("sync state", () => {
       assertSame(route.skippedError, null);
     });
 
+    it("broadcasts nothing when a publication runs after the worker is disposed", async (t) => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { states } = setupSyncStates(setup, disposer);
+      const instance = await setup.createEvolu();
+      const transport = await setupAppOwnerTransport(
+        instance,
+        "wss://disposed-worker.example",
+      );
+
+      const publish = setupDeferredSyncStatePublication(
+        t,
+        createWebSocket,
+        transport.url,
+      );
+      await setup[Symbol.asyncDispose]();
+      await testWaitForWorkerMessage();
+      const publishedCount = states.length;
+
+      // The publication was scheduled before disposal and runs after it.
+      publish();
+      await testWaitForWorkerMessage();
+      assertLength(states, publishedCount);
+    });
+
     for (const removed of [
       "writable registration",
       "source transport",
@@ -2323,6 +2349,120 @@ describe("sync state", () => {
         at: setup.run.deps.time.now(),
       });
       assertSame(routeOf(latest(), testName, 1).type, "Complete");
+    });
+
+    it("reports SyncFailed only for failed owners that still have a route", async () => {
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const instance = await setup.createEvolu();
+      // Both owners share one socket.
+      const transport = {
+        type: "WebSocket",
+        url: "wss://downgraded-owner.example",
+      } as const;
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [testAppOwner, testAppOwner2].map((owner) => ({
+          owner: { owner, transports: [transport] },
+          action: "add",
+        })),
+      });
+      await testWaitForWorkerMessage();
+      createWebSocket.open(transport.url);
+      await testWaitForWorkerMessage();
+      const round = instance.dbInputs.at(-1);
+      assertNotUndefined(round);
+      assertEqual(round.request, {
+        type: "ForSharedWorker",
+        message: {
+          type: "CreateSyncMessages",
+          owners: [testAppOwner, testAppOwner2],
+        },
+      });
+
+      // While the round is dispatched, the other owner becomes readonly. It
+      // keeps its claim on the transport but no longer has a route.
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            owner: {
+              owner: {
+                id: testAppOwner2.id,
+                encryptionKey: testAppOwner2.encryptionKey,
+              },
+              transports: [transport],
+            },
+            action: "add",
+          },
+          {
+            owner: { owner: testAppOwner2, transports: [transport] },
+            action: "remove",
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      const transportId = latest().transports[0]?.id;
+      assertNotUndefined(transportId);
+      assertEqual(
+        ownersOf(latest()).find(({ ownerId }) => ownerId === testAppOwner2.id),
+        {
+          type: "Readonly",
+          ownerId: testAppOwner2.id,
+          transportIds: [transportId],
+        },
+      );
+
+      instance.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: round.attemptId,
+        response: {
+          type: "ForSharedWorker",
+          message: {
+            type: "CreateSyncMessages",
+            protocolMessagesByOwnerId: new Map(),
+            failedOwnerIds: new Set([testAppOwner2.id, testAppOwner.id]),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+
+      // The writable owner's route fails, and the readonly owner gets no
+      // route.
+      assertEqual(ownersOf(latest()), [
+        {
+          type: "Writable",
+          ownerId: testAppOwner.id,
+          routes: [
+            {
+              type: "Pending",
+              transportId,
+              failure: { type: "SyncFailed", at: setup.run.deps.time.now() },
+              skippedError: null,
+              completeAt: null,
+              lastSentAt: null,
+              lastReceivedAt: null,
+            },
+          ],
+        },
+        {
+          type: "Readonly",
+          ownerId: testAppOwner2.id,
+          transportIds: [transportId],
+        },
+      ]);
+
+      // The response was handled, so the queue dispatches the next round.
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ ownerId: testAppOwner.id, action: "sync" }],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transport.url,
+      ]);
     });
 
     it("keeps SyncFailed when a round fails after an earlier round was sent", async () => {
@@ -3781,6 +3921,78 @@ describe("sync state", () => {
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
       assertSame(latest().transports[0].connection.type, "Disconnected");
+    });
+
+    it("reconnects a shared socket when the owner silent longest reaches the timeout", async () => {
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const instance = await setup.createEvolu();
+      const { time } = setup.run.deps;
+      // Both owners share one socket.
+      const transport = {
+        type: "WebSocket",
+        url: "wss://shared-silent.example",
+      } as const;
+
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            owner: { owner: testAppOwner, transports: [transport] },
+            action: "add",
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      createWebSocket.open(transport.url);
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transport.url,
+      ]);
+      await postMutation(instance, setup.run);
+      assertEqual(
+        createWebSocket.sentMessages.splice(0).map(({ url }) => url),
+        [transport.url],
+      );
+
+      // One of the app owner's two requests is answered five seconds in, so
+      // its silence restarts there.
+      time.advance("5s");
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await respondToApplySync(instance, false, {
+        ok: true,
+        value: { type: "Converged" },
+      });
+
+      // The second owner's request follows five seconds later.
+      time.advance("5s");
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            owner: { owner: testAppOwner2, transports: [transport] },
+            action: "add",
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(
+        await respondToSyncRound(instance, createWebSocket, testAppOwner2),
+        [transport.url],
+      );
+
+      // When the first timer fires, neither owner has been silent for the
+      // whole timeout, so it waits for the app owner, silent the longest.
+      time.advance(Millis.orThrow(80_000));
+      await testWaitForWorkerMessage();
+      assertEqual(createWebSocket.reconnectedUrls, []);
+      time.advance(Millis.orThrow(4_999));
+      await testWaitForWorkerMessage();
+      assertEqual(createWebSocket.reconnectedUrls, []);
+      time.advance("1ms");
+      await testWaitForWorkerMessage();
+      assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
     });
 
     it("stops timing a request when its socket closes", async () => {

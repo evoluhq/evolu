@@ -1906,7 +1906,9 @@ export const initSharedWorker =
             shortestRemaining = remaining;
         }
         if (!isTimedOut) {
-          if (shortestRemaining === null) return;
+          // Emptying outstandingByOwnerId clears this timer, so an owner is
+          // still outstanding.
+          assertNonNullable(shortestRemaining);
           // Timer delays use integer milliseconds; round up to wait at least
           // the remaining fractional duration.
           armSyncRequestTimeout(
