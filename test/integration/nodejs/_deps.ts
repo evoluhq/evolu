@@ -42,31 +42,40 @@ export interface TestTimestampBytesFixtures {
 export const testCreateTimestampBytesFixtures = (
   deps: RandomLibDep,
 ): TestTimestampBytesFixtures => {
-  // Random numbers are unique only for a few thousand iterations. We leverage
-  // this behavior to generate counters.
-  // See: https://github.com/transitive-bullshit/random/issues/45
   const numberOfTimestamps = 7000;
   const oneYearMillis = 365 * 24 * 60 * 60 * 1000;
-  const randomMillisMap = new Map<
-    Millis,
-    { counter: Counter; nodeId: NodeId }
-  >();
+  const counterByMillis = new Map<Millis, Counter>();
   const timestamps: Array<[Millis, Counter, NodeId]> = [];
 
   for (let i = 0; i < numberOfTimestamps; i++) {
-    const millis = deps.randomLib.int(0, oneYearMillis) as Millis;
-    const entry = randomMillisMap.get(millis);
+    const previous = timestamps.at(-1);
+    // Some timestamps share the millis of the previous one, as when the clock
+    // does not advance between changes.
+    const millis =
+      previous && deps.randomLib.next() < 0.3
+        ? previous[0]
+        : (deps.randomLib.int(0, oneYearMillis) as Millis);
+    const lastCounter = counterByMillis.get(millis);
+    let counter: Counter;
 
-    if (entry) {
-      entry.counter = (entry.counter + 1) as Counter;
-      timestamps.push([millis, entry.counter, entry.nodeId]);
+    if (lastCounter !== undefined) {
+      counter = (lastCounter + 1) as Counter;
+    } else if (deps.randomLib.next() < 0.02) {
+      // A counter encoded in two or three bytes, leaving room for every later
+      // timestamp with the same millis.
+      counter = deps.randomLib.int(
+        128,
+        maxCounter - numberOfTimestamps,
+      ) as Counter;
     } else {
-      const nodeId = (
-        deps.randomLib.next() > 0.8 ? "99c99028d6636a91" : "68a2a7bf3f85a096"
-      ) as NodeId;
-      randomMillisMap.set(millis, { counter: 0 as Counter, nodeId });
-      timestamps.push([millis, 0 as Counter, nodeId]);
+      counter = 0 as Counter;
     }
+
+    const nodeId = (
+      deps.randomLib.next() > 0.8 ? "99c99028d6636a91" : "68a2a7bf3f85a096"
+    ) as NodeId;
+    counterByMillis.set(millis, counter);
+    timestamps.push([millis, counter, nodeId]);
   }
 
   const testTimestampsAsc = timestamps
