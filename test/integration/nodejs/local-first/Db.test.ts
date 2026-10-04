@@ -2746,7 +2746,7 @@ describe("sync message flow", () => {
     });
   });
 
-  describe("ApplySyncMessage with a change it cannot decrypt, verify, or decode", () => {
+  describe("ApplySyncMessage with a change it skips", () => {
     const createMessage = (
       setup: DbWorkerSetup,
       millis: number,
@@ -3080,6 +3080,36 @@ describe("sync message flow", () => {
         ["local", ...Array.from({ length: remoteCount }, () => "remote")],
       );
       assertOnRelay(relay, local);
+      assertEqual(setup.consoleEntryOrErrors, []);
+    });
+
+    it("finishes a round around a stored change too large for any frame", async () => {
+      await using setup = await setupDbWorker();
+      await using relay = await setupSqliteAndRelayStorage();
+      // Only the main thread limits a mutation's size, as clients up to 8.11
+      // did not, so the database worker stores this blob, whose change
+      // encrypts to 1,015,851 bytes.
+      for (const name of [new Uint8Array(999_377), "local"])
+        await postRequest(
+          setup,
+          setupMutateRequest(setup.evoluInstanceId, [
+            createMutationChange({
+              table: "testTable",
+              id: setup.createId(),
+              values: { name },
+              isInsert: true,
+              isDelete: null,
+            }),
+          ]),
+        );
+
+      const { skippedErrorTypes } = await syncWithRelay(setup, relay);
+
+      assertEqual(
+        [...new Set(skippedErrorTypes)],
+        ["ProtocolChangeTooLargeError"],
+      );
+      assertSame(relay.storage.getSize(testAppOwnerIdBytes), 1);
       assertEqual(setup.consoleEntryOrErrors, []);
     });
   });

@@ -1028,6 +1028,38 @@ describe("ProtocolMessageBuffer tryWrite", () => {
 });
 
 describe("createProtocolMessageBuffer", () => {
+  it("unwraps repeatedly without changing the builder", () => {
+    const deps = testCreateDeps();
+    const setupBuffer = () =>
+      createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        writeKey: testAppOwner.writeKey,
+      });
+    const first = createEncryptedCrdtMessage(deps, createTestCrdtMessage(deps));
+    const second = createEncryptedCrdtMessage(
+      deps,
+      createTestCrdtMessage(deps),
+    );
+    const range: FingerprintRange = {
+      type: RangeType.Fingerprint,
+      upperBound: InfiniteUpperBound,
+      fingerprint: zeroFingerprint,
+    };
+
+    const buffer = setupBuffer();
+    buffer.addMessage(first);
+    const message = buffer.unwrap();
+    assertEqualBytes(buffer.unwrap(), message);
+
+    buffer.addMessage(second);
+    buffer.addRange(range);
+    const expected = setupBuffer();
+    expected.addMessage(first);
+    expected.addMessage(second);
+    expected.addRange(range);
+    assertEqualBytes(buffer.unwrap(), expected.unwrap());
+  });
+
   it("should allow no ranges", () => {
     const buffer = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,

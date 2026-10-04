@@ -76,6 +76,7 @@ import type {
 import { createOwnerWebSocketTransport } from "./Owner.ts";
 import {
   encodeDbChange,
+  type ProtocolChangeTooLargeError,
   type ProtocolError,
   type ProtocolInvalidDataError,
   type ProtocolQuotaError,
@@ -985,6 +986,14 @@ export type DevicePersistence = "Persisted" | "NotPersisted" | "Unknown";
  * {@link DecryptWithXChaCha20Poly1305Error} and your code creates or shares the
  * owner, check the owner's keys.
  *
+ * A {@link ProtocolChangeTooLargeError} skip is a change no protocol message can
+ * hold: one this device saved before {@link maxMutationSize} existed, or a
+ * crafted one received from a relay. Every route through a relay that lacks it
+ * shows it after each sync, and everything else still syncs, but changes
+ * received from one relay reach the others only after a reconnect or
+ * {@link Evolu.requestSync}. The change is not recovered, and replacing relays
+ * does not help.
+ *
  * @group Core
  */
 export type EvoluError =
@@ -1708,7 +1717,11 @@ export const createEvolu =
         // gets it already batched and cannot reach the call site; quarantine,
         // which holds changes stored for sync; and skipping it in sync, which
         // keeps range fingerprints disagreeing. Received changes are not
-        // checked, and oversized changes stored before this limit are not
+        // checked. Changes saved before this limit can be too large for any
+        // protocol message, as can crafted changes on a relay. Their
+        // fingerprints disagree either way, so sync skips them, which ends
+        // every round instead of retrying forever. A client reports such a
+        // change as its route's skippedError, and a relay logs it. They are not
         // recovered, which needs a history-aware design.
         //
         // Local-only tables never sync, so they have no limit.

@@ -116,6 +116,7 @@ import {
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
   SubscriptionFlags,
+  type ProtocolChangeTooLargeError,
   type ProtocolInvalidDataError,
   type ProtocolMessage,
   type ProtocolTimestampMismatchError,
@@ -374,6 +375,7 @@ export const startDbWorker =
                 const result = await run.abortable(
                   applyProtocolMessageAsClient(inputMessage, {
                     writeKey: owner.writeKey,
+                    onChangeTooLarge: storage.onChangeTooLarge,
                   }),
                 );
                 postQueuedResponse({
@@ -918,14 +920,18 @@ interface ClientStorage extends Storage, BaseSqliteStorage {
   ) => void;
   readonly didWriteMessages: () => boolean;
   /**
-   * The first error of a message that {@link Storage.writeMessages} skipped in
-   * this request, or null.
+   * The first error of a message skipped in this request, or null: one that
+   * {@link Storage.writeMessages} could not store, or a stored change that sync
+   * could not send.
    */
   readonly skippedError: () =>
     | DecryptWithXChaCha20Poly1305Error
     | ProtocolInvalidDataError
     | ProtocolTimestampMismatchError
+    | ProtocolChangeTooLargeError
     | null;
+  /** Records a stored change that sync skipped, unless an error came first. */
+  readonly onChangeTooLarge: (error: ProtocolChangeTooLargeError) => void;
 }
 
 const createClientStorage = (
@@ -962,6 +968,9 @@ const createClientStorage = (
 
     didWriteMessages: () => didWriteMessages,
     skippedError: () => skippedError,
+    onChangeTooLarge: (error) => {
+      skippedError ??= error;
+    },
 
     // Not implemented yet.
     validateWriteKey: constFalse,

@@ -205,7 +205,12 @@ export interface Storage {
     messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
   ) => Task<void, StorageWriteMessagesError>;
 
-  /** Read encrypted {@link DbChange}s from storage. */
+  /**
+   * Read encrypted {@link DbChange}s from storage.
+   *
+   * The returned array must not be modified or reused later, because sync
+   * references it until it finishes its answer.
+   */
   readonly readDbChange: (
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,

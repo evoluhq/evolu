@@ -105,7 +105,10 @@
  *
  * Each mutation is limited to {@link maxMutationSize}, so every change fits one
  * message of {@link defaultProtocolMessageMaxSize} next to the largest ranges
- * section.
+ * section. Changes saved before that limit existed, and crafted changes a relay
+ * stores, can be larger. Sync skips a stored change that cannot fit an empty
+ * message after a pending Skip range, which is the message a later round is
+ * guaranteed to reach, and reports it as a {@link ProtocolChangeTooLargeError}.
  *
  * ## Why Binary?
  *
@@ -508,6 +511,31 @@ export interface ProtocolTimestampMismatchError extends Typed<"ProtocolTimestamp
 }
 
 /**
+ * Error for a stored change that sync skipped because it cannot fit an empty
+ * {@link ProtocolMessage} after a pending Skip range, which is the message a
+ * later round is guaranteed to reach.
+ *
+ * Every change within {@link maxMutationSize} fits. Larger ones are changes
+ * saved before that limit existed and crafted changes a relay stores. A change
+ * up to 22 bytes too large for that message can still fit one without a pending
+ * skip, so sync may send it, sometimes after reporting it, but usually reports
+ * it in every sync like a larger one. With
+ * {@link defaultProtocolMessageMaxSize}, PADMÉ padding leaves no honest change
+ * size in that 22-byte window.
+ *
+ * An answer to a Timestamps range neither sends nor lists a skipped change, so
+ * range fingerprints keep disagreeing about it. A request or a split still
+ * lists its timestamp, so a peer that lacks it may ask for it once per sync and
+ * gets an answer without it. Every sync narrows the fingerprints to it, skips
+ * it again, and ends.
+ */
+export interface ProtocolChangeTooLargeError extends Typed<"ProtocolChangeTooLargeError"> {
+  readonly timestamp: Timestamp;
+  /** The length of the encrypted change in bytes. */
+  readonly size: PositiveInt;
+}
+
+/**
  * Creates a {@link ProtocolMessage} from CRDT messages.
  *
  * If the message size would exceed {@link defaultProtocolMessageMaxSize}, the
@@ -689,18 +717,13 @@ export const createProtocolMessageForUnsubscribe = (
  * which keeps them only if the frame can still be closed. A write outside a
  * trial is a closing write: `addMessage` and `addRange` assert that the frame
  * fits `totalMaxSize`.
+ *
+ * The builder references each change, which `unwrap` copies into the frame it
+ * returns, so a change must not be modified while the builder is in use.
+ * `unwrap` leaves the builder unchanged, so it can be called again.
  */
 export interface ProtocolMessageBuffer {
-  readonly canAddMessage: (message: EncryptedCrdtMessage) => boolean;
-
   readonly addMessage: (message: EncryptedCrdtMessage) => void;
-
-  readonly canSplitRange: () => boolean;
-
-  readonly canAddTimestampsRangeAndMessage: (
-    timestamps: TimestampsBuffer,
-    message: EncryptedCrdtMessage | null,
-  ) => boolean;
 
   readonly addRange: (
     range: SkipRange | FingerprintRange | TimestampsRangeWithTimestampsBuffer,
@@ -760,7 +783,7 @@ export const createProtocolMessageBuffer = (
     header: createBuffer(),
     messages: {
       timestamps: createTimestampsBuffer(),
-      dbChanges: createBuffer(),
+      dbChangeLengths: createBuffer(),
     },
     ranges: {
       timestamps: createTimestampsBuffer(),
@@ -786,21 +809,25 @@ export const createProtocolMessageBuffer = (
     buffers.header.extend([options.errorCode]);
   }
 
+  // Changes are referenced, not copied, so a trial undoes messages by
+  // shortening this array, and unwrap copies each change once.
+  const dbChanges: Array<EncryptedDbChange> = [];
+  let dbChangesLength = 0;
   let isLastRangeInfinite = false;
   let isInTrial = false;
 
   // Writes outside a trial assert this, so an overflow fails where it happens.
   // A frame must never exceed totalMaxSize: relays at @evolu/nodejs 4.0.0 or
   // older crash on a frame one byte larger than their 1,000,000-byte limit.
-  const isWithinSizeLimits = () => getSize() <= totalMaxSize;
+  const isWithinSizeLimits = () => getFrameSize() <= totalMaxSize;
 
-  const getSize = () =>
-    PositiveInt.orThrow(getHeaderAndMessagesSize() + getRangesSize());
-
-  const getHeaderAndMessagesSize = () =>
-    buffers.header.getLength() +
-    buffers.messages.timestamps.getLength() +
-    buffers.messages.dbChanges.getLength();
+  // Lengths after a header that is never empty.
+  const getFrameSize = () =>
+    (buffers.header.getLength() +
+      buffers.messages.timestamps.getLength() +
+      buffers.messages.dbChangeLengths.getLength() +
+      dbChangesLength +
+      getRangesSize()) as PositiveInt;
 
   // Without ranges, the ranges section is omitted, including its count.
   const getRangesSize = () =>
@@ -810,89 +837,16 @@ export const createProtocolMessageBuffer = (
         buffers.ranges.payloads.getLength()
       : 0;
 
-  const getClosingReserve = () => {
-    if (options.messageType === MessageType.Broadcast || isLastRangeInfinite) {
-      return 0;
-    }
-    // Fingerprint(InfiniteUpperBound) encodes no upper bound, only its type
-    // (1 byte) and fingerprint (12 bytes). The ranges count varint gains a
-    // byte when the new count is a power of 128. That includes 128^0 = 1,
-    // since the first range adds the count itself. So closing takes 13 or 14
-    // bytes.
-    let newCount = buffers.ranges.timestamps.getCount() + 1;
-    while (newCount % 128 === 0) newCount /= 128;
-    return 1 + fingerprintSize + (newCount === 1 ? 1 : 0);
-  };
-
-  // The can* predicates reserve remainingRange once ranges exist, while
-  // getSize and tryWrite measure exactly.
-  const getRangesSizeWithMargin = () =>
-    buffers.ranges.timestamps.getCount() > 0
-      ? getRangesSize() + safeMargins.remainingRange
-      : 0;
-
-  /**
-   * Worst-case sizes for the can* predicates, which predict whether a write
-   * fits before making it. Computing exact worst cases is difficult due to
-   * variable-length, run-length, and delta encoding, so each includes a small
-   * safety margin.
-   *
-   * `tryWrite` needs no margins. It makes the write, measures the exact frame,
-   * and undoes the write in constant time when the frame no longer fits, so a
-   * trial costs about as much as the write itself.
-   */
-  const safeMargins = {
-    // bytes: range type + possible increased count varint
-    remainingRange: fingerprintSize + 10,
-    // bytes: max millis + max count + NodeId
-    timestamp: 30,
-    // bytes: maximum encoded DbChange length varint
-    dbChangeLength: 8,
-    // bytes: worst case is around 650 bytes
-    splitRange: 800,
-    // bytes: range type + its upperBound + possible increased count varint
-    timestampsRange: 50,
-  };
-
-  const addMessageSafeMargin =
-    safeMargins.timestamp +
-    safeMargins.dbChangeLength +
-    safeMargins.remainingRange;
-
+  // A trial makes the write, measures the exact frame, and undoes the write in
+  // constant time when the frame no longer fits, so it needs no worst-case
+  // margins and costs about as much as the write itself.
   return {
-    canAddMessage: (message) =>
-      getHeaderAndMessagesSize() +
-        getRangesSizeWithMargin() +
-        addMessageSafeMargin +
-        message.change.length <=
-      totalMaxSize,
-
     addMessage: (message) => {
       buffers.messages.timestamps.add(message.timestamp);
-      encodeLength(buffers.messages.dbChanges, message.change);
-      buffers.messages.dbChanges.extend(message.change);
+      encodeLength(buffers.messages.dbChangeLengths, message.change);
+      dbChanges.push(message.change);
+      dbChangesLength += message.change.length;
       assert(isInTrial || isWithinSizeLimits(), "the message is too big");
-    },
-
-    canSplitRange: () =>
-      getRangesSizeWithMargin() + safeMargins.splitRange <= rangesMaxSize,
-
-    canAddTimestampsRangeAndMessage: (timestamps, message) => {
-      const rangesNewSize =
-        getRangesSizeWithMargin() +
-        timestamps.getLength() +
-        safeMargins.timestampsRange;
-
-      return (
-        rangesNewSize <= rangesMaxSize &&
-        (message
-          ? getHeaderAndMessagesSize() +
-              rangesNewSize +
-              addMessageSafeMargin +
-              message.change.length <=
-            totalMaxSize
-          : true)
-      );
     },
 
     addRange: (range) => {
@@ -945,7 +899,10 @@ export const createProtocolMessageBuffer = (
 
     tryWrite: (write, reserve = zeroNonNegativeInt) => {
       const restoreMessageTimestamps = buffers.messages.timestamps.checkpoint();
-      const dbChangesLength = buffers.messages.dbChanges.getLength();
+      const dbChangeLengthsLength =
+        buffers.messages.dbChangeLengths.getLength();
+      const dbChangesCount = dbChanges.length;
+      const checkpointDbChangesLength = dbChangesLength;
       const restoreRangeTimestamps = buffers.ranges.timestamps.checkpoint();
       const typesLength = buffers.ranges.types.getLength();
       const payloadsLength = buffers.ranges.payloads.getLength();
@@ -956,15 +913,28 @@ export const createProtocolMessageBuffer = (
       isInTrial = true;
       try {
         write();
-        const reserves = getClosingReserve() + reserve;
+        // Fingerprint(InfiniteUpperBound) encodes no upper bound, only its
+        // type (1 byte) and fingerprint (12 bytes). The ranges count varint
+        // gains a byte when the new count is a power of 128. That includes
+        // 128^0 = 1, since the first range adds the count itself. So closing
+        // takes 13 or 14 bytes, and nothing for a Broadcast or a closed frame.
+        let newCount = buffers.ranges.timestamps.getCount() + 1;
+        while (newCount % 128 === 0) newCount /= 128;
+        const closingReserve =
+          options.messageType === MessageType.Broadcast || isLastRangeInfinite
+            ? 0
+            : 1 + fingerprintSize + (newCount === 1 ? 1 : 0);
+        const reserves = closingReserve + reserve;
         isKept =
-          getSize() + reserves <= totalMaxSize &&
+          getFrameSize() + reserves <= totalMaxSize &&
           getRangesSize() + reserves <= rangesMaxSize;
       } finally {
         isInTrial = wasInTrial;
         if (!isKept) {
           restoreMessageTimestamps();
-          buffers.messages.dbChanges.truncate(dbChangesLength);
+          buffers.messages.dbChangeLengths.truncate(dbChangeLengthsLength);
+          dbChanges.length = dbChangesCount;
+          dbChangesLength = checkpointDbChangesLength;
           restoreRangeTimestamps();
           buffers.ranges.types.truncate(typesLength);
           buffers.ranges.payloads.truncate(payloadsLength);
@@ -982,19 +952,44 @@ export const createProtocolMessageBuffer = (
         );
       }
 
-      buffers.messages.timestamps.append(buffers.header);
-      buffers.header.extend(buffers.messages.dbChanges.unwrap());
+      const frame = new Uint8Array(getFrameSize());
+      frame.set(buffers.header.unwrap());
+      let offset: number = buffers.header.getLength();
 
-      if (buffers.ranges.timestamps.getCount() > 0) {
-        buffers.ranges.timestamps.append(buffers.header);
-        buffers.header.extend(buffers.ranges.types.unwrap());
-        buffers.header.extend(buffers.ranges.payloads.unwrap());
+      // Written to a new buffer, so the builder is unchanged and unwrap can be
+      // called again.
+      const messageTimestamps = createBuffer();
+      buffers.messages.timestamps.append(messageTimestamps);
+      frame.set(messageTimestamps.unwrap(), offset);
+      offset += messageTimestamps.getLength();
+
+      // Each change follows its length, whose last varint byte is below 128.
+      const lengths = buffers.messages.dbChangeLengths.unwrap();
+      let lengthsOffset = 0;
+      for (const change of dbChanges) {
+        do {
+          frame[offset++] = lengths[lengthsOffset];
+        } while (lengths[lengthsOffset++] >= 128);
+        frame.set(change, offset);
+        offset += change.length;
       }
 
-      return buffers.header.unwrap() as ProtocolMessage;
+      if (buffers.ranges.timestamps.getCount() > 0) {
+        const ranges = createBuffer();
+        buffers.ranges.timestamps.append(ranges);
+        ranges.extend(buffers.ranges.types.unwrap());
+        ranges.extend(buffers.ranges.payloads.unwrap());
+        frame.set(ranges.unwrap(), offset);
+        offset += ranges.getLength();
+      }
+
+      // An overcounted size would end the frame with zero bytes peers accept.
+      assert(offset === frame.length, "the frame size is exact");
+
+      return frame as ProtocolMessage;
     },
 
-    getSize,
+    getSize: getFrameSize,
   };
 };
 
@@ -1099,6 +1094,13 @@ export interface ApplyProtocolMessageAsClientOptions {
   writeKey?: OwnerWriteKey;
 
   rangesMaxSize?: ProtocolMessageRangesMaxSize;
+
+  /**
+   * Called for each stored change that sync skipped as a
+   * {@link ProtocolChangeTooLargeError}. Without it, the error is logged with
+   * `console.warn`.
+   */
+  onChangeTooLarge?: (error: ProtocolChangeTooLargeError) => void;
 
   /** For tests only. */
   version?: NonNegativeInt;
@@ -1253,18 +1255,25 @@ export const applyProtocolMessageAsClient =
         return ok({ type: "Converged" });
       }
 
-      const output = createProtocolMessageBuffer(ownerId, {
-        messageType: MessageType.Request,
-        writeKey,
-        rangesMaxSize: options.rangesMaxSize,
-      });
+      const createOutput = () =>
+        createProtocolMessageBuffer(ownerId, {
+          messageType: MessageType.Request,
+          writeKey,
+          rangesMaxSize: options.rangesMaxSize,
+        });
+      const output = createOutput();
 
       let broadcast: ProtocolMessageBuffer | undefined;
-      const result = sync(run.deps)(ranges, output, ownerIdBytes, (message) => {
-        broadcast ??= createProtocolMessageBuffer(ownerId, {
-          messageType: MessageType.Broadcast,
-        });
-        broadcast.addMessage(message);
+      const result = sync(run.deps)(ranges, output, ownerIdBytes, {
+        createEmptyOutput: createOutput,
+        onChangeTooLarge: options.onChangeTooLarge ?? run.deps.console.warn,
+        onMessage: (message) => {
+          broadcast ??= createProtocolMessageBuffer(ownerId, {
+            messageType: MessageType.Broadcast,
+          });
+          // The request holds the same messages after a larger header.
+          broadcast.addMessage(message);
+        },
       });
 
       // A failure was logged by sync.
@@ -1446,12 +1455,14 @@ export const applyProtocolMessageAsRelay =
 
       const ranges = decodeRanges(input);
 
-      const output = createProtocolMessageBuffer(ownerId, {
-        messageType: MessageType.Response,
-        errorCode: ProtocolErrorCode.NoError,
-        totalMaxSize: options.totalMaxSize,
-        rangesMaxSize: options.rangesMaxSize,
-      });
+      const createOutput = () =>
+        createProtocolMessageBuffer(ownerId, {
+          messageType: MessageType.Response,
+          errorCode: ProtocolErrorCode.NoError,
+          totalMaxSize: options.totalMaxSize,
+          rangesMaxSize: options.rangesMaxSize,
+        });
+      const output = createOutput();
 
       // Non-initiators always respond to provide sync completion feedback,
       // even when there's nothing to sync.
@@ -1459,7 +1470,10 @@ export const applyProtocolMessageAsRelay =
         return ok({ type: "Response", message: output.unwrap() });
       }
 
-      const result = sync(run.deps)(ranges, output, ownerIdBytes);
+      const result = sync(run.deps)(ranges, output, ownerIdBytes, {
+        createEmptyOutput: createOutput,
+        onChangeTooLarge: run.deps.console.warn,
+      });
 
       const message = result.ok
         ? output.unwrap()
@@ -1546,13 +1560,44 @@ const decodeMessages = (
   return messages;
 };
 
+/**
+ * Answers the ranges into `output`, returning whether it has anything to send.
+ *
+ * Every write except a closing one is a trial (see
+ * {@link ProtocolMessageBuffer.tryWrite}), so the frame always has room to close
+ * with one Fingerprint range with {@link InfiniteUpperBound}. When a write does
+ * not fit, that range closes the frame. Its fingerprint covers everything from
+ * the last upper bound the frame states, which every v1 peer assumes, and the
+ * peer reconciles it in the next round.
+ *
+ * A stored change that cannot fit an empty frame with this header, with only
+ * its own timestamp listed after a pending skip, is skipped, and
+ * `onChangeTooLarge` reports it as a {@link ProtocolChangeTooLargeError}. A
+ * later round is guaranteed to reach exactly that frame, so a change that fits
+ * it is sent eventually.
+ *
+ * An answer to a Timestamps range neither sends nor lists a skipped change, but
+ * a request or a split lists its timestamp, so a peer that lacks it may ask for
+ * it once per sync and gets an answer without it. Fingerprints keep disagreeing
+ * about it, so every sync narrows them to it, skips it again, and ends.
+ */
 const sync =
   (deps: StorageDep & ConsoleDep) =>
   (
     ranges: NonEmptyReadonlyArray<Range>,
     output: ProtocolMessageBuffer,
     ownerIdBytes: OwnerIdBytes,
-    onMessage?: (message: EncryptedCrdtMessage) => void,
+    {
+      createEmptyOutput,
+      onChangeTooLarge,
+      onMessage,
+    }: {
+      /** Creates an empty frame with the header of `output`. */
+      createEmptyOutput: () => ProtocolMessageBuffer;
+      onChangeTooLarge: (error: ProtocolChangeTooLargeError) => void;
+      /** Called with each message `output` keeps. */
+      onMessage?: (message: EncryptedCrdtMessage) => void;
+    },
   ): Result<boolean, typeof ProtocolErrorCode.SyncError> => {
     const outputInitialSize = output.getSize();
     let storageSize: NonNegativeInt;
@@ -1565,7 +1610,11 @@ const sync =
 
     let prevUpperBound: RangeUpperBound | null = null;
     let prevIndex = zeroNonNegativeInt;
+    // The index of the last upper bound the frame states, 0 before any.
+    let statedIndex = zeroNonNegativeInt;
 
+    // Consecutive skipped ranges become one Skip range, written only before
+    // the next non-skip range.
     let skip = false;
     let nonSkipRangeAdded = false;
 
@@ -1574,6 +1623,9 @@ const sync =
     ) => {
       // The last range, if any non skip was added, must have InfiniteUpperBound.
       if (nonSkipRangeAdded && range.upperBound === InfiniteUpperBound) {
+        // A closing write. Like the closing Fingerprint range, it encodes no
+        // upper bound, and its type takes 1 byte of the 13 that every kept
+        // trial reserved beyond the ranges count.
         output.addRange({
           type: RangeType.Skip,
           upperBound: InfiniteUpperBound,
@@ -1583,42 +1635,60 @@ const sync =
       }
     };
 
-    const coalesceSkipsBeforeAdd = () => {
-      // Set to true because we are going to add a non skip range.
-      nonSkipRangeAdded = true;
-      if (skip) {
+    /**
+     * Tries to write a non-skip range ending at the index `upper` after the
+     * pending skip, if any.
+     */
+    const tryWriteRange = (
+      upper: NonNegativeInt,
+      write: () => void,
+    ): boolean => {
+      const isKept = output.tryWrite(() => {
+        if (skip) {
+          assertNonNullable(prevUpperBound, "prevUpperBound is null");
+          output.addRange({
+            type: RangeType.Skip,
+            upperBound: prevUpperBound,
+          });
+        }
+        write();
+      });
+      if (isKept) {
         skip = false;
-        assertNonNullable(prevUpperBound, "prevUpperBound is null");
-        // There is always a space for a skip range before adding.
-        output.addRange({
-          type: RangeType.Skip,
-          upperBound: prevUpperBound,
-        });
+        nonSkipRangeAdded = true;
+        statedIndex = upper;
       }
+      return isKept;
     };
 
-    // When we don't have a space...
-    const addFingerprintForRemainingRange = (
-      begin: NonNegativeInt,
-    ): boolean => {
+    /**
+     * Closes the frame with a Fingerprint range with InfiniteUpperBound over
+     * the items from the last upper bound the frame states. A frame that cannot
+     * fit a range closes without writing the pending Skip range, because only
+     * this range has room reserved, so it covers the skipped items too.
+     */
+    const closeWithFingerprint = (): Result<
+      true,
+      typeof ProtocolErrorCode.SyncError
+    > => {
       let fingerprint: Fingerprint;
       try {
         fingerprint = deps.storage.fingerprint(
           ownerIdBytes,
-          begin,
+          statedIndex,
           storageSize,
         );
       } catch (error) {
         deps.console.error(error);
-        return false;
+        return err(ProtocolErrorCode.SyncError);
       }
-      // There is always a space for a ramaining range.
+      // A closing write. Every kept trial reserved room for it.
       output.addRange({
         type: RangeType.Fingerprint,
         upperBound: InfiniteUpperBound,
         fingerprint,
       });
-      return true;
+      return ok(true);
     };
 
     for (const range of ranges) {
@@ -1659,9 +1729,12 @@ const sync =
 
           if (eqArrayNumber(range.fingerprint, ourFingerprint)) {
             skipRange(range);
-          } else if (output.canSplitRange()) {
-            coalesceSkipsBeforeAdd();
-            try {
+            break;
+          }
+
+          let isSplit: boolean;
+          try {
+            isSplit = tryWriteRange(upper, () => {
               splitRange(deps)(
                 ownerIdBytes,
                 lower,
@@ -1669,16 +1742,13 @@ const sync =
                 currentUpperBound,
                 output,
               );
-            } catch (error) {
-              if (AbortError.is(error)) throw error;
-              deps.console.error(error);
-              return err(ProtocolErrorCode.SyncError);
-            }
-          } else {
-            return addFingerprintForRemainingRange(upper)
-              ? ok(true)
-              : err(ProtocolErrorCode.SyncError);
+            });
+          } catch (error) {
+            if (AbortError.is(error)) throw error;
+            deps.console.error(error);
+            return err(ProtocolErrorCode.SyncError);
           }
+          if (!isSplit) return closeWithFingerprint();
           break;
         }
 
@@ -1692,6 +1762,8 @@ const sync =
 
           let exceeded = false as boolean;
           let iterateFailed = false as boolean;
+          // A pending skip stays pending until the range is written.
+          const isSkipPending = skip;
 
           try {
             deps.storage.iterate(
@@ -1722,24 +1794,55 @@ const sync =
                   }
                 }
 
+                // One trial per timestamp: its entry in ourTimestamps and its
+                // message if the peer lacks it, keeping room to write
+                // ourTimestamps as a range after the pending skip.
+                const restoreOurTimestamps = ourTimestamps.checkpoint();
+                ourTimestamps.add(timestampBinary);
                 if (
-                  !output.canAddTimestampsRangeAndMessage(
-                    ourTimestamps,
-                    message,
+                  output.tryWrite(
+                    () => {
+                      if (message) output.addMessage(message);
+                    },
+                    getTimestampsRangeReserve(ourTimestamps, isSkipPending),
                   )
                 ) {
-                  exceeded = true;
-                  endBound = timestamp;
-                  upper = index;
-                  return false;
+                  if (message) onMessage?.(message);
+                  return true;
+                }
+                restoreOurTimestamps();
+
+                if (message) {
+                  // Whether an empty frame can hold the message in the trial
+                  // a Timestamps range makes for it, with only its own
+                  // timestamp listed and a skip pending. A later round is
+                  // guaranteed to reach exactly that frame, so a message that
+                  // fits is sent eventually. A trial without a pending skip
+                  // reserves 22 bytes less, so a message up to 22 bytes too
+                  // large for this check may still be sent in such a frame.
+                  const emptyOutput = createEmptyOutput();
+                  const emptyOutputTimestamps = createTimestampsBuffer();
+                  emptyOutputTimestamps.add(message.timestamp);
+                  const fitsEmptyOutput = emptyOutput.tryWrite(
+                    () => {
+                      emptyOutput.addMessage(message);
+                    },
+                    getTimestampsRangeReserve(emptyOutputTimestamps, true),
+                  );
+                  if (!fitsEmptyOutput) {
+                    onChangeTooLarge({
+                      type: "ProtocolChangeTooLargeError",
+                      timestamp: timestampBinary,
+                      size: message.change.length as PositiveInt,
+                    });
+                    return true;
+                  }
                 }
 
-                ourTimestamps.add(timestampBinary);
-                if (message) {
-                  output.addMessage(message);
-                  onMessage?.(message);
-                }
-                return true;
+                exceeded = true;
+                endBound = timestamp;
+                upper = index;
+                return false;
               },
             );
           } catch (error) {
@@ -1751,26 +1854,26 @@ const sync =
             return err(ProtocolErrorCode.SyncError);
           }
 
-          const addRange = () => {
-            coalesceSkipsBeforeAdd();
-            output.addRange({
-              type: RangeType.Timestamps,
-              upperBound: endBound,
-              timestamps: ourTimestamps,
+          // When any timestamp was kept, its trial reserved room for this
+          // write. Otherwise the range may not fit, and the frame closes
+          // without it.
+          const tryWriteTimestampsRange = () =>
+            tryWriteRange(upper, () => {
+              output.addRange({
+                type: RangeType.Timestamps,
+                upperBound: endBound,
+                timestamps: ourTimestamps,
+              });
             });
-          };
 
           if (exceeded) {
-            addRange();
-            if (!addFingerprintForRemainingRange(upper)) {
-              return err(ProtocolErrorCode.SyncError);
-            }
-            return ok(true);
+            tryWriteTimestampsRange();
+            return closeWithFingerprint();
           }
 
           // If we need something, we have to respond with our timestamps.
           if (timestampsWeNeed.size > 0) {
-            addRange();
+            if (!tryWriteTimestampsRange()) return closeWithFingerprint();
           } else {
             skipRange(range);
           }
@@ -1788,6 +1891,28 @@ const sync =
 
     return ok(hasChange);
   };
+
+// The most a range adds to a frame beyond its payload. Its upper bound adds at
+// most 20 bytes to the ranges' timestamps: a millis delta varint of up to 7
+// bytes, as maxMillis has 48 bits; up to 4 for the counter, as a new run is a
+// varint of up to 3 bytes, Counter being at most 65,535, and a 1-byte run
+// length, while extending a run adds at most 1 byte; and up to 9 for the
+// NodeId, as a new run is 8 bytes and a 1-byte run length. Its type takes 1
+// byte, and the ranges count gains at most 1 byte.
+const maxRangeOverhead = 22;
+
+/**
+ * Returns the bytes a frame must keep to write `timestamps` as a Timestamps
+ * range, after a Skip range when one is pending. A Skip range has no payload,
+ * and the length of `timestamps` is exact.
+ */
+const getTimestampsRangeReserve = (
+  timestamps: TimestampsBuffer,
+  isSkipPending: boolean,
+): NonNegativeInt =>
+  (timestamps.getLength() +
+    maxRangeOverhead +
+    (isSkipPending ? maxRangeOverhead : 0)) as NonNegativeInt;
 
 const splitRange =
   (deps: StorageDep) =>

@@ -178,11 +178,11 @@
  *   request, a replacement leader, or storing messages from another transport,
  *   unless the route skipped a message. No failed or aborted result has arrived
  *   on the route since.
- * - No result that skipped a received message has arrived on the route since a
- *   round was last requested through it, and since that request, no messages
- *   have been stored from another transport, directly or through a sibling copy
- *   uploaded outside this transport, and no sibling copy has failed to apply or
- *   skipped a message.
+ * - No result that skipped a received message or a stored change too large to
+ *   send has arrived on the route since a round was last requested through it,
+ *   and since that request, no messages have been stored from another
+ *   transport, directly or through a sibling copy uploaded outside this
+ *   transport, and no sibling copy has failed to apply or skipped a message.
  *
  * A route is settled when every condition except the last holds, so a complete
  * route is settled too. A settled route that is incomplete has ended its
@@ -353,6 +353,7 @@ import {
   MessageType,
   parseProtocolHeader,
   type ApplyProtocolMessageAsClientResult,
+  type ProtocolChangeTooLargeError,
   type ProtocolError,
   type ProtocolInvalidDataError,
   type ProtocolMessage,
@@ -734,11 +735,11 @@ export interface CompleteSyncRoute extends Typed<"Complete"> {
  *
  * It is the error itself, so it carries its details, such as the expected and
  * actual timestamps of a {@link ProtocolTimestampMismatchError}. A skipped
- * message adds {@link DecryptWithXChaCha20Poly1305Error}. A
- * {@link ProtocolInvalidDataError} leaves out its data, which can be a whole
- * frame. `WriteFailed` means a `writeMessages` call that threw, logged by the
- * protocol, and `SyncFailed` means a logged failure while creating a round or
- * reconciling ranges.
+ * message adds {@link DecryptWithXChaCha20Poly1305Error} and
+ * {@link ProtocolChangeTooLargeError}. A {@link ProtocolInvalidDataError} leaves
+ * out its data, which can be a whole frame. `WriteFailed` means a
+ * `writeMessages` call that threw, logged by the protocol, and `SyncFailed`
+ * means a logged failure while creating a round or reconciling ranges.
  */
 export type SyncRouteError = (
   | Exclude<ProtocolError, ProtocolInvalidDataError>
@@ -749,6 +750,7 @@ export type SyncRouteError = (
   | (Omit<DecryptWithXChaCha20Poly1305Error, "error"> & {
       readonly error: UnknownError;
     })
+  | ProtocolChangeTooLargeError
   | Typed<"WriteFailed">
   | Typed<"SyncFailed">
 ) & { readonly at: Millis };
@@ -1365,13 +1367,15 @@ export type DbWorkerQueuedResponse =
             readonly ownerId: OwnerId;
             readonly didWriteMessages: boolean;
             /**
-             * The first error of a received message the DbWorker skipped while
-             * storing the rest, or null. It does not end the round.
+             * The first error of a message the DbWorker skipped, or null: a
+             * received one it did not store while storing the rest, or a stored
+             * change too large to send. It does not end the round.
              */
             readonly skippedError:
               | DecryptWithXChaCha20Poly1305Error
               | ProtocolInvalidDataError
               | ProtocolTimestampMismatchError
+              | ProtocolChangeTooLargeError
               | null;
             readonly result: Result<
               ApplyProtocolMessageAsClientResult,
@@ -1543,8 +1547,9 @@ interface RouteSkip {
 }
 
 /**
- * A route whose reconciliation has ended, but whose relay may offer a skipped
- * message or lack messages stored elsewhere, so it is incomplete.
+ * A route whose reconciliation has ended, but which is incomplete: its relay
+ * may offer a skipped message, the database may store a change too large to
+ * send, or the relay may lack messages stored elsewhere.
  */
 interface SettledRoute extends Typed<"Settled"> {
   readonly skippedError: SyncRouteError;
@@ -1584,6 +1589,7 @@ const errorToSyncRouteError = (
     | ProtocolError
     | StorageWriteMessagesError
     | DecryptWithXChaCha20Poly1305Error
+    | ProtocolChangeTooLargeError
     | Typed<"WriteFailed">
     | Typed<"SyncFailed">,
   at: Millis,
@@ -2781,7 +2787,8 @@ const createEvoluTenant =
             !hasQueuedWrite;
           // Settling drops the failure, so the next one requests a round
           // again. A route with a skip it is not rechecking settles without
-          // completing, because its relay may offer the skipped message or
+          // completing, because its relay may offer the skipped message, the
+          // database may store a change too large to send, or the relay may
           // lack messages stored elsewhere.
           const pending = routeToPending(route.progress);
           route.progress =
@@ -3044,9 +3051,10 @@ const createEvoluTenant =
      * `except`, after messages from elsewhere were stored or a sibling copy was
      * not fully stored. Rounds toward the same transport coalesce whatever
      * their source. A route that skipped a message gets none, because its relay
-     * would offer that message again, and a route rechecking one stops
-     * rechecking, because its round may have read the database before this
-     * event. A later requested round through such a route reconciles it.
+     * would offer that message again or the round would skip a stored change
+     * too large to send again. A route rechecking one stops rechecking, because
+     * its round may have read the database before this event. A later requested
+     * round through such a route reconciles it.
      */
     const requestRoundsForReceivedMessages = (
       ownerId: OwnerId,

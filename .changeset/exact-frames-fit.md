@@ -2,7 +2,25 @@
 "@evolu/common": minor
 ---
 
-Added trial writes that measure protocol frames exactly
+Fixed sync failing when a protocol message was nearly full
+
+Sync predicted message sizes with fixed safety margins, and some writes, such as
+the timestamps the other side already had, a range split, or the ranges answering
+an empty part of storage, were added without checking the space left. When large
+changes nearly filled a reply or request, an assertion failed: a relay logged it
+and sent no reply or replied with `ProtocolSyncError`, and a client's sync
+failed the same way. The data did not change, so every retry failed the same way
+and the owner stopped syncing through that relay. Sync now makes every write as
+a trial that measures the exact message and undoes the write when the message
+could no longer be closed, so it never fails on size and stays within
+`totalMaxSize` and `rangesMaxSize`. Splits and messages near the total size no
+longer leave margins unused, so some syncs take fewer rounds. Replies from a
+relay are fixed once the relay updates `@evolu/common`.
+
+A message without room for its next range ends with one fingerprint over
+everything after the last range it answered. That fingerprint used to leave out
+the range it could not answer and any skipped ranges before it, which cost
+redundant rounds.
 
 `ProtocolMessageBuffer.tryWrite` runs a write and keeps it only if the frame,
 measured exactly, still has room to be closed with one Fingerprint range with
@@ -12,6 +30,13 @@ bytes the caller adds later. Inside a trial, `addMessage` and `addRange` do not
 assert the size limit; outside one they assert that the frame fits
 `totalMaxSize` without safety margins. `getSize` now returns the exact encoded
 size; it used to add a 22-byte reservation once the frame had ranges.
+`canAddMessage`, `canSplitRange`, and `canAddTimestampsRangeAndMessage` were
+removed with their margins; make the write inside `tryWrite` instead, which
+returns whether it fit. The builder references each change rather than copying
+it, so a change, including one a custom `Storage.readDbChange` returns, must not
+be modified while the builder is in use. `unwrap` can now be called more than
+once; it used to append the message timestamps to the header again, so a second
+call returned a corrupt message.
 
 `createProtocolMessageFromCrdtMessages` and
 `createProtocolBroadcastMessagesFromCrdtMessages` use trials, so a change that
@@ -27,6 +52,7 @@ import {
   assertEqual,
   assertFalse,
   assertTrue,
+  assertType,
   createId,
   createRunLengthEncoder,
   encodeNonNegativeInt,
@@ -40,6 +66,7 @@ import {
   MessageType,
   testAppOwner,
   testCreateCrdtMessage,
+  type ProtocolMessageBuffer,
 } from "@evolu/common/local-first";
 
 const encoder = createRunLengthEncoder<NonNegativeInt>(encodeNonNegativeInt);
@@ -71,6 +98,9 @@ assertFalse(
   }, NonNegativeInt.orThrow(defaultProtocolMessageMaxSize)),
 );
 assertEqual(buffer.getSize(), emptySize);
+
+// ProtocolMessageBuffer no longer predicts whether a write fits.
+assertType<Extract<keyof ProtocolMessageBuffer, `can${string}`>, never>();
 
 assertTrue(
   buffer.tryWrite(() => {

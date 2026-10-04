@@ -1,11 +1,16 @@
 import { compress, init } from "@bokuweb/zstd-wasm";
 import { before, describe, it, test } from "node:test";
 import {
+  assert,
   assertEqual,
   assertEqualBytes,
   assertNonEmptyArray,
+  assertOk,
   assertSame,
 } from "../../../../../packages/common/src/Assert.ts";
+import { eqArrayNumber } from "../../../../../packages/common/src/Eq.ts";
+import { exhaustiveCheck } from "../../../../../packages/common/src/Function.ts";
+import { computeBalancedBuckets } from "../../../../../packages/common/src/Number.ts";
 import {
   ownerIdToOwnerIdBytes,
   testAppOwner,
@@ -17,27 +22,38 @@ import {
   createProtocolMessageForSync,
   createProtocolMessageFromCrdtMessages,
   createTimestampsBuffer,
+  defaultProtocolMessageMaxSize,
   defaultProtocolMessageRangesMaxSize,
   encodeAndEncryptDbChange,
   ProtocolErrorCode,
   ProtocolMessageMaxSize,
   ProtocolMessageRangesMaxSize,
   MessageType,
+  type ProtocolChangeTooLargeError,
+  type ProtocolMessage,
+  type ProtocolMessageBuffer,
   type TimestampsRangeWithTimestampsBuffer,
 } from "../../../../../packages/common/src/local-first/Protocol.ts";
 import type {
   CrdtMessage,
   EncryptedCrdtMessage,
   EncryptedDbChange,
+  Fingerprint,
   Storage,
+  StorageDep,
 } from "../../../../../packages/common/src/local-first/Storage.ts";
 import {
   DbChange,
+  fingerprintSize,
   InfiniteUpperBound,
   RangeType,
   timestampBytesToFingerprint,
 } from "../../../../../packages/common/src/local-first/Storage.ts";
 import {
+  Counter,
+  createTimestamp,
+  NodeId,
+  type Timestamp,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
 } from "../../../../../packages/common/src/local-first/Timestamp.ts";
@@ -46,15 +62,19 @@ import { installPolyfills } from "../../../../../packages/common/src/Polyfills.t
 import {
   testCreateDeps,
   testCreateRun,
+  type Run,
   type RunDefaultDeps,
 } from "../../../../../packages/common/src/Task.ts";
+import { Millis } from "../../../../../packages/common/src/Time.ts";
 import {
   createId,
   DateIsoFromDate,
+  NonNegativeInt,
 } from "../../../../../packages/common/src/Type.ts";
 import {
   setupSqliteAndRelayStorage,
   testCreateTimestampBytesFixtures,
+  type TestSqliteAndRelayStorageSetup,
 } from "../../_deps.ts";
 
 const testAppOwnerIdBytes = ownerIdToOwnerIdBytes(testAppOwner.id);
@@ -89,6 +109,78 @@ const createEncryptedDbChange = (
   message: CrdtMessage,
 ): EncryptedDbChange =>
   encodeAndEncryptDbChange(deps)(message, testAppOwner.encryptionKey);
+
+/**
+ * Returns the index-th of ascending timestamps with nearly the widest encoding
+ * in a frame: a 6-byte millis delta, a 3-byte counter, and a NodeId unlike its
+ * neighbors', so no run of the run-length encoding spans two of them.
+ */
+const createWideTimestamp = (index: number): Timestamp =>
+  createTimestamp({
+    millis: Millis.orThrow((index + 1) * 2 ** 35),
+    counter: Counter.orThrow(16_384 + index),
+    nodeId: NodeId.orThrow((index + 1).toString(16).padStart(16, "0")),
+  });
+
+/**
+ * Stores changes of the given lengths. Relay storage serves stored bytes
+ * without decrypting them, so they are zeros.
+ */
+const storeChanges = async (
+  { run, storage }: TestSqliteAndRelayStorageSetup,
+  changes: ReadonlyArray<readonly [Timestamp, number]>,
+): Promise<void> => {
+  const messages = changes.map(([timestamp, length]): EncryptedCrdtMessage => ({
+    timestamp,
+    change: new Uint8Array(length) as EncryptedDbChange,
+  }));
+  assertNonEmptyArray(messages);
+  await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, messages));
+};
+
+const createRequest = (): ProtocolMessageBuffer =>
+  createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Request,
+  });
+
+const createResponse = (
+  rangesMaxSize?: ProtocolMessageRangesMaxSize,
+): ProtocolMessageBuffer =>
+  createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Response,
+    errorCode: ProtocolErrorCode.NoError,
+    rangesMaxSize,
+  });
+
+/** An empty response is its header followed by a zero message count. */
+const emptyResponse = createResponse().unwrap();
+
+/**
+ * Asserts a response without an error that fits
+ * {@link defaultProtocolMessageMaxSize}.
+ */
+const assertFittingResponse = (message: ProtocolMessage): void => {
+  assert(
+    message.length <= defaultProtocolMessageMaxSize,
+    `The response has ${message.length} bytes.`,
+  );
+  assertEqualBytes(
+    message.subarray(0, emptyResponse.length - 1),
+    emptyResponse.subarray(0, -1),
+  );
+};
+
+// Stored ranges in these tests are not empty, so none has a zero fingerprint.
+const wrongFingerprint = new Uint8Array(12) as Fingerprint;
+
+const createTimestampsRange = (
+  upperBound: TimestampsRangeWithTimestampsBuffer["upperBound"],
+  timestamps: ReadonlyArray<Timestamp>,
+): TimestampsRangeWithTimestampsBuffer => {
+  const buffer = createTimestampsBuffer();
+  for (const timestamp of timestamps) buffer.add(timestamp);
+  return { type: RangeType.Timestamps, upperBound, timestamps: buffer };
+};
 
 test("createProtocolMessageForSync", async () => {
   await using setup = await setupSqliteAndRelayStorage();
@@ -226,6 +318,634 @@ test("a mismatched range too small to split returns its own timestamps", async (
     applyProtocolMessageAsRelay(request.unwrap()),
   );
   assertEqualBytes(response.message, expected.unwrap());
+});
+
+describe("sync near the size limit", () => {
+  /**
+   * Three small changes, 107 changes whose messages nearly fill a frame, and
+   * 900 small changes the peer already has, with the ranges asking for them
+   * after a skip over the small changes. The peer lists one change the other
+   * side lacks, so the range must be answered.
+   */
+  const setupKnownTimestampsAfterMessages = async (
+    setup: TestSqliteAndRelayStorageSetup,
+    frame: ProtocolMessageBuffer,
+  ) => {
+    const timestamps = Array.from({ length: 1010 }, (_, index) =>
+      createWideTimestamp(index),
+    );
+    await storeChanges(
+      setup,
+      timestamps.map((timestamp, index) => [
+        timestamp,
+        index >= 3 && index < 110 ? 9_258 : 100,
+      ]),
+    );
+    frame.addRange({
+      type: RangeType.Skip,
+      upperBound: timestampToTimestampBytes(timestamps[3]),
+    });
+    frame.addRange(
+      createTimestampsRange(InfiniteUpperBound, [
+        ...timestamps.slice(110),
+        createWideTimestamp(1010),
+      ]),
+    );
+    return frame.unwrap();
+  };
+
+  it("lists known timestamps after nearly full messages in a response", async () => {
+    await using relay = await setupSqliteAndRelayStorage();
+    const request = await setupKnownTimestampsAfterMessages(
+      relay,
+      createRequest(),
+    );
+
+    const result = await relay.run(applyProtocolMessageAsRelay(request));
+
+    assertOk(result);
+    assertFittingResponse(result.value.message);
+    // The response lists known timestamps after the large changes and ends with
+    // a fingerprint from the first one it did not list.
+    const fingerprint = result.value.message.subarray(
+      result.value.message.length - fingerprintSize,
+    );
+    const firstUnlisted = Array.from(
+      { length: 1010 },
+      (_, index) => index,
+    ).find((index) =>
+      eqArrayNumber(
+        fingerprint,
+        relay.storage.fingerprint(
+          testAppOwnerIdBytes,
+          NonNegativeInt.orThrow(index),
+          NonNegativeInt.orThrow(1010),
+        ),
+      ),
+    );
+    assert(
+      firstUnlisted !== undefined && firstUnlisted > 110,
+      `The response lists up to ${firstUnlisted}.`,
+    );
+    await using client = await setupSqliteAndRelayStorage();
+    const clientResult = await client.run(
+      applyProtocolMessageAsClient(result.value.message, {
+        writeKey: testAppOwner.writeKey,
+      }),
+    );
+    assertOk(clientResult);
+    assertSame(clientResult.value.type, "Response");
+  });
+
+  it("lists known timestamps after nearly full messages in a request", async () => {
+    await using client = await setupSqliteAndRelayStorage();
+    const response = await setupKnownTimestampsAfterMessages(
+      client,
+      createResponse(),
+    );
+
+    const result = await client.run(
+      applyProtocolMessageAsClient(response, {
+        writeKey: testAppOwner.writeKey,
+      }),
+    );
+
+    assertOk(result);
+    assert(result.value.type === "Response", "Expected a request.");
+    assert(
+      result.value.message.length <= defaultProtocolMessageMaxSize,
+      `The request has ${result.value.message.length} bytes.`,
+    );
+  });
+
+  it("falls back to one fingerprint when a split does not fit after nearly full messages", async () => {
+    await using relay = await setupSqliteAndRelayStorage();
+    const timestamps = Array.from({ length: 42 }, (_, index) =>
+      createWideTimestamp(index),
+    );
+    await storeChanges(
+      relay,
+      timestamps.map((timestamp, index) => [
+        timestamp,
+        index < 2 ? 499_850 : 100,
+      ]),
+    );
+    // The client lacks the two large changes, and its 40 small ones differ.
+    const request = createRequest();
+    request.addRange(
+      createTimestampsRange(timestampToTimestampBytes(timestamps[2]), []),
+    );
+    request.addRange({
+      type: RangeType.Fingerprint,
+      upperBound: InfiniteUpperBound,
+      fingerprint: wrongFingerprint,
+    });
+
+    const result = await relay.run.orThrow(
+      applyProtocolMessageAsRelay(request.unwrap()),
+    );
+
+    // The large changes leave no room to split the small ones into 16
+    // fingerprints, so one fingerprint covers everything after the last range
+    // the response answered, the skipped range included.
+    const expected = createResponse();
+    for (const timestamp of timestamps.slice(0, 2)) {
+      expected.addMessage({
+        timestamp,
+        change: relay.storage.readDbChange(
+          testAppOwnerIdBytes,
+          timestampToTimestampBytes(timestamp),
+        ),
+      });
+    }
+    expected.addRange({
+      type: RangeType.Fingerprint,
+      upperBound: InfiniteUpperBound,
+      fingerprint: relay.storage.fingerprint(
+        testAppOwnerIdBytes,
+        NonNegativeInt.orThrow(0),
+        NonNegativeInt.orThrow(42),
+      ),
+    });
+    assertFittingResponse(result.message);
+    // A diff of a nearly full frame would take gigabytes.
+    assert(
+      eqArrayNumber(result.message, expected.unwrap()),
+      "Expected the messages and one fingerprint.",
+    );
+  });
+
+  /**
+   * Ranges past the relay's 12 changes, each listing one timestamp the relay
+   * lacks, so the relay answers each with an empty Timestamps range.
+   */
+  const addEmptyWindowRanges = (
+    request: ProtocolMessageBuffer,
+    timestamps: ReadonlyArray<Timestamp>,
+  ) => {
+    for (const [index, timestamp] of timestamps.entries()) {
+      request.addRange(
+        createTimestampsRange(
+          index + 1 < timestamps.length
+            ? timestampToTimestampBytes(timestamps[index + 1])
+            : InfiniteUpperBound,
+          [timestamp],
+        ),
+      );
+    }
+  };
+
+  it("answers ranges past nearly full messages within the total size", async () => {
+    await using relay = await setupSqliteAndRelayStorage();
+    const timestamps = Array.from({ length: 1012 }, (_, index) =>
+      createWideTimestamp(index),
+    );
+    await storeChanges(
+      relay,
+      timestamps.slice(0, 12).map((timestamp) => [timestamp, 83_000]),
+    );
+    const request = createRequest();
+    request.addRange(
+      createTimestampsRange(timestampToTimestampBytes(timestamps[12]), []),
+    );
+    addEmptyWindowRanges(request, timestamps.slice(12));
+
+    const result = await relay.run(
+      applyProtocolMessageAsRelay(request.unwrap()),
+    );
+
+    assertOk(result);
+    assertFittingResponse(result.value.message);
+  });
+
+  it("answers ranges past the relay's data within the ranges size", async () => {
+    await using relay = await setupSqliteAndRelayStorage();
+    const timestamps = Array.from({ length: 205 }, (_, index) =>
+      createWideTimestamp(index),
+    );
+    await storeChanges(
+      relay,
+      timestamps.slice(0, 5).map((timestamp) => [timestamp, 100]),
+    );
+    const request = createRequest();
+    request.addRange({
+      type: RangeType.Skip,
+      upperBound: timestampToTimestampBytes(timestamps[5]),
+    });
+    addEmptyWindowRanges(request, timestamps.slice(5));
+    const rangesMaxSize = ProtocolMessageRangesMaxSize.orThrow(3_000);
+
+    const result = await relay.run(
+      applyProtocolMessageAsRelay(request.unwrap(), { rangesMaxSize }),
+    );
+
+    assertOk(result);
+    assertFittingResponse(result.value.message);
+    // The response holds no messages, so the rest is its ranges section.
+    const rangesSize = result.value.message.length - emptyResponse.length;
+    assert(
+      rangesSize <= rangesMaxSize,
+      `The ranges section has ${rangesSize} bytes.`,
+    );
+  });
+
+  it("keeps every response within the size at each length of a change near it", async () => {
+    // Two large changes nearly fill a response before 56 small ones, which the
+    // relay sends, lists as known, or splits. The first change's length moves
+    // the edge across one small change's size, with and without a pending
+    // skip over two leading changes.
+    const tails = ["send", "list", "split"] as const;
+    for (const tail of tails) {
+      for (const hasSkip of [false, true]) {
+        for (let length = 499_350; length < 499_434; length++) {
+          await using relay = await setupSqliteAndRelayStorage();
+          const timestamps = Array.from({ length: 60 }, (_, index) =>
+            createWideTimestamp(index),
+          );
+          const first = hasSkip ? 0 : 2;
+          await storeChanges(
+            relay,
+            timestamps
+              .slice(first)
+              .map((timestamp, index) => [
+                timestamp,
+                index === 2 - first
+                  ? length
+                  : index === 3 - first
+                    ? 500_000
+                    : 60,
+              ]),
+          );
+
+          const request = createRequest();
+          if (hasSkip)
+            request.addRange({
+              type: RangeType.Skip,
+              upperBound: timestampToTimestampBytes(timestamps[2]),
+            });
+          const lacked = createWideTimestamp(60);
+          switch (tail) {
+            case "send":
+              request.addRange(
+                createTimestampsRange(InfiniteUpperBound, [lacked]),
+              );
+              break;
+            case "list":
+              request.addRange(
+                createTimestampsRange(InfiniteUpperBound, [
+                  ...timestamps.slice(4),
+                  lacked,
+                ]),
+              );
+              break;
+            case "split":
+              request.addRange(
+                createTimestampsRange(
+                  timestampToTimestampBytes(timestamps[4]),
+                  [],
+                ),
+              );
+              request.addRange({
+                type: RangeType.Fingerprint,
+                upperBound: InfiniteUpperBound,
+                fingerprint: wrongFingerprint,
+              });
+              break;
+            default:
+              exhaustiveCheck(tail);
+          }
+
+          const result = await relay.run(
+            applyProtocolMessageAsRelay(request.unwrap()),
+          );
+
+          assert(result.ok, `${tail} ${hasSkip} ${length}: not ok.`);
+          assertFittingResponse(result.value.message);
+        }
+      }
+    }
+  });
+
+  describe("a split that does not fit the ranges size", () => {
+    // 640 timestamps make 16 buckets of 40, and the relay splits each
+    // mismatched bucket into 16 fingerprints. Nine splits fit 3,000 bytes.
+    const rangesMaxSize = ProtocolMessageRangesMaxSize.orThrow(3_000);
+
+    const setupBuckets = async () => {
+      const setup = await setupSqliteAndRelayStorage();
+      await storeChanges(
+        setup,
+        testTimestampsAsc
+          .slice(0, 640)
+          .map((timestamp) => [timestampBytesToTimestamp(timestamp), 100]),
+      );
+      const buckets = setup.storage.fingerprintRanges(
+        testAppOwnerIdBytes,
+        getOrThrow(computeBalancedBuckets(NonNegativeInt.orThrow(640))),
+      );
+      const request = createRequest();
+      const expected = createResponse(rangesMaxSize);
+      for (const [index, bucket] of buckets.slice(0, 9).entries()) {
+        request.addRange({ ...bucket, fingerprint: wrongFingerprint });
+        const lower = 40 * index;
+        const splits = setup.storage.fingerprintRanges(
+          testAppOwnerIdBytes,
+          [
+            NonNegativeInt.orThrow(lower),
+            ...getOrThrow(
+              computeBalancedBuckets(NonNegativeInt.orThrow(40)),
+            ).map((end) => NonNegativeInt.orThrow(lower + end)),
+          ],
+          bucket.upperBound,
+        );
+        for (const split of splits.slice(1)) expected.addRange(split);
+      }
+      // The fallback fingerprint covers everything after the last split.
+      expected.addRange({
+        type: RangeType.Fingerprint,
+        upperBound: InfiniteUpperBound,
+        fingerprint: setup.storage.fingerprint(
+          testAppOwnerIdBytes,
+          NonNegativeInt.orThrow(360),
+          NonNegativeInt.orThrow(640),
+        ),
+      });
+      return { setup, buckets, request, expected };
+    };
+
+    it("fingerprints from where the skipped ranges began", async () => {
+      const { setup, buckets, request, expected } = await setupBuckets();
+      await using _setup = setup;
+      // A matching bucket is skipped, and then the rest does not fit.
+      request.addRange(buckets[9]);
+      request.addRange({
+        type: RangeType.Fingerprint,
+        upperBound: InfiniteUpperBound,
+        fingerprint: wrongFingerprint,
+      });
+
+      const result = await setup.run.orThrow(
+        applyProtocolMessageAsRelay(request.unwrap(), { rangesMaxSize }),
+      );
+
+      assertEqualBytes(result.message, expected.unwrap());
+    });
+
+    it("fingerprints from the bound of the range that does not fit", async () => {
+      const { setup, buckets, request, expected } = await setupBuckets();
+      await using _setup = setup;
+      request.addRange({ ...buckets[9], fingerprint: wrongFingerprint });
+      request.addRange({
+        type: RangeType.Fingerprint,
+        upperBound: InfiniteUpperBound,
+        fingerprint: wrongFingerprint,
+      });
+
+      const result = await setup.run.orThrow(
+        applyProtocolMessageAsRelay(request.unwrap(), { rangesMaxSize }),
+      );
+
+      assertEqualBytes(result.message, expected.unwrap());
+    });
+  });
+
+  describe("a stored change too large for any frame", () => {
+    /**
+     * Syncs the client with the relay from the client's sync request until the
+     * client converges, failing after 20 messages.
+     */
+    const syncClientWithRelay = async (
+      clientRun: Run<StorageDep>,
+      relayRun: Run<StorageDep>,
+      onChangeTooLarge?: (error: ProtocolChangeTooLargeError) => void,
+    ) => {
+      let message = createProtocolMessageForSync(clientRun.deps)(
+        testAppOwner.id,
+      );
+      for (let step = 0; step < 10; step++) {
+        const response = await relayRun.orThrow(
+          applyProtocolMessageAsRelay(message),
+        );
+        const result = await clientRun.orThrow(
+          applyProtocolMessageAsClient(response.message, {
+            writeKey: testAppOwner.writeKey,
+            ...(onChangeTooLarge && { onChangeTooLarge }),
+          }),
+        );
+        if (result.type === "Converged") return;
+        assert(result.type === "Response", "Expected a request.");
+        message = result.message;
+      }
+      throw new Error("The sync did not converge.");
+    };
+
+    it("is skipped by a client, which uploads the rest", async () => {
+      await using client = await setupSqliteAndRelayStorage();
+      await using relay = await setupSqliteAndRelayStorage();
+      const timestamps = testTimestampsAsc
+        .slice(0, 400)
+        .map(timestampBytesToTimestamp);
+      // A client up to 8.11 could save a 999,377-byte blob, which encrypts to
+      // 1,015,851 bytes.
+      await storeChanges(
+        client,
+        timestamps.map((timestamp, index) => [
+          timestamp,
+          index === 200 ? 1_015_851 : 100,
+        ]),
+      );
+      const errors: Array<ProtocolChangeTooLargeError> = [];
+
+      await syncClientWithRelay(client.run, relay.run, (error) => {
+        errors.push(error);
+      });
+
+      assertSame(relay.storage.getSize(testAppOwnerIdBytes), 399);
+      assertNonEmptyArray(errors);
+      for (const error of errors)
+        assertEqual(error, {
+          type: "ProtocolChangeTooLargeError",
+          timestamp: timestamps[200],
+          size: 1_015_851,
+        });
+
+      // Every later sync skips it again and converges too.
+      errors.length = 0;
+      await syncClientWithRelay(client.run, relay.run, (error) => {
+        errors.push(error);
+      });
+      assertNonEmptyArray(errors);
+      assertSame(relay.storage.getSize(testAppOwnerIdBytes), 399);
+    });
+
+    it("is skipped and logged by a relay, which sends the rest", async () => {
+      await using client = await setupSqliteAndRelayStorage();
+      await using relay = await setupSqliteAndRelayStorage();
+      const timestamps = testTimestampsAsc
+        .slice(0, 40)
+        .map(timestampBytesToTimestamp);
+      // Anyone with the write key can upload a crafted change that fits an
+      // upload request but no sync response, beside the largest change a
+      // client up to 8.11 could save.
+      await storeChanges(
+        relay,
+        timestamps.map((timestamp, index) => [
+          timestamp,
+          index === 10 ? 999_467 : index === 20 ? 999_900 : 100,
+        ]),
+      );
+      await using relayRun = testCreateRun({ storage: relay.storage });
+      const clientErrors: Array<ProtocolChangeTooLargeError> = [];
+
+      await syncClientWithRelay(client.run, relayRun, (error) => {
+        clientErrors.push(error);
+      });
+
+      assertEqual(clientErrors, []);
+      assertSame(client.storage.getSize(testAppOwnerIdBytes), 39);
+      assertSame(
+        client.storage.readDbChange(
+          testAppOwnerIdBytes,
+          timestampToTimestampBytes(timestamps[10]),
+        ).length,
+        999_467,
+      );
+      const warnings = relayRun.deps.console
+        .getEntriesSnapshot()
+        .filter((entry) => entry.method === "warn");
+      assertNonEmptyArray(warnings);
+      for (const warning of warnings)
+        assertEqual(warning.args, [
+          {
+            type: "ProtocolChangeTooLargeError",
+            timestamp: timestamps[20],
+            size: 999_900,
+          },
+        ]);
+    });
+
+    it("is neither sent nor listed in an answer when each side holds one", async () => {
+      // Each side lacks the other's skipped change. Listing it in a
+      // Timestamps answer would make the peer ask for it again in every round.
+      await using client = await setupSqliteAndRelayStorage();
+      await using relay = await setupSqliteAndRelayStorage();
+      const timestamps = testTimestampsAsc
+        .slice(0, 4)
+        .map(timestampBytesToTimestamp);
+      await storeChanges(client, [
+        [timestamps[0], 100],
+        [timestamps[1], 1_015_851],
+      ]);
+      await storeChanges(relay, [
+        [timestamps[2], 100],
+        [timestamps[3], 1_015_851],
+      ]);
+      await using relayRun = testCreateRun({ storage: relay.storage });
+      const clientErrors: Array<ProtocolChangeTooLargeError> = [];
+
+      await syncClientWithRelay(client.run, relayRun, (error) => {
+        clientErrors.push(error);
+      });
+
+      assertSame(client.storage.getSize(testAppOwnerIdBytes), 3);
+      assertSame(relay.storage.getSize(testAppOwnerIdBytes), 3);
+      assertNonEmptyArray(clientErrors);
+      for (const error of clientErrors)
+        assertEqual(error, {
+          type: "ProtocolChangeTooLargeError",
+          timestamp: timestamps[1],
+          size: 1_015_851,
+        });
+      const warnings = relayRun.deps.console
+        .getEntriesSnapshot()
+        .filter((entry) => entry.method === "warn");
+      assertNonEmptyArray(warnings);
+      for (const warning of warnings)
+        assertEqual(warning.args, [
+          {
+            type: "ProtocolChangeTooLargeError",
+            timestamp: timestamps[3],
+            size: 1_015_851,
+          },
+        ]);
+    });
+
+    it("is logged by a client without onChangeTooLarge", async () => {
+      await using client = await setupSqliteAndRelayStorage();
+      await using relay = await setupSqliteAndRelayStorage();
+      const timestamps = testTimestampsAsc
+        .slice(0, 3)
+        .map(timestampBytesToTimestamp);
+      await storeChanges(
+        client,
+        timestamps.map((timestamp, index) => [
+          timestamp,
+          index === 1 ? 1_015_851 : 100,
+        ]),
+      );
+      await using clientRun = testCreateRun({ storage: client.storage });
+
+      await syncClientWithRelay(clientRun, relay.run);
+
+      assertSame(relay.storage.getSize(testAppOwnerIdBytes), 2);
+      const warnings = clientRun.deps.console
+        .getEntriesSnapshot()
+        .filter((entry) => entry.method === "warn");
+      assertNonEmptyArray(warnings);
+      for (const warning of warnings)
+        assertEqual(warning.args, [
+          {
+            type: "ProtocolChangeTooLargeError",
+            timestamp: timestamps[1],
+            size: 1_015_851,
+          },
+        ]);
+    });
+
+    it("is sent at the largest size that fits an empty frame after a skip", async () => {
+      // The relay lacks the first change, so the client's first answer holds
+      // it and cannot fit X. A later round sends X first after a Skip range,
+      // which is the frame the check measures. X one byte larger is reported
+      // and not sent in that sync. Without a pending skip, a frame holds 22
+      // bytes more, so such a change may still be sent by a later sync.
+      const timestamps = [0, 1].map((index) =>
+        createTimestamp({
+          millis: Millis.orThrow(1_700_000_000_000 + index * 1000),
+          nodeId: NodeId.orThrow("0000000000000001"),
+        }),
+      );
+      for (const [size, isSent] of [
+        [999_867, true],
+        [999_868, false],
+      ] as const) {
+        await using client = await setupSqliteAndRelayStorage();
+        await using relay = await setupSqliteAndRelayStorage();
+        await storeChanges(client, [
+          [timestamps[0], 100],
+          [timestamps[1], size],
+        ]);
+        const errors: Array<ProtocolChangeTooLargeError> = [];
+
+        await syncClientWithRelay(client.run, relay.run, (error) => {
+          errors.push(error);
+        });
+
+        assertSame(relay.storage.getSize(testAppOwnerIdBytes), isSent ? 2 : 1);
+        assertEqual(
+          errors,
+          isSent
+            ? []
+            : [
+                {
+                  type: "ProtocolChangeTooLargeError",
+                  timestamp: timestamps[1],
+                  size,
+                },
+              ],
+        );
+      }
+    });
+  });
 });
 
 describe("ranges sizes", () => {
@@ -440,8 +1160,8 @@ describe("E2E sync", { timeout: 15_000 }, () => {
     );
     assertEqual(syncSteps, {
       syncSizes: [
-        354, 177, 999722, 40, 156106, 40, 154335, 40, 150189, 40, 153545, 40,
-        90355, 20,
+        354, 177, 999722, 40, 154964, 40, 154233, 40, 149917, 40, 151573, 40,
+        93798, 20,
       ],
       syncSteps: 14,
     });
@@ -475,8 +1195,8 @@ describe("E2E sync", { timeout: 15_000 }, () => {
     );
     assertEqual(syncSteps, {
       syncSizes: [
-        24, 142360, 57, 151046, 57, 147856, 57, 152283, 57, 153168, 57, 154035,
-        57, 144816, 57, 154840, 57, 157659, 57, 148577, 57, 150318, 57, 67326,
+        24, 142650, 57, 150617, 57, 147501, 57, 150276, 57, 153125, 57, 153044,
+        57, 143763, 57, 154178, 57, 154849, 57, 149091, 57, 152045, 57, 72953,
       ],
       syncSteps: 24,
     });
@@ -530,12 +1250,12 @@ describe("E2E sync", { timeout: 15_000 }, () => {
     );
     assertEqual(syncSteps, {
       syncSizes: [
-        362, 2291, 2231, 76988, 85667, 2269, 81008, 82180, 2371, 2260, 74895,
-        77009, 2253, 90299, 77950, 2371, 2288, 73085, 74613, 2357, 2271, 71866,
-        70385, 2355, 2236, 65376, 69177, 2224, 72843, 62793, 2387, 2221, 59533,
-        62502, 53083, 64974, 28119, 89136, 90832, 9690, 34188, 39540,
+        362, 2957, 3030, 109639, 110828, 2736, 2943, 108054, 109085, 2794, 2954,
+        112962, 98724, 2756, 2989, 97820, 96094, 2967, 3021, 94627, 94213, 2839,
+        3027, 76669, 85827, 3002, 3019, 83202, 77703, 2978, 41851, 78322, 48587,
+        106874, 95676, 20,
       ],
-      syncSteps: 42,
+      syncSteps: 36,
     });
   });
 

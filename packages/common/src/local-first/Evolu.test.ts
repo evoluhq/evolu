@@ -75,7 +75,7 @@ import { err, ok } from "../Result.ts";
 import { SqliteBoolean } from "../Sqlite.ts";
 import { explicitAbortReason, testCreateDeps, testCreateRun } from "../Task.ts";
 import { testCreateId } from "../Test.ts";
-import { Millis } from "../Time.ts";
+import { maxMillis, Millis } from "../Time.ts";
 import {
   assertType,
   createIdFromString,
@@ -90,8 +90,14 @@ import {
   Uint8Array as Uint8ArrayType,
 } from "../Type.ts";
 import type { ExtractTyped } from "../Type.ts";
-import { DbChange } from "./Storage.ts";
-import { createTimestamp, type NodeId } from "./Timestamp.ts";
+import { DbChange, RangeType } from "./Storage.ts";
+import {
+  createTimestamp,
+  maxCounter,
+  maxNodeId,
+  type NodeId,
+  timestampToTimestampBytes,
+} from "./Timestamp.ts";
 import {
   testCreateBroadcastChannel,
   testCreateMessageChannel,
@@ -3150,7 +3156,9 @@ describe("Evolu", () => {
         message,
       ]);
 
-      // A relay's response can pair it with the largest ranges section.
+      // A relay's response can pair it with the largest ranges section: a
+      // Skip range and a Timestamps range listing nearly 100,000 bytes, with
+      // room left to close the frame.
       const rangesMaxSize = ProtocolMessageRangesMaxSize.orThrow(100_000);
       const timestamps = createTimestampsBuffer();
       for (let index = 1; timestamps.getLength() < 99_900; index++) {
@@ -3167,12 +3175,31 @@ describe("Evolu", () => {
         rangesMaxSize,
       });
       assertTrue(
-        response.canAddTimestampsRangeAndMessage(timestamps, {
-          timestamp: message.timestamp,
-          change: encodeAndEncryptDbChange(deps)(
-            message,
-            testAppOwner.encryptionKey,
-          ),
+        response.tryWrite(() => {
+          response.addMessage({
+            timestamp: message.timestamp,
+            change: encodeAndEncryptDbChange(deps)(
+              message,
+              testAppOwner.encryptionKey,
+            ),
+          });
+          response.addRange({
+            type: RangeType.Skip,
+            upperBound: timestampToTimestampBytes(
+              createTimestamp({ millis: Millis.orThrow(2 ** 47) }),
+            ),
+          });
+          response.addRange({
+            type: RangeType.Timestamps,
+            upperBound: timestampToTimestampBytes(
+              createTimestamp({
+                millis: maxMillis,
+                counter: maxCounter,
+                nodeId: maxNodeId,
+              }),
+            ),
+            timestamps,
+          });
         }),
       );
     });
