@@ -57,7 +57,7 @@ import {
   type RandomBytesDep,
 } from "../Crypto.ts";
 import { createUnknownError } from "../Error.ts";
-import { constFalse, constVoid } from "../Function.ts";
+import { constFalse } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import {
   acquireLeaderLock,
@@ -974,7 +974,6 @@ const createClientStorage = (
 
     // Not implemented yet.
     validateWriteKey: constFalse,
-    setWriteKey: constVoid,
 
     writeMessages: (ownerIdBytes, encryptedMessages) => () => {
       // TODO: Add quota checking for collaborative scenarios.
@@ -1030,15 +1029,21 @@ const createClientStorage = (
       }
 
       let wroteNewMessages = false;
-      deps.sqlite.transaction(() => {
-        wroteNewMessages = applyMessages(deps)(
-          ownerIdBytesToOwnerId(ownerIdBytes),
-          messages,
-          QuarantineOrigin.ReceivedMessage,
-          now,
-        );
-        saveClock(deps)(clockTimestamp);
-      });
+      // SQLite can fail the write, for example on a full disk. The transaction
+      // has rolled back, so the route reports the error instead of a throw
+      // panicking the DbWorker.
+      const written = trySync(() => {
+        deps.sqlite.transaction(() => {
+          wroteNewMessages = applyMessages(deps)(
+            ownerIdBytesToOwnerId(ownerIdBytes),
+            messages,
+            QuarantineOrigin.ReceivedMessage,
+            now,
+          );
+          saveClock(deps)(clockTimestamp);
+        });
+      }, createUnknownError);
+      if (!written.ok) return written;
       clock.set(clockTimestamp);
       // A batch of duplicates changes no table, so queries need no refresh.
       if (wroteNewMessages) didWriteMessages = true;

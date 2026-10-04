@@ -111,10 +111,10 @@
  * whichever instance made it, even one disposed before the database worker
  * answered. When a relay frame stores new messages, the tenant requests a round
  * through each other transport claimed for the owner, so data learned from one
- * relay reaches the others, except through a route that skipped a message, as
- * described below. A closed transport reconciles when it opens, and a
- * replacement leader reconciles every transport again, because a response
- * reporting stored messages may have been lost.
+ * relay reaches the others, except through a route that skipped a message it
+ * received or could not send, as described below. A closed transport reconciles
+ * when it opens, and a replacement leader reconciles every transport again,
+ * because a response reporting stored messages may have been lost.
  *
  * Relays omit the sending socket when broadcasting an upload, so the uploader
  * also delivers it as local Broadcast frames to every other tenant with
@@ -186,9 +186,9 @@
  *
  * A route is settled when every condition except the last holds, so a complete
  * route is settled too. A settled route that is incomplete has ended its
- * reconciliation, but its relay may offer a message the database skipped, or
- * messages stored elsewhere may not have reached it; it is published as
- * {@link SettledSyncRoute}.
+ * reconciliation, but its relay may offer a message the database skipped, the
+ * database may store a change too large to send, or messages stored elsewhere
+ * may not have reached it; it is published as {@link SettledSyncRoute}.
  *
  * A reconciliation chain ends only with a converged result, a failure, an
  * abort, a dropped frame, or a continuation that finds the socket closed, and
@@ -207,20 +207,34 @@
  * while the database worker creates a round is logged there and fails the
  * round's routes with `SyncFailed` without a retry. A mutation that throws is
  * rolled back and reported as an {@link UnknownError} to the tab that made it,
- * or to every tab when its Evolu instance was disposed first. Other unexpected
- * SQLite exceptions remain unsupported and can panic the database worker. A
- * frame the relay silently drops, such as invalid data, leaves the count above
- * zero until the liveness rule below replaces the socket.
+ * or to every tab when its Evolu instance was disposed first. A received batch
+ * SQLite fails to store, for example on a full disk, is rolled back and fails
+ * its route with an `UnknownError`. Other unexpected SQLite exceptions remain
+ * unsupported and can panic the database worker. A frame the relay silently
+ * drops, such as invalid data, leaves the count above zero until the liveness
+ * rule below replaces the socket.
  *
- * A result that skipped a received message the database could not decrypt,
- * verify, or decode records the error on the route as its `skippedError`,
- * without ending its chain, so it requests no round, and the relay offers the
- * message again in every round through the route until the database stores a
- * message with that timestamp. The messages received elsewhere that the last
- * condition names request no round through such a route, even while a requested
- * round checks it again, because each round would download every skipped
- * message again. The next round that an explicit request, a reopen, a
- * replacement leader, or a failure sends through the route reconciles them.
+ * A result that skipped a message records the error on the route as its
+ * `skippedError`, without ending its chain, so it requests no round. A message
+ * is skipped in two cases:
+ *
+ * - The relay offers a message the database could not decrypt, verify, or decode.
+ *   The relay offers it again in every round through the route until the
+ *   database stores a message with that timestamp.
+ * - The database stores a change it cannot send, a
+ *   {@link ProtocolChangeTooLargeError}: one saved before `maxMutationSize`
+ *   existed, or a crafted one received from a relay. Every route through a
+ *   relay that lacks it skips it on every sync, so each such route stays
+ *   settled.
+ *
+ * The messages received elsewhere that the last condition names request no
+ * round through such a route, even while a requested round checks it again,
+ * because each round would download every skipped message again, or skip again
+ * a change too large to send. The next round that an explicit request, a
+ * reopen, a replacement leader, or a failure sends through the route reconciles
+ * them. So while the database stores a change too large to send, messages from
+ * other relays reach a route only through such a round, for example after a
+ * reconnect or {@link Evolu.requestSync}.
  *
  * ### Liveness
  *
@@ -660,8 +674,9 @@ export interface ReadonlySyncTenantOwner extends Typed<"Readonly"> {
 
 /**
  * One database's use of one owner through one transport: `Pending` until its
- * reconciliation ends, then `Complete`, or `Settled` while its relay offers a
- * change the database skipped. See Synchronization completion in this module's
+ * reconciliation ends, then `Complete`, or `Settled` while it skips a change:
+ * one its relay offers that the database could not store, or one the database
+ * stores but cannot send. See Synchronization completion in this module's
  * documentation.
  */
 export type SyncRoute = PendingSyncRoute | SettledSyncRoute | CompleteSyncRoute;
@@ -681,9 +696,12 @@ export interface PendingSyncRoute extends Typed<"Pending"> {
    */
   readonly failure: SyncRouteError | null;
   /**
-   * The first change skipped in the latest reply that skipped one, or null. The
-   * relay offers it again in every round through the route until this database
-   * stores a change with that timestamp.
+   * The first change skipped in the latest reply that skipped one, or null. A
+   * change the relay offers is offered again in every round through the route
+   * until this database stores a change with that timestamp. A
+   * {@link ProtocolChangeTooLargeError} is a change this database stores but
+   * cannot send, which every route through a relay that lacks it skips on every
+   * sync.
    */
   readonly skippedError: SyncRouteError | null;
   /** When the route last became complete, or null. */
@@ -698,10 +716,15 @@ export interface PendingSyncRoute extends Typed<"Pending"> {
 }
 
 /**
- * A route whose reconciliation ended while its relay offers a change the
- * database skipped, so it is incomplete. Changes stored from other relays
- * request no round through it; the next round requested through it, such as by
- * {@link Evolu.requestSync} or a reopen, checks it again.
+ * A route whose reconciliation ended with a skipped change, so it is
+ * incomplete: its relay offers a change the database could not store, or the
+ * database stores a change it cannot send, a
+ * {@link ProtocolChangeTooLargeError}. Changes stored from other relays request
+ * no round through it; the next round requested through it, such as by
+ * {@link Evolu.requestSync} or a reopen, checks it again. Every route through a
+ * relay that lacks a change too large to send skips it on every sync, so those
+ * routes stay settled, and messages from other relays reach them only through
+ * such rounds.
  */
 export interface SettledSyncRoute extends Typed<"Settled"> {
   readonly transportId: SyncTransportId;
@@ -737,9 +760,11 @@ export interface CompleteSyncRoute extends Typed<"Complete"> {
  * actual timestamps of a {@link ProtocolTimestampMismatchError}. A skipped
  * message adds {@link DecryptWithXChaCha20Poly1305Error} and
  * {@link ProtocolChangeTooLargeError}. A {@link ProtocolInvalidDataError} leaves
- * out its data, which can be a whole frame. `WriteFailed` means a
- * `writeMessages` call that threw, logged by the protocol, and `SyncFailed`
- * means a logged failure while creating a round or reconciling ranges.
+ * out its data, which can be a whole frame. An {@link UnknownError} means SQLite
+ * failed to store received messages, for example on a full disk. `WriteFailed`
+ * means a `writeMessages` call that threw, logged by the protocol, and
+ * `SyncFailed` means a logged failure while creating a round or reconciling
+ * ranges.
  */
 export type SyncRouteError = (
   | Exclude<ProtocolError, ProtocolInvalidDataError>
@@ -781,10 +806,10 @@ export interface RelaySyncState {
  * - `Synced`: a relay is up to date, and none syncs.
  * - `Offline`: every relay is disconnected. Evolu keeps reconnecting, up to 30
  *   seconds apart, so `Offline` can briefly outlast the outage.
- * - `Error`: a relay failed or offers a change this database skipped. `error` is
- *   the newest failure, or without one, the newest skipped change: a failure
- *   stops syncing through its relay, while a skipped change leaves out only
- *   that change.
+ * - `Error`: a relay failed, a relay offers a change this database skipped, or
+ *   this database stores a change too large to send. `error` is the newest
+ *   failure, or without one, the newest skipped change: a failure stops syncing
+ *   through its relay, while a skipped change leaves out only that change.
  *
  * Evolu stores changes in the local database before they sync, so sync needs no
  * UI while it works: show nothing for `NoRelays`, `Syncing`, and `Synced`. An
@@ -1533,8 +1558,10 @@ interface PendingRoute extends Typed<"Pending"> {
 }
 
 /**
- * A message a route skipped. Its relay offers the message again in every round,
- * so messages received elsewhere request no round through the route.
+ * A message a route skipped: one its relay offers that the database could not
+ * store, which the relay offers again in every round, or one the database
+ * stores but cannot send, which every round skips again. So messages received
+ * elsewhere request no round through the route.
  */
 interface RouteSkip {
   readonly error: SyncRouteError;
@@ -2895,11 +2922,12 @@ const createEvoluTenant =
               if (!isAborted) route.lastReceivedAt = now;
               // A skipped message is recorded as the route's skip, not a
               // failure, and does not end the round, whose response below is
-              // still sent, so it requests no round. The relay offers the
-              // message again in every later round, so the route stays
-              // incomplete until a round requested through it settles without
-              // skipping a message and without messages stored elsewhere since
-              // that request.
+              // still sent, so it requests no round. The relay offers a message
+              // the database could not store again in every later round, and
+              // every round skips a stored change too large to send again, so
+              // the route stays incomplete until a round requested through it
+              // settles without skipping a message and without messages stored
+              // elsewhere since that request.
               if (skippedError !== null)
                 route.progress = {
                   ...routeToPending(route.progress),
@@ -2926,12 +2954,14 @@ const createEvoluTenant =
             }
           } else if (failure !== null || skippedError !== null) {
             // A sibling's copy comes from this worker, not from a relay, so no
-            // route shows its failure. It is a Broadcast, which carries no
-            // relay error, so an error or a skip means a bug, such as
-            // databases holding different keys for the owner, and is reported
-            // as an unexpected failure. A Failed result was logged, which
-            // reports it already. An error is the failure, which is never an
-            // abort, and like a route, the report leaves out its frame.
+            // route shows its failure. SQLite can fail to store it, for example
+            // on a full disk, which returns an UnknownError. It is a Broadcast,
+            // which carries no relay error, so any other error or a skip means
+            // a bug, such as databases holding different keys for the owner.
+            // Each is reported as an unexpected failure. A Failed result was
+            // logged, which reports it already. An error is the failure, which
+            // is never an abort, and like a route, the report leaves out its
+            // frame.
             const unexpected = error !== null ? failure : skippedError;
             if (unexpected !== null)
               deps.postConsoleEntryOrError({

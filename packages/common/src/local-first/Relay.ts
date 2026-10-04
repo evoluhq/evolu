@@ -13,7 +13,8 @@ import {
 } from "../Array.ts";
 import { assert } from "../Assert.ts";
 import type { TimingSafeEqualDep } from "../Crypto.ts";
-import { err, ok } from "../Result.ts";
+import { createUnknownError } from "../Error.ts";
+import { err, ok, trySync } from "../Result.ts";
 import type { SqliteDep } from "../Sqlite.ts";
 import { sql } from "../Sqlite.ts";
 import { createMutexByKey } from "../Task.ts";
@@ -30,7 +31,7 @@ import type {
   SqliteStorageDeps,
   Storage,
   StorageConfig,
-  StorageQuotaError,
+  StorageWriteMessagesError,
 } from "./Storage.ts";
 import {
   createBaseSqliteStorage,
@@ -186,21 +187,16 @@ export const createRelaySqliteStorage =
           return deps.timingSafeEqual(rows[0].writeKey, writeKey);
         }
 
+        // When SQLite fails this insert, for example on a full disk, the throw
+        // reaches the protocol as invalid data, so a new owner's first write
+        // gets no reply. A boolean has no room for the error, and the relay
+        // stays up.
         deps.sqlite.exec(sql`
           insert into evolu_writeKey (ownerId, writeKey)
           values (${ownerId}, ${writeKey});
         `);
 
         return true;
-      },
-
-      setWriteKey: (ownerId, writeKey) => {
-        deps.sqlite.exec(sql`
-          insert into evolu_writeKey (ownerId, writeKey)
-          values (${ownerId}, ${writeKey})
-          on conflict (ownerId) do update
-            set writeKey = excluded.writeKey;
-        `);
       },
 
       writeMessages: (ownerIdBytes, messages) => async (run) => {
@@ -215,32 +211,42 @@ export const createRelaySqliteStorage =
 
         return run(
           mutexByOwnerId.withLock(ownerId, async () => {
-            const existingTimestampsResult =
-              sqliteStorageBase.getExistingTimestamps(
-                ownerIdBytes,
-                mapArray(uniqueMessagesWithTimestampBytes, (m) => m.timestamp),
+            // SQLite can fail these reads, for example on a corrupt page, and
+            // a throw would panic the relay's shared Run.
+            const readResult = trySync(() => {
+              const existingTimestampsResult =
+                sqliteStorageBase.getExistingTimestamps(
+                  ownerIdBytes,
+                  mapArray(
+                    uniqueMessagesWithTimestampBytes,
+                    (m) => m.timestamp,
+                  ),
+                );
+
+              const existingTimestampKeys = new Set(
+                mapArray(existingTimestampsResult, uint8ArrayToBase64Url),
+              );
+              const newMessages = filterArray(
+                uniqueMessagesWithTimestampBytes,
+                (message) =>
+                  !existingTimestampKeys.has(
+                    uint8ArrayToBase64Url(message.timestamp),
+                  ),
               );
 
-            const existingTimestampKeys = new Set(
-              mapArray(existingTimestampsResult, uint8ArrayToBase64Url),
-            );
-            const newMessages = filterArray(
-              uniqueMessagesWithTimestampBytes,
-              (message) =>
-                !existingTimestampKeys.has(
-                  uint8ArrayToBase64Url(message.timestamp),
-                ),
-            );
+              // Nothing to write
+              if (!isNonEmptyArray(newMessages)) return null;
 
-            // Nothing to write
-            if (!isNonEmptyArray(newMessages)) {
-              return ok();
-            }
+              const usage = readOwnerUsageOrDefault(deps)(
+                ownerIdBytes,
+                firstInArray(newMessages).timestamp,
+              );
 
-            const usage = readOwnerUsageOrDefault(deps)(
-              ownerIdBytes,
-              firstInArray(newMessages).timestamp,
-            );
+              return { newMessages, usage };
+            }, createUnknownError);
+            if (!readResult.ok) return readResult;
+            if (readResult.value === null) return ok();
+            const { newMessages, usage } = readResult.value;
 
             const incomingBytes = newMessages.reduce(
               (sum, m) => sum + m.change.length,
@@ -260,7 +266,7 @@ export const createRelaySqliteStorage =
               ? await quotaResult
               : quotaResult;
             if (!isWithinQuota) {
-              return err<StorageQuotaError>({
+              return err<StorageWriteMessagesError>({
                 type: "StorageQuotaError",
                 ownerId,
               });
@@ -268,39 +274,42 @@ export const createRelaySqliteStorage =
 
             let { firstTimestamp, lastTimestamp } = usage;
 
-            return deps.sqlite.transaction(() => {
-              for (const { timestamp, change } of newMessages) {
-                let strategy;
-                [strategy, firstTimestamp, lastTimestamp] =
-                  getTimestampInsertStrategy(
+            // SQLite can fail the write, for example on a full disk. The
+            // transaction has rolled back, and a throw would panic the relay's
+            // shared Run.
+            return trySync(() => {
+              deps.sqlite.transaction(() => {
+                for (const { timestamp, change } of newMessages) {
+                  let strategy;
+                  [strategy, firstTimestamp, lastTimestamp] =
+                    getTimestampInsertStrategy(
+                      timestamp,
+                      firstTimestamp,
+                      lastTimestamp,
+                    );
+
+                  sqliteStorageBase.insertTimestamp(
+                    ownerIdBytes,
                     timestamp,
-                    firstTimestamp,
-                    lastTimestamp,
+                    strategy,
                   );
 
-                sqliteStorageBase.insertTimestamp(
+                  deps.sqlite.exec(sql`
+                    insert into evolu_message
+                      ("ownerId", "timestamp", "change")
+                    values (${ownerIdBytes}, ${timestamp}, ${change})
+                    on conflict do nothing;
+                  `);
+                }
+
+                updateOwnerUsage(deps)(
                   ownerIdBytes,
-                  timestamp,
-                  strategy,
+                  newStoredBytes,
+                  firstTimestamp,
+                  lastTimestamp,
                 );
-
-                deps.sqlite.exec(sql`
-                  insert into evolu_message
-                    ("ownerId", "timestamp", "change")
-                  values (${ownerIdBytes}, ${timestamp}, ${change})
-                  on conflict do nothing;
-                `);
-              }
-
-              updateOwnerUsage(deps)(
-                ownerIdBytes,
-                newStoredBytes,
-                firstTimestamp,
-                lastTimestamp,
-              );
-
-              return ok();
-            });
+              });
+            }, createUnknownError);
           }),
         );
       },
@@ -329,13 +338,7 @@ export const createRelaySqliteStorage =
             delete from evolu_message where ownerId = ${ownerId};
           `);
 
-          deps.sqlite.exec(sql`
-            delete from evolu_usage where ownerId = ${ownerId};
-          `);
-
           sqliteStorageBase.deleteOwner(ownerId);
-
-          return ok();
         });
       },
     };

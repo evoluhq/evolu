@@ -1148,11 +1148,11 @@ export interface ApplyProtocolMessageAsClientReadonly extends Typed<"Readonly"> 
  * Result of {@link applyProtocolMessageAsClient}: the protocol logged an
  * exception thrown by calling the storage's `writeMessages` (`Write`) or a
  * failed range reconciliation (`Sync`) to the console. An exception while the
- * returned Task runs, as the built-in storages throw, is a defect that aborts
- * the Run instead. Expected write rejections return the original
- * {@link StorageWriteMessagesError} through {@link Result}. Reconciliation can
- * fail after messages have been committed; that failure does not roll back the
- * write.
+ * returned Task runs is a defect that aborts the Run instead. A rejected or
+ * failed write, which the built-in storages return when SQLite fails it, gives
+ * the original {@link StorageWriteMessagesError} through {@link Result}.
+ * Reconciliation can fail after messages have been committed; that failure does
+ * not roll back the write.
  */
 export interface ApplyProtocolMessageAsClientFailed extends Typed<"Failed"> {
   readonly cause: "Write" | "Sync";
@@ -1433,9 +1433,15 @@ export const applyProtocolMessageAsRelay =
           );
 
           if (!result.ok) {
+            // A storage returns a failed write without reporting it.
+            if (result.error.type === "UnknownError")
+              run.deps.console.error(result.error);
             const message = createProtocolMessageBuffer(ownerId, {
               messageType: MessageType.Response,
-              errorCode: ProtocolErrorCode.QuotaError,
+              errorCode:
+                result.error.type === "StorageQuotaError"
+                  ? ProtocolErrorCode.QuotaError
+                  : ProtocolErrorCode.WriteError,
             }).unwrap();
             return ok({ type: "Response", message });
           }

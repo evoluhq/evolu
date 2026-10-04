@@ -2746,6 +2746,52 @@ describe("sync message flow", () => {
     });
   });
 
+  it("ApplySyncMessage reports a write SQLite fails and keeps serving", async () => {
+    let failsCommit = false;
+    const failure = new Error("database or disk is full");
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        if (failsCommit && query.sql.trim() === "commit;") {
+          failsCommit = false;
+          throw failure;
+        }
+      },
+    });
+    await using setup = await setupDbWorker({ dbSetup });
+    const request = setupApplySyncRequest(
+      await createBroadcastProtocolMessage([
+        {
+          timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+          change: DbChange.orThrow({
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: "synced" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        },
+      ]),
+    );
+    const clock = setup.getClock();
+
+    failsCommit = true;
+    const failed = getQueuedSharedWorkerMessage(
+      await postRequest(setup, request),
+      "ApplySyncMessage",
+    );
+    assertFalse(failsCommit);
+    assertEqual(failed.result, err(createUnknownError(failure)));
+    assertFalse(failed.didWriteMessages);
+    assertEqual(failed.clock, clock);
+
+    const retried = getQueuedSharedWorkerMessage(
+      await postRequest(setup, request),
+      "ApplySyncMessage",
+    );
+    assertOk(retried.result, { type: "Broadcast" });
+    assertTrue(retried.didWriteMessages);
+  });
+
   describe("ApplySyncMessage with a change it skips", () => {
     const createMessage = (
       setup: DbWorkerSetup,
@@ -5287,19 +5333,16 @@ describe("write replay", () => {
                 error: createUnknownError(injected),
               },
             });
-            assertEqual(setup.consoleEntryOrErrors, []);
           } else {
             assertSame(output.response.message.type, "ApplySyncMessage");
             assertFalse(output.response.message.didWriteMessages);
             assertEqual(output.response.message.clock, context.clock);
-            assertEqual(output.response.message.result, {
-              ok: false,
-              error: {
-                type: "AbortError",
-                reason: { type: "PanicAbortReason", defect: injected },
-              },
-            });
+            assertEqual(
+              output.response.message.result,
+              err(createUnknownError(injected)),
+            );
           }
+          assertEqual(setup.consoleEntryOrErrors, []);
         }
         assertTrue(file.connections[0].disposed);
         assertNotUndefined(request);

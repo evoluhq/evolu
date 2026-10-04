@@ -961,7 +961,8 @@ export type DevicePersistence = "Persisted" | "NotPersisted" | "Unknown";
  * request, or sent a frame that could not be decoded, the route shows a
  * {@link ProtocolError}. A {@link ProtocolQuotaError} needs more relay quota,
  * then {@link Evolu.requestSync}, and a {@link ProtocolVersionError} needs an app
- * or relay update.
+ * or relay update. A route shows an {@link UnknownError} failure when this
+ * device could not store received changes, for example on a full disk.
  *
  * A received change that was not created with the owner's encryption key, was
  * altered afterwards, or cannot be decoded by this app version is skipped,

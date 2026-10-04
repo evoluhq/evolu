@@ -10,6 +10,7 @@ import { firstInArray, isNonEmptyArray } from "../Array.ts";
 import { assert, assertNonNullable } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import { concatByteArrays } from "../Bytes.ts";
+import type { UnknownError } from "../Error.ts";
 import { decrement } from "../Number.ts";
 import type { RandomDep } from "../Random.ts";
 import { err, ok } from "../Result.ts";
@@ -67,7 +68,10 @@ export interface StorageConfig {
    * asynchronous (for calling remote APIs).
    *
    * The callback returns a boolean rather than an error because error handling
-   * and logging are the responsibility of the callback implementation.
+   * and logging are the responsibility of the callback implementation. It must
+   * not throw or reject, because a throw is a defect that shuts the relay down
+   * for a supervisor to restart it; a callback calling a remote service catches
+   * its failure and returns whether to allow the write.
    *
    * Relay deployments configure this callback. Client applications observe a
    * denied relay write as a {@link ProtocolQuotaError} in the `failure` of that
@@ -120,10 +124,9 @@ export interface StorageConfig {
  * that satisfies this contract.
  *
  * {@link Storage.writeMessages} returns the {@link StorageWriteMessagesError}
- * that made it store none of a batch. Implementations return expected write
- * rejections without reporting them; the caller owns reporting. The client
- * protocol forwards these errors unchanged, while the relay protocol maps them
- * to wire error codes.
+ * that made it store none of a batch. Implementations return it without
+ * reporting it; the caller owns reporting. The client protocol forwards these
+ * errors unchanged, while the relay protocol maps them to wire error codes.
  *
  * The Storage API is synchronous because SQLite's synchronous API is the
  * fastest way to use SQLite. Synchronous bindings (like better-sqlite3) call
@@ -134,11 +137,20 @@ export interface StorageConfig {
  * for async validation logic before writing to storage. The write operation
  * itself remains synchronous.
  *
+ * Indexes count an owner's timestamps in order from 0, and none may exceed the
+ * owner's size from {@link Storage.getSize}. Sync reads the size once per
+ * message and derives every index from it.
+ *
  * @group Core
  */
 export interface Storage {
+  /** Returns the number of the owner's timestamps. */
   readonly getSize: (ownerId: OwnerIdBytes) => NonNegativeInt;
 
+  /**
+   * Returns the {@link Fingerprint} of the owner's timestamps from index `begin`
+   * up to, but not including, `end`, where `begin` <= `end`.
+   */
   readonly fingerprint: (
     ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
@@ -147,6 +159,9 @@ export interface Storage {
 
   /**
    * Computes fingerprints with their upper bounds in one call.
+   *
+   * Each bucket is the end index of a range that starts at the previous bucket,
+   * or at 0 for the first, so the buckets must be ascending.
    *
    * This function can be replaced with many fingerprint/findLowerBound calls,
    * but implementations can leverage it for batching and more efficient
@@ -175,6 +190,11 @@ export interface Storage {
     upperBound: RangeUpperBound,
   ) => NonNegativeInt;
 
+  /**
+   * Calls `callback` with the owner's timestamps and their indexes from `begin`
+   * up to, but not including, `end`, where `begin` <= `end`, until the callback
+   * returns `false`.
+   */
   readonly iterate: (
     ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
@@ -191,12 +211,6 @@ export interface Storage {
     ownerId: OwnerIdBytes,
     writeKey: OwnerWriteKey,
   ) => boolean;
-
-  /** Sets the {@link OwnerWriteKey} for the given {@link Owner}. */
-  readonly setWriteKey: (
-    ownerId: OwnerIdBytes,
-    writeKey: OwnerWriteKey,
-  ) => void;
 
   /**
    * Write encrypted {@link CrdtMessage}s to storage.
@@ -248,7 +262,7 @@ export interface StorageQuotaError
   extends OwnerError, Typed<"StorageQuotaError"> {}
 
 /**
- * Expected reasons why {@link Storage.writeMessages} stored none of a batch.
+ * Reasons why {@link Storage.writeMessages} stored none of a batch.
  *
  * The built-in relay storage stores opaque encrypted messages and rejects
  * batches over quota. The built-in client storage decrypts and validates
@@ -258,9 +272,12 @@ export interface StorageQuotaError
  * never a reason to reject a batch. The contract permits quota checks on either
  * side.
  *
+ * Both built-in storages return {@link UnknownError} when SQLite fails the
+ * write, for example on a full disk, after rolling it back.
+ *
  * @group Core
  */
-export type StorageWriteMessagesError = StorageQuotaError;
+export type StorageWriteMessagesError = StorageQuotaError | UnknownError;
 
 /**
  * A cryptographic hash used for efficiently comparing collections of
@@ -530,7 +547,7 @@ export interface DbChange extends InferType<typeof DbChange> {}
  */
 export interface BaseSqliteStorage extends Omit<
   Storage,
-  "validateWriteKey" | "setWriteKey" | "writeMessages" | "readDbChange"
+  "validateWriteKey" | "writeMessages" | "readDbChange"
 > {
   /**
    * Inserts a timestamp for an owner into the skiplist-based storage.
@@ -602,6 +619,10 @@ export const createBaseSqliteStorage = (
     // into concatBytes.
     const concatenatedTimestamps = concatByteArrays(timestampsBytes);
 
+    // A batch has no known size, so unlike the CTEs bounded by
+    // skiplistMaxLevel, the planner would make the owner's timestamps the outer
+    // loop. A cross join keeps the order as written, so each timestamp is
+    // looked up by primary key.
     const result = deps.sqlite.exec<{
       timestampBytes: TimestampBytes;
     }>(sql`
@@ -620,7 +641,7 @@ export const createBaseSqliteStorage = (
       select s.timestampBytes
       from
         split_timestamps s
-        join evolu_timestamp t
+        cross join evolu_timestamp t
           on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
     `);
 
@@ -676,6 +697,9 @@ export const createBaseSqliteStorage = (
   deleteOwner: (ownerId) => {
     deps.sqlite.exec(sql`
       delete from evolu_timestamp where ownerId = ${ownerId};
+    `);
+    deps.sqlite.exec(sql`
+      delete from evolu_usage where ownerId = ${ownerId};
     `);
   },
 });
@@ -1567,6 +1591,8 @@ const fingerprintRanges =
   ): ReadonlyArray<FingerprintRange> => {
     const bucketsJson = JSON.stringify(buckets);
 
+    // A bucket past the owner's timestamps would descend below level 1
+    // forever, so the walk stops there and the bucket has no row.
     const result = deps.sqlite.exec<{
       b: TimestampBytes | null;
       h1: Int64String;
@@ -1636,7 +1662,7 @@ const fingerprintRanges =
             c1
             left join evolu_timestamp as node
               on not c1.b and node.ownerId = ${ownerId} and node.t = c1.nt
-          where iif(c1.b, 1, c1.ic != c1.c)
+          where iif(c1.b, 1, c1.ic != c1.c) and c1.dl >= 1
         ),
         c2(h1, h2, t, rn) as (
           select
@@ -1668,6 +1694,7 @@ const fingerprintRanges =
       select b, cast(h1 as text) as h1, cast(h2 as text) as h2
       from c3;
     `);
+    assert(result.rows.length === buckets.length, "bucket out of range");
 
     const fingerprintRanges = result.rows.map(
       (row, i, arr): FingerprintRange => ({
@@ -1689,11 +1716,15 @@ const x = (a: string, b: string) => sql.raw(`(${a} | ${b}) - (${a} & ${b})`);
 /**
  * Reads the timestamp at a position within an owner's ordered timestamps.
  *
+ * Throws when `index` is not below the owner's size.
+ *
  * @group SQLite
  */
 export const getTimestampByIndex =
   (deps: SqliteDep) =>
   (ownerId: OwnerIdBytes, index: NonNegativeInt): TimestampBytes => {
+    // An index past the owner's timestamps would descend below level 1
+    // forever, so the walk stops there and finds no row.
     const result = deps.sqlite.exec<{
       readonly pt: TimestampBytes;
     }>(sql.prepared`
@@ -1761,14 +1792,16 @@ export const getTimestampByIndex =
               )
             )
           from fi
-          where ic != ${index + 1}
+          where ic != ${index + 1} and cl >= 1
         )
       select pt
       from fi
       where ic == ${index + 1};
     `);
 
-    return result.rows[0].pt;
+    const row = result.rows.at(0);
+    assert(row, "index out of range");
+    return row.pt;
   };
 
 /**

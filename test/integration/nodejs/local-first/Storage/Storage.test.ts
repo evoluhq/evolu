@@ -8,6 +8,7 @@ import {
   assertNonEmptyReadonlyArray,
   assertOk,
   assertSame,
+  assertThrowsInstanceOf,
   assertTrue,
 } from "../../../../../packages/common/src/Assert.ts";
 import {
@@ -26,6 +27,7 @@ import {
   InfiniteUpperBound,
   testFingerprintTimestamps,
   timestampBytesToFingerprint,
+  updateOwnerUsage,
   zeroFingerprint,
 } from "../../../../../packages/common/src/local-first/Storage.ts";
 import {
@@ -448,6 +450,69 @@ test("findLowerBound", async () => {
   );
 });
 
+test("deleteOwner deletes the owner's timestamps and usage", async () => {
+  await using setup = await setupSqliteAndStorage();
+  const { sqlite, storage } = setup;
+  const timestamp = testTimestampsAsc[0];
+  storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
+  updateOwnerUsage({ sqlite })(
+    testAppOwnerIdBytes,
+    zeroNonNegativeInt,
+    timestamp,
+    timestamp,
+  );
+
+  storage.deleteOwner(testAppOwnerIdBytes);
+
+  for (const table of ["evolu_timestamp", "evolu_usage"]) {
+    const { rows } = sqlite.exec<{ count: number }>(sql`
+      select count(*) as count
+      from ${sql.raw(table)}
+      where ownerId = ${testAppOwnerIdBytes};
+    `);
+    assertEqual(rows[0].count, 0);
+  }
+});
+
+test("getExistingTimestamps looks up each timestamp by primary key", async () => {
+  await using setup = await setupSqlite();
+  const { sqlite } = setup;
+  createBaseSqliteStorageTables({ sqlite });
+
+  const queries: Array<SqliteQuery> = [];
+  const storage = createBaseSqliteStorage({
+    random: createRandom(),
+    sqlite: {
+      ...sqlite,
+      exec: (query) => {
+        if (query.sql.includes("split_timestamps")) queries.push(query);
+        return sqlite.exec(query);
+      },
+    },
+  });
+  storage.getExistingTimestamps(testAppOwnerIdBytes, [testTimestampsAsc[0]]);
+
+  assertLength(queries, 1);
+  const plan = sqlite.exec<{ parent: number; detail: string }>({
+    // prettier-ignore
+    ...sql`explain query plan ${sql.raw(queries[0].sql)}`,
+    parameters: queries[0].parameters,
+  });
+  const topLevelDetails = plan.rows
+    .filter((row) => row.parent === 0)
+    .map((row) => row.detail);
+
+  // The timestamps are the outer loop, so the owner's other timestamps are
+  // never scanned.
+  const scanIndex = topLevelDetails.indexOf("SCAN s");
+  const searchIndex = topLevelDetails.findIndex((detail) =>
+    /^SEARCH t USING COVERING INDEX .* \(ownerId=\? AND t=\?\)$/u.test(detail),
+  );
+  assertTrue(scanIndex >= 0);
+  assertTrue(searchIndex > scanIndex);
+  assertFalse(plan.rows.some((row) => row.detail.includes("AUTOMATIC")));
+});
+
 test("getExistingTimestamps takes more timestamps than a call can spread", async () => {
   await using setup = await setupSqliteAndStorage();
   const { storage } = setup;
@@ -523,6 +588,65 @@ test("getTimestampByIndex", async () => {
     );
     assertEqualBytes(timestamp, testTimestampsAsc[i]);
   }
+});
+
+// Before the level floors, these calls never returned, and a node:test timeout
+// cannot interrupt synchronous SQLite.
+test("positions past the owner's timestamps throw", async () => {
+  await using setup = await setupSqliteAndStorage();
+  const { sqlite, storage } = setup;
+  const timestamps = testTimestampsAsc.slice(0, 10);
+  for (const timestamp of timestamps)
+    storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
+  const size = storage.getSize(testAppOwnerIdBytes);
+  const emptyOwnerIdBytes = ownerIdToOwnerIdBytes(testAppOwner2.id);
+  const position = (value: number) => NonNegativeInt.orThrow(value);
+
+  const indexIsOutOfRange = (run: () => unknown) => {
+    assertSame(
+      assertThrowsInstanceOf(run, Error).message,
+      "index out of range",
+    );
+  };
+  indexIsOutOfRange(() =>
+    getTimestampByIndex({ sqlite })(testAppOwnerIdBytes, size),
+  );
+  indexIsOutOfRange(() =>
+    getTimestampByIndex({ sqlite })(emptyOwnerIdBytes, zeroNonNegativeInt),
+  );
+  indexIsOutOfRange(() => {
+    storage.iterate(testAppOwnerIdBytes, size, position(size + 2), () => true);
+  });
+
+  const bucketIsOutOfRange = (run: () => unknown) => {
+    assertSame(
+      assertThrowsInstanceOf(run, Error).message,
+      "bucket out of range",
+    );
+  };
+  bucketIsOutOfRange(() =>
+    storage.fingerprint(testAppOwnerIdBytes, zeroNonNegativeInt, position(11)),
+  );
+  bucketIsOutOfRange(() =>
+    storage.fingerprintRanges(emptyOwnerIdBytes, [position(3)]),
+  );
+
+  // In range, iterate starts at begin.
+  const iterated: Array<[TimestampBytes, NonNegativeInt]> = [];
+  storage.iterate(
+    testAppOwnerIdBytes,
+    position(3),
+    position(6),
+    (timestamp, index) => {
+      iterated.push([timestamp, index]);
+      return true;
+    },
+  );
+  assertEqual(iterated, [
+    [timestamps[3], 3],
+    [timestamps[4], 4],
+    [timestamps[5], 5],
+  ]);
 });
 
 test("getTimestampInsertStrategy", () => {

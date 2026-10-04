@@ -20,6 +20,7 @@ import {
   encodeNonNegativeInt,
 } from "../Bytes.ts";
 import { EncryptionKey } from "../Crypto.ts";
+import { createUnknownError } from "../Error.ts";
 import { constFalse, constTrue } from "../Function.ts";
 import { SqliteValue } from "../Sqlite.ts";
 import {
@@ -569,7 +570,6 @@ const shouldNotBeCalledStorageDep: StorageDep = {
     findLowerBound: shouldNotBeCalled,
     iterate: shouldNotBeCalled,
     validateWriteKey: shouldNotBeCalled,
-    setWriteKey: shouldNotBeCalled,
     writeMessages: shouldNotBeCalled,
     readDbChange: shouldNotBeCalled,
     deleteOwner: shouldNotBeCalled,
@@ -1608,7 +1608,7 @@ describe("E2E errors", () => {
     );
   });
 
-  it("reports a rejected relay write as a quota and a thrown one as a write failure", async () => {
+  it("reports a rejected relay write as a quota and a failed one as a write failure", async () => {
     const deps = testCreateDeps();
     const initiatorMessage = createProtocolMessageFromCrdtMessages(deps)(
       testAppOwner,
@@ -1661,6 +1661,19 @@ describe("E2E errors", () => {
       ["error"],
     );
     assertSame(thrown.logged[0]?.args[0], failure);
+    // So is a write SQLite fails, such as on a full disk, which the storage
+    // returns.
+    const unknownError = createUnknownError(new Error("disk full"));
+    const failed = await relayResponseFor(() => () => err(unknownError));
+    assertEqual(
+      await run(applyProtocolMessageAsClient(failed.message)),
+      err({ type: "ProtocolWriteError", ownerId: testAppOwner.id }),
+    );
+    assertEqual(
+      failed.logged.map(({ method }) => method),
+      ["error"],
+    );
+    assertSame(failed.logged[0]?.args[0], unknownError);
   });
 });
 
