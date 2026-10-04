@@ -1,5 +1,46 @@
 # @evolu/relay
 
+## 4.2.2
+
+### Patch Changes
+
+- 215bf32: Fixed relay crashes and failing syncs with `@evolu/common` 8.18.0
+
+  Update relays to this version. With it, the relay:
+
+  - Keeps running when SQLite fails to store a write, such as on a full disk, and
+    answers with `ProtocolWriteError`. Before, the failure crashed the relay, and
+    a supervisor restarting it crashed again on the next write.
+  - Answers syncs whose reply nearly fills a message. Before, such a reply failed
+    the same way on every retry, so the owner stopped syncing through the relay.
+  - Skips a stored change too large for any message, and logs it with
+    `console.warn`, instead of asking for it in every round without end.
+  - Rejects malformed requests before storing, subscribing, or broadcasting
+    anything, such as changes shorter than any encrypted change, which its quota
+    did not count.
+  - Looks up each incoming timestamp by primary key, so writes no longer slow down
+    as an owner's changes grow.
+
+  See the `@evolu/common` 8.18.0 release notes for details.
+
+- Updated dependencies [3d51568]
+- Updated dependencies [969667e]
+- Updated dependencies [7d804cd]
+- Updated dependencies [8ad3dec]
+- Updated dependencies [6878627]
+- Updated dependencies [3d51568]
+- Updated dependencies [25b2140]
+- Updated dependencies [e2d22a3]
+- Updated dependencies [7d804cd]
+- Updated dependencies [6878627]
+- Updated dependencies [7d804cd]
+- Updated dependencies [6878627]
+- Updated dependencies [739817f]
+- Updated dependencies [6878627]
+- Updated dependencies [6878627]
+  - @evolu/common@8.18.0
+  - @evolu/nodejs@4.2.0
+
 ## 4.2.1
 
 ### Patch Changes
