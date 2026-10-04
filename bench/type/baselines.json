@@ -1582,8 +1582,8 @@
         },
         "config-env-all": {
           "files": 2,
-          "lines": 2531,
-          "identifiers": 2643,
+          "lines": 2526,
+          "identifiers": 2640,
           "instantiations": 24837,
           "types": 13282,
           "symbols": 14750
@@ -1598,8 +1598,8 @@
         },
         "byte-size-literal-all": {
           "files": 1,
-          "lines": 2122,
-          "identifiers": 2188,
+          "lines": 2117,
+          "identifiers": 2185,
           "instantiations": 18990,
           "types": 11746,
           "symbols": 13497

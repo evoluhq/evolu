@@ -103,16 +103,11 @@ export const concatByteArrays = (
   return result;
 };
 
-/**
- * Custom error for {@link Buffer}-related failures like premature end of data.
- * Provides better stack traces for debugging binary protocol issues.
- */
+/** Custom error for {@link Buffer}-related failures like premature end of data. */
 export class BufferError extends Error {
   constructor(message: string) {
     super(message);
     this.name = this.constructor.name;
-
-    Error.captureStackTrace(this, this.constructor);
   }
 }
 

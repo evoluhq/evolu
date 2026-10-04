@@ -149,7 +149,7 @@ export interface Storage {
 
   /**
    * Returns the {@link Fingerprint} of the owner's timestamps from index `begin`
-   * up to, but not including, `end`, where `begin` <= `end`.
+   * up to, but not including, `end`, where `begin` is at most `end`.
    */
   readonly fingerprint: (
     ownerId: OwnerIdBytes,
@@ -192,8 +192,8 @@ export interface Storage {
 
   /**
    * Calls `callback` with the owner's timestamps and their indexes from `begin`
-   * up to, but not including, `end`, where `begin` <= `end`, until the callback
-   * returns `false`.
+   * up to, but not including, `end`, where `begin` is at most `end`, until the
+   * callback returns `false`.
    */
   readonly iterate: (
     ownerId: OwnerIdBytes,

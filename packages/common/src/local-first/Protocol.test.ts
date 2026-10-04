@@ -16,10 +16,19 @@ import {
 } from "../Assert.ts";
 import {
   createBuffer,
+  decodeLength,
   decodeNonNegativeInt,
+  encodeLength,
   encodeNonNegativeInt,
 } from "../Bytes.ts";
-import { EncryptionKey } from "../Crypto.ts";
+import {
+  decryptWithXChaCha20Poly1305,
+  EncryptionKey,
+  encryptWithXChaCha20Poly1305,
+  Entropy24,
+  XChaCha20Poly1305Ciphertext,
+  xChaCha20Poly1305NonceLength,
+} from "../Crypto.ts";
 import { createUnknownError } from "../Error.ts";
 import { constFalse, constTrue } from "../Function.ts";
 import { SqliteValue } from "../Sqlite.ts";
@@ -34,6 +43,7 @@ import {
   createProtocolMessageBuffer,
   createProtocolBroadcastMessagesFromCrdtMessages,
   defaultProtocolMessageMaxSize,
+  defaultProtocolMessageRangesMaxSize,
   ProtocolMessageMaxSize,
   ProtocolMessageRangesMaxSize,
   ProtocolErrorCode,
@@ -49,6 +59,8 @@ import {
   ProtocolValueType,
   protocolVersion,
   SubscriptionFlags,
+  type ApplyProtocolMessageAsClientOptions,
+  type ApplyProtocolMessageAsRelayOptions,
   type ProtocolError,
   type ProtocolMessageBuffer,
   type TimestampsBuffer,
@@ -112,6 +124,25 @@ const maxTimestamp = timestampToTimestampBytes(
 
 test("protocolVersion", () => {
   assertEqual(protocolVersion, 1);
+});
+
+test("ProtocolErrorCode", () => {
+  assertType<ProtocolErrorCode, 0 | 1 | 2 | 3 | 4>();
+});
+
+test("apply options are readonly", () => {
+  assertType<
+    ApplyProtocolMessageAsClientOptions,
+    Readonly<ApplyProtocolMessageAsClientOptions>
+  >();
+  assertType<
+    ApplyProtocolMessageAsRelayOptions,
+    Readonly<ApplyProtocolMessageAsRelayOptions>
+  >();
+
+  const options: ApplyProtocolMessageAsClientOptions = {};
+  // @ts-expect-error Cannot assign to 'rangesMaxSize' because it is a read-only property.
+  options.rangesMaxSize = defaultProtocolMessageRangesMaxSize;
 });
 
 test("ProtocolValueType", () => {
@@ -232,6 +263,33 @@ test("encodeSqliteValue encodes JSON nested deeper than decoding allows as a str
 
     assertEqual(buffer.unwrap()[0], type);
     assertEqual(decodeSqliteValue(buffer), value);
+  }
+});
+
+test("encoding and decoding errors do not need Error.captureStackTrace", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    Error,
+    "captureStackTrace",
+  );
+  assertNonNullable(descriptor);
+  Reflect.deleteProperty(Error, "captureStackTrace");
+  try {
+    const value = "[".repeat(1_001) + "]".repeat(1_001);
+    const buffer = createBuffer();
+    encodeSqliteValue(buffer, value);
+    assertEqual(buffer.unwrap()[0], ProtocolValueType.String);
+    assertEqual(decodeSqliteValue(buffer), value);
+
+    const invalidTypeMessage = createBuffer();
+    encodeNonNegativeInt(invalidTypeMessage, protocolVersion);
+    invalidTypeMessage.extend(ownerIdToOwnerIdBytes(testAppOwner.id));
+    invalidTypeMessage.extend([9]);
+    const invalidType = parseProtocolHeader(invalidTypeMessage.unwrap());
+    assertErr(invalidType);
+    assertInstanceOf(invalidType.error.error, Error);
+    assertEqual(invalidType.error.error.message, "Invalid MessageType");
+  } finally {
+    Object.defineProperty(Error, "captureStackTrace", descriptor);
   }
 });
 
@@ -556,6 +614,69 @@ test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
       timestamp: crdtMessage.timestamp,
     }),
   );
+});
+
+test("decryptAndDecodeDbChange rejects a newer EncryptedDbChange version", () => {
+  const deps = testCreateDeps();
+  const crdtMessage = createTestCrdtMessage(deps);
+  const encryptedMessage = createEncryptedCrdtMessage(deps, crdtMessage);
+
+  const envelope = createBuffer(encryptedMessage.change);
+  const nonce = envelope.shiftN(
+    NonNegativeInt.orThrow(xChaCha20Poly1305NonceLength),
+  );
+  const plaintext = getOrThrow(
+    decryptWithXChaCha20Poly1305(
+      XChaCha20Poly1305Ciphertext.orThrow(
+        envelope.shiftN(decodeLength(envelope)),
+      ),
+      Entropy24.orThrow(nonce),
+      testAppOwner.encryptionKey,
+    ),
+  );
+  assertEqual(plaintext[0], 1);
+
+  const reencryptWithVersion = (version: number): EncryptedCrdtMessage => {
+    const forged = new Uint8Array(plaintext);
+    forged[0] = version;
+    const [ciphertext, forgedNonce] = encryptWithXChaCha20Poly1305(deps)(
+      forged,
+      testAppOwner.encryptionKey,
+    );
+    const buffer = createBuffer();
+    buffer.extend(forgedNonce);
+    encodeLength(buffer, ciphertext);
+    buffer.extend(ciphertext);
+    return {
+      timestamp: crdtMessage.timestamp,
+      change: buffer.unwrap() as EncryptedDbChange,
+    };
+  };
+
+  // 6.0.1-preview.35 wrote version 0 with the same layout.
+  assertOk(
+    decryptAndDecodeDbChange(
+      reencryptWithVersion(0),
+      testAppOwner.encryptionKey,
+    ),
+    crdtMessage.change,
+  );
+
+  const newerVersion = reencryptWithVersion(2);
+  const newer = decryptAndDecodeDbChange(
+    newerVersion,
+    testAppOwner.encryptionKey,
+  );
+  assertErr(newer);
+  assertEqual(newer.error.type, "ProtocolInvalidDataError");
+  if (newer.error.type === "ProtocolInvalidDataError") {
+    assertSame(newer.error.data, newerVersion.change);
+    assertInstanceOf(newer.error.error, Error);
+    assertEqual(
+      newer.error.error.message,
+      "Unsupported EncryptedDbChange version",
+    );
+  }
 });
 
 const shouldNotBeCalled = () => {

@@ -6,6 +6,7 @@ import {
   assertErr,
   assertFalse,
   assertInstanceOf,
+  assertNonNullable,
   assertOk,
   assertSame,
   assertThrowsInstanceOf,
@@ -95,6 +96,23 @@ describe("BufferError", () => {
     assertInstanceOf(error, BufferError);
     assertEqual(error.name, "BufferError");
     assertEqual(error.message, "test error");
+  });
+
+  it("constructs without Error.captureStackTrace", () => {
+    const descriptor = globalThis.Object.getOwnPropertyDescriptor(
+      Error,
+      "captureStackTrace",
+    );
+    assertNonNullable(descriptor);
+    Reflect.deleteProperty(Error, "captureStackTrace");
+    try {
+      const error = new BufferError("x");
+      assertInstanceOf(error, BufferError);
+      assertEqual(error.message, "x");
+      assertThrowsInstanceOf(() => decodeJson([0xc1]), BufferError);
+    } finally {
+      globalThis.Object.defineProperty(Error, "captureStackTrace", descriptor);
+    }
   });
 });
 

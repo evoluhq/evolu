@@ -444,7 +444,7 @@ export const ProtocolErrorCode = {
   SyncError: 4,
 } as const;
 
-type ProtocolErrorCode =
+export type ProtocolErrorCode =
   (typeof ProtocolErrorCode)[keyof typeof ProtocolErrorCode];
 
 export type ProtocolError =
@@ -1101,19 +1101,19 @@ export const createTimestampsBuffer = (): TimestampsBuffer => {
 };
 
 export interface ApplyProtocolMessageAsClientOptions {
-  writeKey?: OwnerWriteKey;
+  readonly writeKey?: OwnerWriteKey;
 
-  rangesMaxSize?: ProtocolMessageRangesMaxSize;
+  readonly rangesMaxSize?: ProtocolMessageRangesMaxSize;
 
   /**
    * Called for each stored change that sync skipped as a
    * {@link ProtocolChangeTooLargeError}. Without it, the error is logged with
    * `console.warn`.
    */
-  onChangeTooLarge?: (error: ProtocolChangeTooLargeError) => void;
+  readonly onChangeTooLarge?: (error: ProtocolChangeTooLargeError) => void;
 
   /** For tests only. */
-  version?: NonNegativeInt;
+  readonly version?: NonNegativeInt;
 }
 
 /**
@@ -1307,16 +1307,16 @@ export const applyProtocolMessageAsClient =
 
 export interface ApplyProtocolMessageAsRelayOptions {
   /** To subscribe an owner for broadcasting. */
-  subscribe?: (ownerId: OwnerId) => void;
+  readonly subscribe?: (ownerId: OwnerId) => void;
 
   /** To unsubscribe an owner from broadcasting. */
-  unsubscribe?: (ownerId: OwnerId) => void;
+  readonly unsubscribe?: (ownerId: OwnerId) => void;
 
   /** To broadcast a protocol message to all subscribers. */
-  broadcast?: (ownerId: OwnerId, message: ProtocolMessage) => void;
+  readonly broadcast?: (ownerId: OwnerId, message: ProtocolMessage) => void;
 
-  totalMaxSize?: ProtocolMessageMaxSize;
-  rangesMaxSize?: ProtocolMessageRangesMaxSize;
+  readonly totalMaxSize?: ProtocolMessageMaxSize;
+  readonly rangesMaxSize?: ProtocolMessageRangesMaxSize;
 }
 
 /**
@@ -1572,8 +1572,6 @@ class ProtocolDecodeError extends Error {
   constructor(message: string) {
     super(message);
     this.name = this.constructor.name;
-
-    Error.captureStackTrace(this, this.constructor);
   }
 }
 
@@ -2146,12 +2144,27 @@ const decodeId = (buffer: Buffer): Id => {
 };
 
 /**
+ * The format version that starts every {@link EncryptedDbChange} plaintext.
+ *
+ * It is independent of {@link protocolVersion}, so a new protocol version that
+ * keeps this layout does not make decoders reject changes. 6.0.1-preview.35
+ * wrote 0 with this layout, so decoding accepts every version up to this one.
+ *
+ * Decoders in `@evolu/common` 8.17 and earlier ignore the version. A future
+ * layout must still make them fail, for example with a value they cannot
+ * decode, rather than let them decode wrong values.
+ */
+const encryptedDbChangeVersion = onePositiveInt;
+
+/**
  * Encodes and encrypts a {@link DbChange} using the provided owner's encryption
  * key. Returns an encrypted binary representation as {@link EncryptedDbChange}.
  *
- * The format includes the protocol version for backward compatibility and the
- * timestamp for tamper-proof verification that the timestamp matches the change
- * data.
+ * The plaintext starts with the format version of the change, which is
+ * independent of {@link protocolVersion}, and the timestamp, which proves that
+ * the change belongs to the timestamp it is sent with.
+ * {@link decryptAndDecodeDbChange} rejects a newer format version and accepts
+ * older ones.
  */
 export const encodeAndEncryptDbChange =
   (deps: RandomBytesDep) =>
@@ -2185,7 +2198,7 @@ export const encodeAndEncryptDbChange =
  * within it fits one protocol message.
  */
 export const encodeDbChange = (buffer: Buffer, message: CrdtMessage): void => {
-  encodeNonNegativeInt(buffer, protocolVersion);
+  encodeNonNegativeInt(buffer, encryptedDbChangeVersion);
 
   // Encode the timestamp to prevent tampering (e.g., a malicious relay
   // assigning this EncryptedDbChange to a different EncryptedCrdtMessage)
@@ -2215,6 +2228,9 @@ export const encodeDbChange = (buffer: Buffer, message: CrdtMessage): void => {
  * Decrypts and decodes an {@link EncryptedCrdtMessage} using the provided
  * owner's encryption key. Verifies that the embedded timestamp matches the
  * expected timestamp to ensure message integrity.
+ *
+ * A change with a newer format version than {@link encodeAndEncryptDbChange}
+ * writes is a {@link ProtocolInvalidDataError}.
  */
 export const decryptAndDecodeDbChange = (
   message: EncryptedCrdtMessage,
@@ -2241,8 +2257,8 @@ export const decryptAndDecodeDbChange = (
     buffer.reset();
     buffer.extend(plaintextBytes.value);
 
-    // Decode version (for future compatibility, not need yet)
-    decodeNonNegativeInt(buffer);
+    if (decodeNonNegativeInt(buffer) > encryptedDbChangeVersion)
+      throw new ProtocolDecodeError("Unsupported EncryptedDbChange version");
 
     const timestamp = timestampBytesToTimestamp(
       TimestampBytes.orThrow(buffer.shiftN(timestampBytesLength)),
@@ -2285,30 +2301,6 @@ export const decryptAndDecodeDbChange = (
       error,
     });
   }
-};
-
-/**
- * Decodes a ProtocolMessage into a readable JSON object for debugging.
- *
- * Note: This is a stub for future implementation. It should use:
- *
- * - DecodeVersionAndOwner
- * - DecodeError or decodeWriteKeys (depending on context)
- * - DecodeMessages
- * - DecodeRanges
- *
- * If you want to help, please contribute to this function.
- */
-export const decodeProtocolMessageToJson = (
-  _protocolMessage: ProtocolMessage,
-  _isInitiator: boolean,
-): unknown => {
-  // TODO: Implement using
-  // - decodeVersionAndOwner
-  // -- decodeError or decodeWriteKeys (should be refactored out),
-  // -- decodeMessages, and decodeRanges.
-  // This is a stub for PRs and community contributions.
-  throw new Error("decodeProtocolMessageToJson is not implemented yet.");
 };
 
 // Small ints are encoded into ProtocolValueType, saving one byte per int.
