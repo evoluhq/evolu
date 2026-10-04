@@ -518,6 +518,14 @@ describe("string encoding", () => {
       "a���b",
     );
   });
+
+  it("keeps a byte order mark", () => {
+    for (const value of ["\uFEFFabc", "\uFEFF", "a\uFEFFb"]) {
+      const buffer = createBuffer();
+      encodeString(buffer, value);
+      assertSame(decodeString(buffer), value);
+    }
+  });
 });
 
 describe("run-length encoding", () => {

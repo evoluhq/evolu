@@ -259,6 +259,14 @@ test("encodeSqliteValue/decodeSqliteValue replaces a lone surrogate in a string 
   assertSame(decodeSqliteValue(buffer), "a�b");
 });
 
+test("encodeSqliteValue/decodeSqliteValue keeps a byte order mark in a string", () => {
+  for (const value of ["\uFEFFabc", "\uFEFF", "a\uFEFFb"]) {
+    const buffer = createBuffer();
+    encodeSqliteValue(buffer, value);
+    assertSame(decodeSqliteValue(buffer), value);
+  }
+});
+
 test("encodeSqliteValue encodes JSON nested deeper than decoding allows as a string", () => {
   for (const [depth, type] of [
     [1_000, ProtocolValueType.Json],

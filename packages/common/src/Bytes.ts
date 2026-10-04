@@ -449,12 +449,21 @@ export const encodeString = (buffer: Buffer, value: string): void => {
 /**
  * Decodes a length-prefixed UTF-8 string.
  *
- * Invalid UTF-8 decodes as U+FFFD instead of throwing.
+ * Invalid UTF-8 decodes as U+FFFD instead of throwing. A leading U+FEFF is
+ * kept. Decoders in `@evolu/common` 8.17 and earlier drop it, so such peers
+ * still store a string that starts with it without the mark.
  */
 export const decodeString = (buffer: Buffer): string => {
   const length = decodeLength(buffer);
   const bytes = buffer.shiftN(length);
-  return bytesToUtf8(bytes);
+  const string = bytesToUtf8(bytes);
+  // bytesToUtf8 uses the default TextDecoder, which drops a leading U+FEFF
+  // (EF BB BF in UTF-8), so it is restored here. Passing { ignoreBOM: true }
+  // to a TextDecoder would also keep it, but costs more compiler types in the
+  // type benchmark.
+  return bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
+    ? `\uFEFF${string}`
+    : string;
 };
 
 /** Incrementally encodes consecutive equal values using run-length encoding. */
