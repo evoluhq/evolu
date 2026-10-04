@@ -4,3 +4,5 @@ apps/web/src/app/(docs)/docs/api-reference/**/*.mdx
 # File uses // prettier-ignore comments to preserve compact SQL format.
 # To format non-SQL code, temporarily uncomment this line, format, re-comment.
 packages/common/src/local-first/PublicKysely.ts
+# Type benchmark fixtures stay compact, because bench:type measures their lines.
+bench/type/fixtures/
