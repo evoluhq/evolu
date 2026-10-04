@@ -73,7 +73,7 @@
           "lines": 376,
           "identifiers": 590,
           "instantiations": 5672,
-          "types": 1999,
+          "types": 1998,
           "symbols": 2254
         },
         "factory-errors-01": {
@@ -121,7 +121,7 @@
           "lines": 377,
           "identifiers": 592,
           "instantiations": 5694,
-          "types": 2009,
+          "types": 2008,
           "symbols": 2257
         },
         "factory-from-unknown-01": {
@@ -169,7 +169,7 @@
           "lines": 377,
           "identifiers": 595,
           "instantiations": 5699,
-          "types": 2019,
+          "types": 2018,
           "symbols": 2302
         },
         "factory-deepest-01": {
@@ -217,7 +217,7 @@
           "lines": 381,
           "identifiers": 659,
           "instantiations": 6382,
-          "types": 2213,
+          "types": 2212,
           "symbols": 2407
         },
         "factory-all-01": {
@@ -265,7 +265,7 @@
           "lines": 592,
           "identifiers": 1915,
           "instantiations": 7366,
-          "types": 2508,
+          "types": 2507,
           "symbols": 5230
         },
         "factory-or-throw-01": {
@@ -313,7 +313,7 @@
           "lines": 377,
           "identifiers": 595,
           "instantiations": 5701,
-          "types": 2019,
+          "types": 2018,
           "symbols": 2343
         },
         "factory-or-null-01": {
@@ -361,7 +361,7 @@
           "lines": 377,
           "identifiers": 595,
           "instantiations": 5697,
-          "types": 2016,
+          "types": 2015,
           "symbols": 2341
         },
         "factory-semantic-all-01": {
@@ -457,7 +457,7 @@
           "lines": 380,
           "identifiers": 595,
           "instantiations": 5779,
-          "types": 2025,
+          "types": 2024,
           "symbols": 2319
         },
         "array-errors-01": {
@@ -505,7 +505,7 @@
           "lines": 380,
           "identifiers": 597,
           "instantiations": 5881,
-          "types": 2054,
+          "types": 2053,
           "symbols": 2388
         },
         "array-from-unknown-01": {
@@ -553,7 +553,7 @@
           "lines": 381,
           "identifiers": 600,
           "instantiations": 5806,
-          "types": 2045,
+          "types": 2044,
           "symbols": 2367
         },
         "array-all-01": {
@@ -601,7 +601,7 @@
           "lines": 614,
           "identifiers": 1928,
           "instantiations": 7787,
-          "types": 2654,
+          "types": 2653,
           "symbols": 5411
         },
         "array-semantic-all-01": {
@@ -697,7 +697,7 @@
           "lines": 380,
           "identifiers": 595,
           "instantiations": 5779,
-          "types": 2026,
+          "types": 2025,
           "symbols": 2319
         },
         "set-errors-01": {
@@ -745,7 +745,7 @@
           "lines": 380,
           "identifiers": 597,
           "instantiations": 5881,
-          "types": 2055,
+          "types": 2054,
           "symbols": 2388
         },
         "set-from-unknown-01": {
@@ -793,7 +793,7 @@
           "lines": 381,
           "identifiers": 600,
           "instantiations": 5806,
-          "types": 2046,
+          "types": 2045,
           "symbols": 2367
         },
         "set-all-01": {
@@ -841,7 +841,7 @@
           "lines": 614,
           "identifiers": 1928,
           "instantiations": 7787,
-          "types": 2655,
+          "types": 2654,
           "symbols": 5411
         },
         "set-semantic-all-01": {
@@ -1081,7 +1081,7 @@
           "lines": 387,
           "identifiers": 631,
           "instantiations": 7260,
-          "types": 2273,
+          "types": 2272,
           "symbols": 2789
         },
         "record-all-01": {
@@ -1129,7 +1129,7 @@
           "lines": 388,
           "identifiers": 628,
           "instantiations": 6609,
-          "types": 2185,
+          "types": 2184,
           "symbols": 2423
         },
         "declaration-output-01": {
@@ -1177,7 +1177,7 @@
           "lines": 244,
           "identifiers": 295,
           "instantiations": 1996,
-          "types": 869,
+          "types": 868,
           "symbols": 1374
         },
         "declaration-errors-01": {
@@ -1225,7 +1225,7 @@
           "lines": 245,
           "identifiers": 298,
           "instantiations": 2032,
-          "types": 881,
+          "types": 880,
           "symbols": 1394
         },
         "declaration-all-01": {
@@ -1273,7 +1273,7 @@
           "lines": 463,
           "identifiers": 498,
           "instantiations": 3766,
-          "types": 1413,
+          "types": 1412,
           "symbols": 4367
         },
         "union-all-02": {
@@ -1553,7 +1553,7 @@
           "lines": 405,
           "identifiers": 667,
           "instantiations": 6684,
-          "types": 2312,
+          "types": 2311,
           "symbols": 2511
         },
         "brand-factory-all": {
@@ -1561,7 +1561,7 @@
           "lines": 412,
           "identifiers": 677,
           "instantiations": 6668,
-          "types": 2303,
+          "types": 2302,
           "symbols": 2499
         },
         "constraints-all": {
@@ -1582,11 +1582,11 @@
         },
         "config-env-all": {
           "files": 2,
-          "lines": 2502,
-          "identifiers": 2618,
-          "instantiations": 24836,
-          "types": 13278,
-          "symbols": 14736
+          "lines": 2531,
+          "identifiers": 2643,
+          "instantiations": 24837,
+          "types": 13282,
+          "symbols": 14750
         },
         "with-default-all": {
           "files": 0,
@@ -1598,11 +1598,11 @@
         },
         "byte-size-literal-all": {
           "files": 1,
-          "lines": 2093,
-          "identifiers": 2163,
-          "instantiations": 18989,
-          "types": 11742,
-          "symbols": 13483
+          "lines": 2122,
+          "identifiers": 2188,
+          "instantiations": 18990,
+          "types": 11746,
+          "symbols": 13497
         },
         "duration-literal-all": {
           "files": 0,

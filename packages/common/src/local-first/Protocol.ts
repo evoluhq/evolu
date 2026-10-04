@@ -527,48 +527,44 @@ export const createProtocolMessageFromCrdtMessages =
       writeKey: owner.writeKey,
     });
 
-    let notAllMessagesSent = false;
-
     for (const message of messages) {
       const change = encodeAndEncryptDbChange(deps)(
         message,
         owner.encryptionKey,
       );
       const encryptedCrdtMessage = { timestamp: message.timestamp, change };
-      if (buffer.canAddMessage(encryptedCrdtMessage)) {
-        buffer.addMessage(encryptedCrdtMessage);
-      } else {
-        notAllMessagesSent = true;
+      if (
+        !buffer.tryWrite(() => {
+          buffer.addMessage(encryptedCrdtMessage);
+        })
+      ) {
+        /**
+         * DEV: If not all messages fit due to size limits, we trigger a sync
+         * continuation by appending a Range with a random fingerprint. This
+         * ensures the receiver always responds with ranges, prompting another
+         * sync round.
+         *
+         * The ideal approach would be to send three ranges (skip, fingerprint,
+         * skip) where the fingerprint of unsent messages would act as narrow
+         * sync probe. I think we can send `zeroFingerprint` which can be
+         * interpreted as an indication that the other side should reply with
+         * {@link TimestampsRange}, so no need to restart syncing.
+         *
+         * For now, using a random fingerprint avoids extra complexity and is
+         * good enough for this case.
+         */
+        const randomFingerprint = deps.randomBytes.create(
+          fingerprintSize,
+        ) as unknown as Fingerprint;
+
+        // Every kept trial reserved space for this closing range.
+        buffer.addRange({
+          type: RangeType.Fingerprint,
+          upperBound: InfiniteUpperBound,
+          fingerprint: randomFingerprint,
+        });
         break;
       }
-    }
-
-    if (notAllMessagesSent) {
-      /**
-       * DEV: If not all messages fit due to size limits, we trigger a sync
-       * continuation by appending a Range with a random fingerprint. This
-       * ensures the receiver always responds with ranges, prompting another
-       * sync round.
-       *
-       * The ideal approach would be to send three ranges (skip, fingerprint,
-       * skip) where the fingerprint of unsent messages would act as narrow sync
-       * probe. I think we can send `zeroFingerprint` which can be interpreted
-       * as an indication that the other side should reply with
-       * {@link TimestampsRange}, so no need to restart syncing.
-       *
-       * For now, using a random fingerprint avoids extra complexity and is good
-       * enough for this case.
-       */
-      const randomFingerprint = deps.randomBytes.create(
-        fingerprintSize,
-      ) as unknown as Fingerprint;
-
-      // There is always a space for Fingerprint with InfiniteUpperBound.
-      buffer.addRange({
-        type: RangeType.Fingerprint,
-        upperBound: InfiniteUpperBound,
-        fingerprint: randomFingerprint,
-      });
     }
 
     return buffer.unwrap();
@@ -631,20 +627,22 @@ export const createProtocolBroadcastMessagesFromCrdtMessages =
         change: encodeAndEncryptDbChange(deps)(message, owner.encryptionKey),
       };
 
-      if (!buffer.canAddMessage(encryptedMessage)) {
-        const nextBuffer = createProtocolMessageBuffer(owner.id, {
-          messageType: MessageType.Broadcast,
-          totalMaxSize: maxSize,
-        });
-        assert(
-          nextBuffer.canAddMessage(encryptedMessage),
-          "the message is too big",
-        );
-        broadcasts.push(buffer.unwrap());
-        buffer = nextBuffer;
+      const frame = buffer;
+      if (
+        frame.tryWrite(() => {
+          frame.addMessage(encryptedMessage);
+        })
+      ) {
+        continue;
       }
 
+      buffer = createProtocolMessageBuffer(owner.id, {
+        messageType: MessageType.Broadcast,
+        totalMaxSize: maxSize,
+      });
+      // Outside a trial, it asserts that the message fits an empty frame.
       buffer.addMessage(encryptedMessage);
+      broadcasts.push(frame.unwrap());
     }
 
     broadcasts.push(buffer.unwrap());
@@ -686,6 +684,11 @@ export const createProtocolMessageForUnsubscribe = (
 /**
  * Mutable builder for constructing {@link ProtocolMessage} respecting size
  * limits.
+ *
+ * A frame never exceeds `totalMaxSize`. Make ordinary writes inside `tryWrite`,
+ * which keeps them only if the frame can still be closed. A write outside a
+ * trial is a closing write: `addMessage` and `addRange` assert that the frame
+ * fits `totalMaxSize`.
  */
 export interface ProtocolMessageBuffer {
   readonly canAddMessage: (message: EncryptedCrdtMessage) => boolean;
@@ -703,7 +706,26 @@ export interface ProtocolMessageBuffer {
     range: SkipRange | FingerprintRange | TimestampsRangeWithTimestampsBuffer,
   ) => void;
 
+  /**
+   * Runs `write` and keeps what it wrote only if the frame can still be closed,
+   * returning whether it was kept.
+   *
+   * The frame can be closed when its exact size plus the bytes needed to append
+   * one Fingerprint range with {@link InfiniteUpperBound} plus `reserve` is at
+   * most `totalMaxSize`, and its ranges section plus the same bytes is at most
+   * `rangesMaxSize`. Nothing is needed to close a broadcast, which holds no
+   * ranges, or a frame whose last range has InfiniteUpperBound. Use `reserve`
+   * for bytes the caller adds later, such as a range it is still collecting.
+   *
+   * When the frame cannot be closed, or `write` throws, everything `write`
+   * wrote is undone, so the frame is as if `write` never ran. Inside `write`,
+   * `addMessage` and `addRange` do not assert the size limit.
+   */
+  readonly tryWrite: (write: () => void, reserve?: NonNegativeInt) => boolean;
+
   readonly unwrap: () => ProtocolMessage;
+
+  /** Returns the exact encoded size of the frame. */
   readonly getSize: () => PositiveInt;
 }
 
@@ -765,7 +787,11 @@ export const createProtocolMessageBuffer = (
   }
 
   let isLastRangeInfinite = false;
+  let isInTrial = false;
 
+  // Writes outside a trial assert this, so an overflow fails where it happens.
+  // A frame must never exceed totalMaxSize: relays at @evolu/nodejs 4.0.0 or
+  // older crash on a frame one byte larger than their 1,000,000-byte limit.
   const isWithinSizeLimits = () => getSize() <= totalMaxSize;
 
   const getSize = () =>
@@ -776,27 +802,44 @@ export const createProtocolMessageBuffer = (
     buffers.messages.timestamps.getLength() +
     buffers.messages.dbChanges.getLength();
 
+  // Without ranges, the ranges section is omitted, including its count.
   const getRangesSize = () =>
     buffers.ranges.timestamps.getCount() > 0
       ? buffers.ranges.timestamps.getLength() +
         buffers.ranges.types.getLength() +
-        buffers.ranges.payloads.getLength() +
-        safeMargins.remainingRange
+        buffers.ranges.payloads.getLength()
+      : 0;
+
+  const getClosingReserve = () => {
+    if (options.messageType === MessageType.Broadcast || isLastRangeInfinite) {
+      return 0;
+    }
+    // Fingerprint(InfiniteUpperBound) encodes no upper bound, only its type
+    // (1 byte) and fingerprint (12 bytes). The ranges count varint gains a
+    // byte when the new count is a power of 128. That includes 128^0 = 1,
+    // since the first range adds the count itself. So closing takes 13 or 14
+    // bytes.
+    let newCount = buffers.ranges.timestamps.getCount() + 1;
+    while (newCount % 128 === 0) newCount /= 128;
+    return 1 + fingerprintSize + (newCount === 1 ? 1 : 0);
+  };
+
+  // The can* predicates reserve remainingRange once ranges exist, while
+  // getSize and tryWrite measure exactly.
+  const getRangesSizeWithMargin = () =>
+    buffers.ranges.timestamps.getCount() > 0
+      ? getRangesSize() + safeMargins.remainingRange
       : 0;
 
   /**
-   * We calculated worst-case sizes as closely as possible and added a small
-   * safety margin, since computing exact worst cases is difficult due to
-   * variable-length, run-length, and delta encoding.
+   * Worst-case sizes for the can* predicates, which predict whether a write
+   * fits before making it. Computing exact worst cases is difficult due to
+   * variable-length, run-length, and delta encoding, so each includes a small
+   * safety margin.
    *
-   * Runtime assertions (`assert`) are used to guarantee that size limits are
-   * never exceeded. If a limit is exceeded, the assertion will fail at the
-   * precise location, making it easy to identify and fix the issue.
-   *
-   * While it would be possible to avoid the safety margin by snapshotting
-   * buffer states and rolling back changes, this would likely impact
-   * performance. If someone has time and wants to experiment with this
-   * approach, contributions are welcome.
+   * `tryWrite` needs no margins. It makes the write, measures the exact frame,
+   * and undoes the write in constant time when the frame no longer fits, so a
+   * trial costs about as much as the write itself.
    */
   const safeMargins = {
     // bytes: range type + possible increased count varint
@@ -818,21 +861,27 @@ export const createProtocolMessageBuffer = (
 
   return {
     canAddMessage: (message) =>
-      getSize() + addMessageSafeMargin + message.change.length <= totalMaxSize,
+      getHeaderAndMessagesSize() +
+        getRangesSizeWithMargin() +
+        addMessageSafeMargin +
+        message.change.length <=
+      totalMaxSize,
 
     addMessage: (message) => {
       buffers.messages.timestamps.add(message.timestamp);
       encodeLength(buffers.messages.dbChanges, message.change);
       buffers.messages.dbChanges.extend(message.change);
-      assert(isWithinSizeLimits(), "the message is too big");
+      assert(isInTrial || isWithinSizeLimits(), "the message is too big");
     },
 
     canSplitRange: () =>
-      getRangesSize() + safeMargins.splitRange <= rangesMaxSize,
+      getRangesSizeWithMargin() + safeMargins.splitRange <= rangesMaxSize,
 
     canAddTimestampsRangeAndMessage: (timestamps, message) => {
       const rangesNewSize =
-        getRangesSize() + timestamps.getLength() + safeMargins.timestampsRange;
+        getRangesSizeWithMargin() +
+        timestamps.getLength() +
+        safeMargins.timestampsRange;
 
       return (
         rangesNewSize <= rangesMaxSize &&
@@ -888,7 +937,41 @@ export const createProtocolMessageBuffer = (
         }
       }
 
-      assert(isWithinSizeLimits(), `the range ${range.type} is too big`);
+      assert(
+        isInTrial || isWithinSizeLimits(),
+        `the range ${range.type} is too big`,
+      );
+    },
+
+    tryWrite: (write, reserve = zeroNonNegativeInt) => {
+      const restoreMessageTimestamps = buffers.messages.timestamps.checkpoint();
+      const dbChangesLength = buffers.messages.dbChanges.getLength();
+      const restoreRangeTimestamps = buffers.ranges.timestamps.checkpoint();
+      const typesLength = buffers.ranges.types.getLength();
+      const payloadsLength = buffers.ranges.payloads.getLength();
+      const wasLastRangeInfinite = isLastRangeInfinite;
+      const wasInTrial = isInTrial;
+
+      let isKept = false;
+      isInTrial = true;
+      try {
+        write();
+        const reserves = getClosingReserve() + reserve;
+        isKept =
+          getSize() + reserves <= totalMaxSize &&
+          getRangesSize() + reserves <= rangesMaxSize;
+      } finally {
+        isInTrial = wasInTrial;
+        if (!isKept) {
+          restoreMessageTimestamps();
+          buffers.messages.dbChanges.truncate(dbChangesLength);
+          restoreRangeTimestamps();
+          buffers.ranges.types.truncate(typesLength);
+          buffers.ranges.payloads.truncate(payloadsLength);
+          isLastRangeInfinite = wasLastRangeInfinite;
+        }
+      }
+      return isKept;
     },
 
     unwrap: () => {
@@ -926,6 +1009,15 @@ export interface TimestampsBuffer {
   readonly getCount: () => NonNegativeInt;
   readonly getLength: () => number;
   readonly append: (buffer: Buffer) => void;
+
+  /**
+   * Returns a function that restores the buffer, in constant time, to the state
+   * it had when this was called, discarding every timestamp added since.
+   *
+   * A restore function can be called repeatedly. It is valid until the buffer
+   * is restored to an earlier checkpoint.
+   */
+  readonly checkpoint: () => () => void;
 }
 
 export const createTimestampsBuffer = (): TimestampsBuffer => {
@@ -982,6 +1074,23 @@ export const createTimestampsBuffer = (): TimestampsBuffer => {
       buffer.extend(millisBuffer.unwrap());
       buffer.extend(counterEncoder.unwrap());
       buffer.extend(nodeIdEncoder.unwrap());
+    },
+
+    checkpoint: () => {
+      const checkpointCount = count;
+      const millisLength = millisBuffer.getLength();
+      const checkpointPreviousMillis = previousMillis;
+      const restoreCounters = counterEncoder.checkpoint();
+      const restoreNodeIds = nodeIdEncoder.checkpoint();
+
+      return () => {
+        count = checkpointCount;
+        syncCount();
+        millisBuffer.truncate(millisLength);
+        previousMillis = checkpointPreviousMillis;
+        restoreCounters();
+        restoreNodeIds();
+      };
     },
   };
 };

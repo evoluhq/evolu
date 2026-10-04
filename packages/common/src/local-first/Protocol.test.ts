@@ -14,7 +14,11 @@ import {
   assertThrowsInstanceOf,
   assertTrue,
 } from "../Assert.ts";
-import { createBuffer, encodeNonNegativeInt } from "../Bytes.ts";
+import {
+  createBuffer,
+  decodeNonNegativeInt,
+  encodeNonNegativeInt,
+} from "../Bytes.ts";
 import { EncryptionKey } from "../Crypto.ts";
 import { constFalse, constTrue } from "../Function.ts";
 import { SqliteValue } from "../Sqlite.ts";
@@ -30,6 +34,7 @@ import {
   createProtocolBroadcastMessagesFromCrdtMessages,
   defaultProtocolMessageMaxSize,
   ProtocolMessageMaxSize,
+  ProtocolMessageRangesMaxSize,
   ProtocolErrorCode,
   createProtocolMessageFromCrdtMessages,
   createProtocolMessageForSync,
@@ -44,11 +49,14 @@ import {
   protocolVersion,
   SubscriptionFlags,
   type ProtocolError,
+  type ProtocolMessageBuffer,
+  type TimestampsBuffer,
 } from "./Protocol.ts";
 import type {
   CrdtMessage,
   EncryptedCrdtMessage,
   EncryptedDbChange,
+  FingerprintRange,
   StorageDep,
 } from "./Storage.ts";
 import {
@@ -592,6 +600,431 @@ test("createTimestampsBuffer maxTimestamp", () => {
   const buffer = createTimestampsBuffer();
   buffer.add(timestampBytesToTimestamp(maxTimestamp));
   assertEqual(buffer.getLength(), 21);
+});
+
+const createTestTimestamp = (millis: number) =>
+  createTimestamp({ millis: Millis.orThrow(millis) });
+
+const setupTimestampsBuffer = (millises: ReadonlyArray<number>) => {
+  const timestamps = createTimestampsBuffer();
+  for (const millis of millises) timestamps.add(createTestTimestamp(millis));
+  return timestamps;
+};
+
+const timestampsBufferToBytes = (timestamps: TimestampsBuffer) => {
+  const buffer = createBuffer();
+  timestamps.append(buffer);
+  return buffer.unwrap();
+};
+
+describe("TimestampsBuffer checkpoint", () => {
+  it("restores the count across the 127/128 varint boundary", () => {
+    const millises = Array.from({ length: 128 }, (_, index) => index);
+    const timestamps = setupTimestampsBuffer(millises.slice(0, 127));
+    const restore = timestamps.checkpoint();
+    timestamps.add(createTestTimestamp(127));
+    assertEqualBytes(timestampsBufferToBytes(timestamps).slice(0, 2), [128, 1]);
+
+    restore();
+    assertSame(timestamps.getCount(), 127);
+    assertSame(timestampsBufferToBytes(timestamps)[0], 127);
+    assertEqualBytes(
+      timestampsBufferToBytes(timestamps),
+      timestampsBufferToBytes(setupTimestampsBuffer(millises.slice(0, 127))),
+    );
+    assertSame(
+      timestamps.getLength(),
+      setupTimestampsBuffer(millises.slice(0, 127)).getLength(),
+    );
+
+    timestamps.add(createTestTimestamp(127));
+    assertEqualBytes(
+      timestampsBufferToBytes(timestamps),
+      timestampsBufferToBytes(setupTimestampsBuffer(millises)),
+    );
+  });
+
+  it("restores the previous millis", () => {
+    const timestamps = setupTimestampsBuffer([100]);
+    const restore = timestamps.checkpoint();
+    timestamps.add(createTestTimestamp(500));
+    restore();
+    timestamps.add(createTestTimestamp(700));
+
+    // Millis are encoded as deltas after the count.
+    const buffer = createBuffer(timestampsBufferToBytes(timestamps));
+    assertSame(decodeNonNegativeInt(buffer), 2);
+    const first = decodeNonNegativeInt(buffer);
+    const second = first + decodeNonNegativeInt(buffer);
+    assertEqual([first, second], [100, 700]);
+    assertEqualBytes(
+      timestampsBufferToBytes(timestamps),
+      timestampsBufferToBytes(setupTimestampsBuffer([100, 700])),
+    );
+  });
+
+  it("restores infinite entries", () => {
+    const timestamps = setupTimestampsBuffer([1]);
+    const restoreFinite = timestamps.checkpoint();
+    timestamps.addInfinite();
+    const restoreInfinite = timestamps.checkpoint();
+    timestamps.addInfinite();
+    assertSame(timestamps.getCount(), 3);
+
+    restoreInfinite();
+    assertSame(timestamps.getCount(), 2);
+
+    restoreFinite();
+    assertSame(timestamps.getCount(), 1);
+    assertEqualBytes(
+      timestampsBufferToBytes(timestamps),
+      timestampsBufferToBytes(setupTimestampsBuffer([1])),
+    );
+  });
+
+  it("restores an empty buffer", () => {
+    const timestamps = createTimestampsBuffer();
+    const restore = timestamps.checkpoint();
+    timestamps.add(
+      createTimestamp({
+        millis: Millis.orThrow(5),
+        counter: maxCounter,
+        nodeId: maxNodeId,
+      }),
+    );
+    timestamps.addInfinite();
+
+    restore();
+    assertSame(timestamps.getCount(), 0);
+    assertEqualBytes(timestampsBufferToBytes(timestamps), [0]);
+
+    timestamps.add(createTestTimestamp(7));
+    assertEqualBytes(
+      timestampsBufferToBytes(timestamps),
+      timestampsBufferToBytes(setupTimestampsBuffer([7])),
+    );
+  });
+});
+
+describe("ProtocolMessageBuffer tryWrite", () => {
+  const setupRequestBuffer = ({
+    rangesMaxSize,
+  }: {
+    rangesMaxSize?: ProtocolMessageRangesMaxSize;
+  } = {}) =>
+    createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      rangesMaxSize,
+    });
+
+  const createTestMessage = (
+    millis: number,
+    changeLength: number,
+  ): EncryptedCrdtMessage => ({
+    timestamp: createTimestamp({
+      millis: Millis.orThrow(millis),
+      counter: maxCounter,
+      nodeId: maxNodeId,
+    }),
+    change: new Uint8Array(changeLength).fill(millis) as EncryptedDbChange,
+  });
+
+  const createTestBound = (millis: number) =>
+    timestampToTimestampBytes(createTestTimestamp(millis));
+
+  const closingRange: FingerprintRange = {
+    type: RangeType.Fingerprint,
+    upperBound: InfiniteUpperBound,
+    fingerprint: zeroFingerprint,
+  };
+
+  // The first range adds the ranges count, and Fingerprint(InfiniteUpperBound)
+  // adds its type and fingerprint without an upper bound.
+  const firstClosingRangeSize = 1 + 1 + 12;
+
+  const emptyRequestLength = setupRequestBuffer().unwrap().length;
+
+  it("keeps a write that fits the total budget exactly", () => {
+    // Changes near the limit and this probe have a 3-byte length varint.
+    const probe = setupRequestBuffer();
+    probe.addMessage(createTestMessage(1, 100_000));
+    const messageOverhead = probe.unwrap().length - 100_000;
+
+    for (const reserve of [0, 5]) {
+      const fittingLength =
+        defaultProtocolMessageMaxSize -
+        messageOverhead -
+        firstClosingRangeSize -
+        reserve;
+
+      const fits = setupRequestBuffer();
+      assertTrue(
+        fits.tryWrite(() => {
+          fits.addMessage(createTestMessage(1, fittingLength));
+        }, NonNegativeInt.orThrow(reserve)),
+      );
+      fits.addRange(closingRange);
+      assertSame(fits.getSize(), defaultProtocolMessageMaxSize - reserve);
+      assertSame(fits.unwrap().length, defaultProtocolMessageMaxSize - reserve);
+
+      const over = setupRequestBuffer();
+      assertFalse(
+        over.tryWrite(() => {
+          over.addMessage(createTestMessage(1, fittingLength + 1));
+        }, NonNegativeInt.orThrow(reserve)),
+      );
+      assertEqualBytes(over.unwrap(), setupRequestBuffer().unwrap());
+    }
+  });
+
+  it("keeps a write that fits the ranges budget exactly", () => {
+    const addLargeRange = (buffer: ProtocolMessageBuffer) => () => {
+      // 3-byte millis deltas make the range a little over 3,000 bytes.
+      const timestamps = createTimestampsBuffer();
+      for (let index = 1; index <= 1_000; index++) {
+        timestamps.add(createTestTimestamp(index * 100_000));
+      }
+      buffer.addRange({
+        type: RangeType.Timestamps,
+        upperBound: createTestBound(200_000_000),
+        timestamps,
+      });
+    };
+
+    const probe = setupRequestBuffer();
+    addLargeRange(probe)();
+    probe.addRange(closingRange);
+    const closedRangesSize = probe.unwrap().length - emptyRequestLength;
+
+    for (const reserve of [0, 5]) {
+      const fits = setupRequestBuffer({
+        rangesMaxSize: ProtocolMessageRangesMaxSize.orThrow(
+          closedRangesSize + reserve,
+        ),
+      });
+      assertTrue(
+        fits.tryWrite(addLargeRange(fits), NonNegativeInt.orThrow(reserve)),
+      );
+      fits.addRange(closingRange);
+      assertSame(fits.unwrap().length - emptyRequestLength, closedRangesSize);
+
+      const over = setupRequestBuffer({
+        rangesMaxSize: ProtocolMessageRangesMaxSize.orThrow(
+          closedRangesSize + reserve - 1,
+        ),
+      });
+      assertFalse(
+        over.tryWrite(addLargeRange(over), NonNegativeInt.orThrow(reserve)),
+      );
+      assertEqualBytes(over.unwrap(), setupRequestBuffer().unwrap());
+    }
+  });
+
+  it("reserves exactly the bytes of the closing range", () => {
+    // Closing adds a range type and a fingerprint, and a byte to the ranges
+    // count varint when the count becomes 1 or 128.
+    for (const [rangesCount, closingRangeSize] of [
+      [0, 14],
+      [1, 13],
+      [127, 14],
+      [128, 13],
+    ] as const) {
+      const setupBuffer = () => {
+        const buffer = setupRequestBuffer();
+        for (let index = 1; index <= rangesCount; index++) {
+          buffer.addRange({
+            type: RangeType.Skip,
+            upperBound: createTestBound(index),
+          });
+        }
+        return buffer;
+      };
+      const probe = setupBuffer();
+      probe.addMessage(createTestMessage(1, 100_000));
+      const fittingLength =
+        defaultProtocolMessageMaxSize -
+        (probe.getSize() - 100_000) -
+        closingRangeSize;
+
+      const fits = setupBuffer();
+      assertTrue(
+        fits.tryWrite(() => {
+          fits.addMessage(createTestMessage(1, fittingLength));
+        }),
+      );
+      fits.addRange(closingRange);
+      assertSame(fits.unwrap().length, defaultProtocolMessageMaxSize);
+
+      const over = setupBuffer();
+      assertFalse(
+        over.tryWrite(() => {
+          over.addMessage(createTestMessage(1, fittingLength + 1));
+        }),
+      );
+    }
+  });
+
+  it("reserves nothing once an infinite range closed the frame", () => {
+    const probe = setupRequestBuffer();
+    probe.addRange(closingRange);
+    probe.addMessage(createTestMessage(1, 100_000));
+    const fittingLength =
+      defaultProtocolMessageMaxSize - (probe.getSize() - 100_000);
+
+    const fits = setupRequestBuffer();
+    fits.addRange(closingRange);
+    assertTrue(
+      fits.tryWrite(() => {
+        fits.addMessage(createTestMessage(1, fittingLength));
+      }),
+    );
+    assertSame(fits.unwrap().length, defaultProtocolMessageMaxSize);
+
+    const over = setupRequestBuffer();
+    over.addRange(closingRange);
+    assertFalse(
+      over.tryWrite(() => {
+        over.addMessage(createTestMessage(1, fittingLength + 1));
+      }),
+    );
+  });
+
+  it("leaves no trace of a rejected write", () => {
+    const setupBuffer = () => {
+      const buffer = setupRequestBuffer();
+      buffer.addMessage(createTestMessage(1, 10));
+      buffer.addMessage(createTestMessage(2, 10));
+      buffer.addRange({
+        type: RangeType.Skip,
+        upperBound: createTestBound(10),
+      });
+      buffer.addRange({
+        type: RangeType.Fingerprint,
+        upperBound: createTestBound(20),
+        fingerprint: zeroFingerprint,
+      });
+      return buffer;
+    };
+
+    const untouched = setupBuffer();
+    const rejected = setupBuffer();
+    assertFalse(
+      rejected.tryWrite(() => {
+        // The same counter and NodeId rewrite the runs in place.
+        rejected.addMessage(createTestMessage(3, 10));
+        rejected.addRange({
+          type: RangeType.Fingerprint,
+          upperBound: createTestBound(30),
+          fingerprint: zeroFingerprint,
+        });
+        rejected.addMessage(
+          createTestMessage(4, defaultProtocolMessageMaxSize),
+        );
+      }),
+    );
+    assertSame(rejected.getSize(), untouched.getSize());
+
+    for (const buffer of [untouched, rejected]) {
+      buffer.addMessage(createTestMessage(5, 10));
+      buffer.addRange({
+        type: RangeType.Timestamps,
+        upperBound: createTestBound(40),
+        timestamps: setupTimestampsBuffer([25, 35]),
+      });
+      buffer.addRange(closingRange);
+    }
+    assertEqualBytes(rejected.unwrap(), untouched.unwrap());
+  });
+
+  it("asserts the size limit only outside a trial", () => {
+    const buffer = setupRequestBuffer();
+    const tooLarge = createTestMessage(2, defaultProtocolMessageMaxSize);
+    assertFalse(
+      buffer.tryWrite(() => {
+        assertFalse(
+          buffer.tryWrite(() => {
+            buffer.addMessage(tooLarge);
+          }),
+        );
+        // The outer trial is still running.
+        buffer.addMessage(tooLarge);
+      }),
+    );
+
+    const error = assertThrowsInstanceOf(() => {
+      buffer.addMessage(tooLarge);
+    }, Error);
+    assertSame(error.message, "the message is too big");
+  });
+
+  it("undoes a write that throws", () => {
+    const failure = new Error("storage unavailable");
+    const buffer = setupRequestBuffer();
+    assertSame(
+      assertThrowsInstanceOf(
+        () =>
+          buffer.tryWrite(() => {
+            buffer.addMessage(createTestMessage(1, 10));
+            buffer.addRange(closingRange);
+            throw failure;
+          }),
+        Error,
+      ),
+      failure,
+    );
+
+    buffer.addRange(closingRange);
+    const expected = setupRequestBuffer();
+    expected.addRange(closingRange);
+    assertEqualBytes(buffer.unwrap(), expected.unwrap());
+  });
+
+  it("keeps or undoes a compound write as a whole", () => {
+    const addRanges = (buffer: ProtocolMessageBuffer) => () => {
+      buffer.addMessage(createTestMessage(1, 10));
+      // A coalesced skip followed by the ranges of a split.
+      buffer.addRange({
+        type: RangeType.Skip,
+        upperBound: createTestBound(10),
+      });
+      buffer.addRange({
+        type: RangeType.Fingerprint,
+        upperBound: createTestBound(20),
+        fingerprint: zeroFingerprint,
+      });
+      const timestamps = createTimestampsBuffer();
+      for (let index = 1; index <= 1_000; index++) {
+        timestamps.add(createTestTimestamp(20 + index * 100_000));
+      }
+      buffer.addRange({
+        type: RangeType.Timestamps,
+        upperBound: createTestBound(200_000_000),
+        timestamps,
+      });
+    };
+
+    const expectedKept = setupRequestBuffer();
+    addRanges(expectedKept)();
+    expectedKept.addRange(closingRange);
+
+    const kept = setupRequestBuffer({
+      rangesMaxSize: ProtocolMessageRangesMaxSize.orThrow(100_000),
+    });
+    assertTrue(kept.tryWrite(addRanges(kept)));
+    kept.addRange(closingRange);
+    assertEqualBytes(kept.unwrap(), expectedKept.unwrap());
+
+    const expectedUndone = setupRequestBuffer();
+    expectedUndone.addRange(closingRange);
+
+    const undone = setupRequestBuffer({
+      rangesMaxSize: ProtocolMessageRangesMaxSize.orThrow(3_000),
+    });
+    assertFalse(undone.tryWrite(addRanges(undone)));
+    undone.addRange(closingRange);
+    // Neither the ranges nor the message remain.
+    assertEqualBytes(undone.unwrap(), expectedUndone.unwrap());
+  });
 });
 
 describe("createProtocolMessageBuffer", () => {
@@ -1514,6 +1947,117 @@ test("local mutation broadcasts reject a message that cannot fit in an empty fra
     );
     assertSame(error.message, "the message is too big");
   }
+});
+
+const setupFrameFillingMessages = (deps: TestDeps) => {
+  const large: CrdtMessage = {
+    timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+    change: DbChange.orThrow({
+      ...createDbChange(deps),
+      values: { data: new Uint8Array(1_000_000).fill(1) },
+    }),
+  };
+  const small: CrdtMessage = {
+    timestamp: createTimestamp({ millis: Millis.orThrow(2) }),
+    change: createDbChange(deps),
+  };
+  // Padding makes the length the same for every encryption.
+  const largeChangeLength = createEncryptedDbChange(deps, large).length;
+
+  const measureFrame = (buffer: ProtocolMessageBuffer) => {
+    buffer.addMessage({
+      timestamp: large.timestamp,
+      change: new Uint8Array(largeChangeLength) as EncryptedDbChange,
+    });
+    return buffer.unwrap().length;
+  };
+
+  return { large, small, measureFrame };
+};
+
+test("upload requests fill a frame exactly before their continuation range", async () => {
+  const deps = testCreateDeps();
+  const { large, small, measureFrame } = setupFrameFillingMessages(deps);
+  // The continuation range is the first range, which takes 14 bytes.
+  const exactSize =
+    measureFrame(
+      createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        writeKey: testAppOwner.writeKey,
+        totalMaxSize: ProtocolMessageMaxSize.orThrow(2_000_000),
+      }),
+    ) + 14;
+
+  for (const [maxSize, expectedUploaded] of [
+    [exactSize, [large]],
+    [exactSize - 1, []],
+  ] as const) {
+    const request = createProtocolMessageFromCrdtMessages(deps)(
+      testAppOwner,
+      [large, small],
+      ProtocolMessageMaxSize.orThrow(maxSize),
+    );
+    assertTrue(request.length <= maxSize);
+    if (expectedUploaded.length > 0) assertSame(request.length, maxSize);
+    // The frame ends with one Fingerprint range and its fingerprint.
+    assertEqualBytes(request.subarray(-14, -12), [1, RangeType.Fingerprint]);
+
+    const uploaded: Array<CrdtMessage> = [];
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        validateWriteKey: constTrue,
+        writeMessages: (_ownerId, messages) => () => {
+          for (const message of messages) {
+            uploaded.push({
+              timestamp: message.timestamp,
+              change: getOrThrow(
+                decryptAndDecodeDbChange(message, testAppOwner.encryptionKey),
+              ),
+            });
+          }
+          return ok();
+        },
+        getSize: () => NonNegativeInt.orThrow(0),
+        findLowerBound: () => NonNegativeInt.orThrow(0),
+        fingerprint: () => zeroFingerprint,
+        iterate: () => {},
+      },
+    } satisfies StorageDep);
+    await run.orThrow(applyProtocolMessageAsRelay(request));
+    assertEqual(uploaded, expectedUploaded);
+  }
+});
+
+test("local mutation broadcasts fill a frame exactly", () => {
+  const deps = testCreateDeps();
+  const { large, small, measureFrame } = setupFrameFillingMessages(deps);
+  // Broadcasts hold no ranges, so nothing is reserved to close them.
+  const exactSize = measureFrame(
+    createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Broadcast,
+      totalMaxSize: ProtocolMessageMaxSize.orThrow(2_000_000),
+    }),
+  );
+
+  const broadcasts = createProtocolBroadcastMessagesFromCrdtMessages(deps)(
+    testAppOwner,
+    [large, small],
+    ProtocolMessageMaxSize.orThrow(exactSize),
+  );
+  assertSame(broadcasts.length, 2);
+  assertSame(broadcasts[0].length, exactSize);
+
+  const error = assertThrowsInstanceOf(
+    () =>
+      createProtocolBroadcastMessagesFromCrdtMessages(deps)(
+        testAppOwner,
+        [large],
+        ProtocolMessageMaxSize.orThrow(exactSize - 1),
+      ),
+    Error,
+  );
+  assertSame(error.message, "the message is too big");
 });
 
 test("client continuation broadcasts exactly the uploaded messages within the frame limit", async () => {

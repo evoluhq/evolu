@@ -457,6 +457,15 @@ export interface RunLengthEncoder<T> {
   readonly add: (value: T) => void;
   readonly getLength: () => NonNegativeInt;
   readonly unwrap: () => Uint8Array;
+
+  /**
+   * Returns a function that restores the encoder, in constant time, to the
+   * state it had when this was called, discarding every value added since.
+   *
+   * A restore function can be called repeatedly. It is valid until the encoder
+   * is restored to an earlier checkpoint.
+   */
+  readonly checkpoint: () => () => void;
 }
 
 /** Creates an incremental run-length encoder. */
@@ -485,6 +494,26 @@ export const createRunLengthEncoder = <T>(
     getLength: () => buffer.getLength(),
 
     unwrap: () => buffer.unwrap(),
+
+    checkpoint: () => {
+      const checkpointLength = previousLength;
+      const checkpointValue = previousValue;
+      const checkpointRunLength = runLength;
+
+      return () => {
+        // `add` rewrites the last run in place, so the bytes after its start
+        // may differ from the checkpoint's even at the same length. Bytes
+        // before it never change, so the last run is encoded again.
+        buffer.truncate(checkpointLength);
+        previousLength = checkpointLength;
+        previousValue = checkpointValue;
+        runLength = checkpointRunLength;
+        if (runLength > 0) {
+          encodeValue(buffer, previousValue as T);
+          encodeNonNegativeInt(buffer, runLength);
+        }
+      };
+    },
   };
 };
 

@@ -1,3 +1,4 @@
+import * as fc from "fast-check";
 import { describe, it, mock } from "node:test";
 import {
   assertEqual,
@@ -570,6 +571,140 @@ describe("run-length encoding", () => {
     assertEqual(
       error.message,
       "Invalid RLE encoding: runLength must be positive",
+    );
+  });
+});
+
+describe("run-length encoder checkpoint", () => {
+  const setupEncoder = (values: ReadonlyArray<number> = []) => {
+    const encoder =
+      createRunLengthEncoder<NonNegativeInt>(encodeNonNegativeInt);
+    for (const value of values) encoder.add(NonNegativeInt.orThrow(value));
+    return encoder;
+  };
+
+  const decodeEncoder = (
+    encoder: ReturnType<typeof setupEncoder>,
+    length: number,
+  ) => {
+    const buffer = createBuffer(encoder.unwrap());
+    const values = decodeRle(buffer, NonNegativeInt.orThrow(length), () =>
+      decodeNonNegativeInt(buffer),
+    );
+    assertSame(buffer.getLength(), 0);
+    return values;
+  };
+
+  it("restores a run rewritten in place", () => {
+    const encoder = setupEncoder([7, 5]);
+    const restore = encoder.checkpoint();
+    encoder.add(NonNegativeInt.orThrow(5));
+    encoder.add(NonNegativeInt.orThrow(5));
+    assertEqualBytes(encoder.unwrap(), [7, 1, 5, 3]);
+
+    restore();
+    assertEqualBytes(encoder.unwrap(), [7, 1, 5, 1]);
+
+    encoder.add(NonNegativeInt.orThrow(5));
+    assertEqualBytes(encoder.unwrap(), setupEncoder([7, 5, 5]).unwrap());
+    assertEqual(decodeEncoder(encoder, 3), [7, 5, 5]);
+  });
+
+  it("restores a run length across the 127/128 varint boundary", () => {
+    const run127 = Array.from({ length: 127 }, () => 5);
+    const encoder = setupEncoder(run127);
+    const restoreAt127 = encoder.checkpoint();
+    encoder.add(NonNegativeInt.orThrow(5));
+    assertEqualBytes(encoder.unwrap(), [5, 128, 1]);
+    const restoreAt128 = encoder.checkpoint();
+    encoder.add(NonNegativeInt.orThrow(5));
+    assertEqualBytes(encoder.unwrap(), [5, 129, 1]);
+
+    restoreAt128();
+    assertEqualBytes(encoder.unwrap(), [5, 128, 1]);
+
+    restoreAt127();
+    assertEqualBytes(encoder.unwrap(), [5, 127]);
+    assertEqual(encoder.getLength(), 2);
+
+    encoder.add(NonNegativeInt.orThrow(6));
+    assertEqualBytes(encoder.unwrap(), [5, 127, 6, 1]);
+    assertEqual(decodeEncoder(encoder, 128), [...run127, 6]);
+  });
+
+  it("restores the previous value after a different value", () => {
+    const encoder = setupEncoder([5]);
+    const restore = encoder.checkpoint();
+    encoder.add(NonNegativeInt.orThrow(7));
+    encoder.add(NonNegativeInt.orThrow(7));
+    assertEqualBytes(encoder.unwrap(), [5, 1, 7, 2]);
+
+    restore();
+    assertEqualBytes(encoder.unwrap(), [5, 1]);
+
+    // Without the previous value, the next 5 would start a new run.
+    encoder.add(NonNegativeInt.orThrow(5));
+    assertEqualBytes(encoder.unwrap(), [5, 2]);
+  });
+
+  it("restores an empty encoder", () => {
+    const encoder = setupEncoder();
+    const restore = encoder.checkpoint();
+    encoder.add(NonNegativeInt.orThrow(5));
+
+    restore();
+    assertEqual(encoder.getLength(), 0);
+    assertEqualBytes(encoder.unwrap(), []);
+
+    encoder.add(NonNegativeInt.orThrow(5));
+    assertEqualBytes(encoder.unwrap(), [5, 1]);
+  });
+
+  it("encodes only the committed values after restores", () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.oneof(
+            fc.record({
+              value: fc.constantFrom(0, 5, 300),
+              count: fc.integer({ min: 1, max: 200 }),
+            }),
+            fc.constant("checkpoint" as const),
+            fc.constant("restore" as const),
+          ),
+          { maxLength: 30 },
+        ),
+        (operations) => {
+          const encoder = setupEncoder();
+          const committed: Array<number> = [];
+          const checkpoints: Array<{
+            readonly restore: () => void;
+            readonly length: number;
+          }> = [];
+
+          for (const operation of operations) {
+            if (operation === "checkpoint") {
+              checkpoints.push({
+                restore: encoder.checkpoint(),
+                length: committed.length,
+              });
+            } else if (operation === "restore") {
+              const checkpoint = checkpoints.pop();
+              if (!checkpoint) continue;
+              checkpoint.restore();
+              committed.length = checkpoint.length;
+            } else {
+              for (let i = 0; i < operation.count; i++) {
+                encoder.add(NonNegativeInt.orThrow(operation.value));
+                committed.push(operation.value);
+              }
+            }
+          }
+
+          assertEqualBytes(encoder.unwrap(), setupEncoder(committed).unwrap());
+          assertEqual(decodeEncoder(encoder, committed.length), committed);
+        },
+      ),
     );
   });
 });
