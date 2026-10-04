@@ -40,7 +40,7 @@ import type { Awaitable } from "../Types.ts";
 import type { Evolu } from "./Evolu.ts";
 import type { Owner, OwnerError, OwnerIdBytes, SharedOwner } from "./Owner.ts";
 import { OwnerId, OwnerWriteKey } from "./Owner.ts";
-import type { ProtocolQuotaError } from "./Protocol.ts";
+import type { ProtocolQuotaError, ProtocolWriteError } from "./Protocol.ts";
 import { systemColumnsWithId } from "./Schema.ts";
 import type { syncStateToOwnerSyncStatus } from "./Shared.ts";
 import {
@@ -206,7 +206,8 @@ export interface Storage {
   /**
    * Validates the {@link OwnerWriteKey} for the given {@link Owner}.
    *
-   * Returns `true` if the write key is valid, `false` otherwise.
+   * Returns `true` if the write key is valid, `false` otherwise. A relay logs a
+   * throw and answers the request with {@link ProtocolWriteError}.
    */
   readonly validateWriteKey: (
     ownerId: OwnerIdBytes,

@@ -12,6 +12,7 @@ import {
   assertErr,
   assertFalse,
   assertOk,
+  assertSame,
   assertThrowsInstanceOf,
   assertTrue,
   err,
@@ -415,6 +416,58 @@ describe("writeMessages", () => {
       assertEqual(storage.getSize(testAppOwnerIdBytes), 1);
     });
   }
+
+  it("answers a new owner's write key SQLite fails to store with WriteError and keeps serving", async () => {
+    await using setup = await setupSqlite();
+    const { sqlite } = setup;
+    createBaseSqliteStorageTables({ sqlite });
+    createRelayStorageTables({ sqlite });
+    const failure = new Error("database or disk is full");
+    let isFailing = true;
+    const storage = createRelaySqliteStorage({
+      ...setup.run.deps,
+      sqlite: {
+        ...sqlite,
+        exec: <R extends SqliteRow>(query: SqliteQuery) => {
+          if (isFailing && query.sql.includes("insert into evolu_writeKey")) {
+            isFailing = false;
+            throw failure;
+          }
+          return sqlite.exec<R>(query);
+        },
+      },
+      timingSafeEqual: testTimingSafeEqual,
+    })({ isOwnerWithinQuota: constTrue });
+    await using run = testCreateRun({ storage });
+    const request = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      writeKey: testAppOwner.writeKey,
+    });
+    request.addMessage(createTestMessage(100));
+    const requestMessage = request.unwrap();
+    const respond = async () => {
+      const { message } = await run.orThrow(
+        applyProtocolMessageAsRelay(requestMessage),
+      );
+      return run(applyProtocolMessageAsClient(message));
+    };
+
+    assertEqual(
+      await respond(),
+      err({ type: "ProtocolWriteError", ownerId: testAppOwner.id }),
+    );
+    assertFalse(isFailing);
+    assertEqual(storage.getSize(testAppOwnerIdBytes), 0);
+    const logged = run.deps.console.getEntriesSnapshot();
+    assertEqual(
+      logged.map(({ method }) => method),
+      ["error"],
+    );
+    assertSame(logged[0]?.args[0], failure);
+
+    assertOk(await respond(), { type: "Readonly" });
+    assertEqual(storage.getSize(testAppOwnerIdBytes), 1);
+  });
 
   it("throws when write starts on disposed run", async () => {
     await using setup = await setupSqliteAndRelayStorage();

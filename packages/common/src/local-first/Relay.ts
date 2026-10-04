@@ -197,9 +197,8 @@ export const createRelaySqliteStorage =
         }
 
         // When SQLite fails this insert, for example on a full disk, the throw
-        // reaches the protocol as invalid data, so a new owner's first write
-        // gets no reply. A boolean has no room for the error, and the relay
-        // stays up.
+        // reaches the protocol, which logs it and answers with WriteError,
+        // because a boolean has no room for the error.
         deps.sqlite.exec(sql`
           insert into evolu_writeKey (ownerId, writeKey)
           values (${ownerId}, ${writeKey});

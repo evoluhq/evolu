@@ -56,11 +56,11 @@
  * WriteKey is required when sending messages as a secure token proving the
  * initiator can write changes. It's ok to not send a WriteKey if the initiator
  * is only syncing (read-only) and not sending messages. The non-initiator
- * validates the WriteKey immediately after parsing the initiator header, before
- * processing any messages or ranges. Only the subscriptionFlag takes effect
- * before that, because subscribing needs no WriteKey: broadcasts carry only
- * encrypted changes. So a request rejected with {@link ProtocolWriteKeyError}
- * still changes its subscription.
+ * decodes the whole request first and then validates the WriteKey, before
+ * storing any messages or reconciling ranges. Only the subscriptionFlag takes
+ * effect before that, because subscribing needs no WriteKey: broadcasts carry
+ * only encrypted changes. So a request rejected with
+ * {@link ProtocolWriteKeyError} still changes its subscription.
  *
  * ## Synchronization
  *
@@ -77,7 +77,8 @@
  * The **non-initiator answers every request it can decode** to provide sync
  * completion feedback, even with empty messages containing only the header and
  * no error. This allows the initiator to detect when synchronization is
- * complete. A request it cannot decode gets no answer.
+ * complete. A request it cannot decode, or one larger than the relay's
+ * `totalMaxSize`, gets no answer and has no effect.
  *
  * Ranges are compared by their {@link Fingerprint}, which anyone who can write
  * for an owner can make collide. Its documentation describes the consequences.
@@ -100,15 +101,24 @@
  *
  * - {@link ProtocolWriteKeyError}: The WriteKey is invalid, or missing from a
  *   request with messages.
- * - {@link ProtocolWriteError}: The relay failed to store the messages.
+ * - {@link ProtocolWriteError}: The relay failed to store the messages or to
+ *   validate the WriteKey.
  * - {@link ProtocolQuotaError}: Storage or billing quota exceeded.
- * - {@link ProtocolSyncError}: The relay failed to reconcile the ranges.
+ * - {@link ProtocolSyncError}: The relay's storage failed while it reconciled the
+ *   ranges.
  *
  * The initiator also reports {@link ProtocolVersionError}, with the `OwnerId`,
  * for a reply of another version, and {@link ProtocolInvalidDataError}, without
- * it, for a message it cannot decode, including one with an unknown code. For a
- * request it cannot decode, or when its storage throws while validating the
- * WriteKey, a relay returns `ProtocolInvalidDataError` and sends nothing.
+ * it, for a message it cannot decode, including one with an unknown code.
+ *
+ * A relay answers every request it can decode within its `totalMaxSize`. It
+ * decodes a whole request before acting on it, so for a malformed one it
+ * returns `ProtocolInvalidDataError` without subscribing, storing, or
+ * broadcasting anything, and sends no reply. When its storage throws while
+ * validating the WriteKey, for example because SQLite cannot store a new
+ * owner's key on a full disk, the relay logs the error and answers with
+ * `ProtocolWriteError`, like a failed write. Likewise, a client applies nothing
+ * from a message it cannot decode.
  *
  * {@link decryptAndDecodeDbChange} returns `ProtocolInvalidDataError`,
  * {@link ProtocolTimestampMismatchError}, or
@@ -204,7 +214,6 @@ import {
   assertNonEmptyArray,
   assertNonNullable,
   assertNotUndefined,
-  assertSame,
 } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import {
@@ -239,6 +248,7 @@ import {
   xChaCha20Poly1305NonceLength,
 } from "../Crypto.ts";
 import { eqArrayNumber } from "../Eq.ts";
+import { exhaustiveCheck } from "../Function.ts";
 import { computeBalancedBuckets } from "../Number.ts";
 import { createMutableRecord, objectToEntries } from "../Object.ts";
 import { err, ok, type Result } from "../Result.ts";
@@ -491,10 +501,13 @@ export interface ProtocolVersionError
 
 /**
  * Error for a malformed {@link ProtocolMessage} or {@link EncryptedDbChange},
- * with its bytes as `data` and what was thrown as `error`.
+ * with its bytes as `data` and the decoding error as `error`.
  *
- * {@link applyProtocolMessageAsRelay} also returns it when the storage throws
- * while validating the write key.
+ * A protocol message is decoded whole before any of it is applied, so a
+ * malformed one has no effect, and a relay does not reply to it. A message of a
+ * type its receiver does not accept, such as a Request sent to a client, is
+ * malformed too. A throw while applying a decoded message is a defect, not this
+ * error.
  */
 export interface ProtocolInvalidDataError extends Typed<"ProtocolInvalidDataError"> {
   readonly data: Uint8Array;
@@ -731,13 +744,13 @@ export const createProtocolMessageForSync =
 
     const size = deps.storage.getSize(ownerIdBytes);
 
-    splitRange(deps)(
+    const ranges = readSplitRanges(deps)(
       ownerIdBytes,
       zeroNonNegativeInt,
       size,
       InfiniteUpperBound,
-      buffer,
     );
+    for (const range of ranges) buffer.addRange(range);
 
     return buffer.unwrap();
   };
@@ -1139,7 +1152,8 @@ export interface ApplyProtocolMessageAsClientOptions {
   /**
    * Called for each stored change that sync skipped as a
    * {@link ProtocolChangeTooLargeError}. Without it, the error is logged with
-   * `console.warn`.
+   * `console.warn`. It must not throw, because a throw is a defect that aborts
+   * the Run.
    */
   readonly onChangeTooLarge?: (error: ProtocolChangeTooLargeError) => void;
 
@@ -1207,135 +1221,125 @@ export const applyProtocolMessageAsClient =
   > =>
   async (run) => {
     const { storage } = run.deps;
-    try {
-      const input = createBuffer(inputMessage);
-      const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
-      const version = options.version ?? protocolVersion;
+    const version = options.version ?? protocolVersion;
+    const decoded = decodeProtocolMessage(inputMessage, version);
+    if (!decoded.ok) return decoded;
+    const message = decoded.value;
 
-      if (requestedVersion !== version) {
-        return err<ProtocolVersionError>({
-          type: "ProtocolVersionError",
-          version: requestedVersion,
-          isInitiator: version < requestedVersion,
-          ownerId,
-        });
-      }
-
-      const messageType = input.shift() as MessageType;
-      assert(
-        messageType === MessageType.Response ||
-          messageType === MessageType.Broadcast,
-        "Invalid MessageType",
-      );
-
-      if (messageType === MessageType.Response) {
-        const errorCode = input.shift();
-        if (errorCode !== ProtocolErrorCode.NoError) {
-          switch (errorCode) {
-            case ProtocolErrorCode.WriteKeyError:
-              return err<ProtocolWriteKeyError>({
-                type: "ProtocolWriteKeyError",
-                ownerId,
-              });
-            case ProtocolErrorCode.WriteError:
-              return err<ProtocolWriteError>({
-                type: "ProtocolWriteError",
-                ownerId,
-              });
-            case ProtocolErrorCode.QuotaError:
-              return err<ProtocolQuotaError>({
-                type: "ProtocolQuotaError",
-                ownerId,
-              });
-            case ProtocolErrorCode.SyncError:
-              return err<ProtocolSyncError>({
-                type: "ProtocolSyncError",
-                ownerId,
-              });
-            default:
-              throw new ProtocolDecodeError(
-                `Invalid ProtocolErrorCode: ${errorCode}`,
-              );
-          }
-        }
-      }
-
-      const messages = decodeMessages(input);
-      const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
-
-      if (isNonEmptyArray(messages)) {
-        try {
-          const result = await run(
-            storage.writeMessages(ownerIdBytes, messages),
-          );
-          if (!result.ok) return result;
-        } catch (error) {
-          if (AbortError.is(error)) throw error;
-          run.deps.console.error(error);
-          return ok({ type: "Failed", cause: "Write" });
-        }
-      }
-
-      if (messageType === MessageType.Broadcast) {
-        return ok({ type: "Broadcast" });
-      }
-
-      // Now: No writeKey, no sync.
-      // TODO: Allow to sync SharedReadonlyOwner
-      // Without local changes, writeKey will not be required.
-      // With local changes, writeKey will be required and if not provided,
-      // the sync will stop.
-      const writeKey = options.writeKey;
-      if (writeKey == null) {
-        return ok({ type: "Readonly" });
-      }
-
-      const ranges = decodeRanges(input);
-
-      if (!isNonEmptyArray(ranges)) {
-        return ok({ type: "Converged" });
-      }
-
-      const createOutput = () =>
-        createProtocolMessageBuffer(ownerId, {
-          messageType: MessageType.Request,
-          writeKey,
-          rangesMaxSize: options.rangesMaxSize,
-        });
-      const output = createOutput();
-
-      let broadcast: ProtocolMessageBuffer | undefined;
-      const result = sync(run.deps)(ranges, output, ownerIdBytes, {
-        createEmptyOutput: createOutput,
-        onChangeTooLarge: options.onChangeTooLarge ?? run.deps.console.warn,
-        onMessage: (message) => {
-          broadcast ??= createProtocolMessageBuffer(ownerId, {
-            messageType: MessageType.Broadcast,
-          });
-          // The request holds the same messages after a larger header.
-          broadcast.addMessage(message);
-        },
+    if (message.type === "OtherVersion") {
+      return err<ProtocolVersionError>({
+        type: "ProtocolVersionError",
+        version: message.version,
+        isInitiator: version < message.version,
+        ownerId: message.ownerId,
       });
+    }
 
-      // A failure was logged by sync.
-      if (!result.ok) return ok({ type: "Failed", cause: "Sync" });
-      if (!result.value) return ok({ type: "Converged" });
-
-      return ok({
-        type: "Response",
-        message: output.unwrap(),
-        ...(broadcast && { broadcast: broadcast.unwrap() }),
-      });
-    } catch (error) {
-      if (AbortError.is(error)) throw error;
+    if (message.type === "Request") {
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",
         data: inputMessage,
-        error,
+        error: new ProtocolDecodeError("Expected a Response or a Broadcast"),
       });
     }
+
+    const { ownerId } = message;
+
+    if (message.type === "ErrorResponse") {
+      switch (message.errorCode) {
+        case ProtocolErrorCode.WriteKeyError:
+          return err<ProtocolWriteKeyError>({
+            type: "ProtocolWriteKeyError",
+            ownerId,
+          });
+        case ProtocolErrorCode.WriteError:
+          return err<ProtocolWriteError>({
+            type: "ProtocolWriteError",
+            ownerId,
+          });
+        case ProtocolErrorCode.QuotaError:
+          return err<ProtocolQuotaError>({
+            type: "ProtocolQuotaError",
+            ownerId,
+          });
+        case ProtocolErrorCode.SyncError:
+          return err<ProtocolSyncError>({
+            type: "ProtocolSyncError",
+            ownerId,
+          });
+      }
+    }
+
+    const { messages } = message;
+    const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
+
+    if (isNonEmptyArray(messages)) {
+      try {
+        const result = await run(storage.writeMessages(ownerIdBytes, messages));
+        if (!result.ok) return result;
+      } catch (error) {
+        if (AbortError.is(error)) throw error;
+        run.deps.console.error(error);
+        return ok({ type: "Failed", cause: "Write" });
+      }
+    }
+
+    if (message.type === "Broadcast") {
+      return ok({ type: "Broadcast" });
+    }
+
+    // Now: No writeKey, no sync.
+    // TODO: Allow to sync SharedReadonlyOwner
+    // Without local changes, writeKey will not be required.
+    // With local changes, writeKey will be required and if not provided,
+    // the sync will stop.
+    const writeKey = options.writeKey;
+    if (writeKey == null) {
+      return ok({ type: "Readonly" });
+    }
+
+    const { ranges } = message;
+
+    if (!isNonEmptyArray(ranges)) {
+      return ok({ type: "Converged" });
+    }
+
+    const createOutput = () =>
+      createProtocolMessageBuffer(ownerId, {
+        messageType: MessageType.Request,
+        writeKey,
+        rangesMaxSize: options.rangesMaxSize,
+      });
+    const output = createOutput();
+
+    let broadcast: ProtocolMessageBuffer | undefined;
+    const result = sync(run.deps)(ranges, output, ownerIdBytes, {
+      createEmptyOutput: createOutput,
+      onChangeTooLarge: options.onChangeTooLarge ?? run.deps.console.warn,
+      onMessage: (message) => {
+        broadcast ??= createProtocolMessageBuffer(ownerId, {
+          messageType: MessageType.Broadcast,
+        });
+        // The request holds the same messages after a larger header.
+        broadcast.addMessage(message);
+      },
+    });
+
+    // A failure was logged by sync.
+    if (!result.ok) return ok({ type: "Failed", cause: "Sync" });
+    if (!result.value) return ok({ type: "Converged" });
+
+    return ok({
+      type: "Response",
+      message: output.unwrap(),
+      ...(broadcast && { broadcast: broadcast.unwrap() }),
+    });
   };
 
+/**
+ * Options for {@link applyProtocolMessageAsRelay}. The callbacks must not throw,
+ * because a throw is a defect that aborts the Run.
+ */
 export interface ApplyProtocolMessageAsRelayOptions {
   /** To subscribe an owner for broadcasting. */
   readonly subscribe?: (ownerId: OwnerId) => void;
@@ -1346,7 +1350,13 @@ export interface ApplyProtocolMessageAsRelayOptions {
   /** To broadcast a protocol message to all subscribers. */
   readonly broadcast?: (ownerId: OwnerId, message: ProtocolMessage) => void;
 
+  /**
+   * The maximum size of the relay's responses and broadcasts, and of the
+   * requests it accepts. A larger request is a
+   * {@link ProtocolInvalidDataError}.
+   */
   readonly totalMaxSize?: ProtocolMessageMaxSize;
+
   readonly rangesMaxSize?: ProtocolMessageRangesMaxSize;
 }
 
@@ -1354,13 +1364,15 @@ export interface ApplyProtocolMessageAsRelayOptions {
  * Result type for {@link applyProtocolMessageAsRelay}.
  *
  * Unlike {@link ApplyProtocolMessageAsClientResult}, a relay answers every
- * request it can decode to provide sync completion feedback. This ensures the
- * initiator can reliably detect when synchronization is complete, even when
- * there's nothing to sync. For a request it cannot decode, or when the storage
- * throws while validating the write key, {@link applyProtocolMessageAsRelay}
- * returns {@link ProtocolInvalidDataError}, and the relay sends nothing. Clients
- * may choose not to respond in certain cases (like when they receive broadcast
- * messages or when they lack a write key for syncing).
+ * request it can decode within its `totalMaxSize` to provide sync completion
+ * feedback. This ensures the initiator can reliably detect when synchronization
+ * is complete, even when there's nothing to sync. A storage that throws while
+ * validating the write key is answered with a `WriteError` code, like a failed
+ * write. For a larger request or one it cannot decode,
+ * {@link applyProtocolMessageAsRelay} returns {@link ProtocolInvalidDataError}
+ * before subscribing, storing, or broadcasting anything, and the relay sends
+ * nothing. Clients may choose not to respond in certain cases (like when they
+ * receive broadcast messages or when they lack a write key for syncing).
  */
 export interface ApplyProtocolMessageAsRelayResult extends Typed<"Response"> {
   readonly message: ProtocolMessage;
@@ -1379,187 +1391,308 @@ export const applyProtocolMessageAsRelay =
   > =>
   async (run) => {
     const { storage } = run.deps;
-    try {
-      const input = createBuffer(inputMessage);
-      const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
-      const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
-      if (requestedVersion !== version) {
-        // Non-initiator responds with its version and ownerId.
-        const output = createBuffer();
-        encodeNonNegativeInt(output, version);
-        output.extend(ownerIdBytes);
-        return ok({
-          type: "Response",
-          message: output.unwrap() as ProtocolMessage,
-        });
-      }
-
-      const messageType = input.shift() as MessageType;
-      assertSame(messageType, MessageType.Request);
-
-      const hasWriteKey = input.shift();
-      let writeKey: OwnerWriteKey | undefined;
-
-      switch (hasWriteKey) {
-        case 0:
-          break;
-        case 1:
-          writeKey = input.shiftN(ownerWriteKeyLength) as OwnerWriteKey;
-          break;
-        default:
-          throw new ProtocolDecodeError(`Invalid hasWriteKey: ${hasWriteKey}`);
-      }
-
-      const subscriptionFlag = input.shift();
-
-      switch (subscriptionFlag) {
-        case SubscriptionFlags.Subscribe:
-          options.subscribe?.(ownerId);
-          break;
-        case SubscriptionFlags.Unsubscribe:
-          options.unsubscribe?.(ownerId);
-          break;
-        case SubscriptionFlags.None:
-          break;
-        default:
-          throw new ProtocolDecodeError(
-            `Invalid SubscriptionFlag: ${subscriptionFlag}`,
-          );
-      }
-
-      if (writeKey) {
-        const isValid = storage.validateWriteKey(ownerIdBytes, writeKey);
-        if (!isValid) {
-          return ok({
-            type: "Response",
-            message: createProtocolMessageBuffer(ownerId, {
-              messageType: MessageType.Response,
-              errorCode: ProtocolErrorCode.WriteKeyError,
-            }).unwrap(),
-          });
-        }
-      }
-
-      const messages = decodeMessages(input);
-
-      // Only the relay checks this. Deployed relays already store shorter
-      // changes, and a client skips a change it cannot read, whereas a check in
-      // decodeMessages would make it reject every response holding one.
-      for (const { change } of messages)
-        if (change.length < minEncryptedDbChangeLength)
-          throw new ProtocolDecodeError("EncryptedDbChange is too short");
-
-      if (isNonEmptyArray(messages)) {
-        if (!writeKey) {
-          return ok({
-            type: "Response",
-            message: createProtocolMessageBuffer(ownerId, {
-              messageType: MessageType.Response,
-              errorCode: ProtocolErrorCode.WriteKeyError,
-            }).unwrap(),
-          });
-        }
-
-        try {
-          const result = await run(
-            storage.writeMessages(ownerIdBytes, messages),
-          );
-
-          if (!result.ok) {
-            // A storage returns a failed write without reporting it.
-            if (result.error.type === "UnknownError")
-              run.deps.console.error(result.error);
-            const message = createProtocolMessageBuffer(ownerId, {
-              messageType: MessageType.Response,
-              errorCode:
-                result.error.type === "StorageQuotaError"
-                  ? ProtocolErrorCode.QuotaError
-                  : ProtocolErrorCode.WriteError,
-            }).unwrap();
-            return ok({ type: "Response", message });
-          }
-        } catch (error) {
-          if (AbortError.is(error)) throw error;
-          run.deps.console.error(error);
-          const message = createProtocolMessageBuffer(ownerId, {
-            messageType: MessageType.Response,
-            errorCode: ProtocolErrorCode.WriteError,
-          }).unwrap();
-          return ok({ type: "Response", message });
-        }
-
-        /**
-         * Broadcast messages to all subscribed owners for real-time
-         * synchronization between clients.
-         *
-         * Messages are only broadcasted after successful write to ensure
-         * devices that can still sync aren't affected by quota errors, and to
-         * prevent using a half-working relay service (broadcasting without
-         * persistence).
-         *
-         * When a relay's database is deleted or clients migrate to a new relay
-         * (without data migration), clients will sync their data to the relay,
-         * and the relay will broadcast those messages to other connected
-         * clients. Those clients may receive messages they already have, but
-         * this is safe because Evolu sync is idempotent. As the relay becomes
-         * more synchronized with clients over time, fewer duplicate messages
-         * will be broadcasted.
-         */
-        if (options.broadcast) {
-          const broadcastBuffer = createProtocolMessageBuffer(ownerId, {
-            messageType: MessageType.Broadcast,
-            totalMaxSize: options.totalMaxSize,
-            rangesMaxSize: options.rangesMaxSize,
-            version,
-          });
-          for (const message of messages) {
-            broadcastBuffer.addMessage(message);
-          }
-          options.broadcast(ownerId, broadcastBuffer.unwrap());
-        }
-      }
-
-      const ranges = decodeRanges(input);
-
-      const createOutput = () =>
-        createProtocolMessageBuffer(ownerId, {
-          messageType: MessageType.Response,
-          errorCode: ProtocolErrorCode.NoError,
-          totalMaxSize: options.totalMaxSize,
-          rangesMaxSize: options.rangesMaxSize,
-        });
-      const output = createOutput();
-
-      // Non-initiators always respond to provide sync completion feedback,
-      // even when there's nothing to sync.
-      if (!isNonEmptyArray(ranges)) {
-        return ok({ type: "Response", message: output.unwrap() });
-      }
-
-      const result = sync(run.deps)(ranges, output, ownerIdBytes, {
-        createEmptyOutput: createOutput,
-        onChangeTooLarge: run.deps.console.warn,
-      });
-
-      const message = result.ok
-        ? output.unwrap()
-        : createProtocolMessageBuffer(ownerId, {
-            messageType: MessageType.Response,
-            errorCode: result.error,
-          }).unwrap();
-
-      // Non-initiators always respond to provide sync completion feedback,
-      return ok({ type: "Response", message });
-    } catch (error) {
-      if (AbortError.is(error)) throw error;
+    // The relay broadcasts a request's messages in a frame of totalMaxSize.
+    // That frame omits the request's write key, subscription flag, and ranges,
+    // so it holds the messages of any request up to that size.
+    if (
+      inputMessage.length >
+      (options.totalMaxSize ?? defaultProtocolMessageMaxSize)
+    )
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",
         data: inputMessage,
-        error,
+        error: new ProtocolDecodeError("Request is too large"),
+      });
+
+    const decoded = decodeProtocolMessage(inputMessage, version);
+    if (!decoded.ok) return decoded;
+    const request = decoded.value;
+
+    if (request.type === "OtherVersion") {
+      // Non-initiator responds with its version and ownerId.
+      const output = createBuffer();
+      encodeNonNegativeInt(output, version);
+      output.extend(ownerIdToOwnerIdBytes(request.ownerId));
+      return ok({
+        type: "Response",
+        message: output.unwrap() as ProtocolMessage,
       });
     }
+
+    if (request.type !== "Request") {
+      return err<ProtocolInvalidDataError>({
+        type: "ProtocolInvalidDataError",
+        data: inputMessage,
+        error: new ProtocolDecodeError("Expected a Request"),
+      });
+    }
+
+    const { ownerId, writeKey, messages, ranges } = request;
+    const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
+
+    const createErrorResponse = (
+      errorCode: ProtocolErrorCode,
+    ): ApplyProtocolMessageAsRelayResult => ({
+      type: "Response",
+      message: createProtocolMessageBuffer(ownerId, {
+        messageType: MessageType.Response,
+        errorCode,
+      }).unwrap(),
+    });
+
+    switch (request.subscriptionFlag) {
+      case SubscriptionFlags.Subscribe:
+        options.subscribe?.(ownerId);
+        break;
+      case SubscriptionFlags.Unsubscribe:
+        options.unsubscribe?.(ownerId);
+        break;
+      case SubscriptionFlags.None:
+        break;
+      default:
+        exhaustiveCheck(request.subscriptionFlag);
+    }
+
+    if (writeKey) {
+      let isValid: boolean;
+      try {
+        isValid = storage.validateWriteKey(ownerIdBytes, writeKey);
+      } catch (error) {
+        // A relay storage stores the write key of a new owner, which SQLite
+        // can fail, for example on a full disk. A boolean has no room for the
+        // error, so it is answered like a failed write.
+        run.deps.console.error(error);
+        return ok(createErrorResponse(ProtocolErrorCode.WriteError));
+      }
+      if (!isValid) {
+        return ok(createErrorResponse(ProtocolErrorCode.WriteKeyError));
+      }
+    }
+
+    if (isNonEmptyArray(messages)) {
+      if (!writeKey) {
+        return ok(createErrorResponse(ProtocolErrorCode.WriteKeyError));
+      }
+
+      try {
+        const result = await run(storage.writeMessages(ownerIdBytes, messages));
+
+        if (!result.ok) {
+          // A storage returns a failed write without reporting it.
+          if (result.error.type === "UnknownError")
+            run.deps.console.error(result.error);
+          return ok(
+            createErrorResponse(
+              result.error.type === "StorageQuotaError"
+                ? ProtocolErrorCode.QuotaError
+                : ProtocolErrorCode.WriteError,
+            ),
+          );
+        }
+      } catch (error) {
+        if (AbortError.is(error)) throw error;
+        run.deps.console.error(error);
+        return ok(createErrorResponse(ProtocolErrorCode.WriteError));
+      }
+
+      /**
+       * Broadcast messages to all subscribed owners for real-time
+       * synchronization between clients.
+       *
+       * Messages are only broadcasted after successful write to ensure devices
+       * that can still sync aren't affected by quota errors, and to prevent
+       * using a half-working relay service (broadcasting without persistence).
+       *
+       * When a relay's database is deleted or clients migrate to a new relay
+       * (without data migration), clients will sync their data to the relay,
+       * and the relay will broadcast those messages to other connected clients.
+       * Those clients may receive messages they already have, but this is safe
+       * because Evolu sync is idempotent. As the relay becomes more
+       * synchronized with clients over time, fewer duplicate messages will be
+       * broadcasted.
+       */
+      if (options.broadcast) {
+        const broadcastBuffer = createProtocolMessageBuffer(ownerId, {
+          messageType: MessageType.Broadcast,
+          totalMaxSize: options.totalMaxSize,
+          rangesMaxSize: options.rangesMaxSize,
+          version,
+        });
+        for (const message of messages) {
+          broadcastBuffer.addMessage(message);
+        }
+        options.broadcast(ownerId, broadcastBuffer.unwrap());
+      }
+    }
+
+    const createOutput = () =>
+      createProtocolMessageBuffer(ownerId, {
+        messageType: MessageType.Response,
+        errorCode: ProtocolErrorCode.NoError,
+        totalMaxSize: options.totalMaxSize,
+        rangesMaxSize: options.rangesMaxSize,
+      });
+    const output = createOutput();
+
+    // A relay answers every request it decodes, even with nothing to sync, so
+    // the initiator knows the sync is complete.
+    if (!isNonEmptyArray(ranges)) {
+      return ok({ type: "Response", message: output.unwrap() });
+    }
+
+    const result = sync(run.deps)(ranges, output, ownerIdBytes, {
+      createEmptyOutput: createOutput,
+      onChangeTooLarge: run.deps.console.warn,
+    });
+
+    // A relay answers every request it decodes, a failed reconciliation with
+    // its error code.
+    return ok(
+      result.ok
+        ? { type: "Response", message: output.unwrap() }
+        : createErrorResponse(result.error),
+    );
   };
+
+/**
+ * Decodes a whole {@link ProtocolMessage}, so a malformed one is rejected before
+ * anything it carries is applied.
+ *
+ * Applying a message turns only a throw from here into
+ * {@link ProtocolInvalidDataError}. A throw after decoding is a defect.
+ */
+const decodeProtocolMessage = (
+  inputMessage: Uint8Array,
+  version: NonNegativeInt,
+): Result<DecodedProtocolMessage, ProtocolInvalidDataError> => {
+  try {
+    const input = createBuffer(inputMessage);
+    const [messageVersion, ownerId] = decodeVersionAndOwner(input);
+
+    if (messageVersion !== version)
+      return ok({ type: "OtherVersion", version: messageVersion, ownerId });
+
+    switch (decodeMessageType(input)) {
+      case MessageType.Request: {
+        const hasWriteKey = input.shift();
+        if (hasWriteKey > 1)
+          throw new ProtocolDecodeError(`Invalid hasWriteKey: ${hasWriteKey}`);
+        const writeKey =
+          hasWriteKey === 1
+            ? (input.shiftN(ownerWriteKeyLength) as OwnerWriteKey)
+            : null;
+
+        const subscriptionFlag: number = input.shift();
+        switch (subscriptionFlag) {
+          case SubscriptionFlags.None:
+          case SubscriptionFlags.Subscribe:
+          case SubscriptionFlags.Unsubscribe:
+            break;
+          default:
+            throw new ProtocolDecodeError(
+              `Invalid SubscriptionFlag: ${subscriptionFlag}`,
+            );
+        }
+
+        const messages = decodeMessages(input);
+
+        // Only a relay accepts a Request, so only the relay checks this.
+        // Deployed relays already store shorter changes, and a client skips a
+        // change it cannot read, whereas a check in decodeMessages would make
+        // it reject every response holding one.
+        for (const { change } of messages)
+          if (change.length < minEncryptedDbChangeLength)
+            throw new ProtocolDecodeError("EncryptedDbChange is too short");
+
+        const ranges = decodeRanges(input);
+
+        return ok({
+          type: "Request",
+          ownerId,
+          writeKey,
+          subscriptionFlag,
+          messages,
+          ranges,
+        });
+      }
+
+      case MessageType.Response: {
+        const errorCode: number = input.shift();
+        switch (errorCode) {
+          case ProtocolErrorCode.NoError: {
+            const messages = decodeMessages(input);
+            const ranges = decodeRanges(input);
+            return ok({ type: "Response", ownerId, messages, ranges });
+          }
+          case ProtocolErrorCode.WriteKeyError:
+          case ProtocolErrorCode.WriteError:
+          case ProtocolErrorCode.QuotaError:
+          case ProtocolErrorCode.SyncError:
+            return ok({ type: "ErrorResponse", ownerId, errorCode });
+          default:
+            throw new ProtocolDecodeError(
+              `Invalid ProtocolErrorCode: ${errorCode}`,
+            );
+        }
+      }
+
+      case MessageType.Broadcast:
+        return ok({
+          type: "Broadcast",
+          ownerId,
+          messages: decodeMessages(input),
+        });
+    }
+  } catch (error) {
+    return err<ProtocolInvalidDataError>({
+      type: "ProtocolInvalidDataError",
+      data: inputMessage,
+      error,
+    });
+  }
+};
+
+type DecodedProtocolMessage =
+  | DecodedOtherVersionMessage
+  | DecodedRequest
+  | DecodedErrorResponse
+  | DecodedResponse
+  | DecodedBroadcast;
+
+/** A message of another version, whose layout after the owner is unknown. */
+interface DecodedOtherVersionMessage extends Typed<"OtherVersion"> {
+  readonly version: NonNegativeInt;
+  readonly ownerId: OwnerId;
+}
+
+interface DecodedRequest extends Typed<"Request"> {
+  readonly ownerId: OwnerId;
+  readonly writeKey: OwnerWriteKey | null;
+  readonly subscriptionFlag: SubscriptionFlag;
+  readonly messages: ReadonlyArray<EncryptedCrdtMessage>;
+  readonly ranges: ReadonlyArray<Range>;
+}
+
+/** A Response with an error code, after which nothing is decoded. */
+interface DecodedErrorResponse extends Typed<"ErrorResponse"> {
+  readonly ownerId: OwnerId;
+  readonly errorCode: Exclude<
+    ProtocolErrorCode,
+    typeof ProtocolErrorCode.NoError
+  >;
+}
+
+interface DecodedResponse extends Typed<"Response"> {
+  readonly ownerId: OwnerId;
+  readonly messages: ReadonlyArray<EncryptedCrdtMessage>;
+  readonly ranges: ReadonlyArray<Range>;
+}
+
+interface DecodedBroadcast extends Typed<"Broadcast"> {
+  readonly ownerId: OwnerId;
+  readonly messages: ReadonlyArray<EncryptedCrdtMessage>;
+}
 
 const decodeVersionAndOwner = (input: Buffer): [NonNegativeInt, OwnerId] => {
   // This structure must never change across protocol versions. The version
@@ -1577,24 +1710,20 @@ const parseProtocolHeaderFromBuffer = (input: Buffer): ProtocolHeader => {
     return { type: "ProtocolHeader", version, ownerId };
   }
 
-  const messageTypeValue = input.shift();
-  let messageType: MessageType;
+  const messageType = decodeMessageType(input);
+  return { type: "ProtocolHeader", version, ownerId, messageType };
+};
 
-  switch (messageTypeValue) {
+const decodeMessageType = (input: Buffer): MessageType => {
+  const messageType: number = input.shift();
+  switch (messageType) {
     case MessageType.Request:
-      messageType = MessageType.Request;
-      break;
     case MessageType.Response:
-      messageType = MessageType.Response;
-      break;
     case MessageType.Broadcast:
-      messageType = MessageType.Broadcast;
-      break;
+      return messageType;
     default:
       throw new ProtocolDecodeError("Invalid MessageType");
   }
-
-  return { type: "ProtocolHeader", version, ownerId, messageType };
 };
 
 /**
@@ -1651,6 +1780,11 @@ const minEncryptedDbChangeLength = xChaCha20Poly1305NonceLength + 1 + 16;
  * a request or a split lists its timestamp, so a peer that lacks it may ask for
  * it once per sync and gets an answer without it. Fingerprints keep disagreeing
  * about it, so every sync narrows them to it, skips it again, and ends.
+ *
+ * A throw from storage, or from a split's checks of what storage returned, is
+ * logged and returns `SyncError`, except an AbortError from a split's reads,
+ * which is rethrown. Any other throw, such as from writing the frame,
+ * `onChangeTooLarge`, or `onMessage`, is a defect.
  */
 const sync =
   (deps: StorageDep & ConsoleDep) =>
@@ -1803,22 +1937,24 @@ const sync =
             break;
           }
 
-          let isSplit: boolean;
+          let splitRanges: ReadonlyArray<
+            FingerprintRange | TimestampsRangeWithTimestampsBuffer
+          >;
           try {
-            isSplit = tryWriteRange(upper, () => {
-              splitRange(deps)(
-                ownerIdBytes,
-                lower,
-                upper,
-                currentUpperBound,
-                output,
-              );
-            });
+            splitRanges = readSplitRanges(deps)(
+              ownerIdBytes,
+              lower,
+              upper,
+              currentUpperBound,
+            );
           } catch (error) {
             if (AbortError.is(error)) throw error;
             deps.console.error(error);
             return err(ProtocolErrorCode.SyncError);
           }
+          const isSplit = tryWriteRange(upper, () => {
+            for (const splitRange of splitRanges) output.addRange(splitRange);
+          });
           if (!isSplit) return closeWithFingerprint();
           break;
         }
@@ -1835,6 +1971,10 @@ const sync =
           let iterateFailed = false as boolean;
           // A pending skip stays pending until the range is written.
           const isSkipPending = skip;
+          // Only a throw from the storage itself is a storage failure. A throw
+          // from the callback, such as from onChangeTooLarge or onMessage, is
+          // a defect, rethrown after iterating.
+          let callbackError = null as { readonly error: unknown } | null;
 
           try {
             deps.storage.iterate(
@@ -1842,84 +1982,91 @@ const sync =
               lower,
               upper,
               (timestamp, index) => {
-                const timestampString = timestamp.join();
-                const timestampBinary = timestampBytesToTimestamp(timestamp);
+                try {
+                  const timestampString = timestamp.join();
+                  const timestampBinary = timestampBytesToTimestamp(timestamp);
 
-                let message: EncryptedCrdtMessage | null = null;
+                  let message: EncryptedCrdtMessage | null = null;
 
-                if (timestampsWeNeed.has(timestampString)) {
-                  timestampsWeNeed.delete(timestampString);
-                } else {
-                  try {
-                    message = {
-                      timestamp: timestampBinary,
-                      change: deps.storage.readDbChange(
-                        ownerIdBytes,
-                        timestamp,
-                      ),
-                    };
-                  } catch (error) {
-                    deps.console.error(error);
-                    iterateFailed = true;
-                    return false;
+                  if (timestampsWeNeed.has(timestampString)) {
+                    timestampsWeNeed.delete(timestampString);
+                  } else {
+                    try {
+                      message = {
+                        timestamp: timestampBinary,
+                        change: deps.storage.readDbChange(
+                          ownerIdBytes,
+                          timestamp,
+                        ),
+                      };
+                    } catch (error) {
+                      deps.console.error(error);
+                      iterateFailed = true;
+                      return false;
+                    }
                   }
-                }
 
-                // One trial per timestamp: its entry in ourTimestamps and its
-                // message if the peer lacks it, keeping room to write
-                // ourTimestamps as a range after the pending skip.
-                const restoreOurTimestamps = ourTimestamps.checkpoint();
-                ourTimestamps.add(timestampBinary);
-                if (
-                  output.tryWrite(
-                    () => {
-                      if (message) output.addMessage(message);
-                    },
-                    getTimestampsRangeReserve(ourTimestamps, isSkipPending),
-                  )
-                ) {
-                  if (message) onMessage?.(message);
-                  return true;
-                }
-                restoreOurTimestamps();
-
-                if (message) {
-                  // Whether an empty frame can hold the message in the trial
-                  // a Timestamps range makes for it, with only its own
-                  // timestamp listed and a skip pending. A later round is
-                  // guaranteed to reach exactly that frame, so a message that
-                  // fits is sent eventually. A trial without a pending skip
-                  // reserves 22 bytes less, so a message up to 22 bytes too
-                  // large for this check may still be sent in such a frame.
-                  const emptyOutput = createEmptyOutput();
-                  const emptyOutputTimestamps = createTimestampsBuffer();
-                  emptyOutputTimestamps.add(message.timestamp);
-                  const fitsEmptyOutput = emptyOutput.tryWrite(
-                    () => {
-                      emptyOutput.addMessage(message);
-                    },
-                    getTimestampsRangeReserve(emptyOutputTimestamps, true),
-                  );
-                  if (!fitsEmptyOutput) {
-                    onChangeTooLarge({
-                      type: "ProtocolChangeTooLargeError",
-                      timestamp: timestampBinary,
-                      size: message.change.length as PositiveInt,
-                    });
+                  // One trial per timestamp: its entry in ourTimestamps and its
+                  // message if the peer lacks it, keeping room to write
+                  // ourTimestamps as a range after the pending skip.
+                  const restoreOurTimestamps = ourTimestamps.checkpoint();
+                  ourTimestamps.add(timestampBinary);
+                  if (
+                    output.tryWrite(
+                      () => {
+                        if (message) output.addMessage(message);
+                      },
+                      getTimestampsRangeReserve(ourTimestamps, isSkipPending),
+                    )
+                  ) {
+                    if (message) onMessage?.(message);
                     return true;
                   }
-                }
+                  restoreOurTimestamps();
 
-                exceeded = true;
-                endBound = timestamp;
-                upper = index;
-                return false;
+                  if (message) {
+                    // Whether an empty frame can hold the message in the trial
+                    // a Timestamps range makes for it, with only its own
+                    // timestamp listed and a skip pending. A later round is
+                    // guaranteed to reach exactly that frame, so a message that
+                    // fits is sent eventually. A trial without a pending skip
+                    // reserves 22 bytes less, so a message up to 22 bytes too
+                    // large for this check may still be sent in such a frame.
+                    const emptyOutput = createEmptyOutput();
+                    const emptyOutputTimestamps = createTimestampsBuffer();
+                    emptyOutputTimestamps.add(message.timestamp);
+                    const fitsEmptyOutput = emptyOutput.tryWrite(
+                      () => {
+                        emptyOutput.addMessage(message);
+                      },
+                      getTimestampsRangeReserve(emptyOutputTimestamps, true),
+                    );
+                    if (!fitsEmptyOutput) {
+                      onChangeTooLarge({
+                        type: "ProtocolChangeTooLargeError",
+                        timestamp: timestampBinary,
+                        size: message.change.length as PositiveInt,
+                      });
+                      return true;
+                    }
+                  }
+
+                  exceeded = true;
+                  endBound = timestamp;
+                  upper = index;
+                  return false;
+                } catch (error) {
+                  callbackError = { error };
+                  return false;
+                }
               },
             );
           } catch (error) {
             deps.console.error(error);
-            return err(ProtocolErrorCode.SyncError);
+            iterateFailed = true;
           }
+
+          if (callbackError) throw callbackError.error;
 
           if (iterateFailed) {
             return err(ProtocolErrorCode.SyncError);
@@ -1985,15 +2132,20 @@ const getTimestampsRangeReserve = (
     maxRangeOverhead +
     (isSkipPending ? maxRangeOverhead : 0)) as NonNegativeInt;
 
-const splitRange =
+/**
+ * Reads the ranges that split the items from `lower` to `upper`: one Timestamps
+ * range listing them when they are too few for buckets, otherwise Fingerprint
+ * ranges over the buckets. It only reads storage, so a throw is a storage
+ * failure.
+ */
+const readSplitRanges =
   (deps: StorageDep) =>
   (
     ownerId: OwnerIdBytes,
     lower: NonNegativeInt,
     upper: NonNegativeInt,
     upperBound: RangeUpperBound,
-    buffer: ProtocolMessageBuffer,
-  ): void => {
+  ): ReadonlyArray<FingerprintRange | TimestampsRangeWithTimestampsBuffer> => {
     const itemCount = NonNegativeInt.orThrow(upper - lower);
     const buckets = computeBalancedBuckets(itemCount);
 
@@ -2009,8 +2161,7 @@ const splitRange =
         return true;
       });
 
-      buffer.addRange(range);
-      return;
+      return [range];
     }
 
     // Check Storage.ts `fingerprint` and `fingerprintRanges` docs.
@@ -2028,12 +2179,7 @@ const splitRange =
       upperBound,
     );
 
-    const rangesToUse =
-      lower > 0 ? fingerprintRanges.slice(1) : fingerprintRanges;
-
-    for (const range of rangesToUse) {
-      buffer.addRange(range);
-    }
+    return lower > 0 ? fingerprintRanges.slice(1) : fingerprintRanges;
   };
 
 // Twice the largest rangesMaxSize rather than the receiver's own, because

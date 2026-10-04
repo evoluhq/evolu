@@ -13,8 +13,7 @@ no write key and no subscription change. A relay also stored changes shorter
 than any encrypted change, empty ones included, which its quota does not count,
 so one request could add over 100 MB to its database under a 1 MB quota.
 
-These messages are now rejected as `ProtocolInvalidDataError` before
-reconciliation:
+These messages are now rejected as `ProtocolInvalidDataError`:
 
 - A ranges section over 200,000 bytes, twice the largest
   `ProtocolMessageRangesMaxSize`, or a count of ranges or timestamps larger than
@@ -23,10 +22,21 @@ reconciliation:
 - A request whose write key flag is not 0 or 1, or whose subscription flag is
   not one of `SubscriptionFlags`.
 - On a relay, a request with a change shorter than 41 bytes, the smallest
-  `EncryptedDbChange`, before any of its changes is stored.
+  `EncryptedDbChange`.
+- On a relay, a request larger than its `totalMaxSize`, 1,000,000 bytes by
+  default. A relay broadcasts a request's changes in a message of that size, so
+  it stored the changes of a larger request and then rejected the request when
+  they did not fit. The Node.js relay already closes the connection on a message
+  over 1,000,000 bytes.
 
-A request's flags are checked before anything is stored, but a message's ranges
-are decoded after its changes are stored and, on a relay, broadcast.
+A malformed message is now rejected before anything is stored, broadcast, or
+subscribed. A relay used to apply a request's subscription flag, store the
+owner's write key and changes, and broadcast them before decoding the rest, and
+a client stored a response's changes before decoding its ranges. A throw while
+applying a decoded message, such as from the relay's `broadcast` callback or a
+bug in reconciliation, is now a defect instead of `ProtocolInvalidDataError` or
+`ProtocolSyncError`. Only a storage failure during reconciliation is still
+answered with `ProtocolSyncError`.
 
 A relay logs a rejected message and does not reply, and a client reports it on
 the relay's sync route. Evolu clients and relays never send such messages, so

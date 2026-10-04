@@ -64,9 +64,11 @@ import {
   SubscriptionFlags,
   type ApplyProtocolMessageAsClientOptions,
   type ApplyProtocolMessageAsRelayOptions,
+  type ProtocolChangeTooLargeError,
   type ProtocolError,
   type ProtocolMessageBuffer,
   type TimestampsBuffer,
+  type TimestampsRangeWithTimestampsBuffer,
 } from "./Protocol.ts";
 import type {
   CrdtMessage,
@@ -85,6 +87,7 @@ import {
 } from "./Storage.ts";
 import { err, getOrThrow, ok } from "../Result.ts";
 import {
+  AbortError,
   createAbortError,
   testCreateDeps,
   testCreateRun,
@@ -2245,6 +2248,367 @@ describe("applyProtocolMessageAsClient results", () => {
   });
 });
 
+describe("decoding before applying", () => {
+  it("relay rejects a request with descending range bounds before any side effect", async () => {
+    const deps = testCreateDeps();
+    const request = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      writeKey: testAppOwner.writeKey,
+      subscriptionFlag: SubscriptionFlags.Subscribe,
+    });
+    request.addMessage(
+      createEncryptedCrdtMessage(deps, createTestCrdtMessage(deps)),
+    );
+    for (const counter of [2, 1])
+      request.addRange({
+        type: RangeType.Skip,
+        upperBound: timestampToTimestampBytes(
+          createTimestamp({
+            millis: Millis.orThrow(1500),
+            counter: Counter.orThrow(counter),
+          }),
+        ),
+      });
+    request.addRange({
+      type: RangeType.Fingerprint,
+      upperBound: InfiniteUpperBound,
+      fingerprint: zeroFingerprint,
+    });
+    const sideEffects: Array<string> = [];
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        // A relay storage stores the write key of a new owner.
+        validateWriteKey: () => {
+          sideEffects.push("validateWriteKey");
+          return true;
+        },
+        writeMessages: () => () => {
+          sideEffects.push("writeMessages");
+          return ok();
+        },
+      },
+    } satisfies StorageDep);
+
+    const result = await run(
+      applyProtocolMessageAsRelay(request.unwrap(), {
+        subscribe: () => {
+          sideEffects.push("subscribe");
+        },
+        broadcast: () => {
+          sideEffects.push("broadcast");
+        },
+      }),
+    );
+
+    assertErr(result);
+    assertInstanceOf(result.error.error, Error);
+    assertSame(
+      result.error.error.message,
+      "Range upper bounds must be non-decreasing",
+    );
+    assertEqual(sideEffects, []);
+  });
+
+  it("relay rejects a request over its totalMaxSize before any side effect", async () => {
+    const setupRequest = (changeLength: number) => {
+      const request = createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        writeKey: testAppOwner.writeKey,
+        subscriptionFlag: SubscriptionFlags.Subscribe,
+        totalMaxSize: ProtocolMessageMaxSize.orThrow(2_000_000),
+      });
+      request.addMessage({
+        timestamp: createTimestamp(),
+        change: new Uint8Array(changeLength) as EncryptedDbChange,
+      });
+      return request.unwrap();
+    };
+    const overhead = setupRequest(999_000).length - 999_000;
+    const sideEffects: Array<string> = [];
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        validateWriteKey: () => {
+          sideEffects.push("validateWriteKey");
+          return true;
+        },
+        writeMessages: () => () => {
+          sideEffects.push("writeMessages");
+          return ok();
+        },
+      },
+    } satisfies StorageDep);
+    const apply = (request: Uint8Array) =>
+      run(
+        applyProtocolMessageAsRelay(request, {
+          subscribe: () => {
+            sideEffects.push("subscribe");
+          },
+          broadcast: () => {
+            sideEffects.push("broadcast");
+          },
+        }),
+      );
+
+    const largest = setupRequest(defaultProtocolMessageMaxSize - overhead);
+    assertSame(largest.length, defaultProtocolMessageMaxSize);
+    assertOk(await apply(largest));
+    assertEqual(sideEffects, [
+      "subscribe",
+      "validateWriteKey",
+      "writeMessages",
+      "broadcast",
+    ]);
+
+    sideEffects.length = 0;
+    const tooLarge = setupRequest(defaultProtocolMessageMaxSize - overhead + 1);
+    const result = await apply(tooLarge);
+
+    assertErr(result);
+    assertSame(result.error.data, tooLarge);
+    assertInstanceOf(result.error.error, Error);
+    assertSame(result.error.error.message, "Request is too large");
+    assertEqual(sideEffects, []);
+  });
+
+  for (const hasWriteKey of [true, false]) {
+    it(`client rejects a response with malformed ranges before storing its messages ${hasWriteKey ? "with" : "without"} a write key`, async () => {
+      const deps = testCreateDeps();
+      const response = createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Response,
+        errorCode: ProtocolErrorCode.NoError,
+      });
+      response.addMessage(
+        createEncryptedCrdtMessage(deps, createTestCrdtMessage(deps)),
+      );
+      // One range of an unknown type.
+      const message = new Uint8Array([...response.unwrap(), 1, 127]);
+      let writeCount = 0;
+      await using run = testCreateRun({
+        storage: {
+          ...shouldNotBeCalledStorageDep.storage,
+          writeMessages: () => () => {
+            writeCount++;
+            return ok();
+          },
+        },
+      } satisfies StorageDep);
+
+      const result = await run(
+        applyProtocolMessageAsClient(
+          message,
+          hasWriteKey ? { writeKey: testAppOwner.writeKey } : {},
+        ),
+      );
+
+      assertErr(result);
+      const { error } = result;
+      assert(
+        error.type === "ProtocolInvalidDataError",
+        "Expected invalid data",
+      );
+      assertSame(error.data, message);
+      assertInstanceOf(error.error, Error);
+      assertSame(error.error.message, "Invalid RangeType: 127");
+      assertSame(writeCount, 0);
+    });
+  }
+
+  it("relay answers a write key its storage fails to validate with WriteError", async () => {
+    const deps = testCreateDeps();
+    const request = createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
+      createTestCrdtMessage(deps),
+    ]);
+    // SQLite can fail to store the write key of a new owner, such as on a full
+    // disk.
+    const failure = new Error("database or disk is full");
+    let response: Uint8Array;
+    {
+      await using run = testCreateRun({
+        storage: {
+          ...shouldNotBeCalledStorageDep.storage,
+          validateWriteKey: () => {
+            throw failure;
+          },
+        },
+      } satisfies StorageDep);
+
+      ({ message: response } = await run.orThrow(
+        applyProtocolMessageAsRelay(request),
+      ));
+
+      const entries = run.deps.console.getEntriesSnapshot();
+      assertEqual(
+        entries.map(({ method }) => method),
+        ["error"],
+      );
+      assertSame(entries[0].args[0], failure);
+    }
+    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    assertEqual(
+      await run(applyProtocolMessageAsClient(response)),
+      err({ type: "ProtocolWriteError", ownerId: testAppOwner.id }),
+    );
+  });
+
+  it("relay propagates a throw from its broadcast callback as a defect", async () => {
+    const deps = testCreateDeps();
+    const request = createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
+      createTestCrdtMessage(deps),
+    ]);
+    const defect = new Error("broadcast failed");
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        validateWriteKey: constTrue,
+        writeMessages: () => () => ok(),
+      },
+    } satisfies StorageDep);
+
+    const result = await run.abortable(
+      applyProtocolMessageAsRelay(request, {
+        broadcast: () => {
+          throw defect;
+        },
+      }),
+    );
+
+    assertErr(result);
+    assert(AbortError.is(result.error), "A defect panics the Run.");
+    assertEqual(result.error.reason.type, "PanicAbortReason");
+    assertSame(result.error.reason.defect, defect);
+  });
+
+  /**
+   * Returns a response that asks for every change and a storage holding one
+   * change that no message can hold, whose iterate throws `iterateFailure`
+   * after visiting it.
+   */
+  const setupTooLargeChange = (iterateFailure?: Error) => {
+    const response = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Response,
+      errorCode: ProtocolErrorCode.NoError,
+    });
+    response.addRange({
+      type: RangeType.Timestamps,
+      upperBound: InfiniteUpperBound,
+      timestamps: createTimestampsBuffer(),
+    });
+    const storage: StorageDep["storage"] = {
+      ...shouldNotBeCalledStorageDep.storage,
+      getSize: () => NonNegativeInt.orThrow(1),
+      findLowerBound: (_ownerId, _begin, end) => end,
+      iterate: (_ownerId, _begin, _end, callback) => {
+        callback(testTimestampsAsc[0], NonNegativeInt.orThrow(0));
+        if (iterateFailure) throw iterateFailure;
+      },
+      readDbChange: () =>
+        new Uint8Array(defaultProtocolMessageMaxSize) as EncryptedDbChange,
+    };
+    return { message: response.unwrap(), storage };
+  };
+
+  it("client propagates a throw from onChangeTooLarge as a defect", async () => {
+    const { message, storage } = setupTooLargeChange();
+    const defect = new Error("onChangeTooLarge failed");
+    await using run = testCreateRun({ storage } satisfies StorageDep);
+
+    const result = await run.abortable(
+      applyProtocolMessageAsClient(message, {
+        writeKey: testAppOwner.writeKey,
+        onChangeTooLarge: () => {
+          throw defect;
+        },
+      }),
+    );
+
+    assertErr(result);
+    assert(AbortError.is(result.error), "A defect panics the Run.");
+    assertEqual(result.error.reason.type, "PanicAbortReason");
+    assertSame(result.error.reason.defect, defect);
+  });
+
+  it("client reports a change too large before an iteration that fails", async () => {
+    const failure = new Error("iterate failed");
+    const { message, storage } = setupTooLargeChange(failure);
+    const changesTooLarge: Array<ProtocolChangeTooLargeError> = [];
+    await using run = testCreateRun({ storage } satisfies StorageDep);
+
+    const result = await run(
+      applyProtocolMessageAsClient(message, {
+        writeKey: testAppOwner.writeKey,
+        onChangeTooLarge: (error) => {
+          changesTooLarge.push(error);
+        },
+      }),
+    );
+
+    assertOk(result, { type: "Failed", cause: "Sync" });
+    assertEqual(changesTooLarge, [
+      {
+        type: "ProtocolChangeTooLargeError",
+        timestamp: timestampBytesToTimestamp(testTimestampsAsc[0]),
+        size: defaultProtocolMessageMaxSize,
+      },
+    ]);
+    const entries = run.deps.console.getEntriesSnapshot();
+    assertEqual(
+      entries.map(({ method }) => method),
+      ["error"],
+    );
+    assertSame(entries[0].args[0], failure);
+  });
+
+  it("client rejects a Request before storing its changes", async () => {
+    const deps = testCreateDeps();
+    const request = createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
+      createTestCrdtMessage(deps),
+    ]);
+    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+
+    const result = await run(
+      applyProtocolMessageAsClient(request, {
+        writeKey: testAppOwner.writeKey,
+      }),
+    );
+
+    assertErr(result);
+    const { error } = result;
+    assert(error.type === "ProtocolInvalidDataError", "Expected invalid data");
+    assertSame(error.data, request);
+    assertInstanceOf(error.error, Error);
+    assertSame(error.error.message, "Expected a Response or a Broadcast");
+  });
+
+  it("relay rejects a Response or a Broadcast before any side effect", async () => {
+    const deps = testCreateDeps();
+    const message = createEncryptedCrdtMessage(
+      deps,
+      createTestCrdtMessage(deps),
+    );
+    const response = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Response,
+      errorCode: ProtocolErrorCode.NoError,
+    });
+    response.addMessage(message);
+    const errorResponse = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Response,
+      errorCode: ProtocolErrorCode.WriteError,
+    });
+    const broadcast = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Broadcast,
+    });
+    broadcast.addMessage(message);
+
+    for (const input of [response, errorResponse, broadcast])
+      assertSame(
+        await getRelayDecodeErrorMessage(input.unwrap()),
+        "Expected a Request",
+      );
+  });
+});
+
 describe("split-range failures", () => {
   for (const role of ["client", "relay"] as const) {
     for (const method of ["fingerprintRanges", "iterate"] as const) {
@@ -2319,6 +2683,111 @@ describe("split-range failures", () => {
         });
       }
     }
+  }
+});
+
+describe("sync defects", () => {
+  const setupInput = (
+    role: "client" | "relay",
+    range: FingerprintRange | TimestampsRangeWithTimestampsBuffer,
+  ) => {
+    const input = createProtocolMessageBuffer(
+      testAppOwner.id,
+      role === "client"
+        ? {
+            messageType: MessageType.Response,
+            errorCode: ProtocolErrorCode.NoError,
+          }
+        : {
+            messageType: MessageType.Request,
+            writeKey: testAppOwner.writeKey,
+          },
+    );
+    input.addRange(range);
+    return input.unwrap();
+  };
+
+  for (const role of ["client", "relay"] as const) {
+    it(`${role} propagates a throw while writing a split as a defect`, async () => {
+      const message = setupInput(role, {
+        type: RangeType.Fingerprint,
+        upperBound: InfiniteUpperBound,
+        fingerprint: zeroFingerprint,
+      });
+      const range: FingerprintRange = {
+        type: RangeType.Fingerprint,
+        upperBound: InfiniteUpperBound,
+        fingerprint: timestampBytesToFingerprint(testTimestampsAsc[0]),
+      };
+      await using run = testCreateRun({
+        storage: {
+          ...shouldNotBeCalledStorageDep.storage,
+          getSize: () => NonNegativeInt.orThrow(32),
+          findLowerBound: (_ownerId, _begin, end) => end,
+          fingerprint: () => range.fingerprint,
+          validateWriteKey: constTrue,
+          // A second range after an InfiniteUpperBound one fails the builder's
+          // assertion inside the split's trial.
+          fingerprintRanges: () => [range, range],
+        },
+      } satisfies StorageDep);
+
+      const result =
+        role === "client"
+          ? await run.abortable(
+              applyProtocolMessageAsClient(message, {
+                writeKey: testAppOwner.writeKey,
+              }),
+            )
+          : await run.abortable(applyProtocolMessageAsRelay(message));
+
+      assertErr(result);
+      assert(AbortError.is(result.error), "A defect panics the Run.");
+      assertEqual(result.error.reason.type, "PanicAbortReason");
+      assertInstanceOf(result.error.reason.defect, Error);
+      assertSame(
+        result.error.reason.defect.message,
+        "Cannot add a range after an InfiniteUpperBound range",
+      );
+    });
+
+    it(`${role} propagates a throw while answering a Timestamps range as a defect`, async () => {
+      const message = setupInput(role, {
+        type: RangeType.Timestamps,
+        upperBound: InfiniteUpperBound,
+        timestamps: createTimestampsBuffer(),
+      });
+      await using run = testCreateRun({
+        storage: {
+          ...shouldNotBeCalledStorageDep.storage,
+          getSize: () => NonNegativeInt.orThrow(2),
+          findLowerBound: (_ownerId, _begin, end) => end,
+          validateWriteKey: constTrue,
+          // Descending millis fail the assertion of the answer's timestamps.
+          iterate: (_ownerId, _begin, _end, callback) => {
+            if (callback(testTimestampsAsc[1], NonNegativeInt.orThrow(0)))
+              callback(testTimestampsAsc[0], NonNegativeInt.orThrow(1));
+          },
+          readDbChange: () => new Uint8Array(41) as EncryptedDbChange,
+        },
+      } satisfies StorageDep);
+
+      const result =
+        role === "client"
+          ? await run.abortable(
+              applyProtocolMessageAsClient(message, {
+                writeKey: testAppOwner.writeKey,
+              }),
+            )
+          : await run.abortable(applyProtocolMessageAsRelay(message));
+
+      assertErr(result);
+      assert(AbortError.is(result.error), "A defect panics the Run.");
+      assertEqual(result.error.reason.type, "PanicAbortReason");
+      assertInstanceOf(result.error.reason.defect, Error);
+      assertSame(result.error.reason.defect.message, "Expected NonNegative.");
+      assertEqual(run.deps.console.getEntriesSnapshot(), []);
+    });
   }
 });
 
@@ -2504,7 +2973,11 @@ test("upload requests fill a frame exactly before their continuation range", asy
         iterate: () => {},
       },
     } satisfies StorageDep);
-    await run.orThrow(applyProtocolMessageAsRelay(request));
+    await run.orThrow(
+      applyProtocolMessageAsRelay(request, {
+        totalMaxSize: ProtocolMessageMaxSize.orThrow(maxSize),
+      }),
+    );
     assertEqual(uploaded, expectedUploaded);
   }
 });

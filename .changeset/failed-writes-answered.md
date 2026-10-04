@@ -11,7 +11,7 @@ next write. On a client, the same failure panicked the database worker. Both
 now roll the write back and keep running. The relay logs the failure and
 answers the request with `ProtocolWriteError`, and a client reports it as the
 failure of the relay's route. A relay that cannot store a new owner's write key
-still sends no reply.
+also answers with `ProtocolWriteError`, where it used to send no reply.
 
 `StorageWriteMessagesError` now includes `UnknownError`, which both built-in
 storages return when SQLite fails the write, so the error of

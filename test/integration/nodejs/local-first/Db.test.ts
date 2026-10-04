@@ -5062,7 +5062,7 @@ const createReplayRequest = (
     ),
   });
   const encoded = buffer.unwrap();
-  // One range with an invalid range type: message decoding and commit precede it.
+  // One range with an invalid range type, which rejects the whole message.
   const inputMessage =
     kind === "malformed-ranges"
       ? new Uint8Array([...encoded, 1, 127])
@@ -5110,11 +5110,38 @@ describe("write replay", () => {
     assertEqual(setup.getClock(), context.clock);
   });
 
+  it("rejects a response with malformed ranges before writing its messages", async () => {
+    await using setup = await setupDbWorker();
+    const request = createReplayRequest(
+      setup,
+      "malformed-ranges",
+      setup.createId(),
+    );
+    assertSame(request.type, "ForSharedWorker");
+    const context = { clock: setup.getClock(), now: Millis.orThrow(100) };
+    const snapshot = getSqliteSnapshot(setup);
+
+    const output = (
+      await postRequest(setup, request, setup.createId(), "response", context)
+    )[0];
+
+    assertSame(output.type, "OnQueuedResponse");
+    assertSame(output.response.message.type, "ApplySyncMessage");
+    const { result, didWriteMessages, clock } = output.response.message;
+    assertErr(result);
+    assertSame(result.error.type, "ProtocolInvalidDataError");
+    assertEqual(result.error.data, request.message.inputMessage);
+    assertInstanceOf(result.error.error, Error);
+    assertSame(result.error.error.message, "Invalid RangeType: 127");
+    assertFalse(didWriteMessages);
+    assertEqual(clock, context.clock);
+    assertEqual(getSqliteSnapshot(setup), snapshot);
+  });
+
   for (const [kind, rollover] of [
     ["local", false],
     ["broadcast", false],
     ["response", false],
-    ["malformed-ranges", false],
     ["local", true],
     ["broadcast", true],
   ] as const) {
@@ -5157,17 +5184,6 @@ describe("write replay", () => {
           )
         )[0];
         assertSame(output.type, "OnQueuedResponse");
-        if (kind === "malformed-ranges") {
-          assertSame(output.response.message.type, "ApplySyncMessage");
-          const { result } = output.response.message;
-          assertErr(result);
-          assertSame(result.error.type, "ProtocolInvalidDataError");
-          assertSame(request.type, "ForSharedWorker");
-          assertEqual(result.error.data, request.message.inputMessage);
-          assertInstanceOf(result.error.error, Error);
-          assertSame(result.error.error.message, "Invalid RangeType: 127");
-          assertTrue(output.response.message.didWriteMessages);
-        }
         snapshot = getSqliteSnapshot(setup);
         committedClock = setup.getClock();
         if (rollover) {
