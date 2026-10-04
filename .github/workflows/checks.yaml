@@ -49,6 +49,20 @@ jobs:
       - name: Check compiler benchmarks
         run: pnpm bench:type
 
+  protocol-benchmarks:
+    name: Protocol benchmarks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Check protocol work
+        run: pnpm bench:protocol
+
   packages:
     name: Packages
     runs-on: ubuntu-latest

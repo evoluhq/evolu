@@ -6,6 +6,10 @@ Benchmarks measure performance characteristics that ordinary correctness tests d
 
 - [JSON binary codec](./json-codec/README.md) measures `JsonValue` MessagePack
   encoding and decoding against msgpackr.
+- [Protocol](./protocol/README.md) measures deterministic sync protocol work:
+  rounds, bytes, and SQL statements and rows.
+- [Protocol runtime](./protocol-runtime/README.md) times sync protocol code
+  without SQLite, and reports the same syncs with SQLite relay storage.
 - [Storage](./storage/README.md) measures SQLite timestamp Skiplist operations.
 - [Type](./type/README.md) measures deterministic TypeScript compiler work for Evolu Type APIs.
 - [Type runtime](./type-runtime/README.md) measures Evolu Type validation and

@@ -1,0 +1,60 @@
+{
+  "baselines": [
+    {
+      "environment": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M5",
+        "nodeVersion": "24.20.0",
+        "sqliteVersion": "3.53.2",
+        "repeatCount": 5,
+        "workloadSha256": "b1bce715cb77e79dbaf258612cea793e782a0ae8391ab8c30a1f8a4c401a4374",
+        "harnessSha256": "d4480bcb284e840c0e20d3796514e8aaf64661ae203f543c96e853b3db31dd90"
+      },
+      "measurementsNs": {
+        "single-difference-100k.relay": 105000,
+        "single-difference-100k.client": 227000,
+        "download-20k.relay": 24395000,
+        "download-20k.client": 45563000,
+        "upload-20k.relay": 52893000,
+        "upload-20k.client": 32995000,
+        "random-halves-20k-30000.relay": 51429000,
+        "random-halves-20k-30000.client": 56912000,
+        "random-halves-20k-3000.relay": 54943000,
+        "random-halves-20k-3000.client": 47786000,
+        "wide-halves-5k-30000.relay": 11545000,
+        "wide-halves-5k-30000.client": 15372000,
+        "large-changes-download.relay": 2737000,
+        "large-changes-download.client": 4664000,
+        "push-5k-into-20k.relay": 7635000,
+        "push-5k-into-20k.client": 42621000,
+        "encrypt-1000": 8439000,
+        "decrypt-1000": 5178000,
+        "timestamps-buffer-5000": 1316000,
+        "upload-builder-5000": 28018000,
+        "broadcast-builder-5000": 46175000,
+        "relay-max-skip-ranges": 28714000,
+        "relay-max-timestamps-range": 100906000,
+        "relay-messages-without-write-key": 414000
+      },
+      "reportedNs": {
+        "single-difference-100k.sqliteRelay": 4885000,
+        "single-difference-100k.sqliteClient": 4279000,
+        "download-20k.sqliteRelay": 78273000,
+        "download-20k.sqliteClient": 188835000,
+        "upload-20k.sqliteRelay": 197907000,
+        "upload-20k.sqliteClient": 84503000,
+        "random-halves-20k-30000.sqliteRelay": 659779000,
+        "random-halves-20k-30000.sqliteClient": 691026000,
+        "random-halves-20k-3000.sqliteRelay": 644783000,
+        "random-halves-20k-3000.sqliteClient": 648597000,
+        "wide-halves-5k-30000.sqliteRelay": 112860000,
+        "wide-halves-5k-30000.sqliteClient": 142632000,
+        "large-changes-download.sqliteRelay": 9406000,
+        "large-changes-download.sqliteClient": 20712000,
+        "push-5k-into-20k.sqliteRelay": 47012000,
+        "push-5k-into-20k.sqliteClient": 50151000
+      }
+    }
+  ]
+}

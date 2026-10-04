@@ -1,0 +1,1681 @@
+{
+  "baselines": [
+    {
+      "suiteVersion": 1,
+      "measurements": {
+        "in-sync-100k": {
+          "workload": {
+            "rangesMaxSize": null,
+            "pushMessages": 0,
+            "client": {
+              "rows": 100000,
+              "changeBytes": 52422097,
+              "sha256": "b3971997c96e764c"
+            },
+            "relay": {
+              "rows": 100000,
+              "changeBytes": 52422097,
+              "sha256": "b3971997c96e764c"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 1,
+            "bytes": 456,
+            "redundantMessages": 0,
+            "clientSqlStatements": 2,
+            "clientSqlRows": 17,
+            "relaySqlStatements": 47,
+            "relaySqlRows": 62
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 436,
+              "maxFrameBytes": 436,
+              "rangesBytes": 415,
+              "maxRangesBytes": 415,
+              "messages": 0,
+              "changeBytes": 0,
+              "skipRanges": 0,
+              "fingerprintRanges": 16,
+              "timestampsRanges": 0,
+              "listedTimestamps": 0
+            },
+            "response": {
+              "bytes": 20,
+              "maxFrameBytes": 20,
+              "rangesBytes": 0,
+              "maxRangesBytes": 0,
+              "messages": 0,
+              "changeBytes": 0,
+              "skipRanges": 0,
+              "fingerprintRanges": 0,
+              "timestampsRanges": 0,
+              "listedTimestamps": 0
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 1,
+              "fingerprint": 0,
+              "fingerprintRanges": 1,
+              "findLowerBound": 0,
+              "iterate": 0,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 0,
+              "readDbChange": 0,
+              "iterateRows": 0,
+              "fingerprintRangesBuckets": 16,
+              "sqlTransactions": 0,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 1,
+              "fingerprint": 16,
+              "fingerprintRanges": 0,
+              "findLowerBound": 16,
+              "iterate": 0,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 0,
+              "readDbChange": 0,
+              "iterateRows": 0,
+              "fingerprintRangesBuckets": 0,
+              "sqlTransactions": 0,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "0c24ade3ef8f741a5aeec122781e0029d415fdcbb05167e22f778b4d691b5978"
+          }
+        },
+        "single-difference-100k": {
+          "workload": {
+            "rangesMaxSize": null,
+            "pushMessages": 0,
+            "client": {
+              "rows": 99999,
+              "changeBytes": 52421729,
+              "sha256": "31a199dc6465a992"
+            },
+            "relay": {
+              "rows": 100000,
+              "changeBytes": 52422097,
+              "sha256": "b3971997c96e764c"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 3,
+            "bytes": 2091,
+            "redundantMessages": 0,
+            "clientSqlStatements": 67,
+            "clientSqlRows": 131,
+            "relaySqlStatements": 112,
+            "relaySqlRows": 203
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 1056,
+              "maxFrameBytes": 442,
+              "rangesBytes": 961,
+              "maxRangesBytes": 417,
+              "messages": 0,
+              "changeBytes": 0,
+              "skipRanges": 4,
+              "fingerprintRanges": 32,
+              "timestampsRanges": 1,
+              "listedTimestamps": 24
+            },
+            "response": {
+              "bytes": 1035,
+              "maxFrameBytes": 464,
+              "rangesBytes": 588,
+              "maxRangesBytes": 444,
+              "messages": 1,
+              "changeBytes": 368,
+              "skipRanges": 4,
+              "fingerprintRanges": 16,
+              "timestampsRanges": 1,
+              "listedTimestamps": 25
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 3,
+              "fingerprint": 16,
+              "fingerprintRanges": 2,
+              "findLowerBound": 21,
+              "iterate": 1,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 1,
+              "readDbChange": 0,
+              "iterateRows": 24,
+              "fingerprintRangesBuckets": 33,
+              "sqlTransactions": 1,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 3,
+              "fingerprint": 32,
+              "fingerprintRanges": 1,
+              "findLowerBound": 37,
+              "iterate": 2,
+              "deleteOwner": 0,
+              "validateWriteKey": 2,
+              "writeMessages": 0,
+              "readDbChange": 1,
+              "iterateRows": 50,
+              "fingerprintRangesBuckets": 17,
+              "sqlTransactions": 0,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "181a535ac79f7d3c03a1f32a9c202e74cffdd50671bb5f87628b0e43d58f9f94"
+          }
+        },
+        "tail-100k": {
+          "workload": {
+            "rangesMaxSize": null,
+            "pushMessages": 0,
+            "client": {
+              "rows": 100050,
+              "changeBytes": 52430822,
+              "sha256": "34bdc5c83ce4935f"
+            },
+            "relay": {
+              "rows": 100050,
+              "changeBytes": 52430822,
+              "sha256": "898492f819ca94ce"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 3,
+            "bytes": 20039,
+            "redundantMessages": 0,
+            "clientSqlStatements": 267,
+            "clientSqlRows": 229,
+            "relaySqlStatements": 322,
+            "relaySqlRows": 397
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 10229,
+              "maxFrameBytes": 9363,
+              "rangesBytes": 1145,
+              "maxRangesBytes": 407,
+              "messages": 50,
+              "changeBytes": 8725,
+              "skipRanges": 2,
+              "fingerprintRanges": 32,
+              "timestampsRanges": 3,
+              "listedTimestamps": 72
+            },
+            "response": {
+              "bytes": 9810,
+              "maxFrameBytes": 9009,
+              "rangesBytes": 761,
+              "maxRangesBytes": 424,
+              "messages": 50,
+              "changeBytes": 8725,
+              "skipRanges": 2,
+              "fingerprintRanges": 16,
+              "timestampsRanges": 3,
+              "listedTimestamps": 72
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 3,
+              "fingerprint": 16,
+              "fingerprintRanges": 2,
+              "findLowerBound": 21,
+              "iterate": 3,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 1,
+              "readDbChange": 50,
+              "iterateRows": 72,
+              "fingerprintRangesBuckets": 33,
+              "sqlTransactions": 1,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 3,
+              "fingerprint": 32,
+              "fingerprintRanges": 1,
+              "findLowerBound": 37,
+              "iterate": 6,
+              "deleteOwner": 0,
+              "validateWriteKey": 2,
+              "writeMessages": 1,
+              "readDbChange": 50,
+              "iterateRows": 194,
+              "fingerprintRangesBuckets": 17,
+              "sqlTransactions": 1,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "9ba9dedbd741d477fb206de4e2b6432a7ca3495a3564e9247318924caa4011c1"
+          }
+        },
+        "scattered-100k-3000": {
+          "workload": {
+            "rangesMaxSize": 3000,
+            "pushMessages": 0,
+            "client": {
+              "rows": 99900,
+              "changeBytes": 52373427,
+              "sha256": "cef1c1c44badfff1"
+            },
+            "relay": {
+              "rows": 99900,
+              "changeBytes": 52349362,
+              "sha256": "4adb3562c8344bea"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 33,
+            "bytes": 266148,
+            "redundantMessages": 0,
+            "clientSqlStatements": 7093,
+            "clientSqlRows": 14036,
+            "relaySqlStatements": 7228,
+            "relaySqlRows": 14293
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 144911,
+              "maxFrameBytes": 13493,
+              "rangesBytes": 69507,
+              "maxRangesBytes": 2997,
+              "messages": 100,
+              "changeBytes": 72735,
+              "skipRanges": 229,
+              "fingerprintRanges": 2404,
+              "timestampsRanges": 149,
+              "listedTimestamps": 1950
+            },
+            "response": {
+              "bytes": 121237,
+              "maxFrameBytes": 12557,
+              "rangesBytes": 70390,
+              "maxRangesBytes": 2990,
+              "messages": 100,
+              "changeBytes": 48670,
+              "skipRanges": 226,
+              "fingerprintRanges": 2452,
+              "timestampsRanges": 147,
+              "listedTimestamps": 2007
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 33,
+              "fingerprint": 1751,
+              "fingerprintRanges": 169,
+              "findLowerBound": 2103,
+              "iterate": 248,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 21,
+              "readDbChange": 100,
+              "iterateRows": 3328,
+              "fingerprintRangesBuckets": 2871,
+              "sqlTransactions": 21,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 32,
+              "fingerprint": 1782,
+              "fingerprintRanges": 172,
+              "findLowerBound": 2140,
+              "iterate": 246,
+              "deleteOwner": 0,
+              "validateWriteKey": 32,
+              "writeMessages": 21,
+              "readDbChange": 100,
+              "iterateRows": 3370,
+              "fingerprintRangesBuckets": 2923,
+              "sqlTransactions": 21,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "0b080284907e4cdd0b7bb749b51daa687e36b36cf9baa1902ef9ac6a3d27db0e"
+          }
+        },
+        "scattered-100k-30000": {
+          "workload": {
+            "rangesMaxSize": 30000,
+            "pushMessages": 0,
+            "client": {
+              "rows": 99900,
+              "changeBytes": 52373427,
+              "sha256": "cef1c1c44badfff1"
+            },
+            "relay": {
+              "rows": 99900,
+              "changeBytes": 52349362,
+              "sha256": "4adb3562c8344bea"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 5,
+            "bytes": 227013,
+            "redundantMessages": 0,
+            "clientSqlStatements": 5761,
+            "clientSqlRows": 12081,
+            "relaySqlStatements": 6218,
+            "relaySqlRows": 13509
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 125701,
+              "maxFrameBytes": 61526,
+              "rangesBytes": 51438,
+              "maxRangesBytes": 29816,
+              "messages": 100,
+              "changeBytes": 72735,
+              "skipRanges": 181,
+              "fingerprintRanges": 1521,
+              "timestampsRanges": 144,
+              "listedTimestamps": 2391
+            },
+            "response": {
+              "bytes": 101312,
+              "maxFrameBytes": 51316,
+              "rangesBytes": 51096,
+              "maxRangesBytes": 26013,
+              "messages": 100,
+              "changeBytes": 48670,
+              "skipRanges": 207,
+              "fingerprintRanges": 1472,
+              "timestampsRanges": 153,
+              "listedTimestamps": 3172
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 5,
+              "fingerprint": 1354,
+              "fingerprintRanges": 96,
+              "findLowerBound": 1713,
+              "iterate": 240,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 2,
+              "readDbChange": 100,
+              "iterateRows": 4217,
+              "fingerprintRangesBuckets": 1630,
+              "sqlTransactions": 2,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 4,
+              "fingerprint": 1521,
+              "fingerprintRanges": 92,
+              "findLowerBound": 1846,
+              "iterate": 253,
+              "deleteOwner": 0,
+              "validateWriteKey": 4,
+              "writeMessages": 2,
+              "readDbChange": 100,
+              "iterateRows": 5113,
+              "fingerprintRangesBuckets": 1563,
+              "sqlTransactions": 2,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "6d8d8b78c51fdab7633947e9387e3563b3d65eb64e9a71ca871d0a5ef4b450c8"
+          }
+        },
+        "scattered-100k-100000": {
+          "workload": {
+            "rangesMaxSize": 100000,
+            "pushMessages": 0,
+            "client": {
+              "rows": 99900,
+              "changeBytes": 52373427,
+              "sha256": "cef1c1c44badfff1"
+            },
+            "relay": {
+              "rows": 99900,
+              "changeBytes": 52349362,
+              "sha256": "4adb3562c8344bea"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 3,
+            "bytes": 224808,
+            "redundantMessages": 0,
+            "clientSqlStatements": 2464,
+            "clientSqlRows": 9060,
+            "relaySqlStatements": 8361,
+            "relaySqlRows": 17290
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 142126,
+              "maxFrameBytes": 87734,
+              "rangesBytes": 67939,
+              "maxRangesBytes": 53899,
+              "messages": 100,
+              "changeBytes": 72735,
+              "skipRanges": 168,
+              "fingerprintRanges": 2272,
+              "timestampsRanges": 100,
+              "listedTimestamps": 2435
+            },
+            "response": {
+              "bytes": 82682,
+              "maxFrameBytes": 50134,
+              "rangesBytes": 32508,
+              "maxRangesBytes": 25971,
+              "messages": 100,
+              "changeBytes": 48670,
+              "skipRanges": 186,
+              "fingerprintRanges": 256,
+              "timestampsRanges": 195,
+              "listedTimestamps": 4763
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 3,
+              "fingerprint": 256,
+              "fingerprintRanges": 142,
+              "findLowerBound": 637,
+              "iterate": 195,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 1,
+              "readDbChange": 100,
+              "iterateRows": 4763,
+              "fingerprintRangesBuckets": 2412,
+              "sqlTransactions": 1,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 3,
+              "fingerprint": 2272,
+              "fingerprintRanges": 16,
+              "findLowerBound": 2540,
+              "iterate": 295,
+              "deleteOwner": 0,
+              "validateWriteKey": 2,
+              "writeMessages": 1,
+              "readDbChange": 100,
+              "iterateRows": 7298,
+              "fingerprintRangesBuckets": 271,
+              "sqlTransactions": 1,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "9ab5460e2765ad59811269992f59a3b91a6c593f280516d74087187091ec8017"
+          }
+        },
+        "download-20k": {
+          "workload": {
+            "rangesMaxSize": null,
+            "pushMessages": 0,
+            "client": {
+              "rows": 0,
+              "changeBytes": 0,
+              "sha256": "e3b0c44298fc1c14"
+            },
+            "relay": {
+              "rows": 20000,
+              "changeBytes": 10643321,
+              "sha256": "2953191f83007edd"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 11,
+            "bytes": 10827629,
+            "redundantMessages": 0,
+            "clientSqlStatements": 40093,
+            "clientSqlRows": 18401,
+            "relaySqlStatements": 20084,
+            "relaySqlRows": 138337
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 604,
+              "maxFrameBytes": 58,
+              "rangesBytes": 213,
+              "maxRangesBytes": 21,
+              "messages": 0,
+              "changeBytes": 0,
+              "skipRanges": 10,
+              "fingerprintRanges": 0,
+              "timestampsRanges": 11,
+              "listedTimestamps": 0
+            },
+            "response": {
+              "bytes": 10827025,
+              "maxFrameBytes": 999787,
+              "rangesBytes": 70810,
+              "maxRangesBytes": 7813,
+              "messages": 20000,
+              "changeBytes": 10643321,
+              "skipRanges": 9,
+              "fingerprintRanges": 10,
+              "timestampsRanges": 10,
+              "listedTimestamps": 18362
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 11,
+              "fingerprint": 10,
+              "fingerprintRanges": 0,
+              "findLowerBound": 29,
+              "iterate": 21,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 11,
+              "readDbChange": 0,
+              "iterateRows": 18362,
+              "fingerprintRangesBuckets": 0,
+              "sqlTransactions": 11,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 11,
+              "fingerprint": 10,
+              "fingerprintRanges": 0,
+              "findLowerBound": 21,
+              "iterate": 11,
+              "deleteOwner": 0,
+              "validateWriteKey": 10,
+              "writeMessages": 0,
+              "readDbChange": 20010,
+              "iterateRows": 20010,
+              "fingerprintRangesBuckets": 0,
+              "sqlTransactions": 0,
+              "unsentReads": 10
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "7cec2344072d90b940678ce1f5e224c32e041ffd776f598477f4125fc011733f"
+          }
+        },
+        "upload-20k": {
+          "workload": {
+            "rangesMaxSize": null,
+            "pushMessages": 0,
+            "client": {
+              "rows": 20000,
+              "changeBytes": 10643321,
+              "sha256": "2953191f83007edd"
+            },
+            "relay": {
+              "rows": 0,
+              "changeBytes": 0,
+              "sha256": "e3b0c44298fc1c14"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 12,
+            "bytes": 10823629,
+            "redundantMessages": 0,
+            "clientSqlStatements": 20081,
+            "clientSqlRows": 120849,
+            "relaySqlStatements": 40107,
+            "relaySqlRows": 17163
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 10822970,
+              "maxFrameBytes": 999804,
+              "rangesBytes": 66547,
+              "maxRangesBytes": 7813,
+              "messages": 20000,
+              "changeBytes": 10643321,
+              "skipRanges": 10,
+              "fingerprintRanges": 26,
+              "timestampsRanges": 10,
+              "listedTimestamps": 17112
+            },
+            "response": {
+              "bytes": 659,
+              "maxFrameBytes": 229,
+              "rangesBytes": 419,
+              "maxRangesBytes": 209,
+              "messages": 0,
+              "changeBytes": 0,
+              "skipRanges": 10,
+              "fingerprintRanges": 0,
+              "timestampsRanges": 26,
+              "listedTimestamps": 0
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 12,
+              "fingerprint": 10,
+              "fingerprintRanges": 1,
+              "findLowerBound": 22,
+              "iterate": 12,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 0,
+              "readDbChange": 20010,
+              "iterateRows": 20010,
+              "fingerprintRangesBuckets": 16,
+              "sqlTransactions": 0,
+              "unsentReads": 10
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 11,
+              "fingerprint": 26,
+              "fingerprintRanges": 0,
+              "findLowerBound": 46,
+              "iterate": 36,
+              "deleteOwner": 0,
+              "validateWriteKey": 11,
+              "writeMessages": 11,
+              "readDbChange": 0,
+              "iterateRows": 17112,
+              "fingerprintRangesBuckets": 0,
+              "sqlTransactions": 11,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "eafb68dd0fcb2dbd8a8a37f7af05ee67dc26350e279eccaa6490541802f012b1"
+          }
+        },
+        "random-halves-20k-3000": {
+          "workload": {
+            "rangesMaxSize": 3000,
+            "pushMessages": 0,
+            "client": {
+              "rows": 10000,
+              "changeBytes": 5343197,
+              "sha256": "929df83ea436cf25"
+            },
+            "relay": {
+              "rows": 10000,
+              "changeBytes": 5300124,
+              "sha256": "783716f719640aba"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 56,
+            "bytes": 11040424,
+            "redundantMessages": 0,
+            "clientSqlStatements": 50868,
+            "clientSqlRows": 35318,
+            "relaySqlStatements": 52315,
+            "relaySqlRows": 46313
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 5561663,
+              "maxFrameBytes": 301252,
+              "rangesBytes": 152892,
+              "maxRangesBytes": 2998,
+              "messages": 10000,
+              "changeBytes": 5343197,
+              "skipRanges": 133,
+              "fingerprintRanges": 3203,
+              "timestampsRanges": 1669,
+              "listedTimestamps": 9921
+            },
+            "response": {
+              "bytes": 5478761,
+              "maxFrameBytes": 282380,
+              "rangesBytes": 114558,
+              "maxRangesBytes": 3000,
+              "messages": 10000,
+              "changeBytes": 5300124,
+              "skipRanges": 206,
+              "fingerprintRanges": 1646,
+              "timestampsRanges": 1571,
+              "listedTimestamps": 9950
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 56,
+              "fingerprint": 1064,
+              "fingerprintRanges": 232,
+              "findLowerBound": 2778,
+              "iterate": 2329,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 31,
+              "readDbChange": 10013,
+              "iterateRows": 13918,
+              "fingerprintRangesBuckets": 3943,
+              "sqlTransactions": 31,
+              "unsentReads": 13
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 55,
+              "fingerprint": 1167,
+              "fingerprintRanges": 109,
+              "findLowerBound": 2934,
+              "iterate": 2692,
+              "deleteOwner": 0,
+              "validateWriteKey": 55,
+              "writeMessages": 40,
+              "readDbChange": 10001,
+              "iterateRows": 26329,
+              "fingerprintRangesBuckets": 1852,
+              "sqlTransactions": 40,
+              "unsentReads": 1
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "9e3e043e7e7c7cc56f170ccaa0176e13421af547b69990d512c5363de0de20f5"
+          }
+        },
+        "random-halves-20k-30000": {
+          "workload": {
+            "rangesMaxSize": 30000,
+            "pushMessages": 0,
+            "client": {
+              "rows": 10000,
+              "changeBytes": 5343197,
+              "sha256": "929df83ea436cf25"
+            },
+            "relay": {
+              "rows": 10000,
+              "changeBytes": 5300124,
+              "sha256": "783716f719640aba"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 14,
+            "bytes": 11077773,
+            "redundantMessages": 0,
+            "clientSqlStatements": 54941,
+            "clientSqlRows": 52218,
+            "relaySqlStatements": 53355,
+            "relaySqlRows": 39878
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 5572527,
+              "maxFrameBytes": 999416,
+              "rangesBytes": 165514,
+              "maxRangesBytes": 29991,
+              "messages": 10000,
+              "changeBytes": 5343197,
+              "skipRanges": 185,
+              "fingerprintRanges": 2389,
+              "timestampsRanges": 2241,
+              "listedTimestamps": 15822
+            },
+            "response": {
+              "bytes": 5505246,
+              "maxFrameBytes": 999798,
+              "rangesBytes": 141949,
+              "maxRangesBytes": 29990,
+              "messages": 10000,
+              "changeBytes": 5300124,
+              "skipRanges": 117,
+              "fingerprintRanges": 2086,
+              "timestampsRanges": 2199,
+              "listedTimestamps": 11936
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 14,
+              "fingerprint": 1680,
+              "fingerprintRanges": 151,
+              "findLowerBound": 3589,
+              "iterate": 3321,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 10,
+              "readDbChange": 10002,
+              "iterateRows": 29441,
+              "fingerprintRangesBuckets": 2566,
+              "sqlTransactions": 10,
+              "unsentReads": 2
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 14,
+              "fingerprint": 1574,
+              "fingerprintRanges": 131,
+              "findLowerBound": 3338,
+              "iterate": 3007,
+              "deleteOwner": 0,
+              "validateWriteKey": 13,
+              "writeMessages": 7,
+              "readDbChange": 10004,
+              "iterateRows": 18277,
+              "fingerprintRangesBuckets": 2226,
+              "sqlTransactions": 7,
+              "unsentReads": 4
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "cb13674b46faf0eb77d96bc9b684a6b775429e6687975920596c36ef8a68c02b"
+          }
+        },
+        "random-halves-20k-100000": {
+          "workload": {
+            "rangesMaxSize": 100000,
+            "pushMessages": 0,
+            "client": {
+              "rows": 10000,
+              "changeBytes": 5343197,
+              "sha256": "929df83ea436cf25"
+            },
+            "relay": {
+              "rows": 10000,
+              "changeBytes": 5300124,
+              "sha256": "783716f719640aba"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 12,
+            "bytes": 11208456,
+            "redundantMessages": 0,
+            "clientSqlStatements": 54473,
+            "clientSqlRows": 47630,
+            "relaySqlStatements": 64347,
+            "relaySqlRows": 63485
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 5621144,
+              "maxFrameBytes": 999954,
+              "rangesBytes": 214131,
+              "maxRangesBytes": 70455,
+              "messages": 10000,
+              "changeBytes": 5343197,
+              "skipRanges": 230,
+              "fingerprintRanges": 5172,
+              "timestampsRanges": 2297,
+              "listedTimestamps": 14493
+            },
+            "response": {
+              "bytes": 5587312,
+              "maxFrameBytes": 999873,
+              "rangesBytes": 223546,
+              "maxRangesBytes": 85805,
+              "messages": 10000,
+              "changeBytes": 5300124,
+              "skipRanges": 141,
+              "fingerprintRanges": 2659,
+              "timestampsRanges": 4247,
+              "listedTimestamps": 19857
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 12,
+              "fingerprint": 1557,
+              "fingerprintRanges": 323,
+              "findLowerBound": 3580,
+              "iterate": 3099,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 7,
+              "readDbChange": 10004,
+              "iterateRows": 22207,
+              "fingerprintRangesBuckets": 5490,
+              "sqlTransactions": 7,
+              "unsentReads": 4
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 12,
+              "fingerprint": 4022,
+              "fingerprintRanges": 166,
+              "findLowerBound": 5912,
+              "iterate": 5421,
+              "deleteOwner": 0,
+              "validateWriteKey": 11,
+              "writeMessages": 6,
+              "readDbChange": 10003,
+              "iterateRows": 31962,
+              "fingerprintRangesBuckets": 2821,
+              "sqlTransactions": 6,
+              "unsentReads": 3
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "154bf7457bb215faaf89eb9b6d8d9524248186d403297bfe48f5fcd6a7838290"
+          }
+        },
+        "wide-halves-5k-3000": {
+          "workload": {
+            "rangesMaxSize": 3000,
+            "pushMessages": 0,
+            "client": {
+              "rows": 2500,
+              "changeBytes": 375762,
+              "sha256": "2f63ab8551978006"
+            },
+            "relay": {
+              "rows": 2500,
+              "changeBytes": 371467,
+              "sha256": "c974553756e6b7bf"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 39,
+            "bytes": 1021286,
+            "redundantMessages": 0,
+            "clientSqlStatements": 13298,
+            "clientSqlRows": 11537,
+            "relaySqlStatements": 13116,
+            "relaySqlRows": 10246
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 505873,
+              "maxFrameBytes": 28514,
+              "rangesBytes": 76817,
+              "maxRangesBytes": 2998,
+              "messages": 2500,
+              "changeBytes": 375762,
+              "skipRanges": 62,
+              "fingerprintRanges": 615,
+              "timestampsRanges": 409,
+              "listedTimestamps": 2494
+            },
+            "response": {
+              "bytes": 515413,
+              "maxFrameBytes": 27848,
+              "rangesBytes": 91401,
+              "maxRangesBytes": 2994,
+              "messages": 2500,
+              "changeBytes": 371467,
+              "skipRanges": 44,
+              "fingerprintRanges": 1087,
+              "timestampsRanges": 424,
+              "listedTimestamps": 2479
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 39,
+              "fingerprint": 322,
+              "fingerprintRanges": 44,
+              "findLowerBound": 767,
+              "iterate": 680,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 21,
+              "readDbChange": 2502,
+              "iterateRows": 6092,
+              "fingerprintRangesBuckets": 747,
+              "sqlTransactions": 21,
+              "unsentReads": 2
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 38,
+              "fingerprint": 317,
+              "fingerprintRanges": 86,
+              "findLowerBound": 753,
+              "iterate": 605,
+              "deleteOwner": 0,
+              "validateWriteKey": 38,
+              "writeMessages": 21,
+              "readDbChange": 2505,
+              "iterateRows": 4103,
+              "fingerprintRangesBuckets": 1461,
+              "sqlTransactions": 21,
+              "unsentReads": 5
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "ff5a88e05a1d7d8b99c0d4d3b7d1f1517954ee284cd49c1c30dd04085ac9412b"
+          }
+        },
+        "wide-halves-5k-30000": {
+          "workload": {
+            "rangesMaxSize": 30000,
+            "pushMessages": 0,
+            "client": {
+              "rows": 2500,
+              "changeBytes": 375762,
+              "sha256": "2f63ab8551978006"
+            },
+            "relay": {
+              "rows": 2500,
+              "changeBytes": 371467,
+              "sha256": "c974553756e6b7bf"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 5,
+            "bytes": 980636,
+            "redundantMessages": 0,
+            "clientSqlStatements": 13538,
+            "clientSqlRows": 12413,
+            "relaySqlStatements": 11737,
+            "relaySqlRows": 6485
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 485564,
+              "maxFrameBytes": 238346,
+              "rangesBytes": 57793,
+              "maxRangesBytes": 29928,
+              "messages": 2500,
+              "changeBytes": 375762,
+              "skipRanges": 2,
+              "fingerprintRanges": 33,
+              "timestampsRanges": 400,
+              "listedTimestamps": 2524
+            },
+            "response": {
+              "bytes": 495072,
+              "maxFrameBytes": 270426,
+              "rangesBytes": 71765,
+              "maxRangesBytes": 29982,
+              "messages": 2500,
+              "changeBytes": 371467,
+              "skipRanges": 13,
+              "fingerprintRanges": 513,
+              "timestampsRanges": 388,
+              "listedTimestamps": 2454
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 5,
+              "fingerprint": 403,
+              "fingerprintRanges": 2,
+              "findLowerBound": 803,
+              "iterate": 789,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 2,
+              "readDbChange": 2500,
+              "iterateRows": 7490,
+              "fingerprintRangesBuckets": 33,
+              "sqlTransactions": 2,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 4,
+              "fingerprint": 33,
+              "fingerprintRanges": 32,
+              "findLowerBound": 433,
+              "iterate": 399,
+              "deleteOwner": 0,
+              "validateWriteKey": 4,
+              "writeMessages": 2,
+              "readDbChange": 2501,
+              "iterateRows": 2501,
+              "fingerprintRangesBuckets": 543,
+              "sqlTransactions": 2,
+              "unsentReads": 1
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "0aefbdf765bd1c2494773c2c7ff04ccd6fd51a80ffc635e4d7492cea313eee85"
+          }
+        },
+        "wide-halves-5k-100000": {
+          "workload": {
+            "rangesMaxSize": 100000,
+            "pushMessages": 0,
+            "client": {
+              "rows": 2500,
+              "changeBytes": 375762,
+              "sha256": "2f63ab8551978006"
+            },
+            "relay": {
+              "rows": 2500,
+              "changeBytes": 371467,
+              "sha256": "c974553756e6b7bf"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 3,
+            "bytes": 965860,
+            "redundantMessages": 0,
+            "clientSqlStatements": 12307,
+            "clientSqlRows": 11551,
+            "relaySqlStatements": 11090,
+            "relaySqlRows": 5846
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 481312,
+              "maxFrameBytes": 427637,
+              "rangesBytes": 53617,
+              "maxRangesBytes": 53108,
+              "messages": 2500,
+              "changeBytes": 375762,
+              "skipRanges": 0,
+              "fingerprintRanges": 16,
+              "timestampsRanges": 256,
+              "listedTimestamps": 2500
+            },
+            "response": {
+              "bytes": 484548,
+              "maxFrameBytes": 476333,
+              "rangesBytes": 61283,
+              "maxRangesBytes": 53108,
+              "messages": 2500,
+              "changeBytes": 371467,
+              "skipRanges": 0,
+              "fingerprintRanges": 256,
+              "timestampsRanges": 256,
+              "listedTimestamps": 2500
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 3,
+              "fingerprint": 256,
+              "fingerprintRanges": 1,
+              "findLowerBound": 512,
+              "iterate": 512,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 1,
+              "readDbChange": 2500,
+              "iterateRows": 7500,
+              "fingerprintRangesBuckets": 16,
+              "sqlTransactions": 1,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 2,
+              "fingerprint": 16,
+              "fingerprintRanges": 16,
+              "findLowerBound": 272,
+              "iterate": 256,
+              "deleteOwner": 0,
+              "validateWriteKey": 2,
+              "writeMessages": 1,
+              "readDbChange": 2500,
+              "iterateRows": 2500,
+              "fingerprintRangesBuckets": 271,
+              "sqlTransactions": 1,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "27e90a1dbd2785a3bb72b2acc8688a1c98d0c8c1bdfc1786ebe30142b0691921"
+          }
+        },
+        "large-changes-download": {
+          "workload": {
+            "rangesMaxSize": null,
+            "pushMessages": 0,
+            "client": {
+              "rows": 0,
+              "changeBytes": 0,
+              "sha256": "e3b0c44298fc1c14"
+            },
+            "relay": {
+              "rows": 2000,
+              "changeBytes": 6311687,
+              "sha256": "afe3b706bbccbe0a"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 9,
+            "bytes": 6330796,
+            "redundantMessages": 0,
+            "clientSqlStatements": 4074,
+            "clientSqlRows": 1747,
+            "relaySqlStatements": 2068,
+            "relaySqlRows": 10807
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 488,
+              "maxFrameBytes": 58,
+              "rangesBytes": 171,
+              "maxRangesBytes": 21,
+              "messages": 0,
+              "changeBytes": 0,
+              "skipRanges": 8,
+              "fingerprintRanges": 0,
+              "timestampsRanges": 9,
+              "listedTimestamps": 0
+            },
+            "response": {
+              "bytes": 6330308,
+              "maxFrameBytes": 999909,
+              "rangesBytes": 7019,
+              "maxRangesBytes": 2265,
+              "messages": 2000,
+              "changeBytes": 6311687,
+              "skipRanges": 7,
+              "fingerprintRanges": 8,
+              "timestampsRanges": 8,
+              "listedTimestamps": 1716
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 9,
+              "fingerprint": 8,
+              "fingerprintRanges": 0,
+              "findLowerBound": 23,
+              "iterate": 17,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 9,
+              "readDbChange": 0,
+              "iterateRows": 1716,
+              "fingerprintRangesBuckets": 0,
+              "sqlTransactions": 9,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 9,
+              "fingerprint": 8,
+              "fingerprintRanges": 0,
+              "findLowerBound": 17,
+              "iterate": 9,
+              "deleteOwner": 0,
+              "validateWriteKey": 8,
+              "writeMessages": 0,
+              "readDbChange": 2008,
+              "iterateRows": 2008,
+              "fingerprintRangesBuckets": 0,
+              "sqlTransactions": 0,
+              "unsentReads": 8
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "5c6bbebeeb93ebdbb702b66d276d7cd9db7dbb5dd7aa2a19f496061662951d74"
+          }
+        },
+        "large-changes-upload": {
+          "workload": {
+            "rangesMaxSize": null,
+            "pushMessages": 0,
+            "client": {
+              "rows": 2000,
+              "changeBytes": 6311687,
+              "sha256": "afe3b706bbccbe0a"
+            },
+            "relay": {
+              "rows": 0,
+              "changeBytes": 0,
+              "sha256": "e3b0c44298fc1c14"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 10,
+            "bytes": 6329537,
+            "redundantMessages": 0,
+            "clientSqlStatements": 2079,
+            "clientSqlRows": 9452,
+            "relaySqlStatements": 4086,
+            "relaySqlRows": 1257
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 6328962,
+              "maxFrameBytes": 999926,
+              "rangesBytes": 5499,
+              "maxRangesBytes": 2265,
+              "messages": 2000,
+              "changeBytes": 6311687,
+              "skipRanges": 8,
+              "fingerprintRanges": 24,
+              "timestampsRanges": 8,
+              "listedTimestamps": 1216
+            },
+            "response": {
+              "bytes": 575,
+              "maxFrameBytes": 227,
+              "rangesBytes": 375,
+              "maxRangesBytes": 207,
+              "messages": 0,
+              "changeBytes": 0,
+              "skipRanges": 8,
+              "fingerprintRanges": 0,
+              "timestampsRanges": 24,
+              "listedTimestamps": 0
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 10,
+              "fingerprint": 8,
+              "fingerprintRanges": 1,
+              "findLowerBound": 21,
+              "iterate": 13,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 0,
+              "readDbChange": 2008,
+              "iterateRows": 2008,
+              "fingerprintRangesBuckets": 16,
+              "sqlTransactions": 0,
+              "unsentReads": 8
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 9,
+              "fingerprint": 24,
+              "fingerprintRanges": 0,
+              "findLowerBound": 40,
+              "iterate": 32,
+              "deleteOwner": 0,
+              "validateWriteKey": 9,
+              "writeMessages": 9,
+              "readDbChange": 0,
+              "iterateRows": 1216,
+              "fingerprintRangesBuckets": 0,
+              "sqlTransactions": 9,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "a8179fd6e9afa9e6ab98f2817d4335f2139595ff4b80131e6e20d75031c79853"
+          }
+        },
+        "oversized-change-upload": {
+          "workload": {
+            "rangesMaxSize": null,
+            "pushMessages": 0,
+            "client": {
+              "rows": 2000,
+              "changeBytes": 2053241,
+              "sha256": "ebee86111901578b"
+            },
+            "relay": {
+              "rows": 0,
+              "changeBytes": 0,
+              "sha256": "e3b0c44298fc1c14"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 3,
+            "bytes": 1049676,
+            "redundantMessages": 0,
+            "clientSqlStatements": 2072,
+            "clientSqlRows": 4148,
+            "relaySqlStatements": 4015,
+            "relaySqlRows": 37
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 1049388,
+              "maxFrameBytes": 996511,
+              "rangesBytes": 598,
+              "maxRangesBytes": 383,
+              "messages": 1999,
+              "changeBytes": 1037390,
+              "skipRanges": 1,
+              "fingerprintRanges": 17,
+              "timestampsRanges": 1,
+              "listedTimestamps": 31
+            },
+            "response": {
+              "bytes": 288,
+              "maxFrameBytes": 227,
+              "rangesBytes": 228,
+              "maxRangesBytes": 207,
+              "messages": 0,
+              "changeBytes": 0,
+              "skipRanges": 1,
+              "fingerprintRanges": 0,
+              "timestampsRanges": 17,
+              "listedTimestamps": 0
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 3,
+              "fingerprint": 1,
+              "fingerprintRanges": 1,
+              "findLowerBound": 18,
+              "iterate": 17,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 0,
+              "readDbChange": 2001,
+              "iterateRows": 2001,
+              "fingerprintRangesBuckets": 16,
+              "sqlTransactions": 0,
+              "unsentReads": 2
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 2,
+              "fingerprint": 17,
+              "fingerprintRanges": 0,
+              "findLowerBound": 19,
+              "iterate": 18,
+              "deleteOwner": 0,
+              "validateWriteKey": 2,
+              "writeMessages": 2,
+              "readDbChange": 0,
+              "iterateRows": 31,
+              "fingerprintRangesBuckets": 0,
+              "sqlTransactions": 2,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 1,
+            "framesSha256": "d35101b6e0044431107763d61efc4daf19dfefbeec2023f3001892634447fbd5"
+          }
+        },
+        "push-100-into-20k": {
+          "workload": {
+            "rangesMaxSize": null,
+            "pushMessages": 100,
+            "client": {
+              "rows": 20100,
+              "changeBytes": 10658578,
+              "sha256": "1d164631cbc21352"
+            },
+            "relay": {
+              "rows": 20000,
+              "changeBytes": 10643321,
+              "sha256": "2953191f83007edd"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 1,
+            "bytes": 22445,
+            "redundantMessages": 0,
+            "clientSqlStatements": 0,
+            "clientSqlRows": 0,
+            "relaySqlStatements": 205,
+            "relaySqlRows": 1
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 22425,
+              "maxFrameBytes": 22425,
+              "rangesBytes": 0,
+              "maxRangesBytes": 0,
+              "messages": 100,
+              "changeBytes": 21879,
+              "skipRanges": 0,
+              "fingerprintRanges": 0,
+              "timestampsRanges": 0,
+              "listedTimestamps": 0
+            },
+            "response": {
+              "bytes": 20,
+              "maxFrameBytes": 20,
+              "rangesBytes": 0,
+              "maxRangesBytes": 0,
+              "messages": 0,
+              "changeBytes": 0,
+              "skipRanges": 0,
+              "fingerprintRanges": 0,
+              "timestampsRanges": 0,
+              "listedTimestamps": 0
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 0,
+              "fingerprint": 0,
+              "fingerprintRanges": 0,
+              "findLowerBound": 0,
+              "iterate": 0,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 0,
+              "readDbChange": 0,
+              "iterateRows": 0,
+              "fingerprintRangesBuckets": 0,
+              "sqlTransactions": 0,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 0,
+              "fingerprint": 0,
+              "fingerprintRanges": 0,
+              "findLowerBound": 0,
+              "iterate": 0,
+              "deleteOwner": 0,
+              "validateWriteKey": 1,
+              "writeMessages": 1,
+              "readDbChange": 0,
+              "iterateRows": 0,
+              "fingerprintRangesBuckets": 0,
+              "sqlTransactions": 1,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "8bac64c1aad7835b4982446478473b709cddefa1403d0bed557781f1f4c1dc8c"
+          }
+        },
+        "push-5k-into-20k": {
+          "workload": {
+            "rangesMaxSize": null,
+            "pushMessages": 5000,
+            "client": {
+              "rows": 25000,
+              "changeBytes": 11343272,
+              "sha256": "d8da8df95146c6af"
+            },
+            "relay": {
+              "rows": 20000,
+              "changeBytes": 10643321,
+              "sha256": "2953191f83007edd"
+            }
+          },
+          "outcome": "Converged",
+          "cost": {
+            "rounds": 4,
+            "bytes": 1061789,
+            "redundantMessages": 0,
+            "clientSqlStatements": 457,
+            "clientSqlRows": 771,
+            "relaySqlStatements": 10156,
+            "relaySqlRows": 138
+          },
+          "diagnostics": {
+            "request": {
+              "bytes": 1060937,
+              "maxFrameBytes": 999846,
+              "rangesBytes": 562,
+              "maxRangesBytes": 276,
+              "messages": 5000,
+              "changeBytes": 1035565,
+              "skipRanges": 3,
+              "fingerprintRanges": 33,
+              "timestampsRanges": 0,
+              "listedTimestamps": 0
+            },
+            "response": {
+              "bytes": 852,
+              "maxFrameBytes": 387,
+              "rangesBytes": 772,
+              "maxRangesBytes": 367,
+              "messages": 0,
+              "changeBytes": 0,
+              "skipRanges": 3,
+              "fingerprintRanges": 32,
+              "timestampsRanges": 18,
+              "listedTimestamps": 3
+            },
+            "client": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 3,
+              "fingerprint": 32,
+              "fingerprintRanges": 2,
+              "findLowerBound": 53,
+              "iterate": 18,
+              "deleteOwner": 0,
+              "validateWriteKey": 0,
+              "writeMessages": 0,
+              "readDbChange": 284,
+              "iterateRows": 287,
+              "fingerprintRangesBuckets": 34,
+              "sqlTransactions": 0,
+              "unsentReads": 0
+            },
+            "relay": {
+              "insertTimestamp": 0,
+              "getExistingTimestamps": 0,
+              "getSize": 3,
+              "fingerprint": 33,
+              "fingerprintRanges": 2,
+              "findLowerBound": 36,
+              "iterate": 18,
+              "deleteOwner": 0,
+              "validateWriteKey": 4,
+              "writeMessages": 3,
+              "readDbChange": 0,
+              "iterateRows": 3,
+              "fingerprintRangesBuckets": 33,
+              "sqlTransactions": 3,
+              "unsentReads": 0
+            },
+            "changeTooLargeReports": 0,
+            "framesSha256": "81eeb18e94b8f37530efba8b13123e9d636d32d11481a85f4bda25c00a238017"
+          }
+        }
+      }
+    }
+  ]
+}

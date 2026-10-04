@@ -59,6 +59,13 @@ To render a documented code example as an image for a post, run
   shift the committed metrics, and the full comparison takes under a minute.
   Update baselines only when the user explicitly requests it. See
   [benchmark usage](bench/type/README.md#running).
+- After changing sync protocol or storage code, such as
+  `packages/common/src/local-first/Protocol.ts`, `Storage.ts`, or `Relay.ts`,
+  run `pnpm bench:protocol`. It compares deterministic sync work (rounds, bytes,
+  SQL statements and rows) with the committed baseline and takes under a minute.
+  Update its baseline only when the user explicitly requests it. Compare with
+  another commit with `--base=<ref>`. See
+  [benchmark usage](bench/protocol/README.md).
 - After changing storage algorithms, SQL, indexes, or query plans, select the
   relevant storage tests. `pnpm bench:storage` does not support workload filters;
   run it only when explicitly requested by the user.
