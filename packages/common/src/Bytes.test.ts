@@ -501,6 +501,23 @@ describe("string encoding", () => {
     );
     assertEqual(decodeString(buffer), value);
   });
+
+  // Unlike the JSON codec, the string codec keeps the wire valid UTF-8, because
+  // deployed decoders read WTF-8 as three U+FFFD per lone surrogate.
+  it("replaces a lone surrogate with U+FFFD", () => {
+    const buffer = createBuffer();
+    encodeString(buffer, "a\uD800b");
+
+    assertEqualBytes(buffer.unwrap(), [5, 97, 0xef, 0xbf, 0xbd, 98]);
+    assertSame(decodeString(buffer), "a�b");
+  });
+
+  it("decodes invalid UTF-8 as U+FFFD", () => {
+    assertSame(
+      decodeString(createBuffer([5, 97, 0xed, 0xa0, 0x80, 98])),
+      "a���b",
+    );
+  });
 });
 
 describe("run-length encoding", () => {

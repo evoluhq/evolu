@@ -37,7 +37,8 @@ import {
   type UnionType,
 } from "../Type.ts";
 import type { Awaitable } from "../Types.ts";
-import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.ts";
+import type { Evolu } from "./Evolu.ts";
+import type { Owner, OwnerError, OwnerIdBytes, SharedOwner } from "./Owner.ts";
 import { OwnerId, OwnerWriteKey } from "./Owner.ts";
 import type { ProtocolQuotaError } from "./Protocol.ts";
 import { systemColumnsWithId } from "./Schema.ts";
@@ -280,11 +281,31 @@ export interface StorageQuotaError
 export type StorageWriteMessagesError = StorageQuotaError | UnknownError;
 
 /**
- * A cryptographic hash used for efficiently comparing collections of
- * {@link TimestampBytes}es.
+ * A summary of a range of {@link TimestampBytes} for comparing ranges cheaply.
  *
- * It consists of the first {@link fingerprintSize} bytes of the SHA-256 hash of
- * one or more timestamps.
+ * It is the XOR of the first {@link fingerprintSize} bytes of the SHA-256 hash
+ * of each timestamp in the range, or {@link zeroFingerprint} for an empty
+ * range.
+ *
+ * XOR is linear, so fingerprints are not collision resistant: any 97 timestamps
+ * contain a nonempty subset whose fingerprints XOR to zero. Anyone who can
+ * write to a relay for an owner, which includes every collaborator of a
+ * {@link SharedOwner}, can store timestamps whose fingerprints XOR to the
+ * fingerprint of a chosen change. Two ranges that differ only by that change
+ * and those timestamps then compare equal, so sync skips them, and the change
+ * does not move between that relay and a peer. This was demonstrated end to
+ * end, and nothing reports it. {@link Evolu.requestSync} does not heal it,
+ * because the next round compares the same fingerprints. In protocol version 1,
+ * the only recovery is syncing through a relay that does not hold those
+ * timestamps. Binding the count or hashing the result changes every
+ * fingerprint, so it needs a new protocol version.
+ *
+ * A write-key holder can also store a change under a timestamp another device
+ * has not used yet, such as a later one with that device's NodeId, because
+ * relays accept timestamps from any time. A relay keeps the first change stored
+ * for a timestamp, so it does not store the device's change when it arrives,
+ * and peers that sync through that relay later get the stored one instead. A
+ * new fingerprint does not close this.
  *
  * @group Ranges
  */

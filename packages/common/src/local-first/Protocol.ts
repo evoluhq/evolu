@@ -57,7 +57,10 @@
  * initiator can write changes. It's ok to not send a WriteKey if the initiator
  * is only syncing (read-only) and not sending messages. The non-initiator
  * validates the WriteKey immediately after parsing the initiator header, before
- * processing any messages or ranges.
+ * processing any messages or ranges. Only the subscriptionFlag takes effect
+ * before that, because subscribing needs no WriteKey: broadcasts carry only
+ * encrypted changes. So a request rejected with {@link ProtocolWriteKeyError}
+ * still changes its subscription.
  *
  * ## Synchronization
  *
@@ -71,9 +74,13 @@
  * if further sync is needed or possible, continuing until both sides are
  * synchronized.
  *
- * The **non-initiator always responds** to provide sync completion feedback,
- * even with empty messages containing only the header and no error. This allows
- * the initiator to detect when synchronization is complete.
+ * The **non-initiator answers every request it can decode** to provide sync
+ * completion feedback, even with empty messages containing only the header and
+ * no error. This allows the initiator to detect when synchronization is
+ * complete. A request it cannot decode gets no answer.
+ *
+ * Ranges are compared by their {@link Fingerprint}, which anyone who can write
+ * for an owner can make collide. Its documentation describes the consequences.
  *
  * Both **Messages** and **Ranges** are optional, allowing each side to send,
  * sync, or only subscribe data as needed.
@@ -88,18 +95,26 @@
  *
  * ## Protocol errors
  *
- * The protocol uses error codes in the header to signal issues:
+ * A Response carries a {@link ProtocolErrorCode} in its header. The initiator
+ * reports every code except `NoError` as an error with the `OwnerId`:
  *
- * - {@link ProtocolWriteKeyError}: The provided WriteKey is invalid or missing.
- * - {@link ProtocolWriteError}: A serious relay-side write failure occurred.
+ * - {@link ProtocolWriteKeyError}: The WriteKey is invalid, or missing from a
+ *   request with messages.
+ * - {@link ProtocolWriteError}: The relay failed to store the messages.
  * - {@link ProtocolQuotaError}: Storage or billing quota exceeded.
- * - {@link ProtocolSyncError}: A serious relay-side synchronization failure
- *   occurred.
- * - {@link ProtocolVersionError}: Protocol version mismatch.
- * - {@link ProtocolInvalidDataError}: The message is malformed or corrupted.
+ * - {@link ProtocolSyncError}: The relay failed to reconcile the ranges.
  *
- * All protocol errors except `ProtocolInvalidDataError` include the `OwnerId`
- * to allow clients to associate errors with the correct owner.
+ * The initiator also reports {@link ProtocolVersionError}, with the `OwnerId`,
+ * for a reply of another version, and {@link ProtocolInvalidDataError}, without
+ * it, for a message it cannot decode, including one with an unknown code. For a
+ * request it cannot decode, or when its storage throws while validating the
+ * WriteKey, a relay returns `ProtocolInvalidDataError` and sends nothing.
+ *
+ * {@link decryptAndDecodeDbChange} returns `ProtocolInvalidDataError`,
+ * {@link ProtocolTimestampMismatchError}, or
+ * {@link DecryptWithXChaCha20Poly1305Error} for a change it cannot read. These
+ * describe a change rather than a protocol message, and client storage skips
+ * such a change.
  *
  * ## Message size limit
  *
@@ -139,24 +154,18 @@
  *
  * ## Versioning
  *
- * Evolu Protocol uses explicit versioning to ensure compatibility between
- * clients and relays (or peers). Each protocol message begins with a version
- * number and an `ownerId` in its header.
+ * Every message of every protocol version begins with the version and the
+ * `OwnerId`, so a peer can route and report a message of any version. Nothing
+ * negotiates a version, and no side falls back to the other's.
  *
- * **How version negotiation works:**
- *
- * - The initiator (usually a client) sends a `ProtocolMessage` that includes its
- *   protocol version and the `ownerId`.
- * - The non-initiator (usually a relay or peer) checks the version.
- *
- *   - If the versions match, synchronization proceeds as normal.
- *   - If the versions do not match, the non-initiator responds with a message
- *       containing **its own protocol version and the same `ownerId`**.
- * - The initiator can then detect the version mismatch for that specific owner
- *   and handle it appropriately (e.g., prompt for an update or halt sync).
- *
- * Version negotiation is per-owner, allowing Evolu Protocol to evolve safely
- * over time and provide clear feedback about version mismatches.
+ * A non-initiator answers a request of another version with only its own
+ * version and that `OwnerId`. The initiator reports it as
+ * {@link ProtocolVersionError} for that owner, whose `isInitiator` tells which
+ * side is older, and stops syncing the owner through that relay. Clients from
+ * `@evolu/common` 8.0.0 before 8.11.0 drop that reply and stop syncing the
+ * owner through that relay without reporting anything, while 7.x clients report
+ * it as a `ProtocolVersionError`. So a relay that moves to another version must
+ * keep answering version 1 while such clients remain.
  *
  * ## Credible exit
  *
@@ -308,20 +317,24 @@ const maxProtocolMessageMaxSize = 100_000_000;
 const maxProtocolMessageRangesMaxSize = 100_000;
 
 /**
- * Protocol message maximum size.
+ * Protocol message maximum size, from 1MB to 100MB.
  *
- * Defines the upper limit for how large a single protocol message can be.
- * Implementations must enforce a maximum size between 1MB and 100MB to ensure
- * compatibility across all Evolu implementations (the maximum size of mutation
- * change is hardcoded and enforced hence the maximum size can't be smaller).
+ * A message never exceeds its maximum size, inclusive. Builders measure each
+ * write exactly and keep room to close the message (see
+ * {@link ProtocolMessageBuffer.tryWrite}), and sync sends what does not fit in
+ * later rounds.
  *
- * Larger maximum sizes can be configured by relays to reduce roundtrips. For
- * example, a dedicated relay with ample resources could configure a 100MB
- * maximum to minimize roundtrips for large syncs.
+ * Clients send at most {@link defaultProtocolMessageMaxSize} and enforce no
+ * receive limit. A relay can answer with larger messages, configured with the
+ * `totalMaxSize` option of {@link applyProtocolMessageAsRelay}, to reduce
+ * roundtrips for large syncs. Clients must not send larger messages, because
+ * relays accept at most the default: the Node.js relay closes the connection on
+ * a larger one, and relays up to `@evolu/nodejs` 4.0.0 crash on it.
  *
- * Only relays can safely configure larger sizes, as clients will handle them.
- * Increasing this value on the client side would break compatibility with
- * relays that enforce smaller limits.
+ * The default cannot be smaller either. Deployed clients send messages of that
+ * size, a change within {@link maxMutationSize} fits one message next to the
+ * largest ranges section, and changes saved before that limit existed, which
+ * can be nearly as large as a message, must stay servable.
  */
 export const ProtocolMessageMaxSize = /*#__PURE__*/ between(
   minProtocolMessageMaxSize,
@@ -333,8 +346,9 @@ export type ProtocolMessageMaxSize = typeof ProtocolMessageMaxSize.Output;
 /**
  * Default {@link ProtocolMessageMaxSize} (1MB).
  *
- * The standard size used across Evolu implementations. Relays with more
- * resources can configure larger sizes to reduce roundtrips.
+ * The standard size used across Evolu implementations. Clients send at most
+ * this size, and relays accept it. Relays with more resources can answer with
+ * larger messages to reduce roundtrips.
  */
 export const defaultProtocolMessageMaxSize =
   minProtocolMessageMaxSize as ProtocolMessageMaxSize;
@@ -432,6 +446,14 @@ export const SubscriptionFlags = {
 export type SubscriptionFlag =
   (typeof SubscriptionFlags)[keyof typeof SubscriptionFlags];
 
+/**
+ * The error code in the header of a Response.
+ *
+ * A client reports a code it does not know as {@link ProtocolInvalidDataError},
+ * which carries no `OwnerId`, and that relay's round for the owner ends. Every
+ * released client does this, so a relay can add a code under the same
+ * {@link protocolVersion} only where that outcome is acceptable.
+ */
 export const ProtocolErrorCode = {
   NoError: 0,
   /** A code for {@link ProtocolWriteKeyError}. */
@@ -467,7 +489,13 @@ export interface ProtocolVersionError
   readonly isInitiator: boolean;
 }
 
-/** Error for invalid or corrupted protocol message data. */
+/**
+ * Error for a malformed {@link ProtocolMessage} or {@link EncryptedDbChange},
+ * with its bytes as `data` and what was thrown as `error`.
+ *
+ * {@link applyProtocolMessageAsRelay} also returns it when the storage throws
+ * while validating the write key.
+ */
 export interface ProtocolInvalidDataError extends Typed<"ProtocolInvalidDataError"> {
   readonly data: Uint8Array;
   readonly error: unknown;
@@ -548,9 +576,12 @@ export interface ProtocolChangeTooLargeError extends Typed<"ProtocolChangeTooLar
 /**
  * Creates a {@link ProtocolMessage} from CRDT messages.
  *
- * If the message size would exceed {@link defaultProtocolMessageMaxSize}, the
- * protocol ensures all messages will be sent in the next round(s) even over
- * unidirectional and stateless transports.
+ * The message holds the leading CRDT messages that fit `maxSize`, by default
+ * {@link defaultProtocolMessageMaxSize}, measured exactly. When one does not
+ * fit, it and the rest are left out, and the message ends with a range that
+ * makes the non-initiator answer with ranges. Sync then sends them in later
+ * rounds, even over unidirectional and stateless transports, because every
+ * change within {@link maxMutationSize} fits an empty message.
  */
 export const createProtocolMessageFromCrdtMessages =
   (deps: RandomBytesDep) =>
@@ -1322,11 +1353,14 @@ export interface ApplyProtocolMessageAsRelayOptions {
 /**
  * Result type for {@link applyProtocolMessageAsRelay}.
  *
- * Unlike {@link ApplyProtocolMessageAsClientResult}, relays always respond with
- * a message to provide sync completion feedback. This ensures the initiator can
- * reliably detect when synchronization is complete, even when there's nothing
- * to sync. Clients may choose not to respond in certain cases (like when they
- * receive broadcast messages or when they lack a write key for syncing).
+ * Unlike {@link ApplyProtocolMessageAsClientResult}, a relay answers every
+ * request it can decode to provide sync completion feedback. This ensures the
+ * initiator can reliably detect when synchronization is complete, even when
+ * there's nothing to sync. For a request it cannot decode, or when the storage
+ * throws while validating the write key, {@link applyProtocolMessageAsRelay}
+ * returns {@link ProtocolInvalidDataError}, and the relay sends nothing. Clients
+ * may choose not to respond in certain cases (like when they receive broadcast
+ * messages or when they lack a write key for syncing).
  */
 export interface ApplyProtocolMessageAsRelayResult extends Typed<"Response"> {
   readonly message: ProtocolMessage;
@@ -1530,8 +1564,7 @@ export const applyProtocolMessageAsRelay =
 const decodeVersionAndOwner = (input: Buffer): [NonNegativeInt, OwnerId] => {
   // This structure must never change across protocol versions. The version
   // and owner ID must always be the first two fields in every protocol message
-  // to enable version negotiation and owner identification before any other
-  // processing occurs.
+  // to route and report a version mismatch before any other processing occurs.
   const version = decodeNonNegativeInt(input);
   const ownerId = decodeId(input) as OwnerId;
   return [version, ownerId];
@@ -2411,6 +2444,10 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
+      // encodeString replaces a lone surrogate with U+FFFD, so the bytes are
+      // always valid UTF-8. Encoding WTF-8 instead would make peers disagree:
+      // deployed decoders read a lone surrogate in WTF-8 as three U+FFFD,
+      // while a decoder that kept it would read the surrogate.
       encodeNonNegativeInt(buffer, ProtocolValueType.String);
       encodeString(buffer, value);
       return;

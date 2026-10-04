@@ -26,6 +26,7 @@ import {
   // OwnerTransport,
   OwnerWriteKey,
 } from "./Owner.ts";
+import type { ProtocolWriteKeyError } from "./Protocol.ts";
 import type {
   EncryptedDbChange,
   SqliteStorageDeps,
@@ -67,7 +68,15 @@ export interface RelayConfig extends StorageConfig {
    *
    * OwnerId is used rather than short-lived tokens because this only controls
    * relay access, not write permissions. Since all data is encrypted on the
-   * relay, OwnerId exposure is safe.
+   * relay, OwnerId exposure reveals no data.
+   *
+   * It does allow write-key squatting. The relay stores the first write key
+   * presented for an owner, so anyone who learns an OwnerId before the owner's
+   * own write key reaches the relay can claim it. The owner then gets
+   * {@link ProtocolWriteKeyError} on this relay until the operator deletes the
+   * owner's row in `evolu_writeKey`. This callback does not prevent that: it
+   * receives only the OwnerId of a connection, which a squatter can name as
+   * well, and every message on the connection can name another owner.
    *
    * Owners specify which relays to connect to via `OwnerTransport`. In
    * WebSocket-based implementations, this check occurs before accepting the

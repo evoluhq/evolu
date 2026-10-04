@@ -2,6 +2,7 @@ import * as fc from "fast-check";
 import { describe, it, test } from "node:test";
 import type { NonEmptyReadonlyArray } from "../Array.ts";
 import {
+  assert,
   assertEqual,
   assertEqualBytes,
   assertErr,
@@ -247,6 +248,15 @@ test("encodeSqliteValue/decodeSqliteValue preserves an own __proto__ JSON object
   encodeSqliteValue(buffer, value);
 
   assertEqual(decodeSqliteValue(buffer), value);
+});
+
+test("encodeSqliteValue/decodeSqliteValue replaces a lone surrogate in a string with U+FFFD", () => {
+  const buffer = createBuffer();
+
+  encodeSqliteValue(buffer, "a\uD800b");
+
+  assertEqualBytes(buffer.unwrap(), [20, 5, 97, 0xef, 0xbf, 0xbd, 98]);
+  assertSame(decodeSqliteValue(buffer), "a�b");
 });
 
 test("encodeSqliteValue encodes JSON nested deeper than decoding allows as a string", () => {
@@ -1684,6 +1694,25 @@ describe("E2E errors", () => {
     assertEqual(clientResult.error.type, "ProtocolInvalidDataError");
   });
 
+  // Every released client does this, so it is what a relay adding a code under
+  // protocol version 1 gets.
+  it("reports an unknown ProtocolErrorCode as ProtocolInvalidDataError", async () => {
+    const response = createBuffer();
+    encodeNonNegativeInt(response, protocolVersion);
+    response.extend(ownerIdToOwnerIdBytes(testAppOwner.id));
+    response.extend([MessageType.Response, 5]);
+    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+
+    const result = await run(applyProtocolMessageAsClient(response.unwrap()));
+
+    assertErr(result);
+    const { error } = result;
+    assert(error.type === "ProtocolInvalidDataError", "Expected invalid data");
+    assertFalse("ownerId" in error);
+    assertInstanceOf(error.error, Error);
+    assertSame(error.error.message, "Invalid ProtocolErrorCode: 5");
+  });
+
   it("ProtocolWriteKeyError", async () => {
     const deps = testCreateDeps();
     const timestamp = timestampBytesToTimestamp(testTimestampsAsc[0]);
@@ -1844,6 +1873,39 @@ describe("E2E relay options", () => {
     );
 
     assertEqual(subscribeCalledWithOwnerId, testAppOwner.id);
+  });
+
+  it("subscribes before rejecting the write key", async () => {
+    const message = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      writeKey: testAppOwner.writeKey,
+      subscriptionFlag: SubscriptionFlags.Subscribe,
+    }).unwrap();
+    const subscribedOwnerIds: Array<string> = [];
+
+    let response: Uint8Array;
+    {
+      await using run = testCreateRun({
+        storage: {
+          ...shouldNotBeCalledStorageDep.storage,
+          validateWriteKey: constFalse,
+        },
+      });
+      ({ message: response } = await run.orThrow(
+        applyProtocolMessageAsRelay(message, {
+          subscribe: (ownerId) => {
+            subscribedOwnerIds.push(ownerId);
+          },
+        }),
+      ));
+    }
+
+    assertEqual(subscribedOwnerIds, [testAppOwner.id]);
+    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    assertEqual(
+      await run(applyProtocolMessageAsClient(response)),
+      err({ type: "ProtocolWriteKeyError", ownerId: testAppOwner.id }),
+    );
   });
 
   it("unsubscribe", async () => {

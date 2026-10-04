@@ -433,14 +433,24 @@ export const encodeLength = (
 /** Decodes an array-like value length. */
 export const decodeLength = decodeNonNegativeInt;
 
-/** Encodes a length-prefixed UTF-8 string. */
+/**
+ * Encodes a length-prefixed UTF-8 string.
+ *
+ * A lone surrogate becomes U+FFFD, so the bytes are always valid UTF-8. Unlike
+ * {@link encodeJsonValue}, which keeps lone surrogates, this does not round-trip
+ * every JavaScript string.
+ */
 export const encodeString = (buffer: Buffer, value: string): void => {
   const bytes = utf8ToBytes(value);
   encodeLength(buffer, bytes);
   buffer.extend(bytes);
 };
 
-/** Decodes a length-prefixed UTF-8 string. */
+/**
+ * Decodes a length-prefixed UTF-8 string.
+ *
+ * Invalid UTF-8 decodes as U+FFFD instead of throwing.
+ */
 export const decodeString = (buffer: Buffer): string => {
   const length = decodeLength(buffer);
   const bytes = buffer.shiftN(length);

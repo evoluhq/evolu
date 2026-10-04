@@ -3150,8 +3150,18 @@ describe("Evolu", () => {
         }),
       };
 
-      // A request and a broadcast assert that the change fits.
-      createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [message]);
+      const change = encodeAndEncryptDbChange(deps)(
+        message,
+        testAppOwner.encryptionKey,
+      );
+
+      // A request leaves out a change that does not fit and asks for another
+      // round instead, so it must be longer than the change. A broadcast
+      // throws when the change does not fit.
+      assertTrue(
+        createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [message])
+          .length > change.length,
+      );
       createProtocolBroadcastMessagesFromCrdtMessages(deps)(testAppOwner, [
         message,
       ]);
@@ -3176,13 +3186,7 @@ describe("Evolu", () => {
       });
       assertTrue(
         response.tryWrite(() => {
-          response.addMessage({
-            timestamp: message.timestamp,
-            change: encodeAndEncryptDbChange(deps)(
-              message,
-              testAppOwner.encryptionKey,
-            ),
-          });
+          response.addMessage({ timestamp: message.timestamp, change });
           response.addRange({
             type: RangeType.Skip,
             upperBound: timestampToTimestampBytes(
