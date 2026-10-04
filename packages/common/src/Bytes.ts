@@ -168,34 +168,34 @@ export class BufferError extends Error {
  */
 export interface Buffer {
   /** Returns the current capacity of the buffer. */
-  getCapacity: () => NonNegativeInt;
+  readonly getCapacity: () => NonNegativeInt;
 
   /** Returns the current number of bytes stored in the buffer. */
-  getLength: () => NonNegativeInt;
+  readonly getLength: () => NonNegativeInt;
 
   /**
    * Appends binary data to the buffer, resizing if necessary. Throws if
    * `arg.length` is not a non-negative safe integer.
    */
-  extend: (arg: Uint8Array | ArrayLike<number>) => void;
+  readonly extend: (arg: Uint8Array | ArrayLike<number>) => void;
 
   /**
    * Removes and returns the first byte. Throws an `Error` with message "Buffer
    * parse ended prematurely" if the buffer is empty.
    */
-  shift: () => NonNegativeInt;
+  readonly shift: () => NonNegativeInt;
 
   /**
    * Removes and returns the first `n` bytes. Throws an `Error` with message
    * "Buffer parse ended prematurely" if fewer than `n` bytes remain.
    */
-  shiftN: (n: NonNegativeInt) => Uint8Array;
+  readonly shiftN: (n: NonNegativeInt) => Uint8Array;
 
   /**
    * Truncates the buffer to the specified length, discarding data from the end.
    * Throws if the new length is greater than the current length.
    */
-  truncate: (length: NonNegativeInt) => void;
+  readonly truncate: (length: NonNegativeInt) => void;
 
   /**
    * Resets the buffer to its initial empty state, preserving its capacity.
@@ -204,14 +204,14 @@ export interface Buffer {
    * when you want to clear the buffer and write new data, avoiding unnecessary
    * allocations.
    */
-  reset: () => void;
+  readonly reset: () => void;
 
   /**
    * Returns a view of the buffer’s current data. Do not modify this array, as
    * it directly alters the buffer’s internal state, potentially breaking
    * subsequent operations.
    */
-  unwrap: () => Uint8Array;
+  readonly unwrap: () => Uint8Array;
 }
 
 /** Creates a {@link Buffer} for efficient byte operations. */
@@ -600,6 +600,9 @@ interface JsonKeyCacheEntry {
 const jsonKeyCacheSize = 4096;
 const maxCachedJsonKeyByteLength = 32;
 const maxJsonNestingDepth = 1_000;
+// A string reserves 3 bytes per UTF-16 code unit, so one large value would
+// otherwise keep several times its size allocated after encoding.
+const maxRetainedJsonEncoderLength = 1024 * 1024;
 let jsonEncoderTarget = new Uint8Array(8192);
 let jsonEncoderTargetView = new DataView(jsonEncoderTarget.buffer);
 let jsonEncoderPosition = 0;
@@ -665,6 +668,10 @@ export const encodeJsonValue = (buffer: Buffer, value: JsonValue): void => {
     jsonEncoderPosition = 0;
     jsonEncoderDepth = 0;
     jsonEncoderIsActive = false;
+    if (jsonEncoderTarget.length > maxRetainedJsonEncoderLength) {
+      jsonEncoderTarget = new Uint8Array(8192);
+      jsonEncoderTargetView = new DataView(jsonEncoderTarget.buffer);
+    }
   }
 };
 

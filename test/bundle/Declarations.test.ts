@@ -53,7 +53,7 @@ describe("emitted declarations", () => {
   it("keeps literal declarations compact without counting documentation", () => {
     const printer = createPrinter({ removeComments: true });
     for (const [module, maximumBytes] of [
-      ["Bytes", 12000],
+      ["Bytes", 12100],
       ["Time", 7500],
       ["Number", 4000],
     ] as const) {

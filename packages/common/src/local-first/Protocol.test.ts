@@ -1,5 +1,7 @@
 import * as fc from "fast-check";
 import { describe, it, test } from "node:test";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import type { NonEmptyReadonlyArray } from "../Array.ts";
 import {
   assert,
@@ -282,6 +284,27 @@ test("encodeSqliteValue encodes JSON nested deeper than decoding allows as a str
     assertEqual(buffer.unwrap()[0], type);
     assertEqual(decodeSqliteValue(buffer), value);
   }
+});
+
+test("encodeSqliteValue does not retain memory for a large JSON value", () => {
+  setFlagsFromString("--expose-gc");
+  const gc = runInNewContext("gc") as () => void;
+  // Earlier tests in this process may still hold memory, so this measures
+  // only what encoding adds.
+  gc();
+  gc();
+  const before = process.memoryUsage().arrayBuffers;
+  const buffer = createBuffer();
+
+  encodeSqliteValue(buffer, JSON.stringify(["x".repeat(3_000_000)]));
+  gc();
+  gc();
+
+  const retained =
+    process.memoryUsage().arrayBuffers - before - buffer.getCapacity();
+  assert(retained < 1_000_000, "Expected JSON encoding memory released.", {
+    actual: retained,
+  });
 });
 
 test("encoding and decoding errors do not need Error.captureStackTrace", () => {

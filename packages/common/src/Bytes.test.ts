@@ -1,6 +1,9 @@
 import * as fc from "fast-check";
 import { describe, it, mock } from "node:test";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import {
+  assert,
   assertEqual,
   assertEqualBytes,
   assertErr,
@@ -297,6 +300,16 @@ describe("Buffer", () => {
     buffer.truncate(2 as NonNegativeInt);
     assertEqual(buffer.getLength(), 2);
     assertEqualBytes(buffer.unwrap(), [6, 7]);
+  });
+
+  it("has readonly members", () => {
+    const buffer = createBuffer();
+    const { shift } = buffer;
+
+    // @ts-expect-error Cannot assign to 'shift' because it is a read-only property.
+    buffer.shift = shift;
+
+    assertSame(buffer.shift, shift);
   });
 });
 
@@ -1340,6 +1353,27 @@ describe("JSON binary codec", () => {
     } finally {
       keysSpy.mock.restore();
     }
+  });
+
+  it("releases an oversized encoder arena", () => {
+    setFlagsFromString("--expose-gc");
+    const gc = runInNewContext("gc") as () => void;
+    gc();
+    gc();
+    const before = process.memoryUsage().arrayBuffers;
+    const buffer = createBuffer();
+
+    // A string reserves 3 bytes per UTF-16 code unit, so this one grows the
+    // module-scope arena to 6 MB.
+    encodeJsonValue(buffer, JsonValue.orThrow("x".repeat(2_000_000)));
+    gc();
+    gc();
+
+    const retained =
+      process.memoryUsage().arrayBuffers - before - buffer.getCapacity();
+    assert(retained < 1_000_000, "Expected the arena to be released.", {
+      actual: retained,
+    });
   });
 
   it("converts unexpected decoder errors to BufferError", () => {

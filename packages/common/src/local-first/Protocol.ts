@@ -2411,7 +2411,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
       const json = Json.from.parent(value);
       if (json.ok) {
         const jsonValue = jsonToJsonValue(json.value);
-        jsonBuffer.reset();
+        const jsonBuffer = createBuffer();
         try {
           // Encoding first rejects nesting deeper than decoding allows, before
           // the recursive JSON.stringify below could overflow the stack. Such
@@ -2430,8 +2430,6 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
           }
         } catch (error) {
           if (!(error instanceof BufferError)) throw error;
-        } finally {
-          jsonBuffer.reset();
         }
       }
 
@@ -2538,8 +2536,6 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
       throw new ProtocolDecodeError("invalid ProtocolValueType");
   }
 };
-
-const jsonBuffer = createBuffer();
 
 const isSmallInt: Predicate<number> = (value: number) =>
   value >= 0 && value < 20;
