@@ -1,5 +1,401 @@
 # @evolu/common
 
+## 8.18.0
+
+### Minor Changes
+
+- 8ad3dec: Fixed sync failing when a protocol message was nearly full
+
+  Sync predicted message sizes with fixed safety margins, and some writes, such as
+  the timestamps the other side already had, a range split, or the ranges answering
+  an empty part of storage, were added without checking the space left. When large
+  changes nearly filled a reply or request, an assertion failed: a relay logged it
+  and sent no reply or replied with `ProtocolSyncError`, and a client's sync
+  failed the same way. The data did not change, so every retry failed the same way
+  and the owner stopped syncing through that relay. Sync now makes every write as
+  a trial that measures the exact message and undoes the write when the message
+  could no longer be closed, so it never fails on size and stays within
+  `totalMaxSize` and `rangesMaxSize`. Splits and messages near the total size no
+  longer leave margins unused, so some syncs take fewer rounds. Replies from a
+  relay are fixed once the relay updates `@evolu/common`.
+
+  A message without room for its next range ends with one fingerprint over
+  everything after the last range it answered. That fingerprint used to leave out
+  the range it could not answer and any skipped ranges before it, which cost
+  redundant rounds.
+
+  `ProtocolMessageBuffer.tryWrite` runs a write and keeps it only if the frame,
+  measured exactly, still has room to be closed with one Fingerprint range with
+  `InfiniteUpperBound` within `totalMaxSize` and `rangesMaxSize`. Otherwise it
+  undoes the write, also when the write throws. An optional reserve holds room for
+  bytes the caller adds later. Inside a trial, `addMessage` and `addRange` do not
+  assert the size limit; outside one they assert that the frame fits
+  `totalMaxSize` without safety margins. `getSize` now returns the exact encoded
+  size; it used to add a 22-byte reservation once the frame had ranges.
+  `canAddMessage`, `canSplitRange`, and `canAddTimestampsRangeAndMessage` were
+  removed with their margins; make the write inside `tryWrite` instead, which
+  returns whether it fit. The builder references each change rather than copying
+  it, so a change, including one a custom `Storage.readDbChange` returns, must not
+  be modified while the builder is in use. `unwrap` can now be called more than
+  once; it used to append the message timestamps to the header again, so a second
+  call returned a corrupt message.
+
+  `createProtocolMessageFromCrdtMessages` and
+  `createProtocolBroadcastMessagesFromCrdtMessages` use trials, so a change that
+  fits the rest of a frame exactly is sent in it rather than in the next round or
+  frame. A broadcast change that does not fit an empty frame still throws.
+
+  The trials undo writes with the new `checkpoint` of `RunLengthEncoder` and
+  `TimestampsBuffer`, which returns a function that restores the encoder or buffer
+  in constant time.
+
+  ```ts
+  import {
+    assertEqual,
+    assertFalse,
+    assertTrue,
+    assertType,
+    createId,
+    createRunLengthEncoder,
+    encodeNonNegativeInt,
+    NonNegativeInt,
+    testCreateDeps,
+  } from "@evolu/common";
+  import {
+    createProtocolMessageBuffer,
+    defaultProtocolMessageMaxSize,
+    encodeAndEncryptDbChange,
+    MessageType,
+    testAppOwner,
+    testCreateCrdtMessage,
+    type ProtocolMessageBuffer,
+  } from "@evolu/common/local-first";
+
+  const encoder = createRunLengthEncoder<NonNegativeInt>(encodeNonNegativeInt);
+  encoder.add(NonNegativeInt.orThrow(5));
+  const restore = encoder.checkpoint();
+  encoder.add(NonNegativeInt.orThrow(5));
+  assertEqual(encoder.unwrap(), new Uint8Array([5, 2]));
+  restore();
+  assertEqual(encoder.unwrap(), new Uint8Array([5, 1]));
+
+  const deps = testCreateDeps();
+  const crdtMessage = testCreateCrdtMessage(createId(deps), 1, "Ada");
+  const message = {
+    timestamp: crdtMessage.timestamp,
+    change: encodeAndEncryptDbChange(deps)(
+      crdtMessage,
+      testAppOwner.encryptionKey,
+    ),
+  };
+  const buffer = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Request,
+  });
+  const emptySize = buffer.getSize();
+
+  // Reserving the whole frame for later bytes leaves no room for the message.
+  assertFalse(
+    buffer.tryWrite(() => {
+      buffer.addMessage(message);
+    }, NonNegativeInt.orThrow(defaultProtocolMessageMaxSize)),
+  );
+  assertEqual(buffer.getSize(), emptySize);
+
+  // ProtocolMessageBuffer no longer predicts whether a write fits.
+  assertType<Extract<keyof ProtocolMessageBuffer, `can${string}`>, never>();
+
+  assertTrue(
+    buffer.tryWrite(() => {
+      buffer.addMessage(message);
+    }),
+  );
+  assertTrue(buffer.getSize() > emptySize);
+  ```
+
+- e2d22a3: Fixed sync looping forever on a stored change too large for any message
+
+  Clients up to 8.11 could save a change that encrypts to more than one protocol
+  message can hold, such as a row with a 999,377-byte blob. Sync then asked for
+  that change in every round without end. Mutations made online were still
+  uploaded through that relay, but changes that need a sync round, such as those
+  made offline, never were. A change crafted on a relay with the owner's write
+  key made the relay loop the same way. Sync now skips a stored change that
+  cannot fit an empty message after a pending Skip range, which is the message a
+  later round is guaranteed to reach. Changes within `maxMutationSize` always
+  fit. An answer to a Timestamps range neither sends nor lists a skipped change.
+  A request or a split still lists its timestamp, so a peer that lacks it may ask
+  for it once per sync and gets an answer without it, so every sync ends. A
+  skipped change stays where it is stored and is not recovered.
+
+  A client records the skipped change on the relay's route as its `skippedError`,
+  the new `ProtocolChangeTooLargeError` with the change's timestamp and encrypted
+  size, so the owner's sync status shows the error. A relay logs it with
+  `console.warn` once it updates `@evolu/common`. `applyProtocolMessageAsClient`
+  passes it to the new `onChangeTooLarge` option, or logs it with `console.warn`
+  without one. Code that switches over the `type` of a `SyncRouteError` needs a
+  case for it.
+
+  ```ts
+  import { assertEqual, Millis, PositiveInt } from "@evolu/common";
+  import {
+    createTimestamp,
+    type ProtocolChangeTooLargeError,
+    type SyncRouteError,
+  } from "@evolu/common/local-first";
+
+  const tooLarge: ProtocolChangeTooLargeError = {
+    type: "ProtocolChangeTooLargeError",
+    timestamp: createTimestamp(),
+    size: PositiveInt.orThrow(1_015_851),
+  };
+  const skippedError: SyncRouteError = {
+    ...tooLarge,
+    at: Millis.orThrow(1000),
+  };
+
+  if (skippedError.type === "ProtocolChangeTooLargeError")
+    assertEqual(skippedError.size, 1_015_851);
+  ```
+
+- 7d804cd: Exported the `ProtocolErrorCode` type and tidied the protocol API
+
+  `ProtocolErrorCode` was exported only as a value, although
+  `createProtocolMessageBuffer` takes the type in its options. The type of a
+  protocol header's error code is now exported with the same name.
+
+  The properties of `ApplyProtocolMessageAsClientOptions` and
+  `ApplyProtocolMessageAsRelayOptions` are now readonly. Create new options
+  instead of assigning to existing ones.
+
+  `decodeProtocolMessageToJson` was removed. It was a stub that always threw.
+
+  ```ts
+  import { assertEqual, assertType } from "@evolu/common";
+  import {
+    defaultProtocolMessageRangesMaxSize,
+    ProtocolErrorCode,
+    type ApplyProtocolMessageAsClientOptions,
+  } from "@evolu/common/local-first";
+  // @ts-expect-error decodeProtocolMessageToJson is no longer exported.
+  import type { decodeProtocolMessageToJson as _decodeProtocolMessageToJson } from "@evolu/common/local-first";
+
+  const code: ProtocolErrorCode = ProtocolErrorCode.QuotaError;
+  assertType<ProtocolErrorCode, 0 | 1 | 2 | 3 | 4>();
+  assertEqual(code, 3);
+
+  const options: ApplyProtocolMessageAsClientOptions = {};
+  // @ts-expect-error Cannot assign to 'rangesMaxSize' because it is a read-only property.
+  options.rangesMaxSize = defaultProtocolMessageRangesMaxSize;
+
+  const withRangesMaxSize: ApplyProtocolMessageAsClientOptions = {
+    ...options,
+    rangesMaxSize: defaultProtocolMessageRangesMaxSize,
+  };
+  assertEqual(withRangesMaxSize.rangesMaxSize, 30_000);
+  ```
+
+### Patch Changes
+
+- 3d51568: Made the members of `Buffer` readonly
+
+  Assigning a member of a `Buffer`, such as `shift`, no longer compiles. To change
+  how a buffer behaves, create a new object that delegates to it.
+
+  ```ts
+  import { assertEqual, createBuffer, type Buffer } from "@evolu/common";
+
+  const buffer = createBuffer([1, 2]);
+
+  const _replaceShift = (): void => {
+    // @ts-expect-error Cannot assign to 'shift' because it is a read-only property.
+    buffer.shift = () => buffer.getLength();
+  };
+
+  const delegating: Buffer = { ...buffer, shift: () => buffer.shift() };
+  assertEqual(delegating.shift(), 1);
+  ```
+
+- 969667e: Fixed synced strings losing a leading byte order mark
+
+  A string value, table name, or column name that started with U+FEFF reached
+  other devices without it, so they stored a different value than the device
+  that wrote it. This happened, for example, with the first field of a CSV file
+  read with its byte order mark. `decodeString` now keeps a leading U+FEFF.
+  Devices on `@evolu/common` 8.17 and earlier still drop it from the strings they
+  receive.
+
+- 7d804cd: Rejected encrypted changes in a newer format
+
+  The plaintext of an encrypted change starts with a format version, but
+  `encodeAndEncryptDbChange` wrote `protocolVersion` there and
+  `decryptAndDecodeDbChange` ignored it, so a change in a future layout would have
+  been decoded into wrong values. The format version is now independent of
+  `protocolVersion`. New changes still carry 1, so their bytes do not change.
+  `decryptAndDecodeDbChange` returns `ProtocolInvalidDataError` for a version
+  greater than 1, so a client skips such a change and shows it on the relay's
+  route, as it does with any change it cannot decode, and stores it once an app
+  update can read it. Version 0, which 6.0.1-preview.35 wrote in the same layout,
+  still decodes.
+
+- 6878627: Fixed a failed SQLite write during sync crashing a relay or a database worker
+
+  When SQLite failed while storing received messages, for example on a full disk
+  or a corrupt page, the relay's shared Run panicked, so the relay closed every
+  connection and exited, and a supervisor restarting it got the same crash on the
+  next write. On a client, the same failure panicked the database worker. Both
+  now roll the write back and keep running. The relay logs the failure and
+  answers the request with `ProtocolWriteError`, and a client reports it as the
+  failure of the relay's route. A relay that cannot store a new owner's write key
+  also answers with `ProtocolWriteError`, where it used to send no reply.
+
+  `StorageWriteMessagesError` now includes `UnknownError`, which both built-in
+  storages return when SQLite fails the write, so the error of
+  `applyProtocolMessageAsClient` and `SyncRouteError` include it too. A custom
+  `Storage` can return it as well; the relay answers it with
+  `ProtocolWriteError`. Code that treats these errors as a `StorageQuotaError`
+  must check their `type` first, and a switch over the `type` needs a case for
+  it.
+
+  ```ts
+  import { assertEqual, createUnknownError } from "@evolu/common";
+  import type {
+    StorageQuotaError,
+    StorageWriteMessagesError,
+  } from "@evolu/common/local-first";
+
+  const _quotaErrorBefore = (
+    error: StorageWriteMessagesError,
+  ): StorageQuotaError =>
+    // @ts-expect-error An UnknownError is not a StorageQuotaError.
+    error;
+
+  const quotaErrorOf = (error: StorageWriteMessagesError) =>
+    error.type === "StorageQuotaError" ? error : null;
+
+  assertEqual(quotaErrorOf(createUnknownError(new Error("disk full"))), null);
+  ```
+
+- 3d51568: Released the memory kept after encoding a large JSON value
+
+  `encodeJsonValue` encodes into a module-level scratch array that only grew, and
+  it reserves 3 bytes per UTF-16 code unit of a string. `encodeSqliteValue` also
+  kept a module-level buffer for JSON values. After a mutation with a JSON string
+  near `maxMutationSize`, about 2.5 MB stayed allocated on the main thread and in
+  the worker until they ended. A mutation rejected for exceeding the limit left
+  more on the main thread, 12 MB for a 3,000,000-character string. The scratch
+  array now returns to its initial size after a value grows it past 1 MiB, and
+  `encodeSqliteValue` no longer keeps a buffer.
+
+- 25b2140: Rejected malformed sync messages that no Evolu peer sends
+
+  Sync decoded a message's ranges with no limit on their size or on the counts
+  the message declared, so one crafted message could make a relay or client
+  allocate hundreds of megabytes. Range upper bounds were not checked for order,
+  so decreasing bounds made the peer reply with `ProtocolSyncError` or skip
+  ranges silently. A request's unknown write key or subscription flag was read as
+  no write key and no subscription change. A relay also stored changes shorter
+  than any encrypted change, empty ones included, which its quota does not count,
+  so one request could add over 100 MB to its database under a 1 MB quota.
+
+  These messages are now rejected as `ProtocolInvalidDataError`:
+
+  - A ranges section over 200,000 bytes, twice the largest
+    `ProtocolMessageRangesMaxSize`, or a count of ranges or timestamps larger than
+    the bytes after it.
+  - Range upper bounds that decrease. Equal bounds stay valid.
+  - A request whose write key flag is not 0 or 1, or whose subscription flag is
+    not one of `SubscriptionFlags`.
+  - On a relay, a request with a change shorter than 41 bytes, the smallest
+    `EncryptedDbChange`.
+  - On a relay, a request larger than its `totalMaxSize`, 1,000,000 bytes by
+    default. A relay broadcasts a request's changes in a message of that size, so
+    it stored the changes of a larger request and then rejected the request when
+    they did not fit. The Node.js relay already closes the connection on a message
+    over 1,000,000 bytes.
+
+  A malformed message is now rejected before anything is stored, broadcast, or
+  subscribed. A relay used to apply a request's subscription flag, store the
+  owner's write key and changes, and broadcast them before decoding the rest, and
+  a client stored a response's changes before decoding its ranges. A throw while
+  applying a decoded message, such as from the relay's `broadcast` callback or a
+  bug in reconciliation, is now a defect instead of `ProtocolInvalidDataError` or
+  `ProtocolSyncError`. Only a storage failure during reconciliation is still
+  answered with `ProtocolSyncError`.
+
+  A relay logs a rejected message and does not reply, and a client reports it on
+  the relay's sync route. Evolu clients and relays never send such messages, so
+  no migration is needed. A client still accepts a short change from a relay and
+  skips it in storage, because relays keep the short changes they stored before
+  this fix.
+
+- 6878627: Fixed relay writes slowing down as an owner's changes grew
+
+  Before storing a batch, the relay checks which of its timestamps it already has.
+  SQLite ran that check over every timestamp the owner had stored, so at 20,000
+  stored changes it took 0.72 ms for a one-change write, and it grew with the
+  owner. It now looks up each incoming timestamp by primary key, which took
+  0.002 ms.
+
+- 7d804cd: Fixed binary encoding errors in Safari before 17.2 and Firefox before 138
+
+  `BufferError` and the protocol's decoding error called
+  `Error.captureStackTrace`, which is not part of the JavaScript standard and
+  which Safari added in 17.2 and Firefox in 138. In earlier versions, creating
+  either error threw a `TypeError` instead. Decoding invalid bytes failed with
+  that `TypeError` rather than a `BufferError`, a malformed protocol message was
+  reported with it rather than the reason, and a mutation with a JSON string
+  nested more than 1,000 levels deep threw instead of storing the string. Neither
+  error calls it anymore; the `Error` constructor already records the stack trace.
+
+- 6878627: Fixed storage queries hanging on a position past an owner's timestamps
+
+  `getTimestampByIndex`, and the `iterate`, `fingerprint`, and
+  `fingerprintRanges` of `createBaseSqliteStorage`, looped in SQLite forever and
+  blocked the thread on an index at or past the owner's size, as the index of
+  `getTimestampByIndex` or the `begin` of `iterate`, or on a bucket past that
+  size, in `fingerprint` and `fingerprintRanges`. Sync never passes such a
+  position. Those calls now throw an assertion error, and the `Storage` interface
+  documents that no index may exceed the owner's size.
+
+- 739817f: Made sync use less CPU and, with small ranges sections, fewer rounds
+
+  Measured against 8.17.0 on an Apple M5, counting the protocol's CPU time
+  without storage:
+
+  - A relay sending 20,000 changes uses 8% less CPU, and 21% less when the changes
+    are close to the 1 MB message size. A client uploading 20,000 changes uses 12%
+    less. A message under construction now references the changes it carries and
+    copies each one once, into the finished message, instead of copying it while
+    building and again when finishing.
+  - `decryptAndDecodeDbChange` uses 9% less CPU, because decoding no longer
+    validates again what a value's branded type already proves.
+  - With a `ProtocolMessageRangesMaxSize` of 3,000, syncs where each side lacks
+    changes the other has take 9% to 15% fewer rounds, because messages are
+    measured exactly and no longer keep safety margins unused. With the default
+    of 30,000, they take the same rounds.
+
+- 6878627: Fixed `deleteOwner` of `createBaseSqliteStorage` keeping the owner's usage row
+
+  It deleted the owner's timestamps but kept its `evolu_usage` row, whose stored
+  bytes and timestamp bounds then described data that was gone. The relay storage
+  deleted that row itself, so relays were not affected.
+
+- 6878627: Removed `Storage.setWriteKey`
+
+  Nothing in Evolu called it. Sync stores an owner's write key on its first use
+  through `validateWriteKey`. A relay built on `createRelaySqliteStorage` that
+  replaced an owner's key with `setWriteKey` can delete the owner's row from
+  `evolu_writeKey` instead; the relay then stores the next write key it receives
+  for that owner. A custom `Storage` object literal that still lists
+  `setWriteKey` fails the excess-property check; remove the member.
+
+  ```ts
+  import { assertType } from "@evolu/common";
+  import type { Storage } from "@evolu/common/local-first";
+
+  assertType<Extract<keyof Storage, "setWriteKey">, never>();
+  ```
+
 ## 8.17.0
 
 ### Minor Changes
