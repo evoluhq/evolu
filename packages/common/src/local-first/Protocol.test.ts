@@ -86,10 +86,12 @@ import {
   PositiveInt,
 } from "../Type.ts";
 import {
+  Counter,
   createInitialTimestamp,
   createTimestamp,
   maxCounter,
   maxNodeId,
+  NodeId,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
 } from "./Timestamp.ts";
@@ -1353,7 +1355,198 @@ describe("E2E versioning", () => {
   });
 });
 
+/**
+ * Applies `message` as a relay and returns the message of the error that
+ * rejected it as `ProtocolInvalidDataError`.
+ */
+const getRelayDecodeErrorMessage = async (
+  message: Uint8Array,
+  storage: StorageDep["storage"] = shouldNotBeCalledStorageDep.storage,
+): Promise<string> => {
+  await using run = testCreateRun({ storage });
+  const result = await run(applyProtocolMessageAsRelay(message));
+  assertErr(result);
+  assertSame(result.error.type, "ProtocolInvalidDataError");
+  assertInstanceOf(result.error.error, Error);
+  return result.error.error.message;
+};
+
+/** Returns a Buffer holding a Request header with the given flag bytes. */
+const setupRequestHeader = (hasWriteKey = 0, subscriptionFlag = 0) => {
+  const buffer = createBuffer();
+  encodeNonNegativeInt(buffer, protocolVersion);
+  buffer.extend(ownerIdToOwnerIdBytes(testAppOwner.id));
+  buffer.extend([MessageType.Request, hasWriteKey, subscriptionFlag]);
+  return buffer;
+};
+
 describe("E2E errors", () => {
+  it("rejects a ranges section larger than any conforming sender produces", async () => {
+    const request = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+    });
+    const upperBound = timestampToTimestampBytes(createTestTimestamp(1));
+    // Equal bounds take about 2 bytes per range.
+    for (let i = 0; i < 100_500; i++)
+      request.addRange({ type: RangeType.Skip, upperBound });
+    request.addRange({
+      type: RangeType.Fingerprint,
+      upperBound: InfiniteUpperBound,
+      fingerprint: zeroFingerprint,
+    });
+
+    assertSame(
+      await getRelayDecodeErrorMessage(request.unwrap()),
+      "Ranges section exceeds 200000 bytes",
+    );
+  });
+
+  it("rejects a ranges count larger than the remaining bytes", async () => {
+    const request = setupRequestHeader();
+    request.extend([0]);
+    encodeNonNegativeInt(request, NonNegativeInt.orThrow(1e9));
+    request.extend(new Uint8Array(1000));
+
+    // Every range but the last has an upper bound timestamp.
+    assertSame(
+      await getRelayDecodeErrorMessage(request.unwrap()),
+      "Invalid timestamps count",
+    );
+  });
+
+  it("rejects a timestamps count larger than the remaining bytes", async () => {
+    const count = NonNegativeInt.orThrow(1e9);
+
+    const messages = setupRequestHeader();
+    encodeNonNegativeInt(messages, count);
+    messages.extend(new Uint8Array(1000));
+
+    // One range with InfiniteUpperBound listing its timestamps.
+    const nested = setupRequestHeader();
+    nested.extend([0, 1, RangeType.Timestamps]);
+    encodeNonNegativeInt(nested, count);
+    nested.extend(new Uint8Array(1000));
+
+    for (const request of [messages, nested])
+      assertSame(
+        await getRelayDecodeErrorMessage(request.unwrap()),
+        "Invalid timestamps count",
+      );
+  });
+
+  it("rejects descending range upper bounds before touching storage", async () => {
+    const createBound = (counter: number, nodeId: string) =>
+      timestampToTimestampBytes(
+        createTimestamp({
+          millis: Millis.orThrow(1500),
+          counter: Counter.orThrow(counter),
+          nodeId: NodeId.orThrow(nodeId),
+        }),
+      );
+
+    const descendingCounters = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+    });
+    for (const counter of [2, 1, 0])
+      descendingCounters.addRange({
+        type: RangeType.Fingerprint,
+        upperBound: createBound(counter, "0000000000000000"),
+        fingerprint: zeroFingerprint,
+      });
+
+    const descendingNodeIds = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+    });
+    for (const nodeId of ["0000000000000002", "0000000000000001"])
+      descendingNodeIds.addRange({
+        type: RangeType.Skip,
+        upperBound: createBound(0, nodeId),
+      });
+
+    for (const request of [descendingCounters, descendingNodeIds]) {
+      request.addRange({
+        type: RangeType.Fingerprint,
+        upperBound: InfiniteUpperBound,
+        fingerprint: zeroFingerprint,
+      });
+      assertSame(
+        await getRelayDecodeErrorMessage(request.unwrap()),
+        "Range upper bounds must be non-decreasing",
+      );
+    }
+  });
+
+  it("relay rejects a change shorter than the encryption envelope", async () => {
+    const createRequestWithChange = (length: number) => {
+      const request = createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        writeKey: testAppOwner.writeKey,
+      });
+      request.addMessage({
+        timestamp: createTestTimestamp(1),
+        change: new Uint8Array(length) as EncryptedDbChange,
+      });
+      return request.unwrap();
+    };
+    const storage: StorageDep["storage"] = {
+      ...shouldNotBeCalledStorageDep.storage,
+      validateWriteKey: constTrue,
+    };
+
+    for (const length of [0, 40])
+      assertSame(
+        await getRelayDecodeErrorMessage(
+          createRequestWithChange(length),
+          storage,
+        ),
+        "EncryptedDbChange is too short",
+      );
+
+    // A 24-byte nonce, a 1-byte length, and a 16-byte tag.
+    const writtenLengths: Array<number> = [];
+    await using run = testCreateRun({
+      storage: {
+        ...storage,
+        writeMessages: (_ownerId, messages) => () => {
+          for (const { change } of messages) writtenLengths.push(change.length);
+          return ok();
+        },
+      },
+    } satisfies StorageDep);
+    assertOk(
+      await run(applyProtocolMessageAsRelay(createRequestWithChange(41))),
+    );
+    assertEqual(writtenLengths, [41]);
+  });
+
+  it("client passes a change shorter than the encryption envelope to storage", async () => {
+    // Deployed relays store such changes, and client storage skips a change
+    // it cannot read instead of rejecting the response.
+    const response = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Response,
+      errorCode: ProtocolErrorCode.NoError,
+    });
+    response.addMessage({
+      timestamp: createTestTimestamp(1),
+      change: new Uint8Array(0) as EncryptedDbChange,
+    });
+    const writtenLengths: Array<number> = [];
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        writeMessages: (_ownerId, messages) => () => {
+          for (const { change } of messages) writtenLengths.push(change.length);
+          return ok();
+        },
+      },
+    } satisfies StorageDep);
+
+    assertOk(await run(applyProtocolMessageAsClient(response.unwrap())), {
+      type: "Readonly",
+    });
+    assertEqual(writtenLengths, [0]);
+  });
+
   it("ProtocolInvalidDataError", async () => {
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
     const malformedMessage = createBuffer();
@@ -1472,6 +1665,34 @@ describe("E2E errors", () => {
 });
 
 describe("E2E relay options", () => {
+  it("rejects unknown request flags before any side effect", async () => {
+    for (const [hasWriteKey, subscriptionFlag, errorMessage] of [
+      [2, SubscriptionFlags.Subscribe, "Invalid hasWriteKey: 2"],
+      [0, 7, "Invalid SubscriptionFlag: 7"],
+    ] as const) {
+      const request = setupRequestHeader(hasWriteKey, subscriptionFlag);
+      request.extend([0]);
+      const subscriptions: Array<string> = [];
+      await using run = testCreateRun(shouldNotBeCalledStorageDep);
+
+      const result = await run(
+        applyProtocolMessageAsRelay(request.unwrap(), {
+          subscribe: () => {
+            subscriptions.push("subscribe");
+          },
+          unsubscribe: () => {
+            subscriptions.push("unsubscribe");
+          },
+        }),
+      );
+
+      assertErr(result);
+      assertInstanceOf(result.error.error, Error);
+      assertSame(result.error.error.message, errorMessage);
+      assertEqual(subscriptions, []);
+    }
+  });
+
   it("subscribe", async () => {
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
     const message = createProtocolMessageBuffer(testAppOwner.id, {

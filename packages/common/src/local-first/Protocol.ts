@@ -43,6 +43,13 @@
  * | - {@link NonNegativeInt}       | Number of ranges.         |
  * | - {@link Range}                |                           |
  *
+ * Range upper bounds must not decrease. The last range always has
+ * {@link InfiniteUpperBound}, which is not encoded. A message with decreasing
+ * bounds, or with a hasWriteKey or subscriptionFlag value not listed above, is
+ * rejected as {@link ProtocolInvalidDataError}. So is a request with a change
+ * shorter than 41 bytes, the smallest {@link EncryptedDbChange}. A client passes
+ * such a change to storage, which skips a change it cannot read.
+ *
  * ## WriteKey validation
  *
  * The initiator sends a hasWriteKey flag and optionally a WriteKey. The
@@ -288,6 +295,7 @@ import {
   nodeIdBytesLength,
   nodeIdBytesToNodeId,
   nodeIdToNodeIdBytes,
+  orderTimestamp,
   Timestamp,
   TimestampBytes,
   timestampBytesLength,
@@ -297,6 +305,7 @@ import {
 
 const minProtocolMessageMaxSize = 1_000_000;
 const maxProtocolMessageMaxSize = 100_000_000;
+const maxProtocolMessageRangesMaxSize = 100_000;
 
 /**
  * Protocol message maximum size.
@@ -339,11 +348,12 @@ export const defaultProtocolMessageMaxSize =
  *
  * The upper bound is set to ensure ranges fit within the default 1MB
  * {@link defaultProtocolMessageMaxSize}, maintaining compatibility between all
- * clients and relays.
+ * clients and relays. A received message whose ranges section exceeds twice the
+ * upper bound is rejected as {@link ProtocolInvalidDataError}.
  */
 export const ProtocolMessageRangesMaxSize = /*#__PURE__*/ between(
   3_000,
-  100_000,
+  maxProtocolMessageRangesMaxSize,
 )(Int);
 export type ProtocolMessageRangesMaxSize =
   typeof ProtocolMessageRangesMaxSize.Output;
@@ -1357,11 +1367,17 @@ export const applyProtocolMessageAsRelay =
       const hasWriteKey = input.shift();
       let writeKey: OwnerWriteKey | undefined;
 
-      if (hasWriteKey === 1) {
-        writeKey = input.shiftN(ownerWriteKeyLength) as OwnerWriteKey;
+      switch (hasWriteKey) {
+        case 0:
+          break;
+        case 1:
+          writeKey = input.shiftN(ownerWriteKeyLength) as OwnerWriteKey;
+          break;
+        default:
+          throw new ProtocolDecodeError(`Invalid hasWriteKey: ${hasWriteKey}`);
       }
 
-      const subscriptionFlag = input.shift() as SubscriptionFlag;
+      const subscriptionFlag = input.shift();
 
       switch (subscriptionFlag) {
         case SubscriptionFlags.Subscribe:
@@ -1372,6 +1388,10 @@ export const applyProtocolMessageAsRelay =
           break;
         case SubscriptionFlags.None:
           break;
+        default:
+          throw new ProtocolDecodeError(
+            `Invalid SubscriptionFlag: ${subscriptionFlag}`,
+          );
       }
 
       if (writeKey) {
@@ -1388,6 +1408,13 @@ export const applyProtocolMessageAsRelay =
       }
 
       const messages = decodeMessages(input);
+
+      // Only the relay checks this. Deployed relays already store shorter
+      // changes, and a client skips a change it cannot read, whereas a check in
+      // decodeMessages would make it reject every response holding one.
+      for (const { change } of messages)
+        if (change.length < minEncryptedDbChangeLength)
+          throw new ProtocolDecodeError("EncryptedDbChange is too short");
 
       if (isNonEmptyArray(messages)) {
         if (!writeKey) {
@@ -1559,6 +1586,13 @@ const decodeMessages = (
 
   return messages;
 };
+
+// The smallest envelope encodeAndEncryptDbChange can produce: the nonce, a
+// 1-byte ciphertext length, and the 16-byte Poly1305 tag. Every v1 client sends
+// at least 77 bytes. The relay quota counts change bytes, so a relay storing
+// shorter changes, zero-length ones above all, would store rows the quota does
+// not count.
+const minEncryptedDbChangeLength = xChaCha20Poly1305NonceLength + 1 + 16;
 
 /**
  * Answers the ranges into `output`, returning whether it has anything to send.
@@ -1965,7 +1999,23 @@ const splitRange =
     }
   };
 
+// Twice the largest rangesMaxSize rather than the receiver's own, because
+// deployed senders exceed theirs. Up to @evolu/common 8.17, sync answered each
+// Timestamps range that listed timestamps it lacked, while it held none in that
+// range, with an empty Timestamps range, without checking the size. Such an
+// echo reuses the peer's bounds with a 1-byte payload, so the echoes take less
+// than the peer's ranges that list timestamps, which the peer's size checks
+// kept within its rangesMaxSize. An empty list asks for nothing, so an echo is
+// never echoed again.
+const maxRangesSectionSize = 2 * maxProtocolMessageRangesMaxSize;
+
 const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
+  // The ranges section ends the frame, so it is checked before any allocation.
+  if (buffer.getLength() > maxRangesSectionSize)
+    throw new ProtocolDecodeError(
+      `Ranges section exceeds ${maxRangesSectionSize} bytes`,
+    );
+
   if (buffer.getLength() === 0) return [];
 
   const rangesCount = decodeNonNegativeInt(buffer);
@@ -1973,6 +2023,17 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
 
   const timestampsCount = NonNegativeInt.orThrow(rangesCount - 1);
   const timestamps = decodeTimestamps(buffer, timestampsCount);
+
+  // Storage resolves each bound from the owner's first timestamp, so a lower
+  // bound would move back over ranges already answered. Equal bounds are
+  // valid: sync ends a range at the change that did not fit, which can be
+  // where the previous range ended. Timestamps listed in a range are not
+  // checked, because peers before @evolu/common 8.11 list some outside it.
+  for (let i = 1; i < timestamps.length; i++)
+    if (orderTimestamp(timestamps[i - 1], timestamps[i]) > 0)
+      throw new ProtocolDecodeError(
+        "Range upper bounds must be non-decreasing",
+      );
 
   const rangeTypes = createMutableArray<RangeType>(rangesCount);
 
@@ -2036,6 +2097,9 @@ const decodeTimestamps = (
   length?: NonNegativeInt,
 ): ReadonlyArray<Timestamp> => {
   length ??= decodeNonNegativeInt(buffer);
+  // Every timestamp takes at least its 1-byte millis delta.
+  if (length > buffer.getLength())
+    throw new ProtocolDecodeError("Invalid timestamps count");
 
   let previousMillis = 0 as Millis;
 

@@ -424,6 +424,17 @@ test("findLowerBound", async () => {
   assertEqual(storage.findLowerBound(ownerId, begin, end, timestamps[0]), 0);
   assertEqual(storage.findLowerBound(ownerId, begin, end, timestamps[1]), 1);
 
+  // The index counts from the owner's first timestamp, not from begin.
+  assertEqual(
+    storage.findLowerBound(
+      ownerId,
+      NonNegativeInt.orThrow(5),
+      end,
+      timestamps[6],
+    ),
+    6,
+  );
+
   assertEqual(
     storage.findLowerBound(
       ownerId,

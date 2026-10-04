@@ -158,6 +158,16 @@ export interface Storage {
     upperBound?: RangeUpperBound,
   ) => ReadonlyArray<FingerprintRange>;
 
+  /**
+   * Returns the index of the owner's first timestamp not below `upperBound`,
+   * counted from the owner's first timestamp, or `end` when there is none or
+   * `upperBound` is {@link InfiniteUpperBound}.
+   *
+   * `begin` must be 0 or the result for an earlier bound not above
+   * `upperBound`, and `end` the owner's size, so the result lies in [`begin`,
+   * `end`]. When `end` is 0 or equals `begin`, the result is `end`. Sync meets
+   * this because the protocol rejects range upper bounds that decrease.
+   */
   readonly findLowerBound: (
     ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
@@ -378,6 +388,9 @@ export interface EncryptedCrdtMessage {
 
 /**
  * Encrypted DbChange
+ *
+ * A 24-byte XChaCha20-Poly1305 nonce, the ciphertext length, and the ciphertext
+ * ending with its 16-byte Poly1305 tag, so at least 41 bytes.
  *
  * @group Messages
  */

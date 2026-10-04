@@ -948,6 +948,176 @@ describe("sync near the size limit", () => {
   });
 });
 
+describe("decode bounds", () => {
+  /** An empty request is its header followed by a zero message count. */
+  const emptyRequest = createRequest().unwrap();
+
+  it("accepts a 100,000-byte ranges section", async () => {
+    await using relay = await setupSqliteAndRelayStorage();
+    const timestamps = testTimestampsAsc
+      .slice(0, 1000)
+      .map(timestampBytesToTimestamp);
+    await storeChanges(
+      relay,
+      timestamps.map((timestamp) => [timestamp, 100]),
+    );
+    const request = createRequest();
+    for (let i = 0; i < 50_000; i++)
+      request.addRange({
+        type: RangeType.Skip,
+        upperBound: testTimestampsAsc[500],
+      });
+    request.addRange({
+      type: RangeType.Fingerprint,
+      upperBound: InfiniteUpperBound,
+      fingerprint: wrongFingerprint,
+    });
+    const message = request.unwrap();
+    assert(message.length - emptyRequest.length > 100_000, "Too small.");
+
+    const result = await relay.run(applyProtocolMessageAsRelay(message));
+
+    assertOk(result);
+    assertFittingResponse(result.value.message);
+  });
+
+  it("accepts a nested timestamps list packed at one byte per timestamp", async () => {
+    await using relay = await setupSqliteAndRelayStorage();
+    // Equal timestamps take one byte each, so the list count nearly equals the
+    // bytes after it.
+    const request = createRequest();
+    request.addRange(
+      createTimestampsRange(
+        InfiniteUpperBound,
+        Array.from({ length: 99_980 }, () =>
+          createTimestamp({ millis: Millis.orThrow(1000) }),
+        ),
+      ),
+    );
+
+    const result = await relay.run(
+      applyProtocolMessageAsRelay(request.unwrap()),
+    );
+
+    assertOk(result);
+    assertFittingResponse(result.value.message);
+  });
+
+  it("accepts equal consecutive upper bounds emitted by a size-limited response", async () => {
+    await using relay = await setupSqliteAndRelayStorage();
+    const timestamps = Array.from({ length: 12 }, (_, index) =>
+      createWideTimestamp(index),
+    );
+    await storeChanges(
+      relay,
+      timestamps.map((timestamp) => [timestamp, 100_000]),
+    );
+    const request = createRequest();
+    request.addRange(
+      createTimestampsRange(timestampToTimestampBytes(timestamps[9]), []),
+    );
+    request.addRange(createTimestampsRange(InfiniteUpperBound, []));
+
+    const result = await relay.run.orThrow(
+      applyProtocolMessageAsRelay(request.unwrap()),
+    );
+
+    // Nine changes fill the response. The relay skips the first range and
+    // answers the second one up to the change that did not fit, so both of its
+    // ranges end at that change.
+    const expected = createResponse();
+    for (const timestamp of timestamps.slice(0, 9)) {
+      expected.addMessage({
+        timestamp,
+        change: relay.storage.readDbChange(
+          testAppOwnerIdBytes,
+          timestampToTimestampBytes(timestamp),
+        ),
+      });
+    }
+    const upperBound = timestampToTimestampBytes(timestamps[9]);
+    expected.addRange({ type: RangeType.Skip, upperBound });
+    expected.addRange(createTimestampsRange(upperBound, []));
+    expected.addRange({
+      type: RangeType.Fingerprint,
+      upperBound: InfiniteUpperBound,
+      fingerprint: relay.storage.fingerprint(
+        testAppOwnerIdBytes,
+        NonNegativeInt.orThrow(9),
+        NonNegativeInt.orThrow(12),
+      ),
+    });
+    assert(
+      eqArrayNumber(result.message, expected.unwrap()),
+      "Expected two ranges ending at the same change.",
+    );
+
+    await using client = await setupSqliteAndRelayStorage();
+    const clientResult = await client.run(
+      applyProtocolMessageAsClient(result.message, {
+        writeKey: testAppOwner.writeKey,
+      }),
+    );
+    assertOk(clientResult);
+    assertSame(clientResult.value.type, "Response");
+  });
+
+  it("accepts an over-limit echo from a relay with rangesMaxSize 100,000", async () => {
+    // Up to @evolu/common 8.17, a relay answered each range holding none of its
+    // timestamps that listed timestamps with an empty Timestamps range without
+    // checking the size, so a relay with rangesMaxSize 100,000 could exceed it.
+    const response = createResponse();
+    for (let index = 0; index < 5300; index++)
+      response.addRange(
+        createTimestampsRange(
+          timestampToTimestampBytes(createWideTimestamp(index)),
+          [],
+        ),
+      );
+    response.addRange(createTimestampsRange(InfiniteUpperBound, []));
+    const message = response.unwrap();
+    const rangesSize = message.length - emptyResponse.length;
+    assert(
+      rangesSize > 100_000 + 1_024 && rangesSize <= 200_000,
+      `The ranges section has ${rangesSize} bytes.`,
+    );
+
+    await using client = await setupSqliteAndRelayStorage();
+    const result = await client.run(
+      applyProtocolMessageAsClient(message, {
+        writeKey: testAppOwner.writeKey,
+      }),
+    );
+
+    assertOk(result, { type: "Converged" });
+  });
+
+  it("rejects zero-length changes the quota cannot count", async () => {
+    await using relay = await setupSqliteAndRelayStorage({
+      isOwnerWithinQuota: (_ownerId, bytes) => bytes <= 1000,
+    });
+    const request = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      writeKey: testAppOwner.writeKey,
+    });
+    for (let index = 0; index < 1000; index++)
+      request.addMessage({
+        timestamp: createWideTimestamp(index),
+        change: new Uint8Array(0) as EncryptedDbChange,
+      });
+
+    const result = await relay.run(
+      applyProtocolMessageAsRelay(request.unwrap()),
+    );
+
+    assert(
+      !result.ok && result.error.type === "ProtocolInvalidDataError",
+      "Expected ProtocolInvalidDataError.",
+    );
+    assertSame(relay.storage.getSize(testAppOwnerIdBytes), 0);
+  });
+});
+
 describe("ranges sizes", () => {
   it("31 timestamps", () => {
     const buffer = createProtocolMessageBuffer(testAppOwner.id, {
