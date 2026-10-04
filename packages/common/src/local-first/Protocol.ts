@@ -209,12 +209,7 @@ import {
   isNonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
-import {
-  assert,
-  assertNonEmptyArray,
-  assertNonNullable,
-  assertNotUndefined,
-} from "../Assert.ts";
+import { assert, assertNonEmptyArray, assertNonNullable } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import {
   type Buffer,
@@ -242,9 +237,9 @@ import {
   type DecryptWithXChaCha20Poly1305Error,
   EncryptionKey,
   encryptWithXChaCha20Poly1305,
-  Entropy24,
+  type Entropy24,
   type RandomBytesDep,
-  XChaCha20Poly1305Ciphertext,
+  type XChaCha20Poly1305Ciphertext,
   xChaCha20Poly1305NonceLength,
 } from "../Crypto.ts";
 import { eqArrayNumber } from "../Eq.ts";
@@ -261,7 +256,7 @@ import {
   base64UrlToUint8Array,
   between,
   DateIso,
-  FiniteNumber,
+  type FiniteNumber,
   Id,
   IdBytes,
   idBytesToId,
@@ -272,7 +267,7 @@ import {
   jsonToJsonValue,
   NonNegativeInt,
   onePositiveInt,
-  PositiveInt,
+  type PositiveInt,
   type Typed,
   uint8ArrayToBase64Url,
   zeroNonNegativeInt,
@@ -316,7 +311,7 @@ import {
   nodeIdToNodeIdBytes,
   orderTimestamp,
   Timestamp,
-  TimestampBytes,
+  type TimestampBytes,
   timestampBytesLength,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
@@ -928,10 +923,7 @@ export const createProtocolMessageBuffer = (
         buffers.ranges.timestamps.addInfinite();
       }
 
-      encodeNonNegativeInt(
-        buffers.ranges.types,
-        NonNegativeInt.orThrow(range.type),
-      );
+      encodeNonNegativeInt(buffers.ranges.types, range.type as NonNegativeInt);
 
       switch (range.type) {
         case RangeType.Skip:
@@ -2168,10 +2160,7 @@ const readSplitRanges =
     const fingerprintRangesBuckets =
       lower === 0
         ? buckets.value
-        : [
-            lower,
-            ...buckets.value.map((b) => NonNegativeInt.orThrow(b + lower)),
-          ];
+        : [lower, ...buckets.value.map((b) => (b + lower) as NonNegativeInt)];
 
     const fingerprintRanges = deps.storage.fingerprintRanges(
       ownerId,
@@ -2204,7 +2193,7 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
   const rangesCount = decodeNonNegativeInt(buffer);
   if (rangesCount === 0) return [];
 
-  const timestampsCount = NonNegativeInt.orThrow(rangesCount - 1);
+  const timestampsCount = (rangesCount - 1) as NonNegativeInt;
   const timestamps = decodeTimestamps(buffer, timestampsCount);
 
   // Storage resolves each bound from the owner's first timestamp, so a lower
@@ -2397,9 +2386,10 @@ export const encodeDbChange = (buffer: Buffer, message: CrdtMessage): void => {
 
   encodeLength(buffer, entries);
   for (const [column, value] of entries) {
-    assertNotUndefined(value);
     encodeString(buffer, column);
-    encodeSqliteValue(buffer, value);
+    // DbChange validated every value as a SqliteValue; only its Partial record
+    // type admits undefined.
+    encodeSqliteValue(buffer, value as SqliteValue);
   }
 };
 
@@ -2427,8 +2417,8 @@ export const decryptAndDecodeDbChange = (
     const ciphertext = buffer.shiftN(decodeLength(buffer));
 
     const plaintextBytes = decryptWithXChaCha20Poly1305(
-      XChaCha20Poly1305Ciphertext.orThrow(ciphertext),
-      Entropy24.orThrow(nonce),
+      ciphertext as XChaCha20Poly1305Ciphertext,
+      nonce as Entropy24,
       key,
     );
     if (!plaintextBytes.ok) return plaintextBytes;
@@ -2440,7 +2430,7 @@ export const decryptAndDecodeDbChange = (
       throw new ProtocolDecodeError("Unsupported EncryptedDbChange version");
 
     const timestamp = timestampBytesToTimestamp(
-      TimestampBytes.orThrow(buffer.shiftN(timestampBytesLength)),
+      buffer.shiftN(timestampBytesLength) as TimestampBytes,
     );
 
     if (!eqTimestamp(timestamp, message.timestamp)) {
@@ -2451,7 +2441,7 @@ export const decryptAndDecodeDbChange = (
       });
     }
 
-    const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
+    const flags = decodeFlags(buffer, 3 as PositiveInt);
     const table = decodeString(buffer);
     const id = decodeId(buffer);
 
@@ -2542,7 +2532,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
             buffer,
             ProtocolValueType.DateIsoWithNegativeTime,
           );
-          encodeNumber(buffer, FiniteNumber.orThrow(time));
+          encodeNumber(buffer, time as FiniteNumber);
         }
         return;
       }

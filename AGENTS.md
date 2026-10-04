@@ -137,6 +137,11 @@ To render a documented code example as an image for a post, run
   test fixtures, or internal invariants, not for processing user input.
 - Validate external input with Evolu Types, not casts/assertions. Construct Types
   with factories such as `createType`, `brand`, `array`, and `object`.
+- Trust brands: do not check at runtime what a value's type already proves, such
+  as a `NonNegativeInt` parameter or the numbers in a `JsonValue`; a value that
+  breaks its type came from a wrong cast. Check external or unbranded input,
+  relations a brand cannot express, and internal invariants. When code proves a
+  brand's constraint, such as a difference after an order check, cast instead.
 - For a named object Type `X`, use
   `export interface X extends InferType<typeof X> {}` for its output.
 - Use `Brand<"Name">` for opaque handles and otherwise interchangeable values.

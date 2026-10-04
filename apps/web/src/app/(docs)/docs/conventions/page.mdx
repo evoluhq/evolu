@@ -758,6 +758,17 @@ validated `Type` with [`brand(...)`](/docs/api-reference/common/Type/functions/b
 so the constraint is enforced and the branded value can only be obtained
 through validation.
 
+Once a value has a brand, trust it. Do not check at runtime what its type
+already proves: a function with a `NonNegativeInt` parameter does not test that
+the value is a non-negative integer, and encoding a `JsonValue` does not test
+for `NaN`. A value that breaks its type got there through a wrong cast, and that
+cast is the bug. Runtime checks belong to external or unbranded input, such as
+decoded bytes or an `ArrayLike` length, to relations a brand cannot express,
+such as an index below a length, and to internal invariants. When code itself
+proves a brand's constraint, such as the difference of two `NonNegativeInt`
+values after checking their order, or bytes of the length a decoder just read,
+cast the result instead of validating it again.
+
 ### Opaque types
 
 Opaque types are the standalone-brand case: a `Brand` with no base type. Use
