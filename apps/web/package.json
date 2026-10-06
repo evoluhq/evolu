@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node ./src/scripts/generate-search-index.mts && next build",
-    "dev": "node ./src/scripts/dev.mts",
+    "build": "node ../../packages/sqlite-wasm/scripts/check-wasm.mts && node ./src/scripts/generate-search-index.mts && next build",
+    "dev": "node ../../packages/sqlite-wasm/scripts/check-wasm.mts && node ./src/scripts/dev.mts",
     "dev:docs": "node ./src/scripts/dev-docs.mts",
     "fix:docs": "node ./src/scripts/fix-api-reference.mts",
     "lint": "oxlint .",
@@ -20,7 +20,6 @@
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "@evolu/react-web": "workspace:*",
-    "@evolu/sqlite-wasm": "2.2.4",
     "@evolu/web": "workspace:*",
     "@headlessui/react": "^2.2.9",
     "@headlessui/tailwindcss": "^0.2.2",

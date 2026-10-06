@@ -23,8 +23,10 @@
  * version 1. A newer stored version refuses startup with
  * {@link UnsupportedDbVersionError}. The refusal returns from the startup
  * transaction before anything is written and is posted to the SharedWorker; the
- * worker then exits and releases its resources. The single version row is
- * created in the same transaction as the other system tables.
+ * worker then exits and releases its resources. A database whose files another
+ * context keeps holding refuses startup the same way, before it is opened, with
+ * {@link DatabaseHeldError}; see {@link WaitForDatabaseRelease}. The single
+ * version row is created in the same transaction as the other system tables.
  *
  * Code released before the version record existed never reads it. It recognizes
  * an initialized database by the `evolu_version` table alone, so it opens a
@@ -195,7 +197,28 @@ export interface CreateDbWorkerDep {
 export type DbWorkerDeps = WorkerDeps &
   CreateBroadcastChannelDep &
   LockManagerDep &
-  CreateSqliteDriverDep;
+  CreateSqliteDriverDep &
+  Partial<WaitForDatabaseReleaseDep>;
+
+/**
+ * Waits until no other context holds the files of the persistent database
+ * `name`, and fails with {@link DatabaseHeldError} when they stay held.
+ *
+ * {@link startDbWorker} calls it, except for a memory-only database, while it
+ * holds the database's leader lock and before it opens the database. Only a
+ * context that ended without closing the database can then hold its files, and
+ * such a context can only release them, so the files stay free until the
+ * database opens. Platforms whose databases cannot be held this way, such as
+ * Node.js and React Native, omit it.
+ */
+export type WaitForDatabaseRelease = (
+  name: Name,
+) => Task<void, DatabaseHeldError>;
+
+/** Dependency wrapper for {@link WaitForDatabaseRelease}. */
+export interface WaitForDatabaseReleaseDep {
+  readonly waitForDatabaseRelease: WaitForDatabaseRelease;
+}
 
 /** The database version this code creates and supports; see the module doc. */
 const dbVersion = PositiveInt.orThrow(2);
@@ -214,6 +237,18 @@ const dbVersion = PositiveInt.orThrow(2);
 export interface UnsupportedDbVersionError extends Typed<"UnsupportedDbVersionError"> {
   readonly storedVersion: PositiveInt;
   readonly supportedVersion: PositiveInt;
+}
+
+/**
+ * Another context kept holding the database's files, so the database did not
+ * open; see {@link WaitForDatabaseRelease}.
+ *
+ * A browser can keep the files of a worker that ended without closing them
+ * until the browser restarts. Ask the user to close the app's other tabs or to
+ * restart the browser, then to reload the app.
+ */
+export interface DatabaseHeldError extends Typed<"DatabaseHeldError"> {
+  readonly name: Name;
 }
 
 /**
@@ -258,6 +293,15 @@ export const startDbWorker =
     );
 
     disposer.use(await run.ok(acquireLeaderLock(initMessage.name)));
+
+    if (!initMessage.memoryOnly && deps.waitForDatabaseRelease) {
+      const released = await run(deps.waitForDatabaseRelease(initMessage.name));
+      if (!released.ok) {
+        // Returning lets the disposer release the database lock.
+        port.postMessage({ type: "LeaderRefused", error: released.error });
+        return ok();
+      }
+    }
 
     const sqlite = disposer.use(
       await run.ok(

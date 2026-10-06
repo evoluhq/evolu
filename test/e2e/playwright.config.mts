@@ -32,8 +32,9 @@ const config = {
   ],
   webServer: {
     cwd: resolve(import.meta.dirname, "../.."),
+    // The playground loads the SQLite wasm, so check it before building.
     command:
-      'pnpm --filter "web^..." --filter @evolu/relay -r run build && pnpm build:docs && pnpm --filter web run build && pnpm --filter web exec next start --hostname 127.0.0.1 --port 3100',
+      'node packages/sqlite-wasm/scripts/check-wasm.mts && pnpm --filter "web^..." --filter @evolu/relay -r run build && pnpm build:docs && pnpm --filter web run build && pnpm --filter web exec next start --hostname 127.0.0.1 --port 3100',
     env: { NEXT_PUBLIC_EVOLU_RELAY_URL: relayUrl },
     url: `${baseURL}/playgrounds/minimal`,
     reuseExistingServer: false,

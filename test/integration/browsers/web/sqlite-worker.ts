@@ -8,9 +8,23 @@ import {
   type SqliteValue,
 } from "@evolu/common";
 import { installPolyfills } from "@evolu/common/polyfills";
-import { createWasmSqliteDriver } from "../../../../packages/web/src/Sqlite.ts";
+import {
+  createWaitForDatabaseRelease,
+  createWasmSqliteDriver,
+  loadSqliteWasm,
+} from "../../../../packages/web/src/Sqlite.ts";
 
 installPolyfills();
+
+// SQLite loads once per worker, as in a DbWorker, and each driver is created in
+// a Run of its own.
+const sqliteDeps = {
+  opfsRoot: navigator.storage,
+  sqliteWasmLoad: createRun()(loadSqliteWasm),
+  subtleCrypto: crypto.subtle,
+};
+const createSqliteDriver = createWasmSqliteDriver(sqliteDeps);
+const waitForDatabaseRelease = createWaitForDatabaseRelease(sqliteDeps);
 
 // Typed reference to the Web Worker global scope.
 const workerScope = globalThis as never as {
@@ -34,14 +48,15 @@ const createDriver = async (cmd: {
     ? EncryptionKey.orThrow(cmd.encryptionKey)
     : undefined;
   await using run = createRun();
-  const result = await run(
-    createWasmSqliteDriver(
+  // As a DbWorker, which waits for a worker that ended without closing the
+  // database.
+  await run.orThrow(waitForDatabaseRelease(name));
+  driver = await run.ok(
+    createSqliteDriver(
       name,
       encryptionKey ? { mode: "encrypted", encryptionKey } : undefined,
     ),
   );
-  if (!result.ok) throw new Error("Driver creation failed");
-  driver = result.value;
 };
 
 // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This worker owns the single global message handler.

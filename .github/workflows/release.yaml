@@ -60,8 +60,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The version script also versions @evolu/sqlite-wasm by its SQLite
+      # version, which Changesets cannot compute.
       - name: Version packages
         uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          script: pnpm run version
 
   pack:
     if: needs.select-mode.outputs.mode == 'publish'
@@ -88,6 +92,15 @@ jobs:
 
       - name: Build packages
         run: pnpm build
+
+      # The prepack of @evolu/sqlite-wasm, which pnpm pack runs, checks that
+      # the wasm the Checks workflow built in this run is the pinned one and
+      # copies it into the package.
+      - name: Download SQLite wasm
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sqlite-wasm
+          path: packages/sqlite-wasm/wasm
 
       - name: Pack packages
         id: pack
@@ -118,9 +131,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Publish packages
+        id: publish
         uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
+
+      # changesets/action marks a release whose version has a hyphen as a
+      # prerelease, as every @evolu/sqlite-wasm build (3.53.4-build1) has. The
+      # publish step fails after a partial publish, and a rerun skips what was
+      # published, so this step runs even when the publish step failed.
+      - name: Unmark the @evolu/sqlite-wasm prerelease
+        if: ${{ !cancelled() && steps.publish.outputs.published == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PUBLISHED: ${{ steps.publish.outputs.published-packages }}
+        run: |
+          version=$(jq -r '.[] | select(.name == "@evolu/sqlite-wasm") | .version' <<<"$PUBLISHED")
+          [ -z "$version" ] || gh release edit "@evolu/sqlite-wasm@$version" --prerelease=false --latest=false
 
   docker:
     needs: publish

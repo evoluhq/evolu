@@ -1,0 +1,10 @@
+#!/bin/sh
+# GNU-style "sed -i" for macOS, whose BSD sed reads the argument after -i as a
+# backup suffix. ext/wasm/GNUmakefile runs "sed -i -e ...", in place without a
+# suffix. scripts/build-wasm.mts puts this directory first in PATH on macOS
+# only; Linux has GNU sed.
+if [ "$1" = "-i" ]; then
+  shift
+  exec /usr/bin/sed -i '' "$@"
+fi
+exec /usr/bin/sed "$@"

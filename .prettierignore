@@ -1,4 +1,6 @@
 pnpm-lock.yaml
+# Verbatim upstream inputs of the sqlite-wasm generator.
+packages/sqlite-wasm/scripts/upstream/
 apps/web/src/app/(docs)/docs/api-reference/**/*.mdx
 # Contains SQL with runtime kyselyJsonIdentifier that breaks CLI SQL parser.
 # File uses // prettier-ignore comments to preserve compact SQL format.

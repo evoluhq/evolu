@@ -188,7 +188,7 @@ export interface SqliteQueryOptions {
    * statements can improve performance for repeated queries by reusing the
    * compiled query.
    *
-   * See: {@link https://sqlite.org/wasm/doc/trunk/api-oo1.md#db-prepare}.
+   * See: {@link https://sqlite.org/c3ref/prepare.html}.
    */
   readonly prepare?: boolean;
 }

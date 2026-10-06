@@ -51,7 +51,10 @@ export * from "./WebSocket.ts";
 export * from "./Worker.ts";
 
 // Local-first essentials.
-export type { UnsupportedDbVersionError } from "./local-first/Db.ts";
+export type {
+  DatabaseHeldError,
+  UnsupportedDbVersionError,
+} from "./local-first/Db.ts";
 export {
   AppName,
   createEvolu,

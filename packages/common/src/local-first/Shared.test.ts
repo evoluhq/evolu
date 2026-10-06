@@ -21,7 +21,11 @@ import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
 import type { DecryptWithXChaCha20Poly1305Error } from "../Crypto.ts";
 import { createUnknownError, UnknownError } from "../Error.ts";
 import { isPlainObject } from "../Object.ts";
-import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
+import type {
+  DatabaseHeldError,
+  DbWorkerInit,
+  UnsupportedDbVersionError,
+} from "./Db.ts";
 import {
   createAppOwner,
   createOwnerSecret,
@@ -11442,4 +11446,36 @@ describe("startup refusal", () => {
     await testWaitForWorkerMessage();
     assertEqual(leaderInputs, [{ type: "Dispose" }]);
   });
+
+  const heldRefusal: DatabaseHeldError = {
+    type: "DatabaseHeldError",
+    name: testName,
+  };
+
+  for (const error of [heldRefusal, refusal])
+    it(`disposes a worker that acquired leadership before the ${error.type} refusal of a worker requested earlier arrived`, async () => {
+      await using setup = await setupSharedWorker();
+      await using disposer = new AsyncDisposableStack();
+      const instance = await setup.createEvoluBeforeDbWorkerLeader();
+      const initDbWorker = await setupTabLeader(setup, disposer);
+      using leaderPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
+        initDbWorker.port,
+      );
+      const leaderInputs: Array<DbWorkerInput> = [];
+      leaderPort.onMessage = (input) => {
+        leaderInputs.push(input);
+      };
+
+      // Browsers deliver the refusal first, because the refusing worker posts
+      // it while it still holds the database lock the other one waits for.
+      // The tenant does not depend on that order.
+      leaderPort.postMessage({
+        type: "LeaderAcquired",
+        clock: createTimestamp(),
+      });
+      await testWaitForWorkerMessage();
+      instance.dbWorkerPort.postMessage({ type: "LeaderRefused", error });
+      await testWaitForWorkerMessage();
+      assertEqual(leaderInputs, [{ type: "Dispose" }]);
+    });
 });

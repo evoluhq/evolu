@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["node", "user-agent-data-types"]
   },
-  "references": [{ "path": "../common" }]
+  "references": [{ "path": "../common" }, { "path": "../sqlite-wasm" }]
 }

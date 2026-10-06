@@ -29,7 +29,9 @@ import {
   sqliteTrue,
   testSetupSqlite,
   type CreateSqliteDriver,
+  type CreateSqliteDriverDep,
   type SafeSql,
+  type Sqlite,
   type SqliteDriver,
   type SqliteQuery,
   SqliteQueryParameters,
@@ -40,6 +42,7 @@ import {
   createAbortError,
   sleep,
   testCreateRun,
+  type Task,
 } from "../../../../packages/common/src/Task.ts";
 import {
   assertType,
@@ -575,6 +578,14 @@ test("createSqlite returns error when driver creation is aborted", async () => {
   const result = await fiber;
 
   assertErr(result, createAbortError(reason));
+});
+
+test("createSqlite and a CreateSqliteDriver cannot fail", () => {
+  assertType<
+    ReturnType<typeof createSqlite>,
+    Task<Sqlite, never, CreateSqliteDriverDep>
+  >();
+  assertType<ReturnType<CreateSqliteDriver>, Task<SqliteDriver>>();
 });
 
 describe("createPreparedStatementsCache", () => {

@@ -1,175 +1,155 @@
-import type { CreateSqliteDriver, SqliteRow } from "@evolu/common";
+/**
+ * The SQLite driver of Evolu for the web, on `@evolu/sqlite-wasm`.
+ *
+ * @module
+ */
+
 import {
-  bytesToHex,
   createPreparedStatementsCache,
+  err,
   exhaustiveCheck,
   ok,
-  performanceDurationBetween,
-  PositiveMillis,
-  sleep,
-  tryAsync,
+  type CreateSqliteDriver,
+  type DatabaseHeldError,
+  type Name,
+  type Result,
+  type SqliteDriver,
+  type Task,
+  type Typed,
+  type TypeName,
 } from "@evolu/common";
-import sqlite3InitModule, {
-  type Database,
-  type PreparedStatement,
-  type SAHPoolUtil,
+import type { WaitForDatabaseRelease } from "@evolu/common/local-first";
+import {
+  createEncryptedSqliteDatabase,
+  createSqliteDatabase,
+  createSqliteWasm,
+  OpfsName,
+  openSahPool,
+  sqliteWasmUrl,
+  SqliteVfsPath,
+  type deriveLegacySqliteKey,
+  type OpfsRootDep,
+  type SahPool,
+  type SahPoolError,
+  type SahPoolOptions,
+  type SqliteDatabase,
+  type SqliteError,
+  type SqliteStatement,
+  type SqliteWasm,
+  type SqliteWasmDep,
+  type SqliteWasmError,
+  type SubtleCryptoDep,
 } from "@evolu/sqlite-wasm";
 
-// @ts-expect-error Missing types.
-globalThis.sqlite3ApiConfig = {
-  warn: (arg: unknown) => {
-    // Ignore irrelevant warning.
-    // https://github.com/sqlite/sqlite-wasm/issues/62
-    if (
-      typeof arg === "string" &&
-      arg.startsWith("Ignoring inability to install OPFS sqlite3_vfs")
-    )
-      return;
-    // oxlint-disable-next-line eslint/no-console
-    console.warn(arg);
-  },
-};
+/**
+ * Loads SQLite from the {@link sqliteWasmUrl} of `@evolu/sqlite-wasm` for
+ * {@link createWasmSqliteDriver}. It passes the fetch to
+ * {@link createSqliteWasm}, which compiles the binary while it downloads when
+ * the server sends it as `application/wasm`, and from its bytes otherwise.
+ *
+ * Start it in the worker's composition root, so SQLite loads while the worker
+ * waits for its database.
+ */
+export const loadSqliteWasm: Task<SqliteWasm, SqliteWasmError> = (run) =>
+  run(createSqliteWasm(run.deps.nativeFetch(sqliteWasmUrl)), run.deps);
 
-// Init ASAP.
-const sqlite3Promise = sqlite3InitModule();
-
-const fileName = "evolu1.db";
-
-export const createWasmSqliteDriver: CreateSqliteDriver =
-  (name, options) => async (run) => {
-    const sqlite3 = await sqlite3Promise;
-
-    using disposer = new DisposableStack();
-    const useDatabase = (database: Database): Database =>
-      disposer.adopt(database, (database) => {
-        database.close();
-      });
+/**
+ * Creates the {@link CreateSqliteDriver} of Evolu for the web.
+ *
+ * A database is the file `/evolu1.db` in a pool of OPFS sync access handles in
+ * the directory `.<name>`, in the format of SQLite's opfs-sahpool, and the pool
+ * encrypts it in the `encrypted` mode. So the databases `@evolu/web` 3 created
+ * with `@evolu/sqlite-wasm` 2.2.4 open unchanged, an encrypted one with the key
+ * 2.2.4 derived from the encryption key, which is never rekeyed. 2.2.4 derived
+ * it because of a bug in SQLite3 Multiple Ciphers: it took the encryption key,
+ * passed in SQLCipher's notation for a raw key, as a passphrase
+ * (https://github.com/utelle/SQLite3MultipleCiphers/issues/218), as
+ * {@link deriveLegacySqliteKey} of `@evolu/sqlite-wasm` describes. A new
+ * encrypted database is encrypted with the encryption key itself, so
+ * `@evolu/web` 3.4.1 and earlier cannot open it. A database in the `memory`
+ * mode uses no OPFS.
+ *
+ * In WebKit on macOS, such as Safari, whose file system ignores case by
+ * default, names that differ only in case share the directory, and both can
+ * hold it at once, so make database names differ in more than case.
+ *
+ * The pool is opened once, so the driver throws while another context holds a
+ * file of it. A DbWorker waits for the files with
+ * {@link createWaitForDatabaseRelease} first.
+ *
+ * The {@link SqliteDriver} contract has no error channel, so every error, such
+ * as a query's {@link SqliteError}, is thrown as the cause of an `Error` whose
+ * message is SQLite's message, or the error's type for an error without one.
+ */
+export const createWasmSqliteDriver =
+  (deps: WasmSqliteDriverDeps): CreateSqliteDriver =>
+  (name, options) =>
+  async (run) => {
+    const sqliteWasm = getOrThrowWithMessage(await deps.sqliteWasmLoad);
+    const databaseDeps = { ...deps, sqliteWasm };
 
     let deleteDatabaseFile = false;
-    const createOpfsSAHPoolVfs = async (
-      options: Parameters<typeof sqlite3.installOpfsSAHPoolVfs>[0],
-    ): Promise<SAHPoolUtil> => {
-      // Evolu opens a database only while it holds the database lock, but a
-      // DbWorker that ended without closing it, because its tab closed,
-      // crashed or navigated away, can hold pool files after the lock has
-      // passed on: WebKit releases a terminated worker's locks and its files
-      // separately, in no set order
-      // (https://bugs.webkit.org/show_bug.cgi?id=301520). sqlite-wasm cannot
-      // set up a pool with a held file, and it then deletes the pool
-      // directory, which the held file usually but not always prevents. Only
-      // a worker that has ended can hold
-      // the files, and it can only release them, so the pool is set up once
-      // every file opens.
-      const canOpenPoolFiles = async (): Promise<boolean> => {
-        const root = await navigator.storage.getDirectory();
-        // sqlite-wasm keeps the pool in `.${name}/.opaque` in both OPFS modes.
-        const poolDirectory = await tryAsync(() =>
-          root.getDirectoryHandle(`.${name}`),
-        );
-        if (!poolDirectory.ok) return true;
-        const opaqueDirectory = await tryAsync(() =>
-          poolDirectory.value.getDirectoryHandle(".opaque"),
-        );
-        if (!opaqueDirectory.ok) return true;
-        for await (const handle of opaqueDirectory.value.values()) {
-          if (handle.kind !== "file") continue;
-          const accessHandle = await tryAsync(() =>
-            handle.createSyncAccessHandle(),
-          );
-          if (!accessHandle.ok) {
-            // WebKit rejects a held file with InvalidStateError, other
-            // engines with NoModificationAllowedError, as the spec says
-            // (https://bugs.webkit.org/show_bug.cgi?id=326135).
-            // WebKit also uses InvalidStateError for a closed or invalid
-            // handle and a stopped context. A retry opens fresh handles from
-            // a new listing, and a stopped context ends the loop with its
-            // worker, so retrying those is harmless.
-            if (
-              accessHandle.error instanceof DOMException &&
-              (accessHandle.error.name === "InvalidStateError" ||
-                accessHandle.error.name === "NoModificationAllowedError")
-            )
-              return false;
-            throw accessHandle.error;
-          }
-          accessHandle.value.close();
-        }
-        return true;
-      };
+    using disposer = new DisposableStack();
 
-      const waitStart = run.deps.time.performance.now();
-      let retryDelay = 50;
-      let isWaitReported = false;
-      while (!(await canOpenPoolFiles())) {
-        const waited = performanceDurationBetween(
-          waitStart,
-          run.deps.time.performance.now(),
-        );
-        if (!isWaitReported && waited >= 5000) {
-          isWaitReported = true;
-          run.deps.console.warn(
-            `Waiting for an ended DbWorker to release the files of database ${name}.`,
-          );
-        }
-        await run.ok(sleep(PositiveMillis.orThrow(retryDelay)));
-        retryDelay = Math.min(retryDelay * 2, 1000);
-      }
-
-      const pool = await sqlite3.installOpfsSAHPoolVfs(options);
-      if (pool.isPaused()) await pool.unpauseVfs();
+    const openPool = async (): Promise<SahPool> => {
+      const pool = disposer.use(
+        getOrThrowWithMessage(await run(openDatabasePool(name), databaseDeps)),
+      );
       disposer.defer(() => {
-        if (deleteDatabaseFile) pool.unlink(`/${fileName}`);
-        pool.pauseVfs();
+        if (deleteDatabaseFile)
+          getOrThrowWithMessage(pool.unlink(databasePath));
       });
       return pool;
     };
 
-    let db: Database;
+    let database: SqliteDatabase;
 
     switch (options?.mode) {
       case "memory":
-        // oxlint-disable-next-line react/rules-of-hooks -- useDatabase registers disposal and is not a React Hook.
-        db = useDatabase(new sqlite3.oo1.DB(":memory:"));
+        database = disposer.use(
+          getOrThrowWithMessage(
+            createSqliteDatabase(databaseDeps)({ type: "Memory" }),
+          ),
+        );
         break;
 
       case "encrypted": {
-        // MultipleCiphers encryption requires its VFS wrapper for OPFS SAH-pool.
-        // @ts-expect-error Missing types (update @evolu/sqlite-wasm types)
-        // oxlint-disable-next-line typescript/no-unsafe-call
-        sqlite3.capi.sqlite3mc_vfs_create("opfs", 1);
-        const pool = await createOpfsSAHPoolVfs({
-          directory: `.${name}`,
-        });
-        // oxlint-disable-next-line react/rules-of-hooks -- useDatabase registers disposal and is not a React Hook.
-        db = useDatabase(
-          new pool.OpfsSAHPoolDb(
-            // SQLite normalizes this URI filename to SAH-pool path "/evolu1.db".
-            `file:${fileName}?vfs=multipleciphers-opfs-sahpool`,
+        const encrypted = getOrThrowWithMessage(
+          await run(
+            createEncryptedSqliteDatabase({
+              type: "EncryptedFile",
+              vfs: await openPool(),
+              path: databasePath,
+              key: options.encryptionKey,
+            }),
+            databaseDeps,
           ),
         );
-        db.exec(`
-          PRAGMA cipher = 'sqlcipher';
-          PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'";
-        `);
+        database = disposer.use(encrypted.database);
         break;
       }
 
-      case undefined: {
-        const pool = await createOpfsSAHPoolVfs({ name });
-        // oxlint-disable-next-line react/rules-of-hooks -- useDatabase registers disposal and is not a React Hook.
-        db = useDatabase(new pool.OpfsSAHPoolDb(`file:${fileName}`));
+      case undefined:
+        database = disposer.use(
+          getOrThrowWithMessage(
+            createSqliteDatabase(databaseDeps)({
+              type: "File",
+              vfs: await openPool(),
+              path: databasePath,
+            }),
+          ),
+        );
         break;
-      }
 
       default:
         exhaustiveCheck(options);
     }
 
     const cache = disposer.use(
-      createPreparedStatementsCache<PreparedStatement>(
-        (sql) => db.prepare(sql),
+      createPreparedStatementsCache<SqliteStatement>(
+        (sql) => getOrThrowWithMessage(database.prepare(sql)),
         (statement) => {
-          statement.finalize();
+          statement[Symbol.dispose]();
         },
       ),
     );
@@ -178,41 +158,15 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
 
     return ok({
       exec: (query) => {
-        const prepared = cache.get(query);
-
-        if (prepared) {
-          try {
-            if (query.parameters.length > 0) prepared.bind(query.parameters);
-
-            const rows = [];
-            while (prepared.step()) {
-              rows.push(prepared.get({}));
-            }
-
-            return {
-              rows: rows as ReadonlyArray<SqliteRow>,
-              changes: db.changes(),
-            };
-          } finally {
-            // SQLite refuses to bind a statement whose step failed until it is
-            // reset. That reset returns the step's error again, which
-            // PreparedStatement.reset would throw over the original one.
-            sqlite3.capi.sqlite3_reset(prepared);
-          }
-        }
-
-        const rows = db.exec(query.sql, {
-          returnValue: "resultRows",
-          rowMode: "object",
-          bind: query.parameters,
-        }) as ReadonlyArray<SqliteRow>;
-
-        const changes = db.changes();
-
-        return { rows, changes };
+        const statement = cache.get(query);
+        return getOrThrowWithMessage(
+          statement
+            ? statement.run(query.parameters)
+            : database.run(query.sql, query.parameters),
+        );
       },
 
-      export: () => sqlite3.capi.sqlite3_js_db_export(db),
+      export: () => getOrThrowWithMessage(database.export()),
 
       deleteDatabase: () => {
         deleteDatabaseFile = true;
@@ -224,3 +178,73 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
       },
     });
   };
+
+/** Dependencies of {@link createWasmSqliteDriver}. */
+export type WasmSqliteDriverDeps = OpfsRootDep &
+  SqliteWasmLoadDep &
+  SubtleCryptoDep;
+
+/** Dependency wrapper for SQLite as {@link loadSqliteWasm} loads it. */
+export interface SqliteWasmLoadDep {
+  /**
+   * SQLite, as {@link loadSqliteWasm} loads it, still loading or loaded. A
+   * failed load throws when a database is opened.
+   */
+  readonly sqliteWasmLoad: PromiseLike<Result<SqliteWasm, SqliteWasmError>>;
+}
+
+/**
+ * Creates the {@link WaitForDatabaseRelease} of Evolu for the web. It opens the
+ * pool {@link createWasmSqliteDriver} opens for the database, and disposes it
+ * once it opens.
+ *
+ * When another context holds a file of the pool, the pool is opened again after
+ * 50 ms, then after twice the previous delay, up to a second, with the
+ * `heldTimeout` option of {@link openSahPool}, and the wait fails with
+ * {@link DatabaseHeldError} when it is still held 10 seconds after the first
+ * attempt started. Evolu then refuses to start the database, and the app
+ * receives the error as its `evoluError`. Every other error is thrown, as the
+ * driver throws it.
+ */
+export const createWaitForDatabaseRelease =
+  (deps: OpfsRootDep & SqliteWasmLoadDep): WaitForDatabaseRelease =>
+  (name) =>
+  async (run) => {
+    const sqliteWasm = getOrThrowWithMessage(await deps.sqliteWasmLoad);
+    const opened = await run(
+      // Longer than the two seconds Chromium gives a terminated worker.
+      openDatabasePool(name, { heldTimeout: "10s" }),
+      { ...deps, sqliteWasm },
+    );
+    if (!opened.ok && opened.error.type === "SahPoolHeldError")
+      return err({ type: "DatabaseHeldError", name });
+    using _pool = getOrThrowWithMessage(opened);
+    return ok();
+  };
+
+// The pool of a database's file is in the directory `.<name>`, as in
+// @evolu/web 3.
+const openDatabasePool = (
+  name: Name,
+  options?: Pick<SahPoolOptions, "heldTimeout">,
+): Task<SahPool, SahPoolError, OpfsRootDep & SqliteWasmDep> =>
+  // A Name is non-empty and URL-safe, so `.<name>` always passes.
+  openSahPool({ ...options, directory: [OpfsName.orThrow(`.${name}`)] });
+
+// The path SQLite's opfs-sahpool gave `file:evolu1.db`, which @evolu/web 3
+// opened.
+const databasePath = /*#__PURE__*/ SqliteVfsPath.orThrow("/evolu1.db");
+
+// The SqliteDriver contract has no error channel, and the WaitForDatabaseRelease
+// contract only DatabaseHeldError, so any other error is thrown as the cause of
+// an Error, with SQLite's message when it has one.
+const getOrThrowWithMessage = <T>(result: Result<T, Typed<TypeName>>): T => {
+  if (result.ok) return result.value;
+  const { error } = result;
+  throw new Error(
+    "message" in error && typeof error.message === "string"
+      ? error.message
+      : error.type,
+    { cause: error },
+  );
+};

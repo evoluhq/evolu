@@ -36,7 +36,7 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "@evolu/sqlite-wasm": "2.2.4"
+    "@evolu/sqlite-wasm": "workspace:*"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",

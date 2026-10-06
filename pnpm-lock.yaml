@@ -36,6 +36,9 @@ importers:
       '@evolu/oxlint-config':
         specifier: workspace:*
         version: link:packages/oxlint-config
+      '@evolu/sqlite-wasm-2.2.4':
+        specifier: npm:@evolu/sqlite-wasm@2.2.4
+        version: '@evolu/sqlite-wasm@2.2.4'
       '@evolu/typescript-config':
         specifier: workspace:*
         version: link:packages/typescript-config
@@ -160,9 +163,6 @@ importers:
       '@evolu/react-web':
         specifier: workspace:*
         version: link:../../packages/react-web
-      '@evolu/sqlite-wasm':
-        specifier: 2.2.4
-        version: 2.2.4
       '@evolu/web':
         specifier: workspace:*
         version: link:../../packages/web
@@ -925,6 +925,34 @@ importers:
         specifier: ^0.4.2
         version: 0.4.3
 
+  packages/sqlite-wasm:
+    dependencies:
+      '@awasm/noble':
+        specifier: 0.1.4
+        version: 0.1.4
+    devDependencies:
+      '@evolu/common':
+        specifier: workspace:*
+        version: link:../common
+      '@evolu/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.10.9
+        version: 24.13.3
+      '@typescript/native':
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      prettier:
+        specifier: ^3.9.6
+        version: 3.9.6
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      wabt:
+        specifier: 1.0.39
+        version: 1.0.39
+
   packages/svelte:
     devDependencies:
       '@evolu/common':
@@ -1001,8 +1029,8 @@ importers:
   packages/web:
     dependencies:
       '@evolu/sqlite-wasm':
-        specifier: 2.2.4
-        version: 2.2.4
+        specifier: workspace:*
+        version: link:../sqlite-wasm
     devDependencies:
       '@evolu/common':
         specifier: workspace:*
@@ -1237,6 +1265,21 @@ packages:
     engines: {node: '>=10'}
     peerDependencies:
       ajv: '>=8'
+
+  '@awasm/noble@0.1.4':
+    resolution: {integrity: sha512-LFkAq7VnGc8Hum4x12yxBsyoQYq9mWDf02j1lltzXaeZ14qcXwEYnOl5ByJ49xiBk1L7h6m3vkKkInvtDUIvOg==}
+    engines: {node: '>= 22.22.0'}
+    peerDependencies:
+      '@awasm/compiler': 0.1.3
+      '@noble/ciphers': ~2.2.0
+      '@noble/hashes': ~2.2.0
+    peerDependenciesMeta:
+      '@awasm/compiler':
+        optional: true
+      '@noble/ciphers':
+        optional: true
+      '@noble/hashes':
+        optional: true
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -10232,6 +10275,10 @@ packages:
       typescript:
         optional: true
 
+  wabt@1.0.39:
+    resolution: {integrity: sha512-ba+dRL/75VQQY7RkU/CgriGbkoWAfS8TDyUlJfJhJ8KhtXgMl5dhNvoPNUcQ9IWRhW8u41glMSuZeTvsYq2rRg==}
+    hasBin: true
+
   walker@1.0.8:
     resolution: {integrity: sha512-ts/8E8l5b7kY0vlWLewOkDXMmPdLcVV4GmOQLyxuSswIJsweeFZtAsMF7k1Nszz+TYBQrlYRmzOnr398y1JemQ==}
 
@@ -10747,6 +10794,8 @@ snapshots:
       ajv: 8.20.0
       jsonpointer: 5.0.1
       leven: 3.1.0
+
+  '@awasm/noble@0.1.4': {}
 
   '@babel/code-frame@7.29.7':
     dependencies:
@@ -21030,6 +21079,8 @@ snapshots:
       '@vue/shared': 3.5.41
     optionalDependencies:
       typescript: 6.0.3
+
+  wabt@1.0.39: {}
 
   walker@1.0.8:
     dependencies:

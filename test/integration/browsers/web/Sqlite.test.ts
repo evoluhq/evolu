@@ -1,13 +1,36 @@
 import {
+  constVoid,
+  createConsole,
+  createIdFromString,
+  createRun,
   createSqlite,
+  id,
   Name,
   sql,
   testCreateRun,
   type UnknownError,
 } from "@evolu/common";
+import {
+  AppName,
+  createEvolu,
+  createEvoluDeps,
+  testAppOwner,
+  type DbWorkerInit,
+  type SharedWorkerInput,
+  type SharedWorkerOutput,
+} from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
 import { describe, expect, test } from "vitest";
-import { createWasmSqliteDriver } from "../../../../packages/web/src/Sqlite.ts";
+import {
+  createWasmSqliteDriver,
+  loadSqliteWasm,
+} from "../../../../packages/web/src/Sqlite.ts";
+import {
+  createBroadcastChannel,
+  createMessageChannel,
+  createSharedWorker,
+  createWorker,
+} from "../../../../packages/web/src/Worker.ts";
 
 installPolyfills();
 
@@ -28,10 +51,18 @@ const assertWorkerOk: (
 const setupWasmSqlite = async () => {
   await using disposer = new AsyncDisposableStack();
   const run = disposer.use(
-    testCreateRun({ createSqliteDriver: createWasmSqliteDriver }),
+    testCreateRun({ nativeFetch: fetch.bind(globalThis) }),
   );
+  const createSqliteDriver = createWasmSqliteDriver({
+    opfsRoot: navigator.storage,
+    sqliteWasmLoad: run(loadSqliteWasm),
+    subtleCrypto: crypto.subtle,
+  });
   const sqlite = disposer.use(
-    await run.ok(createSqlite(testName, { mode: "memory" })),
+    await run.ok(createSqlite(testName, { mode: "memory" }), {
+      ...run.deps,
+      createSqliteDriver,
+    }),
   );
   const disposables = disposer.move();
 
@@ -102,6 +133,8 @@ const createSqliteWasmWorker = () => {
     });
 
   return {
+    createWeb3Database: (name: string, encryptionKey?: Uint8Array) =>
+      send({ type: "createWeb3Database", name, encryptionKey }),
     deleteSahPoolFile: (vfsName: string, filename: string) =>
       send({ type: "deleteSahPoolFile", filename, vfsName }),
     deleteSahPoolUriFile: (
@@ -521,6 +554,175 @@ describe("createWasmSqliteDriver", () => {
         } finally {
           worker.terminate();
         }
+      },
+      timeout,
+    );
+
+    for (const encrypted of [false, true])
+      test(
+        `opens a${encrypted ? "n encrypted" : " plain"} database @evolu/web 3 created with @evolu/sqlite-wasm 2.2.4`,
+        async () => {
+          const name = `web3${encrypted ? "Encrypted" : "Plain"}${Date.now()}`;
+          const key = encrypted ? new Uint8Array(32).fill(7) : undefined;
+          const web3 = createSqliteWasmWorker();
+          const driver = createWorkerDriver();
+          try {
+            assertWorkerOk(await web3.createWeb3Database(name, key));
+
+            assertWorkerOk(await driver.create(name, key));
+            const queryResult = await driver.exec("SELECT data FROM t");
+            assertWorkerOk(queryResult);
+            expect(queryResult.data?.rows).toEqual([
+              { data: "created by @evolu/web 3" },
+            ]);
+          } finally {
+            web3.terminate();
+            driver.terminate();
+          }
+        },
+        timeout,
+      );
+
+    test(
+      "the production DbWorker opens the database @evolu/web 3 encrypted with the app owner's key",
+      async () => {
+        const appName = AppName.orThrow(`web3-${Date.now()}`);
+        // As createEvolu names the database.
+        const name = `${appName}-${createIdFromString(testAppOwner.id)}`;
+        const web3 = createSqliteWasmWorker();
+        try {
+          assertWorkerOk(
+            await web3.createWeb3Database(name, testAppOwner.encryptionKey),
+          );
+        } finally {
+          web3.terminate();
+        }
+        const workerName = `web3-${crypto.randomUUID()}`;
+        using cleanup = new DisposableStack();
+        cleanup.defer(() => {
+          // Closes the test's shared worker, which holds the build lock.
+          const output = new BroadcastChannel(workerName);
+          output.postMessage({ type: "Close" });
+          output.close();
+        });
+        using deps = createEvoluDeps({
+          console: createConsole({ level: "silent" }),
+          createBroadcastChannel,
+          createMessageChannel,
+          createDbWorker: () =>
+            createWorker<DbWorkerInit, never>(
+              new Worker(
+                new URL(
+                  "../../../../packages/web/src/local-first/Db.worker.ts",
+                  import.meta.url,
+                ),
+                { type: "module" },
+              ),
+            ),
+          lockManager: navigator.locks,
+          reloadApp: constVoid,
+          sharedWorker: createSharedWorker<
+            SharedWorkerInput,
+            SharedWorkerOutput
+          >(
+            new SharedWorker(
+              new URL("./workers/sync-shared-worker.ts", import.meta.url),
+              { name: workerName, type: "module" },
+            ),
+          ),
+        });
+        await using run = createRun(deps);
+        await using evolu = await run.ok(
+          createEvolu(
+            { todo: { id: id("Todo") } },
+            { appName, appOwner: testAppOwner, transports: [] },
+          ),
+        );
+
+        // The export is plaintext, so the row 2.2.4 encrypted is readable.
+        const exported = new TextDecoder().decode(await evolu.exportDatabase());
+
+        expect(exported).toContain("created by @evolu/web 3");
+        expect(deps.evoluError.get()).toBe(null);
+      },
+      timeout,
+    );
+
+    test(
+      "the production DbWorker opens the database once an ended worker releases its pool file",
+      async () => {
+        const appName = AppName.orThrow(`held-${Date.now()}`);
+        // As createEvolu names the database.
+        const name = `${appName}-${createIdFromString(testAppOwner.id)}`;
+        const holder = createWorkerDriver();
+        using cleanup = new DisposableStack();
+        cleanup.defer(() => {
+          holder.terminate();
+        });
+        assertWorkerOk(await holder.create(name, testAppOwner.encryptionKey));
+        await holder.exec("CREATE TABLE t (data TEXT)");
+        await holder.exec("INSERT INTO t (data) VALUES (?)", ["held"]);
+        assertWorkerOk(await holder.dispose());
+        assertWorkerOk(await holder.holdPoolFile(name));
+        const workerName = `held-${crypto.randomUUID()}`;
+        cleanup.defer(() => {
+          // Closes the test's shared worker, which holds the build lock.
+          const output = new BroadcastChannel(workerName);
+          output.postMessage({ type: "Close" });
+          output.close();
+        });
+        using deps = createEvoluDeps({
+          console: createConsole({ level: "silent" }),
+          createBroadcastChannel,
+          createMessageChannel,
+          createDbWorker: () =>
+            createWorker<DbWorkerInit, never>(
+              new Worker(
+                new URL(
+                  "../../../../packages/web/src/local-first/Db.worker.ts",
+                  import.meta.url,
+                ),
+                { type: "module" },
+              ),
+            ),
+          lockManager: navigator.locks,
+          reloadApp: constVoid,
+          sharedWorker: createSharedWorker<
+            SharedWorkerInput,
+            SharedWorkerOutput
+          >(
+            new SharedWorker(
+              new URL("./workers/sync-shared-worker.ts", import.meta.url),
+              { name: workerName, type: "module" },
+            ),
+          ),
+        });
+        await using run = createRun(deps);
+        await using evolu = await run.ok(
+          createEvolu(
+            { todo: { id: id("Todo") } },
+            { appName, appOwner: testAppOwner, transports: [] },
+          ),
+        );
+
+        const exported = evolu.exportDatabase();
+        await new Promise((resolve) => {
+          setTimeout(resolve, 300);
+        });
+        expect(deps.evoluError.get()).toBe(null);
+        assertWorkerOk(await holder.releasePoolFile());
+        const isExported = await Promise.race([
+          exported.then(() => true),
+          new Promise<false>((resolve) => {
+            setTimeout(() => {
+              resolve(false);
+            }, 5000);
+          }),
+        ]);
+
+        expect(isExported).toBe(true);
+        expect(new TextDecoder().decode(await exported)).toContain("held");
+        expect(deps.evoluError.get()).toBe(null);
       },
       timeout,
     );

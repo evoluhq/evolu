@@ -1,0 +1,88 @@
+{
+  "name": "@evolu/sqlite-wasm",
+  "version": "2.2.4",
+  "description": "SQLite compiled to WebAssembly, with Evolu's own TypeScript layer, which also encrypts databases",
+  "keywords": [
+    "evolu",
+    "sqlite",
+    "wasm",
+    "opfs"
+  ],
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evoluhq/evolu.git"
+  },
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
+  "type": "module",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./c-api": {
+      "types": "./dist/src/c-api/index.d.ts",
+      "default": "./src/c-api/index.ts"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "c-api": [
+        "./dist/src/c-api/index.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist/src/**",
+    "!dist/**/*.test.*",
+    "dist/wasm/sqlite3.wasm",
+    "src/**",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc --build tsconfig.build.json",
+    "prepack": "node scripts/check-wasm.mts && npm run build && node -e \"require('node:fs').cpSync('wasm/sqlite3.wasm', 'dist/wasm/sqlite3.wasm')\"",
+    "format": "prettier --write \"src/*.{ts,tsx,md}\"",
+    "generate": "node scripts/generate.mts"
+  },
+  "devDependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/typescript-config": "workspace:*",
+    "@types/node": "^24.10.9",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "prettier": "^3.9.6",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "wabt": "1.0.39"
+  },
+  "peerDependencies": {
+    "@evolu/common": "^8.12.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "types": "./dist/src/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "import": "./dist/src/index.js",
+        "browser": "./dist/src/index.js"
+      },
+      "./c-api": {
+        "types": "./dist/src/c-api/index.d.ts",
+        "import": "./dist/src/c-api/index.js",
+        "browser": "./dist/src/c-api/index.js"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=24.20.0"
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@awasm/noble": "0.1.4"
+  }
+}

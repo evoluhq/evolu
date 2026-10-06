@@ -4,6 +4,10 @@ This package provides browser-specific Evolu implementations, including
 OPFS-backed SQLite, Web Workers, Shared Workers, and browser platform
 dependencies.
 
+SQLite comes from `@evolu/sqlite-wasm`. Bundlers emit its WebAssembly binary
+with the app. Vite does not emit it from a dependency it prebundles, so add
+`@evolu/sqlite-wasm` to `optimizeDeps.exclude`.
+
 As runtimes increasingly implement the same Web Platform APIs, Evolu's portable
 abstractions for `WebSocket`, `MessagePort`, and Web Locks live in
 `@evolu/common`. Their concrete implementations are supplied by the runtime.

@@ -36,5 +36,12 @@ examples/react-expo/expo-env.d.ts
 examples/react-expo/ios
 examples/react-expo/android
 
+# bench/sqlite-wasm
+bench/sqlite-wasm/results/
+
+# packages/sqlite-wasm
+packages/sqlite-wasm/wasm/
+packages/sqlite-wasm/wasm-cache/
+
 # packages/svelte
 packages/svelte/.svelte-kit

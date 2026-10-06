@@ -1,11 +1,18 @@
 import { defineConfig } from "vitest/config";
+import sqliteWasmQuotaBrowser from "./test/integration/browsers/sqlite-wasm/quota/vitest.config.ts";
+import sqliteWasmBrowser from "./test/integration/browsers/sqlite-wasm/vitest.config.ts";
 import commonIntegrationBrowser from "./test/integration/browsers/vitest.config.ts";
 import webBrowser from "./test/integration/browsers/web/vitest.config.ts";
 import integrationNode from "./test/integration/nodejs/vitest.config.ts";
 
 const nodeProjects = [integrationNode];
 
-const browserProjects = [commonIntegrationBrowser, webBrowser];
+const browserProjects = [
+  commonIntegrationBrowser,
+  sqliteWasmBrowser,
+  sqliteWasmQuotaBrowser,
+  webBrowser,
+];
 
 const browserCoverageInclude = [
   "packages/common/src/{LockManager,Platform,Polyfills,StackTrace,Task,WebSocket}.ts",

@@ -6,6 +6,7 @@
     { "path": "./packages/react/tsconfig.build.json" },
     { "path": "./packages/react-native/tsconfig.build.json" },
     { "path": "./packages/react-web/tsconfig.build.json" },
+    { "path": "./packages/sqlite-wasm/tsconfig.build.json" },
     { "path": "./packages/svelte/tsconfig.build.json" },
     { "path": "./packages/vitest/tsconfig.build.json" },
     { "path": "./packages/vue/tsconfig.build.json" },

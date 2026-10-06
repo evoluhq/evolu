@@ -1,0 +1,508 @@
+{
+  "baselines": [
+    {
+      "environment": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M5",
+        "engine": "chromium",
+        "browserVersion": "153.0.8010.12",
+        "warmupRunCount": 1,
+        "measuredRunCount": 5,
+        "workloadSha256": "2238be9f7ea4da8a05e35bac9a7f14f27c88a9d95463d4b29adcfc20664dcbcb"
+      },
+      "stacks": {
+        "evolu": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "Pool"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            841.765, 20.655, 35.975, 61.315, 225.495, 13.055, 10.245, 20.57,
+            56.37, 42.3, 26.14, 20.64, 24.43, 21.625, 13.27, 9.9
+          ],
+          "totalMs": 1442.9
+        },
+        "evoluSecureDelete": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "Pool"
+            },
+            "connectionSql": "PRAGMA secure_delete=ON;",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            930.92, 20.3, 35.665, 61.295, 219.32, 13.06, 10.295, 20.03, 56.835,
+            42.37, 26.485, 20.78, 31.17, 21.99, 14.34, 20.45
+          ],
+          "totalMs": 1547.05
+        },
+        "evoluEncryptedWasm": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "EncryptedPool",
+              "cipher": "wasm"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            1033.585, 28.565, 52.72, 61.755, 234.56, 17.155, 10.34, 21.3,
+            77.475, 61.445, 55.165, 71.68, 74.11, 38.69, 31.675, 97.22
+          ],
+          "totalMs": 1969.855
+        },
+        "evoluEncryptedNoble": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "EncryptedPool",
+              "cipher": "noble"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            4565.545, 58.105, 79.19, 62.46, 222.085, 21.915, 10.425, 23.14,
+            107.565, 88.23, 94.42, 142.77, 135.545, 62.14, 56.33, 205.515
+          ],
+          "totalMs": 5933.88
+        },
+        "waSqliteAccessHandlePool": {
+          "key": {
+            "worker": "stacks/wa-sqlite.worker.mts",
+            "options": {
+              "vfs": "AccessHandlePoolVFS"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "wa-sqlite",
+              "version": "7a4b4241ba7c61ee19121aacd6c93892234ce1a1"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            923.34, 35.175, 59.6, 66.205, 267.79, 13.37, 14.725, 22.3, 85.055,
+            65.18, 43.64, 38.915, 32.97, 32.77, 22.06, 11.53
+          ],
+          "totalMs": 1731.8
+        },
+        "waSqliteCoopSync": {
+          "key": {
+            "worker": "stacks/wa-sqlite.worker.mts",
+            "options": {
+              "vfs": "OPFSCoopSyncVFS"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "wa-sqlite",
+              "version": "7a4b4241ba7c61ee19121aacd6c93892234ce1a1"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            633.43, 35.245, 60.92, 65.855, 262.145, 10.735, 14.935, 20.775,
+            84.695, 64.3, 42.94, 37.65, 32.07, 32.03, 20.4, 7.64
+          ],
+          "totalMs": 1426.26
+        },
+        "sqliteWasm224": {
+          "key": {
+            "worker": "stacks/sqlite-wasm-2.2.4.worker.mts",
+            "options": {
+              "database": "Plain"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "@evolu/sqlite-wasm",
+              "version": "2.2.4"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            929.42, 18.205, 33.67, 61.33, 211.61, 13.29, 9.935, 19.705, 55.075,
+            40.945, 26.635, 20.68, 24.53, 21.975, 12.57, 9.76
+          ],
+          "totalMs": 1507.885
+        },
+        "sqliteWasm224Sqlite3mc": {
+          "key": {
+            "worker": "stacks/sqlite-wasm-2.2.4.worker.mts",
+            "options": {
+              "database": "Encrypted"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "@evolu/sqlite-wasm",
+              "version": "2.2.4"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            1067.995, 25.975, 50.84, 60.825, 219.125, 17.085, 10.14, 20.825,
+            76.025, 60.33, 54.965, 71.21, 73.75, 38.77, 31.085, 97.315
+          ],
+          "totalMs": 1978.655
+        }
+      }
+    },
+    {
+      "environment": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M5",
+        "engine": "firefox",
+        "browserVersion": "155.0",
+        "warmupRunCount": 1,
+        "measuredRunCount": 5,
+        "workloadSha256": "2238be9f7ea4da8a05e35bac9a7f14f27c88a9d95463d4b29adcfc20664dcbcb"
+      },
+      "stacks": {
+        "evolu": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "Pool"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            529.92, 26.96, 48.24, 70.58, 297.7, 11.58, 12.48, 20.48, 81.76,
+            63.56, 45.54, 73.9, 39.62, 32.7, 21.16, 3.38
+          ],
+          "totalMs": 1382.62
+        },
+        "evoluSecureDelete": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "Pool"
+            },
+            "connectionSql": "PRAGMA secure_delete=ON;",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            525.1, 27.3, 48.7, 70.54, 295.9, 11.62, 12.4, 20.5, 82.96, 64.22,
+            45.86, 74.12, 77.88, 33.12, 31.56, 95.34
+          ],
+          "totalMs": 1518.96
+        },
+        "evoluEncryptedWasm": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "EncryptedPool",
+              "cipher": "wasm"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            796.28, 35.88, 66.38, 70.66, 294.54, 15.5, 12.44, 21.4, 104.58,
+            88.14, 76.2, 128.9, 124.26, 50.78, 50.5, 177.8
+          ],
+          "totalMs": 2112.06
+        },
+        "evoluEncryptedNoble": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "EncryptedPool",
+              "cipher": "noble"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            1557.3, 61.82, 116, 70.8, 294.26, 26.5, 12.86, 24.8, 168.88, 139.14,
+            163.2, 291, 254.92, 102.34, 110.02, 455.32
+          ],
+          "totalMs": 3841.88
+        },
+        "waSqliteAccessHandlePool": {
+          "key": {
+            "worker": "stacks/wa-sqlite.worker.mts",
+            "options": {
+              "vfs": "AccessHandlePoolVFS"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "wa-sqlite",
+              "version": "7a4b4241ba7c61ee19121aacd6c93892234ce1a1"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            670.18, 222.52, 261.34, 85.16, 290.48, 12.76, 68.68, 32.92, 324.64,
+            296.64, 87.68, 198.76, 67.72, 59.4, 128.16, 17.52
+          ],
+          "totalMs": 2825.68
+        },
+        "waSqliteCoopSync": {
+          "key": {
+            "worker": "stacks/wa-sqlite.worker.mts",
+            "options": {
+              "vfs": "OPFSCoopSyncVFS"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "wa-sqlite",
+              "version": "7a4b4241ba7c61ee19121aacd6c93892234ce1a1"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            463.96, 223.84, 263.3, 84.24, 293.96, 12.18, 68.48, 32.72, 324.6,
+            297.1, 87.84, 199.04, 67.48, 59.8, 127.88, 16.58
+          ],
+          "totalMs": 2621.2
+        },
+        "sqliteWasm224": {
+          "key": {
+            "worker": "stacks/sqlite-wasm-2.2.4.worker.mts",
+            "options": {
+              "database": "Plain"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "@evolu/sqlite-wasm",
+              "version": "2.2.4"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            596.16, 26.36, 48.38, 72.36, 276.02, 11.7, 11.84, 21.1, 80.76,
+            62.14, 45.48, 73.44, 39.68, 33.06, 20.82, 3.64
+          ],
+          "totalMs": 1423.92
+        },
+        "sqliteWasm224Sqlite3mc": {
+          "key": {
+            "worker": "stacks/sqlite-wasm-2.2.4.worker.mts",
+            "options": {
+              "database": "Encrypted"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "@evolu/sqlite-wasm",
+              "version": "2.2.4"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            822.44, 34.32, 64.86, 73.48, 275.96, 15.1, 11.88, 22.46, 100.98,
+            80.02, 73.8, 124.66, 120, 49.58, 48.22, 170.72
+          ],
+          "totalMs": 2094.54
+        }
+      }
+    },
+    {
+      "environment": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M5",
+        "engine": "webkit",
+        "browserVersion": "26.6",
+        "warmupRunCount": 1,
+        "measuredRunCount": 5,
+        "workloadSha256": "2238be9f7ea4da8a05e35bac9a7f14f27c88a9d95463d4b29adcfc20664dcbcb"
+      },
+      "stacks": {
+        "evolu": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "Pool"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            138.86, 15.4, 28.56, 54.62, 202.2, 6.82, 9.5, 14.84, 44.76, 31.7,
+            20.24, 14.3, 18.62, 16.4, 8.18, 1.04
+          ],
+          "totalMs": 626.7
+        },
+        "evoluSecureDelete": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "Pool"
+            },
+            "connectionSql": "PRAGMA secure_delete=ON;",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            132.84, 15.82, 29.34, 58.88, 204.42, 6.86, 9.54, 16.52, 45.78, 32.2,
+            20.02, 13.54, 22.32, 16.56, 8.94, 8.1
+          ],
+          "totalMs": 644.26
+        },
+        "evoluEncryptedWasm": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "EncryptedPool",
+              "cipher": "wasm"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            384.66, 24.06, 45.12, 54.28, 212, 10.32, 9.4, 15.9, 66.08, 49.86,
+            47.78, 64.1, 64.44, 32.98, 26.44, 84.76
+          ],
+          "totalMs": 1190.8
+        },
+        "evoluEncryptedNoble": {
+          "key": {
+            "worker": "stacks/evolu.worker.mts",
+            "options": {
+              "database": "EncryptedPool",
+              "cipher": "noble"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "Evolu sqlite3.wasm",
+              "version": "9747600a96fe45d74e37c5a492461f455695aad087f259da7720d8f8e4708fd0"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            734.36, 35.1, 66.16, 55.68, 208.56, 14.96, 9.5, 17.96, 93.64, 73.86,
+            86.38, 129.72, 119.46, 53.9, 48.68, 184.48
+          ],
+          "totalMs": 1934.1
+        },
+        "waSqliteAccessHandlePool": {
+          "key": {
+            "worker": "stacks/wa-sqlite.worker.mts",
+            "options": {
+              "vfs": "AccessHandlePoolVFS"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "wa-sqlite",
+              "version": "7a4b4241ba7c61ee19121aacd6c93892234ce1a1"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            216.62, 24.3, 39.56, 57.88, 211.12, 6.62, 13.28, 16.94, 56.08,
+            42.14, 22.3, 22.64, 19.38, 17.84, 14.46, 2.9
+          ],
+          "totalMs": 792.22
+        },
+        "waSqliteCoopSync": {
+          "key": {
+            "worker": "stacks/wa-sqlite.worker.mts",
+            "options": {
+              "vfs": "OPFSCoopSyncVFS"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "wa-sqlite",
+              "version": "7a4b4241ba7c61ee19121aacd6c93892234ce1a1"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            134.62, 25.44, 42.96, 58.22, 211.4, 6.56, 13.12, 16.62, 57.02,
+            43.82, 23.9, 24.96, 20.18, 17.8, 15.16, 2.8
+          ],
+          "totalMs": 722.26
+        },
+        "sqliteWasm224": {
+          "key": {
+            "worker": "stacks/sqlite-wasm-2.2.4.worker.mts",
+            "options": {
+              "database": "Plain"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "@evolu/sqlite-wasm",
+              "version": "2.2.4"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            155.44, 14.04, 27.12, 54.68, 201.32, 7.06, 8.98, 15.82, 43.66,
+            30.18, 19.84, 13.4, 18.42, 16.6, 7.4, 1.16
+          ],
+          "totalMs": 658.82
+        },
+        "sqliteWasm224Sqlite3mc": {
+          "key": {
+            "worker": "stacks/sqlite-wasm-2.2.4.worker.mts",
+            "options": {
+              "database": "Encrypted"
+            },
+            "connectionSql": "",
+            "build": {
+              "name": "@evolu/sqlite-wasm",
+              "version": "2.2.4"
+            },
+            "revision": 1
+          },
+          "workloadsMs": [
+            363.9, 21.54, 41.4, 58.42, 198.7, 10, 8.94, 16.8, 61.52, 46.32,
+            44.74, 56.6, 59.22, 30.56, 23.58, 75.32
+          ],
+          "totalMs": 1115.44
+        }
+      }
+    }
+  ]
+}

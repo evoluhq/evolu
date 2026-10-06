@@ -20,6 +20,7 @@ const nextConfig = {
     "@evolu/common",
     "@evolu/react",
     "@evolu/react-web",
+    "@evolu/sqlite-wasm",
     "@evolu/web",
   ],
   experimental: {

@@ -1,8 +1,9 @@
 import { deepStrictEqual, match, ok } from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 // oxlint-disable-next-line typescript/strict-void-return -- Node's callback-based execFile returns a ChildProcess that promisify intentionally ignores.
@@ -15,6 +16,7 @@ const packageDirectories = [
   "packages/react",
   "packages/react-native",
   "packages/react-web",
+  "packages/sqlite-wasm",
   "packages/svelte",
   "packages/typescript-config",
   "packages/vitest",
@@ -97,8 +99,16 @@ const assertWorkspaceTargets = (
   }
 };
 
+// Packed with its prepack, which checks that the wasm is the pinned one, builds
+// the package and copies the wasm into dist.
+const sqliteWasmDirectory = "packages/sqlite-wasm";
+
 const repositoryDirectory = new URL("../", import.meta.url);
-const temporaryDirectory = await mkdtemp(join(tmpdir(), "evolu-packages-"));
+// Node.js imports a module from its real path, which macOS's temporary
+// directory is not.
+const temporaryDirectory = await realpath(
+  await mkdtemp(join(tmpdir(), "evolu-packages-")),
+);
 
 try {
   await Promise.all(
@@ -167,12 +177,23 @@ try {
         temporaryDirectory,
         `${packageJson.name.replace("@", "").replace("/", "-")}.tgz`,
       );
+      // A copy left by an earlier pack must not satisfy the check.
+      if (packageDirectory === sqliteWasmDirectory)
+        await rm(
+          new URL(`${sqliteWasmDirectory}/dist/wasm/`, repositoryDirectory),
+          {
+            recursive: true,
+            force: true,
+          },
+        );
       await execFileAsync(
         "pnpm",
         [
           "--dir",
           packageDirectory,
-          "--config.ignore-scripts=true",
+          ...(packageDirectory === sqliteWasmDirectory
+            ? []
+            : ["--config.ignore-scripts=true"]),
           "pack",
           "--out",
           tarball,
@@ -213,6 +234,36 @@ try {
         ok(
           packedFiles.has("package/base.json"),
           `${packageJson.name} packed files must include its internal base configuration`,
+        );
+      }
+      if (packageDirectory === sqliteWasmDirectory) {
+        const packedWasm = "package/dist/wasm/sqlite3.wasm";
+        ok(
+          packedFiles.has(packedWasm),
+          `${packageJson.name} packed files must include ${packedWasm}`,
+        );
+        const extracted = join(temporaryDirectory, "sqlite-wasm");
+        await mkdir(extracted);
+        await execFileAsync("tar", ["-xf", tarball, "-C", extracted]);
+        ok(
+          (await readFile(join(extracted, packedWasm))).equals(
+            await readFile(
+              new URL(
+                `${sqliteWasmDirectory}/wasm/sqlite3.wasm`,
+                repositoryDirectory,
+              ),
+            ),
+          ),
+          `${packageJson.name} packed ${packedWasm} must be the built wasm`,
+        );
+        // It has no runtime imports, so it loads from the extracted package.
+        const { sqliteWasmUrl } = (await import(
+          pathToFileURL(join(extracted, "package/dist/src/WasmUrl.js")).href
+        )) as { readonly sqliteWasmUrl: URL };
+        deepStrictEqual(
+          fileURLToPath(sqliteWasmUrl),
+          join(extracted, packedWasm),
+          `${packageJson.name} packed sqliteWasmUrl must point to ${packedWasm}`,
         );
       }
     }),

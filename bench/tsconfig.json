@@ -1,7 +1,7 @@
 {
   "extends": "../scripts/tsconfig.json",
   "compilerOptions": {
-    "lib": ["dom", "esnext"],
+    "lib": ["dom", "esnext", "webworker"],
     "noEmit": true
   },
   "include": ["**/*.mts"]

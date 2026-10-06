@@ -69,6 +69,16 @@ To render a documented code example as an image for a post, run
 - After changing storage algorithms, SQL, indexes, or query plans, select the
   relevant storage tests. `pnpm bench:storage` does not support workload filters;
   run it only when explicitly requested by the user.
+- After changing `packages/sqlite-wasm/scripts/generate.mts`, `bindings.mts`, or
+  `upstream/`, regenerate with `node packages/sqlite-wasm/scripts/generate.mts`
+  and run `pnpm check:sqlite-wasm`. After changing `packages/sqlite-wasm/src` or
+  `scripts`, run `pnpm test:sqlite-wasm`, which fails below 100% line, branch,
+  or function coverage. Integration, bundle, e2e and documentation-example tests
+  that run SQLite Wasm need `packages/sqlite-wasm/wasm/sqlite3.wasm`, which is
+  not committed; CI builds it, and the tests fail rather than skip when it is
+  missing or is not the pinned wasm. Get it with `pnpm sqlite-wasm:download`, or
+  build it as [its README](packages/sqlite-wasm/README.md#the-webassembly)
+  describes when no release holds the pinned wasm yet.
 - After changing browser APIs, platform-sensitive behavior, polyfills, workers,
   or browser test configuration, run the affected browser tests and projects.
   `pnpm test:integration:browsers` runs all configured integration projects;
@@ -224,6 +234,12 @@ To render a documented code example as an image for a post, run
 - Local-first APIs, including their platform and framework integrations, are not
   stable yet. Incompatible changes to them do not require a major changeset; use
   patch for fixes and minor for additions, and document migration impact.
+- `@evolu/sqlite-wasm` does not follow semver. Like SQLite's npm package, it is
+  versioned `<SQLite version>-build<n>`, any build may change its API, and
+  `scripts/version-sqlite-wasm.mts` replaces the version its changeset bump
+  computes, so the bump type only selects its release-notes heading. Semver
+  sorts `build10` below `build9`, so the script refuses a tenth build of one
+  SQLite version; a tenth build needs a new SQLite pin.
 - Changesets are release notes. Start with a short, standalone, past-tense title
   without a trailing period. Explain observable behavior or migration impact;
   keep unrelated changes separate.

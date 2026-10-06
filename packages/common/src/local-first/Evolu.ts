@@ -64,7 +64,11 @@ import type {
   CreateBroadcastChannelDep,
   CreateMessageChannelDep,
 } from "../Worker.ts";
-import type { CreateDbWorkerDep, UnsupportedDbVersionError } from "./Db.ts";
+import type {
+  CreateDbWorkerDep,
+  DatabaseHeldError,
+  UnsupportedDbVersionError,
+} from "./Db.ts";
 import type {
   AppOwner,
   Owner,
@@ -947,6 +951,9 @@ export type DevicePersistence = "Persisted" | "NotPersisted" | "Unknown";
  *
  * - {@link UnsupportedDbVersionError} blocks the app: the local data needs a newer
  *   version of it. Ask the user to update the app or close all its tabs.
+ * - {@link DatabaseHeldError} blocks the app: another context keeps holding the
+ *   local data, as a browser can until it restarts. Ask the user to close the
+ *   app's other tabs or to restart the browser, then to reload the app.
  * - {@link OtherBuildRunningError} blocks the app while it lasts: another version
  *   of the app holds the local data. Ask the user to close the app's other
  *   tabs. It clears when the wait ends.
@@ -998,7 +1005,10 @@ export type DevicePersistence = "Persisted" | "NotPersisted" | "Unknown";
  * @group Core
  */
 export type EvoluError =
-  OtherBuildRunningError | UnknownError | UnsupportedDbVersionError;
+  | DatabaseHeldError
+  | OtherBuildRunningError
+  | UnknownError
+  | UnsupportedDbVersionError;
 
 /**
  * The largest {@link Mutation}, in bytes.
@@ -1071,9 +1081,10 @@ export interface EvoluErrorDep {
    * refusal to each tab once, including tabs that connect later, and starts no
    * replacement database workers. After all instances release that tenant and
    * it is disposed when idle, creating another instance retries startup and may
-   * send the refusal again. On the web, a refused tab first reloads once
-   * instead; see {@link UnsupportedDbVersionError}. Show that blocking message
-   * outside any query-loading boundary, so pending queries do not hide it.
+   * send the refusal again. On the web, a tab refused with
+   * {@link UnsupportedDbVersionError} first reloads once instead. Show that
+   * blocking message outside any query-loading boundary, so pending queries do
+   * not hide it.
    *
    * An {@link UnknownError} leaves Evolu in an unknown state, so the app can
    * only ask the user to close the tab. A failed shared worker closes itself,
@@ -1098,6 +1109,8 @@ export interface EvoluErrorDep {
    *   switch (error.type) {
    *     case "UnsupportedDbVersionError":
    *       return "Your data requires a newer version of this app. Please update it.";
+   *     case "DatabaseHeldError":
+   *       return "Your data is still in use elsewhere. Close this app's other tabs or restart the browser, then reload this page.";
    *     case "OtherBuildRunningError":
    *       return "This app is open in another tab with a different version. Close that tab to continue.";
    *     case "UnknownError":

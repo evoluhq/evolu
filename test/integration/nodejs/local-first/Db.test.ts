@@ -31,6 +31,7 @@ import {
 import {
   startDbWorker,
   type DbWorkerInit,
+  type WaitForDatabaseRelease,
 } from "../../../../packages/common/src/local-first/Db.ts";
 import {
   createAppOwner,
@@ -332,6 +333,8 @@ const setupDbWorker = async ({
   consoleLevel = console.getLevel(),
   onThrown,
   expectRefused = false,
+  lockManager = testCreateLockManager(),
+  waitForDatabaseRelease,
 }: {
   dbSetup?: DbSetup;
   memoryOnly?: boolean;
@@ -343,13 +346,14 @@ const setupDbWorker = async ({
   onThrown?: (error: unknown) => void;
   /** The worker is expected to post LeaderRefused instead of LeaderAcquired. */
   expectRefused?: boolean;
+  lockManager?: LockManagerDep["lockManager"];
+  waitForDatabaseRelease?: WaitForDatabaseRelease;
 } = {}): Promise<DbWorkerSetup> => {
   await using disposer = new AsyncDisposableStack();
 
   const dbSetup =
     providedDbSetup ??
     disposer.use(await setupDb(time == null ? undefined : { time }));
-  const lockManager = testCreateLockManager();
   const workerName = dbSetup.name;
   // As the SharedWorker that requested the DbWorker, which leads for its ID
   // while it runs.
@@ -390,6 +394,7 @@ const setupDbWorker = async ({
       lockManager,
       createSqliteDriver: dbSetup.createSqliteDriver,
       time: dbSetup.time,
+      ...(waitForDatabaseRelease && { waitForDatabaseRelease }),
     }),
   );
   const worker = disposer.use(
@@ -6837,6 +6842,77 @@ describe("database version", () => {
     assertEqual(getSqliteSnapshot(refused), before);
     assertEqual(refused.consoleEntryOrErrors, []);
 
+    // Wait for the refused worker to release its leader lock.
+    await using run = testCreateRun({ lockManager: refused.lockManager });
+    await using _lock = await run.ok(acquireLeaderLock(refused.workerName));
+  });
+
+  it("waits for a persistent database's release while holding its leader lock, then opens it", async () => {
+    await using dbSetup = await setupDb();
+    const lockManager = testCreateLockManager();
+    const events: Array<string> = [];
+
+    await using _setup = await setupDbWorker({
+      dbSetup: {
+        ...dbSetup,
+        createSqliteDriver: (name, options) => {
+          events.push(`open ${name}`);
+          return dbSetup.createSqliteDriver(name, options);
+        },
+      },
+      lockManager,
+      memoryOnly: false,
+      waitForDatabaseRelease: (name) => async () => {
+        const { held = [] } = await lockManager.query();
+        const lockNames = held.map((lock) => lock.name);
+        events.push(
+          `wait ${name}, leader lock held: ${lockNames.includes(`evolu-leaderlock-${name}`)}`,
+        );
+        return ok();
+      },
+    });
+
+    assertEqual(events, [
+      `wait ${dbSetup.name}, leader lock held: true`,
+      `open ${dbSetup.name}`,
+    ]);
+  });
+
+  it("does not wait for the release of a memory-only database", async () => {
+    const waitedNames: Array<Name> = [];
+
+    await using _setup = await setupDbWorker({
+      memoryOnly: true,
+      waitForDatabaseRelease: (name) => () => {
+        waitedNames.push(name);
+        return err({ type: "DatabaseHeldError", name });
+      },
+    });
+
+    assertEqual(waitedNames, []);
+  });
+
+  it("refuses a persistent database another context holds without opening it and releases the leader lock", async () => {
+    await using dbSetup = await setupDb();
+    const error = { type: "DatabaseHeldError", name: dbSetup.name } as const;
+    const openedNames: Array<Name> = [];
+
+    await using refused = await setupDbWorker({
+      dbSetup: {
+        ...dbSetup,
+        createSqliteDriver: (name, options) => {
+          openedNames.push(name);
+          return dbSetup.createSqliteDriver(name, options);
+        },
+      },
+      memoryOnly: false,
+      waitForDatabaseRelease: () => () => err(error),
+      expectRefused: true,
+    });
+
+    assertEqual(refused.initOutputs, [{ type: "LeaderRefused", error }]);
+    assertEqual(openedNames, []);
+    assertEqual(refused.consoleEntryOrErrors, []);
     // Wait for the refused worker to release its leader lock.
     await using run = testCreateRun({ lockManager: refused.lockManager });
     await using _lock = await run.ok(acquireLeaderLock(refused.workerName));

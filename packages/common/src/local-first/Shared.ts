@@ -352,7 +352,11 @@ import type {
   SharedWorkerSelf,
   WorkerDeps,
 } from "../Worker.ts";
-import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
+import type {
+  DatabaseHeldError,
+  DbWorkerInit,
+  UnsupportedDbVersionError,
+} from "./Db.ts";
 import type {
   DevicePersistence,
   Evolu,
@@ -428,7 +432,10 @@ export type SharedWorkerOutput =
        */
       readonly type: "Error";
       readonly error:
-        OtherBuildRunningError | UnknownError | UnsupportedDbVersionError;
+        | DatabaseHeldError
+        | OtherBuildRunningError
+        | UnknownError
+        | UnsupportedDbVersionError;
     }
   | {
       /**
@@ -642,7 +649,7 @@ export interface ActiveSyncTenant extends Typed<"Active"> {
  */
 export interface RefusedSyncTenant extends Typed<"Refused"> {
   readonly name: Name;
-  readonly error: UnsupportedDbVersionError;
+  readonly error: DatabaseHeldError | UnsupportedDbVersionError;
 }
 
 /**
@@ -1338,7 +1345,7 @@ export type DbWorkerOutput =
   | {
       /** Startup was refused; the worker is releasing its resources. */
       readonly type: "LeaderRefused";
-      readonly error: UnsupportedDbVersionError;
+      readonly error: DatabaseHeldError | UnsupportedDbVersionError;
     }
   | {
       readonly type: "OnQueuedResponse";
@@ -2336,7 +2343,7 @@ const createEvoluTenant =
     }
 
     interface RefusedDbWorker extends Typed<"Refused"> {
-      readonly error: UnsupportedDbVersionError;
+      readonly error: DatabaseHeldError | UnsupportedDbVersionError;
     }
 
     let dbWorker: DbWorkerState = { type: "Starting" };
@@ -2439,6 +2446,11 @@ const createEvoluTenant =
             // tell tabs that connect later without starting another worker.
             if (dbWorker.type === "Leading") {
               assertNotSame(dbWorker.port, currentDbWorkerPort);
+              // The leader may still hold the database lock: browsers deliver
+              // a refusal before a worker requested later can lead, but the
+              // tenant does not rely on that order. Tell it to dispose, so it
+              // releases the lock.
+              dbWorker.port.postMessage({ type: "Dispose" });
               dbWorker.port[Symbol.dispose]();
             }
             currentDbWorkerPort[Symbol.dispose]();
@@ -2580,7 +2592,7 @@ const createEvoluTenant =
 
     const reportRefusal = (
       tabPort: TabPort,
-      error: UnsupportedDbVersionError,
+      error: DatabaseHeldError | UnsupportedDbVersionError,
     ): void => {
       if (refusedTabPorts.has(tabPort)) return;
       refusedTabPorts.add(tabPort);

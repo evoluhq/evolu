@@ -1,5 +1,5 @@
-import { createUnknownError } from "@evolu/common";
-import sqlite3InitModule from "@evolu/sqlite-wasm";
+import { bytesToHex, createUnknownError } from "@evolu/common";
+import sqlite3InitModule from "@evolu/sqlite-wasm-2.2.4";
 
 const workerScope = globalThis as never as {
   onmessage: ((e: MessageEvent) => void) | null;
@@ -10,6 +10,11 @@ const workerScope = globalThis as never as {
 workerScope.onmessage = (e: MessageEvent) => {
   void (async () => {
     const cmd = e.data as
+      | {
+          readonly type: "createWeb3Database";
+          readonly name: string;
+          readonly encryptionKey?: Uint8Array;
+        }
       | {
           readonly type: "deleteSahPoolFile";
           readonly filename: string;
@@ -24,6 +29,42 @@ workerScope.onmessage = (e: MessageEvent) => {
 
     try {
       const sqlite3 = await sqlite3InitModule();
+
+      // Creates the database as the driver of @evolu/web 3 opened it.
+      if (cmd.type === "createWeb3Database") {
+        const { encryptionKey, name } = cmd;
+        if (encryptionKey) {
+          const { sqlite3mc_vfs_create } = sqlite3.capi as unknown as {
+            readonly sqlite3mc_vfs_create: (
+              vfsName: string,
+              makeDefault: number,
+            ) => number;
+          };
+          sqlite3mc_vfs_create("opfs", 1);
+        }
+        const pool = await sqlite3.installOpfsSAHPoolVfs(
+          encryptionKey ? { directory: `.${name}` } : { name },
+        );
+        const db = new pool.OpfsSAHPoolDb(
+          encryptionKey
+            ? "file:evolu1.db?vfs=multipleciphers-opfs-sahpool"
+            : "file:evolu1.db",
+        );
+        if (encryptionKey)
+          db.exec(`
+            PRAGMA cipher = 'sqlcipher';
+            PRAGMA key = "x'${bytesToHex(encryptionKey)}'";
+          `);
+        db.exec(`
+          CREATE TABLE t (data TEXT);
+          INSERT INTO t (data) VALUES ('created by @evolu/web 3');
+        `);
+        db.close();
+        pool.pauseVfs();
+        workerScope.postMessage({ ok: true });
+        return;
+      }
+
       const pool = await sqlite3.installOpfsSAHPoolVfs({
         name: cmd.vfsName,
       });

@@ -10,6 +10,8 @@ Benchmarks measure performance characteristics that ordinary correctness tests d
   rounds, bytes, and SQL statements and rows.
 - [Protocol runtime](./protocol-runtime/README.md) times sync protocol code
   without SQLite, and reports the same syncs with SQLite relay storage.
+- [SQLite Wasm](./sqlite-wasm/README.md) measures SQLite stacks on OPFS in
+  Chromium, Firefox, and WebKit with wa-sqlite's benchmark workloads.
 - [Storage](./storage/README.md) measures SQLite timestamp Skiplist operations.
 - [Type](./type/README.md) measures deterministic TypeScript compiler work for Evolu Type APIs.
 - [Type runtime](./type-runtime/README.md) measures Evolu Type validation and

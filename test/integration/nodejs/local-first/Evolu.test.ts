@@ -17,7 +17,10 @@ import {
   disposable,
   exhaustiveCheck,
 } from "../../../../packages/common/src/Function.ts";
-import type { DbWorkerInit } from "../../../../packages/common/src/local-first/Db.ts";
+import type {
+  DbWorkerInit,
+  WaitForDatabaseRelease,
+} from "../../../../packages/common/src/local-first/Db.ts";
 import { startDbWorker } from "../../../../packages/common/src/local-first/Db.ts";
 import {
   AppName,
@@ -56,7 +59,7 @@ import {
 } from "../../../../packages/common/src/LockManager.ts";
 import { isPlainObject } from "../../../../packages/common/src/Object.ts";
 import { installPolyfills } from "../../../../packages/common/src/Polyfills.ts";
-import { ok } from "../../../../packages/common/src/Result.ts";
+import { err, ok } from "../../../../packages/common/src/Result.ts";
 import {
   createSqlite,
   getSqliteSnapshot,
@@ -143,10 +146,12 @@ describe("Evolu integration", () => {
     createSqliteDriver,
     createWebSocket = testCreateWebSocket({ throwOnCreate: true }),
     seed,
+    waitForDatabaseRelease,
   }: {
     time?: TestTime;
     createSqliteDriver?: CreateSqliteDriver;
     createWebSocket?: CreateWebSocket;
+    waitForDatabaseRelease?: WaitForDatabaseRelease;
     /**
      * Seeds the DbWorker's randomness, which creates the database's node ID,
      * and the tab's, which names the SharedWorker's sync state channel. Devices
@@ -206,6 +211,7 @@ describe("Evolu integration", () => {
         createMessagePort,
         lockManager,
         createSqliteDriver: createSqliteDriver ?? createSharedSqliteDriver,
+        ...(waitForDatabaseRelease && { waitForDatabaseRelease }),
       }),
     );
 
@@ -1946,6 +1952,53 @@ describe("Evolu integration", () => {
     assertEqual(await later, []);
     assertEqual(await exportResult, { type: "EvoluDisposedError" });
     assertFalse(completed);
+  });
+
+  it("reports a database another context holds once to each tab and refuses its tenant", async () => {
+    await using setup = await setupRunWithEvoluDeps({
+      waitForDatabaseRelease: (name) => () =>
+        err({ type: "DatabaseHeldError", name }),
+    });
+    const { createIntegrationEvolu, run } = setup;
+
+    const firstReported = setup.waitForTabError();
+    const first = await run.ok(createIntegrationEvolu);
+    const firstLoad = first.loadQuery(todoByCreatedAtQuery);
+    await firstReported;
+    const error = { type: "DatabaseHeldError", name: first.name };
+    assertEqual(setup.tabErrors, [error]);
+
+    // The existing tab hosts the leader; the later tab only joins its tenant.
+    await using _leaderLock = await run.ok(
+      acquireLeaderLock(`tab-${setup.workerId}`),
+    );
+    using lateDeps = createEvoluDeps({
+      ...run.deps,
+      sharedWorker: setup.connectLaterTab(),
+    });
+    const reported = Promise.withResolvers<void>();
+    lateDeps.evoluError.subscribe(reported.resolve);
+    const tenantRefused = Promise.withResolvers<void>();
+    lateDeps.syncState.subscribe(() => {
+      if (lateDeps.syncState.get()?.tenants[0]?.type === "Refused")
+        tenantRefused.resolve();
+    });
+    await using lateRun = run.create(lateDeps);
+    const second = await lateRun.ok(createIntegrationEvolu);
+    const secondLoad = second.loadQuery(todoByCreatedAtQuery);
+    await reported.promise;
+    assertEqual(lateDeps.evoluError.get(), error);
+    await tenantRefused.promise;
+    assertEqual(lateDeps.syncState.get()?.tenants, [
+      { type: "Refused", name: first.name, error },
+    ]);
+    // The first tab was not told again.
+    assertEqual(setup.tabErrors, [error]);
+
+    await second[Symbol.asyncDispose]();
+    await first[Symbol.asyncDispose]();
+    assertEqual(await secondLoad, []);
+    assertEqual(await firstLoad, []);
   });
 
   it("reports refusal once to the error store of a later tab", async () => {

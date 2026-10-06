@@ -65,6 +65,10 @@ export const testEvoluJSDocExamples = async (
         repositoryDirectory,
         "test/jsdoc/test-jsdoc-react-native.mts",
       ),
+      "@evolu/sqlite-wasm": join(
+        repositoryDirectory,
+        "packages/sqlite-wasm/src/index.ts",
+      ),
       "@evolu/web": join(repositoryDirectory, "test/jsdoc/test-jsdoc-web.mts"),
     },
     cwd: repositoryDirectory,

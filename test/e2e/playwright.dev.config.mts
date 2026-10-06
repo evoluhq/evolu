@@ -10,7 +10,8 @@ export default defineConfig<E2eOptions>({
   },
   webServer: {
     ...config.webServer,
-    command: "pnpm --filter web exec next dev --hostname 127.0.0.1 --port 3100",
+    command:
+      "node packages/sqlite-wasm/scripts/check-wasm.mts && pnpm --filter web exec next dev --hostname 127.0.0.1 --port 3100",
     timeout: 120_000,
   },
 });

@@ -22,10 +22,7 @@ export default defineConfig({
       allow: [
         path.resolve(__dirname),
         path.resolve(__dirname, "../../packages/web/dist"),
-        path.resolve(
-          __dirname,
-          "../../node_modules/@evolu/sqlite-wasm/sqlite-wasm/jswasm",
-        ),
+        path.resolve(__dirname, "../../packages/sqlite-wasm/wasm"),
       ],
     },
   },

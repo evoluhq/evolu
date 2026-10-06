@@ -38,6 +38,29 @@ Install dependencies:
 pnpm install
 ```
 
+The playgrounds in `apps/web`, the examples, and the integration, bundle and
+E2E tests load `packages/sqlite-wasm/wasm/sqlite3.wasm`. It is never committed,
+so download it:
+
+```sh
+pnpm sqlite-wasm:download
+```
+
+It takes the wasm from the published `@evolu/sqlite-wasm` and writes it only if
+its sha256 is the pinned one. The playgrounds and tests fail when the file is
+missing or is not the pinned wasm. The examples don't check it, because they are
+templates to copy.
+
+When no release holds the pinned wasm yet, the download says so. Then build it
+with an [emsdk](https://emscripten.org/docs/getting_started/downloads.html) that
+has Emscripten 6.0.3 installed and activated, as the
+[`@evolu/sqlite-wasm` README](packages/sqlite-wasm/README.md#the-webassembly)
+describes:
+
+```sh
+EMSDK=/path/to/emsdk node packages/sqlite-wasm/scripts/build-wasm.mts
+```
+
 Install Playwright browsers for local test and verify runs:
 
 ```sh
@@ -97,6 +120,8 @@ Testing
 - `pnpm test:bundle` - Run production bundle and tree-shaking tests
 - `pnpm test:bundle:update` - Rebuild common and regenerate bundle-size snapshots
 - `pnpm test:jsdoc` - Compile and run documentation examples
+- `pnpm test:sqlite-wasm` - Run the `@evolu/sqlite-wasm` unit and Node.js integration tests, failing below 100% line, branch or function coverage
+- `pnpm check:sqlite-wasm` - Check that the generated `@evolu/sqlite-wasm` C API and constants match their pins and metadata
 
 Unit, integration, and bundle test suites randomize execution order and print a
 seed that reproduces the same ordering. See

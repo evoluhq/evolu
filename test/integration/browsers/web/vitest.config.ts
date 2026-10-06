@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { playwright } from "@vitest/browser-playwright";
 import { createBrowserInstances } from "@evolu/vitest/BrowserConfig";
 import { defineProject } from "vitest/config";
+import { checkSqliteWasm } from "../_checkSqliteWasm.ts";
 
 export default defineProject(({ mode }) => ({
   root: resolve(import.meta.dirname, "../../../.."),
@@ -13,9 +14,10 @@ export default defineProject(({ mode }) => ({
   oxc: {
     target: "es2025",
   },
+  plugins: [checkSqliteWasm],
   optimizeDeps: {
     // Preserve import.meta.url so the WASM binary can be located at runtime.
-    exclude: ["@evolu/sqlite-wasm"],
+    exclude: ["@evolu/sqlite-wasm", "@evolu/sqlite-wasm-2.2.4"],
   },
   test: {
     exclude: ["**/node_modules/**", "**/dist/**"],

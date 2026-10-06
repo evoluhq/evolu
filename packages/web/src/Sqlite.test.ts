@@ -3,531 +3,557 @@ import {
   assert,
   assertEqual,
   assertEqualBytes,
+  assertInstanceOf,
   assertSame,
-  assertTrue,
   assertType,
   EncryptionKey,
+  err,
   Name,
+  ok,
   sql,
   testCreateRun,
+  type Result,
 } from "@evolu/common";
 import { describe, it, mock } from "node:test";
 
-// OPFS with an optional pool directory. Each pool file lists the error names
-// its next openings reject with, in order.
-const opfsMock = (() => {
-  const state = {
-    closedAccessHandleCount: 0,
-    directoryNames: [] as Array<string>,
-    getDirectoryCount: 0,
-    hasOpaqueDirectory: true,
-    openedAccessHandleCount: 0,
-    poolFiles: null as Array<Array<string>> | null,
-  };
+/** The options of the databases the fake opens. */
+interface FakeDatabaseOptions {
+  readonly type: string;
+  readonly path?: string;
+  readonly vfs?: unknown;
+  readonly key?: unknown;
+}
 
-  const opaqueDirectory = {
-    // for await also iterates a sync iterable.
-    values: function* () {
-      yield { kind: "directory" };
-      for (const errorNames of state.poolFiles ?? [])
-        yield {
-          kind: "file",
-          createSyncAccessHandle: () => {
-            const errorName = errorNames.shift();
-            if (errorName !== undefined)
-              return Promise.reject(new DOMException("Held", errorName));
-            state.openedAccessHandleCount += 1;
-            return Promise.resolve({
-              close: () => {
-                state.closedAccessHandleCount += 1;
-              },
-            });
-          },
-        };
-    },
-  };
-
-  const poolDirectory = {
-    getDirectoryHandle: (name: string) => {
-      state.directoryNames.push(name);
-      return state.hasOpaqueDirectory
-        ? Promise.resolve(opaqueDirectory)
-        : Promise.reject(new DOMException("Missing", "NotFoundError"));
-    },
-  };
-
-  const root = {
-    getDirectoryHandle: (name: string) => {
-      state.directoryNames.push(name);
-      return state.poolFiles
-        ? Promise.resolve(poolDirectory)
-        : Promise.reject(new DOMException("Missing", "NotFoundError"));
-    },
-  };
-
-  Object.defineProperty(navigator, "storage", {
-    configurable: true,
-    value: {
-      getDirectory: () => {
-        state.getDirectoryCount += 1;
-        return Promise.resolve(root);
-      },
-    },
-  });
-
-  return {
-    reset: (
-      poolFiles: Array<Array<string>> | null = null,
-      { hasOpaqueDirectory = true } = {},
-    ) => {
-      state.closedAccessHandleCount = 0;
-      state.directoryNames.length = 0;
-      state.getDirectoryCount = 0;
-      state.hasOpaqueDirectory = hasOpaqueDirectory;
-      state.openedAccessHandleCount = 0;
-      state.poolFiles = poolFiles;
-    },
-    state,
-  };
-})();
-
-// Lets resolved mocks settle before test time advances.
-const flushMicrotasks = (): Promise<void> =>
-  new Promise((resolve) => {
-    setImmediate(resolve);
-  });
-
-const sqliteMock = (() => {
-  class PreparedStatement {
-    finalized = false;
-    resetCount = 0;
-    stepCount = 0;
-    readonly bound: Array<ReadonlyArray<unknown>> = [];
-
-    bind(parameters: ReadonlyArray<unknown>): void {
-      this.bound.push(parameters);
-    }
-
-    step(): boolean {
-      this.stepCount += 1;
-      return this.stepCount === 1;
-    }
-
-    get(): Record<string, unknown> {
-      return { data: "prepared" };
-    }
-
-    finalize(): void {
-      this.finalized = true;
-    }
-  }
-
-  class Database {
-    readonly execSql: Array<string> = [];
-    readonly filename: string;
-
-    constructor(filename: string) {
-      this.filename = filename;
-      state.createdDatabases.push(this);
-    }
-
-    prepare(): PreparedStatement {
-      const statement = new PreparedStatement();
-      state.preparedStatements.push(statement);
-      return statement;
-    }
-
-    exec(sql: string): ReadonlyArray<Record<string, unknown>> {
-      this.execSql.push(sql);
-      return [{ data: "row" }];
-    }
-
-    changes(): number {
-      return 1;
-    }
-
-    close(): void {
-      state.closedDatabases.push(this.filename);
-      state.events.push(`close:${this.filename}`);
-    }
-  }
-
-  const state = {
-    closedDatabases: [] as Array<string>,
-    createdDatabases: [] as Array<Database>,
-    deletedFilenames: [] as Array<string>,
-    events: [] as Array<string>,
-    pausedVfsNames: [] as Array<string>,
-    preparedStatements: [] as Array<PreparedStatement>,
-    unpausedVfsNames: [] as Array<string>,
-  };
-
-  let poolPaused = false;
+/**
+ * A fake of `@evolu/sqlite-wasm` that records what the driver does with it, in
+ * order, in `events`. Each test resets it and sets the results it needs.
+ */
+const fake = (() => {
+  const sqliteWasm = { label: "sqliteWasm" };
+  // The values SqliteVfsPath validated, which the driver does once, on import.
+  const sqliteVfsPaths: Array<string> = [];
   const pool = {
-    isPaused: mock.fn(() => poolPaused),
-    OpfsSAHPoolDb: Database,
-    pauseVfs: mock.fn(() => {
-      poolPaused = true;
-      state.pausedVfsNames.push(pool.vfsName);
-      state.events.push(`pause:${pool.vfsName}`);
-      return pool;
-    }),
-    unpauseVfs: mock.fn(() => {
-      poolPaused = false;
-      state.unpausedVfsNames.push(pool.vfsName);
-      state.events.push(`unpause:${pool.vfsName}`);
-      return Promise.resolve(pool);
-    }),
-    unlink: mock.fn((filename: string) => {
-      state.deletedFilenames.push(filename);
-      state.events.push(`unlink:${filename}`);
-      return true;
-    }),
-    vfsName: "mock-sahpool",
+    unlink: (path: string) => {
+      state.events.push(`unlink ${path}`);
+      return state.unlinkResult;
+    },
+    [Symbol.dispose]: () => {
+      state.events.push("dispose pool");
+    },
   };
 
-  const sqlite3 = {
-    capi: {
-      sqlite3_js_db_export: mock.fn(() => new Uint8Array([1, 2, 3])),
-      sqlite3_reset: mock.fn((statement: PreparedStatement) => {
-        statement.resetCount += 1;
-        return 0;
-      }),
-      sqlite3mc_vfs_create: mock.fn(),
+  const createDatabase = (options: { readonly type: string }) => ({
+    prepare: (query: string) => {
+      state.events.push(`prepare ${query}`);
+      return ok({
+        run: (parameters: ReadonlyArray<unknown>) => {
+          state.events.push(`run statement ${JSON.stringify(parameters)}`);
+          return state.statementRunResult;
+        },
+        [Symbol.dispose]: () => {
+          state.events.push(`dispose statement ${query}`);
+        },
+      });
     },
-    installOpfsSAHPoolVfs: mock.fn(() => Promise.resolve(pool)),
-    oo1: { DB: Database },
-  };
+    run: (query: string, parameters: ReadonlyArray<unknown>) => {
+      state.events.push(`run ${query} ${JSON.stringify(parameters)}`);
+      return state.runResult;
+    },
+    export: () => state.exportResult,
+    [Symbol.dispose]: () => {
+      state.events.push(`close ${options.type}`);
+    },
+  });
+
+  const initialState = () => ({
+    createSqliteWasmResult: ok(sqliteWasm) as Result<unknown, unknown>,
+    createSqliteWasmSources: [] as Array<unknown>,
+    databaseOptions: [] as Array<FakeDatabaseOptions>,
+    databaseResult: null as Result<never, unknown> | null,
+    events: [] as Array<string>,
+    exportResult: ok(new Uint8Array([1, 2, 3])) as Result<Uint8Array, unknown>,
+    poolDeps: [] as Array<Record<string, unknown>>,
+    poolOptions: [] as Array<unknown>,
+    poolResults: [] as Array<Result<never, unknown>>,
+    runResult: ok({ rows: [{ value: "run" }], changes: 1 }) as Result<
+      unknown,
+      unknown
+    >,
+    statementRunResult: ok({
+      rows: [{ value: "statement" }],
+      changes: 2,
+    }) as Result<unknown, unknown>,
+    unlinkResult: ok(true) as Result<boolean, unknown>,
+  });
+  const state = initialState();
 
   return {
-    consoleWarn: mock.fn<typeof console.warn>(),
-    pool,
-    reset: () => {
-      opfsMock.reset();
-      state.closedDatabases.length = 0;
-      state.createdDatabases.length = 0;
-      state.deletedFilenames.length = 0;
-      state.events.length = 0;
-      state.pausedVfsNames.length = 0;
-      state.preparedStatements.length = 0;
-      state.unpausedVfsNames.length = 0;
-      poolPaused = false;
-      pool.isPaused.mock.resetCalls();
-      pool.pauseVfs.mock.resetCalls();
-      pool.unpauseVfs.mock.resetCalls();
-      pool.unlink.mock.resetCalls();
-      sqlite3.capi.sqlite3_js_db_export.mock.resetCalls();
-      sqlite3.capi.sqlite3_reset.mock.resetCalls();
-      sqlite3.capi.sqlite3mc_vfs_create.mock.resetCalls();
-      sqlite3.installOpfsSAHPoolVfs.mock.resetCalls();
-    },
-    sqlite3,
     state,
+    pool,
+    sqliteWasm,
+    sqliteVfsPaths,
+    reset: () => {
+      Object.assign(state, initialState());
+    },
+    exports: {
+      sqliteWasmUrl: new URL("https://example.test/sqlite3.wasm"),
+      OpfsName: { orThrow: (value: string) => value },
+      SqliteVfsPath: {
+        orThrow: (value: string) => {
+          sqliteVfsPaths.push(value);
+          return value;
+        },
+      },
+      createSqliteWasm: (source: unknown) => () => {
+        state.createSqliteWasmSources.push(source);
+        return state.createSqliteWasmResult;
+      },
+      openSahPool:
+        (options: { readonly directory: ReadonlyArray<string> }) =>
+        (run: { readonly deps: Record<string, unknown> }) => {
+          state.events.push(`open pool ${options.directory.join("/")}`);
+          state.poolDeps.push(run.deps);
+          state.poolOptions.push(options);
+          return Promise.resolve(state.poolResults.shift() ?? ok(pool));
+        },
+      createSqliteDatabase:
+        (deps: { readonly sqliteWasm: unknown }) =>
+        (options: FakeDatabaseOptions) => {
+          assertSame(deps.sqliteWasm, sqliteWasm);
+          state.events.push(`open ${options.type} ${options.path ?? ""}`);
+          state.databaseOptions.push(options);
+          return state.databaseResult ?? ok(createDatabase(options));
+        },
+      createEncryptedSqliteDatabase:
+        (options: FakeDatabaseOptions) =>
+        (run: { readonly deps: Record<string, unknown> }) => {
+          assertSame(run.deps.sqliteWasm, sqliteWasm);
+          assertSame(run.deps.subtleCrypto, testSubtleCrypto);
+          state.events.push(`open ${options.type} ${options.path ?? ""}`);
+          state.databaseOptions.push(options);
+          return Promise.resolve(
+            state.databaseResult ??
+              ok({ database: createDatabase(options), keyDerivation: "Raw" }),
+          );
+        },
+    },
   };
 })();
 
 mock.module("@evolu/sqlite-wasm", {
   // @ts-expect-error -- Node.js 24.20 replaces the deprecated defaultExport option with exports, which @types/node 24.13 does not declare yet.
-  exports: {
-    default: mock.fn(() => {
-      const config = Reflect.get(globalThis, "sqlite3ApiConfig") as
-        | {
-            readonly warn?: (arg: unknown) => void;
-          }
-        | undefined;
-      config?.warn?.("Ignoring inability to install OPFS sqlite3_vfs");
-      config?.warn?.("kept warning");
-      return Promise.resolve(sqliteMock.sqlite3);
-    }),
-  },
+  exports: fake.exports,
 });
 
-mock.method(console, "warn", sqliteMock.consoleWarn);
-const { createWasmSqliteDriver } = await import("./Sqlite.ts");
+const { createWaitForDatabaseRelease, createWasmSqliteDriver, loadSqliteWasm } =
+  await import("./Sqlite.ts");
 
-describe("createWasmSqliteDriver coverage helpers", () => {
-  it("filters sqlite init warnings", () => {
-    assertEqual(
-      sqliteMock.consoleWarn.mock.calls.map(({ arguments: args }) => args),
-      [["kept warning"]],
-    );
-  });
+const testOpfsRoot = { getDirectory: () => Promise.reject(new Error("Fake")) };
+const testSubtleCrypto = { label: "subtleCrypto" } as unknown as SubtleCrypto;
+const testKey = EncryptionKey.orThrow(new Uint8Array(32).fill(42));
+const testName = Name.orThrow("Test");
 
-  it("opens plain OPFS SAH-pool database", async () => {
-    sqliteMock.reset();
-
-    await using run = testCreateRun();
-    using _driver = await run.ok(
-      createWasmSqliteDriver(Name.orThrow("MockPlain")),
-    );
-
-    assertEqual(
-      sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.calls.map(
-        ({ arguments: args }) => args,
-      ),
-      [[{ name: "MockPlain" }]],
-    );
-    assertEqual(
-      sqliteMock.state.createdDatabases[0]?.filename,
-      "file:evolu1.db",
-    );
-  });
-
-  it("opens memory database", async () => {
-    sqliteMock.reset();
-
-    await using run = testCreateRun();
-    using _driver = await run.ok(
-      createWasmSqliteDriver(Name.orThrow("MockMemory"), { mode: "memory" }),
-    );
-
-    assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 0);
-    assertEqual(sqliteMock.state.createdDatabases[0]?.filename, ":memory:");
-    assertEqual(opfsMock.state.getDirectoryCount, 0);
-  });
-
-  it("executes non-prepared query and exports database", async () => {
-    sqliteMock.reset();
-
-    await using run = testCreateRun();
-    using driver = await run.ok(
-      createWasmSqliteDriver(Name.orThrow("MockPlain")),
-    );
-
-    const result = driver.exec(sql`select ${"row"};`);
-    const exported = driver.export();
-
-    assertEqual(result, { rows: [{ data: "row" }], changes: 1 });
-    assertEqualBytes(exported, [1, 2, 3]);
-  });
-
-  it("executes prepared query and finalizes statement on dispose", async () => {
-    sqliteMock.reset();
-
-    await using run = testCreateRun();
-    {
-      using driver = await run.ok(
-        createWasmSqliteDriver(Name.orThrow("MockPlain")),
-      );
-
-      const result = driver.exec({
-        ...sql`select ${"prepared"};`,
-        options: { prepare: true },
-      });
-
-      assertEqual(result, { rows: [{ data: "prepared" }], changes: 1 });
-
-      driver.exec({ ...sql`select 1;`, options: { prepare: true } });
-    }
-
-    assertEqual(sqliteMock.state.preparedStatements[0]?.bound, [["prepared"]]);
-    assertEqual(sqliteMock.state.preparedStatements[0]?.resetCount, 1);
-    assertEqual(sqliteMock.state.preparedStatements[0]?.finalized, true);
-    assertEqual(sqliteMock.state.preparedStatements[1]?.bound, []);
-    assertEqual(sqliteMock.state.preparedStatements[1]?.finalized, true);
-  });
-
-  it("closes OPFS database on dispose", async () => {
-    sqliteMock.reset();
-
-    await using run = testCreateRun();
-    {
-      using _driver = await run.ok(
-        createWasmSqliteDriver(Name.orThrow("MockPlain")),
-      );
-    }
-
-    assertEqual(sqliteMock.state.closedDatabases, ["file:evolu1.db"]);
-    assertEqual(sqliteMock.state.pausedVfsNames, ["mock-sahpool"]);
-    assertEqual(sqliteMock.pool.unlink.mock.callCount(), 0);
-  });
-
-  it("unpauses OPFS SAH-pool database on reopen", async () => {
-    sqliteMock.reset();
-
-    await using run = testCreateRun();
-    {
-      using _driver = await run.ok(
-        createWasmSqliteDriver(Name.orThrow("MockPlain")),
-      );
-    }
-
-    using _driver = await run.ok(
-      createWasmSqliteDriver(Name.orThrow("MockPlain")),
-    );
-
-    assertEqual(sqliteMock.state.unpausedVfsNames, ["mock-sahpool"]);
-  });
-
-  it("deletes plain OPFS database file", async () => {
-    sqliteMock.reset();
-
-    await using run = testCreateRun();
-    using driver = await run.ok(
-      createWasmSqliteDriver(Name.orThrow("MockPlain")),
-    );
-
-    driver.deleteDatabase();
-
-    assertEqual(sqliteMock.state.closedDatabases, ["file:evolu1.db"]);
-    assertEqual(sqliteMock.state.deletedFilenames, ["/evolu1.db"]);
-    assertEqual(sqliteMock.state.events, [
-      "close:file:evolu1.db",
-      "unlink:/evolu1.db",
-      "pause:mock-sahpool",
-    ]);
-  });
-
-  it("deletes memory database", async () => {
-    sqliteMock.reset();
-
-    await using run = testCreateRun();
-    using driver = await run.ok(
-      createWasmSqliteDriver(Name.orThrow("MockMemory"), { mode: "memory" }),
-    );
-
-    driver.deleteDatabase();
-
-    assertEqual(sqliteMock.state.events, ["close::memory:"]);
-    assertEqual(sqliteMock.pool.unlink.mock.callCount(), 0);
-    assertEqual(sqliteMock.pool.pauseVfs.mock.callCount(), 0);
-  });
-
-  it("deletes encrypted OPFS database file", async () => {
-    sqliteMock.reset();
-
-    await using run = testCreateRun();
-    using driver = await run.ok(
-      createWasmSqliteDriver(Name.orThrow("MockEncrypted"), {
-        mode: "encrypted",
-        encryptionKey: EncryptionKey.orThrow(new Uint8Array(32).fill(42)),
-      }),
-    );
-
-    driver.deleteDatabase();
-
-    assertEqual(sqliteMock.state.closedDatabases, [
-      "file:evolu1.db?vfs=multipleciphers-opfs-sahpool",
-    ]);
-    assertEqual(sqliteMock.state.deletedFilenames, ["/evolu1.db"]);
-    assertEqual(sqliteMock.state.events, [
-      "close:file:evolu1.db?vfs=multipleciphers-opfs-sahpool",
-      "unlink:/evolu1.db",
-      "pause:mock-sahpool",
-    ]);
-  });
-
-  it("configures encrypted OPFS database", async () => {
-    sqliteMock.reset();
-
-    await using run = testCreateRun();
-    using _driver = await run.ok(
-      createWasmSqliteDriver(Name.orThrow("MockEncrypted"), {
-        mode: "encrypted",
-        encryptionKey: EncryptionKey.orThrow(new Uint8Array(32).fill(42)),
-      }),
-    );
-
-    assertEqual(
-      sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.calls.map(
-        ({ arguments: args }) => args,
-      ),
-      [[{ directory: ".MockEncrypted" }]],
-    );
-    assertEqual(
-      sqliteMock.state.createdDatabases[0]?.filename,
-      "file:evolu1.db?vfs=multipleciphers-opfs-sahpool",
-    );
-    assertTrue(
-      sqliteMock.state.createdDatabases[0]?.execSql[0]?.includes(
-        "PRAGMA cipher = 'sqlcipher';",
-      ),
-    );
-  });
+const setupDriverDeps = (
+  sqliteWasm: Result<unknown, unknown> = ok(fake.sqliteWasm),
+) => ({
+  opfsRoot: testOpfsRoot,
+  sqliteWasmLoad: Promise.resolve(sqliteWasm) as never,
+  subtleCrypto: testSubtleCrypto,
 });
 
-describe("createWasmSqliteDriver held pool files", () => {
-  for (const errorName of ["InvalidStateError", "NoModificationAllowedError"])
-    it(`sets up the pool once a file held with ${errorName} is released`, async () => {
-      sqliteMock.reset();
-      opfsMock.reset([[], [errorName, errorName]]);
+const setupDriver = async (
+  options?: Parameters<ReturnType<typeof createWasmSqliteDriver>>[1],
+) => {
+  fake.reset();
+  await using disposer = new AsyncDisposableStack();
+  const run = disposer.use(testCreateRun());
+  const driver = disposer.use(
+    await run.ok(createWasmSqliteDriver(setupDriverDeps())(testName, options)),
+  );
+  const disposables = disposer.move();
+  return {
+    driver,
+    run,
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
+  };
+};
 
-      await using run = testCreateRun();
-      const driver = run.ok(createWasmSqliteDriver(Name.orThrow("MockPlain")));
-      await flushMicrotasks();
+// Lets resolved promises settle before test time advances.
+const flushMicrotasks = (): Promise<void> =>
+  new Promise((resolve) => {
+    setImmediate(resolve);
+  });
 
-      assertEqual(opfsMock.state.directoryNames, [".MockPlain", ".opaque"]);
-      run.deps.time.advance("49ms");
-      await flushMicrotasks();
-      assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 0);
+const heldError = {
+  type: "SahPoolHeldError",
+  fileName: "slot",
+  cause: new DOMException("Held", "NoModificationAllowedError"),
+} as const;
 
-      // The retry delay doubles after each held pass.
-      run.deps.time.advance("1ms");
-      await flushMicrotasks();
-      run.deps.time.advance("99ms");
-      await flushMicrotasks();
-      assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 0);
+/** The Error the driver threw, which the Run reports as its panic's defect. */
+const getDefect = (result: Result<unknown, unknown>): Error => {
+  assert(!result.ok, "Expected the driver to fail.");
+  assertType(AbortError, result.error);
+  assert(result.error.reason.type === "PanicAbortReason", "Expected a panic.");
+  assertInstanceOf(result.error.reason.defect, Error);
+  return result.error.reason.defect;
+};
 
-      run.deps.time.advance("1ms");
-      using _driver = await driver;
+describe("createWasmSqliteDriver", () => {
+  it("validates its path, /evolu1.db, as a SqliteVfsPath", () => {
+    assertEqual(fake.sqliteVfsPaths, ["/evolu1.db"]);
+  });
 
-      // The free file opens on each of the three passes, the held one once.
-      assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 1);
-      assertEqual(opfsMock.state.openedAccessHandleCount, 4);
-      assertEqual(opfsMock.state.closedAccessHandleCount, 4);
+  it("opens /evolu1.db of the pool in .<name>, without waiting for held files", async () => {
+    await using _setup = await setupDriver();
+
+    assertEqual(fake.state.events, ["open pool .Test", "open File /evolu1.db"]);
+    assertEqual(fake.state.poolOptions, [{ directory: [".Test"] }]);
+    assertSame(fake.state.poolDeps[0]?.opfsRoot, testOpfsRoot);
+    assertSame(fake.state.poolDeps[0]?.sqliteWasm, fake.sqliteWasm);
+    assertSame(fake.state.databaseOptions[0]?.vfs, fake.pool);
+  });
+
+  it("opens /evolu1.db of the pool in .<name> encrypted with the key", async () => {
+    await using _setup = await setupDriver({
+      mode: "encrypted",
+      encryptionKey: testKey,
     });
 
-  it("sets up the pool at once when its directory has no files yet", async () => {
-    sqliteMock.reset();
-    opfsMock.reset([], { hasOpaqueDirectory: false });
-
-    await using run = testCreateRun();
-    using _driver = await run.ok(
-      createWasmSqliteDriver(Name.orThrow("MockPlain")),
-    );
-
-    assertEqual(opfsMock.state.directoryNames, [".MockPlain", ".opaque"]);
-    assertEqual(opfsMock.state.openedAccessHandleCount, 0);
-    assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 1);
+    assertEqual(fake.state.events, [
+      "open pool .Test",
+      "open EncryptedFile /evolu1.db",
+    ]);
+    assertSame(fake.state.databaseOptions[0]?.vfs, fake.pool);
+    assertSame(fake.state.databaseOptions[0]?.key, testKey);
   });
 
-  it("warns once when pool files stay held for five seconds", async () => {
-    sqliteMock.reset();
-    opfsMock.reset([Array.from({ length: 12 }, () => "InvalidStateError")]);
+  it("opens a memory database without a pool", async () => {
+    await using _setup = await setupDriver({ mode: "memory" });
 
-    await using run = testCreateRun();
-    const driver = run.ok(createWasmSqliteDriver(Name.orThrow("MockPlain")));
-    for (let second = 0; second < 12; second += 1) {
-      await flushMicrotasks();
-      run.deps.time.advance("1s");
+    assertEqual(fake.state.events, ["open Memory "]);
+  });
+
+  it("runs a query without the prepare option once", async () => {
+    await using setup = await setupDriver();
+    fake.state.events.length = 0;
+
+    const result = setup.driver.exec(sql`select ${1};`);
+
+    assertEqual(result, { rows: [{ value: "run" }], changes: 1 });
+    assertEqual(fake.state.events, ["run select ?; [1]"]);
+  });
+
+  it("prepares a query with the prepare option once and runs the statement each time", async () => {
+    await using setup = await setupDriver();
+    fake.state.events.length = 0;
+    const query = sql.prepared`select ${1};`;
+
+    const result = setup.driver.exec(query);
+    setup.driver.exec(query);
+
+    assertEqual(result, { rows: [{ value: "statement" }], changes: 2 });
+    assertEqual(fake.state.events, [
+      "prepare select ?;",
+      "run statement [1]",
+      "run statement [1]",
+    ]);
+  });
+
+  it("throws SQLite's error with the error as the cause", async () => {
+    await using setup = await setupDriver();
+    const sqliteError = {
+      type: "SqliteError",
+      message: "NOT NULL constraint failed: t.name",
+    };
+    fake.state.runResult = err(sqliteError);
+    fake.state.statementRunResult = err(sqliteError);
+
+    for (const query of [
+      sql`insert into t (name) values (null);`,
+      sql.prepared`insert into t (name) values (null);`,
+    ]) {
+      const thrown = (() => {
+        try {
+          setup.driver.exec(query);
+        } catch (error) {
+          return error;
+        }
+        return null;
+      })();
+      assertInstanceOf(thrown, Error);
+      assertSame(thrown.message, "NOT NULL constraint failed: t.name");
+      assertSame(thrown.cause, sqliteError);
     }
-    using _driver = await driver;
-
-    const warnings = run.deps.console
-      .getEntriesSnapshot()
-      .filter((entry) => entry.method === "warn");
-    assertEqual(
-      warnings.map((entry) => entry.args),
-      [
-        [
-          "Waiting for an ended DbWorker to release the files of database MockPlain.",
-        ],
-      ],
-    );
   });
 
-  it("fails before setting up the pool when a file cannot be opened", async () => {
-    sqliteMock.reset();
-    opfsMock.reset([["UnknownError"]]);
+  it("throws an error without a message with its type as the message", async () => {
+    await using setup = await setupDriver();
+    const parameterCountError = {
+      type: "SqliteParameterCountError",
+      expected: 1,
+      actual: 0,
+    };
+    fake.state.runResult = err(parameterCountError);
 
+    const thrown = (() => {
+      try {
+        setup.driver.exec(sql`select 1;`);
+      } catch (error) {
+        return error;
+      }
+      return null;
+    })();
+
+    assertInstanceOf(thrown, Error);
+    assertSame(thrown.message, "SqliteParameterCountError");
+    assertSame(thrown.cause, parameterCountError);
+  });
+
+  it("exports the database", async () => {
+    await using setup = await setupDriver();
+
+    assertEqualBytes(setup.driver.export(), [1, 2, 3]);
+  });
+
+  it("disposes the statements, then the database, then the pool", async () => {
+    {
+      await using setup = await setupDriver();
+      setup.driver.exec(sql.prepared`select 1;`);
+      fake.state.events.length = 0;
+    }
+
+    assertEqual(fake.state.events, [
+      "dispose statement select 1;",
+      "close File",
+      "dispose pool",
+    ]);
+  });
+
+  it("deletes /evolu1.db after closing the database and before disposing the pool", async () => {
+    await using setup = await setupDriver({
+      mode: "encrypted",
+      encryptionKey: testKey,
+    });
+    fake.state.events.length = 0;
+
+    setup.driver.deleteDatabase();
+    setup.driver[Symbol.dispose]();
+
+    assertEqual(fake.state.events, [
+      "close EncryptedFile",
+      "unlink /evolu1.db",
+      "dispose pool",
+    ]);
+  });
+
+  it("deletes a memory database by closing it", async () => {
+    await using setup = await setupDriver({ mode: "memory" });
+    fake.state.events.length = 0;
+
+    setup.driver.deleteDatabase();
+
+    assertEqual(fake.state.events, ["close Memory"]);
+  });
+
+  it("disposes the pool when deleting the file fails, and throws", async () => {
+    await using setup = await setupDriver();
+    fake.state.events.length = 0;
+    const ioError = { type: "SqliteVfsIoError", cause: null };
+    fake.state.unlinkResult = err(ioError);
+
+    const thrown = (() => {
+      try {
+        setup.driver.deleteDatabase();
+      } catch (error) {
+        return error;
+      }
+      return null;
+    })();
+
+    assertInstanceOf(thrown, Error);
+    assertSame(thrown.cause, ioError);
+    assertEqual(fake.state.events, [
+      "close File",
+      "unlink /evolu1.db",
+      "dispose pool",
+    ]);
+  });
+
+  it("disposes the pool when the database fails to open, and throws", async () => {
+    fake.reset();
+    const sqliteError = {
+      type: "SqliteError",
+      message: "file is not a database",
+    };
+    fake.state.databaseResult = err(sqliteError);
     await using run = testCreateRun();
-    const result = await run.abortable(
-      createWasmSqliteDriver(Name.orThrow("MockPlain")),
+
+    const defect = getDefect(
+      await run.abortable(
+        createWasmSqliteDriver(setupDriverDeps())(testName, {
+          mode: "encrypted",
+          encryptionKey: testKey,
+        }),
+      ),
     );
 
-    assert(!result.ok, "Expected the driver to fail.");
-    assertType(AbortError, result.error);
-    assertSame(result.error.reason.type, "PanicAbortReason");
-    assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 0);
+    assertSame(defect.message, "file is not a database");
+    assertSame(defect.cause, sqliteError);
+    assertEqual(fake.state.events, [
+      "open pool .Test",
+      "open EncryptedFile /evolu1.db",
+      "dispose pool",
+    ]);
+  });
+
+  it("throws when SQLite failed to load, before opening anything", async () => {
+    fake.reset();
+    const compileError = { type: "SqliteWasmCompileError", cause: null };
+    await using run = testCreateRun();
+
+    const defect = getDefect(
+      await run.abortable(
+        createWasmSqliteDriver(setupDriverDeps(err(compileError)))(testName, {
+          mode: "memory",
+        }),
+      ),
+    );
+
+    assertSame(defect.cause, compileError);
+    assertEqual(fake.state.events, []);
+  });
+
+  for (const poolError of [
+    { type: "SahPoolSetupError", cause: null },
+    heldError,
+  ])
+    it(`throws without retrying when the pool fails with ${poolError.type}`, async () => {
+      fake.reset();
+      fake.state.poolResults.push(err(poolError));
+      await using run = testCreateRun();
+
+      const driver = run.abortable(
+        createWasmSqliteDriver(setupDriverDeps())(testName),
+      );
+      await flushMicrotasks();
+      // Longer than a retry would wait.
+      run.deps.time.advance("1s");
+
+      const defect = getDefect(await driver);
+      assertSame(defect.message, poolError.type);
+      assertSame(defect.cause, poolError);
+      assertEqual(fake.state.events, ["open pool .Test"]);
+    });
+});
+
+describe("createWaitForDatabaseRelease", () => {
+  it("opens the pool in .<name>, waiting up to 10 seconds for held files, and disposes it once it opens", async () => {
+    fake.reset();
+    await using run = testCreateRun();
+
+    const released = await run(
+      createWaitForDatabaseRelease(setupDriverDeps())(testName),
+    );
+
+    assertEqual(released, ok());
+    assertEqual(fake.state.events, ["open pool .Test", "dispose pool"]);
+    assertEqual(fake.state.poolOptions, [
+      { directory: [".Test"], heldTimeout: "10s" },
+    ]);
+    assertSame(fake.state.poolDeps[0]?.opfsRoot, testOpfsRoot);
+    assertSame(fake.state.poolDeps[0]?.sqliteWasm, fake.sqliteWasm);
+  });
+
+  it("fails with DatabaseHeldError when the pool is still held, without retrying itself", async () => {
+    fake.reset();
+    fake.state.poolResults.push(err(heldError));
+    await using run = testCreateRun();
+
+    const released = run(
+      createWaitForDatabaseRelease(setupDriverDeps())(testName),
+    );
+    await flushMicrotasks();
+    // Longer than a retry would wait.
+    run.deps.time.advance("1s");
+
+    assertEqual(
+      await released,
+      err({ type: "DatabaseHeldError", name: testName }),
+    );
+    assertEqual(fake.state.events, ["open pool .Test"]);
+  });
+
+  it("throws without retrying when the pool fails otherwise than held", async () => {
+    fake.reset();
+    const setupError = { type: "SahPoolSetupError", cause: null };
+    fake.state.poolResults.push(err(setupError));
+    await using run = testCreateRun();
+
+    const defect = getDefect(
+      await run.abortable(
+        createWaitForDatabaseRelease(setupDriverDeps())(testName),
+      ),
+    );
+
+    assertSame(defect.cause, setupError);
+    assertEqual(fake.state.events, ["open pool .Test"]);
+  });
+
+  it("throws when SQLite failed to load, before opening anything", async () => {
+    fake.reset();
+    const compileError = { type: "SqliteWasmCompileError", cause: null };
+    await using run = testCreateRun();
+
+    const defect = getDefect(
+      await run.abortable(
+        createWaitForDatabaseRelease(setupDriverDeps(err(compileError)))(
+          testName,
+        ),
+      ),
+    );
+
+    assertSame(defect.cause, compileError);
+    assertEqual(fake.state.events, []);
+  });
+});
+
+describe("loadSqliteWasm", () => {
+  const setupFetch = () => {
+    fake.reset();
+    const requests: Array<unknown> = [];
+    const responses: Array<Promise<Response>> = [];
+    const run = testCreateRun({
+      nativeFetch: (input) => {
+        requests.push(input);
+        const response = Promise.resolve(new Response());
+        responses.push(response);
+        return response;
+      },
+    });
+    return { requests, responses, run };
+  };
+
+  it("compiles the response of a fetch of sqliteWasmUrl, before it arrives, so it can compile while it downloads", async () => {
+    const { requests, responses, run } = setupFetch();
+    await using _run = run;
+
+    const result = await run(loadSqliteWasm);
+
+    assertEqual(result, ok(fake.sqliteWasm));
+    assertEqual(requests, [fake.exports.sqliteWasmUrl]);
+    assertEqual(fake.state.createSqliteWasmSources.length, 1);
+    assertSame(fake.state.createSqliteWasmSources[0], responses[0]);
+  });
+
+  it("fails as createSqliteWasm fails, such as with SqliteWasmCompileError for a failed fetch", async () => {
+    const { run } = setupFetch();
+    await using _run = run;
+    const compileError = { type: "SqliteWasmCompileError", cause: null };
+    fake.state.createSqliteWasmResult = err(compileError);
+
+    const result = await run(loadSqliteWasm);
+
+    assertEqual(result, err(compileError));
   });
 });

@@ -6,5 +6,8 @@
   },
   "include": ["src"],
   "exclude": ["dist", "node_modules", "src/**/*.test.ts", "src/**/*.test.tsx"],
-  "references": [{ "path": "../common/tsconfig.build.json" }]
+  "references": [
+    { "path": "../common/tsconfig.build.json" },
+    { "path": "../sqlite-wasm/tsconfig.build.json" }
+  ]
 }

@@ -15,6 +15,7 @@ test/
   integration/
     browsers/
       react/
+      sqlite-wasm/
       web/
     nodejs/
     shared/
@@ -112,11 +113,40 @@ integration tests use the generated API reference and current documentation.
 `pnpm test:integration:browsers` runs only the explicitly configured browser
 integration projects: first in Chromium with coverage, then in Firefox and
 WebKit without coverage because those engines do not support V8 coverage. Its
-test files are selected by `integration/browsers/vitest.config.ts` and
-`integration/browsers/web/vitest.config.ts`; it does not discover collocated
-unit tests. Vitest projects use explicit include lists so they cannot discover
-native `node:test` integrations; register new Vitest suites in the appropriate
-project config.
+test files are selected by `integration/browsers/vitest.config.ts`,
+`integration/browsers/web/vitest.config.ts`,
+`integration/browsers/sqlite-wasm/vitest.config.ts` and
+`integration/browsers/sqlite-wasm/quota/vitest.config.ts`; it does not discover
+collocated unit tests. Vitest projects use explicit include lists so they
+cannot discover native `node:test` integrations; register new Vitest suites in
+the appropriate project config.
+
+The `browser-sqlite-wasm` project loads
+`packages/sqlite-wasm/wasm/sqlite3.wasm`, which CI builds in its SQLite Wasm
+job for the jobs that test it. Get it locally with `pnpm sqlite-wasm:download`,
+or build it as `packages/sqlite-wasm/README.md` describes. Its tests run SQLite
+in module workers, because sync access handles exist only in dedicated workers,
+except in WebKit, and each uses an OPFS directory of its own and removes it,
+because the persistent browser profile, and on macOS Playwright WebKit's OPFS,
+outlive a run. Its interoperability tests run SQLite's own JavaScript from
+`@evolu/sqlite-wasm` 2.2.4, a test-only dependency installed under the alias
+`@evolu/sqlite-wasm-2.2.4` because the workspace package has the same name.
+The `browser-sqlite-wasm-quota` project runs the storage-quota tests in a
+browser of its own: Chromium's quota is overridden through CDP, Firefox's is
+fixed by a preference its profile's `user.js` sets, and WebKit, which cannot be
+quota-limited, gets a quota the worker injects. These two projects and
+`browser-web` fail at startup when the wasm is missing or is not the pinned one,
+and so do the Node.js tests that load it.
+
+`@evolu/sqlite-wasm` must keep full coverage. `pnpm test:sqlite-wasm` runs its
+unit tests, its Node.js integration tests and
+`integration/nodejs/Sqlite/WasmSqliteDriver.test.ts`, which loads the package
+through its entry point, and fails when they cover less than 100% of the lines,
+branches or functions of the package's `src` and `scripts`. It needs
+`packages/sqlite-wasm/wasm/sqlite3.wasm` like the integration tests, so CI runs
+it in its coverage job. Node.js reports only the modules the tests load, and
+counts a branch that spans no whole line, such as one arm of a conditional
+expression, as covered.
 
 Integration tests use `node:test` unless they need Vitest or its browser
 runner. Native tests under `integration/nodejs` are discovered structurally.
@@ -157,7 +187,9 @@ API reference that the dev docs watcher owns, and the dev configuration starts
 its own `next dev` on the same `.next/dev` output. The build receives
 `NEXT_PUBLIC_EVOLU_RELAY_URL=ws://127.0.0.1:4311`, so the resulting `.next` build
 connects to the test relay instead of the public relay. Production tests run
-the built relay CLI; dev tests run its TypeScript source.
+the built relay CLI; dev tests run its TypeScript source. Both configurations
+check `packages/sqlite-wasm/wasm/sqlite3.wasm`, which the playgrounds load,
+before they build or start anything.
 
 Tests run sequentially because the relay address is embedded in the browser
 bundle. Each test replaces the relay at that address with fresh storage, so
@@ -188,7 +220,11 @@ They use `node:test` without source coverage because their contract is the
 generated bundle rather than which source lines executed while producing it.
 They run in one test process because `testBundle` already isolates generated
 artifacts in Workers, while Node.js process isolation forwards test-harness
-arguments that nested Workers cannot use.
+arguments that nested Workers cannot use. The `SqliteWasm` test checks that
+both bundlers emit the SQLite wasm binary at the URL `@evolu/sqlite-wasm`
+exports, so it reads `packages/sqlite-wasm/wasm/sqlite3.wasm`, which CI builds
+in its SQLite Wasm job; get it locally with `pnpm sqlite-wasm:download` or build
+it as `packages/sqlite-wasm/README.md` describes.
 
 Bundle-size expectations use Node.js snapshots in `*.test.ts.snapshot` files
 beside the tests. Normal runs compare the measured sizes without updating them.
