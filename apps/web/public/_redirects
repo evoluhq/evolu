@@ -3,3 +3,8 @@
 /docs/migrations /docs/schema 308
 /docs/migrations/ /docs/schema 308
 /docs/migrations.md /docs/schema.md 308
+
+# Vercel redirected trailing slashes with 308. Without this rule, the default
+# html_handling does it with a temporary 307. A dynamic rule, so it stays last:
+# Wrangler treats every rule after the first dynamic one as dynamic.
+/*/ /:splat 308

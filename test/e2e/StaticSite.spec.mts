@@ -32,6 +32,19 @@ test("redirects the removed migrations page", async ({ request }) => {
   }
 });
 
+test("redirects trailing slashes permanently, keeping the query", async ({
+  request,
+}) => {
+  for (const [path, location] of [
+    ["/docs/library/", "/docs/library"],
+    ["/blog/?a=1", "/blog?a=1"],
+  ]) {
+    const response = await request.get(path, { maxRedirects: 0 });
+    expect(response.status(), path).toBe(308);
+    expect(response.headers().location, path).toBe(location);
+  }
+});
+
 test("serves docs Markdown, llms.txt, and the RSS feed with their types", async ({
   request,
 }) => {
