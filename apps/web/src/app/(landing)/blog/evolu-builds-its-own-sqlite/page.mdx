@@ -1,0 +1,224 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2026-10-06",
+  title: "Evolu builds its own SQLite",
+  description:
+    "Evolu for the web now runs plain SQLite, compiled by Evolu, through our own TypeScript layer that also encrypts databases. Here is why we did it, how we tested it, and what it costs.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+Everything Evolu stores lives in SQLite. In the browser, that SQLite came from
+`@evolu/sqlite-wasm` 2.2.4. The package combined SQLite's own JavaScript with a
+WebAssembly build of
+[SQLite3 Multiple Ciphers](https://github.com/utelle/SQLite3MultipleCiphers),
+which encrypts databases.
+
+Starting with `@evolu/web` 3.5, Evolu runs plain SQLite 3.53.4. We compile it
+ourselves and run it through our own TypeScript layer, which also encrypts
+databases. Existing databases open unchanged.
+
+## Why
+
+A local-first app keeps its users' data on their devices, so the code that
+writes that data is the code that can lose it. With 2.2.4, three layers of that
+code were not ours. One was a WebAssembly binary another project built, with
+its cipher code and bundled libraries inside. The other two were SQLite's
+general-purpose JavaScript and Emscripten's generated runtime, together about
+13,700 lines of JavaScript. When something went wrong, we could report it and
+wait. And things did go wrong.
+
+The storage layer Evolu uses, opfs-sahpool, never rolled back a transaction
+interrupted by closing a tab, so the next open saw it half-applied. Fixing that
+uncovered a second problem: overlapping connections in one worker could
+silently lose committed data. We
+[reported both](https://sqlite.org/forum/forumpost/b2fbb61642), and the SQLite
+team fixed them within a day.
+
+We also asked for `SQLITE_FULL` when the browser says storage is full. An app
+could then tell its users instead of showing a generic disk I/O error. The
+SQLite team [declined](https://sqlite.org/forum/forumpost/e8997c0ed9), because
+their JavaScript avoids browser-specific behavior.
+
+Then there was the key. Because of a
+[bug](https://github.com/utelle/SQLite3MultipleCiphers/issues/218), SQLite3
+Multiple Ciphers 2.2.4 took the raw key Evolu passed as a passphrase. Every
+upgrade had to keep deriving the key that way.
+
+A local-first platform should be able to fix the code its users' data depends
+on without waiting.
+
+## What we built
+
+Our CI compiles plain SQLite 3.53.4 from sqlite.org's source, pinned by the
+hash sqlite.org publishes. It uses SQLite's own makefile and its bare-bones
+configuration, plus JSON and the math functions. The build reproduces the same
+bytes every time.
+
+Our TypeScript layer replaces SQLite's JavaScript and Emscripten's runtime. It's
+synchronous, with branded pointer types and typed `Result` errors. When the
+browser says storage is full, it reports `SQLITE_FULL`. Every public C function
+the build exports is also available as a standalone, tree-shakeable function.
+
+We rewrote opfs-sahpool too. The rewrite keeps opfs-sahpool's files byte for
+byte, so existing databases keep working, and it fixes the failure paths we
+found.
+
+Encryption moved out of SQLite. Our VFS encrypts each page itself with Paul
+Miller's [`@awasm/noble`](https://github.com/paulmillr/awasm-noble). It writes
+the SQLCipher 4 format the way the `sqlcipher` scheme of SQLite3 Multiple
+Ciphers writes it. So we can open every database `@evolu/web` 3 encrypted with
+2.2.4, and 2.2.4 can open what we write, given the right key. The key never
+passes through SQL or SQLite's memory. It can't end up in a statement's text, a
+trace, or memory SQLite frees without clearing it.
+
+The README of
+[`@evolu/sqlite-wasm`](https://github.com/evoluhq/evolu/tree/main/packages/sqlite-wasm)
+explains every choice in detail.
+
+## How we know it works
+
+We wrote the layer strictly test-first. Every behavior started as a failing
+test, then got the least code that made it pass. For everything the package
+ships, we ported the tests of the SQLite team and of
+[wa-sqlite](https://github.com/rhashimoto/wa-sqlite). For the failure paths
+that matter for local-first data, we wrote our own: interrupted transactions,
+full storage, failed writes and flushes, and lock conflicts.
+
+There are 701 Node.js tests. They cover 100% of the package's lines, branches
+and functions, and CI fails below that. Browser tests run on real OPFS in
+Chromium, Firefox and WebKit, including 2.2.4 and our layer opening each
+other's databases.
+
+While developing the pool, we ran crash and power-loss sweeps on a simulated
+OPFS in Node.js. They ended the worker at every write and failed writes and
+flushes. To simulate a power loss, they kept each file only as of its last
+flush. About 145,000 runs found no lost commit and no corruption.
+
+Every line between Evolu and SQLite's C is now in our repository, so we can
+review all of it. We had several different LLMs do that. Each looked for what
+the tests and the other models missed, and every finding became a failing test
+before its fix. Some of what they found were bugs that 2.2.4 had too, in code
+that came from SQLite or SQLite3 Multiple Ciphers.
+
+One was about deep SQL. SQLite's build puts the C stack right above SQLite's
+data. SQL that is legal but nests deeply, such as a chain of 600 triggers, ran
+the stack into that data and overwrote it without an error. With 2.2.4, such an
+insert never returned. Our build checks the stack, so such SQL now throws a
+`WebAssembly.RuntimeError` instead of silently corrupting memory. The error
+ends that SQLite instance.
+
+Another was in rolling back an encrypted database. When a worker died right
+after writing a journal record's page number, mid-transaction with
+`synchronous = OFF` under `journal_mode = PERSIST` or
+`locking_mode = EXCLUSIVE`, SQLite3 Multiple Ciphers failed the rollback with
+`SQLITE_CORRUPT`, so the database never opened again. In the browser, 2.2.4's
+pool never got that far, because it never rolled anything back. Ours does, and
+that rollback now works.
+
+A third was a failed journal delete. Before writing the header that deletes a
+journal, opfs-sahpool forgets the journal's path. When that write fails, the
+worker goes on as if the journal were gone, but the file still names it. Once
+opfs-sahpool rolls journals back, as it does on SQLite's trunk, the next open
+rolls it back over the transactions committed since. Our pool deletes in the
+safe order.
+
+## Numbers
+
+We timed wa-sqlite's 16 benchmark workloads, taken from SQLite's classic speed
+comparison. They ran on OPFS on an Apple M5, in Chromium 153, Firefox 155 and
+WebKit 26.6. Totals are in milliseconds, the median of 5 runs:
+
+| Stack                          | Chromium | Firefox | WebKit |
+| ------------------------------ | -------: | ------: | -----: |
+| Evolu                          |    1,443 |   1,383 |    627 |
+| 2.2.4                          |    1,508 |   1,424 |    659 |
+| Evolu, encrypted               |    1,970 |   2,112 |  1,191 |
+| 2.2.4, encrypted               |    1,979 |   2,095 |  1,115 |
+| wa-sqlite, AccessHandlePoolVFS |    1,732 |   2,826 |    792 |
+| wa-sqlite, OPFSCoopSyncVFS     |    1,426 |   2,621 |    722 |
+
+The percentages below are medians of ratios taken within each round, and each
+range covers two runs of the whole benchmark, so they can differ from ratios of
+the table's medians.
+
+Evolu is as fast as 2.2.4. Our pool flushes OPFS 5 times per commit instead
+of 6. That makes 1,000 single-row commits take 11% to 12% less time in Firefox,
+13% to 19% less in WebKit and about the same in Chromium. The other workloads
+together take 1% to 5% longer in every engine.
+
+An encrypted database is about as fast as with 2.2.4 in Chromium and Firefox.
+In WebKit, it takes 7% to 8% longer. Without encryption, Evolu is as fast as
+2.2.4 in WebKit, so the difference is the encryption itself. Encryption takes
+about a quarter longer there than with SQLite3 Multiple Ciphers. In Firefox, it
+takes about a tenth longer, but the faster commits make up for it. In Chromium,
+the same encryption takes about as long as with SQLite3 Multiple Ciphers. So the
+extra time comes from how WebKit runs it, not from the design, and we expect it
+to shrink.
+
+Until then, it's the price of moving encryption out of SQLite. SQLite is now
+plain SQLite from sqlite.org's source, and the only code that encrypts is
+`@awasm/noble`, which has no dependencies of its own. It comes from Paul
+Miller. Evolu already relies on his `@noble/ciphers`, `@noble/hashes` and
+`@scure/bip39` for its other cryptography, so encrypting databases adds no new
+party to trust. We pin it to an exact version and upgrade it only on purpose.
+That's less code to audit and fewer places for a supply-chain attack to hide.
+We think that's worth 7% to 8% in one engine.
+
+As for wa-sqlite, it keeps its own defaults for page size, cache and temporary
+files. So the table compares the stacks as they ship, not equal settings. Its
+`OPFSCoopSyncVFS` flushes only 3 times per commit and commits faster in
+Chromium and Firefox. On the other workloads together, both wa-sqlite VFSes
+took 1.2 to 2.6 times as long as Evolu.
+
+The download got smaller too. Servers usually send these files compressed with
+Brotli, so here is each size both uncompressed and with Brotli, in KB:
+
+|                                                  | Uncompressed |  Brotli |
+| ------------------------------------------------ | -----------: | ------: |
+| 2.2.4: SQLite's WebAssembly, with its encryption |        1,036 |     396 |
+| 2.2.4: JavaScript                                |          191 |      51 |
+| **2.2.4 total**                                  |    **1,227** | **447** |
+| Evolu: SQLite's WebAssembly                      |          669 |     262 |
+| Evolu: JavaScript                                |           44 |      15 |
+| Evolu: encryption, `@awasm/noble`                |          151 |      36 |
+| **Evolu total**                                  |      **864** | **313** |
+
+The JavaScript is minified. Our own layer is 37 KB of it, 13 KB with Brotli.
+The rest is the `@evolu/common` code it uses, which an Evolu app ships anyway.
+`@awasm/noble` adds only the two algorithms we use, AES-CBC and SHA-512. But its
+SHA-512 is a 73 KB WebAssembly module, and it ships inside its JavaScript as
+base64.
+
+Memory grew. Every persistent Evolu database is encrypted, so its worker gets
+`@awasm/noble`'s fixed WebAssembly memories, about 30 MiB more.
+
+The [benchmark](https://github.com/evoluhq/evolu/tree/main/bench/sqlite-wasm)
+and its baselines are in the repository, so you can compare our numbers with
+your own.
+
+## Compatibility
+
+Existing databases open unchanged in every browser. They keep the same OPFS
+directory, the same file and the same format, and an encrypted one keeps the
+key 2.2.4 derived. A new encrypted database is encrypted with the key itself,
+so `@evolu/web` 3.4.1 and earlier can't open it.
+
+If you use `@evolu/sqlite-wasm` directly, it changed completely. SQLite's
+JavaScript API, its other VFSes and its worker API are gone. So are the SQLite
+features the bare-bones build leaves out, such as FTS5, R\*Tree and WAL. Its
+version now follows SQLite's, and this release is `3.53.4-build1`.
+
+## What's next
+
+Owning the stack means we can now improve it without waiting. Next, we want to
+try encrypting new databases with ChaCha20 and add a way to delete a database.
+We also want sync to stream data from the database instead of loading it all at
+once.
