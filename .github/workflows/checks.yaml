@@ -215,12 +215,19 @@ jobs:
           pnpm test:bundle
 
   e2e:
-    name: Browser E2E
+    name: Browser E2E (${{ matrix.browser }})
     # The playground's database worker loads the SQLite wasm.
     needs: sqlite-wasm
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # Each test replaces the relay at the one URL built into the app, so a job
+    # runs its tests one at a time. A job per browser runs the browsers in
+    # parallel, each building the app itself.
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
     # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-noble
@@ -239,13 +246,13 @@ jobs:
           path: packages/sqlite-wasm/wasm
 
       - name: Test production playground
-        run: pnpm test:e2e
+        run: pnpm test:e2e --project=${{ matrix.browser }}
 
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: |
             playwright-report/
             test-results/e2e/

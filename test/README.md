@@ -211,10 +211,11 @@ pnpm test:e2e:dev
 ```
 
 Pass a file or `--grep` to focus the run, for example
-`pnpm test:e2e --grep 'between tabs'`. CI runs the production mode. Failures
-retain traces and screenshots in `test-results/e2e`, and every test attaches the
-relay log to the HTML report; open it with `pnpm exec playwright show-report`.
-E2E tests run separately from `pnpm test` and `pnpm verify`.
+`pnpm test:e2e --grep 'between tabs'`. CI runs the production mode, one job per
+browser. Failures retain traces and screenshots in `test-results/e2e`, and every
+test attaches the relay log to the HTML report; open it with
+`pnpm exec playwright show-report`. E2E tests run separately from `pnpm test`
+and `pnpm verify`.
 
 ## Bundle tests
 
