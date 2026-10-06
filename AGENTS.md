@@ -231,9 +231,17 @@ To render a documented code example as an image for a post, run
   work. Update the relevant existing changeset only if the final user-facing
   behavior or version impact changes. Do not write release notes for bugs that
   existed only in uncommitted code.
+- Semver says whether an upgrade within a range can break a working install, not
+  how hard the break is to fix. Renaming or removing an exported runtime symbol
+  of a stable API is never a patch: a library compiled against the old name
+  breaks at runtime, JavaScript users get no compiler error, and tools
+  auto-merge patches. Add the new name in a minor and keep the old one as a
+  `@deprecated` alias; rename an exported type the same way, with a
+  `@deprecated` type alias. Remove deprecated aliases together in an occasional
+  major, so peer ranges move rarely.
 - Local-first APIs, including their platform and framework integrations, are not
-  stable yet. Incompatible changes to them do not require a major changeset; use
-  patch for fixes and minor for additions, and document migration impact.
+  stable yet. Incompatible changes to them, including renames and removals, are
+  patch, not major; use minor for additions, and document migration impact.
 - `@evolu/sqlite-wasm` does not follow semver. Like SQLite's npm package, it is
   versioned `<SQLite version>-build<n>`, any build may change its API, and
   `scripts/version-sqlite-wasm.mts` replaces the version its changeset bump

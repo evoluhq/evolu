@@ -1058,3 +1058,34 @@ Do not use `@groupDescription` or custom renderer logic to reposition module
 prose.
 
 TypeDoc warnings fail CI. Resolve every warning emitted by `pnpm build:docs`.
+
+## Versioning
+
+Published packages follow semantic versioning. Fixes are patch releases,
+additions are minor, and breaking changes are major. Semver tells whether an
+upgrade within a version range can break a working install. It says nothing
+about how hard the break is to fix.
+
+So renaming or removing an exported runtime symbol of a stable API, such as a
+function or constant, is never a patch, however simple the migration. A library
+compiled against the old name breaks at runtime for its users, and JavaScript
+users get no compiler error. Dependency update tools also commonly merge patch
+releases automatically.
+
+Add the new name in a minor release and keep the old one as an alias marked
+`@deprecated` that names its replacement. Rename an exported type the same way
+and keep the old name as a `@deprecated` type alias, because the declarations
+of libraries compiled against it still name it. Remove deprecated aliases
+together in an occasional major release. Libraries that declare Evolu packages
+as peer dependencies then rarely have to move their ranges.
+
+Local-first APIs, including their platform and framework integrations, are not
+stable yet. Incompatible changes to them, renames and removals included, are
+patch releases. Additions are minor. Their changesets document the migration
+impact.
+
+`@evolu/sqlite-wasm` is the exception to semantic versioning. Like SQLite's own
+npm package, it is versioned `<SQLite version>-build<n>`, and any build may
+change its API. `scripts/version-sqlite-wasm.mts` replaces the version its
+changeset bump computes, so the bump type only selects the heading of its
+release notes. Its README describes the scheme for users.
