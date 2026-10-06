@@ -20,8 +20,17 @@
     // 404.html, so /docs/missing gets docs/404.html.
     "not_found_handling": "404-page",
   },
-  // No routes: the latest deploy is served at
-  // https://evolu-dev.evolu.workers.dev. Per-version preview URLs are off.
-  "workers_dev": true,
+  // A Custom Domain: Cloudflare owns the hostname's DNS record, and the zone's
+  // certificate covers it. Cloudflare refuses to attach one while the hostname
+  // has DNS records that Workers did not create (code 100117), and Wrangler's
+  // override replaces only another Worker's record, so www's Vercel records
+  // were deleted by hand when the domain was first attached. Removing this
+  // route does not detach the domain; the dashboard does. evolu.dev redirects
+  // here with a Redirect Rule in the zone, not with this Worker.
+  // https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
+  "routes": [{ "pattern": "www.evolu.dev", "custom_domain": true }],
+  // The site has one address: no workers.dev URL and no per-version
+  // preview URLs.
+  "workers_dev": false,
   "preview_urls": false,
 }
