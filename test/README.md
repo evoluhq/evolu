@@ -170,6 +170,10 @@ examples use the same DOM visibility observer to detect even brief Suspense hide
 The sync playground tests restart the relay, add a backup relay, and check the
 connection and synchronization state while one relay is down and after it
 catches up.
+`StaticSite.spec.mts` requests the served export without a browser and checks
+what the Cloudflare configuration adds: the docs and root 404 pages, the
+redirects, and the content types of the docs Markdown, `llms.txt`, and the RSS
+feed. Only the Chromium project runs it, and the dev configuration skips it.
 Each test gets fresh browser storage and a separate relay process with a
 temporary database directory, removed after the test. Tabs within a context
 share storage and workers; contexts within a test share only the relays.
@@ -180,12 +184,14 @@ the examples' Evolu error alert; tests declare the dialogs they expect.
 pnpm test:e2e
 ```
 
-The command builds the web dependencies, relay, documentation, and production app,
-then starts and stops its own server on `127.0.0.1:3100`. Build output streams to
-the console. Stop the web dev server first: the production build regenerates the
-API reference that the dev docs watcher owns, and the dev configuration starts
-its own `next dev` on the same `.next/dev` output. The build receives
-`NEXT_PUBLIC_EVOLU_RELAY_URL=ws://127.0.0.1:4311`, so the resulting `.next` build
+The command builds the web dependencies, relay, documentation, and static export,
+then serves `apps/web/out` on `127.0.0.1:3100` with the pinned Wrangler local
+server from `apps/web/deploy`, which applies the Cloudflare configuration in
+`apps/web/deploy/wrangler.jsonc`, and stops it. Build output streams to the
+console. Stop the web dev server first: the production build regenerates the API
+reference that the dev docs watcher owns, and the dev configuration starts its own
+`next dev` on the same `.next/dev` output. The build receives
+`NEXT_PUBLIC_EVOLU_RELAY_URL=ws://127.0.0.1:4311`, so the resulting export
 connects to the test relay instead of the public relay. Production tests run
 the built relay CLI; dev tests run its TypeScript source. Both configurations
 check `packages/sqlite-wasm/wasm/sqlite3.wasm`, which the playgrounds load,

@@ -9,3 +9,5 @@ export const GET = async (): Promise<Response> => {
     },
   });
 };
+
+export const dynamic = "force-static";

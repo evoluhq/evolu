@@ -1,4 +1,9 @@
+import { type Metadata } from "next";
 import { Button } from "@/components/Button";
+
+// Exported as docs/404.html, which Cloudflare serves for missing /docs/* pages
+// because wrangler.jsonc sets not_found_handling to the nearest 404.html.
+export const metadata: Metadata = { robots: { index: false } };
 
 const NotFound = (): React.ReactElement => (
   <div className="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-center justify-center px-6 py-16 text-center">

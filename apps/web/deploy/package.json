@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Pins Wrangler for `pnpm --filter web start`, the E2E server and the deploy-web job in .github/workflows/release.yaml. Not a pnpm workspace package.",
+  "dependencies": {
+    "wrangler": "4.147.0"
+  }
+}

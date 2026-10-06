@@ -1,0 +1,5 @@
+# Cloudflare redirects for the static export, which cannot use Next.js redirects.
+# https://developers.cloudflare.com/workers/static-assets/redirects/
+/docs/migrations /docs/schema 308
+/docs/migrations/ /docs/schema 308
+/docs/migrations.md /docs/schema.md 308

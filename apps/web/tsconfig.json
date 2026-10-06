@@ -31,7 +31,7 @@
     ".next/types/**/*.ts",
     "tailwind.config.js"
   ],
-  "exclude": ["node_modules"],
+  "exclude": ["node_modules", "out", "deploy"],
   "references": [
     { "path": "../../packages/common" },
     { "path": "../../packages/nodejs" },

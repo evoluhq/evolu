@@ -1,0 +1,16 @@
+# Cloudflare headers for the static export, which cannot use Next.js headers.
+# https://developers.cloudflare.com/workers/static-assets/headers/
+
+# Next.js puts a content hash or the build ID in these paths.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The export writes the route handler's body without its headers.
+/blog/rss.xml
+  Content-Type: application/rss+xml; charset=utf-8
+  Cache-Control: public, max-age=3600
+
+# Vercel sent this with its static files. The Markdown and llms.txt files, which
+# Vercel served from functions without it, are static files now and get it too.
+/*
+  Access-Control-Allow-Origin: *

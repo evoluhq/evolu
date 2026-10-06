@@ -159,3 +159,99 @@ jobs:
       id-token: write
     uses: ./.github/workflows/docker.yaml
     secrets: inherit
+
+  # Builds evolu.dev as a static export for the deploy-web job. It installs
+  # and runs the repository's dependencies, so it gets no secrets.
+  build-web:
+    # Prevents deploying evolu.dev from forks.
+    if: github.repository == 'evoluhq/evolu' && github.ref == 'refs/heads/main'
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      # The playgrounds load the SQLite wasm the Checks workflow built in this
+      # run.
+      - name: Download SQLite wasm
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sqlite-wasm
+          path: packages/sqlite-wasm/wasm
+
+      - name: Build
+        run: pnpm build:web
+
+      - name: Upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web
+          path: apps/web/out
+          if-no-files-found: error
+          retention-days: 1
+
+  # Deploys the export to Cloudflare. The job holding the token runs no code
+  # from the repository's dependencies and restores no shared cache: its
+  # cone-mode sparse checkout adds only apps/web/deploy and the files directly
+  # in apps and apps/web to the root files, and it installs Wrangler from that
+  # directory's lockfile, which pins every package by integrity.
+  deploy-web:
+    needs: build-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    # The environment holds the Cloudflare token (a secret) and account ID
+    # (a variable), and only main can deploy to it.
+    environment: evolu.dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: apps/web/deploy
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          package-manager-cache: false
+
+      # Install scripts are not needed to upload static assets.
+      - name: Install Wrangler
+        working-directory: apps/web/deploy
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Download web
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web
+          path: apps/web/out
+
+      # Runs of main share the workflow's concurrency group, which keeps at
+      # most one run pending: a newly queued run, such as a rerun of an older
+      # one, cancels the pending run, and GitHub does not guarantee the order
+      # runs start in. So only the commit main points to deploys, and an older
+      # one skips. A failed lookup fails the step: the assignment exits under
+      # bash -e, and --exit-code exits when main is missing. The commit becomes
+      # the version's message in the Cloudflare dashboard, which lists versions
+      # to roll back to.
+      - name: Deploy
+        working-directory: apps/web/deploy
+        run: |
+          main=$(git ls-remote --exit-code origin refs/heads/main)
+          main=${main%%[[:space:]]*}
+          if [ "$main" != "$GITHUB_SHA" ]; then
+            echo "::notice::main is at $main, and only its Release run deploys. If that run was cancelled or failed, or the commit has [skip ci], run Release on main manually."
+            exit 0
+          fi
+          ./node_modules/.bin/wrangler deploy --message "$GITHUB_SHA"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: false

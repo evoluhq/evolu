@@ -1,0 +1,27 @@
+// Serves the static export of evolu.dev (apps/web/out, built by the
+// build-web job in .github/workflows/release.yaml) as an assets-only Worker:
+// Cloudflare serves the files and runs no Worker code.
+// https://developers.cloudflare.com/workers/static-assets/
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "evolu-dev",
+  // Required by Wrangler. An assets-only Worker runs no code, so the date
+  // does not change how the site is served.
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    // The Workers Free plan accepts at most 20,000 files per version, and
+    // only the upload in deploy-web checks it. Each docs page exports six
+    // files (.html, .txt, .md and three __next.*.txt). In October 2026, the
+    // export had 14,235 files, room for about 960 more docs pages.
+    // https://developers.cloudflare.com/workers/platform/limits/
+    "directory": "../out",
+    // The default html_handling serves docs/x.html at /docs/x and redirects
+    // /docs/x/ and /docs/x.html there. Unknown paths get the nearest
+    // 404.html, so /docs/missing gets docs/404.html.
+    "not_found_handling": "404-page",
+  },
+  // No routes: the latest deploy is served at
+  // https://evolu-dev.evolu.workers.dev. Per-version preview URLs are off.
+  "workers_dev": true,
+  "preview_urls": false,
+}

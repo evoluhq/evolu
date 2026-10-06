@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node ../../packages/sqlite-wasm/scripts/check-wasm.mts && node ./src/scripts/generate-search-index.mts && next build",
+    "build": "node ../../packages/sqlite-wasm/scripts/check-wasm.mts && node ./src/scripts/generate-search-index.mts && node ./src/scripts/write-docs-markdown.mts && next build",
     "dev": "node ../../packages/sqlite-wasm/scripts/check-wasm.mts && node ./src/scripts/dev.mts",
     "dev:docs": "node ./src/scripts/dev-docs.mts",
     "fix:docs": "node ./src/scripts/fix-api-reference.mts",
     "lint": "oxlint .",
-    "start": "next start"
+    "start": "cd deploy && npm ci --ignore-scripts --no-audit --no-fund && WRANGLER_SEND_METRICS=false node serve.mts"
   },
   "browserslist": [
     "baseline newly available",

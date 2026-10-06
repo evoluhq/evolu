@@ -11,6 +11,13 @@ const withMDX = nextMDX({
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {
+  // The site is plain files in `out`, served by Cloudflare as wrangler.jsonc
+  // configures. Redirects and headers live in public/_redirects and
+  // public/_headers, and src/scripts/write-docs-markdown.mts writes the
+  // /docs/*.md files.
+  output: "export",
+  // A static export has no image optimizer, so it cannot use the default loader.
+  images: { unoptimized: true },
   reactStrictMode: true,
   // The root AGENTS.md is the single source of agent guidance; do not let
   // `next dev` generate apps/web/AGENTS.md and CLAUDE.md.
@@ -32,41 +39,6 @@ const nextConfig = {
       "Db.worker.js": "../../packages/web/src/local-first/Db.worker.ts",
       "Shared.worker.js": "../../packages/web/src/local-first/Shared.worker.ts",
     },
-  },
-  outputFileTracingIncludes: {
-    "/api/docs-md/*": ["./src/app/(docs)/docs/**/*.mdx"],
-    "/llms-full.txt": ["./src/app/**/*.mdx"],
-    "/llms.txt": ["./src/app/**/*.mdx"],
-  },
-
-  redirects() {
-    return [
-      {
-        source: "/docs/migrations",
-        destination: "/docs/schema",
-        permanent: true,
-      },
-      {
-        source: "/docs/migrations.md",
-        destination: "/docs/schema.md",
-        permanent: true,
-      },
-    ];
-  },
-
-  rewrites() {
-    return [
-      {
-        // Rewrite /docs/index.md to the root docs page
-        source: "/docs/index.md",
-        destination: "/api/docs-md/index",
-      },
-      {
-        // Rewrite /docs/*.md to the LLM markdown route
-        source: "/docs/:path*.md",
-        destination: "/api/docs-md/:path*",
-      },
-    ];
   },
 };
 

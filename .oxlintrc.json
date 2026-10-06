@@ -1,7 +1,10 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "extends": ["./node_modules/@evolu/oxlint-config/config.jsonc"],
-  "ignorePatterns": ["packages/sqlite-wasm/scripts/upstream/**"],
+  "ignorePatterns": [
+    "packages/sqlite-wasm/scripts/upstream/**",
+    "apps/web/deploy/**"
+  ],
   "options": {
     "reportUnusedDisableDirectives": "error"
   },

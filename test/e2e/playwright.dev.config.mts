@@ -4,6 +4,9 @@ import config from "./playwright.config.mts";
 
 export default defineConfig<E2eOptions>({
   ...config,
+  // next dev serves neither the Cloudflare redirects and headers nor its 404
+  // pages.
+  testIgnore: "StaticSite.spec.mts",
   use: {
     ...config.use,
     relayEntry: "apps/relay/src/index.ts",
