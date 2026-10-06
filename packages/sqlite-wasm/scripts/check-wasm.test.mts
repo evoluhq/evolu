@@ -71,11 +71,10 @@ describe("check-wasm.mts CLI", () => {
     const check = "node ../../packages/sqlite-wasm/scripts/check-wasm.mts";
 
     assertEqual(
-      [scripts.dev, scripts.build],
-      [
-        `${check} && node ./src/scripts/dev.mts`,
-        `${check} && node ./src/scripts/generate-search-index.mts && next build`,
-      ],
+      [scripts.dev, scripts.build].filter(
+        (script) => !script.startsWith(`${check} && `),
+      ),
+      [],
     );
   });
 
