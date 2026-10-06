@@ -144,9 +144,9 @@ unit tests, its Node.js integration tests and
 through its entry point, and fails when they cover less than 100% of the lines,
 branches or functions of the package's `src` and `scripts`. It needs
 `packages/sqlite-wasm/wasm/sqlite3.wasm` like the integration tests, so CI runs
-it in its coverage job. Node.js reports only the modules the tests load, and
-counts a branch that spans no whole line, such as one arm of a conditional
-expression, as covered.
+it with the unit tests in a job that downloads the wasm. Node.js reports only the
+modules the tests load, and counts a branch that spans no whole line, such as one
+arm of a conditional expression, as covered.
 
 Integration tests use `node:test` unless they need Vitest or its browser
 runner. Native tests under `integration/nodejs` are discovered structurally.

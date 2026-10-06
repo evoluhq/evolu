@@ -176,13 +176,25 @@ jobs:
       - name: Test JSDoc
         run: pnpm test:jsdoc
 
-  coverage:
-    name: Coverage
+  tests:
+    name: Tests (${{ matrix.suite }})
     # The integration tests load the SQLite wasm.
     needs: sqlite-wasm
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # Each job pays for its container, install and build, so the suites are
+    # grouped into a few jobs of similar length.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: unit
+            run: pnpm test:unit && pnpm test:sqlite-wasm
+          - suite: Node.js integration
+            run: pnpm test:integration:nodejs
+          - suite: browser integration and bundle
+            run: pnpm exec vitest run --coverage --mode=chromium --project='browser-*' && pnpm test:bundle
     # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-noble
@@ -200,19 +212,16 @@ jobs:
           name: sqlite-wasm
           path: packages/sqlite-wasm/wasm
 
+      # The unit tests run workflow scripts that use jq.
       - name: Install test dependencies
+        if: matrix.suite == 'unit'
         run: apt-get update && apt-get install -y --no-install-recommends jq
 
       - name: Build
         run: pnpm build
 
       - name: Test
-        run: |
-          pnpm test:unit
-          pnpm test:sqlite-wasm
-          pnpm test:integration:nodejs
-          pnpm exec vitest run --coverage --mode=chromium --project='browser-*'
-          pnpm test:bundle
+        run: ${{ matrix.run }}
 
   e2e:
     name: Browser E2E (${{ matrix.browser }})
