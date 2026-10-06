@@ -10,6 +10,18 @@
   Content-Type: application/rss+xml; charset=utf-8
   Cache-Control: public, max-age=3600
 
+# Cloudflare sends text types without a charset, which some clients, such as
+# browsers and Python requests, then decode as Latin-1. These files contain
+# UTF-8. HTML pages declare it with a meta tag.
+/*.md
+  Content-Type: text/markdown; charset=utf-8
+
+/llms.txt
+  Content-Type: text/plain; charset=utf-8
+
+/llms-full.txt
+  Content-Type: text/plain; charset=utf-8
+
 # Vercel sent this with its static files. The Markdown and llms.txt files, which
 # Vercel served from functions without it, are static files now and get it too.
 /*
