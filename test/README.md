@@ -126,11 +126,12 @@ projects; register new Vitest suites in the appropriate project config.
 ## Browser E2E tests
 
 Playwright tests in `test/e2e` drive the actual Next.js minimal, full, and sync
-playgrounds in Chromium, including React, workers, and persistent WASM SQLite. They cover CRUD,
-the mutation completion callback, reload persistence, live updates between
-tabs without Suspense hiding the loaded UI, and sync through a real relay
-between isolated browser contexts. The tab test records DOM removals and hiding
-throughout updates, including brief hide/show transitions between assertions.
+playgrounds in Chromium, Firefox, and WebKit, including React, workers, and
+persistent WASM SQLite. They cover CRUD, the mutation completion callback,
+reload persistence, live updates between tabs without Suspense hiding the loaded
+UI, and sync through a real relay between isolated browser contexts. The tab
+test records DOM removals and hiding throughout updates, including brief
+hide/show transitions between assertions.
 The full example also covers projects, moving todos, restoring deleted todos and
 projects, mnemonic visibility, and the disabled unfinished actions. Its navigation
 test opens Trash for the first time after deleting a todo and checks that
