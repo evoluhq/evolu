@@ -2,6 +2,11 @@ name: Checks
 
 on:
   workflow_call:
+    inputs:
+      build-web:
+        description: Builds the static export of evolu.dev as the `web` artifact.
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -281,3 +286,40 @@ jobs:
 
       - name: Test ${{ matrix.browser }}
         run: pnpm exec vitest run --mode=${{ matrix.browser }} --project='browser-*'
+
+  # Builds the export for the Release workflow's deploy-web job while the other
+  # checks run, so a deploy waits for the slowest check, not for the checks and
+  # then the build.
+  build-web:
+    name: Build web
+    if: inputs.build-web
+    # The playgrounds load the SQLite wasm.
+    needs: sqlite-wasm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Download SQLite wasm
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sqlite-wasm
+          path: packages/sqlite-wasm/wasm
+
+      - name: Build
+        run: pnpm build:web
+
+      - name: Upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web
+          path: apps/web/out
+          if-no-files-found: error
+          retention-days: 1

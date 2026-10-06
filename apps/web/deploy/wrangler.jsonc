@@ -1,5 +1,5 @@
 // Serves the static export of evolu.dev (apps/web/out, built by the
-// build-web job in .github/workflows/release.yaml) as an assets-only Worker:
+// build-web job in .github/workflows/checks.yaml) as an assets-only Worker:
 // Cloudflare serves the files and runs no Worker code.
 // https://developers.cloudflare.com/workers/static-assets/
 {
