@@ -45,6 +45,9 @@ importers:
       '@evolu/vitest':
         specifier: workspace:*
         version: link:packages/vitest
+      '@mdx-js/mdx':
+        specifier: ^3.1.1
+        version: 3.1.1(supports-color@8.1.1)
       '@paulmillr/jsbt':
         specifier: 0.7.0
         version: 0.7.0

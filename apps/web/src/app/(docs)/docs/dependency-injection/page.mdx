@@ -24,7 +24,7 @@ This turns `db` into a [service locator](https://blog.ploeh.dk/2010/02/03/Servic
 
 The alternative is to pass dependencies explicitly to where they're needed. But where do we create and wire them together? In a [Composition Root](https://blog.ploeh.dk/2011/07/28/CompositionRoot/)—a single place (typically your app's entry point) where all dependencies are instantiated and composed. From there, dependencies flow down through function arguments.
 
-This guide explains [Pure DI](https://blog.ploeh.dk/2014/06/10/pure-di/) conventions Evolu uses for sync code. For async code, see [Task dependency injection](/docs/api-reference/common/Task/type-aliases/Task#dependency-injection).
+This guide explains [Pure DI](https://blog.ploeh.dk/2014/06/10/pure-di/) conventions Evolu uses for sync code. For async code, see [Task dependency injection](/docs/api-reference/common/Task#dependency-injection).
 
 Imagine we have a function that does something with time:
 

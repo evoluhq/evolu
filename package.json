@@ -63,6 +63,7 @@
     "@evolu/sqlite-wasm-2.2.4": "npm:@evolu/sqlite-wasm@2.2.4",
     "@evolu/typescript-config": "workspace:*",
     "@evolu/vitest": "workspace:*",
+    "@mdx-js/mdx": "^3.1.1",
     "@paulmillr/jsbt": "0.7.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/inquirer": "^9.0.9",
