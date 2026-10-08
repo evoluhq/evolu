@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -93,7 +92,7 @@ const formatPlainObjectRootError = (
 ): string =>
   reason.kind === "NotObject"
     ? `القيمة ${safelyStringifyUnknownValue(reason.value)} ليست كائناً.`
-    : "القيمة كائن، لكن مخرج Object يجب أن يكون كائناً عادياً أو ذا نموذج أولي فارغ.";
+    : "القيمة كائن، لكن مخرج Object يجب أن يكون كائناً عادياً أو أن يكون نموذجه الأولي null.";
 
 /** Formats a NeverError in Arabic. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
@@ -124,7 +123,7 @@ export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
 /** Formats an EvoluTypeError in Arabic. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
-) => `القيمة ${safelyStringifyUnknownValue(error.value)} ليست من نوع Evolu.`;
+) => `القيمة ${safelyStringifyUnknownValue(error.value)} ليست Evolu Type.`;
 /** Formats an ObjectTagError in Arabic. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
@@ -140,7 +139,7 @@ export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} لا تساوي حرفياً القيمة المتوقعة: ${String(error.expected)}.`;
 /** Formats a UnionError in Arabic. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
-  "القيمة لا تطابق أي متغير مسموح به.";
+  "القيمة لا تطابق أي بديل مسموح به.";
 /** Formats a DateIsoError in Arabic. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست سلسلة تاريخ ووقت ISO معيارية.`;
@@ -155,10 +154,10 @@ export const formatDecimalStringError: TypeErrorFormatter<
   `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} سلسلة عشرية معيارية.`;
 /** Formats an Int64Error in Arabic. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
-  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عدداً صحيحاً موقّعاً صالحاً من 64 بت (Int64).`;
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عدداً صحيحاً ذا إشارة صالحاً من 64 بت (Int64).`;
 /** Formats a UInt64Error in Arabic. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
-  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عدداً صحيحاً غير موقّع صالحاً من 64 بت (UInt64).`;
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عدداً صحيحاً بدون إشارة صالحاً من 64 بت (UInt64).`;
 /** Formats an Int64StringError in Arabic. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
@@ -169,7 +168,7 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
   error,
 ) =>
-  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست معرّفًا بصيغة ${error.casing}.`;
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست معرّفاً بصيغة ${error.casing}.`;
 
 /** Formats a CapitalizedError in Arabic. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
@@ -312,7 +311,7 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} مضاعفاً لـ ${error.divisor}.`;
 /** Formats a BetweenError in Arabic. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
-  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} بين ${error.min} و${error.max}، شاملةً.`;
+  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} بين ${error.min} و${error.max}، بما في ذلك الحدّان.`;
 
 /** Formats a BooleanFromStringError in Arabic. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
@@ -324,7 +323,7 @@ export const formatBooleanFromStringError: TypeErrorFormatter<
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
-  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عددًا صحيحًا عشريًا.`;
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عدداً صحيحاً عشرياً.`;
 
 /** Formats an ArrayError in Arabic. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
@@ -365,10 +364,11 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `خاصية Map زائدة ${safelyStringifyUnknownValue(issue.key)} غير مسموح بها.`;
     case "Key":
+      return `مفتاح Map عند الفهرس ${issue.index} غير صالح.`;
     case "Value":
-      return `عنصر Map عند الفهرس ${issue.index} غير صالح.`;
+      return `قيمة Map عند الفهرس ${issue.index} غير صالحة.`;
     case "Collision":
-      return `مفتاحا Map ${safelyStringifyUnknownValue(issue.previousKey)} و${safelyStringifyUnknownValue(issue.key)} يُفك ترميزهما إلى المفتاح نفسه ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `مفتاحا Map عند الفهرسين ${issue.previousIndex} و${issue.index} يُفك ترميزهما إلى المفتاح نفسه ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
@@ -379,7 +379,7 @@ export const formatTupleError: TypeErrorFormatter<
   if (error.reason.kind === "NotArray")
     return `القيمة ${safelyStringifyUnknownValue(error.reason.value)} ليست tuple.`;
   if (error.reason.kind === "InvalidLength")
-    return `يجب أن يحتوي Tuple على ${error.reason.expected} عناصر بالضبط، لكن القيمة تحتوي على ${error.reason.actual}.`;
+    return `يجب أن يكون طول Tuple هو ${error.reason.expected}، لكن طول القيمة هو ${error.reason.actual}.`;
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "Hole":
@@ -398,7 +398,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord")
     return `القيمة ${safelyStringifyUnknownValue(error.reason.value)} ليست Record.`;
   if (error.reason.kind === "NotPlainRecord")
-    return "القيمة كائن، لكن مخرج Record يجب أن يكون كائناً عادياً أو ذا نموذج أولي فارغ.";
+    return "القيمة كائن، لكن مخرج Record يجب أن يكون كائناً عادياً أو أن يكون نموذجه الأولي null.";
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "Key":
@@ -457,7 +457,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
     case "Discriminator":
       return `خاصية المميّز ${safelyStringifyUnknownValue(error.reason.key)} لها قيمة غير متوقعة ${safelyStringifyUnknownValue(error.reason.value)}.`;
     case "Member":
-      return `المتغير المختار ${safelyStringifyUnknownValue(error.reason.discriminator)} غير صالح.`;
+      return `البديل المختار ${safelyStringifyUnknownValue(error.reason.discriminator)} غير صالح.`;
+  }
+};
+
+/** Formats a DataError in Arabic. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `القيمة ${safelyStringifyUnknownValue(issue.value)} ليست Data.`;
+    case "UnexpectedPrototype":
+      return `النموذج الأولي لـ ${issue.container} في Data غير متوقع.`;
+    case "Accessor":
+      return "يجب أن تكون خاصية Data خاصية بيانات. حوّل قيم أدوات الوصول إلى بيانات عادية قبل استخدام هذا Type أو استخدم Type مختلفاً.";
+    case "NonEnumerable":
+      return "يجب أن تكون خاصية Object في Data قابلة للتعداد. أزلها أو استخدم Type مختلفاً.";
+    case "SymbolProperty":
+      return "يجب أن يكون مفتاح خاصية Object في Data سلسلة نصية. أزل خاصية الرمز أو استخدم Type مختلفاً.";
+    case "Hole":
+      return "عنصر Array في Data مفقود.";
+    case "InvalidUint8Array":
+      return "يجب أن يستند Uint8Array في Data إلى ArrayBuffer غير منفصل وأن يقع ضمن حدوده.";
+    case "ExcessProperty":
+      return `يجب ألا يحتوي ${issue.container} في Data على خصائص مملوكة زائدة. أزل الخاصية أو استخدم Type مختلفاً.`;
   }
 };
 
@@ -472,7 +495,7 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
     case "NonFiniteNumber":
       return "يجب أن يكون رقم JSON محدوداً.";
     case "UnexpectedPrototype":
-      return "القيمة كائن، لكن كائن JsonValue يجب أن يكون كائناً عادياً أو ذا نموذج أولي فارغ.";
+      return "القيمة كائن، لكن كائن JsonValue يجب أن يكون كائناً عادياً أو أن يكون نموذجه الأولي null.";
     case "Accessor":
       return "يجب أن تكون خاصية JSON خاصية بيانات. حوّل قيم أدوات الوصول إلى بيانات عادية قبل استخدام هذا Type أو استخدم Type مختلفاً.";
     case "NonEnumerable":
@@ -492,20 +515,31 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `لا يمكن تحليل القيمة ${safelyStringifyUnknownValue(error.value)} إلى JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Arabic. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست قيمة حرفية لحجم بالبايت. استخدم قيمة مثل "512KiB" أو "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Arabic. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "القيمة -0 ليست طولاً بالبايت. استخدم 0 بدلاً منها.";
+
+/** Formats a ByteLengthFromStringError in Arabic. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست طولاً بالبايت. استخدم عدد البايتات أو قيمة حرفية مثل 10MiB.`;
+
+/** Formats a DurationLiteralError in Arabic. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست قيمة حرفية لمدة زمنية. استخدم قيمة مثل "500ms" أو "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Arabic. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست قيمة حرفية لنسبة مئوية. استخدم قيمة مثل "50%" أو "12.5%".`;

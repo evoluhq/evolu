@@ -1,12 +1,9 @@
 /**
- * Formatadors d'errors d'Evolu Type en català.
+ * Catalan Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,96 +95,96 @@ const formatPlainObjectRootError = (
     ? `El valor ${safelyStringifyUnknownValue(reason.value)} no és un objecte.`
     : "El valor és un objecte, però l’Output d’Object ha de ser un objecte pla o tenir un prototip nul.";
 
-/** Formata NeverError en català. */
+/** Formats a NeverError in Catalan. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és vàlid per al tipus Never.`;
 
-/** Formata String TypeOfError en català. */
+/** Formats a String TypeOfError in Catalan. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** Formata TemplateLiteralError en català. */
+/** Formats a TemplateLiteralError in Catalan. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no coincideix amb el literal de plantilla.`;
 
-/** Formata Number TypeOfError en català. */
+/** Formats a Number TypeOfError in Catalan. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** Formata BigInt TypeOfError en català. */
+/** Formats a BigInt TypeOfError in Catalan. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Formata Boolean TypeOfError en català. */
+/** Formats a Boolean TypeOfError in Catalan. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** Formata BooleanFromStringError en català. */
+/** Formats a BooleanFromStringError in Catalan. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un booleà. Utilitzeu true o false.`;
 
-/** Formata Symbol TypeOfError en català. */
+/** Formats a Symbol TypeOfError in Catalan. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Formata Function TypeOfError en català. */
+/** Formats a Function TypeOfError in Catalan. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** Formata EvoluTypeError en català. */
+/** Formats an EvoluTypeError in Catalan. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un Evolu Type.`;
 
-/** Formata ObjectTagError en català. */
+/** Formats an ObjectTagError in Catalan. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no té l’etiqueta d’objecte esperada ${safelyStringifyUnknownValue(error.expected)}.`;
 
-/** Formata InstanceOfError en català. */
+/** Formats an InstanceOfError in Catalan. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és una instància de ${error.constructorName}.`;
 
-/** Formata LiteralError en català. */
+/** Formats a LiteralError in Catalan. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és estrictament igual al literal esperat: ${String(error.expected)}.`;
 
-/** Formata UnionError en català. */
+/** Formats a UnionError in Catalan. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "El valor no coincideix amb cap variant permesa.";
 
-/** Formata DateIsoError en català. */
+/** Formats a DateIsoError in Catalan. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és una cadena canònica de data i hora ISO.`;
 
-/** Formata DateIsoFromDateError en català. */
+/** Formats a DateIsoFromDateError in Catalan. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "El Date no es pot representar com a DateIso.";
 
-/** Formata DecimalStringError en català. */
+/** Formats a DecimalStringError in Catalan. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser una cadena decimal canònica.`;
 
-/** Formata Int64Error en català. */
+/** Formats an Int64Error in Catalan. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un enter amb signe de 64 bits vàlid (Int64).`;
 
-/** Formata UInt64Error en català. */
+/** Formats a UInt64Error in Catalan. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un enter sense signe de 64 bits vàlid (UInt64).`;
 
-/** Formata Int64StringError en català. */
+/** Formats an Int64StringError in Catalan. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -197,17 +196,17 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un identificador ${error.casing}.`;
 
-/** Formata CapitalizedError en català. */
+/** Formats a CapitalizedError in Catalan. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
-  `El valor ${safelyStringifyUnknownValue(error.value)} ha de començar amb majúscula.`;
+  `El valor ${safelyStringifyUnknownValue(error.value)} ha de començar per majúscula.`;
 
 /** Formats an UncapitalizedError in Catalan. */
 export const formatUncapitalizedError: TypeErrorFormatter<
   UncapitalizedError
 > = (error) =>
-  `El valor ${safelyStringifyUnknownValue(error.value)} no pot començar amb una lletra majúscula.`;
+  `El valor ${safelyStringifyUnknownValue(error.value)} no pot començar per una lletra majúscula.`;
 
 /** Formats an UppercasedError in Catalan. */
 export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
@@ -221,7 +220,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser en minúscules.`;
 
-/** Formata TrimmedError en català. */
+/** Formats a TrimmedError in Catalan. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no pot tenir espais en blanc al principi ni al final.`;
 
@@ -229,153 +228,153 @@ export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
-  `El valor ${safelyStringifyUnknownValue(error.value)} ha de començar amb ${safelyStringifyUnknownValue(error.prefix)}.`;
+  `El valor ${safelyStringifyUnknownValue(error.value)} ha de començar per ${safelyStringifyUnknownValue(error.prefix)}.`;
 
-/** Formata MinLengthError en català. */
+/** Formats a MinLengthError in Catalan. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no compleix la longitud mínima de ${error.min}.`;
 
-/** Formata MaxLengthError en català. */
+/** Formats a MaxLengthError in Catalan. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} supera la longitud màxima de ${error.max}.`;
 
-/** Formata LengthError en català. */
+/** Formats a LengthError in Catalan. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no té la longitud requerida de ${error.exact}.`;
 
-/** Formata RegexError en català. */
+/** Formats a RegexError in Catalan. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no coincideix amb /${error.source}/${error.flags}.`;
 
-/** Formata Base64UrlError en català. */
+/** Formats a Base64UrlError in Catalan. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és una cadena Base64Url vàlida.`;
 
-/** Formata NameError en català. */
+/** Formats a NameError in Catalan. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un Name vàlid.`;
 
-/** Formata EmailError en català. */
+/** Formats an EmailError in Catalan. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és una adreça de correu electrònic vàlida.`;
 
-/** Formata MnemonicError en català. */
+/** Formats a MnemonicError in Catalan. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és una frase mnemotècnica BIP39 en anglès vàlida.`;
 
-/** Formata IdError en català. */
+/** Formats an IdError in Catalan. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un Id vàlid.`;
 
-/** Formata TableIdError en català. */
+/** Formats a TableIdError in Catalan. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un Id vàlid per a la taula ${error.table}.`;
 
-/** Formata UuidError en català. */
+/** Formats a UuidError in Catalan. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un UUID canònic en minúscules.`;
 
-/** Formata NonNegativeError en català. */
+/** Formats a NonNegativeError in Catalan. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser no negatiu (>= 0).`;
 
-/** Formata NonNegativeDecimalStringError en català. */
+/** Formats a NonNegativeDecimalStringError in Catalan. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser una cadena decimal no negativa.`;
 
-/** Formata PositiveError en català. */
+/** Formats a PositiveError in Catalan. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser positiu (> 0).`;
 
-/** Formata PositiveDecimalStringError en català. */
+/** Formats a PositiveDecimalStringError in Catalan. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser una cadena decimal positiva.`;
 
-/** Formata NonPositiveError en català. */
+/** Formats a NonPositiveError in Catalan. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser no positiu (<= 0).`;
 
-/** Formata NonPositiveDecimalStringError en català. */
+/** Formats a NonPositiveDecimalStringError in Catalan. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser una cadena decimal no positiva.`;
 
-/** Formata NegativeError en català. */
+/** Formats a NegativeError in Catalan. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser negatiu (< 0).`;
 
-/** Formata NegativeDecimalStringError en català. */
+/** Formats a NegativeDecimalStringError in Catalan. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser una cadena decimal negativa.`;
 
-/** Formata IntError en català. */
+/** Formats an IntError in Catalan. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser un enter segur.`;
 
-/** Formata IntFromStringError en català. */
+/** Formats an IntFromStringError in Catalan. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un enter decimal.`;
 
-/** Formata GreaterThanError en català. */
+/** Formats a GreaterThanError in Catalan. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser superior a ${error.min}.`;
 
-/** Formata GreaterThanOrEqualToError en català. */
+/** Formats a GreaterThanOrEqualToError in Catalan. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser superior o igual a ${error.min}.`;
 
-/** Formata LessThanError en català. */
+/** Formats a LessThanError in Catalan. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser inferior a ${error.max}.`;
 
-/** Formata LessThanOrEqualToError en català. */
+/** Formats a LessThanOrEqualToError in Catalan. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser inferior o igual a ${error.max}.`;
 
-/** Formata NonNaNError en català. */
+/** Formats a NonNaNError in Catalan. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "El valor no pot ser NaN.";
 
-/** Formata FiniteError en català. */
+/** Formats a FiniteError in Catalan. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser finit.`;
 
-/** Formata MultipleOfError en català. */
+/** Formats a MultipleOfError in Catalan. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha de ser múltiple de ${error.divisor}.`;
 
-/** Formata BetweenError en català. */
+/** Formats a BetweenError in Catalan. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} ha d’estar entre ${error.min} i ${error.max}, ambdós inclosos.`;
 
-/** Formata ArrayError en català. */
+/** Formats an ArrayError in Catalan. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `El valor ${safelyStringifyUnknownValue(error.reason.value)} no és un array.`;
@@ -394,7 +393,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** Formata SetError en català. */
+/** Formats a SetError in Catalan. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `El valor ${safelyStringifyUnknownValue(error.reason.value)} no és un Set.`;
@@ -409,7 +408,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** Formata MapError en català. */
+/** Formats a MapError in Catalan. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `El valor ${safelyStringifyUnknownValue(error.reason.value)} no és un Map.`;
@@ -420,14 +419,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `No es permet la propietat Map addicional ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Key":
+      return `La clau de Map a l’índex ${issue.index} no és vàlida.`;
     case "Value":
-      return `L’element de Map a l’índex ${issue.index} no és vàlid.`;
+      return `El valor de Map a l’índex ${issue.index} no és vàlid.`;
     case "Collision":
-      return `Les claus de Map ${safelyStringifyUnknownValue(issue.previousKey)} i ${safelyStringifyUnknownValue(issue.key)} es descodifiquen a la mateixa clau ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Les claus de Map als índexs ${issue.previousIndex} i ${issue.index} es descodifiquen a la mateixa clau ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
-/** Formata TupleError en català. */
+/** Formats a TupleError in Catalan. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -435,7 +435,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `El valor ${safelyStringifyUnknownValue(error.reason.value)} no és una tupla.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Un Tuple ha de contenir exactament ${error.reason.expected} elements, però el valor en conté ${error.reason.actual}.`;
+    return `La longitud d’un Tuple ha de ser ${error.reason.expected}, però la del valor és ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -452,7 +452,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** Formata RecordError en català. */
+/** Formats a RecordError in Catalan. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `El valor ${safelyStringifyUnknownValue(error.reason.value)} no és un Record.`;
@@ -477,7 +477,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** Formata ObjectError en català. */
+/** Formats an ObjectError in Catalan. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -508,7 +508,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `La propietat ${safelyStringifyUnknownValue(key)} no és vàlida.`;
 };
 
-/** Formata DiscriminatedUnionError en català. */
+/** Formats a DiscriminatedUnionError in Catalan. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -532,7 +532,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** Formata JsonValueError en català. */
+/** Formats a DataError in Catalan. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `El valor ${safelyStringifyUnknownValue(issue.value)} no és un valor Data.`;
+    case "UnexpectedPrototype":
+      return `Un valor Data de tipus ${issue.container} té un prototip inesperat.`;
+    case "Accessor":
+      return "Una propietat Data ha de ser una propietat de dades. Materialitzeu els valors dels accessors com a dades simples abans d’utilitzar aquest Type o utilitzeu un Type diferent.";
+    case "NonEnumerable":
+      return "Una propietat d’un objecte Data ha de ser enumerable. Elimineu-la o utilitzeu un Type diferent.";
+    case "SymbolProperty":
+      return "La clau d’una propietat d’un objecte Data ha de ser una cadena. Elimineu la propietat symbol o utilitzeu un Type diferent.";
+    case "Hole":
+      return "Falta un element de l’array Data.";
+    case "InvalidUint8Array":
+      return "Un Uint8Array Data ha de tenir un ArrayBuffer no desacoblat i quedar dins dels seus límits.";
+    case "ExcessProperty":
+      return `Un valor Data de tipus ${issue.container} no pot tenir propietats pròpies addicionals. Elimineu la propietat o utilitzeu un Type diferent.`;
+  }
+};
+
+/** Formats a JsonValueError in Catalan. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -560,24 +583,35 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** Formata JsonError en català. */
+/** Formats a JsonError in Catalan. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no es pot analitzar com a JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Catalan. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un literal de mida en bytes. Feu servir un valor com ara "512KiB" o "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Catalan. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "El valor -0 no és una longitud en bytes. Feu servir 0 en lloc seu.";
+
+/** Formats a ByteLengthFromStringError in Catalan. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no és una longitud en bytes. Feu servir un nombre de bytes o un literal com ara 10MiB.`;
+
+/** Formats a DurationLiteralError in Catalan. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un literal de durada. Feu servir un valor com ara "500ms" o "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Catalan. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un literal de percentatge. Feu servir un valor com ara "50%" o "12.5%".`;

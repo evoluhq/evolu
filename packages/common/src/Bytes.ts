@@ -27,7 +27,6 @@ import {
 } from "@noble/ciphers/utils.js";
 import { assert } from "./Assert.ts";
 import { err, ok, type Result } from "./Result.ts";
-import { safelyStringifyUnknownValue } from "./String.ts";
 import {
   brand,
   createTypeWithError,
@@ -48,6 +47,11 @@ import {
   union,
   type UnionError,
 } from "./Type.ts";
+import {
+  formatByteLengthError,
+  formatByteLengthFromStringError,
+  formatByteSizeLiteralError,
+} from "./intl/_en.ts";
 export { bytesToHex, hexToBytes } from "@noble/ciphers/utils.js";
 export { bytesToUtf8, utf8ToBytes };
 
@@ -1530,11 +1534,11 @@ const assertBufferHasRemainingBytes = (
 export const ByteLength = /*#__PURE__*/ brand(
   "ByteLength",
   NonNegativeInt,
-  (value) =>
+  (value: number) =>
     Object.is(value, -0)
       ? err<ByteLengthError>({ type: "ByteLength", value })
       : ok(),
-  () => "The value -0 is not a byte length. Use 0 instead.",
+  formatByteLengthError,
 );
 export type ByteLength = typeof ByteLength.Output;
 
@@ -1978,8 +1982,7 @@ export const ByteSizeLiteral: Type<
     value,
     cause,
   }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a byte-size literal. Use a value such as "512KiB" or "1MiB".`,
+  formatByteSizeLiteralError,
 );
 
 /** Error returned when {@link ByteSizeLiteral} rejects a value. */
@@ -2099,7 +2102,7 @@ export const ByteLengthFromString = /*#__PURE__*/ transform(
   String,
   ByteLength,
   {
-    from: (value): Result<number, ByteLengthFromStringError> => {
+    from: (value: string): Result<number, ByteLengthFromStringError> => {
       if (ByteSizeLiteral.is(value)) return ok(byteSizeToByteLength(value));
       if (/^\d+$/u.test(value)) {
         const number = Number(value);
@@ -2107,8 +2110,7 @@ export const ByteLengthFromString = /*#__PURE__*/ transform(
       }
       return err({ type: "ByteLengthFromString", value });
     },
-    to: (value) => globalThis.String(value),
+    to: (value: ByteLength) => globalThis.String(value),
   },
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a byte length. Use a number of bytes or a literal such as 10MiB.`,
+  formatByteLengthFromStringError,
 );

@@ -494,6 +494,74 @@ import {
   type ValueWithLength,
   type WidenLiteral,
 } from "./Types.ts";
+import {
+  formatArrayError,
+  formatBase64UrlError,
+  formatBetweenError,
+  formatBigIntError,
+  formatBooleanError,
+  formatBooleanFromStringError,
+  formatCapitalizedError,
+  formatDataError,
+  formatDateIsoError,
+  formatDateIsoFromDateError,
+  formatDecimalStringError,
+  formatDiscriminatedUnionError,
+  formatEmailError,
+  formatEvoluTypeError,
+  formatFiniteError,
+  formatFunctionError,
+  formatGreaterThanError,
+  formatGreaterThanOrEqualToError,
+  formatIdError,
+  formatIdentifierError,
+  formatInstanceOfError,
+  formatInt64Error,
+  formatInt64StringError,
+  formatIntError,
+  formatIntFromStringError,
+  formatJsonError,
+  formatJsonValueError,
+  formatLengthError,
+  formatLessThanError,
+  formatLessThanOrEqualToError,
+  formatLiteralError,
+  formatLowercasedError,
+  formatMapError,
+  formatMaxLengthError,
+  formatMinLengthError,
+  formatMnemonicError,
+  formatMultipleOfError,
+  formatNameError,
+  formatNegativeDecimalStringError,
+  formatNegativeError,
+  formatNeverError,
+  formatNonNaNError,
+  formatNonNegativeDecimalStringError,
+  formatNonNegativeError,
+  formatNonPositiveDecimalStringError,
+  formatNonPositiveError,
+  formatNumberError,
+  formatObjectError,
+  formatObjectTagError,
+  formatPositiveDecimalStringError,
+  formatPositiveError,
+  formatRecordError,
+  formatRegexError,
+  formatSetError,
+  formatStartsWithError,
+  formatStringError,
+  formatSymbolError,
+  formatTableIdError,
+  formatTemplateLiteralError,
+  formatTrimmedError,
+  formatTupleError,
+  formatUInt64Error,
+  formatUncapitalizedError,
+  formatUnionError,
+  formatUppercasedError,
+  formatUuidError,
+} from "./intl/_en.ts";
 
 /**
  * A runtime representation of a TypeScript type, including its encoded input,
@@ -3298,8 +3366,7 @@ export interface NeverError extends TypeError<"Never"> {
 export const Never = /*#__PURE__*/ createRootType(
   "Never",
   (value): Result<never, NeverError> => err({ type: "Never", value }),
-  (error) =>
-    `A value ${safelyStringifyUnknownValue(error.value)} is not valid for type Never.`,
+  formatNeverError,
   {
     isOutput: () => false,
     check: (value): NeverError => ({ type: "Never", value }),
@@ -3320,6 +3387,7 @@ export interface TypeOfError<
 
 const createTypeOfType = <Name extends keyof TypeOfOutputByName>(
   name: Name,
+  formatError: TypeErrorFormatter<TypeOfError<Name>>,
 ): Type<
   Name,
   TypeOfOutputByName[Name],
@@ -3338,8 +3406,7 @@ const createTypeOfType = <Name extends keyof TypeOfOutputByName>(
       typeof value === typeOf
         ? ok(value as TypeOfOutputByName[Name])
         : err({ type: "TypeOf", expected: name, value }),
-    (error) =>
-      `A value ${safelyStringifyUnknownValue(error.value)} is not a ${typeOf}.`,
+    formatError,
     {
       isOutput: (value) => typeof value === typeOf,
       check: (value): TypeOfError<Name> | undefined =>
@@ -3392,7 +3459,10 @@ interface TypeOfOutputByName {
  *
  * @group String
  */
-export const String = /*#__PURE__*/ createTypeOfType("String");
+export const String = /*#__PURE__*/ createTypeOfType(
+  "String",
+  formatStringError,
+);
 
 /**
  * A JavaScript number, including `NaN`, `Infinity`, and `-Infinity`.
@@ -3473,21 +3543,30 @@ export const String = /*#__PURE__*/ createTypeOfType("String");
  *
  * @group Number
  */
-export const Number = /*#__PURE__*/ createTypeOfType("Number");
+export const Number = /*#__PURE__*/ createTypeOfType(
+  "Number",
+  formatNumberError,
+);
 
 /**
  * A JavaScript bigint {@link Type}.
  *
  * @group Base
  */
-export const BigInt = /*#__PURE__*/ createTypeOfType("BigInt");
+export const BigInt = /*#__PURE__*/ createTypeOfType(
+  "BigInt",
+  formatBigIntError,
+);
 
 /**
  * A JavaScript boolean {@link Type}.
  *
  * @group Base
  */
-export const Boolean = /*#__PURE__*/ createTypeOfType("Boolean");
+export const Boolean = /*#__PURE__*/ createTypeOfType(
+  "Boolean",
+  formatBooleanError,
+);
 
 /**
  * Error returned when a string is neither `true` nor `false`.
@@ -3535,16 +3614,15 @@ export const BooleanFromString = /*#__PURE__*/ transform(
   String,
   Boolean,
   {
-    from: (value): Result<boolean, BooleanFromStringError> =>
+    from: (value: string): Result<boolean, BooleanFromStringError> =>
       value === "true"
         ? ok(true)
         : value === "false"
           ? ok(false)
           : err({ type: "BooleanFromString", value }),
-    to: (value) => (value ? "true" : "false"),
+    to: (value: boolean) => (value ? "true" : "false"),
   },
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a boolean. Use true or false.`,
+  formatBooleanFromStringError,
 );
 
 /**
@@ -3552,14 +3630,20 @@ export const BooleanFromString = /*#__PURE__*/ transform(
  *
  * @group Base
  */
-export const Symbol = /*#__PURE__*/ createTypeOfType("Symbol");
+export const Symbol = /*#__PURE__*/ createTypeOfType(
+  "Symbol",
+  formatSymbolError,
+);
 
 /**
  * A JavaScript function {@link Type}.
  *
  * @group Base
  */
-export const Function = /*#__PURE__*/ createTypeOfType("Function");
+export const Function = /*#__PURE__*/ createTypeOfType(
+  "Function",
+  formatFunctionError,
+);
 
 /**
  * Any concrete {@link Type}, regardless of its particular type parameters.
@@ -3594,12 +3678,11 @@ export interface EvoluTypeError extends TypeValueError<"EvoluType"> {}
  */
 export const EvoluType = /*#__PURE__*/ createType(
   "EvoluType",
-  (value): Result<AnyType, EvoluTypeError> =>
+  (value: unknown): Result<AnyType, EvoluTypeError> =>
     isInstance<AnyType & Instance<"Type">>("Type")(value)
       ? ok(value)
       : err({ type: "EvoluType", value }),
-  (error) =>
-    `A value ${safelyStringifyUnknownValue(error.value)} is not an Evolu Type.`,
+  formatEvoluTypeError,
 );
 
 /**
@@ -3742,8 +3825,6 @@ export function objectTag(
   name: TypeName,
   outputType?: ConcreteTypeNode & { readonly Output: object },
 ): TypeNode {
-  const formatError: TypeErrorFormatter<ObjectTagError> = (error) =>
-    `A value ${safelyStringifyUnknownValue(error.value)} does not have the expected object tag ${safelyStringifyUnknownValue(error.expected)}.`;
   const tag = `[object ${name}]`;
 
   if (outputType === undefined) {
@@ -3753,7 +3834,7 @@ export function objectTag(
         hasObjectTag(value, tag)
           ? ok(value as object)
           : err({ type: "ObjectTag", expected: name, value }),
-      formatError,
+      formatObjectTagError,
       {
         isOutput: (value) => hasObjectTag(value, tag),
         check: (value): ObjectTagError | undefined =>
@@ -3772,7 +3853,7 @@ export function objectTag(
         hasObjectTag(value, tag)
           ? ok(value as object & ObjectTag<TypeName>)
           : err({ type: "ObjectTag", expected: name, value }),
-      formatError,
+      formatObjectTagError,
     ),
     { expected: name },
   );
@@ -3906,19 +3987,11 @@ export const instanceOf = <Constructor extends InstanceConstructor>(
     is(value) ? ok(value) : err({ type: "InstanceOf", constructorName, value });
 
   return globalThis.Object.assign(
-    createRootType(
-      "InstanceOf",
-      fromUnknown,
-      (error) =>
-        `A value ${safelyStringifyUnknownValue(error.value)} is not an instance of ${error.constructorName}.`,
-      {
-        isOutput: is,
-        check: (value): InstanceOfError | undefined =>
-          is(value)
-            ? undefined
-            : { type: "InstanceOf", constructorName, value },
-      },
-    ),
+    createRootType("InstanceOf", fromUnknown, formatInstanceOfError, {
+      isOutput: is,
+      check: (value): InstanceOfError | undefined =>
+        is(value) ? undefined : { type: "InstanceOf", constructorName, value },
+    }),
     { constructor: concreteConstructor },
   );
 };
@@ -4065,8 +4138,6 @@ export const literal = <const Expected extends Literal>(
           : typeof literalExpected === "boolean"
             ? Boolean
             : null;
-  const formatError: TypeErrorFormatter<LiteralError<Expected>> = (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not strictly equal to the expected literal: ${globalThis.String(error.expected)}.`;
 
   return globalThis.Object.assign(
     parent
@@ -4077,7 +4148,7 @@ export const literal = <const Expected extends Literal>(
             value === literalExpected
               ? ok()
               : err({ type: "Literal", expected: literalExpected, value }),
-          formatError,
+          formatLiteralError,
           undefined,
           true,
         )
@@ -4087,7 +4158,7 @@ export const literal = <const Expected extends Literal>(
             value === literalExpected
               ? ok(value as Expected)
               : err({ type: "Literal", expected: literalExpected, value }),
-          formatError,
+          formatLiteralError,
           {
             isOutput: (value) => value === literalExpected,
             check: (value): LiteralError<Expected> | undefined =>
@@ -4400,7 +4471,7 @@ const createUnionRuntimeTypeIssues =
       name: "Union",
       error,
       path,
-      formatError: () => "A value does not match any allowed variant.",
+      formatError: formatUnionError as TypeErrorFormatter<TypeError>,
       // Alternative issue paths are relative to the Union value.
       alternatives: (error as UnionErrorValue<TypeError>).errors.map(
         ({ index, error }) => ({
@@ -5039,8 +5110,7 @@ const createTemplateLiteralParserType = <
     return singleRuntimeTypeIssue(
       "TemplateLiteral",
       error,
-      ((error: TemplateLiteralError) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} does not match the template literal.`) as TypeErrorFormatter<TypeError>,
+      formatTemplateLiteralError as TypeErrorFormatter<TypeError>,
       path,
     );
   };
@@ -5774,12 +5844,11 @@ export interface DateIsoError extends TypeError<"DateIso"> {
 export const DateIso = /*#__PURE__*/ brand(
   "DateIso",
   String,
-  (value) =>
+  (value: string) =>
     value.length === 24 && new globalThis.Date(value).toJSON() === value
       ? ok()
       : err<DateIsoError>({ type: "DateIso", value }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a canonical ISO date-time string.`,
+  formatDateIsoError,
 );
 export type DateIso = typeof DateIso.Output;
 
@@ -5814,14 +5883,14 @@ export const DateIsoFromDate = /*#__PURE__*/ transform(
   Date,
   DateIso,
   {
-    from: (value) =>
+    from: (value: globalThis.Date) =>
       trySync(
         () => globalThis.Date.prototype.toISOString.call(value),
         (): DateIsoFromDateError => ({ type: "DateIsoFromDate", value }),
       ),
-    to: (value) => new globalThis.Date(value),
+    to: (value: DateIso) => new globalThis.Date(value),
   },
-  () => "The Date cannot be represented as DateIso.",
+  formatDateIsoFromDateError,
 );
 
 /**
@@ -5841,12 +5910,11 @@ export interface Int64Error extends TypeError<"Int64"> {
 export const Int64 = /*#__PURE__*/ brand(
   "Int64",
   BigInt,
-  (value) =>
+  (value: bigint) =>
     globalThis.BigInt.asIntN(64, value) === value
       ? ok()
       : err<Int64Error>({ type: "Int64", value }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid signed 64-bit integer (Int64).`,
+  formatInt64Error,
 );
 export type Int64 = typeof Int64.Output;
 
@@ -5868,12 +5936,11 @@ export interface UInt64Error extends TypeError<"UInt64"> {
 export const UInt64 = /*#__PURE__*/ brand(
   "UInt64",
   BigInt,
-  (value) =>
+  (value: bigint) =>
     globalThis.BigInt.asUintN(64, value) === value
       ? ok()
       : err<UInt64Error>({ type: "UInt64", value }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid unsigned 64-bit integer (UInt64).`,
+  formatUInt64Error,
 );
 export type UInt64 = typeof UInt64.Output;
 
@@ -6113,8 +6180,7 @@ export const identifier =
         pattern.test(value)
           ? ok()
           : err<IdentifierError<Casing>>({ type: name, value, casing }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} is not a ${error.casing} identifier.`,
+      formatIdentifierError,
     );
   };
 
@@ -6532,8 +6598,7 @@ export const capitalized = <
       value === capitalize(value)
         ? ok(value as ParentType["Output"] & Capitalize<string>)
         : err({ type: "Capitalized", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be capitalized.`,
+    formatCapitalizedError,
   );
 
 /**
@@ -6648,8 +6713,7 @@ export const uncapitalized = <
       value === uncapitalize(value)
         ? ok(value as ParentType["Output"] & Uncapitalize<string>)
         : err({ type: "Uncapitalized", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must not start with an uppercase letter.`,
+    formatUncapitalizedError,
   );
 
 /**
@@ -6759,8 +6823,7 @@ export const uppercased = <
       value === uppercase(value)
         ? ok(value as ParentType["Output"] & Uppercase<string>)
         : err({ type: "Uppercased", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be uppercased.`,
+    formatUppercasedError,
   );
 
 /**
@@ -6867,8 +6930,7 @@ export const lowercased = <
       value === lowercase(value)
         ? ok(value as ParentType["Output"] & Lowercase<string>)
         : err({ type: "Lowercased", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be lowercased.`,
+    formatLowercasedError,
   );
 
 /**
@@ -6951,8 +7013,7 @@ export const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
       value === value.trim()
         ? ok()
         : err<TrimmedError>({ type: "Trimmed", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be trimmed.`,
+    formatTrimmedError,
   );
 
 /**
@@ -7052,8 +7113,7 @@ export const startsWith = <Prefix extends string>(
               value,
               prefix,
             }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} must start with ${safelyStringifyUnknownValue(error.prefix)}.`,
+      formatStartsWithError,
     );
 };
 
@@ -7208,8 +7268,7 @@ export const minLength =
         value.length >= min
           ? ok()
           : err<MinLengthError<Min>>({ type: name, value, min }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} does not meet the minimum length of ${error.min}.`,
+      formatMinLengthError,
     );
   };
 
@@ -7274,8 +7333,7 @@ export const maxLength =
         value.length <= max
           ? ok()
           : err<MaxLengthError<Max>>({ type: name, value, max }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} exceeds the maximum length of ${error.max}.`,
+      formatMaxLengthError,
     );
   };
 
@@ -7343,8 +7401,7 @@ export const length =
         value.length === exact
           ? ok()
           : err<LengthError<Exact>>({ type: name, value, exact }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} does not have the required length of ${error.exact}.`,
+      formatLengthError,
     );
   };
 
@@ -7429,8 +7486,7 @@ export const regex = <const Name extends TypeName>(
               flags,
             });
       },
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} does not match /${error.source}/${error.flags}.`,
+      formatRegexError,
     );
 };
 
@@ -7512,15 +7568,14 @@ export interface Base64UrlError extends TypeError<"Base64Url"> {
 export const Base64Url = /*#__PURE__*/ brand(
   "Base64Url",
   String,
-  (value) => {
+  (value: string) => {
     const decoded = trySync(() => base64UrlStringToUint8Array(value));
 
     return decoded.ok && uint8ArrayToBase64UrlString(decoded.value) === value
       ? ok()
       : err<Base64UrlError>({ type: "Base64Url", value });
   },
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Base64Url string.`,
+  formatBase64UrlError,
 );
 export type Base64Url = typeof Base64Url.Output;
 
@@ -7591,10 +7646,9 @@ export interface NameError extends TypeError<"Name"> {
 export const Name = /*#__PURE__*/ brand(
   "Name",
   UrlSafeString,
-  (value) =>
+  (value: string) =>
     value.length <= 64 ? ok() : err<NameError>({ type: "Name", value }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Name.`,
+  formatNameError,
 );
 export type Name = typeof Name.Output;
 
@@ -7655,14 +7709,13 @@ export interface EmailError extends TypeError<"Email"> {
 export const Email = /*#__PURE__*/ brand(
   "Email",
   String,
-  (value) =>
+  (value: string) =>
     /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/u.test(
       value,
     )
       ? ok()
       : err<EmailError>({ type: "Email", value }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid email address.`,
+  formatEmailError,
 );
 export type Email = typeof Email.Output;
 
@@ -7701,12 +7754,11 @@ export interface MnemonicError extends TypeError<"Mnemonic"> {
 export const Mnemonic = /*#__PURE__*/ brand(
   "Mnemonic",
   NonEmptyTrimmedString,
-  (value) =>
+  (value: string) =>
     bip39.validateMnemonic(value, wordlist)
       ? ok()
       : err<MnemonicError>({ type: "Mnemonic", value }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid English BIP39 mnemonic.`,
+  formatMnemonicError,
 );
 export type Mnemonic = typeof Mnemonic.Output;
 
@@ -7729,12 +7781,11 @@ export type Mnemonic = typeof Mnemonic.Output;
 export const Id = /*#__PURE__*/ brand(
   "Id",
   String,
-  (value) =>
+  (value: string) =>
     value.length === 22 && Base64Url.from.parent(value).ok
       ? ok()
       : err<IdError>({ type: "Id", value }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Id.`,
+  formatIdError,
 );
 export type Id = typeof Id.Output;
 
@@ -7928,12 +7979,11 @@ export const id = <Table extends TypeName>(
     createType(
       "TableId",
       String,
-      (value): Result<Id & Brand<Table>, TableIdError<Table>> =>
+      (value: string): Result<Id & Brand<Table>, TableIdError<Table>> =>
         Id.from.parent(value).ok
           ? ok(value as Id & Brand<Table>)
           : err({ type: "TableId", table: concreteTable, value }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Id for table ${error.table}.`,
+      formatTableIdError,
     ),
     { table: concreteTable },
   );
@@ -8079,14 +8129,13 @@ export interface UuidError extends TypeError<"Uuid"> {
 export const Uuid = /*#__PURE__*/ brand(
   "Uuid",
   String,
-  (value) =>
+  (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(
       value,
     )
       ? ok()
       : err<UuidError>({ type: "Uuid", value }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a canonical lowercase UUID.`,
+  formatUuidError,
 );
 export type Uuid = typeof Uuid.Output;
 
@@ -8180,7 +8229,7 @@ export interface Int64StringError extends TypeError<"Int64String"> {
 export const Int64String = /*#__PURE__*/ brand(
   "Int64String",
   NonEmptyTrimmedString,
-  (value) => {
+  (value: string) => {
     const negative = value.startsWith("-");
 
     if (
@@ -8197,8 +8246,7 @@ export const Int64String = /*#__PURE__*/ brand(
       ? ok()
       : err<Int64StringError>({ type: "Int64String", value });
   },
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Int64 string.`,
+  formatInt64StringError,
 );
 export type Int64String = typeof Int64String.Output;
 
@@ -8273,8 +8321,7 @@ export const nonNegative: BrandFactory<
     parent,
     (value) =>
       value >= 0 ? ok() : err<NonNegativeError>({ type: "NonNegative", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be non-negative (>= 0).`,
+    formatNonNegativeError,
   );
 
 /**
@@ -8317,8 +8364,7 @@ export const positive: BrandFactory<"Positive", number, PositiveError> = (
     parent,
     (value) =>
       value > 0 ? ok() : err<PositiveError>({ type: "Positive", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be positive (> 0).`,
+    formatPositiveError,
   );
 
 /**
@@ -8366,8 +8412,7 @@ export const nonPositive: BrandFactory<
     parent,
     (value) =>
       value <= 0 ? ok() : err<NonPositiveError>({ type: "NonPositive", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be non-positive (<= 0).`,
+    formatNonPositiveError,
   );
 
 /**
@@ -8410,8 +8455,7 @@ export const negative: BrandFactory<"Negative", number, NegativeError> = (
     parent,
     (value) =>
       value < 0 ? ok() : err<NegativeError>({ type: "Negative", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be negative (< 0).`,
+    formatNegativeError,
   );
 
 /**
@@ -8457,7 +8501,7 @@ export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
       globalThis.Number.isNaN(value)
         ? err<NonNaNError>({ type: "NonNaN", value })
         : ok(),
-    () => "The value must not be NaN.",
+    formatNonNaNError,
   );
 
 /**
@@ -8505,8 +8549,7 @@ export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
       globalThis.Number.isFinite(value)
         ? ok()
         : err<FiniteError>({ type: "Finite", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be finite.`,
+    formatFiniteError,
   );
 
 /**
@@ -8588,8 +8631,7 @@ export const int: BrandFactory<"Int", number, IntError> = (parent) =>
       globalThis.Number.isSafeInteger(value)
         ? ok()
         : err<IntError>({ type: "Int", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be a safe integer.`,
+    formatIntError,
   );
 
 /**
@@ -8677,15 +8719,14 @@ export const IntFromString = /*#__PURE__*/ transform(
   String,
   Int,
   {
-    from: (value): Result<number, IntFromStringError> =>
+    from: (value: string): Result<number, IntFromStringError> =>
       /^-?\d+$/u.test(value)
         ? ok(globalThis.Number(value))
         : err({ type: "IntFromString", value }),
-    to: (value) =>
+    to: (value: Int) =>
       globalThis.Object.is(value, -0) ? "-0" : globalThis.String(value),
   },
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a decimal integer.`,
+  formatIntFromStringError,
 );
 
 /**
@@ -8763,8 +8804,7 @@ export const greaterThan =
         value > min
           ? ok()
           : err<GreaterThanError<Min>>({ type: name, value, min }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} must be greater than ${error.min}.`,
+      formatGreaterThanError,
     );
   };
 
@@ -8817,8 +8857,7 @@ export const greaterThanOrEqualTo =
               value,
               min,
             }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} must be greater than or equal to ${error.min}.`,
+      formatGreaterThanOrEqualToError,
     );
   };
 
@@ -8863,8 +8902,7 @@ export const lessThan =
         value < max
           ? ok()
           : err<LessThanError<Max>>({ type: name, value, max }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} must be less than ${error.max}.`,
+      formatLessThanError,
     );
   };
 
@@ -8924,8 +8962,7 @@ export const lessThanOrEqualTo =
         value <= max
           ? ok()
           : err<LessThanOrEqualToError<Max>>({ type: name, value, max }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} must be less than or equal to ${error.max}.`,
+      formatLessThanOrEqualToError,
     );
   };
 
@@ -9064,12 +9101,11 @@ export interface DecimalStringError extends TypeError<"DecimalString"> {
 export const DecimalString = /*#__PURE__*/ brand(
   "DecimalString",
   String,
-  (value) =>
+  (value: string) =>
     /^(?:0|-?(?:[1-9]\d*|(?:0|[1-9]\d*)\.\d*[1-9]))$/u.test(value)
       ? ok()
       : err<DecimalStringError>({ type: "DecimalString", value }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} must be a canonical decimal string.`,
+  formatDecimalStringError,
 );
 export type DecimalString = typeof DecimalString.Output;
 
@@ -9116,8 +9152,7 @@ export const nonNegativeDecimalString: BrandFactory<
             type: "NonNegativeDecimalString",
             value,
           }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be a non-negative decimal string.`,
+    formatNonNegativeDecimalStringError,
   );
 
 /**
@@ -9172,8 +9207,7 @@ export const positiveDecimalString: BrandFactory<
             type: "PositiveDecimalString",
             value,
           }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be a positive decimal string.`,
+    formatPositiveDecimalStringError,
   );
 
 /**
@@ -9232,8 +9266,7 @@ export const nonPositiveDecimalString: BrandFactory<
             type: "NonPositiveDecimalString",
             value,
           }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be a non-positive decimal string.`,
+    formatNonPositiveDecimalStringError,
   );
 
 /**
@@ -9288,8 +9321,7 @@ export const negativeDecimalString: BrandFactory<
             type: "NegativeDecimalString",
             value,
           }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be a negative decimal string.`,
+    formatNegativeDecimalStringError,
   );
 
 /**
@@ -9400,8 +9432,7 @@ export const multipleOf = <const Divisor extends string>(
               divisor,
             });
       },
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} must be a multiple of ${error.divisor}.`,
+      formatMultipleOfError,
     );
 };
 
@@ -9522,8 +9553,7 @@ export const between =
               min,
               max,
             }),
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} must be between ${error.min} and ${error.max}, inclusive.`,
+      formatBetweenError,
     );
   };
 
@@ -9869,23 +9899,7 @@ const arrayRuntimeConfig: HomogeneousCollectionRuntimeConfig<
       : { type: "Array", reason: { kind: "NotArray", value } },
   encode: encodeArrayCollection,
   is: isArrayCollection,
-  formatError: ((error: ArrayError) => {
-    if (error.reason.kind === "NotArray") {
-      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not an array.`;
-    }
-    const issue = error.reason.issues[0];
-
-    switch (issue.kind) {
-      case "Hole":
-        return `An array element at index ${issue.index} is missing.`;
-      case "Accessor":
-        return `An array element at index ${issue.index} must be a data property.`;
-      case "ExcessProperty":
-        return "An excess Array property is not allowed. Remove it or use a different Type.";
-      case "Element":
-        return `An array element at index ${issue.index} is invalid.`;
-    }
-  }) as TypeErrorFormatter<TypeError>,
+  formatError: formatArrayError as TypeErrorFormatter<TypeError>,
 };
 
 const validateArrayItems = (
@@ -10482,17 +10496,7 @@ const setRuntimeConfig: HomogeneousCollectionRuntimeConfig<
     }
     return true;
   },
-  formatError: ((error: SetError) => {
-    if (error.reason.kind === "NotSet")
-      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Set.`;
-    const issue = error.reason.issues[0];
-    switch (issue.kind) {
-      case "ExcessProperty":
-        return `An excess Set property ${safelyStringifyUnknownValue(issue.key)} is not allowed.`;
-      case "Element":
-        return `A Set element at index ${issue.index} is invalid.`;
-    }
-  }) as TypeErrorFormatter<TypeError>,
+  formatError: formatSetError as TypeErrorFormatter<TypeError>,
 };
 
 const validateSetItems = (
@@ -10888,17 +10892,6 @@ export const map = <
           typeValue[outputValidationSymbol],
           options,
         );
-  const formatError: TypeErrorFormatter<MapStructuralError> = (error) => {
-    if (error.reason.kind === "NotMap")
-      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Map.`;
-    const issue = error.reason.issues[0];
-    switch (issue.kind) {
-      case "ExcessProperty":
-        return `An excess Map property ${safelyStringifyUnknownValue(issue.key)} is not allowed.`;
-      case "Collision":
-        return `Map keys at indexes ${issue.previousIndex} and ${issue.index} decode to the same key ${safelyStringifyUnknownValue(issue.outputKey)}.`;
-    }
-  };
   const rootKey = getTerminalRuntimeNode(typeKey);
   const rootValue = getTerminalRuntimeNode(typeValue);
   const parent =
@@ -10978,7 +10971,7 @@ export const map = <
       return singleRuntimeTypeIssue(
         "Map",
         error,
-        formatError as TypeErrorFormatter<TypeError>,
+        formatMapError as TypeErrorFormatter<TypeError>,
         path,
       );
     }
@@ -11017,7 +11010,7 @@ export const map = <
           path,
           issue.kind === "ExcessProperty" ? issue.key : issue.index,
         ),
-        formatError: formatError as TypeErrorFormatter<TypeError>,
+        formatError: formatMapError as TypeErrorFormatter<TypeError>,
       });
     }
 
@@ -11088,9 +11081,6 @@ type ValidateMapValueType<T extends ConcreteTypeNode> =
       >;
 
 type MapStructuralIssue = MapExcessPropertyIssue | MapKeyCollisionIssue;
-
-type MapStructuralError =
-  MapNotMapError | MapEntriesErrorValue<never, never, MapStructuralIssue>;
 
 const validateMapEntries = (
   input: ReadonlyMap<unknown, unknown>,
@@ -11497,23 +11487,6 @@ const createTupleType = (
             element[outputValidationSymbol](item, elementOptions),
           options,
         );
-  const formatError: TypeErrorFormatter<TupleError> = (error) => {
-    if (error.reason.kind === "NotArray")
-      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a tuple.`;
-    if (error.reason.kind === "InvalidLength")
-      return `A Tuple must contain exactly ${error.reason.expected} elements, but the value contains ${error.reason.actual}.`;
-    const issue = error.reason.issues[0];
-    switch (issue.kind) {
-      case "Hole":
-        return `A Tuple element at index ${issue.index} is missing.`;
-      case "Accessor":
-        return `A Tuple element at index ${issue.index} must be a data property.`;
-      case "ExcessProperty":
-        return "An excess Tuple property is not allowed. Remove it or use a different Type.";
-      case "Element":
-        return `A Tuple element at index ${issue.index} is invalid.`;
-    }
-  };
   const rootElements = typeElements.map(
     getTerminalRuntimeNode,
   ) as unknown as NonEmptyReadonlyArray<RuntimeTypeNode>;
@@ -11576,7 +11549,7 @@ const createTupleType = (
   const getTypeIssues = createCollectionRuntimeTypeIssues(
     "Tuple",
     "Items",
-    formatError as TypeErrorFormatter<TypeError>,
+    formatTupleError as TypeErrorFormatter<TypeError>,
     (issue) => typeElements[(issue as { readonly index: number }).index],
   );
 
@@ -11889,9 +11862,7 @@ const createObjectRuntimeTypeIssues =
           name: "Object",
           error: ownError,
           path: appendIssuePath(path, key),
-          // The issue error has this first key, so its message needs no key
-          // enumeration of the error record.
-          formatError: () => formatObjectPropertyError(key, propertyError),
+          formatError: formatObjectError as TypeErrorFormatter<TypeError>,
         });
         continue;
       }
@@ -11916,44 +11887,6 @@ const createObjectRuntimeTypeIssues =
 
     return result as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
   };
-
-const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
-  if (error.reason.kind !== "Properties")
-    return formatPlainObjectRootError(error.reason);
-  const key = Reflect.ownKeys(error.reason.errors).at(0);
-  assertNonNullable(key);
-  return formatObjectPropertyError(key, error.reason.errors[key]);
-};
-
-const formatObjectPropertyError = (
-  key: PropertyKey,
-  propertyError: TypeError | undefined,
-): string => {
-  assertNonNullable(propertyError);
-  if (propertyError.type === "ObjectPropertyAccess") {
-    switch ((propertyError as ObjectPropertyAccessError).reason) {
-      case "Accessor":
-        return "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
-      case "NonEnumerable":
-        return "An Object property must be enumerable. Make it enumerable or use a different Type.";
-    }
-  }
-  if (propertyError.type === "ObjectMissingProperty")
-    return `The required property ${safelyStringifyUnknownValue(key)} is missing.`;
-  if (typeof key === "symbol")
-    return "An Object property key must be a string. Remove the symbol property or use a different Type.";
-  if (propertyError.type === "ObjectExcessProperty")
-    return `The property ${safelyStringifyUnknownValue(key)} is not allowed. Remove it or use a different Type.`;
-  return `The property ${safelyStringifyUnknownValue(key)} is invalid.`;
-};
-
-const formatPlainObjectRootError = (
-  reason:
-    ObjectNotObjectError["reason"] | ObjectUnexpectedPrototypeError["reason"],
-): string =>
-  reason.kind === "NotObject"
-    ? `A value ${safelyStringifyUnknownValue(reason.value)} is not an object.`
-    : "The value is an object, but an Object Output must be a plain object or have a null prototype.";
 
 // Ordinary objects list string keys before symbols, so without symbols the
 // names are the own keys, and cheaper than Reflect.ownKeys. A Proxy may list
@@ -12564,25 +12497,6 @@ export const record = <
           typeValue[outputValidationSymbol],
           options,
         );
-  const formatError: TypeErrorFormatter<RecordError> = (error) => {
-    if (error.reason.kind === "NotRecord")
-      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Record.`;
-    if (error.reason.kind === "NotPlainRecord")
-      return "The value is an object, but a Record Output must be a plain object or have a null prototype.";
-    const issue = error.reason.issues[0];
-    switch (issue.kind) {
-      case "Key":
-        return `Property key ${safelyStringifyUnknownValue(issue.key)} is invalid.`;
-      case "Value":
-        return `The value of property ${safelyStringifyUnknownValue(issue.key)} is invalid.`;
-      case "Accessor":
-        return `A Record property ${safelyStringifyUnknownValue(issue.key)} must be a data property.`;
-      case "NonEnumerable":
-        return `A Record property ${safelyStringifyUnknownValue(issue.key)} must be enumerable.`;
-      case "Collision":
-        return `Record keys ${safelyStringifyUnknownValue(issue.previousKey)} and ${safelyStringifyUnknownValue(issue.key)} decode to the same key ${safelyStringifyUnknownValue(issue.outputKey)}.`;
-    }
-  };
   const rootKey = getTerminalRuntimeNode(typeKey);
   const rootValue = getTerminalRuntimeNode(typeValue);
 
@@ -12676,7 +12590,7 @@ export const record = <
   const getTypeIssues = createCollectionRuntimeTypeIssues(
     "Record",
     "Entries",
-    formatError as TypeErrorFormatter<TypeError>,
+    formatRecordError as TypeErrorFormatter<TypeError>,
     (issue) => (issue.kind === "Key" ? typeKey : typeValue),
   );
 
@@ -16063,25 +15977,8 @@ export function discriminatedUnion(
     membersByDiscriminator.get(
       Reflect.get(value as Readonly<Record<string, unknown>>, key),
     )!;
-  const formatError: TypeErrorFormatter<DiscriminatedUnionError> = (error) => {
-    switch (error.reason.kind) {
-      case "Object":
-        return formatPlainObjectRootError(error.reason.error.reason);
-      case "PropertyAccess": {
-        const property = `The discriminator property ${safelyStringifyUnknownValue(error.reason.key)}`;
-        if (error.reason.reason === "Accessor")
-          return `${property} must be a data property.`;
-        if (error.reason.reason === "Inherited")
-          return `${property} must be an own property.`;
-        return `${property} must be enumerable.`;
-      }
-      case "Discriminator":
-        return `The discriminator property ${safelyStringifyUnknownValue(error.reason.key)} has an unexpected value ${safelyStringifyUnknownValue(error.reason.value)}.`;
-      case "Member":
-        return `The selected variant ${safelyStringifyUnknownValue(error.reason.discriminator)} is invalid.`;
-    }
-  };
-  const defaultFormatter = formatError as TypeErrorFormatter<TypeError>;
+  const defaultFormatter =
+    formatDiscriminatedUnionError as TypeErrorFormatter<TypeError>;
   const getTypeIssues: RuntimeGetTypeIssues = (error, mode, path) => {
     const discriminatedUnionError = error as DiscriminatedUnionError;
 
@@ -17056,27 +16953,7 @@ const getDataRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode, path) => {
           },
     // A root issue shares the path array of its error.
     path: path.length === 0 ? issue.path : [...path, ...issue.path],
-    formatError: ((error: DataError) => {
-      const issue = error.reason.issues[0];
-      switch (issue.kind) {
-        case "InvalidType":
-          return `A value ${safelyStringifyUnknownValue(issue.value)} is not Data.`;
-        case "UnexpectedPrototype":
-          return `A Data ${issue.container} has an unexpected prototype.`;
-        case "Accessor":
-          return "A Data property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
-        case "NonEnumerable":
-          return "A Data Object property must be enumerable. Remove it or use a different Type.";
-        case "SymbolProperty":
-          return "A Data Object property key must be a string. Remove the symbol property or use a different Type.";
-        case "Hole":
-          return "A Data Array element is missing.";
-        case "InvalidUint8Array":
-          return "A Data Uint8Array must have an attached, in-bounds ArrayBuffer.";
-        case "ExcessProperty":
-          return `A Data ${issue.container} must not have excess own properties. Remove the property or use a different Type.`;
-      }
-    }) as TypeErrorFormatter<TypeError>,
+    formatError: formatDataError as TypeErrorFormatter<TypeError>,
   })) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
 };
 
@@ -17650,29 +17527,7 @@ const getJsonValueRuntimeTypeIssues: RuntimeGetTypeIssues = (
             reason: { kind: "Issues", issues: [issue] },
           },
     path: path.length === 0 ? issue.path : [...path, ...issue.path],
-    formatError: ((error: JsonValueError) => {
-      const issue = error.reason.issues[0];
-      switch (issue.kind) {
-        case "InvalidType":
-          return `A value ${safelyStringifyUnknownValue(issue.value)} is not a JSON value.`;
-        case "NonFiniteNumber":
-          return "A JSON number must be finite.";
-        case "UnexpectedPrototype":
-          return "The value is an object, but a JsonValue object must be a plain object or have a null prototype.";
-        case "Accessor":
-          return "A JSON property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
-        case "NonEnumerable":
-          return "A JSON object property must be enumerable. Remove it or use a different Type.";
-        case "SymbolProperty":
-          return "A JSON object property key must be a string. Remove the symbol property or use a different Type.";
-        case "Hole":
-          return "A JSON array element is missing.";
-        case "ExcessProperty":
-          return "An excess JSON array property is not allowed. Remove it or use a different Type.";
-        case "CircularReference":
-          return "A JsonValue must not contain circular references.";
-      }
-    }) as TypeErrorFormatter<TypeError>,
+    formatError: formatJsonValueError as TypeErrorFormatter<TypeError>,
   })) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
 };
 
@@ -17846,13 +17701,12 @@ export const JsonObject = /*#__PURE__*/ record(
 export const Json = /*#__PURE__*/ brand(
   "Json",
   String,
-  (value) => {
+  (value: string) => {
     const result = jsonToJsonValueResult(value);
 
     return result.ok ? ok() : result;
   },
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} cannot be parsed into a JsonValue.`,
+  formatJsonError,
 );
 export type Json = typeof Json.Output;
 

@@ -1,12 +1,9 @@
 /**
- * Formatadores de erros do Evolu Type em português brasileiro.
+ * Brazilian Portuguese Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,95 +95,95 @@ const formatPlainObjectRootError = (
     ? `O valor ${safelyStringifyUnknownValue(reason.value)} não é um objeto.`
     : "O valor é um objeto, mas uma saída de Object deve ser um objeto simples ou ter um protótipo nulo.";
 
-/** Formata um NeverError em português brasileiro. */
+/** Formats a NeverError in Brazilian Portuguese. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é válido para o tipo Never.`;
 
-/** Formata um TypeOfError de String em português brasileiro. */
+/** Formats a String TypeOfError in Brazilian Portuguese. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** Formata um TemplateLiteralError em português brasileiro. */
+/** Formats a TemplateLiteralError in Brazilian Portuguese. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não corresponde ao literal de modelo.`;
 
-/** Formata um TypeOfError de Number em português brasileiro. */
+/** Formats a Number TypeOfError in Brazilian Portuguese. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** Formata um TypeOfError de BigInt em português brasileiro. */
+/** Formats a BigInt TypeOfError in Brazilian Portuguese. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Formata um TypeOfError de Boolean em português brasileiro. */
+/** Formats a Boolean TypeOfError in Brazilian Portuguese. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** Formata um BooleanFromStringError em português brasileiro. */
+/** Formats a BooleanFromStringError in Brazilian Portuguese. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um booleano. Use true ou false.`;
 
-/** Formata um TypeOfError de Symbol em português brasileiro. */
+/** Formats a Symbol TypeOfError in Brazilian Portuguese. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Formata um TypeOfError de Function em português brasileiro. */
+/** Formats a Function TypeOfError in Brazilian Portuguese. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** Formata um EvoluTypeError em português brasileiro. */
+/** Formats an EvoluTypeError in Brazilian Portuguese. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) => `O valor ${safelyStringifyUnknownValue(error.value)} não é um Evolu Type.`;
 
-/** Formata um ObjectTagError em português brasileiro. */
+/** Formats an ObjectTagError in Brazilian Portuguese. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não possui a tag de objeto esperada ${safelyStringifyUnknownValue(error.expected)}.`;
 
-/** Formata um InstanceOfError em português brasileiro. */
+/** Formats an InstanceOfError in Brazilian Portuguese. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é uma instância de ${error.constructorName}.`;
 
-/** Formata um LiteralError em português brasileiro. */
+/** Formats a LiteralError in Brazilian Portuguese. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é estritamente igual ao literal esperado: ${String(error.expected)}.`;
 
-/** Formata um UnionError em português brasileiro. */
+/** Formats a UnionError in Brazilian Portuguese. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Um valor não corresponde a nenhuma variante permitida.";
 
-/** Formata um DateIsoError em português brasileiro. */
+/** Formats a DateIsoError in Brazilian Portuguese. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é uma string de data e hora ISO canônica.`;
 
-/** Formata um DateIsoFromDateError em português brasileiro. */
+/** Formats a DateIsoFromDateError in Brazilian Portuguese. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
-> = () => "Date não pode ser representado como DateIso.";
+> = () => "O objeto Date não pode ser representado como DateIso.";
 
-/** Formata um DecimalStringError em português brasileiro. */
+/** Formats a DecimalStringError in Brazilian Portuguese. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser uma string decimal canônica.`;
 
-/** Formata um Int64Error em português brasileiro. */
+/** Formats an Int64Error in Brazilian Portuguese. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um inteiro com sinal de 64 bits (Int64) válido.`;
 
-/** Formata um UInt64Error em português brasileiro. */
+/** Formats a UInt64Error in Brazilian Portuguese. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um inteiro sem sinal de 64 bits (UInt64) válido.`;
 
-/** Formata um Int64StringError em português brasileiro. */
+/** Formats an Int64StringError in Brazilian Portuguese. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -196,7 +195,7 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um identificador ${error.casing}.`;
 
-/** Formata um CapitalizedError em português brasileiro. */
+/** Formats a CapitalizedError in Brazilian Portuguese. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -220,7 +219,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve estar em letras minúsculas.`;
 
-/** Formata um TrimmedError em português brasileiro. */
+/** Formats a TrimmedError in Brazilian Portuguese. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve estar sem espaços nas extremidades.`;
 
@@ -230,151 +229,151 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve começar com ${safelyStringifyUnknownValue(error.prefix)}.`;
 
-/** Formata um MinLengthError em português brasileiro. */
+/** Formats a MinLengthError in Brazilian Portuguese. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não atende ao comprimento mínimo de ${error.min}.`;
 
-/** Formata um MaxLengthError em português brasileiro. */
+/** Formats a MaxLengthError in Brazilian Portuguese. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} excede o comprimento máximo de ${error.max}.`;
 
-/** Formata um LengthError em português brasileiro. */
+/** Formats a LengthError in Brazilian Portuguese. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não tem o comprimento exigido de ${error.exact}.`;
 
-/** Formata um RegexError em português brasileiro. */
+/** Formats a RegexError in Brazilian Portuguese. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não corresponde a /${error.source}/${error.flags}.`;
 
-/** Formata um Base64UrlError em português brasileiro. */
+/** Formats a Base64UrlError in Brazilian Portuguese. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é uma string Base64Url válida.`;
 
-/** Formata um NameError em português brasileiro. */
+/** Formats a NameError in Brazilian Portuguese. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um Name válido.`;
 
-/** Formata um EmailError em português brasileiro. */
+/** Formats an EmailError in Brazilian Portuguese. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um endereço de e-mail válido.`;
 
-/** Formata um MnemonicError em português brasileiro. */
+/** Formats a MnemonicError in Brazilian Portuguese. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é uma mnemônica BIP39 em inglês válida.`;
 
-/** Formata um IdError em português brasileiro. */
+/** Formats an IdError in Brazilian Portuguese. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um Id válido.`;
 
-/** Formata um TableIdError em português brasileiro. */
+/** Formats a TableIdError in Brazilian Portuguese. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um Id válido para a tabela ${error.table}.`;
 
-/** Formata um UuidError em português brasileiro. */
+/** Formats a UuidError in Brazilian Portuguese. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um UUID canônico em minúsculas.`;
 
-/** Formata um NonNegativeError em português brasileiro. */
+/** Formats a NonNegativeError in Brazilian Portuguese. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser não negativo (>= 0).`;
 
-/** Formata um NonNegativeDecimalStringError em português brasileiro. */
+/** Formats a NonNegativeDecimalStringError in Brazilian Portuguese. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser uma string decimal não negativa.`;
 
-/** Formata um PositiveError em português brasileiro. */
+/** Formats a PositiveError in Brazilian Portuguese. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser positivo (> 0).`;
 
-/** Formata um PositiveDecimalStringError em português brasileiro. */
+/** Formats a PositiveDecimalStringError in Brazilian Portuguese. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser uma string decimal positiva.`;
 
-/** Formata um NonPositiveError em português brasileiro. */
+/** Formats a NonPositiveError in Brazilian Portuguese. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser não positivo (<= 0).`;
 
-/** Formata um NonPositiveDecimalStringError em português brasileiro. */
+/** Formats a NonPositiveDecimalStringError in Brazilian Portuguese. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser uma string decimal não positiva.`;
 
-/** Formata um NegativeError em português brasileiro. */
+/** Formats a NegativeError in Brazilian Portuguese. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser negativo (< 0).`;
 
-/** Formata um NegativeDecimalStringError em português brasileiro. */
+/** Formats a NegativeDecimalStringError in Brazilian Portuguese. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser uma string decimal negativa.`;
 
-/** Formata um IntError em português brasileiro. */
+/** Formats an IntError in Brazilian Portuguese. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser um inteiro seguro.`;
 
-/** Formata um IntFromStringError em português brasileiro. */
+/** Formats an IntFromStringError in Brazilian Portuguese. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um inteiro decimal.`;
 
-/** Formata um GreaterThanError em português brasileiro. */
+/** Formats a GreaterThanError in Brazilian Portuguese. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser maior que ${error.min}.`;
 
-/** Formata um GreaterThanOrEqualToError em português brasileiro. */
+/** Formats a GreaterThanOrEqualToError in Brazilian Portuguese. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser maior ou igual a ${error.min}.`;
 
-/** Formata um LessThanError em português brasileiro. */
+/** Formats a LessThanError in Brazilian Portuguese. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser menor que ${error.max}.`;
 
-/** Formata um LessThanOrEqualToError em português brasileiro. */
+/** Formats a LessThanOrEqualToError in Brazilian Portuguese. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser menor ou igual a ${error.max}.`;
 
-/** Formata um NonNaNError em português brasileiro. */
+/** Formats a NonNaNError in Brazilian Portuguese. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "O valor não deve ser NaN.";
 
-/** Formata um FiniteError em português brasileiro. */
+/** Formats a FiniteError in Brazilian Portuguese. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser finito.`;
 
-/** Formata um MultipleOfError em português brasileiro. */
+/** Formats a MultipleOfError in Brazilian Portuguese. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve ser múltiplo de ${error.divisor}.`;
 
-/** Formata um BetweenError em português brasileiro. */
+/** Formats a BetweenError in Brazilian Portuguese. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve estar entre ${error.min} e ${error.max}, inclusive.`;
 
-/** Formata um ArrayError em português brasileiro. */
+/** Formats an ArrayError in Brazilian Portuguese. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `O valor ${safelyStringifyUnknownValue(error.reason.value)} não é um array.`;
@@ -393,7 +392,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** Formata um SetError em português brasileiro. */
+/** Formats a SetError in Brazilian Portuguese. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `O valor ${safelyStringifyUnknownValue(error.reason.value)} não é um Set.`;
@@ -408,7 +407,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** Formata um MapError em português brasileiro. */
+/** Formats a MapError in Brazilian Portuguese. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `O valor ${safelyStringifyUnknownValue(error.reason.value)} não é um Map.`;
@@ -419,14 +418,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `A propriedade extra de Map ${safelyStringifyUnknownValue(issue.key)} não é permitida.`;
     case "Key":
+      return `A chave de Map no índice ${issue.index} é inválida.`;
     case "Value":
-      return `O elemento de Map no índice ${issue.index} é inválido.`;
+      return `O valor de Map no índice ${issue.index} é inválido.`;
     case "Collision":
-      return `As chaves de Map ${safelyStringifyUnknownValue(issue.previousKey)} e ${safelyStringifyUnknownValue(issue.key)} decodificam para a mesma chave ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `As chaves de Map nos índices ${issue.previousIndex} e ${issue.index} decodificam para a mesma chave ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
-/** Formata um TupleError em português brasileiro. */
+/** Formats a TupleError in Brazilian Portuguese. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -434,7 +434,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `O valor ${safelyStringifyUnknownValue(error.reason.value)} não é uma tupla.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Uma Tuple deve conter exatamente ${error.reason.expected} elementos, mas o valor contém ${error.reason.actual}.`;
+    return `Uma Tuple deve ter um comprimento de ${error.reason.expected}, mas o valor tem um comprimento de ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -451,7 +451,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** Formata um RecordError em português brasileiro. */
+/** Formats a RecordError in Brazilian Portuguese. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `O valor ${safelyStringifyUnknownValue(error.reason.value)} não é um Record.`;
@@ -476,7 +476,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** Formata um ObjectError em português brasileiro. */
+/** Formats an ObjectError in Brazilian Portuguese. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -507,7 +507,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `A propriedade ${safelyStringifyUnknownValue(key)} é inválida.`;
 };
 
-/** Formata um DiscriminatedUnionError em português brasileiro. */
+/** Formats a DiscriminatedUnionError in Brazilian Portuguese. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -531,7 +531,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** Formata um JsonValueError em português brasileiro. */
+/** Formats a DataError in Brazilian Portuguese. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `O valor ${safelyStringifyUnknownValue(issue.value)} não é um valor Data.`;
+    case "UnexpectedPrototype":
+      return `Um valor Data do tipo ${issue.container} tem um protótipo inesperado.`;
+    case "Accessor":
+      return "Uma propriedade Data deve ser uma propriedade de dados. Materialize os valores de acesso em dados simples antes de usar este Type ou use outro Type.";
+    case "NonEnumerable":
+      return "Uma propriedade de objeto Data deve ser enumerável. Remova-a ou use outro Type.";
+    case "SymbolProperty":
+      return "Uma chave de propriedade de objeto Data deve ser uma string. Remova a propriedade symbol ou use outro Type.";
+    case "Hole":
+      return "Falta um elemento do array Data.";
+    case "InvalidUint8Array":
+      return "Um Uint8Array Data deve ter um ArrayBuffer não desanexado e estar dentro de seus limites.";
+    case "ExcessProperty":
+      return `Um valor Data do tipo ${issue.container} não deve ter propriedades próprias extras. Remova a propriedade ou use outro Type.`;
+  }
+};
+
+/** Formats a JsonValueError in Brazilian Portuguese. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -559,24 +582,35 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** Formata um JsonError em português brasileiro. */
+/** Formats a JsonError in Brazilian Portuguese. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não pode ser analisado como um JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Brazilian Portuguese. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um literal de tamanho em bytes. Use um valor como "512KiB" ou "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Brazilian Portuguese. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "O valor -0 não é um comprimento em bytes. Use 0 em vez disso.";
+
+/** Formats a ByteLengthFromStringError in Brazilian Portuguese. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um comprimento em bytes. Use um número de bytes ou um literal como 10MiB.`;
+
+/** Formats a DurationLiteralError in Brazilian Portuguese. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um literal de duração. Use um valor como "500ms" ou "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Brazilian Portuguese. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um literal de porcentagem. Use um valor como "50%" ou "12.5%".`;

@@ -1,12 +1,9 @@
 /**
- * മലയാളം Evolu Type പിശക് ഫോർമാറ്ററുകൾ.
+ * Malayalam Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,95 +95,95 @@ const formatPlainObjectRootError = (
     ? `മൂല്യം ${safelyStringifyUnknownValue(reason.value)} ഒരു object അല്ല.`
     : "മൂല്യം ഒരു object ആണ്, എന്നാൽ Object Output ഒരു plain object ആയിരിക്കുകയോ null prototype ഉണ്ടായിരിക്കുകയോ വേണം.";
 
-/** NeverError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a NeverError in Malayalam. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} Never type-ന് സാധുവല്ല.`;
 
-/** String TypeOfError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a String TypeOfError in Malayalam. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** TemplateLiteralError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a TemplateLiteralError in Malayalam. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} template literal-നോട് പൊരുത്തപ്പെടുന്നില്ല.`;
 
-/** Number TypeOfError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a Number TypeOfError in Malayalam. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** BigInt TypeOfError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a BigInt TypeOfError in Malayalam. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Boolean TypeOfError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a Boolean TypeOfError in Malayalam. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** BooleanFromStringError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a BooleanFromStringError in Malayalam. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഒരു boolean അല്ല. true അല്ലെങ്കിൽ false ഉപയോഗിക്കുക.`;
 
-/** Symbol TypeOfError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a Symbol TypeOfError in Malayalam. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Function TypeOfError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a Function TypeOfError in Malayalam. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** EvoluTypeError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an EvoluTypeError in Malayalam. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) => `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഒരു Evolu Type അല്ല.`;
 
-/** ObjectTagError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an ObjectTagError in Malayalam. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `മൂല്യമായ ${safelyStringifyUnknownValue(error.value)}-ന് പ്രതീക്ഷിച്ച object tag ${safelyStringifyUnknownValue(error.expected)} ഇല്ല.`;
 
-/** InstanceOfError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an InstanceOfError in Malayalam. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${error.constructorName}-ന്റെ instance അല്ല.`;
 
-/** LiteralError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a LiteralError in Malayalam. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} പ്രതീക്ഷിച്ച literal-ന് കൃത്യമായി തുല്യമല്ല: ${String(error.expected)}.`;
 
-/** UnionError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a UnionError in Malayalam. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "മൂല്യം അനുവദനീയമായ ഒരു variant-നോടും പൊരുത്തപ്പെടുന്നില്ല.";
 
-/** DateIsoError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a DateIsoError in Malayalam. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} canonical ISO date-time string അല്ല.`;
 
-/** DateIsoFromDateError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a DateIsoFromDateError in Malayalam. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date-നെ DateIso ആയി പ്രതിനിധീകരിക്കാൻ കഴിയില്ല.";
 
-/** DecimalStringError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a DecimalStringError in Malayalam. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} canonical decimal string ആയിരിക്കണം.`;
 
-/** Int64Error മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an Int64Error in Malayalam. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ signed 64-bit integer (Int64) അല്ല.`;
 
-/** UInt64Error മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a UInt64Error in Malayalam. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ unsigned 64-bit integer (UInt64) അല്ല.`;
 
-/** Int64StringError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an Int64StringError in Malayalam. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -196,11 +195,11 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഒരു ${error.casing} ഐഡന്റിഫയർ അല്ല.`;
 
-/** CapitalizedError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a CapitalizedError in Malayalam. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} capitalized ആയിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} വലിയ അക്ഷരത്തിൽ ആരംഭിക്കണം.`;
 
 /** Formats an UncapitalizedError in Malayalam. */
 export const formatUncapitalizedError: TypeErrorFormatter<
@@ -220,161 +219,161 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ചെറിയ അക്ഷരങ്ങളിൽ ആയിരിക്കണം.`;
 
-/** TrimmedError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a TrimmedError in Malayalam. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
-  `മൂല്യമായ ${safelyStringifyUnknownValue(error.value)} trim ചെയ്തതായിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ന്റെ തുടക്കത്തിലോ അവസാനത്തിലോ സ്പേസ് ഉണ്ടാകരുത്.`;
 
 /** Formats a StartsWithError in Malayalam. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ആരംഭിക്കേണ്ടത് ${safelyStringifyUnknownValue(error.prefix)} ഉപയോഗിച്ചായിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${safelyStringifyUnknownValue(error.prefix)}-ൽ ആരംഭിക്കണം.`;
 
-/** MinLengthError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a MinLengthError in Malayalam. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ന്റെ നീളം കുറഞ്ഞത് ${error.min} ആയിരിക്കണം.`;
 
-/** MaxLengthError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a MaxLengthError in Malayalam. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ന്റെ നീളം ${error.max}-ൽ കൂടരുത്.`;
 
-/** LengthError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a LengthError in Malayalam. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ന് ആവശ്യമായ നീളം ${error.exact} ആണ്.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ന്റെ നീളം കൃത്യമായി ${error.exact} ആയിരിക്കണം.`;
 
-/** RegexError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a RegexError in Malayalam. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} /${error.source}/${error.flags}-നോട് പൊരുത്തപ്പെടുന്നില്ല.`;
 
-/** Base64UrlError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a Base64UrlError in Malayalam. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ Base64Url string അല്ല.`;
 
-/** NameError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a NameError in Malayalam. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ Name അല്ല.`;
 
-/** EmailError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an EmailError in Malayalam. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ ഇമെയിൽ വിലാസം അല്ല.`;
 
-/** MnemonicError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a MnemonicError in Malayalam. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ ഇംഗ്ലീഷ് BIP39 mnemonic അല്ല.`;
 
-/** IdError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an IdError in Malayalam. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ Id അല്ല.`;
 
-/** TableIdError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a TableIdError in Malayalam. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} table ${error.table}-നുള്ള സാധുവായ Id അല്ല.`;
 
-/** UuidError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a UuidError in Malayalam. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ചെറിയ അക്ഷരങ്ങളിലുള്ള canonical UUID അല്ല.`;
 
-/** NonNegativeError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a NonNegativeError in Malayalam. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഋണാത്മകമല്ലാതെയായിരിക്കണം (>= 0).`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഋണാത്മകമായിരിക്കരുത് (>= 0).`;
 
-/** NonNegativeDecimalStringError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a NonNegativeDecimalStringError in Malayalam. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} non-negative decimal string ആയിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഋണാത്മകമല്ലാത്ത decimal string ആയിരിക്കണം.`;
 
-/** PositiveError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a PositiveError in Malayalam. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ധനാത്മകമായിരിക്കണം (> 0).`;
 
-/** PositiveDecimalStringError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a PositiveDecimalStringError in Malayalam. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} positive decimal string ആയിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ധനാത്മക decimal string ആയിരിക്കണം.`;
 
-/** NonPositiveError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a NonPositiveError in Malayalam. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ധനാത്മകമല്ലാതെയായിരിക്കണം (<= 0).`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ധനാത്മകമായിരിക്കരുത് (<= 0).`;
 
-/** NonPositiveDecimalStringError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a NonPositiveDecimalStringError in Malayalam. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} non-positive decimal string ആയിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ധനാത്മകമല്ലാത്ത decimal string ആയിരിക്കണം.`;
 
-/** NegativeError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a NegativeError in Malayalam. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഋണാത്മകമായിരിക്കണം (< 0).`;
 
-/** NegativeDecimalStringError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a NegativeDecimalStringError in Malayalam. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} negative decimal string ആയിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഋണാത്മക decimal string ആയിരിക്കണം.`;
 
-/** IntError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an IntError in Malayalam. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} safe integer ആയിരിക്കണം.`;
 
-/** IntFromStringError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an IntFromStringError in Malayalam. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഒരു ദശാംശ പൂർണ്ണസംഖ്യയല്ല.`;
 
-/** GreaterThanError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a GreaterThanError in Malayalam. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${error.min}-നേക്കാൾ വലുതായിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.min}-നേക്കാൾ വലുതായിരിക്കണം.`;
 
-/** GreaterThanOrEqualToError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a GreaterThanOrEqualToError in Malayalam. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${error.min}-നേക്കാൾ വലുതോ തുല്യമോ ആയിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.min}-നേക്കാൾ വലുതോ തുല്യമോ ആയിരിക്കണം.`;
 
-/** LessThanError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a LessThanError in Malayalam. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${error.max}-നേക്കാൾ ചെറുതായിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.max}-നേക്കാൾ ചെറുതായിരിക്കണം.`;
 
-/** LessThanOrEqualToError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a LessThanOrEqualToError in Malayalam. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${error.max}-നേക്കാൾ ചെറുതോ തുല്യമോ ആയിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.max}-നേക്കാൾ ചെറുതോ തുല്യമോ ആയിരിക്കണം.`;
 
-/** NonNaNError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a NonNaNError in Malayalam. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "മൂല്യം NaN ആയിരിക്കരുത്.";
 
-/** FiniteError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a FiniteError in Malayalam. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} finite ആയിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} പരിമിതമായിരിക്കണം.`;
 
-/** MultipleOfError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a MultipleOfError in Malayalam. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${error.divisor}-ന്റെ ഗുണിതമായിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.divisor}-ന്റെ ഗുണിതമായിരിക്കണം.`;
 
-/** BetweenError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a BetweenError in Malayalam. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${error.min} നും ${error.max} നും ഇടയിൽ, അതിരുകൾ ഉൾപ്പെടെ, ആയിരിക്കണം.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.min} നും ${error.max} നും ഇടയിൽ (അതിരുകൾ ഉൾപ്പെടെ) ആയിരിക്കണം.`;
 
-/** ArrayError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an ArrayError in Malayalam. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `മൂല്യം ${safelyStringifyUnknownValue(error.reason.value)} ഒരു array അല്ല.`;
@@ -393,7 +392,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** SetError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a SetError in Malayalam. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `മൂല്യം ${safelyStringifyUnknownValue(error.reason.value)} ഒരു Set അല്ല.`;
@@ -408,7 +407,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** MapError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a MapError in Malayalam. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `മൂല്യം ${safelyStringifyUnknownValue(error.reason.value)} ഒരു Map അല്ല.`;
@@ -419,14 +418,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `അധിക Map property ${safelyStringifyUnknownValue(issue.key)} അനുവദനീയമല്ല.`;
     case "Key":
+      return `index ${issue.index}-ലെ Map key അസാധുവാണ്.`;
     case "Value":
-      return `index ${issue.index}-ലെ Map element അസാധുവാണ്.`;
+      return `index ${issue.index}-ലെ Map മൂല്യം അസാധുവാണ്.`;
     case "Collision":
-      return `Map keys ${safelyStringifyUnknownValue(issue.previousKey)} ഉം ${safelyStringifyUnknownValue(issue.key)} ഉം decode ചെയ്യുമ്പോൾ അതേ key ${safelyStringifyUnknownValue(issue.outputKey)} ലഭിക്കുന്നു.`;
+      return `index ${issue.previousIndex}-ലെയും ${issue.index}-ലെയും Map keys decode ചെയ്യുമ്പോൾ ഒരേ key ${safelyStringifyUnknownValue(issue.outputKey)} ലഭിക്കുന്നു.`;
   }
 };
 
-/** TupleError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a TupleError in Malayalam. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -434,7 +434,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `മൂല്യം ${safelyStringifyUnknownValue(error.reason.value)} ഒരു tuple അല്ല.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple-ൽ കൃത്യമായി ${error.reason.expected} elements ഉണ്ടായിരിക്കണം, എന്നാൽ മൂല്യത്തിൽ ${error.reason.actual} ഉണ്ട്.`;
+    return `Tuple-ന്റെ നീളം ${error.reason.expected} ആയിരിക്കണം, എന്നാൽ മൂല്യത്തിന്റെ നീളം ${error.reason.actual} ആണ്.`;
   }
 
   const issue = error.reason.issues[0];
@@ -451,7 +451,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** RecordError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a RecordError in Malayalam. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `മൂല്യം ${safelyStringifyUnknownValue(error.reason.value)} ഒരു Record അല്ല.`;
@@ -472,11 +472,11 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
     case "NonEnumerable":
       return `Record property ${safelyStringifyUnknownValue(issue.key)} enumerable ആയിരിക്കണം.`;
     case "Collision":
-      return `Record keys ${safelyStringifyUnknownValue(issue.previousKey)} ഉം ${safelyStringifyUnknownValue(issue.key)} ഉം decode ചെയ്യുമ്പോൾ അതേ key ${safelyStringifyUnknownValue(issue.outputKey)} ലഭിക്കുന്നു.`;
+      return `Record keys ${safelyStringifyUnknownValue(issue.previousKey)} ഉം ${safelyStringifyUnknownValue(issue.key)} ഉം decode ചെയ്യുമ്പോൾ ഒരേ key ${safelyStringifyUnknownValue(issue.outputKey)} ലഭിക്കുന്നു.`;
   }
 };
 
-/** ObjectError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats an ObjectError in Malayalam. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -490,7 +490,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (propertyError.type === "ObjectPropertyAccess") {
     switch ((propertyError as ObjectPropertyAccessError).reason) {
       case "Accessor":
-        return "Object property ഒരു data property ആയിരിക്കണം. ഈ Type ഉപയോഗിക്കുന്നതിന് മുമ്പ് accessor values-നെ plain data-യിലേക്ക് materialize ചെയ്യുക അല്ലെങ്കിൽ മറ്റൊരു Type ഉപയോഗിക്കുക.";
+        return "Object property ഒരു data property ആയിരിക്കണം. ഈ Type ഉപയോഗിക്കുന്നതിന് മുമ്പ് accessor മൂല്യങ്ങളെ plain data ആക്കി മാറ്റുക അല്ലെങ്കിൽ മറ്റൊരു Type ഉപയോഗിക്കുക.";
       case "NonEnumerable":
         return "Object property enumerable ആയിരിക്കണം. അതിനെ enumerable ആക്കുക അല്ലെങ്കിൽ മറ്റൊരു Type ഉപയോഗിക്കുക.";
     }
@@ -507,7 +507,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `Property ${safelyStringifyUnknownValue(key)} അസാധുവാണ്.`;
 };
 
-/** DiscriminatedUnionError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a DiscriminatedUnionError in Malayalam. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -520,7 +520,7 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
         return `${property} ഒരു data property ആയിരിക്കണം.`;
       }
       if (error.reason.reason === "Inherited") {
-        return `${property} അതിന്റേതായ property ആയിരിക്കണം.`;
+        return `${property} object-ന്റെ സ്വന്തം property ആയിരിക്കണം.`;
       }
       return `${property} enumerable ആയിരിക്കണം.`;
     }
@@ -531,7 +531,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** JsonValueError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a DataError in Malayalam. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `മൂല്യം ${safelyStringifyUnknownValue(issue.value)} Data അല്ല.`;
+    case "UnexpectedPrototype":
+      return `Data ${issue.container}-ന് പ്രതീക്ഷിക്കാത്ത prototype ഉണ്ട്.`;
+    case "Accessor":
+      return "Data property ഒരു data property ആയിരിക്കണം. ഈ Type ഉപയോഗിക്കുന്നതിന് മുമ്പ് accessor മൂല്യങ്ങളെ plain data ആക്കി മാറ്റുക അല്ലെങ്കിൽ മറ്റൊരു Type ഉപയോഗിക്കുക.";
+    case "NonEnumerable":
+      return "Data Object property enumerable ആയിരിക്കണം. അത് നീക്കുക അല്ലെങ്കിൽ മറ്റൊരു Type ഉപയോഗിക്കുക.";
+    case "SymbolProperty":
+      return "Data Object property key ഒരു string ആയിരിക്കണം. symbol property നീക്കുക അല്ലെങ്കിൽ മറ്റൊരു Type ഉപയോഗിക്കുക.";
+    case "Hole":
+      return "ഒരു Data Array element കാണാനില്ല.";
+    case "InvalidUint8Array":
+      return "Data Uint8Array-ന്റെ ArrayBuffer detach ചെയ്യപ്പെട്ടിരിക്കരുത്, കൂടാതെ Uint8Array ആ ArrayBuffer-ന്റെ പരിധിക്കുള്ളിൽ ആയിരിക്കണം.";
+    case "ExcessProperty":
+      return `Data ${issue.container}-ന് സ്വന്തമായ അധിക properties ഉണ്ടാകരുത്. ആ property നീക്കുക അല്ലെങ്കിൽ മറ്റൊരു Type ഉപയോഗിക്കുക.`;
+  }
+};
+
+/** Formats a JsonValueError in Malayalam. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -539,13 +562,13 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 
   switch (issue.kind) {
     case "InvalidType":
-      return `മൂല്യം ${safelyStringifyUnknownValue(issue.value)} ഒരു JSON value അല്ല.`;
+      return `മൂല്യം ${safelyStringifyUnknownValue(issue.value)} ഒരു JSON മൂല്യം അല്ല.`;
     case "NonFiniteNumber":
-      return "ഒരു JSON number finite ആയിരിക്കണം.";
+      return "ഒരു JSON number പരിമിതമായിരിക്കണം.";
     case "UnexpectedPrototype":
       return "മൂല്യം ഒരു object ആണ്, എന്നാൽ JsonValue object ഒരു plain object ആയിരിക്കുകയോ null prototype ഉണ്ടായിരിക്കുകയോ വേണം.";
     case "Accessor":
-      return "JSON property ഒരു data property ആയിരിക്കണം. ഈ Type ഉപയോഗിക്കുന്നതിന് മുമ്പ് accessor values-നെ plain data-യിലേക്ക് materialize ചെയ്യുക അല്ലെങ്കിൽ മറ്റൊരു Type ഉപയോഗിക്കുക.";
+      return "JSON property ഒരു data property ആയിരിക്കണം. ഈ Type ഉപയോഗിക്കുന്നതിന് മുമ്പ് accessor മൂല്യങ്ങളെ plain data ആക്കി മാറ്റുക അല്ലെങ്കിൽ മറ്റൊരു Type ഉപയോഗിക്കുക.";
     case "NonEnumerable":
       return "JSON object property enumerable ആയിരിക്കണം. അത് നീക്കുക അല്ലെങ്കിൽ മറ്റൊരു Type ഉപയോഗിക്കുക.";
     case "SymbolProperty":
@@ -559,24 +582,35 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** JsonError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+/** Formats a JsonError in Malayalam. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-നെ JsonValue-ലേക്ക് parse ചെയ്യാൻ കഴിയില്ല.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Malayalam. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ബൈറ്റ് വലുപ്പത്തിന്റെ ലിറ്ററൽ അല്ല. "512KiB" അല്ലെങ്കിൽ "1MiB" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ബൈറ്റ് വലുപ്പത്തിന്റെ literal അല്ല. "512KiB" അല്ലെങ്കിൽ "1MiB" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Malayalam. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "മൂല്യം -0 ഒരു ബൈറ്റ് നീളമല്ല. പകരം 0 ഉപയോഗിക്കുക.";
+
+/** Formats a ByteLengthFromStringError in Malayalam. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഒരു ബൈറ്റ് നീളമല്ല. ബൈറ്റുകളുടെ എണ്ണം അല്ലെങ്കിൽ 10MiB പോലുള്ള ഒരു literal ഉപയോഗിക്കുക.`;
+
+/** Formats a DurationLiteralError in Malayalam. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സമയദൈർഘ്യത്തിന്റെ ലിറ്ററൽ അല്ല. "500ms" അല്ലെങ്കിൽ "1.5s" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സമയദൈർഘ്യത്തിന്റെ literal അല്ല. "500ms" അല്ലെങ്കിൽ "1.5s" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Malayalam. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ശതമാനത്തിന്റെ ലിറ്ററൽ അല്ല. "50%" അല്ലെങ്കിൽ "12.5%" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ശതമാനത്തിന്റെ literal അല്ല. "50%" അല്ലെങ്കിൽ "12.5%" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;

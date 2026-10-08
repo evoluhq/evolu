@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -100,95 +99,95 @@ const formatPlainObjectRootError = (
     ? `Значення ${safelyStringifyUnknownValue(reason.value)} не є об’єктом.`
     : "Значення є об’єктом, але вихідне значення Object має бути простим об’єктом або мати прототип null.";
 
-/** Форматує NeverError українською. */
+/** Formats a NeverError in Ukrainian. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим для типу Never.`;
 
-/** Форматує String TypeOfError українською. */
+/** Formats a String TypeOfError in Ukrainian. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** Форматує TemplateLiteralError українською. */
+/** Formats a TemplateLiteralError in Ukrainian. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не відповідає шаблонному літералу.`;
 
-/** Форматує Number TypeOfError українською. */
+/** Formats a Number TypeOfError in Ukrainian. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** Форматує BigInt TypeOfError українською. */
+/** Formats a BigInt TypeOfError in Ukrainian. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Форматує Boolean TypeOfError українською. */
+/** Formats a Boolean TypeOfError in Ukrainian. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** Форматує BooleanFromStringError українською. */
+/** Formats a BooleanFromStringError in Ukrainian. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є логічним значенням. Використовуйте true або false.`;
 
-/** Форматує Symbol TypeOfError українською. */
+/** Formats a Symbol TypeOfError in Ukrainian. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Форматує Function TypeOfError українською. */
+/** Formats a Function TypeOfError in Ukrainian. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** Форматує EvoluTypeError українською. */
+/** Formats an EvoluTypeError in Ukrainian. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) => `Значення ${safelyStringifyUnknownValue(error.value)} не є Evolu Type.`;
 
-/** Форматує ObjectTagError українською. */
+/** Formats an ObjectTagError in Ukrainian. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не має очікуваного тегу об’єкта ${safelyStringifyUnknownValue(error.expected)}.`;
 
-/** Форматує InstanceOfError українською. */
+/** Formats an InstanceOfError in Ukrainian. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є екземпляром ${error.constructorName}.`;
 
-/** Форматує LiteralError українською. */
+/** Formats a LiteralError in Ukrainian. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не дорівнює строго очікуваному літералу: ${String(error.expected)}.`;
 
-/** Форматує UnionError українською. */
+/** Formats a UnionError in Ukrainian. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Значення не відповідає жодному з допустимих варіантів.";
 
-/** Форматує DateIsoError українською. */
+/** Formats a DateIsoError in Ukrainian. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є канонічним рядком дати й часу ISO.`;
 
-/** Форматує DateIsoFromDateError українською. */
+/** Formats a DateIsoFromDateError in Ukrainian. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Дату неможливо подати як DateIso.";
 
-/** Форматує DecimalStringError українською. */
+/** Formats a DecimalStringError in Ukrainian. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути канонічним десятковим рядком.`;
 
-/** Форматує Int64Error українською. */
+/** Formats an Int64Error in Ukrainian. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим 64-бітним цілим числом зі знаком (Int64).`;
 
-/** Форматує UInt64Error українською. */
+/** Formats a UInt64Error in Ukrainian. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим 64-бітним цілим числом без знака (UInt64).`;
 
-/** Форматує Int64StringError українською. */
+/** Formats an Int64StringError in Ukrainian. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -200,7 +199,7 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є ідентифікатором у форматі ${error.casing}.`;
 
-/** Форматує CapitalizedError українською. */
+/** Formats a CapitalizedError in Ukrainian. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -224,7 +223,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути записане малими літерами.`;
 
-/** Форматує TrimmedError українською. */
+/** Formats a TrimmedError in Ukrainian. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не має містити пробілів на початку та в кінці.`;
 
@@ -234,151 +233,151 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має починатися з ${safelyStringifyUnknownValue(error.prefix)}.`;
 
-/** Форматує MinLengthError українською. */
+/** Formats a MinLengthError in Ukrainian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} коротше за мінімальну довжину ${error.min}.`;
 
-/** Форматує MaxLengthError українською. */
+/** Formats a MaxLengthError in Ukrainian. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} перевищує максимальну довжину ${error.max}.`;
 
-/** Форматує LengthError українською. */
+/** Formats a LengthError in Ukrainian. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не має необхідної довжини ${error.exact}.`;
 
-/** Форматує RegexError українською. */
+/** Formats a RegexError in Ukrainian. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не відповідає /${error.source}/${error.flags}.`;
 
-/** Форматує Base64UrlError українською. */
+/** Formats a Base64UrlError in Ukrainian. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим рядком Base64Url.`;
 
-/** Форматує NameError українською. */
+/** Formats a NameError in Ukrainian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим Name.`;
 
-/** Форматує EmailError українською. */
+/** Formats an EmailError in Ukrainian. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою адресою електронної пошти.`;
 
-/** Форматує MnemonicError українською. */
+/** Formats a MnemonicError in Ukrainian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою англійською мнемонічною фразою BIP39.`;
 
-/** Форматує IdError українською. */
+/** Formats an IdError in Ukrainian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим Id.`;
 
-/** Форматує TableIdError українською. */
+/** Formats a TableIdError in Ukrainian. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим Id для таблиці ${error.table}.`;
 
-/** Форматує UuidError українською. */
+/** Formats a UuidError in Ukrainian. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є канонічним UUID у нижньому регістрі.`;
 
-/** Форматує NonNegativeError українською. */
+/** Formats a NonNegativeError in Ukrainian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути невід’ємним (>= 0).`;
 
-/** Форматує NonNegativeDecimalStringError українською. */
+/** Formats a NonNegativeDecimalStringError in Ukrainian. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути невід’ємним десятковим рядком.`;
 
-/** Форматує PositiveError українською. */
+/** Formats a PositiveError in Ukrainian. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути додатним (> 0).`;
 
-/** Форматує PositiveDecimalStringError українською. */
+/** Formats a PositiveDecimalStringError in Ukrainian. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути додатним десятковим рядком.`;
 
-/** Форматує NonPositiveError українською. */
+/** Formats a NonPositiveError in Ukrainian. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути недодатним (<= 0).`;
 
-/** Форматує NonPositiveDecimalStringError українською. */
+/** Formats a NonPositiveDecimalStringError in Ukrainian. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути недодатним десятковим рядком.`;
 
-/** Форматує NegativeError українською. */
+/** Formats a NegativeError in Ukrainian. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути від’ємним (< 0).`;
 
-/** Форматує NegativeDecimalStringError українською. */
+/** Formats a NegativeDecimalStringError in Ukrainian. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути від’ємним десятковим рядком.`;
 
-/** Форматує IntError українською. */
+/** Formats an IntError in Ukrainian. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути безпечним цілим числом.`;
 
-/** Форматує IntFromStringError українською. */
+/** Formats an IntFromStringError in Ukrainian. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є десятковим цілим числом.`;
 
-/** Форматує GreaterThanError українською. */
+/** Formats a GreaterThanError in Ukrainian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути більшим за ${error.min}.`;
 
-/** Форматує GreaterThanOrEqualToError українською. */
+/** Formats a GreaterThanOrEqualToError in Ukrainian. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути більшим або рівним ${error.min}.`;
 
-/** Форматує LessThanError українською. */
+/** Formats a LessThanError in Ukrainian. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути меншим за ${error.max}.`;
 
-/** Форматує LessThanOrEqualToError українською. */
+/** Formats a LessThanOrEqualToError in Ukrainian. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути меншим або рівним ${error.max}.`;
 
-/** Форматує NonNaNError українською. */
+/** Formats a NonNaNError in Ukrainian. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "Значення не має бути NaN.";
 
-/** Форматує FiniteError українською. */
+/** Formats a FiniteError in Ukrainian. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути скінченним.`;
 
-/** Форматує MultipleOfError українською. */
+/** Formats a MultipleOfError in Ukrainian. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути кратним ${error.divisor}.`;
 
-/** Форматує BetweenError українською. */
+/** Formats a BetweenError in Ukrainian. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути в межах від ${error.min} до ${error.max} включно.`;
 
-/** Форматує ArrayError українською. */
+/** Formats an ArrayError in Ukrainian. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `Значення ${safelyStringifyUnknownValue(error.reason.value)} не є масивом.`;
@@ -397,7 +396,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** Форматує SetError українською. */
+/** Formats a SetError in Ukrainian. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Значення ${safelyStringifyUnknownValue(error.reason.value)} не є Set.`;
@@ -412,7 +411,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** Форматує MapError українською. */
+/** Formats a MapError in Ukrainian. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `Значення ${safelyStringifyUnknownValue(error.reason.value)} не є Map.`;
@@ -423,14 +422,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `Зайва властивість Map ${safelyStringifyUnknownValue(issue.key)} не допускається.`;
     case "Key":
+      return `Ключ Map з індексом ${issue.index} недійсний.`;
     case "Value":
-      return `Елемент Map з індексом ${issue.index} недійсний.`;
+      return `Значення Map з індексом ${issue.index} недійсне.`;
     case "Collision":
-      return `Ключі Map ${safelyStringifyUnknownValue(issue.previousKey)} та ${safelyStringifyUnknownValue(issue.key)} декодуються в той самий ключ ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Ключі Map з індексами ${issue.previousIndex} та ${issue.index} декодуються в той самий ключ ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
-/** Форматує TupleError українською. */
+/** Formats a TupleError in Ukrainian. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -438,7 +438,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `Значення ${safelyStringifyUnknownValue(error.reason.value)} не є кортежем.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple має містити рівно ${error.reason.expected} елементів, але значення містить ${error.reason.actual}.`;
+    return `Довжина Tuple має дорівнювати ${error.reason.expected}, але значення має довжину ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -455,7 +455,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** Форматує RecordError українською. */
+/** Formats a RecordError in Ukrainian. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `Значення ${safelyStringifyUnknownValue(error.reason.value)} не є Record.`;
@@ -480,7 +480,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** Форматує ObjectError українською. */
+/** Formats an ObjectError in Ukrainian. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -511,7 +511,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `Властивість ${safelyStringifyUnknownValue(key)} недійсна.`;
 };
 
-/** Форматує DiscriminatedUnionError українською. */
+/** Formats a DiscriminatedUnionError in Ukrainian. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -535,7 +535,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** Форматує JsonValueError українською. */
+/** Formats a DataError in Ukrainian. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Значення ${safelyStringifyUnknownValue(issue.value)} не є Data.`;
+    case "UnexpectedPrototype":
+      return `Значення типу ${issue.container} у Data має неочікуваний прототип.`;
+    case "Accessor":
+      return "Властивість у Data має бути властивістю даних. Матеріалізуйте значення аксесорів у прості дані перед використанням цього Type або використайте інший Type.";
+    case "NonEnumerable":
+      return "Властивість об’єкта в Data має бути перелічуваною. Видаліть її або використайте інший Type.";
+    case "SymbolProperty":
+      return "Ключ властивості об’єкта в Data має бути рядком. Видаліть символьну властивість або використайте інший Type.";
+    case "Hole":
+      return "Елемент масиву в Data відсутній.";
+    case "InvalidUint8Array":
+      return "Uint8Array у Data повинен мати невід’єднаний ArrayBuffer і лежати в його межах.";
+    case "ExcessProperty":
+      return `Значення типу ${issue.container} у Data не має містити зайвих власних властивостей. Видаліть властивість або використайте інший Type.`;
+  }
+};
+
+/** Formats a JsonValueError in Ukrainian. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -563,24 +586,35 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** Форматує JsonError українською. */
+/** Formats a JsonError in Ukrainian. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} неможливо розібрати як JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Ukrainian. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є літералом розміру в байтах. Використовуйте значення на кшталт "512KiB" або "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Ukrainian. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "Значення -0 не є довжиною в байтах. Використовуйте натомість 0.";
+
+/** Formats a ByteLengthFromStringError in Ukrainian. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є довжиною в байтах. Використовуйте кількість байтів або літерал на кшталт 10MiB.`;
+
+/** Formats a DurationLiteralError in Ukrainian. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є літералом тривалості. Використовуйте значення на кшталт "500ms" або "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Ukrainian. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є відсотковим літералом. Використовуйте значення на кшталт "50%" або "12.5%".`;

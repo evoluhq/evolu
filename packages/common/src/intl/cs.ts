@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -198,7 +197,8 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 /** Formats a CapitalizedError in Czech. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
-) => `Text ${safelyStringifyUnknownValue(error.value)} musí být kapitalizován.`;
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí začínat velkým písmenem.`;
 
 /** Formats an UncapitalizedError in Czech. */
 export const formatUncapitalizedError: TypeErrorFormatter<
@@ -419,10 +419,11 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `Map obsahuje nepovolenou vlastní vlastnost ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Key":
+      return `Klíč Mapu na indexu ${issue.index} není platný.`;
     case "Value":
-      return `Prvek Mapu na indexu ${issue.index} není platný.`;
+      return `Hodnota Mapu na indexu ${issue.index} není platná.`;
     case "Collision":
-      return `Klíče Mapu ${safelyStringifyUnknownValue(issue.previousKey)} a ${safelyStringifyUnknownValue(issue.key)} se dekódují na stejný klíč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Klíče Mapu na indexech ${issue.previousIndex} a ${issue.index} se dekódují na stejný klíč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
@@ -492,7 +493,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
       case "Accessor":
         return "Vlastnost typu Object musí být datová vlastnost. Před použitím tohoto Type materializujte hodnotu accessoru do prostých dat nebo použijte jiný Type.";
       case "NonEnumerable":
-        return "Vlastnost typu Object musí být enumerovatelná (enumerable).";
+        return "Vlastnost typu Object musí být enumerovatelná (enumerable). Nastavte ji jako enumerovatelnou nebo použijte jiný Type.";
     }
   }
   if (propertyError.type === "ObjectMissingProperty") {
@@ -531,6 +532,29 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
+/** Formats a DataError in Czech. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Hodnota ${safelyStringifyUnknownValue(issue.value)} není Data.`;
+    case "UnexpectedPrototype":
+      return `Hodnota typu ${issue.container} v Data má neočekávaný prototyp.`;
+    case "Accessor":
+      return "Vlastnost v Data musí být datová vlastnost. Před použitím tohoto Type materializujte hodnotu accessoru do prostých dat nebo použijte jiný Type.";
+    case "NonEnumerable":
+      return "Vlastnost objektu v Data musí být enumerovatelná (enumerable). Odstraňte ji nebo použijte jiný Type.";
+    case "SymbolProperty":
+      return "Klíč vlastnosti objektu v Data musí být text. Odstraňte symbolovou vlastnost nebo použijte jiný Type.";
+    case "Hole":
+      return "Prvek pole v Data chybí.";
+    case "InvalidUint8Array":
+      return "Uint8Array v Data musí mít ArrayBuffer, který není odpojený (detached), a musí ležet v jeho mezích.";
+    case "ExcessProperty":
+      return `Hodnota typu ${issue.container} v Data nesmí mít nadbytečné vlastní vlastnosti. Odstraňte vlastnost nebo použijte jiný Type.`;
+  }
+};
+
 /** Formats a JsonValueError in Czech. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
@@ -563,20 +587,31 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Hodnotu ${safelyStringifyUnknownValue(error.value)} nelze parsovat jako JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Czech. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} není literál velikosti v bajtech. Použijte hodnotu jako "512KiB" nebo "1MiB".`;
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} není literál velikosti v bajtech. Použijte například "512KiB" nebo "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Czech. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "Hodnota -0 není délka v bajtech. Použijte místo ní 0.";
+
+/** Formats a ByteLengthFromStringError in Czech. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} není délka v bajtech. Použijte počet bajtů nebo literál, například 10MiB.`;
+
+/** Formats a DurationLiteralError in Czech. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} není literál délky trvání. Použijte hodnotu jako "500ms" nebo "1.5s".`;
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} není literál délky trvání. Použijte například "500ms" nebo "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Czech. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} není procentní literál. Použijte hodnotu jako "50%" nebo "12.5%".`;
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} není procentní literál. Použijte například "50%" nebo "12.5%".`;

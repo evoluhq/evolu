@@ -1,12 +1,9 @@
 /**
- * தமிழ் Evolu Type பிழை வடிவமைப்பாளர்கள்.
+ * Tamil Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,95 +95,95 @@ const formatPlainObjectRootError = (
     ? `மதிப்பு ${safelyStringifyUnknownValue(reason.value)} ஒரு object அல்ல.`
     : "மதிப்பு ஒரு object ஆக உள்ளது, ஆனால் Object Output ஒரு plain object ஆகவோ null prototype உடையதாகவோ இருக்க வேண்டும்.";
 
-/** NeverError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a NeverError in Tamil. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} Never type-க்கு செல்லுபடியாகாது.`;
 
-/** String TypeOfError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a String TypeOfError in Tamil. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** TemplateLiteralError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a TemplateLiteralError in Tamil. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} template literal-உடன் பொருந்தவில்லை.`;
 
-/** Number TypeOfError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a Number TypeOfError in Tamil. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** BigInt TypeOfError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a BigInt TypeOfError in Tamil. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Boolean TypeOfError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a Boolean TypeOfError in Tamil. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** BooleanFromStringError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a BooleanFromStringError in Tamil. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} boolean அல்ல. true அல்லது false ஐப் பயன்படுத்தவும்.`;
 
-/** Symbol TypeOfError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a Symbol TypeOfError in Tamil. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Function TypeOfError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a Function TypeOfError in Tamil. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** EvoluTypeError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an EvoluTypeError in Tamil. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) => `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு Evolu Type அல்ல.`;
 
-/** ObjectTagError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an ObjectTagError in Tamil. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} எதிர்பார்க்கப்பட்ட object tag ${safelyStringifyUnknownValue(error.expected)}-ஐக் கொண்டிருக்கவில்லை.`;
 
-/** InstanceOfError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an InstanceOfError in Tamil. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.constructorName}-இன் instance அல்ல.`;
 
-/** LiteralError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a LiteralError in Tamil. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} எதிர்பார்க்கப்பட்ட literal-க்கு முற்றிலும் சமமாக இல்லை: ${String(error.expected)}.`;
 
-/** UnionError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a UnionError in Tamil. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "மதிப்பு அனுமதிக்கப்பட்ட எந்த variant-உடனும் பொருந்தவில்லை.";
 
-/** DateIsoError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a DateIsoError in Tamil. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு canonical ISO date-time string அல்ல.`;
 
-/** DateIsoFromDateError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a DateIsoFromDateError in Tamil. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date-ஐ DateIso ஆகக் குறிக்க முடியாது.";
 
-/** DecimalStringError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a DecimalStringError in Tamil. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு canonical decimal string ஆக இருக்க வேண்டும்.`;
 
-/** Int64Error-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an Int64Error in Tamil. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் signed 64-bit integer (Int64) அல்ல.`;
 
-/** UInt64Error-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a UInt64Error in Tamil. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் unsigned 64-bit integer (UInt64) அல்ல.`;
 
-/** Int64StringError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an Int64StringError in Tamil. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -196,11 +195,11 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு ${error.casing} அடையாளங்காட்டி அல்ல.`;
 
-/** CapitalizedError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a CapitalizedError in Tamil. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} capitalized ஆக இருக்க வேண்டும்.`;
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} பேரெழுத்தில் தொடங்க வேண்டும்.`;
 
 /** Formats an UncapitalizedError in Tamil. */
 export const formatUncapitalizedError: TypeErrorFormatter<
@@ -220,9 +219,9 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சிற்றெழுத்துகளில் இருக்க வேண்டும்.`;
 
-/** TrimmedError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a TrimmedError in Tamil. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} trim செய்யப்பட்டதாக இருக்க வேண்டும்.`;
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)}-இன் தொடக்கத்திலோ முடிவிலோ இடைவெளிகள் இருக்கக் கூடாது.`;
 
 /** Formats a StartsWithError in Tamil. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
@@ -230,151 +229,151 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஆனது ${safelyStringifyUnknownValue(error.prefix)} உடன் தொடங்க வேண்டும்.`;
 
-/** MinLengthError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a MinLengthError in Tamil. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} குறைந்தபட்ச நீளமான ${error.min}-ஐப் பூர்த்தி செய்யவில்லை.`;
 
-/** MaxLengthError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a MaxLengthError in Tamil. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} அதிகபட்ச நீளமான ${error.max}-ஐ மீறுகிறது.`;
 
-/** LengthError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a LengthError in Tamil. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} தேவையான நீளமான ${error.exact}-ஐக் கொண்டிருக்கவில்லை.`;
 
-/** RegexError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a RegexError in Tamil. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} /${error.source}/${error.flags}-உடன் பொருந்தவில்லை.`;
 
-/** Base64UrlError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a Base64UrlError in Tamil. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் Base64Url string அல்ல.`;
 
-/** NameError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a NameError in Tamil. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் Name அல்ல.`;
 
-/** EmailError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an EmailError in Tamil. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் மின்னஞ்சல் முகவரி அல்ல.`;
 
-/** MnemonicError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a MnemonicError in Tamil. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் ஆங்கில BIP39 mnemonic அல்ல.`;
 
-/** IdError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an IdError in Tamil. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் Id அல்ல.`;
 
-/** TableIdError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a TableIdError in Tamil. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} table ${error.table}-க்கான செல்லுபடியாகும் Id அல்ல.`;
 
-/** UuidError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a UuidError in Tamil. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சிற்றெழுத்துகளிலான ஒரு canonical UUID அல்ல.`;
 
-/** NonNegativeError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a NonNegativeError in Tamil. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} எதிர்மறையற்றதாக இருக்க வேண்டும் (>= 0).`;
 
-/** NonNegativeDecimalStringError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a NonNegativeDecimalStringError in Tamil. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு எதிர்மறையற்ற decimal string ஆக இருக்க வேண்டும்.`;
 
-/** PositiveError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a PositiveError in Tamil. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} நேர்மறையாக இருக்க வேண்டும் (> 0).`;
 
-/** PositiveDecimalStringError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a PositiveDecimalStringError in Tamil. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு நேர்மறை decimal string ஆக இருக்க வேண்டும்.`;
 
-/** NonPositiveError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a NonPositiveError in Tamil. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} நேர்மறையற்றதாக இருக்க வேண்டும் (<= 0).`;
 
-/** NonPositiveDecimalStringError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a NonPositiveDecimalStringError in Tamil. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு நேர்மறையற்ற decimal string ஆக இருக்க வேண்டும்.`;
 
-/** NegativeError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a NegativeError in Tamil. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} எதிர்மறையாக இருக்க வேண்டும் (< 0).`;
 
-/** NegativeDecimalStringError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a NegativeDecimalStringError in Tamil. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு எதிர்மறை decimal string ஆக இருக்க வேண்டும்.`;
 
-/** IntError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an IntError in Tamil. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு பாதுகாப்பான integer ஆக இருக்க வேண்டும்.`;
 
-/** IntFromStringError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an IntFromStringError in Tamil. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} தசம முழு எண் அல்ல.`;
 
-/** GreaterThanError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a GreaterThanError in Tamil. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ${error.min}-ஐ விட அதிகமாக இருக்க வேண்டும்.`;
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.min}-ஐ விட அதிகமாக இருக்க வேண்டும்.`;
 
-/** GreaterThanOrEqualToError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a GreaterThanOrEqualToError in Tamil. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ${error.min}-ஐ விட அதிகமாகவோ அல்லது சமமாகவோ இருக்க வேண்டும்.`;
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.min}-ஐ விட அதிகமாகவோ அல்லது சமமாகவோ இருக்க வேண்டும்.`;
 
-/** LessThanError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a LessThanError in Tamil. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ${error.max}-ஐ விடக் குறைவாக இருக்க வேண்டும்.`;
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.max}-ஐ விடக் குறைவாக இருக்க வேண்டும்.`;
 
-/** LessThanOrEqualToError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a LessThanOrEqualToError in Tamil. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ${error.max}-ஐ விடக் குறைவாகவோ அல்லது சமமாகவோ இருக்க வேண்டும்.`;
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.max}-ஐ விடக் குறைவாகவோ அல்லது சமமாகவோ இருக்க வேண்டும்.`;
 
-/** NonNaNError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a NonNaNError in Tamil. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "மதிப்பு NaN ஆக இருக்கக் கூடாது.";
 
-/** FiniteError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a FiniteError in Tamil. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} முடிவுறுவதாக இருக்க வேண்டும்.`;
 
-/** MultipleOfError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a MultipleOfError in Tamil. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.divisor}-இன் மடங்காக இருக்க வேண்டும்.`;
 
-/** BetweenError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a BetweenError in Tamil. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.min} மற்றும் ${error.max}-க்கு இடையில், இரு எல்லைகளையும் உள்ளடக்கியதாக இருக்க வேண்டும்.`;
 
-/** ArrayError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an ArrayError in Tamil. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `மதிப்பு ${safelyStringifyUnknownValue(error.reason.value)} ஒரு array அல்ல.`;
@@ -393,7 +392,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** SetError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a SetError in Tamil. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `மதிப்பு ${safelyStringifyUnknownValue(error.reason.value)} ஒரு Set அல்ல.`;
@@ -408,7 +407,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** MapError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a MapError in Tamil. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `மதிப்பு ${safelyStringifyUnknownValue(error.reason.value)} ஒரு Map அல்ல.`;
@@ -419,14 +418,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `கூடுதலான Map property ${safelyStringifyUnknownValue(issue.key)} அனுமதிக்கப்படாது.`;
     case "Key":
+      return `index ${issue.index}-இல் உள்ள Map key செல்லுபடியாகாது.`;
     case "Value":
-      return `index ${issue.index}-இல் உள்ள Map element செல்லுபடியாகாது.`;
+      return `index ${issue.index}-இல் உள்ள Map மதிப்பு செல்லுபடியாகாது.`;
     case "Collision":
-      return `Map key-கள் ${safelyStringifyUnknownValue(issue.previousKey)} மற்றும் ${safelyStringifyUnknownValue(issue.key)} ஒரே key ${safelyStringifyUnknownValue(issue.outputKey)}-ஆக decode ஆகின்றன.`;
+      return `index ${issue.previousIndex} மற்றும் ${issue.index}-இல் உள்ள Map key-கள் ஒரே key ${safelyStringifyUnknownValue(issue.outputKey)}-ஆக decode ஆகின்றன.`;
   }
 };
 
-/** TupleError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a TupleError in Tamil. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -434,7 +434,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `மதிப்பு ${safelyStringifyUnknownValue(error.reason.value)} ஒரு tuple அல்ல.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple-ல் துல்லியமாக ${error.reason.expected} element-கள் இருக்க வேண்டும், ஆனால் மதிப்பில் ${error.reason.actual} உள்ளன.`;
+    return `Tuple-இன் நீளம் ${error.reason.expected} ஆக இருக்க வேண்டும், ஆனால் மதிப்பின் நீளம் ${error.reason.actual} ஆக உள்ளது.`;
   }
 
   const issue = error.reason.issues[0];
@@ -451,7 +451,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** RecordError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a RecordError in Tamil. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `மதிப்பு ${safelyStringifyUnknownValue(error.reason.value)} ஒரு Record அல்ல.`;
@@ -476,7 +476,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** ObjectError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats an ObjectError in Tamil. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -507,7 +507,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `property ${safelyStringifyUnknownValue(key)} செல்லுபடியாகாது.`;
 };
 
-/** DiscriminatedUnionError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a DiscriminatedUnionError in Tamil. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -520,7 +520,7 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
         return `${property} ஒரு data property ஆக இருக்க வேண்டும்.`;
       }
       if (error.reason.reason === "Inherited") {
-        return `${property} அதற்கே உரிய property ஆக இருக்க வேண்டும்.`;
+        return `${property} object-இன் சொந்த property ஆக இருக்க வேண்டும்.`;
       }
       return `${property} enumerable ஆக இருக்க வேண்டும்.`;
     }
@@ -531,7 +531,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** JsonValueError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a DataError in Tamil. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `மதிப்பு ${safelyStringifyUnknownValue(issue.value)} Data அல்ல.`;
+    case "UnexpectedPrototype":
+      return `Data ${issue.container} எதிர்பாராத prototype-ஐக் கொண்டுள்ளது.`;
+    case "Accessor":
+      return "Data property ஒரு data property ஆக இருக்க வேண்டும். இந்த Type-ஐப் பயன்படுத்தும் முன் accessor மதிப்புகளை எளிய data-ஆக மாற்றவும் அல்லது வேறு Type-ஐப் பயன்படுத்தவும்.";
+    case "NonEnumerable":
+      return "Data Object property enumerable ஆக இருக்க வேண்டும். அதை நீக்கவும் அல்லது வேறு Type-ஐப் பயன்படுத்தவும்.";
+    case "SymbolProperty":
+      return "Data Object property key ஒரு string ஆக இருக்க வேண்டும். symbol property-ஐ நீக்கவும் அல்லது வேறு Type-ஐப் பயன்படுத்தவும்.";
+    case "Hole":
+      return "Data Array element காணப்படவில்லை.";
+    case "InvalidUint8Array":
+      return "Data Uint8Array-இன் ArrayBuffer detach செய்யப்பட்டிருக்கக் கூடாது, மேலும் Uint8Array அந்த ArrayBuffer-இன் எல்லைக்குள் இருக்க வேண்டும்.";
+    case "ExcessProperty":
+      return `Data ${issue.container}-இல் கூடுதலான சொந்த property-கள் இருக்கக் கூடாது. அந்த property-ஐ நீக்கவும் அல்லது வேறு Type-ஐப் பயன்படுத்தவும்.`;
+  }
+};
+
+/** Formats a JsonValueError in Tamil. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -539,7 +562,7 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 
   switch (issue.kind) {
     case "InvalidType":
-      return `மதிப்பு ${safelyStringifyUnknownValue(issue.value)} ஒரு JSON value அல்ல.`;
+      return `மதிப்பு ${safelyStringifyUnknownValue(issue.value)} ஒரு JSON மதிப்பு அல்ல.`;
     case "NonFiniteNumber":
       return "JSON number முடிவுறுவதாக இருக்க வேண்டும்.";
     case "UnexpectedPrototype":
@@ -559,24 +582,35 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** JsonError-ஐ தமிழில் வடிவமைக்கிறது. */
+/** Formats a JsonError in Tamil. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)}-ஐ JsonValue-ஆக parse செய்ய முடியாது.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Tamil. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} பைட் அளவுக்கான லிட்டரல் அல்ல. "512KiB" அல்லது "1MiB" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} பைட் அளவுக்கான literal அல்ல. "512KiB" அல்லது "1MiB" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Tamil. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "மதிப்பு -0 பைட் நீளம் அல்ல. அதற்குப் பதிலாக 0-ஐப் பயன்படுத்தவும்.";
+
+/** Formats a ByteLengthFromStringError in Tamil. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} பைட் நீளம் அல்ல. பைட்டுகளின் எண்ணிக்கையை அல்லது 10MiB போன்ற literal-ஐப் பயன்படுத்தவும்.`;
+
+/** Formats a DurationLiteralError in Tamil. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} கால அளவுக்கான லிட்டரல் அல்ல. "500ms" அல்லது "1.5s" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} கால அளவுக்கான literal அல்ல. "500ms" அல்லது "1.5s" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Tamil. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சதவீத லிட்டரல் அல்ல. "50%" அல்லது "12.5%" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சதவீத literal அல்ல. "50%" அல்லது "12.5%" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;

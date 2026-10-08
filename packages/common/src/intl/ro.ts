@@ -1,12 +1,9 @@
 /**
- * Formatatoare românești pentru erorile Evolu Type.
+ * Romanian Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,96 +95,96 @@ const formatPlainObjectRootError = (
     ? `Valoarea ${safelyStringifyUnknownValue(reason.value)} nu este un obiect.`
     : "Valoarea este un obiect, dar un Output Object trebuie să fie un obiect simplu sau să aibă un prototip null.";
 
-/** Formatează un NeverError în română. */
+/** Formats a NeverError in Romanian. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este validă pentru tipul Never.`;
 
-/** Formatează un String TypeOfError în română. */
+/** Formats a String TypeOfError in Romanian. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** Formatează un TemplateLiteralError în română. */
+/** Formats a TemplateLiteralError in Romanian. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
-  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu corespunde șablonului literal.`;
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu corespunde literalului șablon.`;
 
-/** Formatează un Number TypeOfError în română. */
+/** Formats a Number TypeOfError in Romanian. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** Formatează un BigInt TypeOfError în română. */
+/** Formats a BigInt TypeOfError in Romanian. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Formatează un Boolean TypeOfError în română. */
+/** Formats a Boolean TypeOfError in Romanian. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** Formatează un BooleanFromStringError în română. */
+/** Formats a BooleanFromStringError in Romanian. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o valoare booleană. Folosiți true sau false.`;
 
-/** Formatează un Symbol TypeOfError în română. */
+/** Formats a Symbol TypeOfError in Romanian. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Formatează un Function TypeOfError în română. */
+/** Formats a Function TypeOfError in Romanian. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** Formatează un EvoluTypeError în română. */
+/** Formats an EvoluTypeError in Romanian. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un Evolu Type.`;
 
-/** Formatează un ObjectTagError în română. */
+/** Formats an ObjectTagError in Romanian. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu are eticheta de obiect așteptată ${safelyStringifyUnknownValue(error.expected)}.`;
 
-/** Formatează un InstanceOfError în română. */
+/** Formats an InstanceOfError in Romanian. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
-  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o instanță a ${error.constructorName}.`;
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o instanță a clasei ${error.constructorName}.`;
 
-/** Formatează un LiteralError în română. */
+/** Formats a LiteralError in Romanian. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este strict egală cu literalul așteptat: ${String(error.expected)}.`;
 
-/** Formatează un UnionError în română. */
+/** Formats a UnionError in Romanian. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "O valoare nu corespunde niciunei variante permise.";
 
-/** Formatează un DateIsoError în română. */
+/** Formats a DateIsoError in Romanian. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un șir canonic de dată și oră ISO.`;
 
-/** Formatează un DateIsoFromDateError în română. */
+/** Formats a DateIsoFromDateError in Romanian. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
-> = () => "Date nu poate fi reprezentat ca DateIso.";
+> = () => "Obiectul Date nu poate fi reprezentat ca DateIso.";
 
-/** Formatează un DecimalStringError în română. */
+/** Formats a DecimalStringError in Romanian. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie un șir zecimal canonic.`;
 
-/** Formatează un Int64Error în română. */
+/** Formats an Int64Error in Romanian. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
-  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un număr întreg cu semn valid pe 64 de biți (Int64).`;
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un număr întreg valid cu semn pe 64 de biți (Int64).`;
 
-/** Formatează un UInt64Error în română. */
+/** Formats a UInt64Error in Romanian. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
-  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un număr întreg fără semn valid pe 64 de biți (UInt64).`;
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un număr întreg valid fără semn pe 64 de biți (UInt64).`;
 
-/** Formatează un Int64StringError în română. */
+/** Formats an Int64StringError in Romanian. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -197,7 +196,7 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un identificator ${error.casing}.`;
 
-/** Formatează un CapitalizedError în română. */
+/** Formats a CapitalizedError in Romanian. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -221,7 +220,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie scrisă cu minuscule.`;
 
-/** Formatează un TrimmedError în română. */
+/** Formats a TrimmedError in Romanian. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie fără spații la început sau la sfârșit.`;
 
@@ -231,151 +230,151 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să înceapă cu ${safelyStringifyUnknownValue(error.prefix)}.`;
 
-/** Formatează un MinLengthError în română. */
+/** Formats a MinLengthError in Romanian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu îndeplinește lungimea minimă de ${error.min}.`;
 
-/** Formatează un MaxLengthError în română. */
+/** Formats a MaxLengthError in Romanian. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} depășește lungimea maximă de ${error.max}.`;
 
-/** Formatează un LengthError în română. */
+/** Formats a LengthError in Romanian. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu are lungimea necesară de ${error.exact}.`;
 
-/** Formatează un RegexError în română. */
+/** Formats a RegexError in Romanian. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu corespunde cu /${error.source}/${error.flags}.`;
 
-/** Formatează un Base64UrlError în română. */
+/** Formats a Base64UrlError in Romanian. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un șir Base64Url valid.`;
 
-/** Formatează un NameError în română. */
+/** Formats a NameError in Romanian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un Name valid.`;
 
-/** Formatează un EmailError în română. */
+/** Formats an EmailError in Romanian. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă de e-mail validă.`;
 
-/** Formatează un MnemonicError în română. */
+/** Formats a MnemonicError in Romanian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o frază mnemonică BIP39 în engleză validă.`;
 
-/** Formatează un IdError în română. */
+/** Formats an IdError in Romanian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un Id valid.`;
 
-/** Formatează un TableIdError în română. */
+/** Formats a TableIdError in Romanian. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un Id valid pentru tabelul ${error.table}.`;
 
-/** Formatează un UuidError în română. */
+/** Formats a UuidError in Romanian. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un UUID canonic cu litere mici.`;
 
-/** Formatează un NonNegativeError în română. */
+/** Formats a NonNegativeError in Romanian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie nenegativă (>= 0).`;
 
-/** Formatează un NonNegativeDecimalStringError în română. */
+/** Formats a NonNegativeDecimalStringError in Romanian. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie un șir zecimal nenegativ.`;
 
-/** Formatează un PositiveError în română. */
+/** Formats a PositiveError in Romanian. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie pozitivă (> 0).`;
 
-/** Formatează un PositiveDecimalStringError în română. */
+/** Formats a PositiveDecimalStringError in Romanian. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie un șir zecimal pozitiv.`;
 
-/** Formatează un NonPositiveError în română. */
+/** Formats a NonPositiveError in Romanian. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie nepozitivă (<= 0).`;
 
-/** Formatează un NonPositiveDecimalStringError în română. */
+/** Formats a NonPositiveDecimalStringError in Romanian. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie un șir zecimal nepozitiv.`;
 
-/** Formatează un NegativeError în română. */
+/** Formats a NegativeError in Romanian. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie negativă (< 0).`;
 
-/** Formatează un NegativeDecimalStringError în română. */
+/** Formats a NegativeDecimalStringError in Romanian. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie un șir zecimal negativ.`;
 
-/** Formatează un IntError în română. */
+/** Formats an IntError in Romanian. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie un număr întreg sigur.`;
 
-/** Formatează un IntFromStringError în română. */
+/** Formats an IntFromStringError in Romanian. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un întreg zecimal.`;
 
-/** Formatează un GreaterThanError în română. */
+/** Formats a GreaterThanError in Romanian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie mai mare decât ${error.min}.`;
 
-/** Formatează un GreaterThanOrEqualToError în română. */
+/** Formats a GreaterThanOrEqualToError in Romanian. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie mai mare sau egală cu ${error.min}.`;
 
-/** Formatează un LessThanError în română. */
+/** Formats a LessThanError in Romanian. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie mai mică decât ${error.max}.`;
 
-/** Formatează un LessThanOrEqualToError în română. */
+/** Formats a LessThanOrEqualToError in Romanian. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie mai mică sau egală cu ${error.max}.`;
 
-/** Formatează un NonNaNError în română. */
+/** Formats a NonNaNError in Romanian. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "Valoarea nu trebuie să fie NaN.";
 
-/** Formatează un FiniteError în română. */
+/** Formats a FiniteError in Romanian. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie finită.`;
 
-/** Formatează un MultipleOfError în română. */
+/** Formats a MultipleOfError in Romanian. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie un multiplu de ${error.divisor}.`;
 
-/** Formatează un BetweenError în română. */
+/** Formats a BetweenError in Romanian. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie între ${error.min} și ${error.max}, inclusiv.`;
 
-/** Formatează un ArrayError în română. */
+/** Formats an ArrayError in Romanian. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `Valoarea ${safelyStringifyUnknownValue(error.reason.value)} nu este un tablou.`;
@@ -394,7 +393,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** Formatează un SetError în română. */
+/** Formats a SetError in Romanian. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Valoarea ${safelyStringifyUnknownValue(error.reason.value)} nu este un Set.`;
@@ -403,13 +402,13 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
 
   switch (issue.kind) {
     case "ExcessProperty":
-      return `O proprietate Set în exces ${safelyStringifyUnknownValue(issue.key)} nu este permisă.`;
+      return `Proprietatea Set în exces ${safelyStringifyUnknownValue(issue.key)} nu este permisă.`;
     case "Element":
       return `Elementul Set de la indexul ${issue.index} nu este valid.`;
   }
 };
 
-/** Formatează un MapError în română. */
+/** Formats a MapError in Romanian. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `Valoarea ${safelyStringifyUnknownValue(error.reason.value)} nu este un Map.`;
@@ -418,16 +417,17 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
 
   switch (issue.kind) {
     case "ExcessProperty":
-      return `O proprietate Map în exces ${safelyStringifyUnknownValue(issue.key)} nu este permisă.`;
+      return `Proprietatea Map în exces ${safelyStringifyUnknownValue(issue.key)} nu este permisă.`;
     case "Key":
+      return `Cheia Map de la indexul ${issue.index} nu este validă.`;
     case "Value":
-      return `Elementul Map de la indexul ${issue.index} nu este valid.`;
+      return `Valoarea Map de la indexul ${issue.index} nu este validă.`;
     case "Collision":
-      return `Cheile Map ${safelyStringifyUnknownValue(issue.previousKey)} și ${safelyStringifyUnknownValue(issue.key)} se decodează la aceeași cheie ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Cheile Map de la indexurile ${issue.previousIndex} și ${issue.index} se decodează la aceeași cheie ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
-/** Formatează un TupleError în română. */
+/** Formats a TupleError in Romanian. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -435,7 +435,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `Valoarea ${safelyStringifyUnknownValue(error.reason.value)} nu este un tuplu.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Un Tuple trebuie să conțină exact ${error.reason.expected} elemente, dar valoarea conține ${error.reason.actual}.`;
+    return `Un Tuple trebuie să aibă lungimea ${error.reason.expected}, dar valoarea are lungimea ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -452,7 +452,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** Formatează un RecordError în română. */
+/** Formats a RecordError in Romanian. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `Valoarea ${safelyStringifyUnknownValue(error.reason.value)} nu este un Record.`;
@@ -477,7 +477,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** Formatează un ObjectError în română. */
+/** Formats an ObjectError in Romanian. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -508,7 +508,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `Proprietatea ${safelyStringifyUnknownValue(key)} nu este validă.`;
 };
 
-/** Formatează un DiscriminatedUnionError în română. */
+/** Formats a DiscriminatedUnionError in Romanian. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -532,7 +532,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** Formatează un JsonValueError în română. */
+/** Formats a DataError in Romanian. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Valoarea ${safelyStringifyUnknownValue(issue.value)} nu este o valoare Data.`;
+    case "UnexpectedPrototype":
+      return `O valoare Data de tipul ${issue.container} are un prototip neașteptat.`;
+    case "Accessor":
+      return "O proprietate Data trebuie să fie o proprietate de date. Materializați valorile accesorilor în date simple înainte de a utiliza acest Type sau utilizați un Type diferit.";
+    case "NonEnumerable":
+      return "O proprietate a unui obiect Data trebuie să fie enumerabilă. Eliminați-o sau utilizați un Type diferit.";
+    case "SymbolProperty":
+      return "Cheia unei proprietăți a unui obiect Data trebuie să fie un șir. Eliminați proprietatea simbol sau utilizați un Type diferit.";
+    case "Hole":
+      return "Lipsește un element al unui tablou Data.";
+    case "InvalidUint8Array":
+      return "Un Uint8Array Data trebuie să aibă un ArrayBuffer nedetașat și să se încadreze în limitele acestuia.";
+    case "ExcessProperty":
+      return `O valoare Data de tipul ${issue.container} nu trebuie să aibă proprietăți proprii în exces. Eliminați proprietatea sau utilizați un Type diferit.`;
+  }
+};
+
+/** Formats a JsonValueError in Romanian. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -554,30 +577,41 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
     case "Hole":
       return "Lipsește un element al unui tablou JSON.";
     case "ExcessProperty":
-      return "O proprietate a unui tablou JSON în exces nu este permisă. Eliminați-o sau utilizați un Type diferit.";
+      return "O proprietate în exces a unui tablou JSON nu este permisă. Eliminați-o sau utilizați un Type diferit.";
     case "CircularReference":
       return "Un JsonValue nu trebuie să conțină referințe circulare.";
   }
 };
 
-/** Formatează un JsonError în română. */
+/** Formats a JsonError in Romanian. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu poate fi analizată ca JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Romanian. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un literal de dimensiune în octeți. Folosiți o valoare precum "512KiB" sau "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Romanian. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "Valoarea -0 nu este o lungime în octeți. Folosiți 0 în schimb.";
+
+/** Formats a ByteLengthFromStringError in Romanian. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o lungime în octeți. Folosiți un număr de octeți sau un literal precum 10MiB.`;
+
+/** Formats a DurationLiteralError in Romanian. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un literal de durată. Folosiți o valoare precum "500ms" sau "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Romanian. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un literal de procentaj. Folosiți o valoare precum "50%" sau "12.5%".`;

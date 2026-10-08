@@ -1471,8 +1471,10 @@ describe("ByteSizeLiteral", () => {
     assertEqual({ ...cs.Env.to(supplied) }, { APP_QUOTA: "512KiB" });
     const result = cs.Env.fromUnknown({ APP_QUOTA: "1MB" });
     assertErr(result);
-    const message =
-      'Hodnota "1MB" není literál velikosti v bajtech. Použijte hodnotu jako "512KiB" nebo "1MiB".';
+    const message = formatByteSizeLiteralError({
+      type: "ByteSizeLiteral",
+      value: "1MB",
+    });
     assertEqual(cs.Env.formatError(result.error), message);
     assertEqual(typeErrorToIssues(cs.Env, result.error), [
       { path: ["APP_QUOTA"], message },

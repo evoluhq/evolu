@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -84,7 +83,7 @@ const formatTypeOfError = (
   >,
 ): string => {
   const typeOf = error.expected.toLowerCase();
-  return `Nilai ${safelyStringifyUnknownValue(error.value)} bukan ${typeOf}.`;
+  return `Nilai ${safelyStringifyUnknownValue(error.value)} bukan jenis ${typeOf}.`;
 };
 
 const formatPlainObjectRootError = (
@@ -137,7 +136,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan instance ${error.constructorName}.`;
 /** Formats a LiteralError in Malay. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak sama sepenuhnya dengan literal yang dijangka: ${String(error.expected)}.`;
+  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak sama secara ketat dengan literal yang dijangka: ${String(error.expected)}.`;
 /** Formats a UnionError in Malay. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Nilai tidak sepadan dengan mana-mana varian yang dibenarkan.";
@@ -196,7 +195,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
   `Nilai ${safelyStringifyUnknownValue(error.value)} mesti menggunakan huruf kecil.`;
 /** Formats a TrimmedError in Malay. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
-  `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah dipangkas.`;
+  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak boleh bermula atau berakhir dengan ruang kosong.`;
 /** Formats a StartsWithError in Malay. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
@@ -364,10 +363,11 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `Sifat Map berlebihan ${safelyStringifyUnknownValue(issue.key)} tidak dibenarkan.`;
     case "Key":
+      return `Kunci Map pada indeks ${issue.index} tidak sah.`;
     case "Value":
-      return `Elemen Map pada indeks ${issue.index} tidak sah.`;
+      return `Nilai Map pada indeks ${issue.index} tidak sah.`;
     case "Collision":
-      return `Kunci Map ${safelyStringifyUnknownValue(issue.previousKey)} dan ${safelyStringifyUnknownValue(issue.key)} dinyahkod kepada kunci yang sama, ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Kunci Map pada indeks ${issue.previousIndex} dan ${issue.index} dinyahkod kepada kunci yang sama, ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 /** Formats a TupleError in Malay. */
@@ -377,7 +377,7 @@ export const formatTupleError: TypeErrorFormatter<
   if (error.reason.kind === "NotArray")
     return `Nilai ${safelyStringifyUnknownValue(error.reason.value)} bukan tupel.`;
   if (error.reason.kind === "InvalidLength")
-    return `Tupel mestilah mengandungi tepat ${error.reason.expected} elemen, tetapi nilai itu mengandungi ${error.reason.actual}.`;
+    return `Tupel mestilah mempunyai panjang ${error.reason.expected}, tetapi nilai itu mempunyai panjang ${error.reason.actual}.`;
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "Hole":
@@ -455,6 +455,29 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
       return `Varian yang dipilih ${safelyStringifyUnknownValue(error.reason.discriminator)} tidak sah.`;
   }
 };
+/** Formats a DataError in Malay. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Nilai ${safelyStringifyUnknownValue(issue.value)} bukan Data.`;
+    case "UnexpectedPrototype":
+      return `${issue.container} Data mempunyai prototaip yang tidak dijangka.`;
+    case "Accessor":
+      return "Sifat Data mestilah sifat data. Wujudkan nilai pengakses menjadi data biasa sebelum menggunakan Jenis ini atau gunakan Jenis lain.";
+    case "NonEnumerable":
+      return "Sifat Object Data mestilah boleh dihitung. Alih keluarkannya atau gunakan Jenis lain.";
+    case "SymbolProperty":
+      return "Kunci sifat Object Data mestilah rentetan. Alih keluar sifat simbol itu atau gunakan Jenis lain.";
+    case "Hole":
+      return "Elemen Array Data tiada.";
+    case "InvalidUint8Array":
+      return "Uint8Array Data mestilah mempunyai ArrayBuffer yang tidak tertanggal dan mestilah berada dalam batas ArrayBuffer itu.";
+    case "ExcessProperty":
+      return `${issue.container} Data tidak boleh mempunyai sifat miliknya sendiri yang berlebihan. Alih keluar sifat itu atau gunakan Jenis lain.`;
+  }
+};
+
 /** Formats a JsonValueError in Malay. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
@@ -485,20 +508,31 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} tidak boleh dihuraikan menjadi JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Malay. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal saiz bait. Gunakan nilai seperti "512KiB" atau "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Malay. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "Nilai -0 bukan panjang bait. Gunakan 0 sebagai gantinya.";
+
+/** Formats a ByteLengthFromStringError in Malay. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan panjang bait. Gunakan bilangan bait atau literal seperti 10MiB.`;
+
+/** Formats a DurationLiteralError in Malay. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal tempoh. Gunakan nilai seperti "500ms" atau "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Malay. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal peratusan. Gunakan nilai seperti "50%" atau "12.5%".`;

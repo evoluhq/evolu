@@ -1,12 +1,9 @@
 /**
- * Formatters for Evolu Type errors in French.
+ * French Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -85,7 +84,7 @@ const formatTypeOfError = (
 ): string => {
   const typeOf = error.expected.toLowerCase();
 
-  return `La valeur ${safelyStringifyUnknownValue(error.value)} n’est pas un(e) ${typeOf}.`;
+  return `La valeur ${safelyStringifyUnknownValue(error.value)} n’est pas de type ${typeOf}.`;
 };
 
 const formatPlainObjectRootError = (
@@ -420,10 +419,11 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `La propriété Map excédentaire ${safelyStringifyUnknownValue(issue.key)} n’est pas autorisée.`;
     case "Key":
+      return `La clé Map à l’indice ${issue.index} n’est pas valide.`;
     case "Value":
-      return `L’élément Map à l’indice ${issue.index} n’est pas valide.`;
+      return `La valeur Map à l’indice ${issue.index} n’est pas valide.`;
     case "Collision":
-      return `Les clés Map ${safelyStringifyUnknownValue(issue.previousKey)} et ${safelyStringifyUnknownValue(issue.key)} sont décodées en la même clé ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Les clés Map aux indices ${issue.previousIndex} et ${issue.index} sont décodées en la même clé ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
@@ -435,7 +435,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `La valeur ${safelyStringifyUnknownValue(error.reason.value)} n’est pas un tuple.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Un Tuple doit contenir exactement ${error.reason.expected} éléments, mais la valeur en contient ${error.reason.actual}.`;
+    return `Un Tuple doit avoir une longueur de ${error.reason.expected}, mais la valeur a une longueur de ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -532,6 +532,29 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
+/** Formats a DataError in French. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `La valeur ${safelyStringifyUnknownValue(issue.value)} n’est pas une valeur Data.`;
+    case "UnexpectedPrototype":
+      return `Une valeur Data de type ${issue.container} a un prototype inattendu.`;
+    case "Accessor":
+      return "Une propriété Data doit être une propriété de données. Convertissez les valeurs d’accesseur en données simples avant d’utiliser ce Type, ou utilisez un autre Type.";
+    case "NonEnumerable":
+      return "Une propriété d’objet Data doit être énumérable. Supprimez-la ou utilisez un autre Type.";
+    case "SymbolProperty":
+      return "La clé d’une propriété d’objet Data doit être une chaîne. Supprimez la propriété symbole ou utilisez un autre Type.";
+    case "Hole":
+      return "Un élément de tableau Data est manquant.";
+    case "InvalidUint8Array":
+      return "Un Uint8Array Data doit reposer sur un ArrayBuffer non détaché et rester dans ses limites.";
+    case "ExcessProperty":
+      return `Une valeur Data de type ${issue.container} ne doit pas avoir de propriétés propres excédentaires. Supprimez la propriété ou utilisez un autre Type.`;
+  }
+};
+
 /** Formats a JsonValueError in French. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
@@ -564,20 +587,31 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `La valeur ${safelyStringifyUnknownValue(error.value)} ne peut pas être analysée comme un JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in French. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `La valeur ${safelyStringifyUnknownValue(error.value)} n’est pas un littéral de taille en octets. Utilisez une valeur comme "512KiB" ou "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in French. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "La valeur -0 n’est pas une longueur en octets. Utilisez plutôt 0.";
+
+/** Formats a ByteLengthFromStringError in French. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `La valeur ${safelyStringifyUnknownValue(error.value)} n’est pas une longueur en octets. Utilisez un nombre d’octets ou un littéral comme 10MiB.`;
+
+/** Formats a DurationLiteralError in French. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `La valeur ${safelyStringifyUnknownValue(error.value)} n’est pas un littéral de durée. Utilisez une valeur comme "500ms" ou "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in French. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `La valeur ${safelyStringifyUnknownValue(error.value)} n’est pas un littéral de pourcentage. Utilisez une valeur comme "50%" ou "12.5%".`;

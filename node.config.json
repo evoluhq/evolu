@@ -10,7 +10,7 @@
     "test-coverage-exclude": [
       "**/*.test.{ts,mts}",
       "packages/*/src/**/index.ts",
-      "packages/common/src/intl/**/*.ts"
+      "packages/common/src/intl/[a-z]*.ts"
     ],
     "test-isolation": "process",
     "test-randomize": true,

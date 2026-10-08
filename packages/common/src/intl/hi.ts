@@ -1,12 +1,9 @@
 /**
- * हिंदी Evolu Type त्रुटि फ़ॉर्मेटर।
+ * Hindi Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,95 +95,95 @@ const formatPlainObjectRootError = (
     ? `मान ${safelyStringifyUnknownValue(reason.value)} object नहीं है।`
     : "मान एक object है, लेकिन Object Output को plain object होना चाहिए या उसका prototype null होना चाहिए।";
 
-/** NeverError को हिंदी में format करता है। */
+/** Formats a NeverError in Hindi. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} Never प्रकार के लिए मान्य नहीं है।`;
 
-/** String TypeOfError को हिंदी में format करता है। */
+/** Formats a String TypeOfError in Hindi. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** TemplateLiteralError को हिंदी में format करता है। */
+/** Formats a TemplateLiteralError in Hindi. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} template literal से मेल नहीं खाता।`;
 
-/** Number TypeOfError को हिंदी में format करता है। */
+/** Formats a Number TypeOfError in Hindi. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** BigInt TypeOfError को हिंदी में format करता है। */
+/** Formats a BigInt TypeOfError in Hindi. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Boolean TypeOfError को हिंदी में format करता है। */
+/** Formats a Boolean TypeOfError in Hindi. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** BooleanFromStringError को हिंदी में format करता है। */
+/** Formats a BooleanFromStringError in Hindi. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} बूलियन नहीं है। true या false का उपयोग करें।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} boolean नहीं है। true या false का उपयोग करें।`;
 
-/** Symbol TypeOfError को हिंदी में format करता है। */
+/** Formats a Symbol TypeOfError in Hindi. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Function TypeOfError को हिंदी में format करता है। */
+/** Formats a Function TypeOfError in Hindi. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** EvoluTypeError को हिंदी में format करता है। */
+/** Formats an EvoluTypeError in Hindi. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) => `मान ${safelyStringifyUnknownValue(error.value)} Evolu Type नहीं है।`;
 
-/** ObjectTagError को हिंदी में format करता है। */
+/** Formats an ObjectTagError in Hindi. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} में अपेक्षित object tag ${safelyStringifyUnknownValue(error.expected)} नहीं है।`;
 
-/** InstanceOfError को हिंदी में format करता है। */
+/** Formats an InstanceOfError in Hindi. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} ${error.constructorName} का instance नहीं है।`;
 
-/** LiteralError को हिंदी में format करता है। */
+/** Formats a LiteralError in Hindi. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} अपेक्षित literal के strictly बराबर नहीं है: ${String(error.expected)}।`;
 
-/** UnionError को हिंदी में format करता है। */
+/** Formats a UnionError in Hindi. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "मान किसी भी अनुमत variant से मेल नहीं खाता।";
 
-/** DateIsoError को हिंदी में format करता है। */
+/** Formats a DateIsoError in Hindi. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} canonical ISO date-time string नहीं है।`;
 
-/** DateIsoFromDateError को हिंदी में format करता है। */
+/** Formats a DateIsoFromDateError in Hindi. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date को DateIso के रूप में दर्शाया नहीं जा सकता।";
 
-/** DecimalStringError को हिंदी में format करता है। */
+/** Formats a DecimalStringError in Hindi. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} canonical decimal string होना चाहिए।`;
 
-/** Int64Error को हिंदी में format करता है। */
+/** Formats an Int64Error in Hindi. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य signed 64-bit integer (Int64) नहीं है।`;
 
-/** UInt64Error को हिंदी में format करता है। */
+/** Formats a UInt64Error in Hindi. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य unsigned 64-bit integer (UInt64) नहीं है।`;
 
-/** Int64StringError को हिंदी में format करता है। */
+/** Formats an Int64StringError in Hindi. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -196,7 +195,7 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} ${error.casing} पहचानकर्ता नहीं है।`;
 
-/** CapitalizedError को हिंदी में format करता है। */
+/** Formats a CapitalizedError in Hindi. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -220,7 +219,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} छोटे अक्षरों में होना चाहिए।`;
 
-/** TrimmedError को हिंदी में format करता है। */
+/** Formats a TrimmedError in Hindi. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} के आरंभ और अंत से whitespace हटाया हुआ होना चाहिए।`;
 
@@ -230,151 +229,151 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} की शुरुआत ${safelyStringifyUnknownValue(error.prefix)} से होनी चाहिए।`;
 
-/** MinLengthError को हिंदी में format करता है। */
+/** Formats a MinLengthError in Hindi. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} की लंबाई न्यूनतम ${error.min} होनी चाहिए।`;
 
-/** MaxLengthError को हिंदी में format करता है। */
+/** Formats a MaxLengthError in Hindi. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} की लंबाई अधिकतम ${error.max} हो सकती है।`;
 
-/** LengthError को हिंदी में format करता है। */
+/** Formats a LengthError in Hindi. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} की आवश्यक लंबाई ${error.exact} होनी चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} की लंबाई ठीक ${error.exact} होनी चाहिए।`;
 
-/** RegexError को हिंदी में format करता है। */
+/** Formats a RegexError in Hindi. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} /${error.source}/${error.flags} से मेल नहीं खाता।`;
 
-/** Base64UrlError को हिंदी में format करता है। */
+/** Formats a Base64UrlError in Hindi. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य Base64Url string नहीं है।`;
 
-/** NameError को हिंदी में format करता है। */
+/** Formats a NameError in Hindi. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य Name नहीं है।`;
 
-/** EmailError को हिंदी में format करता है। */
+/** Formats an EmailError in Hindi. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य ईमेल पता नहीं है।`;
 
-/** MnemonicError को हिंदी में format करता है। */
+/** Formats a MnemonicError in Hindi. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य अंग्रेज़ी BIP39 mnemonic नहीं है।`;
 
-/** IdError को हिंदी में format करता है। */
+/** Formats an IdError in Hindi. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य Id नहीं है।`;
 
-/** TableIdError को हिंदी में format करता है। */
+/** Formats a TableIdError in Hindi. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} table ${error.table} के लिए मान्य Id नहीं है।`;
 
-/** UuidError को हिंदी में format करता है। */
+/** Formats a UuidError in Hindi. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} छोटे अक्षरों वाला canonical UUID नहीं है।`;
 
-/** NonNegativeError को हिंदी में format करता है। */
+/** Formats a NonNegativeError in Hindi. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} ऋणात्मक नहीं होना चाहिए (>= 0)।`;
 
-/** NonNegativeDecimalStringError को हिंदी में format करता है। */
+/** Formats a NonNegativeDecimalStringError in Hindi. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} non-negative decimal string होना चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} decimal string होना चाहिए और ऋणात्मक नहीं होना चाहिए।`;
 
-/** PositiveError को हिंदी में format करता है। */
+/** Formats a PositiveError in Hindi. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} धनात्मक होना चाहिए (> 0)।`;
 
-/** PositiveDecimalStringError को हिंदी में format करता है। */
+/** Formats a PositiveDecimalStringError in Hindi. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} positive decimal string होना चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} धनात्मक decimal string होना चाहिए।`;
 
-/** NonPositiveError को हिंदी में format करता है। */
+/** Formats a NonPositiveError in Hindi. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} धनात्मक नहीं होना चाहिए (<= 0)।`;
 
-/** NonPositiveDecimalStringError को हिंदी में format करता है। */
+/** Formats a NonPositiveDecimalStringError in Hindi. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} non-positive decimal string होना चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} decimal string होना चाहिए और धनात्मक नहीं होना चाहिए।`;
 
-/** NegativeError को हिंदी में format करता है। */
+/** Formats a NegativeError in Hindi. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} ऋणात्मक होना चाहिए (< 0)।`;
 
-/** NegativeDecimalStringError को हिंदी में format करता है। */
+/** Formats a NegativeDecimalStringError in Hindi. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} negative decimal string होना चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} ऋणात्मक decimal string होना चाहिए।`;
 
-/** IntError को हिंदी में format करता है। */
+/** Formats an IntError in Hindi. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} safe integer होना चाहिए।`;
 
-/** IntFromStringError को हिंदी में format करता है। */
+/** Formats an IntFromStringError in Hindi. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} दशमलव पूर्णांक नहीं है।`;
 
-/** GreaterThanError को हिंदी में format करता है। */
+/** Formats a GreaterThanError in Hindi. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} ${error.min} से बड़ा होना चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} को ${error.min} से बड़ा होना चाहिए।`;
 
-/** GreaterThanOrEqualToError को हिंदी में format करता है। */
+/** Formats a GreaterThanOrEqualToError in Hindi. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} ${error.min} से बड़ा या उसके बराबर होना चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} को ${error.min} से बड़ा या उसके बराबर होना चाहिए।`;
 
-/** LessThanError को हिंदी में format करता है। */
+/** Formats a LessThanError in Hindi. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} ${error.max} से छोटा होना चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} को ${error.max} से छोटा होना चाहिए।`;
 
-/** LessThanOrEqualToError को हिंदी में format करता है। */
+/** Formats a LessThanOrEqualToError in Hindi. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} ${error.max} से छोटा या उसके बराबर होना चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} को ${error.max} से छोटा या उसके बराबर होना चाहिए।`;
 
-/** NonNaNError को हिंदी में format करता है। */
+/** Formats a NonNaNError in Hindi. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "मान NaN नहीं होना चाहिए।";
 
-/** FiniteError को हिंदी में format करता है। */
+/** Formats a FiniteError in Hindi. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} परिमित होना चाहिए।`;
 
-/** MultipleOfError को हिंदी में format करता है। */
+/** Formats a MultipleOfError in Hindi. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} ${error.divisor} का गुणज होना चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} को ${error.divisor} का गुणज होना चाहिए।`;
 
-/** BetweenError को हिंदी में format करता है। */
+/** Formats a BetweenError in Hindi. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} ${error.min} और ${error.max} के बीच, दोनों सीमाओं सहित, होना चाहिए।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} को ${error.min} और ${error.max} के बीच, दोनों सीमाओं सहित, होना चाहिए।`;
 
-/** ArrayError को हिंदी में format करता है। */
+/** Formats an ArrayError in Hindi. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `मान ${safelyStringifyUnknownValue(error.reason.value)} array नहीं है।`;
@@ -387,13 +386,13 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
     case "Accessor":
       return `index ${issue.index} पर array element data property होना चाहिए।`;
     case "ExcessProperty":
-      return "अतिरिक्त Array property की अनुमति नहीं है। उसे हटाएँ या कोई अलग Type उपयोग करें।";
+      return "अतिरिक्त Array property की अनुमति नहीं है। उसे हटाएँ या किसी अलग Type का उपयोग करें।";
     case "Element":
       return `index ${issue.index} पर array element अमान्य है।`;
   }
 };
 
-/** SetError को हिंदी में format करता है। */
+/** Formats a SetError in Hindi. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `मान ${safelyStringifyUnknownValue(error.reason.value)} Set नहीं है।`;
@@ -408,7 +407,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** MapError को हिंदी में format करता है। */
+/** Formats a MapError in Hindi. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `मान ${safelyStringifyUnknownValue(error.reason.value)} Map नहीं है।`;
@@ -419,14 +418,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `अतिरिक्त Map property ${safelyStringifyUnknownValue(issue.key)} की अनुमति नहीं है।`;
     case "Key":
+      return `index ${issue.index} पर Map की key अमान्य है।`;
     case "Value":
-      return `index ${issue.index} पर Map element अमान्य है।`;
+      return `index ${issue.index} पर Map का मान अमान्य है।`;
     case "Collision":
-      return `Map keys ${safelyStringifyUnknownValue(issue.previousKey)} और ${safelyStringifyUnknownValue(issue.key)} decode होकर एक ही key ${safelyStringifyUnknownValue(issue.outputKey)} बनती हैं।`;
+      return `index ${issue.previousIndex} और ${issue.index} पर मौजूद Map keys decode होकर एक ही key ${safelyStringifyUnknownValue(issue.outputKey)} बनती हैं।`;
   }
 };
 
-/** TupleError को हिंदी में format करता है। */
+/** Formats a TupleError in Hindi. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -434,7 +434,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `मान ${safelyStringifyUnknownValue(error.reason.value)} tuple नहीं है।`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple में ठीक ${error.reason.expected} elements होने चाहिए, लेकिन मान में ${error.reason.actual} हैं।`;
+    return `Tuple की लंबाई ${error.reason.expected} होनी चाहिए, लेकिन मान की लंबाई ${error.reason.actual} है।`;
   }
 
   const issue = error.reason.issues[0];
@@ -445,13 +445,13 @@ export const formatTupleError: TypeErrorFormatter<
     case "Accessor":
       return `index ${issue.index} पर Tuple element data property होना चाहिए।`;
     case "ExcessProperty":
-      return "अतिरिक्त Tuple property की अनुमति नहीं है। उसे हटाएँ या कोई अलग Type उपयोग करें।";
+      return "अतिरिक्त Tuple property की अनुमति नहीं है। उसे हटाएँ या किसी अलग Type का उपयोग करें।";
     case "Element":
       return `index ${issue.index} पर Tuple element अमान्य है।`;
   }
 };
 
-/** RecordError को हिंदी में format करता है। */
+/** Formats a RecordError in Hindi. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `मान ${safelyStringifyUnknownValue(error.reason.value)} Record नहीं है।`;
@@ -476,7 +476,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** ObjectError को हिंदी में format करता है। */
+/** Formats an ObjectError in Hindi. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -490,24 +490,24 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (propertyError.type === "ObjectPropertyAccess") {
     switch ((propertyError as ObjectPropertyAccessError).reason) {
       case "Accessor":
-        return "Object property data property होनी चाहिए। इस Type का उपयोग करने से पहले accessor values को plain data में materialize करें या कोई अलग Type उपयोग करें।";
+        return "Object property data property होनी चाहिए। इस Type का उपयोग करने से पहले accessor values को plain data में materialize करें या किसी अलग Type का उपयोग करें।";
       case "NonEnumerable":
-        return "Object property enumerable होनी चाहिए। उसे enumerable बनाएँ या कोई अलग Type उपयोग करें।";
+        return "Object property enumerable होनी चाहिए। उसे enumerable बनाएँ या किसी अलग Type का उपयोग करें।";
     }
   }
   if (propertyError.type === "ObjectMissingProperty") {
     return `आवश्यक property ${safelyStringifyUnknownValue(key)} मौजूद नहीं है।`;
   }
   if (typeof key === "symbol") {
-    return "Object property key string होनी चाहिए। symbol property हटाएँ या कोई अलग Type उपयोग करें।";
+    return "Object property key string होनी चाहिए। symbol property हटाएँ या किसी अलग Type का उपयोग करें।";
   }
   if (propertyError.type === "ObjectExcessProperty") {
-    return `Property ${safelyStringifyUnknownValue(key)} की अनुमति नहीं है। उसे हटाएँ या कोई अलग Type उपयोग करें।`;
+    return `Property ${safelyStringifyUnknownValue(key)} की अनुमति नहीं है। उसे हटाएँ या किसी अलग Type का उपयोग करें।`;
   }
   return `Property ${safelyStringifyUnknownValue(key)} अमान्य है।`;
 };
 
-/** DiscriminatedUnionError को हिंदी में format करता है। */
+/** Formats a DiscriminatedUnionError in Hindi. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -531,7 +531,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** JsonValueError को हिंदी में format करता है। */
+/** Formats a DataError in Hindi. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `मान ${safelyStringifyUnknownValue(issue.value)} Data नहीं है।`;
+    case "UnexpectedPrototype":
+      return `Data ${issue.container} का prototype अपेक्षित नहीं है।`;
+    case "Accessor":
+      return "Data property data property होनी चाहिए। इस Type का उपयोग करने से पहले accessor values को plain data में materialize करें या किसी अलग Type का उपयोग करें।";
+    case "NonEnumerable":
+      return "Data Object property enumerable होनी चाहिए। उसे हटाएँ या किसी अलग Type का उपयोग करें।";
+    case "SymbolProperty":
+      return "Data Object property key string होनी चाहिए। symbol property हटाएँ या किसी अलग Type का उपयोग करें।";
+    case "Hole":
+      return "Data Array element मौजूद नहीं है।";
+    case "InvalidUint8Array":
+      return "Data Uint8Array का ArrayBuffer detached नहीं होना चाहिए, और Uint8Array उस ArrayBuffer की सीमाओं के भीतर होना चाहिए।";
+    case "ExcessProperty":
+      return `Data ${issue.container} में अतिरिक्त own properties नहीं होनी चाहिए। उस property को हटाएँ या किसी अलग Type का उपयोग करें।`;
+  }
+};
+
+/** Formats a JsonValueError in Hindi. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -545,38 +568,49 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
     case "UnexpectedPrototype":
       return "मान एक object है, लेकिन JsonValue object को plain object होना चाहिए या उसका prototype null होना चाहिए।";
     case "Accessor":
-      return "JSON property data property होनी चाहिए। इस Type का उपयोग करने से पहले accessor values को plain data में materialize करें या कोई अलग Type उपयोग करें।";
+      return "JSON property data property होनी चाहिए। इस Type का उपयोग करने से पहले accessor values को plain data में materialize करें या किसी अलग Type का उपयोग करें।";
     case "NonEnumerable":
-      return "JSON object property enumerable होनी चाहिए। उसे हटाएँ या कोई अलग Type उपयोग करें।";
+      return "JSON object property enumerable होनी चाहिए। उसे हटाएँ या किसी अलग Type का उपयोग करें।";
     case "SymbolProperty":
-      return "JSON object property key string होनी चाहिए। symbol property हटाएँ या कोई अलग Type उपयोग करें।";
+      return "JSON object property key string होनी चाहिए। symbol property हटाएँ या किसी अलग Type का उपयोग करें।";
     case "Hole":
       return "JSON array element मौजूद नहीं है।";
     case "ExcessProperty":
-      return "अतिरिक्त JSON array property की अनुमति नहीं है। उसे हटाएँ या कोई अलग Type उपयोग करें।";
+      return "अतिरिक्त JSON array property की अनुमति नहीं है। उसे हटाएँ या किसी अलग Type का उपयोग करें।";
     case "CircularReference":
       return "JsonValue में circular references नहीं होने चाहिए।";
   }
 };
 
-/** JsonError को हिंदी में format करता है। */
+/** Formats a JsonError in Hindi. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} को JsonValue में parse नहीं किया जा सकता।`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Hindi. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} बाइट आकार का लिटरल नहीं है। "512KiB" या "1MiB" जैसे मान का उपयोग करें।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} बाइट आकार का literal नहीं है। "512KiB" या "1MiB" जैसे मान का उपयोग करें।`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Hindi. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "मान -0 बाइट लंबाई नहीं है। इसके बजाय 0 का उपयोग करें।";
+
+/** Formats a ByteLengthFromStringError in Hindi. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} बाइट लंबाई नहीं है। बाइटों की संख्या या 10MiB जैसे literal का उपयोग करें।`;
+
+/** Formats a DurationLiteralError in Hindi. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} अवधि का लिटरल नहीं है। "500ms" या "1.5s" जैसे मान का उपयोग करें।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} अवधि का literal नहीं है। "500ms" या "1.5s" जैसे मान का उपयोग करें।`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Hindi. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} प्रतिशत का लिटरल नहीं है। "50%" या "12.5%" जैसे मान का उपयोग करें।`;
+  `मान ${safelyStringifyUnknownValue(error.value)} प्रतिशत का literal नहीं है। "50%" या "12.5%" जैसे मान का उपयोग करें।`;

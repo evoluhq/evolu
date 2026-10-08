@@ -1,12 +1,9 @@
 /**
- * 한국어 Evolu Type 오류 포매터.
+ * Korean Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,95 +95,95 @@ const formatPlainObjectRootError = (
     ? `${safelyStringifyUnknownValue(reason.value)} 값은 객체가 아닙니다.`
     : "값은 객체이지만 Object Output은 일반 객체이거나 null 프로토타입을 가져야 합니다.";
 
-/** NeverError를 한국어로 포맷합니다. */
+/** Formats a NeverError in Korean. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 Never 타입에 유효하지 않습니다.`;
 
-/** String TypeOfError를 한국어로 포맷합니다. */
+/** Formats a String TypeOfError in Korean. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** TemplateLiteralError를 한국어로 포맷합니다. */
+/** Formats a TemplateLiteralError in Korean. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 템플릿 리터럴과 일치하지 않습니다.`;
 
-/** Number TypeOfError를 한국어로 포맷합니다. */
+/** Formats a Number TypeOfError in Korean. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** BigInt TypeOfError를 한국어로 포맷합니다. */
+/** Formats a BigInt TypeOfError in Korean. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Boolean TypeOfError를 한국어로 포맷합니다. */
+/** Formats a Boolean TypeOfError in Korean. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** BooleanFromStringError를 한국어로 포맷합니다. */
+/** Formats a BooleanFromStringError in Korean. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 불리언이 아닙니다. true 또는 false를 사용하세요.`;
 
-/** Symbol TypeOfError를 한국어로 포맷합니다. */
+/** Formats a Symbol TypeOfError in Korean. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Function TypeOfError를 한국어로 포맷합니다. */
+/** Formats a Function TypeOfError in Korean. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** EvoluTypeError를 한국어로 포맷합니다. */
+/** Formats an EvoluTypeError in Korean. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) => `${safelyStringifyUnknownValue(error.value)} 값은 Evolu Type이 아닙니다.`;
 
-/** ObjectTagError를 한국어로 포맷합니다. */
+/** Formats an ObjectTagError in Korean. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
-  `${safelyStringifyUnknownValue(error.value)} 값에는 예상된 객체 태그 ${safelyStringifyUnknownValue(error.expected)}가 없습니다.`;
+  `${safelyStringifyUnknownValue(error.value)} 값에는 예상된 객체 태그 ${safelyStringifyUnknownValue(error.expected)}이(가) 없습니다.`;
 
-/** InstanceOfError를 한국어로 포맷합니다. */
+/** Formats an InstanceOfError in Korean. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.constructorName}의 인스턴스가 아닙니다.`;
 
-/** LiteralError를 한국어로 포맷합니다. */
+/** Formats a LiteralError in Korean. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 예상된 리터럴과 엄격하게 동일하지 않습니다: ${String(error.expected)}.`;
 
-/** UnionError를 한국어로 포맷합니다. */
+/** Formats a UnionError in Korean. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
-  "값이 허용된 어떤 variant와도 일치하지 않습니다.";
+  "값이 허용된 어떤 변형과도 일치하지 않습니다.";
 
-/** DateIsoError를 한국어로 포맷합니다. */
+/** Formats a DateIsoError in Korean. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 정규 ISO 날짜-시간 문자열이 아닙니다.`;
 
-/** DateIsoFromDateError를 한국어로 포맷합니다. */
+/** Formats a DateIsoFromDateError in Korean. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date를 DateIso로 표현할 수 없습니다.";
 
-/** DecimalStringError를 한국어로 포맷합니다. */
+/** Formats a DecimalStringError in Korean. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 정규 10진수 문자열이어야 합니다.`;
 
-/** Int64Error를 한국어로 포맷합니다. */
+/** Formats an Int64Error in Korean. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 부호 있는 64비트 정수(Int64)가 아닙니다.`;
 
-/** UInt64Error를 한국어로 포맷합니다. */
+/** Formats a UInt64Error in Korean. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 부호 없는 64비트 정수(UInt64)가 아닙니다.`;
 
-/** Int64StringError를 한국어로 포맷합니다. */
+/** Formats an Int64StringError in Korean. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -196,7 +195,7 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.casing} 식별자가 아닙니다.`;
 
-/** CapitalizedError를 한국어로 포맷합니다. */
+/** Formats a CapitalizedError in Korean. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -206,19 +205,19 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
 export const formatUncapitalizedError: TypeErrorFormatter<
   UncapitalizedError
 > = (error) =>
-  `값 ${safelyStringifyUnknownValue(error.value)}은(는) 대문자로 시작해서는 안 됩니다.`;
+  `${safelyStringifyUnknownValue(error.value)} 값은 대문자로 시작해서는 안 됩니다.`;
 
 /** Formats an UppercasedError in Korean. */
 export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
   error,
-) => `값 ${safelyStringifyUnknownValue(error.value)}은(는) 대문자여야 합니다.`;
+) => `${safelyStringifyUnknownValue(error.value)} 값은 대문자여야 합니다.`;
 
 /** Formats a LowercasedError in Korean. */
 export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
   error,
-) => `값 ${safelyStringifyUnknownValue(error.value)}은(는) 소문자여야 합니다.`;
+) => `${safelyStringifyUnknownValue(error.value)} 값은 소문자여야 합니다.`;
 
-/** TrimmedError를 한국어로 포맷합니다. */
+/** Formats a TrimmedError in Korean. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값의 앞뒤 공백이 제거되어 있어야 합니다.`;
 
@@ -226,153 +225,153 @@ export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
-  `값 ${safelyStringifyUnknownValue(error.value)}은(는) ${safelyStringifyUnknownValue(error.prefix)}(으)로 시작해야 합니다.`;
+  `${safelyStringifyUnknownValue(error.value)} 값은 ${safelyStringifyUnknownValue(error.prefix)}(으)로 시작해야 합니다.`;
 
-/** MinLengthError를 한국어로 포맷합니다. */
+/** Formats a MinLengthError in Korean. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
-  `${safelyStringifyUnknownValue(error.value)} 값은 최소 길이 ${error.min}을 충족하지 않습니다.`;
+  `${safelyStringifyUnknownValue(error.value)} 값은 최소 길이 ${error.min}을(를) 충족하지 않습니다.`;
 
-/** MaxLengthError를 한국어로 포맷합니다. */
+/** Formats a MaxLengthError in Korean. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
-  `${safelyStringifyUnknownValue(error.value)} 값은 최대 길이 ${error.max}을 초과합니다.`;
+  `${safelyStringifyUnknownValue(error.value)} 값은 최대 길이 ${error.max}을(를) 초과합니다.`;
 
-/** LengthError를 한국어로 포맷합니다. */
+/** Formats a LengthError in Korean. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값의 길이는 ${error.exact}이어야 합니다.`;
 
-/** RegexError를 한국어로 포맷합니다. */
+/** Formats a RegexError in Korean. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 /${error.source}/${error.flags}와 일치하지 않습니다.`;
 
-/** Base64UrlError를 한국어로 포맷합니다. */
+/** Formats a Base64UrlError in Korean. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 Base64Url 문자열이 아닙니다.`;
 
-/** NameError를 한국어로 포맷합니다. */
+/** Formats a NameError in Korean. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 Name이 아닙니다.`;
 
-/** EmailError를 한국어로 포맷합니다. */
+/** Formats an EmailError in Korean. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 이메일 주소가 아닙니다.`;
 
-/** MnemonicError를 한국어로 포맷합니다. */
+/** Formats a MnemonicError in Korean. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 영어 BIP39 니모닉이 아닙니다.`;
 
-/** IdError를 한국어로 포맷합니다. */
+/** Formats an IdError in Korean. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 Id가 아닙니다.`;
 
-/** TableIdError를 한국어로 포맷합니다. */
+/** Formats a TableIdError in Korean. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.table} 테이블에 유효한 Id가 아닙니다.`;
 
-/** UuidError를 한국어로 포맷합니다. */
+/** Formats a UuidError in Korean. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 정규 소문자 UUID가 아닙니다.`;
 
-/** NonNegativeError를 한국어로 포맷합니다. */
+/** Formats a NonNegativeError in Korean. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 음수가 아니어야 합니다(>= 0).`;
 
-/** NonNegativeDecimalStringError를 한국어로 포맷합니다. */
+/** Formats a NonNegativeDecimalStringError in Korean. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 음수가 아닌 10진수 문자열이어야 합니다.`;
 
-/** PositiveError를 한국어로 포맷합니다. */
+/** Formats a PositiveError in Korean. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 양수여야 합니다(> 0).`;
 
-/** PositiveDecimalStringError를 한국어로 포맷합니다. */
+/** Formats a PositiveDecimalStringError in Korean. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 양의 10진수 문자열이어야 합니다.`;
 
-/** NonPositiveError를 한국어로 포맷합니다. */
+/** Formats a NonPositiveError in Korean. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 양수가 아니어야 합니다(<= 0).`;
 
-/** NonPositiveDecimalStringError를 한국어로 포맷합니다. */
+/** Formats a NonPositiveDecimalStringError in Korean. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 양수가 아닌 10진수 문자열이어야 합니다.`;
 
-/** NegativeError를 한국어로 포맷합니다. */
+/** Formats a NegativeError in Korean. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 음수여야 합니다(< 0).`;
 
-/** NegativeDecimalStringError를 한국어로 포맷합니다. */
+/** Formats a NegativeDecimalStringError in Korean. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 음의 10진수 문자열이어야 합니다.`;
 
-/** IntError를 한국어로 포맷합니다. */
+/** Formats an IntError in Korean. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 안전한 정수여야 합니다.`;
 
-/** IntFromStringError를 한국어로 포맷합니다. */
+/** Formats an IntFromStringError in Korean. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 10진 정수가 아닙니다.`;
 
-/** GreaterThanError를 한국어로 포맷합니다. */
+/** Formats a GreaterThanError in Korean. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.min}보다 커야 합니다.`;
 
-/** GreaterThanOrEqualToError를 한국어로 포맷합니다. */
+/** Formats a GreaterThanOrEqualToError in Korean. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.min} 이상이어야 합니다.`;
 
-/** LessThanError를 한국어로 포맷합니다. */
+/** Formats a LessThanError in Korean. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.max}보다 작아야 합니다.`;
 
-/** LessThanOrEqualToError를 한국어로 포맷합니다. */
+/** Formats a LessThanOrEqualToError in Korean. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.max} 이하여야 합니다.`;
 
-/** NonNaNError를 한국어로 포맷합니다. */
+/** Formats a NonNaNError in Korean. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "값은 NaN이어서는 안 됩니다.";
 
-/** FiniteError를 한국어로 포맷합니다. */
+/** Formats a FiniteError in Korean. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유한해야 합니다.`;
 
-/** MultipleOfError를 한국어로 포맷합니다. */
+/** Formats a MultipleOfError in Korean. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.divisor}의 배수여야 합니다.`;
 
-/** BetweenError를 한국어로 포맷합니다. */
+/** Formats a BetweenError in Korean. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.min} 이상 ${error.max} 이하여야 합니다.`;
 
-/** ArrayError를 한국어로 포맷합니다. */
+/** Formats an ArrayError in Korean. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `${safelyStringifyUnknownValue(error.reason.value)} 값은 배열이 아닙니다.`;
@@ -391,7 +390,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** SetError를 한국어로 포맷합니다. */
+/** Formats a SetError in Korean. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `${safelyStringifyUnknownValue(error.reason.value)} 값은 Set이 아닙니다.`;
@@ -406,7 +405,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** MapError를 한국어로 포맷합니다. */
+/** Formats a MapError in Korean. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `${safelyStringifyUnknownValue(error.reason.value)} 값은 Map이 아닙니다.`;
@@ -417,14 +416,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `불필요한 Map 프로퍼티 ${safelyStringifyUnknownValue(issue.key)}은(는) 허용되지 않습니다.`;
     case "Key":
+      return `인덱스 ${issue.index}의 Map 키가 유효하지 않습니다.`;
     case "Value":
-      return `인덱스 ${issue.index}의 Map 요소가 유효하지 않습니다.`;
+      return `인덱스 ${issue.index}의 Map 값이 유효하지 않습니다.`;
     case "Collision":
-      return `Map 키 ${safelyStringifyUnknownValue(issue.previousKey)}와(과) ${safelyStringifyUnknownValue(issue.key)}은(는) 디코딩하면 동일한 키 ${safelyStringifyUnknownValue(issue.outputKey)}이(가) 됩니다.`;
+      return `인덱스 ${issue.previousIndex} 및 ${issue.index}의 Map 키는 디코딩하면 동일한 키 ${safelyStringifyUnknownValue(issue.outputKey)}이(가) 됩니다.`;
   }
 };
 
-/** TupleError를 한국어로 포맷합니다. */
+/** Formats a TupleError in Korean. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -432,7 +432,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `${safelyStringifyUnknownValue(error.reason.value)} 값은 튜플이 아닙니다.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple에는 정확히 ${error.reason.expected}개의 요소가 있어야 하지만 값에는 ${error.reason.actual}개의 요소가 있습니다.`;
+    return `Tuple의 길이는 ${error.reason.expected}이어야 하지만 값의 길이는 ${error.reason.actual}입니다.`;
   }
 
   const issue = error.reason.issues[0];
@@ -449,7 +449,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** RecordError를 한국어로 포맷합니다. */
+/** Formats a RecordError in Korean. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `${safelyStringifyUnknownValue(error.reason.value)} 값은 Record가 아닙니다.`;
@@ -474,7 +474,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** ObjectError를 한국어로 포맷합니다. */
+/** Formats an ObjectError in Korean. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -505,7 +505,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `프로퍼티 ${safelyStringifyUnknownValue(key)}이(가) 유효하지 않습니다.`;
 };
 
-/** DiscriminatedUnionError를 한국어로 포맷합니다. */
+/** Formats a DiscriminatedUnionError in Korean. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -525,11 +525,34 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
     case "Discriminator":
       return `판별자 프로퍼티 ${safelyStringifyUnknownValue(error.reason.key)}에 예상하지 못한 값 ${safelyStringifyUnknownValue(error.reason.value)}이(가) 있습니다.`;
     case "Member":
-      return `선택된 variant ${safelyStringifyUnknownValue(error.reason.discriminator)}이(가) 유효하지 않습니다.`;
+      return `선택된 변형 ${safelyStringifyUnknownValue(error.reason.discriminator)}이(가) 유효하지 않습니다.`;
   }
 };
 
-/** JsonValueError를 한국어로 포맷합니다. */
+/** Formats a DataError in Korean. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `${safelyStringifyUnknownValue(issue.value)} 값은 Data가 아닙니다.`;
+    case "UnexpectedPrototype":
+      return `Data ${issue.container}에 예기치 않은 프로토타입이 있습니다.`;
+    case "Accessor":
+      return "Data 프로퍼티는 데이터 프로퍼티여야 합니다. 이 Type을 사용하기 전에 접근자 값을 일반 데이터로 구체화하거나 다른 Type을 사용하세요.";
+    case "NonEnumerable":
+      return "Data Object 프로퍼티는 열거 가능해야 합니다. 해당 프로퍼티를 제거하거나 다른 Type을 사용하세요.";
+    case "SymbolProperty":
+      return "Data Object 프로퍼티 키는 문자열이어야 합니다. symbol 프로퍼티를 제거하거나 다른 Type을 사용하세요.";
+    case "Hole":
+      return "Data Array 요소가 없습니다.";
+    case "InvalidUint8Array":
+      return "Data Uint8Array는 분리되지 않은 ArrayBuffer를 참조하고 그 범위 안에 있어야 합니다.";
+    case "ExcessProperty":
+      return `Data ${issue.container}에는 불필요한 자체 프로퍼티가 있으면 안 됩니다. 해당 프로퍼티를 제거하거나 다른 Type을 사용하세요.`;
+  }
+};
+
+/** Formats a JsonValueError in Korean. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -557,24 +580,35 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** JsonError를 한국어로 포맷합니다. */
+/** Formats a JsonError in Korean. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값을 JsonValue로 파싱할 수 없습니다.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Korean. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
-  `값 ${safelyStringifyUnknownValue(error.value)}은(는) 바이트 크기 리터럴이 아닙니다. "512KiB" 또는 "1MiB" 같은 값을 사용하세요.`;
+  `${safelyStringifyUnknownValue(error.value)} 값은 바이트 크기 리터럴이 아닙니다. "512KiB" 또는 "1MiB" 같은 값을 사용하세요.`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Korean. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "-0 값은 바이트 길이가 아닙니다. 대신 0을 사용하세요.";
+
+/** Formats a ByteLengthFromStringError in Korean. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 바이트 길이가 아닙니다. 바이트 수 또는 10MiB 같은 리터럴을 사용하세요.`;
+
+/** Formats a DurationLiteralError in Korean. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
-  `값 ${safelyStringifyUnknownValue(error.value)}은(는) 기간 리터럴이 아닙니다. "500ms" 또는 "1.5s" 같은 값을 사용하세요.`;
+  `${safelyStringifyUnknownValue(error.value)} 값은 기간 리터럴이 아닙니다. "500ms" 또는 "1.5s" 같은 값을 사용하세요.`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Korean. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
-  `값 ${safelyStringifyUnknownValue(error.value)}은(는) 백분율 리터럴이 아닙니다. "50%" 또는 "12.5%" 같은 값을 사용하세요.`;
+  `${safelyStringifyUnknownValue(error.value)} 값은 백분율 리터럴이 아닙니다. "50%" 또는 "12.5%" 같은 값을 사용하세요.`;

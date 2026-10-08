@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -115,7 +114,7 @@ export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} ne odgovara predlošku stringa.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} ne odgovara literalu predloška.`;
 
 /** Formats a Number TypeOfError in Croatian. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
@@ -170,7 +169,7 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 
 /** Formats a DateIsoError in Croatian. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije kanonski ISO niz datuma i vremena.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije kanonski ISO niz znakova za datum i vrijeme.`;
 
 /** Formats a DateIsoFromDateError in Croatian. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
@@ -181,7 +180,7 @@ export const formatDateIsoFromDateError: TypeErrorFormatter<
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti kanonski decimalni niz.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti kanonski decimalni niz znakova.`;
 
 /** Formats an Int64Error in Croatian. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
@@ -195,7 +194,7 @@ export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani Int64 niz.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani Int64 niz znakova.`;
 
 /** Formats an IdentifierError in Croatian. */
 export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
@@ -261,7 +260,7 @@ export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani Base64Url niz.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani Base64Url niz znakova.`;
 
 /** Formats a NameError in Croatian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -273,7 +272,7 @@ export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
 
 /** Formats a MnemonicError in Croatian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana engleska BIP39 mnemonika.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana engleska BIP39 mnemonička fraza.`;
 
 /** Formats an IdError in Croatian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
@@ -297,7 +296,7 @@ export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti nenegativni decimalni niz.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti nenegativni decimalni niz znakova.`;
 
 /** Formats a PositiveError in Croatian. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
@@ -307,7 +306,7 @@ export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti pozitivni decimalni niz.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti pozitivni decimalni niz znakova.`;
 
 /** Formats a NonPositiveError in Croatian. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
@@ -319,7 +318,7 @@ export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti nepozitivni decimalni niz.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti nepozitivni decimalni niz znakova.`;
 
 /** Formats a NegativeError in Croatian. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
@@ -329,7 +328,7 @@ export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti negativni decimalni niz.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti negativni decimalni niz znakova.`;
 
 /** Formats an IntError in Croatian. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
@@ -339,7 +338,7 @@ export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije decimalni cijeli broj.`;
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije cijeli broj u dekadskom zapisu.`;
 
 /** Formats a GreaterThanError in Croatian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -426,10 +425,11 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `Dodatno svojstvo Map-a ${safelyStringifyUnknownValue(issue.key)} nije dopušteno.`;
     case "Key":
+      return `Ključ Map-a na indeksu ${issue.index} nije valjan.`;
     case "Value":
-      return `Element Map-a na indeksu ${issue.index} nije valjan.`;
+      return `Vrijednost Map-a na indeksu ${issue.index} nije valjana.`;
     case "Collision":
-      return `Ključevi Map-a ${safelyStringifyUnknownValue(issue.previousKey)} i ${safelyStringifyUnknownValue(issue.key)} dekodiraju se u isti ključ ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Ključevi Map-a na indeksima ${issue.previousIndex} i ${issue.index} dekodiraju se u isti ključ ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
@@ -441,7 +441,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `Vrijednost ${safelyStringifyUnknownValue(error.reason.value)} nije torka.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Torka mora sadržavati točno ${error.reason.expected} elemenata, ali vrijednost sadrži ${error.reason.actual}.`;
+    return `Torka mora imati duljinu od ${error.reason.expected}, ali vrijednost ima duljinu od ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -506,7 +506,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
     return `Obavezno svojstvo ${safelyStringifyUnknownValue(key)} nedostaje.`;
   }
   if (typeof key === "symbol") {
-    return "Ključ svojstva Object-a mora biti niz. Uklonite svojstvo sa simbolom ili upotrijebite drugi Type.";
+    return "Ključ svojstva Object-a mora biti niz znakova. Uklonite svojstvo sa simbolom ili upotrijebite drugi Type.";
   }
   if (propertyError.type === "ObjectExcessProperty") {
     return `Svojstvo ${safelyStringifyUnknownValue(key)} nije dopušteno. Uklonite ga ili upotrijebite drugi Type.`;
@@ -538,6 +538,29 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
+/** Formats a DataError in Croatian. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Vrijednost ${safelyStringifyUnknownValue(issue.value)} nije Data.`;
+    case "UnexpectedPrototype":
+      return `Data vrijednost tipa ${issue.container} ima neočekivan prototip.`;
+    case "Accessor":
+      return "Data svojstvo mora biti podatkovno svojstvo. Prije upotrebe ovog Type-a pretvorite vrijednosti pristupnika u obične podatke ili upotrijebite drugi Type.";
+    case "NonEnumerable":
+      return "Svojstvo Data objekta mora biti nabrojivo. Uklonite ga ili upotrijebite drugi Type.";
+    case "SymbolProperty":
+      return "Ključ svojstva Data objekta mora biti niz znakova. Uklonite svojstvo sa simbolom ili upotrijebite drugi Type.";
+    case "Hole":
+      return "Element Data polja nedostaje.";
+    case "InvalidUint8Array":
+      return "Data Uint8Array mora imati ArrayBuffer koji nije odvojen i mora biti unutar njegovih granica.";
+    case "ExcessProperty":
+      return `Data vrijednost tipa ${issue.container} ne smije imati dodatna vlastita svojstva. Uklonite svojstvo ili upotrijebite drugi Type.`;
+  }
+};
+
 /** Formats a JsonValueError in Croatian. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
@@ -556,7 +579,7 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
     case "NonEnumerable":
       return "Svojstvo JSON objekta mora biti nabrojivo. Uklonite ga ili upotrijebite drugi Type.";
     case "SymbolProperty":
-      return "Ključ svojstva JSON objekta mora biti niz. Uklonite svojstvo sa simbolom ili upotrijebite drugi Type.";
+      return "Ključ svojstva JSON objekta mora biti niz znakova. Uklonite svojstvo sa simbolom ili upotrijebite drugi Type.";
     case "Hole":
       return "Element JSON polja nedostaje.";
     case "ExcessProperty":
@@ -570,20 +593,31 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} ne može se analizirati kao JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Croatian. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije literal veličine u bajtovima. Upotrijebite vrijednost poput "512KiB" ili "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Croatian. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "Vrijednost -0 nije duljina u bajtovima. Umjesto nje upotrijebite 0.";
+
+/** Formats a ByteLengthFromStringError in Croatian. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije duljina u bajtovima. Upotrijebite broj bajtova ili literal poput 10MiB.`;
+
+/** Formats a DurationLiteralError in Croatian. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije literal trajanja. Upotrijebite vrijednost poput "500ms" ili "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Croatian. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije literal postotka. Upotrijebite vrijednost poput "50%" ili "12.5%".`;

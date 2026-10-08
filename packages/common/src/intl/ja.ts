@@ -1,12 +1,9 @@
 /**
- * Evolu Type エラーの日本語フォーマッター。
+ * Japanese Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,96 +95,96 @@ const formatPlainObjectRootError = (
     ? `値 ${safelyStringifyUnknownValue(reason.value)} はオブジェクトではありません。`
     : "値はオブジェクトですが、Object Output はプレーンオブジェクトであるか、null プロトタイプを持つ必要があります。";
 
-/** NeverError を日本語でフォーマットします。 */
+/** Formats a NeverError in Japanese. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は型 Never では無効です。`;
 
-/** String TypeOfError を日本語でフォーマットします。 */
+/** Formats a String TypeOfError in Japanese. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** TemplateLiteralError を日本語でフォーマットします。 */
+/** Formats a TemplateLiteralError in Japanese. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} はテンプレートリテラルに一致しません。`;
 
-/** Number TypeOfError を日本語でフォーマットします。 */
+/** Formats a Number TypeOfError in Japanese. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** BigInt TypeOfError を日本語でフォーマットします。 */
+/** Formats a BigInt TypeOfError in Japanese. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Boolean TypeOfError を日本語でフォーマットします。 */
+/** Formats a Boolean TypeOfError in Japanese. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** BooleanFromStringError を日本語でフォーマットします。 */
+/** Formats a BooleanFromStringError in Japanese. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は真偽値ではありません。true または false を使用してください。`;
 
-/** Symbol TypeOfError を日本語でフォーマットします。 */
+/** Formats a Symbol TypeOfError in Japanese. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Function TypeOfError を日本語でフォーマットします。 */
+/** Formats a Function TypeOfError in Japanese. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** EvoluTypeError を日本語でフォーマットします。 */
+/** Formats an EvoluTypeError in Japanese. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は Evolu Type ではありません。`;
 
-/** ObjectTagError を日本語でフォーマットします。 */
+/** Formats an ObjectTagError in Japanese. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} には、期待されるオブジェクトタグ ${safelyStringifyUnknownValue(error.expected)} がありません。`;
 
-/** InstanceOfError を日本語でフォーマットします。 */
+/** Formats an InstanceOfError in Japanese. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は ${error.constructorName} のインスタンスではありません。`;
 
-/** LiteralError を日本語でフォーマットします。 */
+/** Formats a LiteralError in Japanese. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は、期待されるリテラル ${String(error.expected)} と厳密に等しくありません。`;
 
-/** UnionError を日本語でフォーマットします。 */
+/** Formats a UnionError in Japanese. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "値はいずれの許可されたバリアントにも一致しません。";
 
-/** DateIsoError を日本語でフォーマットします。 */
+/** Formats a DateIsoError in Japanese. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は正規形式の ISO 日時文字列ではありません。`;
 
-/** DateIsoFromDateError を日本語でフォーマットします。 */
+/** Formats a DateIsoFromDateError in Japanese. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date を DateIso として表現できません。";
 
-/** DecimalStringError を日本語でフォーマットします。 */
+/** Formats a DecimalStringError in Japanese. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は正規形式の10進数文字列である必要があります。`;
 
-/** Int64Error を日本語でフォーマットします。 */
+/** Formats an Int64Error in Japanese. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な符号付き64ビット整数 (Int64) ではありません。`;
 
-/** UInt64Error を日本語でフォーマットします。 */
+/** Formats a UInt64Error in Japanese. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な符号なし64ビット整数 (UInt64) ではありません。`;
 
-/** Int64StringError を日本語でフォーマットします。 */
+/** Formats an Int64StringError in Japanese. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -197,7 +196,7 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は ${error.casing} 識別子ではありません。`;
 
-/** CapitalizedError を日本語でフォーマットします。 */
+/** Formats a CapitalizedError in Japanese. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -221,7 +220,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は小文字である必要があります。`;
 
-/** TrimmedError を日本語でフォーマットします。 */
+/** Formats a TrimmedError in Japanese. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は前後の空白が除去されている必要があります。`;
 
@@ -231,151 +230,151 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は ${safelyStringifyUnknownValue(error.prefix)} で始まる必要があります。`;
 
-/** MinLengthError を日本語でフォーマットします。 */
+/** Formats a MinLengthError in Japanese. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は最小長 ${error.min} を満たしていません。`;
 
-/** MaxLengthError を日本語でフォーマットします。 */
+/** Formats a MaxLengthError in Japanese. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は最大長 ${error.max} を超えています。`;
 
-/** LengthError を日本語でフォーマットします。 */
+/** Formats a LengthError in Japanese. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
-  `値 ${safelyStringifyUnknownValue(error.value)} の長さは必要な ${error.exact} ではありません。`;
+  `値 ${safelyStringifyUnknownValue(error.value)} の長さは ${error.exact} である必要があります。`;
 
-/** RegexError を日本語でフォーマットします。 */
+/** Formats a RegexError in Japanese. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は /${error.source}/${error.flags} に一致しません。`;
 
-/** Base64UrlError を日本語でフォーマットします。 */
+/** Formats a Base64UrlError in Japanese. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な Base64Url 文字列ではありません。`;
 
-/** NameError を日本語でフォーマットします。 */
+/** Formats a NameError in Japanese. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な Name ではありません。`;
 
-/** EmailError を日本語でフォーマットします。 */
+/** Formats an EmailError in Japanese. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効なメールアドレスではありません。`;
 
-/** MnemonicError を日本語でフォーマットします。 */
+/** Formats a MnemonicError in Japanese. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な英語の BIP39 ニーモニックではありません。`;
 
-/** IdError を日本語でフォーマットします。 */
+/** Formats an IdError in Japanese. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な Id ではありません。`;
 
-/** TableIdError を日本語でフォーマットします。 */
+/** Formats a TableIdError in Japanese. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} はテーブル ${error.table} の有効な Id ではありません。`;
 
-/** UuidError を日本語でフォーマットします。 */
+/** Formats a UuidError in Japanese. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は正規形式の小文字 UUID ではありません。`;
 
-/** NonNegativeError を日本語でフォーマットします。 */
+/** Formats a NonNegativeError in Japanese. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は 0 以上 (>= 0) である必要があります。`;
 
-/** NonNegativeDecimalStringError を日本語でフォーマットします。 */
+/** Formats a NonNegativeDecimalStringError in Japanese. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は 0 以上の10進数文字列である必要があります。`;
 
-/** PositiveError を日本語でフォーマットします。 */
+/** Formats a PositiveError in Japanese. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は正 (> 0) である必要があります。`;
 
-/** PositiveDecimalStringError を日本語でフォーマットします。 */
+/** Formats a PositiveDecimalStringError in Japanese. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は正の10進数文字列である必要があります。`;
 
-/** NonPositiveError を日本語でフォーマットします。 */
+/** Formats a NonPositiveError in Japanese. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は 0 以下 (<= 0) である必要があります。`;
 
-/** NonPositiveDecimalStringError を日本語でフォーマットします。 */
+/** Formats a NonPositiveDecimalStringError in Japanese. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は 0 以下の10進数文字列である必要があります。`;
 
-/** NegativeError を日本語でフォーマットします。 */
+/** Formats a NegativeError in Japanese. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は負 (< 0) である必要があります。`;
 
-/** NegativeDecimalStringError を日本語でフォーマットします。 */
+/** Formats a NegativeDecimalStringError in Japanese. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は負の10進数文字列である必要があります。`;
 
-/** IntError を日本語でフォーマットします。 */
+/** Formats an IntError in Japanese. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は安全な整数である必要があります。`;
 
-/** IntFromStringError を日本語でフォーマットします。 */
+/** Formats an IntFromStringError in Japanese. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は10進整数ではありません。`;
 
-/** GreaterThanError を日本語でフォーマットします。 */
+/** Formats a GreaterThanError in Japanese. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は ${error.min} より大きい必要があります。`;
 
-/** GreaterThanOrEqualToError を日本語でフォーマットします。 */
+/** Formats a GreaterThanOrEqualToError in Japanese. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は ${error.min} 以上である必要があります。`;
 
-/** LessThanError を日本語でフォーマットします。 */
+/** Formats a LessThanError in Japanese. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は ${error.max} より小さい必要があります。`;
 
-/** LessThanOrEqualToError を日本語でフォーマットします。 */
+/** Formats a LessThanOrEqualToError in Japanese. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は ${error.max} 以下である必要があります。`;
 
-/** NonNaNError を日本語でフォーマットします。 */
+/** Formats a NonNaNError in Japanese. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "値は NaN であってはなりません。";
 
-/** FiniteError を日本語でフォーマットします。 */
+/** Formats a FiniteError in Japanese. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有限値である必要があります。`;
 
-/** MultipleOfError を日本語でフォーマットします。 */
+/** Formats a MultipleOfError in Japanese. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は ${error.divisor} の倍数である必要があります。`;
 
-/** BetweenError を日本語でフォーマットします。 */
+/** Formats a BetweenError in Japanese. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は ${error.min} 以上 ${error.max} 以下である必要があります。`;
 
-/** ArrayError を日本語でフォーマットします。 */
+/** Formats an ArrayError in Japanese. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `値 ${safelyStringifyUnknownValue(error.reason.value)} は配列ではありません。`;
@@ -394,7 +393,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** SetError を日本語でフォーマットします。 */
+/** Formats a SetError in Japanese. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `値 ${safelyStringifyUnknownValue(error.reason.value)} は Set ではありません。`;
@@ -409,7 +408,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** MapError を日本語でフォーマットします。 */
+/** Formats a MapError in Japanese. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `値 ${safelyStringifyUnknownValue(error.reason.value)} は Map ではありません。`;
@@ -420,14 +419,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `余分な Map プロパティ ${safelyStringifyUnknownValue(issue.key)} は許可されていません。`;
     case "Key":
+      return `インデックス ${issue.index} の Map キーが無効です。`;
     case "Value":
-      return `インデックス ${issue.index} の Map 要素が無効です。`;
+      return `インデックス ${issue.index} の Map の値が無効です。`;
     case "Collision":
-      return `Map キー ${safelyStringifyUnknownValue(issue.previousKey)} と ${safelyStringifyUnknownValue(issue.key)} は、デコードすると同じキー ${safelyStringifyUnknownValue(issue.outputKey)} になります。`;
+      return `インデックス ${issue.previousIndex} と ${issue.index} の Map キーは、デコードすると同じキー ${safelyStringifyUnknownValue(issue.outputKey)} になります。`;
   }
 };
 
-/** TupleError を日本語でフォーマットします。 */
+/** Formats a TupleError in Japanese. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -435,7 +435,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `値 ${safelyStringifyUnknownValue(error.reason.value)} はタプルではありません。`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple は正確に ${error.reason.expected} 個の要素を含む必要がありますが、値には ${error.reason.actual} 個の要素があります。`;
+    return `Tuple の長さは ${error.reason.expected} である必要がありますが、値の長さは ${error.reason.actual} です。`;
   }
 
   const issue = error.reason.issues[0];
@@ -452,7 +452,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** RecordError を日本語でフォーマットします。 */
+/** Formats a RecordError in Japanese. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `値 ${safelyStringifyUnknownValue(error.reason.value)} は Record ではありません。`;
@@ -477,7 +477,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** ObjectError を日本語でフォーマットします。 */
+/** Formats an ObjectError in Japanese. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -508,7 +508,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `プロパティ ${safelyStringifyUnknownValue(key)} が無効です。`;
 };
 
-/** DiscriminatedUnionError を日本語でフォーマットします。 */
+/** Formats a DiscriminatedUnionError in Japanese. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -532,7 +532,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** JsonValueError を日本語でフォーマットします。 */
+/** Formats a DataError in Japanese. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `値 ${safelyStringifyUnknownValue(issue.value)} は Data ではありません。`;
+    case "UnexpectedPrototype":
+      return `Data ${issue.container} に予期しないプロトタイプがあります。`;
+    case "Accessor":
+      return "Data プロパティはデータプロパティである必要があります。アクセサーの値をプレーンデータとして実体化してからこの Type を使用するか、別の Type を使用してください。";
+    case "NonEnumerable":
+      return "Data Object のプロパティは列挙可能である必要があります。列挙不可のプロパティを削除するか、別の Type を使用してください。";
+    case "SymbolProperty":
+      return "Data Object のプロパティキーは文字列である必要があります。symbol プロパティを削除するか、別の Type を使用してください。";
+    case "Hole":
+      return "Data Array の要素が欠落しています。";
+    case "InvalidUint8Array":
+      return "Data Uint8Array は、切り離されていない ArrayBuffer を参照し、その範囲内に収まっている必要があります。";
+    case "ExcessProperty":
+      return `Data ${issue.container} は余分な自身のプロパティを持ってはなりません。そのプロパティを削除するか、別の Type を使用してください。`;
+  }
+};
+
+/** Formats a JsonValueError in Japanese. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -560,24 +583,35 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** JsonError を日本語でフォーマットします。 */
+/** Formats a JsonError in Japanese. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} を JsonValue として解析できません。`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Japanese. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} はバイトサイズのリテラルではありません。"512KiB" または "1MiB" のような値を使用してください。`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Japanese. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "値 -0 はバイト長ではありません。代わりに 0 を使用してください。";
+
+/** Formats a ByteLengthFromStringError in Japanese. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} はバイト長ではありません。バイト数、または 10MiB のようなリテラルを使用してください。`;
+
+/** Formats a DurationLiteralError in Japanese. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は期間のリテラルではありません。"500ms" または "1.5s" のような値を使用してください。`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Japanese. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} はパーセントのリテラルではありません。"50%" または "12.5%" のような値を使用してください。`;

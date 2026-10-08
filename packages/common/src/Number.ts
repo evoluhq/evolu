@@ -7,7 +7,6 @@
 import type { NonEmptyReadonlyArray } from "./Array.ts";
 import { assertNonEmptyReadonlyArray } from "./Assert.ts";
 import type { IsBranded } from "./Brand.ts";
-import { safelyStringifyUnknownValue } from "./String.ts";
 import type { Result } from "./Result.ts";
 import { err, ok } from "./Result.ts";
 import {
@@ -27,6 +26,7 @@ import {
   union,
 } from "./Type.ts";
 import type { Predicate, WidenLiteral } from "./Types.ts";
+import { formatPercentageLiteralError } from "./intl/_en.ts";
 
 /** Integer literal from `1` to `99`. */
 export type Int1To99 = Digit1To99 extends `${infer Value extends number}`
@@ -170,8 +170,7 @@ export const PercentageLiteral: Type<
     value,
     cause,
   }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a percentage literal. Use a value such as "50%" or "12.5%".`,
+  formatPercentageLiteralError,
 );
 
 /** Error returned when {@link PercentageLiteral} rejects a value. */

@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -366,10 +365,11 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `Map obsahuje nepovolenú vlastnosť ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Key":
+      return `Kľúč Map na indexe ${issue.index} nie je platný.`;
     case "Value":
-      return `Prvok Map na indexe ${issue.index} nie je platný.`;
+      return `Hodnota Map na indexe ${issue.index} nie je platná.`;
     case "Collision":
-      return `Kľúče Map ${safelyStringifyUnknownValue(issue.previousKey)} a ${safelyStringifyUnknownValue(issue.key)} sa dekódujú na rovnaký kľúč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Kľúče Map na indexoch ${issue.previousIndex} a ${issue.index} sa dekódujú na rovnaký kľúč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 /** Formats a TupleError in Slovak. */
@@ -379,7 +379,7 @@ export const formatTupleError: TypeErrorFormatter<
   if (error.reason.kind === "NotArray")
     return `Hodnota ${safelyStringifyUnknownValue(error.reason.value)} nie je tuple.`;
   if (error.reason.kind === "InvalidLength")
-    return `Tuple musí obsahovať presne ${error.reason.expected} prvkov, ale hodnota obsahuje ${error.reason.actual}.`;
+    return `Tuple musí mať dĺžku ${error.reason.expected}, ale hodnota má dĺžku ${error.reason.actual}.`;
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "Hole":
@@ -425,7 +425,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
       case "Accessor":
         return "Vlastnosť Object musí byť dátová vlastnosť. Pred použitím tohto Type materializujte hodnoty prístupových vlastností do obyčajných dát alebo použite iný Type.";
       case "NonEnumerable":
-        return "Vlastnosť Object musí byť enumerovateľná.";
+        return "Vlastnosť Object musí byť enumerovateľná. Nastavte ju ako enumerovateľnú alebo použite iný Type.";
     }
   }
   if (propertyError.type === "ObjectMissingProperty")
@@ -457,6 +457,29 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
       return `Vybraný variant ${safelyStringifyUnknownValue(error.reason.discriminator)} nie je platný.`;
   }
 };
+/** Formats a DataError in Slovak. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Hodnota ${safelyStringifyUnknownValue(issue.value)} nie je Data.`;
+    case "UnexpectedPrototype":
+      return `Hodnota typu ${issue.container} v Data má neočakávaný prototyp.`;
+    case "Accessor":
+      return "Vlastnosť v Data musí byť dátová vlastnosť. Pred použitím tohto Type materializujte hodnoty prístupových vlastností do obyčajných dát alebo použite iný Type.";
+    case "NonEnumerable":
+      return "Vlastnosť objektu v Data musí byť enumerovateľná. Odstráňte ju alebo použite iný Type.";
+    case "SymbolProperty":
+      return "Kľúč vlastnosti objektu v Data musí byť reťazec. Odstráňte vlastnosť so symbolom alebo použite iný Type.";
+    case "Hole":
+      return "Prvok poľa v Data chýba.";
+    case "InvalidUint8Array":
+      return "Uint8Array v Data musí mať ArrayBuffer, ktorý nie je odpojený, a musí ležať v jeho rozsahu.";
+    case "ExcessProperty":
+      return `Hodnota typu ${issue.container} v Data nesmie mať nadbytočné vlastné vlastnosti. Odstráňte vlastnosť alebo použite iný Type.`;
+  }
+};
+
 /** Formats a JsonValueError in Slovak. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
@@ -487,20 +510,31 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Hodnotu ${safelyStringifyUnknownValue(error.value)} nemožno analyzovať ako JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Slovak. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je literál veľkosti v bajtoch. Použite hodnotu ako "512KiB" alebo "1MiB".`;
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je literál veľkosti v bajtoch. Použite napríklad "512KiB" alebo "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Slovak. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "Hodnota -0 nie je dĺžka v bajtoch. Použite namiesto nej 0.";
+
+/** Formats a ByteLengthFromStringError in Slovak. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je dĺžka v bajtoch. Použite počet bajtov alebo literál, napríklad 10MiB.`;
+
+/** Formats a DurationLiteralError in Slovak. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je literál trvania. Použite hodnotu ako "500ms" alebo "1.5s".`;
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je literál trvania. Použite napríklad "500ms" alebo "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Slovak. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je percentuálny literál. Použite hodnotu ako "50%" alebo "12.5%".`;
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je percentuálny literál. Použite napríklad "50%" alebo "12.5%".`;

@@ -1,12 +1,9 @@
 /**
- * Suomenkieliset Evolu Type -virheiden muotoilijat.
+ * Finnish Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,95 +95,95 @@ const formatPlainObjectRootError = (
     ? `Arvo ${safelyStringifyUnknownValue(reason.value)} ei ole objekti.`
     : "Arvo on objekti, mutta Object Outputin on oltava tavallinen objekti tai sillä on oltava null-prototyyppi.";
 
-/** Muotoilee NeverError-virheen suomeksi. */
+/** Formats a NeverError in Finnish. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei kelpaa Never-tyypille.`;
 
-/** Muotoilee String TypeOfError -virheen suomeksi. */
+/** Formats a String TypeOfError in Finnish. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** Muotoilee TemplateLiteralError-virheen suomeksi. */
+/** Formats a TemplateLiteralError in Finnish. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei vastaa template literal -mallia.`;
 
-/** Muotoilee Number TypeOfError -virheen suomeksi. */
+/** Formats a Number TypeOfError in Finnish. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** Muotoilee BigInt TypeOfError -virheen suomeksi. */
+/** Formats a BigInt TypeOfError in Finnish. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Muotoilee Boolean TypeOfError -virheen suomeksi. */
+/** Formats a Boolean TypeOfError in Finnish. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** Muotoilee BooleanFromStringError-virheen suomeksi. */
+/** Formats a BooleanFromStringError in Finnish. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole totuusarvo. Käytä arvoa true tai false.`;
 
-/** Muotoilee Symbol TypeOfError -virheen suomeksi. */
+/** Formats a Symbol TypeOfError in Finnish. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Muotoilee Function TypeOfError -virheen suomeksi. */
+/** Formats a Function TypeOfError in Finnish. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** Muotoilee EvoluTypeError-virheen suomeksi. */
+/** Formats an EvoluTypeError in Finnish. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) => `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole Evolu Type.`;
 
-/** Muotoilee ObjectTagError-virheen suomeksi. */
+/** Formats an ObjectTagError in Finnish. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `Arvolla ${safelyStringifyUnknownValue(error.value)} ei ole odotettua objektitunnistetta ${safelyStringifyUnknownValue(error.expected)}.`;
 
-/** Muotoilee InstanceOfError-virheen suomeksi. */
+/** Formats an InstanceOfError in Finnish. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole luokan ${error.constructorName} instanssi.`;
 
-/** Muotoilee LiteralError-virheen suomeksi. */
+/** Formats a LiteralError in Finnish. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole täsmälleen sama kuin odotettu literaali: ${String(error.expected)}.`;
 
-/** Muotoilee UnionError-virheen suomeksi. */
+/** Formats a UnionError in Finnish. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Arvo ei vastaa mitään sallittua varianttia.";
 
-/** Muotoilee DateIsoError-virheen suomeksi. */
+/** Formats a DateIsoError in Finnish. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kanoninen ISO-päivämäärä- ja aikamerkkijono.`;
 
-/** Muotoilee DateIsoFromDateError-virheen suomeksi. */
+/** Formats a DateIsoFromDateError in Finnish. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date-arvoa ei voida esittää DateIso-muodossa.";
 
-/** Muotoilee DecimalStringError-virheen suomeksi. */
+/** Formats a DecimalStringError in Finnish. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava kanoninen desimaalimerkkijono.`;
 
-/** Muotoilee Int64Error-virheen suomeksi. */
+/** Formats an Int64Error in Finnish. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen etumerkillinen 64-bittinen kokonaisluku (Int64).`;
 
-/** Muotoilee UInt64Error-virheen suomeksi. */
+/** Formats a UInt64Error in Finnish. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen etumerkitön 64-bittinen kokonaisluku (UInt64).`;
 
-/** Muotoilee Int64StringError-virheen suomeksi. */
+/** Formats an Int64StringError in Finnish. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -196,7 +195,7 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole ${error.casing}-tunniste.`;
 
-/** Muotoilee CapitalizedError-virheen suomeksi. */
+/** Formats a CapitalizedError in Finnish. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -220,7 +219,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava pienillä kirjaimilla.`;
 
-/** Muotoilee TrimmedError-virheen suomeksi. */
+/** Formats a TrimmedError in Finnish. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} alussa tai lopussa ei saa olla tyhjiä merkkejä.`;
 
@@ -230,151 +229,151 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 ) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on alettava merkkijonolla ${safelyStringifyUnknownValue(error.prefix)}.`;
 
-/** Muotoilee MinLengthError-virheen suomeksi. */
+/** Formats a MinLengthError in Finnish. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei täytä vähimmäispituutta ${error.min}.`;
 
-/** Muotoilee MaxLengthError-virheen suomeksi. */
+/** Formats a MaxLengthError in Finnish. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ylittää enimmäispituuden ${error.max}.`;
 
-/** Muotoilee LengthError-virheen suomeksi. */
+/** Formats a LengthError in Finnish. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} pituuden on oltava täsmälleen ${error.exact}.`;
 
-/** Muotoilee RegexError-virheen suomeksi. */
+/** Formats a RegexError in Finnish. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei vastaa säännöllistä lauseketta /${error.source}/${error.flags}.`;
 
-/** Muotoilee Base64UrlError-virheen suomeksi. */
+/** Formats a Base64UrlError in Finnish. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen Base64Url-merkkijono.`;
 
-/** Muotoilee NameError-virheen suomeksi. */
+/** Formats a NameError in Finnish. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen Name.`;
 
-/** Muotoilee EmailError-virheen suomeksi. */
+/** Formats an EmailError in Finnish. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen sähköpostiosoite.`;
 
-/** Muotoilee MnemonicError-virheen suomeksi. */
+/** Formats a MnemonicError in Finnish. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen englanninkielinen BIP39-muistisanasarja.`;
 
-/** Muotoilee IdError-virheen suomeksi. */
+/** Formats an IdError in Finnish. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen Id.`;
 
-/** Muotoilee TableIdError-virheen suomeksi. */
+/** Formats a TableIdError in Finnish. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen Id taululle ${error.table}.`;
 
-/** Muotoilee UuidError-virheen suomeksi. */
+/** Formats a UuidError in Finnish. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kanoninen pienillä kirjaimilla kirjoitettu UUID.`;
 
-/** Muotoilee NonNegativeError-virheen suomeksi. */
+/** Formats a NonNegativeError in Finnish. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava epänegatiivinen (>= 0).`;
 
-/** Muotoilee NonNegativeDecimalStringError-virheen suomeksi. */
+/** Formats a NonNegativeDecimalStringError in Finnish. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava epänegatiivinen desimaalimerkkijono.`;
 
-/** Muotoilee PositiveError-virheen suomeksi. */
+/** Formats a PositiveError in Finnish. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava positiivinen (> 0).`;
 
-/** Muotoilee PositiveDecimalStringError-virheen suomeksi. */
+/** Formats a PositiveDecimalStringError in Finnish. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava positiivinen desimaalimerkkijono.`;
 
-/** Muotoilee NonPositiveError-virheen suomeksi. */
+/** Formats a NonPositiveError in Finnish. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava ei-positiivinen (<= 0).`;
 
-/** Muotoilee NonPositiveDecimalStringError-virheen suomeksi. */
+/** Formats a NonPositiveDecimalStringError in Finnish. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava ei-positiivinen desimaalimerkkijono.`;
 
-/** Muotoilee NegativeError-virheen suomeksi. */
+/** Formats a NegativeError in Finnish. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava negatiivinen (< 0).`;
 
-/** Muotoilee NegativeDecimalStringError-virheen suomeksi. */
+/** Formats a NegativeDecimalStringError in Finnish. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava negatiivinen desimaalimerkkijono.`;
 
-/** Muotoilee IntError-virheen suomeksi. */
+/** Formats an IntError in Finnish. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava turvallinen kokonaisluku.`;
 
-/** Muotoilee IntFromStringError-virheen suomeksi. */
+/** Formats an IntFromStringError in Finnish. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole desimaalimuotoinen kokonaisluku.`;
 
-/** Muotoilee GreaterThanError-virheen suomeksi. */
+/** Formats a GreaterThanError in Finnish. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava suurempi kuin ${error.min}.`;
 
-/** Muotoilee GreaterThanOrEqualToError-virheen suomeksi. */
+/** Formats a GreaterThanOrEqualToError in Finnish. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava suurempi tai yhtä suuri kuin ${error.min}.`;
 
-/** Muotoilee LessThanError-virheen suomeksi. */
+/** Formats a LessThanError in Finnish. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava pienempi kuin ${error.max}.`;
 
-/** Muotoilee LessThanOrEqualToError-virheen suomeksi. */
+/** Formats a LessThanOrEqualToError in Finnish. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava pienempi tai yhtä suuri kuin ${error.max}.`;
 
-/** Muotoilee NonNaNError-virheen suomeksi. */
+/** Formats a NonNaNError in Finnish. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "Arvo ei saa olla NaN.";
 
-/** Muotoilee FiniteError-virheen suomeksi. */
+/** Formats a FiniteError in Finnish. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava äärellinen.`;
 
-/** Muotoilee MultipleOfError-virheen suomeksi. */
+/** Formats a MultipleOfError in Finnish. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava luvun ${error.divisor} monikerta.`;
 
-/** Muotoilee BetweenError-virheen suomeksi. */
+/** Formats a BetweenError in Finnish. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
-  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava välillä ${error.min}–${error.max}, rajat mukaan lukien.`;
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava vähintään ${error.min} ja enintään ${error.max}.`;
 
-/** Muotoilee ArrayError-virheen suomeksi. */
+/** Formats an ArrayError in Finnish. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `Arvo ${safelyStringifyUnknownValue(error.reason.value)} ei ole taulukko.`;
@@ -393,7 +392,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** Muotoilee SetError-virheen suomeksi. */
+/** Formats a SetError in Finnish. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Arvo ${safelyStringifyUnknownValue(error.reason.value)} ei ole Set.`;
@@ -408,7 +407,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** Muotoilee MapError-virheen suomeksi. */
+/** Formats a MapError in Finnish. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `Arvo ${safelyStringifyUnknownValue(error.reason.value)} ei ole Map.`;
@@ -419,14 +418,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `Ylimääräinen Map-ominaisuus ${safelyStringifyUnknownValue(issue.key)} ei ole sallittu.`;
     case "Key":
+      return `Mapin indeksissä ${issue.index} oleva avain on virheellinen.`;
     case "Value":
-      return `Mapin indeksissä ${issue.index} oleva alkio on virheellinen.`;
+      return `Mapin indeksissä ${issue.index} oleva arvo on virheellinen.`;
     case "Collision":
-      return `Map-avaimet ${safelyStringifyUnknownValue(issue.previousKey)} ja ${safelyStringifyUnknownValue(issue.key)} dekoodautuvat samaksi avaimeksi ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Mapin indekseissä ${issue.previousIndex} ja ${issue.index} olevat avaimet dekoodautuvat samaksi avaimeksi ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
-/** Muotoilee TupleError-virheen suomeksi. */
+/** Formats a TupleError in Finnish. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -434,7 +434,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `Arvo ${safelyStringifyUnknownValue(error.reason.value)} ei ole tuple.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuplen on sisällettävä täsmälleen ${error.reason.expected} alkiota, mutta arvo sisältää ${error.reason.actual}.`;
+    return `Tuplen pituuden on oltava ${error.reason.expected}, mutta arvon pituus on ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -451,7 +451,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** Muotoilee RecordError-virheen suomeksi. */
+/** Formats a RecordError in Finnish. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `Arvo ${safelyStringifyUnknownValue(error.reason.value)} ei ole Record.`;
@@ -476,7 +476,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** Muotoilee ObjectError-virheen suomeksi. */
+/** Formats an ObjectError in Finnish. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -507,7 +507,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `Ominaisuus ${safelyStringifyUnknownValue(key)} on virheellinen.`;
 };
 
-/** Muotoilee DiscriminatedUnionError-virheen suomeksi. */
+/** Formats a DiscriminatedUnionError in Finnish. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -531,7 +531,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** Muotoilee JsonValueError-virheen suomeksi. */
+/** Formats a DataError in Finnish. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Arvo ${safelyStringifyUnknownValue(issue.value)} ei ole Data.`;
+    case "UnexpectedPrototype":
+      return `Data ${issue.container} -arvolla on odottamaton prototyyppi.`;
+    case "Accessor":
+      return "Data-ominaisuuden on oltava dataominaisuus. Muunna accessor-arvot tavalliseksi dataksi ennen tämän Typen käyttöä tai käytä toista Typeä.";
+    case "NonEnumerable":
+      return "Data Object -ominaisuuden on oltava lueteltava. Poista se tai käytä toista Typeä.";
+    case "SymbolProperty":
+      return "Data Object -ominaisuuden avaimen on oltava merkkijono. Poista symboliominaisuus tai käytä toista Typeä.";
+    case "Hole":
+      return "Data Array -alkio puuttuu.";
+    case "InvalidUint8Array":
+      return "Data Uint8Array -arvon ArrayBuffer ei saa olla irrotettu, ja arvon on oltava kokonaan sen rajojen sisällä.";
+    case "ExcessProperty":
+      return `Data ${issue.container} -arvolla ei saa olla ylimääräisiä omia ominaisuuksia. Poista ominaisuus tai käytä toista Typeä.`;
+  }
+};
+
+/** Formats a JsonValueError in Finnish. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -559,24 +582,35 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** Muotoilee JsonError-virheen suomeksi. */
+/** Formats a JsonError in Finnish. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Arvoa ${safelyStringifyUnknownValue(error.value)} ei voida jäsentää JsonValue-arvoksi.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Finnish. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
-  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole tavukoon literaali. Käytä arvoa kuten "512KiB" tai "1MiB".`;
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole tavukokoliteraali. Käytä esimerkiksi arvoa "512KiB" tai "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Finnish. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "Arvo -0 ei ole tavupituus. Käytä sen sijaan arvoa 0.";
+
+/** Formats a ByteLengthFromStringError in Finnish. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole tavupituus. Käytä tavujen lukumäärää tai literaalia, kuten 10MiB.`;
+
+/** Formats a DurationLiteralError in Finnish. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
-  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole keston literaali. Käytä arvoa kuten "500ms" tai "1.5s".`;
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kestoliteraali. Käytä esimerkiksi arvoa "500ms" tai "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Finnish. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
-  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole prosenttiliteraali. Käytä arvoa kuten "50%" tai "12.5%".`;
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole prosenttiliteraali. Käytä esimerkiksi arvoa "50%" tai "12.5%".`;

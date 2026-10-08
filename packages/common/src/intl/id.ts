@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -85,7 +84,7 @@ const formatTypeOfError = (
 ): string => {
   const typeOf = error.expected.toLowerCase();
 
-  return `Nilai ${safelyStringifyUnknownValue(error.value)} bukan ${typeOf}.`;
+  return `Nilai ${safelyStringifyUnknownValue(error.value)} tidak bertipe ${typeOf}.`;
 };
 
 const formatPlainObjectRootError = (
@@ -222,7 +221,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 
 /** Formats a TrimmedError in Indonesian. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
-  `Nilai ${safelyStringifyUnknownValue(error.value)} harus dipangkas.`;
+  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak boleh diawali atau diakhiri dengan spasi.`;
 
 /** Formats a StartsWithError in Indonesian. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
@@ -419,10 +418,11 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `Properti Map berlebih ${safelyStringifyUnknownValue(issue.key)} tidak diizinkan.`;
     case "Key":
+      return `Kunci Map pada indeks ${issue.index} tidak valid.`;
     case "Value":
-      return `Elemen Map pada indeks ${issue.index} tidak valid.`;
+      return `Nilai Map pada indeks ${issue.index} tidak valid.`;
     case "Collision":
-      return `Kunci Map ${safelyStringifyUnknownValue(issue.previousKey)} dan ${safelyStringifyUnknownValue(issue.key)} didekode menjadi kunci yang sama, ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Kunci Map pada indeks ${issue.previousIndex} dan ${issue.index} didekode menjadi kunci yang sama, ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
@@ -434,7 +434,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `Nilai ${safelyStringifyUnknownValue(error.reason.value)} bukan tuple.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple harus berisi tepat ${error.reason.expected} elemen, tetapi nilainya berisi ${error.reason.actual}.`;
+    return `Tuple harus memiliki panjang ${error.reason.expected}, tetapi nilainya memiliki panjang ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -531,6 +531,29 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
+/** Formats a DataError in Indonesian. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Nilai ${safelyStringifyUnknownValue(issue.value)} bukan Data.`;
+    case "UnexpectedPrototype":
+      return `${issue.container} Data memiliki prototipe yang tidak diharapkan.`;
+    case "Accessor":
+      return "Properti Data harus berupa properti data. Wujudkan nilai accessor menjadi data biasa sebelum menggunakan Tipe ini atau gunakan Tipe lain.";
+    case "NonEnumerable":
+      return "Properti Object Data harus enumerable. Hapus properti tersebut atau gunakan Tipe lain.";
+    case "SymbolProperty":
+      return "Kunci properti Object Data harus berupa string. Hapus properti symbol tersebut atau gunakan Tipe lain.";
+    case "Hole":
+      return "Elemen Array Data tidak ada.";
+    case "InvalidUint8Array":
+      return "Uint8Array Data harus memiliki ArrayBuffer yang tidak terlepas dan harus berada dalam batas ArrayBuffer tersebut.";
+    case "ExcessProperty":
+      return `${issue.container} Data tidak boleh memiliki properti miliknya sendiri yang berlebih. Hapus properti tersebut atau gunakan Tipe lain.`;
+  }
+};
+
 /** Formats a JsonValueError in Indonesian. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
@@ -563,20 +586,31 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} tidak dapat diurai menjadi JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Indonesian. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal ukuran byte. Gunakan nilai seperti "512KiB" atau "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Indonesian. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "Nilai -0 bukan panjang byte. Gunakan 0 sebagai gantinya.";
+
+/** Formats a ByteLengthFromStringError in Indonesian. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan panjang byte. Gunakan jumlah byte atau literal seperti 10MiB.`;
+
+/** Formats a DurationLiteralError in Indonesian. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal durasi. Gunakan nilai seperti "500ms" atau "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Indonesian. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal persentase. Gunakan nilai seperti "50%" atau "12.5%".`;

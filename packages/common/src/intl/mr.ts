@@ -1,12 +1,9 @@
 /**
- * मराठी Evolu Type त्रुटी स्वरूपकार.
+ * Marathi Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -244,11 +243,11 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
 
 /** Formats a LengthError in Marathi. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
-  `मूल्य ${safelyStringifyUnknownValue(error.value)} ची आवश्यक लांबी ${error.exact} नाही.`;
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} ची लांबी नेमकी ${error.exact} असली पाहिजे.`;
 
 /** Formats a RegexError in Marathi. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
-  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे /${error.source}/${error.flags}/ शी जुळत नाही.`;
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे /${error.source}/${error.flags} शी जुळत नाही.`;
 
 /** Formats a Base64UrlError in Marathi. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
@@ -368,7 +367,7 @@ export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
-  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे ${error.divisor} चे पटीत असले पाहिजे.`;
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे ${error.divisor} च्या पटीत असले पाहिजे.`;
 
 /** Formats a BetweenError in Marathi. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
@@ -419,10 +418,11 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `अतिरिक्त Map property ${safelyStringifyUnknownValue(issue.key)} ला अनुमती नाही.`;
     case "Key":
+      return `index ${issue.index} वरील Map key अवैध आहे.`;
     case "Value":
-      return `index ${issue.index} वरील Map element अवैध आहे.`;
+      return `index ${issue.index} वरील Map मूल्य अवैध आहे.`;
     case "Collision":
-      return `Map keys ${safelyStringifyUnknownValue(issue.previousKey)} आणि ${safelyStringifyUnknownValue(issue.key)} decode केल्यावर तीच key ${safelyStringifyUnknownValue(issue.outputKey)} मिळते.`;
+      return `index ${issue.previousIndex} आणि ${issue.index} वरील Map keys decode केल्यावर तीच key ${safelyStringifyUnknownValue(issue.outputKey)} मिळते.`;
   }
 };
 
@@ -434,7 +434,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `मूल्य ${safelyStringifyUnknownValue(error.reason.value)} हे tuple नाही.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple मध्ये नेमके ${error.reason.expected} elements असले पाहिजेत, परंतु मूल्यात ${error.reason.actual} आहेत.`;
+    return `Tuple ची लांबी ${error.reason.expected} असली पाहिजे, परंतु मूल्याची लांबी ${error.reason.actual} आहे.`;
   }
 
   const issue = error.reason.issues[0];
@@ -531,6 +531,29 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
+/** Formats a DataError in Marathi. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `मूल्य ${safelyStringifyUnknownValue(issue.value)} हे Data नाही.`;
+    case "UnexpectedPrototype":
+      return `Data ${issue.container} चा prototype अनपेक्षित आहे.`;
+    case "Accessor":
+      return "Data property ही data property असली पाहिजे. हा Type वापरण्यापूर्वी accessor values चे plain data मध्ये materialize करा किंवा वेगळा Type वापरा.";
+    case "NonEnumerable":
+      return "Data Object property enumerable असली पाहिजे. ती काढून टाका किंवा वेगळा Type वापरा.";
+    case "SymbolProperty":
+      return "Data Object property key ही string असली पाहिजे. symbol property काढून टाका किंवा वेगळा Type वापरा.";
+    case "Hole":
+      return "Data Array element गहाळ आहे.";
+    case "InvalidUint8Array":
+      return "Data Uint8Array चा ArrayBuffer detached नसणे आणि Uint8Array त्या ArrayBuffer च्या मर्यादेत असणे आवश्यक आहे.";
+    case "ExcessProperty":
+      return `Data ${issue.container} मध्ये अतिरिक्त स्वतःच्या properties नसल्या पाहिजेत. ती property काढून टाका किंवा वेगळा Type वापरा.`;
+  }
+};
+
 /** Formats a JsonValueError in Marathi. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
@@ -563,20 +586,31 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} चे JsonValue मध्ये parsing करता येत नाही.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Marathi. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
-  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे बाइट आकाराचे लिटरल नाही. "512KiB" किंवा "1MiB" सारखे मूल्य वापरा.`;
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे बाइट आकाराचे literal नाही. "512KiB" किंवा "1MiB" सारखे मूल्य वापरा.`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Marathi. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "मूल्य -0 ही बाइट लांबी नाही. त्याऐवजी 0 वापरा.";
+
+/** Formats a ByteLengthFromStringError in Marathi. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} ही बाइट लांबी नाही. बाइट्सची संख्या किंवा 10MiB सारखे literal वापरा.`;
+
+/** Formats a DurationLiteralError in Marathi. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
-  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे कालावधीचे लिटरल नाही. "500ms" किंवा "1.5s" सारखे मूल्य वापरा.`;
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे कालावधीचे literal नाही. "500ms" किंवा "1.5s" सारखे मूल्य वापरा.`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Marathi. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
-  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे टक्केवारीचे लिटरल नाही. "50%" किंवा "12.5%" सारखे मूल्य वापरा.`;
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे टक्केवारीचे literal नाही. "50%" किंवा "12.5%" सारखे मूल्य वापरा.`;

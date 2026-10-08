@@ -1,12 +1,9 @@
 /**
- * قالب‌بندهای فارسی خطاهای Evolu Type.
+ * Persian Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -93,98 +92,98 @@ const formatPlainObjectRootError = (
     ObjectNotObjectError["reason"] | ObjectUnexpectedPrototypeError["reason"],
 ): string =>
   reason.kind === "NotObject"
-    ? `مقدار ${safelyStringifyUnknownValue(reason.value)} یک object نیست.`
-    : "مقدار یک object است، اما خروجی Object باید یک object ساده باشد یا prototype آن null باشد.";
+    ? `مقدار ${safelyStringifyUnknownValue(reason.value)} یک شیء نیست.`
+    : "مقدار یک شیء است، اما خروجی Object باید یک شیء ساده باشد یا prototype آن null باشد.";
 
-/** NeverError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a NeverError in Persian. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} برای Type از نوع Never معتبر نیست.`;
 
-/** String TypeOfError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a String TypeOfError in Persian. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** TemplateLiteralError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a TemplateLiteralError in Persian. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} با template literal مطابقت ندارد.`;
 
-/** Number TypeOfError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a Number TypeOfError in Persian. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** BigInt TypeOfError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a BigInt TypeOfError in Persian. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Boolean TypeOfError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a Boolean TypeOfError in Persian. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** BooleanFromStringError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a BooleanFromStringError in Persian. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک مقدار بولی نیست. از true یا false استفاده کنید.`;
 
-/** Symbol TypeOfError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a Symbol TypeOfError in Persian. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Function TypeOfError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a Function TypeOfError in Persian. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** EvoluTypeError را به فارسی قالب‌بندی می‌کند. */
+/** Formats an EvoluTypeError in Persian. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) => `مقدار ${safelyStringifyUnknownValue(error.value)} یک Evolu Type نیست.`;
 
-/** ObjectTagError را به فارسی قالب‌بندی می‌کند. */
+/** Formats an ObjectTagError in Persian. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
-  `مقدار ${safelyStringifyUnknownValue(error.value)} دارای object tag مورد انتظار ${safelyStringifyUnknownValue(error.expected)} نیست.`;
+  `مقدار ${safelyStringifyUnknownValue(error.value)} دارای تگ شیء مورد انتظار ${safelyStringifyUnknownValue(error.expected)} نیست.`;
 
-/** InstanceOfError را به فارسی قالب‌بندی می‌کند. */
+/** Formats an InstanceOfError in Persian. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} نمونه‌ای از ${error.constructorName} نیست.`;
 
-/** LiteralError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a LiteralError in Persian. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `مقدار ${safelyStringifyUnknownValue(error.value)} دقیقاً با literal مورد انتظار برابر نیست: ${String(error.expected)}.`;
+  `مقدار ${safelyStringifyUnknownValue(error.value)} دقیقاً با مقدار لفظی مورد انتظار برابر نیست: ${String(error.expected)}.`;
 
-/** UnionError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a UnionError in Persian. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "مقدار با هیچ‌یک از variantهای مجاز مطابقت ندارد.";
 
-/** DateIsoError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a DateIsoError in Persian. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک رشتهٔ کانونی تاریخ‌وزمان ISO نیست.`;
 
-/** DateIsoFromDateError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a DateIsoFromDateError in Persian. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date را نمی‌توان به‌صورت DateIso نمایش داد.";
 
-/** DecimalStringError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a DecimalStringError in Persian. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید یک رشتهٔ ده‌دهی کانونی باشد.`;
 
-/** Int64Error را به فارسی قالب‌بندی می‌کند. */
+/** Formats an Int64Error in Persian. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
-  `مقدار ${safelyStringifyUnknownValue(error.value)} یک عدد صحیح ۶۴ بیتی علامت‌دار معتبر (Int64) نیست.`;
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک عدد صحیح 64 بیتی علامت‌دار معتبر (Int64) نیست.`;
 
-/** UInt64Error را به فارسی قالب‌بندی می‌کند. */
+/** Formats a UInt64Error in Persian. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
-  `مقدار ${safelyStringifyUnknownValue(error.value)} یک عدد صحیح ۶۴ بیتی بدون علامت معتبر (UInt64) نیست.`;
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک عدد صحیح 64 بیتی بدون علامت معتبر (UInt64) نیست.`;
 
-/** Int64StringError را به فارسی قالب‌بندی می‌کند. */
+/** Formats an Int64StringError in Persian. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -196,7 +195,7 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک شناسه با قالب ${error.casing} نیست.`;
 
-/** CapitalizedError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a CapitalizedError in Persian. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -220,7 +219,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید با حروف کوچک باشد.`;
 
-/** TrimmedError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a TrimmedError in Persian. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} نباید در ابتدا یا انتها فاصلهٔ اضافی داشته باشد.`;
 
@@ -230,151 +229,151 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید با ${safelyStringifyUnknownValue(error.prefix)} شروع شود.`;
 
-/** MinLengthError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a MinLengthError in Persian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `طول مقدار ${safelyStringifyUnknownValue(error.value)} باید حداقل ${error.min} باشد.`;
 
-/** MaxLengthError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a MaxLengthError in Persian. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `طول مقدار ${safelyStringifyUnknownValue(error.value)} از حداکثر ${error.max} بیشتر است.`;
 
-/** LengthError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a LengthError in Persian. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `طول مقدار ${safelyStringifyUnknownValue(error.value)} باید دقیقاً ${error.exact} باشد.`;
 
-/** RegexError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a RegexError in Persian. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} با /${error.source}/${error.flags} مطابقت ندارد.`;
 
-/** Base64UrlError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a Base64UrlError in Persian. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک رشتهٔ Base64Url معتبر نیست.`;
 
-/** NameError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a NameError in Persian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک Name معتبر نیست.`;
 
-/** EmailError را به فارسی قالب‌بندی می‌کند. */
+/** Formats an EmailError in Persian. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی ایمیل معتبر نیست.`;
 
-/** MnemonicError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a MnemonicError in Persian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک عبارت یادسپاری انگلیسی BIP39 معتبر نیست.`;
 
-/** IdError را به فارسی قالب‌بندی می‌کند. */
+/** Formats an IdError in Persian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک Id معتبر نیست.`;
 
-/** TableIdError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a TableIdError in Persian. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک Id معتبر برای جدول ${error.table} نیست.`;
 
-/** UuidError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a UuidError in Persian. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک UUID کانونی با حروف کوچک نیست.`;
 
-/** NonNegativeError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a NonNegativeError in Persian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید نامنفی (>= 0) باشد.`;
 
-/** NonNegativeDecimalStringError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a NonNegativeDecimalStringError in Persian. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید یک رشتهٔ ده‌دهی نامنفی باشد.`;
 
-/** PositiveError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a PositiveError in Persian. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید مثبت (> 0) باشد.`;
 
-/** PositiveDecimalStringError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a PositiveDecimalStringError in Persian. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید یک رشتهٔ ده‌دهی مثبت باشد.`;
 
-/** NonPositiveError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a NonPositiveError in Persian. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید نامثبت (<= 0) باشد.`;
 
-/** NonPositiveDecimalStringError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a NonPositiveDecimalStringError in Persian. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید یک رشتهٔ ده‌دهی نامثبت باشد.`;
 
-/** NegativeError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a NegativeError in Persian. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید منفی (< 0) باشد.`;
 
-/** NegativeDecimalStringError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a NegativeDecimalStringError in Persian. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید یک رشتهٔ ده‌دهی منفی باشد.`;
 
-/** IntError را به فارسی قالب‌بندی می‌کند. */
+/** Formats an IntError in Persian. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید یک عدد صحیح امن باشد.`;
 
-/** IntFromStringError را به فارسی قالب‌بندی می‌کند. */
+/** Formats an IntFromStringError in Persian. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
-  `مقدار ${safelyStringifyUnknownValue(error.value)} یک عدد صحیح دهدهی نیست.`;
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک عدد صحیح ده‌دهی نیست.`;
 
-/** GreaterThanError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a GreaterThanError in Persian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید بزرگ‌تر از ${error.min} باشد.`;
 
-/** GreaterThanOrEqualToError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a GreaterThanOrEqualToError in Persian. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید بزرگ‌تر یا مساوی ${error.min} باشد.`;
 
-/** LessThanError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a LessThanError in Persian. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید کوچک‌تر از ${error.max} باشد.`;
 
-/** LessThanOrEqualToError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a LessThanOrEqualToError in Persian. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید کوچک‌تر یا مساوی ${error.max} باشد.`;
 
-/** NonNaNError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a NonNaNError in Persian. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "مقدار نباید NaN باشد.";
 
-/** FiniteError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a FiniteError in Persian. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید متناهی باشد.`;
 
-/** MultipleOfError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a MultipleOfError in Persian. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید مضربی از ${error.divisor} باشد.`;
 
-/** BetweenError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a BetweenError in Persian. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید بین ${error.min} و ${error.max}، با احتساب هر دو کران، باشد.`;
 
-/** ArrayError را به فارسی قالب‌بندی می‌کند. */
+/** Formats an ArrayError in Persian. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `مقدار ${safelyStringifyUnknownValue(error.reason.value)} یک آرایه نیست.`;
@@ -393,7 +392,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** SetError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a SetError in Persian. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `مقدار ${safelyStringifyUnknownValue(error.reason.value)} یک Set نیست.`;
@@ -408,7 +407,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** MapError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a MapError in Persian. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `مقدار ${safelyStringifyUnknownValue(error.reason.value)} یک Map نیست.`;
@@ -419,14 +418,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `property اضافی ${safelyStringifyUnknownValue(issue.key)} روی Map مجاز نیست.`;
     case "Key":
+      return `کلید Map در اندیس ${issue.index} نامعتبر است.`;
     case "Value":
-      return `عنصر Map در اندیس ${issue.index} نامعتبر است.`;
+      return `مقدار Map در اندیس ${issue.index} نامعتبر است.`;
     case "Collision":
-      return `کلیدهای Map یعنی ${safelyStringifyUnknownValue(issue.previousKey)} و ${safelyStringifyUnknownValue(issue.key)} پس از decode به کلید یکسان ${safelyStringifyUnknownValue(issue.outputKey)} تبدیل می‌شوند.`;
+      return `کلیدهای Map در اندیس‌های ${issue.previousIndex} و ${issue.index} پس از decode به کلید یکسان ${safelyStringifyUnknownValue(issue.outputKey)} تبدیل می‌شوند.`;
   }
 };
 
-/** TupleError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a TupleError in Persian. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -434,7 +434,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `مقدار ${safelyStringifyUnknownValue(error.reason.value)} یک Tuple نیست.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple باید دقیقاً ${error.reason.expected} عنصر داشته باشد، اما مقدار دارای ${error.reason.actual} عنصر است.`;
+    return `طول Tuple باید ${error.reason.expected} باشد، اما طول مقدار ${error.reason.actual} است.`;
   }
 
   const issue = error.reason.issues[0];
@@ -451,13 +451,13 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** RecordError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a RecordError in Persian. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `مقدار ${safelyStringifyUnknownValue(error.reason.value)} یک Record نیست.`;
   }
   if (error.reason.kind === "NotPlainRecord") {
-    return "مقدار یک object است، اما خروجی Record باید یک object ساده باشد یا prototype آن null باشد.";
+    return "مقدار یک شیء است، اما خروجی Record باید یک شیء ساده باشد یا prototype آن null باشد.";
   }
 
   const issue = error.reason.issues[0];
@@ -476,7 +476,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** ObjectError را به فارسی قالب‌بندی می‌کند. */
+/** Formats an ObjectError in Persian. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -499,7 +499,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
     return `property الزامی ${safelyStringifyUnknownValue(key)} وجود ندارد.`;
   }
   if (typeof key === "symbol") {
-    return "کلید property در Object باید string باشد. property از نوع symbol را حذف کنید یا از Type دیگری استفاده کنید.";
+    return "کلید property در Object باید رشته باشد. property با کلید symbol را حذف کنید یا از Type دیگری استفاده کنید.";
   }
   if (propertyError.type === "ObjectExcessProperty") {
     return `property ${safelyStringifyUnknownValue(key)} مجاز نیست. آن را حذف کنید یا از Type دیگری استفاده کنید.`;
@@ -507,7 +507,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `property ${safelyStringifyUnknownValue(key)} نامعتبر است.`;
 };
 
-/** DiscriminatedUnionError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a DiscriminatedUnionError in Persian. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -531,7 +531,31 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** JsonValueError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a DataError in Persian. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "InvalidType":
+      return `مقدار ${safelyStringifyUnknownValue(issue.value)} از نوع Data نیست.`;
+    case "UnexpectedPrototype":
+      return `${issue.container} در Data دارای prototype غیرمنتظره است.`;
+    case "Accessor":
+      return "property در Data باید یک data property باشد. پیش از استفاده از این Type، مقادیر accessor را به دادهٔ ساده تبدیل کنید یا از Type دیگری استفاده کنید.";
+    case "NonEnumerable":
+      return "property یک Object در Data باید enumerable باشد. آن را حذف کنید یا از Type دیگری استفاده کنید.";
+    case "SymbolProperty":
+      return "کلید property یک Object در Data باید رشته باشد. property با کلید symbol را حذف کنید یا از Type دیگری استفاده کنید.";
+    case "Hole":
+      return "یک عنصر از Array در Data وجود ندارد.";
+    case "InvalidUint8Array":
+      return "Uint8Array در Data باید از یک ArrayBuffer که detach نشده است استفاده کند و در محدودهٔ آن قرار داشته باشد.";
+    case "ExcessProperty":
+      return `${issue.container} در Data نباید property اضافیِ متعلق به خود داشته باشد. آن property را حذف کنید یا از Type دیگری استفاده کنید.`;
+  }
+};
+
+/** Formats a JsonValueError in Persian. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -543,13 +567,13 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
     case "NonFiniteNumber":
       return "عدد JSON باید متناهی باشد.";
     case "UnexpectedPrototype":
-      return "مقدار یک object است، اما object در JsonValue باید یک object ساده باشد یا prototype آن null باشد.";
+      return "مقدار یک شیء است، اما شیء JsonValue باید یک شیء ساده باشد یا prototype آن null باشد.";
     case "Accessor":
       return "property در JSON باید یک data property باشد. پیش از استفاده از این Type، مقادیر accessor را به دادهٔ ساده تبدیل کنید یا از Type دیگری استفاده کنید.";
     case "NonEnumerable":
-      return "property در object JSON باید enumerable باشد. آن را حذف کنید یا از Type دیگری استفاده کنید.";
+      return "property در شیء JSON باید enumerable باشد. آن را حذف کنید یا از Type دیگری استفاده کنید.";
     case "SymbolProperty":
-      return "کلید property در object JSON باید string باشد. property از نوع symbol را حذف کنید یا از Type دیگری استفاده کنید.";
+      return "کلید property در شیء JSON باید رشته باشد. property با کلید symbol را حذف کنید یا از Type دیگری استفاده کنید.";
     case "Hole":
       return "یک عنصر از آرایهٔ JSON وجود ندارد.";
     case "ExcessProperty":
@@ -559,24 +583,35 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** JsonError را به فارسی قالب‌بندی می‌کند. */
+/** Formats a JsonError in Persian. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} را نمی‌توان به JsonValue parse کرد.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Persian. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک مقدار لفظی اندازه بر حسب بایت نیست. از مقداری مانند "512KiB" یا "1MiB" استفاده کنید.`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Persian. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "مقدار -0 یک طول بر حسب بایت نیست. به‌جای آن از 0 استفاده کنید.";
+
+/** Formats a ByteLengthFromStringError in Persian. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک طول بر حسب بایت نیست. از تعداد بایت‌ها یا یک مقدار لفظی مانند 10MiB استفاده کنید.`;
+
+/** Formats a DurationLiteralError in Persian. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک مقدار لفظی مدت زمان نیست. از مقداری مانند "500ms" یا "1.5s" استفاده کنید.`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Persian. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک مقدار لفظی درصد نیست. از مقداری مانند "50%" یا "12.5%" استفاده کنید.`;

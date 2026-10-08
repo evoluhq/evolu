@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -115,7 +114,7 @@ export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
-  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν ταιριάζει με το πρότυπο literal.`;
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν ταιριάζει με το λεκτικό προτύπου.`;
 
 /** Formats a Number TypeOfError in Greek. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
@@ -162,7 +161,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Formats a LiteralError in Greek. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι αυστηρά ίση με το αναμενόμενο literal: ${String(error.expected)}.`;
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι αυστηρά ίση με το αναμενόμενο λεκτικό: ${String(error.expected)}.`;
 
 /** Formats a UnionError in Greek. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
@@ -229,7 +228,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 
 /** Formats a TrimmedError in Greek. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
-  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να μην έχει κενά στην αρχή ή στο τέλος.`;
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν πρέπει να έχει κενά στην αρχή ή στο τέλος.`;
 
 /** Formats a StartsWithError in Greek. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
@@ -426,10 +425,11 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `Δεν επιτρέπεται επιπλέον ιδιότητα Map ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Key":
+      return `Το κλειδί Map στη θέση ${issue.index} δεν είναι έγκυρο.`;
     case "Value":
-      return `Το στοιχείο Map στη θέση ${issue.index} δεν είναι έγκυρο.`;
+      return `Η τιμή Map στη θέση ${issue.index} δεν είναι έγκυρη.`;
     case "Collision":
-      return `Τα κλειδιά Map ${safelyStringifyUnknownValue(issue.previousKey)} και ${safelyStringifyUnknownValue(issue.key)} αποκωδικοποιούνται στο ίδιο κλειδί ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Τα κλειδιά Map στις θέσεις ${issue.previousIndex} και ${issue.index} αποκωδικοποιούνται στο ίδιο κλειδί ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
@@ -441,7 +441,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `Η τιμή ${safelyStringifyUnknownValue(error.reason.value)} δεν είναι tuple.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Ένα Tuple πρέπει να περιέχει ακριβώς ${error.reason.expected} στοιχεία, αλλά η τιμή περιέχει ${error.reason.actual}.`;
+    return `Ένα Tuple πρέπει να έχει μήκος ${error.reason.expected}, αλλά η τιμή έχει μήκος ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -497,7 +497,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (propertyError.type === "ObjectPropertyAccess") {
     switch ((propertyError as ObjectPropertyAccessError).reason) {
       case "Accessor":
-        return "Μια ιδιότητα Object πρέπει να είναι ιδιότητα δεδομένων. Υλοποιήστε τις τιμές accessor ως απλά δεδομένα πριν χρησιμοποιήσετε αυτό το Type ή χρησιμοποιήστε διαφορετικό Type.";
+        return "Μια ιδιότητα Object πρέπει να είναι ιδιότητα δεδομένων. Μετατρέψτε τις τιμές των accessor σε απλά δεδομένα πριν χρησιμοποιήσετε αυτό το Type ή χρησιμοποιήστε διαφορετικό Type.";
       case "NonEnumerable":
         return "Μια ιδιότητα Object πρέπει να είναι απαριθμήσιμη. Κάντε την απαριθμήσιμη ή χρησιμοποιήστε διαφορετικό Type.";
     }
@@ -527,7 +527,7 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
         return `${property} πρέπει να είναι ιδιότητα δεδομένων.`;
       }
       if (error.reason.reason === "Inherited") {
-        return `${property} πρέπει να είναι ιδιόκτητη ιδιότητα.`;
+        return `${property} πρέπει να είναι ιδιότητα του ίδιου του αντικειμένου.`;
       }
       return `${property} πρέπει να είναι απαριθμήσιμη.`;
     }
@@ -535,6 +535,29 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
       return `Η διακριτική ιδιότητα ${safelyStringifyUnknownValue(error.reason.key)} έχει μη αναμενόμενη τιμή ${safelyStringifyUnknownValue(error.reason.value)}.`;
     case "Member":
       return `Η επιλεγμένη παραλλαγή ${safelyStringifyUnknownValue(error.reason.discriminator)} δεν είναι έγκυρη.`;
+  }
+};
+
+/** Formats a DataError in Greek. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Η τιμή ${safelyStringifyUnknownValue(issue.value)} δεν είναι Data.`;
+    case "UnexpectedPrototype":
+      return `Ένα Data ${issue.container} έχει μη αναμενόμενο πρωτότυπο.`;
+    case "Accessor":
+      return "Μια ιδιότητα Data πρέπει να είναι ιδιότητα δεδομένων. Μετατρέψτε τις τιμές των accessor σε απλά δεδομένα πριν χρησιμοποιήσετε αυτό το Type ή χρησιμοποιήστε διαφορετικό Type.";
+    case "NonEnumerable":
+      return "Μια ιδιότητα Data Object πρέπει να είναι απαριθμήσιμη. Αφαιρέστε την ή χρησιμοποιήστε διαφορετικό Type.";
+    case "SymbolProperty":
+      return "Ένα κλειδί ιδιότητας Data Object πρέπει να είναι συμβολοσειρά. Αφαιρέστε την ιδιότητα συμβόλου ή χρησιμοποιήστε διαφορετικό Type.";
+    case "Hole":
+      return "Λείπει ένα στοιχείο Data Array.";
+    case "InvalidUint8Array":
+      return "Ένα Data Uint8Array πρέπει να έχει μη αποσυνδεδεμένο ArrayBuffer και να βρίσκεται εντός των ορίων του.";
+    case "ExcessProperty":
+      return `Ένα Data ${issue.container} δεν πρέπει να έχει επιπλέον δικές του ιδιότητες. Αφαιρέστε την ιδιότητα ή χρησιμοποιήστε διαφορετικό Type.`;
   }
 };
 
@@ -552,7 +575,7 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
     case "UnexpectedPrototype":
       return "Η τιμή είναι αντικείμενο, αλλά ένα αντικείμενο JsonValue πρέπει να είναι απλό αντικείμενο ή να έχει πρωτότυπο null.";
     case "Accessor":
-      return "Μια ιδιότητα JSON πρέπει να είναι ιδιότητα δεδομένων. Υλοποιήστε τις τιμές accessor ως απλά δεδομένα πριν χρησιμοποιήσετε αυτό το Type ή χρησιμοποιήστε διαφορετικό Type.";
+      return "Μια ιδιότητα JSON πρέπει να είναι ιδιότητα δεδομένων. Μετατρέψτε τις τιμές των accessor σε απλά δεδομένα πριν χρησιμοποιήσετε αυτό το Type ή χρησιμοποιήστε διαφορετικό Type.";
     case "NonEnumerable":
       return "Μια ιδιότητα αντικειμένου JSON πρέπει να είναι απαριθμήσιμη. Αφαιρέστε την ή χρησιμοποιήστε διαφορετικό Type.";
     case "SymbolProperty":
@@ -570,20 +593,31 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν μπορεί να αναλυθεί ως JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Greek. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι λεκτικό μεγέθους σε byte. Χρησιμοποιήστε μια τιμή όπως "512KiB" ή "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Greek. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "Η τιμή -0 δεν είναι μήκος σε byte. Χρησιμοποιήστε αντ' αυτού το 0.";
+
+/** Formats a ByteLengthFromStringError in Greek. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι μήκος σε byte. Χρησιμοποιήστε έναν αριθμό byte ή ένα λεκτικό όπως 10MiB.`;
+
+/** Formats a DurationLiteralError in Greek. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι λεκτικό χρονικής διάρκειας. Χρησιμοποιήστε μια τιμή όπως "500ms" ή "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Greek. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι λεκτικό ποσοστού. Χρησιμοποιήστε μια τιμή όπως "50%" ή "12.5%".`;

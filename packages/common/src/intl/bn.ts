@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -126,7 +125,7 @@ export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
-  `${safelyStringifyUnknownValue(error.value)} মানটি বুলিয়ান নয়। true বা false ব্যবহার করুন।`;
+  `${safelyStringifyUnknownValue(error.value)} মানটি boolean নয়। true বা false ব্যবহার করুন।`;
 
 /** Formats a Symbol TypeOfError in Bengali. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -205,19 +204,19 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
 export const formatUncapitalizedError: TypeErrorFormatter<
   UncapitalizedError
 > = (error) =>
-  `মান ${safelyStringifyUnknownValue(error.value)} বড় হাতের অক্ষর দিয়ে শুরু হওয়া চলবে না।`;
+  `${safelyStringifyUnknownValue(error.value)} মানটি বড় হাতের অক্ষর দিয়ে শুরু হওয়া চলবে না।`;
 
 /** Formats an UppercasedError in Bengali. */
 export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
   error,
 ) =>
-  `মান ${safelyStringifyUnknownValue(error.value)} অবশ্যই বড় হাতের অক্ষরে লেখা হতে হবে।`;
+  `${safelyStringifyUnknownValue(error.value)} মানটি অবশ্যই বড় হাতের অক্ষরে লেখা হতে হবে।`;
 
 /** Formats a LowercasedError in Bengali. */
 export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
   error,
 ) =>
-  `মান ${safelyStringifyUnknownValue(error.value)} অবশ্যই ছোট হাতের অক্ষরে লেখা হতে হবে।`;
+  `${safelyStringifyUnknownValue(error.value)} মানটি অবশ্যই ছোট হাতের অক্ষরে লেখা হতে হবে।`;
 
 /** Formats a TrimmedError in Bengali. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
@@ -227,7 +226,7 @@ export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
-  `মান ${safelyStringifyUnknownValue(error.value)} অবশ্যই ${safelyStringifyUnknownValue(error.prefix)} দিয়ে শুরু হতে হবে।`;
+  `${safelyStringifyUnknownValue(error.value)} মানটি অবশ্যই ${safelyStringifyUnknownValue(error.prefix)} দিয়ে শুরু হতে হবে।`;
 
 /** Formats a MinLengthError in Bengali. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -361,7 +360,7 @@ export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
 
 /** Formats a FiniteError in Bengali. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
-  `${safelyStringifyUnknownValue(error.value)} মানটি finite হতে হবে।`;
+  `${safelyStringifyUnknownValue(error.value)} মানটি সসীম হতে হবে।`;
 
 /** Formats a MultipleOfError in Bengali. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
@@ -418,10 +417,11 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `অতিরিক্ত Map property ${safelyStringifyUnknownValue(issue.key)} অনুমোদিত নয়।`;
     case "Key":
+      return `Map-এর index ${issue.index}-এর key অবৈধ।`;
     case "Value":
-      return `Map-এর index ${issue.index}-এর element অবৈধ।`;
+      return `Map-এর index ${issue.index}-এর মান অবৈধ।`;
     case "Collision":
-      return `Map key ${safelyStringifyUnknownValue(issue.previousKey)} এবং ${safelyStringifyUnknownValue(issue.key)} decode হয়ে একই key ${safelyStringifyUnknownValue(issue.outputKey)} হয়।`;
+      return `Map-এর index ${issue.previousIndex} এবং ${issue.index}-এর key দুটি decode হয়ে একই key ${safelyStringifyUnknownValue(issue.outputKey)} হয়।`;
   }
 };
 
@@ -433,7 +433,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `${safelyStringifyUnknownValue(error.reason.value)} মানটি tuple নয়।`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple-এ ঠিক ${error.reason.expected}টি element থাকতে হবে, কিন্তু মানটিতে ${error.reason.actual}টি আছে।`;
+    return `Tuple-এর দৈর্ঘ্য ${error.reason.expected} হতে হবে, কিন্তু মানটির দৈর্ঘ্য ${error.reason.actual}।`;
   }
 
   const issue = error.reason.issues[0];
@@ -524,9 +524,32 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
       return `${property} অবশ্যই enumerable হতে হবে।`;
     }
     case "Discriminator":
-      return `Discriminator property ${safelyStringifyUnknownValue(error.reason.key)}-এর অপ্রত্যাশিত মান ${safelyStringifyUnknownValue(error.reason.value)}।`;
+      return `Discriminator property ${safelyStringifyUnknownValue(error.reason.key)}-এর মান ${safelyStringifyUnknownValue(error.reason.value)} অপ্রত্যাশিত।`;
     case "Member":
       return `নির্বাচিত variant ${safelyStringifyUnknownValue(error.reason.discriminator)} অবৈধ।`;
+  }
+};
+
+/** Formats a DataError in Bengali. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `${safelyStringifyUnknownValue(issue.value)} মানটি Data নয়।`;
+    case "UnexpectedPrototype":
+      return `Data ${issue.container}-এর prototype অপ্রত্যাশিত।`;
+    case "Accessor":
+      return "Data property অবশ্যই data property হতে হবে। এই Type ব্যবহার করার আগে accessor value-গুলোকে plain data-তে materialize করুন, অথবা অন্য Type ব্যবহার করুন।";
+    case "NonEnumerable":
+      return "Data Object property অবশ্যই enumerable হতে হবে। এটি সরিয়ে দিন অথবা অন্য Type ব্যবহার করুন।";
+    case "SymbolProperty":
+      return "Data Object property key অবশ্যই string হতে হবে। symbol property সরিয়ে দিন অথবা অন্য Type ব্যবহার করুন।";
+    case "Hole":
+      return "Data Array-এর একটি element অনুপস্থিত।";
+    case "InvalidUint8Array":
+      return "Data Uint8Array-এর ArrayBuffer detached হওয়া চলবে না, এবং Uint8Array-কে অবশ্যই সেই ArrayBuffer-এর সীমার মধ্যে থাকতে হবে।";
+    case "ExcessProperty":
+      return `Data ${issue.container}-এ অতিরিক্ত own property থাকা চলবে না। property-টি সরিয়ে দিন অথবা অন্য Type ব্যবহার করুন।`;
   }
 };
 
@@ -540,7 +563,7 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
     case "InvalidType":
       return `${safelyStringifyUnknownValue(issue.value)} মানটি JSON value নয়।`;
     case "NonFiniteNumber":
-      return "JSON number অবশ্যই finite হতে হবে।";
+      return "JSON number অবশ্যই সসীম হতে হবে।";
     case "UnexpectedPrototype":
       return "মানটি object, কিন্তু JsonValue object অবশ্যই plain object হতে হবে অথবা এর prototype null হতে হবে।";
     case "Accessor":
@@ -562,20 +585,31 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটিকে JsonValue হিসেবে parse করা যায় না।`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Bengali. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
-  `মান ${safelyStringifyUnknownValue(error.value)} বাইট আকারের লিটারাল নয়। "512KiB" বা "1MiB"-এর মতো একটি মান ব্যবহার করুন।`;
+  `${safelyStringifyUnknownValue(error.value)} মানটি বাইট আকারের literal নয়। "512KiB" বা "1MiB"-এর মতো একটি মান ব্যবহার করুন।`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Bengali. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "-0 মানটি বাইট দৈর্ঘ্য নয়। এর পরিবর্তে 0 ব্যবহার করুন।";
+
+/** Formats a ByteLengthFromStringError in Bengali. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি বাইট দৈর্ঘ্য নয়। বাইটের সংখ্যা বা 10MiB-এর মতো একটি literal ব্যবহার করুন।`;
+
+/** Formats a DurationLiteralError in Bengali. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
-  `মান ${safelyStringifyUnknownValue(error.value)} সময়কালের লিটারাল নয়। "500ms" বা "1.5s"-এর মতো একটি মান ব্যবহার করুন।`;
+  `${safelyStringifyUnknownValue(error.value)} মানটি সময়কালের literal নয়। "500ms" বা "1.5s"-এর মতো একটি মান ব্যবহার করুন।`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Bengali. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
-  `মান ${safelyStringifyUnknownValue(error.value)} শতাংশের লিটারাল নয়। "50%" বা "12.5%"-এর মতো একটি মান ব্যবহার করুন।`;
+  `${safelyStringifyUnknownValue(error.value)} মানটি শতাংশের literal নয়। "50%" বা "12.5%"-এর মতো একটি মান ব্যবহার করুন।`;

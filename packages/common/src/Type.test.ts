@@ -15,12 +15,6 @@ import {
   assertThrowsInstanceOf,
   assertTrue,
 } from "./Assert.ts";
-import {
-  formatCapitalizedError,
-  formatUncapitalizedError,
-  formatUppercasedError,
-  formatLowercasedError,
-} from "./intl/_en.ts";
 import * as cs from "./intl/cs.ts";
 import {
   allResult,
@@ -7003,13 +6997,17 @@ describe("templateLiteralParser", () => {
       Value.formatError({ type: "TemplateLiteral", value: "b" }),
       'The value "b" does not match the template literal.',
     );
+    const czech = cs.formatTemplateLiteralError({
+      type: "TemplateLiteral",
+      value: "b",
+    });
     assertEqual(
       Localized.formatError({ type: "TemplateLiteral", value: "b" }),
-      'Hodnota "b" neodpovídá šablonovému řetězci.',
+      czech,
     );
     assertEqual(
       Localized.parent.formatError({ type: "TemplateLiteral", value: "b" }),
-      'Hodnota "b" neodpovídá šablonovému řetězci.',
+      czech,
     );
   });
 
@@ -8384,33 +8382,25 @@ describe("Text casing", () => {
     }
   });
 
-  it("formats casing errors and matches the default English messages", () => {
+  it("formats casing errors in English", () => {
     assertEqual(
-      formatUncapitalizedError({ type: "Uncapitalized", value: "Hello" }),
-      'The value "Hello" must not start with an uppercase letter.',
-    );
-    assertEqual(
-      cs.formatUncapitalizedError({ type: "Uncapitalized", value: "Hello" }),
-      'Hodnota "Hello" nesmí začínat velkým písmenem.',
-    );
-    assertEqual(
-      formatCapitalizedError({ type: "Capitalized", value: "hello" }),
       CapitalizedString.formatError({ type: "Capitalized", value: "hello" }),
+      'The value "hello" must be capitalized.',
     );
     assertEqual(
-      formatUncapitalizedError({ type: "Uncapitalized", value: "Hello" }),
       UncapitalizedString.formatError({
         type: "Uncapitalized",
         value: "Hello",
       }),
+      'The value "Hello" must not start with an uppercase letter.',
     );
     assertEqual(
-      formatUppercasedError({ type: "Uppercased", value: "Hello" }),
       UppercasedString.formatError({ type: "Uppercased", value: "Hello" }),
+      'The value "Hello" must be uppercased.',
     );
     assertEqual(
-      formatLowercasedError({ type: "Lowercased", value: "Hello" }),
       LowercasedString.formatError({ type: "Lowercased", value: "Hello" }),
+      'The value "Hello" must be lowercased.',
     );
   });
 });
@@ -14072,7 +14062,14 @@ describe("tuple", () => {
           type: "Tuple",
           reason: { kind: "InvalidLength", expected: 2, actual: 1 },
         }),
-        "A Tuple must contain exactly 2 elements, but the value contains 1.",
+        "A Tuple must have length 2, but the value has length 1.",
+      );
+      assertEqual(
+        Pair.formatError({
+          type: "Tuple",
+          reason: { kind: "InvalidLength", expected: 1, actual: 2 },
+        }),
+        "A Tuple must have length 1, but the value has length 2.",
       );
       assertEqual(
         Pair.formatError({

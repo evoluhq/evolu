@@ -1,12 +1,9 @@
 /**
- * ਪੰਜਾਬੀ Evolu Type ਗਲਤੀ ਫਾਰਮੈਟਰ।
+ * Punjabi Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,95 +95,95 @@ const formatPlainObjectRootError = (
     ? `ਮੁੱਲ ${safelyStringifyUnknownValue(reason.value)} object ਨਹੀਂ ਹੈ।`
     : "ਮੁੱਲ ਇੱਕ object ਹੈ, ਪਰ Object Output ਇੱਕ plain object ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ ਜਾਂ ਇਸਦਾ prototype null ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।";
 
-/** NeverError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a NeverError in Punjabi. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} Never ਕਿਸਮ ਲਈ ਵੈਧ ਨਹੀਂ ਹੈ।`;
 
-/** String TypeOfError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a String TypeOfError in Punjabi. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** TemplateLiteralError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a TemplateLiteralError in Punjabi. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} template literal ਨਾਲ ਮੇਲ ਨਹੀਂ ਖਾਂਦਾ।`;
 
-/** Number TypeOfError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a Number TypeOfError in Punjabi. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** BigInt TypeOfError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a BigInt TypeOfError in Punjabi. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Boolean TypeOfError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a Boolean TypeOfError in Punjabi. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** BooleanFromStringError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a BooleanFromStringError in Punjabi. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਬੂਲੀਅਨ ਨਹੀਂ ਹੈ। true ਜਾਂ false ਵਰਤੋ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} boolean ਨਹੀਂ ਹੈ। true ਜਾਂ false ਵਰਤੋ।`;
 
-/** Symbol TypeOfError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a Symbol TypeOfError in Punjabi. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Function TypeOfError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a Function TypeOfError in Punjabi. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** EvoluTypeError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an EvoluTypeError in Punjabi. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) => `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} Evolu Type ਨਹੀਂ ਹੈ।`;
 
-/** ObjectTagError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an ObjectTagError in Punjabi. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵਿੱਚ ਉਮੀਦ ਕੀਤਾ object tag ${safelyStringifyUnknownValue(error.expected)} ਨਹੀਂ ਹੈ।`;
 
-/** InstanceOfError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an InstanceOfError in Punjabi. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ${error.constructorName} ਦਾ instance ਨਹੀਂ ਹੈ।`;
 
-/** LiteralError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a LiteralError in Punjabi. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਉਮੀਦ ਕੀਤੇ literal ਦੇ strictly ਬਰਾਬਰ ਨਹੀਂ ਹੈ: ${String(error.expected)}।`;
 
-/** UnionError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a UnionError in Punjabi. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "ਮੁੱਲ ਕਿਸੇ ਵੀ ਮਨਜ਼ੂਰਸ਼ੁਦਾ variant ਨਾਲ ਮੇਲ ਨਹੀਂ ਖਾਂਦਾ।";
 
-/** DateIsoError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a DateIsoError in Punjabi. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} canonical ISO date-time string ਨਹੀਂ ਹੈ।`;
 
-/** DateIsoFromDateError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a DateIsoFromDateError in Punjabi. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date ਨੂੰ DateIso ਵਜੋਂ ਦਰਸਾਇਆ ਨਹੀਂ ਜਾ ਸਕਦਾ।";
 
-/** DecimalStringError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a DecimalStringError in Punjabi. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ canonical decimal string ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** Int64Error ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an Int64Error in Punjabi. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ signed 64-bit integer (Int64) ਨਹੀਂ ਹੈ।`;
 
-/** UInt64Error ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a UInt64Error in Punjabi. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ unsigned 64-bit integer (UInt64) ਨਹੀਂ ਹੈ।`;
 
-/** Int64StringError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an Int64StringError in Punjabi. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -196,7 +195,7 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ${error.casing} ਪਛਾਣਕਰਤਾ ਨਹੀਂ ਹੈ।`;
 
-/** CapitalizedError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a CapitalizedError in Punjabi. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -220,7 +219,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਛੋਟੇ ਅੱਖਰਾਂ ਵਿੱਚ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** TrimmedError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a TrimmedError in Punjabi. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦੇ ਸ਼ੁਰੂ ਅਤੇ ਅੰਤ ਤੋਂ whitespace ਹਟਿਆ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
@@ -230,151 +229,151 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦੀ ਸ਼ੁਰੂਆਤ ${safelyStringifyUnknownValue(error.prefix)} ਨਾਲ ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ।`;
 
-/** MinLengthError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a MinLengthError in Punjabi. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦੀ ਲੰਬਾਈ ਘੱਟੋ-ਘੱਟ ${error.min} ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ।`;
 
-/** MaxLengthError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a MaxLengthError in Punjabi. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦੀ ਲੰਬਾਈ ਵੱਧ ਤੋਂ ਵੱਧ ${error.max} ਹੋ ਸਕਦੀ ਹੈ।`;
 
-/** LengthError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a LengthError in Punjabi. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦੀ ਲੋੜੀਂਦੀ ਲੰਬਾਈ ${error.exact} ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦੀ ਲੰਬਾਈ ਬਿਲਕੁਲ ${error.exact} ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ।`;
 
-/** RegexError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a RegexError in Punjabi. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} /${error.source}/${error.flags} ਨਾਲ ਮੇਲ ਨਹੀਂ ਖਾਂਦਾ।`;
 
-/** Base64UrlError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a Base64UrlError in Punjabi. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ Base64Url string ਨਹੀਂ ਹੈ।`;
 
-/** NameError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a NameError in Punjabi. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ Name ਨਹੀਂ ਹੈ।`;
 
-/** EmailError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an EmailError in Punjabi. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ ਈਮੇਲ ਪਤਾ ਨਹੀਂ ਹੈ।`;
 
-/** MnemonicError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a MnemonicError in Punjabi. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ ਅੰਗਰੇਜ਼ੀ BIP39 mnemonic ਨਹੀਂ ਹੈ।`;
 
-/** IdError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an IdError in Punjabi. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ Id ਨਹੀਂ ਹੈ।`;
 
-/** TableIdError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a TableIdError in Punjabi. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} table ${error.table} ਲਈ ਵੈਧ Id ਨਹੀਂ ਹੈ।`;
 
-/** UuidError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a UuidError in Punjabi. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਛੋਟੇ ਅੱਖਰਾਂ ਵਾਲਾ canonical UUID ਨਹੀਂ ਹੈ।`;
 
-/** NonNegativeError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a NonNegativeError in Punjabi. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਰਿਣਾਤਮਕ ਨਹੀਂ ਹੋਣਾ ਚਾਹੀਦਾ (>= 0)।`;
 
-/** NonNegativeDecimalStringError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a NonNegativeDecimalStringError in Punjabi. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ non-negative decimal string ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ decimal string ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ ਅਤੇ ਰਿਣਾਤਮਕ ਨਹੀਂ ਹੋਣਾ ਚਾਹੀਦਾ।`;
 
-/** PositiveError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a PositiveError in Punjabi. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਧਨਾਤਮਕ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ (> 0)।`;
 
-/** PositiveDecimalStringError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a PositiveDecimalStringError in Punjabi. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ positive decimal string ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ ਧਨਾਤਮਕ decimal string ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** NonPositiveError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a NonPositiveError in Punjabi. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਧਨਾਤਮਕ ਨਹੀਂ ਹੋਣਾ ਚਾਹੀਦਾ (<= 0)।`;
 
-/** NonPositiveDecimalStringError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a NonPositiveDecimalStringError in Punjabi. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ non-positive decimal string ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ decimal string ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ ਅਤੇ ਧਨਾਤਮਕ ਨਹੀਂ ਹੋਣਾ ਚਾਹੀਦਾ।`;
 
-/** NegativeError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a NegativeError in Punjabi. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਰਿਣਾਤਮਕ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ (< 0)।`;
 
-/** NegativeDecimalStringError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a NegativeDecimalStringError in Punjabi. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ negative decimal string ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ ਰਿਣਾਤਮਕ decimal string ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** IntError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an IntError in Punjabi. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ safe integer ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** IntFromStringError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an IntFromStringError in Punjabi. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦਸ਼ਮਲਵ ਪੂਰਨ ਅੰਕ ਨਹੀਂ ਹੈ।`;
 
-/** GreaterThanError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a GreaterThanError in Punjabi. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ${error.min} ਤੋਂ ਵੱਡਾ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.min} ਤੋਂ ਵੱਡਾ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** GreaterThanOrEqualToError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a GreaterThanOrEqualToError in Punjabi. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ${error.min} ਤੋਂ ਵੱਡਾ ਜਾਂ ਉਸ ਦੇ ਬਰਾਬਰ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.min} ਤੋਂ ਵੱਡਾ ਜਾਂ ਉਸ ਦੇ ਬਰਾਬਰ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** LessThanError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a LessThanError in Punjabi. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ${error.max} ਤੋਂ ਛੋਟਾ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.max} ਤੋਂ ਛੋਟਾ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** LessThanOrEqualToError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a LessThanOrEqualToError in Punjabi. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ${error.max} ਤੋਂ ਛੋਟਾ ਜਾਂ ਉਸ ਦੇ ਬਰਾਬਰ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.max} ਤੋਂ ਛੋਟਾ ਜਾਂ ਉਸ ਦੇ ਬਰਾਬਰ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** NonNaNError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a NonNaNError in Punjabi. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "ਮੁੱਲ NaN ਨਹੀਂ ਹੋਣਾ ਚਾਹੀਦਾ।";
 
-/** FiniteError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a FiniteError in Punjabi. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਸੀਮਿਤ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** MultipleOfError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a MultipleOfError in Punjabi. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ${error.divisor} ਦਾ ਗੁਣਜ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.divisor} ਦਾ ਗੁਣਜ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** BetweenError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a BetweenError in Punjabi. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ${error.min} ਅਤੇ ${error.max} ਦੇ ਵਿਚਕਾਰ, ਦੋਵੇਂ ਸੀਮਾਵਾਂ ਸਮੇਤ, ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.min} ਅਤੇ ${error.max} ਦੇ ਵਿਚਕਾਰ, ਦੋਵੇਂ ਸੀਮਾਵਾਂ ਸਮੇਤ, ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
-/** ArrayError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an ArrayError in Punjabi. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `ਮੁੱਲ ${safelyStringifyUnknownValue(error.reason.value)} array ਨਹੀਂ ਹੈ।`;
@@ -393,7 +392,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** SetError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a SetError in Punjabi. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `ਮੁੱਲ ${safelyStringifyUnknownValue(error.reason.value)} Set ਨਹੀਂ ਹੈ।`;
@@ -408,7 +407,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** MapError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a MapError in Punjabi. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `ਮੁੱਲ ${safelyStringifyUnknownValue(error.reason.value)} Map ਨਹੀਂ ਹੈ।`;
@@ -419,14 +418,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `ਵਾਧੂ Map property ${safelyStringifyUnknownValue(issue.key)} ਦੀ ਇਜਾਜ਼ਤ ਨਹੀਂ ਹੈ।`;
     case "Key":
+      return `index ${issue.index} ਉੱਤੇ Map ਦੀ key ਅਵੈਧ ਹੈ।`;
     case "Value":
-      return `index ${issue.index} ਉੱਤੇ Map element ਅਵੈਧ ਹੈ।`;
+      return `index ${issue.index} ਉੱਤੇ Map ਦਾ ਮੁੱਲ ਅਵੈਧ ਹੈ।`;
     case "Collision":
-      return `Map keys ${safelyStringifyUnknownValue(issue.previousKey)} ਅਤੇ ${safelyStringifyUnknownValue(issue.key)} decode ਹੋ ਕੇ ਇੱਕੋ key ${safelyStringifyUnknownValue(issue.outputKey)} ਬਣ ਜਾਂਦੀਆਂ ਹਨ।`;
+      return `index ${issue.previousIndex} ਅਤੇ ${issue.index} ਉੱਤੇ ਮੌਜੂਦ Map keys decode ਹੋ ਕੇ ਇੱਕੋ key ${safelyStringifyUnknownValue(issue.outputKey)} ਬਣ ਜਾਂਦੀਆਂ ਹਨ।`;
   }
 };
 
-/** TupleError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a TupleError in Punjabi. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -434,7 +434,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `ਮੁੱਲ ${safelyStringifyUnknownValue(error.reason.value)} tuple ਨਹੀਂ ਹੈ।`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Tuple ਵਿੱਚ ਬਿਲਕੁਲ ${error.reason.expected} elements ਹੋਣੇ ਚਾਹੀਦੇ ਹਨ, ਪਰ ਮੁੱਲ ਵਿੱਚ ${error.reason.actual} ਹਨ।`;
+    return `Tuple ਦੀ ਲੰਬਾਈ ${error.reason.expected} ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ, ਪਰ ਮੁੱਲ ਦੀ ਲੰਬਾਈ ${error.reason.actual} ਹੈ।`;
   }
 
   const issue = error.reason.issues[0];
@@ -451,7 +451,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** RecordError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a RecordError in Punjabi. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `ਮੁੱਲ ${safelyStringifyUnknownValue(error.reason.value)} Record ਨਹੀਂ ਹੈ।`;
@@ -476,7 +476,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** ObjectError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats an ObjectError in Punjabi. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -507,7 +507,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `Property ${safelyStringifyUnknownValue(key)} ਅਵੈਧ ਹੈ।`;
 };
 
-/** DiscriminatedUnionError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a DiscriminatedUnionError in Punjabi. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -525,13 +525,36 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
       return `${property} enumerable ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ।`;
     }
     case "Discriminator":
-      return `Discriminator property ${safelyStringifyUnknownValue(error.reason.key)} ਦਾ ਮੁੱਲ ${safelyStringifyUnknownValue(error.reason.value)} ਉਮੀਦ ਕੀਤਾ ਨਹੀਂ ਹੈ।`;
+      return `Discriminator property ${safelyStringifyUnknownValue(error.reason.key)} ਦਾ ਮੁੱਲ ${safelyStringifyUnknownValue(error.reason.value)} ਅਣਕਿਆਸਿਆ ਹੈ।`;
     case "Member":
       return `ਚੁਣਿਆ ਗਿਆ variant ${safelyStringifyUnknownValue(error.reason.discriminator)} ਅਵੈਧ ਹੈ।`;
   }
 };
 
-/** JsonValueError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a DataError in Punjabi. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `ਮੁੱਲ ${safelyStringifyUnknownValue(issue.value)} Data ਨਹੀਂ ਹੈ।`;
+    case "UnexpectedPrototype":
+      return `Data ${issue.container} ਦਾ prototype ਅਣਕਿਆਸਿਆ ਹੈ।`;
+    case "Accessor":
+      return "Data property ਇੱਕ data property ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ। ਇਸ Type ਨੂੰ ਵਰਤਣ ਤੋਂ ਪਹਿਲਾਂ accessor values ਨੂੰ plain data ਵਿੱਚ materialize ਕਰੋ ਜਾਂ ਕੋਈ ਵੱਖਰਾ Type ਵਰਤੋ।";
+    case "NonEnumerable":
+      return "Data Object property enumerable ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ। ਇਸਨੂੰ ਹਟਾਓ ਜਾਂ ਕੋਈ ਵੱਖਰਾ Type ਵਰਤੋ।";
+    case "SymbolProperty":
+      return "Data Object property key ਇੱਕ string ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ। symbol property ਹਟਾਓ ਜਾਂ ਕੋਈ ਵੱਖਰਾ Type ਵਰਤੋ।";
+    case "Hole":
+      return "Data Array element ਮੌਜੂਦ ਨਹੀਂ ਹੈ।";
+    case "InvalidUint8Array":
+      return "Data Uint8Array ਦਾ ArrayBuffer detached ਨਹੀਂ ਹੋਣਾ ਚਾਹੀਦਾ, ਅਤੇ Uint8Array ਉਸ ArrayBuffer ਦੀਆਂ ਸੀਮਾਵਾਂ ਦੇ ਅੰਦਰ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।";
+    case "ExcessProperty":
+      return `Data ${issue.container} ਵਿੱਚ ਵਾਧੂ own properties ਨਹੀਂ ਹੋਣੀਆਂ ਚਾਹੀਦੀਆਂ। ਉਸ property ਨੂੰ ਹਟਾਓ ਜਾਂ ਕੋਈ ਵੱਖਰਾ Type ਵਰਤੋ।`;
+  }
+};
+
+/** Formats a JsonValueError in Punjabi. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -559,24 +582,35 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** JsonError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+/** Formats a JsonError in Punjabi. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ JsonValue ਵਿੱਚ parse ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ।`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Punjabi. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਬਾਈਟ ਆਕਾਰ ਦਾ ਲਿਟਰਲ ਨਹੀਂ ਹੈ। "512KiB" ਜਾਂ "1MiB" ਵਰਗਾ ਮੁੱਲ ਵਰਤੋ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਬਾਈਟ ਆਕਾਰ ਦਾ literal ਨਹੀਂ ਹੈ। "512KiB" ਜਾਂ "1MiB" ਵਰਗਾ ਮੁੱਲ ਵਰਤੋ।`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Punjabi. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "ਮੁੱਲ -0 ਬਾਈਟ ਲੰਬਾਈ ਨਹੀਂ ਹੈ। ਇਸ ਦੀ ਥਾਂ 0 ਵਰਤੋ।";
+
+/** Formats a ByteLengthFromStringError in Punjabi. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਬਾਈਟ ਲੰਬਾਈ ਨਹੀਂ ਹੈ। ਬਾਈਟਾਂ ਦੀ ਗਿਣਤੀ ਜਾਂ 10MiB ਵਰਗਾ literal ਵਰਤੋ।`;
+
+/** Formats a DurationLiteralError in Punjabi. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਮਿਆਦ ਦਾ ਲਿਟਰਲ ਨਹੀਂ ਹੈ। "500ms" ਜਾਂ "1.5s" ਵਰਗਾ ਮੁੱਲ ਵਰਤੋ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਮਿਆਦ ਦਾ literal ਨਹੀਂ ਹੈ। "500ms" ਜਾਂ "1.5s" ਵਰਗਾ ਮੁੱਲ ਵਰਤੋ।`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Punjabi. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਪ੍ਰਤੀਸ਼ਤ ਦਾ ਲਿਟਰਲ ਨਹੀਂ ਹੈ। "50%" ਜਾਂ "12.5%" ਵਰਗਾ ਮੁੱਲ ਵਰਤੋ।`;
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਪ੍ਰਤੀਸ਼ਤ ਦਾ literal ਨਹੀਂ ਹੈ। "50%" ਜਾਂ "12.5%" ਵਰਗਾ ਮੁੱਲ ਵਰਤੋ।`;

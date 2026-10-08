@@ -4,233 +4,329 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
-import type * as T from "../Type.ts";
+import type {
+  ArrayError,
+  Base64UrlError,
+  BooleanFromStringError,
+  BetweenError,
+  IdentifierError,
+  CapitalizedError,
+  DataError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
+  DateIsoError,
+  DateIsoFromDateError,
+  DecimalStringError,
+  DiscriminatedUnionError,
+  EmailError,
+  EvoluTypeError,
+  FiniteError,
+  GreaterThanError,
+  GreaterThanOrEqualToError,
+  InstanceOfError,
+  Int64Error,
+  Int64StringError,
+  IntError,
+  IntFromStringError,
+  IdError,
+  JsonError,
+  JsonValueError,
+  LengthError,
+  LessThanError,
+  LessThanOrEqualToError,
+  LiteralError,
+  MapError,
+  MaxLengthError,
+  MinLengthError,
+  MnemonicError,
+  MultipleOfError,
+  NegativeDecimalStringError,
+  NegativeError,
+  NameError,
+  NeverError,
+  NonNaNError,
+  NonNegativeDecimalStringError,
+  NonNegativeError,
+  NonPositiveDecimalStringError,
+  NonPositiveError,
+  ObjectError,
+  ObjectNotObjectError,
+  ObjectPropertyAccessError,
+  ObjectTagError,
+  ObjectUnexpectedPrototypeError,
+  PositiveDecimalStringError,
+  PositiveError,
+  RecordError,
+  RegexError,
+  SetError,
+  TableIdError,
+  TemplateLiteralError,
+  StartsWithError,
+  TrimmedError,
+  TupleElementsError,
+  TupleError,
+  TypeError,
+  TypeErrorFormatter,
+  TypeOfError,
+  TypeValueError,
+  UInt64Error,
+  UnionError,
+  UuidError,
+} from "../Type.ts";
 
 const formatTypeOfError = (
-  error: T.TypeOfError<
+  error: TypeOfError<
     "String" | "Number" | "BigInt" | "Boolean" | "Symbol" | "Function"
   >,
 ): string => {
   const typeOf = error.expected.toLowerCase();
-  return `Thamani ${safelyStringifyUnknownValue(error.value)} si ${typeOf}.`;
+  return `Thamani ${safelyStringifyUnknownValue(error.value)} si ya aina ${typeOf}.`;
 };
 
 const formatPlainObjectRootError = (
   reason:
-    | T.ObjectNotObjectError["reason"]
-    | T.ObjectUnexpectedPrototypeError["reason"],
+    ObjectNotObjectError["reason"] | ObjectUnexpectedPrototypeError["reason"],
 ): string =>
   reason.kind === "NotObject"
-    ? `Thamani ${safelyStringifyUnknownValue(reason.value)} si kitu.`
+    ? `Thamani ${safelyStringifyUnknownValue(reason.value)} si kitu (object).`
     : "Thamani ni kitu, lakini Object Output lazima iwe kitu cha kawaida au iwe na prototaipu null.";
 
 /** Formats a NeverError in Swahili. */
-export const formatNeverError: T.TypeErrorFormatter<T.NeverError> = (error) =>
+export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si halali kwa aina Never.`;
-export const formatStringError: T.TypeErrorFormatter<T.TypeOfError<"String">> =
+/** Formats a String TypeOfError in Swahili. */
+export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
-export const formatTemplateLiteralError: T.TypeErrorFormatter<
-  T.TemplateLiteralError
+/** Formats a TemplateLiteralError in Swahili. */
+export const formatTemplateLiteralError: TypeErrorFormatter<
+  TemplateLiteralError
 > = (error) =>
-  `Thamani ${safelyStringifyUnknownValue(error.value)} hailingani na template literal.`;
-export const formatNumberError: T.TypeErrorFormatter<T.TypeOfError<"Number">> =
+  `Thamani ${safelyStringifyUnknownValue(error.value)} hailingani na literali ya kiolezo.`;
+/** Formats a Number TypeOfError in Swahili. */
+export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
-export const formatBigIntError: T.TypeErrorFormatter<T.TypeOfError<"BigInt">> =
+/** Formats a BigInt TypeOfError in Swahili. */
+export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
-export const formatBooleanError: T.TypeErrorFormatter<
-  T.TypeOfError<"Boolean">
-> = formatTypeOfError;
-export const formatSymbolError: T.TypeErrorFormatter<T.TypeOfError<"Symbol">> =
+/** Formats a Boolean TypeOfError in Swahili. */
+export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
-export const formatFunctionError: T.TypeErrorFormatter<
-  T.TypeOfError<"Function">
-> = formatTypeOfError;
-export const formatEvoluTypeError: T.TypeErrorFormatter<T.EvoluTypeError> = (
+/** Formats a Symbol TypeOfError in Swahili. */
+export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
+  formatTypeOfError;
+/** Formats a Function TypeOfError in Swahili. */
+export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
+  formatTypeOfError;
+/** Formats an EvoluTypeError in Swahili. */
+export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) => `Thamani ${safelyStringifyUnknownValue(error.value)} si Aina ya Evolu.`;
-export const formatObjectTagError: T.TypeErrorFormatter<T.ObjectTagError> = (
+/** Formats an ObjectTagError in Swahili. */
+export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} haina lebo ya kitu inayotarajiwa ${safelyStringifyUnknownValue(error.expected)}.`;
-export const formatInstanceOfError: T.TypeErrorFormatter<T.InstanceOfError> = (
+/** Formats an InstanceOfError in Swahili. */
+export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si instance ya ${error.constructorName}.`;
-export const formatLiteralError: T.TypeErrorFormatter<T.LiteralError> = (
-  error,
-) =>
-  `Thamani ${safelyStringifyUnknownValue(error.value)} si sawa kabisa na literal inayotarajiwa: ${String(error.expected)}.`;
-export const formatUnionError: T.TypeErrorFormatter<T.UnionError> = () =>
+/** Formats a LiteralError in Swahili. */
+export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si sawa kabisa na literali inayotarajiwa: ${String(error.expected)}.`;
+/** Formats a UnionError in Swahili. */
+export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Thamani hailingani na lahaja yoyote inayoruhusiwa.";
-export const formatDateIsoError: T.TypeErrorFormatter<T.DateIsoError> = (
-  error,
-) =>
+/** Formats a DateIsoError in Swahili. */
+export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si mfuatano wa kanoniki wa tarehe na wakati wa ISO.`;
-export const formatDateIsoFromDateError: T.TypeErrorFormatter<
-  T.DateIsoFromDateError
+/** Formats a DateIsoFromDateError in Swahili. */
+export const formatDateIsoFromDateError: TypeErrorFormatter<
+  DateIsoFromDateError
 > = () => "Date haiwezi kuwakilishwa kama DateIso.";
-export const formatDecimalStringError: T.TypeErrorFormatter<
-  T.DecimalStringError
+/** Formats a DecimalStringError in Swahili. */
+export const formatDecimalStringError: TypeErrorFormatter<
+  DecimalStringError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe mfuatano wa desimali wa kanoniki.`;
-export const formatInt64Error: T.TypeErrorFormatter<T.Int64Error> = (error) =>
+/** Formats an Int64Error in Swahili. */
+export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si nambari kamili yenye ishara ya biti 64 (Int64) halali.`;
-export const formatUInt64Error: T.TypeErrorFormatter<T.UInt64Error> = (error) =>
+/** Formats a UInt64Error in Swahili. */
+export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si nambari kamili isiyo na ishara ya biti 64 (UInt64) halali.`;
-export const formatInt64StringError: T.TypeErrorFormatter<
-  T.Int64StringError
-> = (error) =>
+/** Formats an Int64StringError in Swahili. */
+export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
+  error,
+) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si mfuatano halali wa Int64.`;
 
 /** Formats an IdentifierError in Swahili. */
-export const formatIdentifierError: T.TypeErrorFormatter<T.IdentifierError> = (
+export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si kitambulishi cha ${error.casing}.`;
 
-export const formatCapitalizedError: T.TypeErrorFormatter<
-  T.CapitalizedError
-> = (error) =>
+/** Formats a CapitalizedError in Swahili. */
+export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
+  error,
+) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima ianze kwa herufi kubwa.`;
 
 /** Formats an UncapitalizedError in Swahili. */
-export const formatUncapitalizedError: T.TypeErrorFormatter<
-  T.UncapitalizedError
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} haipaswi kuanza kwa herufi kubwa.`;
 
 /** Formats an UppercasedError in Swahili. */
-export const formatUppercasedError: T.TypeErrorFormatter<T.UppercasedError> = (
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe katika herufi kubwa.`;
 
 /** Formats a LowercasedError in Swahili. */
-export const formatLowercasedError: T.TypeErrorFormatter<T.LowercasedError> = (
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe katika herufi ndogo.`;
-export const formatTrimmedError: T.TypeErrorFormatter<T.TrimmedError> = (
-  error,
-) =>
-  `Thamani ${safelyStringifyUnknownValue(error.value)} lazima ipunguzwe nafasi za mwanzo na mwisho.`;
+/** Formats a TrimmedError in Swahili. */
+export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} lazima isiwe na nafasi mwanzoni wala mwishoni.`;
 /** Formats a StartsWithError in Swahili. */
-export const formatStartsWithError: T.TypeErrorFormatter<T.StartsWithError> = (
+export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima ianze na ${safelyStringifyUnknownValue(error.prefix)}.`;
 
-export const formatMinLengthError: T.TypeErrorFormatter<T.MinLengthError> = (
+/** Formats a MinLengthError in Swahili. */
+export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} haifikii urefu wa chini wa ${error.min}.`;
-export const formatMaxLengthError: T.TypeErrorFormatter<T.MaxLengthError> = (
+/** Formats a MaxLengthError in Swahili. */
+export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} inazidi urefu wa juu wa ${error.max}.`;
-export const formatLengthError: T.TypeErrorFormatter<T.LengthError> = (error) =>
+/** Formats a LengthError in Swahili. */
+export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} haina urefu unaohitajika wa ${error.exact}.`;
-export const formatRegexError: T.TypeErrorFormatter<T.RegexError> = (error) =>
+/** Formats a RegexError in Swahili. */
+export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} hailingani na /${error.source}/${error.flags}.`;
-export const formatBase64UrlError: T.TypeErrorFormatter<T.Base64UrlError> = (
+/** Formats a Base64UrlError in Swahili. */
+export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si mfuatano halali wa Base64Url.`;
-export const formatNameError: T.TypeErrorFormatter<T.NameError> = (error) =>
+/** Formats a NameError in Swahili. */
+export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si Name halali.`;
-export const formatEmailError: T.TypeErrorFormatter<T.EmailError> = (error) =>
+/** Formats an EmailError in Swahili. */
+export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si anwani halali ya barua pepe.`;
-export const formatMnemonicError: T.TypeErrorFormatter<T.MnemonicError> = (
-  error,
-) =>
+/** Formats a MnemonicError in Swahili. */
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si mnemonic halali ya BIP39 ya Kiingereza.`;
-export const formatIdError: T.TypeErrorFormatter<T.IdError> = (error) =>
+/** Formats an IdError in Swahili. */
+export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si Id halali.`;
-export const formatTableIdError: T.TypeErrorFormatter<T.TableIdError> = (
+/** Formats a TableIdError in Swahili. */
+export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si Id halali ya jedwali ${error.table}.`;
+/** Formats a UuidError in Swahili. */
+export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si UUID ya kanoniki yenye herufi ndogo.`;
+/** Formats a NonNegativeError in Swahili. */
+export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
-  `Thamani ${safelyStringifyUnknownValue(error.value)} si Id halali ya jedwali ${error.table}.`;
-export const formatUuidError: T.TypeErrorFormatter<T.UuidError> = (error) =>
-  `Thamani ${safelyStringifyUnknownValue(error.value)} si UUID ya kanoniki yenye herufi ndogo.`;
-export const formatNonNegativeError: T.TypeErrorFormatter<
-  T.NonNegativeError
-> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima isiwe hasi (>= 0).`;
-export const formatNonNegativeDecimalStringError: T.TypeErrorFormatter<
-  T.NonNegativeDecimalStringError
+/** Formats a NonNegativeDecimalStringError in Swahili. */
+export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
+  NonNegativeDecimalStringError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe mfuatano wa desimali usio hasi.`;
-export const formatPositiveError: T.TypeErrorFormatter<T.PositiveError> = (
-  error,
-) =>
+/** Formats a PositiveError in Swahili. */
+export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe chanya (> 0).`;
-export const formatPositiveDecimalStringError: T.TypeErrorFormatter<
-  T.PositiveDecimalStringError
+/** Formats a PositiveDecimalStringError in Swahili. */
+export const formatPositiveDecimalStringError: TypeErrorFormatter<
+  PositiveDecimalStringError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe mfuatano wa desimali chanya.`;
-export const formatNonPositiveError: T.TypeErrorFormatter<
-  T.NonPositiveError
-> = (error) =>
+/** Formats a NonPositiveError in Swahili. */
+export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
+  error,
+) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima isiwe chanya (<= 0).`;
-export const formatNonPositiveDecimalStringError: T.TypeErrorFormatter<
-  T.NonPositiveDecimalStringError
+/** Formats a NonPositiveDecimalStringError in Swahili. */
+export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
+  NonPositiveDecimalStringError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe mfuatano wa desimali usio chanya.`;
-export const formatNegativeError: T.TypeErrorFormatter<T.NegativeError> = (
-  error,
-) =>
+/** Formats a NegativeError in Swahili. */
+export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe hasi (< 0).`;
-export const formatNegativeDecimalStringError: T.TypeErrorFormatter<
-  T.NegativeDecimalStringError
+/** Formats a NegativeDecimalStringError in Swahili. */
+export const formatNegativeDecimalStringError: TypeErrorFormatter<
+  NegativeDecimalStringError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe mfuatano wa desimali hasi.`;
-export const formatIntError: T.TypeErrorFormatter<T.IntError> = (error) =>
+/** Formats an IntError in Swahili. */
+export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe nambari kamili salama.`;
-export const formatGreaterThanError: T.TypeErrorFormatter<
-  T.GreaterThanError
-> = (error) =>
+/** Formats a GreaterThanError in Swahili. */
+export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
+  error,
+) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe kubwa kuliko ${error.min}.`;
-export const formatGreaterThanOrEqualToError: T.TypeErrorFormatter<
-  T.GreaterThanOrEqualToError
+/** Formats a GreaterThanOrEqualToError in Swahili. */
+export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
+  GreaterThanOrEqualToError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe kubwa kuliko au sawa na ${error.min}.`;
-export const formatLessThanError: T.TypeErrorFormatter<T.LessThanError> = (
-  error,
-) =>
+/** Formats a LessThanError in Swahili. */
+export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe ndogo kuliko ${error.max}.`;
-export const formatLessThanOrEqualToError: T.TypeErrorFormatter<
-  T.LessThanOrEqualToError
+/** Formats a LessThanOrEqualToError in Swahili. */
+export const formatLessThanOrEqualToError: TypeErrorFormatter<
+  LessThanOrEqualToError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe ndogo kuliko au sawa na ${error.max}.`;
-export const formatNonNaNError: T.TypeErrorFormatter<T.NonNaNError> = () =>
+/** Formats a NonNaNError in Swahili. */
+export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "Thamani lazima isiwe NaN.";
-export const formatFiniteError: T.TypeErrorFormatter<T.FiniteError> = (error) =>
+/** Formats a FiniteError in Swahili. */
+export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe yenye kikomo.`;
-export const formatMultipleOfError: T.TypeErrorFormatter<T.MultipleOfError> = (
+/** Formats a MultipleOfError in Swahili. */
+export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
-  `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe kizidishi cha ${error.divisor}.`;
-export const formatBetweenError: T.TypeErrorFormatter<T.BetweenError> = (
-  error,
-) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe kigawe cha ${error.divisor}.`;
+/** Formats a BetweenError in Swahili. */
+export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe kati ya ${error.min} na ${error.max}, ikijumuisha mipaka.`;
 
-export const formatBooleanFromStringError: T.TypeErrorFormatter<
-  T.BooleanFromStringError
+/** Formats a BooleanFromStringError in Swahili. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si thamani ya boolean. Tumia true au false.`;
 
-export const formatIntFromStringError: T.TypeErrorFormatter<
-  T.IntFromStringError
+/** Formats an IntFromStringError in Swahili. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si nambari kamili ya desimali.`;
 
-export const formatArrayError: T.TypeErrorFormatter<T.ArrayError> = (error) => {
+/** Formats an ArrayError in Swahili. */
+export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray")
     return `Thamani ${safelyStringifyUnknownValue(error.reason.value)} si array.`;
   const issue = error.reason.issues[0];
@@ -245,7 +341,8 @@ export const formatArrayError: T.TypeErrorFormatter<T.ArrayError> = (error) => {
       return `Kipengele cha array katika faharasa ${issue.index} si halali.`;
   }
 };
-export const formatSetError: T.TypeErrorFormatter<T.SetError> = (error) => {
+/** Formats a SetError in Swahili. */
+export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet")
     return `Thamani ${safelyStringifyUnknownValue(error.reason.value)} si Set.`;
   const issue = error.reason.issues[0];
@@ -257,7 +354,8 @@ export const formatSetError: T.TypeErrorFormatter<T.SetError> = (error) => {
   }
 };
 
-export const formatMapError: T.TypeErrorFormatter<T.MapError> = (error) => {
+/** Formats a MapError in Swahili. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap")
     return `Thamani ${safelyStringifyUnknownValue(error.reason.value)} si Map.`;
   const issue = error.reason.issues[0];
@@ -265,19 +363,21 @@ export const formatMapError: T.TypeErrorFormatter<T.MapError> = (error) => {
     case "ExcessProperty":
       return `Sifa ya Map ya ziada ${safelyStringifyUnknownValue(issue.key)} hairuhusiwi.`;
     case "Key":
+      return `Ufunguo wa Map katika faharasa ${issue.index} si halali.`;
     case "Value":
-      return `Kipengele cha Map katika faharasa ${issue.index} si halali.`;
+      return `Thamani ya Map katika faharasa ${issue.index} si halali.`;
     case "Collision":
-      return `Funguo za Map ${safelyStringifyUnknownValue(issue.previousKey)} na ${safelyStringifyUnknownValue(issue.key)} zinafumbuliwa kuwa ufunguo uleule ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Funguo za Map katika faharasa ${issue.previousIndex} na ${issue.index} zinafumbuliwa kuwa ufunguo uleule ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
-export const formatTupleError: T.TypeErrorFormatter<
-  T.TupleError | T.TupleElementsError<T.TypeError>
+/** Formats a TupleError in Swahili. */
+export const formatTupleError: TypeErrorFormatter<
+  TupleError | TupleElementsError<TypeError>
 > = (error) => {
   if (error.reason.kind === "NotArray")
     return `Thamani ${safelyStringifyUnknownValue(error.reason.value)} si tuple.`;
   if (error.reason.kind === "InvalidLength")
-    return `Tuple lazima iwe na vipengele ${error.reason.expected} hasa, lakini thamani ina ${error.reason.actual}.`;
+    return `Tuple lazima iwe na urefu wa ${error.reason.expected}, lakini thamani ina urefu wa ${error.reason.actual}.`;
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "Hole":
@@ -290,9 +390,8 @@ export const formatTupleError: T.TypeErrorFormatter<
       return `Kipengele cha Tuple katika faharasa ${issue.index} si halali.`;
   }
 };
-export const formatRecordError: T.TypeErrorFormatter<T.RecordError> = (
-  error,
-) => {
+/** Formats a RecordError in Swahili. */
+export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord")
     return `Thamani ${safelyStringifyUnknownValue(error.reason.value)} si Record.`;
   if (error.reason.kind === "NotPlainRecord")
@@ -311,9 +410,8 @@ export const formatRecordError: T.TypeErrorFormatter<T.RecordError> = (
       return `Funguo za Record ${safelyStringifyUnknownValue(issue.previousKey)} na ${safelyStringifyUnknownValue(issue.key)} zinafumbuliwa kuwa ufunguo uleule ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
-export const formatObjectError: T.TypeErrorFormatter<T.ObjectError> = (
-  error,
-) => {
+/** Formats an ObjectError in Swahili. */
+export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties")
     return formatPlainObjectRootError(error.reason);
   const key = Reflect.ownKeys(error.reason.errors).at(0);
@@ -321,7 +419,7 @@ export const formatObjectError: T.TypeErrorFormatter<T.ObjectError> = (
   const propertyError = error.reason.errors[key];
   assertNonNullable(propertyError);
   if (propertyError.type === "ObjectPropertyAccess") {
-    switch ((propertyError as T.ObjectPropertyAccessError).reason) {
+    switch ((propertyError as ObjectPropertyAccessError).reason) {
       case "Accessor":
         return "Sifa ya Object lazima iwe sifa ya data. Badilisha thamani za accessor kuwa data ya kawaida kabla ya kutumia Aina hii au utumie Aina tofauti.";
       case "NonEnumerable":
@@ -336,14 +434,15 @@ export const formatObjectError: T.TypeErrorFormatter<T.ObjectError> = (
     return `Sifa ${safelyStringifyUnknownValue(key)} hairuhusiwi. Iondoe au utumie Aina tofauti.`;
   return `Sifa ${safelyStringifyUnknownValue(key)} si halali.`;
 };
-export const formatDiscriminatedUnionError: T.TypeErrorFormatter<
-  T.DiscriminatedUnionError
+/** Formats a DiscriminatedUnionError in Swahili. */
+export const formatDiscriminatedUnionError: TypeErrorFormatter<
+  DiscriminatedUnionError
 > = (error) => {
   switch (error.reason.kind) {
     case "Object":
       return formatPlainObjectRootError(error.reason.error.reason);
     case "PropertyAccess": {
-      const property = `Sifa ya kibaguzi ${safelyStringifyUnknownValue(error.reason.key)}`;
+      const property = `Sifa bainishi ${safelyStringifyUnknownValue(error.reason.key)}`;
       if (error.reason.reason === "Accessor")
         return `${property} lazima iwe sifa ya data.`;
       if (error.reason.reason === "Inherited")
@@ -351,12 +450,36 @@ export const formatDiscriminatedUnionError: T.TypeErrorFormatter<
       return `${property} lazima iwe enumerable.`;
     }
     case "Discriminator":
-      return `Sifa ya kibaguzi ${safelyStringifyUnknownValue(error.reason.key)} ina thamani isiyotarajiwa ${safelyStringifyUnknownValue(error.reason.value)}.`;
+      return `Sifa bainishi ${safelyStringifyUnknownValue(error.reason.key)} ina thamani isiyotarajiwa ${safelyStringifyUnknownValue(error.reason.value)}.`;
     case "Member":
       return `Lahaja iliyochaguliwa ${safelyStringifyUnknownValue(error.reason.discriminator)} si halali.`;
   }
 };
-export const formatJsonValueError: T.TypeErrorFormatter<T.JsonValueError> = (
+/** Formats a DataError in Swahili. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Thamani ${safelyStringifyUnknownValue(issue.value)} si Data.`;
+    case "UnexpectedPrototype":
+      return `${issue.container} ya Data ina prototaipu isiyotarajiwa.`;
+    case "Accessor":
+      return "Sifa ya Data lazima iwe sifa ya data. Badilisha thamani za accessor kuwa data ya kawaida kabla ya kutumia Aina hii au utumie Aina tofauti.";
+    case "NonEnumerable":
+      return "Sifa ya Object ya Data lazima iwe enumerable. Iondoe au utumie Aina tofauti.";
+    case "SymbolProperty":
+      return "Ufunguo wa sifa ya Object ya Data lazima uwe mfuatano. Ondoa sifa ya symbol au utumie Aina tofauti.";
+    case "Hole":
+      return "Kipengele cha Array ya Data hakipo.";
+    case "InvalidUint8Array":
+      return "Uint8Array ya Data lazima iwe na ArrayBuffer ambayo haijatenganishwa, na lazima iwe ndani ya mipaka ya ArrayBuffer hiyo.";
+    case "ExcessProperty":
+      return `${issue.container} ya Data haipaswi kuwa na sifa zake zenyewe za ziada. Ondoa sifa hiyo au utumie Aina tofauti.`;
+  }
+};
+
+/** Formats a JsonValueError in Swahili. */
+export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
   const issue = error.reason.issues[0];
@@ -381,23 +504,35 @@ export const formatJsonValueError: T.TypeErrorFormatter<T.JsonValueError> = (
       return "JsonValue haipaswi kuwa na marejeleo ya mviringo.";
   }
 };
-export const formatJsonError: T.TypeErrorFormatter<T.JsonError> = (error) =>
+/** Formats a JsonError in Swahili. */
+export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} haiwezi kuchanganuliwa kuwa JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
-export const formatByteSizeLiteralError: T.TypeErrorFormatter<
-  ByteSizeLiteralError
+/** Formats a ByteSizeLiteralError in Swahili. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si literali ya ukubwa kwa baiti. Tumia thamani kama "512KiB" au "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
-export const formatDurationLiteralError: T.TypeErrorFormatter<
-  DurationLiteralError
+/** Formats a ByteLengthError in Swahili. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "Thamani -0 si urefu kwa baiti. Tumia 0 badala yake.";
+
+/** Formats a ByteLengthFromStringError in Swahili. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si urefu kwa baiti. Tumia idadi ya baiti au literali kama 10MiB.`;
+
+/** Formats a DurationLiteralError in Swahili. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si literali ya muda. Tumia thamani kama "500ms" au "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
-export const formatPercentageLiteralError: T.TypeErrorFormatter<
-  PercentageLiteralError
+/** Formats a PercentageLiteralError in Swahili. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si literali ya asilimia. Tumia thamani kama "50%" au "12.5%".`;

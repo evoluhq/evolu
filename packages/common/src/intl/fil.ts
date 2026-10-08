@@ -1,12 +1,9 @@
 /**
- * Mga formatter ng error ng Evolu Type sa Filipino.
+ * Filipino Evolu Type error formatters.
  *
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -16,6 +13,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -73,6 +71,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -96,96 +95,96 @@ const formatPlainObjectRootError = (
     ? `Ang halagang ${safelyStringifyUnknownValue(reason.value)} ay hindi object.`
     : "Object ang halaga, ngunit ang Object Output ay dapat plain object o may null prototype.";
 
-/** Fino-format ang NeverError sa Filipino. */
+/** Formats a NeverError in Filipino. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid para sa type Never.`;
 
-/** Fino-format ang String TypeOfError sa Filipino. */
+/** Formats a String TypeOfError in Filipino. */
 export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
   formatTypeOfError;
 
-/** Fino-format ang TemplateLiteralError sa Filipino. */
+/** Formats a TemplateLiteralError in Filipino. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
   TemplateLiteralError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi tumutugma sa template literal.`;
 
-/** Fino-format ang Number TypeOfError sa Filipino. */
+/** Formats a Number TypeOfError in Filipino. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
   formatTypeOfError;
 
-/** Fino-format ang BigInt TypeOfError sa Filipino. */
+/** Formats a BigInt TypeOfError in Filipino. */
 export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
   formatTypeOfError;
 
-/** Fino-format ang Boolean TypeOfError sa Filipino. */
+/** Formats a Boolean TypeOfError in Filipino. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
 
-/** Fino-format ang BooleanFromStringError sa Filipino. */
+/** Formats a BooleanFromStringError in Filipino. */
 export const formatBooleanFromStringError: TypeErrorFormatter<
   BooleanFromStringError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi boolean. Gamitin ang true o false.`;
 
-/** Fino-format ang Symbol TypeOfError sa Filipino. */
+/** Formats a Symbol TypeOfError in Filipino. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
   formatTypeOfError;
 
-/** Fino-format ang Function TypeOfError sa Filipino. */
+/** Formats a Function TypeOfError in Filipino. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
 
-/** Fino-format ang EvoluTypeError sa Filipino. */
+/** Formats an EvoluTypeError in Filipino. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi Evolu Type.`;
 
-/** Fino-format ang ObjectTagError sa Filipino. */
+/** Formats an ObjectTagError in Filipino. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay walang inaasahang object tag na ${safelyStringifyUnknownValue(error.expected)}.`;
 
-/** Fino-format ang InstanceOfError sa Filipino. */
+/** Formats an InstanceOfError in Filipino. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi instance ng ${error.constructorName}.`;
 
-/** Fino-format ang LiteralError sa Filipino. */
+/** Formats a LiteralError in Filipino. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi strictly equal sa inaasahang literal: ${String(error.expected)}.`;
 
-/** Fino-format ang UnionError sa Filipino. */
+/** Formats a UnionError in Filipino. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Ang halaga ay hindi tumutugma sa alinmang pinapayagang variant.";
 
-/** Fino-format ang DateIsoError sa Filipino. */
+/** Formats a DateIsoError in Filipino. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi canonical ISO date-time string.`;
 
-/** Fino-format ang DateIsoFromDateError sa Filipino. */
+/** Formats a DateIsoFromDateError in Filipino. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Hindi maire-represent ang Date bilang DateIso.";
 
-/** Fino-format ang DecimalStringError sa Filipino. */
+/** Formats a DecimalStringError in Filipino. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat canonical decimal string.`;
 
-/** Fino-format ang Int64Error sa Filipino. */
+/** Formats an Int64Error in Filipino. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na signed 64-bit integer (Int64).`;
 
-/** Fino-format ang UInt64Error sa Filipino. */
+/** Formats a UInt64Error in Filipino. */
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na unsigned 64-bit integer (UInt64).`;
 
-/** Fino-format ang Int64StringError sa Filipino. */
+/** Formats an Int64StringError in Filipino. */
 export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
   error,
 ) =>
@@ -197,7 +196,7 @@ export const formatIdentifierError: TypeErrorFormatter<IdentifierError> = (
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang ${error.casing} identifier.`;
 
-/** Fino-format ang CapitalizedError sa Filipino. */
+/** Formats a CapitalizedError in Filipino. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
@@ -221,7 +220,7 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat nakasulat sa maliliit na titik.`;
 
-/** Fino-format ang TrimmedError sa Filipino. */
+/** Formats a TrimmedError in Filipino. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat naka-trim.`;
 
@@ -231,151 +230,151 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat magsimula sa ${safelyStringifyUnknownValue(error.prefix)}.`;
 
-/** Fino-format ang MinLengthError sa Filipino. */
+/** Formats a MinLengthError in Filipino. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi umaabot sa minimum na haba na ${error.min}.`;
 
-/** Fino-format ang MaxLengthError sa Filipino. */
+/** Formats a MaxLengthError in Filipino. */
 export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay lumalampas sa maximum na haba na ${error.max}.`;
 
-/** Fino-format ang LengthError sa Filipino. */
+/** Formats a LengthError in Filipino. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
-  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay walang kinakailangang haba na ${error.exact}.`;
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi tugma sa kinakailangang haba na ${error.exact}.`;
 
-/** Fino-format ang RegexError sa Filipino. */
+/** Formats a RegexError in Filipino. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi tumutugma sa /${error.source}/${error.flags}.`;
 
-/** Fino-format ang Base64UrlError sa Filipino. */
+/** Formats a Base64UrlError in Filipino. */
 export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na Base64Url string.`;
 
-/** Fino-format ang NameError sa Filipino. */
+/** Formats a NameError in Filipino. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na Name.`;
 
-/** Fino-format ang EmailError sa Filipino. */
+/** Formats an EmailError in Filipino. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na email address.`;
 
-/** Fino-format ang MnemonicError sa Filipino. */
+/** Formats a MnemonicError in Filipino. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na English BIP39 mnemonic.`;
 
-/** Fino-format ang IdError sa Filipino. */
+/** Formats an IdError in Filipino. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na Id.`;
 
-/** Fino-format ang TableIdError sa Filipino. */
+/** Formats a TableIdError in Filipino. */
 export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na Id para sa table na ${error.table}.`;
 
-/** Fino-format ang UuidError sa Filipino. */
+/** Formats a UuidError in Filipino. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi canonical na UUID na nasa maliliit na titik.`;
 
-/** Fino-format ang NonNegativeError sa Filipino. */
+/** Formats a NonNegativeError in Filipino. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat non-negative (>= 0).`;
 
-/** Fino-format ang NonNegativeDecimalStringError sa Filipino. */
+/** Formats a NonNegativeDecimalStringError in Filipino. */
 export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
   NonNegativeDecimalStringError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat non-negative decimal string.`;
 
-/** Fino-format ang PositiveError sa Filipino. */
+/** Formats a PositiveError in Filipino. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat positive (> 0).`;
 
-/** Fino-format ang PositiveDecimalStringError sa Filipino. */
+/** Formats a PositiveDecimalStringError in Filipino. */
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat positive decimal string.`;
 
-/** Fino-format ang NonPositiveError sa Filipino. */
+/** Formats a NonPositiveError in Filipino. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat non-positive (<= 0).`;
 
-/** Fino-format ang NonPositiveDecimalStringError sa Filipino. */
+/** Formats a NonPositiveDecimalStringError in Filipino. */
 export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
   NonPositiveDecimalStringError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat non-positive decimal string.`;
 
-/** Fino-format ang NegativeError sa Filipino. */
+/** Formats a NegativeError in Filipino. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat negative (< 0).`;
 
-/** Fino-format ang NegativeDecimalStringError sa Filipino. */
+/** Formats a NegativeDecimalStringError in Filipino. */
 export const formatNegativeDecimalStringError: TypeErrorFormatter<
   NegativeDecimalStringError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat negative decimal string.`;
 
-/** Fino-format ang IntError sa Filipino. */
+/** Formats an IntError in Filipino. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat safe integer.`;
 
-/** Fino-format ang IntFromStringError sa Filipino. */
+/** Formats an IntFromStringError in Filipino. */
 export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi decimal integer.`;
 
-/** Fino-format ang GreaterThanError sa Filipino. */
+/** Formats a GreaterThanError in Filipino. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat mas malaki sa ${error.min}.`;
 
-/** Fino-format ang GreaterThanOrEqualToError sa Filipino. */
+/** Formats a GreaterThanOrEqualToError in Filipino. */
 export const formatGreaterThanOrEqualToError: TypeErrorFormatter<
   GreaterThanOrEqualToError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat mas malaki sa o katumbas ng ${error.min}.`;
 
-/** Fino-format ang LessThanError sa Filipino. */
+/** Formats a LessThanError in Filipino. */
 export const formatLessThanError: TypeErrorFormatter<LessThanError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat mas maliit sa ${error.max}.`;
 
-/** Fino-format ang LessThanOrEqualToError sa Filipino. */
+/** Formats a LessThanOrEqualToError in Filipino. */
 export const formatLessThanOrEqualToError: TypeErrorFormatter<
   LessThanOrEqualToError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat mas maliit sa o katumbas ng ${error.max}.`;
 
-/** Fino-format ang NonNaNError sa Filipino. */
+/** Formats a NonNaNError in Filipino. */
 export const formatNonNaNError: TypeErrorFormatter<NonNaNError> = () =>
   "Ang halaga ay hindi dapat NaN.";
 
-/** Fino-format ang FiniteError sa Filipino. */
+/** Formats a FiniteError in Filipino. */
 export const formatFiniteError: TypeErrorFormatter<FiniteError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat finite.`;
 
-/** Fino-format ang MultipleOfError sa Filipino. */
+/** Formats a MultipleOfError in Filipino. */
 export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat multiple ng ${error.divisor}.`;
 
-/** Fino-format ang BetweenError sa Filipino. */
+/** Formats a BetweenError in Filipino. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat nasa pagitan ng ${error.min} at ${error.max}, kasama ang mga hangganan.`;
 
-/** Fino-format ang ArrayError sa Filipino. */
+/** Formats an ArrayError in Filipino. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `Ang halagang ${safelyStringifyUnknownValue(error.reason.value)} ay hindi array.`;
@@ -394,7 +393,7 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
-/** Fino-format ang SetError sa Filipino. */
+/** Formats a SetError in Filipino. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Ang halagang ${safelyStringifyUnknownValue(error.reason.value)} ay hindi Set.`;
@@ -409,7 +408,7 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   }
 };
 
-/** Fino-format ang MapError sa Filipino. */
+/** Formats a MapError in Filipino. */
 export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
   if (error.reason.kind === "NotMap") {
     return `Ang halagang ${safelyStringifyUnknownValue(error.reason.value)} ay hindi Map.`;
@@ -420,14 +419,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
     case "ExcessProperty":
       return `Hindi pinapayagan ang sobrang Map property na ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Key":
+      return `Hindi valid ang Map key sa index na ${issue.index}.`;
     case "Value":
-      return `Hindi valid ang Map element sa index na ${issue.index}.`;
+      return `Hindi valid ang Map value sa index na ${issue.index}.`;
     case "Collision":
-      return `Ang Map keys na ${safelyStringifyUnknownValue(issue.previousKey)} at ${safelyStringifyUnknownValue(issue.key)} ay nade-decode sa iisang key na ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Ang Map keys sa mga index na ${issue.previousIndex} at ${issue.index} ay nade-decode sa iisang key na ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
-/** Fino-format ang TupleError sa Filipino. */
+/** Formats a TupleError in Filipino. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>
 > = (error) => {
@@ -435,7 +435,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `Ang halagang ${safelyStringifyUnknownValue(error.reason.value)} ay hindi tuple.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Ang Tuple ay dapat may eksaktong ${error.reason.expected} element, ngunit ang halaga ay may ${error.reason.actual}.`;
+    return `Ang Tuple ay dapat may haba na ${error.reason.expected}, ngunit ang halaga ay may haba na ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -452,7 +452,7 @@ export const formatTupleError: TypeErrorFormatter<
   }
 };
 
-/** Fino-format ang RecordError sa Filipino. */
+/** Formats a RecordError in Filipino. */
 export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   if (error.reason.kind === "NotRecord") {
     return `Ang halagang ${safelyStringifyUnknownValue(error.reason.value)} ay hindi Record.`;
@@ -477,7 +477,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
   }
 };
 
-/** Fino-format ang ObjectError sa Filipino. */
+/** Formats an ObjectError in Filipino. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
@@ -508,7 +508,7 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   return `Hindi valid ang property na ${safelyStringifyUnknownValue(key)}.`;
 };
 
-/** Fino-format ang DiscriminatedUnionError sa Filipino. */
+/** Formats a DiscriminatedUnionError in Filipino. */
 export const formatDiscriminatedUnionError: TypeErrorFormatter<
   DiscriminatedUnionError
 > = (error) => {
@@ -532,7 +532,30 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
-/** Fino-format ang JsonValueError sa Filipino. */
+/** Formats a DataError in Filipino. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `Ang halagang ${safelyStringifyUnknownValue(issue.value)} ay hindi Data.`;
+    case "UnexpectedPrototype":
+      return `May hindi inaasahang prototype ang Data ${issue.container}.`;
+    case "Accessor":
+      return "Ang Data property ay dapat data property. I-materialize ang mga accessor value bilang plain data bago gamitin ang Type na ito, o gumamit ng ibang Type.";
+    case "NonEnumerable":
+      return "Ang Data Object property ay dapat enumerable. Alisin ito o gumamit ng ibang Type.";
+    case "SymbolProperty":
+      return "Ang Data Object property key ay dapat string. Alisin ang symbol property o gumamit ng ibang Type.";
+    case "Hole":
+      return "May nawawalang Data Array element.";
+    case "InvalidUint8Array":
+      return "Ang Data Uint8Array ay dapat may ArrayBuffer na hindi detached, at dapat itong nasa loob ng hangganan ng ArrayBuffer na iyon.";
+    case "ExcessProperty":
+      return `Ang Data ${issue.container} ay hindi dapat magkaroon ng sobrang own property. Alisin ang property o gumamit ng ibang Type.`;
+  }
+};
+
+/** Formats a JsonValueError in Filipino. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
 ) => {
@@ -560,24 +583,36 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   }
 };
 
-/** Fino-format ang JsonError sa Filipino. */
+/** Formats a JsonError in Filipino. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Hindi ma-parse ang halagang ${safelyStringifyUnknownValue(error.value)} bilang JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+/** Formats a ByteSizeLiteralError in Filipino. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang literal ng laki sa byte. Gumamit ng halagang tulad ng "512KiB" o "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in Filipino. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () =>
+  "Ang halagang -0 ay hindi isang haba sa byte. Gamitin ang 0 sa halip nito.";
+
+/** Formats a ByteLengthFromStringError in Filipino. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang haba sa byte. Gumamit ng bilang ng byte o ng literal na tulad ng 10MiB.`;
+
+/** Formats a DurationLiteralError in Filipino. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang literal ng tagal. Gumamit ng halagang tulad ng "500ms" o "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in Filipino. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang literal ng porsiyento. Gumamit ng halagang tulad ng "50%" o "12.5%".`;

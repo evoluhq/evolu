@@ -13,7 +13,6 @@
  * @module
  */
 
-import { safelyStringifyUnknownValue } from "./String.ts";
 import { assert } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
 import { exhaustiveCheck } from "./Function.ts";
@@ -41,6 +40,7 @@ import {
   templateLiteral,
   union,
 } from "./Type.ts";
+import { formatDurationLiteralError } from "./intl/_en.ts";
 
 /**
  * Time and timer operations.
@@ -718,8 +718,7 @@ export const DurationLiteral: Type<
     value,
     cause,
   }),
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a duration literal. Use a value such as "500ms" or "1.5s".`,
+  formatDurationLiteralError,
 );
 
 /**

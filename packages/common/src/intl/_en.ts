@@ -1,9 +1,11 @@
 /**
  * English Evolu Type error formatters.
  *
- * This module mirrors Type's default English formatters. It is the canonical
- * source for translating Type error messages into other languages. Update this
- * file whenever Type adds, removes, or changes a default formatter.
+ * Types use these formatters as their default messages, so add, remove, or
+ * change their English here, not in the Type modules. Only the internal checks
+ * of `withDefault` keep their English inline, because no application formats
+ * them. Locale modules translate this file: each one exports the same
+ * formatters with the same branches.
  *
  * Every formatter is exported separately so applications bundle only messages
  * referenced by their localized Type collections. Parameterized Type factories
@@ -13,9 +15,6 @@
  * @module
  */
 
-import type { DurationLiteralError } from "../Time.ts";
-import type { PercentageLiteralError } from "../Number.ts";
-import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -25,6 +24,7 @@ import type {
   BetweenError,
   IdentifierError,
   CapitalizedError,
+  DataError,
   UncapitalizedError,
   UppercasedError,
   LowercasedError,
@@ -82,6 +82,7 @@ import type {
   TypeError,
   TypeErrorFormatter,
   TypeOfError,
+  TypeValueError,
   UInt64Error,
   UnionError,
   UuidError,
@@ -91,11 +92,8 @@ const formatTypeOfError = (
   error: TypeOfError<
     "String" | "Number" | "BigInt" | "Boolean" | "Symbol" | "Function"
   >,
-): string => {
-  const typeOf = error.expected.toLowerCase();
-
-  return `A value ${safelyStringifyUnknownValue(error.value)} is not a ${typeOf}.`;
-};
+): string =>
+  `A value ${safelyStringifyUnknownValue(error.value)} is not a ${error.expected.toLowerCase()}.`;
 
 const formatPlainObjectRootError = (
   reason:
@@ -445,7 +443,7 @@ export const formatTupleError: TypeErrorFormatter<
     return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a tuple.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `A Tuple must contain exactly ${error.reason.expected} elements, but the value contains ${error.reason.actual}.`;
+    return `A Tuple must have length ${error.reason.expected}, but the value has length ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -542,6 +540,29 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
   }
 };
 
+/** Formats a DataError in English. */
+export const formatDataError: TypeErrorFormatter<DataError> = (error) => {
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "InvalidType":
+      return `A value ${safelyStringifyUnknownValue(issue.value)} is not Data.`;
+    case "UnexpectedPrototype":
+      return `A Data ${issue.container} has an unexpected prototype.`;
+    case "Accessor":
+      return "A Data property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
+    case "NonEnumerable":
+      return "A Data Object property must be enumerable. Remove it or use a different Type.";
+    case "SymbolProperty":
+      return "A Data Object property key must be a string. Remove the symbol property or use a different Type.";
+    case "Hole":
+      return "A Data Array element is missing.";
+    case "InvalidUint8Array":
+      return "A Data Uint8Array must have an attached, in-bounds ArrayBuffer.";
+    case "ExcessProperty":
+      return `A Data ${issue.container} must not have excess own properties. Remove the property or use a different Type.`;
+  }
+};
+
 /** Formats a JsonValueError in English. */
 export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
   error,
@@ -574,20 +595,36 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `The value ${safelyStringifyUnknownValue(error.value)} cannot be parsed into a JsonValue.`;
 
-/** Formats a {@link ByteSizeLiteralError}. */
+// Type imports this module, so the Bytes, Time, and Number formatters do not
+// import their error types from those modules. Importing ByteSizeLiteralError
+// would make every program that imports Type also type-check Bytes. The
+// formatters read only the value.
+
+/** Formats a ByteSizeLiteralError in English. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
-  ByteSizeLiteralError
+  TypeValueError<"ByteSizeLiteral">
 > = (error) =>
   `The value ${safelyStringifyUnknownValue(error.value)} is not a byte-size literal. Use a value such as "512KiB" or "1MiB".`;
 
-/** Formats a {@link DurationLiteralError}. */
+/** Formats a ByteLengthError in English. */
+export const formatByteLengthError: TypeErrorFormatter<
+  TypeValueError<"ByteLength">
+> = () => "The value -0 is not a byte length. Use 0 instead.";
+
+/** Formats a ByteLengthFromStringError in English. */
+export const formatByteLengthFromStringError: TypeErrorFormatter<
+  TypeValueError<"ByteLengthFromString">
+> = (error) =>
+  `The value ${safelyStringifyUnknownValue(error.value)} is not a byte length. Use a number of bytes or a literal such as 10MiB.`;
+
+/** Formats a DurationLiteralError in English. */
 export const formatDurationLiteralError: TypeErrorFormatter<
-  DurationLiteralError
+  TypeValueError<"DurationLiteral">
 > = (error) =>
   `The value ${safelyStringifyUnknownValue(error.value)} is not a duration literal. Use a value such as "500ms" or "1.5s".`;
 
-/** Formats a {@link PercentageLiteralError}. */
+/** Formats a PercentageLiteralError in English. */
 export const formatPercentageLiteralError: TypeErrorFormatter<
-  PercentageLiteralError
+  TypeValueError<"PercentageLiteral">
 > = (error) =>
   `The value ${safelyStringifyUnknownValue(error.value)} is not a percentage literal. Use a value such as "50%" or "12.5%".`;
