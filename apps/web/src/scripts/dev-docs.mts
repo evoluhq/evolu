@@ -22,6 +22,10 @@ const defaultSectionsPath = path.join(
   import.meta.dirname,
   "../data/sections.json",
 );
+const defaultTscPath = path.join(
+  defaultRepositoryDir,
+  "node_modules/@typescript/native/bin/tsc",
+);
 const defaultTypedocPath = path.join(
   defaultRepositoryDir,
   "node_modules/typedoc/bin/typedoc",
@@ -40,6 +44,7 @@ export const createApiReferenceWatcher =
     repositoryDir = defaultRepositoryDir,
     sectionsPath = defaultSectionsPath,
     stagedReferenceDir = defaultStagedReferenceDir,
+    tscPath = defaultTscPath,
     typedocPath = defaultTypedocPath,
   }: {
     readonly docsDir?: string;
@@ -47,6 +52,7 @@ export const createApiReferenceWatcher =
     readonly repositoryDir?: string;
     readonly sectionsPath?: string;
     readonly stagedReferenceDir?: string;
+    readonly tscPath?: string;
     readonly typedocPath?: string;
   } = {}): Task<AsyncDisposable, never, ApiReferenceWatcherDeps> =>
   async (run) => {
@@ -108,36 +114,55 @@ export const createApiReferenceWatcher =
       let failed = false;
       let sectionsChanged = false;
 
-      const typedocResult = await run(
+      // TypeDoc resolves imports between packages to their built declarations,
+      // so they are built first, as `pnpm build:docs` does.
+      const buildResult = await run(
         run.deps.spawn(
           process.execPath,
-          [typedocPath, "--options", "typedoc.dev.json"],
+          [tscPath, "--build", "tsconfig.typecheck.json"],
           { cwd: repositoryDir },
         ),
       );
-      if (!typedocResult.ok) {
+      if (!buildResult.ok) {
         failed = true;
-        apiReferenceConsole.error("TypeDoc failed.", typedocResult.error);
+        apiReferenceConsole.error(
+          "Building declarations failed.",
+          buildResult.error,
+        );
       } else {
-        const publishResult = trySync(() => {
-          fixApiReference(stagedReferenceDir);
-          return publishApiReference(stagedReferenceDir, referenceDir);
-        });
-
-        if (!publishResult.ok) {
+        const typedocResult = await run(
+          run.deps.spawn(
+            process.execPath,
+            [typedocPath, "--options", "typedoc.dev.json"],
+            { cwd: repositoryDir },
+          ),
+        );
+        if (!typedocResult.ok) {
           failed = true;
-          apiReferenceConsole.error(
-            "Publishing the API reference failed.",
-            publishResult.error,
-          );
+          apiReferenceConsole.error("TypeDoc failed.", typedocResult.error);
         } else {
-          changedMdxCount = publishResult.value.changedMdxPaths.length;
-          deletedMdxCount = publishResult.value.deletedMdxPaths.length;
-          for (const mdxPath of [
-            ...publishResult.value.changedMdxPaths,
-            ...publishResult.value.deletedMdxPaths,
-          ]) {
-            pendingMdxPaths.add(path.posix.join("docs/api-reference", mdxPath));
+          const publishResult = trySync(() => {
+            fixApiReference(stagedReferenceDir);
+            return publishApiReference(stagedReferenceDir, referenceDir);
+          });
+
+          if (!publishResult.ok) {
+            failed = true;
+            apiReferenceConsole.error(
+              "Publishing the API reference failed.",
+              publishResult.error,
+            );
+          } else {
+            changedMdxCount = publishResult.value.changedMdxPaths.length;
+            deletedMdxCount = publishResult.value.deletedMdxPaths.length;
+            for (const mdxPath of [
+              ...publishResult.value.changedMdxPaths,
+              ...publishResult.value.deletedMdxPaths,
+            ]) {
+              pendingMdxPaths.add(
+                path.posix.join("docs/api-reference", mdxPath),
+              );
+            }
           }
         }
       }

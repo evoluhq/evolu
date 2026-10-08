@@ -20,5 +20,5 @@
     },
     "types": ["node"]
   },
-  "include": ["**/*.ts", "**/*.mts"]
+  "include": ["**/*.ts", "**/*.mts", "../vitest.config.mts"]
 }

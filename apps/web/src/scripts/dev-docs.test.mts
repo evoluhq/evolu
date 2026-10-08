@@ -64,6 +64,7 @@ const setupDirectories = async (
   readonly repositoryDir: string;
   readonly sectionsPath: string;
   readonly stagedReferenceDir: string;
+  readonly tscPath: string;
   readonly typedocPath: string;
 }> => {
   const repositoryDir = await fs.mkdtemp(
@@ -78,9 +79,18 @@ const setupDirectories = async (
     repositoryDir,
     sectionsPath: path.join(repositoryDir, "sections.json"),
     stagedReferenceDir: path.join(repositoryDir, "staged"),
+    tscPath: path.join(repositoryDir, "tsc"),
     typedocPath: path.join(repositoryDir, "typedoc"),
   };
 };
+
+/** Builds declarations successfully and passes other commands to `spawn`. */
+const setupSpawn =
+  (tscPath: string, spawn: Spawn): Spawn =>
+  (file, args, options) =>
+    args[0] === tscPath
+      ? () => Promise.resolve(ok())
+      : spawn(file, args, options);
 
 const writeStagedReference = async (
   stagedReferenceDir: string,
@@ -110,7 +120,7 @@ void describe("API reference watcher", () => {
     const continueSecondGeneration = Promise.withResolvers<void>();
     const fifthGenerationStarted = Promise.withResolvers<void>();
     let generationCount = 0;
-    const spawn: Spawn = () => async (run) => {
+    const spawn = setupSpawn(directories.tscPath, () => async (run) => {
       generationCount += 1;
       if (generationCount === 2) {
         secondGenerationStarted.resolve();
@@ -125,7 +135,7 @@ void describe("API reference watcher", () => {
         `Generation ${generationCount === 4 ? 3 : generationCount}`,
       );
       return ok();
-    };
+    });
     await using run = testCreateRun({
       spawn,
       subscribe: subscription.subscribe,
@@ -204,14 +214,14 @@ void describe("API reference watcher", () => {
     const directories = await setupDirectories(context);
     const subscription = setupSubscription();
     let generationCount = 0;
-    const spawn: Spawn = () => async () => {
+    const spawn = setupSpawn(directories.tscPath, () => async () => {
       generationCount += 1;
       await writeStagedReference(
         directories.stagedReferenceDir,
         "Retried sections",
       );
       return ok();
-    };
+    });
     await fs.mkdir(directories.sectionsPath);
     await using run = testCreateRun({
       spawn,
@@ -251,11 +261,73 @@ void describe("API reference watcher", () => {
     await watcher[Symbol.asyncDispose]();
   });
 
+  void it("builds declarations before TypeDoc and skips TypeDoc when the build fails", async (context) => {
+    const directories = await setupDirectories(context);
+    const subscription = setupSubscription();
+    const spawnCalls: Array<Parameters<Spawn>> = [];
+    const spawn: Spawn =
+      (...call) =>
+      async () => {
+        spawnCalls.push(call);
+        if (spawnCalls.length === 1) {
+          return err({
+            type: "SpawnError",
+            command: "tsc",
+            exitCode: 2,
+            signal: null,
+            message: "tsc failed.",
+          });
+        }
+        if (call[1][0] === directories.typedocPath)
+          await writeStagedReference(directories.stagedReferenceDir, "Built");
+        return ok();
+      };
+    await using run = testCreateRun({
+      spawn,
+      subscribe: subscription.subscribe,
+      time: createTime(),
+    });
+    const watcher = await run.ok(createApiReferenceWatcher(directories));
+
+    const build: Parameters<Spawn> = [
+      process.execPath,
+      [directories.tscPath, "--build", "tsconfig.typecheck.json"],
+      { cwd: directories.repositoryDir },
+    ];
+    assert.deepEqual(spawnCalls, [build]);
+    assert.ok(
+      run.deps.console
+        .getEntriesSnapshot()
+        .some((entry) => entry.args[0] === "Building declarations failed."),
+    );
+
+    subscription.emit(
+      path.join(directories.repositoryDir, "packages/common/src/Array.ts"),
+    );
+    await run.orThrow(
+      waitFor(() =>
+        run.deps.console
+          .getEntriesSnapshot()
+          .some((entry) => String(entry.args[0]).startsWith("Updated in")),
+      ),
+    );
+    assert.deepEqual(spawnCalls, [
+      build,
+      build,
+      [
+        process.execPath,
+        [directories.typedocPath, "--options", "typedoc.dev.json"],
+        { cwd: directories.repositoryDir },
+      ],
+    ]);
+    await watcher[Symbol.asyncDispose]();
+  });
+
   void it("recovers from TypeDoc and publication failures", async (context) => {
     const directories = await setupDirectories(context);
     const subscription = setupSubscription();
     let generationCount = 0;
-    const spawn: Spawn = () => async () => {
+    const spawn = setupSpawn(directories.tscPath, () => async () => {
       generationCount += 1;
       if (generationCount === 1) {
         return err({
@@ -270,7 +342,7 @@ void describe("API reference watcher", () => {
         await writeStagedReference(directories.stagedReferenceDir, "Recovered");
       }
       return ok();
-    };
+    });
     await using run = testCreateRun({
       spawn,
       subscribe: subscription.subscribe,

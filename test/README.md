@@ -220,7 +220,8 @@ and `pnpm verify`.
 ## Bundle tests
 
 Bundle tests invoke production bundlers and verify generated artifacts,
-tree-shaking, execution, and byte sizes. Run them with `pnpm test:bundle`.
+tree-shaking, execution, and byte sizes. Run them with `pnpm test:bundle`,
+which first builds `@evolu/common`.
 Both bundlers replace `process.env.NODE_ENV` with `"production"` to remove
 development-only branches before measuring.
 They use `node:test` without source coverage because their contract is the
