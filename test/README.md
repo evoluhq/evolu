@@ -121,6 +121,12 @@ collocated unit tests. Vitest projects use explicit include lists so they
 cannot discover native `node:test` integrations; register new Vitest suites in
 the appropriate project config.
 
+Run focused browser tests with
+`pnpm exec vitest run --project=<project> <test-files>`. Without `--mode`, they
+run in Chromium, Firefox and WebKit; `--mode` selects `chromium`, `firefox`,
+`webkit` or `firefox-webkit`, and any other mode fails before tests run.
+`--coverage` runs only Chromium.
+
 The `browser-sqlite-wasm` project loads
 `packages/sqlite-wasm/wasm/sqlite3.wasm`, which CI builds in its SQLite Wasm
 job for the jobs that test it. Get it locally with `pnpm sqlite-wasm:download`,
