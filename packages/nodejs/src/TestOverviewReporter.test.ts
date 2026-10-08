@@ -194,6 +194,51 @@ describe("testOverviewReporter", () => {
     );
   });
 
+  it("reports test files that pass without a file summary", async () => {
+    // Node.js reports no summary for a file that defines no tests or exits
+    // with code 0 before reporting them, and counts the file as passed.
+    const passingFile = "packages/common/src/Passing.test.ts";
+    const unreportedFile = "packages/common/src/Unreported.test.ts";
+    const output = await collectReporterOutput([
+      {
+        type: "test:pass",
+        data: {
+          details: { duration_ms: 1, type: "test" },
+          file: resolve(passingFile),
+          name: "passes",
+          nesting: 0,
+          testNumber: 1,
+        },
+      },
+      createFileSummaryEvent({
+        durationMs: 2,
+        file: resolve(passingFile),
+        success: true,
+        tests: 1,
+      }),
+      {
+        type: "test:pass",
+        data: {
+          details: { duration_ms: 5, type: "test" },
+          file: resolve(unreportedFile),
+          name: unreportedFile,
+          nesting: 0,
+          testNumber: 2,
+        },
+      },
+    ]);
+
+    assertEqual(
+      output,
+      `Test files:
+
+✔ ${unreportedFile} (no tests reported) 5ms
+✔ ${passingFile} (1 test) 2ms
+
+`,
+    );
+  });
+
   it("prints output of failed test files", async () => {
     const cause = new Error("test failed");
     const error = Object.assign(new Error("test failed", { cause }), {

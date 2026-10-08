@@ -23,9 +23,11 @@ const slowTestThresholdMs = 300;
  *
  * A test file is listed as failed when any of its tests fail or the file itself
  * fails, such as to load. Standard output and standard error of failed test
- * files are printed after the failed tests; output of other files is omitted.
- * Durations longer than 300 ms are highlighted when terminal colors are
- * supported.
+ * files are printed after the failed tests; output of other files is omitted. A
+ * file that reports no tests, such as one without tests or one that exits
+ * before its tests finish, is listed as `(no tests reported)`; Node.js counts
+ * it as passed when it exits with code 0. Durations longer than 300 ms are
+ * highlighted when terminal colors are supported.
  */
 const testOverviewReporter = async function* (
   source: AsyncIterable<TestEvent> | Iterable<TestEvent>,
@@ -37,24 +39,26 @@ const testOverviewReporter = async function* (
   const dotOutput: Array<string> = [];
   const specEvents: Array<TestEvent> = [];
   const outputByFile = new Map<string, string>();
-  const failureDurationByFile = new Map<string, number>();
+  const resultDurationByFile = new Map<string, number>();
+  const failedFiles = new Set<string>();
   let hasFailures = false;
 
   const captureEvents = async function* (): AsyncGenerator<TestEvent, void> {
     for await (const event of source) {
-      // File summaries do not identify failed files: a file that fails to load
-      // or exits early reports no summary, and a file that exits with a nonzero
-      // code reports its failure after a successful summary. A file's own
-      // failure comes after the file exits, so its last failure has the file's
-      // duration.
-      if (event.type === "test:fail") {
-        hasFailures = true;
-        if (event.data.file !== undefined) {
-          failureDurationByFile.set(
-            resolve(event.data.file),
-            event.data.details.duration_ms,
-          );
-        }
+      if (event.type === "test:fail") hasFailures = true;
+
+      // File summaries do not cover every file: a file that defines no tests,
+      // fails to load, or exits early reports no summary, and a file that exits
+      // with a nonzero code reports its failure after a successful summary. A
+      // file's own result comes after the file exits, so its last result has
+      // the file's duration.
+      if (
+        (event.type === "test:pass" || event.type === "test:fail") &&
+        event.data.file !== undefined
+      ) {
+        const file = resolve(event.data.file);
+        resultDurationByFile.set(file, event.data.details.duration_ms);
+        if (event.type === "test:fail") failedFiles.add(file);
       }
 
       // Output reports the file path given on the command line, while
@@ -85,7 +89,7 @@ const testOverviewReporter = async function* (
     for (const output of dotOutput) yield output;
 
     const failedFileOutputs = Array.from(outputByFile).filter(([file]) =>
-      failureDurationByFile.has(file),
+      failedFiles.has(file),
     );
 
     if (failedFileOutputs.length > 0) {
@@ -104,16 +108,16 @@ const testOverviewReporter = async function* (
       ([file, { counts, duration_ms, success }]) => ({
         durationMs: duration_ms,
         file,
-        passed: success && !failureDurationByFile.has(file),
+        passed: success && !failedFiles.has(file),
         tests: `${counts.tests} ${counts.tests === 1 ? "test" : "tests"}`,
       }),
     ),
-    ...Array.from(failureDurationByFile)
+    ...Array.from(resultDurationByFile)
       .filter(([file]) => !summaryByFile.has(file))
       .map(([file, durationMs]) => ({
         durationMs,
         file,
-        passed: false,
+        passed: !failedFiles.has(file),
         tests: "no tests reported",
       })),
   ].toSorted((a, b) => b.durationMs - a.durationMs);
