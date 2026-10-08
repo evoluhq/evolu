@@ -120,11 +120,83 @@ describe("testOverviewReporter", () => {
     assertTrue(output.includes("Failed tests:"));
     assertTrue(output.includes("Test failed."));
     assertTrue(output.includes(`✖ ${relative(process.cwd(), file)}`));
+    assertFalse(output.includes("Output of failed test files:"));
   });
 
-  it("preserves failures without file summaries", async () => {
+  it("reports test files that fail without a file summary", async () => {
     const cause = new Error("Module failed to load.");
     const error = Object.assign(new Error("Test failed.", { cause }), {
+      cause,
+    });
+    const details: Extract<
+      TestEvent,
+      { readonly type: "test:fail" }
+    >["data"]["details"] = {
+      duration_ms: 42.4,
+      error,
+      type: "test",
+    };
+    const file = "packages/common/src/Failing.test.ts";
+    const failure: TestEvent = {
+      type: "test:fail",
+      data: {
+        details,
+        file: resolve(file),
+        name: file,
+        nesting: 0,
+        testNumber: 1,
+      },
+    };
+    const output = await collectReporterOutput([failure]);
+
+    assertTrue(output.includes("Failed tests:"));
+    assertTrue(output.includes("Module failed to load."));
+    assertTrue(
+      output.includes(`Test files:
+
+✖ ${file} (no tests reported) 42ms
+
+`),
+    );
+  });
+
+  it("reports test files that fail after their tests pass", async () => {
+    const cause = new Error("test failed");
+    const error = Object.assign(new Error("test failed", { cause }), {
+      cause,
+    });
+    const file = "packages/common/src/ExitCode.test.ts";
+    const output = await collectReporterOutput([
+      createFileSummaryEvent({
+        durationMs: 3,
+        file: resolve(file),
+        success: true,
+        tests: 1,
+      }),
+      {
+        type: "test:fail",
+        data: {
+          details: { duration_ms: 40, error, type: "test" },
+          file: resolve(file),
+          name: file,
+          nesting: 0,
+          testNumber: 2,
+        },
+      },
+    ]);
+
+    assertTrue(
+      output.includes(`Test files:
+
+✖ ${file} (1 test) 3ms
+
+`),
+    );
+  });
+
+  it("prints output of failed test files", async () => {
+    const cause = new Error("test failed");
+    const error = Object.assign(new Error("test failed", { cause }), {
       cause,
     });
     const details: Extract<
@@ -135,21 +207,82 @@ describe("testOverviewReporter", () => {
       error,
       type: "test",
     };
-    const failure: TestEvent = {
-      type: "test:fail",
-      data: {
-        details,
-        file: resolve("packages/common/src/Failing.test.ts"),
-        name: "fails to load",
-        nesting: 0,
-        testNumber: 1,
+    // Node.js reports output with the test file path given on the command
+    // line and failures with the absolute path.
+    const failingFile = "packages/common/src/Failing.test.ts";
+    const quietFailingFile = resolve(
+      "packages/common/src/QuietFailing.test.ts",
+    );
+    const passingFile = "packages/common/src/Passing.test.ts";
+    const output = await collectReporterOutput([
+      {
+        type: "test:stdout",
+        data: { file: failingFile, message: "Loading fixtures.\n" },
       },
-    };
-    const output = await collectReporterOutput([failure]);
+      {
+        type: "test:stdout",
+        data: { file: passingFile, message: "Passing stdout.\n" },
+      },
+      {
+        type: "test:stderr",
+        data: { file: passingFile, message: "Passing stderr.\n" },
+      },
+      {
+        type: "test:stderr",
+        data: {
+          file: failingFile,
+          message: "AssertionError: Run `pnpm build:docs` first.\n",
+        },
+      },
+      {
+        type: "test:stderr",
+        data: { file: failingFile, message: "    at Failing.test.ts:5:8\n" },
+      },
+      createFileSummaryEvent({
+        durationMs: 1,
+        file: resolve(passingFile),
+        success: true,
+        tests: 1,
+      }),
+      {
+        type: "test:fail",
+        data: {
+          details,
+          file: resolve(failingFile),
+          name: failingFile,
+          nesting: 0,
+          testNumber: 2,
+        },
+      },
+      {
+        type: "test:fail",
+        data: {
+          details,
+          file: quietFailingFile,
+          name: quietFailingFile,
+          nesting: 0,
+          testNumber: 3,
+        },
+      },
+    ]);
 
-    assertTrue(output.includes("Failed tests:"));
-    assertTrue(output.includes("Module failed to load."));
-    assertFalse(output.includes("Test files:"));
+    assertTrue(
+      output.includes(`
+Output of failed test files:
+
+✖ ${failingFile}
+  Loading fixtures.
+  AssertionError: Run \`pnpm build:docs\` first.
+      at Failing.test.ts:5:8
+
+Test files:
+`),
+    );
+    assertFalse(
+      output.includes(`✖ ${relative(process.cwd(), quietFailingFile)}\n`),
+    );
+    assertFalse(output.includes("Passing stdout."));
+    assertFalse(output.includes("Passing stderr."));
   });
 
   it("uses Node.js summary and coverage formatting", async () => {
