@@ -242,6 +242,8 @@ class EvoluRouter extends MemberRouter {
     target: RouterTarget,
     pageTarget: RouterTarget,
   ): void {
+    // typedoc-plugin-markdown slugs type parameters but renders no anchors for
+    // them: https://github.com/typedoc2md/typedoc-plugin-markdown/issues/909
     if (target instanceof Reflection && target.isTypeParameter()) return;
     super.buildAnchors(target, pageTarget);
   }
