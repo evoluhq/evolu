@@ -753,10 +753,13 @@ describeUser(1, "Ada");
 ```
 
 Prefer Evolu `Type` brands over raw primitives when the value has domain
-meaning. Do not create domain brands with plain `as` casts. Define a
-validated `Type` with [`brand(...)`](/docs/api-reference/common/Type/functions/brand)
+meaning. Do not create bare brands that application code must apply with
+plain `as` casts. Define a validated `Type` with [`brand(...)`](/docs/api-reference/common/Type/functions/brand)
 so the constraint is enforced and the branded value can only be obtained
-through validation.
+through validation. A value that only library code produces, such as
+`PerformanceTime` or `RandomNumber` from a dependency, a wasm pointer, or bytes
+a decoder reads at a length it checked, may be a bare `Brand` intersection cast
+where it is produced; test doubles of such a dependency cast the same way.
 
 Once a value has a brand, trust it. Do not check at runtime what its type
 already proves: a function with a `NonNegativeInt` parameter does not test that
@@ -1038,10 +1041,11 @@ for Data comparisons, `assertSame` for SameValue or reference identity,
 `assertTrue` or `assertFalse` for predicates, `assert` with a descriptive message
 for invariants and narrowing, and `assertOk` or `assertErr` for Results.
 
-After changing examples, run `pnpm test:jsdoc <changed-file>`. The repository's
-`pnpm verify` runs the configured documentation-example suite. Only explicitly
-configured sources are included automatically; a passing suite does not prove
-that every documentation page was tested.
+After changing examples or exported APIs, run `pnpm test:jsdoc`, which checks
+the configured sources, and for a changed file outside them also run
+`pnpm test:jsdoc <changed-file>`. Only explicitly configured sources are
+included automatically; a passing suite does not prove that every documentation
+page was tested.
 
 ### API reference organization
 
