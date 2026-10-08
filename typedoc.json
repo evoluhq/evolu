@@ -35,7 +35,7 @@
   "propertyMembersFormat": "table",
   "typeDeclarationFormat": "table",
   "excludeScopesInPaths": true,
-  "router": "member",
+  "router": "evolu",
   "formatWithPrettier": true,
   "useHTMLAnchors": true,
   "cleanOutputDir": true,

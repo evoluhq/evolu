@@ -100,6 +100,9 @@ const getJsxAttribute = (node: Nodes, name: string): string | null => {
 const isExternalLink = (url: string): boolean =>
   /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(url);
 
+// Generated pages link to the anchors of pages such as Type hundreds of times.
+const jsxIdsByMdxPagePath = new Map<string, ReadonlySet<string>>();
+
 /** Returns why a link to this site does not resolve, or `null` if it does. */
 const findLinkProblem = ({ pathname, hash }: URL): string | null => {
   const urlPath = decodeURIComponent(pathname);
@@ -118,15 +121,20 @@ const findLinkProblem = ({ pathname, hash }: URL): string | null => {
   // JSX elements, such as the <a id> anchors TypeDoc puts before members, can
   // give a page other ids.
   const mdxPagePath = mdxPagePathByUrl.get(urlPath);
-  const jsxIds = new Set<string>();
-  if (mdxPagePath !== undefined)
+  if (mdxPagePath === undefined) return "no such anchor";
+  let jsxIds = jsxIdsByMdxPagePath.get(mdxPagePath);
+  if (jsxIds === undefined) {
+    const ids = new Set<string>();
     visitNodes(
       mdxParser.parse(readFileSync(path.join(appDir, mdxPagePath), "utf8")),
       (node) => {
         const jsxId = getJsxAttribute(node, "id");
-        if (jsxId !== null) jsxIds.add(jsxId);
+        if (jsxId !== null) ids.add(jsxId);
       },
     );
+    jsxIds = ids;
+    jsxIdsByMdxPagePath.set(mdxPagePath, jsxIds);
+  }
   return jsxIds.has(id) ? null : "no such anchor";
 };
 
@@ -138,9 +146,22 @@ const checkPage = async (
   filePath: string,
   pageUrl: string,
 ): Promise<ReadonlyArray<string>> => {
-  const file = { path: filePath, value: readFileSync(filePath, "utf8") };
-  await compile(file, { remarkPlugins, rehypePlugins });
+  await compile(
+    { path: filePath, value: readFileSync(filePath, "utf8") },
+    { remarkPlugins, rehypePlugins },
+  );
+  return findBrokenLinks(filePath, pageUrl);
+};
 
+/**
+ * Returns the internal links of an MDX page served at `pageUrl` that do not
+ * resolve.
+ */
+const findBrokenLinks = (
+  filePath: string,
+  pageUrl: string,
+): ReadonlyArray<string> => {
+  const file = { path: filePath, value: readFileSync(filePath, "utf8") };
   const brokenLinks: Array<string> = [];
   visitNodes(mdxParser.parse(file), (node) => {
     const urls =
@@ -177,6 +198,21 @@ void describe("handwritten MDX pages compile and link to existing pages", () => 
       );
     });
   }
+});
+
+void it("generated API reference pages link to existing pages", () => {
+  const brokenLinks = mdxPagePaths
+    .filter((pagePath) => pagePath.startsWith(apiReferenceDir))
+    .flatMap((pagePath) =>
+      findBrokenLinks(path.join(appDir, pagePath), filePathToUrl(pagePath)).map(
+        (brokenLink) => `${pagePath}: ${brokenLink}`,
+      ),
+    );
+  assert.deepEqual(
+    brokenLinks,
+    [],
+    `Generated API reference pages have broken links:\n${brokenLinks.join("\n")}`,
+  );
 });
 
 void it("navigation links resolve", () => {
