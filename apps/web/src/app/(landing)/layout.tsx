@@ -7,7 +7,7 @@ import "@/styles/tailwind.css";
 export const metadata: Metadata = {
   title: {
     template: "%s - Evolu",
-    default: "TypeScript library and local-first platform",
+    default: "Local-first platform",
   },
 };
 

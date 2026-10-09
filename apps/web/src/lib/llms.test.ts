@@ -195,7 +195,7 @@ describe("createLlmsIndex", () => {
       await createLlmsIndex({ baseUrl: "https://example.test/" }),
       `# Evolu
 
-> Evolu is a TypeScript library and local-first platform.
+> Evolu is a local-first platform and TypeScript library.
 
 Use these links for LLM-friendly documentation.
 

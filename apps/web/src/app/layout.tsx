@@ -5,7 +5,7 @@ import { Providers } from "@/app/providers";
 export const metadata: Metadata = {
   title: {
     template: "%s - Evolu",
-    default: "TypeScript library and local-first platform",
+    default: "Local-first platform - Evolu",
   },
   alternates: {
     types: {

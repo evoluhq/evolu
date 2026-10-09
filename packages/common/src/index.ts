@@ -1,5 +1,5 @@
 /**
- * TypeScript library and local-first platform.
+ * Local-first platform and TypeScript library.
  *
  * @module
  */
