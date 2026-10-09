@@ -10,6 +10,17 @@
   },
   "overrides": [
     {
+      // Homepage code samples read like application code: they export, log,
+      // and annotate results inline, and one shows a sparse array on purpose.
+      "files": ["apps/web/src/homepage/**"],
+      "rules": {
+        "eslint/no-console": "off",
+        "eslint/no-inline-comments": "off",
+        "eslint/no-sparse-arrays": "off",
+        "evolu/require-pure-annotation": "off"
+      }
+    },
+    {
       "files": ["packages/vue/src/useOwner.ts"],
       "rules": {
         "react/rules-of-hooks": "off"

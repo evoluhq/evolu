@@ -9,7 +9,6 @@ import {
   type ReactNode,
   useContext,
   useEffect,
-  useRef,
   useState,
 } from "react";
 import { create } from "zustand";
@@ -223,11 +222,9 @@ const CodePanel = ({
 const CodeGroupHeader = ({
   title,
   children,
-  selectedIndex,
 }: {
   title: string;
   children: React.ReactNode;
-  selectedIndex: number;
 }) => {
   const hasTabs = Children.count(children) > 1;
 
@@ -244,14 +241,19 @@ const CodeGroupHeader = ({
       )}
       {hasTabs && (
         <TabList className="-mb-px flex scrollbar-none gap-4 overflow-x-auto text-xs font-medium [-webkit-scrollbar]:hidden">
-          {Children.map(children, (child, childIndex) => (
+          {Children.map(children, (child) => (
             <Tab
-              className={clsx(
-                "shrink-0 border-b py-3 whitespace-nowrap outline-hidden transition",
-                childIndex === selectedIndex
-                  ? "border-blue-500 text-blue-400"
-                  : "border-transparent text-zinc-400 hover:text-zinc-300",
-              )}
+              className={({ selected, focus }) =>
+                clsx(
+                  "shrink-0 border-b py-3 whitespace-nowrap transition",
+                  selected
+                    ? "border-blue-500 text-blue-400"
+                    : "border-transparent text-zinc-400 hover:text-zinc-300",
+                  focus
+                    ? "outline-2 -outline-offset-2 outline-blue-400"
+                    : "outline-hidden",
+                )
+              }
             >
               {
                 // @ts-expect-error TODO: Fix this somehow
@@ -286,39 +288,6 @@ const CodeGroupPanels = ({
   return <CodePanel {...props}>{children}</CodePanel>;
 };
 
-const usePreventLayoutShift = () => {
-  const positionRef = useRef<HTMLElement>(null);
-  const rafRef = useRef<number>(undefined);
-
-  useEffect(
-    () => () => {
-      if (typeof rafRef.current !== "undefined") {
-        window.cancelAnimationFrame(rafRef.current);
-      }
-    },
-    [],
-  );
-
-  return {
-    positionRef,
-    preventLayoutShift(callback: () => void) {
-      if (!positionRef.current) {
-        return;
-      }
-
-      const initialTop = positionRef.current.getBoundingClientRect().top;
-
-      callback();
-
-      rafRef.current = window.requestAnimationFrame(() => {
-        const newTop =
-          positionRef.current?.getBoundingClientRect().top ?? initialTop;
-        window.scrollBy(0, newTop - initialTop);
-      });
-    },
-  };
-};
-
 export const usePreferredLanguageStore = /*#__PURE__*/ create<{
   preferredLanguages: Array<string>;
   addPreferredLanguage: (language: string) => void;
@@ -336,34 +305,6 @@ export const usePreferredLanguageStore = /*#__PURE__*/ create<{
   },
 }));
 
-const useTabGroupProps = (availableLanguages: Array<string>) => {
-  const { preferredLanguages, addPreferredLanguage } =
-    usePreferredLanguageStore();
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const activeLanguage = availableLanguages.toSorted(
-    (a, z) => preferredLanguages.indexOf(z) - preferredLanguages.indexOf(a),
-  )[0];
-  const languageIndex = availableLanguages.indexOf(activeLanguage);
-  const newSelectedIndex = languageIndex === -1 ? selectedIndex : languageIndex;
-  if (newSelectedIndex !== selectedIndex) {
-    setSelectedIndex(newSelectedIndex);
-  }
-
-  // oxlint-disable-next-line typescript/unbound-method
-  const { positionRef, preventLayoutShift } = usePreventLayoutShift();
-
-  return {
-    as: "div" as const,
-    ref: positionRef,
-    selectedIndex,
-    onChange: (newSelectedIndex: number) => {
-      preventLayoutShift(() => {
-        addPreferredLanguage(availableLanguages[newSelectedIndex]);
-      });
-    },
-  };
-};
-
 const CodeGroupContext = createContext(false);
 
 export const CodeGroup = ({
@@ -373,27 +314,17 @@ export const CodeGroup = ({
 }: React.ComponentPropsWithoutRef<typeof CodeGroupPanels> & {
   title: string;
 }): React.ReactElement => {
-  const languages =
-    Children.map(children, (child) =>
-      // @ts-expect-error TODO: Fix this somehow
-      getPanelTitle(isValidElement(child) ? child.props : {}),
-    ) ?? [];
-  const tabGroupProps = useTabGroupProps(languages);
   const hasTabs = Children.count(children) > 1;
 
   const containerClassName =
     "my-6 overflow-hidden rounded-2xl bg-zinc-900 shadow-md dark:ring-1 dark:ring-white/10";
-  const header = (
-    <CodeGroupHeader title={title} selectedIndex={tabGroupProps.selectedIndex}>
-      {children}
-    </CodeGroupHeader>
-  );
+  const header = <CodeGroupHeader title={title}>{children}</CodeGroupHeader>;
   const panels = <CodeGroupPanels {...props}>{children}</CodeGroupPanels>;
 
   return (
     <CodeGroupContext.Provider value={true}>
       {hasTabs ? (
-        <TabGroup {...tabGroupProps} className={containerClassName}>
+        <TabGroup className={containerClassName}>
           <div className="not-prose">
             {header}
             {panels}

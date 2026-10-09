@@ -1,12 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import {
-  motion,
-  type MotionStyle,
-  useScroll,
-  useTransform,
-} from "motion/react";
+import { motion } from "motion/react";
 import Link from "next/link";
 import { forwardRef, Suspense, useEffect, useRef } from "react";
 
@@ -174,7 +169,7 @@ export const MobileNavigation = (): React.ReactElement => {
 
 export const Header = /*#__PURE__*/ forwardRef<
   React.ComponentRef<"div">,
-  React.ComponentPropsWithoutRef<typeof motion.div> & {
+  React.ComponentPropsWithoutRef<"div"> & {
     variant?: "landing" | "docs";
   }
 >(function Header({ className, variant = "docs", ...props }, ref) {
@@ -183,33 +178,16 @@ export const Header = /*#__PURE__*/ forwardRef<
 
   const pathname = usePathname();
 
-  const { scrollY } = useScroll();
-  const bgOpacityLight = useTransform(scrollY, [0, 72], [0.5, 0.9]);
-  const bgOpacityDark = useTransform(scrollY, [0, 72], [0.2, 0.8]);
-
   return (
-    <motion.div
+    <div
       {...props}
       ref={ref}
       className={clsx(
         className,
-        "fixed inset-x-0 top-0 z-50 flex h-14 items-center justify-between gap-12 px-4 transition sm:px-6 lg:left-72 lg:z-30 lg:px-8 xl:left-80",
-        !isInsideMobileNavigation &&
-          "backdrop-blur-xs lg:left-72 xl:left-80 dark:backdrop-blur-sm",
-        isInsideMobileNavigation
-          ? "bg-white dark:bg-zinc-900"
-          : "bg-white/(--bg-opacity-light) dark:bg-zinc-900/(--bg-opacity-dark)",
-
+        "fixed inset-x-0 top-0 z-50 flex h-14 items-center justify-between gap-12 bg-white px-4 transition sm:px-6 lg:left-72 lg:z-30 lg:px-8 xl:left-80 dark:bg-zinc-900",
         variant === "landing" &&
           "mx-auto md:px-3! lg:left-0! lg:px-8! xl:left-0! xl:max-w-5xl",
-        variant === "docs" && "bg-white! dark:bg-zinc-900!",
       )}
-      style={
-        {
-          "--bg-opacity-light": bgOpacityLight,
-          "--bg-opacity-dark": bgOpacityDark,
-        } as MotionStyle
-      }
     >
       <div
         className={clsx(
@@ -274,6 +252,6 @@ export const Header = /*#__PURE__*/ forwardRef<
           <ThemeToggle />
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 });
