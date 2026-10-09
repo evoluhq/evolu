@@ -9,7 +9,7 @@ const TestSchema = {
 };
 
 // @ts-expect-error createEvoluBinding accepts the schema as a type argument.
-const _invalidBinding = createEvoluBinding(TestSchema);
+void (() => createEvoluBinding(TestSchema));
 
 test("creates a binding from an EvoluSchema type", () => {
   const { useEvolu } = createEvoluBinding<typeof TestSchema>();

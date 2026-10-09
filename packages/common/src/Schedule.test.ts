@@ -179,7 +179,7 @@ describe("Schedule", () => {
     // ✗ Not assignable in the other direction (output is missing fields).
     // This is a structural type error; that's the expected mechanism.
     // @ts-expect-error - Output lacks "delay"
-    const _invalid: Schedule<RetryInfo> = lessDetailedSchedule;
+    void (lessDetailedSchedule satisfies Schedule<RetryInfo>);
   });
 
   it("Input is contravariant (in)", () => {
@@ -225,7 +225,7 @@ describe("Schedule", () => {
       spaced("5s"),
     )(spaced("1s"));
     // @ts-expect-error - Input is too narrow
-    const _invalid: Schedule<Millis, HttpError> = specificSchedule;
+    void (specificSchedule satisfies Schedule<Millis, HttpError>);
   });
 });
 

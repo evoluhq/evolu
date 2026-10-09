@@ -769,7 +769,7 @@ describe("Time", () => {
       assertOk(DurationLiteral.from("1.5s"), "1.5s");
       assertEqual(DurationLiteral.to("1.5s"), "1.5s");
       // @ts-expect-error DurationLiteral Input rejects "60s".
-      const _invalidInput: typeof DurationLiteral.Input = "60s";
+      void ("60s" satisfies typeof DurationLiteral.Input);
     });
 
     it("localizes the named error after composition and preserves its path", async () => {

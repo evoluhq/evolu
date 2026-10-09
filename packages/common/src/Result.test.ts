@@ -94,7 +94,7 @@ describe("ok", () => {
 
   it("rejects Ok<void> when Result expects a value", () => {
     // @ts-expect-error Type 'Ok<void>' is not assignable to type 'Result<string, Error>'
-    const _result: Result<string, Error> = ok();
+    void (ok() satisfies Result<string, Error>);
   });
 
   it("returns Result<T, never> for correct type inference", () => {

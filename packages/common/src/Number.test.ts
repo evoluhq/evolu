@@ -87,7 +87,7 @@ describe("PercentageLiteral", () => {
     assertOk(PercentageLiteral.from("12.5%"), "12.5%");
     assertEqual(PercentageLiteral.to("12.5%"), "12.5%");
     // @ts-expect-error PercentageLiteral Input rejects "101%".
-    const _invalidInput: typeof PercentageLiteral.Input = "101%";
+    void ("101%" satisfies typeof PercentageLiteral.Input);
   });
 
   test("localizes the named error after composition and preserves its path", async () => {

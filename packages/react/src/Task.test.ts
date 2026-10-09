@@ -9,7 +9,7 @@ interface TestDeps {
 declare const _disposableRun: DisposableRun<TestDeps>;
 
 // @ts-expect-error createRunBinding requires a DisposableRun type witness.
-const _invalidBinding = createRunBinding<Run<TestDeps>>();
+void (() => createRunBinding<Run<TestDeps>>());
 
 test("infers deps from DisposableRun and exposes Run", () => {
   const { RunContext: _RunContext, useRun } =

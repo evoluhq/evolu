@@ -3293,9 +3293,9 @@ describe("SharedResourceByKeyWithClaims", () => {
       type Claims = SharedResourceByKeyWithClaims<string, number, Disposable>;
 
       // @ts-expect-error - a claim must retain at least one resource.
-      const _invalidClaimResourceKeys: Parameters<Claims["claim"]>[1] = [];
+      void ([] satisfies Parameters<Claims["claim"]>[1]);
       // @ts-expect-error - scoped use must retain at least one resource.
-      const _invalidUseResourceKeys: Parameters<Claims["use"]>[1] = [];
+      void ([] satisfies Parameters<Claims["use"]>[1]);
     });
 
     it("types do not expose command-based removeClaim", () => {

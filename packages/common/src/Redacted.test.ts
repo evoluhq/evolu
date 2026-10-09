@@ -108,13 +108,13 @@ test("Redacted is branded", () => {
   const assigned: Redacted<string> = createRedacted("secret");
   assertEqual(revealRedacted(assigned), "secret");
 
-  // @ts-expect-error Only createRedacted produces the Redacted brand.
-  const _fake: Redacted<string> = {
+  void ({
     Type: "secret",
     toString: () => "<redacted>",
     toJSON: () => "<redacted>",
     [Symbol.dispose]: constVoid,
-  };
+    // @ts-expect-error Only createRedacted produces the Redacted brand.
+  } satisfies Redacted<string>);
 });
 
 test("branded inner type provides type-level distinction", () => {

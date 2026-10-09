@@ -37,19 +37,19 @@ import { assertType, NonEmptyTrimmedString, PositiveInt } from "./Type.ts";
 describe("Types", () => {
   it("NonEmptyArray requires at least one element", () => {
     // @ts-expect-error An empty array is not assignable to NonEmptyArray.
-    const _invalid: NonEmptyArray<number> = [];
+    void ([] satisfies NonEmptyArray<number>);
   });
 
   it("NonEmptyReadonlyArray requires at least one element", () => {
     // @ts-expect-error An empty array is not assignable to NonEmptyReadonlyArray.
-    const _invalid: NonEmptyReadonlyArray<string> = [];
+    void ([] satisfies NonEmptyReadonlyArray<string>);
   });
 
   it("AtLeastTwoReadonlyArray requires at least two elements", () => {
     // @ts-expect-error An empty array is not assignable to AtLeastTwoReadonlyArray.
-    const _empty: AtLeastTwoReadonlyArray<string> = [];
+    void ([] satisfies AtLeastTwoReadonlyArray<string>);
     // @ts-expect-error A single-element array is not assignable to AtLeastTwoReadonlyArray.
-    const _single: AtLeastTwoReadonlyArray<string> = ["a"];
+    void (["a"] satisfies AtLeastTwoReadonlyArray<string>);
   });
 });
 

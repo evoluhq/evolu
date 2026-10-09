@@ -1437,7 +1437,7 @@ describe("ByteSizeLiteral", () => {
 
   it("preserves literal types and identity encoding", () => {
     // @ts-expect-error ByteSizeLiteral Input accepts binary-unit literals, not "1MB".
-    const _invalidInput: typeof ByteSizeLiteral.Input = "1MB";
+    void ("1MB" satisfies typeof ByteSizeLiteral.Input);
     assertType<
       InferErrors<typeof ByteSizeLiteral>["type"],
       "ByteSizeLiteral"
@@ -1551,13 +1551,13 @@ describe("ByteSizeLiteral", () => {
     assertType<Extract<ByteSizeLiteral, "1MB" | "1.1KiB" | "1024KiB">, never>();
 
     // @ts-expect-error Type '"1MB"' is not assignable to type 'ByteSizeLiteral'.
-    const _decimalUnit: ByteSizeLiteral = "1MB";
+    void ("1MB" satisfies ByteSizeLiteral);
     // @ts-expect-error Type '"1.1KiB"' is not assignable to type 'ByteSizeLiteral'.
-    const _fraction: ByteSizeLiteral = "1.1KiB";
+    void ("1.1KiB" satisfies ByteSizeLiteral);
     // @ts-expect-error Type '"1024KiB"' is not assignable to type 'ByteSizeLiteral'.
-    const _redundantUnit: ByteSizeLiteral = "1024KiB";
+    void ("1024KiB" satisfies ByteSizeLiteral);
     // @ts-expect-error Type 'number' is not assignable to type 'ByteSize'.
-    const _unbranded: ByteSize = 1024;
+    void (1024 satisfies ByteSize);
   });
 });
 

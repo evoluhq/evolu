@@ -11179,19 +11179,19 @@ describe("DbWorkerInput", () => {
       },
     };
     const attemptId = createId(deps);
-    // @ts-expect-error Write requests require clock and now in the envelope.
-    const _missingContext: DbWorkerInput = {
+    void ({
       type: "Request",
       attemptId,
       request,
-    };
-    // @ts-expect-error Write requests require now as well as clock.
-    const _missingTime: DbWorkerInput = {
+      // @ts-expect-error Write requests require clock and now in the envelope.
+    } satisfies DbWorkerInput);
+    void ({
       type: "Request",
       attemptId,
       request,
       clock: createTimestamp(),
-    };
+      // @ts-expect-error Write requests require now as well as clock.
+    } satisfies DbWorkerInput);
     const valid: DbWorkerInput = {
       type: "Request",
       attemptId,
