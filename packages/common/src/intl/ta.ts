@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -355,9 +356,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} பேரெழுத்துகளிலான, இடைவெளிகள் இல்லாத செல்லுபடியாகும் IBAN அல்ல.`;
 
+/** Formats a SimplePasswordError in Tamil. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "கடவுச்சொல்லின் தொடக்கத்திலோ முடிவிலோ இடைவெளிகள் இருக்கக் கூடாது.";
+    case "TooLong":
+      return "கடவுச்சொல் அதிகபட்ச நீளமான 64-ஐ மீறுகிறது.";
+    case "TooShort":
+      return "கடவுச்சொல் குறைந்தபட்ச நீளமான 8-ஐப் பூர்த்தி செய்யவில்லை.";
+  }
+};
+
 /** Formats a MnemonicError in Tamil. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் ஆங்கில BIP39 mnemonic அல்ல.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "மதிப்பு செல்லுபடியாகும் ஆங்கில BIP39 mnemonic அல்ல.";
 
 /** Formats an IdError in Tamil. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

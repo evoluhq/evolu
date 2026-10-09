@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -356,9 +357,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine gültige IBAN in Großbuchstaben ohne Leerzeichen.`;
 
+/** Formats a SimplePasswordError in German. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Das Passwort muss getrimmt sein.";
+    case "TooLong":
+      return "Das Passwort überschreitet die Maximallänge von 64.";
+    case "TooShort":
+      return "Das Passwort erreicht die Mindestlänge von 8 nicht.";
+  }
+};
+
 /** Formats a MnemonicError in German. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine gültige englische BIP39-Mnemonik.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Der Wert ist keine gültige englische BIP39-Mnemonik.";
 
 /** Formats an IdError in German. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

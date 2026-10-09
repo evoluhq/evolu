@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -353,9 +354,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 공백 없이 대문자로 된 유효한 IBAN이 아닙니다.`;
 
+/** Formats a SimplePasswordError in Korean. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "비밀번호의 앞뒤 공백이 제거되어 있어야 합니다.";
+    case "TooLong":
+      return "비밀번호는 최대 길이 64를 초과합니다.";
+    case "TooShort":
+      return "비밀번호는 최소 길이 8을 충족하지 않습니다.";
+  }
+};
+
 /** Formats a MnemonicError in Korean. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `${safelyStringifyUnknownValue(error.value)} 값은 유효한 영어 BIP39 니모닉이 아닙니다.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "값이 유효한 영어 BIP39 니모닉이 아닙니다.";
 
 /** Formats an IdError in Korean. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

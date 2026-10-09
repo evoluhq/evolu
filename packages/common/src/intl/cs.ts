@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -356,9 +357,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný IBAN zapsaný velkými písmeny bez mezer.`;
 
+/** Formats a SimplePasswordError in Czech. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Heslo nesmí obsahovat bílé znaky na začátku ani na konci.";
+    case "TooLong":
+      return "Heslo smí mít délku nejvýše 64.";
+    case "TooShort":
+      return "Heslo musí mít délku alespoň 8.";
+  }
+};
+
 /** Formats a MnemonicError in Czech. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná anglická BIP39 mnemotechnická fráze.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Hodnota musí být platná anglická BIP39 mnemotechnická fráze.";
 
 /** Formats an IdError in Czech. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

@@ -372,6 +372,7 @@ import {
   type SetElementIssue,
   type SetElementsError,
   type SetError,
+  type SimplePasswordError,
   type SetExcessPropertyIssue,
   type SetItemsError,
   type SetNotSetError,
@@ -807,11 +808,9 @@ describe("Type", () => {
       "MaxLength100",
       "MaxLength1000",
       "MaxLength3",
-      "MaxLength64",
       "MinEntries1",
       "MinLength1",
       "MinLength2",
-      "MinLength8",
       "Mnemonic",
       "MultipleOf5",
       "Name",
@@ -11593,47 +11592,123 @@ describe("BrandFactory", () => {
 
       describe("SimplePassword", () => {
         it("requires trimmed text containing between 8 and 64 characters", () => {
+          const shortest = "a".repeat(8);
+          const longest = "a".repeat(64);
+
+          assertEqual(SimplePassword.fromUnknown(shortest), ok(shortest));
+          assertEqual(SimplePassword.fromUnknown(longest), ok(longest));
           assertEqual(
-            SimplePassword.fromUnknown("validPass123"),
-            ok("validPass123"),
+            SimplePassword.fromUnknown("a".repeat(7)),
+            err({ type: "SimplePassword", reason: "TooShort" }),
           );
           assertEqual(
-            SimplePassword.fromUnknown("short"),
-            err({ type: "MinLength8", value: "short", min: 8 }),
-          );
-          const long = "a".repeat(65);
-          assertEqual(
-            SimplePassword.fromUnknown(long),
-            err({ type: "MaxLength64", value: long, max: 64 }),
+            SimplePassword.fromUnknown("a".repeat(65)),
+            err({ type: "SimplePassword", reason: "TooLong" }),
           );
           assertEqual(
             SimplePassword.fromUnknown(" validPass123 "),
-            err({ type: "Trimmed", value: " validPass123 " }),
+            err({ type: "SimplePassword", reason: "Untrimmed" }),
           );
+          assertEqual(
+            SimplePassword.fromUnknown(" short"),
+            err({ type: "SimplePassword", reason: "Untrimmed" }),
+          );
+          assertEqual(
+            SimplePassword.fromUnknown(1),
+            err({ type: "TypeOf", expected: "String", value: 1 }),
+          );
+          assertType<
+            SimplePassword,
+            string &
+              Brand<"Trimmed"> &
+              Brand<"MaxLength64"> &
+              Brand<"MinLength8"> &
+              Brand<"SimplePassword">
+          >();
+          assertType<typeof SimplePassword.Error, SimplePasswordError>();
+        });
+
+        it("omits the password from errors and messages", () => {
+          const untrimmed = SimplePassword.fromUnknown(" secret password ");
+          const tooLong = SimplePassword.fromUnknown("secret".repeat(11));
+          const tooShort = SimplePassword.fromUnknown("secret");
+          assertErr(untrimmed);
+          assertErr(tooLong);
+          assertErr(tooShort);
+
+          assertEqual(
+            SimplePassword.formatError(untrimmed.error),
+            "The password must be trimmed.",
+          );
+          assertEqual(
+            SimplePassword.formatError(tooLong.error),
+            "The password exceeds the maximum length of 64.",
+          );
+          assertEqual(
+            SimplePassword.formatError(tooShort.error),
+            "The password does not meet the minimum length of 8.",
+          );
+          assertFalse("value" in untrimmed.error);
         });
       });
 
       describe("Mnemonic", () => {
-        it("validates English BIP39 mnemonics", () => {
-          const value =
-            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        const mnemonic =
+          "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
-          assertEqual(Mnemonic.fromUnknown(value), ok(value));
+        it("validates English BIP39 mnemonics", () => {
+          assertEqual(Mnemonic.fromUnknown(mnemonic), ok(mnemonic));
           assertEqual(
             Mnemonic.fromUnknown("abandon abandon abandon"),
-            err({
-              type: "Mnemonic",
-              value: "abandon abandon abandon",
-            }),
+            err({ type: "Mnemonic" }),
           );
+          assertEqual(Mnemonic.fromUnknown(""), err({ type: "Mnemonic" }));
           assertEqual(
-            Mnemonic.formatError({
-              type: "Mnemonic",
-              value: "abandon abandon abandon",
-            }),
-            'The value "abandon abandon abandon" is not a valid English BIP39 mnemonic.',
+            Mnemonic.fromUnknown(1),
+            err({ type: "TypeOf", expected: "String", value: 1 }),
           );
+          assertType<Mnemonic, NonEmptyTrimmedString & Brand<"Mnemonic">>();
           assertType<typeof Mnemonic.Error, MnemonicError>();
+        });
+
+        it("rejects a valid mnemonic with surrounding whitespace without exposing it", () => {
+          const noBreakSpace = globalThis.String.fromCharCode(0xa0);
+          const ideographicSpace = globalThis.String.fromCharCode(0x3000);
+
+          for (const value of [
+            `${mnemonic}\n`,
+            ` ${mnemonic}`,
+            `${mnemonic}${noBreakSpace}`,
+            `${ideographicSpace}${mnemonic}`,
+          ]) {
+            const result = Mnemonic.fromUnknown(value);
+            assertEqual(result, err({ type: "Mnemonic" }));
+            assertErr(result);
+            assertFalse(Mnemonic.formatError(result.error).includes("abandon"));
+          }
+        });
+
+        it("rejects other spellings of a valid mnemonic", () => {
+          const noBreakSpace = globalThis.String.fromCharCode(0xa0);
+          const ideographicSpace = globalThis.String.fromCharCode(0x3000);
+          const fullwidthA = globalThis.String.fromCharCode(0xff41);
+
+          for (const value of [
+            mnemonic.replaceAll(" ", noBreakSpace),
+            mnemonic.replaceAll(" ", ideographicSpace),
+            mnemonic.replace("about", `${fullwidthA}bout`),
+            mnemonic.replace(" ", "  "),
+            mnemonic.toUpperCase(),
+          ]) {
+            assertEqual(Mnemonic.fromUnknown(value), err({ type: "Mnemonic" }));
+          }
+        });
+
+        it("formats errors without the rejected value", () => {
+          assertEqual(
+            Mnemonic.formatError({ type: "Mnemonic" }),
+            "The value is not a valid English BIP39 mnemonic.",
+          );
         });
       });
 

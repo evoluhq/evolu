@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -356,9 +357,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldig IBAN-nummer in hoofdletters zonder spaties.`;
 
+/** Formats a SimplePasswordError in Dutch. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Het wachtwoord mag geen witruimte aan het begin of einde bevatten.";
+    case "TooLong":
+      return "Het wachtwoord overschrijdt de maximale lengte van 64.";
+    case "TooShort":
+      return "Het wachtwoord voldoet niet aan de minimale lengte van 8.";
+  }
+};
+
 /** Formats a MnemonicError in Dutch. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldige Engelse BIP39-mnemonic.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "De waarde is geen geldige Engelse BIP39-mnemonic.";
 
 /** Formats an IdError in Dutch. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

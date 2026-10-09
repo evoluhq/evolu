@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -321,9 +322,22 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Arabic. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست رقم IBAN صالحاً بأحرف كبيرة ودون مسافات.`;
+/** Formats a SimplePasswordError in Arabic. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "يجب إزالة المسافات من بداية كلمة المرور ونهايتها.";
+    case "TooLong":
+      return "كلمة المرور تتجاوز الطول الأقصى 64.";
+    case "TooShort":
+      return "كلمة المرور لا تحقق الطول الأدنى 8.";
+  }
+};
 /** Formats a MnemonicError in Arabic. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عبارة BIP39 إنجليزية صالحة.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "القيمة ليست عبارة BIP39 إنجليزية صالحة.";
 /** Formats an IdError in Arabic. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست Id صالحة.`;

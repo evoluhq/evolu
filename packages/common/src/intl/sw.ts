@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -308,9 +309,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Swahili. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si IBAN halali yenye herufi kubwa bila nafasi.`;
+/** Formats a SimplePasswordError in Swahili. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Nenosiri lazima lisiwe na nafasi mwanzoni wala mwishoni.";
+    case "TooLong":
+      return "Nenosiri linazidi urefu wa juu wa 64.";
+    case "TooShort":
+      return "Nenosiri halifikii urefu wa chini wa 8.";
+  }
+};
+
 /** Formats a MnemonicError in Swahili. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Thamani ${safelyStringifyUnknownValue(error.value)} si mnemonic halali ya BIP39 ya Kiingereza.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Thamani si mnemonic halali ya BIP39 ya Kiingereza.";
 /** Formats an IdError in Swahili. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si Id halali.`;

@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -349,9 +350,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的無空格大寫 IBAN。`;
 
+/** Formats a SimplePasswordError in Traditional Chinese. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "密碼不得有前後空白。";
+    case "TooLong":
+      return "密碼超過最大長度 64。";
+    case "TooShort":
+      return "密碼未達最小長度 8。";
+  }
+};
+
 /** Formats a MnemonicError in Traditional Chinese. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的英文 BIP39 助記詞。`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "此值不是有效的英文 BIP39 助記詞。";
 
 /** Formats an IdError in Traditional Chinese. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

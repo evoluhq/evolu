@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -355,9 +356,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} పెద్ద అక్షరాలలోని, ఖాళీలు లేని చెల్లుబాటు అయ్యే IBAN కాదు.`;
 
+/** Formats a SimplePasswordError in Telugu. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "పాస్‌వర్డ్‌లో ప్రారంభం లేదా చివర ఖాళీలు ఉండకూడదు.";
+    case "TooLong":
+      return "పాస్‌వర్డ్ గరిష్ఠ పొడవు 64 ను మించింది.";
+    case "TooShort":
+      return "పాస్‌వర్డ్ కనీస పొడవు 8 ను చేరలేదు.";
+  }
+};
+
 /** Formats a MnemonicError in Telugu. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే ఆంగ్ల BIP39 mnemonic కాదు.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "విలువ చెల్లుబాటు అయ్యే ఆంగ్ల BIP39 mnemonic కాదు.";
 
 /** Formats an IdError in Telugu. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

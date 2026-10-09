@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -354,9 +355,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} बड़े अक्षरों में और बिना रिक्त स्थान के मान्य IBAN नहीं है।`;
 
+/** Formats a SimplePasswordError in Hindi. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "पासवर्ड के आरंभ और अंत से whitespace हटाया हुआ होना चाहिए।";
+    case "TooLong":
+      return "पासवर्ड की लंबाई अधिकतम 64 हो सकती है।";
+    case "TooShort":
+      return "पासवर्ड की लंबाई न्यूनतम 8 होनी चाहिए।";
+  }
+};
+
 /** Formats a MnemonicError in Hindi. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `मान ${safelyStringifyUnknownValue(error.value)} मान्य अंग्रेज़ी BIP39 mnemonic नहीं है।`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "मान मान्य अंग्रेज़ी BIP39 mnemonic नहीं है।";
 
 /** Formats an IdError in Hindi. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

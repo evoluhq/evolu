@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -356,9 +357,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は空白を含まない大文字の有効な IBAN ではありません。`;
 
+/** Formats a SimplePasswordError in Japanese. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "パスワードは前後の空白が除去されている必要があります。";
+    case "TooLong":
+      return "パスワードは最大長 64 を超えています。";
+    case "TooShort":
+      return "パスワードは最小長 8 を満たしていません。";
+  }
+};
+
 /** Formats a MnemonicError in Japanese. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `値 ${safelyStringifyUnknownValue(error.value)} は有効な英語の BIP39 ニーモニックではありません。`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "値は有効な英語の BIP39 ニーモニックではありません。";
 
 /** Formats an IdError in Japanese. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

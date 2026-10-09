@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -359,9 +360,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим IBAN у верхньому регістрі без пробілів.`;
 
+/** Formats a SimplePasswordError in Ukrainian. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Пароль не має містити пробілів на початку та в кінці.";
+    case "TooLong":
+      return "Пароль перевищує максимальну довжину 64.";
+    case "TooShort":
+      return "Пароль коротший за мінімальну довжину 8.";
+  }
+};
+
 /** Formats a MnemonicError in Ukrainian. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою англійською мнемонічною фразою BIP39.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Значення не є допустимою англійською мнемонічною фразою BIP39.";
 
 /** Formats an IdError in Ukrainian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

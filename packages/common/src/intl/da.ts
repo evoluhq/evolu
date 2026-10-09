@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -356,9 +357,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldigt IBAN-nummer med store bogstaver uden mellemrum.`;
 
+/** Formats a SimplePasswordError in Danish. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Adgangskoden skal være trimmet.";
+    case "TooLong":
+      return "Adgangskoden overskrider maksimumslængden på 64.";
+    case "TooShort":
+      return "Adgangskoden opfylder ikke minimumslængden på 8.";
+  }
+};
+
 /** Formats a MnemonicError in Danish. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig engelsk BIP39-mnemonic.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Værdien er ikke en gyldig engelsk BIP39-mnemonic.";
 
 /** Formats an IdError in Danish. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

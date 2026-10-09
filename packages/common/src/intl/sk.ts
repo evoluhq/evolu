@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -310,9 +311,22 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Slovak. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platný IBAN zapísaný veľkými písmenami bez medzier.`;
+/** Formats a SimplePasswordError in Slovak. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Heslo nesmie obsahovať medzery na začiatku ani na konci.";
+    case "TooLong":
+      return "Heslo môže mať dĺžku najviac 64.";
+    case "TooShort":
+      return "Heslo musí mať dĺžku aspoň 8.";
+  }
+};
 /** Formats a MnemonicError in Slovak. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platná anglická mnemotechnická fráza BIP39.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Hodnota nie je platná anglická mnemotechnická fráza BIP39.";
 /** Formats an IdError in Slovak. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platné Id.`;

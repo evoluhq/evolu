@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -309,9 +310,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Vietnamese. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là IBAN hợp lệ được viết hoa toàn bộ và không có khoảng trắng.`;
+/** Formats a SimplePasswordError in Vietnamese. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Mật khẩu phải được cắt khoảng trắng đầu và cuối.";
+    case "TooLong":
+      return "Mật khẩu vượt quá độ dài tối đa là 64.";
+    case "TooShort":
+      return "Mật khẩu không đạt độ dài tối thiểu là 8.";
+  }
+};
+
 /** Formats a MnemonicError in Vietnamese. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là cụm từ gợi nhớ BIP39 tiếng Anh hợp lệ.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Giá trị không phải là cụm từ gợi nhớ BIP39 tiếng Anh hợp lệ.";
 /** Formats an IdError in Vietnamese. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là Id hợp lệ.`;

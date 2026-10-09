@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -355,9 +356,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} വലിയ അക്ഷരങ്ങളിലുള്ളതും സ്പേസ് ഇല്ലാത്തതുമായ സാധുവായ IBAN അല്ല.`;
 
+/** Formats a SimplePasswordError in Malayalam. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "പാസ്‌വേഡിന്റെ തുടക്കത്തിലോ അവസാനത്തിലോ സ്പേസ് ഉണ്ടാകരുത്.";
+    case "TooLong":
+      return "പാസ്‌വേഡിന്റെ നീളം 64-ൽ കൂടരുത്.";
+    case "TooShort":
+      return "പാസ്‌വേഡിന്റെ നീളം കുറഞ്ഞത് 8 ആയിരിക്കണം.";
+  }
+};
+
 /** Formats a MnemonicError in Malayalam. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ ഇംഗ്ലീഷ് BIP39 mnemonic അല്ല.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "മൂല്യം സാധുവായ ഇംഗ്ലീഷ് BIP39 mnemonic അല്ല.";
 
 /** Formats an IdError in Malayalam. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

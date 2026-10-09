@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -362,9 +363,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρο IBAN με κεφαλαία γράμματα χωρίς κενά.`;
 
+/** Formats a SimplePasswordError in Greek. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Ο κωδικός πρόσβασης δεν πρέπει να έχει κενά στην αρχή ή στο τέλος.";
+    case "TooLong":
+      return "Ο κωδικός πρόσβασης υπερβαίνει το μέγιστο μήκος 64.";
+    case "TooShort":
+      return "Ο κωδικός πρόσβασης δεν πληροί το ελάχιστο μήκος 8.";
+  }
+};
+
 /** Formats a MnemonicError in Greek. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη αγγλική μνημονική φράση BIP39.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Η τιμή δεν είναι έγκυρη αγγλική μνημονική φράση BIP39.";
 
 /** Formats an IdError in Greek. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

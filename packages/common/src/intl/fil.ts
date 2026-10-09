@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -356,9 +357,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na IBAN na nasa malalaking titik at walang espasyo.`;
 
+/** Formats a SimplePasswordError in Filipino. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Ang password ay dapat naka-trim.";
+    case "TooLong":
+      return "Ang password ay lumalampas sa maximum na haba na 64.";
+    case "TooShort":
+      return "Ang password ay hindi umaabot sa minimum na haba na 8.";
+  }
+};
+
 /** Formats a MnemonicError in Filipino. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na English BIP39 mnemonic.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Ang halaga ay hindi valid na English BIP39 mnemonic.";
 
 /** Formats an IdError in Filipino. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

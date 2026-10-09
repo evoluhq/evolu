@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -354,9 +355,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੱਡੇ ਅੱਖਰਾਂ ਵਿੱਚ ਅਤੇ ਖਾਲੀ ਥਾਂਵਾਂ ਤੋਂ ਬਿਨਾਂ ਵੈਧ IBAN ਨਹੀਂ ਹੈ।`;
 
+/** Formats a SimplePasswordError in Punjabi. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "ਪਾਸਵਰਡ ਦੇ ਸ਼ੁਰੂ ਅਤੇ ਅੰਤ ਤੋਂ whitespace ਹਟਿਆ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।";
+    case "TooLong":
+      return "ਪਾਸਵਰਡ ਦੀ ਲੰਬਾਈ ਵੱਧ ਤੋਂ ਵੱਧ 64 ਹੋ ਸਕਦੀ ਹੈ।";
+    case "TooShort":
+      return "ਪਾਸਵਰਡ ਦੀ ਲੰਬਾਈ ਘੱਟੋ-ਘੱਟ 8 ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ।";
+  }
+};
+
 /** Formats a MnemonicError in Punjabi. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ ਅੰਗਰੇਜ਼ੀ BIP39 mnemonic ਨਹੀਂ ਹੈ।`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "ਮੁੱਲ ਵੈਧ ਅੰਗਰੇਜ਼ੀ BIP39 mnemonic ਨਹੀਂ ਹੈ।";
 
 /** Formats an IdError in Punjabi. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

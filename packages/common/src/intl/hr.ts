@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -362,9 +363,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani IBAN napisan velikim slovima bez razmaka.`;
 
+/** Formats a SimplePasswordError in Croatian. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Lozinka ne smije imati razmake na početku ni na kraju.";
+    case "TooLong":
+      return "Lozinka premašuje najveću duljinu od 64.";
+    case "TooShort":
+      return "Lozinka ne zadovoljava najmanju duljinu od 8.";
+  }
+};
+
 /** Formats a MnemonicError in Croatian. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana engleska BIP39 mnemonička fraza.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Vrijednost nije valjana engleska BIP39 mnemonička fraza.";
 
 /** Formats an IdError in Croatian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

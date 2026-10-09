@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -355,9 +356,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک شمارهٔ IBAN معتبر با حروف بزرگ و بدون فاصله نیست.`;
 
+/** Formats a SimplePasswordError in Persian. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "گذرواژه نباید در ابتدا یا انتها فاصلهٔ اضافی داشته باشد.";
+    case "TooLong":
+      return "طول گذرواژه از حداکثر 64 بیشتر است.";
+    case "TooShort":
+      return "طول گذرواژه باید حداقل 8 باشد.";
+  }
+};
+
 /** Formats a MnemonicError in Persian. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `مقدار ${safelyStringifyUnknownValue(error.value)} یک عبارت یادسپاری انگلیسی BIP39 معتبر نیست.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "مقدار یک عبارت یادسپاری انگلیسی BIP39 معتبر نیست.";
 
 /** Formats an IdError in Persian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

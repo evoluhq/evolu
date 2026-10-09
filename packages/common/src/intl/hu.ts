@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -359,9 +360,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes, szóközök nélküli, nagybetűs IBAN.`;
 
+/** Formats a SimplePasswordError in Hungarian. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "A jelszónak nem lehetnek kezdő vagy záró szóközei.";
+    case "TooLong":
+      return "A jelszó meghaladja a 64 maximális hosszúságot.";
+    case "TooShort":
+      return "A jelszó nem éri el a 8 minimális hosszúságot.";
+  }
+};
+
 /** Formats a MnemonicError in Hungarian. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes angol BIP39 mnemonikus kifejezés.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Az érték nem érvényes angol BIP39 mnemonikus kifejezés.";
 
 /** Formats an IdError in Hungarian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

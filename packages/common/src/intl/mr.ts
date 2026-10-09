@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -355,9 +356,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हा मोठ्या अक्षरांतील आणि रिकाम्या जागांशिवाय लिहिलेला वैध IBAN नाही.`;
 
+/** Formats a SimplePasswordError in Marathi. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "पासवर्डमधील सुरुवातीची आणि शेवटची रिकामी जागा काढलेली असली पाहिजे.";
+    case "TooLong":
+      return "पासवर्डची लांबी कमाल 64 पेक्षा जास्त आहे.";
+    case "TooShort":
+      return "पासवर्ड किमान 8 लांबीची अट पूर्ण करत नाही.";
+  }
+};
+
 /** Formats a MnemonicError in Marathi. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध इंग्रजी BIP39 mnemonic नाही.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "मूल्य वैध इंग्रजी BIP39 mnemonic नाही.";
 
 /** Formats an IdError in Marathi. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

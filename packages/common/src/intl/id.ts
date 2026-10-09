@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -355,9 +356,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan IBAN yang valid dalam huruf besar tanpa spasi.`;
 
+/** Formats a SimplePasswordError in Indonesian. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Kata sandi tidak boleh diawali atau diakhiri dengan spasi.";
+    case "TooLong":
+      return "Kata sandi melebihi panjang maksimum 64.";
+    case "TooShort":
+      return "Kata sandi tidak memenuhi panjang minimum 8.";
+  }
+};
+
 /** Formats a MnemonicError in Indonesian. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan mnemonik BIP39 bahasa Inggris yang valid.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Nilai bukan mnemonik BIP39 bahasa Inggris yang valid.";
 
 /** Formats an IdError in Indonesian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

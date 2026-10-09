@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -355,9 +356,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri boşluksuz ve büyük harfli geçerli bir IBAN değildir.`;
 
+/** Formats a SimplePasswordError in Turkish. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Parolanın başında veya sonunda boşluk olmamalıdır.";
+    case "TooLong":
+      return "Parola en fazla 64 uzunluğunda olmalıdır.";
+    case "TooShort":
+      return "Parola en az 8 uzunluğunda olmalıdır.";
+  }
+};
+
 /** Formats a MnemonicError in Turkish. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir İngilizce BIP39 anımsatıcı ifadesi değildir.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Değer geçerli bir İngilizce BIP39 anımsatıcı ifadesi değildir.";
 
 /** Formats an IdError in Turkish. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -356,9 +357,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no es un IBAN válido en mayúsculas y sin espacios.`;
 
+/** Formats a SimplePasswordError in Spanish. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "La contraseña no debe tener espacios en blanco al principio ni al final.";
+    case "TooLong":
+      return "La contraseña supera la longitud máxima de 64.";
+    case "TooShort":
+      return "La contraseña no alcanza la longitud mínima de 8.";
+  }
+};
+
 /** Formats a MnemonicError in Spanish. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `El valor ${safelyStringifyUnknownValue(error.value)} no es un mnemónico BIP39 en inglés válido.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "El valor no es un mnemónico BIP39 en inglés válido.";
 
 /** Formats an IdError in Spanish. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

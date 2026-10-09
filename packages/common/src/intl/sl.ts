@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -359,9 +360,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljaven IBAN, zapisan z velikimi črkami brez presledkov.`;
 
+/** Formats a SimplePasswordError in Slovenian. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Geslo mora biti brez presledkov na začetku in koncu.";
+    case "TooLong":
+      return "Geslo presega največjo dolžino 64.";
+    case "TooShort":
+      return "Geslo ne dosega najmanjše dolžine 8.";
+  }
+};
+
 /** Formats a MnemonicError in Slovenian. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljavna angleška mnemonična fraza BIP39.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Vrednost ni veljavna angleška mnemonična fraza BIP39.";
 
 /** Formats an IdError in Slovenian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

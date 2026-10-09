@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -356,9 +357,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un IBAN valid scris cu majuscule și fără spații.`;
 
+/** Formats a SimplePasswordError in Romanian. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Parola trebuie să fie fără spații la început sau la sfârșit.";
+    case "TooLong":
+      return "Parola depășește lungimea maximă de 64.";
+    case "TooShort":
+      return "Parola nu îndeplinește lungimea minimă de 8.";
+  }
+};
+
 /** Formats a MnemonicError in Romanian. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o frază mnemonică BIP39 în engleză validă.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Valoarea nu este o frază mnemonică BIP39 în engleză validă.";
 
 /** Formats an IdError in Romanian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

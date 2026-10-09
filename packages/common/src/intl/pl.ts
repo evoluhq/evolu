@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   StartsWithError,
   TableIdError,
   TemplateLiteralError,
@@ -354,9 +355,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest prawidłowym numerem IBAN zapisanym wielkimi literami bez spacji.`;
 
+/** Formats a SimplePasswordError in Polish. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Hasło nie może zawierać białych znaków na początku ani na końcu.";
+    case "TooLong":
+      return "Hasło przekracza maksymalną długość 64.";
+    case "TooShort":
+      return "Hasło nie spełnia minimalnej długości 8.";
+  }
+};
+
 /** Formats a MnemonicError in Polish. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest prawidłową angielską frazą mnemoniczną BIP39.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Wartość nie jest prawidłową angielską frazą mnemoniczną BIP39.";
 
 /** Formats an IdError in Polish. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

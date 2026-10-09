@@ -565,6 +565,7 @@ import {
   formatRecordError,
   formatRegexError,
   formatSetError,
+  formatSimplePasswordError,
   formatStartsWithError,
   formatStringError,
   formatSymbolError,
@@ -8884,37 +8885,129 @@ export type Iban = typeof Iban.Output;
 export const testName = /*#__PURE__*/ Name.orThrow("Name");
 
 /**
- * A trimmed password containing between 8 and 64 UTF-16 code units.
+ * Error returned when a string is not a valid {@link SimplePassword}.
+ *
+ * It names the failed constraint and omits the rejected string, because a
+ * password is a secret.
  *
  * @group String
  */
-export const SimplePassword = /*#__PURE__*/ brand(
+export interface SimplePasswordError extends TypeError<"SimplePassword"> {
+  readonly reason: "Untrimmed" | "TooLong" | "TooShort";
+}
+
+/**
+ * A trimmed password containing between 8 and 64 UTF-16 code units.
+ *
+ * A password is a secret, so every rejected string fails with a
+ * {@link SimplePasswordError} that omits it. A non-string fails with the
+ * {@link String} error, which keeps the input, so pass only strings.
+ *
+ * Only this Type's own error omits the input. Types built around it keep the
+ * input in their own errors: a refinement such as {@link regex} applied to it,
+ * or the `Null` member of {@link nullOr} when all errors are collected, as with
+ * `{ errors: "all" }` and always with Standard Schema validation.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, SimplePassword } from "@evolu/common";
+ *
+ * assertOk(SimplePassword.fromUnknown("correct horse"), "correct horse");
+ * assertErr(SimplePassword.fromUnknown("short"), {
+ *   type: "SimplePassword",
+ *   reason: "TooShort",
+ * });
+ * ```
+ *
+ * @group String
+ */
+export const SimplePassword = /*#__PURE__*/ createType<
   "SimplePassword",
-  /*#__PURE__*/ minLength(8)(/*#__PURE__*/ maxLength(64)(TrimmedString)),
+  typeof String,
+  TrimmedString &
+    Brand<"MaxLength64"> &
+    Brand<"MinLength8"> &
+    Brand<"SimplePassword">,
+  SimplePasswordError
+>(
+  "SimplePassword",
+  String,
+  (value) =>
+    value !== value.trim()
+      ? err({ type: "SimplePassword", reason: "Untrimmed" })
+      : value.length > 64
+        ? err({ type: "SimplePassword", reason: "TooLong" })
+        : value.length < 8
+          ? err({ type: "SimplePassword", reason: "TooShort" })
+          : ok(
+              value as TrimmedString &
+                Brand<"MaxLength64"> &
+                Brand<"MinLength8"> &
+                Brand<"SimplePassword">,
+            ),
+  formatSimplePasswordError,
 );
 export type SimplePassword = typeof SimplePassword.Output;
 
 /**
  * Error returned when a string is not a valid English BIP39 {@link Mnemonic}.
  *
- * @group String
- */
-export interface MnemonicError extends TypeError<"Mnemonic"> {
-  readonly value: string;
-}
-
-/**
- * A valid English BIP39 mnemonic.
+ * It omits the rejected string, because a mnemonic is a secret and a rejected
+ * one usually differs from the real one by a single word.
  *
  * @group String
  */
-export const Mnemonic = /*#__PURE__*/ brand(
+export interface MnemonicError extends TypeError<"Mnemonic"> {}
+
+/**
+ * A valid English BIP39 mnemonic in its canonical spelling.
+ *
+ * It accepts only lowercase ASCII words separated by single spaces, so each
+ * mnemonic has one spelling and is also a {@link NonEmptyTrimmedString}. Other
+ * spellings, such as words separated by no-break spaces or written with
+ * fullwidth letters, are rejected; convert such input to NFKD and separate its
+ * words with single spaces before validating it.
+ *
+ * A mnemonic is a secret, so every rejected string fails with a
+ * {@link MnemonicError} that omits it. A non-string fails with the {@link String}
+ * error, which keeps the input, so pass only strings.
+ *
+ * Only this Type's own error omits the input. Types built around it keep the
+ * input in their own errors: a refinement such as {@link regex} applied to it,
+ * or the `Null` member of {@link nullOr} when all errors are collected, as with
+ * `{ errors: "all" }` and always with Standard Schema validation.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, Mnemonic } from "@evolu/common";
+ *
+ * const mnemonic =
+ *   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+ *
+ * assertOk(Mnemonic.fromUnknown(mnemonic), mnemonic);
+ * assertErr(Mnemonic.fromUnknown(`${mnemonic}\n`), { type: "Mnemonic" });
+ * ```
+ *
+ * @group String
+ */
+export const Mnemonic = /*#__PURE__*/ createType<
   "Mnemonic",
-  NonEmptyTrimmedString,
-  (value: string) =>
+  typeof String,
+  NonEmptyTrimmedString & Brand<"Mnemonic">,
+  MnemonicError
+>(
+  "Mnemonic",
+  String,
+  (value) =>
+    // validateMnemonic checks the NFKD form of the text, which accepts other
+    // spellings, so the canonical spelling is checked first. It also proves
+    // that the text is non-empty and trimmed.
+    /^[a-z]+(?: [a-z]+)*$/u.test(value) &&
     bip39.validateMnemonic(value, wordlist)
-      ? ok()
-      : err<MnemonicError>({ type: "Mnemonic", value }),
+      ? ok(value as NonEmptyTrimmedString & Brand<"Mnemonic">)
+      : err({ type: "Mnemonic" }),
   formatMnemonicError,
 );
 export type Mnemonic = typeof Mnemonic.Output;

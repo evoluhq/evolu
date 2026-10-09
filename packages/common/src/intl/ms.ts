@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -308,9 +309,22 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Malay. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan IBAN yang sah dalam huruf besar tanpa ruang kosong.`;
+/** Formats a SimplePasswordError in Malay. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Kata laluan tidak boleh bermula atau berakhir dengan ruang kosong.";
+    case "TooLong":
+      return "Kata laluan melebihi panjang maksimum 64.";
+    case "TooShort":
+      return "Kata laluan tidak memenuhi panjang minimum 8.";
+  }
+};
 /** Formats a MnemonicError in Malay. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan mnemonik BIP39 bahasa Inggeris yang sah.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Nilai bukan mnemonik BIP39 bahasa Inggeris yang sah.";
 /** Formats an IdError in Malay. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan Id yang sah.`;

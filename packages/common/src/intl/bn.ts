@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -353,9 +354,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি বড় হাতের অক্ষরে ও ফাঁকা স্থান ছাড়া লেখা বৈধ IBAN নয়।`;
 
+/** Formats a SimplePasswordError in Bengali. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "পাসওয়ার্ডের শুরু বা শেষে whitespace থাকা যাবে না।";
+    case "TooLong":
+      return "পাসওয়ার্ডের দৈর্ঘ্য সর্বোচ্চ 64 হতে পারে।";
+    case "TooShort":
+      return "পাসওয়ার্ডের দৈর্ঘ্য অন্তত 8 হতে হবে।";
+  }
+};
+
 /** Formats a MnemonicError in Bengali. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ ইংরেজি BIP39 mnemonic নয়।`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "মানটি বৈধ ইংরেজি BIP39 mnemonic নয়।";
 
 /** Formats an IdError in Bengali. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

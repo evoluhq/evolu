@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -352,9 +353,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו מספר IBAN חוקי באותיות גדולות וללא רווחים.`;
 
+/** Formats a SimplePasswordError in Hebrew. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "יש להסיר רווחים מיותרים מתחילת הסיסמה ומסופה.";
+    case "TooLong":
+      return "הסיסמה חורגת מהאורך המרבי של 64.";
+    case "TooShort":
+      return "הסיסמה אינה עומדת באורך המינימלי של 8.";
+  }
+};
+
 /** Formats a MnemonicError in Hebrew. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `הערך ${safelyStringifyUnknownValue(error.value)} אינו מנמוניקת BIP39 חוקית באנגלית.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "הערך אינו מנמוניקת BIP39 חוקית באנגלית.";
 
 /** Formats an IdError in Hebrew. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

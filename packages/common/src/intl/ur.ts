@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -320,9 +321,22 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Urdu. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} بڑے حروف میں اور خالی جگہ کے بغیر درست IBAN نہیں ہے۔`;
+/** Formats a SimplePasswordError in Urdu. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "پاس ورڈ کے شروع یا آخر میں خالی جگہ نہیں ہونی چاہیے۔";
+    case "TooLong":
+      return "پاس ورڈ کی لمبائی 64 سے زیادہ ہے۔";
+    case "TooShort":
+      return "پاس ورڈ کم از کم 8 لمبا ہونا چاہیے۔";
+  }
+};
 /** Formats a MnemonicError in Urdu. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `قدر ${safelyStringifyUnknownValue(error.value)} درست انگریزی BIP39 mnemonic نہیں ہے۔`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "قدر درست انگریزی BIP39 mnemonic نہیں ہے۔";
 /** Formats an IdError in Urdu. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست Id نہیں ہے۔`;

@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -353,9 +354,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ IBAN ที่ถูกต้องซึ่งเป็นตัวพิมพ์ใหญ่และไม่มีช่องว่าง`;
 
+/** Formats a SimplePasswordError in Thai. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "รหัสผ่านต้องตัดช่องว่างหัวท้ายแล้ว";
+    case "TooLong":
+      return "รหัสผ่านมีความยาวเกินสูงสุด 64";
+    case "TooShort":
+      return "รหัสผ่านมีความยาวไม่ถึงขั้นต่ำ 8";
+  }
+};
+
 /** Formats a MnemonicError in Thai. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ mnemonic BIP39 ภาษาอังกฤษที่ถูกต้อง`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "ค่านี้ไม่ใช่ mnemonic BIP39 ภาษาอังกฤษที่ถูกต้อง";
 
 /** Formats an IdError in Thai. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

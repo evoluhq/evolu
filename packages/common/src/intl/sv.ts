@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -356,9 +357,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} är inte ett giltigt IBAN-nummer med stora bokstäver utan mellanslag.`;
 
+/** Formats a SimplePasswordError in Swedish. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Lösenordet får inte ha inledande eller avslutande blanksteg.";
+    case "TooLong":
+      return "Lösenordet överskrider maxlängden 64.";
+    case "TooShort":
+      return "Lösenordet uppfyller inte minimilängden 8.";
+  }
+};
+
 /** Formats a MnemonicError in Swedish. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en giltig engelsk BIP39-mnemonisk fras.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Värdet är inte en giltig engelsk BIP39-mnemonisk fras.";
 
 /** Formats an IdError in Swedish. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

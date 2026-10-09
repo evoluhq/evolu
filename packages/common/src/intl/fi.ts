@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -355,9 +356,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen IBAN-tilinumero isoilla kirjaimilla ilman välilyöntejä.`;
 
+/** Formats a SimplePasswordError in Finnish. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "Salasanan alussa tai lopussa ei saa olla tyhjiä merkkejä.";
+    case "TooLong":
+      return "Salasana ylittää enimmäispituuden 64.";
+    case "TooShort":
+      return "Salasana ei täytä vähimmäispituutta 8.";
+  }
+};
+
 /** Formats a MnemonicError in Finnish. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen englanninkielinen BIP39-muistisanasarja.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "Arvo ei ole kelvollinen englanninkielinen BIP39-muistisanasarja.";
 
 /** Formats an IdError in Finnish. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

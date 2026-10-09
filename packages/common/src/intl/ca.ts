@@ -78,6 +78,7 @@ import type {
   RecordError,
   RegexError,
   SetError,
+  SimplePasswordError,
   TableIdError,
   TemplateLiteralError,
   StartsWithError,
@@ -356,9 +357,23 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és un IBAN vàlid en majúscules i sense espais.`;
 
+/** Formats a SimplePasswordError in Catalan. */
+export const formatSimplePasswordError: TypeErrorFormatter<
+  SimplePasswordError
+> = (error) => {
+  switch (error.reason) {
+    case "Untrimmed":
+      return "La contrasenya no pot tenir espais en blanc al principi ni al final.";
+    case "TooLong":
+      return "La contrasenya supera la longitud màxima de 64.";
+    case "TooShort":
+      return "La contrasenya no compleix la longitud mínima de 8.";
+  }
+};
+
 /** Formats a MnemonicError in Catalan. */
-export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
-  `El valor ${safelyStringifyUnknownValue(error.value)} no és una frase mnemotècnica BIP39 en anglès vàlida.`;
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
+  "El valor no és una frase mnemotècnica BIP39 en anglès vàlida.";
 
 /** Formats an IdError in Catalan. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
