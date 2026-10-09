@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่มี object tag ที่คาดไว้ ${safelyStringifyUnknownValue(error.expected)}`;
 
+/** Formats a ValidDateError in Thai. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date ไม่ถูกต้อง";
+
 /** Formats an InstanceOfError in Thai. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่สตริงวันที่และเวลา ISO รูปแบบมาตรฐาน`;
 
+/** Formats a PlainDateIsoError in Thai. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่วันที่ตามปฏิทินที่ถูกต้องในรูปแบบ YYYY-MM-DD`;
+
 /** Formats a DateIsoFromDateError in Thai. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "ไม่สามารถแทน Date เป็น DateIso ได้";
+
+/** Formats a DateIsoFromRfc3339Error in Thai. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่วันที่และเวลาแบบ RFC 3339 ที่รองรับ ใช้ค่าเช่น "2024-01-01T12:00:00Z"`;
 
 /** Formats a DecimalStringError in Thai. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -221,11 +257,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องตัดช่องว่างหัวท้ายแล้ว`;
 
+/** Formats a WellFormedError in Thai. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องเป็นข้อความ Unicode ที่มีรูปแบบถูกต้อง`;
+
+/** Formats a NormalizedError in Thai. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องอยู่ในรูปแบบการทำให้เป็นมาตรฐานของ Unicode แบบ ${error.form}`;
+
 /** Formats a StartsWithError in Thai. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องขึ้นต้นด้วย ${safelyStringifyUnknownValue(error.prefix)}`;
+
+/** Formats an EndsWithError in Thai. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องลงท้ายด้วย ${safelyStringifyUnknownValue(error.suffix)}`;
 
 /** Formats a MinLengthError in Thai. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -253,6 +305,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่สตริง Base64Url ที่ถูกต้อง`;
 
+/** Formats a Base64Error in Thai. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่สตริง Base64 ที่ถูกต้อง`;
+
+/** Formats a HexError in Thai. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่สตริงเลขฐานสิบหกตัวพิมพ์เล็กที่มีจำนวนหลักเป็นเลขคู่`;
+
 /** Formats a NameError in Thai. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ Name ที่ถูกต้อง`;
@@ -260,6 +320,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Thai. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ที่อยู่อีเมลที่ถูกต้อง`;
+
+/** Formats a HostnameError in Thai. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ชื่อโฮสต์ตัวพิมพ์เล็กที่ถูกต้อง`;
+
+/** Formats an Ipv4AddressError in Thai. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ที่อยู่ IPv4 ที่ถูกต้อง`;
+
+/** Formats an Ipv6AddressError in Thai. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ที่อยู่ IPv6 รูปแบบมาตรฐาน`;
+
+/** Formats an Ipv6AddressFromStringError in Thai. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ที่อยู่ IPv6 ที่ถูกต้อง`;
+
+/** Formats a PhoneNumberE164Error in Thai. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่หมายเลขโทรศัพท์ในรูปแบบ E.164`;
+
+/** Formats an IbanError in Thai. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ IBAN ที่ถูกต้องซึ่งเป็นตัวพิมพ์ใหญ่และไม่มีช่องว่าง`;
 
 /** Formats a MnemonicError in Thai. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -276,6 +368,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Thai. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ UUID ตัวพิมพ์เล็กรูปแบบมาตรฐาน`;
+
+/** Formats a UuidVersionError in Thai. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ UUID เวอร์ชัน ${error.version}`;
 
 /** Formats a NonNegativeError in Thai. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -328,6 +426,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่จำนวนเต็มฐานสิบ`;
+
+/** Formats a FiniteNumberFromStringError in Thai. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่จำนวนฐานสิบ`;
 
 /** Formats a GreaterThanError in Thai. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -386,6 +490,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `องค์ประกอบอาร์เรย์ที่ดัชนี ${issue.index} ไม่ถูกต้อง`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Thai. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องมีอย่างน้อยหนึ่งรายการ`;
+
+/** Formats a UniqueError in Thai. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} มีรายการที่เท่ากันที่ดัชนี ${error.previousIndex} และ ${error.index}`;
 
 /** Formats a SetError in Thai. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -470,6 +584,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `คีย์ Record ${safelyStringifyUnknownValue(issue.previousKey)} และ ${safelyStringifyUnknownValue(issue.key)} ถอดรหัสเป็นคีย์เดียวกัน ${safelyStringifyUnknownValue(issue.outputKey)}`;
   }
 };
+
+/** Formats a MinEntriesError in Thai. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} มีจำนวนรายการไม่ถึงขั้นต่ำ ${error.min}`;
+
+/** Formats a MaxEntriesError in Thai. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} มีจำนวนรายการเกินสูงสุด ${error.max}`;
 
 /** Formats an ObjectError in Thai. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

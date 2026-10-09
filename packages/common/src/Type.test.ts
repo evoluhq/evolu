@@ -1,9 +1,16 @@
 import nodeAssert from "node:assert/strict";
 import { describe, it, mock } from "node:test";
 import { runInNewContext } from "node:vm";
-import { createMutableArray, type NonEmptyReadonlyArray } from "./Array.ts";
+import {
+  createMutableArray,
+  firstInArray,
+  lastInArray,
+  mapArray,
+  type NonEmptyReadonlyArray,
+} from "./Array.ts";
 import type { Brand } from "./Brand.ts";
 import {
+  assert,
   assertEqual,
   assertEqualBytes,
   assertErr,
@@ -26,11 +33,14 @@ import {
 } from "./Result.ts";
 import { testCreateDeps } from "./Task.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import * as fc from "fast-check";
 import {
   Age,
   array,
   ArrayBuffer,
   assertType,
+  Base64,
+  base64ToUint8Array,
   Base64Url,
   base64UrlToUint8Array,
   between,
@@ -88,6 +98,7 @@ import {
   Date,
   DateIso,
   DateIsoFromDate,
+  DateIsoFromRfc3339,
   DecimalString,
   Digit,
   Digit1To6,
@@ -98,12 +109,18 @@ import {
   Digit1To99,
   discriminatedUnion,
   Email,
+  endsWith,
   EvoluType,
   finite,
   FiniteNumber,
+  FiniteNumberFromString,
   Function,
   greaterThan,
   greaterThanOrEqualTo,
+  Hex,
+  hexToUint8Array,
+  Hostname,
+  Iban,
   int,
   Int,
   IntFromString,
@@ -117,6 +134,9 @@ import {
   id,
   idToIdBytes,
   idToUuid,
+  Ipv4Address,
+  Ipv6Address,
+  Ipv6AddressFromString,
   json,
   Json,
   JsonArray,
@@ -131,9 +151,11 @@ import {
   lessThanOrEqualTo,
   literal,
   localizeTypes,
+  maxEntries,
   maxLength,
   maxPositiveInt,
   map,
+  minEntries,
   minLength,
   Mnemonic,
   multipleOf,
@@ -146,6 +168,7 @@ import {
   Name,
   NonEmptyTrimmedString,
   NonEmptyTrimmedString100,
+  nonEmptyArray,
   NonEmptyTrimmedString1000,
   nonNaN,
   NonNaNNumber,
@@ -160,6 +183,8 @@ import {
   NonPositiveDecimalString,
   NonPositiveInt,
   NonPositiveNumber,
+  normalize,
+  normalized,
   Null,
   nullishOr,
   nullOr,
@@ -174,6 +199,8 @@ import {
   onePositiveInt,
   optional,
   partial,
+  PhoneNumberE164,
+  PlainDateIso,
   positive,
   positiveDecimalString,
   PositiveDecimalString,
@@ -207,13 +234,22 @@ import {
   Undefined,
   undefinedOr,
   union,
+  unique,
   Unknown,
   UnknownNextResult,
   UnknownResult,
+  uint8ArrayToBase64,
   uint8ArrayToBase64Url,
+  uint8ArrayToHex,
   UrlSafeString,
   Uuid,
   uuidToId,
+  UuidV4,
+  UuidV7,
+  uuidVersion,
+  ValidDate,
+  wellFormed,
+  WellFormedString,
   zeroNonNegativeInt,
   type AnyType,
   type ArrayElementIssue,
@@ -226,12 +262,15 @@ import {
   type BrandFactory,
   type BrandType,
   type StartsWithError,
+  type EndsWithError,
+  type Base64Error,
   type Base64UrlError,
   type DataError,
   type DataIssue,
   type DataType,
   type DateIsoError,
   type DateIsoFromDateError,
+  type DateIsoFromRfc3339Error,
   type DecimalStringError,
   type DiscriminatedUnionError,
   type DiscriminatedUnionMemberError,
@@ -241,7 +280,11 @@ import {
   type EvoluTypeError,
   type ExtractTyped,
   type FiniteError,
+  type FiniteNumberFromStringError,
   type GreaterThanError,
+  type HexError,
+  type HostnameError,
+  type IbanError,
   type IdentifierCasing,
   type IdentifierError,
   type InferErrors,
@@ -256,6 +299,9 @@ import {
   type Int64StringError,
   type IntError,
   type IdError,
+  type Ipv4AddressError,
+  type Ipv6AddressError,
+  type Ipv6AddressFromStringError,
   type JsonArrayInput,
   type JsonError,
   type JsonObjectInput,
@@ -268,6 +314,7 @@ import {
   type LessThanOrEqualToError,
   type LiteralError,
   type LiteralType,
+  type MaxEntriesError,
   type MaxLengthError,
   type MapEntriesError,
   type MapError,
@@ -278,18 +325,21 @@ import {
   type MapNotMapError,
   type MapType,
   type MapValueIssue,
+  type MinEntriesError,
   type MinLengthError,
   type MnemonicError,
   type NameError,
   type NegativeDecimalStringError,
   type NegativeError,
   type NeverError,
+  type NonEmptyArrayError,
   type NullableToOptionalProps,
   type NonNaNError,
   type NonNegativeError,
   type NonNegativeDecimalStringError,
   type NonPositiveDecimalStringError,
   type NonPositiveError,
+  type NormalizedError,
   type ObjectError,
   type ObjectExcessPropertyError,
   type ObjectMissingPropertyError,
@@ -301,6 +351,8 @@ import {
   type ObjectType,
   type OptionalProperty,
   type PartialObjectProps,
+  type PhoneNumberE164Error,
+  type PlainDateIsoError,
   type PositiveDecimalStringError,
   type PositiveError,
   type RecordAccessorIssue,
@@ -348,15 +400,20 @@ import {
   type TypeOfError,
   type TypeValueError,
   type TableIdError,
+  type UnicodeNormalizationForm,
   type UInt64Error,
   type UnionError,
   type UnionInputType,
   type UnionMemberError,
   type UnionType,
+  type UniqueError,
   type UuidError,
+  type UuidVersionError,
+  type ValidDateError,
   type ValidationOptions,
   type ValidateLiteral,
   type ValidateOutput,
+  type WellFormedError,
 } from "./Type.ts";
 
 const createNullRecord = <T extends object>(entries: T): T =>
@@ -522,6 +579,7 @@ describe("Type", () => {
     const exportedTypes = {
       Age,
       ArrayBuffer,
+      Base64,
       Base64Url,
       BigInt,
       Boolean,
@@ -537,6 +595,7 @@ describe("Type", () => {
       Date,
       DateIso,
       DateIsoFromDate,
+      DateIsoFromRfc3339,
       DecimalString,
       Digit,
       Digit1To6,
@@ -548,7 +607,11 @@ describe("Type", () => {
       Email,
       EvoluType,
       FiniteNumber,
+      FiniteNumberFromString,
       Function,
+      Hex,
+      Hostname,
+      Iban,
       Id,
       IdBytes,
       Int,
@@ -556,6 +619,9 @@ describe("Type", () => {
       Int64,
       Int64FromInt64String,
       Int64String,
+      Ipv4Address,
+      Ipv6Address,
+      Ipv6AddressFromString,
       Json,
       JsonArray,
       JsonObject,
@@ -583,6 +649,8 @@ describe("Type", () => {
       Number,
       Object,
       PascalCaseIdentifier,
+      PhoneNumberE164,
+      PlainDateIso,
       PositiveDecimalString,
       PositiveFiniteNumber,
       PositiveInt,
@@ -603,6 +671,10 @@ describe("Type", () => {
       UnknownResult,
       UrlSafeString,
       Uuid,
+      UuidV4,
+      UuidV7,
+      ValidDate,
+      WellFormedString,
     } as const satisfies Readonly<Record<ExportedTypeKey, TypeNode>>;
 
     const IntrospectionRoot = createType(
@@ -618,6 +690,10 @@ describe("Type", () => {
       IntrospectionChild,
       capitalized(String),
       trimmed(String),
+      wellFormed(String),
+      normalized("NFD")(String),
+      endsWith("Introspection")(String),
+      uuidVersion(1)(Uuid),
       minLength(2)(String),
       maxLength(3)(String),
       length(4)(String),
@@ -641,9 +717,13 @@ describe("Type", () => {
       nullishOr(String),
       union(String, Number),
       array(minLength(2)(String)),
+      nonEmptyArray(array(String)),
+      unique(array(String)),
       tuple(String, NumberFromString),
       map(String, Number),
       record(regex("IntrospectionKey", /^key/u)(String), NumberFromString),
+      minEntries(1)(record(String, Number)),
+      maxEntries(2)(record(String, Number)),
       set(minLength(2)(String)),
       object(
         {
@@ -666,6 +746,7 @@ describe("Type", () => {
       "Age",
       "Array",
       "ArrayBuffer",
+      "Base64",
       "Base64Url",
       "Between6-7",
       "BigInt",
@@ -679,14 +760,20 @@ describe("Type", () => {
       "Date",
       "DateIso",
       "DateIsoFromDate",
+      "DateIsoFromRfc3339",
       "DecimalString",
       "DiscriminatedUnion",
       "Email",
+      "EndsWithIntrospection",
       "EvoluType",
       "Finite",
+      "FiniteNumberFromString",
       "Function",
       "GreaterThan1",
       "GreaterThanOrEqualTo2",
+      "Hex",
+      "Hostname",
+      "Iban",
       "Id",
       "IdBytes",
       "InstanceOf",
@@ -699,6 +786,9 @@ describe("Type", () => {
       "IntrospectionKey",
       "IntrospectionRegex",
       "IntrospectionRoot",
+      "Ipv4Address",
+      "Ipv6Address",
+      "Ipv6AddressFromString",
       "Json",
       "JsonValue",
       "JsonValueFromJson",
@@ -713,10 +803,12 @@ describe("Type", () => {
       "Literal",
       "Lowercased",
       "Map",
+      "MaxEntries2",
       "MaxLength100",
       "MaxLength1000",
       "MaxLength3",
       "MaxLength64",
+      "MinEntries1",
       "MinLength1",
       "MinLength2",
       "MinLength8",
@@ -726,15 +818,19 @@ describe("Type", () => {
       "Negative",
       "NegativeDecimalString",
       "Never",
+      "NonEmptyArray",
       "NonNaN",
       "NonNegative",
       "NonNegativeDecimalString",
       "NonPositive",
       "NonPositiveDecimalString",
+      "NormalizedNFD",
       "Number",
       "NumberFromString",
       "Object",
       "PascalCaseIdentifier",
+      "PhoneNumberE164",
+      "PlainDateIso",
       "Port",
       "PortFromString",
       "Positive",
@@ -753,10 +849,16 @@ describe("Type", () => {
       "Uint8Array",
       "Uncapitalized",
       "Union",
+      "Unique",
       "Unknown",
       "Uppercased",
       "UrlSafeString",
       "Uuid",
+      "UuidV1",
+      "UuidV4",
+      "UuidV7",
+      "ValidDate",
+      "WellFormed",
     ] as const;
 
     assertType<
@@ -7972,6 +8074,137 @@ describe("brand", () => {
       });
     });
 
+    describe("PlainDateIso", () => {
+      it("is branded from String", () => {
+        assertEqual(PlainDateIso.name, "PlainDateIso");
+        assertSame(PlainDateIso.parent, String);
+        assertType<
+          typeof PlainDateIso,
+          BrandType<typeof String, "PlainDateIso", PlainDateIsoError>
+        >();
+        assertType<typeof PlainDateIso.Input, string>();
+        assertType<
+          typeof PlainDateIso.Output,
+          string & Brand<"PlainDateIso">
+        >();
+        assertType<typeof PlainDateIso.Error, PlainDateIsoError>();
+        // @ts-expect-error A string does not carry the PlainDateIso brand.
+        void ("2024-01-01" satisfies PlainDateIso);
+      });
+
+      it("accepts existing calendar dates from 0000 through 9999", () => {
+        const values = [
+          "2024-02-29",
+          "2000-02-29",
+          "0000-02-29",
+          "0000-01-01",
+          "9999-12-31",
+          "2023-01-31",
+          "2023-04-30",
+        ];
+
+        for (const value of values) {
+          assertEqual(PlainDateIso.from.parent(value), ok(value));
+        }
+      });
+
+      it("returns a PlainDateIso error for a missing date or another format", () => {
+        const values = [
+          "",
+          "1900-02-29",
+          "2023-02-29",
+          "2023-04-31",
+          "2023-01-32",
+          "2023-13-01",
+          "2023-00-10",
+          "2023-01-00",
+          "2023-1-1",
+          "20230101",
+          "2023/01/01",
+          "+002023-01-01",
+          "-000001-01-01",
+          "10000-01-01",
+          "2023-01-01T00:00",
+          " 2023-01-01",
+          "2023-01-01 ",
+          "2023-01-01\n",
+          "２０２３-01-01",
+        ];
+
+        for (const value of values) {
+          assertEqual(
+            PlainDateIso.from.parent(value),
+            err({ type: "PlainDateIso", value }),
+          );
+        }
+      });
+
+      it("matches the Date calendar for every month and day", () => {
+        for (const year of [0, 4, 100, 400, 1900, 2000, 2023, 2024, 9999]) {
+          for (let month = 1; month <= 12; month++) {
+            for (let day = 1; day <= 31; day++) {
+              const value = [year, month, day]
+                .map((part, index) =>
+                  globalThis.String(part).padStart(index === 0 ? 4 : 2, "0"),
+                )
+                .join("-");
+              const date = new globalThis.Date(`${value}T00:00:00.000Z`);
+              const existsInDateCalendar =
+                !globalThis.Number.isNaN(date.getTime()) &&
+                date.toISOString().startsWith(value);
+
+              assertSame(PlainDateIso.is(value), existsInDateCalendar);
+            }
+          }
+        }
+      });
+
+      it("sorts chronologically as text", () => {
+        const dayMillis = 86_400_000;
+        const day = fc.integer({
+          min: globalThis.Date.parse("0000-01-01T00:00:00.000Z") / dayMillis,
+          max: globalThis.Date.parse("9999-12-31T00:00:00.000Z") / dayMillis,
+        });
+
+        fc.assert(
+          fc.property(day, day, (first, second) => {
+            const [firstValue, secondValue] = [first, second].map((value) =>
+              PlainDateIso.orThrow(
+                new globalThis.Date(value * dayMillis)
+                  .toISOString()
+                  .slice(0, 10),
+              ),
+            );
+
+            assertSame(firstValue < secondValue, first < second);
+          }),
+        );
+      });
+
+      it("formats its own and inherited errors", () => {
+        const invalid = PlainDateIso.fromUnknown("2023-02-29");
+        assertErr(invalid, { type: "PlainDateIso", value: "2023-02-29" });
+        assertEqual(
+          PlainDateIso.formatError(invalid.error),
+          'The value "2023-02-29" is not a valid calendar date in the YYYY-MM-DD format.',
+        );
+        const notString = PlainDateIso.fromUnknown(20230101);
+        assertErr(notString, {
+          type: "TypeOf",
+          expected: "String",
+          value: 20230101,
+        });
+        assertEqual(
+          PlainDateIso.formatError(notString.error),
+          "A value 20230101 is not a string.",
+        );
+        assertType<
+          Parameters<typeof PlainDateIso.formatError>[0],
+          TypeOfError<"String"> | PlainDateIsoError
+        >();
+      });
+    });
+
     describe("DateIsoFromDate", () => {
       it("safely transforms a Date to DateIso and back", () => {
         const value = new globalThis.Date("2023-01-01T12:00:00.000Z");
@@ -8017,6 +8250,215 @@ describe("brand", () => {
             },
           }),
         );
+      });
+    });
+
+    describe("DateIsoFromRfc3339", () => {
+      it("transforms RFC 3339 date-times to canonical DateIso in UTC", () => {
+        const cases = [
+          ["2024-01-01T12:00:00Z", "2024-01-01T12:00:00.000Z"],
+          ["2024-01-01T12:00:00.1Z", "2024-01-01T12:00:00.100Z"],
+          ["2024-01-01T12:00:00.12Z", "2024-01-01T12:00:00.120Z"],
+          ["2024-01-01T12:00:00.123Z", "2024-01-01T12:00:00.123Z"],
+          // Trailing zeros after the third fraction digit lose no precision.
+          ["2024-01-01T12:00:00.5000Z", "2024-01-01T12:00:00.500Z"],
+          ["2024-01-01T12:00:00.123000+00:00", "2024-01-01T12:00:00.123Z"],
+          ["2024-01-01T01:30:00+02:00", "2023-12-31T23:30:00.000Z"],
+          ["2023-12-31T23:30:00-05:30", "2024-01-01T05:00:00.000Z"],
+          ["2024-01-01T12:00:00-00:00", "2024-01-01T12:00:00.000Z"],
+          ["2024-01-01T12:00:00+00:00", "2024-01-01T12:00:00.000Z"],
+          ["2024-02-29T23:59:59.999+23:59", "2024-02-29T00:00:59.999Z"],
+          ["0000-01-01T00:00:00-01:00", "0000-01-01T01:00:00.000Z"],
+          ["9999-12-31T23:59:59.999Z", "9999-12-31T23:59:59.999Z"],
+        ] as const;
+
+        for (const [value, expected] of cases) {
+          assertOk(DateIsoFromRfc3339.fromUnknown(value), expected);
+        }
+
+        const result = DateIsoFromRfc3339.from.parent("2024-01-01T12:00:00Z");
+        assertType<
+          typeof result,
+          Result<
+            DateIso,
+            | DateIsoFromRfc3339Error
+            | TransformOutputError<"DateIsoFromRfc3339", DateIsoError>
+          >
+        >();
+      });
+
+      it("decodes DateIso values to themselves and encodes them unchanged", () => {
+        for (const value of [
+          "0000-01-01T00:00:00.000Z",
+          "2023-01-01T12:00:00.000Z",
+          "9999-12-31T23:59:59.999Z",
+        ]) {
+          const dateIso = DateIso.orThrow(value);
+
+          assertOk(DateIsoFromRfc3339.from.parent(value), dateIso);
+          assertSame(DateIsoFromRfc3339.to(dateIso), value);
+        }
+        void (() => {
+          // @ts-expect-error Encoding requires a DateIso, not unvalidated text.
+          DateIsoFromRfc3339.to("2024-01-01T12:00:00.000Z");
+        });
+      });
+
+      it("validates the calendar date", () => {
+        assertOk(
+          DateIsoFromRfc3339.fromUnknown("2000-02-29T00:00:00Z"),
+          "2000-02-29T00:00:00.000Z",
+        );
+
+        for (const value of [
+          "2023-02-29T00:00:00Z",
+          "1900-02-29T00:00:00Z",
+          "2023-04-31T00:00:00Z",
+          "2023-13-01T00:00:00Z",
+          "2023-00-01T00:00:00Z",
+          "2023-01-00T00:00:00Z",
+        ]) {
+          assertErr(DateIsoFromRfc3339.fromUnknown(value), {
+            type: "DateIsoFromRfc3339",
+            value,
+          });
+        }
+      });
+
+      it("rejects text outside the strict RFC 3339 date-time profile", () => {
+        for (const value of [
+          "",
+          "2024-01-01",
+          "2024-01-01t12:00:00Z",
+          "2024-01-01T12:00:00z",
+          "2024-01-01T12:00:60Z",
+          "2016-12-31T23:59:60Z",
+          "2024-01-01T24:00:00Z",
+          "2024-01-01T12:60:00Z",
+          "2024-01-01T1:00:00Z",
+          "2024-01-01T12:00Z",
+          "2024-01-01T12:00:00.Z",
+          "2024-01-01T12:00:00.1234Z",
+          "2024-01-01T12:00:00.123001Z",
+          "2024-01-01 12:00:00Z",
+          "2024-01-01T12:00:00",
+          "2024-01-01T12:00:00+0100",
+          "2024-01-01T12:00:00+01",
+          "2024-01-01T12:00:00+24:00",
+          "2024-01-01T12:00:00+01:60",
+          "2024-1-1T12:00:00Z",
+          "+002024-01-01T12:00:00Z",
+          " 2024-01-01T12:00:00Z",
+          "2024-01-01T12:00:00Z ",
+        ]) {
+          const invalid = DateIsoFromRfc3339.fromUnknown(value);
+          assertErr(invalid, { type: "DateIsoFromRfc3339", value });
+          assertEqual(
+            DateIsoFromRfc3339.formatError(invalid.error),
+            `The value ${JSON.stringify(value)} is not a supported RFC 3339 date-time. Use a value such as "2024-01-01T12:00:00Z".`,
+          );
+        }
+
+        assertErr(DateIsoFromRfc3339.fromUnknown(0), {
+          type: "TypeOf",
+          expected: "String",
+          value: 0,
+        });
+      });
+
+      it("returns a DateIso error for a moment outside the DateIso range", () => {
+        for (const [value, outputValue] of [
+          ["0000-01-01T00:00:00+01:00", "-000001-12-31T23:00:00.000Z"],
+          ["9999-12-31T23:59:59-01:00", "+010000-01-01T00:59:59.000Z"],
+        ] as const) {
+          const invalid = DateIsoFromRfc3339.fromUnknown(value);
+          assertErr(invalid, {
+            type: "DateIsoFromRfc3339",
+            outputError: { type: "DateIso", value: outputValue },
+          });
+          assertEqual(
+            DateIsoFromRfc3339.formatError(invalid.error),
+            `The value "${outputValue}" is not a canonical ISO date-time string.`,
+          );
+        }
+      });
+    });
+
+    describe("ValidDate", () => {
+      it("is branded from Date", () => {
+        assertEqual(ValidDate.name, "ValidDate");
+        assertSame(ValidDate.parent, Date);
+        assertType<
+          typeof ValidDate,
+          BrandType<typeof Date, "ValidDate", ValidDateError>
+        >();
+        assertType<typeof ValidDate.Input, globalThis.Date>();
+        assertType<
+          typeof ValidDate.Output,
+          globalThis.Date & Brand<"ValidDate">
+        >();
+        assertType<typeof ValidDate.Error, ValidDateError>();
+        // @ts-expect-error A Date does not carry the ValidDate brand.
+        void (new globalThis.Date(0) satisfies ValidDate);
+      });
+
+      it("accepts Dates with a time value, including Dates from another realm", () => {
+        const values: ReadonlyArray<globalThis.Date> = [
+          new globalThis.Date(0),
+          new globalThis.Date(8.64e15),
+          new globalThis.Date(-8.64e15),
+          runInNewContext("new Date(0)"),
+        ];
+
+        for (const value of values) {
+          const result = ValidDate.fromUnknown(value);
+          assertOk(result);
+          assertSame(result.value, value);
+        }
+      });
+
+      it("returns a ValidDate error for an Invalid Date", () => {
+        const values: ReadonlyArray<globalThis.Date> = [
+          new globalThis.Date(globalThis.Number.NaN),
+          new globalThis.Date(8.64e15 + 1),
+          new globalThis.Date("x"),
+          runInNewContext("new Date(NaN)"),
+          // ValidDate reads the time value, not an overriding getTime method.
+          globalThis.Object.assign(new globalThis.Date(globalThis.Number.NaN), {
+            getTime: () => 0,
+          }),
+        ];
+
+        for (const value of values) {
+          assertEqual(
+            ValidDate.from.parent(value),
+            err({ type: "ValidDate", value }),
+          );
+        }
+      });
+
+      it("formats its own error without the value and inherited errors", () => {
+        assertEqual(
+          ValidDate.formatError({
+            type: "ValidDate",
+            value: new globalThis.Date(globalThis.Number.NaN),
+          }),
+          "The Date is invalid.",
+        );
+        const notDate = ValidDate.fromUnknown(0);
+        assertErr(notDate, { type: "ObjectTag", expected: "Date", value: 0 });
+        assertEqual(
+          ValidDate.formatError(notDate.error),
+          'A value 0 does not have the expected object tag "Date".',
+        );
+        assertType<
+          Parameters<typeof ValidDate.formatError>[0],
+          ObjectTagError<"Date"> | ValidDateError
+        >();
+      });
+
+      it("leaves DateIsoFromDate based on Date", () => {
+        assertSame(DateIsoFromDate.parent, Date);
       });
     });
 
@@ -9356,6 +9798,260 @@ describe("BrandFactory", () => {
       });
     });
 
+    describe("wellFormed", () => {
+      it("is a reusable Brand Factory", () => {
+        assertType<
+          typeof wellFormed,
+          BrandFactory<"WellFormed", string, WellFormedError>
+        >();
+      });
+
+      it("preserves parent constraints", () => {
+        const Message = wellFormed(maxLength(3)(String));
+
+        assertOk(Message.fromUnknown("a😀"), "a😀");
+        assertErr(Message.fromUnknown("a\uD800"), {
+          type: "WellFormed",
+          value: "a\uD800",
+        });
+        assertErr(Message.fromUnknown("ab😀"), {
+          type: "MaxLength3",
+          value: "ab😀",
+          max: 3,
+        });
+        assertSame(WellFormedString.parent, String);
+        assertType<
+          typeof Message.Output,
+          string & Brand<"MaxLength3"> & Brand<"WellFormed">
+        >();
+        void (() => {
+          // @ts-expect-error The parent Type must output strings.
+          wellFormed(Number);
+          // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+          wellFormed(WellFormedString);
+        });
+      });
+
+      describe("Type", () => {
+        describe("WellFormedString", () => {
+          it("accepts text whose surrogates form code points", () => {
+            for (const value of [
+              "",
+              "Evolu",
+              "😀",
+              "a😀b",
+              "\uD800\uDC00",
+              "\uDBFF\uDFFF",
+              "\uFFFD",
+            ]) {
+              assertOk(WellFormedString.fromUnknown(value), value);
+            }
+            assertType<
+              typeof WellFormedString.Output,
+              string & Brand<"WellFormed">
+            >();
+            assertType<typeof WellFormedString.Error, WellFormedError>();
+          });
+
+          it("rejects lone surrogates", () => {
+            for (const value of [
+              "\uD800",
+              "\uDC00",
+              "a\uD800",
+              "\uDC00\uD800",
+              "\uD800\uD800\uDC00",
+              "a\uDFFFb",
+              "\uD800\uDC00\uDC00",
+              "😀".slice(0, 1),
+              "😀".slice(1),
+            ]) {
+              assertErr(WellFormedString.fromUnknown(value), {
+                type: "WellFormed",
+                value,
+              });
+            }
+            assertEqual(
+              WellFormedString.formatError({
+                type: "WellFormed",
+                value: "\uD800",
+              }),
+              'The value "\\ud800" must be well-formed Unicode text.',
+            );
+          });
+
+          it("accepts exactly the text that survives a UTF-8 round trip", () => {
+            // Every sequence of up to three parts, each one or two code units.
+            const parts = [
+              "",
+              "a",
+              "😀",
+              "\uD800",
+              "\uDBFF",
+              "\uDC00",
+              "\uDFFF",
+            ];
+            const values = parts.flatMap((first) =>
+              parts.flatMap((second) =>
+                parts.map((third) => first + second + third),
+              ),
+            );
+            const decoder = new TextDecoder();
+            const encoder = new TextEncoder();
+
+            for (const value of new Set(values)) {
+              assertEqual(
+                WellFormedString.is(value),
+                decoder.decode(encoder.encode(value)) === value,
+              );
+            }
+          });
+        });
+      });
+    });
+
+    describe("normalized", () => {
+      const precomposed = "caf\u00E9";
+      const decomposed = "cafe\u0301";
+      const ligature = "\uFB01";
+      const hangulSyllable = "\uD55C";
+      const hangulJamo = "\u1112\u1161\u11AB";
+      const NormalizedNFC = normalized("NFC")(String);
+      const NormalizedNFD = normalized("NFD")(String);
+      const NormalizedNFKC = normalized("NFKC")(String);
+      const NormalizedNFKD = normalized("NFKD")(String);
+
+      it("validates text already in the requested form without changing it", () => {
+        for (const value of ["", "Evolu 123", "\uD800"]) {
+          assertOk(NormalizedNFC.fromUnknown(value), value);
+          assertOk(NormalizedNFD.fromUnknown(value), value);
+          assertOk(NormalizedNFKC.fromUnknown(value), value);
+          assertOk(NormalizedNFKD.fromUnknown(value), value);
+        }
+
+        assertOk(NormalizedNFC.fromUnknown(precomposed), precomposed);
+        assertOk(NormalizedNFKC.fromUnknown(precomposed), precomposed);
+        assertErr(NormalizedNFD.fromUnknown(precomposed), {
+          type: "NormalizedNFD",
+          value: precomposed,
+          form: "NFD",
+        });
+        assertErr(NormalizedNFKD.fromUnknown(precomposed), {
+          type: "NormalizedNFKD",
+          value: precomposed,
+          form: "NFKD",
+        });
+
+        assertOk(NormalizedNFD.fromUnknown(decomposed), decomposed);
+        assertOk(NormalizedNFKD.fromUnknown(decomposed), decomposed);
+        assertErr(NormalizedNFC.fromUnknown(decomposed), {
+          type: "NormalizedNFC",
+          value: decomposed,
+          form: "NFC",
+        });
+        assertErr(NormalizedNFKC.fromUnknown(decomposed), {
+          type: "NormalizedNFKC",
+          value: decomposed,
+          form: "NFKC",
+        });
+
+        assertOk(NormalizedNFC.fromUnknown(ligature), ligature);
+        assertOk(NormalizedNFD.fromUnknown(ligature), ligature);
+        assertErr(NormalizedNFKC.fromUnknown(ligature), {
+          type: "NormalizedNFKC",
+          value: ligature,
+          form: "NFKC",
+        });
+        assertErr(NormalizedNFKD.fromUnknown(ligature), {
+          type: "NormalizedNFKD",
+          value: ligature,
+          form: "NFKD",
+        });
+
+        assertOk(NormalizedNFC.fromUnknown(hangulSyllable), hangulSyllable);
+        assertErr(NormalizedNFD.fromUnknown(hangulSyllable), {
+          type: "NormalizedNFD",
+          value: hangulSyllable,
+          form: "NFD",
+        });
+        assertOk(NormalizedNFD.fromUnknown(hangulJamo), hangulJamo);
+        assertErr(NormalizedNFC.fromUnknown(hangulJamo), {
+          type: "NormalizedNFC",
+          value: hangulJamo,
+          form: "NFC",
+        });
+
+        assertEqual(
+          NormalizedNFC.formatError({
+            type: "NormalizedNFC",
+            value: decomposed,
+            form: "NFC",
+          }),
+          `The value "${decomposed}" must be in Unicode normalization form NFC.`,
+        );
+      });
+
+      it("gives each form a distinct brand and preserves parent constraints", () => {
+        const Name = normalized("NFKC")(maxLength(3)(String));
+
+        assertErr(Name.fromUnknown("abcd"), {
+          type: "MaxLength3",
+          value: "abcd",
+          max: 3,
+        });
+        assertEqual(NormalizedNFC.name, "NormalizedNFC");
+        assertEqual(NormalizedNFKD.name, "NormalizedNFKD");
+        assertType<
+          typeof Name.Output,
+          string & Brand<"MaxLength3"> & Brand<"NormalizedNFKC">
+        >();
+        assertType<
+          typeof NormalizedNFC.Output,
+          string & Brand<"NormalizedNFC">
+        >();
+        assertType<typeof NormalizedNFD.Error, NormalizedError<"NFD">>();
+
+        const nfc = NormalizedNFC.orThrow(precomposed);
+        const unionForm = "NFC" as UnicodeNormalizationForm;
+        const widened = globalThis.String("NFC");
+        void (() => {
+          // @ts-expect-error NFC text does not carry the NormalizedNFD brand.
+          void (nfc satisfies typeof NormalizedNFD.Output);
+          // @ts-expect-error Normalization form names are uppercase.
+          normalized("nfc");
+          // @ts-expect-error Expected must be one concrete literal value.
+          normalized(unionForm);
+          // @ts-expect-error A widened string is not a UnicodeNormalizationForm.
+          normalized(widened);
+          // @ts-expect-error The parent Type must output strings.
+          normalized("NFC")(Number);
+          // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+          normalized("NFC")(NormalizedNFC);
+        });
+      });
+    });
+
+    describe("normalize", () => {
+      it("converts text to each form and brands it", () => {
+        const nfc = normalize("cafe\u0301", "NFC");
+
+        assertEqual(nfc, "caf\u00E9");
+        assertType<typeof nfc, string & Brand<"NormalizedNFC">>();
+        assertTrue(normalized("NFC")(String).is(nfc));
+        assertEqual(normalize("caf\u00E9", "NFD"), "cafe\u0301");
+        assertEqual(normalize("\uFB01\u00E9", "NFKC"), "fi\u00E9");
+        assertEqual(normalize("\uFB01\u00E9", "NFKD"), "fie\u0301");
+        assertEqual(normalize("\uD800", "NFC"), "\uD800");
+
+        const unionForm = "NFC" as UnicodeNormalizationForm;
+        void (() => {
+          // @ts-expect-error Expected must be one concrete literal value.
+          normalize("text", unionForm);
+          // @ts-expect-error Normalization form names are uppercase.
+          normalize("text", "nfc");
+        });
+      });
+    });
+
     describe("startsWith", () => {
       it("preserves the full string and parent constraints", () => {
         const Parent = maxLength(12)(TrimmedString);
@@ -9657,6 +10353,119 @@ describe("BrandFactory", () => {
           Setting.from.parent("port:4000");
           // @ts-expect-error Encoding requires a validated Port, not a plain number.
           Setting.to(4000);
+        });
+      });
+    });
+
+    describe("endsWith", () => {
+      it("preserves the full string and parent constraints", () => {
+        const Parent = maxLength(12)(TrimmedString);
+        const FileName = endsWith(".json")(Parent);
+        const input = Parent.orThrow("config.json");
+        const result = FileName.from.parent(input);
+
+        assertOk(result, input);
+        assertSame(result.value, input);
+        assertSame(FileName.to(result.value), input);
+        assertSame(FileName.parent, Parent);
+        assertEqual(FileName.name, "EndsWith.json");
+        assertType<typeof FileName.name, "EndsWith.json">();
+        assertType<typeof FileName.parent, typeof Parent>();
+        assertType<
+          typeof FileName.Output,
+          typeof Parent.Output & Brand<"EndsWith.json">
+        >();
+        assertType<typeof FileName.Error, EndsWithError<".json">>();
+        assertType<
+          Parameters<typeof FileName.from.parent>[0],
+          typeof Parent.Output
+        >();
+        assertErr(FileName.fromUnknown("config.json "), {
+          type: "Trimmed",
+          value: "config.json ",
+        });
+        assertErr(FileName.fromUnknown("settings.json"), {
+          type: "MaxLength12",
+          value: "settings.json",
+          max: 12,
+        });
+        assertErr(FileName.fromUnknown(1), {
+          type: "TypeOf",
+          expected: "String",
+          value: 1,
+        });
+      });
+
+      it("matches the exact suffix at the end without removing it", () => {
+        const FileName = endsWith(".json")(String);
+        for (const value of [".json", "config.json", "a.json.json"]) {
+          assertOk(FileName.fromUnknown(value), value);
+        }
+        for (const value of [
+          "",
+          "json",
+          ".jso",
+          "config.JSON",
+          "config.json\n",
+          "config.jsonx",
+        ]) {
+          assertErr(FileName.fromUnknown(value), {
+            type: "EndsWith.json",
+            value,
+            suffix: ".json",
+          });
+        }
+        assertEqual(
+          FileName.formatError({
+            type: "EndsWith.json",
+            value: "config.txt",
+            suffix: ".json",
+          }),
+          'The value "config.txt" must end with ".json".',
+        );
+      });
+
+      it("accepts an empty suffix and compares UTF-16 code units literally", () => {
+        const AnyString = endsWith("")(String);
+        for (const value of ["", "PORT", "\n", "😀"]) {
+          assertOk(AnyString.fromUnknown(value), value);
+        }
+        assertErr(endsWith("")(TrimmedString).fromUnknown(" "));
+        assertOk(
+          endsWith(".*[a]")(String).fromUnknown("value.*[a]"),
+          "value.*[a]",
+        );
+        assertErr(endsWith(".*[a]")(String).fromUnknown("abc"));
+        assertOk(endsWith(":😀")(String).fromUnknown("value:😀"), "value:😀");
+        assertErr(endsWith("\u00E9")(String).fromUnknown("e\u0301"));
+        // Like String.prototype.endsWith, a suffix starting with a low
+        // surrogate matches the second half of an astral character.
+        assertOk(endsWith("\uDE00")(String).fromUnknown("😀"), "😀");
+      });
+
+      it("requires a concrete suffix and keeps different suffix brands distinct", () => {
+        const JsonName = endsWith(".json")(String);
+        const TextName = endsWith(".txt")(String);
+        const textName = TextName.orThrow("notes.txt");
+        const widened = globalThis.String(".json");
+        const unionSuffix = ".json" as ".json" | ".txt";
+        const branded = TrimmedString.orThrow(".json");
+        const templateSuffix = ".json" as `${string}.json`;
+        void (() => {
+          // @ts-expect-error Expected must be one concrete literal value.
+          endsWith(widened);
+          // @ts-expect-error Expected must be one concrete literal value.
+          endsWith(unionSuffix);
+          // @ts-expect-error Expected must be one concrete literal value.
+          endsWith(branded);
+          // @ts-expect-error Expected must be one concrete literal value.
+          endsWith(templateSuffix);
+          // @ts-expect-error The parent Type must output strings.
+          endsWith(".json")(Number);
+          // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+          endsWith(".json")(JsonName);
+          // @ts-expect-error .txt values do not carry the EndsWith.json brand.
+          JsonName.from(textName);
         });
       });
     });
@@ -9997,6 +10806,124 @@ describe("BrandFactory", () => {
         });
       });
 
+      describe("Base64", () => {
+        it("validates canonical padded text and converts bytes losslessly", () => {
+          for (const [bytes, expected] of [
+            [[], ""],
+            [[0], "AA=="],
+            [[102], "Zg=="],
+            [[251, 255], "+/8="],
+            [[72, 101, 108, 108, 111], "SGVsbG8="],
+            [[0, 1, 2, 255], "AAEC/w=="],
+          ] as const) {
+            const value = new globalThis.Uint8Array(bytes);
+            const encoded = uint8ArrayToBase64(value);
+
+            assertEqual(encoded, expected);
+            assertEqual(Base64.from.parent(encoded), ok(encoded));
+            assertEqualBytes(base64ToUint8Array(encoded), value);
+          }
+          {
+            const actual = uint8ArrayToBase64(new globalThis.Uint8Array());
+            assertType<typeof actual, Base64>();
+          }
+          {
+            const actual = base64ToUint8Array(Base64.orThrow("AA=="));
+            assertType<typeof actual, globalThis.Uint8Array>();
+          }
+          assertType<typeof Base64.Output, string & Brand<"Base64">>();
+        });
+
+        it("rejects non-canonical text", () => {
+          for (const value of [
+            "AB==",
+            "AAB=",
+            "AA",
+            "AA=",
+            "A===",
+            "A",
+            "AAAA====",
+            "AA==AA==",
+            "-_-_",
+            "+/8",
+            " AAAA",
+            "AAAA\n",
+            "AA\r\nAA",
+            "ÀÀÀÀ",
+            "*",
+          ]) {
+            assertEqual(
+              Base64.from.parent(value),
+              err({ type: "Base64", value }),
+            );
+          }
+          assertEqual(
+            Base64.formatError({ type: "Base64", value: "AB==" }),
+            'The value "AB==" is not a valid Base64 string.',
+          );
+          assertType<typeof Base64.Error, Base64Error>();
+        });
+
+        it("validates multi-megabyte text", () => {
+          const encoded = uint8ArrayToBase64(
+            new globalThis.Uint8Array(6 * 1024 * 1024).fill(7),
+          );
+
+          assertTrue(Base64.is(encoded));
+          assertFalse(Base64.is(`${encoded} `));
+        });
+      });
+
+      describe("Hex", () => {
+        it("validates lowercase text of whole bytes and converts bytes losslessly", () => {
+          for (const [value, bytes] of [
+            ["", []],
+            ["00", [0]],
+            ["ff00", [255, 0]],
+            ["deadbeef", [222, 173, 190, 239]],
+            ["000102ff", [0, 1, 2, 255]],
+          ] as const) {
+            const expected = new globalThis.Uint8Array(bytes);
+
+            assertEqual(Hex.from.parent(value), ok(value));
+            assertEqualBytes(hexToUint8Array(Hex.orThrow(value)), expected);
+            assertEqual(uint8ArrayToHex(expected), value);
+          }
+          {
+            const actual = uint8ArrayToHex(new globalThis.Uint8Array());
+            assertType<typeof actual, Hex>();
+          }
+          {
+            const actual = hexToUint8Array(Hex.orThrow(""));
+            assertType<typeof actual, globalThis.Uint8Array>();
+          }
+          assertType<typeof Hex.Output, string & Brand<"Hex">>();
+        });
+
+        it("rejects uppercase, odd-length, prefixed, and non-ASCII text", () => {
+          for (const value of [
+            "F0",
+            "DEADBEEF",
+            "abc",
+            "0",
+            "0xff",
+            "gg",
+            " 00",
+            "00\n",
+            "é0",
+            "\uFF10\uFF10",
+            "\u0660\u0660",
+          ]) {
+            assertEqual(Hex.from.parent(value), err({ type: "Hex", value }));
+          }
+          assertEqual(
+            Hex.formatError({ type: "Hex", value: "0xff" }),
+            'The value "0xff" is not lowercase hexadecimal with an even number of digits.',
+          );
+          assertType<typeof Hex.Error, HexError>();
+        });
+      });
+
       describe("Name", () => {
         it("accepts bounded URL-safe names", () => {
           assertEqual(Name.fromUnknown("valid_name-1"), ok("valid_name-1"));
@@ -10092,6 +11019,427 @@ describe("BrandFactory", () => {
         });
       });
 
+      describe("Hostname", () => {
+        const longestValue = [63, 63, 63, 61]
+          .map((length) => "a".repeat(length))
+          .join(".");
+
+        it("accepts lowercase RFC 1123 host names", () => {
+          assertEqual(longestValue.length, 253);
+          for (const value of [
+            "localhost",
+            "a",
+            "example.com",
+            "a-b.example.com",
+            "a--b.c",
+            "3com",
+            "foo.0xg",
+            "xn--mnchen-3ya.de",
+            "example.xn--p1ai",
+            `${"a".repeat(63)}.com`,
+            `example.${"a".repeat(63)}`,
+            longestValue,
+          ]) {
+            assertOk(Hostname.fromUnknown(value), value);
+          }
+          assertType<typeof Hostname.Output, string & Brand<"Hostname">>();
+          // @ts-expect-error A string does not carry the Hostname brand.
+          void ("example.com" satisfies Hostname);
+        });
+
+        it("rejects other spellings, IPv4 forms, and invalid labels", () => {
+          for (const value of [
+            "",
+            ".",
+            "Example.com",
+            "EXAMPLE.COM",
+            "example.com.",
+            ".example.com",
+            "a..b",
+            "-a.com",
+            "a-.com",
+            "a_b.com",
+            "_dmarc.example.com",
+            `${"a".repeat(64)}.com`,
+            "a".repeat(64),
+            `example.${"a".repeat(64)}`,
+            `${longestValue}a`,
+            "1.2.3.4",
+            "1.2.3",
+            "123",
+            "foo.123",
+            "foo.09",
+            "foo.0x",
+            "foo.0x1f",
+            "münchen.de",
+            "a b",
+            "example.com:80",
+            " a",
+            "a\n",
+          ]) {
+            assertErr(Hostname.fromUnknown(value), { type: "Hostname", value });
+          }
+          assertEqual(
+            Hostname.formatError({ type: "Hostname", value: "Example.com" }),
+            'The value "Example.com" is not a valid lowercase hostname.',
+          );
+          assertType<typeof Hostname.Error, HostnameError>();
+        });
+
+        it("keeps URL from parsing a Hostname as an IPv4 address", () => {
+          for (const value of ["3com", "foo.0xg", "localhost", longestValue]) {
+            assertEqual(new URL(`http://${value}/`).hostname, value);
+          }
+          // URL parses these hosts as IPv4 addresses or rejects them.
+          for (const value of ["1.2.3", "123", "foo.123", "foo.0x", "foo.09"]) {
+            const url = URL.parse(`http://${value}/`);
+            assertTrue(url === null || url.hostname !== value);
+            assertFalse(Hostname.is(value));
+          }
+        });
+      });
+
+      describe("Ipv4Address", () => {
+        it("accepts strict dotted-decimal addresses", () => {
+          for (const value of [
+            "0.0.0.0",
+            "255.255.255.255",
+            "192.168.1.1",
+            "10.0.99.250",
+            "1.22.199.249",
+          ]) {
+            assertOk(Ipv4Address.fromUnknown(value), value);
+          }
+          assertType<
+            typeof Ipv4Address.Output,
+            string & Brand<"Ipv4Address">
+          >();
+          // @ts-expect-error A string does not carry the Ipv4Address brand.
+          void ("192.168.1.1" satisfies Ipv4Address);
+        });
+
+        it("rejects leading zeros and other IPv4 spellings", () => {
+          for (const value of [
+            "",
+            "256.0.0.0",
+            "1.2.3.256",
+            "01.2.3.4",
+            "1.2.3.04",
+            "00.1.1.1",
+            "1.2.3",
+            "127.1",
+            "1.2.3.4.",
+            "1.2.3.4.5",
+            "1.2.3.4/32",
+            "0x7f.0.0.1",
+            "2130706433",
+            "::ffff:1.2.3.4",
+            "１.２.３.４",
+            "١.٢.٣.٤",
+            " 1.2.3.4",
+            "1.2.3.4\n",
+          ]) {
+            assertErr(Ipv4Address.fromUnknown(value), {
+              type: "Ipv4Address",
+              value,
+            });
+          }
+          assertEqual(
+            Ipv4Address.formatError({ type: "Ipv4Address", value: "01.2.3.4" }),
+            'The value "01.2.3.4" is not a valid IPv4 address.',
+          );
+          assertType<typeof Ipv4Address.Error, Ipv4AddressError>();
+        });
+      });
+
+      describe("Ipv6Address", () => {
+        const canonicalValues = [
+          "::",
+          "::1",
+          "1::",
+          "2001:db8::1",
+          "1:2:3:4:5:6:7:8",
+          "2001:db8:0:1:1:1:1:1",
+          "::1:0:0:1:0:0",
+          "1:0:0:2::3",
+          "1::2:0:0:3:4",
+          "fe80::abcd:ef01",
+          "::102:304",
+          "::ffff:1.2.3.4",
+          "::ffff:0.0.0.0",
+        ] as const;
+
+        // Non-canonical RFC 4291 spellings and their canonical forms.
+        const spellings = [
+          ["2001:DB8::1", "2001:db8::1"],
+          ["2001:0db8::1", "2001:db8::1"],
+          ["2001:db8:0:0:0:0:0:1", "2001:db8::1"],
+          ["2001:db8::0:1", "2001:db8::1"],
+          ["0:0:0:0:0:0:0:0", "::"],
+          ["1:2:3:4:5:6:7::", "1:2:3:4:5:6:7:0"],
+          ["::2:3:4:5:6:7:8", "0:2:3:4:5:6:7:8"],
+          ["1:0:0:2:0:0:3:4", "1::2:0:0:3:4"],
+          ["::ffff:102:304", "::ffff:1.2.3.4"],
+          ["::FFFF:1.2.3.4", "::ffff:1.2.3.4"],
+          ["::1.2.3.4", "::102:304"],
+          ["1:2:3:4:5:6:1.2.3.4", "1:2:3:4:5:6:102:304"],
+          ["1:2:3:4:5::1.2.3.4", "1:2:3:4:5:0:102:304"],
+        ] as const;
+
+        const invalidValues = [
+          "",
+          ":",
+          ":::",
+          "1::2::3",
+          ":1::",
+          "1::2:",
+          "1:::2",
+          ":1:2:3:4:5:6:7",
+          "12345::",
+          "::g",
+          "1:2:3:4:5:6:7",
+          "1:2:3:4:5:6:7:8:9",
+          "1:2:3:4:5:6:7:8::",
+          "1:2:3:4::5:6:7:8",
+          "1:2:3:4:5:6:7:1.2.3.4",
+          "1.2.3.4",
+          "1.2.3.4::",
+          "::1.2.3.4:1",
+          "::1.2.3",
+          "::256.1.1.1",
+          "::ffff:01.2.3.4",
+          "fe80::1%eth0",
+          "fe80:::::%eth0",
+          "[::1]",
+          "::1/128",
+          "::１",
+          " ::1",
+          "::1\n",
+        ] as const;
+
+        it("accepts RFC 5952 canonical text", () => {
+          for (const value of canonicalValues) {
+            assertOk(Ipv6Address.fromUnknown(value), value);
+          }
+          assertType<
+            typeof Ipv6Address.Output,
+            string & Brand<"Ipv6Address">
+          >();
+          // @ts-expect-error A string does not carry the Ipv6Address brand.
+          void ("::1" satisfies Ipv6Address);
+        });
+
+        it("rejects non-canonical and invalid text", () => {
+          for (const value of [
+            ...spellings.map(([value]) => value),
+            ...invalidValues,
+          ]) {
+            assertErr(Ipv6Address.fromUnknown(value), {
+              type: "Ipv6Address",
+              value,
+            });
+          }
+          assertEqual(
+            Ipv6Address.formatError({
+              type: "Ipv6Address",
+              value: "2001:DB8::1",
+            }),
+            'The value "2001:DB8::1" is not a canonical IPv6 address.',
+          );
+          assertType<typeof Ipv6Address.Error, Ipv6AddressError>();
+        });
+
+        describe("Ipv6AddressFromString", () => {
+          it("transforms RFC 4291 text into canonical text", () => {
+            for (const [value, canonical] of [
+              ...canonicalValues.map((value) => [value, value] as const),
+              ...spellings,
+            ]) {
+              const result = Ipv6AddressFromString.fromUnknown(value);
+              assertOk(result, canonical);
+              assertOk(Ipv6AddressFromString.from.parent(value), canonical);
+              assertEqual(Ipv6AddressFromString.to(result.value), canonical);
+            }
+            for (const value of canonicalValues) {
+              const address = Ipv6Address.orThrow(value);
+              assertOk(
+                Ipv6AddressFromString.fromUnknown(
+                  Ipv6AddressFromString.to(address),
+                ),
+                address,
+              );
+            }
+            {
+              const value = Ipv6AddressFromString.orThrow("::1");
+              assertType<typeof value, Ipv6Address>();
+            }
+          });
+
+          it("rejects text that is not an IPv6 address", () => {
+            for (const value of invalidValues) {
+              assertErr(Ipv6AddressFromString.fromUnknown(value), {
+                type: "Ipv6AddressFromString",
+                value,
+              });
+            }
+            assertEqual(
+              Ipv6AddressFromString.formatError({
+                type: "Ipv6AddressFromString",
+                value: "fe80::1%eth0",
+              }),
+              'The value "fe80::1%eth0" is not a valid IPv6 address.',
+            );
+            assertType<
+              typeof Ipv6AddressFromString.Error,
+              | Ipv6AddressFromStringError
+              | TransformOutputError<"Ipv6AddressFromString", Ipv6AddressError>
+            >();
+          });
+
+          it("matches the WHATWG URL serializer except for IPv4-mapped addresses", () => {
+            fc.assert(
+              fc.property(
+                fc.array(
+                  fc.oneof(fc.constant(0), fc.integer({ min: 0, max: 0xffff })),
+                  { minLength: 8, maxLength: 8 },
+                ),
+                fc.boolean(),
+                fc.boolean(),
+                (groups, uppercase, padded) => {
+                  fc.pre(
+                    !(
+                      groups.slice(0, 5).every((group) => group === 0) &&
+                      groups[5] === 0xffff
+                    ),
+                  );
+                  const text = groups
+                    .map((group) =>
+                      group.toString(16).padStart(padded ? 4 : 1, "0"),
+                    )
+                    .join(":");
+                  const value = uppercase ? text.toUpperCase() : text;
+
+                  assertOk(
+                    Ipv6AddressFromString.fromUnknown(value),
+                    new URL(`http://[${value}]/`).hostname.slice(1, -1),
+                  );
+                },
+              ),
+            );
+          });
+        });
+      });
+
+      describe("PhoneNumberE164", () => {
+        it("accepts a plus sign and 7 to 15 digits", () => {
+          for (const value of [
+            "+14155552671",
+            "+420123456789",
+            "+1234567",
+            "+123456789012345",
+          ]) {
+            assertOk(PhoneNumberE164.fromUnknown(value), value);
+          }
+          assertType<
+            typeof PhoneNumberE164.Output,
+            string & Brand<"PhoneNumberE164">
+          >();
+          // @ts-expect-error A string does not carry the PhoneNumberE164 brand.
+          void ("+14155552671" satisfies PhoneNumberE164);
+        });
+
+        it("rejects formatted, prefixed, and out-of-range numbers", () => {
+          for (const value of [
+            "",
+            "+",
+            "+123456",
+            "+1234567890123456",
+            "+0123456789",
+            "14155552671",
+            "00420123456789",
+            "++14155552671",
+            "+1 415 555 2671",
+            "+1-415-555-2671",
+            "+1 (415) 5552671",
+            "+14155552671x123",
+            "+１４１５５５５２６７１",
+            " +14155552671",
+            "+14155552671\n",
+          ]) {
+            assertErr(PhoneNumberE164.fromUnknown(value), {
+              type: "PhoneNumberE164",
+              value,
+            });
+          }
+          assertEqual(
+            PhoneNumberE164.formatError({
+              type: "PhoneNumberE164",
+              value: "14155552671",
+            }),
+            'The value "14155552671" is not a phone number in E.164 format.',
+          );
+          assertType<typeof PhoneNumberE164.Error, PhoneNumberE164Error>();
+        });
+      });
+
+      describe("Iban", () => {
+        it("accepts electronic-format IBANs with valid check digits", () => {
+          for (const value of [
+            "GB82WEST12345698765432",
+            "DE89370400440532013000",
+            "FR1420041010050500013M02606",
+            "MT84MALT011000012345MTLCAST001S",
+            "LC55HEMM000100010012001200023015",
+            // The shortest and longest registered countries.
+            "NO9386011117947",
+            "RU0204452560040702810412345678901",
+            // The longest length ISO 13616 allows.
+            "GB66A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1",
+            // Check digits 98, 02, and 97 have aliases that pass the checksum.
+            "GB9810000000063",
+            "GB0210000000045",
+            "GB9710000000081",
+            // The country code is not checked.
+            "XX0812345678901",
+          ]) {
+            assertOk(Iban.fromUnknown(value), value);
+          }
+          assertType<typeof Iban.Output, string & Brand<"Iban">>();
+          // @ts-expect-error A string does not carry the Iban brand.
+          void ("GB82WEST12345698765432" satisfies Iban);
+        });
+
+        it("rejects other spellings, wrong check digits, and wrong lengths", () => {
+          for (const value of [
+            "",
+            "gb82west12345698765432",
+            "GB82 WEST 1234 5698 7654 32",
+            "GB82WEST12345698765433",
+            "GB82WEST12345698765423",
+            // Aliases of GB9810000000063, GB0210000000045, and GB9710000000081.
+            "GB0110000000063",
+            "GB9910000000045",
+            "GB0010000000081",
+            // 14 and 35 characters with a valid checksum.
+            "GB681111111111",
+            "GB56A1A1A1A1A1A1A1A1A1A1A1A1A1A1A12",
+            "1282WEST12345698765432",
+            "GBA2WEST12345698765432",
+            "GB82WEST1234569876543２",
+            "GB82WEST1234569876543٢",
+            " GB82WEST12345698765432",
+            "GB82WEST12345698765432\n",
+          ]) {
+            assertErr(Iban.fromUnknown(value), { type: "Iban", value });
+          }
+          assertEqual(
+            Iban.formatError({ type: "Iban", value: "GB82WEST12345698765433" }),
+            'The value "GB82WEST12345698765433" is not a valid IBAN in uppercase without spaces.',
+          );
+          assertType<typeof Iban.Error, IbanError>();
+        });
+      });
+
       describe("Uuid", () => {
         it("accepts canonical lowercase UUIDs of every version and variant", () => {
           for (const value of [
@@ -10126,6 +11474,120 @@ describe("BrandFactory", () => {
             'The value "invalid" is not a canonical lowercase UUID.',
           );
           assertType<typeof Uuid.Error, UuidError>();
+        });
+      });
+
+      describe("uuidVersion", () => {
+        const UuidVersionTypes = [
+          uuidVersion(1)(Uuid),
+          uuidVersion(2)(Uuid),
+          uuidVersion(3)(Uuid),
+          UuidV4,
+          uuidVersion(5)(Uuid),
+          uuidVersion(6)(Uuid),
+          UuidV7,
+          uuidVersion(8)(Uuid),
+        ] as const;
+
+        it("requires the version digit and the RFC 9562 variant", () => {
+          for (const [index, UuidVersionType] of UuidVersionTypes.entries()) {
+            const version = index + 1;
+            assertEqual(UuidVersionType.name, `UuidV${version}`);
+            assertSame(UuidVersionType.parent, Uuid);
+
+            for (const digit of "0123456789abcdef") {
+              const value = Uuid.orThrow(
+                `01234567-89ab-${digit}def-8123-456789abcdef`,
+              );
+              const result = UuidVersionType.from.parent(value);
+              if (digit === `${version}`) assertOk(result, value);
+              else {
+                assertErr(result, { type: `UuidV${version}`, value, version });
+              }
+            }
+
+            for (const variant of "0123456789abcdef") {
+              const value = Uuid.orThrow(
+                `01234567-89ab-${version}def-${variant}123-456789abcdef`,
+              );
+              const result = UuidVersionType.from.parent(value);
+              if ("89ab".includes(variant)) assertOk(result, value);
+              else {
+                assertErr(result, { type: `UuidV${version}`, value, version });
+              }
+            }
+
+            for (const value of [
+              "00000000-0000-0000-0000-000000000000",
+              "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            ]) {
+              assertErr(UuidVersionType.fromUnknown(value), {
+                type: `UuidV${version}`,
+                value,
+                version,
+              });
+            }
+          }
+        });
+
+        it("accepts generated version 4 and version 7 UUIDs", () => {
+          const uuidv7 = idToUuid(createIdAsUuidv7(testCreateDeps()));
+          assertOk(UuidV7.from.parent(uuidv7), uuidv7);
+          assertErr(UuidV4.from.parent(uuidv7), {
+            type: "UuidV4",
+            value: uuidv7,
+            version: 4,
+          });
+
+          const random = crypto.randomUUID();
+          assertOk(UuidV4.fromUnknown(random), random);
+          assertErr(UuidV7.fromUnknown(random), {
+            type: "UuidV7",
+            value: random,
+            version: 7,
+          });
+        });
+
+        it("reports non-canonical text through the parent Uuid", () => {
+          const value = "20354D7A-E4FE-47AF-8FF6-187BCA92F3F9";
+
+          assertErr(UuidV4.fromUnknown(value), { type: "Uuid", value });
+          assertEqual(
+            UuidV7.formatError({
+              type: "UuidV7",
+              value: "20354d7a-e4fe-47af-8ff6-187bca92f3f9",
+              version: 7,
+            }),
+            'The value "20354d7a-e4fe-47af-8ff6-187bca92f3f9" is not a version 7 UUID.',
+          );
+        });
+
+        it("brands each version distinctly and rejects other versions at compile time", () => {
+          assertType<
+            typeof UuidV4.Output,
+            string & Brand<"Uuid"> & Brand<"UuidV4">
+          >();
+          assertType<typeof UuidV7.Error, UuidVersionError<7>>();
+
+          const v4 = UuidV4.orThrow("20354d7a-e4fe-47af-8ff6-187bca92f3f9");
+          const unionVersion = 4 as 4 | 7;
+          const widened = globalThis.Number(4);
+          void (() => {
+            // @ts-expect-error A version 4 UUID does not carry the UuidV7 brand.
+            void (v4 satisfies UuidV7);
+            // @ts-expect-error Parameter must be one concrete numeric literal instead of a widened, union, or branded number.
+            uuidVersion(0);
+            // @ts-expect-error Parameter must be one concrete numeric literal instead of a widened, union, or branded number.
+            uuidVersion(9);
+            // @ts-expect-error Parameter must be one concrete numeric literal instead of a widened, union, or branded number.
+            uuidVersion(1.5);
+            // @ts-expect-error Parameter must be one concrete numeric literal instead of a widened, union, or branded number.
+            uuidVersion(unionVersion);
+            // @ts-expect-error Parameter must be one concrete numeric literal instead of a widened, union, or branded number.
+            uuidVersion(widened);
+            // @ts-expect-error The parent Type must output Uuid values.
+            uuidVersion(4)(String);
+          });
         });
       });
 
@@ -13263,6 +14725,348 @@ describe("array", () => {
   });
 });
 
+describe("nonEmptyArray", () => {
+  it("narrows the Output while preserving the parent Type", () => {
+    const Parent = maxLength(3)(array(String));
+    const Tags = nonEmptyArray(Parent);
+    const input = Parent.orThrow(["a", "b"]);
+    const result = Tags.from.parent(input);
+
+    assertOk(result, input);
+    assertSame(result.value, input);
+    assertSame(Tags.to(result.value), input);
+    assertSame(Tags.parent, Parent);
+    assertEqual(Tags.name, "NonEmptyArray");
+    assertType<typeof Tags.name, "NonEmptyArray">();
+    assertType<typeof Tags.parent, typeof Parent>();
+    assertType<
+      typeof Tags.Output,
+      typeof Parent.Output & NonEmptyReadonlyArray<string>
+    >();
+    assertType<typeof Tags.Error, NonEmptyArrayError>();
+    assertType<Parameters<typeof Tags.from.parent>[0], typeof Parent.Output>();
+    assertType<
+      Parameters<typeof Tags.from.parent.parent>[0],
+      ReadonlyArray<string>
+    >();
+    assertErr(Tags.from.parent.parent([]), {
+      type: "NonEmptyArray",
+      value: [],
+    });
+    assertErr(Tags.from.parent.parent(["a", "b", "c", "d"]), {
+      type: "MaxLength3",
+      value: ["a", "b", "c", "d"],
+      max: 3,
+    });
+    assertErr(Tags.fromUnknown("a"), {
+      type: "Array",
+      reason: { kind: "NotArray", value: "a" },
+    });
+  });
+
+  it("rejects only empty arrays", () => {
+    const Strings = nonEmptyArray(array(String));
+
+    for (const value of [[""], ["a", "b"]]) {
+      assertOk(Strings.fromUnknown(value), value);
+      assertTrue(Strings.is(value));
+    }
+    assertErr(Strings.fromUnknown([]), { type: "NonEmptyArray", value: [] });
+    assertFalse(Strings.is([]));
+    assertEqual(
+      Strings.formatError({ type: "NonEmptyArray", value: [] }),
+      "The value [] must contain at least one item.",
+    );
+
+    const one: typeof Strings.Output = ["a"];
+    assertOk(Strings.fromUnknown(one), one);
+    // @ts-expect-error An empty array is not a NonEmptyReadonlyArray.
+    void ([] satisfies typeof Strings.Output);
+  });
+
+  it("is accepted by functions that require a non-empty array", () => {
+    const Numbers = nonEmptyArray(array(Number));
+    const numbers = Numbers.orThrow([1, 2, 3]);
+    const doubled = mapArray(numbers, (number) => number * 2);
+
+    assertEqual(firstInArray(numbers), 1);
+    assertEqual(lastInArray(numbers), 3);
+    assertEqual(doubled, [2, 4, 6]);
+    assertType<typeof doubled, NonEmptyReadonlyArray<number>>();
+  });
+
+  it("keeps parent brands and composes with length constraints", () => {
+    const UserId = brand("UserId", String);
+    const UserIds = brand("UserIds", array(UserId));
+    const Bounded = maxLength(2)(nonEmptyArray(UserIds));
+    type UserId = typeof UserId.Output;
+
+    assertType<
+      typeof Bounded.Output,
+      ReadonlyArray<UserId> &
+        Brand<"UserIds"> &
+        NonEmptyReadonlyArray<UserId> &
+        Brand<"MaxLength2">
+    >();
+    assertOk(Bounded.fromUnknown(["ada"]), ["ada"]);
+    assertErr(Bounded.fromUnknown([]), { type: "NonEmptyArray", value: [] });
+    assertErr(Bounded.fromUnknown(["ada", "grace", "linus"]), {
+      type: "MaxLength2",
+      value: ["ada", "grace", "linus"],
+      max: 2,
+    });
+  });
+
+  it("keeps the canonical input of the parent Type", () => {
+    const Identity = nonEmptyArray(array(String));
+    const Encoded = nonEmptyArray(array(setupNumberFromString()));
+    const numbers = Encoded.orThrow(["1", "2"]);
+
+    // Identity encoding makes the narrowed Output canonical.
+    assertType<typeof Identity.CanonicalInput, typeof Identity.Output>();
+    assertType<typeof Encoded.CanonicalInput, ReadonlyArray<string>>();
+    assertEqual(numbers, [1, 2]);
+    assertEqual(Encoded.to(numbers), ["1", "2"]);
+    assertErr(Encoded.fromUnknown([]), { type: "NonEmptyArray", value: [] });
+  });
+
+  it("requires an array parent", () => {
+    const NonEmptyStrings = nonEmptyArray(array(String));
+    void (() => {
+      // @ts-expect-error The parent Type must output an array.
+      nonEmptyArray(String);
+      // @ts-expect-error The parent Type must output an array.
+      nonEmptyArray(set(String));
+      // @ts-expect-error The parent Type must output an array.
+      nonEmptyArray(Uint8Array);
+      // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+      nonEmptyArray(NonEmptyStrings);
+    });
+  });
+});
+
+describe("unique", () => {
+  const Items = unique(array(Data));
+
+  it("preserves the array and parent constraints", () => {
+    const Parent = maxLength(3)(array(String));
+    const Tags = unique(Parent);
+    const input = Parent.orThrow(["a", "b"]);
+    const result = Tags.from.parent(input);
+
+    assertOk(result, input);
+    assertSame(result.value, input);
+    assertSame(Tags.to(result.value), input);
+    assertSame(Tags.parent, Parent);
+    assertEqual(Tags.name, "Unique");
+    assertType<typeof Tags.name, "Unique">();
+    assertType<typeof Tags.parent, typeof Parent>();
+    assertType<typeof Tags.Output, typeof Parent.Output & Brand<"Unique">>();
+    assertType<typeof Tags.Error, UniqueError>();
+    assertType<Parameters<typeof Tags.from.parent>[0], typeof Parent.Output>();
+    assertTrue(Tags.is(["a", "b"]));
+    assertFalse(Tags.is(["a", "a"]));
+    assertErr(Tags.fromUnknown(["a", "a"]), {
+      type: "Unique",
+      value: ["a", "a"],
+      index: 1,
+      previousIndex: 0,
+    });
+    // maxLength validates first, so it bounds the work of unique.
+    assertErr(Tags.fromUnknown(["a", "a", "a", "a"]), {
+      type: "MaxLength3",
+      value: ["a", "a", "a", "a"],
+      max: 3,
+    });
+  });
+
+  it("accepts items that are not equal by eqData", () => {
+    const values: ReadonlyArray<ReadonlyArray<Data>> = [
+      [],
+      [1],
+      [0, -0],
+      [{ a: 0 }, { a: -0 }],
+      [1, "1", 1n, true, null, undefined],
+      // Strings are not normalized.
+      ["é", "é"],
+      [{ a: 1 }, { a: 2 }, { b: 1 }, { a: 1, b: 2 }],
+      [{ x: [1] }, { x: [2] }],
+      [
+        [1, 2],
+        [2, 1],
+      ],
+      [new Set([1]), new Set([2])],
+      [new Map([[1, 2]]), new Map([[2, 1]])],
+      [new globalThis.Date(0), new globalThis.Date(1)],
+      [new globalThis.Uint8Array([1, 2]), new globalThis.Uint8Array([2, 1])],
+      // Different bytes whose FNV-1a hashes collide are still different.
+      [new TextEncoder().encode("yaczf"), new TextEncoder().encode("glbpp")],
+      [[1], new globalThis.Uint8Array([1]), { 0: 1 }],
+    ];
+
+    for (const value of values) {
+      const result = Items.fromUnknown(value);
+      assertOk(result, value);
+      assertSame(result.value, value);
+    }
+  });
+
+  it("reports the first item equal to an earlier item", () => {
+    const createCycle = (): Data => {
+      const value: Record<string, Data> = {};
+      value.self = value;
+      return value;
+    };
+    const cases: ReadonlyArray<
+      readonly [
+        value: ReadonlyArray<Data>,
+        index: number,
+        previousIndex: number,
+      ]
+    > = [
+      [[globalThis.Number.NaN, globalThis.Number.NaN], 1, 0],
+      [[-0, 0, -0], 2, 0],
+      [[{ a: -0 }, { a: -0 }], 1, 0],
+      [[1, 2, 3, 2, 1], 3, 1],
+      [
+        [
+          { a: 1, b: 2 },
+          { b: 2, a: 1 },
+        ],
+        1,
+        0,
+      ],
+      [[{ a: 1 }, { a: 2 }, { a: 1 }], 2, 0],
+      [[{ x: [1] }, { x: [2] }, { x: [1] }], 2, 0],
+      [[createNullRecord({ a: 1 }), { a: 1 }], 1, 0],
+      [[new Set([1, 2]), new Set([2, 1])], 1, 0],
+      [[new Map([["a", { b: 1 }]]), new Map([["a", { b: 1 }]])], 1, 0],
+      [
+        [
+          new Map([
+            ["a", 1],
+            ["b", 2],
+          ]),
+          new Map([
+            ["b", 2],
+            ["a", 1],
+          ]),
+        ],
+        1,
+        0,
+      ],
+      [[new globalThis.Date(0), new globalThis.Date(0)], 1, 0],
+      [[new globalThis.Uint8Array([1]), new globalThis.Uint8Array([1])], 1, 0],
+      [[createCycle(), createCycle()], 1, 0],
+    ];
+
+    for (const [value, index, previousIndex] of cases) {
+      const result = Items.fromUnknown(value);
+      assertErr(result, { type: "Unique", value, index, previousIndex });
+      assert(result.error.type === "Unique", "Expected a Unique error.");
+      assertSame(result.error.value, value);
+    }
+    assertEqual(
+      Items.formatError({
+        type: "Unique",
+        value: [1, 2, 1],
+        index: 2,
+        previousIndex: 0,
+      }),
+      "The value [1,2,1] has equal items at indexes 0 and 2.",
+    );
+  });
+
+  it("keeps the cost of large items and items of the same size bounded", () => {
+    // Items that differ only in their first byte.
+    const blobs = Array.from({ length: 4 }, (_, index) => {
+      const bytes = new globalThis.Uint8Array(8 * 1024 * 1024);
+      bytes[0] = index;
+      return bytes;
+    });
+    // Items that differ only in their last element.
+    const vectors = Array.from({ length: 500 }, (_, index) =>
+      Array.from({ length: 1536 }, (_, element) =>
+        element === 1535 ? index : 0,
+      ),
+    );
+    // Sets and Maps of the same size that differ only in their members.
+    const sets = Array.from({ length: 4000 }, (_, index) => new Set([index]));
+    const maps = Array.from(
+      { length: 4000 },
+      (_, index) => new Map([["key", index]]),
+    );
+
+    for (const value of [blobs, vectors, sets, maps]) {
+      const start = performance.now();
+      assertOk(Items.from.parent(value));
+      assertTrue(performance.now() - start < 1000);
+    }
+  });
+
+  it("compares arrays with a null prototype by their items", () => {
+    const value = [
+      globalThis.Object.setPrototypeOf([1, 2], null) as ReadonlyArray<Data>,
+      [1, 2],
+    ];
+
+    assertErr(Items.fromUnknown(value), {
+      type: "Unique",
+      value,
+      index: 1,
+      previousIndex: 0,
+    });
+  });
+
+  it("accepts items typed as Data interfaces", () => {
+    interface Tree {
+      readonly value: string;
+      readonly children: ReadonlyArray<Tree>;
+    }
+    interface TreeError extends ObjectError<{
+      readonly value: TypeOfError<"String">;
+      readonly children: ArrayError<TreeError>;
+    }> {}
+    const Tree: LazyType<Tree, Tree, never, TreeError, TreeError> = lazy(() =>
+      object({ value: String, children: array(Tree) }),
+    );
+    const Forest = unique(array(Tree));
+    const leaf: Tree = { value: "leaf", children: [] };
+
+    assertType<IsData<Tree>, true>();
+    assertOk(Forest.fromUnknown([leaf, { value: "root", children: [leaf] }]));
+    assertErr(Forest.fromUnknown([leaf, { value: "leaf", children: [] }]), {
+      type: "Unique",
+      value: [leaf, { value: "leaf", children: [] }],
+      index: 1,
+      previousIndex: 0,
+    });
+  });
+
+  it("requires an array of Data", () => {
+    class Service {
+      run(): void {
+        // Behavior makes Service instances non-Data.
+      }
+    }
+    const UniqueStrings = unique(array(String));
+    void (() => {
+      // @ts-expect-error Parent Output must be an array of Data.
+      unique(String);
+      // @ts-expect-error Parent Output must be an array of Data.
+      unique(set(String));
+      // @ts-expect-error Parent Output must be an array of Data.
+      unique(nullOr(array(String)));
+      // @ts-expect-error Parent Output must be an array of Data.
+      unique(array(Unknown));
+      // @ts-expect-error Parent Output must be an array of Data.
+      unique(array(instanceOf(Service)));
+      // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+      unique(UniqueStrings);
+    });
+  });
+});
+
 describe("set", () => {
   it("constructs and caches a Set Type", () => {
     const Strings = set(String);
@@ -15935,6 +17739,222 @@ describe("record", () => {
       }),
       'Record keys "A" and "a" decode to the same key "a".',
     );
+  });
+});
+
+describe("minEntries", () => {
+  it("requires at least min Record entries", () => {
+    const Parent = record(String, Number);
+    const Scores = minEntries(2)(Parent);
+    const input = { ada: 10, grace: 20 };
+    const result = Scores.from.parent(input);
+
+    assertOk(result, input);
+    assertSame(result.value, input);
+    assertSame(Scores.to(result.value), input);
+    assertSame(Scores.parent, Parent);
+    assertEqual(Scores.name, "MinEntries2");
+    assertType<typeof Scores.name, "MinEntries2">();
+    assertType<
+      typeof Scores.Output,
+      typeof Parent.Output & Brand<"MinEntries2">
+    >();
+    assertType<typeof Scores.Error, MinEntriesError<2>>();
+    assertOk(Scores.fromUnknown({ ada: 10, grace: 20, linus: 30 }), {
+      ada: 10,
+      grace: 20,
+      linus: 30,
+    });
+    assertErr(Scores.fromUnknown({ ada: 10 }), {
+      type: "MinEntries2",
+      value: { ada: 10 },
+      min: 2,
+    });
+    assertErr(Scores.fromUnknown({}), {
+      type: "MinEntries2",
+      value: {},
+      min: 2,
+    });
+    assertEqual(
+      Scores.formatError({ type: "MinEntries2", value: { ada: 10 }, min: 2 }),
+      'The value {"ada":10} does not meet the minimum entry count of 2.',
+    );
+  });
+
+  it("counts present Object properties and rest entries", () => {
+    const User = minEntries(2)(
+      object(
+        { name: String, nickname: optional(String) },
+        record(String, String),
+      ),
+    );
+
+    assertOk(User.fromUnknown({ name: "Ada", nickname: "A" }), {
+      name: "Ada",
+      nickname: "A",
+    });
+    assertOk(User.fromUnknown({ name: "Ada", role: "admin" }), {
+      name: "Ada",
+      role: "admin",
+    });
+    // An absent optional property is not an entry.
+    assertErr(User.fromUnknown({ name: "Ada" }), {
+      type: "MinEntries2",
+      value: { name: "Ada" },
+      min: 2,
+    });
+  });
+
+  it("counts the null-prototype Output of a transformed Record", () => {
+    const { LowercaseFromString } = setupLowercaseFromString();
+    const Scores = minEntries(2)(record(LowercaseFromString, Number));
+    const result = Scores.fromUnknown({ ADA: 10, GRACE: 20 });
+
+    assertOk(result, createNullRecord({ ada: 10, grace: 20 }));
+    assertSame(globalThis.Object.getPrototypeOf(result.value), null);
+    assertErr(Scores.fromUnknown({ ADA: 10 }), {
+      type: "MinEntries2",
+      value: createNullRecord({ ada: 10 }),
+      min: 2,
+    });
+  });
+
+  it("accepts Object Outputs typed as interfaces", () => {
+    interface Tree {
+      readonly value: string;
+      readonly children: ReadonlyArray<Tree>;
+    }
+    interface TreeError extends ObjectError<{
+      readonly value: TypeOfError<"String">;
+      readonly children: ArrayError<TreeError>;
+    }> {}
+    const Tree: LazyType<Tree, Tree, never, TreeError, TreeError> = lazy(() =>
+      object({ value: String, children: array(Tree) }),
+    );
+    const leaf: Tree = { value: "leaf", children: [] };
+
+    assertOk(minEntries(2)(Tree).fromUnknown(leaf), leaf);
+    assertErr(minEntries(3)(Tree).fromUnknown(leaf), {
+      type: "MinEntries3",
+      value: leaf,
+      min: 3,
+    });
+  });
+
+  it("requires a Record or Object parent and a literal minimum", () => {
+    const count = globalThis.Number(1);
+    const AtLeastOne = minEntries(1)(record(String, Number));
+    void (() => {
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      minEntries(1)(array(String));
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      minEntries(1)(set(String));
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      minEntries(1)(map(String, Number));
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      minEntries(1)(String);
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      minEntries(1)(Uint8Array);
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      minEntries(1)(ArrayBuffer);
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      minEntries(1)(nullOr(record(String, Number)));
+      // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+      minEntries(1)(AtLeastOne);
+      // @ts-expect-error Parameter must be one concrete numeric literal instead of a widened, union, or branded number.
+      minEntries(count);
+    });
+  });
+});
+
+describe("maxEntries", () => {
+  it("allows at most max Record entries", () => {
+    const Parent = record(String, String);
+    const Labels = maxEntries(2)(Parent);
+    const input = { en: "Hello", cs: "Ahoj" };
+    const result = Labels.from.parent(input);
+
+    assertOk(result, input);
+    assertSame(result.value, input);
+    assertSame(Labels.parent, Parent);
+    assertEqual(Labels.name, "MaxEntries2");
+    assertType<
+      typeof Labels.Output,
+      typeof Parent.Output & Brand<"MaxEntries2">
+    >();
+    assertType<typeof Labels.Error, MaxEntriesError<2>>();
+    assertOk(Labels.fromUnknown({}), {});
+    assertErr(Labels.fromUnknown({ en: "Hello", cs: "Ahoj", de: "Hallo" }), {
+      type: "MaxEntries2",
+      value: { en: "Hello", cs: "Ahoj", de: "Hallo" },
+      max: 2,
+    });
+    assertEqual(
+      Labels.formatError({
+        type: "MaxEntries2",
+        value: { en: "Hello", cs: "Ahoj", de: "Hallo" },
+        max: 2,
+      }),
+      'The value {"en":"Hello","cs":"Ahoj","de":"Hallo"} exceeds the maximum entry count of 2.',
+    );
+  });
+
+  it("counts after the parent validates every entry", () => {
+    const Scores = maxEntries(1)(record(String, Number));
+
+    assertErr(Scores.fromUnknown({ ada: 10, grace: "x" }), {
+      type: "Record",
+      reason: {
+        kind: "Entries",
+        issues: [
+          {
+            kind: "Value",
+            key: "grace",
+            error: { type: "TypeOf", expected: "Number", value: "x" },
+          },
+        ],
+      },
+    });
+  });
+
+  it("composes with minEntries and Object properties", () => {
+    const Parent = object({
+      theme: optional(String),
+      locale: optional(String),
+    });
+    const Settings = maxEntries(2)(minEntries(1)(Parent));
+
+    assertOk(Settings.fromUnknown({ theme: "dark" }), { theme: "dark" });
+    assertErr(Settings.fromUnknown({}), {
+      type: "MinEntries1",
+      value: {},
+      min: 1,
+    });
+    assertType<
+      typeof Settings.Output,
+      typeof Parent.Output & Brand<"MinEntries1"> & Brand<"MaxEntries2">
+    >();
+  });
+
+  it("requires a Record or Object parent and a literal maximum", () => {
+    void (() => {
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      maxEntries(1)(array(String));
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      maxEntries(1)(set(String));
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      maxEntries(1)(map(String, Number));
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      maxEntries(1)(String);
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      maxEntries(1)(Date);
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      maxEntries(1)(Function);
+      // @ts-expect-error Entry counts require a Record or Object Output. Use minLength or maxLength for arrays.
+      maxEntries(2)(instanceOf(Float32Array));
+      // @ts-expect-error Parameter must be one concrete numeric literal instead of a widened, union, or branded number.
+      maxEntries(1 + 1);
+    });
   });
 });
 
@@ -23303,6 +25323,151 @@ describe("IntFromString", () => {
       IntFromString.formatError(invalid.error),
       "The value Infinity must be finite.",
     );
+  });
+});
+
+describe("FiniteNumberFromString", () => {
+  it("parses decimal numbers with fractions and exponents", () => {
+    for (const [value, expected] of [
+      ["0", 0],
+      ["42", 42],
+      ["-1", -1],
+      ["0042", 42],
+      ["1.5", 1.5],
+      ["-12.5e3", -12_500],
+      ["1e3", 1000],
+      ["1E3", 1000],
+      ["1e+3", 1000],
+      ["1e-7", 1e-7],
+      ["1e21", 1e21],
+      ["0.1", 0.1],
+      ["5e-324", globalThis.Number.MIN_VALUE],
+      ["1.7976931348623157e+308", globalThis.Number.MAX_VALUE],
+    ] as const) {
+      assertOk(FiniteNumberFromString.fromUnknown(value), expected);
+    }
+
+    const result = FiniteNumberFromString.from.parent("1.5");
+    assertType<
+      typeof result,
+      Result<
+        FiniteNumber,
+        | FiniteNumberFromStringError
+        | TransformOutputError<
+            "FiniteNumberFromString",
+            NonNaNError | FiniteError
+          >
+      >
+    >();
+    assertEqual(
+      FiniteNumberFromString.to(FiniteNumberFromString.orThrow("1.50")),
+      "1.5",
+    );
+  });
+
+  it("keeps the sign of zero and underflow", () => {
+    assertSame(FiniteNumberFromString.orThrow("-0"), -0);
+    assertSame(FiniteNumberFromString.orThrow("-0.0"), -0);
+    assertSame(FiniteNumberFromString.orThrow("1e-400"), 0);
+    assertSame(FiniteNumberFromString.orThrow("-1e-400"), -0);
+    assertEqual(FiniteNumberFromString.to(FiniteNumber.orThrow(-0)), "-0");
+    assertEqual(FiniteNumberFromString.to(FiniteNumber.orThrow(0)), "0");
+    void (() => {
+      // @ts-expect-error Encoding requires a FiniteNumber, not an unvalidated number.
+      FiniteNumberFromString.to(1);
+    });
+  });
+
+  it("round-trips every finite number through its encoding", () => {
+    fc.assert(
+      fc.property(
+        fc.double({ noDefaultInfinity: true, noNaN: true }),
+        (number) => {
+          const value = FiniteNumber.orThrow(number);
+
+          assertSame(
+            FiniteNumberFromString.orThrow(FiniteNumberFromString.to(value)),
+            value,
+          );
+        },
+      ),
+    );
+  });
+
+  it("decodes IntFromString text to the same number", () => {
+    for (const value of [
+      "0",
+      "-0",
+      "007",
+      "4000",
+      "-1",
+      "9007199254740991",
+      "-9007199254740991",
+    ]) {
+      assertSame(
+        FiniteNumberFromString.orThrow(value),
+        IntFromString.orThrow(value),
+      );
+    }
+  });
+
+  it("rejects text that is not a decimal number", () => {
+    for (const value of [
+      "",
+      " ",
+      " 1",
+      "1 ",
+      "+1",
+      "--1",
+      ".5",
+      "-.5",
+      "1.",
+      "1.5.5",
+      "1e",
+      "1e+",
+      "1,5",
+      "1_000",
+      "0x10",
+      "0b1",
+      "0o7",
+      "Infinity",
+      "-Infinity",
+      "NaN",
+      "１",
+    ]) {
+      const invalid = FiniteNumberFromString.fromUnknown(value);
+      assertErr(invalid, { type: "FiniteNumberFromString", value });
+      assertEqual(
+        FiniteNumberFromString.formatError(invalid.error),
+        `The value ${JSON.stringify(value)} is not a decimal number.`,
+      );
+    }
+
+    const longValue = `${"1".repeat(100_000)}x`;
+    assertErr(FiniteNumberFromString.fromUnknown(longValue), {
+      type: "FiniteNumberFromString",
+      value: longValue,
+    });
+    assertErr(FiniteNumberFromString.fromUnknown(1), {
+      type: "TypeOf",
+      expected: "String",
+      value: 1,
+    });
+  });
+
+  it("validates parsed numbers with FiniteNumber", () => {
+    for (const [value, message] of [
+      ["1e400", "The value Infinity must be finite."],
+      ["-1e400", "The value -Infinity must be finite."],
+      ["9".repeat(309), "The value Infinity must be finite."],
+    ] as const) {
+      const invalid = FiniteNumberFromString.fromUnknown(value);
+      assertErr(invalid, {
+        type: "FiniteNumberFromString",
+        outputError: { type: "Finite", value: globalThis.Number(value) },
+      });
+      assertEqual(FiniteNumberFromString.formatError(invalid.error), message);
+    }
   });
 });
 

@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} कडे अपेक्षित object tag ${safelyStringifyUnknownValue(error.expected)} नाही.`;
 
+/** Formats a ValidDateError in Marathi. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date अवैध आहे.";
+
 /** Formats an InstanceOfError in Marathi. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} ही canonical ISO date-time string नाही.`;
 
+/** Formats a PlainDateIsoError in Marathi. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} ही YYYY-MM-DD स्वरूपातील वैध कॅलेंडर तारीख नाही.`;
+
 /** Formats a DateIsoFromDateError in Marathi. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date ला DateIso म्हणून दर्शवता येत नाही.";
+
+/** Formats a DateIsoFromRfc3339Error in Marathi. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे समर्थित RFC 3339 date-time नाही. "2024-01-01T12:00:00Z" सारखे मूल्य वापरा.`;
 
 /** Formats a DecimalStringError in Marathi. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -223,11 +259,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} मधील सुरुवातीची आणि शेवटची रिकामी जागा काढलेली असली पाहिजे.`;
 
+/** Formats a WellFormedError in Marathi. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा well-formed Unicode मजकूर असला पाहिजे.`;
+
+/** Formats a NormalizedError in Marathi. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे Unicode सामान्यीकरण रूप ${error.form} मध्ये असले पाहिजे.`;
+
 /** Formats a StartsWithError in Marathi. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} ची सुरुवात ${safelyStringifyUnknownValue(error.prefix)} ने होणे आवश्यक आहे.`;
+
+/** Formats an EndsWithError in Marathi. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} चा शेवट ${safelyStringifyUnknownValue(error.suffix)} ने होणे आवश्यक आहे.`;
 
 /** Formats a MinLengthError in Marathi. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -255,6 +307,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} ही वैध Base64Url string नाही.`;
 
+/** Formats a Base64Error in Marathi. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} ही वैध Base64 string नाही.`;
+
+/** Formats a HexError in Marathi. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} ही लहान अक्षरांतील आणि सम संख्येने अंक असलेली hexadecimal string नाही.`;
+
 /** Formats a NameError in Marathi. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हे वैध Name नाही.`;
@@ -262,6 +322,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Marathi. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध ईमेल पत्ता नाही.`;
+
+/** Formats a HostnameError in Marathi. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे लहान अक्षरांतील वैध होस्टनेम नाही.`;
+
+/** Formats an Ipv4AddressError in Marathi. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध IPv4 पत्ता नाही.`;
+
+/** Formats an Ipv6AddressError in Marathi. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा canonical IPv6 पत्ता नाही.`;
+
+/** Formats an Ipv6AddressFromStringError in Marathi. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध IPv6 पत्ता नाही.`;
+
+/** Formats a PhoneNumberE164Error in Marathi. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा E.164 स्वरूपातील फोन नंबर नाही.`;
+
+/** Formats an IbanError in Marathi. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा मोठ्या अक्षरांतील आणि रिकाम्या जागांशिवाय लिहिलेला वैध IBAN नाही.`;
 
 /** Formats a MnemonicError in Marathi. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -278,6 +370,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Marathi. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हा लहान अक्षरांतील canonical UUID नाही.`;
+
+/** Formats a UuidVersionError in Marathi. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा आवृत्ती ${error.version} चा UUID नाही.`;
 
 /** Formats a NonNegativeError in Marathi. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -332,6 +430,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हे दशांश पूर्णांक नाही.`;
+
+/** Formats a FiniteNumberFromStringError in Marathi. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} ही दशांश संख्या नाही.`;
 
 /** Formats a GreaterThanError in Marathi. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -391,6 +495,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `index ${issue.index} वरील array element अवैध आहे.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Marathi. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} मध्ये किमान एक घटक असला पाहिजे.`;
+
+/** Formats a UniqueError in Marathi. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} मध्ये index ${error.previousIndex} आणि ${error.index} वर समान घटक आहेत.`;
 
 /** Formats a SetError in Marathi. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -475,6 +589,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record keys ${safelyStringifyUnknownValue(issue.previousKey)} आणि ${safelyStringifyUnknownValue(issue.key)} decode केल्यावर तीच key ${safelyStringifyUnknownValue(issue.outputKey)} मिळते.`;
   }
 };
+
+/** Formats a MinEntriesError in Marathi. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} किमान ${error.min} नोंदींची अट पूर्ण करत नाही.`;
+
+/** Formats a MaxEntriesError in Marathi. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} मधील नोंदींची संख्या कमाल ${error.max} पेक्षा जास्त आहे.`;
 
 /** Formats an ObjectError in Marathi. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

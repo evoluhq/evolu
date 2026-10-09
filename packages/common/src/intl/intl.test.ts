@@ -126,6 +126,7 @@ const locales = {
 // a translation or translates it with an incompatible type fails to compile.
 const formattersFor = (locale: typeof en) => ({
   Array: locale.formatArrayError,
+  Base64: locale.formatBase64Error,
   Base64Url: locale.formatBase64UrlError,
   [Between1And2.name]: locale.formatBetweenError,
   BigInt: locale.formatBigIntError,
@@ -142,20 +143,29 @@ const formattersFor = (locale: typeof en) => ({
   Lowercased: locale.formatLowercasedError,
   DateIso: locale.formatDateIsoError,
   DateIsoFromDate: locale.formatDateIsoFromDateError,
+  DateIsoFromRfc3339: locale.formatDateIsoFromRfc3339Error,
   DecimalString: locale.formatDecimalStringError,
   DiscriminatedUnion: locale.formatDiscriminatedUnionError,
   Email: locale.formatEmailError,
+  "EndsWith.json": locale.formatEndsWithError,
   EvoluType: locale.formatEvoluTypeError,
   Finite: locale.formatFiniteError,
+  FiniteNumberFromString: locale.formatFiniteNumberFromStringError,
   Function: locale.formatFunctionError,
   GreaterThan1: locale.formatGreaterThanError,
   GreaterThanOrEqualTo1: locale.formatGreaterThanOrEqualToError,
+  Hex: locale.formatHexError,
+  Hostname: locale.formatHostnameError,
+  Iban: locale.formatIbanError,
   Id: locale.formatIdError,
   InstanceOf: locale.formatInstanceOfError,
   Int: locale.formatIntError,
   IntFromString: locale.formatIntFromStringError,
   Int64: locale.formatInt64Error,
   Int64String: locale.formatInt64StringError,
+  Ipv4Address: locale.formatIpv4AddressError,
+  Ipv6Address: locale.formatIpv6AddressError,
+  Ipv6AddressFromString: locale.formatIpv6AddressFromStringError,
   Json: locale.formatJsonError,
   JsonValue: locale.formatJsonValueError,
   Length2: locale.formatLengthError,
@@ -165,10 +175,12 @@ const formattersFor = (locale: typeof en) => ({
   LessThanOrEqualTo1: locale.formatLessThanOrEqualToError,
   Literal: locale.formatLiteralError,
   Map: locale.formatMapError,
+  MaxEntries2: locale.formatMaxEntriesError,
   MaxLength2: locale.formatMaxLengthError,
   MaxLength64: locale.formatMaxLengthError,
   MaxLength100: locale.formatMaxLengthError,
   MaxLength1000: locale.formatMaxLengthError,
+  MinEntries1: locale.formatMinEntriesError,
   MinLength1: locale.formatMinLengthError,
   MinLength2: locale.formatMinLengthError,
   MinLength8: locale.formatMinLengthError,
@@ -178,14 +190,18 @@ const formattersFor = (locale: typeof en) => ({
   Negative: locale.formatNegativeError,
   NegativeDecimalString: locale.formatNegativeDecimalStringError,
   Never: locale.formatNeverError,
+  NonEmptyArray: locale.formatNonEmptyArrayError,
   NonNaN: locale.formatNonNaNError,
   NonNegative: locale.formatNonNegativeError,
   NonNegativeDecimalString: locale.formatNonNegativeDecimalStringError,
   NonPositive: locale.formatNonPositiveError,
   NonPositiveDecimalString: locale.formatNonPositiveDecimalStringError,
+  NormalizedNFC: locale.formatNormalizedError,
   Number: locale.formatNumberError,
   Object: locale.formatObjectError,
   ObjectTag: locale.formatObjectTagError,
+  PhoneNumberE164: locale.formatPhoneNumberE164Error,
+  PlainDateIso: locale.formatPlainDateIsoError,
   Positive: locale.formatPositiveError,
   PositiveDecimalString: locale.formatPositiveDecimalStringError,
   Record: locale.formatRecordError,
@@ -202,8 +218,13 @@ const formattersFor = (locale: typeof en) => ({
   Tuple: locale.formatTupleError,
   UInt64: locale.formatUInt64Error,
   Union: locale.formatUnionError,
+  Unique: locale.formatUniqueError,
   UrlSafeString: locale.formatRegexError,
   Uuid: locale.formatUuidError,
+  UuidV4: locale.formatUuidVersionError,
+  UuidV7: locale.formatUuidVersionError,
+  ValidDate: locale.formatValidDateError,
+  WellFormed: locale.formatWellFormedError,
 });
 
 // A locale must not keep a formatter that English no longer has.
@@ -221,6 +242,7 @@ const typesByLocale = Type.localizeTypes(
   {
     Age: Type.Age,
     ArrayBuffer: Type.ArrayBuffer,
+    Base64: Type.Base64,
     Base64Url: Type.Base64Url,
     BigInt: Type.BigInt,
     Boolean: Type.Boolean,
@@ -237,6 +259,7 @@ const typesByLocale = Type.localizeTypes(
     Date: Type.Date,
     DateIso: Type.DateIso,
     DateIsoFromDate: Type.DateIsoFromDate,
+    DateIsoFromRfc3339: Type.DateIsoFromRfc3339,
     DecimalString: Type.DecimalString,
     Digit: Type.Digit,
     Digit1To6: Type.Digit1To6,
@@ -246,9 +269,14 @@ const typesByLocale = Type.localizeTypes(
     Digit1To59: Type.Digit1To59,
     Digit1To99: Type.Digit1To99,
     Email: Type.Email,
+    EndsWith: Type.endsWith(".json")(Type.String),
     EvoluType: Type.EvoluType,
     FiniteNumber: Type.FiniteNumber,
+    FiniteNumberFromString: Type.FiniteNumberFromString,
     Function: Type.Function,
+    Hex: Type.Hex,
+    Hostname: Type.Hostname,
+    Iban: Type.Iban,
     Id: Type.Id,
     IdBytes: Type.IdBytes,
     Int: Type.Int,
@@ -256,6 +284,9 @@ const typesByLocale = Type.localizeTypes(
     Int64: Type.Int64,
     Int64FromInt64String: Type.Int64FromInt64String,
     Int64String: Type.Int64String,
+    Ipv4Address: Type.Ipv4Address,
+    Ipv6Address: Type.Ipv6Address,
+    Ipv6AddressFromString: Type.Ipv6AddressFromString,
     Json: Type.Json,
     JsonArray: Type.JsonArray,
     JsonObject: Type.JsonObject,
@@ -279,9 +310,12 @@ const typesByLocale = Type.localizeTypes(
     NonPositiveDecimalString: Type.NonPositiveDecimalString,
     NonPositiveInt: Type.NonPositiveInt,
     NonPositiveNumber: Type.NonPositiveNumber,
+    Normalized: Type.normalized("NFC")(Type.String),
     Null: Type.Null,
     Number: Type.Number,
     Object: Type.Object,
+    PhoneNumberE164: Type.PhoneNumberE164,
+    PlainDateIso: Type.PlainDateIso,
     PositiveDecimalString: Type.PositiveDecimalString,
     PositiveFiniteNumber: Type.PositiveFiniteNumber,
     PositiveInt: Type.PositiveInt,
@@ -301,6 +335,10 @@ const typesByLocale = Type.localizeTypes(
     UnknownResult: Type.UnknownResult,
     UrlSafeString: Type.UrlSafeString,
     Uuid: Type.Uuid,
+    UuidV4: Type.UuidV4,
+    UuidV7: Type.UuidV7,
+    ValidDate: Type.ValidDate,
+    WellFormedString: Type.WellFormedString,
     Array: Type.array(Type.String),
     Between: Between1And2,
     DiscriminatedUnion: Type.discriminatedUnion(Created, Deleted),
@@ -311,9 +349,12 @@ const typesByLocale = Type.localizeTypes(
     LessThan: Type.lessThan(1)(Type.Number),
     LessThanOrEqualTo: Type.lessThanOrEqualTo(1)(Type.Number),
     Map: Type.map(Type.String, Type.String),
+    MaxEntries: Type.maxEntries(2)(Type.record(Type.String, Type.String)),
     MaxLength: Type.maxLength(2)(Type.String),
+    MinEntries: Type.minEntries(1)(Type.record(Type.String, Type.String)),
     MinLength: Type.minLength(2)(Type.String),
     MultipleOf: Type.multipleOf("2")(Type.Number),
+    NonEmptyArray: Type.nonEmptyArray(Type.array(Type.String)),
     ObjectFactory: Type.object({ value: Type.String }),
     Record: Type.record(Type.String, Type.String),
     RecordWithCollision: Type.record(LowercaseString, Type.String),
@@ -327,6 +368,7 @@ const typesByLocale = Type.localizeTypes(
     TemplateLiteral: Type.templateLiteral("prefix:", Type.String),
     Tuple: Type.tuple(Type.String, Type.Number),
     Union: Type.union(Type.String, Type.Number),
+    Unique: Type.unique(Type.array(Type.String)),
   },
   mapObject(locales, formattersFor),
 );
@@ -385,6 +427,8 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
   (f) =>
     f.formatObjectTagError({ type: "ObjectTag", expected: "Date", value: 1 }),
   (f) =>
+    f.formatValidDateError({ type: "ValidDate", value: new Date(Number.NaN) }),
+  (f) =>
     f.formatInstanceOfError({
       type: "InstanceOf",
       constructorName: "Date",
@@ -398,9 +442,16 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
     ),
   (f) => f.formatDateIsoError({ type: "DateIso", value: "2024-01-01" }),
   (f) =>
+    f.formatPlainDateIsoError({ type: "PlainDateIso", value: "2023-02-29" }),
+  (f) =>
     f.formatDateIsoFromDateError({
       type: "DateIsoFromDate",
       value: new Date(Number.NaN),
+    }),
+  (f) =>
+    f.formatDateIsoFromRfc3339Error({
+      type: "DateIsoFromRfc3339",
+      value: "2024-01-01 12:00:00Z",
     }),
   (f) => f.formatDecimalStringError({ type: "DecimalString", value: "01.50" }),
   (f) => f.formatInt64Error({ type: "Int64", value: 2n ** 63n }),
@@ -424,11 +475,24 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
   (f) => f.formatUppercasedError({ type: "Uppercased", value: "abc" }),
   (f) => f.formatLowercasedError({ type: "Lowercased", value: "ABC" }),
   (f) => f.formatTrimmedError({ type: "Trimmed", value: " a " }),
+  (f) => f.formatWellFormedError({ type: "WellFormed", value: "\uD800" }),
+  (f) =>
+    f.formatNormalizedError({
+      type: "NormalizedNFC",
+      value: "e\u0301",
+      form: "NFC",
+    }),
   (f) =>
     f.formatStartsWithError({
       type: "StartsWithAPP_",
       value: "OTHER",
       prefix: "APP_",
+    }),
+  (f) =>
+    f.formatEndsWithError({
+      type: "EndsWith.json",
+      value: "config.txt",
+      suffix: ".json",
     }),
   (f) => f.formatMinLengthError({ type: "MinLength3", value: "ab", min: 3 }),
   (f) => f.formatMaxLengthError({ type: "MaxLength4", value: "abcde", max: 4 }),
@@ -441,12 +505,35 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
       flags: "u",
     }),
   (f) => f.formatBase64UrlError({ type: "Base64Url", value: "+/" }),
+  (f) => f.formatBase64Error({ type: "Base64", value: "AB==" }),
+  (f) => f.formatHexError({ type: "Hex", value: "0xff" }),
   (f) => f.formatNameError({ type: "Name", value: "bad name" }),
   (f) => f.formatEmailError({ type: "Email", value: "x" }),
+  (f) => f.formatHostnameError({ type: "Hostname", value: "Example.com" }),
+  (f) => f.formatIpv4AddressError({ type: "Ipv4Address", value: "01.2.3.4" }),
+  (f) =>
+    f.formatIpv6AddressError({ type: "Ipv6Address", value: "2001:DB8::1" }),
+  (f) =>
+    f.formatIpv6AddressFromStringError({
+      type: "Ipv6AddressFromString",
+      value: "fe80::1%eth0",
+    }),
+  (f) =>
+    f.formatPhoneNumberE164Error({
+      type: "PhoneNumberE164",
+      value: "+1 415 555 2671",
+    }),
+  (f) => f.formatIbanError({ type: "Iban", value: "GB82WEST12345698765433" }),
   (f) => f.formatMnemonicError({ type: "Mnemonic", value: "a b c" }),
   (f) => f.formatIdError({ type: "Id", value: "x" }),
   (f) => f.formatTableIdError({ type: "TableId", table: "Todo", value: "x" }),
   (f) => f.formatUuidError({ type: "Uuid", value: "x" }),
+  (f) =>
+    f.formatUuidVersionError({
+      type: "UuidV7",
+      value: "20354d7a-e4fe-47af-8ff6-187bca92f3f9",
+      version: 7,
+    }),
   (f) => f.formatNonNegativeError({ type: "NonNegative", value: -1 }),
   (f) =>
     f.formatNonNegativeDecimalStringError({
@@ -473,6 +560,11 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
     }),
   (f) => f.formatIntError({ type: "Int", value: 1.5 }),
   (f) => f.formatIntFromStringError({ type: "IntFromString", value: "1.5" }),
+  (f) =>
+    f.formatFiniteNumberFromStringError({
+      type: "FiniteNumberFromString",
+      value: ".5",
+    }),
   (f) => f.formatGreaterThanError({ type: "GreaterThan6", value: 0, min: 6 }),
   (f) =>
     f.formatGreaterThanOrEqualToError({
@@ -504,6 +596,14 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
       failure(StringArray.fromUnknown(Object.assign(["a"], { extra: 1 }))),
     ),
   (f) => f.formatArrayError(failure(StringArray.fromUnknown(["a", 1]))),
+  (f) => f.formatNonEmptyArrayError({ type: "NonEmptyArray", value: [] }),
+  (f) =>
+    f.formatUniqueError({
+      type: "Unique",
+      value: ["a", "b", "a"],
+      index: 2,
+      previousIndex: 0,
+    }),
   (f) => f.formatSetError(failure(StringSet.fromUnknown(1))),
   (f) =>
     f.formatSetError(
@@ -597,6 +697,18 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
         }),
       ),
     ),
+  (f) =>
+    f.formatMinEntriesError({
+      type: "MinEntries2",
+      value: { a: "x" },
+      min: 2,
+    }),
+  (f) =>
+    f.formatMaxEntriesError({
+      type: "MaxEntries1",
+      value: { a: "x", b: "y" },
+      max: 1,
+    }),
   (f) => f.formatObjectError(failure(ValueObject.fromUnknown(1))),
   (f) => f.formatObjectError(failure(ValueObject.fromUnknown(new Date(0)))),
   (f) =>
@@ -872,6 +984,33 @@ describe("Type localization", () => {
       assertEqual(message, locale.formatStartsWithError(error));
       assertTrue(message.includes(JSON.stringify(value)));
       assertTrue(message.includes(JSON.stringify(prefix)));
+    }
+  });
+
+  test("renders every UUID version and normalization form in every locale", () => {
+    for (const [name, locale] of objectToEntries(locales)) {
+      for (const version of [1, 2, 3, 4, 5, 6, 7, 8] as const) {
+        const message = locale.formatUuidVersionError({
+          type: `UuidV${version}`,
+          value: "x",
+          version,
+        });
+        assert(
+          message.includes(String(version)),
+          `${name} drops UUID version ${version}: "${message}".`,
+        );
+      }
+      for (const form of ["NFC", "NFD", "NFKC", "NFKD"] as const) {
+        const message = locale.formatNormalizedError({
+          type: `Normalized${form}`,
+          value: "x",
+          form,
+        });
+        assert(
+          message.includes(form),
+          `${name} drops normalization form ${form}: "${message}".`,
+        );
+      }
     }
   });
 

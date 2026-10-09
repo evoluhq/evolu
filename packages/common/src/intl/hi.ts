@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} में अपेक्षित object tag ${safelyStringifyUnknownValue(error.expected)} नहीं है।`;
 
+/** Formats a ValidDateError in Hindi. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date अमान्य है।";
+
 /** Formats an InstanceOfError in Hindi. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} canonical ISO date-time string नहीं है।`;
 
+/** Formats a PlainDateIsoError in Hindi. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} YYYY-MM-DD प्रारूप में मान्य कैलेंडर तिथि नहीं है।`;
+
 /** Formats a DateIsoFromDateError in Hindi. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date को DateIso के रूप में दर्शाया नहीं जा सकता।";
+
+/** Formats a DateIsoFromRfc3339Error in Hindi. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} समर्थित RFC 3339 date-time नहीं है। "2024-01-01T12:00:00Z" जैसे मान का उपयोग करें।`;
 
 /** Formats a DecimalStringError in Hindi. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -223,11 +259,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} के आरंभ और अंत से whitespace हटाया हुआ होना चाहिए।`;
 
+/** Formats a WellFormedError in Hindi. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} well-formed Unicode टेक्स्ट होना चाहिए।`;
+
+/** Formats a NormalizedError in Hindi. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} Unicode सामान्यीकरण रूप ${error.form} में होना चाहिए।`;
+
 /** Formats a StartsWithError in Hindi. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} की शुरुआत ${safelyStringifyUnknownValue(error.prefix)} से होनी चाहिए।`;
+
+/** Formats an EndsWithError in Hindi. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} का अंत ${safelyStringifyUnknownValue(error.suffix)} से होना चाहिए।`;
 
 /** Formats a MinLengthError in Hindi. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -255,6 +307,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य Base64Url string नहीं है।`;
 
+/** Formats a Base64Error in Hindi. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} मान्य Base64 string नहीं है।`;
+
+/** Formats a HexError in Hindi. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} छोटे अक्षरों और सम संख्या में अंकों वाली hexadecimal string नहीं है।`;
+
 /** Formats a NameError in Hindi. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य Name नहीं है।`;
@@ -262,6 +322,37 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Hindi. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} मान्य ईमेल पता नहीं है।`;
+
+/** Formats a HostnameError in Hindi. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} छोटे अक्षरों वाला मान्य होस्टनाम नहीं है।`;
+
+/** Formats an Ipv4AddressError in Hindi. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) => `मान ${safelyStringifyUnknownValue(error.value)} मान्य IPv4 पता नहीं है।`;
+
+/** Formats an Ipv6AddressError in Hindi. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} canonical IPv6 पता नहीं है।`;
+
+/** Formats an Ipv6AddressFromStringError in Hindi. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} मान्य IPv6 पता नहीं है।`;
+
+/** Formats a PhoneNumberE164Error in Hindi. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} E.164 प्रारूप में फ़ोन नंबर नहीं है।`;
+
+/** Formats an IbanError in Hindi. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} बड़े अक्षरों में और बिना रिक्त स्थान के मान्य IBAN नहीं है।`;
 
 /** Formats a MnemonicError in Hindi. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -278,6 +369,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Hindi. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} छोटे अक्षरों वाला canonical UUID नहीं है।`;
+
+/** Formats a UuidVersionError in Hindi. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} संस्करण ${error.version} का UUID नहीं है।`;
 
 /** Formats a NonNegativeError in Hindi. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -332,6 +429,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} दशमलव पूर्णांक नहीं है।`;
+
+/** Formats a FiniteNumberFromStringError in Hindi. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} दशमलव संख्या नहीं है।`;
 
 /** Formats a GreaterThanError in Hindi. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -391,6 +494,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `index ${issue.index} पर array element अमान्य है।`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Hindi. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} में कम से कम एक आइटम होना चाहिए।`;
+
+/** Formats a UniqueError in Hindi. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} में index ${error.previousIndex} और ${error.index} पर समान आइटम हैं।`;
 
 /** Formats a SetError in Hindi. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -475,6 +588,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record keys ${safelyStringifyUnknownValue(issue.previousKey)} और ${safelyStringifyUnknownValue(issue.key)} decode होकर एक ही key ${safelyStringifyUnknownValue(issue.outputKey)} बनती हैं।`;
   }
 };
+
+/** Formats a MinEntriesError in Hindi. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} में प्रविष्टियों की संख्या न्यूनतम ${error.min} होनी चाहिए।`;
+
+/** Formats a MaxEntriesError in Hindi. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} में प्रविष्टियों की संख्या अधिकतम ${error.max} हो सकती है।`;
 
 /** Formats an ObjectError in Hindi. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

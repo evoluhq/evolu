@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const typeOfNames = {
@@ -150,6 +170,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не має очікуваного тегу об’єкта ${safelyStringifyUnknownValue(error.expected)}.`;
 
+/** Formats a ValidDateError in Ukrainian. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Дата недійсна.";
+
 /** Formats an InstanceOfError in Ukrainian. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -168,10 +192,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є канонічним рядком дати й часу ISO.`;
 
+/** Formats a PlainDateIsoError in Ukrainian. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою календарною датою у форматі YYYY-MM-DD.`;
+
 /** Formats a DateIsoFromDateError in Ukrainian. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Дату неможливо подати як DateIso.";
+
+/** Formats a DateIsoFromRfc3339Error in Ukrainian. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є датою й часом у підтримуваному форматі RFC 3339. Використовуйте значення на кшталт "2024-01-01T12:00:00Z".`;
 
 /** Formats a DecimalStringError in Ukrainian. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -227,11 +263,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не має містити пробілів на початку та в кінці.`;
 
+/** Formats a WellFormedError in Ukrainian. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має бути правильно сформованим текстом Unicode.`;
+
+/** Formats a NormalizedError in Ukrainian. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має бути у формі нормалізації Unicode ${error.form}.`;
+
 /** Formats a StartsWithError in Ukrainian. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має починатися з ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Ukrainian. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має закінчуватися на ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Ukrainian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -259,6 +311,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим рядком Base64Url.`;
 
+/** Formats a Base64Error in Ukrainian. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим рядком Base64.`;
+
+/** Formats a HexError in Ukrainian. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є шістнадцятковим рядком у нижньому регістрі з парною кількістю цифр.`;
+
 /** Formats a NameError in Ukrainian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим Name.`;
@@ -266,6 +326,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Ukrainian. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою адресою електронної пошти.`;
+
+/** Formats a HostnameError in Ukrainian. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим ім’ям хоста в нижньому регістрі.`;
+
+/** Formats an Ipv4AddressError in Ukrainian. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою адресою IPv4.`;
+
+/** Formats an Ipv6AddressError in Ukrainian. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є канонічною адресою IPv6.`;
+
+/** Formats an Ipv6AddressFromStringError in Ukrainian. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою адресою IPv6.`;
+
+/** Formats a PhoneNumberE164Error in Ukrainian. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є номером телефону у форматі E.164.`;
+
+/** Formats an IbanError in Ukrainian. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим IBAN у верхньому регістрі без пробілів.`;
 
 /** Formats a MnemonicError in Ukrainian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -282,6 +374,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Ukrainian. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є канонічним UUID у нижньому регістрі.`;
+
+/** Formats a UuidVersionError in Ukrainian. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є UUID версії ${error.version}.`;
 
 /** Formats a NonNegativeError in Ukrainian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -336,6 +434,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є десятковим цілим числом.`;
+
+/** Formats a FiniteNumberFromStringError in Ukrainian. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є десятковим числом.`;
 
 /** Formats a GreaterThanError in Ukrainian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -395,6 +499,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `Елемент масиву з індексом ${issue.index} недійсний.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Ukrainian. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має містити принаймні один елемент.`;
+
+/** Formats a UniqueError in Ukrainian. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} містить однакові елементи з індексами ${error.previousIndex} та ${error.index}.`;
 
 /** Formats a SetError in Ukrainian. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -479,6 +593,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Ключі Record ${safelyStringifyUnknownValue(issue.previousKey)} та ${safelyStringifyUnknownValue(issue.key)} декодуються в той самий ключ ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Ukrainian. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не досягає мінімальної кількості записів ${error.min}.`;
+
+/** Formats a MaxEntriesError in Ukrainian. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} перевищує максимальну кількість записів ${error.max}.`;
 
 /** Formats an ObjectError in Ukrainian. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

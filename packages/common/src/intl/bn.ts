@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `${safelyStringifyUnknownValue(error.value)} মানটিতে প্রত্যাশিত object tag ${safelyStringifyUnknownValue(error.expected)} নেই।`;
 
+/** Formats a ValidDateError in Bengali. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date-টি অবৈধ।";
+
 /** Formats an InstanceOfError in Bengali. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি canonical ISO date-time string নয়।`;
 
+/** Formats a PlainDateIsoError in Bengali. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি YYYY-MM-DD ফরম্যাটে লেখা বৈধ ক্যালেন্ডার তারিখ নয়।`;
+
 /** Formats a DateIsoFromDateError in Bengali. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date-টিকে DateIso হিসেবে উপস্থাপন করা যায় না।";
+
+/** Formats a DateIsoFromRfc3339Error in Bengali. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি সমর্থিত RFC 3339 date-time নয়। "2024-01-01T12:00:00Z"-এর মতো একটি মান ব্যবহার করুন।`;
 
 /** Formats a DecimalStringError in Bengali. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -222,11 +258,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটির শুরু বা শেষে whitespace থাকা যাবে না।`;
 
+/** Formats a WellFormedError in Bengali. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি অবশ্যই well-formed Unicode টেক্সট হতে হবে।`;
+
+/** Formats a NormalizedError in Bengali. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি অবশ্যই Unicode নর্মালাইজেশন ফর্ম ${error.form}-এ থাকতে হবে।`;
+
 /** Formats a StartsWithError in Bengali. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি অবশ্যই ${safelyStringifyUnknownValue(error.prefix)} দিয়ে শুরু হতে হবে।`;
+
+/** Formats an EndsWithError in Bengali. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি অবশ্যই ${safelyStringifyUnknownValue(error.suffix)} দিয়ে শেষ হতে হবে।`;
 
 /** Formats a MinLengthError in Bengali. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -254,6 +306,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ Base64Url string নয়।`;
 
+/** Formats a Base64Error in Bengali. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ Base64 string নয়।`;
+
+/** Formats a HexError in Bengali. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি ছোট হাতের অক্ষরে লেখা এবং জোড় সংখ্যক অঙ্কবিশিষ্ট hexadecimal string নয়।`;
+
 /** Formats a NameError in Bengali. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ Name নয়।`;
@@ -261,6 +321,37 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Bengali. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ ইমেল ঠিকানা নয়।`;
+
+/** Formats a HostnameError in Bengali. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি ছোট হাতের অক্ষরে লেখা বৈধ হোস্টনেম নয়।`;
+
+/** Formats an Ipv4AddressError in Bengali. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) => `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ IPv4 ঠিকানা নয়।`;
+
+/** Formats an Ipv6AddressError in Bengali. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি canonical IPv6 ঠিকানা নয়।`;
+
+/** Formats an Ipv6AddressFromStringError in Bengali. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ IPv6 ঠিকানা নয়।`;
+
+/** Formats a PhoneNumberE164Error in Bengali. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি E.164 ফরম্যাটে লেখা ফোন নম্বর নয়।`;
+
+/** Formats an IbanError in Bengali. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি বড় হাতের অক্ষরে ও ফাঁকা স্থান ছাড়া লেখা বৈধ IBAN নয়।`;
 
 /** Formats a MnemonicError in Bengali. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -277,6 +368,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Bengali. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি ছোট হাতের অক্ষরে লেখা canonical UUID নয়।`;
+
+/** Formats a UuidVersionError in Bengali. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি সংস্করণ ${error.version}-এর UUID নয়।`;
 
 /** Formats a NonNegativeError in Bengali. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -331,6 +428,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি দশমিক পূর্ণসংখ্যা নয়।`;
+
+/** Formats a FiniteNumberFromStringError in Bengali. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি দশমিক সংখ্যা নয়।`;
 
 /** Formats a GreaterThanError in Bengali. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -390,6 +493,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `array-এর index ${issue.index}-এর element অবৈধ।`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Bengali. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটিতে অন্তত একটি আইটেম থাকতে হবে।`;
+
+/** Formats a UniqueError in Bengali. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটির index ${error.previousIndex} এবং ${error.index}-এর আইটেম দুটি সমান।`;
 
 /** Formats a SetError in Bengali. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -474,6 +587,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record key ${safelyStringifyUnknownValue(issue.previousKey)} এবং ${safelyStringifyUnknownValue(issue.key)} decode হয়ে একই key ${safelyStringifyUnknownValue(issue.outputKey)} হয়।`;
   }
 };
+
+/** Formats a MinEntriesError in Bengali. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটির এন্ট্রির সংখ্যা অন্তত ${error.min} হতে হবে।`;
+
+/** Formats a MaxEntriesError in Bengali. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটির এন্ট্রির সংখ্যা সর্বোচ্চ ${error.max} হতে পারে।`;
 
 /** Formats an ObjectError in Bengali. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

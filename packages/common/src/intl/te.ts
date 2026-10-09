@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} లో ఆశించిన object tag ${safelyStringifyUnknownValue(error.expected)} లేదు.`;
 
+/** Formats a ValidDateError in Telugu. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date చెల్లదు.";
+
 /** Formats an InstanceOfError in Telugu. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} canonical ISO date-time string కాదు.`;
 
+/** Formats a PlainDateIsoError in Telugu. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} YYYY-MM-DD ఆకృతిలో చెల్లుబాటు అయ్యే క్యాలెండర్ తేదీ కాదు.`;
+
 /** Formats a DateIsoFromDateError in Telugu. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date ను DateIso గా సూచించలేము.";
+
+/** Formats a DateIsoFromRfc3339Error in Telugu. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} మద్దతు ఉన్న RFC 3339 date-time కాదు. "2024-01-01T12:00:00Z" వంటి విలువను ఉపయోగించండి.`;
 
 /** Formats a DecimalStringError in Telugu. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -223,11 +259,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} లో ప్రారంభం లేదా చివర ఖాళీలు ఉండకూడదు.`;
 
+/** Formats a WellFormedError in Telugu. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} well-formed Unicode టెక్స్ట్ అయి ఉండాలి.`;
+
+/** Formats a NormalizedError in Telugu. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా Unicode నార్మలైజేషన్ ఫారమ్ ${error.form} లో ఉండాలి.`;
+
 /** Formats a StartsWithError in Telugu. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా ${safelyStringifyUnknownValue(error.prefix)} తో ప్రారంభం కావాలి.`;
+
+/** Formats an EndsWithError in Telugu. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా ${safelyStringifyUnknownValue(error.suffix)} తో ముగియాలి.`;
 
 /** Formats a MinLengthError in Telugu. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -255,6 +307,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే Base64Url string కాదు.`;
 
+/** Formats a Base64Error in Telugu. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే Base64 string కాదు.`;
+
+/** Formats a HexError in Telugu. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చిన్న అక్షరాలలోని, సరి సంఖ్యలో అంకెలు ఉన్న hexadecimal string కాదు.`;
+
 /** Formats a NameError in Telugu. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే Name కాదు.`;
@@ -262,6 +322,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Telugu. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే ఇమెయిల్ చిరునామా కాదు.`;
+
+/** Formats a HostnameError in Telugu. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చిన్న అక్షరాలలోని చెల్లుబాటు అయ్యే హోస్ట్ పేరు కాదు.`;
+
+/** Formats an Ipv4AddressError in Telugu. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే IPv4 చిరునామా కాదు.`;
+
+/** Formats an Ipv6AddressError in Telugu. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} canonical IPv6 చిరునామా కాదు.`;
+
+/** Formats an Ipv6AddressFromStringError in Telugu. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే IPv6 చిరునామా కాదు.`;
+
+/** Formats a PhoneNumberE164Error in Telugu. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} E.164 ఆకృతిలో ఉన్న ఫోన్ నంబర్ కాదు.`;
+
+/** Formats an IbanError in Telugu. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} పెద్ద అక్షరాలలోని, ఖాళీలు లేని చెల్లుబాటు అయ్యే IBAN కాదు.`;
 
 /** Formats a MnemonicError in Telugu. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -278,6 +370,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Telugu. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} చిన్న అక్షరాలలోని canonical UUID కాదు.`;
+
+/** Formats a UuidVersionError in Telugu. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} సంస్కరణ ${error.version} UUID కాదు.`;
 
 /** Formats a NonNegativeError in Telugu. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -332,6 +430,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} దశాంశ పూర్ణాంకం కాదు.`;
+
+/** Formats a FiniteNumberFromStringError in Telugu. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} దశాంశ సంఖ్య కాదు.`;
 
 /** Formats a GreaterThanError in Telugu. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -391,6 +495,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `సూచిక ${issue.index} వద్ద array element చెల్లదు.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Telugu. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} లో కనీసం ఒక అంశం ఉండాలి.`;
+
+/** Formats a UniqueError in Telugu. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} లో సూచికలు ${error.previousIndex} మరియు ${error.index} వద్ద సమానమైన అంశాలు ఉన్నాయి.`;
 
 /** Formats a SetError in Telugu. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -475,6 +589,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record keys ${safelyStringifyUnknownValue(issue.previousKey)} మరియు ${safelyStringifyUnknownValue(issue.key)} ఒకే key ${safelyStringifyUnknownValue(issue.outputKey)} కు decode అవుతాయి.`;
   }
 };
+
+/** Formats a MinEntriesError in Telugu. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} కనీస ఎంట్రీల సంఖ్య ${error.min} ను చేరలేదు.`;
+
+/** Formats a MaxEntriesError in Telugu. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} గరిష్ఠ ఎంట్రీల సంఖ్య ${error.max} ను మించింది.`;
 
 /** Formats an ObjectError in Telugu. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

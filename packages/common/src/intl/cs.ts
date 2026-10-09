@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatValueMustBe = (value: unknown, expected: string): string =>
@@ -145,6 +165,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nemá očekávaný tag objektu ${safelyStringifyUnknownValue(error.expected)}.`;
 
+/** Formats a ValidDateError in Czech. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Datum je neplatné.";
+
 /** Formats an InstanceOfError in Czech. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -163,10 +187,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být řetězec s datem a časem v kanonickém formátu ISO.`;
 
+/** Formats a PlainDateIsoError in Czech. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platné kalendářní datum ve formátu YYYY-MM-DD.`;
+
 /** Formats a DateIsoFromDateError in Czech. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Datum nelze převést na DateIso.";
+
+/** Formats a DateIsoFromRfc3339Error in Czech. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být datum a čas v podporovaném formátu RFC 3339. Použijte například "2024-01-01T12:00:00Z".`;
 
 /** Formats a DecimalStringError in Czech. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -222,11 +258,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Text ${safelyStringifyUnknownValue(error.value)} nesmí obsahovat bílé znaky na začátku ani na konci.`;
 
+/** Formats a WellFormedError in Czech. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být správně utvořený text Unicode.`;
+
+/** Formats a NormalizedError in Czech. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být v normalizační formě Unicode ${error.form}.`;
+
 /** Formats a StartsWithError in Czech. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí začínat na ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Czech. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí končit na ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Czech. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -256,6 +308,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný řetězec Base64Url.`;
 
+/** Formats a Base64Error in Czech. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný řetězec Base64.`;
+
+/** Formats a HexError in Czech. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být hexadecimální řetězec zapsaný malými písmeny se sudým počtem číslic.`;
+
 /** Formats a NameError in Czech. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný název.`;
@@ -263,6 +323,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Czech. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná e-mailová adresa.`;
+
+/** Formats a HostnameError in Czech. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný název hostitele zapsaný malými písmeny.`;
+
+/** Formats an Ipv4AddressError in Czech. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná adresa IPv4.`;
+
+/** Formats an Ipv6AddressError in Czech. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být kanonická adresa IPv6.`;
+
+/** Formats an Ipv6AddressFromStringError in Czech. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná adresa IPv6.`;
+
+/** Formats a PhoneNumberE164Error in Czech. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být telefonní číslo ve formátu E.164.`;
+
+/** Formats an IbanError in Czech. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný IBAN zapsaný velkými písmeny bez mezer.`;
 
 /** Formats a MnemonicError in Czech. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -279,6 +371,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Czech. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být kanonické UUID zapsané malými písmeny.`;
+
+/** Formats a UuidVersionError in Czech. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být UUID verze ${error.version}.`;
 
 /** Formats a NonNegativeError in Czech. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -333,6 +431,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být celé číslo v desítkovém zápisu.`;
+
+/** Formats a FiniteNumberFromStringError in Czech. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být číslo v desítkovém zápisu.`;
 
 /** Formats a GreaterThanError in Czech. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -392,6 +496,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `Prvek pole na indexu ${issue.index} není platný.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Czech. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí obsahovat alespoň jednu položku.`;
+
+/** Formats a UniqueError in Czech. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} obsahuje shodné položky na indexech ${error.previousIndex} a ${error.index}.`;
 
 /** Formats a SetError in Czech. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -476,6 +590,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Klíče Recordu ${safelyStringifyUnknownValue(issue.previousKey)} a ${safelyStringifyUnknownValue(issue.key)} se dekódují na stejný klíč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Czech. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí mít počet položek alespoň ${error.min}.`;
+
+/** Formats a MaxEntriesError in Czech. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} smí mít počet položek nejvýše ${error.max}.`;
 
 /** Formats an ObjectError in Czech. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

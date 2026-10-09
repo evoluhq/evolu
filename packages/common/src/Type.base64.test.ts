@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
-import { assertEqualBytes, assertEqual, assertTrue } from "./Assert.ts";
+import {
+  assertEqualBytes,
+  assertEqual,
+  assertFalse,
+  assertTrue,
+} from "./Assert.ts";
 
 // Keep this coverage in a separate test file. Per-file process isolation gives
 // it a fresh module cache and globals, so Type.ts is first loaded after
@@ -19,8 +24,13 @@ mock.module("./Platform.ts", {
   exports: { hasNodeBuffer: false },
 });
 
-const { base64UrlToUint8Array, uint8ArrayToBase64Url } =
-  await import("./Type.ts");
+const {
+  Base64,
+  base64ToUint8Array,
+  base64UrlToUint8Array,
+  uint8ArrayToBase64,
+  uint8ArrayToBase64Url,
+} = await import("./Type.ts");
 
 const restoreBase64Methods = (): void => {
   if (toBase64Descriptor === undefined) {
@@ -37,7 +47,7 @@ const restoreBase64Methods = (): void => {
   }
 };
 
-describe("Base64Url browser implementations", () => {
+describe("Base64 and Base64Url browser implementations", () => {
   beforeEach(() => {
     assertTrue(Reflect.deleteProperty(Uint8Array.prototype, "toBase64"));
     assertTrue(Reflect.deleteProperty(Uint8Array, "fromBase64"));
@@ -84,5 +94,52 @@ describe("Base64Url browser implementations", () => {
     }
 
     assertEqual(uint8ArrayToBase64Url(new Uint8Array([251, 255])), "-_8");
+  });
+
+  it("uses Uint8Array Base64 methods with padding for Base64", () => {
+    // oxlint-disable-next-line eslint/no-extend-native -- The test installs the native API to exercise its code path.
+    Object.defineProperty(Uint8Array.prototype, "toBase64", {
+      configurable: true,
+      value(this: Uint8Array, options: unknown): string {
+        assertEqual(options, { alphabet: "base64", omitPadding: false });
+        return Buffer.from(this).toString("base64");
+      },
+    });
+    Object.defineProperty(Uint8Array, "fromBase64", {
+      configurable: true,
+      value(value: string, options: unknown): Uint8Array {
+        assertEqual(options, { alphabet: "base64", omitPadding: false });
+        return new Uint8Array(Buffer.from(value, "base64"));
+      },
+    });
+
+    const bytes = new Uint8Array([251, 255]);
+    const encoded = uint8ArrayToBase64(bytes);
+
+    assertEqual(encoded, "+/8=");
+    assertEqualBytes(base64ToUint8Array(encoded), bytes);
+    assertTrue(Base64.is("+/8="));
+    assertFalse(Base64.is("-_8="));
+  });
+
+  it("uses btoa and atob for Base64 when Uint8Array Base64 methods are unavailable", () => {
+    for (const bytes of [
+      new Uint8Array(),
+      new Uint8Array([0]),
+      new Uint8Array([0, 1]),
+      new Uint8Array([0, 1, 2]),
+      new Uint8Array([251, 255]),
+    ]) {
+      const encoded = uint8ArrayToBase64(bytes);
+      assertTrue(Base64.is(encoded));
+      assertEqualBytes(base64ToUint8Array(encoded), bytes);
+    }
+
+    assertEqual(uint8ArrayToBase64(new Uint8Array([251, 255])), "+/8=");
+    // atob accepts missing padding and whitespace but throws on characters
+    // outside the alphabet and on a single trailing character.
+    for (const value of ["AB==", "AA", " AAAA", "-_-_", "A"]) {
+      assertFalse(Base64.is(value));
+    }
   });
 });

@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const typeOfNameByExpected = {
@@ -150,6 +170,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem rendelkezik a várt ${safelyStringifyUnknownValue(error.expected)} objektumcímkével.`;
 
+/** Formats a ValidDateError in Hungarian. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "A Date érvénytelen.";
+
 /** Formats an InstanceOfError in Hungarian. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -168,10 +192,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem kanonikus ISO dátum-idő karakterlánc.`;
 
+/** Formats a PlainDateIsoError in Hungarian. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes naptári dátum YYYY-MM-DD formátumban.`;
+
 /** Formats a DateIsoFromDateError in Hungarian. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "A Date nem ábrázolható DateIso-ként.";
+
+/** Formats a DateIsoFromRfc3339Error in Hungarian. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem támogatott, RFC 3339 szerinti dátum-idő. Használjon például "2024-01-01T12:00:00Z" értéket.`;
 
 /** Formats a DecimalStringError in Hungarian. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -227,11 +263,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek nem lehetnek kezdő vagy záró szóközei.`;
 
+/** Formats a WellFormedError in Hungarian. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek jól formált Unicode-szövegnek kell lennie.`;
+
+/** Formats a NormalizedError in Hungarian. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek ${error.form} Unicode-normalizálási formában kell lennie.`;
+
 /** Formats a StartsWithError in Hungarian. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek a(z) ${safelyStringifyUnknownValue(error.prefix)} előtaggal kell kezdődnie.`;
+
+/** Formats an EndsWithError in Hungarian. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek a(z) ${safelyStringifyUnknownValue(error.suffix)} utótaggal kell végződnie.`;
 
 /** Formats a MinLengthError in Hungarian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -259,6 +311,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes Base64Url karakterlánc.`;
 
+/** Formats a Base64Error in Hungarian. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes Base64 karakterlánc.`;
+
+/** Formats a HexError in Hungarian. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem páros számú számjegyből álló, kisbetűs hexadecimális karakterlánc.`;
+
 /** Formats a NameError in Hungarian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes név.`;
@@ -266,6 +326,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Hungarian. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes e-mail-cím.`;
+
+/** Formats a HostnameError in Hungarian. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes, kisbetűs állomásnév.`;
+
+/** Formats an Ipv4AddressError in Hungarian. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes IPv4-cím.`;
+
+/** Formats an Ipv6AddressError in Hungarian. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem kanonikus IPv6-cím.`;
+
+/** Formats an Ipv6AddressFromStringError in Hungarian. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes IPv6-cím.`;
+
+/** Formats a PhoneNumberE164Error in Hungarian. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem E.164 formátumú telefonszám.`;
+
+/** Formats an IbanError in Hungarian. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes, szóközök nélküli, nagybetűs IBAN.`;
 
 /** Formats a MnemonicError in Hungarian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -282,6 +374,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Hungarian. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem kanonikus, kisbetűs UUID.`;
+
+/** Formats a UuidVersionError in Hungarian. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem ${error.version}. verziójú UUID.`;
 
 /** Formats a NonNegativeError in Hungarian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -336,6 +434,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem decimális egész szám.`;
+
+/** Formats a FiniteNumberFromStringError in Hungarian. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem decimális szám.`;
 
 /** Formats a GreaterThanError in Hungarian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -395,6 +499,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `A(z) ${issue.index} indexen lévő tömbelem érvénytelen.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Hungarian. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek legalább egy elemet kell tartalmaznia.`;
+
+/** Formats a UniqueError in Hungarian. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték egyenlő elemeket tartalmaz a(z) ${error.previousIndex} és ${error.index} indexen.`;
 
 /** Formats a SetError in Hungarian. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -479,6 +593,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `A(z) ${safelyStringifyUnknownValue(issue.previousKey)} és ${safelyStringifyUnknownValue(issue.key)} Record-kulcs ugyanarra a(z) ${safelyStringifyUnknownValue(issue.outputKey)} kulcsra dekódolódik.`;
   }
 };
+
+/** Formats a MinEntriesError in Hungarian. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem éri el a(z) ${error.min} minimális bejegyzésszámot.`;
+
+/** Formats a MaxEntriesError in Hungarian. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték meghaladja a(z) ${error.max} maximális bejegyzésszámot.`;
 
 /** Formats an ObjectError in Hungarian. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

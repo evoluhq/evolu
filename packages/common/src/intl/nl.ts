@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -147,6 +167,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} heeft niet de verwachte objecttag ${safelyStringifyUnknownValue(error.expected)}.`;
 
+/** Formats a ValidDateError in Dutch. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "De Date is ongeldig.";
+
 /** Formats an InstanceOfError in Dutch. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -165,10 +189,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} is geen canonieke ISO-datum-tijdtekenreeks.`;
 
+/** Formats a PlainDateIsoError in Dutch. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldige kalenderdatum in het formaat YYYY-MM-DD.`;
+
 /** Formats a DateIsoFromDateError in Dutch. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "De Date kan niet als DateIso worden weergegeven.";
+
+/** Formats a DateIsoFromRfc3339Error in Dutch. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen ondersteunde datum-tijdtekenreeks volgens RFC 3339. Gebruik een waarde zoals "2024-01-01T12:00:00Z".`;
 
 /** Formats a DecimalStringError in Dutch. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -224,11 +260,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} mag geen witruimte aan het begin of einde bevatten.`;
 
+/** Formats a WellFormedError in Dutch. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} moet welgevormde Unicode-tekst zijn.`;
+
+/** Formats a NormalizedError in Dutch. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} moet in Unicode-normalisatievorm ${error.form} zijn.`;
+
 /** Formats a StartsWithError in Dutch. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} moet beginnen met ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Dutch. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} moet eindigen op ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Dutch. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -256,6 +308,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldige Base64Url-tekenreeks.`;
 
+/** Formats a Base64Error in Dutch. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldige Base64-tekenreeks.`;
+
+/** Formats a HexError in Dutch. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen hexadecimale tekenreeks in kleine letters met een even aantal cijfers.`;
+
 /** Formats a NameError in Dutch. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldige Name.`;
@@ -263,6 +323,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Dutch. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldig e-mailadres.`;
+
+/** Formats a HostnameError in Dutch. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldige hostnaam in kleine letters.`;
+
+/** Formats an Ipv4AddressError in Dutch. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldig IPv4-adres.`;
+
+/** Formats an Ipv6AddressError in Dutch. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen canoniek IPv6-adres.`;
+
+/** Formats an Ipv6AddressFromStringError in Dutch. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldig IPv6-adres.`;
+
+/** Formats a PhoneNumberE164Error in Dutch. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen telefoonnummer in E.164-formaat.`;
+
+/** Formats an IbanError in Dutch. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldig IBAN-nummer in hoofdletters zonder spaties.`;
 
 /** Formats a MnemonicError in Dutch. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -279,6 +371,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Dutch. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} is geen canonieke UUID in kleine letters.`;
+
+/** Formats a UuidVersionError in Dutch. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen UUID van versie ${error.version}.`;
 
 /** Formats a NonNegativeError in Dutch. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -333,6 +431,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} is geen decimaal geheel getal.`;
+
+/** Formats a FiniteNumberFromStringError in Dutch. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen decimaal getal.`;
 
 /** Formats a GreaterThanError in Dutch. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -392,6 +496,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `Een array-element op index ${issue.index} is ongeldig.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Dutch. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} moet ten minste één element bevatten.`;
+
+/** Formats a UniqueError in Dutch. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} heeft gelijke elementen op de indexen ${error.previousIndex} en ${error.index}.`;
 
 /** Formats a SetError in Dutch. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -476,6 +590,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record-sleutels ${safelyStringifyUnknownValue(issue.previousKey)} en ${safelyStringifyUnknownValue(issue.key)} decoderen naar dezelfde sleutel ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Dutch. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} voldoet niet aan het minimale aantal vermeldingen van ${error.min}.`;
+
+/** Formats a MaxEntriesError in Dutch. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} overschrijdt het maximale aantal vermeldingen van ${error.max}.`;
 
 /** Formats an ObjectError in Dutch. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

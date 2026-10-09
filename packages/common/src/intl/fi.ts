@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `Arvolla ${safelyStringifyUnknownValue(error.value)} ei ole odotettua objektitunnistetta ${safelyStringifyUnknownValue(error.expected)}.`;
 
+/** Formats a ValidDateError in Finnish. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date-arvo on virheellinen.";
+
 /** Formats an InstanceOfError in Finnish. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kanoninen ISO-päivämäärä- ja aikamerkkijono.`;
 
+/** Formats a PlainDateIsoError in Finnish. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen kalenteripäivämäärä muodossa YYYY-MM-DD.`;
+
 /** Formats a DateIsoFromDateError in Finnish. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date-arvoa ei voida esittää DateIso-muodossa.";
+
+/** Formats a DateIsoFromRfc3339Error in Finnish. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole tuettu RFC 3339 -muotoinen päivämäärä- ja aikamerkkijono. Käytä esimerkiksi arvoa "2024-01-01T12:00:00Z".`;
 
 /** Formats a DecimalStringError in Finnish. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -223,11 +259,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} alussa tai lopussa ei saa olla tyhjiä merkkejä.`;
 
+/** Formats a WellFormedError in Finnish. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava hyvin muodostettua Unicode-tekstiä.`;
+
+/** Formats a NormalizedError in Finnish. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava Unicode-normalisointimuodossa ${error.form}.`;
+
 /** Formats a StartsWithError in Finnish. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on alettava merkkijonolla ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Finnish. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on päätyttävä merkkijonoon ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Finnish. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -255,6 +307,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen Base64Url-merkkijono.`;
 
+/** Formats a Base64Error in Finnish. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen Base64-merkkijono.`;
+
+/** Formats a HexError in Finnish. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole pienillä kirjaimilla kirjoitettu heksadesimaalimerkkijono, jossa on parillinen määrä numeroita.`;
+
 /** Formats a NameError in Finnish. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen Name.`;
@@ -262,6 +322,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Finnish. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen sähköpostiosoite.`;
+
+/** Formats a HostnameError in Finnish. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen pienillä kirjaimilla kirjoitettu isäntänimi.`;
+
+/** Formats an Ipv4AddressError in Finnish. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen IPv4-osoite.`;
+
+/** Formats an Ipv6AddressError in Finnish. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kanoninen IPv6-osoite.`;
+
+/** Formats an Ipv6AddressFromStringError in Finnish. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen IPv6-osoite.`;
+
+/** Formats a PhoneNumberE164Error in Finnish. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole E.164-muotoinen puhelinnumero.`;
+
+/** Formats an IbanError in Finnish. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen IBAN-tilinumero isoilla kirjaimilla ilman välilyöntejä.`;
 
 /** Formats a MnemonicError in Finnish. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -278,6 +370,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Finnish. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kanoninen pienillä kirjaimilla kirjoitettu UUID.`;
+
+/** Formats a UuidVersionError in Finnish. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole version ${error.version} UUID.`;
 
 /** Formats a NonNegativeError in Finnish. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -332,6 +430,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole desimaalimuotoinen kokonaisluku.`;
+
+/** Formats a FiniteNumberFromStringError in Finnish. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole desimaalimuotoinen luku.`;
 
 /** Formats a GreaterThanError in Finnish. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -391,6 +495,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `Taulukon indeksissä ${issue.index} oleva alkio on virheellinen.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Finnish. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `Arvossa ${safelyStringifyUnknownValue(error.value)} on oltava vähintään yksi alkio.`;
+
+/** Formats a UniqueError in Finnish. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `Arvossa ${safelyStringifyUnknownValue(error.value)} on samanarvoiset alkiot indekseissä ${error.previousIndex} ja ${error.index}.`;
 
 /** Formats a SetError in Finnish. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -475,6 +589,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record-avaimet ${safelyStringifyUnknownValue(issue.previousKey)} ja ${safelyStringifyUnknownValue(issue.key)} dekoodautuvat samaksi avaimeksi ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Finnish. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei täytä merkintöjen vähimmäismäärää ${error.min}.`;
+
+/** Formats a MaxEntriesError in Finnish. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ylittää merkintöjen enimmäismäärän ${error.max}.`;
 
 /** Formats an ObjectError in Finnish. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

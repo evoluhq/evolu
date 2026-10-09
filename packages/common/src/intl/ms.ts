@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -129,6 +149,9 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} tidak mempunyai tag objek yang dijangka ${safelyStringifyUnknownValue(error.expected)}.`;
+/** Formats a ValidDateError in Malay. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date tidak sah.";
 /** Formats an InstanceOfError in Malay. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -143,10 +166,20 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 /** Formats a DateIsoError in Malay. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan rentetan tarikh-masa ISO kanonik.`;
+/** Formats a PlainDateIsoError in Malay. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan tarikh kalendar yang sah dalam format YYYY-MM-DD.`;
 /** Formats a DateIsoFromDateError in Malay. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date tidak boleh diwakili sebagai DateIso.";
+/** Formats a DateIsoFromRfc3339Error in Malay. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan tarikh-masa RFC 3339 yang disokong. Gunakan nilai seperti "2024-01-01T12:00:00Z".`;
 /** Formats a DecimalStringError in Malay. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
@@ -196,11 +229,25 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Malay. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} tidak boleh bermula atau berakhir dengan ruang kosong.`;
+/** Formats a WellFormedError in Malay. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah teks Unicode yang terbentuk dengan betul.`;
+/** Formats a NormalizedError in Malay. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah dalam bentuk penormalan Unicode ${error.form}.`;
 /** Formats a StartsWithError in Malay. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} mesti bermula dengan ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Malay. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mesti berakhir dengan ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Malay. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -223,12 +270,44 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan rentetan Base64Url yang sah.`;
+/** Formats a Base64Error in Malay. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan rentetan Base64 yang sah.`;
+/** Formats a HexError in Malay. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan rentetan heksadesimal huruf kecil dengan bilangan digit genap.`;
 /** Formats a NameError in Malay. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan Name yang sah.`;
 /** Formats an EmailError in Malay. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat e-mel yang sah.`;
+/** Formats a HostnameError in Malay. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan nama hos huruf kecil yang sah.`;
+/** Formats an Ipv4AddressError in Malay. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IPv4 yang sah.`;
+/** Formats an Ipv6AddressError in Malay. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IPv6 kanonik.`;
+/** Formats an Ipv6AddressFromStringError in Malay. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IPv6 yang sah.`;
+/** Formats a PhoneNumberE164Error in Malay. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan nombor telefon dalam format E.164.`;
+/** Formats an IbanError in Malay. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan IBAN yang sah dalam huruf besar tanpa ruang kosong.`;
 /** Formats a MnemonicError in Malay. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan mnemonik BIP39 bahasa Inggeris yang sah.`;
@@ -241,6 +320,11 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Malay. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan UUID kanonik dalam huruf kecil.`;
+/** Formats a UuidVersionError in Malay. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan UUID versi ${error.version}.`;
 /** Formats a NonNegativeError in Malay. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -325,6 +409,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan integer perpuluhan.`;
 
+/** Formats a FiniteNumberFromStringError in Malay. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan nombor perpuluhan.`;
+
 /** Formats an ArrayError in Malay. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray")
@@ -341,6 +431,14 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `Elemen tatasusunan pada indeks ${issue.index} tidak sah.`;
   }
 };
+/** Formats a NonEmptyArrayError in Malay. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah mengandungi sekurang-kurangnya satu elemen.`;
+/** Formats a UniqueError in Malay. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mempunyai elemen yang sama pada indeks ${error.previousIndex} dan ${error.index}.`;
 /** Formats a SetError in Malay. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet")
@@ -410,6 +508,16 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Kunci Record ${safelyStringifyUnknownValue(issue.previousKey)} dan ${safelyStringifyUnknownValue(issue.key)} dinyahkod kepada kunci yang sama, ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+/** Formats a MinEntriesError in Malay. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak memenuhi bilangan entri minimum ${error.min}.`;
+/** Formats a MaxEntriesError in Malay. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} melebihi bilangan entri maksimum ${error.max}.`;
 /** Formats an ObjectError in Malay. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties")

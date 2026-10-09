@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -147,6 +167,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} には、期待されるオブジェクトタグ ${safelyStringifyUnknownValue(error.expected)} がありません。`;
 
+/** Formats a ValidDateError in Japanese. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date が無効です。";
+
 /** Formats an InstanceOfError in Japanese. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -165,10 +189,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は正規形式の ISO 日時文字列ではありません。`;
 
+/** Formats a PlainDateIsoError in Japanese. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は YYYY-MM-DD 形式の有効な日付ではありません。`;
+
 /** Formats a DateIsoFromDateError in Japanese. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date を DateIso として表現できません。";
+
+/** Formats a DateIsoFromRfc3339Error in Japanese. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} はサポートされている RFC 3339 形式の日時ではありません。"2024-01-01T12:00:00Z" のような値を使用してください。`;
 
 /** Formats a DecimalStringError in Japanese. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -224,11 +260,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は前後の空白が除去されている必要があります。`;
 
+/** Formats a WellFormedError in Japanese. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は整形式の Unicode テキストである必要があります。`;
+
+/** Formats a NormalizedError in Japanese. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は Unicode 正規化形式 ${error.form} である必要があります。`;
+
 /** Formats a StartsWithError in Japanese. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は ${safelyStringifyUnknownValue(error.prefix)} で始まる必要があります。`;
+
+/** Formats an EndsWithError in Japanese. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は ${safelyStringifyUnknownValue(error.suffix)} で終わる必要があります。`;
 
 /** Formats a MinLengthError in Japanese. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -256,6 +308,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な Base64Url 文字列ではありません。`;
 
+/** Formats a Base64Error in Japanese. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は有効な Base64 文字列ではありません。`;
+
+/** Formats a HexError in Japanese. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は偶数桁の小文字の16進数文字列ではありません。`;
+
 /** Formats a NameError in Japanese. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な Name ではありません。`;
@@ -263,6 +323,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Japanese. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効なメールアドレスではありません。`;
+
+/** Formats a HostnameError in Japanese. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は有効な小文字のホスト名ではありません。`;
+
+/** Formats an Ipv4AddressError in Japanese. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は有効な IPv4 アドレスではありません。`;
+
+/** Formats an Ipv6AddressError in Japanese. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は正規形式の IPv6 アドレスではありません。`;
+
+/** Formats an Ipv6AddressFromStringError in Japanese. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は有効な IPv6 アドレスではありません。`;
+
+/** Formats a PhoneNumberE164Error in Japanese. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は E.164 形式の電話番号ではありません。`;
+
+/** Formats an IbanError in Japanese. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は空白を含まない大文字の有効な IBAN ではありません。`;
 
 /** Formats a MnemonicError in Japanese. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -279,6 +371,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Japanese. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は正規形式の小文字 UUID ではありません。`;
+
+/** Formats a UuidVersionError in Japanese. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} はバージョン ${error.version} の UUID ではありません。`;
 
 /** Formats a NonNegativeError in Japanese. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -333,6 +431,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は10進整数ではありません。`;
+
+/** Formats a FiniteNumberFromStringError in Japanese. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は10進数ではありません。`;
 
 /** Formats a GreaterThanError in Japanese. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -392,6 +496,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `インデックス ${issue.index} の配列要素が無効です。`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Japanese. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は少なくとも 1 つの要素を含む必要があります。`;
+
+/** Formats a UniqueError in Japanese. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} のインデックス ${error.previousIndex} と ${error.index} の要素が等しくなっています。`;
 
 /** Formats a SetError in Japanese. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -476,6 +590,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record キー ${safelyStringifyUnknownValue(issue.previousKey)} と ${safelyStringifyUnknownValue(issue.key)} は、デコードすると同じキー ${safelyStringifyUnknownValue(issue.outputKey)} になります。`;
   }
 };
+
+/** Formats a MinEntriesError in Japanese. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は最小エントリ数 ${error.min} を満たしていません。`;
+
+/** Formats a MaxEntriesError in Japanese. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は最大エントリ数 ${error.max} を超えています。`;
 
 /** Formats an ObjectError in Japanese. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

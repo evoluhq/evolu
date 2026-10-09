@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不具有预期的对象标签 ${safelyStringifyUnknownValue(error.expected)}。`;
 
+/** Formats a ValidDateError in Simplified Chinese. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date 无效。";
+
 /** Formats an InstanceOfError in Simplified Chinese. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是规范的 ISO 日期时间字符串。`;
 
+/** Formats a PlainDateIsoError in Simplified Chinese. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是 YYYY-MM-DD 格式的有效日历日期。`;
+
 /** Formats a DateIsoFromDateError in Simplified Chinese. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date 无法表示为 DateIso。";
+
+/** Formats a DateIsoFromRfc3339Error in Simplified Chinese. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是受支持的 RFC 3339 日期时间。请使用 "2024-01-01T12:00:00Z" 这样的值。`;
 
 /** Formats a DecimalStringError in Simplified Chinese. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -219,11 +255,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 必须去除首尾空白。`;
 
+/** Formats a WellFormedError in Simplified Chinese. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必须是格式正确的 Unicode 文本。`;
+
+/** Formats a NormalizedError in Simplified Chinese. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必须采用 Unicode 规范化形式 ${error.form}。`;
+
 /** Formats a StartsWithError in Simplified Chinese. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 必须以 ${safelyStringifyUnknownValue(error.prefix)} 开头。`;
+
+/** Formats an EndsWithError in Simplified Chinese. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必须以 ${safelyStringifyUnknownValue(error.suffix)} 结尾。`;
 
 /** Formats a MinLengthError in Simplified Chinese. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -251,6 +303,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 Base64Url 字符串。`;
 
+/** Formats a Base64Error in Simplified Chinese. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 Base64 字符串。`;
+
+/** Formats a HexError in Simplified Chinese. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是位数为偶数的小写十六进制字符串。`;
+
 /** Formats a NameError in Simplified Chinese. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 Name。`;
@@ -258,6 +318,36 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Simplified Chinese. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的电子邮件地址。`;
+
+/** Formats a HostnameError in Simplified Chinese. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的小写主机名。`;
+
+/** Formats an Ipv4AddressError in Simplified Chinese. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) => `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 IPv4 地址。`;
+
+/** Formats an Ipv6AddressError in Simplified Chinese. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) => `值 ${safelyStringifyUnknownValue(error.value)} 不是规范的 IPv6 地址。`;
+
+/** Formats an Ipv6AddressFromStringError in Simplified Chinese. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 IPv6 地址。`;
+
+/** Formats a PhoneNumberE164Error in Simplified Chinese. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是 E.164 格式的电话号码。`;
+
+/** Formats an IbanError in Simplified Chinese. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的无空格大写 IBAN。`;
 
 /** Formats a MnemonicError in Simplified Chinese. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -274,6 +364,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Simplified Chinese. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是规范的小写 UUID。`;
+
+/** Formats a UuidVersionError in Simplified Chinese. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是版本 ${error.version} 的 UUID。`;
 
 /** Formats a NonNegativeError in Simplified Chinese. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -326,6 +422,11 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是十进制整数。`;
+
+/** Formats a FiniteNumberFromStringError in Simplified Chinese. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) => `值 ${safelyStringifyUnknownValue(error.value)} 不是十进制数。`;
 
 /** Formats a GreaterThanError in Simplified Chinese. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -384,6 +485,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `索引 ${issue.index} 处的数组元素无效。`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Simplified Chinese. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必须至少包含一项。`;
+
+/** Formats a UniqueError in Simplified Chinese. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 中索引 ${error.previousIndex} 和 ${error.index} 处的项相等。`;
 
 /** Formats a SetError in Simplified Chinese. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -468,6 +579,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record 键 ${safelyStringifyUnknownValue(issue.previousKey)} 和 ${safelyStringifyUnknownValue(issue.key)} 解码后得到相同的键 ${safelyStringifyUnknownValue(issue.outputKey)}。`;
   }
 };
+
+/** Formats a MinEntriesError in Simplified Chinese. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 未达到最小条目数 ${error.min}。`;
+
+/** Formats a MaxEntriesError in Simplified Chinese. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 超过最大条目数 ${error.max}。`;
 
 /** Formats an ObjectError in Simplified Chinese. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

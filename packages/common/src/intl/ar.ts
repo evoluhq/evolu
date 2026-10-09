@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -129,6 +149,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} لا تحمل وسم الكائن المتوقع ${safelyStringifyUnknownValue(error.expected)}.`;
+
+/** Formats a ValidDateError in Arabic. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "كائن Date غير صالح.";
 /** Formats an InstanceOfError in Arabic. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -143,10 +167,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 /** Formats a DateIsoError in Arabic. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست سلسلة تاريخ ووقت ISO معيارية.`;
+
+/** Formats a PlainDateIsoError in Arabic. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست تاريخاً تقويمياً صالحاً بصيغة YYYY-MM-DD.`;
 /** Formats a DateIsoFromDateError in Arabic. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "لا يمكن تمثيل Date على أنه DateIso.";
+
+/** Formats a DateIsoFromRfc3339Error in Arabic. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست تاريخاً ووقتاً بصيغة RFC 3339 مدعومة. استخدم قيمة مثل "2024-01-01T12:00:00Z".`;
 /** Formats a DecimalStringError in Arabic. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
@@ -196,11 +232,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Arabic. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `يجب إزالة المسافات من بداية القيمة ${safelyStringifyUnknownValue(error.value)} ونهايتها.`;
+
+/** Formats a WellFormedError in Arabic. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} نص Unicode سليم البنية.`;
+
+/** Formats a NormalizedError in Arabic. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} بصيغة تطبيع Unicode ${error.form}.`;
 /** Formats a StartsWithError in Arabic. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `يجب أن تبدأ القيمة ${safelyStringifyUnknownValue(error.value)} بـ ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Arabic. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `يجب أن تنتهي القيمة ${safelyStringifyUnknownValue(error.value)} بـ ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Arabic. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -223,12 +275,52 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست سلسلة Base64Url صالحة.`;
+
+/** Formats a Base64Error in Arabic. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست سلسلة Base64 صالحة.`;
+
+/** Formats a HexError in Arabic. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست سلسلة ست عشرية بأحرف صغيرة وبعدد زوجي من الخانات.`;
 /** Formats a NameError in Arabic. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست Name صالحة.`;
 /** Formats an EmailError in Arabic. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان بريد إلكتروني صالحاً.`;
+
+/** Formats a HostnameError in Arabic. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست اسم مضيف صالحاً بأحرف صغيرة.`;
+
+/** Formats an Ipv4AddressError in Arabic. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان IPv4 صالحاً.`;
+
+/** Formats an Ipv6AddressError in Arabic. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان IPv6 معيارياً.`;
+
+/** Formats an Ipv6AddressFromStringError in Arabic. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان IPv6 صالحاً.`;
+
+/** Formats a PhoneNumberE164Error in Arabic. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست رقم هاتف بصيغة E.164.`;
+
+/** Formats an IbanError in Arabic. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست رقم IBAN صالحاً بأحرف كبيرة ودون مسافات.`;
 /** Formats a MnemonicError in Arabic. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عبارة BIP39 إنجليزية صالحة.`;
@@ -241,6 +333,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Arabic. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست UUID معيارياً بأحرف صغيرة.`;
+
+/** Formats a UuidVersionError in Arabic. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست UUID من الإصدار ${error.version}.`;
 /** Formats a NonNegativeError in Arabic. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -325,6 +423,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
 > = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عدداً صحيحاً عشرياً.`;
 
+/** Formats a FiniteNumberFromStringError in Arabic. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عدداً عشرياً.`;
+
 /** Formats an ArrayError in Arabic. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray")
@@ -341,6 +445,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `عنصر المصفوفة عند الفهرس ${issue.index} غير صالح.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Arabic. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `يجب أن تحتوي القيمة ${safelyStringifyUnknownValue(error.value)} على عنصر واحد على الأقل.`;
+
+/** Formats a UniqueError in Arabic. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} تحتوي على عناصر متساوية عند الفهرسين ${error.previousIndex} و${error.index}.`;
 
 /** Formats a SetError in Arabic. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -413,6 +527,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `مفتاحا Record ${safelyStringifyUnknownValue(issue.previousKey)} و${safelyStringifyUnknownValue(issue.key)} يُفك ترميزهما إلى المفتاح نفسه ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Arabic. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} لا تحقق الحد الأدنى لعدد الإدخالات ${error.min}.`;
+
+/** Formats a MaxEntriesError in Arabic. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} تتجاوز الحد الأقصى لعدد الإدخالات ${error.max}.`;
 
 /** Formats an ObjectError in Arabic. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

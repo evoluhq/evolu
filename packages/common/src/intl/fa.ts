@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} دارای تگ شیء مورد انتظار ${safelyStringifyUnknownValue(error.expected)} نیست.`;
 
+/** Formats a ValidDateError in Persian. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "شیء Date نامعتبر است.";
+
 /** Formats an InstanceOfError in Persian. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک رشتهٔ کانونی تاریخ‌وزمان ISO نیست.`;
 
+/** Formats a PlainDateIsoError in Persian. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک تاریخ تقویمی معتبر در قالب YYYY-MM-DD نیست.`;
+
 /** Formats a DateIsoFromDateError in Persian. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date را نمی‌توان به‌صورت DateIso نمایش داد.";
+
+/** Formats a DateIsoFromRfc3339Error in Persian. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک تاریخ‌وزمان RFC 3339 پشتیبانی‌شده نیست. از مقداری مانند "2024-01-01T12:00:00Z" استفاده کنید.`;
 
 /** Formats a DecimalStringError in Persian. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -223,11 +259,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} نباید در ابتدا یا انتها فاصلهٔ اضافی داشته باشد.`;
 
+/** Formats a WellFormedError in Persian. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید یک متن Unicode خوش‌ساخت باشد.`;
+
+/** Formats a NormalizedError in Persian. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید در فرم نرمال‌سازی Unicode ${error.form} باشد.`;
+
 /** Formats a StartsWithError in Persian. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید با ${safelyStringifyUnknownValue(error.prefix)} شروع شود.`;
+
+/** Formats an EndsWithError in Persian. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید با ${safelyStringifyUnknownValue(error.suffix)} تمام شود.`;
 
 /** Formats a MinLengthError in Persian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -255,6 +307,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک رشتهٔ Base64Url معتبر نیست.`;
 
+/** Formats a Base64Error in Persian. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک رشتهٔ Base64 معتبر نیست.`;
+
+/** Formats a HexError in Persian. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک رشتهٔ شانزده‌شانزدهی با حروف کوچک و تعداد ارقام زوج نیست.`;
+
 /** Formats a NameError in Persian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک Name معتبر نیست.`;
@@ -262,6 +322,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Persian. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی ایمیل معتبر نیست.`;
+
+/** Formats a HostnameError in Persian. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نام میزبان معتبر با حروف کوچک نیست.`;
+
+/** Formats an Ipv4AddressError in Persian. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی IPv4 معتبر نیست.`;
+
+/** Formats an Ipv6AddressError in Persian. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی IPv6 کانونی نیست.`;
+
+/** Formats an Ipv6AddressFromStringError in Persian. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی IPv6 معتبر نیست.`;
+
+/** Formats a PhoneNumberE164Error in Persian. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک شمارهٔ تلفن در قالب E.164 نیست.`;
+
+/** Formats an IbanError in Persian. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک شمارهٔ IBAN معتبر با حروف بزرگ و بدون فاصله نیست.`;
 
 /** Formats a MnemonicError in Persian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -278,6 +370,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Persian. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک UUID کانونی با حروف کوچک نیست.`;
+
+/** Formats a UuidVersionError in Persian. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک UUID نسخهٔ ${error.version} نیست.`;
 
 /** Formats a NonNegativeError in Persian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -332,6 +430,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک عدد صحیح ده‌دهی نیست.`;
+
+/** Formats a FiniteNumberFromStringError in Persian. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک عدد ده‌دهی نیست.`;
 
 /** Formats a GreaterThanError in Persian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -391,6 +495,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `عنصر آرایه در اندیس ${issue.index} نامعتبر است.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Persian. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید دست‌کم یک عنصر داشته باشد.`;
+
+/** Formats a UniqueError in Persian. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} در اندیس‌های ${error.previousIndex} و ${error.index} عناصر برابر دارد.`;
 
 /** Formats a SetError in Persian. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -475,6 +589,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `کلیدهای Record یعنی ${safelyStringifyUnknownValue(issue.previousKey)} و ${safelyStringifyUnknownValue(issue.key)} پس از decode به کلید یکسان ${safelyStringifyUnknownValue(issue.outputKey)} تبدیل می‌شوند.`;
   }
 };
+
+/** Formats a MinEntriesError in Persian. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `تعداد ورودی‌های مقدار ${safelyStringifyUnknownValue(error.value)} باید حداقل ${error.min} باشد.`;
+
+/** Formats a MaxEntriesError in Persian. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `تعداد ورودی‌های مقدار ${safelyStringifyUnknownValue(error.value)} از حداکثر ${error.max} بیشتر است.`;
 
 /** Formats an ObjectError in Persian. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

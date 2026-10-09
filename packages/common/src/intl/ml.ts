@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `മൂല്യമായ ${safelyStringifyUnknownValue(error.value)}-ന് പ്രതീക്ഷിച്ച object tag ${safelyStringifyUnknownValue(error.expected)} ഇല്ല.`;
 
+/** Formats a ValidDateError in Malayalam. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date അസാധുവാണ്.";
+
 /** Formats an InstanceOfError in Malayalam. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} canonical ISO date-time string അല്ല.`;
 
+/** Formats a PlainDateIsoError in Malayalam. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} YYYY-MM-DD ഫോർമാറ്റിലുള്ള സാധുവായ കലണ്ടർ തീയതി അല്ല.`;
+
 /** Formats a DateIsoFromDateError in Malayalam. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date-നെ DateIso ആയി പ്രതിനിധീകരിക്കാൻ കഴിയില്ല.";
+
+/** Formats a DateIsoFromRfc3339Error in Malayalam. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} പിന്തുണയുള്ള ഒരു RFC 3339 date-time അല്ല. "2024-01-01T12:00:00Z" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;
 
 /** Formats a DecimalStringError in Malayalam. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -223,11 +259,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ന്റെ തുടക്കത്തിലോ അവസാനത്തിലോ സ്പേസ് ഉണ്ടാകരുത്.`;
 
+/** Formats a WellFormedError in Malayalam. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} well-formed Unicode ടെക്സ്റ്റ് ആയിരിക്കണം.`;
+
+/** Formats a NormalizedError in Malayalam. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} Unicode നോർമലൈസേഷൻ ഫോം ${error.form}-ൽ ആയിരിക്കണം.`;
+
 /** Formats a StartsWithError in Malayalam. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${safelyStringifyUnknownValue(error.prefix)}-ൽ ആരംഭിക്കണം.`;
+
+/** Formats an EndsWithError in Malayalam. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${safelyStringifyUnknownValue(error.suffix)}-ൽ അവസാനിക്കണം.`;
 
 /** Formats a MinLengthError in Malayalam. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -255,6 +307,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ Base64Url string അല്ല.`;
 
+/** Formats a Base64Error in Malayalam. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ Base64 string അല്ല.`;
+
+/** Formats a HexError in Malayalam. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ചെറിയ അക്ഷരങ്ങളിലുള്ളതും ഇരട്ട എണ്ണം അക്കങ്ങളുള്ളതുമായ hexadecimal string അല്ല.`;
+
 /** Formats a NameError in Malayalam. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ Name അല്ല.`;
@@ -262,6 +322,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Malayalam. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ ഇമെയിൽ വിലാസം അല്ല.`;
+
+/** Formats a HostnameError in Malayalam. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ചെറിയ അക്ഷരങ്ങളിലുള്ള സാധുവായ ഹോസ്റ്റ് നാമം അല്ല.`;
+
+/** Formats an Ipv4AddressError in Malayalam. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ IPv4 വിലാസം അല്ല.`;
+
+/** Formats an Ipv6AddressError in Malayalam. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} canonical IPv6 വിലാസം അല്ല.`;
+
+/** Formats an Ipv6AddressFromStringError in Malayalam. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ IPv6 വിലാസം അല്ല.`;
+
+/** Formats a PhoneNumberE164Error in Malayalam. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} E.164 ഫോർമാറ്റിലുള്ള ഫോൺ നമ്പർ അല്ല.`;
+
+/** Formats an IbanError in Malayalam. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} വലിയ അക്ഷരങ്ങളിലുള്ളതും സ്പേസ് ഇല്ലാത്തതുമായ സാധുവായ IBAN അല്ല.`;
 
 /** Formats a MnemonicError in Malayalam. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -278,6 +370,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Malayalam. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ചെറിയ അക്ഷരങ്ങളിലുള്ള canonical UUID അല്ല.`;
+
+/** Formats a UuidVersionError in Malayalam. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} പതിപ്പ് ${error.version} UUID അല്ല.`;
 
 /** Formats a NonNegativeError in Malayalam. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -332,6 +430,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഒരു ദശാംശ പൂർണ്ണസംഖ്യയല്ല.`;
+
+/** Formats a FiniteNumberFromStringError in Malayalam. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഒരു ദശാംശ സംഖ്യയല്ല.`;
 
 /** Formats a GreaterThanError in Malayalam. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -391,6 +495,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `index ${issue.index}-ലെ array element അസാധുവാണ്.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Malayalam. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ൽ കുറഞ്ഞത് ഒരു ഇനമെങ്കിലും ഉണ്ടായിരിക്കണം.`;
+
+/** Formats a UniqueError in Malayalam. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ൽ index ${error.previousIndex}-ലെയും ${error.index}-ലെയും ഇനങ്ങൾ തുല്യമാണ്.`;
 
 /** Formats a SetError in Malayalam. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -475,6 +589,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record keys ${safelyStringifyUnknownValue(issue.previousKey)} ഉം ${safelyStringifyUnknownValue(issue.key)} ഉം decode ചെയ്യുമ്പോൾ ഒരേ key ${safelyStringifyUnknownValue(issue.outputKey)} ലഭിക്കുന്നു.`;
   }
 };
+
+/** Formats a MinEntriesError in Malayalam. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ലെ എൻട്രികളുടെ എണ്ണം കുറഞ്ഞത് ${error.min} ആയിരിക്കണം.`;
+
+/** Formats a MaxEntriesError in Malayalam. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ലെ എൻട്രികളുടെ എണ്ണം ${error.max}-ൽ കൂടരുത്.`;
 
 /** Formats an ObjectError in Malayalam. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

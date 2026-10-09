@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -129,6 +149,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} میں متوقع آبجیکٹ ٹیگ ${safelyStringifyUnknownValue(error.expected)} نہیں ہے۔`;
+
+/** Formats a ValidDateError in Urdu. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date درست نہیں ہے۔";
 /** Formats an InstanceOfError in Urdu. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -143,10 +167,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 /** Formats a DateIsoError in Urdu. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} canonical ISO date-time string نہیں ہے۔`;
+
+/** Formats a PlainDateIsoError in Urdu. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} YYYY-MM-DD فارمیٹ میں درست کیلنڈر تاریخ نہیں ہے۔`;
 /** Formats a DateIsoFromDateError in Urdu. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date کو DateIso کے طور پر ظاہر نہیں کیا جا سکتا۔";
+
+/** Formats a DateIsoFromRfc3339Error in Urdu. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} تعاون یافتہ RFC 3339 date-time نہیں ہے۔ "2024-01-01T12:00:00Z" جیسی قدر استعمال کریں۔`;
 /** Formats a DecimalStringError in Urdu. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
@@ -195,11 +231,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Urdu. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} کے شروع یا آخر میں خالی جگہ نہیں ہونی چاہیے۔`;
+
+/** Formats a WellFormedError in Urdu. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} درست ساخت والا Unicode متن ہونی چاہیے۔`;
+
+/** Formats a NormalizedError in Urdu. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} Unicode normalization form ${error.form} میں ہونی چاہیے۔`;
 /** Formats a StartsWithError in Urdu. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} کی ابتدا ${safelyStringifyUnknownValue(error.prefix)} سے ہونی چاہیے۔`;
+
+/** Formats an EndsWithError in Urdu. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} کا اختتام ${safelyStringifyUnknownValue(error.suffix)} پر ہونا چاہیے۔`;
 
 /** Formats a MinLengthError in Urdu. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -222,12 +274,52 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست Base64Url string نہیں ہے۔`;
+
+/** Formats a Base64Error in Urdu. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} درست Base64 string نہیں ہے۔`;
+
+/** Formats a HexError in Urdu. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} چھوٹے حروف اور ہندسوں کی جفت تعداد والی hexadecimal string نہیں ہے۔`;
 /** Formats a NameError in Urdu. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست Name نہیں ہے۔`;
 /** Formats an EmailError in Urdu. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست ای میل ایڈریس نہیں ہے۔`;
+
+/** Formats a HostnameError in Urdu. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} چھوٹے حروف والا درست hostname نہیں ہے۔`;
+
+/** Formats an Ipv4AddressError in Urdu. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} درست IPv4 ایڈریس نہیں ہے۔`;
+
+/** Formats an Ipv6AddressError in Urdu. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} canonical IPv6 ایڈریس نہیں ہے۔`;
+
+/** Formats an Ipv6AddressFromStringError in Urdu. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} درست IPv6 ایڈریس نہیں ہے۔`;
+
+/** Formats a PhoneNumberE164Error in Urdu. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} E.164 فارمیٹ میں فون نمبر نہیں ہے۔`;
+
+/** Formats an IbanError in Urdu. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} بڑے حروف میں اور خالی جگہ کے بغیر درست IBAN نہیں ہے۔`;
 /** Formats a MnemonicError in Urdu. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست انگریزی BIP39 mnemonic نہیں ہے۔`;
@@ -240,6 +332,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Urdu. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} چھوٹے حروف والا canonical UUID نہیں ہے۔`;
+
+/** Formats a UuidVersionError in Urdu. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} ورژن ${error.version} کا UUID نہیں ہے۔`;
 /** Formats a NonNegativeError in Urdu. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -324,6 +422,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
 > = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} اعشاری عددِ صحیح نہیں ہے۔`;
 
+/** Formats a FiniteNumberFromStringError in Urdu. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} اعشاری عدد نہیں ہے۔`;
+
 /** Formats an ArrayError in Urdu. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray")
@@ -340,6 +444,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `index ${issue.index} پر array element درست نہیں ہے۔`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Urdu. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} میں کم از کم ایک عنصر ہونا چاہیے۔`;
+
+/** Formats a UniqueError in Urdu. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} میں indexes ${error.previousIndex} اور ${error.index} پر برابر عناصر ہیں۔`;
 /** Formats a SetError in Urdu. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet")
@@ -409,6 +523,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record keys ${safelyStringifyUnknownValue(issue.previousKey)} اور ${safelyStringifyUnknownValue(issue.key)} decode ہونے کے بعد ایک ہی key ${safelyStringifyUnknownValue(issue.outputKey)} بن جاتی ہیں۔`;
   }
 };
+
+/** Formats a MinEntriesError in Urdu. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} کے اندراجات کی تعداد کم از کم ${error.min} ہونی چاہیے۔`;
+
+/** Formats a MaxEntriesError in Urdu. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} کے اندراجات کی تعداد ${error.max} سے زیادہ ہے۔`;
 /** Formats an ObjectError in Urdu. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (error.reason.kind !== "Properties")

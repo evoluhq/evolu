@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -130,6 +150,9 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} har ikke den forventede objekt-taggen ${safelyStringifyUnknownValue(error.expected)}.`;
+/** Formats a ValidDateError in Norwegian Bokmål. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date-verdien er ugyldig.";
 /** Formats an InstanceOfError in Norwegian Bokmål. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -144,10 +167,20 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 /** Formats a DateIsoError in Norwegian Bokmål. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en kanonisk ISO-dato- og tidsstreng.`;
+/** Formats a PlainDateIsoError in Norwegian Bokmål. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig kalenderdato i formatet YYYY-MM-DD.`;
 /** Formats a DateIsoFromDateError in Norwegian Bokmål. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date kan ikke representeres som DateIso.";
+/** Formats a DateIsoFromRfc3339Error in Norwegian Bokmål. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en støttet dato- og tidsstreng i RFC 3339-format. Bruk en verdi som "2024-01-01T12:00:00Z".`;
 /** Formats a DecimalStringError in Norwegian Bokmål. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
@@ -197,11 +230,25 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Norwegian Bokmål. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} må være trimmet.`;
+/** Formats a WellFormedError in Norwegian Bokmål. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må være velformet Unicode-tekst.`;
+/** Formats a NormalizedError in Norwegian Bokmål. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må være i Unicode-normaliseringsformen ${error.form}.`;
 /** Formats a StartsWithError in Norwegian Bokmål. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} må starte med ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Norwegian Bokmål. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må slutte med ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Norwegian Bokmål. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -224,12 +271,44 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig Base64Url-streng.`;
+/** Formats a Base64Error in Norwegian Bokmål. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig Base64-streng.`;
+/** Formats a HexError in Norwegian Bokmål. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke heksadesimal med små bokstaver og et like antall sifre.`;
 /** Formats a NameError in Norwegian Bokmål. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldig Name.`;
 /** Formats an EmailError in Norwegian Bokmål. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig e-postadresse.`;
+/** Formats a HostnameError in Norwegian Bokmål. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldig vertsnavn med små bokstaver.`;
+/** Formats an Ipv4AddressError in Norwegian Bokmål. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig IPv4-adresse.`;
+/** Formats an Ipv6AddressError in Norwegian Bokmål. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en kanonisk IPv6-adresse.`;
+/** Formats an Ipv6AddressFromStringError in Norwegian Bokmål. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig IPv6-adresse.`;
+/** Formats a PhoneNumberE164Error in Norwegian Bokmål. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et telefonnummer i E.164-format.`;
+/** Formats an IbanError in Norwegian Bokmål. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldig IBAN-nummer med store bokstaver uten mellomrom.`;
 /** Formats a MnemonicError in Norwegian Bokmål. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldig engelsk BIP39-mnemonisk uttrykk.`;
@@ -242,6 +321,11 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Norwegian Bokmål. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en kanonisk UUID med små bokstaver.`;
+/** Formats a UuidVersionError in Norwegian Bokmål. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en UUID av versjon ${error.version}.`;
 /** Formats a NonNegativeError in Norwegian Bokmål. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -326,6 +410,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et desimalt heltall.`;
 
+/** Formats a FiniteNumberFromStringError in Norwegian Bokmål. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et desimaltall.`;
+
 /** Formats an ArrayError in Norwegian Bokmål. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray")
@@ -342,6 +432,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `Et matriseelement med indeks ${issue.index} er ugyldig.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Norwegian Bokmål. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må inneholde minst ett element.`;
+
+/** Formats a UniqueError in Norwegian Bokmål. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} har like elementer med indeks ${error.previousIndex} og ${error.index}.`;
 
 /** Formats a SetError in Norwegian Bokmål. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -414,6 +514,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Record-nøklene ${safelyStringifyUnknownValue(issue.previousKey)} og ${safelyStringifyUnknownValue(issue.key)} dekoder til samme nøkkel ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Norwegian Bokmål. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} oppfyller ikke minimumsantallet oppføringer på ${error.min}.`;
+
+/** Formats a MaxEntriesError in Norwegian Bokmål. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} overskrider maksimumsantallet oppføringer på ${error.max}.`;
 
 /** Formats an ObjectError in Norwegian Bokmål. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

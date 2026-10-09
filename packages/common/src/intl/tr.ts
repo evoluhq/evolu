@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatValueIsNot = (value: unknown, expected: string): string =>
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `${safelyStringifyUnknownValue(error.value)} değeri beklenen nesne etiketine sahip değil: ${safelyStringifyUnknownValue(error.expected)}.`;
 
+/** Formats a ValidDateError in Turkish. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date geçersizdir.";
+
 /** Formats an InstanceOfError in Turkish. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri kurallı bir ISO tarih-saat dizgesi değildir.`;
 
+/** Formats a PlainDateIsoError in Turkish. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri YYYY-MM-DD biçiminde geçerli bir takvim tarihi değildir.`;
+
 /** Formats a DateIsoFromDateError in Turkish. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date, DateIso olarak temsil edilemez.";
+
+/** Formats a DateIsoFromRfc3339Error in Turkish. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri desteklenen bir RFC 3339 tarih-saati değildir. "2024-01-01T12:00:00Z" gibi bir değer kullanın.`;
 
 /** Formats a DecimalStringError in Turkish. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -223,11 +259,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değerinin başında veya sonunda boşluk olmamalıdır.`;
 
+/** Formats a WellFormedError in Turkish. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri iyi biçimlendirilmiş bir Unicode metni olmalıdır.`;
+
+/** Formats a NormalizedError in Turkish. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri ${error.form} Unicode normalleştirme biçiminde olmalıdır.`;
+
 /** Formats a StartsWithError in Turkish. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} değeri ${safelyStringifyUnknownValue(error.prefix)} ile başlamalıdır.`;
+
+/** Formats an EndsWithError in Turkish. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri ${safelyStringifyUnknownValue(error.suffix)} ile bitmelidir.`;
 
 /** Formats a MinLengthError in Turkish. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -255,6 +307,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir Base64Url dizgesi değildir.`;
 
+/** Formats a Base64Error in Turkish. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir Base64 dizgesi değildir.`;
+
+/** Formats a HexError in Turkish. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri çift sayıda basamak içeren küçük harfli onaltılık bir dizge değildir.`;
+
 /** Formats a NameError in Turkish. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir Name değildir.`;
@@ -262,6 +322,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Turkish. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir e-posta adresi değildir.`;
+
+/** Formats a HostnameError in Turkish. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir küçük harfli ana bilgisayar adı değildir.`;
+
+/** Formats an Ipv4AddressError in Turkish. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir IPv4 adresi değildir.`;
+
+/** Formats an Ipv6AddressError in Turkish. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri kurallı bir IPv6 adresi değildir.`;
+
+/** Formats an Ipv6AddressFromStringError in Turkish. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir IPv6 adresi değildir.`;
+
+/** Formats a PhoneNumberE164Error in Turkish. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri E.164 biçiminde bir telefon numarası değildir.`;
+
+/** Formats an IbanError in Turkish. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri boşluksuz ve büyük harfli geçerli bir IBAN değildir.`;
 
 /** Formats a MnemonicError in Turkish. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -278,6 +370,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Turkish. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri kurallı bir küçük harfli UUID değildir.`;
+
+/** Formats a UuidVersionError in Turkish. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri bir sürüm ${error.version} UUID değildir.`;
 
 /** Formats a NonNegativeError in Turkish. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -332,6 +430,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri onluk tabanda bir tam sayı değildir.`;
+
+/** Formats a FiniteNumberFromStringError in Turkish. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri onluk tabanda bir sayı değildir.`;
 
 /** Formats a GreaterThanError in Turkish. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -391,6 +495,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `${issue.index} dizinindeki dizi öğesi geçersiz.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Turkish. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri en az bir öğe içermelidir.`;
+
+/** Formats a UniqueError in Turkish. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri ${error.previousIndex} ve ${error.index} dizinlerinde eşit öğeler içeriyor.`;
 
 /** Formats a SetError in Turkish. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -475,6 +589,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `${safelyStringifyUnknownValue(issue.previousKey)} ve ${safelyStringifyUnknownValue(issue.key)} Record anahtarları aynı ${safelyStringifyUnknownValue(issue.outputKey)} anahtarına çözümleniyor.`;
   }
 };
+
+/** Formats a MinEntriesError in Turkish. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri en az ${error.min} girdi içermelidir.`;
+
+/** Formats a MaxEntriesError in Turkish. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri en fazla ${error.max} girdi içermelidir.`;
 
 /** Formats an ObjectError in Turkish. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

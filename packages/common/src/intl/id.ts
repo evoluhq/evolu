@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} tidak memiliki tag objek yang diharapkan ${safelyStringifyUnknownValue(error.expected)}.`;
 
+/** Formats a ValidDateError in Indonesian. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date tidak valid.";
+
 /** Formats an InstanceOfError in Indonesian. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan string tanggal-waktu ISO kanonis.`;
 
+/** Formats a PlainDateIsoError in Indonesian. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan tanggal kalender yang valid dalam format YYYY-MM-DD.`;
+
 /** Formats a DateIsoFromDateError in Indonesian. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date tidak dapat direpresentasikan sebagai DateIso.";
+
+/** Formats a DateIsoFromRfc3339Error in Indonesian. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan tanggal-waktu RFC 3339 yang didukung. Gunakan nilai seperti "2024-01-01T12:00:00Z".`;
 
 /** Formats a DecimalStringError in Indonesian. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -223,11 +259,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} tidak boleh diawali atau diakhiri dengan spasi.`;
 
+/** Formats a WellFormedError in Indonesian. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus berupa teks Unicode yang terbentuk dengan benar.`;
+
+/** Formats a NormalizedError in Indonesian. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus dalam bentuk normalisasi Unicode ${error.form}.`;
+
 /** Formats a StartsWithError in Indonesian. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} harus diawali dengan ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Indonesian. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus diakhiri dengan ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Indonesian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -255,6 +307,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan string Base64Url yang valid.`;
 
+/** Formats a Base64Error in Indonesian. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan string Base64 yang valid.`;
+
+/** Formats a HexError in Indonesian. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan string heksadesimal huruf kecil dengan jumlah digit genap.`;
+
 /** Formats a NameError in Indonesian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan Name yang valid.`;
@@ -262,6 +322,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Indonesian. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat email yang valid.`;
+
+/** Formats a HostnameError in Indonesian. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan nama host huruf kecil yang valid.`;
+
+/** Formats an Ipv4AddressError in Indonesian. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IPv4 yang valid.`;
+
+/** Formats an Ipv6AddressError in Indonesian. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IPv6 kanonis.`;
+
+/** Formats an Ipv6AddressFromStringError in Indonesian. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IPv6 yang valid.`;
+
+/** Formats a PhoneNumberE164Error in Indonesian. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan nomor telepon dalam format E.164.`;
+
+/** Formats an IbanError in Indonesian. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan IBAN yang valid dalam huruf besar tanpa spasi.`;
 
 /** Formats a MnemonicError in Indonesian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -278,6 +370,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Indonesian. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan UUID kanonis dengan huruf kecil.`;
+
+/** Formats a UuidVersionError in Indonesian. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan UUID versi ${error.version}.`;
 
 /** Formats a NonNegativeError in Indonesian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -332,6 +430,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan bilangan bulat desimal.`;
+
+/** Formats a FiniteNumberFromStringError in Indonesian. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan bilangan desimal.`;
 
 /** Formats a GreaterThanError in Indonesian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -391,6 +495,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `Elemen array pada indeks ${issue.index} tidak valid.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Indonesian. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus berisi setidaknya satu elemen.`;
+
+/** Formats a UniqueError in Indonesian. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} memiliki elemen yang sama pada indeks ${error.previousIndex} dan ${error.index}.`;
 
 /** Formats a SetError in Indonesian. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -475,6 +589,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Kunci Record ${safelyStringifyUnknownValue(issue.previousKey)} dan ${safelyStringifyUnknownValue(issue.key)} didekode menjadi kunci yang sama, ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Indonesian. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak memenuhi jumlah entri minimum ${error.min}.`;
+
+/** Formats a MaxEntriesError in Indonesian. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} melebihi jumlah entri maksimum ${error.max}.`;
 
 /** Formats an ObjectError in Indonesian. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

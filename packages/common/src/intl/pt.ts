@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -141,6 +161,9 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não tem a etiqueta de objeto esperada ${safelyStringifyUnknownValue(error.expected)}.`;
+/** Formats a ValidDateError in Portuguese. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "A Date é inválida.";
 /** Formats an InstanceOfError in Portuguese. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -155,10 +178,20 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 /** Formats a DateIsoError in Portuguese. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é uma cadeia de carateres canónica de data e hora ISO.`;
+/** Formats a PlainDateIsoError in Portuguese. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é uma data de calendário válida no formato YYYY-MM-DD.`;
 /** Formats a DateIsoFromDateError in Portuguese. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "A Date não pode ser representada como DateIso.";
+/** Formats a DateIsoFromRfc3339Error in Portuguese. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é uma data e hora RFC 3339 suportada. Utilize um valor como "2024-01-01T12:00:00Z".`;
 /** Formats a DecimalStringError in Portuguese. */
 export const formatDecimalStringError: TypeErrorFormatter<
   DecimalStringError
@@ -208,11 +241,25 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 /** Formats a TrimmedError in Portuguese. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} tem de estar sem espaços no início ou no fim.`;
+/** Formats a WellFormedError in Portuguese. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} tem de ser texto Unicode bem formado.`;
+/** Formats a NormalizedError in Portuguese. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} tem de estar na forma de normalização Unicode ${error.form}.`;
 /** Formats a StartsWithError in Portuguese. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} tem de começar por ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Portuguese. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} tem de terminar em ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Portuguese. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -235,12 +282,44 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é uma cadeia de carateres Base64Url válida.`;
+/** Formats a Base64Error in Portuguese. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é uma cadeia de carateres Base64 válida.`;
+/** Formats a HexError in Portuguese. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é hexadecimal em minúsculas com um número par de dígitos.`;
 /** Formats a NameError in Portuguese. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um Name válido.`;
 /** Formats an EmailError in Portuguese. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um endereço de e-mail válido.`;
+/** Formats a HostnameError in Portuguese. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um nome de anfitrião em minúsculas válido.`;
+/** Formats an Ipv4AddressError in Portuguese. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um endereço IPv4 válido.`;
+/** Formats an Ipv6AddressError in Portuguese. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um endereço IPv6 canónico.`;
+/** Formats an Ipv6AddressFromStringError in Portuguese. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um endereço IPv6 válido.`;
+/** Formats a PhoneNumberE164Error in Portuguese. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um número de telefone no formato E.164.`;
+/** Formats an IbanError in Portuguese. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um IBAN válido em maiúsculas e sem espaços.`;
 /** Formats a MnemonicError in Portuguese. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é uma mnemónica BIP39 em inglês válida.`;
@@ -253,6 +332,11 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Portuguese. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um UUID canónico em minúsculas.`;
+/** Formats a UuidVersionError in Portuguese. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um UUID da versão ${error.version}.`;
 /** Formats a NonNegativeError in Portuguese. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -331,6 +415,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um inteiro decimal.`;
 
+/** Formats a FiniteNumberFromStringError in Portuguese. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um número decimal.`;
+
 /** Formats an ArrayError in Portuguese. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -348,6 +438,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `O elemento do array no índice ${issue.index} é inválido.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Portuguese. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} tem de conter pelo menos um elemento.`;
+
+/** Formats a UniqueError in Portuguese. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} tem elementos iguais nos índices ${error.previousIndex} e ${error.index}.`;
 
 /** Formats a SetError in Portuguese. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -420,6 +520,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `As chaves de Record ${safelyStringifyUnknownValue(issue.previousKey)} e ${safelyStringifyUnknownValue(issue.key)} descodificam para a mesma chave ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Portuguese. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não cumpre o número mínimo de entradas, que é ${error.min}.`;
+
+/** Formats a MaxEntriesError in Portuguese. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} excede o número máximo de entradas, que é ${error.max}.`;
 
 /** Formats an ObjectError in Portuguese. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

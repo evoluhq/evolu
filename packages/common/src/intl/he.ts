@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -146,6 +166,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `לערך ${safelyStringifyUnknownValue(error.value)} אין את תג האובייקט הצפוי ${safelyStringifyUnknownValue(error.expected)}.`;
 
+/** Formats a ValidDateError in Hebrew. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "ה-Date אינו חוקי.";
+
 /** Formats an InstanceOfError in Hebrew. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -164,10 +188,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו מחרוזת תאריך ושעה קנונית בתקן ISO.`;
 
+/** Formats a PlainDateIsoError in Hebrew. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו תאריך קלנדרי חוקי בתבנית YYYY-MM-DD.`;
+
 /** Formats a DateIsoFromDateError in Hebrew. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "לא ניתן לייצג את ה-Date כ-DateIso.";
+
+/** Formats a DateIsoFromRfc3339Error in Hebrew. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו תאריך ושעה נתמכים בתקן RFC 3339. יש להשתמש בערך כגון "2024-01-01T12:00:00Z".`;
 
 /** Formats a DecimalStringError in Hebrew. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -222,11 +258,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `יש להסיר רווחים מיותרים מתחילת הערך ${safelyStringifyUnknownValue(error.value)} ומסופו.`;
 
+/** Formats a WellFormedError in Hebrew. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות טקסט Unicode בנוי היטב.`;
+
+/** Formats a NormalizedError in Hebrew. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות בצורת נרמול Unicode ${error.form}.`;
+
 /** Formats a StartsWithError in Hebrew. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} חייב להתחיל ב־${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Hebrew. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להסתיים ב־${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Hebrew. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -254,6 +306,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו מחרוזת Base64Url חוקית.`;
 
+/** Formats a Base64Error in Hebrew. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו מחרוזת Base64 חוקית.`;
+
+/** Formats a HexError in Hebrew. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו מחרוזת הקסדצימלית באותיות קטנות עם מספר זוגי של ספרות.`;
+
 /** Formats a NameError in Hebrew. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו Name חוקי.`;
@@ -261,6 +321,36 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Hebrew. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת אימייל חוקית.`;
+
+/** Formats a HostnameError in Hebrew. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו שם מארח חוקי באותיות קטנות.`;
+
+/** Formats an Ipv4AddressError in Hebrew. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) => `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת IPv4 חוקית.`;
+
+/** Formats an Ipv6AddressError in Hebrew. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) => `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת IPv6 קנונית.`;
+
+/** Formats an Ipv6AddressFromStringError in Hebrew. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת IPv6 חוקית.`;
+
+/** Formats a PhoneNumberE164Error in Hebrew. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו מספר טלפון בתבנית E.164.`;
+
+/** Formats an IbanError in Hebrew. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו מספר IBAN חוקי באותיות גדולות וללא רווחים.`;
 
 /** Formats a MnemonicError in Hebrew. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -277,6 +367,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Hebrew. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו UUID קנוני באותיות קטנות.`;
+
+/** Formats a UuidVersionError in Hebrew. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו UUID מגרסה ${error.version}.`;
 
 /** Formats a NonNegativeError in Hebrew. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -331,6 +427,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו מספר שלם עשרוני.`;
+
+/** Formats a FiniteNumberFromStringError in Hebrew. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו מספר עשרוני.`;
 
 /** Formats a GreaterThanError in Hebrew. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -390,6 +492,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `איבר המערך באינדקס ${issue.index} אינו חוקי.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Hebrew. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להכיל לפחות פריט אחד.`;
+
+/** Formats a UniqueError in Hebrew. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `לערך ${safelyStringifyUnknownValue(error.value)} יש פריטים שווים באינדקסים ${error.previousIndex} ו-${error.index}.`;
 
 /** Formats a SetError in Hebrew. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -474,6 +586,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `המפתחות ${safelyStringifyUnknownValue(issue.previousKey)} ו-${safelyStringifyUnknownValue(issue.key)} של Record מפוענחים לאותו מפתח ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Hebrew. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו עומד במספר הרשומות המינימלי של ${error.min}.`;
+
+/** Formats a MaxEntriesError in Hebrew. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חורג ממספר הרשומות המרבי של ${error.max}.`;
 
 /** Formats an ObjectError in Hebrew. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

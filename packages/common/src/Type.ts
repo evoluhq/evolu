@@ -482,7 +482,7 @@ import {
 } from "./Result.ts";
 import { safelyStringifyUnknownValue } from "./String.ts";
 import type { Task } from "./Task.ts";
-import type { TimeDep } from "./Time.ts";
+import type { Millis, TimeDep } from "./Time.ts";
 import {
   isInstance,
   type CompileTimeError,
@@ -496,6 +496,7 @@ import {
 } from "./Types.ts";
 import {
   formatArrayError,
+  formatBase64Error,
   formatBase64UrlError,
   formatBetweenError,
   formatBigIntError,
@@ -505,14 +506,20 @@ import {
   formatDataError,
   formatDateIsoError,
   formatDateIsoFromDateError,
+  formatDateIsoFromRfc3339Error,
   formatDecimalStringError,
   formatDiscriminatedUnionError,
   formatEmailError,
+  formatEndsWithError,
   formatEvoluTypeError,
   formatFiniteError,
+  formatFiniteNumberFromStringError,
   formatFunctionError,
   formatGreaterThanError,
   formatGreaterThanOrEqualToError,
+  formatHexError,
+  formatHostnameError,
+  formatIbanError,
   formatIdError,
   formatIdentifierError,
   formatInstanceOfError,
@@ -520,6 +527,9 @@ import {
   formatInt64StringError,
   formatIntError,
   formatIntFromStringError,
+  formatIpv4AddressError,
+  formatIpv6AddressError,
+  formatIpv6AddressFromStringError,
   formatJsonError,
   formatJsonValueError,
   formatLengthError,
@@ -528,7 +538,9 @@ import {
   formatLiteralError,
   formatLowercasedError,
   formatMapError,
+  formatMaxEntriesError,
   formatMaxLengthError,
+  formatMinEntriesError,
   formatMinLengthError,
   formatMnemonicError,
   formatMultipleOfError,
@@ -536,14 +548,18 @@ import {
   formatNegativeDecimalStringError,
   formatNegativeError,
   formatNeverError,
+  formatNonEmptyArrayError,
   formatNonNaNError,
   formatNonNegativeDecimalStringError,
   formatNonNegativeError,
   formatNonPositiveDecimalStringError,
   formatNonPositiveError,
+  formatNormalizedError,
   formatNumberError,
   formatObjectError,
   formatObjectTagError,
+  formatPhoneNumberE164Error,
+  formatPlainDateIsoError,
   formatPositiveDecimalStringError,
   formatPositiveError,
   formatRecordError,
@@ -559,8 +575,12 @@ import {
   formatUInt64Error,
   formatUncapitalizedError,
   formatUnionError,
+  formatUniqueError,
   formatUppercasedError,
   formatUuidError,
+  formatUuidVersionError,
+  formatValidDateError,
+  formatWellFormedError,
 } from "./intl/_en.ts";
 
 /**
@@ -3876,11 +3896,70 @@ const hasObjectTag = (value: unknown, tag: string): boolean =>
 /**
  * A realm-neutral JavaScript Date {@link Type} for trusted values.
  *
- * It trusts the reported object tag and does not verify Date internal slots.
+ * It trusts the reported object tag and does not verify Date internal slots. It
+ * accepts an Invalid Date; use {@link ValidDate} to reject one.
  *
  * @group Base
  */
 export const Date = /*#__PURE__*/ objectTag("Date");
+
+/**
+ * Error returned when a {@link Date} is an Invalid Date.
+ *
+ * @group Base
+ */
+export interface ValidDateError extends TypeError<"ValidDate"> {
+  readonly value: globalThis.Date;
+}
+
+/**
+ * A {@link Date} with a valid time value.
+ *
+ * Rejects an Invalid Date, such as `new Date("x")`, whose time value is NaN.
+ * Like Date, it is realm-neutral: it reads the time value with
+ * `Date.prototype.getTime` instead of a method of the value.
+ *
+ * A Date is mutable, so calling `setTime(NaN)` on a validated value breaks its
+ * brand. Use {@link DateIsoFromDate} to store a moment and {@link Millis} for
+ * time arithmetic.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   ValidDate,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const date = new Date(0);
+ * assertOk(ValidDate.fromUnknown(date), date);
+ * assertType<ValidDate, Date & Brand<"ValidDate">>();
+ *
+ * const invalidDate = new Date("x");
+ * const invalid = ValidDate.fromUnknown(invalidDate);
+ * assertErr(invalid, { type: "ValidDate", value: invalidDate });
+ * assertEqual(
+ *   ValidDate.formatError(invalid.error),
+ *   "The Date is invalid.",
+ * );
+ * ```
+ *
+ * @group Base
+ */
+export const ValidDate = /*#__PURE__*/ brand(
+  "ValidDate",
+  Date,
+  (value: globalThis.Date) =>
+    globalThis.Number.isNaN(globalThis.Date.prototype.getTime.call(value))
+      ? err<ValidDateError>({ type: "ValidDate", value })
+      : ok(),
+  formatValidDateError,
+);
+export type ValidDate = typeof ValidDate.Output;
 
 /**
  * A realm-neutral JavaScript Uint8Array {@link Type} for trusted values.
@@ -5853,6 +5932,87 @@ export const DateIso = /*#__PURE__*/ brand(
 export type DateIso = typeof DateIso.Output;
 
 /**
+ * Error returned when a string is not a {@link PlainDateIso}.
+ *
+ * @group String
+ */
+export interface PlainDateIsoError extends TypeError<"PlainDateIso"> {
+  readonly value: string;
+}
+
+/**
+ * Calendar date {@link String} in the ISO 8601 `YYYY-MM-DD` format.
+ *
+ * It is an RFC 3339 `full-date` in the proleptic Gregorian calendar, with years
+ * from 0000 through 9999 like {@link DateIso}. The date must exist, so
+ * `2023-02-29` and `2023-04-31` are rejected, while the leap day `2024-02-29`
+ * is accepted. Extended years, missing leading zeros, and times are rejected.
+ *
+ * A plain date has no time zone, so it names a calendar day, such as a birthday
+ * or a due date, rather than a moment. Converting a DateIso to a plain date
+ * requires choosing a time zone, which is an application decision. The
+ * fixed-width form sorts chronologically as text.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   PlainDateIso,
+ * } from "@evolu/common";
+ *
+ * assertOk(PlainDateIso.fromUnknown("2024-02-29"), "2024-02-29");
+ *
+ * const invalid = PlainDateIso.fromUnknown("2023-02-29");
+ * assertErr(invalid, { type: "PlainDateIso", value: "2023-02-29" });
+ * assertEqual(
+ *   PlainDateIso.formatError(invalid.error),
+ *   'The value "2023-02-29" is not a valid calendar date in the YYYY-MM-DD format.',
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const PlainDateIso = /*#__PURE__*/ brand(
+  "PlainDateIso",
+  String,
+  (value: string) => {
+    const match = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u.exec(
+      value,
+    );
+
+    if (match !== null) {
+      const [, year, month, day] = match;
+
+      if (
+        globalThis.Number(day) <=
+        daysInMonth(globalThis.Number(year), globalThis.Number(month))
+      ) {
+        return ok();
+      }
+    }
+
+    return err<PlainDateIsoError>({ type: "PlainDateIso", value });
+  },
+  formatPlainDateIsoError,
+);
+export type PlainDateIso = typeof PlainDateIso.Output;
+
+// Proleptic Gregorian calendar arithmetic shared by PlainDateIso and
+// DateIsoFromRfc3339. Date is not used because V8 rolls an invalid day over to
+// the next month and Date.UTC maps years 0 through 99 to 1900 through 1999.
+const daysInMonth = (year: number, month: number): number =>
+  month === 2
+    ? year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+      ? 29
+      : 28
+    : month === 4 || month === 6 || month === 9 || month === 11
+      ? 30
+      : 31;
+
+/**
  * Error returned when a {@link Date} cannot be represented as {@link DateIso}.
  *
  * @group String
@@ -5891,6 +6051,98 @@ export const DateIsoFromDate = /*#__PURE__*/ transform(
     to: (value: DateIso) => new globalThis.Date(value),
   },
   formatDateIsoFromDateError,
+);
+
+/**
+ * Error returned when a string is not a date-time in the RFC 3339 profile that
+ * {@link DateIsoFromRfc3339} accepts.
+ *
+ * @group String
+ */
+export interface DateIsoFromRfc3339Error extends TypeError<"DateIsoFromRfc3339"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms an RFC 3339 date-time string into a canonical {@link DateIso}.
+ *
+ * Accepts the `date-time` of [RFC 3339 section
+ * 5.6](https://www.rfc-editor.org/rfc/rfc3339#section-5.6) with an uppercase
+ * `T` and `Z`, required seconds, an optional fraction whose digits after the
+ * third are zeros, as in `.123000`, and an offset of `Z` or `±HH:MM`, where
+ * `-00:00` means UTC. The date must exist, as in {@link PlainDateIso}. Leap
+ * seconds, `24:00`, a space separator, the offset forms `±HH` and `±HHMM`, and
+ * a nonzero fraction digit after the third are rejected rather than rolled over
+ * or rounded; truncate extra fraction digits explicitly.
+ *
+ * Decoding converts the offset to UTC, so it does not depend on the local time
+ * zone. An offset can move the moment outside the DateIso range, as in
+ * `0000-01-01T00:00:00+01:00`, which is a DateIso error. Encoding returns the
+ * DateIso text, which is itself an RFC 3339 date-time.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   DateIsoFromRfc3339,
+ * } from "@evolu/common";
+ *
+ * assertOk(
+ *   DateIsoFromRfc3339.fromUnknown("2024-01-01T12:00:00Z"),
+ *   "2024-01-01T12:00:00.000Z",
+ * );
+ * assertOk(
+ *   DateIsoFromRfc3339.fromUnknown("2024-01-01T01:30:00.5+02:00"),
+ *   "2023-12-31T23:30:00.500Z",
+ * );
+ *
+ * const value = "2024-01-01 12:00:00Z";
+ * const invalid = DateIsoFromRfc3339.fromUnknown(value);
+ * assertErr(invalid, { type: "DateIsoFromRfc3339", value });
+ * assertEqual(
+ *   DateIsoFromRfc3339.formatError(invalid.error),
+ *   'The value "2024-01-01 12:00:00Z" is not a supported RFC 3339 date-time. Use a value such as "2024-01-01T12:00:00Z".',
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const DateIsoFromRfc3339 = /*#__PURE__*/ transform(
+  "DateIsoFromRfc3339",
+  String,
+  DateIso,
+  {
+    from: (value: string): Result<string, DateIsoFromRfc3339Error> => {
+      const match =
+        /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(\d{1,3})0*)?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u.exec(
+          value,
+        );
+
+      if (match !== null) {
+        const [, year, month, day, fraction = "", offset] = match;
+
+        if (
+          globalThis.Number(day) <=
+          daysInMonth(globalThis.Number(year), globalThis.Number(month))
+        ) {
+          // The ECMAScript Date Time String Format is parsed the same way in
+          // every engine, unlike other date-time text.
+          return ok(
+            new globalThis.Date(
+              `${value.slice(0, 19)}.${fraction.padEnd(3, "0")}${offset}`,
+            ).toISOString(),
+          );
+        }
+      }
+
+      return err({ type: "DateIsoFromRfc3339", value });
+    },
+    to: identity,
+  },
+  formatDateIsoFromRfc3339Error,
 );
 
 /**
@@ -7047,6 +7299,190 @@ export const trim = (value: string): TrimmedString =>
   value.trim() as TrimmedString;
 
 /**
+ * Error returned when {@link wellFormed} rejects a string.
+ *
+ * @group String
+ */
+export interface WellFormedError extends TypeError<"WellFormed"> {
+  readonly value: string;
+}
+
+/**
+ * String {@link Brand} for well-formed Unicode text without lone surrogates.
+ *
+ * A JavaScript string is a sequence of UTF-16 code units, so it can contain a
+ * high surrogate without the low surrogate that completes it, or the reverse,
+ * for example after slicing an emoji in half. Such text has no UTF-8 encoding:
+ * `TextEncoder` and many storage and network APIs replace each lone surrogate
+ * with U+FFFD, so the text that arrives differs from the text that was sent.
+ * Validation leaves the text unchanged.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   maxLength,
+ *   String,
+ *   wellFormed,
+ * } from "@evolu/common";
+ *
+ * const Message = wellFormed(maxLength(100)(String));
+ *
+ * assertOk(Message.fromUnknown("Hi 😀"), "Hi 😀");
+ * assertErr(Message.fromUnknown("Hi 😀".slice(0, 4)));
+ * ```
+ *
+ * @group String
+ */
+export const wellFormed: BrandFactory<"WellFormed", string, WellFormedError> = (
+  parent,
+) =>
+  brand(
+    "WellFormed",
+    parent,
+    (value) => {
+      for (let index = 0; index < value.length; index++) {
+        const code = value.charCodeAt(index);
+        if ((code & 0xf800) !== 0xd800) continue;
+
+        // Only a high surrogate followed by a low surrogate is a code point.
+        // Past the end of the string, charCodeAt returns NaN, which masks to 0.
+        if (
+          (code & 0xfc00) !== 0xd800 ||
+          (value.charCodeAt(index + 1) & 0xfc00) !== 0xdc00
+        ) {
+          return err<WellFormedError>({ type: "WellFormed", value });
+        }
+        index++;
+      }
+      return ok();
+    },
+    formatWellFormedError,
+  );
+
+/**
+ * A {@link String} of well-formed Unicode text.
+ *
+ * See {@link wellFormed}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, WellFormedString } from "@evolu/common";
+ *
+ * assertOk(WellFormedString.fromUnknown("😀"), "😀");
+ * assertOk(WellFormedString.fromUnknown(""), "");
+ * assertErr(WellFormedString.fromUnknown("\uD83D"));
+ * ```
+ *
+ * @group String
+ */
+export const WellFormedString = /*#__PURE__*/ wellFormed(String);
+export type WellFormedString = typeof WellFormedString.Output;
+
+/**
+ * Unicode normalization forms defined by [UAX
+ * #15](https://unicode.org/reports/tr15/).
+ *
+ * @group String
+ */
+export type UnicodeNormalizationForm = "NFC" | "NFD" | "NFKC" | "NFKD";
+
+/**
+ * Error returned when {@link normalized} rejects a string.
+ *
+ * @group String
+ */
+export interface NormalizedError<
+  Form extends UnicodeNormalizationForm = UnicodeNormalizationForm,
+> extends TypeError<`Normalized${Form}`> {
+  readonly value: string;
+  readonly form: Form;
+}
+
+/**
+ * String {@link Brand} for text already in a Unicode normalization form.
+ *
+ * Unicode can encode the same text in more than one way: `é` is either one
+ * precomposed code point or `e` followed by a combining accent. Both look the
+ * same but are different strings, so equality checks, lookups, and unique
+ * constraints treat them as different values. Validation leaves the text
+ * unchanged; use {@link normalize} to convert text before validating it.
+ *
+ * Prefer NFC for text. NFKC also replaces compatibility characters, such as the
+ * `ﬁ` ligature with `fi`, so prefer it for identifiers compared for equality.
+ * The form must be one concrete string literal so different forms have distinct
+ * brands. A normalized string is not necessarily {@link wellFormed}, because
+ * normalization leaves lone surrogates unchanged.
+ *
+ * Unicode's stability policy keeps the result for assigned characters the same
+ * across engine versions, but text with characters that an older engine does
+ * not know yet can be judged differently there.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, normalized, String } from "@evolu/common";
+ *
+ * const Text = normalized("NFC")(String);
+ *
+ * assertOk(Text.fromUnknown("caf\u00E9"), "caf\u00E9");
+ * assertErr(Text.fromUnknown("cafe\u0301"));
+ * ```
+ *
+ * @group String
+ */
+export const normalized = <Form extends UnicodeNormalizationForm>(
+  form: Form & ValidateLiteral<Form>,
+): BrandFactory<`Normalized${Form}`, string, NormalizedError<Form>> => {
+  const name = `Normalized${form}` as const;
+
+  return (parent) =>
+    brand(
+      name,
+      parent,
+      (value) =>
+        value.normalize(form) === value
+          ? ok()
+          : err<NormalizedError<Form>>({ type: name, value, form }),
+      formatNormalizedError,
+    );
+};
+
+/**
+ * Converts a string to a Unicode normalization form and returns it with the
+ * {@link normalized} brand of that form.
+ *
+ * Normalization can change the length, so input brands are not retained.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   normalize,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const text = normalize("cafe\u0301", "NFC");
+ * assertEqual(text, "caf\u00E9");
+ * assertType<typeof text, string & Brand<"NormalizedNFC">>();
+ *
+ * assertEqual(normalize("\uFB01", "NFKC"), "fi");
+ * ```
+ *
+ * @group String
+ */
+export const normalize = <Form extends UnicodeNormalizationForm>(
+  value: string,
+  form: Form & ValidateLiteral<Form>,
+): string & Brand<`Normalized${Form}`> =>
+  value.normalize(form) as string & Brand<`Normalized${Form}`>;
+
+/**
  * Error returned when {@link startsWith} rejects a string.
  *
  * @group String
@@ -7223,6 +7659,81 @@ type PrefixedInputTypeError = CompileTimeError<
   "Type",
   "Prefixed Type Input must accept every string."
 >;
+
+/**
+ * Error returned when {@link endsWith} rejects a string.
+ *
+ * @group String
+ */
+export interface EndsWithError<
+  Suffix extends string = string,
+> extends TypeError<`EndsWith${Suffix}`> {
+  readonly value: string;
+  readonly suffix: Suffix;
+}
+
+/**
+ * String {@link Brand} requiring an exact, case-sensitive suffix.
+ *
+ * Validation preserves the complete string, including the suffix. An empty
+ * suffix accepts every string allowed by the parent Type. The suffix must be
+ * one concrete string literal so different suffixes have distinct brands.
+ *
+ * Like `String.prototype.endsWith`, matching compares UTF-16 code units, so a
+ * suffix starting with a low surrogate matches the second half of a character
+ * outside the Basic Multilingual Plane, such as an emoji.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   endsWith,
+ *   maxLength,
+ *   String,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const FileName = endsWith(".json")(maxLength(64)(String));
+ *
+ * const name = FileName.fromUnknown("config.json");
+ * assertOk(name, "config.json");
+ * assertType<
+ *   typeof name.value,
+ *   string & Brand<"MaxLength64"> & Brand<"EndsWith.json">
+ * >();
+ *
+ * assertEqual(FileName.to(name.value), "config.json");
+ *
+ * assertErr(FileName.fromUnknown("config.JSON"));
+ * assertErr(FileName.fromUnknown("X".repeat(60) + ".json"));
+ * ```
+ *
+ * @group String
+ */
+export const endsWith = <Suffix extends string>(
+  suffix: Suffix & ValidateLiteral<Suffix>,
+): BrandFactory<`EndsWith${Suffix}`, string, EndsWithError<Suffix>> => {
+  const name = `EndsWith${suffix}` as const;
+
+  return (parent) =>
+    brand(
+      name,
+      parent,
+      (value) =>
+        value.endsWith(suffix)
+          ? ok()
+          : err<EndsWithError<Suffix>>({
+              type: name,
+              value,
+              suffix,
+            }),
+      formatEndsWithError,
+    );
+};
 
 /**
  * Error returned when {@link minLength} rejects a value.
@@ -7505,19 +8016,26 @@ export const UrlSafeString = /*#__PURE__*/ regex(
 )(String);
 export type UrlSafeString = typeof UrlSafeString.Output;
 
-const base64UrlOptions = {
-  alphabet: "base64url",
-  omitPadding: true,
+// Base64 text is padded and Base64Url text is unpadded, as Node.js Buffer
+// encodes them, so the alphabet also selects the padding.
+const base64OptionsByAlphabet = {
+  base64: { alphabet: "base64", omitPadding: false },
+  base64url: { alphabet: "base64url", omitPadding: true },
 } as const;
 
-const uint8ArrayToBase64UrlString = (bytes: Uint8Array): string => {
+type Base64Alphabet = keyof typeof base64OptionsByAlphabet;
+
+const uint8ArrayToBase64String = (
+  bytes: Uint8Array,
+  alphabet: Base64Alphabet,
+): string => {
   if (hasNodeBuffer) {
     // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Use the global object constructor verified by hasNodeBuffer even if a realm lexical binding shadows it.
-    return globalThis.Buffer.from(bytes).toString("base64url");
+    return globalThis.Buffer.from(bytes).toString(alphabet);
   }
   const uint8ArrayPrototype: object = globalThis.Uint8Array.prototype;
   if ("toBase64" in uint8ArrayPrototype) {
-    return bytes.toBase64(base64UrlOptions);
+    return bytes.toBase64(base64OptionsByAlphabet[alphabet]);
   }
 
   const binaryString = Array.from(bytes, (byte) =>
@@ -7525,22 +8043,33 @@ const uint8ArrayToBase64UrlString = (bytes: Uint8Array): string => {
   ).join("");
   const base64 = btoa(binaryString);
 
-  return base64.replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+  return alphabet === "base64"
+    ? base64
+    : base64.replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 };
 
-const base64UrlStringToUint8Array = (value: string): Uint8Array => {
+const base64StringToUint8Array = (
+  value: string,
+  alphabet: Base64Alphabet,
+): Uint8Array => {
   if (hasNodeBuffer) {
     // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Use the global object constructor verified by hasNodeBuffer even if a realm lexical binding shadows it.
-    const buffer = globalThis.Buffer.from(value, "base64url");
+    const buffer = globalThis.Buffer.from(value, alphabet);
     return new globalThis.Uint8Array(buffer);
   }
   const uint8ArrayConstructor: object = globalThis.Uint8Array;
   if ("fromBase64" in uint8ArrayConstructor) {
-    return globalThis.Uint8Array.fromBase64(value, base64UrlOptions);
+    return globalThis.Uint8Array.fromBase64(
+      value,
+      base64OptionsByAlphabet[alphabet],
+    );
   }
 
-  let base64 = value.replaceAll("-", "+").replaceAll("_", "/");
-  while (base64.length % 4 !== 0) base64 += "=";
+  let base64 = value;
+  if (alphabet === "base64url") {
+    base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+    while (base64.length % 4 !== 0) base64 += "=";
+  }
 
   const binaryString = atob(base64);
   return globalThis.Uint8Array.from(binaryString, (character) =>
@@ -7569,9 +8098,10 @@ export const Base64Url = /*#__PURE__*/ brand(
   "Base64Url",
   String,
   (value: string) => {
-    const decoded = trySync(() => base64UrlStringToUint8Array(value));
+    const decoded = trySync(() => base64StringToUint8Array(value, "base64url"));
 
-    return decoded.ok && uint8ArrayToBase64UrlString(decoded.value) === value
+    return decoded.ok &&
+      uint8ArrayToBase64String(decoded.value, "base64url") === value
       ? ok()
       : err<Base64UrlError>({ type: "Base64Url", value });
   },
@@ -7596,7 +8126,7 @@ export type Base64Url = typeof Base64Url.Output;
  * @group String
  */
 export const uint8ArrayToBase64Url = (bytes: Uint8Array): Base64Url =>
-  uint8ArrayToBase64UrlString(bytes) as Base64Url;
+  uint8ArrayToBase64String(bytes, "base64url") as Base64Url;
 
 /**
  * Converts {@link Base64Url} to bytes.
@@ -7621,7 +8151,176 @@ export const uint8ArrayToBase64Url = (bytes: Uint8Array): Base64Url =>
  * @group String
  */
 export const base64UrlToUint8Array = (value: Base64Url): Uint8Array =>
-  base64UrlStringToUint8Array(value);
+  base64StringToUint8Array(value, "base64url");
+
+/**
+ * Error returned when a string is not valid {@link Base64} text.
+ *
+ * @group String
+ */
+export interface Base64Error extends TypeError<"Base64"> {
+  readonly value: string;
+}
+
+/**
+ * Base64 text with padding, as defined by [RFC 4648 section
+ * 4](https://www.rfc-editor.org/rfc/rfc4648#section-4).
+ *
+ * Accepts only the canonical encoding of some bytes: the standard alphabet with
+ * `+` and `/`, the required `=` padding, and unused trailing bits set to zero.
+ * Whitespace, line breaks, and the URL-safe `-` and `_` are rejected. Use
+ * {@link Base64Url} for text in URLs and file names.
+ *
+ * Every 4 characters encode up to 3 bytes, so the length of padded text does
+ * not determine the byte length: `length(44)(Base64)` accepts 31 to 33 bytes.
+ *
+ * Convert bytes to Base64 with {@link uint8ArrayToBase64} and convert Base64 to
+ * bytes with {@link base64ToUint8Array}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, Base64 } from "@evolu/common";
+ *
+ * assertOk(Base64.fromUnknown("AAEC/w=="), "AAEC/w==");
+ * assertErr(Base64.fromUnknown("AAEC/w"));
+ * assertErr(Base64.fromUnknown("AAEC_w=="));
+ * assertErr(Base64.fromUnknown("AB=="));
+ * ```
+ *
+ * @group String
+ */
+export const Base64 = /*#__PURE__*/ brand(
+  "Base64",
+  String,
+  (value: string) => {
+    const decoded = trySync(() => base64StringToUint8Array(value, "base64"));
+
+    return decoded.ok &&
+      uint8ArrayToBase64String(decoded.value, "base64") === value
+      ? ok()
+      : err<Base64Error>({ type: "Base64", value });
+  },
+  formatBase64Error,
+);
+export type Base64 = typeof Base64.Output;
+
+/**
+ * Converts bytes to {@link Base64}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, uint8ArrayToBase64 } from "@evolu/common";
+ *
+ * assertEqual(
+ *   uint8ArrayToBase64(new Uint8Array([0, 1, 2, 255])),
+ *   "AAEC/w==",
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const uint8ArrayToBase64 = (bytes: Uint8Array): Base64 =>
+  uint8ArrayToBase64String(bytes, "base64") as Base64;
+
+/**
+ * Converts {@link Base64} to bytes.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, Base64, base64ToUint8Array } from "@evolu/common";
+ *
+ * const value = Base64.orThrow("AAEC/w==");
+ *
+ * assertEqual(base64ToUint8Array(value), new Uint8Array([0, 1, 2, 255]));
+ * ```
+ *
+ * @group String
+ */
+export const base64ToUint8Array = (value: Base64): Uint8Array =>
+  base64StringToUint8Array(value, "base64");
+
+/**
+ * Error returned when a string is not valid {@link Hex} text.
+ *
+ * @group String
+ */
+export interface HexError extends TypeError<"Hex"> {
+  readonly value: string;
+}
+
+/**
+ * Lowercase hexadecimal text of whole bytes.
+ *
+ * Every byte is two digits, so the length is even, and length constraints count
+ * characters, two per byte. An empty string encodes no bytes. Uppercase digits,
+ * prefixes such as `0x`, and whitespace are rejected so that equal bytes are
+ * equal strings; lowercase text from other sources before validating it.
+ *
+ * Convert bytes to Hex with {@link uint8ArrayToHex} and convert Hex to bytes
+ * with {@link hexToUint8Array}. The {@link bytesToHex} and {@link hexToBytes}
+ * functions convert the same text without a brand, and `hexToBytes` throws on
+ * invalid text instead of returning an error.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, Hex } from "@evolu/common";
+ *
+ * assertOk(Hex.fromUnknown("deadbeef"), "deadbeef");
+ * assertOk(Hex.fromUnknown(""), "");
+ * assertErr(Hex.fromUnknown("DEADBEEF"));
+ * assertErr(Hex.fromUnknown("abc"));
+ * assertErr(Hex.fromUnknown("0xff"));
+ * ```
+ *
+ * @group String
+ */
+export const Hex = /*#__PURE__*/ brand(
+  "Hex",
+  String,
+  (value: string) =>
+    value.length % 2 === 0 && /^[0-9a-f]*$/u.test(value)
+      ? ok()
+      : err<HexError>({ type: "Hex", value }),
+  formatHexError,
+);
+export type Hex = typeof Hex.Output;
+
+/**
+ * Converts bytes to {@link Hex}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, uint8ArrayToHex } from "@evolu/common";
+ *
+ * assertEqual(uint8ArrayToHex(new Uint8Array([0, 1, 2, 255])), "000102ff");
+ * ```
+ *
+ * @group String
+ */
+export const uint8ArrayToHex = (bytes: Uint8Array): Hex =>
+  bytesToHex(bytes) as Hex;
+
+/**
+ * Converts {@link Hex} to bytes.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, Hex, hexToUint8Array } from "@evolu/common";
+ *
+ * const value = Hex.orThrow("000102ff");
+ *
+ * assertEqual(hexToUint8Array(value), new Uint8Array([0, 1, 2, 255]));
+ * ```
+ *
+ * @group String
+ */
+export const hexToUint8Array = (value: Hex): Uint8Array => hexToBytes(value);
 
 /**
  * Error returned when a string is not a valid {@link Name}.
@@ -7718,6 +8417,464 @@ export const Email = /*#__PURE__*/ brand(
   formatEmailError,
 );
 export type Email = typeof Email.Output;
+
+/**
+ * Error returned when a string is not a valid {@link Hostname}.
+ *
+ * @group String
+ */
+export interface HostnameError extends TypeError<"Hostname"> {
+  readonly value: string;
+}
+
+/**
+ * Internet host name in lowercase ASCII, as defined by [RFC 1123 section
+ * 2.1](https://www.rfc-editor.org/rfc/rfc1123#section-2.1).
+ *
+ * Hostname accepts at most 253 characters of dot-separated labels. Each label
+ * has 1 to 63 lowercase ASCII letters, digits, and hyphens and does not start
+ * or end with a hyphen. A single label, such as `localhost`, is a Hostname.
+ * Underscores are rejected, so DNS names such as `_dmarc.example.com` are not
+ * host names.
+ *
+ * The last label must not be a number, such as `123` or `0x1f`, because the
+ * WHATWG URL Standard parses a host ending in a number as an IPv4 address. No
+ * Hostname is an {@link Ipv4Address}, so a URL never parses a Hostname as an
+ * IPv4 address.
+ *
+ * Hostname does not normalize. DNS compares names case-insensitively, so
+ * Hostname requires lowercase so that equal names are equal strings, and it
+ * rejects the trailing dot of a fully qualified name. Lowercase text from other
+ * sources and remove a trailing dot before validating it. Internationalized
+ * names must use their ASCII (`xn--`) labels; convert Unicode labels with an
+ * IDNA library first. Hostname does not verify the Punycode of `xn--` labels,
+ * so URL parsers that verify it, such as Firefox's, reject a label such as
+ * `xn--a` that Hostname accepts.
+ *
+ * Hostname does not require a dot; compose {@link regex} to require one.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   Hostname,
+ *   regex,
+ * } from "@evolu/common";
+ *
+ * assertOk(Hostname.fromUnknown("example.com"), "example.com");
+ * assertOk(Hostname.fromUnknown("localhost"), "localhost");
+ * assertErr(Hostname.fromUnknown("1.2.3.4"));
+ *
+ * const invalid = Hostname.fromUnknown("Example.com.");
+ * assertErr(invalid);
+ * assertEqual(invalid.error, { type: "Hostname", value: "Example.com." });
+ *
+ * const DomainName = regex("DomainName", /\./u)(Hostname);
+ * assertOk(DomainName.fromUnknown("example.com"), "example.com");
+ * assertErr(DomainName.fromUnknown("localhost"));
+ * ```
+ *
+ * @group String
+ */
+export const Hostname = /*#__PURE__*/ brand(
+  "Hostname",
+  String,
+  (value: string) =>
+    value.length <= 253 &&
+    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(
+      value,
+    ) &&
+    !/(?:^|\.)(?:\d+|0x[0-9a-f]*)$/u.test(value)
+      ? ok()
+      : err<HostnameError>({ type: "Hostname", value }),
+  formatHostnameError,
+);
+export type Hostname = typeof Hostname.Output;
+
+/**
+ * Error returned when a string is not a valid {@link Ipv4Address}.
+ *
+ * @group String
+ */
+export interface Ipv4AddressError extends TypeError<"Ipv4Address"> {
+  readonly value: string;
+}
+
+/**
+ * IPv4 address in dotted-decimal form, as the `IPv4address` rule of [RFC 3986
+ * section 3.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2) defines
+ * it.
+ *
+ * Ipv4Address accepts four decimal numbers from 0 to 255 separated by dots,
+ * such as `192.168.1.1`. Every address has exactly one Ipv4Address, so equal
+ * addresses are equal strings.
+ *
+ * Ipv4Address does not normalize. It rejects leading zeros, because some
+ * parsers, including the WHATWG URL Standard, read `010` as octal 8 and others
+ * as decimal 10. It also rejects the hexadecimal, integer, and shortened forms
+ * that URL parsers accept, such as `0x7f.0.0.1`, `2130706433`, and `127.1`, as
+ * well as prefix lengths and whitespace. Trim text from other sources before
+ * validating it, but do not strip leading zeros, because their meaning depends
+ * on the parser that wrote them.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   Ipv4Address,
+ * } from "@evolu/common";
+ *
+ * assertOk(Ipv4Address.fromUnknown("192.168.1.1"), "192.168.1.1");
+ *
+ * const invalid = Ipv4Address.fromUnknown("192.168.01.1");
+ * assertErr(invalid);
+ * assertEqual(invalid.error, {
+ *   type: "Ipv4Address",
+ *   value: "192.168.01.1",
+ * });
+ * ```
+ *
+ * @group String
+ */
+export const Ipv4Address = /*#__PURE__*/ brand(
+  "Ipv4Address",
+  String,
+  (value: string) =>
+    ipv4AddressRegex.test(value)
+      ? ok()
+      : err<Ipv4AddressError>({ type: "Ipv4Address", value }),
+  formatIpv4AddressError,
+);
+export type Ipv4Address = typeof Ipv4Address.Output;
+
+/**
+ * Error returned when a string is not a canonical {@link Ipv6Address}.
+ *
+ * @group String
+ */
+export interface Ipv6AddressError extends TypeError<"Ipv6Address"> {
+  readonly value: string;
+}
+
+/**
+ * IPv6 address in its canonical text form, as defined by [RFC
+ * 5952](https://www.rfc-editor.org/rfc/rfc5952).
+ *
+ * RFC 4291 allows many spellings of one address: `2001:DB8::1`, `2001:0db8::1`,
+ * and `2001:db8:0:0:0:0:0:1` all name `2001:db8::1`. Ipv6Address accepts only
+ * the canonical spelling, so equal addresses are equal strings: lowercase
+ * hexadecimal groups without leading zeros, with `::` replacing the longest run
+ * of two or more zero groups, the first one on a tie. IPv4-mapped addresses use
+ * the mixed notation of RFC 5952 section 5, such as `::ffff:1.2.3.4`, while
+ * WHATWG URL hosts write them in hexadecimal, such as `[::ffff:102:304]`.
+ *
+ * Ipv6Address does not normalize; use {@link Ipv6AddressFromString} to convert
+ * other spellings to the canonical one. Zone identifiers, such as `%eth0`, are
+ * rejected, because they name a network interface of one device and mean
+ * nothing on another. Brackets, prefix lengths, and whitespace are rejected
+ * too; remove them before validating.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   Ipv6Address,
+ * } from "@evolu/common";
+ *
+ * assertOk(Ipv6Address.fromUnknown("2001:db8::1"), "2001:db8::1");
+ * assertOk(Ipv6Address.fromUnknown("::ffff:1.2.3.4"), "::ffff:1.2.3.4");
+ *
+ * const invalid = Ipv6Address.fromUnknown("2001:DB8::1");
+ * assertErr(invalid);
+ * assertEqual(invalid.error, {
+ *   type: "Ipv6Address",
+ *   value: "2001:DB8::1",
+ * });
+ * ```
+ *
+ * @group String
+ */
+export const Ipv6Address = /*#__PURE__*/ brand(
+  "Ipv6Address",
+  String,
+  (value: string) =>
+    canonicalizeIpv6Address(value) === value
+      ? ok()
+      : err<Ipv6AddressError>({ type: "Ipv6Address", value }),
+  formatIpv6AddressError,
+);
+export type Ipv6Address = typeof Ipv6Address.Output;
+
+/**
+ * Error returned when {@link Ipv6AddressFromString} cannot parse a string as an
+ * IPv6 address.
+ *
+ * @group String
+ */
+export interface Ipv6AddressFromStringError extends TypeError<"Ipv6AddressFromString"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms IPv6 address text into its canonical {@link Ipv6Address}.
+ *
+ * Accepts the text forms of [RFC 4291 section
+ * 2.2](https://www.rfc-editor.org/rfc/rfc4291#section-2.2): eight groups of one
+ * to four hexadecimal digits in either case, at most one `::` replacing one or
+ * more zero groups, and an optional trailing dotted IPv4 address that follows
+ * the {@link Ipv4Address} rules. Like Ipv6Address, it rejects zone identifiers,
+ * brackets, prefix lengths, and whitespace.
+ *
+ * Encoding returns the canonical text, not the original spelling.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   Ipv6AddressFromString,
+ * } from "@evolu/common";
+ *
+ * assertOk(
+ *   Ipv6AddressFromString.fromUnknown("2001:0DB8:0:0:0:0:0:1"),
+ *   "2001:db8::1",
+ * );
+ * assertOk(
+ *   Ipv6AddressFromString.fromUnknown("::ffff:102:304"),
+ *   "::ffff:1.2.3.4",
+ * );
+ *
+ * const invalid = Ipv6AddressFromString.fromUnknown("fe80::1%eth0");
+ * assertErr(invalid, {
+ *   type: "Ipv6AddressFromString",
+ *   value: "fe80::1%eth0",
+ * });
+ * assertEqual(
+ *   Ipv6AddressFromString.formatError(invalid.error),
+ *   'The value "fe80::1%eth0" is not a valid IPv6 address.',
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const Ipv6AddressFromString = /*#__PURE__*/ transform(
+  "Ipv6AddressFromString",
+  String,
+  Ipv6Address,
+  {
+    from: (value: string): Result<string, Ipv6AddressFromStringError> => {
+      const canonical = canonicalizeIpv6Address(value);
+      return canonical === undefined
+        ? err({ type: "Ipv6AddressFromString", value })
+        : ok(canonical);
+    },
+    to: (value: Ipv6Address) => value,
+  },
+  formatIpv6AddressFromStringError,
+);
+
+// Shared by Ipv4Address and the IPv4 part of IPv6 addresses.
+const ipv4AddressRegex =
+  /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)$/u;
+
+// Parses RFC 4291 IPv6 address text and returns its RFC 5952 canonical form, or
+// undefined for text that is not an IPv6 address.
+const canonicalizeIpv6Address = (value: string): string | undefined => {
+  // A trailing dotted IPv4 address spells the last two groups.
+  const lastColonIndex = value.lastIndexOf(":");
+  const ipv4 = value.slice(lastColonIndex + 1);
+  let text = value;
+  if (ipv4.includes(".")) {
+    if (!ipv4AddressRegex.test(ipv4)) return undefined;
+    const ipv4Value = ipv4
+      .split(".")
+      .reduce((result, octet) => result * 256 + globalThis.Number(octet), 0);
+    text = `${value.slice(0, lastColonIndex + 1)}${(ipv4Value >>> 16).toString(16)}:${(ipv4Value & 0xffff).toString(16)}`;
+  }
+
+  const halves = text.split("::");
+  if (halves.length > 2) return undefined;
+  const [head = [], tail = []] = halves.map((half) =>
+    half === "" ? [] : half.split(":"),
+  );
+  const explicitCount = head.length + tail.length;
+  if (
+    (halves.length === 1 ? explicitCount !== 8 : explicitCount > 7) ||
+    ![...head, ...tail].every((group) => /^[0-9a-fA-F]{1,4}$/u.test(group))
+  ) {
+    return undefined;
+  }
+  const groups = [
+    ...head,
+    ...Array.from({ length: 8 - explicitCount }, () => "0"),
+    ...tail,
+  ].map((group) => globalThis.Number.parseInt(group, 16));
+
+  // RFC 5952 section 5 writes IPv4-mapped addresses in mixed notation.
+  if (
+    groups.slice(0, 5).every((group) => group === 0) &&
+    groups[5] === 0xffff
+  ) {
+    return `::ffff:${groups[6] >> 8}.${groups[6] & 0xff}.${groups[7] >> 8}.${groups[7] & 0xff}`;
+  }
+
+  // RFC 5952 section 4.2 compresses the longest run of two or more zero
+  // groups, the first one on a tie.
+  let zerosStart = 0;
+  let zerosLength = 1;
+  for (let start = 0; start < 8; start++) {
+    let end = start;
+    while (groups[end] === 0) end++;
+    if (end - start > zerosLength) {
+      zerosStart = start;
+      zerosLength = end - start;
+    }
+  }
+  const hexGroups = groups.map((group) => group.toString(16));
+  return zerosLength > 1
+    ? `${hexGroups.slice(0, zerosStart).join(":")}::${hexGroups.slice(zerosStart + zerosLength).join(":")}`
+    : hexGroups.join(":");
+};
+
+/**
+ * Error returned when a string is not a {@link PhoneNumberE164}.
+ *
+ * @group String
+ */
+export interface PhoneNumberE164Error extends TypeError<"PhoneNumberE164"> {
+  readonly value: string;
+}
+
+/**
+ * International phone number in [ITU-T
+ * E.164](https://www.itu.int/rec/T-REC-E.164) format.
+ *
+ * PhoneNumberE164 accepts a `+` followed by 7 to 15 ASCII digits, the first of
+ * which is not zero, such as `+14155552671`. E.164 limits numbers to 15 digits,
+ * and no country code starts with zero. The 7-digit minimum admits the shortest
+ * numbering plans.
+ *
+ * The check is structural only. PhoneNumberE164 does not check country codes or
+ * national numbering plans, which are large and changing metadata, so a valid
+ * value is not necessarily an assigned number. It does not normalize either:
+ * spaces, hyphens, parentheses, a `00` international prefix, and extensions are
+ * rejected. Format user input to E.164 with a library such as libphonenumber
+ * before validating it.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   PhoneNumberE164,
+ * } from "@evolu/common";
+ *
+ * assertOk(PhoneNumberE164.fromUnknown("+14155552671"), "+14155552671");
+ *
+ * const invalid = PhoneNumberE164.fromUnknown("+1 415 555 2671");
+ * assertErr(invalid);
+ * assertEqual(invalid.error, {
+ *   type: "PhoneNumberE164",
+ *   value: "+1 415 555 2671",
+ * });
+ * ```
+ *
+ * @group String
+ */
+export const PhoneNumberE164 = /*#__PURE__*/ brand(
+  "PhoneNumberE164",
+  String,
+  (value: string) =>
+    /^\+[1-9]\d{6,14}$/u.test(value)
+      ? ok()
+      : err<PhoneNumberE164Error>({ type: "PhoneNumberE164", value }),
+  formatPhoneNumberE164Error,
+);
+export type PhoneNumberE164 = typeof PhoneNumberE164.Output;
+
+/**
+ * Error returned when a string is not a valid {@link Iban}.
+ *
+ * @group String
+ */
+export interface IbanError extends TypeError<"Iban"> {
+  readonly value: string;
+}
+
+/**
+ * International Bank Account Number in the electronic format of ISO 13616.
+ *
+ * Iban accepts two uppercase ASCII letters, two check digits from 02 to 98, and
+ * 11 to 30 uppercase ASCII letters and digits, 15 to 34 characters in total,
+ * and verifies the ISO 7064 MOD 97-10 checksum. Check digits 00, 01, and 99 are
+ * rejected even though they can pass the checksum, because they spell the same
+ * account as 97, 98, and 02, so every account has exactly one Iban.
+ *
+ * Iban does not normalize. Remove the spaces that split the paper format into
+ * groups of four characters and uppercase the text before validating it.
+ *
+ * Iban does not check the country code or the account length of each country.
+ * Countries join the SWIFT IBAN registry regularly, and a registry built into
+ * Iban would reject data synced from a client with a newer one.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, assertErr, assertOk, Iban } from "@evolu/common";
+ *
+ * const value = "GB82WEST12345698765432";
+ * assertOk(Iban.fromUnknown(value), value);
+ * assertErr(Iban.fromUnknown("GB82WEST12345698765433"));
+ *
+ * const paper = "gb82 west 1234 5698 7654 32";
+ * const invalid = Iban.fromUnknown(paper);
+ * assertErr(invalid);
+ * assertEqual(invalid.error, { type: "Iban", value: paper });
+ * assertOk(
+ *   Iban.fromUnknown(paper.replaceAll(" ", "").toUpperCase()),
+ *   value,
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const Iban = /*#__PURE__*/ brand(
+  "Iban",
+  String,
+  (value: string) => {
+    if (!/^[A-Z]{2}(?!00|01|99)\d{2}[A-Z0-9]{11,30}$/u.test(value)) {
+      return err<IbanError>({ type: "Iban", value });
+    }
+
+    // ISO 7064 MOD 97-10 reads the first four characters last and each letter
+    // as two digits (A = 10). Reducing after every character keeps the
+    // remainder a small integer, so no BigInt is needed.
+    let remainder = 0;
+    for (let index = 4; index < value.length + 4; index++) {
+      const code = value.charCodeAt(index % value.length);
+      remainder =
+        (code >= 65
+          ? remainder * 100 + code - 55
+          : remainder * 10 + code - 48) % 97;
+    }
+    return remainder === 1 ? ok() : err<IbanError>({ type: "Iban", value });
+  },
+  formatIbanError,
+);
+export type Iban = typeof Iban.Output;
 
 /**
  * Stable valid {@link Name} for tests and internal fixtures.
@@ -8211,6 +9368,121 @@ export const idToUuid = (value: Id): Uuid => {
   const hex = bytesToHex(idToIdBytes(value));
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as Uuid;
 };
+
+/**
+ * UUID versions defined by [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562).
+ *
+ * @group String
+ */
+export type UuidVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+/**
+ * Error returned when {@link uuidVersion} rejects a {@link Uuid}.
+ *
+ * @group String
+ */
+export interface UuidVersionError<
+  Version extends UuidVersion = UuidVersion,
+> extends TypeError<`UuidV${Version}`> {
+  readonly value: string;
+  readonly version: Version;
+}
+
+/**
+ * {@link Uuid} {@link Brand} requiring one RFC 9562 version.
+ *
+ * Accepts a UUID whose version digit is the given version and whose variant is
+ * the one RFC 9562 defines, so the Nil and Max UUIDs fail every version. The
+ * version must be one concrete numeric literal so different versions have
+ * distinct brands.
+ *
+ * Use {@link UuidV4} for random UUIDs and {@link UuidV7} for time-ordered UUIDs.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Uuid,
+ *   uuidVersion,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const UuidV1 = uuidVersion(1)(Uuid);
+ *
+ * const value = UuidV1.fromUnknown("c232ab00-9414-11ec-b3c8-9f6bdeced846");
+ * assertOk(value, "c232ab00-9414-11ec-b3c8-9f6bdeced846");
+ * assertType<
+ *   typeof value.value,
+ *   string & Brand<"Uuid"> & Brand<"UuidV1">
+ * >();
+ *
+ * assertErr(UuidV1.fromUnknown("0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d"));
+ * ```
+ *
+ * @group String
+ */
+export const uuidVersion =
+  <Version extends UuidVersion>(
+    version: ValidateBrandFactoryNumber<Version>,
+  ): BrandFactory<`UuidV${Version}`, Uuid, UuidVersionError<Version>> =>
+  (parent) => {
+    const name = `UuidV${version}` as `UuidV${Version}`;
+
+    return brand(
+      name,
+      parent,
+      // The parent Uuid proves the canonical layout, so the version digit and
+      // the first digit of the variant field are at fixed positions.
+      (value) =>
+        value.charAt(14) === `${version}` && "89ab".includes(value.charAt(19))
+          ? ok()
+          : err<UuidVersionError<Version>>({ type: name, value, version }),
+      formatUuidVersionError,
+    );
+  };
+
+/**
+ * A version 4 {@link Uuid}, made of random bits, as produced by
+ * `crypto.randomUUID()`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, UuidV4 } from "@evolu/common";
+ *
+ * const value = "20354d7a-e4fe-47af-8ff6-187bca92f3f9";
+ * assertOk(UuidV4.fromUnknown(value), value);
+ * assertErr(UuidV4.fromUnknown("0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d"));
+ * ```
+ *
+ * @group String
+ */
+export const UuidV4 = /*#__PURE__*/ uuidVersion(4)(Uuid);
+export type UuidV4 = typeof UuidV4.Output;
+
+/**
+ * A version 7 {@link Uuid}, ordered by its Unix timestamp in milliseconds.
+ *
+ * {@link idToUuid} converts an Id created by {@link createIdAsUuidv7} to a
+ * version 7 UUID.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, UuidV7 } from "@evolu/common";
+ *
+ * const value = "0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d";
+ * assertOk(UuidV7.fromUnknown(value), value);
+ * assertErr(UuidV7.fromUnknown("20354d7a-e4fe-47af-8ff6-187bca92f3f9"));
+ * ```
+ *
+ * @group String
+ */
+export const UuidV7 = /*#__PURE__*/ uuidVersion(7)(Uuid);
+export type UuidV7 = typeof UuidV7.Output;
 
 /**
  * Error returned when a string is not a canonical {@link Int64String}.
@@ -8727,6 +9999,76 @@ export const IntFromString = /*#__PURE__*/ transform(
       globalThis.Object.is(value, -0) ? "-0" : globalThis.String(value),
   },
   formatIntFromStringError,
+);
+
+/**
+ * Error returned when a string is not a decimal number.
+ *
+ * @group Number
+ */
+export interface FiniteNumberFromStringError extends TypeError<"FiniteNumberFromString"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms a decimal number string into a {@link FiniteNumber}.
+ *
+ * The string must consist of an optional minus sign, digits, an optional
+ * fraction, and an optional exponent, as in `-12.5e3`. It accepts every string
+ * that {@link IntFromString} accepts and the `String` text of every finite
+ * number. Whitespace, a leading plus sign, a leading or trailing decimal point,
+ * hexadecimal notation, `Infinity`, and `NaN` are rejected; the FiniteNumber
+ * constraint then rejects values that overflow, such as `1e400`.
+ *
+ * Decoding rounds to the nearest double, so `"0.1"` is not exactly one tenth
+ * and `"1e-400"` underflows to zero. Use {@link DecimalString} for exact
+ * decimals. Encoding uses `String`, except that `-0` encodes as `"-0"`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   FiniteNumberFromString,
+ * } from "@evolu/common";
+ *
+ * assertOk(FiniteNumberFromString.fromUnknown("-12.5"), -12.5);
+ * assertOk(FiniteNumberFromString.fromUnknown("1e3"), 1000);
+ * assertEqual(
+ *   FiniteNumberFromString.to(FiniteNumberFromString.orThrow("1.50")),
+ *   "1.5",
+ * );
+ *
+ * const invalid = FiniteNumberFromString.fromUnknown(".5");
+ * assertErr(invalid, { type: "FiniteNumberFromString", value: ".5" });
+ * assertEqual(
+ *   FiniteNumberFromString.formatError(invalid.error),
+ *   'The value ".5" is not a decimal number.',
+ * );
+ *
+ * assertErr(FiniteNumberFromString.fromUnknown("1e400"), {
+ *   type: "FiniteNumberFromString",
+ *   outputError: { type: "Finite", value: Infinity },
+ * });
+ * ```
+ *
+ * @group Number
+ */
+export const FiniteNumberFromString = /*#__PURE__*/ transform(
+  "FiniteNumberFromString",
+  String,
+  FiniteNumber,
+  {
+    from: (value: string): Result<number, FiniteNumberFromStringError> =>
+      /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(value)
+        ? ok(globalThis.Number(value))
+        : err({ type: "FiniteNumberFromString", value }),
+    to: (value: FiniteNumber) =>
+      globalThis.Object.is(value, -0) ? "-0" : globalThis.String(value),
+  },
+  formatFiniteNumberFromStringError,
 );
 
 /**
@@ -10096,6 +11438,278 @@ const copyArrayPrefix = (
 
   return output;
 };
+
+/**
+ * Error returned when {@link nonEmptyArray} rejects an empty array.
+ *
+ * @group Collection
+ */
+export interface NonEmptyArrayError extends TypeError<"NonEmptyArray"> {
+  readonly value: ReadonlyArray<unknown>;
+}
+
+/**
+ * Adds non-empty validation to an existing array Type.
+ *
+ * Narrows the Output to a {@link NonEmptyReadonlyArray} while preserving the
+ * parent Type's constraints and brands, so functions that require a non-empty
+ * array accept it without another check. Validation leaves the array unchanged.
+ * For strings, use {@link minLength}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   array,
+ *   firstInArray,
+ *   nonEmptyArray,
+ *   String,
+ * } from "@evolu/common";
+ *
+ * const Tags = nonEmptyArray(array(String));
+ *
+ * const tags = Tags.fromUnknown(["local-first", "offline"]);
+ * assertOk(tags, ["local-first", "offline"]);
+ * assertEqual(firstInArray(tags.value), "local-first");
+ *
+ * const invalid = Tags.fromUnknown([]);
+ * assertErr(invalid, { type: "NonEmptyArray", value: [] });
+ * assertEqual(
+ *   Tags.formatError(invalid.error),
+ *   "The value [] must contain at least one item.",
+ * );
+ * ```
+ *
+ * @group Collection
+ */
+export const nonEmptyArray = <
+  ParentType extends ConcreteTypeNode & {
+    readonly Output: ReadonlyArray<unknown>;
+  },
+>(
+  parent: ValidateBrandParent<"NonEmptyArray", ParentType>,
+): ReturnType<
+  typeof createType<
+    "NonEmptyArray",
+    ParentType,
+    ParentType["Output"] & NonEmptyReadonlyArray<ParentType["Output"][number]>,
+    NonEmptyArrayError
+  >
+> =>
+  createType<
+    "NonEmptyArray",
+    ParentType,
+    ParentType["Output"] & NonEmptyReadonlyArray<ParentType["Output"][number]>,
+    NonEmptyArrayError
+  >(
+    "NonEmptyArray",
+    parent,
+    (value) =>
+      value.length > 0
+        ? ok(
+            value as ParentType["Output"] &
+              NonEmptyReadonlyArray<ParentType["Output"][number]>,
+          )
+        : err({ type: "NonEmptyArray", value }),
+    formatNonEmptyArrayError,
+  );
+
+/**
+ * Error returned when {@link unique} finds equal items.
+ *
+ * `index` locates the first item equal to an earlier item, and `previousIndex`
+ * locates the earliest item it equals.
+ *
+ * @group Collection
+ */
+export interface UniqueError extends TypeError<"Unique"> {
+  readonly value: ReadonlyArray<Data>;
+  readonly index: number;
+  readonly previousIndex: number;
+}
+
+/**
+ * Array {@link Brand} whose items are all different.
+ *
+ * Items must be {@link Data}, as checked by {@link IsData}, so interfaces of Data
+ * are accepted. Items are compared with {@link eqData}. Primitives use
+ * `Object.is`, so `NaN` equals `NaN` while `0` and `-0` are different. Objects
+ * are compared by structure, so `{ a: 1, b: 2 }` equals `{ b: 2, a: 1 }` and
+ * two Sets with the same items are equal. Strings are compared without Unicode
+ * normalization; use {@link normalized} items when canonically equivalent text
+ * must count as equal.
+ *
+ * Validation keeps the array unchanged, including its order, so arrays with the
+ * same items in a different order remain different values. Use a {@link set} of
+ * primitives when order is irrelevant.
+ *
+ * Primitive items are checked in linear time. An object item is compared only
+ * with earlier items of the same kind and first-level contents, but many
+ * objects that differ only in nested values are compared pairwise. Bound
+ * untrusted arrays with {@link maxLength}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   array,
+ *   maxLength,
+ *   Number,
+ *   object,
+ *   String,
+ *   unique,
+ * } from "@evolu/common";
+ *
+ * const Tags = unique(maxLength(100)(array(String)));
+ *
+ * assertOk(Tags.fromUnknown(["local-first", "offline"]), [
+ *   "local-first",
+ *   "offline",
+ * ]);
+ *
+ * const invalid = Tags.fromUnknown(["a", "b", "a"]);
+ * assertErr(invalid, {
+ *   type: "Unique",
+ *   value: ["a", "b", "a"],
+ *   index: 2,
+ *   previousIndex: 0,
+ * });
+ * assertEqual(
+ *   Tags.formatError(invalid.error),
+ *   'The value ["a","b","a"] has equal items at indexes 0 and 2.',
+ * );
+ *
+ * const Points = unique(array(object({ x: Number, y: Number })));
+ *
+ * assertErr(
+ *   Points.fromUnknown([
+ *     { x: 1, y: 2 },
+ *     { y: 2, x: 1 },
+ *   ]),
+ * );
+ * ```
+ *
+ * @group Collection
+ */
+export const unique = <ParentType extends ConcreteTypeNode>(
+  parent: UniqueParent<ParentType>,
+): BrandType<ParentType, "Unique", UniqueError> =>
+  brand<"Unique", ParentType, UniqueError>(
+    "Unique",
+    parent,
+    (value) => {
+      // The parent signature proves an array of Data.
+      const items = value as ReadonlyArray<Data>;
+      const indexByPrimitive = new Map<unknown, number>();
+      const indexesByKey = new Map<string, Array<number>>();
+
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index];
+        let previousIndex: number | undefined;
+
+        if (typeof item === "object" && item !== null) {
+          // Items equal by eqData always get the same key, so only items with
+          // the same key are compared, and eqData decides on collisions. The
+          // key describes first-level contents, which keeps arrays of records,
+          // tuples, Sets, or Maps of the same size out of one quadratic bucket.
+          // Bytes are hashed, because describing each byte would make the key
+          // many times larger than the item. Arrays are read by index because
+          // Data accepts arrays with a custom or null prototype.
+          const kind = getObjectKind(item);
+          let key: string = kind;
+          if (kind === "Uint8Array") {
+            const bytes = item as Uint8Array;
+            // 32-bit FNV-1a.
+            let hash = 0x811c9dc5;
+            for (let index = 0; index < bytes.length; index++) {
+              hash = Math.imul(hash ^ bytes[index], 0x01000193);
+            }
+            key += `${bytes.length},${hash >>> 0}`;
+          } else if (kind === "Array") {
+            const elements = item as ReadonlyArray<Data>;
+            for (let index = 0; index < elements.length; index++) {
+              key += `,${getUniqueKeyPart(elements[index])}`;
+            }
+          } else if (kind === "Set") {
+            // eqData matches members regardless of order.
+            for (const part of Array.from(
+              item as ReadonlySet<Data>,
+              getUniqueKeyPart,
+            ).toSorted()) {
+              key += `,${part}`;
+            }
+          } else if (kind === "Map") {
+            for (const part of Array.from(
+              item as ReadonlyMap<Data, Data>,
+              ([entryKey, entryValue]) =>
+                `${getUniqueKeyPart(entryKey)}:${getUniqueKeyPart(entryValue)}`,
+            ).toSorted()) {
+              key += `,${part}`;
+            }
+          } else if (kind === "Date") {
+            key += globalThis.Date.prototype.getTime.call(item);
+          } else {
+            // Objects, including Unsupported ones that eqData compares by
+            // reference.
+            const record = item as ReadonlyRecord<string, Data>;
+            for (const name of globalThis.Object.keys(record).toSorted()) {
+              key += `,${name}:${getUniqueKeyPart(record[name])}`;
+            }
+          }
+          const indexes = indexesByKey.get(key);
+          previousIndex = indexes?.find((candidate) =>
+            eqData(items[candidate], item),
+          );
+
+          if (indexes === undefined) indexesByKey.set(key, [index]);
+          else if (previousIndex === undefined) indexes.push(index);
+        } else {
+          // Map keys use SameValueZero, which equates 0 and -0.
+          const key = globalThis.Object.is(item, -0) ? negativeZeroKey : item;
+          previousIndex = indexByPrimitive.get(key);
+
+          if (previousIndex === undefined) indexByPrimitive.set(key, index);
+        }
+
+        if (previousIndex !== undefined) {
+          return err({ type: "Unique", value: items, index, previousIndex });
+        }
+      }
+
+      return ok();
+    },
+    formatUniqueError,
+  );
+
+type UniqueParent<ParentType extends ConcreteTypeNode> = ValidateBrandParent<
+  "Unique",
+  ParentType
+> &
+  ([ParentType["Output"]] extends [ReadonlyArray<unknown>]
+    ? IsData<ParentType["Output"]> extends true
+      ? unknown
+      : UniqueParentError
+    : UniqueParentError);
+
+type UniqueParentError = CompileTimeError<
+  "Brand Factory",
+  "Parent Output must be an array of Data."
+>;
+
+const negativeZeroKey = /*#__PURE__*/ globalThis.Symbol();
+
+const getUniqueKeyPart = (value: Data): string =>
+  typeof value === "object" && value !== null
+    ? getObjectKind(value)
+    : globalThis.Object.is(value, -0)
+      ? "-0"
+      : `${typeof value}${globalThis.String(value)}`;
 
 /**
  * The homogeneous readonly-set {@link Type} returned by {@link set}.
@@ -12806,6 +14420,178 @@ const validateRecordEntries = (
         },
       });
 };
+
+/**
+ * Error returned when {@link minEntries} rejects a value.
+ *
+ * @group Objects
+ */
+export interface MinEntriesError<
+  Min extends number = number,
+> extends TypeError<`MinEntries${Min}`> {
+  readonly value: Readonly<Record<string, unknown>>;
+  readonly min: Min;
+}
+
+/**
+ * Minimum entry count {@link Brand} for {@link record} and {@link object} Outputs
+ * with at least `min` entries.
+ *
+ * Counts the own enumerable string keys of the Output, which are exactly the
+ * entries of a Record or Object Output. Absent optional properties are not
+ * counted. Array, typed array, DataView, Set, Map, ArrayBuffer, Date, and
+ * Function parents are rejected at compile time; use {@link minLength} for
+ * arrays.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   minEntries,
+ *   Number,
+ *   record,
+ *   String,
+ * } from "@evolu/common";
+ *
+ * const Scores = minEntries(1)(record(String, Number));
+ *
+ * assertOk(Scores.fromUnknown({ ada: 10 }), { ada: 10 });
+ *
+ * const invalid = Scores.fromUnknown({});
+ * assertErr(invalid, { type: "MinEntries1", value: {}, min: 1 });
+ * assertEqual(
+ *   Scores.formatError(invalid.error),
+ *   "The value {} does not meet the minimum entry count of 1.",
+ * );
+ * ```
+ *
+ * @group Objects
+ */
+export const minEntries =
+  <Min extends number>(min: ValidateBrandFactoryNumber<Min>) =>
+  <ParentType extends ConcreteTypeNode>(
+    parent: EntriesParent<`MinEntries${Min}`, ParentType>,
+  ): BrandType<ParentType, `MinEntries${Min}`, MinEntriesError<Min>> => {
+    const name = `MinEntries${min}` as `MinEntries${Min}`;
+
+    return brand<`MinEntries${Min}`, ParentType, MinEntriesError<Min>>(
+      name,
+      parent,
+      (value) => {
+        // The parent signature proves an object.
+        const entries = value as Readonly<Record<string, unknown>>;
+
+        return globalThis.Object.keys(entries).length >= min
+          ? ok()
+          : err({ type: name, value: entries, min });
+      },
+      formatMinEntriesError,
+    );
+  };
+
+/**
+ * Error returned when {@link maxEntries} rejects a value.
+ *
+ * @group Objects
+ */
+export interface MaxEntriesError<
+  Max extends number = number,
+> extends TypeError<`MaxEntries${Max}`> {
+  readonly value: Readonly<Record<string, unknown>>;
+  readonly max: Max;
+}
+
+/**
+ * Maximum entry count {@link Brand} for {@link record} and {@link object} Outputs
+ * with at most `max` entries.
+ *
+ * Counts entries like {@link minEntries}. The count is checked after the parent
+ * has validated every entry, so it does not limit the validation work for a
+ * large input.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   maxEntries,
+ *   record,
+ *   String,
+ * } from "@evolu/common";
+ *
+ * const Labels = maxEntries(2)(record(String, String));
+ *
+ * assertOk(Labels.fromUnknown({ en: "Hello", cs: "Ahoj" }), {
+ *   en: "Hello",
+ *   cs: "Ahoj",
+ * });
+ *
+ * const value = { en: "Hello", cs: "Ahoj", de: "Hallo" };
+ * const invalid = Labels.fromUnknown(value);
+ * assertErr(invalid, { type: "MaxEntries2", value, max: 2 });
+ * assertEqual(
+ *   Labels.formatError(invalid.error),
+ *   'The value {"en":"Hello","cs":"Ahoj","de":"Hallo"} exceeds the maximum entry count of 2.',
+ * );
+ * ```
+ *
+ * @group Objects
+ */
+export const maxEntries =
+  <Max extends number>(max: ValidateBrandFactoryNumber<Max>) =>
+  <ParentType extends ConcreteTypeNode>(
+    parent: EntriesParent<`MaxEntries${Max}`, ParentType>,
+  ): BrandType<ParentType, `MaxEntries${Max}`, MaxEntriesError<Max>> => {
+    const name = `MaxEntries${max}` as `MaxEntries${Max}`;
+
+    return brand<`MaxEntries${Max}`, ParentType, MaxEntriesError<Max>>(
+      name,
+      parent,
+      (value) => {
+        // The parent signature proves an object.
+        const entries = value as Readonly<Record<string, unknown>>;
+
+        return globalThis.Object.keys(entries).length <= max
+          ? ok()
+          : err({ type: name, value: entries, max });
+      },
+      formatMaxEntriesError,
+    );
+  };
+
+// Object.keys counts the indexes of arrays and typed arrays and none of the
+// entries of Sets and Maps, and ArrayBuffers, DataViews, Dates, Functions, and
+// primitives have no entries.
+type EntriesParent<
+  Name extends TypeName,
+  ParentType extends ConcreteTypeNode,
+> = ValidateBrandParent<Name, ParentType> &
+  ([ParentType["Output"]] extends [object]
+    ? [
+        Extract<
+          ParentType["Output"],
+          | ReadonlyArray<unknown>
+          | ReadonlySet<unknown>
+          | ReadonlyMap<unknown, unknown>
+          | globalThis.ArrayBuffer
+          | ArrayBufferView
+          | globalThis.Date
+          | globalThis.Function
+        >,
+      ] extends [never]
+      ? unknown
+      : EntriesParentError
+    : EntriesParentError);
+
+type EntriesParentError = CompileTimeError<
+  "Brand Factory",
+  "Entry counts require a Record or Object Output. Use minLength or maxLength for arrays."
+>;
 
 /**
  * An optional property used to construct an {@link object} Type.

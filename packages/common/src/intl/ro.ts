@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -147,6 +167,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu are eticheta de obiect așteptată ${safelyStringifyUnknownValue(error.expected)}.`;
 
+/** Formats a ValidDateError in Romanian. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Obiectul Date nu este valid.";
+
 /** Formats an InstanceOfError in Romanian. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -165,10 +189,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un șir canonic de dată și oră ISO.`;
 
+/** Formats a PlainDateIsoError in Romanian. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o dată calendaristică validă în formatul YYYY-MM-DD.`;
+
 /** Formats a DateIsoFromDateError in Romanian. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Obiectul Date nu poate fi reprezentat ca DateIso.";
+
+/** Formats a DateIsoFromRfc3339Error in Romanian. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o dată și oră RFC 3339 acceptată. Folosiți o valoare precum "2024-01-01T12:00:00Z".`;
 
 /** Formats a DecimalStringError in Romanian. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -224,11 +260,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie fără spații la început sau la sfârșit.`;
 
+/** Formats a WellFormedError in Romanian. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie un text Unicode bine format.`;
+
+/** Formats a NormalizedError in Romanian. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie în forma de normalizare Unicode ${error.form}.`;
+
 /** Formats a StartsWithError in Romanian. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să înceapă cu ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Romanian. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să se termine cu ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Romanian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -256,6 +308,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un șir Base64Url valid.`;
 
+/** Formats a Base64Error in Romanian. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un șir Base64 valid.`;
+
+/** Formats a HexError in Romanian. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un șir hexazecimal cu litere mici și un număr par de cifre.`;
+
 /** Formats a NameError in Romanian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un Name valid.`;
@@ -263,6 +323,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Romanian. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă de e-mail validă.`;
+
+/** Formats a HostnameError in Romanian. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un nume de gazdă valid cu litere mici.`;
+
+/** Formats an Ipv4AddressError in Romanian. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă IPv4 validă.`;
+
+/** Formats an Ipv6AddressError in Romanian. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă IPv6 canonică.`;
+
+/** Formats an Ipv6AddressFromStringError in Romanian. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă IPv6 validă.`;
+
+/** Formats a PhoneNumberE164Error in Romanian. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un număr de telefon în formatul E.164.`;
+
+/** Formats an IbanError in Romanian. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un IBAN valid scris cu majuscule și fără spații.`;
 
 /** Formats a MnemonicError in Romanian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -279,6 +371,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Romanian. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un UUID canonic cu litere mici.`;
+
+/** Formats a UuidVersionError in Romanian. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un UUID de versiunea ${error.version}.`;
 
 /** Formats a NonNegativeError in Romanian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -333,6 +431,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un întreg zecimal.`;
+
+/** Formats a FiniteNumberFromStringError in Romanian. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un număr zecimal.`;
 
 /** Formats a GreaterThanError in Romanian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -392,6 +496,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `Elementul tabloului de la indexul ${issue.index} nu este valid.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Romanian. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să conțină cel puțin un element.`;
+
+/** Formats a UniqueError in Romanian. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} are elemente egale la indexurile ${error.previousIndex} și ${error.index}.`;
 
 /** Formats a SetError in Romanian. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -476,6 +590,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Cheile Record ${safelyStringifyUnknownValue(issue.previousKey)} și ${safelyStringifyUnknownValue(issue.key)} se decodează la aceeași cheie ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Romanian. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu îndeplinește numărul minim de intrări de ${error.min}.`;
+
+/** Formats a MaxEntriesError in Romanian. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} depășește numărul maxim de intrări de ${error.max}.`;
 
 /** Formats an ObjectError in Romanian. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {

@@ -8,6 +8,7 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64Error,
   Base64UrlError,
   BooleanFromStringError,
   BetweenError,
@@ -19,19 +20,28 @@ import type {
   LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
+  DateIsoFromRfc3339Error,
   DecimalStringError,
   DiscriminatedUnionError,
   EmailError,
+  EndsWithError,
   EvoluTypeError,
   FiniteError,
+  FiniteNumberFromStringError,
   GreaterThanError,
   GreaterThanOrEqualToError,
+  HexError,
+  HostnameError,
+  IbanError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  Ipv4AddressError,
+  Ipv6AddressError,
+  Ipv6AddressFromStringError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -39,7 +49,9 @@ import type {
   LessThanOrEqualToError,
   LiteralError,
   MapError,
+  MaxEntriesError,
   MaxLengthError,
+  MinEntriesError,
   MinLengthError,
   MnemonicError,
   MultipleOfError,
@@ -47,16 +59,20 @@ import type {
   NegativeError,
   NameError,
   NeverError,
+  NonEmptyArrayError,
   NonNaNError,
   NonNegativeDecimalStringError,
   NonNegativeError,
   NonPositiveDecimalStringError,
   NonPositiveError,
+  NormalizedError,
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
   ObjectTagError,
   ObjectUnexpectedPrototypeError,
+  PhoneNumberE164Error,
+  PlainDateIsoError,
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
@@ -74,7 +90,11 @@ import type {
   TypeValueError,
   UInt64Error,
   UnionError,
+  UniqueError,
   UuidError,
+  UuidVersionError,
+  ValidDateError,
+  WellFormedError,
 } from "../Type.ts";
 
 const formatTypeOfError = (
@@ -153,6 +173,10 @@ export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
 ) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nema očekivanu oznaku objekta ${safelyStringifyUnknownValue(error.expected)}.`;
 
+/** Formats a ValidDateError in Croatian. */
+export const formatValidDateError: TypeErrorFormatter<ValidDateError> = () =>
+  "Date nije valjan.";
+
 /** Formats an InstanceOfError in Croatian. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   error,
@@ -171,10 +195,22 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije kanonski ISO niz znakova za datum i vrijeme.`;
 
+/** Formats a PlainDateIsoError in Croatian. */
+export const formatPlainDateIsoError: TypeErrorFormatter<PlainDateIsoError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani kalendarski datum u formatu YYYY-MM-DD.`;
+
 /** Formats a DateIsoFromDateError in Croatian. */
 export const formatDateIsoFromDateError: TypeErrorFormatter<
   DateIsoFromDateError
 > = () => "Date se ne može predstaviti kao DateIso.";
+
+/** Formats a DateIsoFromRfc3339Error in Croatian. */
+export const formatDateIsoFromRfc3339Error: TypeErrorFormatter<
+  DateIsoFromRfc3339Error
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije datum i vrijeme u podržanom formatu RFC 3339. Upotrijebite vrijednost poput "2024-01-01T12:00:00Z".`;
 
 /** Formats a DecimalStringError in Croatian. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -230,11 +266,27 @@ export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} ne smije imati razmake na početku ni na kraju.`;
 
+/** Formats a WellFormedError in Croatian. */
+export const formatWellFormedError: TypeErrorFormatter<WellFormedError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti ispravno oblikovan Unicode tekst.`;
+
+/** Formats a NormalizedError in Croatian. */
+export const formatNormalizedError: TypeErrorFormatter<NormalizedError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti u Unicode normalizacijskom obliku ${error.form}.`;
+
 /** Formats a StartsWithError in Croatian. */
 export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
   error,
 ) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora počinjati s ${safelyStringifyUnknownValue(error.prefix)}.`;
+
+/** Formats an EndsWithError in Croatian. */
+export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora završavati s ${safelyStringifyUnknownValue(error.suffix)}.`;
 
 /** Formats a MinLengthError in Croatian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
@@ -262,6 +314,14 @@ export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
 ) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani Base64Url niz znakova.`;
 
+/** Formats a Base64Error in Croatian. */
+export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani Base64 niz znakova.`;
+
+/** Formats a HexError in Croatian. */
+export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije heksadecimalni niz znakova napisan malim slovima s parnim brojem znamenaka.`;
+
 /** Formats a NameError in Croatian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani Name.`;
@@ -269,6 +329,38 @@ export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
 /** Formats an EmailError in Croatian. */
 export const formatEmailError: TypeErrorFormatter<EmailError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana adresa e-pošte.`;
+
+/** Formats a HostnameError in Croatian. */
+export const formatHostnameError: TypeErrorFormatter<HostnameError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjano ime hosta napisano malim slovima.`;
+
+/** Formats an Ipv4AddressError in Croatian. */
+export const formatIpv4AddressError: TypeErrorFormatter<Ipv4AddressError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana IPv4 adresa.`;
+
+/** Formats an Ipv6AddressError in Croatian. */
+export const formatIpv6AddressError: TypeErrorFormatter<Ipv6AddressError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije kanonska IPv6 adresa.`;
+
+/** Formats an Ipv6AddressFromStringError in Croatian. */
+export const formatIpv6AddressFromStringError: TypeErrorFormatter<
+  Ipv6AddressFromStringError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana IPv6 adresa.`;
+
+/** Formats a PhoneNumberE164Error in Croatian. */
+export const formatPhoneNumberE164Error: TypeErrorFormatter<
+  PhoneNumberE164Error
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije telefonski broj u formatu E.164.`;
+
+/** Formats an IbanError in Croatian. */
+export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani IBAN napisan velikim slovima bez razmaka.`;
 
 /** Formats a MnemonicError in Croatian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
@@ -285,6 +377,12 @@ export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
 /** Formats a UuidError in Croatian. */
 export const formatUuidError: TypeErrorFormatter<UuidError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije kanonski UUID napisan malim slovima.`;
+
+/** Formats a UuidVersionError in Croatian. */
+export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije UUID verzije ${error.version}.`;
 
 /** Formats a NonNegativeError in Croatian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -339,6 +437,12 @@ export const formatIntFromStringError: TypeErrorFormatter<
   IntFromStringError
 > = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije cijeli broj u dekadskom zapisu.`;
+
+/** Formats a FiniteNumberFromStringError in Croatian. */
+export const formatFiniteNumberFromStringError: TypeErrorFormatter<
+  FiniteNumberFromStringError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije broj u dekadskom zapisu.`;
 
 /** Formats a GreaterThanError in Croatian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
@@ -398,6 +502,16 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
       return `Element polja na indeksu ${issue.index} nije valjan.`;
   }
 };
+
+/** Formats a NonEmptyArrayError in Croatian. */
+export const formatNonEmptyArrayError: TypeErrorFormatter<
+  NonEmptyArrayError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora sadržavati barem jedan element.`;
+
+/** Formats a UniqueError in Croatian. */
+export const formatUniqueError: TypeErrorFormatter<UniqueError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} ima jednake elemente na indeksima ${error.previousIndex} i ${error.index}.`;
 
 /** Formats a SetError in Croatian. */
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
@@ -482,6 +596,18 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
       return `Ključevi Record-a ${safelyStringifyUnknownValue(issue.previousKey)} i ${safelyStringifyUnknownValue(issue.key)} dekodiraju se u isti ključ ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinEntriesError in Croatian. */
+export const formatMinEntriesError: TypeErrorFormatter<MinEntriesError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} ne zadovoljava najmanji broj unosa od ${error.min}.`;
+
+/** Formats a MaxEntriesError in Croatian. */
+export const formatMaxEntriesError: TypeErrorFormatter<MaxEntriesError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} premašuje najveći broj unosa od ${error.max}.`;
 
 /** Formats an ObjectError in Croatian. */
 export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
