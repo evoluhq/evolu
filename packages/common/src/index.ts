@@ -18,6 +18,7 @@ export * from "./Eq.ts";
 export * from "./Error.ts";
 export * from "./Fs.ts";
 export * from "./Function.ts";
+export * from "./Hash.ts";
 export * from "./Http.ts";
 export * from "./Identicon.ts";
 export * from "./LeakDetector.ts";

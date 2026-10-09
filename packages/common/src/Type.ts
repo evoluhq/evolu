@@ -463,6 +463,7 @@ import type { Brand } from "./Brand.ts";
 import type { RandomBytesDep } from "./Crypto.ts";
 import { eqData } from "./Eq.ts";
 import { identity, type Thunk } from "./Function.ts";
+import { fnv1a32 } from "./Hash.ts";
 import {
   createMutableRecord,
   getObjectKind,
@@ -11718,12 +11719,7 @@ export const unique = <ParentType extends ConcreteTypeNode>(
           let key: string = kind;
           if (kind === "Uint8Array") {
             const bytes = item as Uint8Array;
-            // 32-bit FNV-1a.
-            let hash = 0x811c9dc5;
-            for (let index = 0; index < bytes.length; index++) {
-              hash = Math.imul(hash ^ bytes[index], 0x01000193);
-            }
-            key += `${bytes.length},${hash >>> 0}`;
+            key += `${bytes.length},${fnv1a32(bytes)}`;
           } else if (kind === "Array") {
             const elements = item as ReadonlyArray<Data>;
             for (let index = 0; index < elements.length; index++) {

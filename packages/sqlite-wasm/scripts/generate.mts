@@ -54,6 +54,7 @@
 
 import {
   err,
+  fnv1a32,
   isNonEmptyArray,
   mapArray,
   ok,
@@ -1486,13 +1487,11 @@ const emitConstants = (pinned: WasmBuild, enumJson: WasmEnumJson): string => {
 const buildHash = ({ enumJson, exports }: WasmBuild): number => {
   const encoder = new TextEncoder();
   const nul = Uint8Array.of(0);
-  return fnv1a32([
-    enumJson,
-    nul,
-    ...Object.keys(exports)
-      .toSorted()
-      .flatMap((name) => [encoder.encode(name), nul]),
-  ]);
+  let hash = fnv1a32(nul, fnv1a32(enumJson));
+  for (const name of Object.keys(exports).toSorted()) {
+    hash = fnv1a32(nul, fnv1a32(encoder.encode(name), hash));
+  }
+  return hash;
 };
 
 /**
@@ -1764,13 +1763,6 @@ const formatTypeScript = async (path: URL, source: string): Promise<string> =>
     ...(await resolveConfig(path)),
     filepath: path.pathname,
   });
-
-const fnv1a32 = (chunks: Iterable<Uint8Array>): number => {
-  let hash = 0x811c9dc5;
-  for (const chunk of chunks)
-    for (const value of chunk) hash = Math.imul(hash ^ value, 0x01000193);
-  return hash >>> 0;
-};
 
 const hex = (value: number): string =>
   `0x${value.toString(16).padStart(8, "0")}`;

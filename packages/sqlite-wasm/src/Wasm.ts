@@ -141,6 +141,7 @@ import {
   constVoid,
   disposable,
   err,
+  fnv1a32,
   isNonEmptyArray,
   mapArray,
   mapObject,
@@ -355,13 +356,9 @@ export const createSqliteWasm =
     const instance = instantiated.value;
 
     // 5. Build guard.
-    let hash = 0x811c9dc5;
-    const hashBytes = (bytes: Uint8Array): void => {
-      for (const byte of bytes) hash = Math.imul(hash ^ byte, 0x01000193);
-    };
     const enumJsonPtr = callExport(instance, "sqlite3__wasm_enum_json");
     const heap = getHeapU8();
-    hashBytes(
+    let actualHash = fnv1a32(
       enumJsonPtr === 0
         ? Uint8Array.of(0)
         : heap.subarray(enumJsonPtr, heap.indexOf(0, enumJsonPtr) + 1),
@@ -370,8 +367,7 @@ export const createSqliteWasm =
     for (const name of WebAssembly.Module.exports(module)
       .map((entry) => entry.name)
       .toSorted())
-      hashBytes(encoder.encode(`${name}\0`));
-    const actualHash = hash >>> 0;
+      actualHash = fnv1a32(encoder.encode(`${name}\0`), actualHash);
     if (actualHash !== sqliteWasmBuildHash)
       return err({
         type: "SqliteWasmBuildMismatch",
