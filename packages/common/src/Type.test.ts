@@ -8645,13 +8645,13 @@ describe("Text casing", () => {
     assertOk(UppercasedString.fromUnknown(shout), shout);
     assertOk(LowercasedString.fromUnknown(quiet), quiet);
     // @ts-expect-error A lowercase initial does not satisfy Capitalize<string>.
-    const _title: CapitalizedString = "hello";
+    void ("hello" satisfies CapitalizedString);
     // @ts-expect-error An uppercase initial does not satisfy Uncapitalize<string>.
-    const _sentence: UncapitalizedString = "Hello";
+    void ("Hello" satisfies UncapitalizedString);
     // @ts-expect-error A lowercase character does not satisfy Uppercase<string>.
-    const _shout: UppercasedString = "HELLo";
+    void ("HELLo" satisfies UppercasedString);
     // @ts-expect-error An uppercase character does not satisfy Lowercase<string>.
-    const _quiet: LowercasedString = "hellO";
+    void ("hellO" satisfies LowercasedString);
   });
 
   it("infers converted literals, unions, and runtime strings", () => {
@@ -8709,9 +8709,9 @@ describe("Text casing", () => {
     assertType<Uppercase<"ß">, "SS">();
     assertType<Lowercase<"İ">, "i\u0307">();
     // @ts-expect-error A lowercase astral initial does not satisfy Capitalize<string>.
-    const _lowerAstral: CapitalizedString = "𐐨x";
+    void ("𐐨x" satisfies CapitalizedString);
     // @ts-expect-error An uppercase astral initial does not satisfy Uncapitalize<string>.
-    const _upperAstral: UncapitalizedString = "𐐀x";
+    void ("𐐀x" satisfies UncapitalizedString);
     assertEqual(capitalize("𐐨x"), "𐐀x");
     assertEqual(uncapitalize("𐐀X"), "𐐨X");
     assertEqual(capitalize("ßabc"), "SSabc");
@@ -8795,13 +8795,13 @@ describe("Text casing", () => {
     assertEqual(upper, "SS");
     assertEqual(lower, "i\u0307");
     // @ts-expect-error Capitalization does not retain the MaxLength1 brand.
-    const _capital: typeof sharpS = capital;
+    void (capital satisfies typeof sharpS);
     // @ts-expect-error Uncapitalization does not retain the MaxLength1 brand.
-    const _uncapital: typeof dottedI = uncapital;
+    void (uncapital satisfies typeof dottedI);
     // @ts-expect-error Uppercasing does not retain the MaxLength1 brand.
-    const _upper: typeof sharpS = upper;
+    void (upper satisfies typeof sharpS);
     // @ts-expect-error Lowercasing does not retain the MaxLength1 brand.
-    const _lower: typeof dottedI = lower;
+    void (lower satisfies typeof dottedI);
   });
 
   it("preserves a parent's decoding and encoding", () => {
@@ -9748,10 +9748,9 @@ describe("BrandFactory", () => {
           // @ts-expect-error ConstantCaseIdentifier does not prove the CamelCaseIdentifier brand.
           camelCaseToSnakeCase(constant);
           // @ts-expect-error Conversion does not retain the input's MaxLength3 brand.
-          const _short: string & Brand<"MaxLength3"> = constant;
+          void (constant satisfies string & Brand<"MaxLength3">);
           // @ts-expect-error Uppercase text does not prove the ConstantCaseIdentifier grammar.
-          const _constant: ConstantCaseIdentifier =
-            "HTTP PORT" as Uppercase<string>;
+          void ("HTTP PORT" as Uppercase<string> satisfies ConstantCaseIdentifier);
         });
       });
     });
@@ -11765,9 +11764,9 @@ describe("BrandFactory", () => {
             // @ts-expect-error A template pattern does not identify one Id brand.
             createId<typeof _patternedBrand>(deps);
             // @ts-expect-error A raw Id has no table identity.
-            const _todoId: Id & Brand<"Todo"> = random;
+            void (random satisfies Id & Brand<"Todo">);
             // @ts-expect-error A Todo Id must not satisfy a User Id API.
-            const _userId: Id & Brand<"User"> = todoRandom;
+            void (todoRandom satisfies Id & Brand<"User">);
           });
         });
 
@@ -11816,7 +11815,7 @@ describe("BrandFactory", () => {
 
           void (() => {
             // @ts-expect-error A Todo Id must not satisfy a User Id API.
-            const _userId: Id & Brand<"User"> = value;
+            void (value satisfies Id & Brand<"User">);
           });
         });
 
@@ -12436,7 +12435,7 @@ describe("BrandFactory", () => {
             NonNegativeInt & Brand<"LessThanOrEqualTo65535"> & Brand<"Port">
           >();
           // @ts-expect-error A number does not carry the Port brand.
-          const _port: Port = 4000;
+          void (4000 satisfies Port);
         });
 
         it("rejects values outside the port domain", () => {
