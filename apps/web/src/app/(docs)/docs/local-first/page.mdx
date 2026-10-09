@@ -71,7 +71,11 @@ npm install @evolu/common @evolu/web
   instructions](https://github.com/margelo/react-native-quick-crypto#installation)
   for proper native dependency configuration. See the [react-expo
   example](https://github.com/evoluhq/evolu/tree/main/examples/react-expo) for
-  required polyfills.
+  required polyfills. Enable SQLCipher with `["expo-sqlite", { "useSQLCipher":
+  true }]` in your app config's plugins, or, in an app that doesn't run Expo's
+  prebuild, with the build properties
+  [Privacy](/docs/privacy#encryption-on-the-device) lists. Otherwise, the
+  database is stored unencrypted.
 </ConditionalPlatformAlert>
 
 ## Define schema
@@ -470,7 +474,7 @@ const activeTodos = createQuery((db) =>
 
 ## Protect data
 
-**Privacy is essential for Evolu**, so all data are **encrypted** with an encryption key derived from a cryptographically strong secret (which can be represented as a [mnemonic](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)) or provided by an external hardware device.
+**Privacy is essential for Evolu**, so all synced data are **encrypted end-to-end** with an encryption key derived from a cryptographically strong secret (which can be represented as a [mnemonic](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)) or provided by an external hardware device. The database on the device is encrypted too: on the web and in Electron always, in React Native and Expo once SQLCipher is enabled, as [Privacy](/docs/privacy#encryption-on-the-device) describes.
 
 `evolu.appOwner` is the owner passed to `createEvolu`; it is available synchronously. For the owner created from a secret in this guide, `mnemonic` can be shown in your recovery UI.
 
