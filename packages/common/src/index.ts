@@ -1,5 +1,5 @@
 /**
- * TypeScript library and local-first platform.
+ * Local-first platform and TypeScript library.
  *
  * @module
  */
@@ -40,7 +40,6 @@ export * from "./Result.ts";
 export * from "./Schedule.ts";
 export * from "./Set.ts";
 export * from "./Sqlite.ts";
-export type { StandardSchemaV1 } from "@standard-schema/spec";
 export * from "./Store.ts";
 export * from "./String.ts";
 export * from "./Task.ts";
@@ -51,79 +50,7 @@ export * from "./Types.ts";
 export * from "./WebSocket.ts";
 export * from "./Worker.ts";
 
-// Local-first essentials.
-export type {
-  DatabaseHeldError,
-  UnsupportedDbVersionError,
-} from "./local-first/Db.ts";
-export {
-  AppName,
-  createEvolu,
-  maxMutationSize,
-  testAppName,
-} from "./local-first/Evolu.ts";
-export type {
-  AppNameError,
-  Evolu,
-  EvoluConfig,
-  EvoluDeps,
-  EvoluError,
-  UnuseOwner,
-} from "./local-first/Evolu.ts";
 export * from "./local-first/Owner.ts";
-export type { SyncOwner } from "./local-first/Owner.ts";
-export {
-  evoluJsonArrayFrom,
-  evoluJsonBuildObject,
-  evoluJsonObjectFrom,
-  getJsonObjectArgs,
-  kyselySql,
-  type InferRow,
-  type KyselyNotNull,
-  type Query,
-  type QueryRows,
-  type Row,
-} from "./local-first/Query.ts";
-export {
-  createQueryBuilder,
-  QuarantineOrigin,
-  QuarantineReason,
-  testEvoluSchema,
-  testLocalOnlyEvoluSchema,
-  TestProjectId,
-  testProjectId,
-  TestTodoId,
-  testTodoId,
-} from "./local-first/Schema.ts";
-export type {
-  AnyStandardSchemaV1,
-  EvoluSchema,
-  InsertValues,
-  Mutation,
-  MutationKind,
-  MutationOptions,
-  MutationValues,
-  NullableColumnsToOptional,
-  OptionalColumnKeys,
-  RequiredColumnKeys,
-  TableSchema,
-  TestEvoluSchema,
-  UpdateValues,
-  UpsertValues,
-} from "./local-first/Schema.ts";
-export type {
-  // NetworkError,
-  // PaymentRequiredError,
-  // ServerError,
-  SyncState,
-} from "./local-first/Shared.ts";
-export {
-  Timestamp,
-  timestampBytesToTimestamp,
-  timestampToTimestampBytes,
-} from "./local-first/Timestamp.ts";
-export type {
-  TimestampBytes,
-  TimestampDriftError,
-  TimestampError,
-} from "./local-first/Timestamp.ts";
+// The local-first prelude is a list of explicit re-exports, so it lives in its
+// own module, where a clashing name is a compile error (TS2308).
+export * from "./local-first/Prelude.ts";

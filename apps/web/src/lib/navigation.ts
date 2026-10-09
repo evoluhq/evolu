@@ -12,6 +12,28 @@ export const navigation: Array<NavGroup> = [
     links: [{ title: "Overview", href: "/docs" }],
   },
   {
+    title: "Local-first",
+    links: [
+      { title: "Getting started", href: "/docs/local-first" },
+      { title: "Playgrounds", href: "/docs/playgrounds" },
+      { title: "Examples", href: "/docs/examples" },
+      {
+        title: "Owners",
+        href: "/docs/api-reference/common/local-first/Owner",
+      },
+      { title: "Schema", href: "/docs/schema" },
+      { title: "Relay", href: "/docs/relay" },
+      { title: "Time travel", href: "/docs/time-travel" },
+      { title: "Indexes", href: "/docs/indexes" },
+      {
+        title: "Protocol",
+        href: "/docs/api-reference/common/local-first/Protocol",
+      },
+      { title: "Privacy", href: "/docs/privacy" },
+      { title: "FAQ", href: "/docs/faq" },
+    ],
+  },
+  {
     title: "Library",
     links: [
       { title: "Getting started", href: "/docs/library" },
@@ -36,28 +58,6 @@ export const navigation: Array<NavGroup> = [
       { title: "Conventions", href: "/docs/conventions" },
       { title: "Testing", href: "/docs/testing" },
       { title: "Assert", href: "/docs/api-reference/common/Assert" },
-    ],
-  },
-  {
-    title: "Local-first",
-    links: [
-      { title: "Getting started", href: "/docs/local-first" },
-      { title: "Playgrounds", href: "/docs/playgrounds" },
-      { title: "Examples", href: "/docs/examples" },
-      {
-        title: "Owners",
-        href: "/docs/api-reference/common/local-first/Owner",
-      },
-      { title: "Schema", href: "/docs/schema" },
-      { title: "Relay", href: "/docs/relay" },
-      { title: "Time travel", href: "/docs/time-travel" },
-      { title: "Indexes", href: "/docs/indexes" },
-      {
-        title: "Protocol",
-        href: "/docs/api-reference/common/local-first/Protocol",
-      },
-      { title: "Privacy", href: "/docs/privacy" },
-      { title: "FAQ", href: "/docs/faq" },
     ],
   },
   {

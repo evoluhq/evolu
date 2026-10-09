@@ -6,23 +6,21 @@ import {
   useMotionTemplate,
   useMotionValue,
 } from "motion/react";
+import clsx from "clsx";
+import Link from "next/link";
 
 import { GridPattern } from "@/components/GridPattern";
 import {
   IconArrowsSplit2,
-  IconBrandJavascript,
-  IconBrandOpenSource,
+  IconBook,
   IconBrandTypescript,
-  IconCode,
-  IconDevices,
+  IconBug,
+  IconEye,
   IconFeather,
   IconFilter,
-  IconLayersIntersect2,
-  IconLivePhoto,
   IconPackage,
   type IconProps,
   IconShieldLock,
-  IconSql,
   IconSubtask,
   IconTrash,
 } from "@tabler/icons-react";
@@ -30,6 +28,7 @@ import {
 interface Feature {
   name: string;
   description: string;
+  href: string;
   icon: React.ComponentType<IconProps>;
 }
 
@@ -97,142 +96,39 @@ const patterns: Array<Pattern> = [
       [1, 1],
     ],
   },
-  {
-    y: 6,
-    x: 12,
-    squares: [
-      [1, 4],
-      [-1, 2],
-    ],
-  },
-  { y: -14, x: -8, squares: [[0, 2]] },
-  {
-    y: 20,
-    x: 6,
-    squares: [
-      [1, 1],
-      [0, 3],
-    ],
-  },
-  {
-    y: 4,
-    x: -12,
-    squares: [
-      [-1, 3],
-      [1, 2],
-    ],
-  },
-  {
-    y: -8,
-    x: 14,
-    squares: [
-      [0, 4],
-      [1, 1],
-    ],
-  },
-  { y: 18, x: -4, squares: [[1, 3]] },
-  {
-    y: 10,
-    x: 8,
-    squares: [
-      [-1, 1],
-      [0, 2],
-    ],
-  },
-  {
-    y: -4,
-    x: -6,
-    squares: [
-      [1, 2],
-      [0, 4],
-    ],
-  },
 ];
 
 const features: Array<Feature> = [
   {
-    name: "Standard library",
-    description: "A tree-shakable TypeScript library that fits in your head.",
-    icon: IconBrandTypescript,
-  },
-  {
-    name: "Type",
-    description: "Runtime types, typed errors and formatters. All branded.",
-    icon: IconFilter,
-  },
-  {
-    name: "Task",
-    description: "Structured concurrency built on JavaScript Promises.",
-    icon: IconSubtask,
-  },
-  {
-    name: "Lightweight",
-    description: "Runtime types, structured concurrency, logging: 7.7 kB.",
+    name: "Simple",
+    description:
+      "Data lives in SQLite tables you query with type-safe SQL. No complex abstractions.",
+    href: "/docs/local-first#query-data",
     icon: IconFeather,
   },
   {
-    name: "Batteries included",
-    description: "Helpers for Array, Object, etc. Eq, Order, Time, and more.",
-    icon: IconPackage,
+    name: "Strict",
+    description:
+      "All constraints are branded types. Broken invariants throw before invalid state spreads.",
+    href: "/docs/api-reference/common/Type",
+    icon: IconFilter,
   },
   {
-    name: "Result",
-    description: "Typed errors. No try/catch. Exhaustive error handling.",
-    icon: IconArrowsSplit2,
-  },
-  {
-    name: "Universal",
-    description: "Web, React Native, Electron, Solid, Vue, Svelte, and more.",
-    icon: IconDevices,
-  },
-  {
-    name: "Idiomatic JavaScript",
-    description: "Minimal abstractions, native stack traces, debug-friendly.",
-    icon: IconBrandJavascript,
-  },
-  {
-    name: "Private by design",
-    description: "E2E encrypted sync and backup. Post-quantum safe.",
+    name: "Secure",
+    description: "End-to-end encrypted and post-quantum resistant by default.",
+    href: "/docs/privacy#post-quantum-resistance",
     icon: IconShieldLock,
   },
   {
-    name: "Automatic cleanup",
-    description: "Resource management with the new JS using keyword.",
-    icon: IconTrash,
-  },
-  {
-    name: "Reactive SQLite",
-    description: "Local-first with reactive queries and React Suspense.",
-    icon: IconSql,
-  },
-  {
-    name: "Developer experience",
-    description: "Readable source code, tests, DX-first API.",
-    icon: IconCode,
-  },
-  {
-    name: "Real-time",
-    description: "WebSocket by default, other transports possible.",
-    icon: IconLivePhoto,
-  },
-  {
-    name: "Type-safe SQL",
-    description: "Typed database schema and SQL with Kysely.",
-    icon: IconBrandTypescript,
-  },
-  {
-    name: "CRDT",
-    description: "Merging changes without conflicts. History preserved.",
-    icon: IconLayersIntersect2,
-  },
-  {
-    name: "Free",
-    description: "MIT License, self-hostable Relay server.",
-    icon: IconBrandOpenSource,
+    name: "Honest",
+    description:
+      "Limits are documented: what relays can see, and the trade-offs behind design decisions.",
+    href: "/docs/privacy#relay-blindness-by-design",
+    icon: IconEye,
   },
 ];
 
-export const FeatureIcon = ({
+const FeatureIcon = ({
   icon: Icon,
 }: {
   icon: Feature["icon"];
@@ -309,14 +205,14 @@ const Feature = ({ feature, index }: { feature: Feature; index: number }) => {
         mouseY={mouseY}
       />
       <div className="absolute inset-0 rounded-2xl ring-1 ring-zinc-900/7.5 ring-inset group-hover:ring-zinc-900/10 dark:ring-white/10 dark:group-hover:ring-white/20" />
-      <div className="relative rounded-2xl p-4 pt-4 pb-4">
+      <div className="relative w-full rounded-2xl p-4 pt-4 pb-4">
         <div className="mb-2 flex items-center gap-3">
           <FeatureIcon icon={feature.icon} />
           <h3 className="text-sm leading-7 font-semibold text-zinc-900 dark:text-white">
-            <span>
+            <Link href={feature.href}>
               <span className="absolute inset-0 rounded-2xl" />
               {feature.name}
-            </span>
+            </Link>
           </h3>
         </div>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
@@ -327,12 +223,91 @@ const Feature = ({ feature, index }: { feature: Feature; index: number }) => {
   );
 };
 
-export const Features = (): React.ReactElement => (
-  <div className="xl:max-w-none">
-    <div className="not-prose mt-4 grid grid-cols-1 gap-2 pt-10 sm:grid-cols-2 lg:gap-8 xl:grid-cols-4">
-      {features.map((feature, index) => (
-        <Feature key={feature.name} feature={feature} index={index} />
-      ))}
-    </div>
+const FeatureGrid = ({
+  features,
+  columns,
+}: {
+  features: ReadonlyArray<Feature>;
+  columns: 2 | 4;
+}): React.ReactElement => (
+  <div
+    className={clsx(
+      "not-prose grid grid-cols-1 gap-2 sm:grid-cols-2 lg:gap-8",
+      columns === 4 && "xl:grid-cols-4",
+    )}
+  >
+    {features.map((feature, index) => (
+      <Feature key={feature.name} feature={feature} index={index} />
+    ))}
   </div>
+);
+
+export const Features = (): React.ReactElement => (
+  <FeatureGrid features={features} columns={4} />
+);
+
+/** Evolu Library features. The bundle size comes from the bundle snapshot. */
+export const LibraryFeatures = ({
+  bundleSize,
+}: {
+  bundleSize: string;
+}): React.ReactElement => (
+  <FeatureGrid
+    columns={2}
+    features={[
+      {
+        name: "Result",
+        description: "Typed errors. No try/catch. Exhaustive error handling.",
+        href: "/docs/api-reference/common/Result",
+        icon: IconArrowsSplit2,
+      },
+      {
+        name: "Type",
+        description:
+          "Runtime types with typed errors and formatters. All constraints are branded.",
+        href: "/docs/api-reference/common/Type",
+        icon: IconBrandTypescript,
+      },
+      {
+        name: "Task",
+        description:
+          "Structured concurrency with dependency injection. Plain async functions, no generators.",
+        href: "/docs/api-reference/common/Task",
+        icon: IconSubtask,
+      },
+      {
+        name: "Batteries included",
+        description:
+          "Helpers for Array, Object, Set, String, Eq, Order, Time, and more.",
+        href: "/docs/library",
+        icon: IconPackage,
+      },
+      {
+        name: "Automatic cleanup",
+        description: "Resource management with the JavaScript using keyword.",
+        href: "/docs/resource-management",
+        icon: IconTrash,
+      },
+      {
+        name: "Assertions",
+        description:
+          "Invariants types can't express are asserted at runtime. Use them in your tests too.",
+        href: "/docs/api-reference/common/Assert",
+        icon: IconBug,
+      },
+      {
+        name: "Conventions",
+        description:
+          "One documented style for names, errors, and dependencies, so every module reads the same.",
+        href: "/docs/conventions",
+        icon: IconBook,
+      },
+      {
+        name: "Lightweight",
+        description: `Tree-shakable, with few dependencies. Types, Tasks, and logging in ${bundleSize}.`,
+        href: "/docs/library",
+        icon: IconFeather,
+      },
+    ]}
+  />
 );

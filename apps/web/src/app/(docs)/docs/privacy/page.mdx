@@ -9,27 +9,31 @@ Privacy is fundamental to local-first software, and Evolu takes it seriously. Un
 
 ## End-to-end encryption by default
 
-Everything in Evolu is encrypted end-to-end. This means:
+All data Evolu syncs is encrypted end-to-end. This means:
 
-- Data is stored in encrypted SQLite on the device
 - Data is always encrypted when it leaves the device
 - The Evolu Relay receives only encrypted data
 - Only devices with the correct encryption keys can decrypt the data
 - Even if someone intercepts the data in transit or gains access to the relay, they see only meaningless encrypted bytes
 
-The encryption happens automatically—developers don't need to configure it, and users don't need to think about it.
+## Encryption on the device
+
+- **Web and Electron** (React, Svelte, Vue, and vanilla JS with `@evolu/web`): encrypted. `@evolu/sqlite-wasm` encrypts every page of the database and its rollback journal in SQLCipher 4's format as the `sqlcipher` scheme of SQLite3 Multiple Ciphers writes it, with AES-256-CBC and HMAC-SHA512.
+- **React Native and Expo**: encrypted with SQLCipher only when the app enables it in the `expo-sqlite` config plugin with `"useSQLCipher": true`, as the [react-expo example](https://github.com/evoluhq/evolu/tree/main/examples/react-expo) does in its `app.json`. Without it, `expo-sqlite` builds plain SQLite, which ignores the key, so the database is stored unencrypted. Evolu doesn't check for it. In a React Native app that doesn't run Expo's prebuild, set what the plugin would write yourself: `expo.sqlite.useSQLCipher=true` in `android/gradle.properties` and `"expo.sqlite.useSQLCipher": "true"` in `ios/Podfile.properties.json`.
+
+With the `memoryOnly` option, the database is kept in memory and nothing is stored on the device.
 
 ## API design prevents data leaks
 
 Evolu's API is designed to prevent developers from accidentally leaking sensitive data:
 
 - **No public data options**: There is no API to mark data as "public" or "unencrypted"
-- **No configuration required**: Developers cannot disable encryption or create security vulnerabilities through misconfiguration
+- **Can't be disabled**: No option turns off end-to-end encryption. Only the database on the device needs setup, in React Native and Expo, as [described above](#encryption-on-the-device)
 - **Explicit plaintext export**: `exportDatabase` returns the whole local database as a plain, unencrypted SQLite file, so users can open their data in any SQLite tool. Apps should treat that file as sensitive
 
 ## Traffic analysis protection
 
-To prevent traffic analysis attacks, Evolu uses message padding (PADMÉ)—a [technique](https://lbarman.ch/blog/padme/) that pads binary messages to obscure their actual size. Combined with end-to-end encryption, this ensures that traffic analysis cannot reveal information about data or usage patterns.
+To prevent traffic analysis attacks, Evolu uses message padding (PADMÉ)—a [technique](https://lbarman.ch/blog/padme/) that pads binary messages to obscure their actual size. Combined with end-to-end encryption, message sizes don't reveal the data. Timestamps and NodeIds still reveal activity, as described below.
 
 ## Relay blindness by design
 
@@ -37,10 +41,14 @@ The Evolu Relay is completely blind to user data. What the relay sees:
 
 - **OwnerId**: A unique identifier for the data owner (but not who that owner is)
 - **Timestamps**: When changes occurred (for synchronization ordering)
+- **NodeId**: Every timestamp includes a random ID of the database that wrote the change. It's the same for every owner the database writes changes for, so a relay can link those owners, even across IP addresses
 - **Encrypted binary blobs**: The actual data, completely encrypted and padded to obscure size
+- **Write key**: A token that authorizes writes for an owner. By default, it's the same on every relay the owner uses
 - **IP addresses**: Network addresses of connecting clients (standard for any network service unless using Tor or similar privacy networks)
 
-The relay functions purely as a message buffer for synchronization and backup—it stores and forwards encrypted messages without any ability to decrypt, analyze, or understand them.
+The relay functions purely as a message buffer for synchronization and backup—it stores and forwards encrypted messages without any ability to decrypt them.
+
+The relay stores what it sees in a plain SQLite file. The changes are already encrypted end-to-end, and the relay needs the rest to sync.
 
 ## Timestamp metadata
 
@@ -57,7 +65,7 @@ If maximum privacy is required (e.g., hiding interaction cadence), an applicatio
 1. Write changes immediately to a local‑only table
 2. Periodically and randomly flush messages to sync tables
 
-- **Trade-off:** It breaks real-time collaboration.
+The trade-off is that collaboration is no longer real-time.
 
 ## Post-quantum resistance
 
@@ -77,9 +85,9 @@ Each owner's keys are derived from its owner secret with SLIP-21 (HMAC-SHA512):
 - **Encryption key**: the 256-bit key that encrypts the owner's changes
 - **Write key**: a token relays check before accepting changes; it controls who can write, not who can read
 
-Because the derivation is deterministic and the OwnerId is public, an attacker doesn't need to search 256-bit encryption keys. Anyone holding an owner's encrypted data and OwnerId can test guesses of the owner secret offline. The entropy of the owner secret therefore sets the security of everything derived from it.
-
 ### How much entropy is enough
+
+Since every key is derived from the owner secret, an owner's keys are only as strong as that secret: an attacker can test guesses offline against the public OwnerId.
 
 `createOwnerSecret` generates 32 random bytes, shown to users as a 24-word mnemonic. Against a quantum computer, that leaves about 128 bits of security, which matches NIST's highest post-quantum category (at least as hard as breaking AES-256). NIST still accepts its lowest category (AES-128) because Grover's algorithm parallelizes poorly, but Evolu targets the highest because local-first data may need to stay private for decades.
 

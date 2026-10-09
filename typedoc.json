@@ -8,6 +8,7 @@
     "entryPoints": ["src/**/*.ts"],
     "exclude": [
       "src/**/index.ts",
+      "src/local-first/Prelude.ts",
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
       "src/**/_test.ts",
