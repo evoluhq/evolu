@@ -1,8 +1,11 @@
 import {
+  assertEqual,
+  assertInstanceOf,
   constVoid,
   createRun,
   id,
   ok,
+  testStubGlobal,
   type CreateSqliteDriver,
   type EvoluDeps,
   type SqliteRow,
@@ -13,9 +16,12 @@ import {
   createOwnerWebSocketTransport,
   testAppOwner,
 } from "@evolu/common/local-first";
+import { installPolyfills } from "@evolu/common/polyfills";
 import { DatabaseSync } from "node:sqlite";
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import { createEvoluDeps } from "./shared.ts";
+
+installPolyfills();
 
 /** Resolves once the deps' worker has connected and published sync state. */
 const waitForSyncState = (deps: EvoluDeps): Promise<void> =>
@@ -45,14 +51,15 @@ describe("createEvoluDeps", () => {
     await waitForSyncState(second);
   });
 
-  it("starts another shared worker after the running one panics", async (t) => {
-    // The in-process worker reports its panic by throwing from a microtask.
-    const panicked = Promise.withResolvers<void>();
-    process.setUncaughtExceptionCaptureCallback(() => {
-      panicked.resolve();
-    });
-    t.after(() => {
-      process.setUncaughtExceptionCaptureCallback(null);
+  it("starts another shared worker after the running one panics", async () => {
+    const reported = Promise.withResolvers<unknown>();
+    using _errorUtils = testStubGlobal("ErrorUtils", {
+      getGlobalHandler: () => null,
+      setGlobalHandler:
+        mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
+      reportError: (error: unknown) => {
+        reported.resolve(error);
+      },
     });
     const createSqliteDriver: CreateSqliteDriver = () => () => {
       const db = new DatabaseSync(":memory:");
@@ -96,7 +103,12 @@ describe("createEvoluDeps", () => {
       ownerId: testAppOwner.id,
     });
     evolu.useOwner(testAppOwner, [transport, transport]);
-    await panicked.promise;
+    const defect = await reported.promise;
+    assertInstanceOf(defect, Error);
+    assertEqual(
+      defect.message,
+      "resourceKeys must not contain lookup duplicates.",
+    );
 
     // Deps connected to the failed worker would never get sync state.
     using second = createDeps();

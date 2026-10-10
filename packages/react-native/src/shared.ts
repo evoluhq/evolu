@@ -6,7 +6,6 @@ import {
   createMessageChannel,
   createMessagePort,
   createRandomBytes,
-  createRun,
   createSharedWorker,
   createWebSocket,
   createWorker,
@@ -31,6 +30,7 @@ import {
   startDbWorker,
 } from "@evolu/common/local-first";
 import { lockManager } from "./LockManager.ts";
+import { createRun } from "./Task.ts";
 
 /**
  * The in-process SharedWorker, one per JS runtime as a web SharedWorker is one
