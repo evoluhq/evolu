@@ -109,7 +109,7 @@ const features: Array<Feature> = [
   {
     name: "Strict",
     description:
-      "All constraints are branded types. Broken invariants throw before invalid state spreads.",
+      "Every constraint shows in its type, as a brand or a narrowed type. Broken invariants throw before invalid state spreads.",
     href: "/docs/api-reference/common/Type",
     icon: IconFilter,
   },
@@ -264,7 +264,7 @@ export const LibraryFeatures = ({
       {
         name: "Type",
         description:
-          "Runtime types with typed errors and formatters. All constraints are branded.",
+          "Runtime types with typed errors and formatters. Every constraint shows in its type.",
         href: "/docs/api-reference/common/Type",
         icon: IconBrandTypescript,
       },

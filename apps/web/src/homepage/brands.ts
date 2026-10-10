@@ -1,6 +1,6 @@
 import { Age, assertType, type Brand } from "@evolu/common";
 
-// Every constraint a Type checks is a brand, so its type says what was checked.
+// Every constraint a Type checks shows in its type, here as brands.
 assertType<
   Age,
   number &

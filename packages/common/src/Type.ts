@@ -11,7 +11,8 @@
  *
  * Evolu Type is designed to make correct code the easiest code to write:
  *
- * - Predefined constraints add a {@link Brand} to their Output.
+ * - Predefined constraints add a {@link Brand} to their Output, or narrow it to a
+ *   TypeScript type such as `Capitalize<string>`.
  * - Invalid declarations produce readable {@link CompileTimeError} types when the
  *   compiler can detect them.
  * - Evolu Type uses runtime {@link assert | assertions} to detect bugs that
