@@ -1,7 +1,7 @@
 <script lang="ts">
   import * as Evolu from "@evolu/common";
   import { syncStateToOwnerSyncStatus } from "@evolu/common/local-first";
-  import { appOwnerState, queryState } from "@evolu/svelte";
+  import { queryState } from "@evolu/svelte";
   import {
     evolu,
     evoluError,
@@ -11,8 +11,6 @@
   } from "./evolu";
 
   const allTodos = queryState(evolu, () => todosQuery);
-
-  const appOwner = appOwnerState(evolu);
 
   const { insert, update } = evolu;
 
@@ -240,14 +238,14 @@
           {showMnemonic ? "Hide" : "Show"} Mnemonic
         </button>
 
-        {#if showMnemonic && appOwner.current?.mnemonic}
+        {#if showMnemonic && evolu.appOwner.mnemonic}
           <div class="mnemonic-display">
             <label class="mnemonic-label" for="mnemonic-textarea">
               Your Mnemonic (keep this safe!)
             </label>
             <textarea
               id="mnemonic-textarea"
-              value={appOwner.current.mnemonic}
+              value={evolu.appOwner.mnemonic}
               readonly
               rows="3"
               class="mnemonic-textarea"

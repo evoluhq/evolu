@@ -4,11 +4,9 @@
  */
 
 import type {
-  AppOwner,
   Evolu,
   EvoluDeps,
   EvoluSchema,
-  InferRow,
   Query,
   QueryRows,
   Row,
@@ -17,7 +15,6 @@ import { createEvoluDeps } from "@evolu/web";
 
 // Svelte's declaration generation loses createEvoluDeps' return type here.
 // Keep the explicit public type so consumers do not receive any.
-// oxlint-disable-next-line typescript/no-unsafe-assignment
 export const evoluSvelteDeps: EvoluDeps = /*#__PURE__*/ createEvoluDeps();
 
 /**
@@ -55,11 +52,7 @@ export const evoluSvelteDeps: EvoluDeps = /*#__PURE__*/ createEvoluDeps();
  * // use allTodosState.rows in further calculations / UI
  * ```
  */
-export const queryState = <
-  R extends Row,
-  Schema extends EvoluSchema,
-  MappedRow = InferRow<Query<Schema, R>>,
->(
+export const queryState = <R extends Row, Schema extends EvoluSchema>(
   evolu: Evolu<Schema>,
   /**
    * Can be a normal query or a derived query.
@@ -68,29 +61,14 @@ export const queryState = <
    * will re-trigger the load/subscription based on the new query.
    */
   observedQuery: () => Query<Schema, R> | undefined,
-  options?: {
-    /**
-     * This is a little helper so that you can map the results instead of using
-     * a $derive operation.
-     *
-     * @param row
-     */
-    mapping?: (row: R) => MappedRow;
-  },
-): { readonly rows: Array<MappedRow> } => {
+): { readonly rows: QueryRows<R> } => {
   {
-    // writing to this variable - svelte's compiler will track it
-    let writableState: Array<MappedRow> = $state([]);
+    // Evolu replaces rows and never mutates them, so raw state keeps them
+    // unproxied. Proxies would cost work and the identity of unchanged rows.
+    let writableState: QueryRows<R> = $state.raw([]);
 
     const updateState = (rows: QueryRows<R>): void => {
-      if (options?.mapping) {
-        // re-assigning because somehow typescript thinks its still nullable here
-        // remove again once no issue anymore
-        const mapper = options.mapping;
-        writableState = rows.map((row) => mapper(row));
-      }
-
-      writableState = rows as Array<MappedRow>;
+      writableState = rows;
     };
 
     $effect(() => {
@@ -116,43 +94,6 @@ export const queryState = <
     return {
       // Svelte reactivity: it needs to be a getter
       get rows() {
-        return writableState;
-      },
-    };
-  }
-};
-
-/**
- * Get the {@link AppOwner} promise that resolves when available.
- *
- * ### Example
- *
- * ```ts
- * import { appOwnerState } from "@evolu/svelte";
- *
- * const owner = appOwnerState(evolu);
- *
- * // use owner.current in your Svelte templates
- * // it will be undefined initially and set once the promise resolves
- * ```
- */
-export const appOwnerState = <Schema extends EvoluSchema>(
-  evolu: Evolu<Schema>,
-): {
-  readonly current: AppOwner | undefined;
-} => {
-  {
-    // writing to this variable - svelte's compiler will track it
-    let writableState = $state<AppOwner | undefined>(undefined);
-
-    $effect(() => {
-      // TODO: Review, it was promise, it isn't anymore.
-      writableState = evolu.appOwner;
-    });
-
-    return {
-      // Svelte reactivity: it needs to be a getter
-      get current() {
         return writableState;
       },
     };
