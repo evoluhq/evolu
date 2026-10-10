@@ -108,7 +108,9 @@ export const queryState = <R extends Row, Schema extends EvoluSchema>(
   });
 
   return {
-    // Svelte reactivity: it needs to be a getter
+    // Each read of `rows` reads the state, so templates and effects track it.
+    // A plain property would hold only the initial rows. A getter rather than
+    // a function follows how Svelte exposes reactive state.
     get rows() {
       return writableState;
     },
