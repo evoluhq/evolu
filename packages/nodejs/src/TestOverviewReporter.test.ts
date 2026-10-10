@@ -239,6 +239,164 @@ describe("testOverviewReporter", () => {
     );
   });
 
+  it("does not fail a file for a failing todo", async () => {
+    const cause = new Error("Not implemented.");
+    const error = Object.assign(new Error("Not implemented.", { cause }), {
+      cause,
+    });
+    const file = "packages/common/src/Todo.test.ts";
+    const output = await collectReporterOutput([
+      {
+        type: "test:fail",
+        data: {
+          details: {
+            duration_ms: 1,
+            error,
+            type: "test",
+          },
+          file: resolve(file),
+          name: "fails as a todo",
+          nesting: 0,
+          testNumber: 1,
+          todo: true,
+        },
+      },
+      createFileSummaryEvent({
+        durationMs: 2,
+        file: resolve(file),
+        success: true,
+        tests: 1,
+      }),
+    ]);
+
+    assertTrue(
+      output.includes(`Test files:
+
+✔ ${file} (1 test) 2ms
+
+`),
+    );
+  });
+
+  it("credits a test defined in a helper to the file that ran it", async () => {
+    const cause = new Error("Expected Ada.");
+    const error = Object.assign(new Error("Expected Ada.", { cause }), {
+      cause,
+    });
+    // A test's file is the module that called test(), not the test file.
+    const file = "packages/common/src/UsesHelper.test.ts";
+    const helperFile = resolve("packages/common/src/helper.ts");
+    const output = await collectReporterOutput([
+      {
+        type: "test:stdout",
+        data: { file, message: "Output of the test file.\n" },
+      },
+      {
+        type: "test:fail",
+        data: {
+          details: {
+            duration_ms: 1,
+            error,
+            type: "test",
+          },
+          file: helperFile,
+          name: "fails in a helper",
+          nesting: 0,
+          testNumber: 1,
+        },
+      },
+      createFileSummaryEvent({
+        durationMs: 3,
+        file: resolve(file),
+        success: false,
+        tests: 1,
+      }),
+    ]);
+
+    assertTrue(
+      output.includes(`Output of failed test files:
+
+✖ ${file}
+  Output of the test file.
+
+Test files:
+
+✖ ${file} (1 test) 3ms
+
+`),
+    );
+    assertFalse(output.includes(relative(process.cwd(), helperFile)));
+  });
+
+  it("lists a file run through a symlink once", async () => {
+    const cause = new Error("test failed");
+    const error = Object.assign(new Error("test failed", { cause }), { cause });
+    // Results of tests resolve symlinks, while the summary and the file's own
+    // result keep the path given on the command line.
+    const file = "packages/common/linked/ExitCode.test.ts";
+    const realFile = resolve("packages/common/src/ExitCode.test.ts");
+    const output = await collectReporterOutput([
+      {
+        type: "test:pass",
+        data: {
+          details: { duration_ms: 1, type: "test" },
+          file: realFile,
+          name: "passes",
+          nesting: 0,
+          testNumber: 1,
+        },
+      },
+      createFileSummaryEvent({
+        durationMs: 3,
+        file: resolve(file),
+        success: true,
+        tests: 1,
+      }),
+      {
+        type: "test:fail",
+        data: {
+          details: {
+            duration_ms: 40,
+            error,
+            type: "test",
+          },
+          file: resolve(file),
+          name: file,
+          nesting: 0,
+          testNumber: 2,
+        },
+      },
+    ]);
+
+    assertTrue(
+      output.includes(`Test files:
+
+✖ ${file} (1 test) 3ms
+
+`),
+    );
+    assertFalse(output.includes(relative(process.cwd(), realFile)));
+  });
+
+  it("lists no files when tests run without isolation", async () => {
+    // Without process isolation, Node.js reports neither file summaries nor
+    // results of files.
+    const output = await collectReporterOutput([
+      {
+        type: "test:pass",
+        data: {
+          details: { duration_ms: 1, type: "test" },
+          file: resolve("packages/common/src/Passing.test.ts"),
+          name: "passes",
+          nesting: 0,
+          testNumber: 1,
+        },
+      },
+    ]);
+
+    assertFalse(output.includes("Test files:"));
+  });
+
   it("prints output of failed test files", async () => {
     const cause = new Error("test failed");
     const error = Object.assign(new Error("test failed", { cause }), {

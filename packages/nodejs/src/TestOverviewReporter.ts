@@ -49,12 +49,17 @@ const testOverviewReporter = async function* (
 
       // File summaries do not cover every file: a file that defines no tests,
       // fails to load, or exits early reports no summary, and a file that exits
-      // with a nonzero code reports its failure after a successful summary. A
-      // file's own result comes after the file exits, so its last result has
-      // the file's duration.
+      // with a nonzero code reports its failure after a successful summary.
+      // Node.js then reports a result for the file itself, named after the
+      // file, after the file exits, so it has the file's duration. Results of
+      // tests are not counted: their file is the module that called test(),
+      // such as a helper, resolved through symlinks, and a failing todo does
+      // not fail its file. A failed summary covers failing tests.
       if (
         (event.type === "test:pass" || event.type === "test:fail") &&
-        event.data.file !== undefined
+        event.data.file !== undefined &&
+        event.data.nesting === 0 &&
+        resolve(event.data.name) === resolve(event.data.file)
       ) {
         const file = resolve(event.data.file);
         resultDurationByFile.set(file, event.data.details.duration_ms);
@@ -72,7 +77,9 @@ const testOverviewReporter = async function* (
       }
 
       if (event.type === "test:summary" && event.data.file !== undefined) {
-        summaryByFile.set(resolve(event.data.file), event.data);
+        const file = resolve(event.data.file);
+        summaryByFile.set(file, event.data);
+        if (!event.data.success) failedFiles.add(file);
       }
 
       if (event.type === "test:coverage" || event.type === "test:diagnostic") {
@@ -103,15 +110,12 @@ const testOverviewReporter = async function* (
   }
 
   const testFiles = [
-    ...Array.from(
-      summaryByFile,
-      ([file, { counts, duration_ms, success }]) => ({
-        durationMs: duration_ms,
-        file,
-        passed: success && !failedFiles.has(file),
-        tests: `${counts.tests} ${counts.tests === 1 ? "test" : "tests"}`,
-      }),
-    ),
+    ...Array.from(summaryByFile, ([file, { counts, duration_ms }]) => ({
+      durationMs: duration_ms,
+      file,
+      passed: !failedFiles.has(file),
+      tests: `${counts.tests} ${counts.tests === 1 ? "test" : "tests"}`,
+    })),
     ...Array.from(resultDurationByFile)
       .filter(([file]) => !summaryByFile.has(file))
       .map(([file, durationMs]) => ({
