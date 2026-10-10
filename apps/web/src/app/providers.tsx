@@ -8,7 +8,9 @@ import { useEffect } from "react";
 // second press, on load, or after an automatic OS switch, the override is
 // cleared so the site follows the system again. People press the toggle
 // because the page looks wrong right now, so a dark override made during the
-// day should not keep the site dark the next morning. This deliberately differs
+// day is cleared once the site is open while the OS is dark, such as after the
+// evening switch. If it isn't open then, as with a tab closed overnight, the
+// override still shows the next morning. This deliberately differs
 // from https://lea.verou.me/blog/2026/dark-mode-toggles/, which keeps the
 // override until the next press.
 const ThemeWatcher = () => {
