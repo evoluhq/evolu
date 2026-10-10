@@ -1,5 +1,24 @@
 # @evolu/web
 
+## 3.5.1
+
+### Patch Changes
+
+- Updated dependencies [e803b34]
+- Updated dependencies [88840c2]
+- Updated dependencies [88840c2]
+- Updated dependencies [87f0678]
+- Updated dependencies [ea707cc]
+- Updated dependencies [74cc737]
+- Updated dependencies [fbdb9a4]
+- Updated dependencies [e803b34]
+- Updated dependencies [b599e0d]
+- Updated dependencies [c3fa5c7]
+- Updated dependencies [c3fa5c7]
+- Updated dependencies [74cc737]
+  - @evolu/common@8.20.0
+  - @evolu/sqlite-wasm@3.53.4-build2
+
 ## 3.5.0
 
 ### Minor Changes
