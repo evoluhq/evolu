@@ -23,6 +23,13 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
       },
     );
     if (options?.mode === "encrypted") {
+      // Plain SQLite ignores PRAGMA key and would store the database
+      // unencrypted, and it returns no row for this SQLCipher pragma.
+      if (db.getFirstSync("PRAGMA cipher_version") == null) {
+        throw new Error(
+          `Evolu can't encrypt the database because expo-sqlite was built without SQLCipher. Add ["expo-sqlite", { "useSQLCipher": true }] to the plugins in your app config and run npx expo prebuild --clean, or, in an app that doesn't run Expo's prebuild, set the build properties listed at https://www.evolu.dev/docs/privacy#encryption-on-the-device and run pod install in the ios directory, then rebuild the native app.`,
+        );
+      }
       db.execSync(`PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'"`);
     }
 
