@@ -23,11 +23,11 @@ import {
   createEncryptedSqliteDatabase,
   createSqliteDatabase,
   createSqliteWasm,
-  OpfsName,
   openSahPool,
   sqliteWasmUrl,
   SqliteVfsPath,
   type deriveLegacySqliteKey,
+  type OpfsName,
   type OpfsRootDep,
   type SahPool,
   type SahPoolError,
@@ -228,8 +228,8 @@ const openDatabasePool = (
   name: Name,
   options?: Pick<SahPoolOptions, "heldTimeout">,
 ): Task<SahPool, SahPoolError, OpfsRootDep & SqliteWasmDep> =>
-  // A Name is non-empty and URL-safe, so `.<name>` always passes.
-  openSahPool({ ...options, directory: [OpfsName.orThrow(`.${name}`)] });
+  // A Name is non-empty and URL-safe, so `.<name>` is an OpfsName.
+  openSahPool({ ...options, directory: [`.${name}` as OpfsName] });
 
 // The path SQLite's opfs-sahpool gave `file:evolu1.db`, which @evolu/web 3
 // opened.

@@ -278,9 +278,9 @@ export const encryptWithXChaCha20Poly1305 =
     encryptionKey: EncryptionKey,
   ): [XChaCha20Poly1305Ciphertext, Entropy24] => {
     const nonce = deps.randomBytes.create(xChaCha20Poly1305NonceLength);
-    const ciphertext = XChaCha20Poly1305Ciphertext.orThrow(
-      xchacha20poly1305(encryptionKey, nonce).encrypt(plaintext),
-    );
+    const ciphertext = xchacha20poly1305(encryptionKey, nonce).encrypt(
+      plaintext,
+    ) as XChaCha20Poly1305Ciphertext;
     return [ciphertext, nonce];
   };
 

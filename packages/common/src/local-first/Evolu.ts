@@ -39,7 +39,7 @@ import {
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.ts";
 import { createRefCountByKey } from "../RefCount.ts";
 import { err, ok } from "../Result.ts";
-import { isNonEmptySet } from "../Set.ts";
+import { createSet, isNonEmptySet } from "../Set.ts";
 import {
   SqliteBoolean,
   sqliteBooleanToBoolean,
@@ -54,7 +54,7 @@ import {
   createIdFromString,
   type ExtractTyped,
   Id,
-  Name,
+  type Name,
   PositiveInt,
   type TypeError,
   UrlSafeString,
@@ -345,9 +345,7 @@ export const AppName = /*#__PURE__*/ brand(
   "AppName",
   UrlSafeString,
   (value) =>
-    value.length >= 1 && value.length <= 41
-      ? ok()
-      : err<AppNameError>({ type: "AppName", value }),
+    value.length <= 41 ? ok() : err<AppNameError>({ type: "AppName", value }),
   (error) =>
     `The value ${JSON.stringify(error.value)} is not between 1 and 41 characters.`,
 );
@@ -1026,33 +1024,14 @@ export const maxMutationSize: PositiveInt =
   /*#__PURE__*/ PositiveInt.orThrow(640_000);
 
 /** Measures a mutation as {@link maxMutationSize} describes. */
-const measureMutation = (
-  table: string,
-  values: ReadonlyRecord<string, SqliteValue | undefined>,
-): PositiveInt => {
-  const columns = createMutableRecord<string, SqliteValue>();
-  for (const [column, value] of objectToEntries(values)) {
-    if (value !== undefined && column !== "id" && column !== "isDeleted") {
-      columns[column] = value;
-    }
-  }
-
+const measureMutation = (change: DbChange): PositiveInt => {
   // Measuring with the protocol's encoding keeps the limit and the message size
   // from disagreeing. A separate formula would save the tab about 3 KB
   // compressed, but it would be a second encoding to keep in sync, and it
   // would have to overcount.
   const buffer = createBuffer();
-  encodeDbChange(buffer, {
-    // Every timestamp and ID takes 16 bytes, and the flags always take one.
-    timestamp: createTimestamp(),
-    change: DbChange.orThrow({
-      table,
-      id: mutationSizeId,
-      values: columns,
-      isInsert: true,
-      isDelete: null,
-    }),
-  });
+  // Every timestamp takes 16 bytes.
+  encodeDbChange(buffer, { timestamp: createTimestamp(), change });
   return buffer.getLength() as PositiveInt;
 };
 
@@ -1417,7 +1396,8 @@ export const createEvolu =
       transports = [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
     } = config;
 
-    const name = Name.orThrow(`${appName}-${createIdFromString(appOwner.id)}`);
+    // An AppName has at most 41 characters and an Id 22, so this is a Name.
+    const name = `${appName}-${createIdFromString(appOwner.id)}` as Name;
     const console = run.deps.console.child(name).child("Evolu");
     console.info("createEvolu");
 
@@ -1663,11 +1643,7 @@ export const createEvolu =
     const queryBatch = disposer.use(
       createMicrotaskBatch<Query>((queries) => {
         if (disposed) return;
-        const dedupedQueries = new Set(queries);
-        assert(
-          isNonEmptySet(dedupedQueries),
-          "Expected non-empty query batch.",
-        );
+        const dedupedQueries = createSet(queries);
         console.debug("queryBatch", { queryCount: dedupedQueries.size });
         postMessage({ type: "Query", queries: dedupedQueries });
       }),
@@ -1740,7 +1716,7 @@ export const createEvolu =
         //
         // Local-only tables never sync, so they have no limit.
         if (!isLocalOnlyTable(dbChange.table)) {
-          const size = measureMutation(dbChange.table, dbChange.values);
+          const size = measureMutation(dbChange);
           assert(
             size <= maxMutationSize,
             `The mutation of table '${dbChange.table}' is ${size} bytes, over maxMutationSize (${maxMutationSize}). Bound the Types of its columns or check it with evolu.getMutationSize.`,
@@ -1854,11 +1830,30 @@ export const createEvolu =
           update: createMutation("update"),
           upsert: createMutation("upsert"),
 
-          getMutationSize: (table, values) =>
-            measureMutation(
-              String(table),
+          getMutationSize: (table, values) => {
+            const columns = createMutableRecord<string, SqliteValue>();
+            for (const [column, value] of objectToEntries(
               values as ReadonlyRecord<string, SqliteValue | undefined>,
-            ),
+            )) {
+              if (
+                value !== undefined &&
+                column !== "id" &&
+                column !== "isDeleted"
+              ) {
+                columns[column] = value;
+              }
+            }
+            return measureMutation(
+              DbChange.orThrow({
+                table: String(table),
+                // Every ID takes 16 bytes, and the flags always take one.
+                id: mutationSizeId,
+                values: columns,
+                isInsert: true,
+                isDelete: null,
+              }),
+            );
+          },
 
           loadQuery,
           loadQueries: <Q extends Queries<S>>(

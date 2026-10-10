@@ -450,6 +450,32 @@ test("findLowerBound", async () => {
   );
 });
 
+test("findLowerBound throws for damaged skiplist counts", async () => {
+  await using setup = await setupSqliteAndStorage();
+  const { sqlite, storage } = setup;
+
+  const timestamps = Array.from({ length: 10 }, (_, i) =>
+    timestampToTimestampBytes(createTimestamp({ millis: (i + 1) as Millis })),
+  );
+  for (const t of timestamps) {
+    storage.insertTimestamp(testAppOwnerIdBytes, t, "append");
+  }
+  // A damaged database can count a found timestamp zero times.
+  sqlite.exec(sql`update evolu_timestamp set c = 0;`);
+
+  const error = assertThrowsInstanceOf(
+    () =>
+      storage.findLowerBound(
+        testAppOwnerIdBytes,
+        zeroNonNegativeInt,
+        NonNegativeInt.orThrow(10),
+        timestamps[3],
+      ),
+    Error,
+  );
+  assertEqual(error.cause, { type: "Positive", value: 0 });
+});
+
 test("deleteOwner deletes the owner's timestamps and usage", async () => {
   await using setup = await setupSqliteAndStorage();
   const { sqlite, storage } = setup;

@@ -736,9 +736,9 @@ import type { Schedule, ScheduleStep } from "./Schedule.ts";
 import { emptySet } from "./Set.ts";
 import {
   createTime,
-  PositiveMillis,
   testCreateTime,
   type Millis,
+  type PositiveMillis,
   type PositiveDuration,
   type Time,
   type TimeDep,
@@ -748,7 +748,6 @@ import {
   createId,
   type InferType,
   maxPositiveInt,
-  NonNegativeInt,
   object,
   onePositiveInt,
   PositiveInt,
@@ -757,7 +756,9 @@ import {
   typed,
   Unknown,
   UnknownResult,
+  zeroNonNegativeInt,
   type Id,
+  type NonNegativeInt,
   type ObjectType,
   type RecordType,
   type Typed,
@@ -4093,8 +4094,8 @@ export const retry =
 
       const [output, delay] = next.value;
       onRetry?.({ error, attempt, output, delay });
-      attempt = PositiveInt.orThrow(increment(attempt));
-      if (delay > 0) await run.ok(sleep(PositiveMillis.orThrow(delay)));
+      attempt = increment(attempt) as PositiveInt;
+      if (delay > 0) await run.ok(sleep(delay as PositiveMillis));
     }
   };
 
@@ -4257,8 +4258,8 @@ export const repeat =
 
       const [output, delay] = next.value;
       onRepeat?.({ value: result.value, attempt, output, delay });
-      attempt = PositiveInt.orThrow(increment(attempt));
-      if (delay > 0) await run.ok(sleep(PositiveMillis.orThrow(delay)));
+      attempt = increment(attempt) as PositiveInt;
+      if (delay > 0) await run.ok(sleep(delay as PositiveMillis));
     }
   };
 
@@ -4452,8 +4453,6 @@ export const race =
     InferTasksDeps<TTasks>
   > =>
   async (run) => {
-    assertNonEmptyReadonlyArray(tasks);
-
     let firstResult: InferTasksResult<TTasks> | undefined;
 
     await run(
@@ -4748,7 +4747,7 @@ export const each =
     options: TaskCollectionOptions = {},
   ): Task<void, never, InferTasksDeps<TTasks>> =>
   async (run) => {
-    // Guard against hanging on an empty array.
+    // The type proves it non-empty, but a wrongly cast empty array would hang.
     assertNonEmptyReadonlyArray(tasks);
 
     const parked = new Promise<never>(constVoid);
@@ -5817,8 +5816,10 @@ export const createSemaphore = (
   } = {},
 ): Semaphore => {
   const isGreedy = policy === "greedy";
+  // Permit counts are checked although typed, because a wrongly cast count
+  // would make takes hang or silently raise the limit.
   let permits = PositiveInt.orThrow(initialPermits);
-  let taken = NonNegativeInt.orThrow(0);
+  let taken = zeroNonNegativeInt;
 
   const waiters = new Set<{
     readonly permits: PositiveInt;
@@ -5836,7 +5837,8 @@ export const createSemaphore = (
     requested: PositiveInt,
     leakDetector: LeakDetector,
   ): SemaphorePermit => {
-    taken = NonNegativeInt.orThrow(taken + requested);
+    // Every caller checks hasFreePermits first.
+    taken = (taken + requested) as NonNegativeInt;
     let released = false;
     const handle = {};
 
@@ -5844,7 +5846,8 @@ export const createSemaphore = (
       if (released) return false;
       released = true;
       leakDetector.untrack(handle);
-      taken = NonNegativeInt.orThrow(taken - requested);
+      // A permit releases once what its grant added.
+      taken = (taken - requested) as NonNegativeInt;
       releaseWaiters();
       return true;
     };
@@ -5935,9 +5938,9 @@ export const createSemaphore = (
       permits,
       taken,
       waiters: Array.from(waiters, ({ permits }) => ({ permits })),
-      available: NonNegativeInt.orThrow(
-        !isGreedy && waiters.size > 0 ? 0 : Math.max(0, permits - taken),
-      ),
+      available: (!isGreedy && waiters.size > 0
+        ? 0
+        : Math.max(0, permits - taken)) as NonNegativeInt,
     }),
     isIdle,
   };

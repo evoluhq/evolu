@@ -337,11 +337,11 @@ export const testCreateTime = (options?: {
 
           const timeout = pending.get(earliestId)!;
           pending.delete(earliestId);
-          now = Millis.orThrow(Math.max(now, nextRunAt));
+          now = Math.max(now, nextRunAt) as Millis;
           timeout.callback();
         }
 
-        now = Millis.orThrow(Math.max(now, target));
+        now = Math.max(now, target) as Millis;
       } finally {
         advancing = false;
       }
@@ -768,6 +768,8 @@ export function durationToMillis(duration: Duration): Millis {
   const num = parseFloat(duration);
   const unit = duration.endsWith("ms") ? "ms" : duration.at(-1)!;
 
+  // The type proves both checks, but a wrongly cast Duration would make a sleep
+  // wait about 24.9 days or a retry spin.
   assert(unit in durationUnits, `Unknown duration unit: ${unit}`);
 
   return Millis.orThrow(

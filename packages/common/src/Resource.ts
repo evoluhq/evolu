@@ -51,7 +51,7 @@ import {
   type Task,
 } from "./Task.ts";
 import { type PositiveDuration } from "./Time.ts";
-import { NonNegativeInt } from "./Type.ts";
+import type { NonNegativeInt } from "./Type.ts";
 import { type DistributiveOmit } from "./Types.ts";
 
 /**
@@ -493,7 +493,7 @@ export const createSharedResource =
       },
 
       snapshot: () => ({
-        leaseCount: NonNegativeInt.orThrow(heldLeases.size),
+        leaseCount: heldLeases.size as NonNegativeInt,
         hasResource: current !== undefined,
         idleDisposePending: idleDisposeFiber !== undefined,
         mutex: mutex.snapshot(),
@@ -1684,7 +1684,7 @@ export const createSharedResourceByKeyWithClaims =
         }
 
         return {
-          claimLeaseCount: NonNegativeInt.orThrow(heldClaimLeases.size),
+          claimLeaseCount: heldClaimLeases.size as NonNegativeInt,
           retainCountsByResourceKeyByClaim:
             retainCountsByResourceKeyByClaimSnapshot,
           resourcesByKey: sharedResourceByKey.snapshot().resourcesByKey,

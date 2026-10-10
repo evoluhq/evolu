@@ -1951,10 +1951,11 @@ export const initSharedWorker =
           // still outstanding.
           assertNonNullable(shortestRemaining);
           // Timer delays use integer milliseconds; round up to wait at least
-          // the remaining fractional duration.
+          // the remaining fractional duration, which is positive and at most
+          // entry.timeout.
           armSyncRequestTimeout(
             entry,
-            PositiveMillis.orThrow(Math.ceil(shortestRemaining)),
+            Math.ceil(shortestRemaining) as PositiveMillis,
           );
           return;
         }
@@ -1963,9 +1964,10 @@ export const initSharedWorker =
         // its reply. A frame that never arrives whole saves nothing, so on a
         // slow link the same reply would time out forever. Doubling the
         // timeout lets it arrive after a reconnect that opens fine.
-        entry.timeout = PositiveMillis.orThrow(
-          Math.min(entry.timeout * 2, maxSyncRequestTimeout),
-        );
+        entry.timeout = Math.min(
+          entry.timeout * 2,
+          maxSyncRequestTimeout,
+        ) as PositiveMillis;
         // Reconnecting abandons the connection and starts a fresh retry
         // schedule. The socket reports no close for it, so the transport
         // disconnects here.

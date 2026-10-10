@@ -213,12 +213,6 @@ describe("getOk", () => {
       Result<number, string> extends Result<number> ? true : false;
     assertType<IsAssignable, false>();
   });
-
-  it("throws when invariant is violated at runtime", () => {
-    const invalid = err("fail") as unknown as Result<number>;
-    const error = assertThrowsInstanceOf(() => getOk(invalid), Error);
-    assertTrue(error.message.includes("Expected Ok result."));
-  });
 });
 
 describe("trySync", () => {

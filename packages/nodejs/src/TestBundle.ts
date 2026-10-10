@@ -15,7 +15,6 @@ import {
   allSettled,
   assert,
   assertLength,
-  assertSame,
   assertType,
   instanceOf,
   createRun,
@@ -29,7 +28,6 @@ import {
   type Result,
   partitionArray,
   safelyStringifyUnknownValue,
-  String as StringType,
   type Task,
   timeout,
   TimeoutError,
@@ -450,8 +448,6 @@ const testViteBundler: TestBundler = {
     const viteOutput = outputs[0];
     assertLength(viteOutput.output, 1);
     const chunk = viteOutput.output[0];
-    assertSame(chunk.type, "chunk");
-    assertType(StringType, chunk.code);
 
     return {
       code: chunk.code,

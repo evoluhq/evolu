@@ -8,7 +8,7 @@ import {
   assert,
   createTime,
   type Brand,
-  Millis,
+  type Millis,
   type Time,
 } from "@evolu/common";
 
@@ -42,11 +42,11 @@ export const hrDurationBetween = (start: HrTime, end: HrTime): HrDuration => {
 
 /** Converts a high-resolution duration to the nearest millisecond. */
 export const hrDurationToMillis = (duration: HrDuration): Millis =>
-  Millis.orThrow(
-    Number(
-      (duration + nanosecondsPerMillisecond / 2n) / nanosecondsPerMillisecond,
-    ),
-  );
+  // An HrDuration is never negative, and it is either below 2^64 ns or made
+  // from Millis, so its milliseconds are Millis.
+  Number(
+    (duration + nanosecondsPerMillisecond / 2n) / nanosecondsPerMillisecond,
+  ) as Millis;
 
 /** Converts milliseconds to an exact high-resolution duration. */
 export const millisToHrDuration = (millis: Millis): HrDuration =>

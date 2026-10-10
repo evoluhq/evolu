@@ -5,10 +5,10 @@ import {
   createSqlite,
   type CreateSqliteDriverDep,
   daemon,
-  Name,
+  type Name,
   ok,
   OwnerId,
-  Port,
+  type Port,
   type PositiveDuration,
   type RandomDep,
   type Task,
@@ -104,8 +104,8 @@ export const createRelayDeps = (): RelayDeps => ({
  */
 export const createRelay =
   ({
-    port = Port.orThrow(443),
-    name = Name.orThrow("evolu-relay"),
+    port = 443 as Port,
+    name = "evolu-relay" as Name,
     isOwnerAllowed,
     isOwnerWithinQuota,
     pingInterval = "30s",

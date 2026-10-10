@@ -481,11 +481,10 @@ import {
 import {
   err,
   flatMapResult,
-  getOk,
   getOrNull,
+  getOrThrow,
   ok,
   trySync,
-  type getOrThrow,
   type Result,
 } from "./Result.ts";
 import { safelyStringifyUnknownValue } from "./String.ts";
@@ -16773,12 +16772,8 @@ export function withDefault<
 export function withDefault(
   property: TypeNode | OptionalProperty<TypeNode>,
   value: unknown,
-  { strategy }: { readonly strategy?: string } = {},
+  { strategy }: { readonly strategy?: "preserve" } = {},
 ): TypeNode | WithDefaultProperty<TypeNode, unknown, "replace" | "preserve"> {
-  assert(
-    strategy === undefined || strategy === "preserve",
-    'withDefault strategy must be omitted or "preserve".',
-  );
   const optionalInput = optionalPropertySymbol in property;
   const type = (optionalInput ? property.type : property) as RuntimeTypeNode;
   assert(
@@ -18826,7 +18821,8 @@ export const objectKeys =
         runtimeKey.is(outputKey),
         `Invalid object schema key ${safelyStringifyUnknownValue(outputKey)} for ${key.name}.`,
       );
-      const inputKey = runtimeKey.to(outputKey as never) as string;
+      // The assert above proved the Output, so encode it without another.
+      const inputKey = runtimeKey[encoderSymbol](outputKey as never) as string;
       assert(
         !outputKeyByInputKey.has(inputKey),
         `Duplicate encoded object key ${safelyStringifyUnknownValue(inputKey)}.`,
@@ -21691,7 +21687,7 @@ export const json = <T extends ConcreteTypeNode, Name extends TypeName>(
       return json;
     },
     (value: typeof BrandedJson.Output): T["Output"] =>
-      getOk(jsonToTypeOutput(value) as Result<T["Output"]>),
+      getOrThrow(jsonToTypeOutput(value)),
   ] as const;
 };
 

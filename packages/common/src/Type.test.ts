@@ -20953,7 +20953,7 @@ describe("withDefault", () => {
     });
   });
 
-  it("rejects invalid declarations and explicit replacement strategies", () => {
+  it("rejects invalid declarations", () => {
     assertThrowsInstanceOf(
       () => withDefault(optional(Boolean), null as never),
       Error,
@@ -20962,21 +20962,6 @@ describe("withDefault", () => {
       () => withDefault(nullOr(Boolean), "true" as never),
       Error,
     );
-    for (const strategy of ["replace", "other"]) {
-      for (const property of [Boolean, optional(Boolean)]) {
-        const error = assertThrowsInstanceOf(
-          () =>
-            withDefault(property as never, true, {
-              strategy: strategy as never,
-            }),
-          Error,
-        );
-        assertEqual(
-          error.message,
-          'withDefault strategy must be omitted or "preserve".',
-        );
-      }
-    }
     if (false as boolean) {
       // @ts-expect-error withDefault requires an optional property or a Type whose Output includes null or undefined.
       withDefault(Boolean, true);
@@ -26895,6 +26880,14 @@ describe("json", () => {
       PersonJson.formatError(invalid.error),
       "The value 200 must be less than 200.",
     );
+
+    // Stored text can be typed as PersonJson without validation, so decoding
+    // still throws with the validation error as the cause.
+    const decodeError = assertThrowsInstanceOf(
+      () => personJsonToPerson(invalidJson as PersonJson),
+      Error,
+    );
+    assertEqual(decodeError.cause, invalid.error.error);
   });
 
   it("preserves the Json and String from boundaries", () => {

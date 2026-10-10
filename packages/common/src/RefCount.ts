@@ -7,7 +7,11 @@
 import { assert } from "./Assert.ts";
 import { disposable, identity } from "./Function.ts";
 import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.ts";
-import { NonNegativeInt, PositiveInt, zeroNonNegativeInt } from "./Type.ts";
+import {
+  zeroNonNegativeInt,
+  type NonNegativeInt,
+  type PositiveInt,
+} from "./Type.ts";
 
 /**
  * Reference count for one retained value.
@@ -35,14 +39,14 @@ export const createRefCount = (): RefCount => {
 
   return disposable<RefCount>({
     increment: () => {
-      const nextCount = PositiveInt.orThrow(count + 1);
+      const nextCount = (count + 1) as PositiveInt;
       count = nextCount;
       return nextCount;
     },
 
     decrement: () => {
       assert(count > 0, "RefCount must not be decremented below zero.");
-      count = NonNegativeInt.orThrow(count - 1);
+      count = (count - 1) as NonNegativeInt;
       return count;
     },
 

@@ -50,7 +50,6 @@ import {
   assert,
   assertNonEmptyReadonlyArray,
   assertNonNullable,
-  assertNotUndefined,
 } from "../Assert.ts";
 import type { ConsoleLevel } from "../Console.ts";
 import {
@@ -1236,7 +1235,6 @@ const applyLocalOnlyChange =
       const columns = dbChangeToColumns(change, now);
 
       for (const [column, value] of columns) {
-        assertNotUndefined(value);
         deps.sqlite.exec(sql.prepared`
           insert into ${sql.identifier(change.table)}
             ("ownerId", "id", ${sql.identifier(column)})
@@ -1304,7 +1302,6 @@ const applyMessages =
       const idBytes = idToIdBytes(change.id);
 
       for (const [column, value] of columns) {
-        assertNotUndefined(value);
         if (
           !hasDrift &&
           validateColumnValue(deps)(change.table, column, value)
@@ -1371,7 +1368,11 @@ const applyMessages =
   };
 
 const dbChangeToColumns = (change: DbChange, now: Millis) => {
-  let values = objectToEntries(change.values);
+  // DbChange validated every value as a SqliteValue; only its Partial record
+  // type admits undefined.
+  let values = objectToEntries(change.values) as ReadonlyArray<
+    [string, SqliteValue]
+  >;
 
   // SystemColumns are not encoded in change.values.
   values = appendToArray(values, [

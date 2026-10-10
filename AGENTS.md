@@ -151,6 +151,10 @@ for a post, run `node scripts/code-image.mts --help`.
   breaks its type came from a wrong cast. Check external or unbranded input,
   relations a brand cannot express, and internal invariants. When code proves a
   brand's constraint, such as a difference after an order check, cast instead.
+  Evolu Type's typed boundaries still assert their whole domain, brands
+  included, because TypeScript cannot prove structural invariants such as
+  data-only properties. A public function also keeps a cheap check where a
+  wrongly typed value would otherwise hang, spin, or silently break a limit.
 - For a named object Type `X`, declare
   `export interface X extends InferType<typeof X> {}` immediately after it.
 - Use a standalone `Brand<"Name">` for opaque handles. Reserve bare `Brand`

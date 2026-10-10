@@ -5,7 +5,6 @@
  */
 
 import type { NonEmptyReadonlyArray } from "./Array.ts";
-import { assertNonEmptyReadonlyArray } from "./Assert.ts";
 import type { IsBranded } from "./Brand.ts";
 import type { Result } from "./Result.ts";
 import { err, ok } from "./Result.ts";
@@ -21,7 +20,7 @@ import {
   onePositiveInt,
   NonNegativeInt,
   PositiveInt,
-  Ratio,
+  type Ratio,
   templateLiteral,
   union,
 } from "./Type.ts";
@@ -188,7 +187,7 @@ export interface PercentageLiteralError extends TypeError<"PercentageLiteral"> {
 export const percentageToRatio = (percentage: Percentage): Ratio =>
   typeof percentage === "number"
     ? percentage
-    : Ratio.orThrow(Number.parseFloat(percentage) / 100);
+    : ((Number.parseFloat(percentage) / 100) as Ratio);
 
 export const increment = (n: number): number => n + 1;
 
@@ -266,10 +265,10 @@ export const computeBalancedBuckets = (
   numberOfItems: NonNegativeInt,
 
   /** Default: 16 */
-  numberOfBuckets = PositiveInt.orThrow(16),
+  numberOfBuckets = 16 as PositiveInt,
 
   /** Default: 2 */
-  minNumberOfItemsPerBucket = PositiveInt.orThrow(2),
+  minNumberOfItemsPerBucket = 2 as PositiveInt,
 ): Result<NonEmptyReadonlyArray<PositiveInt>, PositiveInt> => {
   const minRequiredItems = numberOfBuckets * minNumberOfItemsPerBucket;
 
@@ -285,11 +284,13 @@ export const computeBalancedBuckets = (
     const hasExtraItem = i < extraItems;
     const itemsInThisBucket = itemsPerBucket + (hasExtraItem ? 1 : 0);
     bucketBoundary += itemsInThisBucket;
-    indexes.push(PositiveInt.orThrow(bucketBoundary));
+    // Every bucket holds at least minNumberOfItemsPerBucket items.
+    indexes.push(bucketBoundary as PositiveInt);
   }
 
-  assertNonEmptyReadonlyArray(indexes);
-  return ok(indexes);
+  return ok(
+    indexes as ReadonlyArray<PositiveInt> as NonEmptyReadonlyArray<PositiveInt>,
+  );
 };
 
 /**
@@ -309,5 +310,5 @@ export const fibonacciAt = (index: FibonacciIndex): PositiveInt => {
   let a = 1;
   let b = 1;
   for (let i = 3; i <= index; i++) [a, b] = [b, a + b];
-  return PositiveInt.orThrow(b);
+  return b as PositiveInt;
 };

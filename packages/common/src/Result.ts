@@ -207,7 +207,6 @@ import {
   isNonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "./Array.ts";
-import { assert } from "./Assert.ts";
 import { exhaustiveCheck, type Thunk } from "./Function.ts";
 import { createMutableRecord, emptyRecord, isIterable } from "./Object.ts";
 import type { Run } from "./Task.ts";
@@ -546,10 +545,7 @@ export const getOrNull = <T, E>(result: Result<T, E>): T | null =>
  *
  * @group Unwrapping
  */
-export const getOk = <T>(result: Result<T>): T => {
-  assert(result.ok, "Expected Ok result.");
-  return result.value;
-};
+export const getOk = <T>(result: Result<T>): T => (result as Ok<T>).value;
 
 /**
  * Wraps a synchronous function that may throw, returning a {@link Result}.

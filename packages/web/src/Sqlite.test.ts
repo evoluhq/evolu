@@ -97,7 +97,6 @@ const fake = (() => {
     },
     exports: {
       sqliteWasmUrl: new URL("https://example.test/sqlite3.wasm"),
-      OpfsName: { orThrow: (value: string) => value },
       SqliteVfsPath: {
         orThrow: (value: string) => {
           sqliteVfsPaths.push(value);

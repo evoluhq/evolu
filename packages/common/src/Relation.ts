@@ -15,10 +15,10 @@ import {
   type LookupSet,
 } from "./Lookup.ts";
 import {
-  NonNegativeInt,
   onePositiveInt,
-  PositiveInt,
   zeroNonNegativeInt,
+  type NonNegativeInt,
+  type PositiveInt,
 } from "./Type.ts";
 
 /**
@@ -410,7 +410,7 @@ export function createRefCountedRelation<A, B, LA = A, LB = B>({
 
       const count = relatedBs.countsByB.get(canonicalB);
       if (count) {
-        const nextCount = PositiveInt.orThrow(count + 1);
+        const nextCount = (count + 1) as PositiveInt;
         relatedBs.countsByB.set(canonicalB, nextCount);
         return { a: canonicalA, b: canonicalB, count: nextCount };
       }
@@ -439,9 +439,9 @@ export function createRefCountedRelation<A, B, LA = A, LB = B>({
         "RefCountedRelation pair must exist before decrement.",
       );
 
-      const nextCount = NonNegativeInt.orThrow(count - 1);
+      const nextCount = (count - 1) as NonNegativeInt;
       if (nextCount > 0) {
-        relatedBs.countsByB.set(relatedAs.b, PositiveInt.orThrow(nextCount));
+        relatedBs.countsByB.set(relatedAs.b, nextCount as PositiveInt);
       } else {
         relatedBs.countsByB.delete(relatedAs.b);
         if (relatedBs.countsByB.size === 0) relatedBsByA.delete(relatedBs.a);

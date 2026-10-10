@@ -711,7 +711,7 @@ export const createBaseSqliteStorage = (
     `);
 
     for (let i = 0; i < result.rows.length; i++) {
-      const index = NonNegativeInt.orThrow(begin + 1 + i);
+      const index = (begin + 1 + i) as NonNegativeInt;
       if (!callback(result.rows[i].t, index)) return;
     }
   },
@@ -1360,7 +1360,7 @@ const randomSkiplistLevel = (deps: RandomDep): PositiveInt => {
   ) {
     level += 1;
   }
-  return PositiveInt.orThrow(level);
+  return level as PositiveInt;
 };
 
 /**
@@ -1516,14 +1516,14 @@ const findLowerBound =
 
     const count = getTimestampCount(deps)(ownerId, result.rows[0].t);
     // `decrement` converts a count to an index.
-    return NonNegativeInt.orThrow(decrement(count));
+    return decrement(count) as NonNegativeInt;
   };
 
 const getTimestampCount =
   (deps: SqliteDep) =>
   (ownerId: OwnerIdBytes, timestamp: TimestampBytes): PositiveInt => {
     const result = deps.sqlite.exec<{
-      count: PositiveInt;
+      count: number;
     }>(sql.prepared`
       with
         ml(ml) as (
@@ -1566,7 +1566,9 @@ const getTimestampCount =
       from sc;
     `);
 
-    return result.rows[0].count;
+    // A found timestamp's count includes itself, so a count below 1 means
+    // damaged skiplist counts, which would become a negative index.
+    return PositiveInt.orThrow(result.rows[0].count);
   };
 
 /**

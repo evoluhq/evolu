@@ -2,12 +2,12 @@ exports[`Homepage bundle sizes > bundle sizes 1`] = `
 {
   "Task": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 34350,
-      "brotliSizeInBytes": 10792
+      "rawSizeInBytes": 34298,
+      "brotliSizeInBytes": 10784
     },
     "vite@8.2.2": {
-      "rawSizeInBytes": 29073,
-      "brotliSizeInBytes": 9294
+      "rawSizeInBytes": 29041,
+      "brotliSizeInBytes": 9280
     }
   },
   "Type": {

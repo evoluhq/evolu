@@ -18,7 +18,11 @@ import { err, ok, trySync } from "../Result.ts";
 import type { SqliteDep } from "../Sqlite.ts";
 import { sql } from "../Sqlite.ts";
 import { createMutexByKey } from "../Task.ts";
-import { Name, NonNegativeInt, uint8ArrayToBase64Url } from "../Type.ts";
+import {
+  uint8ArrayToBase64Url,
+  type Name,
+  type NonNegativeInt,
+} from "../Type.ts";
 import { isPromiseLike, type Awaitable } from "../Types.ts";
 import {
   OwnerId,
@@ -260,11 +264,10 @@ export const createRelaySqliteStorage =
               (sum, m) => sum + m.change.length,
               0,
             );
-            // A sum of lengths can be zero. Throwing here would panic the
-            // relay's shared Run.
-            const newStoredBytes = NonNegativeInt.orThrow(
-              (usage.storedBytes ?? 0) + incomingBytes,
-            );
+            // SQLite's database size limit keeps the stored bytes of an owner
+            // far below Number.MAX_SAFE_INTEGER.
+            const newStoredBytes = ((usage.storedBytes ?? 0) +
+              incomingBytes) as NonNegativeInt;
 
             const quotaResult = config.isOwnerWithinQuota(
               ownerId,

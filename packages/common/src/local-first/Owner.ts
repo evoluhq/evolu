@@ -234,7 +234,7 @@ export const ownerSecretToMnemonic = (secret: OwnerSecret): Mnemonic =>
  * @group Core
  */
 export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
-  OwnerSecret.orThrow(bip39.mnemonicToEntropy(mnemonic, wordlist));
+  bip39.mnemonicToEntropy(mnemonic, wordlist) as OwnerSecret;
 
 /**
  * Creates an {@link Owner} from a {@link OwnerSecret} using SLIP-21 key
@@ -242,18 +242,21 @@ export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
  */
 const createOwner = (secret: OwnerSecret): Owner => ({
   id: ownerIdBytesToOwnerId(
-    OwnerIdBytes.orThrow(
-      createSlip21(secret, ["Evolu", "OwnerIdBytes"]).slice(0, 16),
-    ),
+    createSlip21(secret, ["Evolu", "OwnerIdBytes"]).slice(
+      0,
+      16,
+    ) as OwnerIdBytes,
   ),
 
-  encryptionKey: OwnerEncryptionKey.orThrow(
-    createSlip21(secret, ["Evolu", "OwnerEncryptionKey"]),
-  ),
+  encryptionKey: createSlip21(secret, [
+    "Evolu",
+    "OwnerEncryptionKey",
+  ]) as OwnerEncryptionKey,
 
-  writeKey: OwnerWriteKey.orThrow(
-    createSlip21(secret, ["Evolu", "OwnerWriteKey"]).slice(0, 16),
-  ),
+  writeKey: createSlip21(secret, ["Evolu", "OwnerWriteKey"]).slice(
+    0,
+    16,
+  ) as OwnerWriteKey,
 });
 
 /**

@@ -763,14 +763,27 @@ where it is produced; test doubles of such a dependency cast the same way.
 
 Once a value has a brand, trust it. Do not check at runtime what its type
 already proves: a function with a `NonNegativeInt` parameter does not test that
-the value is a non-negative integer, and encoding a `JsonValue` does not test
-for `NaN`. A value that breaks its type got there through a wrong cast, and that
-cast is the bug. Runtime checks belong to external or unbranded input, such as
-decoded bytes or an `ArrayLike` length, to relations a brand cannot express,
-such as an index below a length, and to internal invariants. When code itself
-proves a brand's constraint, such as the difference of two `NonNegativeInt`
-values after checking their order, or bytes of the length a decoder just read,
-cast the result instead of validating it again.
+the value is a non-negative integer, and a function with a `JsonValue`
+parameter does not search it for `NaN`. A value that breaks its type got there
+through a wrong cast, and that cast is the bug. Runtime checks belong to
+external or unbranded input, such as decoded bytes or an `ArrayLike` length, to
+relations a brand cannot express, such as an index below a length, and to
+internal invariants. When code itself proves a brand's constraint, such as the
+difference of two `NonNegativeInt` values after checking their order, or bytes
+of the length a decoder just read, cast the result instead of validating it
+again.
+
+Evolu Type's typed boundaries are the exception: `from`, `to`, `orThrow`,
+and `orNull` assert the whole value their parameter type promises, brands
+included, because TypeScript cannot prove structural invariants such as
+data-only properties, dense arrays, or the absence of excess keys, and one
+check covers both. See "Why can a typed operation throw?" in the
+[Type FAQ](/docs/api-reference/common/Type#faq).
+
+A public function also keeps a cheap check where a wrongly typed value would
+otherwise hang, spin, or silently break a limit. A failure that throws is easy
+to find, but one that waits forever is not. For example, `each` checks that its
+array is non-empty, because with no Tasks it would wait until aborted.
 
 ### Opaque types
 

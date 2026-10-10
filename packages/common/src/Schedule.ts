@@ -301,17 +301,14 @@ export const exponential = (base: Duration, factor = 2): Schedule<Millis> => {
     let attempt = 0;
     return () => {
       attempt++;
+      // factor is finite and non-negative, and a zero base skips 0 * Infinity,
+      // so the delay is never NaN.
       const rawDelay =
         baseMs === 0 ? minMillis : baseMs * Math.pow(factor, attempt - 1);
-      const delay = saturateComputedMillis(rawDelay);
+      const delay = saturateMillis(rawDelay as NonNaNNumber);
       return ok([delay, delay]);
     };
   };
-};
-
-const saturateComputedMillis = (value: number): Millis => {
-  assertType(NonNaNNumber, value);
-  return saturateMillis(value);
 };
 
 /**
@@ -346,7 +343,7 @@ export const linear =
     let attempt = 0;
     return () => {
       attempt++;
-      const delay = saturateComputedMillis(ms * attempt);
+      const delay = saturateMillis((ms * attempt) as NonNaNNumber);
       return ok([delay, delay]);
     };
   };
@@ -383,9 +380,9 @@ export const fibonacci =
   (initial: Duration): Schedule<Millis> =>
   () => {
     const ms = durationToMillis(initial);
-    let index = FibonacciIndex.orThrow(1);
+    let index = 1 as FibonacciIndex;
     return () => {
-      const delay = saturateComputedMillis(ms * fibonacciAt(index));
+      const delay = saturateMillis((ms * fibonacciAt(index)) as NonNaNNumber);
       index = FibonacciIndex.orNull(increment(index)) ?? index;
       return ok([delay, delay]);
     };
@@ -436,7 +433,7 @@ export const fixed =
       const remainder = intervalMs === 0 ? 0 : elapsed % intervalMs;
       const boundary = intervalMs - remainder;
       const delay = runningBehind ? 0 : boundary;
-      return ok([count++, saturateComputedMillis(delay)]);
+      return ok([count++, delay as Millis]);
     };
   };
 
@@ -474,9 +471,11 @@ const createScheduleStepMetrics = (
   return () => {
     const now = deps.time.performance.now();
     start ??= now;
-    const elapsed = saturateComputedMillis(now - start);
+    const elapsed = saturateMillis((now - start) as NonNaNNumber);
     const elapsedSincePrevious =
-      previous === null ? minMillis : saturateComputedMillis(now - previous);
+      previous === null
+        ? minMillis
+        : saturateMillis((now - previous) as NonNaNNumber);
     previous = now;
     return { elapsed, elapsedSincePrevious };
   };
@@ -520,7 +519,7 @@ export const windowed =
       const { elapsed } = metrics();
       const remainder = intervalMs === 0 ? 0 : elapsed % intervalMs;
       const delay = intervalMs === 0 ? 0 : intervalMs - remainder;
-      return ok([count++, saturateComputedMillis(delay)]);
+      return ok([count++, delay as Millis]);
     };
   };
 
@@ -957,7 +956,7 @@ const createJitter =
       const jittered =
         delay *
         (minMultiplier + deps.random.next() * (maxMultiplier - minMultiplier));
-      return ok([output, saturateComputedMillis(jittered)]);
+      return ok([output, saturateMillis(jittered as NonNaNNumber)]);
     };
   };
 
@@ -1072,7 +1071,10 @@ export const modifyDelay =
       const result = step(input);
       if (!result.ok) return result;
       const [output, delay] = result.value;
-      return ok([output, saturateComputedMillis(f(delay))]);
+      // Unlike the delays the other schedules compute, f can return NaN.
+      const modifiedDelay = f(delay);
+      assertType(NonNaNNumber, modifiedDelay);
+      return ok([output, saturateMillis(modifiedDelay)]);
     };
   };
 
@@ -1128,10 +1130,12 @@ export const compensate =
       const result = step(input);
       if (!result.ok) return result;
       const [output, delay] = result.value;
-      const executionTime = saturateComputedMillis(
-        elapsedSincePrevious - previousReturnedDelay,
+      const executionTime = saturateMillis(
+        (elapsedSincePrevious - previousReturnedDelay) as NonNaNNumber,
       );
-      const compensatedDelay = saturateComputedMillis(delay - executionTime);
+      const compensatedDelay = saturateMillis(
+        (delay - executionTime) as NonNaNNumber,
+      );
       previousReturnedDelay = compensatedDelay;
       return ok([output, compensatedDelay]);
     };
