@@ -1,5 +1,5 @@
 ---
-"@evolu/common": patch
+"@evolu/common": minor
 ---
 
 Rejected negative and fractional counts in minLength, maxLength, and length
