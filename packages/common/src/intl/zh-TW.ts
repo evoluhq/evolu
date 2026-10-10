@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -278,6 +293,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 必須以 ${safelyStringifyUnknownValue(error.suffix)} 結尾。`;
 
+/** Formats an IncludesError in Traditional Chinese. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必須包含 ${safelyStringifyUnknownValue(error.substring)}。`;
+
+/** Formats an ExcludesError in Traditional Chinese. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不得包含 ${safelyStringifyUnknownValue(error.substring)}。`;
+
 /** Formats a MinLengthError in Traditional Chinese. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -289,6 +312,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 超過最大長度 ${error.max}。`;
+
+/** Formats a MaxUtf8ByteLengthError in Traditional Chinese. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 超過最大 UTF-8 位元組長度 ${error.max}。`;
 
 /** Formats a LengthError in Traditional Chinese. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -311,6 +340,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Traditional Chinese. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是位數為偶數的小寫十六進位字串。`;
+
+/** Formats a HexColorError in Traditional Chinese. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是小寫 #rrggbb 格式的顏色。`;
 
 /** Formats a NameError in Traditional Chinese. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -340,6 +373,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 IPv6 位址。`;
 
+/** Formats an IpAddressError in Traditional Chinese. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 既不是有效的 IPv4 位址，也不是標準 IPv6 位址。`;
+
+/** Formats an IpAddressFromStringError in Traditional Chinese. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 IP 位址。`;
+
 /** Formats a PhoneNumberE164Error in Traditional Chinese. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -349,6 +394,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Traditional Chinese. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的無空格大寫 IBAN。`;
+
+/** Formats an IsbnError in Traditional Chinese. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的無連字號 13 碼 ISBN。`;
 
 /** Formats a SimplePasswordError in Traditional Chinese. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -385,6 +434,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是版本 ${error.version} 的 UUID。`;
+
+/** Formats a UlidError in Traditional Chinese. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是標準大寫 ULID。`;
 
 /** Formats a NonNegativeError in Traditional Chinese. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -483,6 +536,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 必須介於 ${error.min} 和 ${error.max} 之間（含端點）。`;
 
+/** Formats a GreaterThanBigIntError in Traditional Chinese. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必須大於 ${error.min}。`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Traditional Chinese. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必須大於或等於 ${error.min}。`;
+
+/** Formats a LessThanBigIntError in Traditional Chinese. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必須小於 ${error.max}。`;
+
+/** Formats a LessThanOrEqualToBigIntError in Traditional Chinese. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必須小於或等於 ${error.max}。`;
+
+/** Formats a BetweenBigIntError in Traditional Chinese. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必須介於 ${error.min} 和 ${error.max} 之間（含端點）。`;
+
 /** Formats an ArrayError in Traditional Chinese. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -545,6 +628,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `索引 ${issue.previousIndex} 和 ${issue.index} 的 Map 鍵解碼為相同的鍵 ${safelyStringifyUnknownValue(issue.outputKey)}。`;
   }
 };
+
+/** Formats a MinSizeError in Traditional Chinese. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `大小 ${error.value.size} 未達最小大小 ${error.min}。`;
+
+/** Formats a MaxSizeError in Traditional Chinese. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `大小 ${error.value.size} 超過最大大小 ${error.max}。`;
 
 /** Formats a TupleError in Traditional Chinese. */
 export const formatTupleError: TypeErrorFormatter<

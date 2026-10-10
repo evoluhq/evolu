@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -251,6 +266,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} phải kết thúc bằng ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Vietnamese. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} phải chứa ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Vietnamese. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không được chứa ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Vietnamese. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -261,6 +284,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} vượt quá độ dài tối đa là ${error.max}.`;
+/** Formats a MaxUtf8ByteLengthError in Vietnamese. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} vượt quá độ dài byte UTF-8 tối đa là ${error.max}.`;
+
 /** Formats a LengthError in Vietnamese. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không có độ dài bắt buộc là ${error.exact}.`;
@@ -278,6 +307,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Vietnamese. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là chuỗi thập lục phân chữ thường có số chữ số chẵn.`;
+/** Formats a HexColorError in Vietnamese. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là màu ở định dạng #rrggbb chữ thường.`;
+
 /** Formats a NameError in Vietnamese. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là Name hợp lệ.`;
@@ -302,6 +335,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
   Ipv6AddressFromStringError
 > = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là địa chỉ IPv6 hợp lệ.`;
+/** Formats an IpAddressError in Vietnamese. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là địa chỉ IPv4 hợp lệ hoặc địa chỉ IPv6 chính tắc.`;
+
+/** Formats an IpAddressFromStringError in Vietnamese. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là địa chỉ IP hợp lệ.`;
+
 /** Formats a PhoneNumberE164Error in Vietnamese. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -310,6 +355,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Vietnamese. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là IBAN hợp lệ được viết hoa toàn bộ và không có khoảng trắng.`;
+/** Formats an IsbnError in Vietnamese. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là ISBN 13 chữ số hợp lệ không có dấu gạch nối.`;
+
 /** Formats a SimplePasswordError in Vietnamese. */
 export const formatSimplePasswordError: TypeErrorFormatter<
   SimplePasswordError
@@ -341,6 +390,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là UUID phiên bản ${error.version}.`;
+/** Formats a UlidError in Vietnamese. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là ULID chữ hoa chính tắc.`;
+
 /** Formats a NonNegativeError in Vietnamese. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -411,6 +464,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   `Giá trị ${safelyStringifyUnknownValue(error.value)} phải là bội số của ${error.divisor}.`;
 /** Formats a BetweenError in Vietnamese. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} phải nằm trong khoảng từ ${error.min} đến ${error.max}, kể cả hai đầu.`;
+
+/** Formats a GreaterThanBigIntError in Vietnamese. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} phải lớn hơn ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Vietnamese. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} phải lớn hơn hoặc bằng ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Vietnamese. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} phải nhỏ hơn ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Vietnamese. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} phải nhỏ hơn hoặc bằng ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Vietnamese. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} phải nằm trong khoảng từ ${error.min} đến ${error.max}, kể cả hai đầu.`;
 
 /** Formats a BooleanFromStringError in Vietnamese. */
@@ -493,6 +576,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Các khóa Map tại chỉ mục ${issue.previousIndex} và ${issue.index} giải mã thành cùng một khóa ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Vietnamese. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Kích thước ${error.value.size} không đạt kích thước tối thiểu là ${error.min}.`;
+
+/** Formats a MaxSizeError in Vietnamese. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Kích thước ${error.value.size} vượt quá kích thước tối đa là ${error.max}.`;
 
 /** Formats a TupleError in Vietnamese. */
 export const formatTupleError: TypeErrorFormatter<

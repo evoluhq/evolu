@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -282,6 +297,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید با ${safelyStringifyUnknownValue(error.suffix)} تمام شود.`;
 
+/** Formats an IncludesError in Persian. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید شامل ${safelyStringifyUnknownValue(error.substring)} باشد.`;
+
+/** Formats an ExcludesError in Persian. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} نباید شامل ${safelyStringifyUnknownValue(error.substring)} باشد.`;
+
 /** Formats a MinLengthError in Persian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -293,6 +316,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `طول مقدار ${safelyStringifyUnknownValue(error.value)} از حداکثر ${error.max} بیشتر است.`;
+
+/** Formats a MaxUtf8ByteLengthError in Persian. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `طول بایتی UTF-8 مقدار ${safelyStringifyUnknownValue(error.value)} از حداکثر ${error.max} بیشتر است.`;
 
 /** Formats a LengthError in Persian. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -315,6 +344,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Persian. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک رشتهٔ شانزده‌شانزدهی با حروف کوچک و تعداد ارقام زوج نیست.`;
+
+/** Formats a HexColorError in Persian. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک رنگ در قالب #rrggbb با حروف کوچک نیست.`;
 
 /** Formats a NameError in Persian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -346,6 +379,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی IPv6 معتبر نیست.`;
 
+/** Formats an IpAddressError in Persian. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی IPv4 معتبر یا نشانی IPv6 کانونی نیست.`;
+
+/** Formats an IpAddressFromStringError in Persian. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی IP معتبر نیست.`;
+
 /** Formats a PhoneNumberE164Error in Persian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -355,6 +400,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Persian. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک شمارهٔ IBAN معتبر با حروف بزرگ و بدون فاصله نیست.`;
+
+/** Formats an IsbnError in Persian. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک شمارهٔ ISBN معتبر 13 رقمی و بدون خط تیره نیست.`;
 
 /** Formats a SimplePasswordError in Persian. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -391,6 +440,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک UUID نسخهٔ ${error.version} نیست.`;
+
+/** Formats a UlidError in Persian. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک ULID کانونی با حروف بزرگ نیست.`;
 
 /** Formats a NonNegativeError in Persian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -492,6 +545,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید بین ${error.min} و ${error.max}، با احتساب هر دو کران، باشد.`;
 
+/** Formats a GreaterThanBigIntError in Persian. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید بزرگ‌تر از ${error.min} باشد.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Persian. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید بزرگ‌تر یا مساوی ${error.min} باشد.`;
+
+/** Formats a LessThanBigIntError in Persian. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید کوچک‌تر از ${error.max} باشد.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Persian. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید کوچک‌تر یا مساوی ${error.max} باشد.`;
+
+/** Formats a BetweenBigIntError in Persian. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید بین ${error.min} و ${error.max}، با احتساب هر دو کران، باشد.`;
+
 /** Formats an ArrayError in Persian. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -554,6 +637,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `کلیدهای Map در اندیس‌های ${issue.previousIndex} و ${issue.index} پس از decode به کلید یکسان ${safelyStringifyUnknownValue(issue.outputKey)} تبدیل می‌شوند.`;
   }
 };
+
+/** Formats a MinSizeError in Persian. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `اندازهٔ ${error.value.size} از حداقل ${error.min} کمتر است.`;
+
+/** Formats a MaxSizeError in Persian. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `اندازهٔ ${error.value.size} از حداکثر ${error.max} بیشتر است.`;
 
 /** Formats a TupleError in Persian. */
 export const formatTupleError: TypeErrorFormatter<

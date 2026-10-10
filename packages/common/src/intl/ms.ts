@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -250,6 +265,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} mesti berakhir dengan ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Malay. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mesti mengandungi ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Malay. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak boleh mengandungi ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Malay. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -260,6 +283,11 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} melebihi panjang maksimum ${error.max}.`;
+/** Formats a MaxUtf8ByteLengthError in Malay. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} melebihi panjang bait UTF-8 maksimum ${error.max}.`;
 /** Formats a LengthError in Malay. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} tidak mempunyai panjang yang diperlukan, iaitu ${error.exact}.`;
@@ -277,6 +305,9 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Malay. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan rentetan heksadesimal huruf kecil dengan bilangan digit genap.`;
+/** Formats a HexColorError in Malay. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan warna dalam format #rrggbb huruf kecil.`;
 /** Formats a NameError in Malay. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan Name yang sah.`;
@@ -301,6 +332,16 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
   Ipv6AddressFromStringError
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IPv6 yang sah.`;
+/** Formats an IpAddressError in Malay. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IPv4 yang sah mahupun alamat IPv6 kanonik.`;
+/** Formats an IpAddressFromStringError in Malay. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IP yang sah.`;
 /** Formats a PhoneNumberE164Error in Malay. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -309,6 +350,9 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Malay. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan IBAN yang sah dalam huruf besar tanpa ruang kosong.`;
+/** Formats an IsbnError in Malay. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan ISBN 13 digit yang sah tanpa tanda sempang.`;
 /** Formats a SimplePasswordError in Malay. */
 export const formatSimplePasswordError: TypeErrorFormatter<
   SimplePasswordError
@@ -339,6 +383,9 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan UUID versi ${error.version}.`;
+/** Formats a UlidError in Malay. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan ULID kanonik dalam huruf besar.`;
 /** Formats a NonNegativeError in Malay. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -409,6 +456,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah gandaan ${error.divisor}.`;
 /** Formats a BetweenError in Malay. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah antara ${error.min} dan ${error.max}, termasuk kedua-dua had.`;
+
+/** Formats a GreaterThanBigIntError in Malay. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah lebih besar daripada ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Malay. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah lebih besar daripada atau sama dengan ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Malay. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah kurang daripada ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Malay. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah kurang daripada atau sama dengan ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Malay. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah antara ${error.min} dan ${error.max}, termasuk kedua-dua had.`;
 
 /** Formats a BooleanFromStringError in Malay. */
@@ -482,6 +559,12 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Kunci Map pada indeks ${issue.previousIndex} dan ${issue.index} dinyahkod kepada kunci yang sama, ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+/** Formats a MinSizeError in Malay. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Saiz ${error.value.size} tidak memenuhi saiz minimum ${error.min}.`;
+/** Formats a MaxSizeError in Malay. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Saiz ${error.value.size} melebihi saiz maksimum ${error.max}.`;
 /** Formats a TupleError in Malay. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>

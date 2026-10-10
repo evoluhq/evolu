@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -283,6 +298,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Værdien ${safelyStringifyUnknownValue(error.value)} skal slutte med ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Danish. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} skal indeholde ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Danish. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} må ikke indeholde ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Danish. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -294,6 +317,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Værdien ${safelyStringifyUnknownValue(error.value)} overskrider maksimumslængden på ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Danish. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} overskrider maksimumslængden i UTF-8-bytes på ${error.max}.`;
 
 /** Formats a LengthError in Danish. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -316,6 +345,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Danish. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke hexadecimal med små bogstaver og et lige antal cifre.`;
+
+/** Formats a HexColorError in Danish. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke en farve i formatet #rrggbb med små bogstaver.`;
 
 /** Formats a NameError in Danish. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -347,6 +380,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig IPv6-adresse.`;
 
+/** Formats an IpAddressError in Danish. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig IPv4-adresse eller en kanonisk IPv6-adresse.`;
+
+/** Formats an IpAddressFromStringError in Danish. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig IP-adresse.`;
+
 /** Formats a PhoneNumberE164Error in Danish. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -356,6 +401,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Danish. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldigt IBAN-nummer med store bogstaver uden mellemrum.`;
+
+/** Formats an IsbnError in Danish. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldigt 13-cifret ISBN-nummer uden bindestreger.`;
 
 /** Formats a SimplePasswordError in Danish. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -392,6 +441,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke et UUID af version ${error.version}.`;
+
+/** Formats a UlidError in Danish. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} er ikke et kanonisk ULID med store bogstaver.`;
 
 /** Formats a NonNegativeError in Danish. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -493,6 +546,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Værdien ${safelyStringifyUnknownValue(error.value)} skal være mellem ${error.min} og ${error.max}, inklusive.`;
 
+/** Formats a GreaterThanBigIntError in Danish. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} skal være større end ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Danish. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} skal være større end eller lig med ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Danish. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} skal være mindre end ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Danish. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} skal være mindre end eller lig med ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Danish. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Værdien ${safelyStringifyUnknownValue(error.value)} skal være mellem ${error.min} og ${error.max}, inklusive.`;
+
 /** Formats an ArrayError in Danish. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -555,6 +638,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Map-nøglerne på indeks ${issue.previousIndex} og ${issue.index} afkodes til den samme nøgle ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Danish. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Størrelsen ${error.value.size} opfylder ikke minimumsstørrelsen på ${error.min}.`;
+
+/** Formats a MaxSizeError in Danish. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Størrelsen ${error.value.size} overskrider maksimumsstørrelsen på ${error.max}.`;
 
 /** Formats a TupleError in Danish. */
 export const formatTupleError: TypeErrorFormatter<

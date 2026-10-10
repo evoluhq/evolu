@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -250,6 +265,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí končiť na ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Slovak. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí obsahovať ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Slovak. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nesmie obsahovať ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Slovak. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -262,6 +285,13 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} môže mať dĺžku najviac ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Slovak. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} môže mať dĺžku v bajtoch UTF-8 najviac ${error.max}.`;
+
 /** Formats a LengthError in Slovak. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí mať presne dĺžku ${error.exact}.`;
@@ -279,6 +309,11 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Slovak. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je hexadecimálny reťazec zapísaný malými písmenami s párnym počtom číslic.`;
+
+/** Formats a HexColorError in Slovak. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je farba vo formáte #rrggbb zapísaná malými písmenami.`;
+
 /** Formats a NameError in Slovak. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platný názov.`;
@@ -303,6 +338,19 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
   Ipv6AddressFromStringError
 > = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platná adresa IPv6.`;
+
+/** Formats an IpAddressError in Slovak. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platná adresa IPv4 ani kanonická adresa IPv6.`;
+
+/** Formats an IpAddressFromStringError in Slovak. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platná adresa IP.`;
+
 /** Formats a PhoneNumberE164Error in Slovak. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -311,6 +359,11 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Slovak. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platný IBAN zapísaný veľkými písmenami bez medzier.`;
+
+/** Formats an IsbnError in Slovak. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platné 13-miestne ISBN bez spojovníkov.`;
+
 /** Formats a SimplePasswordError in Slovak. */
 export const formatSimplePasswordError: TypeErrorFormatter<
   SimplePasswordError
@@ -341,6 +394,11 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je UUID verzie ${error.version}.`;
+
+/** Formats a UlidError in Slovak. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je kanonický ULID zapísaný veľkými písmenami.`;
+
 /** Formats a NonNegativeError in Slovak. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -411,6 +469,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť násobkom čísla ${error.divisor}.`;
 /** Formats a BetweenError in Slovak. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť v rozsahu od ${error.min} do ${error.max} vrátane.`;
+
+/** Formats a GreaterThanBigIntError in Slovak. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť väčšia ako ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Slovak. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť väčšia alebo rovná ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Slovak. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť menšia ako ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Slovak. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť menšia alebo rovná ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Slovak. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť v rozsahu od ${error.min} do ${error.max} vrátane.`;
 
 /** Formats a BooleanFromStringError in Slovak. */
@@ -484,6 +572,15 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Kľúče Map na indexoch ${issue.previousIndex} a ${issue.index} sa dekódujú na rovnaký kľúč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Slovak. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Veľkosť ${error.value.size} nedosahuje minimálnu veľkosť ${error.min}.`;
+
+/** Formats a MaxSizeError in Slovak. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Veľkosť ${error.value.size} prekračuje maximálnu veľkosť ${error.max}.`;
+
 /** Formats a TupleError in Slovak. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>

@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -282,6 +297,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦਾ ਅੰਤ ${safelyStringifyUnknownValue(error.suffix)} ਨਾਲ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
+/** Formats an IncludesError in Punjabi. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵਿੱਚ ${safelyStringifyUnknownValue(error.substring)} ਸ਼ਾਮਲ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+
+/** Formats an ExcludesError in Punjabi. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵਿੱਚ ${safelyStringifyUnknownValue(error.substring)} ਸ਼ਾਮਲ ਨਹੀਂ ਹੋਣਾ ਚਾਹੀਦਾ।`;
+
 /** Formats a MinLengthError in Punjabi. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -293,6 +316,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦੀ ਲੰਬਾਈ ਵੱਧ ਤੋਂ ਵੱਧ ${error.max} ਹੋ ਸਕਦੀ ਹੈ।`;
+
+/** Formats a MaxUtf8ByteLengthError in Punjabi. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦੀ UTF-8 ਬਾਈਟ ਲੰਬਾਈ ਵੱਧ ਤੋਂ ਵੱਧ ${error.max} ਹੋ ਸਕਦੀ ਹੈ।`;
 
 /** Formats a LengthError in Punjabi. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -315,6 +344,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Punjabi. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਛੋਟੇ ਅੱਖਰਾਂ ਅਤੇ ਜਿਸਤ ਗਿਣਤੀ ਦੇ ਅੰਕਾਂ ਵਾਲੀ hexadecimal string ਨਹੀਂ ਹੈ।`;
+
+/** Formats a HexColorError in Punjabi. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਛੋਟੇ ਅੱਖਰਾਂ ਵਿੱਚ #rrggbb ਫਾਰਮੈਟ ਵਾਲਾ ਰੰਗ ਨਹੀਂ ਹੈ।`;
 
 /** Formats a NameError in Punjabi. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -345,6 +378,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ IPv6 ਪਤਾ ਨਹੀਂ ਹੈ।`;
 
+/** Formats an IpAddressError in Punjabi. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ IPv4 ਪਤਾ ਜਾਂ canonical IPv6 ਪਤਾ ਨਹੀਂ ਹੈ।`;
+
+/** Formats an IpAddressFromStringError in Punjabi. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ IP ਪਤਾ ਨਹੀਂ ਹੈ।`;
+
 /** Formats a PhoneNumberE164Error in Punjabi. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -354,6 +399,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Punjabi. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੱਡੇ ਅੱਖਰਾਂ ਵਿੱਚ ਅਤੇ ਖਾਲੀ ਥਾਂਵਾਂ ਤੋਂ ਬਿਨਾਂ ਵੈਧ IBAN ਨਹੀਂ ਹੈ।`;
+
+/** Formats an IsbnError in Punjabi. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਹਾਈਫਨਾਂ ਤੋਂ ਬਿਨਾਂ 13 ਅੰਕਾਂ ਵਾਲਾ ਵੈਧ ISBN ਨਹੀਂ ਹੈ।`;
 
 /** Formats a SimplePasswordError in Punjabi. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -390,6 +439,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਸੰਸਕਰਣ ${error.version} ਦਾ UUID ਨਹੀਂ ਹੈ।`;
+
+/** Formats a UlidError in Punjabi. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੱਡੇ ਅੱਖਰਾਂ ਵਾਲਾ canonical ULID ਨਹੀਂ ਹੈ।`;
 
 /** Formats a NonNegativeError in Punjabi. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -491,6 +544,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.min} ਅਤੇ ${error.max} ਦੇ ਵਿਚਕਾਰ, ਦੋਵੇਂ ਸੀਮਾਵਾਂ ਸਮੇਤ, ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
 
+/** Formats a GreaterThanBigIntError in Punjabi. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.min} ਤੋਂ ਵੱਡਾ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Punjabi. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.min} ਤੋਂ ਵੱਡਾ ਜਾਂ ਉਸ ਦੇ ਬਰਾਬਰ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+
+/** Formats a LessThanBigIntError in Punjabi. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.max} ਤੋਂ ਛੋਟਾ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+
+/** Formats a LessThanOrEqualToBigIntError in Punjabi. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.max} ਤੋਂ ਛੋਟਾ ਜਾਂ ਉਸ ਦੇ ਬਰਾਬਰ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+
+/** Formats a BetweenBigIntError in Punjabi. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਨੂੰ ${error.min} ਅਤੇ ${error.max} ਦੇ ਵਿਚਕਾਰ, ਦੋਵੇਂ ਸੀਮਾਵਾਂ ਸਮੇਤ, ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+
 /** Formats an ArrayError in Punjabi. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -553,6 +636,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `index ${issue.previousIndex} ਅਤੇ ${issue.index} ਉੱਤੇ ਮੌਜੂਦ Map keys decode ਹੋ ਕੇ ਇੱਕੋ key ${safelyStringifyUnknownValue(issue.outputKey)} ਬਣ ਜਾਂਦੀਆਂ ਹਨ।`;
   }
 };
+
+/** Formats a MinSizeError in Punjabi. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `ਆਕਾਰ ${error.value.size} ਹੈ, ਪਰ ਇਹ ਘੱਟੋ-ਘੱਟ ${error.min} ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+
+/** Formats a MaxSizeError in Punjabi. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `ਆਕਾਰ ${error.value.size} ਹੈ, ਪਰ ਇਹ ਵੱਧ ਤੋਂ ਵੱਧ ${error.max} ਹੋ ਸਕਦਾ ਹੈ।`;
 
 /** Formats a TupleError in Punjabi. */
 export const formatTupleError: TypeErrorFormatter<

@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -254,6 +269,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} کا اختتام ${safelyStringifyUnknownValue(error.suffix)} پر ہونا چاہیے۔`;
 
+/** Formats an IncludesError in Urdu. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} میں ${safelyStringifyUnknownValue(error.substring)} شامل ہونا چاہیے۔`;
+
+/** Formats an ExcludesError in Urdu. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} میں ${safelyStringifyUnknownValue(error.substring)} شامل نہیں ہونا چاہیے۔`;
+
 /** Formats a MinLengthError in Urdu. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -264,6 +287,11 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} کی لمبائی ${error.max} سے زیادہ ہے۔`;
+/** Formats a MaxUtf8ByteLengthError in Urdu. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} کی UTF-8 بائٹ لمبائی ${error.max} سے زیادہ ہے۔`;
 /** Formats a LengthError in Urdu. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} کی لمبائی بالکل ${error.exact} ہونی چاہیے۔`;
@@ -283,6 +311,9 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Urdu. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} چھوٹے حروف اور ہندسوں کی جفت تعداد والی hexadecimal string نہیں ہے۔`;
+/** Formats a HexColorError in Urdu. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} چھوٹے حروف میں #rrggbb فارمیٹ والا رنگ نہیں ہے۔`;
 /** Formats a NameError in Urdu. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست Name نہیں ہے۔`;
@@ -312,6 +343,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست IPv6 ایڈریس نہیں ہے۔`;
 
+/** Formats an IpAddressError in Urdu. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} درست IPv4 ایڈریس یا canonical IPv6 ایڈریس نہیں ہے۔`;
+
+/** Formats an IpAddressFromStringError in Urdu. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} درست IP ایڈریس نہیں ہے۔`;
+
 /** Formats a PhoneNumberE164Error in Urdu. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -321,6 +364,9 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Urdu. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} بڑے حروف میں اور خالی جگہ کے بغیر درست IBAN نہیں ہے۔`;
+/** Formats an IsbnError in Urdu. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} ہائفن کے بغیر 13 ہندسوں والا درست ISBN نہیں ہے۔`;
 /** Formats a SimplePasswordError in Urdu. */
 export const formatSimplePasswordError: TypeErrorFormatter<
   SimplePasswordError
@@ -352,6 +398,9 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} ورژن ${error.version} کا UUID نہیں ہے۔`;
+/** Formats a UlidError in Urdu. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} بڑے حروف والا canonical ULID نہیں ہے۔`;
 /** Formats a NonNegativeError in Urdu. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -422,6 +471,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   `قدر ${safelyStringifyUnknownValue(error.value)}، ${error.divisor} کا مضرب ہونی چاہیے۔`;
 /** Formats a BetweenError in Urdu. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)}، ${error.min} اور ${error.max} کے درمیان (دونوں شامل) ہونی چاہیے۔`;
+
+/** Formats a GreaterThanBigIntError in Urdu. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)}، ${error.min} سے بڑی ہونی چاہیے۔`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Urdu. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)}، ${error.min} سے بڑی یا برابر ہونی چاہیے۔`;
+
+/** Formats a LessThanBigIntError in Urdu. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)}، ${error.max} سے چھوٹی ہونی چاہیے۔`;
+
+/** Formats a LessThanOrEqualToBigIntError in Urdu. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)}، ${error.max} سے چھوٹی یا برابر ہونی چاہیے۔`;
+
+/** Formats a BetweenBigIntError in Urdu. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)}، ${error.min} اور ${error.max} کے درمیان (دونوں شامل) ہونی چاہیے۔`;
 
 /** Formats a BooleanFromStringError in Urdu. */
@@ -497,6 +576,12 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `indexes ${issue.previousIndex} اور ${issue.index} پر Map keys decode ہونے کے بعد ایک ہی key ${safelyStringifyUnknownValue(issue.outputKey)} بن جاتی ہیں۔`;
   }
 };
+/** Formats a MinSizeError in Urdu. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `سائز ${error.value.size} کم از کم حد ${error.min} سے کم ہے۔`;
+/** Formats a MaxSizeError in Urdu. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `سائز ${error.value.size} زیادہ سے زیادہ حد ${error.max} سے زیادہ ہے۔`;
 /** Formats a TupleError in Urdu. */
 export const formatTupleError: TypeErrorFormatter<
   TupleError | TupleElementsError<TypeError>

@@ -1,4 +1,5 @@
 import nodeAssert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import { describe, it, mock } from "node:test";
 import { runInNewContext } from "node:vm";
 import {
@@ -32,6 +33,8 @@ import {
   type Result,
 } from "./Result.ts";
 import { testCreateDeps } from "./Task.ts";
+import { Millis, testCreateTime } from "./Time.ts";
+import { utf8ToBytes } from "./Bytes.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import * as fc from "fast-check";
 import {
@@ -44,6 +47,7 @@ import {
   Base64Url,
   base64UrlToUint8Array,
   between,
+  betweenBigInt,
   BigInt,
   Boolean,
   BooleanFromString,
@@ -111,19 +115,25 @@ import {
   Email,
   endsWith,
   EvoluType,
+  excludes,
   finite,
   FiniteNumber,
   FiniteNumberFromString,
   Function,
   greaterThan,
+  greaterThanBigInt,
   greaterThanOrEqualTo,
+  greaterThanOrEqualToBigInt,
   Hex,
+  HexColor,
   hexToUint8Array,
   Hostname,
   Iban,
+  includes,
   int,
   Int,
   IntFromString,
+  Int32,
   Int64,
   Int64FromInt64String,
   Int64String,
@@ -133,10 +143,14 @@ import {
   idBytesTypeValueLength,
   id,
   idToIdBytes,
+  idToUlid,
   idToUuid,
+  IpAddress,
+  IpAddressFromString,
   Ipv4Address,
   Ipv6Address,
   Ipv6AddressFromString,
+  Isbn,
   json,
   Json,
   JsonArray,
@@ -148,15 +162,20 @@ import {
   lazy,
   length,
   lessThan,
+  lessThanBigInt,
   lessThanOrEqualTo,
+  lessThanOrEqualToBigInt,
   literal,
   localizeTypes,
   maxEntries,
   maxLength,
   maxPositiveInt,
+  maxSize,
+  maxUtf8ByteLength,
   map,
   minEntries,
   minLength,
+  minSize,
   Mnemonic,
   multipleOf,
   negative,
@@ -229,8 +248,14 @@ import {
   TrimmedString,
   tuple,
   typed,
+  UInt32,
   UInt64,
   Uint8Array,
+  Uint8ArrayFromBase64,
+  Uint8ArrayFromBase64Url,
+  Uint8ArrayFromHex,
+  Ulid,
+  ulidToId,
   Undefined,
   undefinedOr,
   union,
@@ -259,10 +284,12 @@ import {
   type ArrayIssue,
   type ArrayItemsError,
   type ArrayType,
+  type BetweenBigIntError,
   type BrandFactory,
   type BrandType,
   type StartsWithError,
   type EndsWithError,
+  type ExcludesError,
   type Base64Error,
   type Base64UrlError,
   type DataError,
@@ -281,12 +308,16 @@ import {
   type ExtractTyped,
   type FiniteError,
   type FiniteNumberFromStringError,
+  type GreaterThanBigIntError,
   type GreaterThanError,
+  type GreaterThanOrEqualToBigIntError,
+  type HexColorError,
   type HexError,
   type HostnameError,
   type IbanError,
   type IdentifierCasing,
   type IdentifierError,
+  type IncludesError,
   type InferErrors,
   type InferType,
   type TypeIssue,
@@ -299,9 +330,12 @@ import {
   type Int64StringError,
   type IntError,
   type IdError,
+  type IpAddressError,
+  type IpAddressFromStringError,
   type Ipv4AddressError,
   type Ipv6AddressError,
   type Ipv6AddressFromStringError,
+  type IsbnError,
   type JsonArrayInput,
   type JsonError,
   type JsonObjectInput,
@@ -311,11 +345,15 @@ import {
   type JsonValueIssue,
   type JsonValueType,
   type LazyType,
+  type LessThanBigIntError,
+  type LessThanOrEqualToBigIntError,
   type LessThanOrEqualToError,
   type LiteralError,
   type LiteralType,
   type MaxEntriesError,
   type MaxLengthError,
+  type MaxSizeError,
+  type MaxUtf8ByteLengthError,
   type MapEntriesError,
   type MapError,
   type MapExcessPropertyIssue,
@@ -327,6 +365,7 @@ import {
   type MapValueIssue,
   type MinEntriesError,
   type MinLengthError,
+  type MinSizeError,
   type MnemonicError,
   type NameError,
   type NegativeDecimalStringError,
@@ -403,6 +442,7 @@ import {
   type TableIdError,
   type UnicodeNormalizationForm,
   type UInt64Error,
+  type UlidError,
   type UnionError,
   type UnionInputType,
   type UnionMemberError,
@@ -611,18 +651,23 @@ describe("Type", () => {
       FiniteNumberFromString,
       Function,
       Hex,
+      HexColor,
       Hostname,
       Iban,
       Id,
       IdBytes,
       Int,
       IntFromString,
+      Int32,
       Int64,
       Int64FromInt64String,
       Int64String,
+      IpAddress,
+      IpAddressFromString,
       Ipv4Address,
       Ipv6Address,
       Ipv6AddressFromString,
+      Isbn,
       Json,
       JsonArray,
       JsonObject,
@@ -664,8 +709,13 @@ describe("Type", () => {
       String,
       Symbol,
       TrimmedString,
+      UInt32,
       UInt64,
       Uint8Array,
+      Uint8ArrayFromBase64,
+      Uint8ArrayFromBase64Url,
+      Uint8ArrayFromHex,
+      Ulid,
       Undefined,
       Unknown,
       UnknownNextResult,
@@ -694,9 +744,12 @@ describe("Type", () => {
       wellFormed(String),
       normalized("NFD")(String),
       endsWith("Introspection")(String),
+      includes("Introspection")(String),
+      excludes("Introspection")(String),
       uuidVersion(1)(Uuid),
       minLength(2)(String),
       maxLength(3)(String),
+      maxUtf8ByteLength(5)(String),
       length(4)(String),
       regex("IntrospectionRegex", /introspection/u)(String),
       nonNegative(Number),
@@ -712,6 +765,11 @@ describe("Type", () => {
       finite(Number),
       multipleOf("5")(Number),
       between(6, 7)(Number),
+      greaterThanBigInt(8n)(BigInt),
+      greaterThanOrEqualToBigInt(9n)(BigInt),
+      lessThanBigInt(10n)(BigInt),
+      lessThanOrEqualToBigInt(11n)(BigInt),
+      betweenBigInt(12n, 13n)(BigInt),
       literal("IntrospectionLiteral"),
       undefinedOr(String),
       nullOr(String),
@@ -726,6 +784,8 @@ describe("Type", () => {
       minEntries(1)(record(String, Number)),
       maxEntries(2)(record(String, Number)),
       set(minLength(2)(String)),
+      minSize(1)(set(String)),
+      maxSize(2)(map(String, Number)),
       object(
         {
           required: String,
@@ -749,6 +809,8 @@ describe("Type", () => {
       "ArrayBuffer",
       "Base64",
       "Base64Url",
+      "Between-2147483648-2147483647",
+      "Between12n-13n",
       "Between6-7",
       "BigInt",
       "Boolean",
@@ -767,18 +829,24 @@ describe("Type", () => {
       "Email",
       "EndsWithIntrospection",
       "EvoluType",
+      "ExcludesIntrospection",
       "Finite",
       "FiniteNumberFromString",
       "Function",
       "GreaterThan1",
+      "GreaterThan8n",
       "GreaterThanOrEqualTo2",
+      "GreaterThanOrEqualTo9n",
       "Hex",
+      "HexColor",
       "Hostname",
       "Iban",
       "Id",
       "IdBytes",
+      "IncludesIntrospection",
       "InstanceOf",
       "Int",
+      "Int32",
       "Int64",
       "Int64FromInt64String",
       "Int64String",
@@ -787,19 +855,25 @@ describe("Type", () => {
       "IntrospectionKey",
       "IntrospectionRegex",
       "IntrospectionRoot",
+      "IpAddress",
+      "IpAddressFromString",
       "Ipv4Address",
       "Ipv6Address",
       "Ipv6AddressFromString",
+      "Isbn",
       "Json",
       "JsonValue",
       "JsonValueFromJson",
       "KebabCaseIdentifier",
       "Length16",
       "Length4",
+      "LessThan10n",
       "LessThan200",
       "LessThan3",
       "LessThanOrEqualTo1",
+      "LessThanOrEqualTo11n",
       "LessThanOrEqualTo4",
+      "LessThanOrEqualTo4294967295",
       "LessThanOrEqualTo65535",
       "Literal",
       "Lowercased",
@@ -808,9 +882,12 @@ describe("Type", () => {
       "MaxLength100",
       "MaxLength1000",
       "MaxLength3",
+      "MaxSize2",
+      "MaxUtf8ByteLength5",
       "MinEntries1",
       "MinLength1",
       "MinLength2",
+      "MinSize1",
       "Mnemonic",
       "MultipleOf5",
       "Name",
@@ -844,8 +921,13 @@ describe("Type", () => {
       "TemplateLiteral",
       "Trimmed",
       "Tuple",
+      "UInt32",
       "UInt64",
       "Uint8Array",
+      "Uint8ArrayFromBase64",
+      "Uint8ArrayFromBase64Url",
+      "Uint8ArrayFromHex",
+      "Ulid",
       "Uncapitalized",
       "Union",
       "Unique",
@@ -9074,6 +9156,37 @@ describe("BrandFactory", () => {
     });
   });
 
+  describe("ValidateBrandFactoryBigInt", () => {
+    it("accepts one concrete bigint literal, including a negative one", () => {
+      const min = -5n;
+      const GreaterThanMinus5 = greaterThanBigInt(min)(BigInt);
+
+      assertEqual(GreaterThanMinus5.name, "GreaterThan-5n");
+      assertType<typeof GreaterThanMinus5.name, "GreaterThan-5n">();
+      assertType<typeof GreaterThanMinus5.Error, GreaterThanBigIntError<-5n>>();
+    });
+
+    it("rejects widened, union, and branded bigint parameters", () => {
+      const value = globalThis.BigInt(1);
+      const unionValue = 1n as 1n | 2n;
+      const int64 = Int64.orThrow(1n);
+      void (() => {
+        // @ts-expect-error Parameter must be one concrete bigint literal instead of a widened, union, or branded bigint.
+        greaterThanBigInt(1n + 1n);
+        // @ts-expect-error Parameter must be one concrete bigint literal instead of a widened, union, or branded bigint.
+        greaterThanOrEqualToBigInt(value);
+        // @ts-expect-error Parameter must be one concrete bigint literal instead of a widened, union, or branded bigint.
+        lessThanBigInt(unionValue);
+        // @ts-expect-error Parameter must be one concrete bigint literal instead of a widened, union, or branded bigint.
+        lessThanOrEqualToBigInt(int64);
+        // @ts-expect-error Parameter must be one concrete bigint literal instead of a widened, union, or branded bigint.
+        betweenBigInt(1n, value);
+        // @ts-expect-error Parameter must be one concrete bigint literal instead of a widened, union, or branded bigint.
+        betweenBigInt(unionValue, 3n);
+      });
+    });
+  });
+
   describe("Type Factory", () => {
     describe("identifier", () => {
       const formats = [
@@ -10468,6 +10581,234 @@ describe("BrandFactory", () => {
       });
     });
 
+    describe("includes", () => {
+      it("preserves the full string and parent constraints", () => {
+        const Parent = maxLength(12)(TrimmedString);
+        const Greeting = includes("{name}")(Parent);
+        const input = Parent.orThrow("Hi {name}!");
+        const result = Greeting.from.parent(input);
+
+        assertOk(result, input);
+        assertSame(result.value, input);
+        assertSame(Greeting.to(result.value), input);
+        assertSame(Greeting.parent, Parent);
+        assertEqual(Greeting.name, "Includes{name}");
+        assertType<typeof Greeting.name, "Includes{name}">();
+        assertType<typeof Greeting.parent, typeof Parent>();
+        assertType<
+          typeof Greeting.Output,
+          typeof Parent.Output & Brand<"Includes{name}">
+        >();
+        assertType<typeof Greeting.Error, IncludesError<"{name}">>();
+        assertType<
+          Parameters<typeof Greeting.from.parent>[0],
+          typeof Parent.Output
+        >();
+        assertErr(Greeting.fromUnknown(" {name}"), {
+          type: "Trimmed",
+          value: " {name}",
+        });
+        assertErr(Greeting.fromUnknown("Hello, {name}!"), {
+          type: "MaxLength12",
+          value: "Hello, {name}!",
+          max: 12,
+        });
+        assertErr(Greeting.fromUnknown(1), {
+          type: "TypeOf",
+          expected: "String",
+          value: 1,
+        });
+      });
+
+      it("matches the exact substring anywhere without removing it", () => {
+        const Greeting = includes("{name}")(String);
+        for (const value of [
+          "{name}",
+          "{name}!",
+          "Hi {name}",
+          "Hi {name}!",
+          "{name}{name}",
+          "Hi\n{name}",
+        ]) {
+          assertOk(Greeting.fromUnknown(value), value);
+        }
+        for (const value of [
+          "",
+          "{name",
+          "name}",
+          "{Name}",
+          "{ name }",
+          "{na\nme}",
+        ]) {
+          assertErr(Greeting.fromUnknown(value), {
+            type: "Includes{name}",
+            value,
+            substring: "{name}",
+          });
+        }
+        assertEqual(
+          Greeting.formatError({
+            type: "Includes{name}",
+            value: "Hi",
+            substring: "{name}",
+          }),
+          'The value "Hi" must contain "{name}".',
+        );
+      });
+
+      it("accepts an empty substring and compares UTF-16 code units literally", () => {
+        const AnyString = includes("")(String);
+        for (const value of ["", "PORT", "\n", "😀"]) {
+          assertOk(AnyString.fromUnknown(value), value);
+        }
+        assertErr(includes("")(TrimmedString).fromUnknown(" "));
+        assertOk(includes(".*")(String).fromUnknown("a.*b"), "a.*b");
+        assertErr(includes(".*")(String).fromUnknown("abc"));
+        assertOk(includes("a\nb")(String).fromUnknown("xa\nbx"), "xa\nbx");
+        assertErr(includes("a\nb")(String).fromUnknown("a\r\nb"));
+        assertErr(includes("\u00E9")(String).fromUnknown("e\u0301"));
+        // Like String.prototype.includes, a lone surrogate matches half of a
+        // character outside the Basic Multilingual Plane.
+        assertOk(includes("\uDE00")(String).fromUnknown("😀"), "😀");
+      });
+
+      it("requires a concrete substring and keeps different substring brands distinct", () => {
+        const Greeting = includes("{name}")(String);
+        const Farewell = includes("{bye}")(String);
+        const farewell = Farewell.orThrow("{bye}");
+        const widened = globalThis.String("{name}");
+        const unionSubstring = "{name}" as "{name}" | "{bye}";
+        const branded = TrimmedString.orThrow("{name}");
+        const templateSubstring = "{name}" as `{${string}}`;
+        void (() => {
+          // @ts-expect-error Expected must be one concrete literal value.
+          includes(widened);
+          // @ts-expect-error Expected must be one concrete literal value.
+          includes(unionSubstring);
+          // @ts-expect-error Expected must be one concrete literal value.
+          includes(branded);
+          // @ts-expect-error Expected must be one concrete literal value.
+          includes(templateSubstring);
+          // @ts-expect-error The parent Type must output strings.
+          includes("{name}")(Number);
+          // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+          includes("{name}")(Greeting);
+          // @ts-expect-error {bye} values do not carry the Includes{name} brand.
+          Greeting.from(farewell);
+        });
+      });
+    });
+
+    describe("excludes", () => {
+      it("preserves the full string and parent constraints", () => {
+        const Parent = maxLength(12)(TrimmedString);
+        const Tag = excludes(",")(Parent);
+        const input = Parent.orThrow("local-first");
+        const result = Tag.from.parent(input);
+
+        assertOk(result, input);
+        assertSame(result.value, input);
+        assertSame(Tag.to(result.value), input);
+        assertSame(Tag.parent, Parent);
+        assertEqual(Tag.name, "Excludes,");
+        assertType<typeof Tag.name, "Excludes,">();
+        assertType<typeof Tag.parent, typeof Parent>();
+        assertType<
+          typeof Tag.Output,
+          typeof Parent.Output & Brand<"Excludes,">
+        >();
+        assertType<typeof Tag.Error, ExcludesError<",">>();
+        assertType<
+          Parameters<typeof Tag.from.parent>[0],
+          typeof Parent.Output
+        >();
+        assertErr(Tag.fromUnknown(" a,b"), { type: "Trimmed", value: " a,b" });
+        assertErr(Tag.fromUnknown("local-first-sync"), {
+          type: "MaxLength12",
+          value: "local-first-sync",
+          max: 12,
+        });
+        assertErr(Tag.fromUnknown(1), {
+          type: "TypeOf",
+          expected: "String",
+          value: 1,
+        });
+      });
+
+      it("rejects the exact substring anywhere, including across line breaks", () => {
+        const NoFoo = excludes("foo")(String);
+        for (const value of ["", "fo", "oo", "f oo", "fo\no", "Foo", "FOO"]) {
+          assertOk(NoFoo.fromUnknown(value), value);
+        }
+        for (const value of ["foo", "foobar", "barfoo", "fofoo", "a\nfoo"]) {
+          assertErr(NoFoo.fromUnknown(value), {
+            type: "Excludesfoo",
+            value,
+            substring: "foo",
+          });
+        }
+        const NoBreak = excludes("a\nb")(String);
+        for (const value of ["ab", "a\rb", "a\n", "\nb", "a\r\nb"]) {
+          assertOk(NoBreak.fromUnknown(value), value);
+        }
+        assertErr(NoBreak.fromUnknown("xa\nbx"), {
+          type: "Excludesa\nb",
+          value: "xa\nbx",
+          substring: "a\nb",
+        });
+        assertEqual(
+          excludes("\n")(String).formatError({
+            type: "Excludes\n",
+            value: "a\nb",
+            substring: "\n",
+          }),
+          'The value "a\\nb" must not contain "\\n".',
+        );
+      });
+
+      it("compares UTF-16 code units literally", () => {
+        assertOk(excludes(".*")(String).fromUnknown("abc"), "abc");
+        assertErr(excludes(".*")(String).fromUnknown("a.*"));
+        assertOk(excludes("\u00E9")(String).fromUnknown("e\u0301"), "e\u0301");
+        assertErr(excludes("\uDE00")(String).fromUnknown("😀"), {
+          type: "Excludes\uDE00",
+          value: "😀",
+          substring: "\uDE00",
+        });
+      });
+
+      it("requires a concrete non-empty substring and keeps different substring brands distinct", () => {
+        const NoComma = excludes(",")(String);
+        const NoSlash = excludes("/")(String);
+        const noSlash = NoSlash.orThrow("a,b");
+        const empty = "";
+        const widened = globalThis.String(",");
+        const unionSubstring = "," as "," | "/";
+        const branded = TrimmedString.orThrow(",");
+        const templateSubstring = "," as `${string},`;
+        void (() => {
+          // @ts-expect-error Substring must not be empty because every string contains it.
+          excludes("");
+          // @ts-expect-error Substring must not be empty because every string contains it.
+          excludes(empty);
+          // @ts-expect-error Expected must be one concrete literal value.
+          excludes(widened);
+          // @ts-expect-error Expected must be one concrete literal value.
+          excludes(unionSubstring);
+          // @ts-expect-error Expected must be one concrete literal value.
+          excludes(branded);
+          // @ts-expect-error Expected must be one concrete literal value.
+          excludes(templateSubstring);
+          // @ts-expect-error The parent Type must output strings.
+          excludes(",")(Number);
+          // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+          excludes(",")(NoComma);
+          // @ts-expect-error Excludes/ values do not carry the Excludes, brand.
+          NoComma.from(noSlash);
+        });
+      });
+    });
+
     describe("minLength", () => {
       it("creates a Brand Factory requiring a minimum length", () => {
         const min = 2;
@@ -10642,6 +10983,180 @@ describe("BrandFactory", () => {
       });
     });
 
+    describe("maxUtf8ByteLength", () => {
+      it("creates a Brand Factory limiting the UTF-8 byte length", () => {
+        const Parent = maxLength(4)(TrimmedString);
+        const Label = maxUtf8ByteLength(6)(Parent);
+        const input = Parent.orThrow("\u20AC\u20AC");
+        const result = Label.from.parent(input);
+
+        assertOk(result, input);
+        assertSame(result.value, input);
+        assertSame(Label.to(result.value), input);
+        assertSame(Label.parent, Parent);
+        assertEqual(Label.name, "MaxUtf8ByteLength6");
+        assertType<typeof Label.name, "MaxUtf8ByteLength6">();
+        assertType<typeof Label.parent, typeof Parent>();
+        assertType<
+          typeof Label.Output,
+          typeof Parent.Output & Brand<"MaxUtf8ByteLength6">
+        >();
+        assertType<typeof Label.Error, MaxUtf8ByteLengthError<6>>();
+        assertType<
+          Parameters<typeof Label.from.parent>[0],
+          typeof Parent.Output
+        >();
+        assertErr(Label.fromUnknown(" a"), { type: "Trimmed", value: " a" });
+        assertErr(Label.fromUnknown("abcde"), {
+          type: "MaxLength4",
+          value: "abcde",
+          max: 4,
+        });
+        assertErr(Label.fromUnknown("\u20AC\u20AC\u20AC"), {
+          type: "MaxUtf8ByteLength6",
+          value: "\u20AC\u20AC\u20AC",
+          max: 6,
+        });
+        assertErr(Label.fromUnknown(1), {
+          type: "TypeOf",
+          expected: "String",
+          value: 1,
+        });
+        assertEqual(
+          Label.formatError({
+            type: "MaxUtf8ByteLength6",
+            value: "abcdefg",
+            max: 6,
+          }),
+          'The value "abcdefg" exceeds the maximum UTF-8 byte length of 6.',
+        );
+      });
+
+      it("counts the bytes TextEncoder produces, with 3 bytes per lone surrogate", () => {
+        const AtMost3 = maxUtf8ByteLength(3)(String);
+        const AtMost4 = maxUtf8ByteLength(4)(String);
+        const AtMost5 = maxUtf8ByteLength(5)(String);
+        const AtMost6 = maxUtf8ByteLength(6)(String);
+
+        for (const [value, byteLength] of [
+          ["", 0],
+          ["\u0000", 1],
+          ["\u007F", 1],
+          ["\u0080", 2],
+          ["\u00E9", 2],
+          ["\u07FF", 2],
+          ["\u0800", 3],
+          ["\u20AC", 3],
+          ["\uFEFF", 3],
+          ["\uFFFF", 3],
+          ["\uD83D\uDE00", 4],
+          ["\uD800", 3],
+          ["\uDBFF", 3],
+          ["\uDC00", 3],
+          ["\uDFFF", 3],
+          ["\uD800a", 4],
+          ["\uDC00\uD800", 6],
+          ["\uD83D\uDE00\uD83D", 7],
+        ] as const) {
+          assertEqual(utf8ToBytes(value).length, byteLength);
+          assertEqual(AtMost3.is(value), byteLength <= 3);
+          assertEqual(AtMost4.is(value), byteLength <= 4);
+          assertEqual(AtMost5.is(value), byteLength <= 5);
+          assertEqual(AtMost6.is(value), byteLength <= 6);
+        }
+        assertErr(AtMost5.fromUnknown("\uDC00\uD800"), {
+          type: "MaxUtf8ByteLength5",
+          value: "\uDC00\uD800",
+          max: 5,
+        });
+      });
+
+      it("decides by length alone outside the range from a third of max to max", () => {
+        const AtMost6 = maxUtf8ByteLength(6)(String);
+
+        // At most a third of max, even 3-byte code units fit.
+        assertOk(AtMost6.fromUnknown("\u20AC\u20AC"), "\u20AC\u20AC");
+        assertOk(AtMost6.fromUnknown("\uD83D\uDE00"), "\uD83D\uDE00");
+        // Longer than max, even 1-byte code units exceed it.
+        assertErr(AtMost6.fromUnknown("abcdefg"), {
+          type: "MaxUtf8ByteLength6",
+          value: "abcdefg",
+          max: 6,
+        });
+        // In between, the bytes are counted.
+        assertOk(AtMost6.fromUnknown("abcdef"), "abcdef");
+        assertOk(AtMost6.fromUnknown("\u20ACab"), "\u20ACab");
+        assertOk(AtMost6.fromUnknown("\uD83D\uDE00ab"), "\uD83D\uDE00ab");
+        assertErr(AtMost6.fromUnknown("\u20AC\u20ACa"), {
+          type: "MaxUtf8ByteLength6",
+          value: "\u20AC\u20ACa",
+          max: 6,
+        });
+        assertErr(AtMost6.fromUnknown("\uD83D\uDE00\u00E9a"), {
+          type: "MaxUtf8ByteLength6",
+          value: "\uD83D\uDE00\u00E9a",
+          max: 6,
+        });
+
+        const Empty = maxUtf8ByteLength(0)(String);
+        assertOk(Empty.fromUnknown(""), "");
+        assertErr(Empty.fromUnknown("a"), {
+          type: "MaxUtf8ByteLength0",
+          value: "a",
+          max: 0,
+        });
+      });
+
+      it("matches TextEncoder for every short combination of boundary code units", () => {
+        const limits = [
+          maxUtf8ByteLength(0)(String),
+          maxUtf8ByteLength(1)(String),
+          maxUtf8ByteLength(2)(String),
+          maxUtf8ByteLength(3)(String),
+          maxUtf8ByteLength(4)(String),
+          maxUtf8ByteLength(5)(String),
+          maxUtf8ByteLength(6)(String),
+          maxUtf8ByteLength(7)(String),
+          maxUtf8ByteLength(8)(String),
+          maxUtf8ByteLength(9)(String),
+        ];
+        const units = [
+          0x61, 0x00, 0x7f, 0x80, 0x7ff, 0x800, 0xfeff, 0xffff, 0xd800, 0xdbff,
+          0xdc00, 0xdfff,
+        ].map((code) => globalThis.String.fromCharCode(code));
+        const values = [""];
+        for (const first of units) {
+          values.push(first);
+          for (const second of units) {
+            values.push(first + second);
+            for (const third of units) values.push(first + second + third);
+          }
+        }
+
+        for (const value of values) {
+          const byteLength = utf8ToBytes(value).length;
+          for (const [max, Limit] of limits.entries()) {
+            assert(
+              Limit.is(value) === byteLength <= max,
+              `${JSON.stringify(value)} has ${byteLength} bytes.`,
+            );
+          }
+        }
+      });
+
+      it("requires a concrete max and a string parent", () => {
+        const widened = globalThis.Number(6);
+        void (() => {
+          // @ts-expect-error Parameter must be one concrete numeric literal instead of a widened, union, or branded number.
+          maxUtf8ByteLength(widened);
+          // @ts-expect-error The parent Type must output strings.
+          maxUtf8ByteLength(6)(array(String));
+          // @ts-expect-error Parameterized Brand Factories accept their parent separately.
+          maxUtf8ByteLength(6, String);
+        });
+      });
+    });
+
     describe("length", () => {
       it("creates a Brand Factory requiring an exact length", () => {
         const Length2 = length(2)(String);
@@ -10802,6 +11317,77 @@ describe("BrandFactory", () => {
           );
           assertType<typeof Base64Url.Error, Base64UrlError>();
         });
+
+        describe("Uint8ArrayFromBase64Url", () => {
+          it("decodes canonical text to bytes and encodes bytes canonically", () => {
+            assertType<
+              typeof Uint8ArrayFromBase64Url,
+              TransformType<
+                typeof Base64Url,
+                typeof Uint8Array,
+                "Uint8ArrayFromBase64Url",
+                never
+              >
+            >();
+
+            for (const [value, bytes] of [
+              ["", []],
+              ["AA", [0]],
+              ["_w", [255]],
+              ["AAEC_w", [0, 1, 2, 255]],
+            ] as const) {
+              const expected = new globalThis.Uint8Array(bytes);
+              const result = Uint8ArrayFromBase64Url.fromUnknown(value);
+              assertOk(result);
+              assertEqualBytes(result.value, expected);
+              assertEqualBytes(
+                getOrThrow(
+                  Uint8ArrayFromBase64Url.from.parent(Base64Url.orThrow(value)),
+                ),
+                expected,
+              );
+              assertEqual(Uint8ArrayFromBase64Url.to(result.value), value);
+            }
+            {
+              const actual = Uint8ArrayFromBase64Url.to(
+                new globalThis.Uint8Array(),
+              );
+              assertType<typeof actual, Base64Url>();
+            }
+            void (() => {
+              // @ts-expect-error Encoding accepts only a Uint8Array.
+              Uint8ArrayFromBase64Url.to([0, 1, 2, 255]);
+            });
+          });
+
+          it("encodes every Uint8Array, including views and Buffers", () => {
+            const bytes = [0, 1, 2, 255];
+            const crossRealm: globalThis.Uint8Array = runInNewContext(
+              "new Uint8Array([0, 1, 2, 255])",
+            );
+            for (const value of [
+              new globalThis.Uint8Array([7, ...bytes, 7]).subarray(1, 5),
+              Buffer.from(bytes),
+              crossRealm,
+            ]) {
+              assertEqual(Uint8ArrayFromBase64Url.to(value), "AAEC_w");
+            }
+          });
+
+          it("reports invalid text through the parent Base64Url", () => {
+            for (const value of ["AAEC/w", "AAEC_w==", "AB", "*"]) {
+              assertErr(Uint8ArrayFromBase64Url.fromUnknown(value), {
+                type: "Base64Url",
+                value,
+              });
+            }
+            assertErr(Uint8ArrayFromBase64Url.fromUnknown(1), {
+              type: "TypeOf",
+              expected: "String",
+              value: 1,
+            });
+          });
+        });
       });
 
       describe("Base64", () => {
@@ -10870,6 +11456,77 @@ describe("BrandFactory", () => {
           assertTrue(Base64.is(encoded));
           assertFalse(Base64.is(`${encoded} `));
         });
+
+        describe("Uint8ArrayFromBase64", () => {
+          it("decodes canonical text to bytes and encodes bytes canonically", () => {
+            assertType<
+              typeof Uint8ArrayFromBase64,
+              TransformType<
+                typeof Base64,
+                typeof Uint8Array,
+                "Uint8ArrayFromBase64",
+                never
+              >
+            >();
+
+            for (const [value, bytes] of [
+              ["", []],
+              ["AA==", [0]],
+              ["+/8=", [251, 255]],
+              ["AAEC/w==", [0, 1, 2, 255]],
+            ] as const) {
+              const expected = new globalThis.Uint8Array(bytes);
+              const result = Uint8ArrayFromBase64.fromUnknown(value);
+              assertOk(result);
+              assertEqualBytes(result.value, expected);
+              assertEqualBytes(
+                getOrThrow(
+                  Uint8ArrayFromBase64.from.parent(Base64.orThrow(value)),
+                ),
+                expected,
+              );
+              assertEqual(Uint8ArrayFromBase64.to(result.value), value);
+            }
+            {
+              const actual = Uint8ArrayFromBase64.to(
+                new globalThis.Uint8Array(),
+              );
+              assertType<typeof actual, Base64>();
+            }
+            void (() => {
+              // @ts-expect-error Encoding accepts only a Uint8Array.
+              Uint8ArrayFromBase64.to([0, 1, 2, 255]);
+            });
+          });
+
+          it("encodes every Uint8Array, including views and Buffers", () => {
+            const bytes = [0, 1, 2, 255];
+            const crossRealm: globalThis.Uint8Array = runInNewContext(
+              "new Uint8Array([0, 1, 2, 255])",
+            );
+            for (const value of [
+              new globalThis.Uint8Array([7, ...bytes, 7]).subarray(1, 5),
+              Buffer.from(bytes),
+              crossRealm,
+            ]) {
+              assertEqual(Uint8ArrayFromBase64.to(value), "AAEC/w==");
+            }
+          });
+
+          it("reports invalid text through the parent Base64", () => {
+            for (const value of ["AAEC/w", "AAEC_w==", "AB==", " AA=="]) {
+              assertErr(Uint8ArrayFromBase64.fromUnknown(value), {
+                type: "Base64",
+                value,
+              });
+            }
+            assertErr(Uint8ArrayFromBase64.fromUnknown(1), {
+              type: "TypeOf",
+              expected: "String",
+              value: 1,
+            });
+          });
+        });
       });
 
       describe("Hex", () => {
@@ -10919,6 +11576,117 @@ describe("BrandFactory", () => {
             'The value "0xff" is not lowercase hexadecimal with an even number of digits.',
           );
           assertType<typeof Hex.Error, HexError>();
+        });
+
+        describe("Uint8ArrayFromHex", () => {
+          it("decodes lowercase text to bytes and encodes bytes as lowercase text", () => {
+            assertType<
+              typeof Uint8ArrayFromHex,
+              TransformType<
+                typeof Hex,
+                typeof Uint8Array,
+                "Uint8ArrayFromHex",
+                never
+              >
+            >();
+
+            for (const [value, bytes] of [
+              ["", []],
+              ["00", [0]],
+              ["ff00", [255, 0]],
+              ["000102ff", [0, 1, 2, 255]],
+            ] as const) {
+              const expected = new globalThis.Uint8Array(bytes);
+              const result = Uint8ArrayFromHex.fromUnknown(value);
+              assertOk(result);
+              assertEqualBytes(result.value, expected);
+              assertEqualBytes(
+                getOrThrow(Uint8ArrayFromHex.from.parent(Hex.orThrow(value))),
+                expected,
+              );
+              assertEqual(Uint8ArrayFromHex.to(result.value), value);
+            }
+            {
+              const actual = Uint8ArrayFromHex.to(new globalThis.Uint8Array());
+              assertType<typeof actual, Hex>();
+            }
+            void (() => {
+              // @ts-expect-error Encoding accepts only a Uint8Array.
+              Uint8ArrayFromHex.to([0, 1, 2, 255]);
+            });
+          });
+
+          it("encodes every Uint8Array, including views and Buffers", () => {
+            const bytes = [0, 1, 2, 255];
+            const crossRealm: globalThis.Uint8Array = runInNewContext(
+              "new Uint8Array([0, 1, 2, 255])",
+            );
+            for (const value of [
+              new globalThis.Uint8Array([7, ...bytes, 7]).subarray(1, 5),
+              Buffer.from(bytes),
+              crossRealm,
+            ]) {
+              assertEqual(Uint8ArrayFromHex.to(value), "000102ff");
+            }
+          });
+
+          it("reports invalid text through the parent Hex", () => {
+            for (const value of ["000102FF", "abc", "0xff", " 00"]) {
+              assertErr(Uint8ArrayFromHex.fromUnknown(value), {
+                type: "Hex",
+                value,
+              });
+            }
+            assertErr(Uint8ArrayFromHex.fromUnknown(1), {
+              type: "TypeOf",
+              expected: "String",
+              value: 1,
+            });
+          });
+        });
+      });
+
+      describe("HexColor", () => {
+        it("accepts lowercase #rrggbb colors", () => {
+          for (const value of ["#000000", "#ffffff", "#a1b2c3", "#1e90ff"]) {
+            assertEqual(HexColor.from.parent(value), ok(value));
+          }
+          assertEqual(HexColor.name, "HexColor");
+          assertType<typeof HexColor.Output, string & Brand<"HexColor">>();
+          assertType<typeof HexColor.Error, HexColorError>();
+        });
+
+        it("rejects other spellings without normalizing them", () => {
+          for (const value of [
+            "",
+            "#",
+            "#A1B2C3",
+            "#a1B2c3",
+            "#fff",
+            "#a1b2c3ff",
+            "a1b2c3",
+            "#a1b2c",
+            "#a1b2c3d",
+            "#g1b2c3",
+            " #a1b2c3",
+            "#a1b2c3 ",
+            "#a1b2c3\n",
+            "##a1b2c3",
+            "0xa1b2c3",
+            "\uFF03a1b2c3",
+            "#\uFF10\uFF10\uFF10\uFF10\uFF10\uFF10",
+            "red",
+            "rgb(161, 178, 195)",
+          ]) {
+            assertEqual(
+              HexColor.from.parent(value),
+              err({ type: "HexColor", value }),
+            );
+          }
+          assertEqual(
+            HexColor.formatError({ type: "HexColor", value: "#FFF" }),
+            'The value "#FFF" is not a color in the lowercase #rrggbb format.',
+          );
         });
       });
 
@@ -11328,6 +12096,173 @@ describe("BrandFactory", () => {
         });
       });
 
+      describe("IpAddress", () => {
+        it("accepts IPv4 and canonical IPv6 addresses", () => {
+          for (const value of [
+            "0.0.0.0",
+            "192.168.1.1",
+            "::",
+            "::1",
+            "2001:db8::1",
+            "::102:304",
+            "::ffff:1.2.3.4",
+          ]) {
+            assertOk(IpAddress.fromUnknown(value), value);
+            assertTrue(IpAddress.is(value));
+          }
+          assertType<typeof IpAddress.Output, Ipv4Address | Ipv6Address>();
+          assertType<typeof IpAddress.Input, string>();
+          assertSame(IpAddress.parent, String);
+          assertOk(IpAddress.from.parent("::1"), "::1");
+          assertEqual(IpAddress.orThrow("192.168.1.1"), "192.168.1.1");
+          // @ts-expect-error A string does not carry the Ipv4Address or Ipv6Address brand.
+          void ("192.168.1.1" satisfies IpAddress);
+
+          const ipv6 = getOrThrow(IpAddress.fromUnknown("2001:db8::1"));
+          assertFalse(Ipv4Address.is(ipv6));
+          if (!Ipv4Address.is(ipv6)) assertType<typeof ipv6, Ipv6Address>();
+          const ipv4 = getOrThrow(IpAddress.fromUnknown("192.168.1.1"));
+          assertFalse(Ipv6Address.is(ipv4));
+          if (!Ipv6Address.is(ipv4)) assertType<typeof ipv4, Ipv4Address>();
+        });
+
+        it("rejects other values with one IpAddressError", () => {
+          for (const value of [
+            "",
+            "01.2.3.4",
+            "127.1",
+            "1.2.3.4:80",
+            "2001:DB8::1",
+            "2001:0db8::1",
+            "2001:db8:0:0:0:0:0:1",
+            "::ffff:102:304",
+            "fe80::1%eth0",
+            "[::1]",
+            "::1/128",
+            " ::1",
+            "localhost",
+          ]) {
+            assertErr(IpAddress.fromUnknown(value), {
+              type: "IpAddress",
+              value,
+            });
+            assertFalse(IpAddress.is(value));
+          }
+          for (const value of [42, null]) {
+            assertErr(IpAddress.fromUnknown(value), {
+              type: "TypeOf",
+              expected: "String",
+              value,
+            });
+          }
+
+          const invalid = IpAddress.fromUnknown("2001:DB8::1", {
+            errors: "all",
+          });
+          assertErr(invalid, { type: "IpAddress", value: "2001:DB8::1" });
+          const message =
+            'The value "2001:DB8::1" is not a valid IPv4 address or canonical IPv6 address.';
+          assertEqual(IpAddress.formatError(invalid.error), message);
+          assertEqual(typeErrorToIssues(IpAddress, invalid.error), [
+            { path: [], message },
+          ]);
+          assertType<typeof IpAddress.Error, IpAddressError>();
+        });
+
+        describe("IpAddressFromString", () => {
+          it("transforms IP address text into an IpAddress", () => {
+            for (const [value, address] of [
+              ["0.0.0.0", "0.0.0.0"],
+              ["192.168.1.1", "192.168.1.1"],
+              ["::1", "::1"],
+              ["2001:db8::1", "2001:db8::1"],
+              ["2001:0DB8:0:0:0:0:0:1", "2001:db8::1"],
+              ["::1.2.3.4", "::102:304"],
+              ["::ffff:102:304", "::ffff:1.2.3.4"],
+            ] as const) {
+              const result = IpAddressFromString.fromUnknown(value);
+              assertOk(result, address);
+              assertOk(IpAddressFromString.from.parent(value), address);
+              assertEqual(IpAddressFromString.to(result.value), address);
+              assertOk(
+                IpAddressFromString.fromUnknown(
+                  IpAddressFromString.to(result.value),
+                ),
+                address,
+              );
+            }
+            assertSame(IpAddressFromString.parent, String);
+            assertSame(IpAddressFromString.output, IpAddress);
+            {
+              const value = IpAddressFromString.orThrow("::1");
+              assertType<typeof value, IpAddress>();
+            }
+            // @ts-expect-error IpAddressFromString.to accepts only an IpAddress, not a string.
+            void IpAddressFromString.to("192.168.1.1");
+          });
+
+          it("rejects text that is not an IP address", () => {
+            for (const value of [
+              "",
+              "01.2.3.4",
+              "1.2.3",
+              "127.1",
+              "0x7f.0.0.1",
+              "2130706433",
+              "1.2.3.4:80",
+              "1.2.3.4::",
+              "::1.2.3",
+              "1::2::3",
+              "fe80::1%eth0",
+              "[::1]",
+              "::1/128",
+              " 1.2.3.4",
+              "localhost",
+            ]) {
+              assertErr(IpAddressFromString.fromUnknown(value), {
+                type: "IpAddressFromString",
+                value,
+              });
+            }
+            assertErr(IpAddressFromString.fromUnknown(42), {
+              type: "TypeOf",
+              expected: "String",
+              value: 42,
+            });
+            assertEqual(
+              IpAddressFromString.formatError({
+                type: "IpAddressFromString",
+                value: "1.2.3.4:80",
+              }),
+              'The value "1.2.3.4:80" is not a valid IP address.',
+            );
+            assertType<
+              typeof IpAddressFromString.Error,
+              | IpAddressFromStringError
+              | TransformOutputError<"IpAddressFromString", IpAddressError>
+            >();
+          });
+
+          it("parses IPv4 text as Ipv4Address and IPv6 text as Ipv6AddressFromString", () => {
+            fc.assert(
+              fc.property(fc.ipV4(), (value) => {
+                assertOk(IpAddressFromString.fromUnknown(value), value);
+              }),
+            );
+            fc.assert(
+              fc.property(fc.ipV6(), (value) => {
+                const expected = Ipv6AddressFromString.fromUnknown(value);
+                assertOk(expected);
+                assertOk(
+                  IpAddressFromString.fromUnknown(value),
+                  expected.value,
+                );
+              }),
+            );
+          });
+        });
+      });
+
       describe("PhoneNumberE164", () => {
         it("accepts a plus sign and 7 to 15 digits", () => {
           for (const value of [
@@ -11435,6 +12370,66 @@ describe("BrandFactory", () => {
             'The value "GB82WEST12345698765433" is not a valid IBAN in uppercase without spaces.',
           );
           assertType<typeof Iban.Error, IbanError>();
+        });
+      });
+
+      describe("Isbn", () => {
+        it("accepts 13 digits with a book prefix and a valid check digit", () => {
+          for (const value of [
+            // The ISBN-13 of the ISBN-10 0306406152.
+            "9780306406157",
+            "9791032300824",
+            "9780000000002",
+            // The lowest and highest 979 numbers outside ISMN.
+            "9791000000008",
+            "9799999999990",
+          ]) {
+            assertOk(Isbn.fromUnknown(value), value);
+          }
+          assertType<typeof Isbn.Output, string & Brand<"Isbn">>();
+          // @ts-expect-error A string does not carry the Isbn brand.
+          void ("9780306406157" satisfies Isbn);
+        });
+
+        it("rejects other numbers, wrong check digits, and other spellings", () => {
+          for (const value of [
+            "",
+            // Wrong check digits.
+            "9780306406158",
+            "9780306406150",
+            "9791032300825",
+            // ISMN of printed music, with a valid check digit.
+            "9790000000001",
+            // A non-book EAN-13 with a valid check digit.
+            "4006381333931",
+            // Other prefixes with valid check digits.
+            "9770306406158",
+            "9800306406152",
+            // ISBN-10, with and without the check character X.
+            "0306406152",
+            "080442957X",
+            "978-0-306-40615-7",
+            "978 0 306 40615 7",
+            "ISBN 9780306406157",
+            " 9780306406157",
+            "9780306406157\n",
+            "978030640615",
+            "97803064061577",
+            // 9780306406157 in Arabic-Indic digits.
+            globalThis.String.fromCharCode(
+              ...Array.from(
+                "9780306406157",
+                (digit) => 0x0660 + globalThis.Number(digit),
+              ),
+            ),
+          ]) {
+            assertErr(Isbn.fromUnknown(value), { type: "Isbn", value });
+          }
+          assertEqual(
+            Isbn.formatError({ type: "Isbn", value: "978-0-306-40615-7" }),
+            'The value "978-0-306-40615-7" is not a valid 13-digit ISBN without hyphens.',
+          );
+          assertType<typeof Isbn.Error, IsbnError>();
         });
       });
 
@@ -11586,6 +12581,55 @@ describe("BrandFactory", () => {
             // @ts-expect-error The parent Type must output Uuid values.
             uuidVersion(4)(String);
           });
+        });
+      });
+
+      describe("Ulid", () => {
+        it("accepts canonical uppercase ULIDs of every 128-bit value", () => {
+          for (const value of [
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "00000000000000000000000000",
+            "7ZZZZZZZZZZZZZZZZZZZZZZZZZ",
+            "0123456789ABCDEFGHJKMNPQRS",
+            "7TVWXYZ0000000000000000000",
+          ]) {
+            assertOk(Ulid.fromUnknown(value), value);
+          }
+          assertType<typeof Ulid.Output, string & Brand<"Ulid">>();
+          // @ts-expect-error A string does not carry the Ulid brand.
+          void ("01ARZ3NDEKTSV4RRFFQ69G5FAV" satisfies Ulid);
+        });
+
+        it("rejects other spellings, excluded letters, values above 128 bits, and wrong lengths", () => {
+          for (const value of [
+            "",
+            "01arz3ndektsv4rrffq69g5fav",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAv",
+            // Crockford's decoding aliases I, L, and O, and the excluded U.
+            "01ARZ3NDEKTSV4RRFFQ69G5FAI",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAL",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAO",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAU",
+            "80000000000000000000000000",
+            "8ZZZZZZZZZZZZZZZZZZZZZZZZZ",
+            "ZZZZZZZZZZZZZZZZZZZZZZZZZZ",
+            "01ARZ3NDEKTSV4RRFFQ69G5FA",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV0",
+            "01ARZ3NDEK-TSV4RRFFQ69G5FAV",
+            " 01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV\n",
+            `${globalThis.String.fromCharCode(0xff10)}1ARZ3NDEKTSV4RRFFQ69G5FAV`,
+          ]) {
+            assertErr(Ulid.fromUnknown(value), { type: "Ulid", value });
+          }
+          assertEqual(
+            Ulid.formatError({
+              type: "Ulid",
+              value: "01arz3ndektsv4rrffq69g5fav",
+            }),
+            'The value "01arz3ndektsv4rrffq69g5fav" is not a canonical uppercase ULID.',
+          );
+          assertType<typeof Ulid.Error, UlidError>();
         });
       });
 
@@ -11886,6 +12930,89 @@ describe("BrandFactory", () => {
             // @ts-expect-error uuidToId accepts only a validated Uuid.
             uuidToId("0190a6f4-8c3e-7b2a-9d41-5e6f7a8b9c0d");
           });
+        });
+
+        it("converts to and from a Ulid with the same bytes", () => {
+          const deps = testCreateDeps();
+          const ulid = Ulid.orThrow("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+          const value = ulidToId(ulid);
+
+          assertEqual(value, "AVY-OrXT1nZMYe-5kwK9Ww");
+          assertEqualBytes(
+            idToIdBytes(value),
+            new globalThis.Uint8Array([
+              0x01, 0x56, 0x3e, 0x3a, 0xb5, 0xd3, 0xd6, 0x76, 0x4c, 0x61, 0xef,
+              0xb9, 0x93, 0x02, 0xbd, 0x5b,
+            ]),
+          );
+          assertSame(idToUlid(value), ulid);
+
+          for (const [text, byte] of [
+            ["00000000000000000000000000", 0x00],
+            ["7ZZZZZZZZZZZZZZZZZZZZZZZZZ", 0xff],
+          ] as const) {
+            const id = ulidToId(Ulid.orThrow(text));
+            assertEqualBytes(
+              idToIdBytes(id),
+              new globalThis.Uint8Array(16).fill(byte),
+            );
+            assertSame(idToUlid(id), text);
+          }
+
+          for (const id of [
+            createId(deps),
+            createIdAsUuidv7(deps),
+            createIdFromString("ulid"),
+          ]) {
+            const converted = idToUlid(id);
+            assertTrue(Ulid.is(converted));
+            assertSame(ulidToId(converted), id);
+          }
+
+          // A ULID and an Id created by createIdAsUuidv7 both start with the
+          // creation time in milliseconds.
+          const time = testCreateTime({
+            startAt: Millis.orThrow(1469922850259),
+          });
+          assertEqual(
+            idToUlid(createIdAsUuidv7({ ...deps, time })).slice(0, 10),
+            "01ARZ3NDEK",
+          );
+
+          const todoId = ulidToId<"Todo">(ulid);
+          assertType<typeof value, Id>();
+          assertType<typeof todoId, Id & Brand<"Todo">>();
+          assertType<ReturnType<typeof idToUlid>, Ulid>();
+          void (() => {
+            // @ts-expect-error Brand must be one concrete string literal, not a union or widened string.
+            ulidToId<"Todo" | "User">(ulid);
+            // @ts-expect-error ulidToId accepts only a validated Ulid.
+            ulidToId("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+          });
+        });
+
+        it("converts every 16 bytes to the Ulid of the same 128-bit number", () => {
+          fc.assert(
+            fc.property(
+              fc.uint8Array({ minLength: 16, maxLength: 16 }),
+              (bytes) => {
+                const id = idBytesToId(IdBytes.orThrow(bytes));
+                const expected = Array.from(
+                  globalThis
+                    .BigInt(`0x${uint8ArrayToHex(bytes)}`)
+                    .toString(32)
+                    .padStart(26, "0"),
+                  (digit) =>
+                    "0123456789ABCDEFGHJKMNPQRSTVWXYZ".charAt(
+                      globalThis.Number.parseInt(digit, 32),
+                    ),
+                ).join("");
+
+                assertEqual(idToUlid(id), expected);
+                assertSame(ulidToId(Ulid.orThrow(expected)), id);
+              },
+            ),
+          );
         });
       });
 
@@ -12527,6 +13654,95 @@ describe("BrandFactory", () => {
         });
       });
 
+      describe("Int32", () => {
+        it("accepts safe integers in the signed 32-bit range", () => {
+          for (const value of [-2147483648, -1, 0, 1, 2147483647]) {
+            assertOk(Int32.fromUnknown(value), value);
+          }
+          assertSame(Int32.orThrow(-0), -0);
+          assertOk(
+            Int32.from.parent.parent(Int.orThrow(2147483647)),
+            2147483647,
+          );
+          assertType<
+            Int32,
+            Int & Brand<"Between-2147483648-2147483647"> & Brand<"Int32">
+          >();
+          // @ts-expect-error An Int does not carry the Int32 brand.
+          void (Int.orThrow(1) satisfies Int32);
+        });
+
+        it("rejects values outside the signed 32-bit integer domain", () => {
+          const tooSmall = Int32.fromUnknown(-2147483649);
+          assertErr(tooSmall, {
+            type: "Between-2147483648-2147483647",
+            value: -2147483649,
+            min: -2147483648,
+            max: 2147483647,
+          });
+          assertEqual(
+            Int32.formatError(tooSmall.error),
+            "The value -2147483649 must be between -2147483648 and 2147483647, inclusive.",
+          );
+          assertErr(Int32.fromUnknown(2147483648), {
+            type: "Between-2147483648-2147483647",
+            value: 2147483648,
+            min: -2147483648,
+            max: 2147483647,
+          });
+          assertErr(Int32.fromUnknown(1.5), { type: "Int", value: 1.5 });
+          assertErr(Int32.fromUnknown(NaN), { type: "NonNaN", value: NaN });
+          assertErr(Int32.fromUnknown(Infinity), {
+            type: "Finite",
+            value: Infinity,
+          });
+          assertErr(Int32.fromUnknown(1n), {
+            type: "TypeOf",
+            expected: "Number",
+            value: 1n,
+          });
+        });
+      });
+
+      describe("UInt32", () => {
+        it("accepts safe integers in the unsigned 32-bit range", () => {
+          for (const value of [0, 1, 2147483648, 4294967295]) {
+            assertOk(UInt32.fromUnknown(value), value);
+          }
+          assertSame(UInt32.orThrow(-0), -0);
+          assertType<
+            UInt32,
+            NonNegativeInt &
+              Brand<"LessThanOrEqualTo4294967295"> &
+              Brand<"UInt32">
+          >();
+          const nonNegativeInt: NonNegativeInt = UInt32.orThrow(42);
+          assertEqual(nonNegativeInt, 42);
+          // @ts-expect-error A NonNegativeInt does not carry the UInt32 brand.
+          void (NonNegativeInt.orThrow(1) satisfies UInt32);
+        });
+
+        it("rejects values outside the unsigned 32-bit integer domain", () => {
+          assertErr(UInt32.fromUnknown(-1), { type: "NonNegative", value: -1 });
+          const tooLarge = UInt32.fromUnknown(4294967296);
+          assertErr(tooLarge, {
+            type: "LessThanOrEqualTo4294967295",
+            value: 4294967296,
+            max: 4294967295,
+          });
+          assertEqual(
+            UInt32.formatError(tooLarge.error),
+            "The value 4294967296 must be less than or equal to 4294967295.",
+          );
+          assertErr(UInt32.fromUnknown(1.5), { type: "Int", value: 1.5 });
+          assertErr(UInt32.fromUnknown(NaN), { type: "NonNaN", value: NaN });
+          assertErr(UInt32.fromUnknown(-Infinity), {
+            type: "Finite",
+            value: -Infinity,
+          });
+        });
+      });
+
       describe("DecimalString", () => {
         it("accepts one canonical spelling of every signed decimal", () => {
           for (const value of [
@@ -12976,6 +14192,242 @@ describe("BrandFactory", () => {
           // @ts-expect-error Parameterized Brand Factories accept their parent separately.
           between(1, 2, Number);
         });
+      });
+    });
+
+    describe("greaterThanBigInt", () => {
+      it("creates a Brand Factory requiring a bigint greater than its minimum", () => {
+        const GreaterThan5 = greaterThanBigInt(5n)(BigInt);
+
+        assertEqual(GreaterThan5.from.parent(6n), ok(6n));
+        assertEqual(
+          GreaterThan5.from.parent(5n),
+          err({ type: "GreaterThan5n", value: 5n, min: 5n }),
+        );
+        assertEqual(
+          GreaterThan5.formatError({
+            type: "GreaterThan5n",
+            value: 5n,
+            min: 5n,
+          }),
+          "The value 5 must be greater than 5.",
+        );
+        assertErr(GreaterThan5.fromUnknown(6), {
+          type: "TypeOf",
+          expected: "BigInt",
+          value: 6,
+        });
+        assertType<typeof GreaterThan5.Error, GreaterThanBigIntError<5n>>();
+        assertType<
+          typeof GreaterThan5.Output,
+          bigint & Brand<"GreaterThan5n">
+        >();
+      });
+
+      it("keeps its Brand distinct from the number Brand", () => {
+        const GreaterThan10n = greaterThanBigInt(10n)(BigInt);
+        const GreaterThan10 = greaterThan(10)(Number);
+
+        assertEqual(GreaterThan10n.name, "GreaterThan10n");
+        assertEqual(GreaterThan10.name, "GreaterThan10");
+        assertType<typeof GreaterThan10n.name, "GreaterThan10n">();
+      });
+
+      it("compares values beyond the safe integer range exactly", () => {
+        const min = 9007199254740992n;
+        const GreaterThanMaxSafe = greaterThanBigInt(min)(BigInt);
+
+        assertOk(GreaterThanMaxSafe.from.parent(min + 1n), min + 1n);
+        assertErr(GreaterThanMaxSafe.from.parent(min), {
+          type: "GreaterThan9007199254740992n",
+          value: min,
+          min,
+        });
+      });
+
+      it("requires a bigint parent Output", () => {
+        void (() => {
+          // @ts-expect-error Bigint constraints require bigint Outputs.
+          greaterThanBigInt(1n)(Number);
+          // @ts-expect-error Number constraints require number Outputs.
+          greaterThan(1)(BigInt);
+        });
+      });
+    });
+
+    describe("greaterThanOrEqualToBigInt", () => {
+      it("creates a Brand Factory requiring a bigint at or above its minimum", () => {
+        const AtLeast5 = greaterThanOrEqualToBigInt(5n)(BigInt);
+
+        assertEqual(AtLeast5.from.parent(5n), ok(5n));
+        assertEqual(
+          AtLeast5.from.parent(4n),
+          err({ type: "GreaterThanOrEqualTo5n", value: 4n, min: 5n }),
+        );
+        assertEqual(
+          AtLeast5.formatError({
+            type: "GreaterThanOrEqualTo5n",
+            value: 4n,
+            min: 5n,
+          }),
+          "The value 4 must be greater than or equal to 5.",
+        );
+        assertType<
+          typeof AtLeast5.Error,
+          GreaterThanOrEqualToBigIntError<5n>
+        >();
+        assertType<
+          typeof AtLeast5.Output,
+          bigint & Brand<"GreaterThanOrEqualTo5n">
+        >();
+      });
+    });
+
+    describe("lessThanBigInt", () => {
+      it("creates a Brand Factory requiring a bigint less than its maximum", () => {
+        const LessThan5 = lessThanBigInt(5n)(BigInt);
+
+        assertEqual(LessThan5.from.parent(4n), ok(4n));
+        assertEqual(
+          LessThan5.from.parent(5n),
+          err({ type: "LessThan5n", value: 5n, max: 5n }),
+        );
+        assertEqual(
+          LessThan5.formatError({ type: "LessThan5n", value: 5n, max: 5n }),
+          "The value 5 must be less than 5.",
+        );
+        assertType<typeof LessThan5.Error, LessThanBigIntError<5n>>();
+        assertType<typeof LessThan5.Output, bigint & Brand<"LessThan5n">>();
+      });
+    });
+
+    describe("lessThanOrEqualToBigInt", () => {
+      it("creates a Brand Factory requiring a bigint at or below its maximum", () => {
+        const AtMost5 = lessThanOrEqualToBigInt(5n)(BigInt);
+
+        assertEqual(AtMost5.from.parent(5n), ok(5n));
+        assertEqual(
+          AtMost5.from.parent(6n),
+          err({ type: "LessThanOrEqualTo5n", value: 6n, max: 5n }),
+        );
+        assertEqual(
+          AtMost5.formatError({
+            type: "LessThanOrEqualTo5n",
+            value: 6n,
+            max: 5n,
+          }),
+          "The value 6 must be less than or equal to 5.",
+        );
+        assertType<typeof AtMost5.Error, LessThanOrEqualToBigIntError<5n>>();
+        assertType<
+          typeof AtMost5.Output,
+          bigint & Brand<"LessThanOrEqualTo5n">
+        >();
+      });
+
+      it("composes with UInt64 and keeps its inherited error", () => {
+        const UInt48 = lessThanOrEqualToBigInt(281474976710655n)(UInt64);
+        type UInt48 = typeof UInt48.Output;
+
+        assertOk(UInt48.fromUnknown(0n), 0n);
+        assertOk(UInt48.fromUnknown(281474976710655n), 281474976710655n);
+        assertErr(UInt48.fromUnknown(281474976710656n), {
+          type: "LessThanOrEqualTo281474976710655n",
+          value: 281474976710656n,
+          max: 281474976710655n,
+        });
+        const negative = UInt48.fromUnknown(-1n);
+        assertErr(negative, { type: "UInt64", value: -1n });
+        assertEqual(
+          UInt48.formatError(negative.error),
+          "The value -1 is not a valid unsigned 64-bit integer (UInt64).",
+        );
+        assertType<
+          UInt48,
+          bigint & Brand<"UInt64"> & Brand<"LessThanOrEqualTo281474976710655n">
+        >();
+        assertType<
+          Parameters<typeof UInt48.formatError>[0],
+          | TypeOfError<"BigInt">
+          | UInt64Error
+          | LessThanOrEqualToBigIntError<281474976710655n>
+        >();
+        // @ts-expect-error A UInt64 does not carry the LessThanOrEqualTo281474976710655n brand.
+        void (UInt64.orThrow(1n) satisfies UInt48);
+      });
+    });
+
+    describe("betweenBigInt", () => {
+      it("creates a Brand Factory requiring an inclusive range", () => {
+        const Between1And3 = betweenBigInt(1n, 3n)(BigInt);
+
+        assertEqual(Between1And3.from.parent(1n), ok(1n));
+        assertEqual(Between1And3.from.parent(3n), ok(3n));
+        assertEqual(
+          Between1And3.from.parent(0n),
+          err({ type: "Between1n-3n", value: 0n, min: 1n, max: 3n }),
+        );
+        assertEqual(
+          Between1And3.from.parent(4n),
+          err({ type: "Between1n-3n", value: 4n, min: 1n, max: 3n }),
+        );
+        assertEqual(
+          Between1And3.formatError({
+            type: "Between1n-3n",
+            value: 4n,
+            min: 1n,
+            max: 3n,
+          }),
+          "The value 4 must be between 1 and 3, inclusive.",
+        );
+        assertType<typeof Between1And3.Error, BetweenBigIntError<1n, 3n>>();
+        assertType<
+          typeof Between1And3.Output,
+          bigint & Brand<"Between1n-3n">
+        >();
+      });
+
+      it("encodes negative bounds in its Brand name", () => {
+        const SignedByte = betweenBigInt(-128n, 127n)(BigInt);
+
+        assertEqual(SignedByte.name, "Between-128n-127n");
+        assertType<typeof SignedByte.name, "Between-128n-127n">();
+        assertOk(SignedByte.from.parent(-128n), -128n);
+        assertErr(SignedByte.from.parent(-129n), {
+          type: "Between-128n-127n",
+          value: -129n,
+          min: -128n,
+          max: 127n,
+        });
+        assertEqual(
+          SignedByte.formatError({
+            type: "Between-128n-127n",
+            value: -129n,
+            min: -128n,
+            max: 127n,
+          }),
+          "The value -129 must be between -128 and 127, inclusive.",
+        );
+      });
+
+      it("composes with Int64 and keeps its inherited error", () => {
+        const Int64Range = betweenBigInt(-1n, 1n)(Int64);
+
+        assertOk(Int64Range.fromUnknown(-1n), -1n);
+        assertErr(Int64Range.fromUnknown(2n), {
+          type: "Between-1n-1n",
+          value: 2n,
+          min: -1n,
+          max: 1n,
+        });
+        assertErr(Int64Range.fromUnknown(2n ** 63n), {
+          type: "Int64",
+          value: 2n ** 63n,
+        });
+        assertType<
+          typeof Int64Range.Output,
+          bigint & Brand<"Int64"> & Brand<"Between-1n-1n">
+        >();
       });
     });
   });
@@ -15777,6 +17229,230 @@ describe("map", () => {
           },
         },
       );
+    });
+  });
+});
+
+describe("minSize", () => {
+  it("requires at least min Set elements", () => {
+    const Parent = set(String);
+    const Tags = minSize(2)(Parent);
+    const input = new Set(["a", "b"]);
+    const result = Tags.from.parent(input);
+
+    assertOk(result, input);
+    assertSame(result.value, input);
+    assertSame(Tags.to(result.value), input);
+    assertSame(Tags.parent, Parent);
+    assertEqual(Tags.name, "MinSize2");
+    assertType<typeof Tags.name, "MinSize2">();
+    assertType<typeof Tags.Output, ReadonlySet<string> & Brand<"MinSize2">>();
+    assertType<typeof Tags.Error, MinSizeError<2>>();
+    assertOk(
+      Tags.fromUnknown(new Set(["a", "b", "c"])),
+      new Set(["a", "b", "c"]),
+    );
+    assertErr(Tags.fromUnknown(new Set(["a"])), {
+      type: "MinSize2",
+      value: new Set(["a"]),
+      min: 2,
+    });
+    assertErr(Tags.fromUnknown(new Set()), {
+      type: "MinSize2",
+      value: new Set(),
+      min: 2,
+    });
+    assertEqual(
+      Tags.formatError({ type: "MinSize2", value: new Set(["a"]), min: 2 }),
+      "The size 1 does not meet the minimum size of 2.",
+    );
+  });
+
+  it("counts Map entries", () => {
+    const Scores = minSize(1)(map(String, Number));
+    const scores = new Map([["ada", 10]]);
+
+    assertOk(Scores.fromUnknown(scores), scores);
+    assertErr(Scores.fromUnknown(new Map()), {
+      type: "MinSize1",
+      value: new Map(),
+      min: 1,
+    });
+    assertType<
+      typeof Scores.Output,
+      ReadonlyMap<string, number> & Brand<"MinSize1">
+    >();
+  });
+
+  it("counts Blob and File bytes, not characters", () => {
+    const Upload = minSize(4)(instanceOf(Blob));
+    const exact = new Blob(["abcd"]);
+    // Two characters that UTF-8 encodes in four bytes.
+    const twoCharacters = new Blob([
+      globalThis.String.fromCharCode(0xe9, 0xe9),
+    ]);
+    const file = new File(["abcde"], "notes.txt");
+    const short = new Blob(["abc"]);
+
+    assertSame(getOrThrow(Upload.from.parent(exact)), exact);
+    assertSame(getOrThrow(Upload.fromUnknown(twoCharacters)), twoCharacters);
+    assertSame(getOrThrow(Upload.fromUnknown(file)), file);
+    assertType<typeof Upload.Output, Blob & Brand<"MinSize4">>();
+
+    const result = Upload.fromUnknown(short);
+    assertErr(result);
+    assert(result.error.type === "MinSize4", "Expected a MinSize4 error.");
+    assertSame(result.error.value, short);
+    assertEqual(result.error.min, 4);
+    assertEqual(
+      Upload.formatError(result.error),
+      "The size 3 does not meet the minimum size of 4.",
+    );
+  });
+
+  it("requires a parent with a size and a literal minimum", () => {
+    const count = globalThis.Number(1);
+    const AtLeastOne = minSize(1)(set(String));
+    void (() => {
+      // @ts-expect-error Size constraints require a parent Output with a numeric size, which a string does not have.
+      minSize(1)(String);
+      // @ts-expect-error Size constraints require a parent Output with a numeric size; use minLength for arrays.
+      minSize(1)(array(String));
+      // @ts-expect-error Size constraints require a parent Output with a numeric size, which a Record does not have.
+      minSize(1)(record(String, Number));
+      // @ts-expect-error Size constraints require every parent Output to have a numeric size, and null does not.
+      minSize(1)(nullOr(set(String)));
+      // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+      minSize(1)(AtLeastOne);
+      // @ts-expect-error Parameter must be one concrete numeric literal instead of a widened, union, or branded number.
+      minSize(count);
+      // @ts-expect-error Parameterized Brand Factories accept their parent separately.
+      minSize(1, set(String));
+    });
+  });
+});
+
+describe("maxSize", () => {
+  it("allows at most max Map entries", () => {
+    const Parent = map(String, Number);
+    const Scores = maxSize(2)(Parent);
+    const input = new Map([
+      ["ada", 10],
+      ["grace", 20],
+    ]);
+    const result = Scores.from.parent(input);
+
+    assertOk(result, input);
+    assertSame(result.value, input);
+    assertSame(Scores.parent, Parent);
+    assertEqual(Scores.name, "MaxSize2");
+    assertType<typeof Scores.name, "MaxSize2">();
+    assertType<
+      typeof Scores.Output,
+      ReadonlyMap<string, number> & Brand<"MaxSize2">
+    >();
+    assertType<typeof Scores.Error, MaxSizeError<2>>();
+    assertOk(
+      Scores.fromUnknown(new Map([["ada", 10]])),
+      new Map([["ada", 10]]),
+    );
+    const tooMany = new Map([
+      ["ada", 10],
+      ["grace", 20],
+      ["linus", 30],
+    ]);
+    assertErr(Scores.fromUnknown(tooMany), {
+      type: "MaxSize2",
+      value: tooMany,
+      max: 2,
+    });
+    assertEqual(
+      Scores.formatError({ type: "MaxSize2", value: tooMany, max: 2 }),
+      "The size 3 exceeds the maximum size of 2.",
+    );
+  });
+
+  it("limits Blob and File bytes, not characters", () => {
+    const Upload = maxSize(4)(instanceOf(Blob));
+    const exact = new Blob(["abcd"]);
+    const file = new File(["abc"], "notes.txt");
+    // Three characters that UTF-8 encodes in six bytes.
+    const threeCharacters = new Blob([
+      globalThis.String.fromCharCode(0xe9, 0xe9, 0xe9),
+    ]);
+
+    assertSame(getOrThrow(Upload.fromUnknown(exact)), exact);
+    assertSame(getOrThrow(Upload.fromUnknown(file)), file);
+    assertType<typeof Upload.Output, Blob & Brand<"MaxSize4">>();
+
+    const result = Upload.fromUnknown(threeCharacters);
+    assertErr(result);
+    assert(result.error.type === "MaxSize4", "Expected a MaxSize4 error.");
+    assertSame(result.error.value, threeCharacters);
+    assertEqual(result.error.max, 4);
+    assertEqual(
+      Upload.formatError(result.error),
+      "The size 6 exceeds the maximum size of 4.",
+    );
+    assertErr(Upload.fromUnknown("abcd"), {
+      type: "InstanceOf",
+      constructorName: "Blob",
+      value: "abcd",
+    });
+  });
+
+  it("checks the size after the parent validates every element", () => {
+    const Tags = maxSize(1)(set(String));
+
+    assertErr(Tags.fromUnknown(new Set(["a", 1])), {
+      type: "Set",
+      reason: {
+        kind: "Items",
+        issues: [
+          {
+            kind: "Element",
+            index: 1,
+            error: { type: "TypeOf", expected: "String", value: 1 },
+          },
+        ],
+      },
+    });
+  });
+
+  it("composes with minSize into an exact size", () => {
+    const Parent = set(String);
+    const Pair = maxSize(2)(minSize(2)(Parent));
+
+    assertOk(Pair.fromUnknown(new Set(["a", "b"])), new Set(["a", "b"]));
+    assertErr(Pair.fromUnknown(new Set(["a"])), {
+      type: "MinSize2",
+      value: new Set(["a"]),
+      min: 2,
+    });
+    assertErr(Pair.fromUnknown(new Set(["a", "b", "c"])), {
+      type: "MaxSize2",
+      value: new Set(["a", "b", "c"]),
+      max: 2,
+    });
+    assertType<
+      typeof Pair.Output,
+      typeof Parent.Output & Brand<"MinSize2"> & Brand<"MaxSize2">
+    >();
+  });
+
+  it("requires a parent with a size and a literal maximum", () => {
+    const AtMostOne = maxSize(1)(map(String, Number));
+    void (() => {
+      // @ts-expect-error Size constraints require a parent Output with a numeric size, which a string does not have.
+      maxSize(1)(String);
+      // @ts-expect-error Size constraints require a parent Output with a numeric size; use maxLength for arrays.
+      maxSize(1)(array(String));
+      // @ts-expect-error Size constraints require a parent Output with a numeric size, which an ArrayBuffer does not have.
+      maxSize(1)(ArrayBuffer);
+      // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+      maxSize(1)(AtMostOne);
+      // @ts-expect-error Parameter must be one concrete numeric literal instead of a widened, union, or branded number.
+      maxSize(1 + 1);
     });
   });
 });

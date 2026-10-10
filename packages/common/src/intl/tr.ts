@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -282,6 +297,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri ${safelyStringifyUnknownValue(error.suffix)} ile bitmelidir.`;
 
+/** Formats an IncludesError in Turkish. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri ${safelyStringifyUnknownValue(error.substring)} içermelidir.`;
+
+/** Formats an ExcludesError in Turkish. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri ${safelyStringifyUnknownValue(error.substring)} içermemelidir.`;
+
 /** Formats a MinLengthError in Turkish. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -293,6 +316,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} değeri en fazla ${error.max} uzunluğunda olmalıdır.`;
+
+/** Formats a MaxUtf8ByteLengthError in Turkish. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri UTF-8 olarak en fazla ${error.max} bayt uzunluğunda olmalıdır.`;
 
 /** Formats a LengthError in Turkish. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -315,6 +344,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Turkish. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri çift sayıda basamak içeren küçük harfli onaltılık bir dizge değildir.`;
+
+/** Formats a HexColorError in Turkish. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri küçük harfli #rrggbb biçiminde bir renk değildir.`;
 
 /** Formats a NameError in Turkish. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -346,6 +379,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir IPv6 adresi değildir.`;
 
+/** Formats an IpAddressError in Turkish. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir IPv4 adresi veya kurallı bir IPv6 adresi değildir.`;
+
+/** Formats an IpAddressFromStringError in Turkish. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir IP adresi değildir.`;
+
 /** Formats a PhoneNumberE164Error in Turkish. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -355,6 +400,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Turkish. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri boşluksuz ve büyük harfli geçerli bir IBAN değildir.`;
+
+/** Formats an IsbnError in Turkish. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri tiresiz, 13 haneli geçerli bir ISBN değildir.`;
 
 /** Formats a SimplePasswordError in Turkish. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -391,6 +440,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} değeri bir sürüm ${error.version} UUID değildir.`;
+
+/** Formats a UlidError in Turkish. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri kurallı bir büyük harfli ULID değildir.`;
 
 /** Formats a NonNegativeError in Turkish. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -492,6 +545,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri sınırlar dahil ${error.min} ile ${error.max} arasında olmalıdır.`;
 
+/** Formats a GreaterThanBigIntError in Turkish. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri ${error.min} değerinden büyük olmalıdır.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Turkish. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri ${error.min} veya daha büyük olmalıdır.`;
+
+/** Formats a LessThanBigIntError in Turkish. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri ${error.max} değerinden küçük olmalıdır.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Turkish. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri ${error.max} veya daha küçük olmalıdır.`;
+
+/** Formats a BetweenBigIntError in Turkish. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri sınırlar dahil ${error.min} ile ${error.max} arasında olmalıdır.`;
+
 /** Formats an ArrayError in Turkish. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -554,6 +637,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `${issue.previousIndex} ve ${issue.index} dizinlerindeki Map anahtarları aynı ${safelyStringifyUnknownValue(issue.outputKey)} anahtarına çözümleniyor.`;
   }
 };
+
+/** Formats a MinSizeError in Turkish. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Boyut ${error.value.size}, ancak en az ${error.min} olmalıdır.`;
+
+/** Formats a MaxSizeError in Turkish. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Boyut ${error.value.size}, ancak en fazla ${error.max} olmalıdır.`;
 
 /** Formats a TupleError in Turkish. */
 export const formatTupleError: TypeErrorFormatter<

@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -282,6 +297,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} चा शेवट ${safelyStringifyUnknownValue(error.suffix)} ने होणे आवश्यक आहे.`;
 
+/** Formats an IncludesError in Marathi. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} मध्ये ${safelyStringifyUnknownValue(error.substring)} असणे आवश्यक आहे.`;
+
+/** Formats an ExcludesError in Marathi. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} मध्ये ${safelyStringifyUnknownValue(error.substring)} असता कामा नये.`;
+
 /** Formats a MinLengthError in Marathi. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -293,6 +316,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} ची लांबी कमाल ${error.max} पेक्षा जास्त आहे.`;
+
+/** Formats a MaxUtf8ByteLengthError in Marathi. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} ची UTF-8 बाइट लांबी कमाल ${error.max} पेक्षा जास्त आहे.`;
 
 /** Formats a LengthError in Marathi. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -315,6 +344,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Marathi. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} ही लहान अक्षरांतील आणि सम संख्येने अंक असलेली hexadecimal string नाही.`;
+
+/** Formats a HexColorError in Marathi. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा लहान अक्षरांतील #rrggbb स्वरूपातील रंग नाही.`;
 
 /** Formats a NameError in Marathi. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -346,6 +379,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध IPv6 पत्ता नाही.`;
 
+/** Formats an IpAddressError in Marathi. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध IPv4 पत्ता किंवा canonical IPv6 पत्ता नाही.`;
+
+/** Formats an IpAddressFromStringError in Marathi. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध IP पत्ता नाही.`;
+
 /** Formats a PhoneNumberE164Error in Marathi. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -355,6 +400,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Marathi. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हा मोठ्या अक्षरांतील आणि रिकाम्या जागांशिवाय लिहिलेला वैध IBAN नाही.`;
+
+/** Formats an IsbnError in Marathi. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा हायफनशिवाय लिहिलेला 13 अंकी वैध ISBN नाही.`;
 
 /** Formats a SimplePasswordError in Marathi. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -391,6 +440,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हा आवृत्ती ${error.version} चा UUID नाही.`;
+
+/** Formats a UlidError in Marathi. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा मोठ्या अक्षरांतील canonical ULID नाही.`;
 
 /** Formats a NonNegativeError in Marathi. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -492,6 +545,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हे ${error.min} आणि ${error.max} दरम्यान, दोन्ही मर्यादांसह, असले पाहिजे.`;
 
+/** Formats a GreaterThanBigIntError in Marathi. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे ${error.min} पेक्षा मोठे असले पाहिजे.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Marathi. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे ${error.min} पेक्षा मोठे किंवा त्याच्या बरोबर असले पाहिजे.`;
+
+/** Formats a LessThanBigIntError in Marathi. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे ${error.max} पेक्षा लहान असले पाहिजे.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Marathi. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे ${error.max} पेक्षा लहान किंवा त्याच्या बरोबर असले पाहिजे.`;
+
+/** Formats a BetweenBigIntError in Marathi. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे ${error.min} आणि ${error.max} दरम्यान, दोन्ही मर्यादांसह, असले पाहिजे.`;
+
 /** Formats an ArrayError in Marathi. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -554,6 +637,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `index ${issue.previousIndex} आणि ${issue.index} वरील Map keys decode केल्यावर तीच key ${safelyStringifyUnknownValue(issue.outputKey)} मिळते.`;
   }
 };
+
+/** Formats a MinSizeError in Marathi. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `आकार ${error.value.size} किमान ${error.min} आकाराची अट पूर्ण करत नाही.`;
+
+/** Formats a MaxSizeError in Marathi. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `आकार ${error.value.size} हा कमाल ${error.max} पेक्षा जास्त आहे.`;
 
 /** Formats a TupleError in Marathi. */
 export const formatTupleError: TypeErrorFormatter<

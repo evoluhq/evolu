@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -280,6 +295,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${safelyStringifyUnknownValue(error.suffix)}(으)로 끝나야 합니다.`;
 
+/** Formats an IncludesError in Korean. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 ${safelyStringifyUnknownValue(error.substring)}을(를) 포함해야 합니다.`;
+
+/** Formats an ExcludesError in Korean. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 ${safelyStringifyUnknownValue(error.substring)}을(를) 포함해서는 안 됩니다.`;
+
 /** Formats a MinLengthError in Korean. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -291,6 +314,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 최대 길이 ${error.max}을(를) 초과합니다.`;
+
+/** Formats a MaxUtf8ByteLengthError in Korean. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 최대 UTF-8 바이트 길이 ${error.max}을(를) 초과합니다.`;
 
 /** Formats a LengthError in Korean. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -313,6 +342,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Korean. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 자릿수가 짝수인 소문자 16진수 문자열이 아닙니다.`;
+
+/** Formats a HexColorError in Korean. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 소문자 #rrggbb 형식의 색상이 아닙니다.`;
 
 /** Formats a NameError in Korean. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -344,6 +377,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 IPv6 주소가 아닙니다.`;
 
+/** Formats an IpAddressError in Korean. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 유효한 IPv4 주소나 정규 IPv6 주소가 아닙니다.`;
+
+/** Formats an IpAddressFromStringError in Korean. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 유효한 IP 주소가 아닙니다.`;
+
 /** Formats a PhoneNumberE164Error in Korean. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -353,6 +398,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Korean. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 공백 없이 대문자로 된 유효한 IBAN이 아닙니다.`;
+
+/** Formats an IsbnError in Korean. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 하이픈 없는 유효한 13자리 ISBN이 아닙니다.`;
 
 /** Formats a SimplePasswordError in Korean. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -389,6 +438,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 버전 ${error.version} UUID가 아닙니다.`;
+
+/** Formats a UlidError in Korean. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 정규 대문자 ULID가 아닙니다.`;
 
 /** Formats a NonNegativeError in Korean. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -490,6 +543,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 ${error.min} 이상 ${error.max} 이하여야 합니다.`;
 
+/** Formats a GreaterThanBigIntError in Korean. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 ${error.min}보다 커야 합니다.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Korean. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 ${error.min} 이상이어야 합니다.`;
+
+/** Formats a LessThanBigIntError in Korean. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 ${error.max}보다 작아야 합니다.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Korean. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 ${error.max} 이하여야 합니다.`;
+
+/** Formats a BetweenBigIntError in Korean. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 ${error.min} 이상 ${error.max} 이하여야 합니다.`;
+
 /** Formats an ArrayError in Korean. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -552,6 +635,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `인덱스 ${issue.previousIndex} 및 ${issue.index}의 Map 키는 디코딩하면 동일한 키 ${safelyStringifyUnknownValue(issue.outputKey)}이(가) 됩니다.`;
   }
 };
+
+/** Formats a MinSizeError in Korean. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `크기 ${error.value.size}은(는) 최소 크기 ${error.min}을(를) 충족하지 않습니다.`;
+
+/** Formats a MaxSizeError in Korean. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `크기 ${error.value.size}은(는) 최대 크기 ${error.max}을(를) 초과합니다.`;
 
 /** Formats a TupleError in Korean. */
 export const formatTupleError: TypeErrorFormatter<

@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -255,6 +270,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `يجب أن تنتهي القيمة ${safelyStringifyUnknownValue(error.value)} بـ ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Arabic. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `يجب أن تحتوي القيمة ${safelyStringifyUnknownValue(error.value)} على ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Arabic. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `يجب ألا تحتوي القيمة ${safelyStringifyUnknownValue(error.value)} على ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Arabic. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -265,6 +288,11 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} تتجاوز الطول الأقصى ${error.max}.`;
+/** Formats a MaxUtf8ByteLengthError in Arabic. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} تتجاوز الطول الأقصى بالبايت في ترميز UTF-8 وهو ${error.max}.`;
 /** Formats a LengthError in Arabic. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} لا تملك الطول المطلوب ${error.exact}.`;
@@ -284,6 +312,9 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Arabic. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست سلسلة ست عشرية بأحرف صغيرة وبعدد زوجي من الخانات.`;
+/** Formats a HexColorError in Arabic. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست لوناً بصيغة #rrggbb بأحرف صغيرة.`;
 /** Formats a NameError in Arabic. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست Name صالحة.`;
@@ -313,6 +344,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان IPv6 صالحاً.`;
 
+/** Formats an IpAddressError in Arabic. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان IPv4 صالحاً أو عنوان IPv6 معيارياً.`;
+
+/** Formats an IpAddressFromStringError in Arabic. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان IP صالحاً.`;
+
 /** Formats a PhoneNumberE164Error in Arabic. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -322,6 +365,9 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Arabic. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست رقم IBAN صالحاً بأحرف كبيرة ودون مسافات.`;
+/** Formats an IsbnError in Arabic. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست رقم ISBN صالحاً من 13 رقماً دون شرطات.`;
 /** Formats a SimplePasswordError in Arabic. */
 export const formatSimplePasswordError: TypeErrorFormatter<
   SimplePasswordError
@@ -353,6 +399,9 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست UUID من الإصدار ${error.version}.`;
+/** Formats a UlidError in Arabic. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست ULID معيارياً بأحرف كبيرة.`;
 /** Formats a NonNegativeError in Arabic. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -423,6 +472,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} مضاعفاً لـ ${error.divisor}.`;
 /** Formats a BetweenError in Arabic. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
+  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} بين ${error.min} و${error.max}، بما في ذلك الحدّان.`;
+
+/** Formats a GreaterThanBigIntError in Arabic. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} أكبر من ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Arabic. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} أكبر من أو تساوي ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Arabic. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} أصغر من ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Arabic. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} أصغر من أو تساوي ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Arabic. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
   `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} بين ${error.min} و${error.max}، بما في ذلك الحدّان.`;
 
 /** Formats a BooleanFromStringError in Arabic. */
@@ -499,6 +578,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `مفتاحا Map عند الفهرسين ${issue.previousIndex} و${issue.index} يُفك ترميزهما إلى المفتاح نفسه ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Arabic. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `الحجم ${error.value.size} لا يحقق الحجم الأدنى ${error.min}.`;
+
+/** Formats a MaxSizeError in Arabic. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `الحجم ${error.value.size} يتجاوز الحجم الأقصى ${error.max}.`;
 
 /** Formats a TupleError in Arabic. */
 export const formatTupleError: TypeErrorFormatter<

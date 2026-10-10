@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -282,6 +297,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} harus diakhiri dengan ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Indonesian. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus mengandung ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Indonesian. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak boleh mengandung ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Indonesian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -293,6 +316,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} melebihi panjang maksimum ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Indonesian. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} melebihi panjang byte UTF-8 maksimum ${error.max}.`;
 
 /** Formats a LengthError in Indonesian. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -315,6 +344,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Indonesian. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan string heksadesimal huruf kecil dengan jumlah digit genap.`;
+
+/** Formats a HexColorError in Indonesian. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan warna dalam format #rrggbb huruf kecil.`;
 
 /** Formats a NameError in Indonesian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -346,6 +379,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IPv6 yang valid.`;
 
+/** Formats an IpAddressError in Indonesian. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IPv4 yang valid maupun alamat IPv6 kanonis.`;
+
+/** Formats an IpAddressFromStringError in Indonesian. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IP yang valid.`;
+
 /** Formats a PhoneNumberE164Error in Indonesian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -355,6 +400,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Indonesian. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan IBAN yang valid dalam huruf besar tanpa spasi.`;
+
+/** Formats an IsbnError in Indonesian. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan ISBN 13 digit yang valid tanpa tanda hubung.`;
 
 /** Formats a SimplePasswordError in Indonesian. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -391,6 +440,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan UUID versi ${error.version}.`;
+
+/** Formats a UlidError in Indonesian. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan ULID kanonis dengan huruf besar.`;
 
 /** Formats a NonNegativeError in Indonesian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -492,6 +545,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} harus berada antara ${error.min} dan ${error.max}, termasuk batasnya.`;
 
+/** Formats a GreaterThanBigIntError in Indonesian. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus lebih besar dari ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Indonesian. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus lebih besar dari atau sama dengan ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Indonesian. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus lebih kecil dari ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Indonesian. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus lebih kecil dari atau sama dengan ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Indonesian. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus berada antara ${error.min} dan ${error.max}, termasuk batasnya.`;
+
 /** Formats an ArrayError in Indonesian. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -554,6 +637,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Kunci Map pada indeks ${issue.previousIndex} dan ${issue.index} didekode menjadi kunci yang sama, ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Indonesian. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Ukuran ${error.value.size} tidak memenuhi ukuran minimum ${error.min}.`;
+
+/** Formats a MaxSizeError in Indonesian. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Ukuran ${error.value.size} melebihi ukuran maksimum ${error.max}.`;
 
 /** Formats a TupleError in Indonesian. */
 export const formatTupleError: TypeErrorFormatter<

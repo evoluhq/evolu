@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -282,6 +297,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా ${safelyStringifyUnknownValue(error.suffix)} తో ముగియాలి.`;
 
+/** Formats an IncludesError in Telugu. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} లో తప్పనిసరిగా ${safelyStringifyUnknownValue(error.substring)} ఉండాలి.`;
+
+/** Formats an ExcludesError in Telugu. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} లో ${safelyStringifyUnknownValue(error.substring)} ఉండకూడదు.`;
+
 /** Formats a MinLengthError in Telugu. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -293,6 +316,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} గరిష్ఠ పొడవు ${error.max} ను మించింది.`;
+
+/** Formats a MaxUtf8ByteLengthError in Telugu. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} గరిష్ఠ UTF-8 బైట్ పొడవు ${error.max} ను మించింది.`;
 
 /** Formats a LengthError in Telugu. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -315,6 +344,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Telugu. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} చిన్న అక్షరాలలోని, సరి సంఖ్యలో అంకెలు ఉన్న hexadecimal string కాదు.`;
+
+/** Formats a HexColorError in Telugu. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చిన్న అక్షరాలలోని #rrggbb ఆకృతిలో ఉన్న రంగు కాదు.`;
 
 /** Formats a NameError in Telugu. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -346,6 +379,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే IPv6 చిరునామా కాదు.`;
 
+/** Formats an IpAddressError in Telugu. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే IPv4 చిరునామా లేదా canonical IPv6 చిరునామా కాదు.`;
+
+/** Formats an IpAddressFromStringError in Telugu. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే IP చిరునామా కాదు.`;
+
 /** Formats a PhoneNumberE164Error in Telugu. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -355,6 +400,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Telugu. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} పెద్ద అక్షరాలలోని, ఖాళీలు లేని చెల్లుబాటు అయ్యే IBAN కాదు.`;
+
+/** Formats an IsbnError in Telugu. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} హైఫన్‌లు లేని, 13 అంకెల చెల్లుబాటు అయ్యే ISBN కాదు.`;
 
 /** Formats a SimplePasswordError in Telugu. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -391,6 +440,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} సంస్కరణ ${error.version} UUID కాదు.`;
+
+/** Formats a UlidError in Telugu. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} పెద్ద అక్షరాలలోని canonical ULID కాదు.`;
 
 /** Formats a NonNegativeError in Telugu. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -492,6 +545,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా ${error.min} మరియు ${error.max} మధ్య, సరిహద్దులతో సహా, ఉండాలి.`;
 
+/** Formats a GreaterThanBigIntError in Telugu. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా ${error.min} కంటే ఎక్కువగా ఉండాలి.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Telugu. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా ${error.min} కంటే ఎక్కువగా లేదా సమానంగా ఉండాలి.`;
+
+/** Formats a LessThanBigIntError in Telugu. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా ${error.max} కంటే తక్కువగా ఉండాలి.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Telugu. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా ${error.max} కంటే తక్కువగా లేదా సమానంగా ఉండాలి.`;
+
+/** Formats a BetweenBigIntError in Telugu. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} తప్పనిసరిగా ${error.min} మరియు ${error.max} మధ్య, సరిహద్దులతో సహా, ఉండాలి.`;
+
 /** Formats an ArrayError in Telugu. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -554,6 +637,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `సూచికలు ${issue.previousIndex} మరియు ${issue.index} వద్ద ఉన్న Map keys ఒకే key ${safelyStringifyUnknownValue(issue.outputKey)} కు decode అవుతాయి.`;
   }
 };
+
+/** Formats a MinSizeError in Telugu. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `పరిమాణం ${error.value.size} కనీస పరిమాణం ${error.min} ను చేరలేదు.`;
+
+/** Formats a MaxSizeError in Telugu. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `పరిమాణం ${error.value.size} గరిష్ఠ పరిమాణం ${error.max} ను మించింది.`;
 
 /** Formats a TupleError in Telugu. */
 export const formatTupleError: TypeErrorFormatter<

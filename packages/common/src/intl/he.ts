@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -281,6 +296,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} חייב להסתיים ב־${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Hebrew. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להכיל את ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Hebrew. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} לא יכול להכיל את ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Hebrew. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -292,6 +315,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} חורג מהאורך המרבי של ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Hebrew. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חורג מהאורך המרבי בבתים בקידוד UTF-8, שהוא ${error.max}.`;
 
 /** Formats a LengthError in Hebrew. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -314,6 +343,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Hebrew. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו מחרוזת הקסדצימלית באותיות קטנות עם מספר זוגי של ספרות.`;
+
+/** Formats a HexColorError in Hebrew. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו צבע בתבנית #rrggbb באותיות קטנות.`;
 
 /** Formats a NameError in Hebrew. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -343,6 +376,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת IPv6 חוקית.`;
 
+/** Formats an IpAddressError in Hebrew. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת IPv4 חוקית או כתובת IPv6 קנונית.`;
+
+/** Formats an IpAddressFromStringError in Hebrew. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת IP חוקית.`;
+
 /** Formats a PhoneNumberE164Error in Hebrew. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -352,6 +397,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Hebrew. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו מספר IBAN חוקי באותיות גדולות וללא רווחים.`;
+
+/** Formats an IsbnError in Hebrew. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו מספר ISBN חוקי בן 13 ספרות ללא מקפים.`;
 
 /** Formats a SimplePasswordError in Hebrew. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -388,6 +437,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו UUID מגרסה ${error.version}.`;
+
+/** Formats a UlidError in Hebrew. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו ULID קנוני באותיות גדולות.`;
 
 /** Formats a NonNegativeError in Hebrew. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -489,6 +542,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות בין ${error.min} ל-${error.max}, כולל הגבולות.`;
 
+/** Formats a GreaterThanBigIntError in Hebrew. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות גדול מ-${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Hebrew. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות גדול מ-${error.min} או שווה לו.`;
+
+/** Formats a LessThanBigIntError in Hebrew. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות קטן מ-${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Hebrew. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות קטן מ-${error.max} או שווה לו.`;
+
+/** Formats a BetweenBigIntError in Hebrew. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות בין ${error.min} ל-${error.max}, כולל הגבולות.`;
+
 /** Formats an ArrayError in Hebrew. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -551,6 +634,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `מפתחות Map באינדקסים ${issue.previousIndex} ו-${issue.index} מפוענחים לאותו מפתח ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Hebrew. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `הגודל ${error.value.size} אינו עומד בגודל המינימלי של ${error.min}.`;
+
+/** Formats a MaxSizeError in Hebrew. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `הגודל ${error.value.size} חורג מהגודל המרבי של ${error.max}.`;
 
 /** Formats a TupleError in Hebrew. */
 export const formatTupleError: TypeErrorFormatter<

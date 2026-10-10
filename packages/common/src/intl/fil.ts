@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -283,6 +298,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat magtapos sa ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Filipino. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat maglaman ng ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Filipino. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi dapat maglaman ng ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Filipino. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -294,6 +317,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay lumalampas sa maximum na haba na ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Filipino. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay lumalampas sa maximum na haba ng UTF-8 byte na ${error.max}.`;
 
 /** Formats a LengthError in Filipino. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -316,6 +345,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Filipino. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi hexadecimal na nasa maliliit na titik at may pares na bilang ng digit.`;
+
+/** Formats a HexColorError in Filipino. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi kulay sa format na #rrggbb na nasa maliliit na titik.`;
 
 /** Formats a NameError in Filipino. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -347,6 +380,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na IPv6 address.`;
 
+/** Formats an IpAddressError in Filipino. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na IPv4 address o canonical na IPv6 address.`;
+
+/** Formats an IpAddressFromStringError in Filipino. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na IP address.`;
+
 /** Formats a PhoneNumberE164Error in Filipino. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -356,6 +401,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Filipino. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na IBAN na nasa malalaking titik at walang espasyo.`;
+
+/** Formats an IsbnError in Filipino. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na ISBN na may 13 digit at walang gitling.`;
 
 /** Formats a SimplePasswordError in Filipino. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -392,6 +441,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi UUID na bersyon ${error.version}.`;
+
+/** Formats a UlidError in Filipino. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi canonical na ULID na nasa malalaking titik.`;
 
 /** Formats a NonNegativeError in Filipino. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -493,6 +546,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat nasa pagitan ng ${error.min} at ${error.max}, kasama ang mga hangganan.`;
 
+/** Formats a GreaterThanBigIntError in Filipino. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat mas malaki sa ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Filipino. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat mas malaki sa o katumbas ng ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Filipino. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat mas maliit sa ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Filipino. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat mas maliit sa o katumbas ng ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Filipino. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat nasa pagitan ng ${error.min} at ${error.max}, kasama ang mga hangganan.`;
+
 /** Formats an ArrayError in Filipino. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -555,6 +638,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Ang Map keys sa mga index na ${issue.previousIndex} at ${issue.index} ay nade-decode sa iisang key na ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Filipino. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Ang sukat na ${error.value.size} ay hindi umaabot sa minimum na sukat na ${error.min}.`;
+
+/** Formats a MaxSizeError in Filipino. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Ang sukat na ${error.value.size} ay lumalampas sa maximum na sukat na ${error.max}.`;
 
 /** Formats a TupleError in Filipino. */
 export const formatTupleError: TypeErrorFormatter<

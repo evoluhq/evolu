@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -281,6 +296,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí končit na ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Czech. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí obsahovat ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Czech. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nesmí obsahovat ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Czech. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -294,6 +317,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} smí mít délku nejvýše ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Czech. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} smí mít délku v bajtech UTF-8 nejvýše ${error.max}.`;
 
 /** Formats a LengthError in Czech. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -316,6 +345,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Czech. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být hexadecimální řetězec zapsaný malými písmeny se sudým počtem číslic.`;
+
+/** Formats a HexColorError in Czech. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být barva ve formátu #rrggbb zapsaná malými písmeny.`;
 
 /** Formats a NameError in Czech. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -347,6 +380,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná adresa IPv6.`;
 
+/** Formats an IpAddressError in Czech. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná adresa IPv4 nebo kanonická adresa IPv6.`;
+
+/** Formats an IpAddressFromStringError in Czech. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná adresa IP.`;
+
 /** Formats a PhoneNumberE164Error in Czech. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -356,6 +401,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Czech. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný IBAN zapsaný velkými písmeny bez mezer.`;
+
+/** Formats an IsbnError in Czech. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platné 13místné ISBN bez spojovníků.`;
 
 /** Formats a SimplePasswordError in Czech. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -392,6 +441,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být UUID verze ${error.version}.`;
+
+/** Formats a UlidError in Czech. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být kanonický ULID zapsaný velkými písmeny.`;
 
 /** Formats a NonNegativeError in Czech. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -493,6 +546,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být v rozsahu od ${error.min} do ${error.max} včetně.`;
 
+/** Formats a GreaterThanBigIntError in Czech. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být větší než ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Czech. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být větší nebo rovna ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Czech. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být menší než ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Czech. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být menší nebo rovna ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Czech. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být v rozsahu od ${error.min} do ${error.max} včetně.`;
+
 /** Formats an ArrayError in Czech. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -555,6 +638,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Klíče Mapu na indexech ${issue.previousIndex} a ${issue.index} se dekódují na stejný klíč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Czech. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Velikost ${error.value.size} nedosahuje minimální velikosti ${error.min}.`;
+
+/** Formats a MaxSizeError in Czech. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Velikost ${error.value.size} překračuje maximální velikost ${error.max}.`;
 
 /** Formats a TupleError in Czech. */
 export const formatTupleError: TypeErrorFormatter<

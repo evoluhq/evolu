@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -251,6 +266,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} må slutte med ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Norwegian Bokmål. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må inneholde ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Norwegian Bokmål. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må ikke inneholde ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Norwegian Bokmål. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -261,6 +284,11 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} overskrider maksimumslengden på ${error.max}.`;
+/** Formats a MaxUtf8ByteLengthError in Norwegian Bokmål. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} overskrider maksimumslengden i UTF-8-byte på ${error.max}.`;
 /** Formats a LengthError in Norwegian Bokmål. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} har ikke den påkrevde lengden ${error.exact}.`;
@@ -278,6 +306,9 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Norwegian Bokmål. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke heksadesimal med små bokstaver og et like antall sifre.`;
+/** Formats a HexColorError in Norwegian Bokmål. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en farge i formatet #rrggbb med små bokstaver.`;
 /** Formats a NameError in Norwegian Bokmål. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldig Name.`;
@@ -302,6 +333,16 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
   Ipv6AddressFromStringError
 > = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig IPv6-adresse.`;
+/** Formats an IpAddressError in Norwegian Bokmål. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig IPv4-adresse eller en kanonisk IPv6-adresse.`;
+/** Formats an IpAddressFromStringError in Norwegian Bokmål. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig IP-adresse.`;
 /** Formats a PhoneNumberE164Error in Norwegian Bokmål. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -310,6 +351,9 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Norwegian Bokmål. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldig IBAN-nummer med store bokstaver uten mellomrom.`;
+/** Formats an IsbnError in Norwegian Bokmål. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et gyldig 13-sifret ISBN-nummer uten bindestreker.`;
 /** Formats a SimplePasswordError in Norwegian Bokmål. */
 export const formatSimplePasswordError: TypeErrorFormatter<
   SimplePasswordError
@@ -340,6 +384,9 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en UUID av versjon ${error.version}.`;
+/** Formats a UlidError in Norwegian Bokmål. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en kanonisk ULID med store bokstaver.`;
 /** Formats a NonNegativeError in Norwegian Bokmål. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
@@ -410,6 +457,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   `Verdien ${safelyStringifyUnknownValue(error.value)} må være et multiplum av ${error.divisor}.`;
 /** Formats a BetweenError in Norwegian Bokmål. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må være mellom ${error.min} og ${error.max}, inkludert.`;
+
+/** Formats a GreaterThanBigIntError in Norwegian Bokmål. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må være større enn ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Norwegian Bokmål. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må være større enn eller lik ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Norwegian Bokmål. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må være mindre enn ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Norwegian Bokmål. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må være mindre enn eller lik ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Norwegian Bokmål. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} må være mellom ${error.min} og ${error.max}, inkludert.`;
 
 /** Formats a BooleanFromStringError in Norwegian Bokmål. */
@@ -486,6 +563,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Map-nøklene med indeks ${issue.previousIndex} og ${issue.index} dekoder til samme nøkkel ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Norwegian Bokmål. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Størrelsen ${error.value.size} oppfyller ikke minimumsstørrelsen på ${error.min}.`;
+
+/** Formats a MaxSizeError in Norwegian Bokmål. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Størrelsen ${error.value.size} overskrider maksimumsstørrelsen på ${error.max}.`;
 
 /** Formats a TupleError in Norwegian Bokmål. */
 export const formatTupleError: TypeErrorFormatter<

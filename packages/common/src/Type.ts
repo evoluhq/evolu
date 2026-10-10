@@ -493,12 +493,14 @@ import {
   type Literal,
   type Simplify,
   type ValueWithLength,
+  type ValueWithSize,
   type WidenLiteral,
 } from "./Types.ts";
 import {
   formatArrayError,
   formatBase64Error,
   formatBase64UrlError,
+  formatBetweenBigIntError,
   formatBetweenError,
   formatBigIntError,
   formatBooleanError,
@@ -513,36 +515,49 @@ import {
   formatEmailError,
   formatEndsWithError,
   formatEvoluTypeError,
+  formatExcludesError,
   formatFiniteError,
   formatFiniteNumberFromStringError,
   formatFunctionError,
+  formatGreaterThanBigIntError,
   formatGreaterThanError,
+  formatGreaterThanOrEqualToBigIntError,
   formatGreaterThanOrEqualToError,
+  formatHexColorError,
   formatHexError,
   formatHostnameError,
   formatIbanError,
   formatIdError,
   formatIdentifierError,
+  formatIncludesError,
   formatInstanceOfError,
   formatInt64Error,
   formatInt64StringError,
   formatIntError,
   formatIntFromStringError,
+  formatIpAddressError,
+  formatIpAddressFromStringError,
   formatIpv4AddressError,
   formatIpv6AddressError,
   formatIpv6AddressFromStringError,
+  formatIsbnError,
   formatJsonError,
   formatJsonValueError,
   formatLengthError,
+  formatLessThanBigIntError,
   formatLessThanError,
+  formatLessThanOrEqualToBigIntError,
   formatLessThanOrEqualToError,
   formatLiteralError,
   formatLowercasedError,
   formatMapError,
   formatMaxEntriesError,
   formatMaxLengthError,
+  formatMaxSizeError,
+  formatMaxUtf8ByteLengthError,
   formatMinEntriesError,
   formatMinLengthError,
+  formatMinSizeError,
   formatMnemonicError,
   formatMultipleOfError,
   formatNameError,
@@ -575,6 +590,7 @@ import {
   formatTrimmedError,
   formatTupleError,
   formatUInt64Error,
+  formatUlidError,
   formatUncapitalizedError,
   formatUnionError,
   formatUniqueError,
@@ -2395,6 +2411,16 @@ const assertRefinementIdentity =
  * Input and hides its parent boundaries. Validation and error collection are
  * delegated automatically; the mapper receives the failure and original value.
  * The formatter presents the mapped error as one issue.
+ *
+ * Use it to give an existing composite Type, such as a {@link union} of literal
+ * templates, one domain error. To add a rule to a plain value, prefer a child
+ * {@link createType}: it keeps its parent's Input, such as `string`, while this
+ * Type accepts only its Output.
+ *
+ * When `formatError` is declared separately rather than written inline,
+ * annotate the mapper's parameters as well as its return type. Otherwise
+ * TypeScript infers the error type from its constraint and rejects the
+ * formatter.
  *
  * ### Example
  *
@@ -6257,7 +6283,8 @@ export type UInt64 = typeof UInt64.Output;
  * ```
  *
  * For numeric parameters encoded in a Brand name, use
- * {@link ValidateBrandFactoryNumber}.
+ * {@link ValidateBrandFactoryNumber}, or {@link ValidateBrandFactoryBigInt} for
+ * bigint parameters.
  *
  * @group Construction
  */
@@ -6340,6 +6367,96 @@ export type ValidateBrandFactoryNumber<Value extends number> =
 type BrandFactoryNumberError = CompileTimeError<
   "Brand Factory",
   "Parameter must be one concrete numeric literal instead of a widened, union, or branded number."
+>;
+
+/**
+ * Bigint parameter preserving literal types in a {@link BrandFactory}.
+ *
+ * The bigint counterpart of {@link ValidateBrandFactoryNumber}. Inline literals,
+ * including negative ones such as `-5n`, and `const` values preserve their
+ * literal types. Arithmetic expressions and runtime bigints widen to `bigint`,
+ * while branded bigints such as {@link Int64} can contain many runtime values.
+ * Both are rejected so distinct constraints do not all share one broad
+ * {@link Brand}.
+ *
+ * Brand names built from bigint parameters should end with `n`, as in
+ * `GreaterThan10n`, so they differ from the names of the corresponding number
+ * constraints, which {@link localizeTypes} uses as formatter keys.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   BigInt,
+ *   brand,
+ *   err,
+ *   ok,
+ *   type Brand,
+ *   type BrandFactory,
+ *   type TypeError,
+ *   type ValidateBrandFactoryBigInt,
+ * } from "@evolu/common";
+ *
+ * interface NotEqualToBigIntError<
+ *   Excluded extends bigint,
+ * > extends TypeError<`NotEqualTo${Excluded}n`> {
+ *   readonly value: bigint;
+ *   readonly excluded: Excluded;
+ * }
+ *
+ * const notEqualToBigInt =
+ *   <Excluded extends bigint>(
+ *     excluded: ValidateBrandFactoryBigInt<Excluded>,
+ *   ): BrandFactory<
+ *     `NotEqualTo${Excluded}n`,
+ *     bigint,
+ *     NotEqualToBigIntError<Excluded>
+ *   > =>
+ *   (parent) => {
+ *     const name = `NotEqualTo${excluded}n` as `NotEqualTo${Excluded}n`;
+ *
+ *     return brand(
+ *       name,
+ *       parent,
+ *       (value) =>
+ *         value !== excluded
+ *           ? ok()
+ *           : err<NotEqualToBigIntError<Excluded>>({
+ *               type: name,
+ *               value,
+ *               excluded,
+ *             }),
+ *       () => `Expected a bigint other than ${excluded}.`,
+ *     );
+ *   };
+ *
+ * const NonZero = notEqualToBigInt(0n)(BigInt);
+ * type NonZero = typeof NonZero.Output;
+ *
+ * assertType<typeof NonZero.name, "NotEqualTo0n">();
+ * assertType<NonZero, bigint & Brand<"NotEqualTo0n">>();
+ * assertOk(NonZero.fromUnknown(-1n), -1n);
+ * assertErr(NonZero.fromUnknown(0n));
+ *
+ * // @ts-expect-error Parameter must be one concrete bigint literal instead of a widened, union, or branded bigint.
+ * notEqualToBigInt(1n - 1n);
+ * ```
+ *
+ * @group Construction
+ */
+export type ValidateBrandFactoryBigInt<Value extends bigint> =
+  IsUnion<Value> extends false
+    ? {} extends Record<`${Value}`, never>
+      ? Value & Readonly<Record<BrandFactoryBigIntError, never>>
+      : Value
+    : Value & Readonly<Record<BrandFactoryBigIntError, never>>;
+
+type BrandFactoryBigIntError = CompileTimeError<
+  "Brand Factory",
+  "Parameter must be one concrete bigint literal instead of a widened, union, or branded bigint."
 >;
 
 /**
@@ -7738,6 +7855,186 @@ export const endsWith = <Suffix extends string>(
 };
 
 /**
+ * Error returned when {@link includes} rejects a string.
+ *
+ * @group String
+ */
+export interface IncludesError<
+  Substring extends string = string,
+> extends TypeError<`Includes${Substring}`> {
+  readonly value: string;
+  readonly substring: Substring;
+}
+
+/**
+ * String {@link Brand} requiring an exact, case-sensitive substring.
+ *
+ * The substring may occur anywhere, including across line breaks. Validation
+ * preserves the complete string. Every string contains the empty string, so an
+ * empty substring accepts every string allowed by the parent Type. The
+ * substring must be one concrete string literal so different substrings have
+ * distinct brands.
+ *
+ * Like `String.prototype.includes`, matching compares UTF-16 code units, so a
+ * precomposed `é` does not match `e` followed by a combining accent. Use
+ * {@link normalized} to require one Unicode normalization form.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   includes,
+ *   maxLength,
+ *   String,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const Greeting = includes("{name}")(maxLength(100)(String));
+ *
+ * const greeting = Greeting.fromUnknown("Hello, {name}!");
+ * assertOk(greeting, "Hello, {name}!");
+ * assertType<
+ *   typeof greeting.value,
+ *   string & Brand<"MaxLength100"> & Brand<"Includes{name}">
+ * >();
+ *
+ * const invalid = Greeting.fromUnknown("Hello, {Name}!");
+ * assertErr(invalid, {
+ *   type: "Includes{name}",
+ *   value: "Hello, {Name}!",
+ *   substring: "{name}",
+ * });
+ * assertEqual(
+ *   Greeting.formatError(invalid.error),
+ *   'The value "Hello, {Name}!" must contain "{name}".',
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const includes = <Substring extends string>(
+  substring: Substring & ValidateLiteral<Substring>,
+): BrandFactory<`Includes${Substring}`, string, IncludesError<Substring>> => {
+  const name = `Includes${substring}` as const;
+
+  return (parent) =>
+    brand(
+      name,
+      parent,
+      (value) =>
+        value.includes(substring)
+          ? ok()
+          : err<IncludesError<Substring>>({
+              type: name,
+              value,
+              substring,
+            }),
+      formatIncludesError,
+    );
+};
+
+/**
+ * Error returned when {@link excludes} rejects a string.
+ *
+ * @group String
+ */
+export interface ExcludesError<
+  Substring extends string = string,
+> extends TypeError<`Excludes${Substring}`> {
+  readonly value: string;
+  readonly substring: Substring;
+}
+
+/**
+ * String {@link Brand} forbidding an exact, case-sensitive substring.
+ *
+ * Use it, for example, to forbid a separator in values that will be joined. The
+ * string is rejected wherever the substring occurs, including across line
+ * breaks. A regular expression such as `/^(?!.*,)/u` is easy to get wrong,
+ * because its `.` does not match a line terminator, so it accepts `"a\n,"`.
+ * Validation preserves the complete string.
+ *
+ * The substring must be one concrete string literal so different substrings
+ * have distinct brands. Every string contains the empty string, so an empty
+ * substring would reject every string and is rejected at compile time.
+ *
+ * Like `String.prototype.includes`, matching compares UTF-16 code units, so a
+ * forbidden precomposed `é` does not reject `e` followed by a combining accent.
+ * Use {@link normalized} to require one Unicode normalization form.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   excludes,
+ *   String,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const Tag = excludes(",")(String);
+ *
+ * const tag = Tag.fromUnknown("local-first");
+ * assertOk(tag, "local-first");
+ * assertType<typeof tag.value, string & Brand<"Excludes,">>();
+ *
+ * const invalid = Tag.fromUnknown("local,first");
+ * assertErr(invalid, {
+ *   type: "Excludes,",
+ *   value: "local,first",
+ *   substring: ",",
+ * });
+ * assertEqual(
+ *   Tag.formatError(invalid.error),
+ *   'The value "local,first" must not contain ",".',
+ * );
+ *
+ * // @ts-expect-error Substring must not be empty because every string contains it.
+ * excludes("");
+ * ```
+ *
+ * @group String
+ */
+export const excludes = <Substring extends string>(
+  substring: ExcludesSubstring<Substring>,
+): BrandFactory<`Excludes${Substring}`, string, ExcludesError<Substring>> => {
+  const name = `Excludes${substring}` as const;
+
+  return (parent) =>
+    brand(
+      name,
+      parent,
+      (value) =>
+        value.includes(substring)
+          ? err<ExcludesError<Substring>>({
+              type: name,
+              value,
+              substring,
+            })
+          : ok(),
+      formatExcludesError,
+    );
+};
+
+// A conditional type, unlike an intersection, is resolved in diagnostics, so
+// excludes("") shows the CompileTimeError message instead of the alias name.
+type ExcludesSubstring<Substring extends string> = [Substring] extends [""]
+  ? Substring & Readonly<Record<ExcludesEmptySubstringError, never>>
+  : Substring & ValidateLiteral<Substring>;
+
+type ExcludesEmptySubstringError = CompileTimeError<
+  "Excludes",
+  "Substring must not be empty because every string contains it."
+>;
+
+/**
  * Error returned when {@link minLength} rejects a value.
  *
  * @group Collection
@@ -7869,6 +8166,113 @@ export const NonEmptyTrimmedString1000 = /*#__PURE__*/ maxLength(1000)(
   NonEmptyTrimmedString,
 );
 export type NonEmptyTrimmedString1000 = typeof NonEmptyTrimmedString1000.Output;
+
+/**
+ * Error returned when {@link maxUtf8ByteLength} rejects a string.
+ *
+ * @group String
+ */
+export interface MaxUtf8ByteLengthError<
+  Max extends number = number,
+> extends TypeError<`MaxUtf8ByteLength${Max}`> {
+  readonly value: string;
+  readonly max: Max;
+}
+
+/**
+ * String {@link Brand} limiting the UTF-8 encoding of a string to at most `max`
+ * bytes.
+ *
+ * {@link maxLength} counts UTF-16 code units, but storage, network protocols,
+ * and file formats often limit the encoded size in bytes. UTF-8 encodes ASCII
+ * in 1 byte, `é` in 2, `€` in 3, and an emoji such as `😀`, which is two UTF-16
+ * code units, in 4, so `maxLength(n)` alone allows up to `3 * n` bytes.
+ *
+ * The count equals the length of the bytes `TextEncoder` produces, without
+ * encoding the string. `TextEncoder` replaces each lone surrogate with U+FFFD,
+ * so a lone surrogate counts as 3 bytes; use {@link wellFormed} to reject lone
+ * surrogates.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   maxUtf8ByteLength,
+ *   String,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const Label = maxUtf8ByteLength(8)(String);
+ * assertType<typeof Label.Output, string & Brand<"MaxUtf8ByteLength8">>();
+ *
+ * assertOk(Label.fromUnknown("café"), "café");
+ * assertOk(Label.fromUnknown("😀😀"), "😀😀");
+ *
+ * const invalid = Label.fromUnknown("€€€");
+ * assertErr(invalid, { type: "MaxUtf8ByteLength8", value: "€€€", max: 8 });
+ * assertEqual(
+ *   Label.formatError(invalid.error),
+ *   'The value "€€€" exceeds the maximum UTF-8 byte length of 8.',
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const maxUtf8ByteLength = <Max extends number>(
+  max: ValidateBrandFactoryNumber<Max>,
+): BrandFactory<
+  `MaxUtf8ByteLength${Max}`,
+  string,
+  MaxUtf8ByteLengthError<Max>
+> => {
+  const name = `MaxUtf8ByteLength${max}` as `MaxUtf8ByteLength${Max}`;
+
+  return (parent) =>
+    brand(
+      name,
+      parent,
+      (value) => {
+        // Each UTF-16 code unit encodes to 1 to 3 bytes, so the length alone
+        // decides a string longer than max or at most a third of it.
+        let byteLength = value.length;
+
+        if (byteLength <= max && byteLength * 3 > max) {
+          byteLength = 0;
+          for (
+            let index = 0;
+            index < value.length && byteLength <= max;
+            index++
+          ) {
+            const code = value.charCodeAt(index);
+
+            if (code < 0x80) byteLength += 1;
+            else if (code < 0x800) byteLength += 2;
+            // Past the end of the string, charCodeAt returns NaN, which masks
+            // to 0.
+            else if (
+              (code & 0xfc00) === 0xd800 &&
+              (value.charCodeAt(index + 1) & 0xfc00) === 0xdc00
+            ) {
+              byteLength += 4;
+              index++;
+            }
+            // Other code units encode to 3 bytes, and so does the U+FFFD
+            // that TextEncoder writes for a lone surrogate.
+            else byteLength += 3;
+          }
+        }
+
+        return byteLength <= max
+          ? ok()
+          : err<MaxUtf8ByteLengthError<Max>>({ type: name, value, max });
+      },
+      formatMaxUtf8ByteLengthError,
+    );
+};
 
 /**
  * Error returned when {@link length} rejects a value.
@@ -8156,6 +8560,46 @@ export const base64UrlToUint8Array = (value: Base64Url): Uint8Array =>
   base64StringToUint8Array(value, "base64url");
 
 /**
+ * Transforms {@link Base64Url} text into bytes.
+ *
+ * Use it to decode binary fields of JSON and other text payloads, for example
+ * inside an {@link object}. Decoding cannot fail, because Base64Url accepts only
+ * the canonical encoding of some bytes. Encoding returns that canonical text,
+ * so equal bytes encode to equal strings.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   Uint8ArrayFromBase64Url,
+ * } from "@evolu/common";
+ *
+ * const bytes = Uint8ArrayFromBase64Url.fromUnknown("AAEC_w");
+ * assertOk(bytes, new Uint8Array([0, 1, 2, 255]));
+ * assertEqual(Uint8ArrayFromBase64Url.to(bytes.value), "AAEC_w");
+ *
+ * assertErr(Uint8ArrayFromBase64Url.fromUnknown("AAEC/w"), {
+ *   type: "Base64Url",
+ *   value: "AAEC/w",
+ * });
+ * ```
+ *
+ * @group String
+ */
+export const Uint8ArrayFromBase64Url = /*#__PURE__*/ transform(
+  "Uint8ArrayFromBase64Url",
+  Base64Url,
+  Uint8Array,
+  {
+    from: (value) => ok(base64UrlToUint8Array(value)),
+    to: uint8ArrayToBase64Url,
+  },
+);
+
+/**
  * Error returned when a string is not valid {@link Base64} text.
  *
  * @group String
@@ -8245,6 +8689,46 @@ export const base64ToUint8Array = (value: Base64): Uint8Array =>
   base64StringToUint8Array(value, "base64");
 
 /**
+ * Transforms {@link Base64} text into bytes.
+ *
+ * Use it to decode binary fields of JSON and other text payloads, for example
+ * inside an {@link object}. Decoding cannot fail, because Base64 accepts only
+ * the canonical encoding of some bytes. Encoding returns that canonical text,
+ * so equal bytes encode to equal strings.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   Uint8ArrayFromBase64,
+ * } from "@evolu/common";
+ *
+ * const bytes = Uint8ArrayFromBase64.fromUnknown("AAEC/w==");
+ * assertOk(bytes, new Uint8Array([0, 1, 2, 255]));
+ * assertEqual(Uint8ArrayFromBase64.to(bytes.value), "AAEC/w==");
+ *
+ * assertErr(Uint8ArrayFromBase64.fromUnknown("AAEC/w"), {
+ *   type: "Base64",
+ *   value: "AAEC/w",
+ * });
+ * ```
+ *
+ * @group String
+ */
+export const Uint8ArrayFromBase64 = /*#__PURE__*/ transform(
+  "Uint8ArrayFromBase64",
+  Base64,
+  Uint8Array,
+  {
+    from: (value) => ok(base64ToUint8Array(value)),
+    to: uint8ArrayToBase64,
+  },
+);
+
+/**
  * Error returned when a string is not valid {@link Hex} text.
  *
  * @group String
@@ -8323,6 +8807,105 @@ export const uint8ArrayToHex = (bytes: Uint8Array): Hex =>
  * @group String
  */
 export const hexToUint8Array = (value: Hex): Uint8Array => hexToBytes(value);
+
+/**
+ * Transforms {@link Hex} text into bytes.
+ *
+ * Use it to decode binary fields of JSON and other text payloads, for example
+ * inside an {@link object}. Decoding cannot fail, because Hex accepts only
+ * lowercase digits of whole bytes. Encoding returns lowercase text, so equal
+ * bytes encode to equal strings.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   Uint8ArrayFromHex,
+ * } from "@evolu/common";
+ *
+ * const bytes = Uint8ArrayFromHex.fromUnknown("000102ff");
+ * assertOk(bytes, new Uint8Array([0, 1, 2, 255]));
+ * assertEqual(Uint8ArrayFromHex.to(bytes.value), "000102ff");
+ *
+ * assertErr(Uint8ArrayFromHex.fromUnknown("000102FF"), {
+ *   type: "Hex",
+ *   value: "000102FF",
+ * });
+ * ```
+ *
+ * @group String
+ */
+export const Uint8ArrayFromHex = /*#__PURE__*/ transform(
+  "Uint8ArrayFromHex",
+  Hex,
+  Uint8Array,
+  {
+    from: (value) => ok(hexToUint8Array(value)),
+    to: uint8ArrayToHex,
+  },
+);
+
+/**
+ * Error returned when a string is not a {@link HexColor}.
+ *
+ * @group String
+ */
+export interface HexColorError extends TypeError<"HexColor"> {
+  readonly value: string;
+}
+
+/**
+ * Opaque color in the lowercase `#rrggbb` format.
+ *
+ * Accepts only `#` followed by six lowercase hexadecimal digits, the
+ * [HTML-compatible
+ * serialization](https://drafts.csswg.org/css-color-4/#HTML-compatible-serialization-of-srgb)
+ * of an opaque sRGB color. By default, `<input type="color">` produces this
+ * format.
+ *
+ * CSS accepts many spellings of one color, such as `#fff`, `#FFF`, `#ffffff`,
+ * and `#ffffffff`. HexColor accepts only one, so equal colors are equal
+ * strings. Shorthand, uppercase, and alpha forms are rejected; expand and
+ * lowercase other spellings before validating them.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   HexColor,
+ * } from "@evolu/common";
+ *
+ * assertOk(HexColor.fromUnknown("#1e90ff"), "#1e90ff");
+ *
+ * const invalid = HexColor.fromUnknown("#1E90FF");
+ * assertErr(invalid, { type: "HexColor", value: "#1E90FF" });
+ * assertEqual(
+ *   HexColor.formatError(invalid.error),
+ *   'The value "#1E90FF" is not a color in the lowercase #rrggbb format.',
+ * );
+ *
+ * assertErr(HexColor.fromUnknown("#fff"));
+ * assertErr(HexColor.fromUnknown("#1e90ffcc"));
+ * ```
+ *
+ * @group String
+ */
+export const HexColor = /*#__PURE__*/ brand(
+  "HexColor",
+  String,
+  (value: string) =>
+    /^#[0-9a-f]{6}$/u.test(value)
+      ? ok()
+      : err<HexColorError>({ type: "HexColor", value }),
+  formatHexColorError,
+);
+export type HexColor = typeof HexColor.Output;
 
 /**
  * Error returned when a string is not a valid {@link Name}.
@@ -8686,6 +9269,136 @@ export const Ipv6AddressFromString = /*#__PURE__*/ transform(
   formatIpv6AddressFromStringError,
 );
 
+/**
+ * Error returned when a value is not an {@link IpAddress}.
+ *
+ * @group String
+ */
+export interface IpAddressError extends TypeError<"IpAddress"> {
+  readonly value: string;
+}
+
+/**
+ * IP address of either family: an {@link Ipv4Address} or a canonical
+ * {@link Ipv6Address}.
+ *
+ * Use IpAddress for addresses whose family is not known in advance, such as the
+ * address of a client or peer. It fails with one {@link IpAddressError} instead
+ * of a {@link UnionError} that lists both families, and its Output narrows with
+ * `Ipv4Address.is` or `Ipv6Address.is`.
+ *
+ * Like its members, IpAddress does not normalize, so equal addresses are equal
+ * strings. Use {@link IpAddressFromString} to convert other IPv6 spellings to
+ * the canonical one. An IPv4-mapped address such as `::ffff:1.2.3.4` is an
+ * Ipv6Address distinct from the Ipv4Address `1.2.3.4`, and dual-stack servers,
+ * such as Node's by default, report IPv4 clients in the mapped form, so convert
+ * addresses from different sources to one form before comparing them.
+ *
+ * A non-string fails with the {@link String} error.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   IpAddress,
+ * } from "@evolu/common";
+ *
+ * assertOk(IpAddress.fromUnknown("192.168.1.1"), "192.168.1.1");
+ * assertOk(IpAddress.fromUnknown("2001:db8::1"), "2001:db8::1");
+ *
+ * const invalid = IpAddress.fromUnknown("2001:DB8::1");
+ * assertErr(invalid, { type: "IpAddress", value: "2001:DB8::1" });
+ * assertEqual(
+ *   IpAddress.formatError(invalid.error),
+ *   'The value "2001:DB8::1" is not a valid IPv4 address or canonical IPv6 address.',
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const IpAddress = /*#__PURE__*/ createType<
+  "IpAddress",
+  typeof String,
+  Ipv4Address | Ipv6Address,
+  IpAddressError
+>(
+  "IpAddress",
+  String,
+  (value) =>
+    Ipv4Address.is(value) || Ipv6Address.is(value)
+      ? ok(value)
+      : err({ type: "IpAddress", value }),
+  formatIpAddressError,
+);
+export type IpAddress = typeof IpAddress.Output;
+
+/**
+ * Error returned when {@link IpAddressFromString} cannot parse a string as an IP
+ * address.
+ *
+ * @group String
+ */
+export interface IpAddressFromStringError extends TypeError<"IpAddressFromString"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms IP address text into an {@link IpAddress}.
+ *
+ * Text containing a colon is parsed as IPv6 text, as
+ * {@link Ipv6AddressFromString} parses it, and converted to its canonical
+ * {@link Ipv6Address}. Other text must be an {@link Ipv4Address}, which has one
+ * spelling. Because a colon selects IPv6, an IPv4 address with a port, such as
+ * `1.2.3.4:80`, is rejected as invalid IPv6 text.
+ *
+ * Encoding returns the canonical text, not the original spelling.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   IpAddressFromString,
+ * } from "@evolu/common";
+ *
+ * assertOk(IpAddressFromString.fromUnknown("192.168.1.1"), "192.168.1.1");
+ * assertOk(IpAddressFromString.fromUnknown("2001:0DB8::1"), "2001:db8::1");
+ *
+ * const invalid = IpAddressFromString.fromUnknown("1.2.3.4:80");
+ * assertErr(invalid, { type: "IpAddressFromString", value: "1.2.3.4:80" });
+ * assertEqual(
+ *   IpAddressFromString.formatError(invalid.error),
+ *   'The value "1.2.3.4:80" is not a valid IP address.',
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const IpAddressFromString = /*#__PURE__*/ transform(
+  "IpAddressFromString",
+  String,
+  IpAddress,
+  {
+    from: (value: string): Result<IpAddress, IpAddressFromStringError> => {
+      const address = value.includes(":")
+        ? canonicalizeIpv6Address(value)
+        : Ipv4Address.is(value)
+          ? value
+          : undefined;
+      return address === undefined
+        ? err({ type: "IpAddressFromString", value })
+        : ok(address as IpAddress);
+    },
+    to: (value: IpAddress) => value,
+  },
+  formatIpAddressFromStringError,
+);
+
 // Shared by Ipv4Address and the IPv4 part of IPv6 addresses.
 const ipv4AddressRegex =
   /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)$/u;
@@ -8877,6 +9590,69 @@ export const Iban = /*#__PURE__*/ brand(
   formatIbanError,
 );
 export type Iban = typeof Iban.Output;
+
+/**
+ * Error returned when a string is not a valid {@link Isbn}.
+ *
+ * @group String
+ */
+export interface IsbnError extends TypeError<"Isbn"> {
+  readonly value: string;
+}
+
+/**
+ * International Standard Book Number in the 13-digit form of ISO 2108, without
+ * hyphens.
+ *
+ * Isbn accepts 13 ASCII digits starting with 978 or 979 and verifies the check
+ * digit: the digits weighted alternately by 1 and 3 from the left sum to a
+ * multiple of 10. The prefix 9790 is rejected, because it is reserved for ISMN,
+ * which numbers printed music.
+ *
+ * Isbn accepts one spelling of each ISBN, so equal ISBNs are equal strings. It
+ * does not normalize. Remove the hyphens and spaces of the printed form before
+ * validating it. Convert a 10-digit ISBN first: prefix 978 to its first nine
+ * digits and append the check digit that makes the weighted sum a multiple of
+ * 10. Every ISBN-10 has an ISBN-13, and books published since 2007 carry one.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, assertErr, assertOk, Isbn } from "@evolu/common";
+ *
+ * const value = "9780306406157";
+ * assertOk(Isbn.fromUnknown(value), value);
+ * assertErr(Isbn.fromUnknown("9780306406158"));
+ *
+ * const printed = "978-0-306-40615-7";
+ * const invalid = Isbn.fromUnknown(printed);
+ * assertErr(invalid);
+ * assertEqual(invalid.error, { type: "Isbn", value: printed });
+ * assertOk(Isbn.fromUnknown(printed.replaceAll("-", "")), value);
+ *
+ * // The ISBN-10 of the same book.
+ * assertErr(Isbn.fromUnknown("0306406152"));
+ * ```
+ *
+ * @group String
+ */
+export const Isbn = /*#__PURE__*/ brand(
+  "Isbn",
+  String,
+  (value: string) => {
+    if (!/^97(?:8\d|9[1-9])\d{9}$/u.test(value)) {
+      return err<IsbnError>({ type: "Isbn", value });
+    }
+
+    let sum = 0;
+    for (let index = 0; index < 13; index++) {
+      sum += (value.charCodeAt(index) - 48) * (index % 2 === 0 ? 1 : 3);
+    }
+    return sum % 10 === 0 ? ok() : err<IsbnError>({ type: "Isbn", value });
+  },
+  formatIsbnError,
+);
+export type Isbn = typeof Isbn.Output;
 
 /**
  * Stable valid {@link Name} for tests and internal fixtures.
@@ -9577,6 +10353,163 @@ export type UuidV4 = typeof UuidV4.Output;
  */
 export const UuidV7 = /*#__PURE__*/ uuidVersion(7)(Uuid);
 export type UuidV7 = typeof UuidV7.Output;
+
+/**
+ * Error returned when a string is not a canonical {@link Ulid}.
+ *
+ * @group String
+ */
+export interface UlidError extends TypeError<"Ulid"> {
+  readonly value: string;
+}
+
+/**
+ * ULID in its canonical uppercase text form, as defined by the [ULID
+ * specification](https://github.com/ulid/spec).
+ *
+ * Ulid accepts 26 characters of Crockford's Base32 alphabet: the digits and the
+ * uppercase letters except I, L, O, and U. The characters spell 130 bits, and a
+ * ULID has 128, so the first character is at most 7. Every 128-bit value has
+ * exactly one Ulid.
+ *
+ * The ULID specification reads ULIDs in any case. Ulid requires uppercase so
+ * that equal ULIDs are equal strings; uppercase text from other sources before
+ * validating it.
+ *
+ * Convert a Ulid to an {@link Id} with {@link ulidToId} and back with
+ * {@link idToUlid}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, assertErr, assertOk, Ulid } from "@evolu/common";
+ *
+ * const value = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+ * assertOk(Ulid.fromUnknown(value), value);
+ * assertErr(Ulid.fromUnknown("81ARZ3NDEKTSV4RRFFQ69G5FAV"));
+ *
+ * const lowercase = value.toLowerCase();
+ * const invalid = Ulid.fromUnknown(lowercase);
+ * assertErr(invalid);
+ * assertEqual(invalid.error, { type: "Ulid", value: lowercase });
+ * assertOk(Ulid.fromUnknown(lowercase.toUpperCase()), value);
+ * ```
+ *
+ * @group String
+ */
+export const Ulid = /*#__PURE__*/ brand(
+  "Ulid",
+  String,
+  (value: string) =>
+    /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/u.test(value)
+      ? ok()
+      : err<UlidError>({ type: "Ulid", value }),
+  formatUlidError,
+);
+export type Ulid = typeof Ulid.Output;
+
+/**
+ * Converts a {@link Ulid} to the {@link Id} with the same 16 bytes.
+ *
+ * Use this to store records whose external keys are ULIDs. Unlike
+ * {@link createIdFromString}, the mapping is reversible with {@link idToUlid}, so
+ * the original ULID does not need its own column. The first 6 bytes of a ULID
+ * are its creation time, which the Id keeps.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   idToUlid,
+ *   Ulid,
+ *   ulidToId,
+ *   type Brand,
+ *   type Id,
+ * } from "@evolu/common";
+ *
+ * const ulid = Ulid.orThrow("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+ * const todoId = ulidToId<"Todo">(ulid);
+ *
+ * assertEqual(todoId, "AVY-OrXT1nZMYe-5kwK9Ww");
+ * assertType<typeof todoId, Id & Brand<"Todo">>();
+ * assertEqual(idToUlid(todoId), ulid);
+ * ```
+ *
+ * @group String
+ */
+export const ulidToId = <B extends string = never>(
+  value: Ulid,
+  ..._validation: IdBrandValidation<B>
+): CreatedId<B> => {
+  const bytes = new globalThis.Uint8Array(16);
+  // 26 characters spell 130 bits. Ulid proves that the first character is at
+  // most 7, so its first 2 bits are zero, and starting at -2 bits skips them.
+  let buffer = 0;
+  let bits = -2;
+  let index = 0;
+  for (const character of value) {
+    buffer = (buffer << 5) | crockfordBase32Alphabet.indexOf(character);
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes[index++] = buffer >> bits;
+      buffer &= (1 << bits) - 1;
+    }
+  }
+  return idBytesToId(bytes as IdBytes) as CreatedId<B>;
+};
+
+/**
+ * Converts an {@link Id} to the {@link Ulid} with the same 16 bytes.
+ *
+ * The first 6 bytes of a ULID are its creation time in milliseconds. Ids
+ * created by {@link createId} are random, so their ULIDs have a random time. Ids
+ * created by {@link createIdAsUuidv7} store their creation time in the same
+ * bytes, so their ULIDs keep it.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertTrue,
+ *   createIdFromString,
+ *   idToUlid,
+ *   Ulid,
+ *   ulidToId,
+ * } from "@evolu/common";
+ *
+ * const id = createIdFromString("todo");
+ * const ulid = idToUlid(id);
+ *
+ * assertTrue(Ulid.is(ulid));
+ * assertEqual(ulidToId(ulid), id);
+ * ```
+ *
+ * @group String
+ */
+export const idToUlid = (value: Id): Ulid => {
+  // 26 characters spell 130 bits, so the first character spells 2 zero bits
+  // and the first 3 bits of the Id.
+  let ulid = "";
+  let buffer = 0;
+  let bits = 2;
+  for (const byte of idToIdBytes(value)) {
+    buffer = (buffer << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      ulid += crockfordBase32Alphabet.charAt(buffer >> bits);
+      buffer &= (1 << bits) - 1;
+    }
+  }
+  return ulid as Ulid;
+};
+
+// Crockford's Base32 alphabet, which ULIDs use, omits I, L, O, and U.
+const crockfordBase32Alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /**
  * Error returned when a string is not a canonical {@link Int64String}.
@@ -10990,6 +11923,432 @@ export const between =
               max,
             }),
       formatBetweenError,
+    );
+  };
+
+/**
+ * Signed 32-bit {@link Int}.
+ *
+ * Accepts integers from -2147483648 through 2147483647, inclusive, the range of
+ * 32-bit integers in Protocol Buffers, PostgreSQL `integer`, and JavaScript
+ * bitwise operators. Like {@link Int}, it accepts `-0`. {@link Int64} is the
+ * signed 64-bit bigint counterpart.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, assertErr, assertOk, Int32 } from "@evolu/common";
+ *
+ * assertOk(Int32.fromUnknown(-2147483648), -2147483648);
+ * assertOk(Int32.fromUnknown(2147483647), 2147483647);
+ * assertErr(Int32.fromUnknown(1.5), { type: "Int", value: 1.5 });
+ *
+ * const tooLarge = Int32.fromUnknown(2147483648);
+ * assertErr(tooLarge, {
+ *   type: "Between-2147483648-2147483647",
+ *   value: 2147483648,
+ *   min: -2147483648,
+ *   max: 2147483647,
+ * });
+ * assertEqual(
+ *   Int32.formatError(tooLarge.error),
+ *   "The value 2147483648 must be between -2147483648 and 2147483647, inclusive.",
+ * );
+ * ```
+ *
+ * @group Number
+ */
+export const Int32 = /*#__PURE__*/ brand(
+  "Int32",
+  /*#__PURE__*/ between(-2147483648, 2147483647)(Int),
+);
+export type Int32 = typeof Int32.Output;
+
+/**
+ * Unsigned 32-bit {@link NonNegativeInt}.
+ *
+ * Accepts integers from 0 through 4294967295, inclusive, the range of unsigned
+ * 32-bit integers in Protocol Buffers and of the JavaScript `>>>` operator.
+ * Like {@link NonNegativeInt}, it accepts `-0`. {@link UInt64} is the unsigned
+ * 64-bit bigint counterpart.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   NonNegativeInt,
+ *   UInt32,
+ * } from "@evolu/common";
+ *
+ * assertOk(UInt32.fromUnknown(0), 0);
+ * assertOk(UInt32.fromUnknown(4294967295), 4294967295);
+ * assertErr(UInt32.fromUnknown(-1), { type: "NonNegative", value: -1 });
+ *
+ * const tooLarge = UInt32.fromUnknown(4294967296);
+ * assertErr(tooLarge, {
+ *   type: "LessThanOrEqualTo4294967295",
+ *   value: 4294967296,
+ *   max: 4294967295,
+ * });
+ * assertEqual(
+ *   UInt32.formatError(tooLarge.error),
+ *   "The value 4294967296 must be less than or equal to 4294967295.",
+ * );
+ *
+ * // A UInt32 is a NonNegativeInt.
+ * const count: NonNegativeInt = UInt32.orThrow(42);
+ * assertEqual(count, 42);
+ * ```
+ *
+ * @group Number
+ */
+export const UInt32 = /*#__PURE__*/ brand(
+  "UInt32",
+  /*#__PURE__*/ lessThanOrEqualTo(4294967295)(NonNegativeInt),
+);
+export type UInt32 = typeof UInt32.Output;
+
+/**
+ * Error returned when {@link greaterThanBigInt} rejects a bigint.
+ *
+ * @group Number
+ */
+export interface GreaterThanBigIntError<
+  Min extends bigint = bigint,
+> extends TypeError<`GreaterThan${Min}n`> {
+  readonly value: bigint;
+  readonly min: Min;
+}
+
+/**
+ * Bigint {@link Brand} requiring a value greater than `min`.
+ *
+ * The bigint counterpart of {@link greaterThan} for parents with a bigint
+ * Output, such as {@link BigInt}, {@link Int64}, and {@link UInt64}. The Brand
+ * name ends with `n`, so `greaterThanBigInt(10n)` and `greaterThan(10)` create
+ * distinct Brands. For positive bigints, use `greaterThanBigInt(0n)`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   greaterThanBigInt,
+ *   Int64,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const PositiveInt64 = greaterThanBigInt(0n)(Int64);
+ *
+ * assertType<
+ *   typeof PositiveInt64.Output,
+ *   bigint & Brand<"Int64"> & Brand<"GreaterThan0n">
+ * >();
+ * assertOk(PositiveInt64.fromUnknown(1n), 1n);
+ *
+ * const zero = PositiveInt64.fromUnknown(0n);
+ * assertErr(zero, { type: "GreaterThan0n", value: 0n, min: 0n });
+ * assertEqual(
+ *   PositiveInt64.formatError(zero.error),
+ *   "The value 0 must be greater than 0.",
+ * );
+ * ```
+ *
+ * @group Number
+ */
+export const greaterThanBigInt =
+  <Min extends bigint>(
+    min: ValidateBrandFactoryBigInt<Min>,
+  ): BrandFactory<`GreaterThan${Min}n`, bigint, GreaterThanBigIntError<Min>> =>
+  (parent) => {
+    const name = `GreaterThan${min}n` as `GreaterThan${Min}n`;
+
+    return brand(
+      name,
+      parent,
+      (value) =>
+        value > min
+          ? ok()
+          : err<GreaterThanBigIntError<Min>>({ type: name, value, min }),
+      formatGreaterThanBigIntError,
+    );
+  };
+
+/**
+ * Error returned when {@link greaterThanOrEqualToBigInt} rejects a bigint.
+ *
+ * @group Number
+ */
+export interface GreaterThanOrEqualToBigIntError<
+  Min extends bigint = bigint,
+> extends TypeError<`GreaterThanOrEqualTo${Min}n`> {
+  readonly value: bigint;
+  readonly min: Min;
+}
+
+/**
+ * Bigint {@link Brand} requiring a value greater than or equal to `min`.
+ *
+ * The bigint counterpart of {@link greaterThanOrEqualTo}; see
+ * {@link greaterThanBigInt}. For non-negative bigints, use
+ * `greaterThanOrEqualToBigInt(0n)`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   BigInt,
+ *   greaterThanOrEqualToBigInt,
+ * } from "@evolu/common";
+ *
+ * const AtLeastTen = greaterThanOrEqualToBigInt(10n)(BigInt);
+ *
+ * assertOk(AtLeastTen.fromUnknown(10n), 10n);
+ * assertErr(AtLeastTen.fromUnknown(9n), {
+ *   type: "GreaterThanOrEqualTo10n",
+ *   value: 9n,
+ *   min: 10n,
+ * });
+ * ```
+ *
+ * @group Number
+ */
+export const greaterThanOrEqualToBigInt =
+  <Min extends bigint>(
+    min: ValidateBrandFactoryBigInt<Min>,
+  ): BrandFactory<
+    `GreaterThanOrEqualTo${Min}n`,
+    bigint,
+    GreaterThanOrEqualToBigIntError<Min>
+  > =>
+  (parent) => {
+    const name = `GreaterThanOrEqualTo${min}n` as `GreaterThanOrEqualTo${Min}n`;
+
+    return brand(
+      name,
+      parent,
+      (value) =>
+        value >= min
+          ? ok()
+          : err<GreaterThanOrEqualToBigIntError<Min>>({
+              type: name,
+              value,
+              min,
+            }),
+      formatGreaterThanOrEqualToBigIntError,
+    );
+  };
+
+/**
+ * Error returned when {@link lessThanBigInt} rejects a bigint.
+ *
+ * @group Number
+ */
+export interface LessThanBigIntError<
+  Max extends bigint = bigint,
+> extends TypeError<`LessThan${Max}n`> {
+  readonly value: bigint;
+  readonly max: Max;
+}
+
+/**
+ * Bigint {@link Brand} requiring a value less than `max`.
+ *
+ * The bigint counterpart of {@link lessThan}; see {@link greaterThanBigInt}. For
+ * negative bigints, use `lessThanBigInt(0n)`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   BigInt,
+ *   lessThanBigInt,
+ * } from "@evolu/common";
+ *
+ * const Negative = lessThanBigInt(0n)(BigInt);
+ *
+ * assertOk(Negative.fromUnknown(-1n), -1n);
+ * assertErr(Negative.fromUnknown(0n), {
+ *   type: "LessThan0n",
+ *   value: 0n,
+ *   max: 0n,
+ * });
+ * ```
+ *
+ * @group Number
+ */
+export const lessThanBigInt =
+  <Max extends bigint>(
+    max: ValidateBrandFactoryBigInt<Max>,
+  ): BrandFactory<`LessThan${Max}n`, bigint, LessThanBigIntError<Max>> =>
+  (parent) => {
+    const name = `LessThan${max}n` as `LessThan${Max}n`;
+
+    return brand(
+      name,
+      parent,
+      (value) =>
+        value < max
+          ? ok()
+          : err<LessThanBigIntError<Max>>({ type: name, value, max }),
+      formatLessThanBigIntError,
+    );
+  };
+
+/**
+ * Error returned when {@link lessThanOrEqualToBigInt} rejects a bigint.
+ *
+ * @group Number
+ */
+export interface LessThanOrEqualToBigIntError<
+  Max extends bigint = bigint,
+> extends TypeError<`LessThanOrEqualTo${Max}n`> {
+  readonly value: bigint;
+  readonly max: Max;
+}
+
+/**
+ * Bigint {@link Brand} requiring a value less than or equal to `max`.
+ *
+ * The bigint counterpart of {@link lessThanOrEqualTo}; see
+ * {@link greaterThanBigInt}. For non-positive bigints, use
+ * `lessThanOrEqualToBigInt(0n)`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   lessThanOrEqualToBigInt,
+ *   UInt64,
+ * } from "@evolu/common";
+ *
+ * const UInt48 = lessThanOrEqualToBigInt(281474976710655n)(UInt64);
+ *
+ * assertOk(UInt48.fromUnknown(281474976710655n), 281474976710655n);
+ * assertErr(UInt48.fromUnknown(281474976710656n), {
+ *   type: "LessThanOrEqualTo281474976710655n",
+ *   value: 281474976710656n,
+ *   max: 281474976710655n,
+ * });
+ * ```
+ *
+ * @group Number
+ */
+export const lessThanOrEqualToBigInt =
+  <Max extends bigint>(
+    max: ValidateBrandFactoryBigInt<Max>,
+  ): BrandFactory<
+    `LessThanOrEqualTo${Max}n`,
+    bigint,
+    LessThanOrEqualToBigIntError<Max>
+  > =>
+  (parent) => {
+    const name = `LessThanOrEqualTo${max}n` as `LessThanOrEqualTo${Max}n`;
+
+    return brand(
+      name,
+      parent,
+      (value) =>
+        value <= max
+          ? ok()
+          : err<LessThanOrEqualToBigIntError<Max>>({ type: name, value, max }),
+      formatLessThanOrEqualToBigIntError,
+    );
+  };
+
+/**
+ * Error returned when {@link betweenBigInt} rejects a bigint.
+ *
+ * @group Number
+ */
+export interface BetweenBigIntError<
+  Min extends bigint = bigint,
+  Max extends bigint = bigint,
+> extends TypeError<`Between${Min}n-${Max}n`> {
+  readonly value: bigint;
+  readonly min: Min;
+  readonly max: Max;
+}
+
+/**
+ * Bigint {@link Brand} requiring a value within an inclusive range.
+ *
+ * The bigint counterpart of {@link between}; see {@link greaterThanBigInt}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   BigInt,
+ *   betweenBigInt,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const SignedByte = betweenBigInt(-128n, 127n)(BigInt);
+ *
+ * assertType<
+ *   typeof SignedByte.Output,
+ *   bigint & Brand<"Between-128n-127n">
+ * >();
+ * assertOk(SignedByte.fromUnknown(-128n), -128n);
+ * assertOk(SignedByte.fromUnknown(127n), 127n);
+ *
+ * const tooLarge = SignedByte.fromUnknown(128n);
+ * assertErr(tooLarge, {
+ *   type: "Between-128n-127n",
+ *   value: 128n,
+ *   min: -128n,
+ *   max: 127n,
+ * });
+ * assertEqual(
+ *   SignedByte.formatError(tooLarge.error),
+ *   "The value 128 must be between -128 and 127, inclusive.",
+ * );
+ * ```
+ *
+ * @group Number
+ */
+export const betweenBigInt =
+  <Min extends bigint, Max extends bigint>(
+    min: ValidateBrandFactoryBigInt<Min>,
+    max: ValidateBrandFactoryBigInt<Max>,
+  ): BrandFactory<
+    `Between${Min}n-${Max}n`,
+    bigint,
+    BetweenBigIntError<Min, Max>
+  > =>
+  (parent) => {
+    const name = `Between${min}n-${max}n` as `Between${Min}n-${Max}n`;
+
+    return brand(
+      name,
+      parent,
+      (value) =>
+        value >= min && value <= max
+          ? ok()
+          : err<BetweenBigIntError<Min, Max>>({
+              type: name,
+              value,
+              min,
+              max,
+            }),
+      formatBetweenBigIntError,
     );
   };
 
@@ -12886,6 +14245,137 @@ const validateMapEntries = (
         },
       });
 };
+
+/**
+ * Error returned when {@link minSize} rejects a value.
+ *
+ * @group Collection
+ */
+export interface MinSizeError<
+  Min extends number = number,
+> extends TypeError<`MinSize${Min}`> {
+  readonly value: ValueWithSize;
+  readonly min: Min;
+}
+
+/**
+ * Minimum-size {@link Brand} for values whose `size` is at least `min`.
+ *
+ * Applies to {@link set} and {@link map} Outputs, whose size counts elements or
+ * entries, and to a Blob or File from {@link instanceOf}, whose size counts
+ * bytes. Use {@link minLength} for strings and arrays. For an exact size,
+ * combine `minSize` with {@link maxSize}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   minSize,
+ *   set,
+ *   String,
+ * } from "@evolu/common";
+ *
+ * const Tags = minSize(1)(set(String));
+ * const tags = new Set(["local-first"]);
+ *
+ * assertOk(Tags.fromUnknown(tags), tags);
+ *
+ * const empty = new Set<string>();
+ * const invalid = Tags.fromUnknown(empty);
+ * assertErr(invalid, { type: "MinSize1", value: empty, min: 1 });
+ * assertEqual(
+ *   Tags.formatError(invalid.error),
+ *   "The size 0 does not meet the minimum size of 1.",
+ * );
+ * ```
+ *
+ * @group Collection
+ */
+export const minSize =
+  <Min extends number>(
+    min: ValidateBrandFactoryNumber<Min>,
+  ): BrandFactory<`MinSize${Min}`, ValueWithSize, MinSizeError<Min>> =>
+  (parent) => {
+    const name = `MinSize${min}` as `MinSize${Min}`;
+
+    return brand(
+      name,
+      parent,
+      (value) =>
+        value.size >= min
+          ? ok()
+          : err<MinSizeError<Min>>({ type: name, value, min }),
+      formatMinSizeError,
+    );
+  };
+
+/**
+ * Error returned when {@link maxSize} rejects a value.
+ *
+ * @group Collection
+ */
+export interface MaxSizeError<
+  Max extends number = number,
+> extends TypeError<`MaxSize${Max}`> {
+  readonly value: ValueWithSize;
+  readonly max: Max;
+}
+
+/**
+ * Maximum-size {@link Brand} for values whose `size` is at most `max`.
+ *
+ * Applies to the same values as {@link minSize}. For a Blob or File, such as an
+ * upload, it limits the byte count; `instanceOf(Blob)` also accepts a File. The
+ * size is checked after the parent has validated every element or entry, so it
+ * does not limit the validation work for a large Set or Map.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertTrue,
+ *   instanceOf,
+ *   maxSize,
+ * } from "@evolu/common";
+ *
+ * const Upload = maxSize(1_048_576)(instanceOf(Blob));
+ *
+ * assertTrue(Upload.is(new Blob(["Hello"])));
+ *
+ * const invalid = Upload.fromUnknown(
+ *   new Blob([new Uint8Array(1_048_577)]),
+ * );
+ * assertErr(invalid);
+ * assertEqual(
+ *   Upload.formatError(invalid.error),
+ *   "The size 1048577 exceeds the maximum size of 1048576.",
+ * );
+ * ```
+ *
+ * @group Collection
+ */
+export const maxSize =
+  <Max extends number>(
+    max: ValidateBrandFactoryNumber<Max>,
+  ): BrandFactory<`MaxSize${Max}`, ValueWithSize, MaxSizeError<Max>> =>
+  (parent) => {
+    const name = `MaxSize${max}` as `MaxSize${Max}`;
+
+    return brand(
+      name,
+      parent,
+      (value) =>
+        value.size <= max
+          ? ok()
+          : err<MaxSizeError<Max>>({ type: name, value, max }),
+      formatMaxSizeError,
+    );
+  };
 
 /**
  * The fixed-length heterogeneous {@link Type} returned by {@link tuple}.

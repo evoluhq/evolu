@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -282,6 +297,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on päätyttävä merkkijonoon ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Finnish. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on sisällettävä merkkijono ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Finnish. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei saa sisältää merkkijonoa ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Finnish. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -293,6 +316,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ylittää enimmäispituuden ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Finnish. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ylittää UTF-8-tavuina mitatun enimmäispituuden ${error.max}.`;
 
 /** Formats a LengthError in Finnish. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -315,6 +344,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Finnish. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole pienillä kirjaimilla kirjoitettu heksadesimaalimerkkijono, jossa on parillinen määrä numeroita.`;
+
+/** Formats a HexColorError in Finnish. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole pienillä kirjaimilla kirjoitettu #rrggbb-muotoinen väri.`;
 
 /** Formats a NameError in Finnish. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -346,6 +379,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen IPv6-osoite.`;
 
+/** Formats an IpAddressError in Finnish. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen IPv4-osoite eikä kanoninen IPv6-osoite.`;
+
+/** Formats an IpAddressFromStringError in Finnish. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen IP-osoite.`;
+
 /** Formats a PhoneNumberE164Error in Finnish. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -355,6 +400,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Finnish. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen IBAN-tilinumero isoilla kirjaimilla ilman välilyöntejä.`;
+
+/** Formats an IsbnError in Finnish. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen 13-numeroinen ISBN-tunnus ilman yhdysmerkkejä.`;
 
 /** Formats a SimplePasswordError in Finnish. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -391,6 +440,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole version ${error.version} UUID.`;
+
+/** Formats a UlidError in Finnish. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kanoninen isoilla kirjaimilla kirjoitettu ULID.`;
 
 /** Formats a NonNegativeError in Finnish. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -492,6 +545,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava vähintään ${error.min} ja enintään ${error.max}.`;
 
+/** Formats a GreaterThanBigIntError in Finnish. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava suurempi kuin ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Finnish. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava suurempi tai yhtä suuri kuin ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Finnish. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava pienempi kuin ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Finnish. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava pienempi tai yhtä suuri kuin ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Finnish. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava vähintään ${error.min} ja enintään ${error.max}.`;
+
 /** Formats an ArrayError in Finnish. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -554,6 +637,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Mapin indekseissä ${issue.previousIndex} ja ${issue.index} olevat avaimet dekoodautuvat samaksi avaimeksi ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Finnish. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Koko ${error.value.size} ei täytä vähimmäiskokoa ${error.min}.`;
+
+/** Formats a MaxSizeError in Finnish. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Koko ${error.value.size} ylittää enimmäiskoon ${error.max}.`;
 
 /** Formats a TupleError in Finnish. */
 export const formatTupleError: TypeErrorFormatter<

@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -283,6 +298,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Der Wert ${safelyStringifyUnknownValue(error.value)} muss mit ${safelyStringifyUnknownValue(error.suffix)} enden.`;
 
+/** Formats an IncludesError in German. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} muss ${safelyStringifyUnknownValue(error.substring)} enthalten.`;
+
+/** Formats an ExcludesError in German. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} darf ${safelyStringifyUnknownValue(error.substring)} nicht enthalten.`;
+
 /** Formats a MinLengthError in German. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -294,6 +317,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Der Wert ${safelyStringifyUnknownValue(error.value)} überschreitet die Maximallänge von ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in German. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} überschreitet die maximale UTF-8-Bytelänge von ${error.max}.`;
 
 /** Formats a LengthError in German. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -316,6 +345,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in German. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Der Wert ${safelyStringifyUnknownValue(error.value)} ist kein hexadezimaler String in Kleinbuchstaben mit einer geraden Anzahl von Ziffern.`;
+
+/** Formats a HexColorError in German. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine Farbe im Format #rrggbb in Kleinbuchstaben.`;
 
 /** Formats a NameError in German. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -347,6 +380,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine gültige IPv6-Adresse.`;
 
+/** Formats an IpAddressError in German. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} ist weder eine gültige IPv4-Adresse noch eine kanonische IPv6-Adresse.`;
+
+/** Formats an IpAddressFromStringError in German. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine gültige IP-Adresse.`;
+
 /** Formats a PhoneNumberE164Error in German. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -356,6 +401,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in German. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine gültige IBAN in Großbuchstaben ohne Leerzeichen.`;
+
+/** Formats an IsbnError in German. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine gültige 13-stellige ISBN ohne Bindestriche.`;
 
 /** Formats a SimplePasswordError in German. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -392,6 +441,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine UUID der Version ${error.version}.`;
+
+/** Formats a UlidError in German. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine kanonische ULID in Großbuchstaben.`;
 
 /** Formats a NonNegativeError in German. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -493,6 +546,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Der Wert ${safelyStringifyUnknownValue(error.value)} muss zwischen ${error.min} und ${error.max} liegen, einschließlich der Grenzwerte.`;
 
+/** Formats a GreaterThanBigIntError in German. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} muss größer als ${error.min} sein.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in German. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} muss größer als oder gleich ${error.min} sein.`;
+
+/** Formats a LessThanBigIntError in German. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} muss kleiner als ${error.max} sein.`;
+
+/** Formats a LessThanOrEqualToBigIntError in German. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} muss kleiner als oder gleich ${error.max} sein.`;
+
+/** Formats a BetweenBigIntError in German. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} muss zwischen ${error.min} und ${error.max} liegen, einschließlich der Grenzwerte.`;
+
 /** Formats an ArrayError in German. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -555,6 +638,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Die Map-Schlüssel an den Indizes ${issue.previousIndex} und ${issue.index} werden zum selben Schlüssel ${safelyStringifyUnknownValue(issue.outputKey)} dekodiert.`;
   }
 };
+
+/** Formats a MinSizeError in German. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Die Größe ${error.value.size} erreicht die Mindestgröße von ${error.min} nicht.`;
+
+/** Formats a MaxSizeError in German. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Die Größe ${error.value.size} überschreitet die Maximalgröße von ${error.max}.`;
 
 /** Formats a TupleError in German. */
 export const formatTupleError: TypeErrorFormatter<

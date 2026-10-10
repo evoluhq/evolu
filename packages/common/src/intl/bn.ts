@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -281,6 +296,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি অবশ্যই ${safelyStringifyUnknownValue(error.suffix)} দিয়ে শেষ হতে হবে।`;
 
+/** Formats an IncludesError in Bengali. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটিতে অবশ্যই ${safelyStringifyUnknownValue(error.substring)} থাকতে হবে।`;
+
+/** Formats an ExcludesError in Bengali. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটিতে ${safelyStringifyUnknownValue(error.substring)} থাকা চলবে না।`;
+
 /** Formats a MinLengthError in Bengali. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -292,6 +315,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} মানটির দৈর্ঘ্য সর্বোচ্চ ${error.max} হতে পারে।`;
+
+/** Formats a MaxUtf8ByteLengthError in Bengali. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটির UTF-8 বাইট দৈর্ঘ্য সর্বোচ্চ ${error.max} হতে পারে।`;
 
 /** Formats a LengthError in Bengali. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -314,6 +343,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Bengali. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি ছোট হাতের অক্ষরে লেখা এবং জোড় সংখ্যক অঙ্কবিশিষ্ট hexadecimal string নয়।`;
+
+/** Formats a HexColorError in Bengali. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি ছোট হাতের অক্ষরে #rrggbb ফরম্যাটে লেখা রং নয়।`;
 
 /** Formats a NameError in Bengali. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -344,6 +377,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ IPv6 ঠিকানা নয়।`;
 
+/** Formats an IpAddressError in Bengali. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ IPv4 ঠিকানা বা canonical IPv6 ঠিকানা নয়।`;
+
+/** Formats an IpAddressFromStringError in Bengali. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ IP ঠিকানা নয়।`;
+
 /** Formats a PhoneNumberE164Error in Bengali. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -353,6 +398,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Bengali. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি বড় হাতের অক্ষরে ও ফাঁকা স্থান ছাড়া লেখা বৈধ IBAN নয়।`;
+
+/** Formats an IsbnError in Bengali. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি হাইফেন ছাড়া 13 অঙ্কের বৈধ ISBN নয়।`;
 
 /** Formats a SimplePasswordError in Bengali. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -389,6 +438,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি সংস্করণ ${error.version}-এর UUID নয়।`;
+
+/** Formats a UlidError in Bengali. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি বড় হাতের অক্ষরে লেখা canonical ULID নয়।`;
 
 /** Formats a NonNegativeError in Bengali. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -490,6 +543,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি ${error.min} থেকে ${error.max}-এর মধ্যে, দুই প্রান্তসহ, হতে হবে।`;
 
+/** Formats a GreaterThanBigIntError in Bengali. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি ${error.min}-এর চেয়ে বড় হতে হবে।`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Bengali. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি ${error.min}-এর চেয়ে বড় বা সমান হতে হবে।`;
+
+/** Formats a LessThanBigIntError in Bengali. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি ${error.max}-এর চেয়ে ছোট হতে হবে।`;
+
+/** Formats a LessThanOrEqualToBigIntError in Bengali. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি ${error.max}-এর চেয়ে ছোট বা সমান হতে হবে।`;
+
+/** Formats a BetweenBigIntError in Bengali. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি ${error.min} থেকে ${error.max}-এর মধ্যে, দুই প্রান্তসহ, হতে হবে।`;
+
 /** Formats an ArrayError in Bengali. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -552,6 +635,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Map-এর index ${issue.previousIndex} এবং ${issue.index}-এর key দুটি decode হয়ে একই key ${safelyStringifyUnknownValue(issue.outputKey)} হয়।`;
   }
 };
+
+/** Formats a MinSizeError in Bengali. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `আকার ${error.value.size}, কিন্তু এটি অন্তত ${error.min} হতে হবে।`;
+
+/** Formats a MaxSizeError in Bengali. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `আকার ${error.value.size}, কিন্তু এটি সর্বোচ্চ ${error.max} হতে পারে।`;
 
 /** Formats a TupleError in Bengali. */
 export const formatTupleError: TypeErrorFormatter<

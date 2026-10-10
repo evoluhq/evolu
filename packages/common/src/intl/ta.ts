@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -282,6 +297,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஆனது ${safelyStringifyUnknownValue(error.suffix)} உடன் முடிய வேண்டும்.`;
 
+/** Formats an IncludesError in Tamil. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஆனது ${safelyStringifyUnknownValue(error.substring)}-ஐக் கொண்டிருக்க வேண்டும்.`;
+
+/** Formats an ExcludesError in Tamil. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஆனது ${safelyStringifyUnknownValue(error.substring)}-ஐக் கொண்டிருக்கக் கூடாது.`;
+
 /** Formats a MinLengthError in Tamil. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -293,6 +316,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} அதிகபட்ச நீளமான ${error.max}-ஐ மீறுகிறது.`;
+
+/** Formats a MaxUtf8ByteLengthError in Tamil. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} அதிகபட்ச UTF-8 பைட் நீளமான ${error.max}-ஐ மீறுகிறது.`;
 
 /** Formats a LengthError in Tamil. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -315,6 +344,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Tamil. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சிற்றெழுத்துகளிலான, இரட்டைப்படை எண்ணிக்கையிலான இலக்கங்களைக் கொண்ட hexadecimal string அல்ல.`;
+
+/** Formats a HexColorError in Tamil. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சிற்றெழுத்துகளிலான #rrggbb வடிவத்திலான நிறம் அல்ல.`;
 
 /** Formats a NameError in Tamil. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -346,6 +379,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் IPv6 முகவரி அல்ல.`;
 
+/** Formats an IpAddressError in Tamil. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் IPv4 முகவரியோ canonical IPv6 முகவரியோ அல்ல.`;
+
+/** Formats an IpAddressFromStringError in Tamil. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் IP முகவரி அல்ல.`;
+
 /** Formats a PhoneNumberE164Error in Tamil. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -355,6 +400,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Tamil. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} பேரெழுத்துகளிலான, இடைவெளிகள் இல்லாத செல்லுபடியாகும் IBAN அல்ல.`;
+
+/** Formats an IsbnError in Tamil. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} இணைப்புக்கோடுகள் இல்லாத, 13 இலக்கங்களைக் கொண்ட செல்லுபடியாகும் ISBN அல்ல.`;
 
 /** Formats a SimplePasswordError in Tamil. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -391,6 +440,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு பதிப்பு ${error.version} UUID அல்ல.`;
+
+/** Formats a UlidError in Tamil. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} பேரெழுத்துகளிலான ஒரு canonical ULID அல்ல.`;
 
 /** Formats a NonNegativeError in Tamil. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -492,6 +545,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.min} மற்றும் ${error.max}-க்கு இடையில், இரு எல்லைகளையும் உள்ளடக்கியதாக இருக்க வேண்டும்.`;
 
+/** Formats a GreaterThanBigIntError in Tamil. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.min}-ஐ விட அதிகமாக இருக்க வேண்டும்.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Tamil. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.min}-ஐ விட அதிகமாகவோ அல்லது சமமாகவோ இருக்க வேண்டும்.`;
+
+/** Formats a LessThanBigIntError in Tamil. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.max}-ஐ விடக் குறைவாக இருக்க வேண்டும்.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Tamil. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.max}-ஐ விடக் குறைவாகவோ அல்லது சமமாகவோ இருக்க வேண்டும்.`;
+
+/** Formats a BetweenBigIntError in Tamil. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} என்பது ${error.min} மற்றும் ${error.max}-க்கு இடையில், இரு எல்லைகளையும் உள்ளடக்கியதாக இருக்க வேண்டும்.`;
+
 /** Formats an ArrayError in Tamil. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -554,6 +637,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `index ${issue.previousIndex} மற்றும் ${issue.index}-இல் உள்ள Map key-கள் ஒரே key ${safelyStringifyUnknownValue(issue.outputKey)}-ஆக decode ஆகின்றன.`;
   }
 };
+
+/** Formats a MinSizeError in Tamil. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `அளவு ${error.value.size} குறைந்தபட்ச அளவான ${error.min}-ஐப் பூர்த்தி செய்யவில்லை.`;
+
+/** Formats a MaxSizeError in Tamil. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `அளவு ${error.value.size} அதிகபட்ச அளவான ${error.max}-ஐ மீறுகிறது.`;
 
 /** Formats a TupleError in Tamil. */
 export const formatTupleError: TypeErrorFormatter<

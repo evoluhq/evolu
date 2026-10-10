@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -282,6 +297,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ${safelyStringifyUnknownValue(error.suffix)}-ൽ അവസാനിക്കണം.`;
 
+/** Formats an IncludesError in Malayalam. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ൽ ${safelyStringifyUnknownValue(error.substring)} ഉണ്ടായിരിക്കണം.`;
+
+/** Formats an ExcludesError in Malayalam. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ൽ ${safelyStringifyUnknownValue(error.substring)} ഉണ്ടായിരിക്കരുത്.`;
+
 /** Formats a MinLengthError in Malayalam. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -293,6 +316,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ന്റെ നീളം ${error.max}-ൽ കൂടരുത്.`;
+
+/** Formats a MaxUtf8ByteLengthError in Malayalam. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-ന്റെ UTF-8 ബൈറ്റ് നീളം ${error.max}-ൽ കൂടരുത്.`;
 
 /** Formats a LengthError in Malayalam. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -315,6 +344,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Malayalam. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ചെറിയ അക്ഷരങ്ങളിലുള്ളതും ഇരട്ട എണ്ണം അക്കങ്ങളുള്ളതുമായ hexadecimal string അല്ല.`;
+
+/** Formats a HexColorError in Malayalam. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} #rrggbb ഫോർമാറ്റിൽ ചെറിയ അക്ഷരങ്ങളിലുള്ള നിറം അല്ല.`;
 
 /** Formats a NameError in Malayalam. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -346,6 +379,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ IPv6 വിലാസം അല്ല.`;
 
+/** Formats an IpAddressError in Malayalam. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ IPv4 വിലാസമോ canonical IPv6 വിലാസമോ അല്ല.`;
+
+/** Formats an IpAddressFromStringError in Malayalam. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ IP വിലാസം അല്ല.`;
+
 /** Formats a PhoneNumberE164Error in Malayalam. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -355,6 +400,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Malayalam. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} വലിയ അക്ഷരങ്ങളിലുള്ളതും സ്പേസ് ഇല്ലാത്തതുമായ സാധുവായ IBAN അല്ല.`;
+
+/** Formats an IsbnError in Malayalam. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഹൈഫൻ ഇല്ലാത്ത 13 അക്കങ്ങളുള്ള സാധുവായ ISBN അല്ല.`;
 
 /** Formats a SimplePasswordError in Malayalam. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -391,6 +440,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} പതിപ്പ് ${error.version} UUID അല്ല.`;
+
+/** Formats a UlidError in Malayalam. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} വലിയ അക്ഷരങ്ങളിലുള്ള canonical ULID അല്ല.`;
 
 /** Formats a NonNegativeError in Malayalam. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -492,6 +545,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.min} നും ${error.max} നും ഇടയിൽ (അതിരുകൾ ഉൾപ്പെടെ) ആയിരിക്കണം.`;
 
+/** Formats a GreaterThanBigIntError in Malayalam. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.min}-നേക്കാൾ വലുതായിരിക്കണം.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Malayalam. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.min}-നേക്കാൾ വലുതോ തുല്യമോ ആയിരിക്കണം.`;
+
+/** Formats a LessThanBigIntError in Malayalam. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.max}-നേക്കാൾ ചെറുതായിരിക്കണം.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Malayalam. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.max}-നേക്കാൾ ചെറുതോ തുല്യമോ ആയിരിക്കണം.`;
+
+/** Formats a BetweenBigIntError in Malayalam. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)}, ${error.min} നും ${error.max} നും ഇടയിൽ (അതിരുകൾ ഉൾപ്പെടെ) ആയിരിക്കണം.`;
+
 /** Formats an ArrayError in Malayalam. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -554,6 +637,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `index ${issue.previousIndex}-ലെയും ${issue.index}-ലെയും Map keys decode ചെയ്യുമ്പോൾ ഒരേ key ${safelyStringifyUnknownValue(issue.outputKey)} ലഭിക്കുന്നു.`;
   }
 };
+
+/** Formats a MinSizeError in Malayalam. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `വലുപ്പം ${error.value.size} ആണ്, എന്നാൽ അത് കുറഞ്ഞത് ${error.min} ആയിരിക്കണം.`;
+
+/** Formats a MaxSizeError in Malayalam. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `വലുപ്പം ${error.value.size} ആണ്, എന്നാൽ അത് ${error.max}-ൽ കൂടരുത്.`;
 
 /** Formats a TupleError in Malayalam. */
 export const formatTupleError: TypeErrorFormatter<

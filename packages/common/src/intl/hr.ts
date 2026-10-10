@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -289,6 +304,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora završavati s ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Croatian. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora sadržavati ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Croatian. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} ne smije sadržavati ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Croatian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -300,6 +323,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} premašuje najveću duljinu od ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Croatian. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} premašuje najveću duljinu u UTF-8 bajtovima od ${error.max}.`;
 
 /** Formats a LengthError in Croatian. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -322,6 +351,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Croatian. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije heksadecimalni niz znakova napisan malim slovima s parnim brojem znamenaka.`;
+
+/** Formats a HexColorError in Croatian. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije boja u formatu #rrggbb napisana malim slovima.`;
 
 /** Formats a NameError in Croatian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -353,6 +386,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana IPv6 adresa.`;
 
+/** Formats an IpAddressError in Croatian. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana IPv4 adresa ni kanonska IPv6 adresa.`;
+
+/** Formats an IpAddressFromStringError in Croatian. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana IP adresa.`;
+
 /** Formats a PhoneNumberE164Error in Croatian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -362,6 +407,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Croatian. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani IBAN napisan velikim slovima bez razmaka.`;
+
+/** Formats an IsbnError in Croatian. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjani 13-znamenkasti ISBN bez crtica.`;
 
 /** Formats a SimplePasswordError in Croatian. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -398,6 +447,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije UUID verzije ${error.version}.`;
+
+/** Formats a UlidError in Croatian. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije kanonski ULID napisan velikim slovima.`;
 
 /** Formats a NonNegativeError in Croatian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -499,6 +552,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti između ${error.min} i ${error.max}, uključujući granice.`;
 
+/** Formats a GreaterThanBigIntError in Croatian. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti veća od ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Croatian. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti veća ili jednaka ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Croatian. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti manja od ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Croatian. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti manja ili jednaka ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Croatian. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti između ${error.min} i ${error.max}, uključujući granice.`;
+
 /** Formats an ArrayError in Croatian. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -561,6 +644,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Ključevi Map-a na indeksima ${issue.previousIndex} i ${issue.index} dekodiraju se u isti ključ ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Croatian. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Veličina ${error.value.size} ne zadovoljava najmanju veličinu od ${error.min}.`;
+
+/** Formats a MaxSizeError in Croatian. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Veličina ${error.value.size} premašuje najveću veličinu od ${error.max}.`;
 
 /** Formats a TupleError in Croatian. */
 export const formatTupleError: TypeErrorFormatter<

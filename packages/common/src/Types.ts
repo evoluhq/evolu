@@ -289,6 +289,11 @@ export interface ValueWithLength {
   readonly length: number;
 }
 
+/** A value with a numeric size. */
+export interface ValueWithSize {
+  readonly size: number;
+}
+
 /**
  * String, number, bigint, boolean, undefined, null
  *

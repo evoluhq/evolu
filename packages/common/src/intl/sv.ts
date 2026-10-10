@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -283,6 +298,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} måste sluta med ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Swedish. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} måste innehålla ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Swedish. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} får inte innehålla ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Swedish. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -294,6 +317,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} överskrider maxlängden ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Swedish. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} överskrider maxlängden ${error.max} räknat i UTF-8-byte.`;
 
 /** Formats a LengthError in Swedish. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -316,6 +345,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Swedish. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} är inte hexadecimalt med små bokstäver och ett jämnt antal siffror.`;
+
+/** Formats a HexColorError in Swedish. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en färg i formatet #rrggbb med små bokstäver.`;
 
 /** Formats a NameError in Swedish. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -347,6 +380,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en giltig IPv6-adress.`;
 
+/** Formats an IpAddressError in Swedish. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en giltig IPv4-adress eller en kanonisk IPv6-adress.`;
+
+/** Formats an IpAddressFromStringError in Swedish. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en giltig IP-adress.`;
+
 /** Formats a PhoneNumberE164Error in Swedish. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -356,6 +401,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Swedish. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} är inte ett giltigt IBAN-nummer med stora bokstäver utan mellanslag.`;
+
+/** Formats an IsbnError in Swedish. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte ett giltigt 13-siffrigt ISBN-nummer utan bindestreck.`;
 
 /** Formats a SimplePasswordError in Swedish. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -392,6 +441,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} är inte ett UUID av version ${error.version}.`;
+
+/** Formats a UlidError in Swedish. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte ett kanoniskt ULID med stora bokstäver.`;
 
 /** Formats a NonNegativeError in Swedish. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -493,6 +546,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} måste ligga mellan ${error.min} och ${error.max}, inklusive.`;
 
+/** Formats a GreaterThanBigIntError in Swedish. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} måste vara större än ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Swedish. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} måste vara större än eller lika med ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Swedish. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} måste vara mindre än ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Swedish. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} måste vara mindre än eller lika med ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Swedish. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} måste ligga mellan ${error.min} och ${error.max}, inklusive.`;
+
 /** Formats an ArrayError in Swedish. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -555,6 +638,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Map-nycklarna vid index ${issue.previousIndex} och ${issue.index} avkodas till samma nyckel ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Swedish. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Storleken ${error.value.size} uppfyller inte minimistorleken ${error.min}.`;
+
+/** Formats a MaxSizeError in Swedish. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Storleken ${error.value.size} överskrider maxstorleken ${error.max}.`;
 
 /** Formats a TupleError in Swedish. */
 export const formatTupleError: TypeErrorFormatter<

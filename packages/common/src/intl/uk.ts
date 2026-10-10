@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -286,6 +301,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має закінчуватися на ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Ukrainian. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має містити ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Ukrainian. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не повинно містити ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Ukrainian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -297,6 +320,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} перевищує максимальну довжину ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Ukrainian. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} перевищує максимальну довжину ${error.max} в байтах UTF-8.`;
 
 /** Formats a LengthError in Ukrainian. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -319,6 +348,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Ukrainian. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є шістнадцятковим рядком у нижньому регістрі з парною кількістю цифр.`;
+
+/** Formats a HexColorError in Ukrainian. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є кольором у форматі #rrggbb у нижньому регістрі.`;
 
 /** Formats a NameError in Ukrainian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -350,6 +383,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою адресою IPv6.`;
 
+/** Formats an IpAddressError in Ukrainian. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є ні допустимою адресою IPv4, ні канонічною адресою IPv6.`;
+
+/** Formats an IpAddressFromStringError in Ukrainian. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою IP-адресою.`;
+
 /** Formats a PhoneNumberE164Error in Ukrainian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -359,6 +404,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Ukrainian. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим IBAN у верхньому регістрі без пробілів.`;
+
+/** Formats an IsbnError in Ukrainian. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимим 13-значним ISBN без дефісів.`;
 
 /** Formats a SimplePasswordError in Ukrainian. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -395,6 +444,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є UUID версії ${error.version}.`;
+
+/** Formats a UlidError in Ukrainian. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є канонічним ULID у верхньому регістрі.`;
 
 /** Formats a NonNegativeError in Ukrainian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -496,6 +549,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має бути в межах від ${error.min} до ${error.max} включно.`;
 
+/** Formats a GreaterThanBigIntError in Ukrainian. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має бути більшим за ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Ukrainian. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має бути більшим або рівним ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Ukrainian. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має бути меншим за ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Ukrainian. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має бути меншим або рівним ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Ukrainian. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має бути в межах від ${error.min} до ${error.max} включно.`;
+
 /** Formats an ArrayError in Ukrainian. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -558,6 +641,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Ключі Map з індексами ${issue.previousIndex} та ${issue.index} декодуються в той самий ключ ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Ukrainian. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Розмір ${error.value.size} менший за мінімальний розмір ${error.min}.`;
+
+/** Formats a MaxSizeError in Ukrainian. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Розмір ${error.value.size} перевищує максимальний розмір ${error.max}.`;
 
 /** Formats a TupleError in Ukrainian. */
 export const formatTupleError: TypeErrorFormatter<

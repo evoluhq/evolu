@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -289,6 +304,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να τελειώνει με ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Greek. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να περιέχει ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Greek. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν πρέπει να περιέχει ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Greek. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -300,6 +323,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} υπερβαίνει το μέγιστο μήκος ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Greek. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} υπερβαίνει το μέγιστο μήκος ${error.max} σε byte UTF-8.`;
 
 /** Formats a LengthError in Greek. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -322,6 +351,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Greek. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι δεκαεξαδική συμβολοσειρά με πεζά γράμματα και άρτιο πλήθος ψηφίων.`;
+
+/** Formats a HexColorError in Greek. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι χρώμα σε μορφή #rrggbb με πεζά γράμματα.`;
 
 /** Formats a NameError in Greek. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -353,6 +386,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη διεύθυνση IPv6.`;
 
+/** Formats an IpAddressError in Greek. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη διεύθυνση IPv4 ούτε κανονική διεύθυνση IPv6.`;
+
+/** Formats an IpAddressFromStringError in Greek. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη διεύθυνση IP.`;
+
 /** Formats a PhoneNumberE164Error in Greek. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -362,6 +407,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Greek. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρο IBAN με κεφαλαία γράμματα χωρίς κενά.`;
+
+/** Formats an IsbnError in Greek. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρο 13ψήφιο ISBN χωρίς ενωτικά.`;
 
 /** Formats a SimplePasswordError in Greek. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -398,6 +447,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι UUID έκδοσης ${error.version}.`;
+
+/** Formats a UlidError in Greek. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι κανονικό ULID με κεφαλαία γράμματα.`;
 
 /** Formats a NonNegativeError in Greek. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -499,6 +552,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να είναι μεταξύ ${error.min} και ${error.max}, συμπεριλαμβανομένων.`;
 
+/** Formats a GreaterThanBigIntError in Greek. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να είναι μεγαλύτερη από ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Greek. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να είναι μεγαλύτερη ή ίση με ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Greek. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να είναι μικρότερη από ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Greek. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να είναι μικρότερη ή ίση με ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Greek. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να είναι μεταξύ ${error.min} και ${error.max}, συμπεριλαμβανομένων.`;
+
 /** Formats an ArrayError in Greek. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -561,6 +644,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Τα κλειδιά Map στις θέσεις ${issue.previousIndex} και ${issue.index} αποκωδικοποιούνται στο ίδιο κλειδί ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Greek. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Το μέγεθος ${error.value.size} δεν πληροί το ελάχιστο μέγεθος ${error.min}.`;
+
+/** Formats a MaxSizeError in Greek. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Το μέγεθος ${error.value.size} υπερβαίνει το μέγιστο μέγεθος ${error.max}.`;
 
 /** Formats a TupleError in Greek. */
 export const formatTupleError: TypeErrorFormatter<

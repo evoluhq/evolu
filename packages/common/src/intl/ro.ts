@@ -11,6 +11,7 @@ import type {
   Base64Error,
   Base64UrlError,
   BooleanFromStringError,
+  BetweenBigIntError,
   BetweenError,
   IdentifierError,
   CapitalizedError,
@@ -26,33 +27,46 @@ import type {
   EmailError,
   EndsWithError,
   EvoluTypeError,
+  ExcludesError,
   FiniteError,
   FiniteNumberFromStringError,
+  GreaterThanBigIntError,
   GreaterThanError,
+  GreaterThanOrEqualToBigIntError,
   GreaterThanOrEqualToError,
+  HexColorError,
   HexError,
   HostnameError,
   IbanError,
+  IncludesError,
   InstanceOfError,
   Int64Error,
   Int64StringError,
   IntError,
   IntFromStringError,
   IdError,
+  IpAddressError,
+  IpAddressFromStringError,
   Ipv4AddressError,
   Ipv6AddressError,
   Ipv6AddressFromStringError,
+  IsbnError,
   JsonError,
   JsonValueError,
   LengthError,
+  LessThanBigIntError,
   LessThanError,
+  LessThanOrEqualToBigIntError,
   LessThanOrEqualToError,
   LiteralError,
   MapError,
   MaxEntriesError,
   MaxLengthError,
+  MaxSizeError,
+  MaxUtf8ByteLengthError,
   MinEntriesError,
   MinLengthError,
+  MinSizeError,
   MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
@@ -90,6 +104,7 @@ import type {
   TypeOfError,
   TypeValueError,
   UInt64Error,
+  UlidError,
   UnionError,
   UniqueError,
   UuidError,
@@ -283,6 +298,14 @@ export const formatStartsWithError: TypeErrorFormatter<StartsWithError> = (
 export const formatEndsWithError: TypeErrorFormatter<EndsWithError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să se termine cu ${safelyStringifyUnknownValue(error.suffix)}.`;
 
+/** Formats an IncludesError in Romanian. */
+export const formatIncludesError: TypeErrorFormatter<IncludesError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să conțină ${safelyStringifyUnknownValue(error.substring)}.`;
+
+/** Formats an ExcludesError in Romanian. */
+export const formatExcludesError: TypeErrorFormatter<ExcludesError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu trebuie să conțină ${safelyStringifyUnknownValue(error.substring)}.`;
+
 /** Formats a MinLengthError in Romanian. */
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (
   error,
@@ -294,6 +317,12 @@ export const formatMaxLengthError: TypeErrorFormatter<MaxLengthError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} depășește lungimea maximă de ${error.max}.`;
+
+/** Formats a MaxUtf8ByteLengthError in Romanian. */
+export const formatMaxUtf8ByteLengthError: TypeErrorFormatter<
+  MaxUtf8ByteLengthError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} depășește lungimea maximă în octeți UTF-8 de ${error.max}.`;
 
 /** Formats a LengthError in Romanian. */
 export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
@@ -316,6 +345,10 @@ export const formatBase64Error: TypeErrorFormatter<Base64Error> = (error) =>
 /** Formats a HexError in Romanian. */
 export const formatHexError: TypeErrorFormatter<HexError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un șir hexazecimal cu litere mici și un număr par de cifre.`;
+
+/** Formats a HexColorError in Romanian. */
+export const formatHexColorError: TypeErrorFormatter<HexColorError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o culoare în formatul #rrggbb cu litere mici.`;
 
 /** Formats a NameError in Romanian. */
 export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
@@ -347,6 +380,18 @@ export const formatIpv6AddressFromStringError: TypeErrorFormatter<
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă IPv6 validă.`;
 
+/** Formats an IpAddressError in Romanian. */
+export const formatIpAddressError: TypeErrorFormatter<IpAddressError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă IPv4 validă sau o adresă IPv6 canonică.`;
+
+/** Formats an IpAddressFromStringError in Romanian. */
+export const formatIpAddressFromStringError: TypeErrorFormatter<
+  IpAddressFromStringError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă IP validă.`;
+
 /** Formats a PhoneNumberE164Error in Romanian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error
@@ -356,6 +401,10 @@ export const formatPhoneNumberE164Error: TypeErrorFormatter<
 /** Formats an IbanError in Romanian. */
 export const formatIbanError: TypeErrorFormatter<IbanError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un IBAN valid scris cu majuscule și fără spații.`;
+
+/** Formats an IsbnError in Romanian. */
+export const formatIsbnError: TypeErrorFormatter<IsbnError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un ISBN valid de 13 cifre fără cratime.`;
 
 /** Formats a SimplePasswordError in Romanian. */
 export const formatSimplePasswordError: TypeErrorFormatter<
@@ -392,6 +441,10 @@ export const formatUuidVersionError: TypeErrorFormatter<UuidVersionError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un UUID de versiunea ${error.version}.`;
+
+/** Formats a UlidError in Romanian. */
+export const formatUlidError: TypeErrorFormatter<UlidError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un ULID canonic cu majuscule.`;
 
 /** Formats a NonNegativeError in Romanian. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -493,6 +546,36 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie între ${error.min} și ${error.max}, inclusiv.`;
 
+/** Formats a GreaterThanBigIntError in Romanian. */
+export const formatGreaterThanBigIntError: TypeErrorFormatter<
+  GreaterThanBigIntError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie mai mare decât ${error.min}.`;
+
+/** Formats a GreaterThanOrEqualToBigIntError in Romanian. */
+export const formatGreaterThanOrEqualToBigIntError: TypeErrorFormatter<
+  GreaterThanOrEqualToBigIntError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie mai mare sau egală cu ${error.min}.`;
+
+/** Formats a LessThanBigIntError in Romanian. */
+export const formatLessThanBigIntError: TypeErrorFormatter<
+  LessThanBigIntError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie mai mică decât ${error.max}.`;
+
+/** Formats a LessThanOrEqualToBigIntError in Romanian. */
+export const formatLessThanOrEqualToBigIntError: TypeErrorFormatter<
+  LessThanOrEqualToBigIntError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie mai mică sau egală cu ${error.max}.`;
+
+/** Formats a BetweenBigIntError in Romanian. */
+export const formatBetweenBigIntError: TypeErrorFormatter<
+  BetweenBigIntError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie între ${error.min} și ${error.max}, inclusiv.`;
+
 /** Formats an ArrayError in Romanian. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
@@ -555,6 +638,14 @@ export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
       return `Cheile Map de la indexurile ${issue.previousIndex} și ${issue.index} se decodează la aceeași cheie ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
+
+/** Formats a MinSizeError in Romanian. */
+export const formatMinSizeError: TypeErrorFormatter<MinSizeError> = (error) =>
+  `Dimensiunea ${error.value.size} nu îndeplinește dimensiunea minimă de ${error.min}.`;
+
+/** Formats a MaxSizeError in Romanian. */
+export const formatMaxSizeError: TypeErrorFormatter<MaxSizeError> = (error) =>
+  `Dimensiunea ${error.value.size} depășește dimensiunea maximă de ${error.max}.`;
 
 /** Formats a TupleError in Romanian. */
 export const formatTupleError: TypeErrorFormatter<
