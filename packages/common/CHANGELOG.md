@@ -1,5 +1,370 @@
 # @evolu/common
 
+## 8.20.0
+
+### Minor Changes
+
+- 88840c2: Added fnv1a32 for fast non-cryptographic hashing of bytes
+
+  `fnv1a32` computes the 32-bit FNV-1a hash of a `Uint8Array`. It suits hash
+  tables, bucketing, and fingerprints that detect accidental changes, but it is
+  not collision resistant, so never use it for integrity or authentication. Pass
+  a previous result to continue hashing across several arrays.
+
+  ```ts
+  import { assertEqual, fnv1a32, utf8ToBytes } from "@evolu/common";
+
+  assertEqual(fnv1a32(utf8ToBytes("foobar")), 0xbf9cf968);
+  assertEqual(
+    fnv1a32(utf8ToBytes("bar"), fnv1a32(utf8ToBytes("foo"))),
+    fnv1a32(utf8ToBytes("foobar")),
+  );
+  ```
+
+- 87f0678: Added a path option that reports a cross-field error at one field
+
+  A rule spanning several properties, such as a range whose maximum must not be
+  below its minimum, is a `brand` or `createType` refinement of the whole object,
+  so `typeErrorToIssues` and Standard Schema validation reported its error at the
+  object itself, and form libraries could not show it at a field. A fallible
+  `brand` and a fallible child `createType` now take `{ path }`, described by the
+  new `ChildTypeOptions`, which locates the error within the validated value. The
+  error itself is unchanged, and the path is checked against the parent Output at
+  compile time.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    brand,
+    err,
+    FiniteNumber,
+    object,
+    ok,
+    typeErrorToIssues,
+    type TypeError,
+  } from "@evolu/common";
+
+  interface PriceRangeError extends TypeError<"PriceRange"> {}
+
+  const PriceRange = brand(
+    "PriceRange",
+    object({ min: FiniteNumber, max: FiniteNumber }),
+    (value) =>
+      value.min <= value.max
+        ? ok()
+        : err<PriceRangeError>({ type: "PriceRange" }),
+    () => "The maximum must not be below the minimum.",
+    { path: ["max"] },
+  );
+
+  const result = PriceRange.fromUnknown({ min: 20, max: 10 });
+  assertErr(result, { type: "PriceRange" });
+  assertEqual(typeErrorToIssues(PriceRange, result.error), [
+    { path: ["max"], message: "The maximum must not be below the minimum." },
+  ]);
+  ```
+
+- ea707cc: Added Types for ULIDs, ISBNs, IP addresses, hex colors, 32-bit and bigint bounds, and collection sizes
+
+  - `Ulid` accepts a canonical uppercase ULID, and `ulidToId` and `idToUlid`
+    convert between a `Ulid` and the `Id` with the same 16 bytes.
+  - `Uint8ArrayFromBase64`, `Uint8ArrayFromBase64Url`, and `Uint8ArrayFromHex`
+    decode encoded text to bytes and encode it back canonically.
+  - `Isbn` accepts a 13-digit ISBN without hyphens and checks its check digit.
+  - `IpAddress` accepts an IPv4 address or a canonical IPv6 address, and
+    `IpAddressFromString` converts RFC 4291 IPv6 address text to its canonical
+    form and accepts an `Ipv4Address` unchanged.
+  - `HexColor` accepts the lowercase `#rrggbb` form that `<input type="color">`
+    produces by default.
+  - `includes` and `excludes` require or forbid a substring, and
+    `maxUtf8ByteLength` bounds the UTF-8 size of a string.
+  - `Int32` and `UInt32` bound integers to 32 bits.
+  - `greaterThanBigInt`, `greaterThanOrEqualToBigInt`, `lessThanBigInt`,
+    `lessThanOrEqualToBigInt`, and `betweenBigInt` bound bigints, and
+    `ValidateBrandFactoryBigInt` guards bigint parameters of custom brand
+    factories.
+  - `minSize` and `maxSize` bound the size of Sets, Maps, and Blobs, whose
+    Output the new `ValueWithSize` interface describes.
+
+  Every locale of `@evolu/common/intl` translates the new error messages.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    betweenBigInt,
+    BigInt,
+    IpAddressFromString,
+    maxSize,
+    set,
+    String,
+    Ulid,
+    idToUlid,
+    ulidToId,
+  } from "@evolu/common";
+
+  const ulid = Ulid.orThrow("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+  assertEqual(idToUlid(ulidToId(ulid)), ulid);
+
+  assertOk(IpAddressFromString.fromUnknown("2001:0DB8::1"), "2001:db8::1");
+
+  const Percent = betweenBigInt(0n, 100n)(BigInt);
+  assertOk(Percent.fromUnknown(42n), 42n);
+  assertErr(Percent.fromUnknown(101n));
+
+  const Tags = maxSize(2)(set(String));
+  assertErr(Tags.fromUnknown(new Set(["a", "b", "c"])));
+  ```
+
+- 74cc737: Added redacted for validating secrets into Redacted values
+
+  `redacted(Inner)` validates a secret string with an inner Type and wraps the
+  inner Output in `Redacted`, so a decoded password, mnemonic, or API key does not
+  leak through logging or serialization. The inner Type's errors are returned
+  unchanged, so it must refine `String` and its errors must not contain the
+  value, as with `SimplePassword` and `Mnemonic`; both rules are checked at
+  compile time. A non-string fails with a value-free `RedactedError`, which every
+  locale of `@evolu/common/intl` translates. Encoding with `to` or `json`
+  reveals the secret.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    object,
+    redacted,
+    revealRedacted,
+    SimplePassword,
+    String,
+  } from "@evolu/common";
+
+  const SignIn = object({ email: String, password: redacted(SimplePassword) });
+
+  const signIn = SignIn.fromUnknown({
+    email: "ada@example.com",
+    password: "correct horse",
+  });
+  assertOk(signIn);
+  assertEqual(revealRedacted(signIn.value.password), "correct horse");
+  assertEqual(
+    JSON.stringify(signIn.value),
+    '{"email":"ada@example.com","password":"<redacted>"}',
+  );
+  assertErr(SignIn.fromUnknown({ email: "ada@example.com", password: 42 }));
+  ```
+
+- b599e0d: Added Types for string formats, calendar dates, Unicode text, and collections
+
+  The new string formats accept one canonical spelling and do not normalize input;
+  only `Ipv6AddressFromString` converts other spellings:
+
+  - `Base64` and `Hex`, with `uint8ArrayToBase64`, `base64ToUint8Array`,
+    `uint8ArrayToHex`, and `hexToUint8Array`. `Hex` is lowercase and holds
+    whole bytes.
+  - `uuidVersion(version)`, `UuidV4`, and `UuidV7`, which check the version and
+    variant of a `Uuid`.
+  - `Hostname` (RFC 1123, lowercase), `Ipv4Address`, and `Ipv6Address` (RFC 5952
+    canonical text). `Ipv6AddressFromString` converts RFC 4291 IPv6 address
+    text to its canonical form.
+  - `PhoneNumberE164` and `Iban`, which verifies the IBAN check digits.
+  - `endsWith(suffix)`, the counterpart of `startsWith`.
+
+  `PlainDateIso` accepts a calendar date such as `2024-02-29` and rejects dates
+  that do not exist. `ValidDate` rejects an Invalid Date, which `Date` accepts.
+  `DateIsoFromRfc3339` decodes RFC 3339 date-times with an offset or without
+  milliseconds to `DateIso`, and `FiniteNumberFromString` decodes decimal number
+  strings, including exponents.
+
+  `wellFormed` and `WellFormedString` reject lone surrogates, which are replaced
+  when text is stored as UTF-8. `normalized(form)` requires a Unicode
+  normalization form, and `normalize` converts text to one explicitly.
+
+  `unique` rejects arrays with equal items, `minEntries` and `maxEntries` bound
+  the entry count of records and objects, and `nonEmptyArray` narrows an array
+  Type's Output to `NonEmptyReadonlyArray`.
+
+  Every locale of `@evolu/common/intl` translates the new error messages.
+
+  ```ts
+  import {
+    array,
+    assertEqual,
+    assertErr,
+    assertOk,
+    Ipv6AddressFromString,
+    nonEmptyArray,
+    PlainDateIso,
+    String,
+    unique,
+  } from "@evolu/common";
+
+  assertOk(PlainDateIso.fromUnknown("2024-02-29"), "2024-02-29");
+  assertErr(PlainDateIso.fromUnknown("2023-02-29"));
+
+  assertOk(
+    Ipv6AddressFromString.fromUnknown("2001:DB8:0:0:0:0:0:1"),
+    "2001:db8::1",
+  );
+
+  const Tags = unique(nonEmptyArray(array(String)));
+  const tags = Tags.orThrow(["local-first", "sqlite"]);
+  assertEqual(tags[0], "local-first");
+  assertErr(Tags.fromUnknown([]));
+  assertErr(Tags.fromUnknown(["sqlite", "sqlite"]));
+  ```
+
+- c3fa5c7: Added Data and byte length error formatters to every Type locale
+
+  Every locale module in `@evolu/common/intl` now exports `formatDataError`,
+  `formatByteLengthError`, and `formatByteLengthFromStringError`, so Types that
+  contain `Data`, `ByteLength`, or `ByteLengthFromString` can be localized
+  without writing formatters for their errors.
+
+  ```ts
+  import { assertEqual, assertErr, Data, localizeTypes } from "@evolu/common";
+  import { cs } from "@evolu/common/intl";
+
+  const typesByLocale = localizeTypes(
+    { Data },
+    { cs: { Data: cs.formatDataError } },
+  );
+
+  const result = typesByLocale.cs.Data.fromUnknown(Symbol("id"));
+  assertErr(result);
+  assertEqual(
+    typesByLocale.cs.Data.formatError(result.error),
+    "Hodnota Symbol(id) není Data.",
+  );
+  ```
+
+### Patch Changes
+
+- e803b34: Fixed Mnemonic and SimplePassword errors exposing the secret
+
+  `Mnemonic` errors contained the rejected mnemonic and printed it, so a single
+  mistyped word exposed the rest of the secret. A valid mnemonic with surrounding
+  whitespace, such as one pasted with a trailing newline, failed with a `Trimmed`
+  error that printed the whole secret. `SimplePassword` errors printed the
+  password the same way.
+
+  Every string these Types reject now fails with a `MnemonicError` that has no
+  `value`, or with a `SimplePasswordError` whose `reason` is `"Untrimmed"`,
+  `"TooLong"`, or `"TooShort"`. Their messages no longer contain the input, and
+  both Types keep their Output types. Code that read `value` from a
+  `MnemonicError`, or that handled `Trimmed`, `MinLength`, or `MaxLength` errors
+  from these Types, must use the input it validated and the new errors instead.
+  In `localizeTypes`, these Types now take the `String` formatter and their own
+  `formatMnemonicError` or `formatSimplePasswordError` instead of the `Trimmed`,
+  `MinLength`, and `MaxLength` formatters, and every locale of
+  `@evolu/common/intl` exports `formatSimplePasswordError`.
+
+  ```ts
+  import {
+    assert,
+    assertEqual,
+    assertErr,
+    Mnemonic,
+    SimplePassword,
+  } from "@evolu/common";
+
+  const mnemonic =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+  const result = Mnemonic.fromUnknown(`${mnemonic}\n`);
+  assertErr(result, { type: "Mnemonic" });
+  assert(result.error.type === "Mnemonic", "Expected a MnemonicError.");
+  // @ts-expect-error MnemonicError no longer contains the rejected value.
+  const _withValue: { readonly value: string } = result.error;
+  assertEqual(
+    Mnemonic.formatError(result.error),
+    "The value is not a valid English BIP39 mnemonic.",
+  );
+
+  assertErr(SimplePassword.fromUnknown(" correct horse "), {
+    type: "SimplePassword",
+    reason: "Untrimmed",
+  });
+  ```
+
+- fbdb9a4: Rejected negative and fractional counts in minLength, maxLength, and length
+
+  `minLength(-1)` accepted every value, `maxLength(-1)` rejected every value, and
+  `maxLength(1.5)` behaved as `maxLength(1)`. These factories now take their count
+  through the new `ValidateBrandFactoryCount`, which accepts only a non-negative
+  integer literal, so such calls fail to compile with "Count must be a
+  non-negative integer." Runtime behavior is unchanged. The new count factories
+  `maxUtf8ByteLength`, `minSize`, `maxSize`, `minEntries`, and `maxEntries` use
+  the same guard.
+
+  ```ts
+  import { maxLength, minLength, String } from "@evolu/common";
+
+  minLength(0)(String);
+  // @ts-expect-error Count must be a non-negative integer.
+  minLength(-1)(String);
+  // @ts-expect-error Count must be a non-negative integer.
+  maxLength(1.5)(String);
+  ```
+
+- e803b34: Fixed Mnemonic accepting other spellings of a mnemonic
+
+  `Mnemonic` checked the NFKD form of the text, so it accepted a mnemonic whose
+  words were separated by no-break or ideographic spaces, or written with
+  fullwidth letters, and kept that spelling. One mnemonic had many valid
+  spellings, and `ownerSecretToMnemonic` did not return the one that was
+  validated. `Mnemonic` now accepts only lowercase ASCII words separated by
+  single spaces. Convert other input to NFKD and separate its words with single
+  spaces before validating it.
+
+  ```ts
+  import { assertErr, assertOk, Mnemonic } from "@evolu/common";
+
+  const mnemonic =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const fullwidth = mnemonic.replace("about", "\uFF41bout");
+
+  assertErr(Mnemonic.fromUnknown(fullwidth), { type: "Mnemonic" });
+  assertOk(Mnemonic.fromUnknown(fullwidth.normalize("NFKD")), mnemonic);
+  ```
+
+- c3fa5c7: Fixed Type error messages
+
+  - The Tuple length message said "A Tuple must contain exactly 1 elements" for a
+    one-element Tuple, and many translations broke the same way for other counts.
+    English now says "A Tuple must have length 1, but the value has length 2.",
+    and every locale of `@evolu/common/intl` translates it with wording that
+    does not depend on the numbers.
+  - In every locale, `formatMapError` named the two keys of a key collision,
+    while English names the indexes of their entries, because Map keys can be any
+    value. It now names the indexes. Its messages for an invalid key and an
+    invalid value, which were the same, now say which one is invalid.
+  - The Danish and Telugu messages for an unexpected discriminator value said
+    "has an unexpected value" in English. They now say it in Danish and Telugu.
+  - The Urdu and Marathi `formatLengthError` messages read as though the required
+    length was not the expected one. They now say what length the value must
+    have.
+  - The French, Hungarian, Norwegian, and Slovene messages for `String`,
+    `Number`, `BigInt`, `Boolean`, `Symbol`, and `Function` used the English
+    type name as a native noun, as in "n’est pas un(e) string". French and
+    Norwegian now say "of type string", and Hungarian and Slovene translate every
+    type name except BigInt.
+  - A review of every message corrected wording, grammar, and terminology in 37
+    locales. For example, German says "keine Map" and uses Eigenschaft and
+    Schlüssel instead of Property and Key, Dutch and Swedish use the correct
+    terms for signed integers, Korean particles fit the numbers before them,
+    Arabic says "null prototype" instead of "empty prototype", Turkish uses
+    Turkish word order, and Czech and Slovak keep the remedy sentence for
+    non-enumerable properties.
+
+- 74cc737: Fixed isRedacted accepting a disposed Redacted
+
+  `isRedacted` returned true for a wrapper disposed with `using` or
+  `[Symbol.dispose]()`, although `revealRedacted` throws for it. It now returns
+  true only for a wrapper whose value can still be revealed.
+
 ## 8.19.0
 
 ### Minor Changes
