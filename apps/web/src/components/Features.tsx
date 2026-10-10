@@ -109,7 +109,7 @@ const features: Array<Feature> = [
   {
     name: "Strict",
     description:
-      "Every constraint shows in its type, as a brand or a narrowed type. Broken invariants throw before invalid state spreads.",
+      "Types say what was checked. Broken invariants throw before invalid state spreads.",
     href: "/docs/api-reference/common/Type",
     icon: IconFilter,
   },
