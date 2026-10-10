@@ -1,5 +1,10 @@
 import { test } from "node:test";
-import { assertEqual, assertErr, assertSame } from "./Assert.ts";
+import {
+  assertEqual,
+  assertErr,
+  assertSame,
+  assertThrowsInstanceOf,
+} from "./Assert.ts";
 import { bytesToHex, utf8ToBytes } from "@noble/ciphers/utils.js";
 
 import {
@@ -80,6 +85,29 @@ test("createPadmePaddedLength", () => {
       expected - input,
     );
   });
+});
+
+test("createPadmePaddedLength pads lengths near and above 2 GiB", () => {
+  [
+    [2_113_929_216, 2_113_929_216],
+    [2_113_929_217, 2_147_483_648],
+    [2_147_483_648, 2_147_483_648],
+    [4_294_967_295, 4_294_967_296],
+    [4_294_967_301, 4_362_076_160],
+    [8_589_946_937, 8_724_152_320],
+    [1_099_511_627_777, 1_116_691_496_960],
+    [8_936_830_510_563_328, 8_936_830_510_563_328],
+  ].forEach(([input, expected]) => {
+    assertSame(createPadmePaddedLength(input as NonNegativeInt), expected);
+  });
+
+  assertSame(createPadmePadding(2_147_483_647 as NonNegativeInt).length, 1);
+
+  // Lengths above 2^53 - 2^46 pad past Number.MAX_SAFE_INTEGER.
+  assertThrowsInstanceOf(
+    () => createPadmePaddedLength(8_936_830_510_563_329 as NonNegativeInt),
+    Error,
+  );
 });
 
 test("createSlip21", () => {

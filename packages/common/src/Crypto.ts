@@ -356,27 +356,35 @@ export const decryptWithXChaCha20Poly1305 = (
  *
  * See the PURBs paper for details: https://bford.info/pub/sec/purb.pdf
  *
+ * Throws for a length above 2^53 - 2^46, whose padded length would exceed
+ * `Number.MAX_SAFE_INTEGER`.
+ *
  * @group Padding
  */
 export const createPadmePaddedLength = (
   length: NonNegativeInt,
 ): NonNegativeInt => {
-  if (length <= 0) return zeroNonNegativeInt;
-  const e = 31 - Math.clz32(length >>> 0);
-  const s = 32 - Math.clz32(e >>> 0);
-  const z = Math.max(0, e - s);
-  const mask = (1 << z) - 1;
-  return NonNegativeInt.orThrow((length + mask) & ~mask);
+  if (length === 0) return zeroNonNegativeInt;
+  // Plain arithmetic, because 32-bit bitwise operators wrap lengths of 2 GiB
+  // and more. Dividing and multiplying by a power of two is exact.
+  const high = Math.floor(length / 2 ** 32);
+  const e = high > 0 ? 63 - Math.clz32(high) : 31 - Math.clz32(length);
+  const s = 32 - Math.clz32(e);
+  const step = 2 ** Math.max(0, e - s);
+  return NonNegativeInt.orThrow(Math.ceil(length / step) * step);
 };
 
 /**
  * Creates a PADMÉ padding array of zeros for the given input length.
  *
+ * Throws where {@link createPadmePaddedLength} throws.
+ *
  * @group Padding
  */
 export const createPadmePadding = (length: NonNegativeInt): Uint8Array => {
   const paddedLength = createPadmePaddedLength(length);
-  const paddingLength = NonNegativeInt.orThrow(paddedLength - length);
+  // PADMÉ rounds up, so the padded length is never shorter.
+  const paddingLength = (paddedLength - length) as NonNegativeInt;
   return new globalThis.Uint8Array(paddingLength);
 };
 
