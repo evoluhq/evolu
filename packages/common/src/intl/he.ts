@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -419,6 +420,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Hebrew. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "הערך אינו מנמוניקת BIP39 חוקית באנגלית.";
+
+/** Formats a RedactedError in Hebrew. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "הסוד חייב להיות מחרוזת.";
 
 /** Formats an IdError in Hebrew. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

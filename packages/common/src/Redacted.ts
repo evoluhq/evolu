@@ -25,6 +25,10 @@ import type { Brand } from "./Brand.ts";
  * hidden value and arrives as an empty object. Reveal the value before posting
  * it, and wrap it again on arrival if the receiver passes it to app code.
  *
+ * A wrapper equals only itself and has no hash, so neither can expose the
+ * value. Two wrappers of the same value are not equal; compare revealed values
+ * instead.
+ *
  * Implements `Disposable`, so the `using` syntax detaches the value when the
  * scope ends. Disposal does not overwrite the value or release other references
  * to it.
@@ -96,6 +100,9 @@ export const createRedacted = <A>(value: A): Redacted<A> => {
   return redacted;
 };
 
+// No value equality or hash: a hash of a short secret such as a PIN is a
+// fingerprint that can be brute-forced, and comparing values is not
+// constant-time.
 const proto = {
   toString: () => redactedString,
   toJSON: () => redactedString,
@@ -125,8 +132,12 @@ export const revealRedacted = <A>(redacted: Redacted<A>): A => {
   return registry.get(redacted) as A;
 };
 
-/** Checks if a value is a {@link Redacted} wrapper. */
+/**
+ * Checks if a value is a {@link Redacted} wrapper whose value can be revealed.
+ *
+ * A disposed wrapper and a structured clone are not Redacted, so
+ * {@link revealRedacted} does not throw for a value this function accepts.
+ */
 export const isRedacted = (value: unknown): value is Redacted<unknown> =>
-  typeof value === "object" &&
-  value !== null &&
-  Object.getPrototypeOf(value) === proto;
+  // WeakMap.has returns false for a primitive.
+  registry.has(value as Redacted<unknown>);

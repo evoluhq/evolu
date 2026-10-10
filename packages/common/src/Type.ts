@@ -472,6 +472,12 @@ import {
 } from "./Object.ts";
 import { hasNodeBuffer } from "./Platform.ts";
 import {
+  createRedacted,
+  isRedacted,
+  revealRedacted,
+  type Redacted,
+} from "./Redacted.ts";
+import {
   err,
   flatMapResult,
   getOk,
@@ -579,6 +585,7 @@ import {
   formatPositiveDecimalStringError,
   formatPositiveError,
   formatRecordError,
+  formatRedactedError,
   formatRegexError,
   formatSetError,
   formatSimplePasswordError,
@@ -9826,6 +9833,195 @@ export const Mnemonic = /*#__PURE__*/ createType<
   formatMnemonicError,
 );
 export type Mnemonic = typeof Mnemonic.Output;
+
+/**
+ * Error returned by {@link redacted} for a value that is not a string.
+ *
+ * It omits the value, because the value can be a secret.
+ *
+ * @group String
+ */
+export interface RedactedError extends TypeError<"Redacted"> {}
+
+/**
+ * The {@link Type} returned by {@link redacted}.
+ *
+ * @group String
+ */
+export interface RedactedType<Inner extends TypeNode> extends Type<
+  "Redacted",
+  Inner["Input"],
+  Redacted<Inner["Output"]>,
+  never,
+  Inner,
+  RedactedError | TypeFromError<Inner>,
+  never,
+  CanonicalInputOf<Inner>,
+  false
+> {
+  /** The Type that validates the secret. */
+  readonly inner: Inner;
+}
+
+/**
+ * Validates a secret string with an inner {@link Type} and wraps the inner
+ * Output in {@link Redacted}.
+ *
+ * Use it where an app receives a secret it holds, such as a form field or
+ * environment configuration, so the decoded value does not leak through logging
+ * or serialization.
+ *
+ * The inner Type's errors are returned unchanged, so it must refine
+ * {@link String}, and its errors must not contain the value, as with
+ * {@link SimplePassword}, {@link Mnemonic}, and brands over them. Both
+ * constraints are checked at compile time; a refinement whose error keeps the
+ * value, such as {@link minLength} or {@link regex}, is rejected. A non-string
+ * fails with a value-free {@link RedactedError} instead of the String error,
+ * which keeps the input.
+ *
+ * Encoding reveals the secret: `to` and {@link json} encode the revealed value
+ * with the inner Type. A {@link json} parse error keeps the whole malformed
+ * text, which can contain the secret. Each decode creates a new wrapper, so
+ * compare round trips by their revealed values.
+ *
+ * The Output is not {@link Data}, so it cannot be an Evolu column or an item of
+ * {@link unique}.
+ *
+ * A union composition such as {@link nullOr} or {@link undefinedOr} lets its
+ * other members see the raw input, and their errors keep it when all errors are
+ * collected, as with `{ errors: "all" }` and always with Standard Schema
+ * validation. Prefer {@link optional} for an absent secret.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   object,
+ *   redacted,
+ *   revealRedacted,
+ *   SimplePassword,
+ *   String,
+ * } from "@evolu/common";
+ *
+ * const SignIn = object({
+ *   email: String,
+ *   password: redacted(SimplePassword),
+ * });
+ *
+ * const signIn = SignIn.fromUnknown({
+ *   email: "ada@example.com",
+ *   password: "correct horse",
+ * });
+ * assertOk(signIn);
+ * assertEqual(revealRedacted(signIn.value.password), "correct horse");
+ * assertEqual(
+ *   JSON.stringify(signIn.value),
+ *   '{"email":"ada@example.com","password":"<redacted>"}',
+ * );
+ * // Encoding reveals the secret.
+ * assertEqual(SignIn.to(signIn.value).password, "correct horse");
+ *
+ * assertErr(
+ *   SignIn.fromUnknown({ email: "ada@example.com", password: "short" }),
+ *   {
+ *     type: "Object",
+ *     reason: {
+ *       kind: "Properties",
+ *       errors: {
+ *         password: { type: "SimplePassword", reason: "TooShort" },
+ *       },
+ *     },
+ *   },
+ * );
+ * assertErr(
+ *   SignIn.fromUnknown({ email: "ada@example.com", password: 42 }),
+ *   {
+ *     type: "Object",
+ *     reason: {
+ *       kind: "Properties",
+ *       errors: { password: { type: "Redacted" } },
+ *     },
+ *   },
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const redacted = <Inner extends ConcreteTypeNode>(
+  inner: ValidateRedactedInner<Inner>,
+): RedactedType<Inner> => {
+  const typeInner = inner as Inner;
+  const runtimeInner = typeInner as unknown as RuntimeTypeNode;
+  const innerFrom = runtimeInner[fromSymbol];
+  const fromString = getTerminalRuntimeNode(innerFrom);
+  const innerIs = runtimeInner.is;
+  const innerGetTypeIssues = runtimeInner[getRuntimeTypeIssuesSymbol];
+
+  // Wraps the inner Output, never the raw input.
+  const wrap = (result: Result<unknown, TypeError>) =>
+    result.ok ? ok(createRedacted(result.value)) : result;
+  // isRedacted rejects a disposed wrapper, so revealing cannot throw.
+  const is = (value: unknown): boolean =>
+    isRedacted(value) && innerIs(revealRedacted(value));
+
+  return createTypeNode<RedactedType<Inner>>(
+    "Redacted",
+    runtimeInner,
+    (value, options) =>
+      typeof value === "string"
+        ? wrap(fromString(value as never, options))
+        : err<RedactedError>({ type: "Redacted" }),
+    is,
+    (value) =>
+      is(value) ? ok(value) : err<RedactedError>({ type: "Redacted" }),
+    createFromOperation(
+      mapRuntimeOperations(innerFrom, (operation) =>
+        mapRuntimeResult(operation, wrap),
+      ),
+    ),
+    (value: never) => revealRedacted(value as Redacted<unknown>),
+    (error, mode, path) =>
+      error.type === "Redacted"
+        ? singleRuntimeTypeIssue(
+            "Redacted",
+            error,
+            formatRedactedError as TypeErrorFormatter<TypeError>,
+            path,
+          )
+        : innerGetTypeIssues(error, mode, path),
+    { additionalProperties: { inner: typeInner } },
+  );
+};
+
+// The inner errors are returned unchanged, so those after the String boundary
+// must not contain the value. The String error, which does, never occurs,
+// because redacted returns RedactedError for a non-string. A TypeScript union
+// of Types is not one String refinement.
+type ValidateRedactedInner<Inner extends ConcreteTypeNode> = [
+  IsUnion<Inner>,
+  RootType<Inner>,
+] extends [false, typeof String]
+  ? true extends ErrorContainsValue<TypeFromError<Inner>>
+    ? CompileTimeError<
+        "Type",
+        "Redacted inner Type errors must not contain the value."
+      >
+    : Inner
+  : CompileTimeError<"Type", "Redacted inner Type must refine String.">;
+
+// Checks nested errors too, because a wrapper such as TransformOutputError
+// holds the error with the value in another property.
+type ErrorContainsValue<Error> =
+  Error extends ReadonlyArray<infer Item>
+    ? ErrorContainsValue<Item>
+    : Error extends object
+      ? "value" extends keyof Error
+        ? true
+        : ErrorContainsValue<Error[keyof Error]>
+      : false;
 
 /**
  * Evolu Id: 16 bytes encoded as a 22-character {@link Base64Url}.

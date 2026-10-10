@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -380,6 +381,9 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Slovak. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Hodnota nie je platná anglická mnemotechnická fráza BIP39.";
+/** Formats a RedactedError in Slovak. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Tajomstvo musí byť reťazec.";
 /** Formats an IdError in Slovak. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platné Id.`;

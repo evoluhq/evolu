@@ -220,6 +220,7 @@ const formattersFor = (locale: typeof en) => ({
   PositiveDecimalString: locale.formatPositiveDecimalStringError,
   Record: locale.formatRecordError,
   RecordKey: locale.formatRegexError,
+  Redacted: locale.formatRedactedError,
   Regex: locale.formatRegexError,
   Set: locale.formatSetError,
   SimplePassword: locale.formatSimplePasswordError,
@@ -400,6 +401,7 @@ const typesByLocale = Type.localizeTypes(
       Type.regex("RecordKey", /^valid$/u)(Type.String),
       Type.String,
     ),
+    Redacted: Type.redacted(Type.SimplePassword),
     Regex: Type.regex("Regex", /^x$/u)(Type.String),
     Set: Type.set(Type.String),
     TableId: Type.id("Todo"),
@@ -589,6 +591,7 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
   (f) => f.formatIbanError({ type: "Iban", value: "GB82WEST12345698765433" }),
   (f) => f.formatIsbnError({ type: "Isbn", value: "978-0-306-40615-7" }),
   (f) => f.formatMnemonicError({ type: "Mnemonic" }),
+  (f) => f.formatRedactedError({ type: "Redacted" }),
   ...(["Untrimmed", "TooLong", "TooShort"] as const).map(
     (reason) => (f: typeof en) =>
       f.formatSimplePasswordError({ type: "SimplePassword", reason }),

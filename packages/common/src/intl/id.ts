@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -422,6 +423,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Indonesian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Nilai bukan mnemonik BIP39 bahasa Inggris yang valid.";
+
+/** Formats a RedactedError in Indonesian. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Rahasia harus berupa string.";
 
 /** Formats an IdError in Indonesian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

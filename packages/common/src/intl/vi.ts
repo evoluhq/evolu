@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -376,6 +377,9 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Vietnamese. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Giá trị không phải là cụm từ gợi nhớ BIP39 tiếng Anh hợp lệ.";
+/** Formats a RedactedError in Vietnamese. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Bí mật phải là chuỗi.";
 /** Formats an IdError in Vietnamese. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là Id hợp lệ.`;

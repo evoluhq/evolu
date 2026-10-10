@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -429,6 +430,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Greek. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Η τιμή δεν είναι έγκυρη αγγλική μνημονική φράση BIP39.";
+
+/** Formats a RedactedError in Greek. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Το μυστικό πρέπει να είναι συμβολοσειρά.";
 
 /** Formats an IdError in Greek. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

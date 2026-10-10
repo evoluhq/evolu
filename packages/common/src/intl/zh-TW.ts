@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -416,6 +417,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Traditional Chinese. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "此值不是有效的英文 BIP39 助記詞。";
+
+/** Formats a RedactedError in Traditional Chinese. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "祕密必須是字串。";
 
 /** Formats an IdError in Traditional Chinese. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

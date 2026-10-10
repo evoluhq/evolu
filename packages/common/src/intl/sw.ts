@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -375,6 +376,9 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Swahili. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Thamani si mnemonic halali ya BIP39 ya Kiingereza.";
+/** Formats a RedactedError in Swahili. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Siri lazima iwe mfuatano.";
 /** Formats an IdError in Swahili. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si Id halali.`;

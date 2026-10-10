@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -423,6 +424,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Czech. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Hodnota musí být platná anglická BIP39 mnemotechnická fráze.";
+
+/** Formats a RedactedError in Czech. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Tajemství musí být text.";
 
 /** Formats an IdError in Czech. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

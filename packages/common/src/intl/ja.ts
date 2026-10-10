@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -423,6 +424,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Japanese. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "値は有効な英語の BIP39 ニーモニックではありません。";
+
+/** Formats a RedactedError in Japanese. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "シークレットは文字列である必要があります。";
 
 /** Formats an IdError in Japanese. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

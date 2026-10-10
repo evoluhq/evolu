@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -422,6 +423,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Tamil. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "மதிப்பு செல்லுபடியாகும் ஆங்கில BIP39 mnemonic அல்ல.";
+
+/** Formats a RedactedError in Tamil. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "ரகசியம் ஒரு string ஆக இருக்க வேண்டும்.";
 
 /** Formats an IdError in Tamil. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

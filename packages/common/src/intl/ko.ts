@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -420,6 +421,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Korean. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "값이 유효한 영어 BIP39 니모닉이 아닙니다.";
+
+/** Formats a RedactedError in Korean. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "비밀 값은 문자열이어야 합니다.";
 
 /** Formats an IdError in Korean. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

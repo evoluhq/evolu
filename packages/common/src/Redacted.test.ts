@@ -222,10 +222,13 @@ describe("Disposable", () => {
     }
   });
 
-  it("isRedacted still returns true after dispose", () => {
+  it("makes isRedacted return false", () => {
     const secret = createRedacted("sensitive");
-    secret[Symbol.dispose]();
-    // The object is still a Redacted wrapper, just empty
     assertTrue(isRedacted(secret));
+
+    secret[Symbol.dispose]();
+
+    // A disposed wrapper cannot be revealed, so it is not Redacted.
+    assertFalse(isRedacted(secret));
   });
 });

@@ -183,6 +183,7 @@
     "ValidateParent",
     "ValidateRecordKeyType",
     "ValidateRecordValueType",
+    "ValidateRedactedInner",
     "ValidateTableName",
     "ValidateTemplateLiteralPart",
     "ValidateTypedTag",

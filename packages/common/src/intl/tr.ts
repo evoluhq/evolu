@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -422,6 +423,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Turkish. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Değer geçerli bir İngilizce BIP39 anımsatıcı ifadesi değildir.";
+
+/** Formats a RedactedError in Turkish. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Gizli değer bir dizge olmalıdır.";
 
 /** Formats an IdError in Turkish. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

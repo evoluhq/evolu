@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -422,6 +423,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Finnish. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Arvo ei ole kelvollinen englanninkielinen BIP39-muistisanasarja.";
+
+/** Formats a RedactedError in Finnish. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Salaisuuden on oltava merkkijono.";
 
 /** Formats an IdError in Finnish. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -369,6 +370,9 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Malay. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Nilai bukan mnemonik BIP39 bahasa Inggeris yang sah.";
+/** Formats a RedactedError in Malay. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Rahsia mestilah rentetan.";
 /** Formats an IdError in Malay. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan Id yang sah.`;

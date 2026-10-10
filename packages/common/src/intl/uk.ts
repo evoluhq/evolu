@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -426,6 +427,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Ukrainian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Значення не є допустимою англійською мнемонічною фразою BIP39.";
+
+/** Formats a RedactedError in Ukrainian. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Секрет має бути рядком.";
 
 /** Formats an IdError in Ukrainian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

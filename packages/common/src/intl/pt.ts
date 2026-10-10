@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -390,6 +391,9 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Portuguese. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "O valor não é uma mnemónica BIP39 em inglês válida.";
+/** Formats a RedactedError in Portuguese. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "O segredo tem de ser uma cadeia de carateres.";
 /** Formats an IdError in Portuguese. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um Id válido.`;

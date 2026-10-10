@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -383,6 +384,9 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Urdu. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "قدر درست انگریزی BIP39 mnemonic نہیں ہے۔";
+/** Formats a RedactedError in Urdu. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "راز string ہونا چاہیے۔";
 /** Formats an IdError in Urdu. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست Id نہیں ہے۔`;

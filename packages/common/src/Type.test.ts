@@ -32,6 +32,12 @@ import {
   ok,
   type Result,
 } from "./Result.ts";
+import {
+  createRedacted,
+  isRedacted,
+  revealRedacted,
+  type Redacted,
+} from "./Redacted.ts";
 import { testCreateDeps } from "./Task.ts";
 import { Millis, testCreateTime } from "./Time.ts";
 import { utf8ToBytes } from "./Bytes.ts";
@@ -231,6 +237,7 @@ import {
   prefixed,
   Ratio,
   record,
+  redacted,
   regex,
   result,
   nextResult,
@@ -405,6 +412,8 @@ import {
   type RecordNotRecordError,
   type RecordType,
   type RecordValueIssue,
+  type RedactedError,
+  type RedactedType,
   type RootMapType,
   type RootRecordType,
   type RootTupleType,
@@ -798,6 +807,7 @@ describe("Type", () => {
       NumberFromString,
       // oxlint-disable-next-line typescript/no-extraneous-class
       instanceOf(class IntrospectionInstance {}),
+      redacted(SimplePassword),
     );
     const allTypes = [
       ...globalThis.Object.values(exportedTypes),
@@ -913,6 +923,7 @@ describe("Type", () => {
       "PositiveDecimalString",
       "Ratio",
       "Record",
+      "Redacted",
       "Set",
       "SimplePassword",
       "SnakeCaseIdentifier",
@@ -12785,6 +12796,481 @@ describe("BrandFactory", () => {
             Mnemonic.formatError({ type: "Mnemonic" }),
             "The value is not a valid English BIP39 mnemonic.",
           );
+        });
+      });
+
+      describe("redacted", () => {
+        const RedactedPassword = redacted(SimplePassword);
+        const RedactedMnemonic = redacted(Mnemonic);
+        const mnemonic =
+          "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+        interface SecretCodeError extends TypeError<"SecretCode"> {
+          readonly reason: "Empty";
+        }
+
+        // Lowercases its input, so the wrapped inner Output differs from it.
+        const setupSecretCode = () =>
+          transform(
+            "SecretCode",
+            String,
+            String,
+            {
+              from: (value): Result<string, SecretCodeError> =>
+                value === ""
+                  ? err({ type: "SecretCode", reason: "Empty" })
+                  : ok(value.toLowerCase()),
+              to: (value) => value,
+            },
+            () => "The secret code must not be empty.",
+          );
+
+        it("wraps a valid secret", () => {
+          const result = RedactedPassword.fromUnknown("correct horse");
+          assertOk(result);
+
+          assertTrue(isRedacted(result.value));
+          assertEqual(revealRedacted(result.value), "correct horse");
+          assertEqual(JSON.stringify(result.value), '"<redacted>"');
+          assertTrue(RedactedPassword.is(result.value));
+          assertFalse(Data.is(result.value));
+          assertEqual(RedactedPassword.name, "Redacted");
+          assertSame(RedactedPassword.parent, SimplePassword);
+          assertSame(RedactedPassword.inner, SimplePassword);
+
+          const restored = RedactedMnemonic.fromUnknown(mnemonic);
+          assertOk(restored);
+          assertEqual(revealRedacted(restored.value), mnemonic);
+        });
+
+        it("returns the inner errors unchanged", () => {
+          assertErr(RedactedPassword.fromUnknown("short"), {
+            type: "SimplePassword",
+            reason: "TooShort",
+          });
+          assertErr(RedactedPassword.fromUnknown(" correct horse "), {
+            type: "SimplePassword",
+            reason: "Untrimmed",
+          });
+          assertErr(RedactedMnemonic.fromUnknown("abandon abandon"), {
+            type: "Mnemonic",
+          });
+
+          const result = RedactedPassword.fromUnknown("short");
+          assertErr(result);
+          assertEqual(
+            RedactedPassword.formatError(result.error),
+            "The password does not meet the minimum length of 8.",
+          );
+        });
+
+        it("rejects a non-string without its value", () => {
+          for (const value of [
+            12345678,
+            null,
+            undefined,
+            { password: "correct horse" },
+            createRedacted("correct horse"),
+          ]) {
+            assertErr(RedactedPassword.fromUnknown(value), {
+              type: "Redacted",
+            });
+          }
+
+          const result = RedactedPassword.fromUnknown(12345678);
+          assertErr(result);
+          assertEqual(
+            RedactedPassword.formatError(result.error),
+            "The secret must be a string.",
+          );
+        });
+
+        it("wraps the inner Output instead of the raw input", () => {
+          const RedactedCode = redacted(setupSecretCode());
+
+          const result = RedactedCode.fromUnknown("ABC");
+          assertOk(result);
+          assertEqual(revealRedacted(result.value), "abc");
+          assertErr(RedactedCode.fromUnknown(""), {
+            type: "SecretCode",
+            reason: "Empty",
+          });
+          assertType<typeof RedactedCode.Output, Redacted<string>>();
+          assertType<
+            InferErrors<typeof RedactedCode>,
+            RedactedError | SecretCodeError
+          >();
+        });
+
+        it("reveals the secret when encoding", () => {
+          const secret = RedactedPassword.orThrow("correct horse");
+
+          assertEqual(RedactedPassword.to(secret), "correct horse");
+          assertEqual(RedactedPassword.to.parent(secret), "correct horse");
+          assertEqual(
+            RedactedPassword.to.parent.parent(secret),
+            "correct horse",
+          );
+          assertType<
+            ReturnType<typeof RedactedPassword.to.parent>,
+            SimplePassword
+          >();
+          assertType<
+            ReturnType<typeof RedactedPassword.to.parent.parent>,
+            string
+          >();
+        });
+
+        it("checks that a value is a revealable wrapper of a valid inner Output", () => {
+          const password = SimplePassword.orThrow("correct horse");
+          const disposed = createRedacted(password);
+          disposed[globalThis.Symbol.dispose]();
+
+          assertTrue(RedactedPassword.is(createRedacted(password)));
+          assertFalse(RedactedPassword.is("correct horse"));
+          assertFalse(RedactedPassword.is(disposed));
+          assertFalse(
+            RedactedPassword.is(structuredClone(createRedacted(password))),
+          );
+          assertFalse(RedactedPassword.is(createRedacted("short")));
+          assertFalse(RedactedPassword.is(createRedacted(12345678)));
+
+          // The failed Output assertion is value-free too.
+          assertAssertionError(
+            () => RedactedPassword.to(disposed),
+            "Expected Redacted.",
+            { type: "Redacted" },
+          );
+        });
+
+        it("creates a new wrapper for each decode", () => {
+          const secret = RedactedPassword.orThrow("correct horse");
+          const decoded = RedactedPassword.fromUnknown(
+            RedactedPassword.to(secret),
+          );
+          assertOk(decoded);
+
+          assertFalse(decoded.value === secret);
+          assertEqual(revealRedacted(decoded.value), revealRedacted(secret));
+        });
+
+        it("decodes from typed boundaries", () => {
+          const password = SimplePassword.orThrow("correct horse");
+          const secret = createRedacted(password);
+
+          const fromSecret = RedactedPassword.from(secret);
+          assertOk(fromSecret);
+          assertSame(fromSecret.value, secret);
+          const fromPassword = RedactedPassword.from.parent(password);
+          assertOk(fromPassword);
+          assertEqual(revealRedacted(fromPassword.value), "correct horse");
+          const fromString =
+            RedactedPassword.from.parent.parent("correct horse");
+          assertOk(fromString);
+          assertEqual(revealRedacted(fromString.value), "correct horse");
+          assertErr(RedactedPassword.from.parent.parent("short"), {
+            type: "SimplePassword",
+            reason: "TooShort",
+          });
+          assertEqual(
+            revealRedacted(RedactedPassword.orThrow("correct horse")),
+            "correct horse",
+          );
+          assertEqual(RedactedPassword.orNull("short"), null);
+          assertAssertionError(
+            () => RedactedPassword.orThrow("short"),
+            "The password does not meet the minimum length of 8.",
+            { type: "SimplePassword", reason: "TooShort" },
+          );
+
+          assertType<
+            ReturnType<typeof RedactedPassword.from>,
+            Result<Redacted<SimplePassword>>
+          >();
+          assertType<
+            ReturnType<typeof RedactedPassword.from.parent>,
+            Result<Redacted<SimplePassword>>
+          >();
+          assertType<
+            ReturnType<typeof RedactedPassword.from.parent.parent>,
+            Result<Redacted<SimplePassword>, SimplePasswordError>
+          >();
+          assertType<Parameters<typeof RedactedPassword.orThrow>[0], string>();
+        });
+
+        it("infers its Type parameters", () => {
+          assertType<
+            typeof RedactedPassword,
+            RedactedType<typeof SimplePassword>
+          >();
+          assertType<typeof RedactedPassword.Input, string>();
+          assertType<
+            typeof RedactedPassword.Output,
+            Redacted<SimplePassword>
+          >();
+          assertType<typeof RedactedPassword.CanonicalInput, SimplePassword>();
+          assertType<typeof RedactedPassword.Error, never>();
+          assertType<
+            InferErrors<typeof RedactedPassword>,
+            RedactedError | SimplePasswordError
+          >();
+          assertType<
+            InferErrors<typeof RedactedMnemonic>,
+            RedactedError | MnemonicError
+          >();
+        });
+
+        it("composes with object", () => {
+          const SignIn = object({ name: String, password: RedactedPassword });
+
+          const signIn = SignIn.fromUnknown({
+            name: "Ada",
+            password: "correct horse",
+          });
+          assertOk(signIn);
+          assertTrue(SignIn.is(signIn.value));
+          assertEqual(
+            JSON.stringify(signIn.value),
+            '{"name":"Ada","password":"<redacted>"}',
+          );
+          assertEqual(SignIn.to(signIn.value), {
+            name: "Ada",
+            password: "correct horse",
+          });
+
+          const invalid = SignIn.fromUnknown(
+            { name: 1, password: 12345678 },
+            { errors: "all" },
+          );
+          assertErr(invalid, {
+            type: "Object",
+            reason: {
+              kind: "Properties",
+              errors: {
+                name: { type: "TypeOf", expected: "String", value: 1 },
+                password: { type: "Redacted" },
+              },
+            },
+          });
+          assertEqual(typeErrorToIssues(SignIn, invalid.error), [
+            { path: ["name"], message: "A value 1 is not a string." },
+            { path: ["password"], message: "The secret must be a string." },
+          ]);
+
+          const short = SignIn.fromUnknown({ name: "Ada", password: "short" });
+          assertErr(short);
+          assertEqual(typeErrorToIssues(SignIn, short.error), [
+            {
+              path: ["password"],
+              message: "The password does not meet the minimum length of 8.",
+            },
+          ]);
+        });
+
+        it("validates with Standard Schema", async () => {
+          const SignIn = object({ password: RedactedPassword });
+
+          const valid = await SignIn["~standard"].validate({
+            password: "correct horse",
+          });
+          assert(valid.issues === undefined, "Expected a valid result.");
+          assertEqual(revealRedacted(valid.value.password), "correct horse");
+          assertEqual(
+            await SignIn["~standard"].validate({ password: "short" }),
+            {
+              issues: [
+                {
+                  message:
+                    "The password does not meet the minimum length of 8.",
+                  path: ["password"],
+                },
+              ],
+            },
+          );
+          assertEqual(
+            await SignIn["~standard"].validate({ password: 12345678 }),
+            {
+              issues: [
+                { message: "The secret must be a string.", path: ["password"] },
+              ],
+            },
+          );
+        });
+
+        it("exposes the raw input to other union members, unlike optional", async () => {
+          const Nullable = object({ password: nullOr(RedactedPassword) });
+          const Optional = object({ password: optional(RedactedPassword) });
+
+          const nullable = await Nullable["~standard"].validate({
+            password: "hunter2",
+          });
+          const absent = await Optional["~standard"].validate({
+            password: "hunter2",
+          });
+
+          assertTrue(JSON.stringify(nullable).includes("hunter2"));
+          assertEqual(absent, {
+            issues: [
+              {
+                message: "The password does not meet the minimum length of 8.",
+                path: ["password"],
+              },
+            ],
+          });
+          assertOk(Optional.fromUnknown({}), {});
+        });
+
+        it("localizes the Redacted and inner errors", () => {
+          const SignIn = object({ password: RedactedPassword });
+          const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+            "Tajemství musí být text.";
+          const { cs: types } = localizeTypes(
+            { SignIn },
+            {
+              cs: {
+                Object: cs.formatObjectError,
+                Redacted: formatRedactedError,
+                SimplePassword: cs.formatSimplePasswordError,
+                String: cs.formatStringError,
+              },
+            },
+          );
+
+          const short = types.SignIn.fromUnknown({ password: "short" });
+          assertErr(short);
+          assertEqual(typeErrorToIssues(types.SignIn, short.error), [
+            {
+              path: ["password"],
+              message: cs.formatSimplePasswordError({
+                type: "SimplePassword",
+                reason: "TooShort",
+              }),
+            },
+          ]);
+          const number = types.SignIn.fromUnknown({ password: 12345678 });
+          assertErr(number);
+          assertEqual(typeErrorToIssues(types.SignIn, number.error), [
+            { path: ["password"], message: "Tajemství musí být text." },
+          ]);
+          assertSame(
+            types.SignIn.props.password.inner,
+            types.SignIn.props.password.parent,
+          );
+          assertEqual(
+            types.SignIn.props.password.inner.formatError({
+              type: "SimplePassword",
+              reason: "TooShort",
+            }),
+            cs.formatSimplePasswordError({
+              type: "SimplePassword",
+              reason: "TooShort",
+            }),
+          );
+
+          const valid = types.SignIn.fromUnknown({ password: "correct horse" });
+          assertOk(valid);
+          assertEqual(revealRedacted(valid.value.password), "correct horse");
+        });
+
+        it("round-trips through json by revealed values", () => {
+          const SignIn = object({ name: String, password: RedactedPassword });
+          const [SignInJson, signInToJson, signInJsonToSignIn] = json(
+            SignIn,
+            "SignInJson",
+          );
+          const signIn = SignIn.orThrow({
+            name: "Ada",
+            password: "correct horse",
+          });
+
+          const text = signInToJson(signIn);
+          assertEqual(text, '{"name":"Ada","password":"correct horse"}');
+          const decoded = signInJsonToSignIn(text);
+          assertFalse(decoded.password === signIn.password);
+          assertEqual(
+            revealRedacted(decoded.password),
+            revealRedacted(signIn.password),
+          );
+          assertErr(
+            SignInJson.fromUnknown('{"name":"Ada","password":"short"}'),
+            {
+              type: "SignInJson",
+              error: {
+                type: "Object",
+                reason: {
+                  kind: "Properties",
+                  errors: {
+                    password: { type: "SimplePassword", reason: "TooShort" },
+                  },
+                },
+              },
+            },
+          );
+        });
+
+        it("accepts String refinements whose errors omit the value", () => {
+          const AdminPassword = brand("AdminPassword", SimplePassword);
+          const RecoveryPhrase = brand("RecoveryPhrase", Mnemonic);
+          const RedactedAdminPassword = redacted(AdminPassword);
+          const RedactedRecoveryPhrase = redacted(RecoveryPhrase);
+          const RedactedString = redacted(String);
+
+          const admin = RedactedAdminPassword.fromUnknown("correct horse");
+          assertOk(admin);
+          assertEqual(revealRedacted(admin.value), "correct horse");
+          assertErr(RedactedRecoveryPhrase.fromUnknown("abandon"), {
+            type: "Mnemonic",
+          });
+          const apiKey = RedactedString.fromUnknown("");
+          assertOk(apiKey);
+          assertEqual(revealRedacted(apiKey.value), "");
+          assertType<
+            typeof RedactedAdminPassword.Output,
+            Redacted<typeof AdminPassword.Output>
+          >();
+          assertType<InferErrors<typeof RedactedString>, RedactedError>();
+        });
+
+        it("rejects inner Types that do not refine String or whose errors contain the value", () => {
+          interface SecretHexError extends TypeError<"SecretHex"> {
+            readonly reason: "OddLength";
+          }
+          const SecretHex = transform(
+            "SecretHex",
+            String,
+            minLength(2)(String),
+            {
+              from: (value): Result<string, SecretHexError> =>
+                value.length % 2 === 0
+                  ? ok(value)
+                  : err({ type: "SecretHex", reason: "OddLength" }),
+              to: (value) => value,
+            },
+            () => "The secret must have an even length.",
+          );
+          const uncertain = SimplePassword as
+            typeof SimplePassword | typeof Mnemonic;
+
+          void (() => {
+            // @ts-expect-error Redacted inner Type errors must not contain the value.
+            redacted(minLength(8)(String));
+            // @ts-expect-error Redacted inner Type errors must not contain the value.
+            redacted(NonEmptyTrimmedString);
+            // @ts-expect-error Redacted inner Type errors must not contain the value.
+            redacted(regex("Digit", /\d/u)(SimplePassword));
+            // @ts-expect-error Redacted inner Type errors must not contain the value.
+            redacted(SecretHex);
+            // @ts-expect-error Redacted inner Type must refine String.
+            redacted(Int);
+            // @ts-expect-error Redacted inner Type must refine String.
+            redacted(Uint8Array);
+            // @ts-expect-error Redacted inner Type must refine String.
+            redacted(union(SimplePassword, Mnemonic));
+            // @ts-expect-error Redacted inner Type must refine String.
+            redacted(uncertain);
+            // @ts-expect-error Parent Output must be an array of Data.
+            unique(array(RedactedPassword));
+          });
         });
       });
 

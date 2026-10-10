@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -423,6 +424,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Danish. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Værdien er ikke en gyldig engelsk BIP39-mnemonic.";
+
+/** Formats a RedactedError in Danish. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Hemmeligheden skal være en streng.";
 
 /** Formats an IdError in Danish. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

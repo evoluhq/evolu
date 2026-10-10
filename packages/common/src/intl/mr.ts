@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -422,6 +423,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Marathi. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "मूल्य वैध इंग्रजी BIP39 mnemonic नाही.";
+
+/** Formats a RedactedError in Marathi. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "गुप्त मूल्य ही string असली पाहिजे.";
 
 /** Formats an IdError in Marathi. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

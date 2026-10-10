@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -423,6 +424,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Romanian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Valoarea nu este o frază mnemonică BIP39 în engleză validă.";
+
+/** Formats a RedactedError in Romanian. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Secretul trebuie să fie un șir.";
 
 /** Formats an IdError in Romanian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

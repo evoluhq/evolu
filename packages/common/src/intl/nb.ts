@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -370,6 +371,9 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Norwegian Bokmål. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Verdien er ikke et gyldig engelsk BIP39-mnemonisk uttrykk.";
+/** Formats a RedactedError in Norwegian Bokmål. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Hemmeligheten må være en streng.";
 /** Formats an IdError in Norwegian Bokmål. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig Id.`;

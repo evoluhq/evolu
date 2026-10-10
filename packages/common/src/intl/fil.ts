@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -423,6 +424,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Filipino. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Ang halaga ay hindi valid na English BIP39 mnemonic.";
+
+/** Formats a RedactedError in Filipino. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Ang secret ay dapat string.";
 
 /** Formats an IdError in Filipino. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -423,6 +424,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Dutch. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "De waarde is geen geldige Engelse BIP39-mnemonic.";
+
+/** Formats a RedactedError in Dutch. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Het geheim moet een tekenreeks zijn.";
 
 /** Formats an IdError in Dutch. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

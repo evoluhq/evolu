@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -421,6 +422,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Punjabi. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "ਮੁੱਲ ਵੈਧ ਅੰਗਰੇਜ਼ੀ BIP39 mnemonic ਨਹੀਂ ਹੈ।";
+
+/** Formats a RedactedError in Punjabi. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "ਗੁਪਤ ਮੁੱਲ ਇੱਕ string ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।";
 
 /** Formats an IdError in Punjabi. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

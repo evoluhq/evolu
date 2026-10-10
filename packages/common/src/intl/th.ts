@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -420,6 +421,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Thai. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "ค่านี้ไม่ใช่ mnemonic BIP39 ภาษาอังกฤษที่ถูกต้อง";
+
+/** Formats a RedactedError in Thai. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "ข้อมูลลับต้องเป็นสตริง";
 
 /** Formats an IdError in Thai. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

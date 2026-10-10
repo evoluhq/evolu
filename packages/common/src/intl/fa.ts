@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -422,6 +423,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Persian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "مقدار یک عبارت یادسپاری انگلیسی BIP39 معتبر نیست.";
+
+/** Formats a RedactedError in Persian. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "راز باید رشته باشد.";
 
 /** Formats an IdError in Persian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -384,6 +385,9 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Arabic. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "القيمة ليست عبارة BIP39 إنجليزية صالحة.";
+/** Formats a RedactedError in Arabic. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "يجب أن يكون السر سلسلة نصية.";
 /** Formats an IdError in Arabic. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست Id صالحة.`;

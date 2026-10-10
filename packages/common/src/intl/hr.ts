@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -429,6 +430,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Croatian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Vrijednost nije valjana engleska BIP39 mnemonička fraza.";
+
+/** Formats a RedactedError in Croatian. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "Tajna mora biti niz znakova.";
 
 /** Formats an IdError in Croatian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>

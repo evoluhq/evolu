@@ -90,6 +90,7 @@ import type {
   PositiveDecimalStringError,
   PositiveError,
   RecordError,
+  RedactedError,
   RegexError,
   SetError,
   SimplePasswordError,
@@ -426,6 +427,10 @@ export const formatSimplePasswordError: TypeErrorFormatter<
 /** Formats a MnemonicError in Hungarian. */
 export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = () =>
   "Az érték nem érvényes angol BIP39 mnemonikus kifejezés.";
+
+/** Formats a RedactedError in Hungarian. */
+export const formatRedactedError: TypeErrorFormatter<RedactedError> = () =>
+  "A titoknak karakterláncnak kell lennie.";
 
 /** Formats an IdError in Hungarian. */
 export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
