@@ -1035,6 +1035,9 @@ and assertions. Prefix intentionally unused declarations with `_`; the harness
 rejects both unprefixed unused declarations and used underscore-prefixed
 declarations.
 
+Use a `ts` fence, or a `tsx` fence for JSX, which the harness transforms before
+running it. The harness rejects other spellings, such as `typescript`.
+
 Prove the documented contract with assertions instead of describing expected
 output only in comments. Use `assertType` for static contracts, `assertEqual`
 for Data comparisons, `assertSame` for SameValue or reference identity,
@@ -1043,9 +1046,10 @@ for invariants and narrowing, and `assertOk` or `assertErr` for Results.
 
 After changing examples or exported APIs, run `pnpm test:jsdoc`, which checks
 the configured sources, and for a changed file outside them also run
-`pnpm test:jsdoc <changed-file>`. Only explicitly configured sources are
-included automatically; a passing suite does not prove that every documentation
-page was tested.
+`pnpm test:jsdoc <changed-file>`. The configured sources include the JSDoc of
+every package except `@evolu/svelte`, whose examples need the Svelte compiler,
+and only some documentation pages; a passing suite does not prove that every
+documentation page was tested.
 
 ### API reference organization
 

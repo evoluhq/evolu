@@ -12,14 +12,6 @@
  *
  * The ponyfill follows Web Locks request and query semantics within the current
  * JavaScript process.
- *
- * ### Example
- *
- * ```ts
- * await lockManager.request("db", async () => {
- *   // critical section
- * });
- * ```
  */
 const createLockManagerPonyfill = ({
   clientId = "in-memory-main-thread",
@@ -274,6 +266,31 @@ const createLockManagerPonyfill = ({
  *
  * Uses an in-memory lock manager scoped to the main JavaScript thread while
  * following Web Locks request and query semantics.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual } from "@evolu/common";
+ * import { lockManager } from "@evolu/react-native";
+ *
+ * const events: Array<string> = [];
+ * await Promise.all([
+ *   lockManager.request("db", async () => {
+ *     events.push("first started");
+ *     await Promise.resolve();
+ *     events.push("first finished");
+ *   }),
+ *   lockManager.request("db", () => {
+ *     events.push("second started");
+ *   }),
+ * ]);
+ *
+ * assertEqual(events, [
+ *   "first started",
+ *   "first finished",
+ *   "second started",
+ * ]);
+ * ```
  */
 export const lockManager: LockManager = /*#__PURE__*/ createLockManagerPonyfill(
   {

@@ -47,6 +47,7 @@ interface JSDocExample {
   readonly line: number;
   readonly source: string;
   readonly sourceLine: number;
+  readonly language: "ts" | "tsx";
 }
 
 interface GeneratedJSDocExample extends JSDocExample {
@@ -81,6 +82,7 @@ interface OxlintOutput {
 const jsdocPattern = /\/\*\*[\s\S]*?\*\//gu;
 const fencePattern = /(?:```|~~~)([^\n]*)\n([\s\S]*?)(?:(```|~~~)|$)/gu;
 const markdownFilePattern = /\.mdx?$/iu;
+const typeScriptFenceLanguagePattern = /^(?:ts|tsx|typescript)$/iu;
 const packageNamePattern = /^(?:@[a-z\d][a-z\d._~-]*\/)?[a-z\d][a-z\d._~-]*$/iu;
 const packageSubpathSegmentPattern = /^[a-z\d][a-z\d._~-]*$/iu;
 const polyfillsPath = fileURLToPath(
@@ -97,9 +99,16 @@ const polyfillsPath = fileURLToPath(
  * Examples are linted with `@evolu/oxlint-config`. Evolu's required polyfills
  * are installed before each example runs.
  *
+ * TypeScript examples use `ts` fences, or `tsx` fences for JSX. Other spellings
+ * of them, such as `typescript` or `TS`, fail instead of leaving the example
+ * unchecked. TSX fences use the automatic React JSX runtime. Vite transforms
+ * them to JavaScript before they run, because Node.js cannot strip JSX. Only
+ * the examples are transformed, so the modules they import must not be TSX.
+ *
  * Install `@evolu/oxlint-config`, `@evolu/typescript-config`, `oxlint`,
  * `oxlint-tsgolint`, and TypeScript as development dependencies in the project
- * that calls this helper.
+ * that calls this helper, and `vite`, `react`, and `@types/react` for TSX
+ * examples.
  *
  * Write every TypeScript fence as a standalone, deterministic example and
  * explicitly import its dependencies and assertions. Use `assertType` to prove
@@ -120,20 +129,18 @@ const polyfillsPath = fileURLToPath(
  * import { tmpdir } from "node:os";
  * import { join } from "node:path";
  *
+ * const fence = "`".repeat(3);
  * const directory = await mkdtemp(join(tmpdir(), "evolu-jsdoc-example-"));
  * try {
- *   const sourcePath = join(directory, "Example.ts");
+ *   const sourcePath = join(directory, "README.md");
  *   await writeFile(
  *     sourcePath,
  *     [
- *       "/**",
- *       " * ``" + "`ts",
- *       ' * import { assertEqual } from "@evolu/common";',
- *       " *",
- *       " * assertEqual(1 + 1, 2);",
- *       " * ``" + "`",
- *       " *" + "/",
- *       "export {};",
+ *       `${fence}ts`,
+ *       'import assert from "node:assert/strict";',
+ *       "",
+ *       "assert.equal(1 + 1, 2);",
+ *       fence,
  *     ].join("\n"),
  *   );
  *   await testJSDocExamples({
@@ -199,7 +206,10 @@ export const testJSDocExamples = async ({
     createPackageAliases(temporaryDirectory, aliases);
 
     const generatedExamples = examples.map((example, index) => {
-      const generatedPath = join(temporaryDirectory, `example-${index}.ts`);
+      const generatedPath = join(
+        temporaryDirectory,
+        `example-${index}.${example.language}`,
+      );
       writeFileSync(
         generatedPath,
         transformJSDocExample(example, generatedPath),
@@ -217,6 +227,7 @@ export const testJSDocExamples = async ({
           declaration: false,
           declarationMap: false,
           incremental: false,
+          jsx: "react-jsx",
           lib: ["dom", "esnext"],
           module: "NodeNext",
           noEmit: true,
@@ -503,11 +514,15 @@ const extractFencedExamples = (
   const examples: Array<JSDocExample> = [];
 
   for (const fence of fencedSource.matchAll(fencePattern)) {
-    const metadata = fence[1].trim().toLowerCase().split(/\s+/u);
-    if (!["ts", "typescript"].includes(metadata[0])) {
+    const [language] = fence[1].trim().split(/\s+/u);
+    const line = getLineNumber(source, offset + fence.index);
+    if (language !== "ts" && language !== "tsx") {
+      assert(
+        !typeScriptFenceLanguagePattern.test(language),
+        `${filePath}:${line} has a ${language} fence; use ts or tsx.`,
+      );
       continue;
     }
-    const line = getLineNumber(source, offset + fence.index);
     const closingFence = fence[3] as string | undefined;
     assert(
       closingFence !== undefined,
@@ -527,7 +542,13 @@ const extractFencedExamples = (
         untrimmedExampleSource,
         untrimmedExampleSource.indexOf(exampleSource),
       );
-    examples.push({ filePath, line, source: exampleSource, sourceLine });
+    examples.push({
+      filePath,
+      line,
+      source: exampleSource,
+      sourceLine,
+      language,
+    });
   }
 
   return examples;
@@ -601,6 +622,20 @@ const runJSDocExamples = async (
 ): Promise<void> => {
   if (examples.length === 0) return;
 
+  const executablePaths = await Promise.all(
+    mapArray(examples, async ({ generatedPath, language }) => {
+      if (language === "ts") return generatedPath;
+      const { transformWithOxc } = await import("vite");
+      const { code } = await transformWithOxc(
+        readFileSync(generatedPath, "utf8"),
+        generatedPath,
+        { jsx: { runtime: "automatic" } },
+      );
+      const executablePath = generatedPath.replace(/\.tsx$/u, ".js");
+      writeFileSync(executablePath, code);
+      return executablePath;
+    }),
+  );
   const runnerPath = join(temporaryDirectory, "run-examples.mjs");
   const resultPath = join(temporaryDirectory, "run-examples-result.json");
   writeFileSync(
@@ -609,10 +644,7 @@ const runJSDocExamples = async (
       'import { writeFileSync } from "node:fs";',
       "",
       `const examples = ${JSON.stringify(
-        mapArray(
-          examples,
-          ({ generatedPath }) => pathToFileURL(generatedPath).href,
-        ),
+        mapArray(executablePaths, (path) => pathToFileURL(path).href),
       )};`,
       "const failures = [];",
       "for (const [index, example] of examples.entries()) {",

@@ -21,23 +21,40 @@ import { useEvolu } from "./useEvolu.ts";
  * ### Example
  *
  * ```ts
- * // Get all rows.
- * const rows = useQuery(allTodos);
+ * import {
+ *   assertType,
+ *   createQueryBuilder,
+ *   testEvoluSchema,
+ *   type Evolu,
+ *   type QueryRows,
+ *   type TestEvoluSchema,
+ * } from "@evolu/common";
+ * import { useQuery } from "@evolu/vue";
  *
- * // Get rows for a specific todo (the first row can be null).
- * const rows = useQuery(todoById(1));
+ * const createQuery = createQueryBuilder(testEvoluSchema);
+ * const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
  *
- * // Get all rows, but without subscribing to changes.
- * const rows = useQuery(allTodos, { once: true });
+ * // Call composables in component setup.
+ * const useTodos = () => useQuery(allTodos);
  *
- * // Prefetch rows.
- * const allTodos = evolu.createQuery((db) =>
- *   db.selectFrom("todo").selectAll(),
- * );
- * const allTodosPromise = evolu.loadQuery(allTodos);
+ * // Load the rows without subscribing to changes.
+ * const useTodosOnce = () => useQuery(allTodos, { once: true });
  *
- * // Use prefetched rows.
- * const rows = useQuery(allTodos, { promise: allTodosPromise });
+ * // Prefetch the rows, for example in a router guard, and reuse the promise.
+ * const prefetchTodos = (evolu: Evolu<TestEvoluSchema>) =>
+ *   evolu.loadQuery(allTodos);
+ * const usePrefetchedTodos = (promise: ReturnType<typeof prefetchTodos>) =>
+ *   useQuery(allTodos, { promise });
+ *
+ * type TodoRows = QueryRows<typeof allTodos.Row>;
+ * assertType<
+ *   [
+ *     ReturnType<typeof useTodos>["value"],
+ *     ReturnType<typeof useTodosOnce>["value"],
+ *     ReturnType<typeof usePrefetchedTodos>["value"],
+ *   ],
+ *   [TodoRows, TodoRows, TodoRows]
+ * >();
  * ```
  */
 export const useQuery = <S extends EvoluSchema, R extends Row>(

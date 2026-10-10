@@ -4,8 +4,9 @@ import { join, resolve } from "node:path";
 
 const repositoryDirectory = resolve(import.meta.dirname, "../..");
 
-export const jsdocSourcePattern = "packages/common/src/**/*.ts";
-export const nodeFsSourcePattern = "packages/nodejs/src/Fs.ts";
+// Svelte is excluded because importing @evolu/svelte creates web dependencies,
+// which Node.js cannot provide, and its runes need the Svelte compiler.
+export const jsdocSourcePattern = "packages/!(svelte)/src/**/*.{ts,tsx}";
 export const changesetSourcePattern = ".changeset/*.md";
 export const conventionsSourcePattern =
   "apps/web/src/app/(docs)/docs/conventions/page.mdx";
@@ -20,7 +21,6 @@ export const testingSourcePattern =
 // already injects into every generated example.
 export const documentationSourcePatterns = [
   jsdocSourcePattern,
-  nodeFsSourcePattern,
   changesetSourcePattern,
   conventionsSourcePattern,
   resourceManagementSourcePattern,
@@ -56,6 +56,14 @@ export const testEvoluJSDocExamples = async (
         repositoryDirectory,
         "packages/nodejs/src/index.ts",
       ),
+      "@evolu/nodejs/TestBundle": join(
+        repositoryDirectory,
+        "packages/nodejs/src/TestBundle.ts",
+      ),
+      "@evolu/nodejs/TestJSDoc": join(
+        repositoryDirectory,
+        "packages/nodejs/src/TestJSDoc.ts",
+      ),
       "@evolu/common/local-first": join(
         repositoryDirectory,
         "packages/common/src/local-first/index.ts",
@@ -69,6 +77,7 @@ export const testEvoluJSDocExamples = async (
         repositoryDirectory,
         "packages/sqlite-wasm/src/index.ts",
       ),
+      "@evolu/vue": join(repositoryDirectory, "packages/vue/src/index.ts"),
       "@evolu/web": join(repositoryDirectory, "test/jsdoc/test-jsdoc-web.mts"),
     },
     cwd: repositoryDirectory,

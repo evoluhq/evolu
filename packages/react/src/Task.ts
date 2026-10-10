@@ -14,26 +14,60 @@ import { createContext, use, type ReactNode } from "react";
  * ### Example
  *
  * ```tsx
- * const run = createRun(createEvoluDeps());
+ * import { assertEqual, createRun } from "@evolu/common";
+ * import { createRunBinding } from "@evolu/react";
+ * import { renderToString } from "react-dom/server";
+ *
+ * interface GreetingDep {
+ *   readonly greeting: string;
+ * }
+ *
+ * await using run = createRun<GreetingDep>({ greeting: "Hello" });
  * const { RunContext, useRun } = createRunBinding<typeof run>();
  *
- * <RunContext value={run}>
- *   <App />
- * </RunContext>;
+ * const Greeting = () => <p>{useRun().deps.greeting}</p>;
  *
- * // In a component
- * const run = useRun();
+ * assertEqual(
+ *   renderToString(
+ *     <RunContext value={run}>
+ *       <Greeting />
+ *     </RunContext>,
+ *   ),
+ *   "<p>Hello</p>",
+ * );
  * ```
  *
  * ### Testing
  *
- * ```tsx
- * const testRun = testCreateRun({ api: testApi });
- * const { RunContext } = createRunBinding<typeof testRun>();
+ * Provide a {@link Run} with test dependencies to the app's `RunContext`.
  *
- * <RunContext value={testRun}>
- *   <MyComponent />
- * </RunContext>;
+ * ```tsx
+ * import {
+ *   assertEqual,
+ *   testCreateRun,
+ *   type DisposableRun,
+ * } from "@evolu/common";
+ * import { createRunBinding } from "@evolu/react";
+ * import { renderToString } from "react-dom/server";
+ *
+ * interface GreetingDep {
+ *   readonly greeting: string;
+ * }
+ *
+ * const { RunContext, useRun } =
+ *   createRunBinding<DisposableRun<GreetingDep>>();
+ * const Greeting = () => <p>{useRun().deps.greeting}</p>;
+ *
+ * await using run = testCreateRun({ greeting: "Hi" });
+ *
+ * assertEqual(
+ *   renderToString(
+ *     <RunContext value={run}>
+ *       <Greeting />
+ *     </RunContext>,
+ *   ),
+ *   "<p>Hi</p>",
+ * );
  * ```
  */
 export const createRunBinding = <

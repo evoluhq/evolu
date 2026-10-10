@@ -62,7 +62,8 @@ by `pnpm test:jsdoc`, which is included in both `pnpm test` and `pnpm verify`.
 The runner in `test/jsdoc` uses the reusable `@evolu/nodejs/TestJSDoc` entry
 point to extract the documented TypeScript, lint it with
 `@evolu/oxlint-config`, compile it, and execute each example as an isolated
-Node.js ESM module in one process with explicitly imported assertions.
+Node.js ESM module in one process with explicitly imported assertions. TSX
+examples run after Vite transforms their JSX.
 Compilation uses
 `@evolu/typescript-config/base.json` with an explicit module environment so
 examples use Evolu's strict compiler settings without a project layout. Unused
