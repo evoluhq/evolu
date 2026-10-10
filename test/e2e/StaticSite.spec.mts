@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, test } from "playwright/test";
 
 // The served export's 404 pages, redirects, and headers come from the
@@ -69,4 +71,17 @@ test("serves docs Markdown, llms.txt, and the RSS feed with their types", async 
   expect(rss.headers()["content-type"]).toBe(
     "application/rss+xml; charset=utf-8",
   );
+});
+
+test("exports no more files than a Worker version accepts", () => {
+  // The Workers Free plan accepts at most 20,000 files per version, and the
+  // deploy only fails after a merge, so check the export that this run built.
+  const files = readdirSync(
+    resolve(import.meta.dirname, "../../apps/web/out"),
+    {
+      recursive: true,
+      withFileTypes: true,
+    },
+  ).filter((entry) => entry.isFile());
+  expect(files.length).toBeLessThanOrEqual(20_000);
 });
