@@ -141,9 +141,37 @@ export interface ReactBinding<S extends EvoluSchema = EvoluSchema> {
  *
  * ### Example
  *
- * ```tsx
+ * ```ts
+ * import {
+ *   assertType,
+ *   createQueryBuilder,
+ *   testEvoluSchema,
+ *   type Evolu,
+ *   type QueryRows,
+ *   type TestEvoluSchema,
+ * } from "@evolu/common";
+ * import { createEvoluBinding } from "@evolu/react";
+ *
+ * // Create the binding once and share it with components.
  * const { EvoluContext, useEvolu, useQuery } =
- *   createEvoluBinding<typeof AppSchema>();
+ *   createEvoluBinding<typeof testEvoluSchema>();
+ *
+ * const createQuery = createQueryBuilder(testEvoluSchema);
+ * const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+ * const useTodos = () => useQuery(allTodos);
+ *
+ * assertType<
+ *   [
+ *     Parameters<typeof EvoluContext>[0]["value"],
+ *     ReturnType<typeof useEvolu>,
+ *     ReturnType<typeof useTodos>,
+ *   ],
+ *   [
+ *     Evolu<TestEvoluSchema>,
+ *     Evolu<TestEvoluSchema>,
+ *     QueryRows<typeof allTodos.Row>,
+ *   ]
+ * >();
  * ```
  */
 export const createEvoluBinding = <

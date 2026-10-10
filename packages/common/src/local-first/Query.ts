@@ -7,6 +7,7 @@
 import type {
   AliasableExpression,
   Expression,
+  NotNull,
   Simplify as KyselySimplify,
   RawBuilder,
   SelectQueryNode,
@@ -32,7 +33,44 @@ import { createId, String } from "../Type.ts";
 import type { EvoluSchema } from "./Schema.ts";
 
 export { sql as kyselySql } from "kysely";
-export type { NotNull as KyselyNotNull } from "kysely";
+
+/**
+ * Narrows a column to non-null with Kysely's `$narrowType`.
+ *
+ * Queries type every column except `id` as nullable. After a query filters out
+ * a column's null values, `$narrowType` with this type removes `null` from the
+ * column's row type.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertType,
+ *   createQueryBuilder,
+ *   testEvoluSchema,
+ *   type KyselyNotNull,
+ *   type NonEmptyTrimmedString100,
+ * } from "@evolu/common";
+ *
+ * const createQuery = createQueryBuilder(testEvoluSchema);
+ * const allTitles = createQuery((db) =>
+ *   db.selectFrom("todo").select(["id", "title"]),
+ * );
+ * const titles = createQuery((db) =>
+ *   db
+ *     .selectFrom("todo")
+ *     .select(["id", "title"])
+ *     .where("title", "is not", null)
+ *     .$narrowType<{ title: KyselyNotNull }>(),
+ * );
+ *
+ * assertType<
+ *   [(typeof allTitles.Row)["title"], (typeof titles.Row)["title"]],
+ *   [NonEmptyTrimmedString100 | null, NonEmptyTrimmedString100]
+ * >();
+ * ```
+ */
+export type KyselyNotNull = NotNull;
 
 /**
  * A type-safe SQL query.

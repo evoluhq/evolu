@@ -1582,11 +1582,11 @@
         },
         "config-env-all": {
           "files": 2,
-          "lines": 2554,
-          "identifiers": 2655,
+          "lines": 2639,
+          "identifiers": 2691,
           "instantiations": 24789,
-          "types": 13238,
-          "symbols": 14723
+          "types": 13242,
+          "symbols": 14782
         },
         "with-default-all": {
           "files": 0,
@@ -1598,11 +1598,11 @@
         },
         "byte-size-literal-all": {
           "files": 1,
-          "lines": 2145,
-          "identifiers": 2200,
+          "lines": 2230,
+          "identifiers": 2236,
           "instantiations": 18936,
-          "types": 11702,
-          "symbols": 13470
+          "types": 11706,
+          "symbols": 13529
         },
         "duration-literal-all": {
           "files": 0,

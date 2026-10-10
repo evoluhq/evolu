@@ -17,9 +17,10 @@
     "incremental": true,
     "declaration": true,
     "declarationMap": true,
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "types": ["node", "svelte"]
   },
-  "include": ["src", "svelte-types.d.ts"],
+  "include": ["src"],
   "exclude": ["dist", "node_modules"],
   "references": [{ "path": "../common" }, { "path": "../web" }]
 }

@@ -3,158 +3,116 @@
  * compiler in the app itself.
  */
 
+import { emptyArray } from "@evolu/common";
 import type {
-  AppOwner,
   Evolu,
-  EvoluDeps,
   EvoluSchema,
-  InferRow,
   Query,
   QueryRows,
   Row,
 } from "@evolu/common/local-first";
 import { createEvoluDeps } from "@evolu/web";
 
-// Svelte's declaration generation loses createEvoluDeps' return type here.
-// Keep the explicit public type so consumers do not receive any.
-// oxlint-disable-next-line typescript/no-unsafe-assignment
-export const evoluSvelteDeps: EvoluDeps = /*#__PURE__*/ createEvoluDeps();
+export const evoluSvelteDeps = /*#__PURE__*/ createEvoluDeps();
 
 /**
- * Load and subscribe to the Query, and return an object with `rows` property
- * that are automatically updated when data changes.
+ * Loads and subscribes to the query that `observedQuery` returns, and returns
+ * an object whose `rows` update when the data changes. `rows` holds only rows
+ * of the current query, so it is empty until that query loads and while there
+ * is no query.
+ *
+ * It creates an `$effect`, so call it where Svelte allows one, such as during
+ * component initialization or inside `$effect.root`. The subscription ends when
+ * that component or root is destroyed. When `observedQuery` reads reactive
+ * state, such as a `$derived` query, `queryState` loads the new query whenever
+ * it changes. Derive values from `rows` with `$derived`.
  *
  * ### Example
  *
- * ```ts
- * // Create your query
- * const allTodos = evolu.createQuery((db) =>
- *   db.selectFrom("todo").selectAll(),
- * );
- *
- * // Get all rows.
- * const allTodosState = queryState(evolu, () => allTodos);
- * ```
- *
- * ### Example
+ * Runes such as `$state` work only in Svelte components and `.svelte.ts` or
+ * `.svelte.js` modules. A component calls `todoTitlesState` during its
+ * initialization.
  *
  * ```ts
- * // some kind of state
- * let someKindOfState = $state("someId");
+ * import {
+ *   assertType,
+ *   createQueryBuilder,
+ *   sqliteTrue,
+ *   testEvoluSchema,
+ *   type Evolu,
+ *   type NonEmptyTrimmedString100,
+ *   type TestEvoluSchema,
+ * } from "@evolu/common";
+ * import { queryState } from "@evolu/svelte";
  *
- * // derive your query based other props
- * const allTodos = $derived(
- *   evolu.createQuery((db) =>
- *     db.selectFrom("todo").where("id", "=", someKindOfState).selectAll(),
- *   ),
- * );
+ * const createQuery = createQueryBuilder(testEvoluSchema);
  *
- * // Get all rows, once someKindOfState changes, this allTodosState will be updated with the evolu query result
- * const allTodosState = queryState(evolu, () => allTodos);
+ * const todoTitlesState = (evolu: Evolu<TestEvoluSchema>) => {
+ *   let showCompleted = $state(false);
  *
- * // use allTodosState.rows in further calculations / UI
+ *   const todosQuery = $derived(
+ *     createQuery((db) =>
+ *       db
+ *         .selectFrom("todo")
+ *         .select(["id", "title"])
+ *         .where("isDeleted", "is not", sqliteTrue)
+ *         .$if(!showCompleted, (qb) =>
+ *           qb.where("isCompleted", "is not", sqliteTrue),
+ *         ),
+ *     ),
+ *   );
+ *   const todos = queryState(evolu, () => todosQuery);
+ *   const titles = $derived(todos.rows.map((todo) => todo.title));
+ *
+ *   return {
+ *     titles: () => titles,
+ *     toggleCompleted: () => {
+ *       showCompleted = !showCompleted;
+ *     },
+ *   };
+ * };
+ *
+ * assertType<
+ *   ReturnType<ReturnType<typeof todoTitlesState>["titles"]>,
+ *   Array<NonEmptyTrimmedString100 | null>
+ * >();
  * ```
  */
-export const queryState = <
-  R extends Row,
-  Schema extends EvoluSchema,
-  MappedRow = InferRow<Query<Schema, R>>,
->(
+export const queryState = <R extends Row, Schema extends EvoluSchema>(
   evolu: Evolu<Schema>,
-  /**
-   * Can be a normal query or a derived query.
-   *
-   * Svelte reactivity: it needs to be a callback, if the query is $derived this
-   * will re-trigger the load/subscription based on the new query.
-   */
   observedQuery: () => Query<Schema, R> | undefined,
-  options?: {
-    /**
-     * This is a little helper so that you can map the results instead of using
-     * a $derive operation.
-     *
-     * @param row
-     */
-    mapping?: (row: R) => MappedRow;
-  },
-): { readonly rows: Array<MappedRow> } => {
-  {
-    // writing to this variable - svelte's compiler will track it
-    let writableState: Array<MappedRow> = $state([]);
+): { readonly rows: QueryRows<R> } => {
+  // Evolu replaces rows and never mutates them, so raw state keeps them
+  // unproxied. Proxies would cost work and the identity of unchanged rows.
+  let writableState: QueryRows<R> = $state.raw(emptyArray);
 
-    const updateState = (rows: QueryRows<R>): void => {
-      if (options?.mapping) {
-        // re-assigning because somehow typescript thinks its still nullable here
-        // remove again once no issue anymore
-        const mapper = options.mapping;
-        writableState = rows.map((row) => mapper(row));
-      }
+  $effect(() => {
+    const query = observedQuery();
 
-      writableState = rows as Array<MappedRow>;
+    if (!query) {
+      writableState = emptyArray;
+      return;
+    }
+
+    const updateRows = (): void => {
+      writableState = evolu.getQueryRows(query);
     };
 
-    $effect(() => {
-      const query = observedQuery();
+    // Rows come only from the store, never from a load result, because a
+    // load of a previous query can resolve after the current query's rows.
+    // The load stores the rows and notifies the subscription.
+    void evolu.loadQuery(query);
+    updateRows();
 
-      if (!query) {
-        return;
-      }
+    return evolu.subscribeQuery(query)(updateRows);
+  });
 
-      // always setting the state on first load
-      // for a) if the query changes we definitely need current content immediately
-      // for b) if you sub/unsub in a very short time can cause the subscription not to trigger a callback
-      // => this is also for HMR
-      void evolu.loadQuery(query).then(updateState);
-
-      return evolu.subscribeQuery(query)(() => {
-        const rows = evolu.getQueryRows(query);
-
-        updateState(rows);
-      });
-    });
-
-    return {
-      // Svelte reactivity: it needs to be a getter
-      get rows() {
-        return writableState;
-      },
-    };
-  }
-};
-
-/**
- * Get the {@link AppOwner} promise that resolves when available.
- *
- * ### Example
- *
- * ```ts
- * import { appOwnerState } from "@evolu/svelte";
- *
- * const owner = appOwnerState(evolu);
- *
- * // use owner.current in your Svelte templates
- * // it will be undefined initially and set once the promise resolves
- * ```
- */
-export const appOwnerState = <Schema extends EvoluSchema>(
-  evolu: Evolu<Schema>,
-): {
-  readonly current: AppOwner | undefined;
-} => {
-  {
-    // writing to this variable - svelte's compiler will track it
-    let writableState = $state<AppOwner | undefined>(undefined);
-
-    $effect(() => {
-      // TODO: Review, it was promise, it isn't anymore.
-      writableState = evolu.appOwner;
-    });
-
-    return {
-      // Svelte reactivity: it needs to be a getter
-      get current() {
-        return writableState;
-      },
-    };
-  }
+  return {
+    // Each read of `rows` reads the state, so templates and effects track it.
+    // A plain property would hold only the initial rows. A getter rather than
+    // a function follows how Svelte exposes reactive state.
+    get rows() {
+      return writableState;
+    },
+  };
 };

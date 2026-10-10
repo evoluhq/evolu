@@ -75,9 +75,28 @@ export const createSharedWorker = <Input, Output = never>(
  * ### Example
  *
  * ```ts
- * const channel = createMessageChannel<Request, Response>();
- * channel.port1.onMessage = (response) => console.log(response);
- * channel.port1.postMessage({ type: "ping" });
+ * import { assertEqual } from "@evolu/common";
+ * import { createMessageChannel } from "@evolu/web";
+ *
+ * interface Ping {
+ *   readonly type: "Ping";
+ * }
+ *
+ * interface Pong {
+ *   readonly type: "Pong";
+ * }
+ *
+ * using channel = createMessageChannel<Ping, Pong>();
+ * channel.port2.onMessage = () => {
+ *   channel.port2.postMessage({ type: "Pong" });
+ * };
+ *
+ * const response = await new Promise<Pong>((resolve) => {
+ *   channel.port1.onMessage = resolve;
+ *   channel.port1.postMessage({ type: "Ping" });
+ * });
+ *
+ * assertEqual(response, { type: "Pong" });
  * ```
  */
 export const createMessageChannel = <Input, Output = never>(): MessageChannel<

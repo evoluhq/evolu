@@ -161,10 +161,11 @@ interface TestBundleJobOutput {
  * ### Example
  *
  * ```ts
+ * import { assertEqual, assertTrue } from "@evolu/common";
+ * import { testBundle } from "@evolu/nodejs/TestBundle";
  * import { mkdtemp, rm, writeFile } from "node:fs/promises";
  * import { tmpdir } from "node:os";
  * import { join } from "node:path";
- * import { testBundle } from "@evolu/nodejs/TestBundle";
  *
  * const directory = await mkdtemp(join(tmpdir(), "evolu-test-bundle-"));
  * try {
@@ -175,13 +176,13 @@ interface TestBundleJobOutput {
  *       example: {
  *         entryPath,
  *         verify: (value) => {
- *           expect(value).toEqual({ answer: 42 });
+ *           assertEqual(value, { answer: 42 });
  *         },
  *       },
  *     },
  *   });
  *   for (const size of Object.values(result.example)) {
- *     expect(size.brotliSizeInBytes).toBeGreaterThan(0);
+ *     assertTrue(size.brotliSizeInBytes > 0);
  *   }
  * } finally {
  *   await rm(directory, { recursive: true });

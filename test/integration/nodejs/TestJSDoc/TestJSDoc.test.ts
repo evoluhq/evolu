@@ -571,7 +571,7 @@ test("testJSDocExamples extracts Markdown examples", async () => {
       [
         "# MDX example",
         "",
-        "~~~typescript",
+        "~~~ts",
         'import { assertOk } from "@evolu/common";',
         "",
         'assertOk({ ok: true as const, value: "Evolu" }, "Evolu");',
@@ -584,6 +584,101 @@ test("testJSDocExamples extracts Markdown examples", async () => {
       include: [markdownPath, mdxPath],
       typescriptPackage: "@typescript/native",
     });
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples compiles and runs TSX examples", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Components.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```tsx",
+        ' * import { assertEqual } from "@evolu/common";',
+        ' * import { renderToString } from "react-dom/server";',
+        " *",
+        " * const Greeting = ({ name }: { readonly name: string }) => (",
+        " *   <p>{`Hello ${name}`}</p>",
+        " * );",
+        " *",
+        ' * assertEqual(renderToString(<Greeting name="Evolu" />), "<p>Hello Evolu</p>");',
+        " * ```",
+        " */",
+        "export const firstExample = true;",
+        "/**",
+        " * ```tsx",
+        ' * import { assert } from "@evolu/common";',
+        ' * import { renderToString } from "react-dom/server";',
+        " *",
+        " * const html = renderToString(<p>Evolu</p>);",
+        ' * assert(html === "<p>Other</p>", `Rendered ${html}`);',
+        " * ```",
+        " */",
+        "export const secondExample = true;",
+      ].join("\n"),
+    );
+
+    const error = await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: sourcePath,
+      typescriptPackage: "@typescript/native",
+    }).catch((error: unknown) => error);
+
+    assertInstanceOf(error, AggregateError);
+    assertLength(error.errors, 1);
+    const [executionError] = error.errors as ReadonlyArray<unknown>;
+    assertInstanceOf(executionError, Error);
+    assertTrue(
+      /Components\.ts:15: Rendered <p>Evolu<\/p>/u.test(executionError.message),
+    );
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples rejects other spellings of ts and tsx fences", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    for (const [index, language] of [
+      "typescript",
+      "TypeScript",
+      "TS",
+      "Tsx",
+    ].entries()) {
+      const sourcePath = join(temporaryDirectory, `Example${index}.md`);
+      writeFileSync(
+        sourcePath,
+        ["# Example", "", `\`\`\`${language}`, "const value = 1;", "```"].join(
+          "\n",
+        ),
+      );
+
+      const error = await assertRejectsInstanceOf(
+        testJSDocExamples({
+          cwd: repositoryDirectory,
+          include: sourcePath,
+          typescriptPackage: "@typescript/native",
+        }),
+        Error,
+      );
+      assertTrue(
+        error.message.endsWith(
+          `Example${index}.md:3 has a ${language} fence; use ts or tsx.`,
+        ),
+      );
+    }
   } finally {
     rmSync(temporaryDirectory, { force: true, recursive: true });
   }
