@@ -2,11 +2,6 @@ name: Checks
 
 on:
   workflow_call:
-    inputs:
-      build-web:
-        description: Builds the static export of evolu.dev as the `web` artifact.
-        type: boolean
-        default: false
 
 permissions: {}
 
@@ -303,12 +298,13 @@ jobs:
       - name: Test ${{ matrix.browser }}
         run: pnpm exec vitest run --mode=${{ matrix.browser }} --project='browser-*'
 
-  # Builds the export for the Release workflow's deploy-web job while the other
-  # checks run, so a deploy waits for the slowest check, not for the checks and
-  # then the build.
+  # Builds the whole export on every run, because the E2E jobs build it without
+  # the API reference, and checks that a Worker accepts it before a merge. It
+  # builds while the other checks run, so the Release workflow's deploy-web job,
+  # which deploys it, waits for the slowest check, not for the checks and then
+  # the build.
   build-web:
     name: Build web
-    if: inputs.build-web
     # The playgrounds load the SQLite wasm.
     needs: sqlite-wasm
     runs-on: ubuntu-latest
@@ -331,6 +327,23 @@ jobs:
 
       - name: Build
         run: pnpm build:web
+
+      # On the Workers Free plan, a Worker version accepts at most 20,000 files
+      # and no file over 25 MiB, and only the deploy, after a merge, would
+      # reject the export.
+      - name: Check Worker asset limits
+        run: |
+          count=$(find apps/web/out -type f | wc -l)
+          echo "The export has $count files."
+          if [ "$count" -gt 20000 ]; then
+            echo "::error::The export has $count files, but a Worker version accepts at most 20,000."
+            exit 1
+          fi
+          large=$(find apps/web/out -type f -size +25M)
+          if [ -n "$large" ]; then
+            echo "::error::A Worker version accepts no file over 25 MiB: $large"
+            exit 1
+          fi
 
       - name: Upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

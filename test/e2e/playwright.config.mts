@@ -32,9 +32,11 @@ const config = {
   ],
   webServer: {
     cwd: resolve(import.meta.dirname, "../.."),
-    // The playground loads the SQLite wasm, so check it before building.
+    // The playground loads the SQLite wasm, so check it before building. The
+    // build skips generating the API reference, which no test visits; the
+    // build-web job in checks.yaml builds the whole site.
     command:
-      'node packages/sqlite-wasm/scripts/check-wasm.mts && pnpm --filter "web^..." --filter @evolu/relay -r run build && pnpm build:docs && pnpm --filter web run build && pnpm --filter web start --ip 127.0.0.1 --port 3100',
+      'node packages/sqlite-wasm/scripts/check-wasm.mts && pnpm --filter "web^..." --filter @evolu/relay -r run build && pnpm --filter web run build && pnpm --filter web start --ip 127.0.0.1 --port 3100',
     env: { NEXT_PUBLIC_EVOLU_RELAY_URL: relayUrl },
     url: `${baseURL}/playgrounds/minimal`,
     reuseExistingServer: false,

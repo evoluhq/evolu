@@ -191,18 +191,20 @@ the examples' Evolu error alert; tests declare the dialogs they expect.
 pnpm test:e2e
 ```
 
-The command builds the web dependencies, relay, documentation, and static export,
-then serves `apps/web/out` on `127.0.0.1:3100` with the pinned Wrangler local
-server from `apps/web/deploy`, which applies the Cloudflare configuration in
-`apps/web/deploy/wrangler.jsonc`, and stops it. Build output streams to the
-console. Stop the web dev server first: the production build regenerates the API
-reference that the dev docs watcher owns, and the dev configuration starts its own
-`next dev` on the same `.next/dev` output. The build receives
-`NEXT_PUBLIC_EVOLU_RELAY_URL=ws://127.0.0.1:4311`, so the resulting export
-connects to the test relay instead of the public relay. Production tests run
-the built relay CLI; dev tests run its TypeScript source. Both configurations
-check `packages/sqlite-wasm/wasm/sqlite3.wasm`, which the playgrounds load,
-before they build or start anything.
+The command builds the web dependencies, relay, and static export, then serves
+`apps/web/out` on `127.0.0.1:3100` with the pinned Wrangler local server from
+`apps/web/deploy`, which applies the Cloudflare configuration in
+`apps/web/deploy/wrangler.jsonc`, and stops it. The build does not generate the
+API reference, which no test visits, but includes a previously generated one. CI
+builds the whole site in a separate job. Build output streams to the console.
+Stop the web dev server first: the production build rewrites the search index,
+sections, and docs Markdown that `pnpm dev` also writes, and the dev
+configuration starts its own `next dev` on the same `.next/dev` output. The
+build receives `NEXT_PUBLIC_EVOLU_RELAY_URL=ws://127.0.0.1:4311`, so the
+resulting export connects to the test relay instead of the public relay.
+Production tests run the built relay CLI; dev tests run its TypeScript source.
+Both configurations check `packages/sqlite-wasm/wasm/sqlite3.wasm`, which the
+playgrounds load, before they build or start anything.
 
 Tests run sequentially because the relay address is embedded in the browser
 bundle. Each test replaces the relay at that address with fresh storage, so

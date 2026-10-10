@@ -15,9 +15,6 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/checks.yaml
-    with:
-      # Builds evolu.dev for the deploy-web job, only on main and not in forks.
-      build-web: ${{ github.repository == 'evoluhq/evolu' && github.ref == 'refs/heads/main' }}
 
   select-mode:
     # Prevents release automation from running on forks.

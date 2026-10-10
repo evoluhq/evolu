@@ -2,11 +2,8 @@ import { createGate, ok, tryAsync, trySync, type Task } from "@evolu/common";
 import parcelWatcher from "@parcel/watcher";
 import { runMain, spawn, type SpawnDep } from "@evolu/nodejs";
 import path from "node:path";
-import {
-  fixApiReference,
-  generateSections,
-  publishApiReference,
-} from "./fix-api-reference.mts";
+import { fixApiReference, publishApiReference } from "./fix-api-reference.mts";
+import { generateSections } from "./generate-sections.mts";
 
 const defaultRepositoryDir = path.resolve(import.meta.dirname, "../../../..");
 const defaultStagedReferenceDir = path.join(

@@ -9,12 +9,13 @@
   // does not change how the site is served.
   "compatibility_date": "2026-10-01",
   "assets": {
-    // The Workers Free plan accepts at most 20,000 files per version.
-    // test/e2e/StaticSite.spec.mts checks the export on every pull request,
-    // and the upload in deploy-web checks it again. Each docs page exports six
-    // files (.html, .txt, .md and three __next.*.txt). In October 2026, the
-    // export had 14,925 files, room for about 840 more docs pages. Wrangler's
-    // "Read N files" log line counts directories too, so it reports more.
+    // The Workers Free plan accepts at most 20,000 files per version. The
+    // build-web job in .github/workflows/checks.yaml checks the export on every
+    // pull request, and the upload in deploy-web checks it again. Each docs
+    // page exports six files (.html, .txt, .md and three __next.*.txt). In
+    // October 2026, the export had 14,925 files, room for about 840 more docs
+    // pages. Wrangler's "Read N files" log line counts directories too, so it
+    // reports more.
     // https://developers.cloudflare.com/workers/platform/limits/
     "directory": "../out",
     // The default html_handling serves docs/x.html at /docs/x and redirects
