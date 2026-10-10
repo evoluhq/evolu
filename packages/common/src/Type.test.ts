@@ -9156,6 +9156,39 @@ describe("BrandFactory", () => {
     });
   });
 
+  describe("ValidateBrandFactoryCount", () => {
+    it("accepts non-negative integer counts", () => {
+      const AtLeastZero = minLength(0)(String);
+      const NoItems = maxSize(0)(set(String));
+
+      assertEqual(AtLeastZero.name, "MinLength0");
+      assertType<typeof AtLeastZero.name, "MinLength0">();
+      assertEqual(NoItems.name, "MaxSize0");
+      assertTrue(NoItems.is(new Set()));
+    });
+
+    it("rejects negative, fractional, and exponent counts in every count factory", () => {
+      void (() => {
+        // @ts-expect-error Count must be a non-negative integer.
+        minLength(-1);
+        // @ts-expect-error Count must be a non-negative integer.
+        maxLength(1.5);
+        // @ts-expect-error Count must be a non-negative integer.
+        length(-0.5);
+        // @ts-expect-error Count must be a non-negative integer.
+        maxUtf8ByteLength(-1);
+        // @ts-expect-error Count must be a non-negative integer.
+        minSize(1.5);
+        // @ts-expect-error Count must be a non-negative integer.
+        maxSize(-2);
+        // @ts-expect-error Count must be a non-negative integer.
+        minEntries(0.1);
+        // @ts-expect-error Count must be a non-negative integer.
+        maxEntries(1e21);
+      });
+    });
+  });
+
   describe("ValidateBrandFactoryBigInt", () => {
     it("accepts one concrete bigint literal, including a negative one", () => {
       const min = -5n;

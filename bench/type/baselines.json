@@ -1568,7 +1568,7 @@
           "files": -1,
           "lines": 26,
           "identifiers": 66,
-          "instantiations": 986,
+          "instantiations": 992,
           "types": 271,
           "symbols": 352
         },
@@ -1584,8 +1584,8 @@
           "files": 2,
           "lines": 2554,
           "identifiers": 2655,
-          "instantiations": 24783,
-          "types": 13246,
+          "instantiations": 24789,
+          "types": 13238,
           "symbols": 14722
         },
         "with-default-all": {
@@ -1601,7 +1601,7 @@
           "lines": 2145,
           "identifiers": 2200,
           "instantiations": 18936,
-          "types": 11710,
+          "types": 11702,
           "symbols": 13469
         },
         "duration-literal-all": {

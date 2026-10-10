@@ -85,6 +85,7 @@
     "ArrayParent",
     "ArrayStructuralIssue",
     "BrandFactoryBigIntError",
+    "BrandFactoryCountError",
     "BrandFactoryNumberError",
     "CanonicalInputForChild",
     "CanonicalInputForParent",

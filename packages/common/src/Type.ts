@@ -6283,8 +6283,9 @@ export type UInt64 = typeof UInt64.Output;
  * ```
  *
  * For numeric parameters encoded in a Brand name, use
- * {@link ValidateBrandFactoryNumber}, or {@link ValidateBrandFactoryBigInt} for
- * bigint parameters.
+ * {@link ValidateBrandFactoryNumber}, {@link ValidateBrandFactoryCount} for
+ * lengths, sizes, and counts, or {@link ValidateBrandFactoryBigInt} for bigint
+ * parameters.
  *
  * @group Construction
  */
@@ -6367,6 +6368,43 @@ export type ValidateBrandFactoryNumber<Value extends number> =
 type BrandFactoryNumberError = CompileTimeError<
   "Brand Factory",
   "Parameter must be one concrete numeric literal instead of a widened, union, or branded number."
+>;
+
+/**
+ * Count parameter preserving literal types in a {@link BrandFactory}.
+ *
+ * Like {@link ValidateBrandFactoryNumber}, it requires one concrete numeric
+ * literal. The literal must also be a non-negative integer, because a length,
+ * size, or entry count cannot be negative or fractional: `minLength(-1)` would
+ * accept every value, and `maxLength(1.5)` would mean `maxLength(1)`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { maxLength, minLength, String } from "@evolu/common";
+ *
+ * minLength(0)(String);
+ * // @ts-expect-error Count must be a non-negative integer.
+ * minLength(-1)(String);
+ * // @ts-expect-error Count must be a non-negative integer.
+ * maxLength(1.5)(String);
+ * ```
+ *
+ * @group Construction
+ */
+export type ValidateBrandFactoryCount<Value extends number> =
+  IsUnion<Value> extends false
+    ? {} extends Record<`${Value}`, never>
+      ? Value & Readonly<Record<BrandFactoryNumberError, never>>
+      : `${Value}` extends
+            `-${string}` | `${string}.${string}` | `${string}e${string}`
+        ? Value & Readonly<Record<BrandFactoryCountError, never>>
+        : Value
+    : Value & Readonly<Record<BrandFactoryNumberError, never>>;
+
+type BrandFactoryCountError = CompileTimeError<
+  "Brand Factory",
+  "Count must be a non-negative integer."
 >;
 
 /**
@@ -8066,7 +8104,7 @@ export interface MinLengthError<
  */
 export const minLength =
   <Min extends number>(
-    min: ValidateBrandFactoryNumber<Min>,
+    min: ValidateBrandFactoryCount<Min>,
   ): BrandFactory<`MinLength${Min}`, ValueWithLength, MinLengthError<Min>> =>
   (parent) => {
     const name = `MinLength${min}` as `MinLength${Min}`;
@@ -8131,7 +8169,7 @@ export interface MaxLengthError<
  */
 export const maxLength =
   <Max extends number>(
-    max: ValidateBrandFactoryNumber<Max>,
+    max: ValidateBrandFactoryCount<Max>,
   ): BrandFactory<`MaxLength${Max}`, ValueWithLength, MaxLengthError<Max>> =>
   (parent) => {
     const name = `MaxLength${max}` as `MaxLength${Max}`;
@@ -8223,7 +8261,7 @@ export interface MaxUtf8ByteLengthError<
  * @group String
  */
 export const maxUtf8ByteLength = <Max extends number>(
-  max: ValidateBrandFactoryNumber<Max>,
+  max: ValidateBrandFactoryCount<Max>,
 ): BrandFactory<
   `MaxUtf8ByteLength${Max}`,
   string,
@@ -8306,7 +8344,7 @@ export interface LengthError<
  */
 export const length =
   <Exact extends number>(
-    exact: ValidateBrandFactoryNumber<Exact>,
+    exact: ValidateBrandFactoryCount<Exact>,
   ): BrandFactory<`Length${Exact}`, ValueWithLength, LengthError<Exact>> =>
   (parent) => {
     const name = `Length${exact}` as `Length${Exact}`;
@@ -14296,7 +14334,7 @@ export interface MinSizeError<
  */
 export const minSize =
   <Min extends number>(
-    min: ValidateBrandFactoryNumber<Min>,
+    min: ValidateBrandFactoryCount<Min>,
   ): BrandFactory<`MinSize${Min}`, ValueWithSize, MinSizeError<Min>> =>
   (parent) => {
     const name = `MinSize${min}` as `MinSize${Min}`;
@@ -14361,7 +14399,7 @@ export interface MaxSizeError<
  */
 export const maxSize =
   <Max extends number>(
-    max: ValidateBrandFactoryNumber<Max>,
+    max: ValidateBrandFactoryCount<Max>,
   ): BrandFactory<`MaxSize${Max}`, ValueWithSize, MaxSizeError<Max>> =>
   (parent) => {
     const name = `MaxSize${max}` as `MaxSize${Max}`;
@@ -16050,7 +16088,7 @@ export interface MinEntriesError<
  * @group Objects
  */
 export const minEntries =
-  <Min extends number>(min: ValidateBrandFactoryNumber<Min>) =>
+  <Min extends number>(min: ValidateBrandFactoryCount<Min>) =>
   <ParentType extends ConcreteTypeNode>(
     parent: EntriesParent<`MinEntries${Min}`, ParentType>,
   ): BrandType<ParentType, `MinEntries${Min}`, MinEntriesError<Min>> => {
@@ -16122,7 +16160,7 @@ export interface MaxEntriesError<
  * @group Objects
  */
 export const maxEntries =
-  <Max extends number>(max: ValidateBrandFactoryNumber<Max>) =>
+  <Max extends number>(max: ValidateBrandFactoryCount<Max>) =>
   <ParentType extends ConcreteTypeNode>(
     parent: EntriesParent<`MaxEntries${Max}`, ParentType>,
   ): BrandType<ParentType, `MaxEntries${Max}`, MaxEntriesError<Max>> => {
