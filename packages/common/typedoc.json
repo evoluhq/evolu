@@ -173,6 +173,7 @@
     "ValidateDefaultType",
     "ValidateDiscriminatedUnionKey",
     "ValidateElement",
+    "ValidateErrorPath",
     "ValidateInstanceConstructor",
     "ValidateLazyTarget",
     "ValidateMapKeyType",

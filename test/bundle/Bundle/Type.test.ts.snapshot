@@ -2,12 +2,12 @@ exports[`Type tree shaking > bundles a realistic Todo list schema 1`] = `
 {
   "typed Todo list": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 24075,
-      "brotliSizeInBytes": 6944
+      "rawSizeInBytes": 24080,
+      "brotliSizeInBytes": 6951
     },
     "vite@8.2.2": {
-      "rawSizeInBytes": 23700,
-      "brotliSizeInBytes": 6892
+      "rawSizeInBytes": 23705,
+      "brotliSizeInBytes": 6897
     }
   }
 }
@@ -17,12 +17,12 @@ exports[`Type tree shaking > bundles a realistic app using common Types 1`] = `
 {
   "real app": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 40605,
-      "brotliSizeInBytes": 11201
+      "rawSizeInBytes": 40610,
+      "brotliSizeInBytes": 11210
     },
     "vite@8.2.2": {
-      "rawSizeInBytes": 39902,
-      "brotliSizeInBytes": 11127
+      "rawSizeInBytes": 39907,
+      "brotliSizeInBytes": 11138
     }
   }
 }
@@ -32,12 +32,12 @@ exports[`Type tree shaking > bundles every selected locale and no unrelated Type
 {
   "localizeTypes(Label)": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 7666,
-      "brotliSizeInBytes": 2801
+      "rawSizeInBytes": 7678,
+      "brotliSizeInBytes": 2809
     },
     "vite@8.2.2": {
-      "rawSizeInBytes": 7521,
-      "brotliSizeInBytes": 2773
+      "rawSizeInBytes": 7533,
+      "brotliSizeInBytes": 2780
     }
   }
 }
@@ -67,12 +67,12 @@ exports[`Type tree shaking > bundles only the validation and formatting code use
   },
   "NonEmptyString": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 5015,
-      "brotliSizeInBytes": 1972
+      "rawSizeInBytes": 5027,
+      "brotliSizeInBytes": 1982
     },
     "vite@8.2.2": {
-      "rawSizeInBytes": 4941,
-      "brotliSizeInBytes": 1951
+      "rawSizeInBytes": 4953,
+      "brotliSizeInBytes": 1962
     }
   },
   "NumberFromString": {
@@ -147,22 +147,22 @@ exports[`Type tree shaking > bundles only the validation and formatting code use
   },
   "Union(String, Number)": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 7253,
-      "brotliSizeInBytes": 2696
+      "rawSizeInBytes": 7255,
+      "brotliSizeInBytes": 2702
     },
     "vite@8.2.2": {
-      "rawSizeInBytes": 7146,
-      "brotliSizeInBytes": 2690
+      "rawSizeInBytes": 7148,
+      "brotliSizeInBytes": 2694
     }
   },
   "Object(NonEmptyString)": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 12911,
-      "brotliSizeInBytes": 4173
+      "rawSizeInBytes": 12923,
+      "brotliSizeInBytes": 4176
     },
     "vite@8.2.2": {
-      "rawSizeInBytes": 12719,
-      "brotliSizeInBytes": 4114
+      "rawSizeInBytes": 12731,
+      "brotliSizeInBytes": 4124
     }
   },
   "Record(String, Number)": {
@@ -187,22 +187,22 @@ exports[`Type tree shaking > bundles only the validation and formatting code use
   },
   "typed(Pending)": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 13538,
-      "brotliSizeInBytes": 4319
+      "rawSizeInBytes": 13540,
+      "brotliSizeInBytes": 4326
     },
     "vite@8.2.2": {
-      "rawSizeInBytes": 13321,
+      "rawSizeInBytes": 13323,
       "brotliSizeInBytes": 4283
     }
   },
   "discriminatedUnion(Created, Deleted)": {
     "webpack@5.109.2": {
-      "rawSizeInBytes": 16462,
-      "brotliSizeInBytes": 4981
+      "rawSizeInBytes": 16464,
+      "brotliSizeInBytes": 4993
     },
     "vite@8.2.2": {
-      "rawSizeInBytes": 16194,
-      "brotliSizeInBytes": 4950
+      "rawSizeInBytes": 16196,
+      "brotliSizeInBytes": 4952
     }
   }
 }

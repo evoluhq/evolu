@@ -2241,6 +2241,66 @@ type ConcreteChildTypeNameError = CompileTimeError<
   "Name must be one concrete Type name."
 >;
 
+type ValidateErrorPath<
+  Value,
+  Path extends NonEmptyReadonlyArray<PropertyKey>,
+> = Path & ErrorPathKeys<Value, Path>;
+
+// Each segment is checked by assignability rather than a conditional type, so
+// a key of a generic parent Output or of one union variant is accepted. The
+// error record keeps a wrong key from collapsing the whole path to never, so
+// only that segment fails, with ErrorPathError.
+type ErrorPathKeys<Value, Path> = Path extends readonly [
+  infer Key,
+  ...infer Rest,
+]
+  ? readonly [
+      (
+        | keyof NonNullable<Value>
+        | KeyOfUnion<NonNullable<Value>>
+        | Readonly<Record<ErrorPathError, never>>
+      ),
+      ...ErrorPathKeys<ValueAtKey<NonNullable<Value>, Key>, Rest>,
+    ]
+  : readonly [];
+
+type KeyOfUnion<Value> = Value extends unknown ? keyof Value : never;
+
+type ValueAtKey<Value, Key> = Value extends unknown
+  ? Key extends keyof Value
+    ? Value[Key]
+    : never
+  : never;
+
+type ErrorPathError = CompileTimeError<
+  "Type",
+  "Error path must name properties of the parent Output."
+>;
+
+/**
+ * Options for a fallible child {@link Type} created by {@link brand} or
+ * {@link createType}.
+ *
+ * @group Construction
+ */
+export interface ChildTypeOptions<
+  Path extends NonEmptyReadonlyArray<PropertyKey>,
+> {
+  /**
+   * Locates the child's own error within the validated value.
+   *
+   * {@link typeErrorToIssues} and Standard Schema validation report the error at
+   * this path instead of at the value itself, so a rule spanning several
+   * properties, such as a range whose maximum must not be below its minimum,
+   * shows its message at one form field. The error itself is unchanged, and
+   * inherited errors keep their own paths.
+   *
+   * The path names keys of the parent Output, so under {@link objectKeys} it
+   * names the decoded keys, not the external names.
+   */
+  readonly path: Path;
+}
+
 /**
  * Custom {@link Type}.
  *
@@ -2264,6 +2324,9 @@ type ConcreteChildTypeNameError = CompileTimeError<
  * the parent Type automatically. A fallible child must have one concrete name;
  * its error's `type` must equal that name and must not duplicate an inherited
  * error type. An infallible child has no own error to format.
+ *
+ * A fallible child can report its error at a property of the validated value
+ * with {@link ChildTypeOptions}.
  *
  * Use {@link createTypeWithError} to wrap an existing validator's errors.
  *
@@ -2346,6 +2409,7 @@ export function createType<
   ParentType extends ConcreteTypeNode,
   Output extends ParentType["Output"],
   Error extends TypeError<Name>,
+  const Path extends NonEmptyReadonlyArray<PropertyKey> = never,
 >(
   name: Name,
   parent: ValidateBrandParent<Name, ParentType>,
@@ -2354,6 +2418,7 @@ export function createType<
   formatError: [Error] extends [never]
     ? never
     : TypeErrorFormatter<NoInfer<Error>>,
+  options?: ChildTypeOptions<ValidateErrorPath<ParentType["Output"], Path>>,
 ): Type<
   Name,
   ParentType["Input"],
@@ -2370,6 +2435,7 @@ export function createType(
   fromUnknownOrParent: unknown,
   fromParentOrFormatError: unknown,
   formatError?: TypeErrorFormatter<TypeError>,
+  options?: ChildTypeOptions<NonEmptyReadonlyArray<PropertyKey>>,
 ): TypeNode {
   if (typeof fromUnknownOrParent === "function") {
     const fromUnknown = assertRefinementIdentity(
@@ -2395,6 +2461,8 @@ export function createType(
       fromParentOrFormatError as (value: unknown) => Result<unknown, TypeError>,
     ),
     formatError,
+    false,
+    options?.path,
   );
 }
 
@@ -2598,11 +2666,11 @@ const createChildType = <
   parent: ParentType,
   fromParent: (value: ParentType["Output"]) => Result<Output, Error>,
   formatOwnError?: TypeErrorFormatter<Error>,
-  // Wrapped child errors can delegate their structured issues.
-  getTypeIssuesOverride?: RuntimeGetTypeIssues,
   // A refinement `fromParent` only checks the parent Output and returns
   // `ok()`, so the child can return the parent Result unchanged.
   isRefinement = false,
+  // Locates the child's own error within its value; see ChildTypeOptions.
+  errorPath?: NonEmptyReadonlyArray<PropertyKey>,
 ): Type<
   Name,
   ParentType["Input"],
@@ -2616,14 +2684,17 @@ const createChildType = <
 > => {
   const typeParent = parent as ParentType & RuntimeTypeNode;
   const defaultFormatter = formatOwnError! as TypeErrorFormatter<TypeError>;
-  const getTypeIssues: RuntimeGetTypeIssues =
-    getTypeIssuesOverride ??
-    (formatOwnError
-      ? (error, mode, path) =>
-          error.type === name
-            ? singleRuntimeTypeIssue(name, error, defaultFormatter, path)
-            : typeParent[getRuntimeTypeIssuesSymbol](error, mode, path)
-      : typeParent[getRuntimeTypeIssuesSymbol]);
+  const getTypeIssues: RuntimeGetTypeIssues = formatOwnError
+    ? (error, mode, path) =>
+        error.type === name
+          ? singleRuntimeTypeIssue(
+              name,
+              error,
+              defaultFormatter,
+              errorPath ? [...path, ...errorPath] : path,
+            )
+          : typeParent[getRuntimeTypeIssuesSymbol](error, mode, path)
+    : typeParent[getRuntimeTypeIssuesSymbol];
   // Validators get only the value and no receiver (refinements are read into
   // a local before a call), so default parameters, `arguments`, and `this`
   // behave as in a direct call.
@@ -4263,7 +4334,6 @@ export const literal = <const Expected extends Literal>(
               ? ok()
               : err({ type: "Literal", expected: literalExpected, value }),
           formatLiteralError,
-          undefined,
           true,
         )
       : createRootType(
@@ -5818,6 +5888,9 @@ export interface BrandType<
  * it introduces; inherited errors are formatted by the parent Type
  * automatically. A fallible brand's error `type` must equal the Brand name.
  *
+ * A fallible brand can report its error at a property of the validated value
+ * with {@link ChildTypeOptions}.
+ *
  * ### Example
  *
  * A signed 64-bit integer:
@@ -5866,6 +5939,44 @@ export interface BrandType<
  * });
  * ```
  *
+ * A rule spanning several properties, reported at the form field that shows it:
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   brand,
+ *   err,
+ *   FiniteNumber,
+ *   object,
+ *   ok,
+ *   typeErrorToIssues,
+ *   type TypeError,
+ * } from "@evolu/common";
+ *
+ * interface PriceRangeError extends TypeError<"PriceRange"> {}
+ *
+ * const PriceRange = brand(
+ *   "PriceRange",
+ *   object({ min: FiniteNumber, max: FiniteNumber }),
+ *   (value) =>
+ *     value.min <= value.max
+ *       ? ok()
+ *       : err<PriceRangeError>({ type: "PriceRange" }),
+ *   () => "The maximum must not be below the minimum.",
+ *   { path: ["max"] },
+ * );
+ *
+ * const result = PriceRange.fromUnknown({ min: 20, max: 10 });
+ * assertErr(result, { type: "PriceRange" });
+ * assertEqual(typeErrorToIssues(PriceRange, result.error), [
+ *   {
+ *     path: ["max"],
+ *     message: "The maximum must not be below the minimum.",
+ *   },
+ * ]);
+ * ```
+ *
  * To reuse and compose a Brand constraint with different parent Types, define a
  * {@link BrandFactory}.
  *
@@ -5886,26 +5997,29 @@ export function brand<
   Name extends TypeName,
   ParentType extends ConcreteTypeNode,
   Error extends TypeError<NoInfer<Name>>,
+  const Path extends NonEmptyReadonlyArray<PropertyKey> = never,
 >(
   name: Name,
   parent: ValidateBrandParent<Name, ParentType>,
   validate: (value: ParentType["Output"]) => Result<void, Error>,
   // Validation alone determines Error; broad formatters must not widen it.
   formatError: TypeErrorFormatter<NoInfer<Error>>,
+  options?: ChildTypeOptions<ValidateErrorPath<ParentType["Output"], Path>>,
 ): BrandType<ParentType, Name, Error>;
 export function brand(
   name: TypeName,
   parent: unknown,
   validate?: (value: unknown) => Result<void, TypeError>,
   formatError?: TypeErrorFormatter<TypeError>,
+  options?: ChildTypeOptions<NonEmptyReadonlyArray<PropertyKey>>,
 ): TypeNode {
   return createChildType(
     name,
     parent as RuntimeTypeNode,
     validate ?? (() => ok()),
     formatError,
-    undefined,
     true,
+    options?.path,
   );
 }
 

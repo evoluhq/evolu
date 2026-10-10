@@ -1720,6 +1720,276 @@ describe("typeErrorToIssues", () => {
       { path: ["labels", 1], message: "Text nesmí být prázdný." },
     ]);
   });
+
+  describe("child error path", () => {
+    interface PasswordsMatchError extends TypeError<"PasswordsMatch"> {}
+
+    const SignUp = brand(
+      "PasswordsMatch",
+      object({ password: NonEmptyTrimmedString, confirm: String }),
+      (value) =>
+        value.password === value.confirm
+          ? ok()
+          : err<PasswordsMatchError>({ type: "PasswordsMatch" }),
+      () => "Passwords do not match.",
+      { path: ["confirm"] },
+    );
+
+    it("reports a brand error at its path without changing the error", async () => {
+      const input = { password: "secret", confirm: "secrte" };
+      const result = SignUp.fromUnknown(input);
+      assertErr(result, { type: "PasswordsMatch" });
+      assertEqual(typeErrorToIssues(SignUp, result.error), [
+        { path: ["confirm"], message: "Passwords do not match." },
+      ]);
+      assertEqual(await SignUp["~standard"].validate(input), {
+        issues: [{ message: "Passwords do not match.", path: ["confirm"] }],
+      });
+    });
+
+    it("keeps inherited errors at their own paths", () => {
+      const result = SignUp.fromUnknown(
+        { password: "", confirm: "x" },
+        { errors: "all" },
+      );
+      assertErr(result);
+      assertEqual(typeErrorToIssues(SignUp, result.error), [
+        {
+          path: ["password"],
+          message: 'The value "" does not meet the minimum length of 1.',
+        },
+      ]);
+    });
+
+    it("appends the path to the location of the validated value", () => {
+      const Account = object({ signUp: SignUp });
+      const result = Account.fromUnknown({
+        signUp: { password: "secret", confirm: "secrte" },
+      });
+      assertErr(result);
+      assertEqual(typeErrorToIssues(Account, result.error), [
+        { path: ["signUp", "confirm"], message: "Passwords do not match." },
+      ]);
+    });
+
+    it("keeps the path when a child refines the Type", () => {
+      const StrongSignUp = brand(
+        "Strong",
+        SignUp,
+        (value) =>
+          value.password.length >= 8
+            ? ok()
+            : err<TypeError<"Strong">>({ type: "Strong" }),
+        () => "The password is too short.",
+      );
+      const result = StrongSignUp.fromUnknown({
+        password: "secret",
+        confirm: "secrte",
+      });
+      assertErr(result, { type: "PasswordsMatch" });
+      assertEqual(typeErrorToIssues(StrongSignUp, result.error), [
+        { path: ["confirm"], message: "Passwords do not match." },
+      ]);
+    });
+
+    it("accepts paths into a generic parent and a union variant", () => {
+      const passwordsMatch: BrandFactory<
+        "PasswordsMatch",
+        { readonly password: string; readonly confirm: string },
+        PasswordsMatchError
+      > = (parent) =>
+        brand(
+          "PasswordsMatch",
+          parent,
+          (value) =>
+            value.password === value.confirm
+              ? ok()
+              : err<PasswordsMatchError>({ type: "PasswordsMatch" }),
+          () => "Passwords do not match.",
+          { path: ["confirm"] },
+        );
+      const Passwords = passwordsMatch(
+        object({ password: String, confirm: String }),
+      );
+      const passwords = Passwords.fromUnknown({ password: "a", confirm: "b" });
+      assertErr(passwords);
+      assertEqual(typeErrorToIssues(Passwords, passwords.error), [
+        { path: ["confirm"], message: "Passwords do not match." },
+      ]);
+
+      interface IbanRequiredError extends TypeError<"IbanRequired"> {}
+
+      const Payment = brand(
+        "IbanRequired",
+        object({
+          amount: Number,
+          method: union(object({ card: String }), object({ iban: String })),
+        }),
+        (value) =>
+          value.amount <= 1000 || "iban" in value.method
+            ? ok()
+            : err<IbanRequiredError>({ type: "IbanRequired" }),
+        () => "A large payment requires a bank account.",
+        { path: ["method", "iban"] },
+      );
+      const payment = Payment.fromUnknown({
+        amount: 2000,
+        method: { card: "4111" },
+      });
+      assertErr(payment);
+      assertEqual(typeErrorToIssues(Payment, payment.error), [
+        {
+          path: ["method", "iban"],
+          message: "A large payment requires a bank account.",
+        },
+      ]);
+    });
+
+    it("accepts paths through optional, nullable, and array values", () => {
+      const Form = object({
+        note: optional(String),
+        contact: nullOr(object({ email: String })),
+        tags: array(String),
+      });
+      const rule = () => err<TypeError<"FormRule">>({ type: "FormRule" });
+
+      for (const Rule of [
+        brand("FormRule", Form, rule, () => "Invalid note.", {
+          path: ["note"],
+        }),
+        brand("FormRule", Form, rule, () => "Invalid note.", {
+          path: ["contact", "email"],
+        }),
+        brand("FormRule", Form, rule, () => "Invalid note.", {
+          path: ["tags", 0],
+        }),
+      ]) {
+        assertErr(Rule.fromUnknown({ contact: null, tags: [] }), {
+          type: "FormRule",
+        });
+      }
+    });
+
+    it("reports a createType child error at a nested path", () => {
+      interface DateRangeError extends TypeError<"DateRange"> {}
+
+      const Booking = createType(
+        "DateRange",
+        object({ range: object({ start: Number, end: Number }) }),
+        (value) =>
+          value.range.start <= value.range.end
+            ? ok(value)
+            : err<DateRangeError>({ type: "DateRange" }),
+        () => "The end must not precede the start.",
+        { path: ["range", "end"] },
+      );
+
+      const result = Booking.fromUnknown({ range: { start: 2, end: 1 } });
+      assertErr(result, { type: "DateRange" });
+      assertEqual(typeErrorToIssues(Booking, result.error), [
+        {
+          path: ["range", "end"],
+          message: "The end must not precede the start.",
+        },
+      ]);
+    });
+
+    it("keeps the path in localized Types", () => {
+      const Passwords = brand(
+        "PasswordsMatch",
+        object({ password: String, confirm: String }),
+        (value) =>
+          value.password === value.confirm
+            ? ok()
+            : err<PasswordsMatchError>({ type: "PasswordsMatch" }),
+        () => "Passwords do not match.",
+        { path: ["confirm"] },
+      );
+      const LocalizedPasswords = localizeTypes(
+        { Passwords },
+        {
+          cs: {
+            Object: cs.formatObjectError,
+            PasswordsMatch: () => "Hesla se neshodují.",
+            String: cs.formatStringError,
+          },
+        },
+      ).cs.Passwords;
+
+      const result = LocalizedPasswords.fromUnknown({
+        password: "secret",
+        confirm: "secrte",
+      });
+      assertErr(result);
+      assertEqual(typeErrorToIssues(LocalizedPasswords, result.error), [
+        { path: ["confirm"], message: "Hesla se neshodují." },
+      ]);
+    });
+
+    it("rejects a path outside the parent Output", () => {
+      const validate = (value: {
+        readonly range: { readonly start: number; readonly end: number };
+      }) =>
+        value.range.start <= value.range.end
+          ? ok()
+          : err<TypeError<"DateRange">>({ type: "DateRange" });
+      const Parent = object({ range: object({ start: Number, end: Number }) });
+
+      brand("DateRange", Parent, validate, () => "", {
+        // @ts-expect-error Error path must name properties of the parent Output.
+        path: ["rnage"],
+      });
+      brand("DateRange", Parent, validate, () => "", {
+        // @ts-expect-error Error path must name properties of the parent Output.
+        path: ["range", "middle"],
+      });
+      createType(
+        "DateRange",
+        Parent,
+        (value) =>
+          validate(value).ok
+            ? ok(value)
+            : err<TypeError<"DateRange">>({ type: "DateRange" }),
+        () => "",
+        {
+          // @ts-expect-error Error path must name properties of the parent Output.
+          path: ["end"],
+        },
+      );
+
+      void (((parent) =>
+        brand(
+          "PasswordsMatch",
+          parent,
+          (value) =>
+            value.password === value.confirm
+              ? ok()
+              : err<PasswordsMatchError>({ type: "PasswordsMatch" }),
+          () => "",
+          {
+            // @ts-expect-error Error path must name properties of the parent Output.
+            path: ["confrim"],
+          },
+        )) satisfies BrandFactory<
+        "PasswordsMatch",
+        { readonly password: string; readonly confirm: string },
+        PasswordsMatchError
+      >);
+
+      brand(
+        "Method",
+        object({
+          method: union(object({ card: String }), object({ iban: String })),
+        }),
+        () => err<TypeError<"Method">>({ type: "Method" }),
+        () => "",
+        {
+          // @ts-expect-error Error path must name properties of the parent Output.
+          path: ["method", "ibn"],
+        },
+      );
+    });
+  });
 });
 
 describe("Standard Schema", () => {
