@@ -39,11 +39,11 @@ DurationLiteral.to(duration);
 PercentageLiteral.to(percentage);
 
 // @ts-expect-error ByteSizeLiteral Input rejects decimal units such as "1MB".
-const _invalidSize: typeof ByteSizeLiteral.Input = "1MB";
+void ("1MB" satisfies typeof ByteSizeLiteral.Input);
 // @ts-expect-error DurationLiteral Input rejects the redundant "60s" spelling.
-const _invalidDuration: typeof DurationLiteral.Input = "60s";
+void ("60s" satisfies typeof DurationLiteral.Input);
 // @ts-expect-error PercentageLiteral Input rejects percentages above 100.
-const _invalidPercentage: typeof PercentageLiteral.Input = "101%";
+void ("101%" satisfies typeof PercentageLiteral.Input);
 
 const invalidSize = ByteSizeLiteral.fromUnknown("1MB");
 if (!invalidSize.ok)

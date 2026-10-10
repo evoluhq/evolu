@@ -60,11 +60,11 @@ test("Query", () => {
   );
 
   // Ensure queries from different schemas are not assignable.
-  // @ts-expect-error - query1 should not be assignable to query2
-  const shouldError: typeof query2 = query1;
+  // @ts-expect-error A query of QuerySchema is not assignable to a query of AnotherQuerySchema.
+  void (query1 satisfies typeof query2);
 
-  // @ts-expect-error - query2 should not be assignable to query1
-  const shouldAlsoError: typeof query1 = query2;
+  // @ts-expect-error A query of AnotherQuerySchema is not assignable to a query of QuerySchema.
+  void (query2 satisfies typeof query1);
 
   assertType<
     typeof query1 extends Query<typeof QuerySchema> ? true : false,

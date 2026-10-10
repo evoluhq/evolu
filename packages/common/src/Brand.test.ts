@@ -15,16 +15,16 @@ test("Brand", () => {
   assertType<typeof validProductId, number & Brand<"ProductId">>();
 
   // Invalid assignment (string to ProductId)
-  // @ts-expect-error - Should not allow a string to be assigned to ProductId
-  const invalidProductId: ProductId = "not-a-number";
+  // @ts-expect-error A string is not assignable to ProductId.
+  void ("not-a-number" satisfies ProductId);
 
   // Invalid assignment (unbranded string to UserId)
-  // @ts-expect-error - Should not allow unbranded string to be assigned to UserId
-  const invalidUserId: UserId = "user123";
+  // @ts-expect-error An unbranded string is not assignable to UserId.
+  void ("user123" satisfies UserId);
 
   // Invalid assignment (mixing different brands)
-  // @ts-expect-error - Should not allow assigning a ProductId to a UserId
-  const mismatchedId: UserId = validProductId;
+  // @ts-expect-error A ProductId is not assignable to UserId.
+  void (validProductId satisfies UserId);
 });
 
 test("Brand - multiple brands", () => {
