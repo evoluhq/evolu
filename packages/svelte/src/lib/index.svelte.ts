@@ -3,6 +3,7 @@
  * compiler in the app itself.
  */
 
+import { emptyArray } from "@evolu/common";
 import type {
   Evolu,
   EvoluDeps,
@@ -19,7 +20,9 @@ export const evoluSvelteDeps: EvoluDeps = /*#__PURE__*/ createEvoluDeps();
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` property
- * that are automatically updated when data changes.
+ * that are automatically updated when data changes. `rows` holds only rows of
+ * the current query, so it is empty until that query loads and while there is
+ * no query.
  *
  * ### Example
  *
@@ -65,30 +68,27 @@ export const queryState = <R extends Row, Schema extends EvoluSchema>(
   {
     // Evolu replaces rows and never mutates them, so raw state keeps them
     // unproxied. Proxies would cost work and the identity of unchanged rows.
-    let writableState: QueryRows<R> = $state.raw([]);
-
-    const updateState = (rows: QueryRows<R>): void => {
-      writableState = rows;
-    };
+    let writableState: QueryRows<R> = $state.raw(emptyArray);
 
     $effect(() => {
       const query = observedQuery();
 
       if (!query) {
+        writableState = emptyArray;
         return;
       }
 
-      // always setting the state on first load
-      // for a) if the query changes we definitely need current content immediately
-      // for b) if you sub/unsub in a very short time can cause the subscription not to trigger a callback
-      // => this is also for HMR
-      void evolu.loadQuery(query).then(updateState);
+      const updateRows = (): void => {
+        writableState = evolu.getQueryRows(query);
+      };
 
-      return evolu.subscribeQuery(query)(() => {
-        const rows = evolu.getQueryRows(query);
+      // Rows come only from the store, never from a load result, because a
+      // load of a previous query can resolve after the current query's rows.
+      // The load stores the rows and notifies the subscription.
+      void evolu.loadQuery(query);
+      updateRows();
 
-        updateState(rows);
-      });
+      return evolu.subscribeQuery(query)(updateRows);
     });
 
     return {
