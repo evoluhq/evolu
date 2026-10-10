@@ -1,5 +1,29 @@
 # @evolu/sqlite-wasm
 
+## 3.53.4-build2
+
+### Patch Changes
+
+- 88840c2: Computed the build guard hash with fnv1a32 from @evolu/common
+
+  The build guard that checks a loaded binary against the pinned build now hashes
+  with `fnv1a32` from `@evolu/common` instead of its own copy of FNV-1a, so this
+  release requires the `@evolu/common` release that adds `fnv1a32`. The hash and
+  `sqliteWasmBuildHash` are unchanged.
+
+- Updated dependencies [e803b34]
+- Updated dependencies [88840c2]
+- Updated dependencies [87f0678]
+- Updated dependencies [ea707cc]
+- Updated dependencies [74cc737]
+- Updated dependencies [fbdb9a4]
+- Updated dependencies [e803b34]
+- Updated dependencies [b599e0d]
+- Updated dependencies [c3fa5c7]
+- Updated dependencies [c3fa5c7]
+- Updated dependencies [74cc737]
+  - @evolu/common@8.20.0
+
 ## 3.53.4-build1
 
 ### Major Changes
