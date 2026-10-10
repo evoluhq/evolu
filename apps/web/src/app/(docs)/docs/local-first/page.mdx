@@ -75,7 +75,9 @@ npm install @evolu/common @evolu/web
   true }]` in your app config's plugins, or, in an app that doesn't run Expo's
   prebuild, with the build properties
   [Privacy](/docs/privacy#encryption-on-the-device) lists. Otherwise, the
-  database is stored unencrypted.
+  database is stored unencrypted. Enable it before your app's first release,
+  because an app released without it can't open its existing database once
+  SQLCipher is on.
 </ConditionalPlatformAlert>
 
 ## Define schema
