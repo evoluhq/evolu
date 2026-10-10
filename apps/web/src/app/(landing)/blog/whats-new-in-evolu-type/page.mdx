@@ -1,0 +1,343 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2026-10-10",
+  title: "What's new in Evolu Type",
+  description:
+    "Evolu Type is a TypeScript validation library whose errors are plain, typed data and whose constraints stay in the type. Evolu 8.20 adds redacted secrets, form errors at the right field, and Types for common formats, dates, numbers, and collections.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+Evolu Type is a TypeScript library for validating data at runtime. It's part of
+[Evolu Library](/docs/library), the library Evolu is built on. Evolu uses it
+everywhere, and your app can use it with or without the rest of Evolu.
+
+We made it because we care about correctness and developer experience. A
+local-first app keeps its users' data on their devices, where its developers
+can't inspect or repair it, so invalid data must not get in. And the correct
+code should be the easiest code to write.
+
+If you're new to Evolu Type, read on. If you already use it, skip to
+[what's new in 8.20](#whats-new-in-8-20): redacted secrets, form errors at the
+right field, and many new Types.
+
+## What makes Evolu Type different
+
+A Type validates an unknown value and returns a `Result`: the typed value, or a
+typed error.
+
+```ts
+import {
+  assertEqual,
+  assertErr,
+  assertOk,
+  brand,
+  lessThan,
+  NonNegativeInt,
+} from "@evolu/common";
+
+const Age = brand("Age", lessThan(200)(NonNegativeInt));
+
+assertOk(Age.fromUnknown(37), 37);
+
+const age = Age.fromUnknown(37.5);
+assertErr(age);
+assertEqual(age.error, { type: "Int", value: 37.5 });
+assertEqual(
+  Age.formatError(age.error),
+  "The value 37.5 must be a safe integer.",
+);
+```
+
+`Age` ships with Evolu, defined exactly like this.
+
+### Errors are data
+
+An error is a plain object, such as `{ type: "Int", value: 37.5 }`. It isn't an
+`Error` instance, and it carries no message. Its TypeScript type lists exactly
+the errors that Type can return, so you can switch on it and format it later,
+in any language. When the input is plain data, so is the error, so you can also
+store it or send it to a worker.
+
+Most validation libraries don't work this way. Zod 4 returns a `ZodError`, an
+`Error` instance whose issues are one generic union for all schemas, each with a
+prebuilt message. Effect Schema 4 also formats messages later, but its `Schema`
+decoders fail with a `SchemaError`, also an `Error`, and its issues are one
+union of class instances that hold schema AST nodes, so they can't be sent to a
+worker as they are. Valibot comes closest: its issues are plain objects typed
+per schema, but each still carries a prebuilt message.
+
+### Constraints stay in the type
+
+Every constraint a Type checks shows in its type. `Age` is a number that passed
+six checks, and its type says so, so a function can ask for a value that has
+been validated:
+
+```ts
+import { Age, assertType, type Brand } from "@evolu/common";
+
+assertType<
+  Age,
+  number &
+    Brand<"NonNaN"> &
+    Brand<"Finite"> &
+    Brand<"Int"> &
+    Brand<"NonNegative"> &
+    Brand<"LessThan200"> &
+    Brand<"Age">
+>();
+
+const canVote = (age: Age): boolean => age >= 18;
+
+// @ts-expect-error A number is not an Age until Age validates it.
+canVote(37);
+```
+
+Zod, Valibot, and Effect Schema let you opt into a brand, but their built-in
+constraints don't add one. `z.string().min(1).max(100)` still outputs `string`,
+so the compiler forgets what was checked.
+
+### Translations checked by the compiler
+
+`formatError` turns an error into an English message. `localizeTypes` returns
+the same Types with messages in another language, and `@evolu/common/intl`
+translates every message into 43 locales. The formatters a Type needs are
+inferred from the Type, so a missing translation is a compile error, not an
+English or generic message at runtime.
+
+```ts
+import { Age, assertEqual, assertErr, localizeTypes } from "@evolu/common";
+import { cs } from "@evolu/common/intl";
+
+const typesByLocale = localizeTypes(
+  { Age },
+  {
+    cs: {
+      Number: cs.formatNumberError,
+      NonNaN: cs.formatNonNaNError,
+      Finite: cs.formatFiniteError,
+      Int: cs.formatIntError,
+      NonNegative: cs.formatNonNegativeError,
+      LessThan200: cs.formatLessThanError,
+    },
+  },
+);
+
+const age = typesByLocale.cs.Age.fromUnknown(37.5);
+assertErr(age);
+assertEqual(
+  typesByLocale.cs.Age.formatError(age.error),
+  "Hodnota 37.5 musí být bezpečné celé číslo.",
+);
+
+localizeTypes(
+  { Age },
+  // @ts-expect-error localizeTypes requires a formatter for every error Age can return.
+  { cs: { Int: cs.formatIntError } },
+);
+```
+
+### Strict by default
+
+Objects are exact: a property the Type doesn't declare is an error, not
+something silently dropped. Validation reads property descriptors and never
+calls a getter, so a getter fails validation instead of running.
+
+### Codecs and Standard Schema
+
+Like Effect Schema and Zod's codecs, Types are codecs: `IntFromString` decodes
+`"42"` to `42` and encodes it back. Every valid value encodes to one canonical
+input.
+
+Like Zod and Valibot, every Type implements
+[Standard Schema](https://standardschema.dev), so form libraries and other
+tools that accept Standard Schema accept Evolu Types too.
+
+To try it, install `@evolu/common`. It needs TypeScript 7 or newer with
+`exactOptionalPropertyTypes`, and the
+[Type reference](/docs/api-reference/common/Type) documents every Type.
+
+## What's new in 8.20
+
+### Redacted secrets
+
+`Mnemonic` and `SimplePassword` errors used to contain the rejected input, and
+their messages printed it. A single mistyped word exposed the rest of a
+mnemonic. Now every string they reject fails with an error that doesn't contain
+it.
+
+The new `redacted` validates a secret with an inner Type and wraps the result
+in `Redacted`, so a decoded password, mnemonic, or API key doesn't leak through
+logging or serialization. A non-string fails with a `Redacted` error that
+doesn't contain it either.
+
+```ts
+import {
+  assertEqual,
+  assertOk,
+  object,
+  redacted,
+  revealRedacted,
+  SimplePassword,
+  String,
+} from "@evolu/common";
+
+const SignIn = object({ email: String, password: redacted(SimplePassword) });
+
+const signIn = SignIn.fromUnknown({
+  email: "ada@example.com",
+  password: "correct horse",
+});
+assertOk(signIn);
+assertEqual(revealRedacted(signIn.value.password), "correct horse");
+assertEqual(
+  JSON.stringify(signIn.value),
+  '{"email":"ada@example.com","password":"<redacted>"}',
+);
+```
+
+The inner Type's errors pass through unchanged, so they must not keep the
+value. Use `SimplePassword`, `Mnemonic`, or your own Type with value-free
+errors. The compiler rejects inner errors with a `value` property, so
+`redacted(minLength(8)(String))` doesn't compile.
+
+In a union, the other members' errors keep the raw input, so use `optional` for
+an absent secret, not `nullOr`. Two `Redacted` values are equal only when they
+are the same wrapper, and a `Redacted` has no hash, because a hash of a short
+secret such as a PIN can be brute-forced.
+
+### Form errors at the right field
+
+A rule spanning several fields, such as a range whose maximum must not be below
+its minimum, is a refinement of the whole object. Its error used to be reported
+at the object itself, so a form couldn't show it at a field. Now a `brand` or a
+child `createType` can say where its error belongs:
+
+```ts
+import {
+  assertEqual,
+  assertErr,
+  brand,
+  err,
+  FiniteNumber,
+  object,
+  ok,
+  typeErrorToIssues,
+  type TypeError,
+} from "@evolu/common";
+
+interface PriceRangeError extends TypeError<"PriceRange"> {}
+
+const PriceRange = brand(
+  "PriceRange",
+  object({ min: FiniteNumber, max: FiniteNumber }),
+  (value) =>
+    value.min <= value.max
+      ? ok()
+      : err<PriceRangeError>({ type: "PriceRange" }),
+  () => "The maximum must not be below the minimum.",
+  { path: ["max"] },
+);
+
+const result = PriceRange.fromUnknown({ min: 20, max: 10 });
+assertErr(result, { type: "PriceRange" });
+assertEqual(typeErrorToIssues(PriceRange, result.error), [
+  { path: ["max"], message: "The maximum must not be below the minimum." },
+]);
+```
+
+The error itself is unchanged, the path also reaches Standard Schema, and a
+path that doesn't exist in the object doesn't compile.
+
+### New Types
+
+The text formats accept one canonical spelling and don't normalize input. Types
+named `XFromY`, such as `IpAddressFromString` and `DateIsoFromRfc3339`, convert.
+
+- **Text formats:** `Base64`, `Hex`, `UuidV4`, `UuidV7`, `uuidVersion`, `Ulid`,
+  `Hostname`, `Ipv4Address`, `Ipv6Address`, `IpAddress`, `PhoneNumberE164`,
+  `Iban`, `Isbn`, and `HexColor`. `Ipv6AddressFromString` and
+  `IpAddressFromString` convert IPv6 address text to its canonical form.
+- **Bytes:** `Uint8ArrayFromBase64`, `Uint8ArrayFromBase64Url`, and
+  `Uint8ArrayFromHex` decode text to bytes and encode it back.
+- **Dates:** `PlainDateIso` accepts a calendar date such as `2024-02-29` and
+  rejects one that doesn't exist. `ValidDate` rejects an Invalid Date, and
+  `DateIsoFromRfc3339` decodes RFC 3339 date-times.
+- **Numbers:** `FiniteNumberFromString`, `Int32`, `UInt32`, and bounds for
+  bigints, from `greaterThanBigInt` to `betweenBigInt`.
+- **Strings:** `endsWith`, `includes`, `excludes`, `maxUtf8ByteLength`,
+  `wellFormed`, which rejects lone surrogates, and `normalized`, which requires
+  a Unicode normalization form.
+- **Collections:** `unique`, `minEntries` and `maxEntries` for records and
+  objects, `minSize` and `maxSize` for Sets, Maps, and Blobs, and
+  `nonEmptyArray`.
+
+```ts
+import {
+  assertErr,
+  assertOk,
+  array,
+  Iban,
+  IpAddressFromString,
+  PlainDateIso,
+  String,
+  unique,
+} from "@evolu/common";
+
+assertOk(PlainDateIso.fromUnknown("2024-02-29"));
+assertErr(PlainDateIso.fromUnknown("2023-02-29"));
+
+assertOk(Iban.fromUnknown("GB82WEST12345698765432"));
+
+assertOk(IpAddressFromString.fromUnknown("2001:0DB8::1"), "2001:db8::1");
+
+assertErr(unique(array(String)).fromUnknown(["a", "b", "a"]));
+```
+
+### Counts checked at compile time
+
+`minLength(-1)` used to accept every value, and `maxLength(1.5)` behaved as
+`maxLength(1)`. Length, size, and entry-count factories now take only a
+non-negative integer:
+
+```ts
+import { maxLength, minLength, String } from "@evolu/common";
+
+minLength(1)(String);
+// @ts-expect-error Count must be a non-negative integer.
+minLength(-1)(String);
+// @ts-expect-error Count must be a non-negative integer.
+maxLength(1.5)(String);
+```
+
+### Better messages
+
+We reviewed every message in every locale. The review fixed wording, grammar,
+and terminology in 37 locales, and messages no longer break for counts such as
+"exactly 1 elements". Every locale also translates the errors of `Data` and the
+byte length Types now.
+
+### Upgrading
+
+Most changes are additions. Three can affect existing code:
+
+- `MnemonicError` no longer has `value`, and `SimplePassword` fails with a
+  `SimplePasswordError` whose `reason` is `"Untrimmed"`, `"TooLong"`, or
+  `"TooShort"`. In `localizeTypes`, these Types take the `String` formatter and
+  `formatMnemonicError` or `formatSimplePasswordError` instead of the
+  `Trimmed`, `MinLength`, and `MaxLength` formatters.
+- `Mnemonic` accepts only lowercase ASCII words separated by single spaces.
+  Convert other input to NFKD and single spaces before validating it.
+- A negative or fractional count passed to `minLength`, `maxLength`, `length`,
+  or the other count factories no longer compiles.
+
+The
+[changelog](https://github.com/evoluhq/evolu/blob/main/packages/common/CHANGELOG.md)
+lists every change.
