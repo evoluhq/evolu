@@ -21,9 +21,11 @@
  */
 
 import {
-  bytesToUtf8,
+  bytesToHex as nobleBytesToHex,
+  bytesToUtf8 as nobleBytesToUtf8,
   concatBytes as nobleConcatBytes,
-  utf8ToBytes,
+  hexToBytes as nobleHexToBytes,
+  utf8ToBytes as nobleUtf8ToBytes,
 } from "@noble/ciphers/utils.js";
 import { assert } from "./Assert.ts";
 import { err, ok, type Result } from "./Result.ts";
@@ -33,6 +35,8 @@ import {
   Digit,
   Digit1To9,
   type FiniteNumber,
+  type Hex,
+  type hexToUint8Array,
   type JsonValue,
   NonNegativeInt,
   type PositiveInt,
@@ -46,14 +50,95 @@ import {
   type TypeError,
   union,
   type UnionError,
+  type uint8ArrayToHex,
 } from "./Type.ts";
 import {
   formatByteLengthError,
   formatByteLengthFromStringError,
   formatByteSizeLiteralError,
 } from "./intl/_en.ts";
-export { bytesToHex, hexToBytes } from "@noble/ciphers/utils.js";
-export { bytesToUtf8, utf8ToBytes };
+
+/**
+ * Encodes bytes as lowercase hexadecimal text, two digits per byte.
+ *
+ * {@link uint8ArrayToHex} returns the same text branded as {@link Hex}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, bytesToHex } from "@evolu/common";
+ *
+ * assertEqual(bytesToHex(new Uint8Array([0, 202, 254])), "00cafe");
+ * ```
+ *
+ * @function
+ */
+export const bytesToHex: (bytes: Uint8Array) => string = nobleBytesToHex;
+
+/**
+ * Decodes hexadecimal text into bytes.
+ *
+ * Accepts lowercase and uppercase digits. Throws a `RangeError` when the text
+ * has an odd length or a character that is not a hexadecimal digit, so validate
+ * untrusted text with {@link Hex} and decode it with {@link hexToUint8Array}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertThrowsInstanceOf,
+ *   hexToBytes,
+ * } from "@evolu/common";
+ *
+ * assertEqual(hexToBytes("00CAfe"), new Uint8Array([0, 202, 254]));
+ * assertThrowsInstanceOf(() => hexToBytes("abc"), RangeError);
+ * assertThrowsInstanceOf(() => hexToBytes("0xff"), RangeError);
+ * ```
+ *
+ * @function
+ */
+export const hexToBytes: (hex: string) => Uint8Array<ArrayBuffer> =
+  nobleHexToBytes;
+
+/**
+ * Encodes a string as UTF-8 bytes.
+ *
+ * A lone surrogate, which UTF-8 cannot represent, becomes U+FFFD.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, utf8ToBytes } from "@evolu/common";
+ *
+ * assertEqual(utf8ToBytes("é"), new Uint8Array([0xc3, 0xa9]));
+ * assertEqual(utf8ToBytes("\uD800"), new Uint8Array([0xef, 0xbf, 0xbd]));
+ * ```
+ *
+ * @function
+ */
+export const utf8ToBytes: (text: string) => Uint8Array<ArrayBuffer> =
+  nobleUtf8ToBytes;
+
+/**
+ * Decodes UTF-8 bytes into a string.
+ *
+ * Invalid UTF-8 decodes as U+FFFD instead of throwing, and a leading byte order
+ * mark is dropped.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, bytesToUtf8 } from "@evolu/common";
+ *
+ * assertEqual(bytesToUtf8(new Uint8Array([0xc3, 0xa9])), "é");
+ * assertEqual(bytesToUtf8(new Uint8Array([0xff])), "\uFFFD");
+ * assertEqual(bytesToUtf8(new Uint8Array([0xef, 0xbb, 0xbf, 0x61])), "a");
+ * ```
+ *
+ * @function
+ */
+export const bytesToUtf8: (bytes: Uint8Array) => string = nobleBytesToUtf8;
 
 /**
  * Copies several Uint8Arrays into one.

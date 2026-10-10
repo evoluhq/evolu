@@ -8918,9 +8918,9 @@ export interface HexError extends TypeError<"Hex"> {
  * equal strings; lowercase text from other sources before validating it.
  *
  * Convert bytes to Hex with {@link uint8ArrayToHex} and convert Hex to bytes
- * with {@link hexToUint8Array}. The {@link bytesToHex} and {@link hexToBytes}
- * functions convert the same text without a brand, and `hexToBytes` throws on
- * invalid text instead of returning an error.
+ * with {@link hexToUint8Array}. The `bytesToHex` and `hexToBytes` functions
+ * convert the same text without a brand, and `hexToBytes` throws on invalid
+ * text instead of returning an error.
  *
  * ### Example
  *
