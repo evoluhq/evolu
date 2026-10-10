@@ -2247,24 +2247,36 @@ type ValidateErrorPath<
 > = Path & ErrorPathKeys<Value, Path>;
 
 // Each segment is checked by assignability rather than a conditional type, so
-// a key of a generic parent Output or of one union variant is accepted. The
-// error record keeps a wrong key from collapsing the whole path to never, so
-// only that segment fails, with ErrorPathError.
+// a key of one union variant is accepted, and the string keys of a generic
+// parent Output are too, because a deferred PathKey accepts none. Only string
+// keys, because keyof a tuple includes number, which would accept an index
+// past its end. The error record keeps a wrong key from collapsing the whole
+// path to never, so only that segment fails, with ErrorPathError.
 type ErrorPathKeys<Value, Path> = Path extends readonly [
   infer Key,
   ...infer Rest,
 ]
   ? readonly [
       (
-        | keyof NonNullable<Value>
-        | KeyOfUnion<NonNullable<Value>>
+        | PathKey<NonNullable<Value>>
+        | (keyof NonNullable<Value> & string)
         | Readonly<Record<ErrorPathError, never>>
       ),
       ...ErrorPathKeys<ValueAtKey<NonNullable<Value>, Key>, Rest>,
     ]
   : readonly [];
 
-type KeyOfUnion<Value> = Value extends unknown ? keyof Value : never;
+// The keys of each union member, with a tuple's indexes instead of number.
+type PathKey<Value> =
+  Value extends ReadonlyArray<unknown>
+    ? number extends Value["length"]
+      ? number
+      : {
+          [Index in keyof Value]: Index extends `${infer Key extends number}`
+            ? Key
+            : never;
+        }[number]
+    : keyof Value;
 
 type ValueAtKey<Value, Key> = Value extends unknown
   ? Key extends keyof Value
@@ -9987,11 +9999,12 @@ export interface RedactedType<Inner extends TypeNode> extends Type<
  *
  * The inner Type's errors are returned unchanged, so it must refine
  * {@link String}, and its errors must not contain the value, as with
- * {@link SimplePassword}, {@link Mnemonic}, and brands over them. Both
- * constraints are checked at compile time; a refinement whose error keeps the
- * value, such as {@link minLength} or {@link regex}, is rejected. A non-string
- * fails with a value-free {@link RedactedError} instead of the String error,
- * which keeps the input.
+ * {@link SimplePassword}, {@link Mnemonic}, and brands over them. The compiler
+ * rejects an inner Type that does not refine String or whose errors have a
+ * `value` property, such as {@link minLength} or {@link regex}, so a custom inner
+ * error must not keep the input under another name. A non-string fails with a
+ * value-free {@link RedactedError} instead of the String error, which keeps the
+ * input.
  *
  * Encoding reveals the secret: `to` and {@link json} encode the revealed value
  * with the inner Type. A {@link json} parse error keeps the whole malformed
@@ -10001,10 +10014,14 @@ export interface RedactedType<Inner extends TypeNode> extends Type<
  * The Output is not {@link Data}, so it cannot be an Evolu column or an item of
  * {@link unique}.
  *
- * A union composition such as {@link nullOr} or {@link undefinedOr} lets its
- * other members see the raw input, and their errors keep it when all errors are
+ * A {@link union} lets its other members see the raw input, and their errors
+ * keep it. By default, a union reports the error of its first member, so a
+ * member listed before the redacted Type leaks the secret. When all errors are
  * collected, as with `{ errors: "all" }` and always with Standard Schema
- * validation. Prefer {@link optional} for an absent secret.
+ * validation, every member does, including the `Null` or `Undefined` member of
+ * {@link nullOr} or {@link undefinedOr}, which list the redacted Type first.
+ * Prefer {@link optional} for an absent secret, or list the redacted Type
+ * first.
  *
  * ### Example
  *

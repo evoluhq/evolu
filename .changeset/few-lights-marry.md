@@ -8,10 +8,12 @@ Added redacted for validating secrets into Redacted values
 inner Output in `Redacted`, so a decoded password, mnemonic, or API key does not
 leak through logging or serialization. The inner Type's errors are returned
 unchanged, so it must refine `String` and its errors must not contain the
-value, as with `SimplePassword` and `Mnemonic`; both rules are checked at
-compile time. A non-string fails with a value-free `RedactedError`, which every
-locale of `@evolu/common/intl` translates. Encoding with `to` or `json`
-reveals the secret.
+value, as with `SimplePassword` and `Mnemonic`. The compiler rejects an inner
+Type that does not refine `String` or whose errors have a `value` property, so
+a custom inner error must not keep the input under another name. A non-string
+fails with a value-free `RedactedError`, which every locale of
+`@evolu/common/intl` translates. Encoding with `to` or `json` reveals the
+secret.
 
 ```ts
 import {

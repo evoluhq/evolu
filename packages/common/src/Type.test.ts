@@ -1845,11 +1845,12 @@ describe("typeErrorToIssues", () => {
       ]);
     });
 
-    it("accepts paths through optional, nullable, and array values", () => {
+    it("accepts paths through optional, nullable, array, and tuple values", () => {
       const Form = object({
         note: optional(String),
         contact: nullOr(object({ email: String })),
         tags: array(String),
+        range: tuple(Number, Number),
       });
       const rule = () => err<TypeError<"FormRule">>({ type: "FormRule" });
 
@@ -1863,10 +1864,16 @@ describe("typeErrorToIssues", () => {
         brand("FormRule", Form, rule, () => "Invalid note.", {
           path: ["tags", 0],
         }),
+        brand("FormRule", Form, rule, () => "Invalid note.", {
+          path: ["range", 1],
+        }),
       ]) {
-        assertErr(Rule.fromUnknown({ contact: null, tags: [] }), {
-          type: "FormRule",
-        });
+        assertErr(
+          Rule.fromUnknown({ contact: null, tags: [], range: [0, 1] }),
+          {
+            type: "FormRule",
+          },
+        );
       }
     });
 
@@ -1986,6 +1993,17 @@ describe("typeErrorToIssues", () => {
         {
           // @ts-expect-error Error path must name properties of the parent Output.
           path: ["method", "ibn"],
+        },
+      );
+
+      brand(
+        "Range",
+        object({ range: tuple(Number, Number) }),
+        () => err<TypeError<"Range">>({ type: "Range" }),
+        () => "",
+        {
+          // @ts-expect-error Error path must name properties of the parent Output.
+          path: ["range", 2],
         },
       );
     });
