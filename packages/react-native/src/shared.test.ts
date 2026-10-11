@@ -7,8 +7,10 @@ import {
   id,
   ok,
   testStubGlobal,
+  testWaitForWorkerMessage,
   type CreateSqliteDriver,
   type EvoluDeps,
+  type EvoluError,
   type SqliteRow,
 } from "@evolu/common";
 import {
@@ -53,6 +55,15 @@ const setupNodeSqliteDriver =
     });
   };
 
+/** Resolves with the deps' first EvoluError. */
+const waitForEvoluError = (deps: EvoluDeps): Promise<EvoluError | null> =>
+  new Promise((resolve) => {
+    const unsubscribe = deps.evoluError.subscribe(() => {
+      unsubscribe();
+      resolve(deps.evoluError.get());
+    });
+  });
+
 /** Resolves once the deps' worker has connected and published sync state. */
 const waitForSyncState = (deps: EvoluDeps): Promise<void> =>
   new Promise((resolve) => {
@@ -83,13 +94,16 @@ describe("createEvoluDeps", () => {
 
   it("starts another shared worker after the running one panics", async () => {
     const reported = Promise.withResolvers<unknown>();
+    const reportError = mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>(
+      (error) => {
+        reported.resolve(error);
+      },
+    );
     using _errorUtils = testStubGlobal("ErrorUtils", {
       getGlobalHandler: () => null,
       setGlobalHandler:
         mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
-      reportError: (error: unknown) => {
-        reported.resolve(error);
-      },
+      reportError,
     });
     const createDeps = () =>
       createEvoluDeps({
@@ -123,10 +137,35 @@ describe("createEvoluDeps", () => {
       defect.message,
       "resourceKeys must not contain lookup duplicates.",
     );
+    // Each tab also sets the panic's defect as its evoluError.
+    await testWaitForWorkerMessage();
+    assertEqual(first.evoluError.get(), createUnknownError(defect));
+
+    // The failed worker drops later messages, as a closed web SharedWorker
+    // does, so creating another instance on the same deps does not run on its
+    // disposed Run.
+    await using _other = await run.ok(
+      createEvolu(
+        { todo: { id: id("Todo") } },
+        {
+          appName: AppName.orThrow("afterPanic"),
+          appOwner: testAppOwner,
+          transports: [],
+          memoryOnly: true,
+        },
+      ),
+    );
+    await testWaitForWorkerMessage();
 
     // Deps connected to the failed worker would never get sync state.
     using second = createDeps();
     await waitForSyncState(second);
+
+    // The worker's panic is still reported once.
+    assertEqual(
+      reportError.mock.calls.map((call) => call.arguments[0]),
+      [defect],
+    );
   });
 
   it("reports a database that fails to open as an UnknownError", async () => {
@@ -145,12 +184,7 @@ describe("createEvoluDeps", () => {
         throw error;
       },
     });
-    const evoluError = new Promise((resolve) => {
-      const unsubscribe = deps.evoluError.subscribe(() => {
-        unsubscribe();
-        resolve(deps.evoluError.get());
-      });
-    });
+    const evoluError = waitForEvoluError(deps);
     await using run = createRun(deps);
     await using _evolu = await run.ok(
       createEvolu(
@@ -188,12 +222,7 @@ describe("createEvoluDeps", () => {
         if (sql.includes('from "todo"')) throw error;
       }),
     });
-    const evoluError = new Promise((resolve) => {
-      const unsubscribe = deps.evoluError.subscribe(() => {
-        unsubscribe();
-        resolve(deps.evoluError.get());
-      });
-    });
+    const evoluError = waitForEvoluError(deps);
     const schema = { todo: { id: id("Todo") } };
     await using run = createRun(deps);
     await using evolu = await run.ok(

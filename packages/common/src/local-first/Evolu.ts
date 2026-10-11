@@ -1073,10 +1073,11 @@ export interface EvoluErrorDep {
    * it, so the app opened again starts over. Some errors reach every tab, such
    * as an unexpected failure of the shared worker. An app that forwards this
    * store to an error tracker from each tab then reports such an error once per
-   * tab. A database whose worker fails is also reported by the platform's error
-   * reporter where the worker runs, such as the hosting tab's error handlers on
-   * the web or `ErrorUtils` in React Native, so an app that sends both to one
-   * error tracker sees that failure twice.
+   * tab. A failed worker that a tab hosts is also reported by that tab's error
+   * reporter, its error handlers on the web or `ErrorUtils` in React Native, so
+   * an app that sends both to one error tracker sees that failure twice. A tab
+   * hosts each database's worker, and also the shared worker in React Native or
+   * in a browser without SharedWorker.
    *
    * ### Example
    *
