@@ -16,7 +16,6 @@ import { maxMillis, Millis, minMillis } from "../Time.ts";
 import { assertType } from "../Type.ts";
 import type {
   Timestamp,
-  TimestampBytes,
   TimestampConfigDep,
   TimestampDriftError,
 } from "./Timestamp.ts";
@@ -36,6 +35,7 @@ import {
   orderTimestampBytes,
   receiveTimestamp,
   sendTimestamp,
+  TimestampBytes,
   timestampBytesToTimestamp,
   timestampToDateIso,
   timestampToTimestampBytes,
@@ -637,6 +637,26 @@ describe("TimestampBytes", () => {
       .map(({ millis }) => millis);
 
     assertEqual(sortedEncodedMillis, sortedMillis);
+  });
+
+  it("rejects millis bytes that Millis reserves for infinity", () => {
+    const reserved = new Uint8Array(16).fill(0xff, 0, 6);
+    const result = TimestampBytes.fromUnknown(reserved);
+    assertErr(result, { type: "TimestampBytes", value: reserved });
+    assertEqual(
+      TimestampBytes.formatError(result.error),
+      "The millis part of ffffffffffff00000000000000000000 is 2^48 - 1, which Millis reserves for infinity.",
+    );
+    assertFalse(TimestampBytes.is(new Uint8Array(16).fill(0xff)));
+
+    // The largest Millis with any counter and NodeId bytes is valid.
+    const largest = new Uint8Array(16).fill(0xff);
+    largest[5] = 0xfe;
+    assertEqual(timestampBytesToTimestamp(TimestampBytes.orThrow(largest)), {
+      millis: maxMillis,
+      counter: maxCounter,
+      nodeId: maxNodeId,
+    });
   });
 });
 

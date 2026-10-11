@@ -311,7 +311,7 @@ import {
   nodeIdToNodeIdBytes,
   orderTimestamp,
   Timestamp,
-  type TimestampBytes,
+  TimestampBytes,
   timestampBytesLength,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
@@ -2399,7 +2399,8 @@ export const encodeDbChange = (buffer: Buffer, message: CrdtMessage): void => {
  * expected timestamp to ensure message integrity.
  *
  * A change with a newer format version than {@link encodeAndEncryptDbChange}
- * writes is a {@link ProtocolInvalidDataError}.
+ * writes, or whose embedded timestamp is not a valid {@link Timestamp}, is a
+ * {@link ProtocolInvalidDataError}.
  */
 export const decryptAndDecodeDbChange = (
   message: EncryptedCrdtMessage,
@@ -2429,9 +2430,12 @@ export const decryptAndDecodeDbChange = (
     if (decodeNonNegativeInt(buffer) > encryptedDbChangeVersion)
       throw new ProtocolDecodeError("Unsupported EncryptedDbChange version");
 
-    const timestamp = timestampBytesToTimestamp(
-      buffer.shiftN(timestampBytesLength) as TimestampBytes,
+    const timestampBytes = TimestampBytes.fromUnknown(
+      buffer.shiftN(timestampBytesLength),
     );
+    if (!timestampBytes.ok)
+      throw new ProtocolDecodeError(timestampBytes.error.type);
+    const timestamp = timestampBytesToTimestamp(timestampBytes.value);
 
     if (!eqTimestamp(timestamp, message.timestamp)) {
       return err<ProtocolTimestampMismatchError>({

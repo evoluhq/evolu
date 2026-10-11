@@ -660,42 +660,55 @@ test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
   );
 });
 
-test("decryptAndDecodeDbChange rejects a newer EncryptedDbChange version", () => {
-  const deps = testCreateDeps();
-  const crdtMessage = createTestCrdtMessage(deps);
-  const encryptedMessage = createEncryptedCrdtMessage(deps, crdtMessage);
-
-  const envelope = createBuffer(encryptedMessage.change);
+/**
+ * Re-encrypts the change of a message with its plaintext changed by `forge`,
+ * keeping the message's timestamp.
+ */
+const setupForgedEncryptedCrdtMessage = (
+  deps: TestDeps,
+  crdtMessage: CrdtMessage,
+  forge: (plaintext: Uint8Array) => void,
+): EncryptedCrdtMessage => {
+  const envelope = createBuffer(
+    createEncryptedCrdtMessage(deps, crdtMessage).change,
+  );
   const nonce = envelope.shiftN(
     NonNegativeInt.orThrow(xChaCha20Poly1305NonceLength),
   );
-  const plaintext = getOrThrow(
-    decryptWithXChaCha20Poly1305(
-      XChaCha20Poly1305Ciphertext.orThrow(
-        envelope.shiftN(decodeLength(envelope)),
+  const plaintext = new Uint8Array(
+    getOrThrow(
+      decryptWithXChaCha20Poly1305(
+        XChaCha20Poly1305Ciphertext.orThrow(
+          envelope.shiftN(decodeLength(envelope)),
+        ),
+        Entropy24.orThrow(nonce),
+        testAppOwner.encryptionKey,
       ),
-      Entropy24.orThrow(nonce),
-      testAppOwner.encryptionKey,
     ),
   );
-  assertEqual(plaintext[0], 1);
-
-  const reencryptWithVersion = (version: number): EncryptedCrdtMessage => {
-    const forged = new Uint8Array(plaintext);
-    forged[0] = version;
-    const [ciphertext, forgedNonce] = encryptWithXChaCha20Poly1305(deps)(
-      forged,
-      testAppOwner.encryptionKey,
-    );
-    const buffer = createBuffer();
-    buffer.extend(forgedNonce);
-    encodeLength(buffer, ciphertext);
-    buffer.extend(ciphertext);
-    return {
-      timestamp: crdtMessage.timestamp,
-      change: buffer.unwrap() as EncryptedDbChange,
-    };
+  forge(plaintext);
+  const [ciphertext, forgedNonce] = encryptWithXChaCha20Poly1305(deps)(
+    plaintext,
+    testAppOwner.encryptionKey,
+  );
+  const buffer = createBuffer();
+  buffer.extend(forgedNonce);
+  encodeLength(buffer, ciphertext);
+  buffer.extend(ciphertext);
+  return {
+    timestamp: crdtMessage.timestamp,
+    change: buffer.unwrap() as EncryptedDbChange,
   };
+};
+
+test("decryptAndDecodeDbChange rejects a newer EncryptedDbChange version", () => {
+  const deps = testCreateDeps();
+  const crdtMessage = createTestCrdtMessage(deps);
+  const reencryptWithVersion = (version: number): EncryptedCrdtMessage =>
+    setupForgedEncryptedCrdtMessage(deps, crdtMessage, (plaintext) => {
+      assertEqual(plaintext[0], 1);
+      plaintext[0] = version;
+    });
 
   // 6.0.1-preview.35 wrote version 0 with the same layout.
   assertOk(
@@ -720,6 +733,28 @@ test("decryptAndDecodeDbChange rejects a newer EncryptedDbChange version", () =>
       newer.error.error.message,
       "Unsupported EncryptedDbChange version",
     );
+  }
+});
+
+test("decryptAndDecodeDbChange rejects a timestamp with reserved millis", () => {
+  const deps = testCreateDeps();
+  const forged = setupForgedEncryptedCrdtMessage(
+    deps,
+    createTestCrdtMessage(deps),
+    (plaintext) => {
+      // After the 1-byte format version, the first six timestamp bytes are
+      // millis.
+      plaintext.fill(0xff, 1, 7);
+    },
+  );
+
+  const result = decryptAndDecodeDbChange(forged, testAppOwner.encryptionKey);
+  assertErr(result);
+  assertEqual(result.error.type, "ProtocolInvalidDataError");
+  if (result.error.type === "ProtocolInvalidDataError") {
+    assertSame(result.error.data, forged.change);
+    assertInstanceOf(result.error.error, Error);
+    assertEqual(result.error.error.message, "TimestampBytes");
   }
 });
 

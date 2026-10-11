@@ -265,6 +265,7 @@ import {
   regex,
   String,
   type Typed,
+  type TypeError,
   Uint8Array,
 } from "../Type.ts";
 
@@ -607,12 +608,36 @@ export const isTimestampBeyondMaxDrift =
   (millis: Millis, now: Millis): boolean =>
     millis - now > deps.timestampConfig.maxDrift;
 
-/** Sortable bytes representation of {@link Timestamp}. */
+/**
+ * Sortable bytes representation of {@link Timestamp}.
+ *
+ * Any 16 bytes are valid except a millis part of 2^48 - 1, which {@link Millis}
+ * reserves for infinity.
+ */
 export const TimestampBytes = /*#__PURE__*/ brand(
   "TimestampBytes",
   /*#__PURE__*/ length(16)(Uint8Array),
+  (value) =>
+    value[0] === 0xff &&
+    value[1] === 0xff &&
+    value[2] === 0xff &&
+    value[3] === 0xff &&
+    value[4] === 0xff &&
+    value[5] === 0xff
+      ? err<TimestampBytesError>({ type: "TimestampBytes", value })
+      : ok(),
+  (error) =>
+    `The millis part of ${bytesToHex(error.value)} is 2^48 - 1, which Millis reserves for infinity.`,
 );
 export type TimestampBytes = typeof TimestampBytes.Output;
+
+/**
+ * Error for 16 bytes whose millis part is 2^48 - 1, which {@link Millis}
+ * reserves for infinity.
+ */
+export interface TimestampBytesError extends TypeError<"TimestampBytes"> {
+  readonly value: Uint8Array;
+}
 
 export const timestampBytesLength = /*#__PURE__*/ NonNegativeInt.orThrow(16);
 
@@ -661,6 +686,8 @@ export const timestampBytesToTimestamp = (
   // Decode `nodeId` from the last 8 bytes.
   const nodeId = nodeIdBytesToNodeId(timestamp.subarray(8) as NodeIdBytes);
 
+  // TimestampBytes excludes the millis reserved for infinity, and any 2 counter
+  // bytes and 8 NodeId bytes are valid.
   return { millis: Number(millis), counter, nodeId } as Timestamp;
 };
 
