@@ -50,7 +50,7 @@
   },
   "peerDependencies": {
     "@evolu/common": "^8.20.3",
-    "@evolu/web": "^3.5.3",
+    "@evolu/web": "^3.6.0",
     "react": ">=19",
     "react-dom": ">=19"
   },
