@@ -25,8 +25,12 @@
  * transaction before anything is written and is posted to the SharedWorker; the
  * worker then exits and releases its resources. A database whose files another
  * context keeps holding refuses startup the same way, before it is opened, with
- * {@link DatabaseHeldError}; see {@link WaitForDatabaseRelease}. The single
- * version row is created in the same transaction as the other system tables.
+ * {@link DatabaseHeldError}; see {@link WaitForDatabaseRelease}. A startup that
+ * throws, for example because SQLite cannot open or read the database, still
+ * panics the worker, which reports it, and is posted as a refusal with an
+ * {@link UnknownError}, so the SharedWorker does not wait for the worker
+ * forever. The single version row is created in the same transaction as the
+ * other system tables.
  *
  * Code released before the version record existed never reads it. It recognizes
  * an initialized database by the `evolu_version` table alone, so it opens a
@@ -57,7 +61,11 @@ import {
   type DecryptWithXChaCha20Poly1305Error,
   type RandomBytesDep,
 } from "../Crypto.ts";
-import { createUnknownError } from "../Error.ts";
+import {
+  createUnknownError,
+  defectToError,
+  type UnknownError,
+} from "../Error.ts";
 import { constFalse } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import {
@@ -68,6 +76,7 @@ import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
 import { err, getOk, ok, trySync, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
+  Sqlite,
   SqliteDep,
   SqliteRow,
   SqliteSchema,
@@ -81,7 +90,7 @@ import {
   sqliteQueryStringToSqliteQuery,
   SqliteValue,
 } from "../Sqlite.ts";
-import { callback, type Run, type Task } from "../Task.ts";
+import { AbortError, callback, type Run, type Task } from "../Task.ts";
 import {
   millisToDateIso,
   saturateMillis,
@@ -252,8 +261,8 @@ export interface DatabaseHeldError extends Typed<"DatabaseHeldError"> {
 
 /**
  * Starts the platform-agnostic Evolu DbWorker and owns its resources until
- * startup is refused, the worker receives a dispose message, the SharedWorker
- * that requested it ends, or its {@link Run} is aborted.
+ * startup is refused or fails, the worker receives a dispose message, the
+ * SharedWorker that requested it ends, or its {@link Run} is aborted.
  */
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
@@ -291,80 +300,104 @@ export const startDbWorker =
       }),
     );
 
-    disposer.use(await run.ok(acquireLeaderLock(initMessage.name)));
+    // A thrown startup failure panics this worker's Run, which reports it.
+    // Answering it like a refusal lets the tenant tell its tabs instead of
+    // waiting for this worker forever. The try ends before LeaderAcquired,
+    // which LeaderRefused must not follow.
+    let sqlite: Sqlite;
+    let dbDeps: typeof deps &
+      BaseSqliteStorageDep &
+      SqliteDep &
+      SqliteSchemaDep &
+      TimestampConfigDep;
+    let initialClock: Timestamp;
+    try {
+      disposer.use(await run.ok(acquireLeaderLock(initMessage.name)));
 
-    if (!initMessage.memoryOnly && deps.waitForDatabaseRelease) {
-      const released = await run(deps.waitForDatabaseRelease(initMessage.name));
-      if (!released.ok) {
-        // Returning lets the disposer release the database lock.
-        port.postMessage({ type: "LeaderRefused", error: released.error });
+      if (!initMessage.memoryOnly && deps.waitForDatabaseRelease) {
+        const released = await run(
+          deps.waitForDatabaseRelease(initMessage.name),
+        );
+        if (!released.ok) {
+          // Returning lets the disposer release the database lock.
+          port.postMessage({ type: "LeaderRefused", error: released.error });
+          return ok();
+        }
+      }
+
+      sqlite = disposer.use(
+        await run.ok(
+          createSqlite(
+            initMessage.name,
+            initMessage.memoryOnly
+              ? { mode: "memory" }
+              : { mode: "encrypted", encryptionKey: initMessage.encryptionKey },
+          ),
+        ),
+      );
+
+      const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...deps });
+      dbDeps = {
+        ...deps,
+        sqlite,
+        sqliteSchema: initMessage.sqliteSchema,
+        baseSqliteStorage,
+        timestampConfig: { maxDrift: defaultTimestampMaxDrift },
+      };
+      const startup = sqlite.transaction(
+        (): Result<Timestamp, UnsupportedDbVersionError> => {
+          // Only the version record is read before the version check, because a
+          // newer database can hold schema objects this code cannot read.
+          const { rows: versionColumnRows } = sqlite.exec<{ name: string }>(sql`
+            select "name" from pragma_table_info('evolu_version');
+          `);
+          const versionColumns = new Set(
+            versionColumnRows.map((row) => row.name),
+          );
+          let initialClock: Timestamp;
+          if (versionColumns.size === 0) {
+            initialClock = createInitialTimestamp(dbDeps);
+            initializeDb(dbDeps)(initialClock);
+          } else {
+            const version = ensureDbVersion(dbDeps)(versionColumns);
+            if (!version.ok) return version;
+            const { rows } = sqlite.exec<{ clock: TimestampBytes }>(sql`
+              select "clock" from evolu_config limit 1;
+            `);
+            assertNonEmptyReadonlyArray(rows);
+            initialClock = timestampBytesToTimestamp(firstInArray(rows).clock);
+          }
+          ensureSqliteSchema(dbDeps)(initMessage.sqliteSchema);
+          const released = releaseDriftQuarantine(dbDeps)(initialClock);
+          if (released) {
+            initialClock = released;
+            saveClock(dbDeps)(released);
+          }
+          tryApplyQuarantinedMessages(dbDeps);
+          return ok(initialClock);
+        },
+      );
+      if (!startup.ok) {
+        // Nothing was written. Returning lets the disposer close SQLite and
+        // release the database lock, which the next DbWorker for this database
+        // waits on. The tab leader lock is unaffected.
+        port.postMessage({
+          type: "LeaderRefused",
+          error: startup.error,
+        });
         return ok();
       }
+      initialClock = startup.value;
+    } catch (error) {
+      // An abort that is not a panic stops this worker on purpose.
+      if (!AbortError.is(error) || error.reason.type === "PanicAbortReason") {
+        port.postMessage({
+          type: "LeaderRefused",
+          error: createUnknownError(defectToError(error)),
+        });
+      }
+      throw error;
     }
-
-    const sqlite = disposer.use(
-      await run.ok(
-        createSqlite(
-          initMessage.name,
-          initMessage.memoryOnly
-            ? { mode: "memory" }
-            : { mode: "encrypted", encryptionKey: initMessage.encryptionKey },
-        ),
-      ),
-    );
-
-    const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...deps });
-    const dbDeps = {
-      ...deps,
-      sqlite,
-      sqliteSchema: initMessage.sqliteSchema,
-      baseSqliteStorage,
-      timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-    };
-    const startup = sqlite.transaction(
-      (): Result<Timestamp, UnsupportedDbVersionError> => {
-        // Only the version record is read before the version check, because a
-        // newer database can hold schema objects this code cannot read.
-        const { rows: versionColumnRows } = sqlite.exec<{ name: string }>(sql`
-          select "name" from pragma_table_info('evolu_version');
-        `);
-        const versionColumns = new Set(
-          versionColumnRows.map((row) => row.name),
-        );
-        let initialClock: Timestamp;
-        if (versionColumns.size === 0) {
-          initialClock = createInitialTimestamp(dbDeps);
-          initializeDb(dbDeps)(initialClock);
-        } else {
-          const version = ensureDbVersion(dbDeps)(versionColumns);
-          if (!version.ok) return version;
-          const { rows } = sqlite.exec<{ clock: TimestampBytes }>(sql`
-            select "clock" from evolu_config limit 1;
-          `);
-          assertNonEmptyReadonlyArray(rows);
-          initialClock = timestampBytesToTimestamp(firstInArray(rows).clock);
-        }
-        ensureSqliteSchema(dbDeps)(initMessage.sqliteSchema);
-        const released = releaseDriftQuarantine(dbDeps)(initialClock);
-        if (released) {
-          initialClock = released;
-          saveClock(dbDeps)(released);
-        }
-        tryApplyQuarantinedMessages(dbDeps);
-        return ok(initialClock);
-      },
-    );
-    if (!startup.ok) {
-      // Nothing was written. Returning lets the disposer close SQLite and
-      // release the database lock, which the next DbWorker for this database
-      // waits on. The tab leader lock is unaffected.
-      port.postMessage({
-        type: "LeaderRefused",
-        error: startup.error,
-      });
-      return ok();
-    }
-    const initialClock = startup.value;
 
     const storage = createClientStorage(dbDeps);
     const dbWorkerRun = disposer.use(run.create({ storage }));

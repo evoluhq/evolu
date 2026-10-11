@@ -129,6 +129,7 @@ import {
   createWorker,
   testCreateBroadcastChannel,
   testCreateMessageChannel,
+  testCreateWorker,
   testWaitForWorkerMessage,
   type MessagePort,
   type WorkerSelf,
@@ -6942,6 +6943,113 @@ describe("database version", () => {
         },
       },
     ]);
+    assertEqual(refused.consoleEntryOrErrors, []);
+  });
+});
+
+describe("startup failure", () => {
+  it("refuses nothing when aborted on purpose while it waits for the leader lock", async () => {
+    await using dbSetup = await setupDb();
+    const lockManager = testCreateLockManager();
+    await using lockRun = testCreateRun({ lockManager });
+    await using _heldLock = await lockRun.ok(acquireLeaderLock(dbSetup.name));
+    using worker = testCreateWorker<DbWorkerInit>();
+    await using run = testCreateRun({
+      consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
+      createBroadcastChannel: testCreateBroadcastChannel,
+      createMessagePort,
+      lockManager,
+      createSqliteDriver: dbSetup.createSqliteDriver,
+      time: dbSetup.time,
+    });
+    const fiber = run.abortable(startDbWorker(worker.self));
+    using channel = testCreateMessageChannel<DbWorkerOutput, DbWorkerInput>();
+    const outputs: Array<DbWorkerOutput> = [];
+    channel.port2.onMessage = (output) => {
+      outputs.push(output);
+    };
+    worker.postMessage({
+      type: "DbWorkerInit",
+      name: dbSetup.name,
+      consoleLevel: "silent",
+      sqliteSchema: defaultSqliteSchema,
+      encryptionKey: testAppOwner.encryptionKey,
+      memoryOnly: true,
+      sharedWorkerId: testSharedWorkerId,
+      port: channel.port1.native,
+    });
+    const isWaitingForLock = async () =>
+      (await lockManager.query()).pending?.some(
+        (lock) => lock.name === `evolu-leaderlock-${dbSetup.name}`,
+      ) === true;
+    while (!(await isWaitingForLock())) await testWaitForWorkerMessage();
+
+    const reason = { type: "TestAbort" } as const;
+    fiber.abort(reason);
+
+    assertEqual(await fiber, err({ type: "AbortError", reason }));
+    await testWaitForWorkerMessage();
+    assertEqual(outputs, []);
+  });
+
+  it("refuses with an UnknownError when the database does not open, and releases the leader lock", async () => {
+    await using dbSetup = await setupDb();
+    const error = new Error("No SQLCipher.");
+
+    await using refused = await setupDbWorker({
+      dbSetup: {
+        ...dbSetup,
+        createSqliteDriver: () => () => {
+          throw error;
+        },
+      },
+      expectRefused: true,
+    });
+
+    assertEqual(refused.initOutputs, [
+      { type: "LeaderRefused", error: createUnknownError(error) },
+    ]);
+    assertEqual(refused.consoleEntryOrErrors, []);
+    // Wait for the refused worker to release its leader lock.
+    await using run = testCreateRun({ lockManager: refused.lockManager });
+    await using _lock = await run.ok(acquireLeaderLock(refused.workerName));
+  });
+
+  it("refuses with an UnknownError when waiting for the database release throws", async () => {
+    await using dbSetup = await setupDb();
+    const error = new Error("Failed to load SQLite wasm.");
+
+    await using refused = await setupDbWorker({
+      dbSetup,
+      memoryOnly: false,
+      waitForDatabaseRelease: () => () => {
+        throw error;
+      },
+      expectRefused: true,
+    });
+
+    assertEqual(refused.initOutputs, [
+      { type: "LeaderRefused", error: createUnknownError(error) },
+    ]);
+  });
+
+  it("refuses with an UnknownError when the startup transaction throws, which writes nothing", async () => {
+    const error = new Error("database or disk is full");
+    await using dbSetup = await setupDb({
+      // Throws after the system tables are created, so the test also proves
+      // that the startup transaction rolls back.
+      onExec: (query) => {
+        if (query.sql.includes('create table "testTable"')) throw error;
+      },
+    });
+    const before = getSqliteSnapshot(dbSetup);
+
+    await using refused = await setupDbWorker({ dbSetup, expectRefused: true });
+
+    assertEqual(refused.initOutputs, [
+      { type: "LeaderRefused", error: createUnknownError(error) },
+    ]);
+    assertEqual(getSqliteSnapshot(refused), before);
     assertEqual(refused.consoleEntryOrErrors, []);
   });
 });

@@ -595,10 +595,10 @@ export interface Evolu<
    * Load {@link Query} and return a promise with {@link QueryRows}.
    *
    * The returned promise always resolves successfully because all data are
-   * local and the query is typed. If the database refuses startup, unanswered
-   * loads stay pending until disposal resolves them with empty rows. Observe
-   * {@link EvoluErrorDep.evoluError} to display the refusal independently of
-   * query loading.
+   * local and the query is typed. If the database refuses or fails to start,
+   * unanswered loads stay pending until disposal resolves them with empty rows.
+   * Observe {@link EvoluErrorDep.evoluError} to display the refusal
+   * independently of query loading.
    *
    * Loading is batched. Returned promises are cached while pending and can be
    * reused after fulfillment, which prevents redundant database queries and
@@ -761,8 +761,8 @@ export interface Evolu<
    * of starting parallel exports.
    *
    * The pending promise rejects if this {@link Evolu} instance is disposed
-   * before export completion. If the database refuses startup, export stays
-   * pending until disposal; see {@link Evolu.loadQuery}.
+   * before export completion. If the database refuses or fails to start, export
+   * stays pending until disposal; see {@link Evolu.loadQuery}.
    */
   readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
@@ -955,9 +955,9 @@ export type DevicePersistence = "Persisted" | "NotPersisted" | "Unknown";
  * - {@link OtherBuildRunningError} blocks the app while it lasts: another version
  *   of the app holds the local data. Ask the user to close the app's other
  *   tabs. It clears when the wait ends.
- * - {@link UnknownError} does not block the app: Evolu logged an unexpected
- *   failure, such as a mutation that could not be stored. Show a generic
- *   message.
+ * - {@link UnknownError} blocks the app: Evolu is in an unknown state after an
+ *   unexpected failure, such as a mutation that could not be stored or a
+ *   database that failed to start. Ask the user to close all its tabs.
  *
  * A problem syncing an owner through a relay belongs to that relay and often
  * repeats in every round, so sync state shows it on the relay's route, as its
@@ -1055,8 +1055,9 @@ export interface EvoluErrorDep {
    * {@link OtherBuildRunningError} reports a wait, so the store returns to
    * `null` when the wait ends, unless another error replaced it.
    *
-   * Subscribe once to show user-facing error messages across all instances.
-   * While a refused database's tenant remains alive, the SharedWorker sends the
+   * Subscribe once to show user-facing error messages across all instances. A
+   * database that fails to start is refused with an {@link UnknownError}. While
+   * a refused database's tenant remains alive, the SharedWorker sends the
    * refusal to each tab once, including tabs that connect later, and starts no
    * replacement database workers. After all instances release that tenant and
    * it is disposed when idle, creating another instance retries startup and may
@@ -1066,11 +1067,12 @@ export interface EvoluErrorDep {
    * not hide it.
    *
    * An {@link UnknownError} leaves Evolu in an unknown state, so the app can
-   * only ask the user to close the tab. A failed shared worker closes itself,
-   * so the app opened again starts a new one. Some errors reach every tab, such
-   * as an unexpected failure of the shared worker. An app that forwards this
-   * store to an error tracker from each tab then reports such an error once per
-   * tab.
+   * only ask the user to close all its tabs. A failed shared worker closes
+   * itself, and a database that failed to start stays refused while any tab
+   * uses it, so the app opened again starts over. Some errors reach every tab,
+   * such as an unexpected failure of the shared worker. An app that forwards
+   * this store to an error tracker from each tab then reports such an error
+   * once per tab.
    *
    * ### Example
    *
@@ -1093,7 +1095,7 @@ export interface EvoluErrorDep {
    *     case "OtherBuildRunningError":
    *       return "This app is open in another tab with a different version. Close that tab to continue.";
    *     case "UnknownError":
-   *       return "Something went wrong. Please close this tab and open the app again.";
+   *       return "Something went wrong. Please close all tabs of this app and open it again.";
    *   }
    * };
    *
