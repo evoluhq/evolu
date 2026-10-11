@@ -44,7 +44,12 @@ import {
 } from "../Type.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
 import type { Evolu, EvoluErrorDep, maxMutationSize } from "./Evolu.ts";
-import type { AppOwner, OwnerIdBytes } from "./Owner.ts";
+import type {
+  AppOwner,
+  Owner,
+  OwnerIdBytes,
+  SharedReadonlyOwner,
+} from "./Owner.ts";
 import {
   OwnerEncryptionKey,
   OwnerId,
@@ -537,12 +542,13 @@ export interface MutationOptions {
   readonly onComplete?: () => void;
 
   /**
-   * Specifies the owner ID for this mutation. If omitted, the default
-   * {@link AppOwner} is used.
+   * The {@link Owner} of the mutated row. If omitted, the {@link AppOwner}.
    *
-   * The owner must be used with `evolu.useOwner()` to enable sync. Mutations
-   * with unused owners are stored locally but not synced until the owner is
-   * used.
+   * It must be an Owner with its write key, because a relay accepts a change
+   * only with the owner's write key. A {@link SharedReadonlyOwner} has none, so
+   * it is rejected at compile time instead of storing changes this device
+   * cannot upload. The owner does not have to be used yet: its changes are
+   * stored locally and upload once {@link Evolu.useOwner} registers it.
    *
    * ### Example
    *
@@ -553,6 +559,7 @@ export interface MutationOptions {
    *   createOwnerSecret,
    *   createRandomBytes,
    *   createSharedOwner,
+   *   createSharedReadonlyOwner,
    *   deriveShardOwner,
    *   id,
    *   NonEmptyTrimmedString100,
@@ -579,14 +586,22 @@ export interface MutationOptions {
    *   evolu.insert(
    *     "task",
    *     { title: NonEmptyTrimmedString100.orThrow("Task 1") },
-   *     { ownerId: projectOwner.id },
+   *     { owner: projectOwner },
    *   );
    *
    *   // Put collaborative data under a shared owner.
    *   evolu.insert(
    *     "comment",
    *     { text: NonEmptyTrimmedString100.orThrow("Hello") },
-   *     { ownerId: sharedOwner.id },
+   *     { owner: sharedOwner },
+   *   );
+   *
+   *   // Readers of shared data cannot write it.
+   *   evolu.insert(
+   *     "comment",
+   *     { text: NonEmptyTrimmedString100.orThrow("Hi") },
+   *     // @ts-expect-error A SharedReadonlyOwner has no write key, so it cannot own a mutation.
+   *     { owner: createSharedReadonlyOwner(sharedOwner) },
    *   );
    * };
    *
@@ -594,7 +609,7 @@ export interface MutationOptions {
    * assertEqual(sharedOwner.type, "SharedOwner");
    * ```
    */
-  readonly ownerId?: OwnerId;
+  readonly owner?: Owner;
 }
 
 /**

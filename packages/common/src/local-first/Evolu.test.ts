@@ -2857,15 +2857,16 @@ describe("Evolu", () => {
       ]);
     });
 
-    it("includes ownerId and onComplete callback ids", async () => {
+    it("includes the owner's id and onComplete callback ids", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs } = setup;
       const evolu = await run.ok(testCreateEvolu);
+      const sharedOwner = createSharedOwner(createOwnerSecret(run.deps));
 
       const insertedId = evolu.insert(
         "todo",
         { title: NonEmptyTrimmedString100.orThrow("With callback") },
-        { ownerId: testAppOwner.id, onComplete: constVoid },
+        { owner: sharedOwner, onComplete: constVoid },
       ).id;
 
       await testWaitForWorkerMessage();
@@ -2883,7 +2884,7 @@ describe("Evolu", () => {
               id: insertedId,
               isDelete: null,
               isInsert: true,
-              ownerId: testAppOwner.id,
+              ownerId: sharedOwner.id,
               table: "todo",
               values: { title: "With callback" },
             },

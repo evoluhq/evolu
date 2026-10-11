@@ -1736,7 +1736,7 @@ export const createEvolu =
         }
 
         mutateBatch.push({
-          change: { ...dbChange, ownerId: options?.ownerId ?? appOwner.id },
+          change: { ...dbChange, ownerId: options?.owner?.id ?? appOwner.id },
           onComplete: options?.onComplete,
         });
 
