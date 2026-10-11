@@ -1,5 +1,37 @@
 # @evolu/svelte
 
+## 3.0.4
+
+### Patch Changes
+
+- 75d0d22: Fixed queryState showing rows of a previous query
+
+  When the query of `queryState` changed and a load of a previous query finished last, `rows` showed that query's rows until the current query's data changed, for example after switching to a query and back before it loaded. `rows` now holds only rows of the current query, so it is empty until that query loads and while there is no query. Previously, the rows of the previous query stayed in both cases.
+
+- cc920d2: Simplified queryState and removed appOwnerState
+
+  `queryState` no longer takes a `mapping` option. The option never applied: `rows` always held the query rows, though typed as the mapped rows. Derive mapped rows with `$derived` instead, which also updates when state read by the mapping changes.
+
+  `rows` is now the readonly `QueryRows` array Evolu returns, as with `useQuery` in React and Vue. `queryState` previously stored rows in deep `$state`, so `rows` held proxies, and every update gave even unchanged rows a new identity. Mutating `rows` no longer updates the UI.
+
+  `appOwnerState` was removed. `evolu.appOwner` is available as soon as Evolu is created, so `appOwnerState` only delayed it: its `current` was `undefined` until an effect ran. Read `evolu.appOwner` directly.
+
+  ```svelte
+  <script lang="ts">
+    // Before: queryState(evolu, () => allTodos, { mapping: (row) => row.title });
+    const todos = queryState(evolu, () => allTodos);
+    const titles = $derived(todos.rows.map((row) => row.title));
+
+    // Before: appOwnerState(evolu).current?.mnemonic
+    const mnemonic = evolu.appOwner.mnemonic;
+  </script>
+  ```
+
+- Updated dependencies [bfba9bf]
+- Updated dependencies [609d399]
+  - @evolu/common@8.20.1
+  - @evolu/web@3.5.2
+
 ## 3.0.3
 
 ### Patch Changes

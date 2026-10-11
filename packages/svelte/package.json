@@ -1,6 +1,6 @@
 {
   "name": "@evolu/svelte",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "description": "Evolu for Svelte",
   "keywords": [
     "evolu",
@@ -52,8 +52,8 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.20.0",
-    "@evolu/web": "^3.5.1",
+    "@evolu/common": "^8.20.1",
+    "@evolu/web": "^3.5.2",
     "svelte": ">=5"
   },
   "engines": {
