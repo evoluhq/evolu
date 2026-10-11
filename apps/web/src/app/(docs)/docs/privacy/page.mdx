@@ -41,7 +41,7 @@ Evolu pads every change with [PADMÉ](https://lbarman.ch/blog/padme/) before enc
 
 The Evolu Relay can't decrypt user data. What the relay sees:
 
-- **OwnerId**: A unique identifier for the data owner (but not who that owner is). Anyone who knows an OwnerId can download the owner's encrypted changes and their timestamps from a relay and subscribe to new ones. The write key only authorizes writes
+- **OwnerId**: A unique identifier for the data owner (but not who that owner is). Like an address, it lets anyone who knows it download the owner's changes from a relay and subscribe to new ones, but the changes stay encrypted, so they learn only the metadata listed here. Writing requires the write key
 - **Timestamps**: When changes occurred (for synchronization ordering)
 - **NodeId**: Every timestamp includes a random ID of the database that wrote the change. It's the same for every owner the database writes changes for, so a relay can link those owners, even across IP addresses
 - **Encrypted binary blobs**: The actual data, encrypted and padded, so only its approximate size shows
