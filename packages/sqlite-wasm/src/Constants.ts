@@ -451,14 +451,14 @@ export const SQLITE_TRANSIENT = -1;
 export const SQLITE_WASM_DEALLOC = 1 as SqliteFunctionPtr;
 
 /** The SQLite version of this build. */
-export const SQLITE_VERSION = "3.53.4";
+export const SQLITE_VERSION = "3.54.0";
 
 /** The SQLite version number of this build. */
-export const SQLITE_VERSION_NUMBER = 3053004;
+export const SQLITE_VERSION_NUMBER = 3054000;
 
 /** The SQLite check-in of this build. */
 export const SQLITE_SOURCE_ID =
-  "2026-07-24 19:02:57 bf7c7f30031888f4e796e429ab3978879485813aaca6f641c7b33e4e09459bcc";
+  "2026-10-09 15:46:58 be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3";
 
 /** A primary or extended result code. */
 export type SqliteResultCode =
@@ -800,4 +800,4 @@ export const sqlite3_index_constraint_usage_layout = {
  * binding's and shim's wasm type against the pinned build, and
  * `scripts/generate.mts --verify-build` checks a binary against the pins.
  */
-export const sqliteWasmBuildHash = 0xc5cfb5b8;
+export const sqliteWasmBuildHash = 0x8dfd169e;

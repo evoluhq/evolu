@@ -2096,7 +2096,7 @@ test("run fails with SQLITE_NOMEM when a value above 64 KiB cannot be allocated"
     });
 });
 
-// tester1.c-pp.js (trunk) 'sqlite3.oo1' 'Close db'.
+// tester1.c-pp.js 'sqlite3.oo1' 'Close db'.
 test("disposing a database finalizes its open statements once before it closes it fully, and the statements then throw when used", async () => {
   const calls: Array<string> = [];
   const deps = await setupSqliteWasmWith((sqliteWasm) => ({

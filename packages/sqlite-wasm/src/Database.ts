@@ -131,7 +131,7 @@
  *   {@link SqliteInvalidSqlTextError} before SQLite sees it, in
  *   {@link SqliteDatabase.exec} too.
  * - A second statement is found by scanning the rest of the SQL as SQLite
- *   3.53.4's tokenizer reads it, not by preparing it, because SQLite applies
+ *   3.54.0's tokenizer reads it, not by preparing it, because SQLite applies
  *   many pragmas, such as `foreign_keys`, when it prepares them, so SQL that
  *   fails with {@link SqliteMultipleStatementsError} would still change the
  *   connection. Only semicolons, whitespace, UTF-8 byte order marks and
@@ -1630,7 +1630,7 @@ const isValidSqlText = (sql: string): boolean =>
 const runningOperationsByVfs = /*#__PURE__*/ new WeakMap<SqliteVfs, number>();
 
 // Whether UTF-8 SQL from start to end holds no statement, only the tokens
-// SQLite 3.53.4's tokenizer skips: a semicolon; a space, which starts with a
+// SQLite 3.54.0's tokenizer skips: a semicolon; a space, which starts with a
 // space, \t, \n, \f or \r and continues over sqlite3Isspace, which adds \v,
 // while a \v that starts a token is illegal; a UTF-8 byte order mark, a space
 // of its own; a comment from "--" to a newline or the end; and a comment from

@@ -231,9 +231,9 @@ test("createSqliteWasm loads the pinned binary", async () => {
     new TextDecoder().decode(
       heap.subarray(versionPtr, heap.indexOf(0, versionPtr)),
     ),
-    "3.53.4",
+    "3.54.0",
   );
-  assertEqual(sqlite3_libversion_number(deps)(), 3053004);
+  assertEqual(sqlite3_libversion_number(deps)(), 3054000);
 });
 
 test("createSqliteWasm compiles bytes", async () => {
@@ -244,7 +244,7 @@ test("createSqliteWasm compiles bytes", async () => {
   assertOk(result);
   assertEqual(
     sqlite3_libversion_number({ sqliteWasm: result.value })(),
-    3053004,
+    3054000,
   );
 });
 
@@ -260,7 +260,7 @@ test("createSqliteWasm compiles a plain ArrayBuffer, such as Response.arrayBuffe
   assertOk(result);
   assertEqual(
     sqlite3_libversion_number({ sqliteWasm: result.value })(),
-    3053004,
+    3054000,
   );
 });
 
@@ -276,7 +276,7 @@ test("createSqliteWasm compiles a Response of type application/wasm while it str
   assertOk(result);
   assertEqual(
     sqlite3_libversion_number({ sqliteWasm: result.value })(),
-    3053004,
+    3054000,
   );
   assertEqual(
     compileStreaming.mock.calls.map((call) => call.arguments),
@@ -296,7 +296,7 @@ test("createSqliteWasm compiles a promised Response of type application/wasm, su
   assertOk(result);
   assertEqual(
     sqlite3_libversion_number({ sqliteWasm: result.value })(),
-    3053004,
+    3054000,
   );
   assertEqual(
     compileStreaming.mock.calls.map((call) => call.arguments),
@@ -341,7 +341,7 @@ for (const contentType of [
       assertOk(result);
       assertEqual(
         sqlite3_libversion_number({ sqliteWasm: result.value })(),
-        3053004,
+        3054000,
       );
     }
     assertEqual(compileStreaming.mock.callCount(), 0);

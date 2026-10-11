@@ -1,5 +1,5 @@
 /**
- * Builds `wasm/sqlite3.wasm`: plain SQLite 3.53.4 from sqlite.org's source zip,
+ * Builds `wasm/sqlite3.wasm`: plain SQLite 3.54.0 from sqlite.org's source zip,
  * compiled to WebAssembly by Emscripten 6.0.3 with SQLite's own makefile,
  * unpatched. The build fails unless its bytes equal the pinned ones.
  *
@@ -131,11 +131,11 @@ export interface BuildWasmOptions {
 }
 
 const sqliteSource: PinnedSqliteSource = {
-  url: "https://sqlite.org/2026/sqlite-src-3530400.zip",
-  file: "sqlite-src-3530400.zip",
-  hash: "b834d474b9b393d85a9e3ee4cc11f1329e007e9376a424ee740796f5c4bda3a8",
-  directory: "sqlite-src-3530400",
-  checkIn: "bf7c7f30031888f4e796e429ab3978879485813aaca6f641c7b33e4e09459bcc",
+  url: "https://sqlite.org/2026/sqlite-src-3540000.zip",
+  file: "sqlite-src-3540000.zip",
+  hash: "a5c29342ca185abcda332448fbb27c536661245be27e20199b46c49099b0e15e",
+  directory: "sqlite-src-3540000",
+  checkIn: "be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3",
 };
 
 const emscriptenVersion = "6.0.3";

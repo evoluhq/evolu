@@ -67,6 +67,7 @@ import {
 import type {
   CStringPtr,
   NullPtr,
+  SqliteBackupPtr,
   SqliteContextPtr,
   SqliteDbPtr,
   SqliteDestructor,
@@ -264,6 +265,21 @@ export interface SqliteCExports {
     szBuf: bigint,
     mFlags: number,
   ) => SqliteResultCode;
+  readonly sqlite3_backup_init: (
+    pDest: SqliteDbPtr,
+    zDestName: CStringPtr,
+    pSource: SqliteDbPtr,
+    zSourceName: CStringPtr,
+  ) => SqliteBackupPtr | NullPtr;
+  readonly sqlite3_backup_step: (
+    p: SqliteBackupPtr,
+    nPage: number,
+  ) => SqliteResultCode;
+  readonly sqlite3_backup_finish: (
+    p: SqliteBackupPtr | NullPtr,
+  ) => SqliteResultCode;
+  readonly sqlite3_backup_remaining: (p: SqliteBackupPtr) => number;
+  readonly sqlite3_backup_pagecount: (p: SqliteBackupPtr) => number;
   readonly sqlite3_errcode: (db: SqliteDbPtr) => SqliteResultCode;
   readonly sqlite3_extended_errcode: (db: SqliteDbPtr) => SqliteResultCode;
   readonly sqlite3_errmsg: (db: SqliteDbPtr) => CStringPtr | NullPtr;
@@ -1520,9 +1536,10 @@ export const sqlite3_serialize = (
 /**
  * Reopens a schema, main for NULL, as an in-memory database over the first szDb
  * bytes of a szBuf-byte buffer, which must stay valid and unmodified until the
- * connection closes. With SQLITE_DESERIALIZE_FREEONCLOSE, SQLite takes
- * ownership of the {@link sqlite3_malloc}'d buffer and frees it, even when
- * deserializing fails.
+ * connection closes. szBuf must be at least szDb, and about 20 bytes more for
+ * content that may be malformed, which SQLite may read a few bytes past. With
+ * SQLITE_DESERIALIZE_FREEONCLOSE, SQLite takes ownership of the
+ * {@link sqlite3_malloc}'d buffer and frees it, even when deserializing fails.
  *
  * Wasm type `i(iiijji)`. Signature `["sqlite3_deserialize", "int", "sqlite3*",
  * "string", "*", "i64", "i64", "int"]` from SQLite's table.
@@ -1533,6 +1550,81 @@ export const sqlite3_deserialize = (
   deps: SqliteWasmDep,
 ): SqliteCExports["sqlite3_deserialize"] =>
   deps.sqliteWasm.exports.sqlite3_deserialize;
+
+/**
+ * Starts copying the database zSourceName of pSource, such as main, into the
+ * database zDestName of pDest and returns the backup, or NULL with the error in
+ * pDest. It fails while pDest has a read transaction open, and when both are
+ * the same connection.
+ *
+ * Wasm type `i(iiii)`. Signature `["sqlite3_backup_init", "sqlite3_backup*",
+ * "sqlite3*", "string", "sqlite3*", "string"]` from SQLite's table.
+ *
+ * See https://sqlite.org/c3ref/backup_finish.html.
+ */
+export const sqlite3_backup_init = (
+  deps: SqliteWasmDep,
+): SqliteCExports["sqlite3_backup_init"] =>
+  deps.sqliteWasm.exports.sqlite3_backup_init;
+
+/**
+ * Copies up to nPage pages, or all that remain when nPage is negative. Returns
+ * SQLITE_DONE once every page is copied, SQLITE_OK while pages remain,
+ * SQLITE_BUSY or SQLITE_LOCKED when a lock prevents it for now, or another
+ * error, after which only {@link sqlite3_backup_finish} is useful.
+ *
+ * Wasm type `i(ii)`. Signature `["sqlite3_backup_step", "int",
+ * "sqlite3_backup*", "int"]` from SQLite's table.
+ *
+ * See https://sqlite.org/c3ref/backup_finish.html.
+ */
+export const sqlite3_backup_step = (
+  deps: SqliteWasmDep,
+): SqliteCExports["sqlite3_backup_step"] =>
+  deps.sqliteWasm.exports.sqlite3_backup_step;
+
+/**
+ * Releases the backup and returns SQLITE_OK, or the error of a failed
+ * {@link sqlite3_backup_step}. Every backup {@link sqlite3_backup_init} returned
+ * needs it, also after an error, and NULL is a no-op.
+ *
+ * Wasm type `i(i)`. Signature `["sqlite3_backup_finish", "int",
+ * "sqlite3_backup*"]` from SQLite's table.
+ *
+ * See https://sqlite.org/c3ref/backup_finish.html.
+ */
+export const sqlite3_backup_finish = (
+  deps: SqliteWasmDep,
+): SqliteCExports["sqlite3_backup_finish"] =>
+  deps.sqliteWasm.exports.sqlite3_backup_finish;
+
+/**
+ * Returns how many pages were left to copy when the last
+ * {@link sqlite3_backup_step} returned.
+ *
+ * Wasm type `i(i)`. Signature `["sqlite3_backup_remaining", "int",
+ * "sqlite3_backup*"]` from SQLite's table.
+ *
+ * See https://sqlite.org/c3ref/backup_finish.html.
+ */
+export const sqlite3_backup_remaining = (
+  deps: SqliteWasmDep,
+): SqliteCExports["sqlite3_backup_remaining"] =>
+  deps.sqliteWasm.exports.sqlite3_backup_remaining;
+
+/**
+ * Returns how many pages the source database had when the last
+ * {@link sqlite3_backup_step} returned.
+ *
+ * Wasm type `i(i)`. Signature `["sqlite3_backup_pagecount", "int",
+ * "sqlite3_backup*"]` from SQLite's table.
+ *
+ * See https://sqlite.org/c3ref/backup_finish.html.
+ */
+export const sqlite3_backup_pagecount = (
+  deps: SqliteWasmDep,
+): SqliteCExports["sqlite3_backup_pagecount"] =>
+  deps.sqliteWasm.exports.sqlite3_backup_pagecount;
 
 /**
  * Returns the result code of the connection's most recent API call if that call

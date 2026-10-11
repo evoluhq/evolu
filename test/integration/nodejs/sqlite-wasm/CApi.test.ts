@@ -21,6 +21,11 @@ import {
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import {
+  sqlite3_backup_finish,
+  sqlite3_backup_init,
+  sqlite3_backup_pagecount,
+  sqlite3_backup_remaining,
+  sqlite3_backup_step,
   sqlite3_bind_blob,
   sqlite3_bind_double,
   sqlite3_bind_int,
@@ -776,6 +781,36 @@ test("sqlite3_serialize exports a database that sqlite3_deserialize opens", asyn
   assertEqual(sqlite3_close_v2(t)(copy.db), SQLITE_OK);
 });
 
+// tester1.c-pp.js 'Backup API' 'Backup API sanity checks'.
+test("sqlite3_backup_init, _step, _remaining, _pagecount and _finish copy a database page by page into another connection", async () => {
+  const t = await setupDatabase();
+  assertEqual(
+    t.exec(
+      "create table t(a); with recursive c(i) as (select 1 union all select i + 1 from c where i < 100) insert into t select randomblob(1000) from c",
+    ),
+    SQLITE_OK,
+  );
+  const copy = t.open(":memory:");
+  assertEqual(copy.rc, SQLITE_OK);
+  const main = t.cString("main");
+
+  const backup = sqlite3_backup_init(t)(copy.db, main, t.db, main);
+  assert(backup !== 0, "The backup did not start.");
+  assertEqual(sqlite3_backup_step(t)(backup, 1), SQLITE_OK);
+  const pages = sqlite3_backup_pagecount(t)(backup);
+  assertTrue(pages > 1);
+  assertEqual(sqlite3_backup_remaining(t)(backup), pages - 1);
+  assertEqual(sqlite3_backup_step(t)(backup, -1), SQLITE_DONE);
+  assertEqual(sqlite3_backup_remaining(t)(backup), 0);
+  assertEqual(sqlite3_backup_finish(t)(backup), SQLITE_OK);
+
+  assertEqual(t.selectText("select count(*) from t", copy.db), "100");
+  assertEqual(sqlite3_backup_init(t)(t.db, main, t.db, main), 0);
+  assertEqual(t.errmsg(t.db), "source and destination must be distinct");
+  assertEqual(sqlite3_backup_finish(t)(0), SQLITE_OK);
+  assertEqual(sqlite3_close_v2(t)(copy.db), SQLITE_OK);
+});
+
 // tester1.c-pp.js 'sqlite3.oo1' 'sqlite3_db_config() and sqlite3_status()'.
 test("sqlite3_status, sqlite3_status64 and sqlite3_db_status report memory use", async () => {
   const t = await setupDatabase();
@@ -945,7 +980,7 @@ test("sqlite3_complete, the keyword functions and the compile options", async ()
     t
       .text(sqlite3_sourceid(t)())
       ?.startsWith(
-        "2026-07-24 19:02:57 bf7c7f30031888f4e796e429ab3978879485813aaca6f641c7b33e4e09459bcc",
+        "2026-10-09 15:46:58 be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3",
       ) === true,
   );
 });

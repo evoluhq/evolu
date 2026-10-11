@@ -2,10 +2,10 @@
  * Generates `src/CApi.ts` and `src/Constants.ts` from SQLite's own metadata.
  *
  * Inputs, pinned in `scripts/upstream` from the one release the binary is built
- * from, SQLite 3.53.4:
+ * from, SQLite 3.54.0:
  *
  * - `sqlite3-api-glue.c-pp.js`: SQLite's JavaScript glue, verbatim from
- *   `ext/wasm/api` of sqlite-src-3530400.zip. Its `bindingSignatures` table
+ *   `ext/wasm/api` of sqlite-src-3540000.zip. Its `bindingSignatures` table
  *   gives the C types of the functions SQLite's JavaScript binds.
  * - `sqlite3-wasm-enum.json`: the exact bytes of the string
  *   `sqlite3__wasm_enum_json()` returns in the binary, with every SQLITE_*
@@ -118,6 +118,7 @@ const tableTypes: Readonly<
   "string:flexible": { ts: "CStringPtr", wasm: "i" },
   "string:dealloc": { ts: "SqliteOwnedCStringPtr", wasm: "i" },
   "sqlite3*": { ts: "SqliteDbPtr", wasm: "i" },
+  "sqlite3_backup*": { ts: "SqliteBackupPtr", wasm: "i" },
   "sqlite3_context*": { ts: "SqliteContextPtr", wasm: "i" },
   sqlite3_filename: { ts: "SqliteFilenamePtr", wasm: "i" },
   "sqlite3_index_info*": { ts: "SqliteIndexInfoPtr", wasm: "i" },
@@ -139,6 +140,7 @@ const narrowTypes: Readonly<
 > = {
   CStringPtr: { wasm: "i", module: "./Pointer.ts" },
   NullPtr: { wasm: "i", module: "./Pointer.ts" },
+  SqliteBackupPtr: { wasm: "i", module: "./Pointer.ts" },
   SqliteContextPtr: { wasm: "i", module: "./Pointer.ts" },
   SqliteDataType: { wasm: "i", module: "./Constants.ts" },
   SqliteDbPtr: { wasm: "i", module: "./Pointer.ts" },

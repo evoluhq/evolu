@@ -113,8 +113,8 @@
  * - `xCheckReservedLock` reports whether any connection holds more than SHARED on
  *   the path. The exclusive handles make this pool the only writer of its
  *   slots, so the answer is authoritative, and SQLite rolls back a hot journal
- *   left by an interrupted commit. opfs-sahpool always answered yes until
- *   SQLite fixed it on 2026-09-30, so such a transaction stayed half-applied.
+ *   left by an interrupted commit. opfs-sahpool always answered yes before
+ *   SQLite 3.54.0, so such a transaction stayed half-applied.
  * - `xSleep` does nothing. Contention can only come from connections in the same
  *   thread, which sleeping cannot resolve.
  *
