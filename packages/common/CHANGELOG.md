@@ -1,5 +1,125 @@
 # @evolu/common
 
+## 8.20.3
+
+### Patch Changes
+
+- e7c0b5a: Replaced the mutation ownerId option with owner
+
+  Mutations took the owner of a row as `ownerId`, which any owner had, so an app
+  could write rows for a `SharedReadonlyOwner`. Those changes stayed on the
+  device: uploading requires the write key, which a read-only owner lacks. The
+  `owner` option takes an `Owner` with its write key instead, so writing for a
+  read-only owner no longer compiles. An owner can still be written before
+  `evolu.useOwner` registers it, and its changes upload once it does.
+
+  To migrate, pass the owner instead of its id. To update a row read from a
+  query, use the owner whose id matches the row's `ownerId`. TypeScript catches a
+  leftover `ownerId` written at the call, but not in an options object built
+  elsewhere that also sets `onComplete`, nor in JavaScript. Such a mutation now
+  writes the row for the AppOwner, so search mutation calls for `ownerId`.
+
+  ```ts
+  import {
+    assertEqual,
+    createOwnerSecret,
+    createRandomBytes,
+    createSharedOwner,
+    createSharedReadonlyOwner,
+    id,
+    NonEmptyTrimmedString100,
+    type Evolu,
+  } from "@evolu/common";
+
+  const Schema = {
+    comment: { id: id("Comment"), text: NonEmptyTrimmedString100 },
+  };
+  const sharedOwner = createSharedOwner(
+    createOwnerSecret({ randomBytes: createRandomBytes() }),
+  );
+  const readonlyOwner = createSharedReadonlyOwner(sharedOwner);
+  const text = NonEmptyTrimmedString100.orThrow("Hello");
+
+  const _insertComments = (evolu: Evolu<typeof Schema>): void => {
+    // @ts-expect-error MutationOptions has no ownerId option.
+    evolu.insert("comment", { text }, { ownerId: sharedOwner.id });
+
+    evolu.insert("comment", { text }, { owner: sharedOwner });
+
+    // @ts-expect-error A SharedReadonlyOwner has no write key, so it cannot own a mutation.
+    evolu.insert("comment", { text }, { owner: readonlyOwner });
+  };
+
+  assertEqual(readonlyOwner.id, sharedOwner.id);
+  ```
+
+- 2d00a74: Reported a database whose worker failed instead of waiting for it forever
+
+  When a database's worker failed, every instance of the database waited forever:
+  `evoluError` stayed `null`, and queries, mutations, and exports never completed.
+  At startup, which could also leave `devicePersistence` pending, this happened
+  when the SQLite driver threw, for example in an Expo build without SQLCipher;
+  when the file could not be read, for example because it was corrupt or
+  unencrypted while SQLCipher was on; or when SQLite's wasm failed to load. Later
+  it happened when SQLite failed a query or an export, or after a defect while
+  applying sync. Only the platform's error reporter saw the error. In React
+  Native, a failed query's exception escaped a timer, which React Native treats as
+  fatal. On the web, a database also waited forever, with no error reaching the
+  app, when its worker's script failed to load, for example after a deployment
+  removed it while a tab still ran the previous build.
+
+  A worker that throws while it starts or handles a request now refuses its
+  database, and on the web, the tab that hosts a worker whose script fails to load
+  refuses the database for it. The refusal carries an `UnknownError` of the error,
+  so every tab of the database, including tabs opened later, gets it as
+  `evoluError`, `devicePersistence` resolves, and sync state shows the database as
+  `Refused`. Other databases keep working. As for other refusals, queries and
+  exports stay pending until the instance is disposed, and mutations are not
+  stored, so show `evoluError` outside any query-loading boundary and ask the user
+  to close all the app's tabs. Once every instance of the database is disposed and
+  Evolu disposes it when idle, creating an instance again retries the start. A
+  mutation that SQLite fails is still answered with an `UnknownError`, and its
+  database keeps working.
+
+  `RefusedSyncTenant.error` can now be an `UnknownError`, so a switch over it
+  needs that case. A switch without it no longer compiles:
+
+  ```ts
+  import { assertEqual, createUnknownError, Name } from "@evolu/common";
+  import type { RefusedSyncTenant } from "@evolu/common/local-first";
+
+  // @ts-expect-error A switch without the UnknownError case does not return a string for every refusal.
+  const _refusalMessageBefore = (tenant: RefusedSyncTenant): string => {
+    // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The switch from before, which TypeScript rejects.
+    switch (tenant.error.type) {
+      case "DatabaseHeldError":
+        return "Close the app's other tabs or restart the browser.";
+      case "UnsupportedDbVersionError":
+        return "Update the app.";
+    }
+  };
+
+  const refusalMessage = (tenant: RefusedSyncTenant): string => {
+    switch (tenant.error.type) {
+      case "DatabaseHeldError":
+        return "Close the app's other tabs or restart the browser.";
+      case "UnknownError":
+        return "Close all tabs of this app and open it again.";
+      case "UnsupportedDbVersionError":
+        return "Update the app.";
+    }
+  };
+
+  assertEqual(
+    refusalMessage({
+      type: "Refused",
+      name: Name.orThrow("app"),
+      error: createUnknownError(new Error("No SQLCipher.")),
+    }),
+    "Close all tabs of this app and open it again.",
+  );
+  ```
+
 ## 8.20.2
 
 ### Patch Changes
