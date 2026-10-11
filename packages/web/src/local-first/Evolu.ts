@@ -1,10 +1,12 @@
 import {
+  createUnknownError,
   exhaustiveCheck,
   tryAsync,
   trySync,
   type ConsoleDep,
   type ReloadApp,
   type ReloadAppDep,
+  type UnknownError,
   type UnsupportedDbVersionError,
 } from "@evolu/common";
 import type {
@@ -28,6 +30,7 @@ import { reloadApp } from "../Platform.ts";
 import {
   createBroadcastChannel,
   createMessageChannel,
+  createMessagePort,
   createSharedWorker,
   createWorker,
   installOneTabSharedWorkerPolyfill,
@@ -246,15 +249,76 @@ export const createEvoluDeps = (
   disposer.defer(() => {
     for (const dbWorker of dbWorkers) dbWorker[Symbol.dispose]();
   });
+  // Disposal stops waiting for DbWorkers to load, because the SharedWorker then
+  // requests a replacement elsewhere, and a refusal posted afterwards would
+  // refuse a database another tab serves.
+  const { signal: dbWorkerLoadSignal } = disposer.adopt(
+    new AbortController(),
+    (controller) => {
+      controller.abort();
+    },
+  );
 
   const createDbWorker: CreateDbWorker = () => {
-    const dbWorker = createWorker<DbWorkerInit, never>(
-      new Worker(new URL("Db.worker.js", import.meta.url), {
-        type: "module",
-      }),
+    const nativeDbWorker = new Worker(
+      new URL("Db.worker.js", import.meta.url),
+      { type: "module" },
     );
+    const dbWorker = createWorker<DbWorkerInit, never>(nativeDbWorker);
     dbWorkers.add(dbWorker);
-    return dbWorker;
+
+    // The DbWorker posts one message once its script has loaded, and the init
+    // waits for it, because a worker that never runs cannot refuse its
+    // database, so the tab keeps the init's port to refuse it instead. A script
+    // that fails to load fires a plain Event at the Worker object
+    // (https://html.spec.whatwg.org/multipage/workers.html#worker-processing-model),
+    // and one that throws while it runs fires an ErrorEvent with the message
+    // and position but without the error value
+    // (https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception).
+    // An ErrorEvent stays uncanceled, so the browser still logs it and passes it
+    // to the page's own error handlers, while a plain Event reaches no other
+    // handler.
+    const loaded = Promise.withResolvers<UnknownError | null>();
+    const handleLoad = (event: Event): void => {
+      loaded.resolve(
+        event.type === "message"
+          ? null
+          : createUnknownError(
+              event instanceof ErrorEvent
+                ? {
+                    message: event.message,
+                    filename: event.filename,
+                    lineno: event.lineno,
+                    colno: event.colno,
+                  }
+                : { message: "The DbWorker failed to load." },
+            ),
+      );
+    };
+    nativeDbWorker.addEventListener("message", handleLoad, {
+      signal: dbWorkerLoadSignal,
+    });
+    nativeDbWorker.addEventListener("error", handleLoad, {
+      signal: dbWorkerLoadSignal,
+    });
+
+    return {
+      ...dbWorker,
+      postMessage: (init, transfer) => {
+        void loaded.promise.then((error) => {
+          if (!error) {
+            dbWorker.postMessage(init, transfer);
+            return;
+          }
+          createMessagePort(init.port).postMessage({
+            type: "LeaderRefused",
+            error,
+          });
+          dbWorkers.delete(dbWorker);
+          dbWorker[Symbol.dispose]();
+        });
+      },
+    };
   };
 
   const webSharedWorker = createSharedWorker<

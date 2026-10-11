@@ -5,17 +5,13 @@ import {
   createQueryBuilder,
   createRun,
   id,
-  isPlainObject,
   sleep,
-  UnknownError,
   type EvoluError,
-  type Run,
 } from "@evolu/common";
 import {
   AppName,
   createEvolu,
   createEvoluDeps,
-  createOwnerWebSocketTransport,
   testAppOwner,
   type CreateDbWorker,
   type DbWorker,
@@ -24,6 +20,10 @@ import {
   type SharedWorkerOutput,
 } from "@evolu/common/local-first";
 import { test } from "vitest";
+import {
+  panicSharedWorker,
+  waitForSharedWorkerClose,
+} from "./_panicSharedWorker.ts";
 import {
   createBroadcastChannel,
   createMessageChannel,
@@ -112,55 +112,6 @@ const setupTab = async (
     ),
   );
   return { deps, run, evolu };
-};
-
-/**
- * Panics the tab's shared worker and waits until the panic's error reaches the
- * tab's evoluError.
- */
-const panicSharedWorker = async ({
-  deps,
-  evolu,
-}: Awaited<ReturnType<typeof setupTab>>): Promise<void> => {
-  // The test waits for the panic's error rather than reading the latest one,
-  // so an error reported later cannot hide it.
-  const panicReported = Promise.withResolvers<void>();
-  deps.evoluError.subscribe(() => {
-    const error = deps.evoluError.get();
-    if (
-      UnknownError.is(error) &&
-      isPlainObject(error.error) &&
-      typeof error.error.message === "string" &&
-      error.error.message.includes("lookup duplicates")
-    )
-      panicReported.resolve();
-  });
-
-  // The same transport twice in one claim is a defect that panics the worker's
-  // root Run. The panic also releases the build lock that the production worker
-  // otherwise holds, which would block later tests.
-  const transport = createOwnerWebSocketTransport({
-    url: "wss://panic.example",
-    ownerId: testAppOwner.id,
-  });
-  evolu.useOwner(testAppOwner, [transport, transport]);
-
-  await panicReported.promise;
-};
-
-/**
- * Waits until a failed shared worker closes. Closing releases its build lock,
- * but in Firefox, a tab opened right after that can still connect to the
- * closing worker, so this waits a little longer.
- */
-const waitForSharedWorkerClose = async (run: Run): Promise<void> => {
-  while (
-    (await navigator.locks.query()).held?.some(
-      ({ name }) => name === "evolu-leaderlock-tab",
-    )
-  )
-    await run.ok(sleep("10ms"));
-  await run.ok(sleep("100ms"));
 };
 
 test("a panic of the production shared worker reaches evoluError", async () => {

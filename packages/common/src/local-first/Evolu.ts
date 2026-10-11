@@ -1057,15 +1057,16 @@ export interface EvoluErrorDep {
    * `null` when the wait ends, unless another error replaced it.
    *
    * Subscribe once to show user-facing error messages across all instances. A
-   * database whose worker throws while it starts or handles a request is
-   * refused with an {@link UnknownError}. While a refused database's tenant
-   * remains alive, the SharedWorker sends the refusal to each tab once,
-   * including tabs that connect later, and starts no replacement database
-   * workers. After all instances release that tenant and it is disposed when
-   * idle, creating another instance retries startup and may send the refusal
-   * again. On the web, a tab refused with {@link UnsupportedDbVersionError}
-   * first reloads once instead. Show that blocking message outside any
-   * query-loading boundary, so pending queries do not hide it.
+   * database whose worker throws while it starts or handles a request, or whose
+   * worker script fails to load on the web, is refused with an
+   * {@link UnknownError}. While a refused database's tenant remains alive, the
+   * SharedWorker sends the refusal to each tab once, including tabs that
+   * connect later, and starts no replacement database workers. After all
+   * instances release that tenant and it is disposed when idle, creating
+   * another instance retries startup and may send the refusal again. On the
+   * web, a tab refused with {@link UnsupportedDbVersionError} first reloads once
+   * instead. Show that blocking message outside any query-loading boundary, so
+   * pending queries do not hide it.
    *
    * An {@link UnknownError} leaves Evolu in an unknown state, so the app can
    * only ask the user to close all its tabs. A failed shared worker closes
@@ -1073,11 +1074,12 @@ export interface EvoluErrorDep {
    * it, so the app opened again starts over. Some errors reach every tab, such
    * as an unexpected failure of the shared worker. An app that forwards this
    * store to an error tracker from each tab then reports such an error once per
-   * tab. A failed worker that a tab hosts is also reported by that tab's error
-   * reporter, its error handlers on the web or `ErrorUtils` in React Native, so
-   * an app that sends both to one error tracker sees that failure twice. A tab
-   * hosts each database's worker, and also the shared worker in React Native or
-   * in a browser without SharedWorker.
+   * tab. A failed worker that a tab hosts, except a web worker whose script
+   * failed to load, is also reported by that tab's error reporter, its error
+   * handlers on the web or `ErrorUtils` in React Native, so an app that sends
+   * both to one error tracker sees that failure twice. A tab hosts each
+   * database's worker, and also the shared worker in React Native or in a
+   * browser without SharedWorker.
    *
    * ### Example
    *

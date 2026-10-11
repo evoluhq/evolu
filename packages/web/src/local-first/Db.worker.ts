@@ -32,3 +32,7 @@ void run(startDbWorker(createWorkerSelf(self)), {
   createSqliteDriver: createWasmSqliteDriver(sqliteDeps),
   waitForDatabaseRelease: createWaitForDatabaseRelease(sqliteDeps),
 });
+
+// Tells the tab that this script has loaded, so it posts the init; see
+// createEvoluDeps.
+self.postMessage(null);

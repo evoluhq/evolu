@@ -1352,7 +1352,9 @@ export type DbWorkerOutput =
       /**
        * The worker refused startup or failed and is releasing its resources. It
        * is the worker's last message on its port and can follow
-       * `LeaderAcquired`.
+       * `LeaderAcquired`. On the web, the tab that hosts a worker whose script
+       * failed to load posts it in the worker's place, as the port's only
+       * message.
        */
       readonly type: "LeaderRefused";
       readonly error:

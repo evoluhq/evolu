@@ -20,12 +20,13 @@ import {
   testAppOwner,
   type BuildWaiting,
   type BuildWaitingRequest,
+  type DbWorkerInit,
   type DbWorkerInput,
   type DbWorkerOutput,
   type SharedWorkerId,
   type SharedWorkerOutput,
 } from "@evolu/common/local-first";
-import { describe, it, mock, type Mock } from "node:test";
+import { describe, it, mock } from "node:test";
 import { createEvoluDeps } from "./Evolu.ts";
 
 describe("createEvoluDeps", () => {
@@ -203,6 +204,109 @@ describe("createEvoluDeps", () => {
 
       assertSame(requestPersistentStorage.mock.callCount(), 1);
       assertSame(storage.persisted.mock.callCount(), 0);
+    });
+  });
+
+  describe("DbWorker loading", () => {
+    it("posts the init once its DbWorker's script loads", async () => {
+      using setup = setupWebEvoluDeps();
+      const { init, port } = setup.startDbWorker();
+      const [dbWorker] = setup.dbWorkers;
+      assertNonNullable(dbWorker);
+      await waitForMacrotask();
+      assertSame(dbWorker.postMessage.mock.callCount(), 0);
+
+      dbWorker.dispatchEvent(new MessageEvent("message", { data: null }));
+      // A later error is the page's, as the worker posts its own failures.
+      dbWorker.dispatchEvent(new Event("error"));
+      await waitForMacrotask();
+
+      assertEqual(
+        dbWorker.postMessage.mock.calls.map((call) => call.arguments),
+        [[init, [init.port]]],
+      );
+      assertSame(port.postMessage.mock.callCount(), 0);
+      assertSame(dbWorker.terminate.mock.callCount(), 0);
+    });
+
+    it("refuses the database of a DbWorker whose script fails to load", async () => {
+      using setup = setupWebEvoluDeps();
+      const { port } = setup.startDbWorker();
+      const [dbWorker] = setup.dbWorkers;
+      assertNonNullable(dbWorker);
+
+      // A plain Event stands for a script that failed to load.
+      dbWorker.dispatchEvent(new Event("error"));
+      await waitForMacrotask();
+
+      assertEqual(
+        port.postMessage.mock.calls.map((call) => call.arguments),
+        [
+          [
+            {
+              type: "LeaderRefused",
+              error: {
+                type: "UnknownError",
+                error: { message: "The DbWorker failed to load." },
+              },
+            },
+          ],
+        ],
+      );
+      assertSame(dbWorker.postMessage.mock.callCount(), 0);
+      assertSame(dbWorker.terminate.mock.callCount(), 1);
+      setup.disposeDeps();
+      assertSame(dbWorker.terminate.mock.callCount(), 1);
+    });
+
+    it("refuses the database of a DbWorker whose script throws while it runs", async () => {
+      using setup = setupWebEvoluDeps();
+      const { port } = setup.startDbWorker();
+      const [dbWorker] = setup.dbWorkers;
+      assertNonNullable(dbWorker);
+      const uncaughtError = {
+        message: "Uncaught TypeError: x is not a function",
+        filename: "https://example.com/Db.worker.js",
+        lineno: 12,
+        colno: 34,
+      };
+
+      // An event no listener canceled is still logged by the browser and
+      // passed to the page's own error handlers.
+      assertTrue(
+        dbWorker.dispatchEvent(
+          new ErrorEvent("error", { ...uncaughtError, cancelable: true }),
+        ),
+      );
+      await waitForMacrotask();
+
+      assertEqual(
+        port.postMessage.mock.calls.map((call) => call.arguments),
+        [
+          [
+            {
+              type: "LeaderRefused",
+              error: { type: "UnknownError", error: uncaughtError },
+            },
+          ],
+        ],
+      );
+      assertSame(dbWorker.postMessage.mock.callCount(), 0);
+    });
+
+    it("posts nothing for a DbWorker that loads after the deps are disposed", async () => {
+      using setup = setupWebEvoluDeps();
+      const { port } = setup.startDbWorker();
+      const [dbWorker] = setup.dbWorkers;
+      assertNonNullable(dbWorker);
+
+      setup.disposeDeps();
+      dbWorker.dispatchEvent(new Event("error"));
+      dbWorker.dispatchEvent(new MessageEvent("message", { data: null }));
+      await waitForMacrotask();
+
+      assertSame(port.postMessage.mock.callCount(), 0);
+      assertSame(dbWorker.postMessage.mock.callCount(), 0);
     });
   });
 
@@ -538,16 +642,37 @@ const setupWebEvoluDeps = ({
       },
     ),
   );
-  const dbWorkers: Array<{ readonly terminate: Mock<() => void> }> = [];
-  const Worker = mock.fn(function () {
-    const dbWorker = {
+  const createFakeDbWorker = () =>
+    Object.assign(new EventTarget(), {
       ...createClosableNativePort(),
       terminate: mock.fn<() => void>(),
-    };
+    });
+  const dbWorkers: Array<ReturnType<typeof createFakeDbWorker>> = [];
+  const Worker = mock.fn(function () {
+    const dbWorker = createFakeDbWorker();
     dbWorkers.push(dbWorker);
     return dbWorker;
   });
   disposer.use(testStubGlobal("Worker", Worker));
+  // Node has no ErrorEvent.
+  disposer.use(
+    testStubGlobal(
+      "ErrorEvent",
+      class extends Event {
+        readonly message: string;
+        readonly filename: string;
+        readonly lineno: number;
+        readonly colno: number;
+        constructor(type: string, init: ErrorEventInit = {}) {
+          super(type, init);
+          this.message = init.message ?? "";
+          this.filename = init.filename ?? "";
+          this.lineno = init.lineno ?? 0;
+          this.colno = init.colno ?? 0;
+        }
+      },
+    ),
+  );
   // Page lifecycle events such as pagehide and pageshow.
   const page = new EventTarget();
   disposer.use(
@@ -639,9 +764,13 @@ const setupWebEvoluDeps = ({
     post,
     dbWorkers,
     getDbWorkerCount: (): number => Worker.mock.callCount(),
-    /** Starts a DbWorker in this tab, as the SharedWorker asks its leader. */
-    startDbWorker: (): void => {
-      post({
+    /**
+     * Starts a DbWorker in this tab, as the SharedWorker asks its leader, and
+     * returns its init with the init's port, as the SharedWorker sees it.
+     */
+    startDbWorker: () => {
+      const port = createClosableNativePort();
+      const init: DbWorkerInit = {
         type: "DbWorkerInit",
         name: testName,
         consoleLevel: "silent",
@@ -649,11 +778,13 @@ const setupWebEvoluDeps = ({
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
         sharedWorkerId: createIdFromString<"SharedWorker">("worker"),
-        port: createClosableNativePort() as unknown as NativeMessagePort<
+        port: port as unknown as NativeMessagePort<
           DbWorkerOutput,
           DbWorkerInput
         >,
-      });
+      };
+      post(init);
+      return { init, port };
     },
     /** Waits until this tab wins the election and announces itself. */
     waitForTabLeadership: async (): Promise<void> => {

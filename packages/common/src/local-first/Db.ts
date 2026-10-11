@@ -48,7 +48,10 @@
  * an {@link UnknownError}, and a received frame whose ranges SQLite fails to
  * reconcile and an owner whose sync round SQLite fails to create are logged and
  * reported as failed, so the database stays available. A dispose message, the
- * SharedWorker ending, or an abort that is not a panic posts nothing.
+ * SharedWorker ending, or an abort that is not a panic posts nothing. When a
+ * worker fails before it gets its port, such as a web worker whose script fails
+ * to load, the tab that hosts it posts the refusal in its place; see
+ * {@link CreateDbWorker}.
  *
  * @module
  */
@@ -205,6 +208,15 @@ export interface DbWorkerInit {
   readonly port: NativeMessagePort<DbWorkerOutput, DbWorkerInput>;
 }
 
+/**
+ * Creates the {@link DbWorker} that a tab hosts, which then receives its
+ * {@link DbWorkerInit}.
+ *
+ * A platform whose worker can fail before it receives the init, such as a web
+ * worker whose script fails to load, posts the init only once the worker has
+ * loaded, and otherwise posts `LeaderRefused` with an {@link UnknownError} on
+ * the init's port in the worker's place.
+ */
 export type CreateDbWorker = () => DbWorker;
 
 export interface CreateDbWorkerDep {
