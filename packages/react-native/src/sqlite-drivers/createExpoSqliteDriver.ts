@@ -16,8 +16,13 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
   (name, options) => () => {
     const databaseName = `evolu1-${name}.db`;
     using disposer = new DisposableStack();
+    // expo-sqlite reuses an open connection with the same path and options,
+    // and every memory database has the path ":memory:", so without a new
+    // connection, memory databases would share one database.
     const db = disposer.adopt(
-      openDatabaseSync(options?.mode === "memory" ? ":memory:" : databaseName),
+      options?.mode === "memory"
+        ? openDatabaseSync(":memory:", { useNewConnection: true })
+        : openDatabaseSync(databaseName),
       (db) => {
         db.closeSync();
       },

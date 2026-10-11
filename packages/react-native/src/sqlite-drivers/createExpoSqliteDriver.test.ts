@@ -9,6 +9,7 @@ import {
   testCreateRun,
   type Result,
 } from "@evolu/common";
+import type { SQLiteOpenOptions } from "expo-sqlite";
 import { describe, it, mock } from "node:test";
 
 /**
@@ -27,8 +28,10 @@ const fake = {
 mock.module("expo-sqlite", {
   // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
   exports: {
-    openDatabaseSync: (databaseName: string) => {
-      fake.events.push(`open ${databaseName}`);
+    openDatabaseSync: (databaseName: string, options?: SQLiteOpenOptions) => {
+      fake.events.push(
+        `open ${databaseName}${options ? ` ${JSON.stringify(options)}` : ""}`,
+      );
       return {
         getFirstSync: (source: string) => {
           fake.events.push(source);
@@ -110,7 +113,7 @@ describe("createExpoSqliteDriver", () => {
     ]);
   });
 
-  it("opens a memory database without requiring SQLCipher", async () => {
+  it("opens each memory database on a new connection without requiring SQLCipher", async () => {
     fake.reset();
     await using run = testCreateRun();
 
@@ -119,7 +122,10 @@ describe("createExpoSqliteDriver", () => {
     );
     driver[Symbol.dispose]();
 
-    assertEqual(fake.events, ["open :memory:", "close"]);
+    assertEqual(fake.events, [
+      'open :memory: {"useNewConnection":true}',
+      "close",
+    ]);
   });
 
   it("opens an unencrypted database without requiring SQLCipher", async () => {
