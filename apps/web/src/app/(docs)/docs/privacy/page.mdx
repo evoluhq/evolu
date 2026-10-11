@@ -19,9 +19,9 @@ All data Evolu syncs is encrypted end-to-end. This means:
 ## Encryption on the device
 
 - **Web and Electron** (React, Svelte, Vue, and vanilla JS with `@evolu/web`): encrypted. `@evolu/sqlite-wasm` encrypts every page of the database and its rollback journal in SQLCipher 4's format as the `sqlcipher` scheme of SQLite3 Multiple Ciphers writes it, with AES-256-CBC and HMAC-SHA512.
-- **React Native and Expo**: encrypted with SQLCipher, which the app enables in the `expo-sqlite` config plugin with `"useSQLCipher": true`, as the [react-expo example](https://github.com/evoluhq/evolu/tree/main/examples/react-expo) does in its `app.json`. The plugin applies it when Expo's prebuild generates the native projects, so if the `ios` and `android` directories already exist, run `npx expo prebuild --clean`. Without SQLCipher, `expo-sqlite` builds plain SQLite, which ignores the key, so Evolu fails at startup instead of storing the database unencrypted. In a React Native app that doesn't run Expo's prebuild, set what the plugin would write yourself: `expo.sqlite.useSQLCipher=true` in `android/gradle.properties` and `"expo.sqlite.useSQLCipher": "true"` in `ios/Podfile.properties.json`, then run `pod install` in the `ios` directory. Rebuild the native app afterwards. An app released without SQLCipher with an earlier Evolu version has an unencrypted database, which can't be opened once SQLCipher is on, so it has to convert its database first.
+- **React Native and Expo**: encrypted with SQLCipher, which the app enables with `"useSQLCipher": true` in the `expo-sqlite` config plugin, as the [react-expo example](https://github.com/evoluhq/evolu/tree/main/examples/react-expo) does. Without SQLCipher, Evolu fails at startup with an error that says how to enable it, instead of storing the database unencrypted.
 
-The database key is the app owner's encryption key, derived from its owner secret. Evolu doesn't store that secret, so the database is only as protected as the place the app keeps it. A secret kept in `localStorage`, IndexedDB, a plain file, or another unencrypted store lets anyone who can read that store decrypt the database. `testAppOwner`, which the examples use, has a public secret, so use it only for testing.
+The database key is derived from the app owner's secret, which Evolu doesn't store, so the database is only as safe as the place the app keeps that secret. The examples use `testAppOwner`, whose secret is public, so use it only for testing.
 
 With the `memoryOnly` option, the database is kept in memory and nothing is stored on the device.
 
@@ -35,7 +35,7 @@ Evolu's API is designed to prevent developers from accidentally leaking sensitiv
 
 ## Traffic analysis protection
 
-To limit what sizes reveal, Evolu pads every change with PADMÉ, a [technique](https://lbarman.ch/blog/padme/) that rounds its length up by at most 12% before encryption. A relay and anyone who knows an OwnerId still learn each change's approximate size, and timestamps and NodeIds still reveal activity, as described below.
+Evolu pads every change with [PADMÉ](https://lbarman.ch/blog/padme/) before encrypting it, so a relay sees only its approximate size, rounded up by at most 12%. Timestamps and NodeIds still reveal activity, as described below.
 
 ## Relay blindness by design
 
@@ -54,11 +54,11 @@ The relay stores what it sees in a plain SQLite file. The changes are already en
 
 ## Timestamp metadata
 
-Relays, collaborators, and anyone who knows an OwnerId can see timestamps (user activity). A timestamp records when a change was made, even offline, not when it was synced. The Evolu Relay keeps every timestamp, so anyone who knows an OwnerId can read the owner's whole activity history.
+Relays, collaborators, and anyone who knows an OwnerId can see timestamps (user activity). A timestamp records when a change was made, even offline, and the Evolu Relay keeps it.
 
 ### Why timestamps are visible
 
-Relays reconcile changes by their timestamps, so Evolu sends them unencrypted. Real‑time communication inherently reveals that “something happened” (bytes were transferred), so a relay or network observer could record packet timing anyway. Timestamps reveal more than packet timing: when changes made offline happened, and all past activity to anyone who later learns an OwnerId, joins as a collaborator, or breaches a relay.
+Relays reconcile changes by their timestamps, so Evolu sends them unencrypted. Real‑time communication inherently reveals that “something happened” (bytes were transferred), so an observer could record packet timing anyway. Stored timestamps add when offline changes were made and the history of past activity.
 
 ### Mitigating activity leakage
 

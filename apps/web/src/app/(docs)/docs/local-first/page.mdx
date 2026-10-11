@@ -71,11 +71,10 @@ npm install @evolu/common @evolu/web
   instructions](https://github.com/margelo/react-native-quick-crypto#installation)
   for proper native dependency configuration. See the [react-expo
   example](https://github.com/evoluhq/evolu/tree/main/examples/react-expo) for
-  required polyfills. Enable SQLCipher as
-  [Privacy](/docs/privacy#encryption-on-the-device) describes: with
-  `["expo-sqlite", { "useSQLCipher": true }]` in your app config's plugins, or
-  with build properties in an app that doesn't run Expo's prebuild. Without
-  SQLCipher, Evolu fails at startup instead of storing the database unencrypted.
+  required polyfills. Enable SQLCipher with
+  `["expo-sqlite", { "useSQLCipher": true }]` in your app config's plugins.
+  Without SQLCipher, Evolu fails at startup with an error that says how to
+  enable it, instead of storing the database unencrypted.
 </ConditionalPlatformAlert>
 
 ## Define schema
