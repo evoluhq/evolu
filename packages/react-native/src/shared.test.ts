@@ -15,6 +15,7 @@ import {
   AppName,
   createEvolu,
   createOwnerWebSocketTransport,
+  createQueryBuilder,
   testAppOwner,
 } from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
@@ -23,6 +24,34 @@ import { describe, it, mock } from "node:test";
 import { createEvoluDeps } from "./shared.ts";
 
 installPolyfills();
+
+/**
+ * Creates a SQLite driver for an in-memory node:sqlite database. `onExec` sees
+ * each statement first and can throw to fail it.
+ */
+const setupNodeSqliteDriver =
+  (onExec: (sql: string) => void = constVoid): CreateSqliteDriver =>
+  () =>
+  () => {
+    const db = new DatabaseSync(":memory:");
+    return ok({
+      exec: ({ sql, parameters }) => {
+        onExec(sql);
+        const statement = db.prepare(sql);
+        if (statement.columns().length === 0) {
+          const { changes } = statement.run(...parameters);
+          return { rows: [], changes: Number(changes) };
+        }
+        const rows = statement.all(...parameters) as Array<SqliteRow>;
+        return { rows, changes: 0 };
+      },
+      export: () => new Uint8Array(),
+      deleteDatabase: constVoid,
+      [Symbol.dispose]: () => {
+        db.close();
+      },
+    });
+  };
 
 /** Resolves once the deps' worker has connected and published sync state. */
 const waitForSyncState = (deps: EvoluDeps): Promise<void> =>
@@ -62,27 +91,11 @@ describe("createEvoluDeps", () => {
         reported.resolve(error);
       },
     });
-    const createSqliteDriver: CreateSqliteDriver = () => () => {
-      const db = new DatabaseSync(":memory:");
-      return ok({
-        exec: ({ sql, parameters }) => {
-          const statement = db.prepare(sql);
-          if (statement.columns().length === 0) {
-            const { changes } = statement.run(...parameters);
-            return { rows: [], changes: Number(changes) };
-          }
-          const rows = statement.all(...parameters) as Array<SqliteRow>;
-          return { rows, changes: 0 };
-        },
-        export: () => new Uint8Array(),
-        deleteDatabase: constVoid,
-        [Symbol.dispose]: () => {
-          db.close();
-        },
-      });
-    };
     const createDeps = () =>
-      createEvoluDeps({ reloadApp: constVoid, createSqliteDriver });
+      createEvoluDeps({
+        reloadApp: constVoid,
+        createSqliteDriver: setupNodeSqliteDriver(),
+      });
 
     using first = createDeps();
     await using run = createRun(first);
@@ -153,6 +166,51 @@ describe("createEvoluDeps", () => {
 
     assertEqual(await evoluError, createUnknownError(error));
     // The worker's panic is still reported once.
+    assertEqual(
+      reportError.mock.calls.map((call) => call.arguments[0]),
+      [error],
+    );
+  });
+
+  it("reports a database whose query SQLite fails as an UnknownError", async () => {
+    const reportError =
+      mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>();
+    using _errorUtils = testStubGlobal("ErrorUtils", {
+      getGlobalHandler: () => null,
+      setGlobalHandler:
+        mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
+      reportError,
+    });
+    const error = new Error("no such column: title");
+    using deps = createEvoluDeps({
+      reloadApp: constVoid,
+      createSqliteDriver: setupNodeSqliteDriver((sql) => {
+        if (sql.includes('from "todo"')) throw error;
+      }),
+    });
+    const evoluError = new Promise((resolve) => {
+      const unsubscribe = deps.evoluError.subscribe(() => {
+        unsubscribe();
+        resolve(deps.evoluError.get());
+      });
+    });
+    const schema = { todo: { id: id("Todo") } };
+    await using run = createRun(deps);
+    await using evolu = await run.ok(
+      createEvolu(schema, {
+        appName: AppName.orThrow("query"),
+        appOwner: testAppOwner,
+        transports: [],
+        memoryOnly: true,
+      }),
+    );
+
+    void evolu.loadQuery(
+      createQueryBuilder(schema)((db) => db.selectFrom("todo").select("id")),
+    );
+
+    assertEqual(await evoluError, createUnknownError(error));
+    // The worker's panic is reported once.
     assertEqual(
       reportError.mock.calls.map((call) => call.arguments[0]),
       [error],

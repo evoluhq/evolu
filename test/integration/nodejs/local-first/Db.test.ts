@@ -23,7 +23,10 @@ import {
   type ConsoleStoreOutput,
   type TestConsole,
 } from "../../../../packages/common/src/Console.ts";
-import { createUnknownError } from "../../../../packages/common/src/Error.ts";
+import {
+  createUnknownError,
+  defectToError,
+} from "../../../../packages/common/src/Error.ts";
 import {
   constVoid,
   disposable,
@@ -106,6 +109,7 @@ import {
 import {
   testCreateDeps,
   testCreateRun,
+  type TestReportDefect,
 } from "../../../../packages/common/src/Task.ts";
 import { testCreateId } from "../../../../packages/common/src/Test.ts";
 import {
@@ -131,6 +135,7 @@ import {
   testCreateMessageChannel,
   testCreateWorker,
   testWaitForWorkerMessage,
+  type CreateBroadcastChannelDep,
   type MessagePort,
   type WorkerSelf,
 } from "../../../../packages/common/src/Worker.ts";
@@ -257,10 +262,12 @@ const setupDb = async ({
   time = testCreateTime(),
   createSqliteDriver: suppliedDriver = testCreateSqliteDep.createSqliteDriver,
   onExec,
+  onExport,
 }: {
   time?: TestTime;
   createSqliteDriver?: CreateSqliteDriver;
   onExec?: (query: SqliteQuery) => void;
+  onExport?: () => void;
 } = {}): Promise<DbSetup> => {
   await using disposer = new AsyncDisposableStack();
 
@@ -285,7 +292,10 @@ const setupDb = async ({
         onExec?.(query);
         return driver.exec(query);
       },
-      export: () => driver.export(),
+      export: () => {
+        onExport?.();
+        return driver.export();
+      },
       deleteDatabase: () => driver.deleteDatabase(),
       [Symbol.dispose]: constVoid,
     });
@@ -312,6 +322,8 @@ const setupDb = async ({
 const testSharedWorkerId = testCreateId()<"SharedWorker">();
 
 interface DbWorkerSetup extends DbSetup {
+  /** The defects the DbWorker's Run reported. */
+  readonly reportDefect: TestReportDefect;
   /** Ends the SharedWorker that requested the DbWorker. */
   readonly endSharedWorker: () => Promise<void>;
   readonly getClock: () => Timestamp;
@@ -332,7 +344,7 @@ const setupDbWorker = async ({
   time,
   console = testCreateConsole({ level: "silent" }),
   consoleLevel = console.getLevel(),
-  onThrown,
+  createBroadcastChannel = testCreateBroadcastChannel,
   expectRefused = false,
   lockManager = testCreateLockManager(),
   waitForDatabaseRelease,
@@ -344,7 +356,7 @@ const setupDbWorker = async ({
   console?: TestConsole;
   /** The app's level, which DbWorkerInit carries. */
   consoleLevel?: ConsoleLevel;
-  onThrown?: (error: unknown) => void;
+  createBroadcastChannel?: CreateBroadcastChannelDep["createBroadcastChannel"];
   /** The worker is expected to post LeaderRefused instead of LeaderAcquired. */
   expectRefused?: boolean;
   lockManager?: LockManagerDep["lockManager"];
@@ -367,31 +379,8 @@ const setupDbWorker = async ({
     testCreateRun({
       console,
       consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
-      createBroadcastChannel: testCreateBroadcastChannel,
-      createMessagePort:
-        onThrown === undefined
-          ? createMessagePort
-          : (native) => {
-              const port = createMessagePort(native);
-              return {
-                ...port,
-                get onMessage() {
-                  return port.onMessage;
-                },
-                set onMessage(handler) {
-                  port.onMessage =
-                    handler === null
-                      ? null
-                      : (input) => {
-                          try {
-                            handler(input);
-                          } catch (error) {
-                            onThrown(error);
-                          }
-                        };
-                },
-              };
-            },
+      createBroadcastChannel,
+      createMessagePort,
       lockManager,
       createSqliteDriver: dbSetup.createSqliteDriver,
       time: dbSetup.time,
@@ -486,6 +475,7 @@ const setupDbWorker = async ({
     lockManager,
     outputs,
     port: channel.port2,
+    reportDefect: run.deps.reportDefect,
     consoleEntryOrErrors,
     waitForActivity,
     waitForResponse,
@@ -837,6 +827,8 @@ describe("worker startup", () => {
 
     await using lock = await run.ok(acquireLeaderLock(setup.workerName));
     assertNotUndefined(lock);
+    await testWaitForWorkerMessage();
+    assertEqual(setup.outputs, []);
   });
 
   it("releases leadership after its SharedWorker ends", async () => {
@@ -848,6 +840,8 @@ describe("worker startup", () => {
 
     await using lock = await run.ok(acquireLeaderLock(setup.workerName));
     assertNotUndefined(lock);
+    await testWaitForWorkerMessage();
+    assertEqual(setup.outputs, []);
   });
 
   it("disposes worker self after dispose message", async () => {
@@ -2165,14 +2159,10 @@ describe("sync message flow", () => {
         },
       });
       const console = testCreateConsole({ level: "error" });
-      const thrown: Array<unknown> = [];
       await using setup = await setupDbWorker({
         dbSetup,
         console,
         consoleLevel,
-        onThrown: (error) => {
-          thrown.push(error);
-        },
       });
 
       // The first owner's first query fails.
@@ -2192,7 +2182,6 @@ describe("sync message flow", () => {
       await testWaitForWorkerMessage();
 
       // The attempt is answered, so the shared worker's queue keeps running.
-      assertEqual(thrown, []);
       assertLength(setup.outputs, 1);
       const response = getQueuedSharedWorkerMessage(
         setup.outputs,
@@ -5296,7 +5285,6 @@ describe("write replay", () => {
         let armed = false;
         let failed = false;
         const injected = new Error(`injected ${failure} failure`);
-        const thrown: Array<unknown> = [];
         let request: DbWorkerWriteRequest | undefined;
         let context: { clock: Timestamp; now: Millis } | undefined;
         const rowId = testCreateId()();
@@ -5323,9 +5311,6 @@ describe("write replay", () => {
           await using setup = await setupDbWorker({
             dbSetup,
             memoryOnly: false,
-            onThrown: (error) => {
-              thrown.push(error);
-            },
           });
           request = createReplayRequest(setup, kind, rowId);
           context = { clock: setup.getClock(), now: Millis.orThrow(100) };
@@ -5342,7 +5327,6 @@ describe("write replay", () => {
           assertTrue(failed);
           assertEqual(getSqliteSnapshot(setup), before);
           assertEqual(setup.getClock(), context.clock);
-          assertEqual(thrown, []);
           assertLength(setup.outputs, 1);
           const output = setup.outputs[0];
           assertSame(output.type, "OnQueuedResponse");
@@ -6395,12 +6379,8 @@ describe("quarantine transactions", () => {
           }
         },
       });
-      const thrown: Array<unknown> = [];
       await using setup = await setupDbWorker({
         dbSetup,
-        onThrown: (error) => {
-          thrown.push(error);
-        },
       });
       const clock =
         origin === "local"
@@ -6445,7 +6425,6 @@ describe("quarantine transactions", () => {
       assertFalse(failCommit);
       assertEqual(getSqliteSnapshot(setup), before);
       assertEqual(setup.consoleEntryOrErrors, []);
-      assertEqual(thrown, []);
       if (origin === "local") {
         assertLength(setup.outputs, 1);
         const output = setup.outputs[0];
@@ -6947,7 +6926,7 @@ describe("database version", () => {
   });
 });
 
-describe("startup failure", () => {
+describe("worker failure", () => {
   it("refuses nothing when aborted on purpose while it waits for the leader lock", async () => {
     await using dbSetup = await setupDb();
     const lockManager = testCreateLockManager();
@@ -6978,11 +6957,12 @@ describe("startup failure", () => {
       sharedWorkerId: testSharedWorkerId,
       port: channel.port1.native,
     });
-    const isWaitingForLock = async () =>
+    while (
       (await lockManager.query()).pending?.some(
         (lock) => lock.name === `evolu-leaderlock-${dbSetup.name}`,
-      ) === true;
-    while (!(await isWaitingForLock())) await testWaitForWorkerMessage();
+      ) !== true
+    )
+      await testWaitForWorkerMessage();
 
     const reason = { type: "TestAbort" } as const;
     fiber.abort(reason);
@@ -7051,5 +7031,119 @@ describe("startup failure", () => {
     ]);
     assertEqual(getSqliteSnapshot(refused), before);
     assertEqual(refused.consoleEntryOrErrors, []);
+  });
+
+  it("refuses with an UnknownError when it fails before it opens the database", async () => {
+    const error = new Error("BroadcastChannel is not supported.");
+
+    await using refused = await setupDbWorker({
+      createBroadcastChannel: () => {
+        throw error;
+      },
+      expectRefused: true,
+    });
+
+    assertEqual(refused.initOutputs, [
+      { type: "LeaderRefused", error: createUnknownError(error) },
+    ]);
+  });
+
+  it("refuses with an UnknownError when SQLite fails a query, reports the panic once, and releases the leader lock", async () => {
+    const error = new Error("no such column: name");
+    let armed = false;
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        if (armed && query.sql.includes('from "testTable"')) throw error;
+      },
+    });
+    await using setup = await setupDbWorker({ dbSetup });
+    armed = true;
+
+    const outputs = await postRequest(
+      setup,
+      {
+        type: "ForEvolu",
+        id: setup.evoluInstanceId,
+        message: { type: "Query", queries: createSet([testTableQuery]) },
+      },
+      setup.createId(),
+      "activity",
+    );
+
+    assertEqual(outputs, [
+      { type: "LeaderRefused", error: createUnknownError(error) },
+    ]);
+    const defects = setup.reportDefect.getDefects();
+    assertLength(defects, 1);
+    assertSame(defectToError(defects[0]), error);
+    // Wait for the failed worker to release its leader lock.
+    await using run = testCreateRun({ lockManager: setup.lockManager });
+    await using _lock = await run.ok(acquireLeaderLock(setup.workerName));
+    await testWaitForWorkerMessage();
+    assertEqual(setup.outputs, []);
+  });
+
+  it("refuses with an UnknownError when SQLite fails an export", async () => {
+    const error = new Error("out of memory");
+    let armed = false;
+    await using dbSetup = await setupDb({
+      onExport: () => {
+        if (armed) throw error;
+      },
+    });
+    await using setup = await setupDbWorker({ dbSetup });
+    armed = true;
+
+    const outputs = await postRequest(
+      setup,
+      {
+        type: "ForEvolu",
+        id: setup.evoluInstanceId,
+        message: { type: "Export" },
+      },
+      setup.createId(),
+      "activity",
+    );
+
+    assertEqual(outputs, [
+      { type: "LeaderRefused", error: createUnknownError(error) },
+    ]);
+  });
+
+  it("refuses with an UnknownError after a defect while applying sync, without answering the apply", async () => {
+    await using setup = await setupDbWorker();
+    const inputMessage = await createBroadcastProtocolMessage([
+      {
+        timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+        change: DbChange.orThrow({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "applied" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      },
+    ]);
+    const defect = new Error("defect while applying sync");
+    // Reading the clock while storing the received change throws.
+    const clock = Object.defineProperty({ ...setup.getClock() }, "millis", {
+      get: () => {
+        throw defect;
+      },
+    });
+
+    const outputs = await postRequest(
+      setup,
+      setupApplySyncRequest(inputMessage),
+      setup.createId(),
+      "activity",
+      { clock, now: setup.time.now() },
+    );
+    await testWaitForWorkerMessage();
+
+    assertEqual(outputs, [
+      { type: "LeaderRefused", error: createUnknownError(defect) },
+    ]);
+    assertEqual(setup.outputs, []);
   });
 });

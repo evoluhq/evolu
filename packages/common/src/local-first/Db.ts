@@ -25,12 +25,8 @@
  * transaction before anything is written and is posted to the SharedWorker; the
  * worker then exits and releases its resources. A database whose files another
  * context keeps holding refuses startup the same way, before it is opened, with
- * {@link DatabaseHeldError}; see {@link WaitForDatabaseRelease}. A startup that
- * throws, for example because SQLite cannot open or read the database, still
- * panics the worker, which reports it, and is posted as a refusal with an
- * {@link UnknownError}, so the SharedWorker does not wait for the worker
- * forever. The single version row is created in the same transaction as the
- * other system tables.
+ * {@link DatabaseHeldError}; see {@link WaitForDatabaseRelease}. The single
+ * version row is created in the same transaction as the other system tables.
  *
  * Code released before the version record existed never reads it. It recognizes
  * an initialized database by the `evolu_version` table alone, so it opens a
@@ -39,6 +35,20 @@
  * would make such code fail at startup instead. That was declined: the replay
  * needs drift quarantine and an earlier release on the same device at once, and
  * failing would break a rollback to an earlier release outright.
+ *
+ * ### Failure
+ *
+ * Once the worker holds its port, a throw that ends it, such as a startup that
+ * cannot open or read the database, a query or an export that SQLite fails, or
+ * a defect while applying sync, panics the worker, which reports it, and is
+ * posted to the SharedWorker as a refusal with an {@link UnknownError} before
+ * the database lock is released. The SharedWorker then treats the database as
+ * refused and tells its tabs instead of waiting for the worker forever. A
+ * mutation or a received sync batch that SQLite fails to store is answered with
+ * an {@link UnknownError}, and a received frame whose ranges SQLite fails to
+ * reconcile and an owner whose sync round SQLite fails to create are logged and
+ * reported as failed, so the database stays available. A dispose message, the
+ * SharedWorker ending, or an abort that is not a panic posts nothing.
  *
  * @module
  */
@@ -76,7 +86,6 @@ import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
 import { err, getOk, ok, trySync, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
-  Sqlite,
   SqliteDep,
   SqliteRow,
   SqliteSchema,
@@ -260,8 +269,8 @@ export interface DatabaseHeldError extends Typed<"DatabaseHeldError"> {
 }
 
 /**
- * Starts the platform-agnostic Evolu DbWorker and owns its resources until
- * startup is refused or fails, the worker receives a dispose message, the
+ * Starts the platform-agnostic Evolu DbWorker and owns its resources until it
+ * refuses startup or fails, the worker receives a dispose message, the
  * SharedWorker that requested it ends, or its {@link Run} is aborted.
  */
 export const startDbWorker =
@@ -276,42 +285,36 @@ export const startDbWorker =
         self.onMessage = (message) => resolve(ok(message));
       }),
     );
-    // Tabs report the errors this worker logs as an UnknownError, so it
-    // forwards them even for a silent app, whose tabs do not print them.
-    deps.console.setLevel(
-      initMessage.consoleLevel === "silent"
-        ? "error"
-        : initMessage.consoleLevel,
-    );
-
     const port = disposer.use(
       deps.createMessagePort<DbWorkerOutput, DbWorkerInput>(initMessage.port),
     );
-    const consoleEntryOrErrorBroadcastChannel = disposer.use(
-      deps.createBroadcastChannel<ConsoleEntryOrError>(
-        consoleEntryOrErrorBroadcastChannelName,
-      ),
-    );
 
-    disposer.defer(
-      deps.consoleStoreOutputEntry.subscribe(() => {
-        const entry = deps.consoleStoreOutputEntry.get();
-        if (entry) postConsoleEntry(consoleEntryOrErrorBroadcastChannel, entry);
-      }),
-    );
-
-    // A thrown startup failure panics this worker's Run, which reports it.
-    // Answering it like a refusal lets the tenant tell its tabs instead of
-    // waiting for this worker forever. The try ends before LeaderAcquired,
-    // which LeaderRefused must not follow.
-    let sqlite: Sqlite;
-    let dbDeps: typeof deps &
-      BaseSqliteStorageDep &
-      SqliteDep &
-      SqliteSchemaDep &
-      TimestampConfigDep;
-    let initialClock: Timestamp;
+    // Once this worker holds its port, a thrown failure panics its Run, which
+    // reports it. Answering it like a refusal lets the tenant tell its tabs
+    // instead of waiting for this worker forever.
     try {
+      // Tabs report the errors this worker logs as an UnknownError, so it
+      // forwards them even for a silent app, whose tabs do not print them.
+      deps.console.setLevel(
+        initMessage.consoleLevel === "silent"
+          ? "error"
+          : initMessage.consoleLevel,
+      );
+
+      const consoleEntryOrErrorBroadcastChannel = disposer.use(
+        deps.createBroadcastChannel<ConsoleEntryOrError>(
+          consoleEntryOrErrorBroadcastChannelName,
+        ),
+      );
+
+      disposer.defer(
+        deps.consoleStoreOutputEntry.subscribe(() => {
+          const entry = deps.consoleStoreOutputEntry.get();
+          if (entry)
+            postConsoleEntry(consoleEntryOrErrorBroadcastChannel, entry);
+        }),
+      );
+
       disposer.use(await run.ok(acquireLeaderLock(initMessage.name)));
 
       if (!initMessage.memoryOnly && deps.waitForDatabaseRelease) {
@@ -325,7 +328,7 @@ export const startDbWorker =
         }
       }
 
-      sqlite = disposer.use(
+      const sqlite = disposer.use(
         await run.ok(
           createSqlite(
             initMessage.name,
@@ -337,7 +340,7 @@ export const startDbWorker =
       );
 
       const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...deps });
-      dbDeps = {
+      const dbDeps = {
         ...deps,
         sqlite,
         sqliteSchema: initMessage.sqliteSchema,
@@ -387,7 +390,186 @@ export const startDbWorker =
         });
         return ok();
       }
-      initialClock = startup.value;
+      const initialClock = startup.value;
+
+      const storage = createClientStorage(dbDeps);
+      const dbWorkerRun = disposer.use(run.create({ storage }));
+
+      port.postMessage({
+        type: "LeaderAcquired",
+        clock: initialClock,
+      });
+
+      await run.ok(
+        callback<void>(({ resolve, reject }) => {
+          port.onMessage = (input) => {
+            // A throw, such as a query or export SQLite fails or a response
+            // that cannot be posted, panics this worker's Run like a task
+            // defect, so the database is refused. Mutations answer their
+            // failures instead.
+            try {
+              if (input.type === "Dispose") {
+                resolve(ok());
+                return;
+              }
+
+              const { attemptId } = input;
+              const postQueuedResponse = (
+                response: DbWorkerQueuedResponse,
+              ): void => {
+                port.postMessage(
+                  {
+                    type: "OnQueuedResponse",
+                    attemptId,
+                    response,
+                  },
+                  response.type === "ForEvolu" &&
+                    response.message.type === "Export"
+                    ? [response.message.file.buffer]
+                    : undefined,
+                );
+              };
+
+              if ("clock" in input) {
+                const { clock: inputClock, now } = input;
+                let committedClock = inputClock;
+                const context: WriteContext = {
+                  now,
+                  clock: {
+                    get: () => committedClock,
+                    set: (timestamp) => {
+                      committedClock = timestamp;
+                    },
+                  },
+                };
+                const request = input.request;
+                if (request.type === "ForSharedWorker") {
+                  const { owner, inputMessage } = request.message;
+                  void dbWorkerRun(async (run) => {
+                    storage.setRequestContext(owner.encryptionKey, context);
+                    const result = await run(
+                      applyProtocolMessageAsClient(inputMessage, {
+                        writeKey: owner.writeKey,
+                        onChangeTooLarge: storage.onChangeTooLarge,
+                      }),
+                    );
+                    postQueuedResponse({
+                      type: "ForSharedWorker",
+                      message: {
+                        type: "ApplySyncMessage",
+                        clock: context.clock.get(),
+                        ownerId: owner.id,
+                        didWriteMessages: storage.didWriteMessages(),
+                        skippedError: storage.skippedError(),
+                        result,
+                      },
+                    });
+                    return ok();
+                  });
+                } else {
+                  // SQLite can fail a write the app cannot prevent, such as on
+                  // a full disk. The transaction has rolled back, so the
+                  // mutation is answered and the database stays available.
+                  const mutation = trySync(
+                    () =>
+                      handleMutation({
+                        ...dbDeps,
+                        clock: context.clock,
+                      })(request.message, now),
+                    createUnknownError,
+                  );
+                  postQueuedResponse({
+                    type: "ForEvolu",
+                    id: request.id,
+                    message: mutation.ok
+                      ? mutation.value
+                      : { type: "MutateFailed", error: mutation.error },
+                  });
+                }
+                return;
+              }
+
+              const request = input.request;
+              if (request.type === "ForSharedWorker") {
+                const protocolMessagesByOwnerId = new Map<
+                  OwnerId,
+                  ProtocolMessage
+                >();
+                const failedOwnerIds = new Set<OwnerId>();
+
+                // A throw would refuse the database, so a failed owner is
+                // logged and reported instead.
+                for (const owner of request.message.owners) {
+                  storage.setRequestContext(owner.encryptionKey);
+                  try {
+                    protocolMessagesByOwnerId.set(
+                      owner.id,
+                      createProtocolMessageForSync({ storage })(
+                        owner.id,
+                        SubscriptionFlags.Subscribe,
+                      ),
+                    );
+                  } catch (error) {
+                    deps.console.error(error);
+                    failedOwnerIds.add(owner.id);
+                  }
+                }
+
+                postQueuedResponse({
+                  type: "ForSharedWorker",
+                  message: {
+                    type: "CreateSyncMessages",
+                    protocolMessagesByOwnerId,
+                    failedOwnerIds,
+                  },
+                });
+                return;
+              }
+
+              if (request.message.type === "Query") {
+                postQueuedResponse({
+                  type: "ForEvolu",
+                  id: request.id,
+                  message: {
+                    type: "Query",
+                    rowsByQuery: loadQueries(dbDeps)(request.message.queries),
+                  },
+                });
+                return;
+              }
+
+              if (request.message.type === "Export") {
+                postQueuedResponse({
+                  type: "ForEvolu",
+                  id: request.id,
+                  message: {
+                    type: "Export",
+                    file: sqlite.export(),
+                  },
+                });
+              }
+            } catch (error) {
+              reject(error);
+            }
+          };
+
+          // Stops once the SharedWorker no longer leads for its ID, which the
+          // platform releases when it closes, because Firefox can lose a
+          // Dispose posted right before that
+          // (https://bugzilla.mozilla.org/show_bug.cgi?id=2077609).
+          const sharedWorkerEnded = acquireLeaderLockCallback(deps)(
+            initMessage.sharedWorkerId,
+            () => resolve(ok()),
+          );
+
+          return () => {
+            port.onMessage = null;
+            sharedWorkerEnded[Symbol.dispose]();
+          };
+        }),
+      );
+
+      return ok();
     } catch (error) {
       // An abort that is not a panic stops this worker on purpose.
       if (!AbortError.is(error) || error.reason.type === "PanicAbortReason") {
@@ -398,176 +580,6 @@ export const startDbWorker =
       }
       throw error;
     }
-
-    const storage = createClientStorage(dbDeps);
-    const dbWorkerRun = disposer.use(run.create({ storage }));
-
-    port.postMessage({
-      type: "LeaderAcquired",
-      clock: initialClock,
-    });
-
-    await run.ok(
-      callback<void>(({ resolve }) => {
-        port.onMessage = (input) => {
-          if (input.type === "Dispose") {
-            resolve(ok());
-            return;
-          }
-
-          const { attemptId } = input;
-          const postQueuedResponse = (
-            response: DbWorkerQueuedResponse,
-          ): void => {
-            port.postMessage(
-              {
-                type: "OnQueuedResponse",
-                attemptId,
-                response,
-              },
-              response.type === "ForEvolu" && response.message.type === "Export"
-                ? [response.message.file.buffer]
-                : undefined,
-            );
-          };
-
-          if ("clock" in input) {
-            const { clock: inputClock, now } = input;
-            let committedClock = inputClock;
-            const context: WriteContext = {
-              now,
-              clock: {
-                get: () => committedClock,
-                set: (timestamp) => {
-                  committedClock = timestamp;
-                },
-              },
-            };
-            const request = input.request;
-            if (request.type === "ForSharedWorker") {
-              const { owner, inputMessage } = request.message;
-              void dbWorkerRun(async (run) => {
-                storage.setRequestContext(owner.encryptionKey, context);
-                const result = await run.abortable(
-                  applyProtocolMessageAsClient(inputMessage, {
-                    writeKey: owner.writeKey,
-                    onChangeTooLarge: storage.onChangeTooLarge,
-                  }),
-                );
-                postQueuedResponse({
-                  type: "ForSharedWorker",
-                  message: {
-                    type: "ApplySyncMessage",
-                    clock: context.clock.get(),
-                    ownerId: owner.id,
-                    didWriteMessages: storage.didWriteMessages(),
-                    skippedError: storage.skippedError(),
-                    result,
-                  },
-                });
-                return ok();
-              });
-            } else {
-              // SQLite can fail a write the app cannot prevent, such as on a
-              // full disk. The transaction has rolled back, so the mutation is
-              // answered, or every later request of this database would wait.
-              const mutation = trySync(
-                () =>
-                  handleMutation({
-                    ...dbDeps,
-                    clock: context.clock,
-                  })(request.message, now),
-                createUnknownError,
-              );
-              postQueuedResponse({
-                type: "ForEvolu",
-                id: request.id,
-                message: mutation.ok
-                  ? mutation.value
-                  : { type: "MutateFailed", error: mutation.error },
-              });
-            }
-            return;
-          }
-
-          const request = input.request;
-          if (request.type === "ForSharedWorker") {
-            const protocolMessagesByOwnerId = new Map<
-              OwnerId,
-              ProtocolMessage
-            >();
-            const failedOwnerIds = new Set<OwnerId>();
-
-            // An unanswered attempt would block the tenant queue, so a failed
-            // owner is logged and reported instead of thrown.
-            for (const owner of request.message.owners) {
-              storage.setRequestContext(owner.encryptionKey);
-              try {
-                protocolMessagesByOwnerId.set(
-                  owner.id,
-                  createProtocolMessageForSync({ storage })(
-                    owner.id,
-                    SubscriptionFlags.Subscribe,
-                  ),
-                );
-              } catch (error) {
-                deps.console.error(error);
-                failedOwnerIds.add(owner.id);
-              }
-            }
-
-            postQueuedResponse({
-              type: "ForSharedWorker",
-              message: {
-                type: "CreateSyncMessages",
-                protocolMessagesByOwnerId,
-                failedOwnerIds,
-              },
-            });
-            return;
-          }
-
-          if (request.message.type === "Query") {
-            postQueuedResponse({
-              type: "ForEvolu",
-              id: request.id,
-              message: {
-                type: "Query",
-                rowsByQuery: loadQueries(dbDeps)(request.message.queries),
-              },
-            });
-            return;
-          }
-
-          if (request.message.type === "Export") {
-            postQueuedResponse({
-              type: "ForEvolu",
-              id: request.id,
-              message: {
-                type: "Export",
-                file: sqlite.export(),
-              },
-            });
-          }
-        };
-
-        // Stops once the SharedWorker no longer leads for its ID, which the
-        // platform releases when it closes, because Firefox can lose a Dispose
-        // posted right before that
-        // (https://bugzilla.mozilla.org/show_bug.cgi?id=2077609).
-        const sharedWorkerEnded = acquireLeaderLockCallback(deps)(
-          initMessage.sharedWorkerId,
-          () => resolve(ok()),
-        );
-
-        return () => {
-          port.onMessage = null;
-          sharedWorkerEnded[Symbol.dispose]();
-        };
-      }),
-    );
-
-    return ok();
   };
 
 /** Clock state owned by one write request; published only after commit. */

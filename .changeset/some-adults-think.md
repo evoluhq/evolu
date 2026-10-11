@@ -2,24 +2,30 @@
 "@evolu/common": patch
 ---
 
-Reported a database that failed to start instead of waiting for it forever
+Reported a database whose worker failed instead of waiting for it forever
 
-When a database failed to start, every instance of it waited forever:
-`evoluError` stayed `null`, `devicePersistence` could stay pending, and queries,
-mutations, and exports never completed. This happened when its SQLite driver
-threw, for example in an Expo build without SQLCipher; when the file could not
-be read, for example because it was corrupt or unencrypted while SQLCipher was
-on; or when SQLite's wasm failed to load. Only the platform's error reporter saw
-the error.
+When a database's worker failed, every instance of the database waited forever:
+`evoluError` stayed `null`, and queries, mutations, and exports never completed.
+At startup, which could also leave `devicePersistence` pending, this happened
+when the SQLite driver threw, for example in an Expo build without SQLCipher;
+when the file could not be read, for example because it was corrupt or
+unencrypted while SQLCipher was on; or when SQLite's wasm failed to load. Later
+it happened when SQLite failed a query or an export, or after a defect while
+applying sync. Only the platform's error reporter saw the error. In React
+Native, a failed query's exception escaped a timer, which React Native treats as
+fatal.
 
-A failed start is now answered like a refusal. The database is refused with an
-`UnknownError` that carries the original error, so every tab, including tabs
-opened later, gets it as `evoluError`, `devicePersistence` resolves, and sync
-state shows the database as `Refused`. As for other refusals, queries and
-exports stay pending until the instance is disposed, and mutations are not
-stored, so show `evoluError` outside any query-loading boundary and ask the user
-to close all the app's tabs. Once every instance of the database is disposed and
-Evolu disposes it when idle, creating an instance again retries the start.
+A worker that throws while it starts or handles a request now refuses its
+database. The refusal carries an `UnknownError` of the original error, so every
+tab of the database, including tabs opened later, gets it as `evoluError`,
+`devicePersistence` resolves, and sync state shows the database as `Refused`.
+Other databases keep working. As for other refusals, queries and exports stay
+pending until the instance is disposed, and mutations are not stored, so show
+`evoluError` outside any query-loading boundary and ask the user to close all
+the app's tabs. Once every instance of the database is disposed and Evolu
+disposes it when idle, creating an instance again retries the start. A mutation
+that SQLite fails is still answered with an `UnknownError`, and its database
+keeps working.
 
 `RefusedSyncTenant.error` can now be an `UnknownError`, so a switch over it
 needs that case. A switch without it no longer compiles:

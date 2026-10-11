@@ -595,7 +595,8 @@ export interface Evolu<
    * Load {@link Query} and return a promise with {@link QueryRows}.
    *
    * The returned promise always resolves successfully because all data are
-   * local and the query is typed. If the database refuses or fails to start,
+   * local and the query is typed. If the database is refused, because it
+   * refused startup or its worker failed, for example on a query SQLite failed,
    * unanswered loads stay pending until disposal resolves them with empty rows.
    * Observe {@link EvoluErrorDep.evoluError} to display the refusal
    * independently of query loading.
@@ -761,8 +762,8 @@ export interface Evolu<
    * of starting parallel exports.
    *
    * The pending promise rejects if this {@link Evolu} instance is disposed
-   * before export completion. If the database refuses or fails to start, export
-   * stays pending until disposal; see {@link Evolu.loadQuery}.
+   * before export completion. If the database is refused, export stays pending
+   * until disposal; see {@link Evolu.loadQuery}.
    */
   readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
@@ -957,7 +958,7 @@ export type DevicePersistence = "Persisted" | "NotPersisted" | "Unknown";
  *   tabs. It clears when the wait ends.
  * - {@link UnknownError} blocks the app: Evolu is in an unknown state after an
  *   unexpected failure, such as a mutation that could not be stored or a
- *   database that failed to start. Ask the user to close all its tabs.
+ *   database whose worker failed. Ask the user to close all its tabs.
  *
  * A problem syncing an owner through a relay belongs to that relay and often
  * repeats in every round, so sync state shows it on the relay's route, as its
@@ -1056,23 +1057,26 @@ export interface EvoluErrorDep {
    * `null` when the wait ends, unless another error replaced it.
    *
    * Subscribe once to show user-facing error messages across all instances. A
-   * database that fails to start is refused with an {@link UnknownError}. While
-   * a refused database's tenant remains alive, the SharedWorker sends the
-   * refusal to each tab once, including tabs that connect later, and starts no
-   * replacement database workers. After all instances release that tenant and
-   * it is disposed when idle, creating another instance retries startup and may
-   * send the refusal again. On the web, a tab refused with
-   * {@link UnsupportedDbVersionError} first reloads once instead. Show that
-   * blocking message outside any query-loading boundary, so pending queries do
-   * not hide it.
+   * database whose worker throws while it starts or handles a request is
+   * refused with an {@link UnknownError}. While a refused database's tenant
+   * remains alive, the SharedWorker sends the refusal to each tab once,
+   * including tabs that connect later, and starts no replacement database
+   * workers. After all instances release that tenant and it is disposed when
+   * idle, creating another instance retries startup and may send the refusal
+   * again. On the web, a tab refused with {@link UnsupportedDbVersionError}
+   * first reloads once instead. Show that blocking message outside any
+   * query-loading boundary, so pending queries do not hide it.
    *
    * An {@link UnknownError} leaves Evolu in an unknown state, so the app can
    * only ask the user to close all its tabs. A failed shared worker closes
-   * itself, and a database that failed to start stays refused while any tab
-   * uses it, so the app opened again starts over. Some errors reach every tab,
-   * such as an unexpected failure of the shared worker. An app that forwards
-   * this store to an error tracker from each tab then reports such an error
-   * once per tab.
+   * itself, and a database whose worker failed stays refused while any tab uses
+   * it, so the app opened again starts over. Some errors reach every tab, such
+   * as an unexpected failure of the shared worker. An app that forwards this
+   * store to an error tracker from each tab then reports such an error once per
+   * tab. A database whose worker fails is also reported by the platform's error
+   * reporter where the worker runs, such as the hosting tab's error handlers on
+   * the web or `ErrorUtils` in React Native, so an app that sends both to one
+   * error tracker sees that failure twice.
    *
    * ### Example
    *
@@ -1302,9 +1306,8 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
         break;
 
       case "Error":
-        // Sent to this tab only: its database refused startup, a mutation it
-        // made could not be stored, or its worker still waits for another
-        // build.
+        // Sent to this tab only: its database is refused, a mutation it made
+        // could not be stored, or its worker still waits for another build.
         setEvoluError(message.error);
         console.error(message.error);
         break;

@@ -133,8 +133,8 @@
  * instances registered and, for each writable owner, one route per transport
  * claimed for the owner by any database, as specified below. Each part is a
  * union of the states the worker keeps for it: a transport's connection, a
- * database that is active or refused startup, a writable or readonly owner, and
- * a pending, settled, or complete route. A transport's events drive its
+ * database that is active or refused, a writable or readonly owner, and a
+ * pending, settled, or complete route. A transport's events drive its
  * connection, so publishing never reads a socket.
  *
  * Apps show users an owner's {@link OwnerSyncStatus}, which
@@ -166,7 +166,7 @@
  * previous connection are never answered. A route, one tenant's use of one
  * owner through one transport, is complete when:
  *
- * - The tenant has not refused startup and the socket is open.
+ * - The tenant is not refused and the socket is open.
  * - The count is zero.
  * - The tenant has no apply for the owner queued for that transport or for every
  *   transport, because a frame is applied asynchronously, so the count reads
@@ -176,8 +176,8 @@
  * - The tenant has sent a round through the transport since the last event that
  *   requires one: the route's creation, the socket opening, an explicit
  *   request, a replacement leader, or storing messages from another transport,
- *   unless the route skipped a message. No failed or aborted result has arrived
- *   on the route since.
+ *   unless the route skipped a message. No failed result has arrived on the
+ *   route since.
  * - No result that skipped a received message or a stored change too large to
  *   send has arrived on the route since a round was last requested through it,
  *   and since that request, no messages have been stored from another
@@ -190,29 +190,32 @@
  * database may store a change too large to send, or messages stored elsewhere
  * may not have reached it; it is published as {@link SettledSyncRoute}.
  *
- * A reconciliation chain ends only with a converged result, a failure, an
- * abort, a dropped frame, or a continuation that finds the socket closed, and
- * relay errors reach every applying tenant, so these conditions mean every
- * chain, including this tenant's, converged. A local Broadcast from a sibling
- * tenant holds every route of its owner until it is applied, because it arrives
- * without a request of its own; one that fails to apply or skips a message
- * requires a round through every transport whose route has not skipped one.
+ * A reconciliation chain ends only with a converged result, a failure, a
+ * refusal of the database, a dropped frame, or a continuation that finds the
+ * socket closed, and relay errors reach every applying tenant, so these
+ * conditions mean every chain, including this tenant's, converged. A local
+ * Broadcast from a sibling tenant holds every route of its owner until it is
+ * applied, because it arrives without a request of its own; one that fails to
+ * apply or skips a message requires a round through every transport whose route
+ * has not skipped one.
  *
  * A failed result on a route requests one round through it. Any further failure
  * before the route settles requests no round of its own and waits for the next
  * round another event requests, such as an explicit request or a reopen, so a
  * persistent failure cannot loop; a converged reply in between does not end the
  * wait, because it may answer another tenant's round on the shared socket. An
- * aborted apply leaves its routes incomplete without a retry. An exception
- * while the database worker creates a round is logged there and fails the
- * round's routes with `SyncFailed` without a retry. A mutation that throws is
- * rolled back and reported as an {@link UnknownError} to the tab that made it,
- * or to every tab when its Evolu instance was disposed first. A received batch
- * SQLite fails to store, for example on a full disk, is rolled back and fails
- * its route with an `UnknownError`. Other unexpected SQLite exceptions remain
- * unsupported and can panic the database worker. A frame the relay silently
- * drops, such as invalid data, leaves the count above zero until the liveness
- * rule below replaces the socket.
+ * exception while the database worker creates a round is logged there and fails
+ * the round's routes with `SyncFailed` without a retry. A mutation that throws
+ * is rolled back and reported as an {@link UnknownError} to the tab that made
+ * it, or to every tab when its Evolu instance was disposed first. A received
+ * batch SQLite fails to store, for example on a full disk, is rolled back and
+ * fails its route with an `UnknownError`. An exception while the database
+ * worker reconciles a received frame's ranges is logged there and fails that
+ * route with `SyncFailed`. Any other exception in the database worker, such as
+ * a query or an export SQLite fails, refuses the database with an
+ * {@link UnknownError}. A frame the relay silently drops, such as invalid data,
+ * leaves the count above zero until the liveness rule below replaces the
+ * socket.
  *
  * A result that skipped a message records the error on the route as its
  * `skippedError`, without ending its chain, so it requests no round. A message
@@ -254,13 +257,12 @@
  * The timeout belongs to the transport, not to an owner, because a small reply
  * for one owner can wait behind another owner's large frame on the socket. A
  * grown timeout lasts while a request is outstanding on the socket or a
- * database that has not refused startup has an unsettled route through it,
- * including one waiting after a failure, and ends with the transport. A settled
- * route that is incomplete does not count, because its reconciliation has
- * ended. A reply's speed proves nothing, because a recovery on a slow link
- * starts with small replies that arrive quickly. The reopen resets the counts
- * and starts the open rounds, so a dropped frame delays a route instead of
- * stranding it.
+ * database that is not refused has an unsettled route through it, including one
+ * waiting after a failure, and ends with the transport. A settled route that is
+ * incomplete does not count, because its reconciliation has ended. A reply's
+ * speed proves nothing, because a recovery on a slow link starts with small
+ * replies that arrive quickly. The reopen resets the counts and starts the open
+ * rounds, so a dropped frame delays a route instead of stranding it.
  *
  * The shared worker sends nothing while idle, so a path that dies then may go
  * unnoticed until its next request; until then, changes from other devices stop
@@ -313,7 +315,7 @@ import type { NonEmptyReadonlySet } from "../Set.ts";
 import type { SqliteSchema } from "../Sqlite.ts";
 import { createStore, type Store } from "../Store.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
-import { AbortError, createMutex, unabortable, type Task } from "../Task.ts";
+import { createMutex, unabortable, type Task } from "../Task.ts";
 import {
   performanceDurationBetween,
   PositiveMillis,
@@ -427,8 +429,8 @@ export type SharedWorkerOutput =
   | DbWorkerInit
   | {
       /**
-       * Sent to one tab only: its database refused startup, a mutation it made
-       * could not be stored, or another build keeps this worker waiting.
+       * Sent to one tab only: its database is refused, a mutation it made could
+       * not be stored, or another build keeps this worker waiting.
        */
       readonly type: "Error";
       readonly error:
@@ -631,12 +633,15 @@ export interface DisconnectedSyncConnection extends Typed<"Disconnected"> {
   readonly error: SyncTransportError | null;
 }
 
-/** One named local database: `Active`, or `Refused` when it refused startup. */
+/**
+ * One named local database: `Active`, or `Refused` when it refused startup or
+ * its worker failed.
+ */
 export type SyncTenant = ActiveSyncTenant | RefusedSyncTenant;
 
 /**
- * A database that has not refused startup, including one still starting, with
- * the owners its instances registered.
+ * A database that is not refused, including one still starting, with the owners
+ * its instances registered.
  */
 export interface ActiveSyncTenant extends Typed<"Active"> {
   readonly name: Name;
@@ -644,9 +649,9 @@ export interface ActiveSyncTenant extends Typed<"Active"> {
 }
 
 /**
- * A database that refused startup, so nothing it holds syncs. Its tabs also
- * receive the error through `evoluError`. A database that failed to start
- * counts as refused, with an {@link UnknownError}.
+ * A database that refused startup or whose worker failed, so nothing it holds
+ * syncs. Its tabs also receive the error through `evoluError`. A failed worker
+ * refuses its database with an {@link UnknownError}.
  */
 export interface RefusedSyncTenant extends Typed<"Refused"> {
   readonly name: Name;
@@ -718,7 +723,7 @@ export interface PendingSyncRoute extends Typed<"Pending"> {
   readonly lastSentAt: Millis | null;
   /**
    * When processing a frame from the route last finished, successfully or with
-   * a failure, or null. Aborted processing does not update it.
+   * a failure, or null.
    */
   readonly lastReceivedAt: Millis | null;
 }
@@ -806,7 +811,7 @@ export interface RelaySyncState {
  *
  * - `NoRelays`: nothing syncs the owner here. There is no snapshot yet, the
  *   owner's transports are still being set up, the app uses no relays for it,
- *   it is registered only as readonly, or the database refused startup, which
+ *   it is registered only as readonly, or the database is refused, which
  *   `evoluError` reports.
  * - `Syncing`: a relay connects for the first time or reconciles. A first
  *   connection to a host that drops packets stays `Syncing` until the platform
@@ -1344,7 +1349,11 @@ export type DbWorkerOutput =
       readonly clock: Timestamp;
     }
   | {
-      /** Startup was refused or failed; the worker is releasing its resources. */
+      /**
+       * The worker refused startup or failed and is releasing its resources. It
+       * is the worker's last message on its port and can follow
+       * `LeaderAcquired`.
+       */
       readonly type: "LeaderRefused";
       readonly error:
         DatabaseHeldError | UnknownError | UnsupportedDbVersionError;
@@ -1413,7 +1422,7 @@ export type DbWorkerQueuedResponse =
               | null;
             readonly result: Result<
               ApplyProtocolMessageAsClientResult,
-              ProtocolError | StorageWriteMessagesError | AbortError
+              ProtocolError | StorageWriteMessagesError
             >;
           };
     };
@@ -1857,8 +1866,8 @@ export const initSharedWorker =
        * The timeout of every request on the socket: frames arrive one after
        * another, so a reply can wait behind another owner's large frame. It
        * doubles after each timeout and survives reconnects until nothing is
-       * outstanding and every route through the transport of a database that
-       * has not refused startup has settled.
+       * outstanding and every route through the transport of a database that is
+       * not refused has settled.
        */
       timeout: PositiveMillis;
       socket: WebSocket | null;
@@ -1893,7 +1902,7 @@ export const initSharedWorker =
           tenant.getSyncTenant(),
         );
         // A grown timeout lasts while a request is outstanding on the socket
-        // or a database that has not refused startup has an unsettled route
+        // or a database that is not refused has an unsettled route
         // through it. Every change to either publishes, including a route that
         // goes away without settling.
         const unsettledTransportIds = new Set<SyncTransportId>();
@@ -2330,7 +2339,7 @@ const createEvoluTenant =
      * The tenant's database worker: `Starting` until one leads, then `Leading`,
      * which a replacement leader replaces. `Refused` is final, and `Disposed`
      * changes only to `Refused`, when a worker requested earlier refuses
-     * startup.
+     * startup or the leader fails before it handles the dispose message.
      */
     type DbWorkerState =
       Typed<"Starting"> | LeadingDbWorker | RefusedDbWorker | Typed<"Disposed">;
@@ -2445,12 +2454,15 @@ const createEvoluTenant =
             break;
           }
           case "LeaderRefused": {
-            // The worker refused startup and is releasing its resources.
-            // Requests stay unanswered until their instances are disposed.
-            // Keep the tenant unavailable, tell each connected tab once, and
-            // tell tabs that connect later without starting another worker.
-            if (dbWorker.type === "Leading") {
-              assertNotSame(dbWorker.port, currentDbWorkerPort);
+            // The worker refused startup or failed and is releasing its
+            // resources. Requests stay unanswered until their instances are
+            // disposed. Keep the tenant unavailable, tell each connected tab
+            // once, and tell tabs that connect later without starting another
+            // worker.
+            if (
+              dbWorker.type === "Leading" &&
+              dbWorker.port !== currentDbWorkerPort
+            ) {
               // The leader may still hold the database lock: browsers deliver
               // a refusal before a worker requested later can lead, but the
               // tenant does not rely on that order. Tell it to dispose, so it
@@ -2895,30 +2907,14 @@ const createEvoluTenant =
           const target = source.type === "Local" ? source.uploadTarget : source;
           const { ownerId, result } = response.message;
           const error = result.ok ? null : result.error;
-          const isAborted = error?.type === "AbortError";
-          // An aborted apply reports no skipped message.
-          const skippedError = isAborted ? null : response.message.skippedError;
+          const { skippedError } = response.message;
           let failure:
             | ProtocolError
             | StorageWriteMessagesError
             | Typed<"WriteFailed">
             | Typed<"SyncFailed">
             | null = null;
-          if (isAborted) {
-            // An abort proves no convergence. A local sibling copy affects
-            // every route; a relay frame affects only its source route.
-            // Recovery of a panicked DbWorker remains deferred.
-            deps.transports.forEachResourceForClaim(ownerId, (_, transport) => {
-              const key = structuralLookup(transport);
-              if (source.type === "Transport" && source.key !== key) return;
-              const route = routesByOwnerIdByKey.get(key)?.get(ownerId);
-              if (route)
-                route.progress = {
-                  ...routeToPending(route.progress),
-                  roundRequired: true,
-                };
-            });
-          } else if (error !== null) {
+          if (error !== null) {
             // A relay's error shows on its route, not as an EvoluError,
             // because it belongs to one relay and often repeats in every
             // round. A sibling copy's error is reported below.
@@ -2935,8 +2931,7 @@ const createEvoluTenant =
             const route = routesByOwnerIdByKey.get(source.key)?.get(ownerId);
             if (route) {
               const now = deps.time.now();
-              // An aborted apply applied nothing.
-              if (!isAborted) route.lastReceivedAt = now;
+              route.lastReceivedAt = now;
               // A skipped message is recorded as the route's skip, not a
               // failure, and does not end the round, whose response below is
               // still sent, so it requests no round. The relay offers a message
@@ -2976,9 +2971,8 @@ const createEvoluTenant =
             // which carries no relay error, so any other error or a skip means
             // a bug, such as databases holding different keys for the owner.
             // Each is reported as an unexpected failure. A Failed result was
-            // logged, which reports it already. An error is the failure, which
-            // is never an abort, and like a route, the report leaves out its
-            // frame.
+            // logged, which reports it already. An error is the failure, and
+            // like a route, the report leaves out its frame.
             const unexpected = error !== null ? failure : skippedError;
             if (unexpected !== null)
               deps.postConsoleEntryOrError({
@@ -3580,11 +3574,11 @@ const createEvoluTenant =
 // TODO: SharedWorker follow-ups.
 // - Rotate the node ID when a copied database is detected; see the Duplicate
 //   node IDs section in the Timestamp module.
-// - Detect DbWorker and port liveness so a worker-only crash resumes the queue.
-//   Defer panicked-worker restart until failure detection and recovery are
-//   defined, accounting for SQLite WASM's detection limits. Mutations, round
-//   creation, and frame application are answered when SQLite throws; a query
-//   or an export that throws is not, and stops the database's queue.
+// - Detect a DbWorker that ends without refusing its database, such as one the
+//   platform kills, so its queue does not stop silently. A DbWorker that throws
+//   refuses its database. Defer restarting a failed worker until failure
+//   detection and recovery are defined, accounting for SQLite WASM's detection
+//   limits.
 // - Split worker protocol types and the EvoluTenant implementation into focused
 //   modules.
 // - Bound sync state publishing during a bulk catch-up: every sent and applied

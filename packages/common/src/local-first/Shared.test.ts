@@ -2115,84 +2115,6 @@ describe("sync state", () => {
       }
     }
 
-    for (const reason of [
-      { type: "Stop" },
-      { type: "PanicAbortReason", defect: new Error("SQLite write failed") },
-    ]) {
-      it(`keeps a route incomplete after ${reason.type} without scheduling recovery`, async () => {
-        const createWebSocket = testCreateWebSocket();
-        await using setup = await setupSharedWorker({ createWebSocket });
-        using disposer = new DisposableStack();
-        const { latest } = setupSyncStates(setup, disposer);
-        const instance = await setup.createEvolu();
-        const [transport, otherTransport] = ["a", "b"].map((suffix) =>
-          createOwnerWebSocketTransport({
-            url: `wss://aborted-apply-${suffix}.example`,
-            ownerId: testAppOwner.id,
-          }),
-        );
-        assertNotUndefined(transport);
-        assertNotUndefined(otherTransport);
-
-        instance.evoluChannel.port2.postMessage({
-          type: "UseOwner",
-          actions: [
-            {
-              owner: {
-                owner: testAppOwner,
-                transports: [transport, otherTransport],
-              },
-              action: "add",
-            },
-          ],
-        });
-        await testWaitForWorkerMessage();
-        await respondToSyncRound(instance, createWebSocket);
-        await respondToSyncRound(instance, createWebSocket);
-        createWebSocket.message(otherTransport.url, relayResponse());
-        await testWaitForWorkerMessage();
-        await respondToApplySync(instance, false, {
-          ok: true,
-          value: { type: "Converged" },
-        });
-        const otherRoute = routeOf(latest(), testName, 1);
-        assertSame(otherRoute.type, "Complete");
-        createWebSocket.message(transport.url, relayResponse());
-        await testWaitForWorkerMessage();
-        const inputCount = instance.dbInputs.length;
-        await respondToApplySync(instance, false, {
-          ok: false,
-          error: { type: "AbortError", reason },
-        });
-
-        // Receiving the answer consumed the outstanding request, but the
-        // aborted apply did not establish convergence or a domain error.
-        assertSame(routeOf(latest()).type, "Pending");
-        assertSame(routeOf(latest()).completeAt, null);
-        // Nothing was applied, so the route reports no received frame.
-        assertSame(routeOf(latest()).lastReceivedAt, null);
-        assertSame(failureOf(routeOf(latest())), null);
-        assertSame(skippedErrorOf(routeOf(latest())), null);
-        assertEqual(
-          syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
-          { type: "Syncing" },
-        );
-        // The frame came from one relay, so the other route stays complete.
-        assertEqual(routeOf(latest(), testName, 1), otherRoute);
-        await testWaitForWorkerMessage();
-        assertLength(instance.dbInputs, inputCount);
-
-        // Another successful apply cannot substitute for a fresh round.
-        createWebSocket.message(transport.url, relayResponse());
-        await testWaitForWorkerMessage();
-        await respondToApplySync(instance, false, {
-          ok: true,
-          value: { type: "Converged" },
-        });
-        assertSame(routeOf(latest()).type, "Pending");
-      });
-    }
-
     it("reports SyncFailed without a retry when a round cannot be created", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
@@ -3174,62 +3096,6 @@ describe("sync state", () => {
         );
         assertSame(error.error.message, "invalid varint");
       });
-
-      it("keeps its skip through an aborted apply", async () => {
-        const createWebSocket = testCreateWebSocket();
-        await using setup = await setupSharedWorker({ createWebSocket });
-        using disposer = new DisposableStack();
-        const { errors, instance, latest, transport } = await setupRelayReply(
-          setup,
-          disposer,
-          createWebSocket,
-        );
-        await respondToApplySync(
-          instance,
-          false,
-          { ok: true, value: { type: "Converged" } },
-          skippedError,
-        );
-        assertSame(skippedErrorOf(routeOf(latest()))?.type, skippedError.type);
-
-        // An abort proves nothing about the skipped message, so the route
-        // still shows it, and it is not a failure.
-        createWebSocket.message(transport.url, relayResponse());
-        await testWaitForWorkerMessage();
-        await respondToApplySync(instance, false, {
-          ok: false,
-          error: { type: "AbortError", reason: { type: "Stop" } },
-        });
-        assertEqual(errors, []);
-        assertSame(routeOf(latest()).type, "Pending");
-        assertSame(skippedErrorOf(routeOf(latest()))?.type, skippedError.type);
-        assertSame(failureOf(routeOf(latest())), null);
-      });
-
-      it("is ignored for an aborted apply", async () => {
-        const createWebSocket = testCreateWebSocket();
-        await using setup = await setupSharedWorker({ createWebSocket });
-        using disposer = new DisposableStack();
-        const { errors, instance, latest } = await setupRelayReply(
-          setup,
-          disposer,
-          createWebSocket,
-        );
-        await respondToApplySync(
-          instance,
-          false,
-          {
-            ok: false,
-            error: { type: "AbortError", reason: { type: "Stop" } },
-          },
-          skippedError,
-        );
-
-        assertEqual(errors, []);
-        assertSame(failureOf(routeOf(latest())), null);
-        assertSame(skippedErrorOf(routeOf(latest())), null);
-        assertSame(routeOf(latest()).type, "Pending");
-      });
     });
 
     it("applies a write rejection only for the active attempt after leader replacement", async () => {
@@ -3345,76 +3211,6 @@ describe("sync state", () => {
       assertEqual(errors, []);
     });
 
-    it("keeps an aborted sibling apply incomplete without scheduling recovery", async () => {
-      const createWebSocket = testCreateWebSocket();
-      await using setup = await setupSharedWorker({ createWebSocket });
-      using disposer = new DisposableStack();
-      const { latest } = setupSyncStates(setup, disposer);
-      const secondName = Name.orThrow("second");
-      const first = await setup.createEvolu();
-      const second = await setup.createEvolu({ tenantName: secondName });
-      const transport = createOwnerWebSocketTransport({
-        url: "wss://aborted-sibling.example",
-        ownerId: testAppOwner.id,
-      });
-      const registration = {
-        owner: { owner: testAppOwner, transports: [transport] },
-        action: "add",
-      } as const;
-      for (const instance of [first, second]) {
-        instance.evoluChannel.port2.postMessage({
-          type: "UseOwner",
-          actions: [registration],
-        });
-        await testWaitForWorkerMessage();
-        await respondToSyncRound(instance, createWebSocket);
-      }
-      for (const _ of [first, second]) {
-        createWebSocket.message(transport.url, relayResponse());
-        await testWaitForWorkerMessage();
-        for (const instance of [first, second]) {
-          await respondToApplySync(instance, false, {
-            ok: true,
-            value: { type: "Converged" },
-          });
-        }
-      }
-      assertSame(routeOf(latest()).type, "Complete");
-      const completeAt = routeOf(latest()).completeAt;
-
-      await postMutation(second, setup.run);
-      createWebSocket.message(transport.url, relayResponse());
-      await testWaitForWorkerMessage();
-      await respondToApplySync(second, false, {
-        ok: true,
-        value: { type: "Converged" },
-      });
-      await respondToApplySync(first, false, {
-        ok: false,
-        error: {
-          type: "AbortError",
-          reason: {
-            type: "PanicAbortReason",
-            defect: new Error("SQLite write failed"),
-          },
-        },
-      });
-      // The upload acknowledgement following the aborted local copy must
-      // leave the receiving tenant incomplete, while the sender completes.
-      const inputCount = first.dbInputs.length;
-      await respondToApplySync(first, false, {
-        ok: true,
-        value: { type: "Converged" },
-      });
-      assertSame(routeOf(latest()).type, "Pending");
-      assertSame(routeOf(latest()).completeAt, completeAt);
-      assertSame(failureOf(routeOf(latest())), null);
-      assertSame(skippedErrorOf(routeOf(latest())), null);
-      assertSame(routeOf(latest(), secondName).type, "Complete");
-      await testWaitForWorkerMessage();
-      assertLength(first.dbInputs, inputCount);
-    });
-
     const setupSiblingContinuation = async (
       setup: SharedWorkerSetup,
       createWebSocket: TestCreateWebSocket,
@@ -3505,47 +3301,6 @@ describe("sync state", () => {
         lastSentAt: queued.lastSentAt,
         lastReceivedAt: queued.lastReceivedAt,
       });
-    });
-
-    it("keeps every route incomplete after aborting a sibling continuation copy", async () => {
-      const createWebSocket = testCreateWebSocket();
-      await using setup = await setupSharedWorker({ createWebSocket });
-      using disposer = new DisposableStack();
-      const { latest } = setupSyncStates(setup, disposer);
-      const { source, sibling, siblingName, transports } =
-        await setupSiblingContinuation(setup, createWebSocket);
-      const completeAt = transports.map(
-        (_, index) => routeOf(latest(), siblingName, index).completeAt,
-      );
-
-      // The original upload is acknowledged while its local copy is pending.
-      createWebSocket.message(transports[0].url, relayResponse());
-      await testWaitForWorkerMessage();
-      await respondToApplySync(source, false, {
-        ok: true,
-        value: { type: "Converged" },
-      });
-      await respondToApplySync(sibling, false, {
-        ok: false,
-        error: { type: "AbortError", reason: { type: "Stop" } },
-      });
-      const inputCount = sibling.dbInputs.length;
-      await respondToApplySync(sibling, false, {
-        ok: true,
-        value: { type: "Converged" },
-      });
-
-      for (const index of [0, 1]) {
-        const route = routeOf(latest(), siblingName, index);
-        assertSame(route.type, "Pending");
-        assertSame(route.completeAt, completeAt[index]);
-        assertSame(route.failure, null);
-        assertSame(route.skippedError, null);
-        assertSame(routeOf(latest(), testName, index).type, "Complete");
-      }
-      await testWaitForWorkerMessage();
-      assertLength(sibling.dbInputs, inputCount);
-      assertEqual(createWebSocket.sentMessages, []);
     });
 
     it("counts requests per owner and socket across databases", async () => {
@@ -6092,15 +5847,6 @@ describe("sync state", () => {
         skipped: null,
         posted: null,
       },
-      {
-        outcome: "abort",
-        result: {
-          ok: false,
-          error: { type: "AbortError", reason: { type: "Stop" } },
-        },
-        skipped: null,
-        posted: null,
-      },
     ] satisfies ReadonlyArray<{
       outcome: string;
       result: ApplySyncResponse["result"];
@@ -6132,7 +5878,7 @@ describe("sync state", () => {
         // or a skip means a bug and is posted as an unexpected failure,
         // without the frame, as a route shows it. The protocol already logged
         // a Failed result, and the tab turns that log into an unexpected
-        // failure, so it is not posted again. An abort is not a failure.
+        // failure, so it is not posted again.
         assertEqual(
           errors,
           posted === null
@@ -9727,7 +9473,7 @@ describe("with one evolu instance", () => {
       assertEqual(mutateInput.clock, receivedClock);
     });
 
-    it("ignores abort, broadcast, and converged apply sync results", async () => {
+    it("ignores broadcast and converged apply sync results", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu, run } = setup;
@@ -9806,17 +9552,6 @@ describe("with one evolu instance", () => {
 
       const sentMessageCount = createWebSocket.sentMessages.length;
 
-      await runApplySync({
-        clock: createTimestamp(),
-        type: "ApplySyncMessage",
-        ownerId: testAppOwner.id,
-        didWriteMessages: false,
-        skippedError: null,
-        result: {
-          ok: false,
-          error: { type: "AbortError", reason: { type: "Stop" } },
-        },
-      });
       await runApplySync({
         clock: createTimestamp(),
         type: "ApplySyncMessage",
@@ -11203,7 +10938,7 @@ describe("DbWorkerInput", () => {
   });
 });
 
-describe("startup refusal", () => {
+describe("refusal", () => {
   const refusal: UnsupportedDbVersionError = {
     type: "UnsupportedDbVersionError",
     storedVersion: PositiveInt.orThrow(2),
@@ -11343,6 +11078,115 @@ describe("startup refusal", () => {
     assertEqual(firstTabOutputs(), [{ type: "Error", error: refusal }]);
     assertEqual(evoluOutputs, []);
     assertEqual(broadcasts, []);
+  });
+
+  it("refuses the database when its leading DbWorker fails", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    using errors = testCreateBroadcastChannel<ConsoleEntryOrError>(
+      consoleEntryOrErrorBroadcastChannelName,
+    );
+    const broadcasts: Array<ConsoleEntryOrError> = [];
+    errors.onMessage = (output) => {
+      broadcasts.push(output);
+    };
+    const { latest } = setupSyncStates(setup, disposer);
+    const instance = await setup.createEvolu();
+    const evoluOutputs: Array<EvoluOutput> = [];
+    instance.evoluChannel.port2.onMessage = (output) => {
+      evoluOutputs.push(output);
+    };
+    const outputCount = setup.sharedWorkerOutputs.length;
+    // The query reaches the worker, and the mutation waits behind it.
+    instance.evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    instance.evoluChannel.port2.postMessage({
+      type: "Mutate",
+      changes: [
+        {
+          ownerId: testAppOwner.id,
+          ...testCreateCrdtMessage(createId(setup.run.deps), 1, "queued")
+            .change,
+        },
+      ],
+      onCompleteIds: [createId(setup.run.deps)],
+      subscribedQueries: new Set(),
+    });
+    await testWaitForWorkerMessage();
+    assertLength(instance.dbInputs, 1);
+    const [query] = instance.dbInputs;
+
+    const error = createUnknownError(new Error("no such column: title"));
+    instance.dbWorkerPort.postMessage({ type: "LeaderRefused", error });
+    await testWaitForWorkerMessage();
+
+    // The tab is told once, the failed worker gets nothing more, and the
+    // queued mutation is dropped.
+    assertEqual(setup.sharedWorkerOutputs.slice(outputCount), [
+      { type: "Error", error },
+    ]);
+    assertEqual(latest().tenants, [{ type: "Refused", name: testName, error }]);
+    assertEqual(instance.dbInputs, [query]);
+    assertEqual(instance.dbDisposeInputs, []);
+    assertEqual(evoluOutputs, []);
+    assertEqual(broadcasts, []);
+
+    // A late response from the failed worker changes nothing.
+    instance.dbWorkerPort.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: query.attemptId,
+      response: {
+        type: "ForEvolu",
+        id: instance.id,
+        message: { type: "Query", rowsByQuery: new Map() },
+      },
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(evoluOutputs, []);
+
+    // A tab that connects later is told once, and announcing it as leader
+    // starts no worker.
+    const laterTab = setupTab(setup, disposer);
+    const laterId = createId<"EvoluInstance">(setup.run.deps);
+    disposer.use(await setup.run.ok(acquireLeaderLock(laterId)));
+    const laterChannel = disposer.use(
+      testCreateMessageChannel<EvoluOutput, EvoluInput>(),
+    );
+    laterTab.port.postMessage(
+      createEvoluInput(laterId, laterChannel.port1.native),
+    );
+    await testWaitForWorkerMessage();
+    assertEqual(laterTab.outputs, [{ type: "Error", error }]);
+    laterTab.port.postMessage({
+      type: "AnnounceTabLeader",
+      consoleLevel: "debug",
+    });
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+    assertEqual(laterTab.outputs, [{ type: "Error", error }]);
+  });
+
+  it("keeps the other databases serving when one database's DbWorker fails", async () => {
+    await using setup = await setupSharedWorker();
+    const failing = await setup.createEvolu();
+    const other = await setup.createEvolu({
+      tenantName: Name.orThrow("Other"),
+    });
+
+    failing.dbWorkerPort.postMessage({
+      type: "LeaderRefused",
+      error: createUnknownError(new Error("disk I/O error")),
+    });
+    await testWaitForWorkerMessage();
+    other.evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    await testWaitForWorkerMessage();
+
+    assertLength(other.dbInputs, 1);
   });
 
   it("makes a replacement refusal terminal and drops the in-flight write", async () => {
