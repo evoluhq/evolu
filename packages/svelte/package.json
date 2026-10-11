@@ -52,8 +52,8 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.20.2",
-    "@evolu/web": "^3.5.2",
+    "@evolu/common": "^8.20.3",
+    "@evolu/web": "^3.5.3",
     "svelte": ">=5"
   },
   "engines": {
