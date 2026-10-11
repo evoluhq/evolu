@@ -417,8 +417,9 @@ assertEqual(backoffDelays({ backoff: "linear", maxAttempts: 2 }), [1000, 2000]);
 ## Switch exhaustiveness
 
 In a side-effecting switch over a union, call `exhaustiveCheck` in `default`.
-This makes missing cases fail at compile time and preserves a runtime guard if
-an unexpected value crosses a typed boundary.
+This makes missing cases fail at compile time. Its throw runs only on a branch
+the type rules out, so it costs nothing for valid values and turns an
+impossible case into a loud failure instead of a silent no-op.
 
 For value-producing switches, return from every case and omit `default` so TypeScript enforces
 exhaustiveness through the return type.
