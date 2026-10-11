@@ -8,15 +8,17 @@
  * needed.
  *
  * Individual changes in an append-only local-first history can only be marked
- * as deleted. An entire owner, however, can be removed from devices and relays
- * together with all of its data. The AppOwner must remain because it
- * coordinates the deletion of other owners across devices.
+ * as deleted. Owners are meant to be the unit of real deletion: an entire owner
+ * removed from devices and relays together with all of its data, while the
+ * AppOwner remains to coordinate the deletion of other owners across devices.
+ * Evolu doesn't implement owner deletion yet.
  *
  * Choose an owner by how its data should live and be shared:
  *
  * - {@link AppOwner} coordinates sync and persists for the lifetime of the app
  *   identity.
- * - {@link ShardOwner} partitions application data so it can be synced and deleted
+ * - {@link ShardOwner} partitions application data so it can be synced
+ *   independently and, once Evolu implements owner deletion, deleted
  *   independently.
  * - {@link SharedOwner} grants collaborative read and write access.
  * - {@link SharedReadonlyOwner} grants read-only access to shared data.
@@ -274,10 +276,10 @@ const createOwner = (secret: OwnerSecret): Owner => ({
  *
  * If we really want to delete data or at least avoid syncing it, we must store
  * it using a different owner than AppOwner, e.g. {@link ShardOwner} or
- * {@link SharedOwner}, and delete that owner. The AppOwner itself must be
- * preserved because it coordinates deletion information across devices. Other
- * devices need to sync the information that an owner was deleted so they can
- * delete their local data as well.
+ * {@link SharedOwner}, and delete that owner, which Evolu doesn't implement yet.
+ * The AppOwner itself must be preserved because it coordinates deletion
+ * information across devices. Other devices need to sync the information that
+ * an owner was deleted so they can delete their local data as well.
  *
  * ## Privacy Considerations
  *
@@ -326,8 +328,8 @@ export const testAppOwner = /*#__PURE__*/ createAppOwner(testOwnerSecret);
  * An {@link Owner} for sharding data.
  *
  * ShardOwners are the recommended storage location for most application data
- * because they can be completely deleted (both on relays and devices) and
- * conditionally synced.
+ * because they can be conditionally synced and, once Evolu implements owner
+ * deletion, completely deleted on relays and devices.
  *
  * Can be created from {@link OwnerSecret} via {@link createShardOwner} or
  * deterministically derived from {@link AppOwner} using

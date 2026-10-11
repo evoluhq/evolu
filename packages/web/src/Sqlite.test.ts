@@ -140,7 +140,7 @@ const fake = (() => {
 })();
 
 mock.module("@evolu/sqlite-wasm", {
-  // @ts-expect-error -- Node.js 24.20 replaces the deprecated defaultExport option with exports, which @types/node 24.13 does not declare yet.
+  // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
   exports: fake.exports,
 });
 
