@@ -645,11 +645,12 @@ export interface ActiveSyncTenant extends Typed<"Active"> {
 
 /**
  * A database that refused startup, so nothing it holds syncs. Its tabs also
- * receive the error through `evoluError`.
+ * receive the error through `evoluError`. A database that failed to start
+ * counts as refused, with an {@link UnknownError}.
  */
 export interface RefusedSyncTenant extends Typed<"Refused"> {
   readonly name: Name;
-  readonly error: DatabaseHeldError | UnsupportedDbVersionError;
+  readonly error: DatabaseHeldError | UnknownError | UnsupportedDbVersionError;
 }
 
 /**
@@ -1343,9 +1344,10 @@ export type DbWorkerOutput =
       readonly clock: Timestamp;
     }
   | {
-      /** Startup was refused; the worker is releasing its resources. */
+      /** Startup was refused or failed; the worker is releasing its resources. */
       readonly type: "LeaderRefused";
-      readonly error: DatabaseHeldError | UnsupportedDbVersionError;
+      readonly error:
+        DatabaseHeldError | UnknownError | UnsupportedDbVersionError;
     }
   | {
       readonly type: "OnQueuedResponse";
@@ -2345,7 +2347,8 @@ const createEvoluTenant =
     }
 
     interface RefusedDbWorker extends Typed<"Refused"> {
-      readonly error: DatabaseHeldError | UnsupportedDbVersionError;
+      readonly error:
+        DatabaseHeldError | UnknownError | UnsupportedDbVersionError;
     }
 
     let dbWorker: DbWorkerState = { type: "Starting" };
@@ -2594,7 +2597,7 @@ const createEvoluTenant =
 
     const reportRefusal = (
       tabPort: TabPort,
-      error: DatabaseHeldError | UnsupportedDbVersionError,
+      error: DatabaseHeldError | UnknownError | UnsupportedDbVersionError,
     ): void => {
       if (refusedTabPorts.has(tabPort)) return;
       refusedTabPorts.add(tabPort);

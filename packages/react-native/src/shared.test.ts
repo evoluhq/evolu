@@ -3,6 +3,7 @@ import {
   assertInstanceOf,
   constVoid,
   createRun,
+  createUnknownError,
   id,
   ok,
   testStubGlobal,
@@ -113,5 +114,48 @@ describe("createEvoluDeps", () => {
     // Deps connected to the failed worker would never get sync state.
     using second = createDeps();
     await waitForSyncState(second);
+  });
+
+  it("reports a database that fails to open as an UnknownError", async () => {
+    const reportError =
+      mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>();
+    using _errorUtils = testStubGlobal("ErrorUtils", {
+      getGlobalHandler: () => null,
+      setGlobalHandler:
+        mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
+      reportError,
+    });
+    const error = new Error("No SQLCipher.");
+    using deps = createEvoluDeps({
+      reloadApp: constVoid,
+      createSqliteDriver: () => () => {
+        throw error;
+      },
+    });
+    const evoluError = new Promise((resolve) => {
+      const unsubscribe = deps.evoluError.subscribe(() => {
+        unsubscribe();
+        resolve(deps.evoluError.get());
+      });
+    });
+    await using run = createRun(deps);
+    await using _evolu = await run.ok(
+      createEvolu(
+        { todo: { id: id("Todo") } },
+        {
+          appName: AppName.orThrow("failed"),
+          appOwner: testAppOwner,
+          transports: [],
+          memoryOnly: true,
+        },
+      ),
+    );
+
+    assertEqual(await evoluError, createUnknownError(error));
+    // The worker's panic is still reported once.
+    assertEqual(
+      reportError.mock.calls.map((call) => call.arguments[0]),
+      [error],
+    );
   });
 });
