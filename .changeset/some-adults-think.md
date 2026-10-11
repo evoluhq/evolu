@@ -1,5 +1,6 @@
 ---
 "@evolu/common": patch
+"@evolu/react-native": patch
 "@evolu/web": patch
 ---
 
