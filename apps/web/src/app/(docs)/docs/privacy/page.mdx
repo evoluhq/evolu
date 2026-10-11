@@ -21,6 +21,8 @@ All data Evolu syncs is encrypted end-to-end. This means:
 - **Web and Electron** (React, Svelte, Vue, and vanilla JS with `@evolu/web`): encrypted. `@evolu/sqlite-wasm` encrypts every page of the database and its rollback journal in SQLCipher 4's format as the `sqlcipher` scheme of SQLite3 Multiple Ciphers writes it, with AES-256-CBC and HMAC-SHA512.
 - **React Native and Expo**: encrypted with SQLCipher, which the app enables in the `expo-sqlite` config plugin with `"useSQLCipher": true`, as the [react-expo example](https://github.com/evoluhq/evolu/tree/main/examples/react-expo) does in its `app.json`. The plugin applies it when Expo's prebuild generates the native projects, so if the `ios` and `android` directories already exist, run `npx expo prebuild --clean`. Without SQLCipher, `expo-sqlite` builds plain SQLite, which ignores the key, so Evolu fails at startup instead of storing the database unencrypted. In a React Native app that doesn't run Expo's prebuild, set what the plugin would write yourself: `expo.sqlite.useSQLCipher=true` in `android/gradle.properties` and `"expo.sqlite.useSQLCipher": "true"` in `ios/Podfile.properties.json`, then run `pod install` in the `ios` directory. Rebuild the native app afterwards. An app released without SQLCipher with an earlier Evolu version has an unencrypted database, which can't be opened once SQLCipher is on, so it has to convert its database first.
 
+The database key is the app owner's encryption key, derived from its owner secret. Evolu doesn't store that secret, so the database is only as protected as the place the app keeps it. A secret kept in `localStorage`, IndexedDB, a plain file, or another unencrypted store lets anyone who can read that store decrypt the database. `testAppOwner`, which the examples use, has a public secret, so use it only for testing.
+
 With the `memoryOnly` option, the database is kept in memory and nothing is stored on the device.
 
 ## API design prevents data leaks
@@ -33,16 +35,16 @@ Evolu's API is designed to prevent developers from accidentally leaking sensitiv
 
 ## Traffic analysis protection
 
-To prevent traffic analysis attacks, Evolu uses message padding (PADMÉ)—a [technique](https://lbarman.ch/blog/padme/) that pads binary messages to obscure their actual size. Combined with end-to-end encryption, message sizes don't reveal the data. Timestamps and NodeIds still reveal activity, as described below.
+To limit what sizes reveal, Evolu pads every change with PADMÉ, a [technique](https://lbarman.ch/blog/padme/) that rounds its length up by at most 12% before encryption. A relay and anyone who knows an OwnerId still learn each change's approximate size, and timestamps and NodeIds still reveal activity, as described below.
 
 ## Relay blindness by design
 
-The Evolu Relay is completely blind to user data. What the relay sees:
+The Evolu Relay can't decrypt user data. What the relay sees:
 
 - **OwnerId**: A unique identifier for the data owner (but not who that owner is). Anyone who knows an OwnerId can download the owner's encrypted changes and their timestamps from a relay and subscribe to new ones. The write key only authorizes writes
 - **Timestamps**: When changes occurred (for synchronization ordering)
 - **NodeId**: Every timestamp includes a random ID of the database that wrote the change. It's the same for every owner the database writes changes for, so a relay can link those owners, even across IP addresses
-- **Encrypted binary blobs**: The actual data, completely encrypted and padded to obscure size
+- **Encrypted binary blobs**: The actual data, encrypted and padded, so only its approximate size shows
 - **Write key**: A token that authorizes writes for an owner. By default, it's the same on every relay the owner uses
 - **IP addresses**: Network addresses of connecting clients (standard for any network service unless using Tor or similar privacy networks). Owners synced over one connection are linked to each other
 
@@ -52,11 +54,11 @@ The relay stores what it sees in a plain SQLite file. The changes are already en
 
 ## Timestamp metadata
 
-Relays, collaborators, and anyone who knows an OwnerId can see timestamps (user activity). This does not increase risk compared to any real‑time messaging system where traffic timing is observable.
+Relays, collaborators, and anyone who knows an OwnerId can see timestamps (user activity). A timestamp records when a change was made, even offline, not when it was synced. The Evolu Relay keeps every timestamp, so anyone who knows an OwnerId can read the owner's whole activity history.
 
 ### Why timestamps are visible
 
-Real‑time communication inherently reveals that “something happened” (bytes were transferred). Even if we hid explicit timestamps, an observer could record packet timing. Relying on participants not to store this information is unsafe, so explicitly exposing timestamp metadata doesn't add additional risk.
+Relays reconcile changes by their timestamps, so Evolu sends them unencrypted. Real‑time communication inherently reveals that “something happened” (bytes were transferred), so a relay or network observer could record packet timing anyway. Timestamps reveal more than packet timing: when changes made offline happened, and all past activity to anyone who later learns an OwnerId, joins as a collaborator, or breaches a relay.
 
 ### Mitigating activity leakage
 

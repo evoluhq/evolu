@@ -71,16 +71,20 @@ export interface RelayConfig extends StorageConfig {
    * implementation.
    *
    * OwnerId is used rather than short-lived tokens because this only controls
-   * relay access, not write permissions. Since all data is encrypted on the
-   * relay, OwnerId exposure reveals no data.
+   * relay access, not write permissions. Changes are encrypted end-to-end, so
+   * OwnerId exposure reveals no change contents. But anyone who knows an
+   * OwnerId can download the owner's encrypted changes and their timestamps
+   * from a relay and subscribe to new ones, as
+   * [Privacy](https://www.evolu.dev/docs/privacy#relay-blindness-by-design)
+   * describes.
    *
-   * It does allow write-key squatting. The relay stores the first write key
-   * presented for an owner, so anyone who learns an OwnerId before the owner's
-   * own write key reaches the relay can claim it. The owner then gets
-   * {@link ProtocolWriteKeyError} on this relay until the operator deletes the
-   * owner's row in `evolu_writeKey`. This callback does not prevent that: it
-   * receives only the OwnerId of a connection, which a squatter can name as
-   * well, and every message on the connection can name another owner.
+   * OwnerId exposure also allows write-key squatting. The relay stores the
+   * first write key presented for an owner, so anyone who learns an OwnerId
+   * before the owner's own write key reaches the relay can claim it. The owner
+   * then gets {@link ProtocolWriteKeyError} on this relay until the operator
+   * deletes the owner's row in `evolu_writeKey`. This callback does not prevent
+   * that: it receives only the OwnerId of a connection, which a squatter can
+   * name as well, and every message on the connection can name another owner.
    *
    * Owners specify which relays to connect to via `OwnerTransport`. In
    * WebSocket-based implementations, this check occurs before accepting the
