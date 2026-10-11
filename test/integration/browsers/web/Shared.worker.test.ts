@@ -8,6 +8,8 @@ import {
   isPlainObject,
   sleep,
   UnknownError,
+  type EvoluError,
+  type Run,
 } from "@evolu/common";
 import {
   AppName,
@@ -46,12 +48,44 @@ const createProductionDbWorker: CreateDbWorker = () =>
     ),
   );
 
+const createProductionSharedWorker = (name: string): SharedWorker =>
+  new SharedWorker(
+    new URL(
+      "../../../../packages/web/src/local-first/Shared.worker.ts",
+      import.meta.url,
+    ),
+    { name, type: "module" },
+  );
+
+/**
+ * Starts the production shared worker the way
+ * `installOneTabSharedWorkerPolyfill` does in a browser without SharedWorker.
+ */
+const createOneTabProductionSharedWorker = (name: string): SharedWorker => {
+  const worker = new Worker(
+    new URL(
+      "../../../../packages/web/src/local-first/Shared.worker.ts",
+      import.meta.url,
+    ),
+    { name, type: "module" },
+  );
+  // A panic also reaches the page as the dedicated worker's error, which would
+  // fail the test run.
+  worker.addEventListener("error", (event) => {
+    event.preventDefault();
+  });
+  return { port: worker } as unknown as SharedWorker;
+};
+
 /** Opens an app in a tab connected to the production shared worker. */
 const setupTab = async (
   disposer: AsyncDisposableStack,
   workerName: string,
   appName: AppName,
   createDbWorker: CreateDbWorker = createProductionDbWorker,
+  createNativeSharedWorker: (
+    name: string,
+  ) => SharedWorker = createProductionSharedWorker,
 ) => {
   const deps = disposer.use(
     createEvoluDeps({
@@ -62,13 +96,7 @@ const setupTab = async (
       lockManager: navigator.locks,
       reloadApp: constVoid,
       sharedWorker: createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
-        new SharedWorker(
-          new URL(
-            "../../../../packages/web/src/local-first/Shared.worker.ts",
-            import.meta.url,
-          ),
-          { name: workerName, type: "module" },
-        ),
+        createNativeSharedWorker(workerName),
       ),
     }),
   );
@@ -87,13 +115,12 @@ const setupTab = async (
 };
 
 /**
- * Panics the tab's shared worker, waits until the panic's error reaches the
- * tab's evoluError, and waits until the worker closes.
+ * Panics the tab's shared worker and waits until the panic's error reaches the
+ * tab's evoluError.
  */
 const panicSharedWorker = async ({
   deps,
   evolu,
-  run,
 }: Awaited<ReturnType<typeof setupTab>>): Promise<void> => {
   // The test waits for the panic's error rather than reading the latest one,
   // so an error reported later cannot hide it.
@@ -119,8 +146,14 @@ const panicSharedWorker = async ({
   evolu.useOwner(testAppOwner, [transport, transport]);
 
   await panicReported.promise;
+};
 
-  // The failed worker releases the build lock right before it closes.
+/**
+ * Waits until a failed shared worker closes. Closing releases its build lock,
+ * but in Firefox, a tab opened right after that can still connect to the
+ * closing worker, so this waits a little longer.
+ */
+const waitForSharedWorkerClose = async (run: Run): Promise<void> => {
   while (
     (await navigator.locks.query()).held?.some(
       ({ name }) => name === "evolu-leaderlock-tab",
@@ -139,6 +172,7 @@ test("a panic of the production shared worker reaches evoluError", async () => {
   );
 
   await panicSharedWorker(tab);
+  await waitForSharedWorkerClose(tab.run);
 });
 
 test("a tab opened after a panic of the production shared worker starts a new worker", async () => {
@@ -147,6 +181,7 @@ test("a tab opened after a panic of the production shared worker starts a new wo
   const appName = AppName.orThrow(`test-${crypto.randomUUID()}`);
   const failedTab = await setupTab(disposer, workerName, appName);
   await panicSharedWorker(failedTab);
+  await waitForSharedWorkerClose(failedTab.run);
 
   const reopenedTab = await setupTab(disposer, workerName, appName);
 
@@ -155,6 +190,7 @@ test("a tab opened after a panic of the production shared worker starts a new wo
 
   // Releases the build lock for the tests that run after this one.
   await panicSharedWorker(reopenedTab);
+  await waitForSharedWorkerClose(reopenedTab.run);
 });
 
 test("a DbWorker requested before a panic of the production shared worker stops", async () => {
@@ -190,6 +226,7 @@ test("a DbWorker requested before a panic of the production shared worker stops"
   // The worker panics and closes while the replacement's port is in transit.
   // Firefox drops a message posted to such a port once its sender closes.
   await panicSharedWorker(secondTab);
+  await waitForSharedWorkerClose(secondTab.run);
   dbWorker.postMessage(init, [init.port]);
 
   const reopenedTab = await setupTab(disposer, workerName, appName);
@@ -205,6 +242,80 @@ test("a DbWorker requested before a panic of the production shared worker stops"
   // the panic below release the build lock even when this test fails.
   dbWorker[Symbol.dispose]();
   await panicSharedWorker(reopenedTab);
+  await waitForSharedWorkerClose(reopenedTab.run);
 
   assertEqual(rows, []);
 });
+
+for (const [sharedWorkerKind, createNativeSharedWorker] of [
+  ["production shared worker", createProductionSharedWorker],
+  [
+    "one-tab polyfill of the production shared worker",
+    createOneTabProductionSharedWorker,
+  ],
+] as const) {
+  test(`a ${sharedWorkerKind} drops messages that arrive after its panic`, async () => {
+    await using disposer = new AsyncDisposableStack();
+    // The tab holds the DbWorkerInit of the database it opens second, so that
+    // database stays starting, and the failed worker's cleanup waits for it.
+    let holdDbWorkerInit = false;
+    const starting = Promise.withResolvers<{
+      readonly dbWorker: DbWorker;
+      readonly init: DbWorkerInit;
+    }>();
+    const tab = await setupTab(
+      disposer,
+      `panic-${crypto.randomUUID()}`,
+      AppName.orThrow(`test-${crypto.randomUUID()}`),
+      () => {
+        const dbWorker = createProductionDbWorker();
+        if (!holdDbWorkerInit) return dbWorker;
+        return {
+          ...dbWorker,
+          postMessage: (init) => {
+            starting.resolve({ dbWorker, init });
+          },
+        };
+      },
+      createNativeSharedWorker,
+    );
+    const openApp = async () => {
+      disposer.use(
+        await tab.run.ok(
+          createEvolu(schema, {
+            appName: AppName.orThrow(`test-${crypto.randomUUID()}`),
+            appOwner: testAppOwner,
+            transports: [],
+            memoryOnly: true,
+          }),
+        ),
+      );
+    };
+    // The first database has its DbWorker once it answers a query.
+    assertEqual(await tab.evolu.loadQuery(todosQuery), []);
+    holdDbWorkerInit = true;
+    await openApp();
+    const { dbWorker, init } = await starting.promise;
+
+    await panicSharedWorker(tab);
+
+    // A worker that handled this app's message on its disposed Run would throw,
+    // and the tab would set that error as its evoluError.
+    const laterErrors: Array<EvoluError | null> = [];
+    const laterError = Promise.withResolvers<void>();
+    tab.deps.evoluError.subscribe(() => {
+      laterErrors.push(tab.deps.evoluError.get());
+      laterError.resolve();
+    });
+    await openApp();
+    await Promise.race([laterError.promise, waitForSharedWorkerClose(tab.run)]);
+
+    // Lets a worker that kept running end its cleanup, so it releases the build
+    // lock even when this test fails.
+    dbWorker.postMessage(init, [init.port]);
+    await waitForSharedWorkerClose(tab.run);
+    dbWorker[Symbol.dispose]();
+
+    assertEqual(laterErrors, []);
+  });
+}

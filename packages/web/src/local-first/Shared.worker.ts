@@ -54,11 +54,17 @@ const run = createRun({
 
 void run(async (run) => {
   if ("onconnect" in self) {
-    // A panic closes the worker, so tabs that connect later start another.
     using workerSelf = createSharedWorkerSelf<
       SharedWorkerInput,
       SharedWorkerOutput
     >(self);
+    // A panic closes the worker right away, so it drops later messages instead
+    // of handling them on its disposed Run during cleanup, and tabs that
+    // connect later start another worker. Its DbWorkers stop once the closed
+    // worker's leader lock is released.
+    using _closeOnPanic = run.onAbort(() => {
+      workerSelf[Symbol.dispose]();
+    });
     await using _ = await run.ok(initSharedWorker(workerSelf));
     return await run(waitForAbort);
   }
@@ -67,6 +73,10 @@ void run(async (run) => {
     SharedWorkerInput,
     SharedWorkerOutput
   >(self);
+  // Like the native SharedWorker above.
+  using _closeOnPanic = run.onAbort(() => {
+    workerSelf[Symbol.dispose]();
+  });
 
   await navigator.locks.request(
     "evolu-one-tab-sharedworker-polyfill",
