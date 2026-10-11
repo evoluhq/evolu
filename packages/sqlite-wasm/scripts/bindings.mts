@@ -265,7 +265,7 @@ export const bindings: Readonly<Record<string, Binding>> = {
 
   // SQL text.
   sqlite3_complete: {
-    doc: "Returns 1 when UTF-8 SQL text ends with a complete statement, a final semicolon token that does not end inside a CREATE TRIGGER body, and 0 otherwise. It tokenizes without parsing, so it does not detect invalid SQL.",
+    doc: "Returns 1 when UTF-8 SQL text ends with a complete statement, a final semicolon token that does not end inside a CREATE TRIGGER body, and 0 otherwise. A line comment ends only at a newline, so SQL that ends inside one is incomplete. It tokenizes without parsing, so it does not detect invalid SQL.",
     url: c3ref("complete"),
     params: ["sql"],
   },
@@ -548,7 +548,7 @@ export const bindings: Readonly<Record<string, Binding>> = {
 
   // Online backup.
   sqlite3_backup_init: {
-    doc: "Starts copying the database zSourceName of pSource, such as main, into the database zDestName of pDest and returns the backup, or NULL with the error in pDest. It fails while pDest has a read transaction open, and when both are the same connection.",
+    doc: "Prepares to copy the database zSourceName of pSource, such as main, into the database zDestName of pDest, which sqlite3_backup_step does, and returns the backup, or NULL with the error in pDest. It fails while pDest has any transaction open, when both are the same connection, and for an unknown database name.",
     url: c3ref("backup_finish"),
     params: ["pDest", "zDestName", "pSource", "zSourceName"],
     result: "SqliteBackupPtr | NullPtr",
@@ -560,18 +560,18 @@ export const bindings: Readonly<Record<string, Binding>> = {
     result: "SqliteResultCode",
   },
   sqlite3_backup_finish: {
-    doc: "Releases the backup and returns SQLITE_OK, or the error of a failed sqlite3_backup_step. Every backup sqlite3_backup_init returned needs it, also after an error, and NULL is a no-op.",
+    doc: "Releases the backup, rolling back an unfinished copy, and returns the result of the most recent sqlite3_backup_step if that failed, SQLITE_BUSY and SQLITE_LOCKED included, otherwise SQLITE_OK. Every backup sqlite3_backup_init returned needs it, also after an error.",
     url: c3ref("backup_finish"),
-    params: ["p: SqliteBackupPtr | NullPtr"],
+    params: ["p"],
     result: "SqliteResultCode",
   },
   sqlite3_backup_remaining: {
-    doc: "Returns how many pages were left to copy when the last sqlite3_backup_step returned.",
+    doc: "Returns how many pages were left to copy after the last sqlite3_backup_step that returned SQLITE_OK or SQLITE_DONE, or 0 before one did.",
     url: c3ref("backup_finish"),
     params: ["p"],
   },
   sqlite3_backup_pagecount: {
-    doc: "Returns how many pages the source database had when the last sqlite3_backup_step returned.",
+    doc: "Returns how many pages the source database had after the last sqlite3_backup_step that returned SQLITE_OK or SQLITE_DONE, or 0 before one did.",
     url: c3ref("backup_finish"),
     params: ["p"],
   },

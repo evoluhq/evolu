@@ -116,6 +116,7 @@ import {
 } from "../../../../packages/sqlite-wasm/src/CApi.ts";
 import {
   SQLITE_BLOB,
+  SQLITE_BUSY,
   SQLITE_CONSTRAINT,
   SQLITE_CONSTRAINT_PRIMARYKEY,
   SQLITE_CORRUPT,
@@ -807,7 +808,37 @@ test("sqlite3_backup_init, _step, _remaining, _pagecount and _finish copy a data
   assertEqual(t.selectText("select count(*) from t", copy.db), "100");
   assertEqual(sqlite3_backup_init(t)(t.db, main, t.db, main), 0);
   assertEqual(t.errmsg(t.db), "source and destination must be distinct");
-  assertEqual(sqlite3_backup_finish(t)(0), SQLITE_OK);
+  assertEqual(
+    sqlite3_backup_init(t)(copy.db, t.cString("other"), t.db, main),
+    0,
+  );
+  assertEqual(t.errmsg(copy.db), "unknown database other");
+  assertEqual(t.exec("begin; select 1 from t", copy.db), SQLITE_OK);
+  assertEqual(sqlite3_backup_init(t)(copy.db, main, t.db, main), 0);
+  assertEqual(t.errmsg(copy.db), "destination database is in use");
+  assertEqual(t.exec("commit", copy.db), SQLITE_OK);
+  assertEqual(sqlite3_close_v2(t)(copy.db), SQLITE_OK);
+});
+
+test("sqlite3_backup_step returns SQLITE_BUSY while the source has a write transaction open, and sqlite3_backup_finish then returns it too and rolls the unfinished copy back", async () => {
+  const t = await setupDatabase();
+  assertEqual(t.exec("create table t(a); insert into t values (1)"), SQLITE_OK);
+  const copy = t.open(":memory:");
+  assertEqual(copy.rc, SQLITE_OK);
+  const main = t.cString("main");
+  const backup = sqlite3_backup_init(t)(copy.db, main, t.db, main);
+  assert(backup !== 0, "The backup did not start.");
+  assertEqual(sqlite3_backup_remaining(t)(backup), 0);
+  assertEqual(sqlite3_backup_pagecount(t)(backup), 0);
+  assertEqual(t.exec("begin; insert into t values (2)"), SQLITE_OK);
+
+  assertEqual(sqlite3_backup_step(t)(backup, -1), SQLITE_BUSY);
+  assertEqual(sqlite3_backup_remaining(t)(backup), 0);
+  assertEqual(sqlite3_backup_pagecount(t)(backup), 0);
+  assertEqual(sqlite3_backup_finish(t)(backup), SQLITE_BUSY);
+
+  assertEqual(t.exec("commit"), SQLITE_OK);
+  assertEqual(t.selectText("select count(*) from sqlite_schema", copy.db), "0");
   assertEqual(sqlite3_close_v2(t)(copy.db), SQLITE_OK);
 });
 
@@ -955,6 +986,9 @@ test("sqlite3_complete, the keyword functions and the compile options", async ()
 
   assertTrue(sqlite3_complete(t)(t.cString("select 1;")) !== 0);
   assertEqual(sqlite3_complete(t)(t.cString("select 1")), 0);
+  // A line comment ends at a newline only, since SQLite 3.54.0.
+  assertEqual(sqlite3_complete(t)(t.cString("select 1; -- done")), 0);
+  assertTrue(sqlite3_complete(t)(t.cString("select 1; -- done\n")) !== 0);
 
   const count = sqlite3_keyword_count(t)();
   assertTrue(count > 100);

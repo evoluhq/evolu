@@ -275,9 +275,7 @@ export interface SqliteCExports {
     p: SqliteBackupPtr,
     nPage: number,
   ) => SqliteResultCode;
-  readonly sqlite3_backup_finish: (
-    p: SqliteBackupPtr | NullPtr,
-  ) => SqliteResultCode;
+  readonly sqlite3_backup_finish: (p: SqliteBackupPtr) => SqliteResultCode;
   readonly sqlite3_backup_remaining: (p: SqliteBackupPtr) => number;
   readonly sqlite3_backup_pagecount: (p: SqliteBackupPtr) => number;
   readonly sqlite3_errcode: (db: SqliteDbPtr) => SqliteResultCode;
@@ -926,7 +924,9 @@ export const sqlite3_randomness = (
 /**
  * Returns 1 when UTF-8 SQL text ends with a complete statement, a final
  * semicolon token that does not end inside a CREATE TRIGGER body, and 0
- * otherwise. It tokenizes without parsing, so it does not detect invalid SQL.
+ * otherwise. A line comment ends only at a newline, so SQL that ends inside one
+ * is incomplete. It tokenizes without parsing, so it does not detect invalid
+ * SQL.
  *
  * Wasm type `i(i)`. Signature `["sqlite3_complete", "int", "string:flexible"]`
  * from SQLite's table.
@@ -1552,10 +1552,11 @@ export const sqlite3_deserialize = (
   deps.sqliteWasm.exports.sqlite3_deserialize;
 
 /**
- * Starts copying the database zSourceName of pSource, such as main, into the
- * database zDestName of pDest and returns the backup, or NULL with the error in
- * pDest. It fails while pDest has a read transaction open, and when both are
- * the same connection.
+ * Prepares to copy the database zSourceName of pSource, such as main, into the
+ * database zDestName of pDest, which {@link sqlite3_backup_step} does, and
+ * returns the backup, or NULL with the error in pDest. It fails while pDest has
+ * any transaction open, when both are the same connection, and for an unknown
+ * database name.
  *
  * Wasm type `i(iiii)`. Signature `["sqlite3_backup_init", "sqlite3_backup*",
  * "sqlite3*", "string", "sqlite3*", "string"]` from SQLite's table.
@@ -1584,9 +1585,10 @@ export const sqlite3_backup_step = (
   deps.sqliteWasm.exports.sqlite3_backup_step;
 
 /**
- * Releases the backup and returns SQLITE_OK, or the error of a failed
- * {@link sqlite3_backup_step}. Every backup {@link sqlite3_backup_init} returned
- * needs it, also after an error, and NULL is a no-op.
+ * Releases the backup, rolling back an unfinished copy, and returns the result
+ * of the most recent {@link sqlite3_backup_step} if that failed, SQLITE_BUSY and
+ * SQLITE_LOCKED included, otherwise SQLITE_OK. Every backup
+ * {@link sqlite3_backup_init} returned needs it, also after an error.
  *
  * Wasm type `i(i)`. Signature `["sqlite3_backup_finish", "int",
  * "sqlite3_backup*"]` from SQLite's table.
@@ -1599,8 +1601,9 @@ export const sqlite3_backup_finish = (
   deps.sqliteWasm.exports.sqlite3_backup_finish;
 
 /**
- * Returns how many pages were left to copy when the last
- * {@link sqlite3_backup_step} returned.
+ * Returns how many pages were left to copy after the last
+ * {@link sqlite3_backup_step} that returned SQLITE_OK or SQLITE_DONE, or 0
+ * before one did.
  *
  * Wasm type `i(i)`. Signature `["sqlite3_backup_remaining", "int",
  * "sqlite3_backup*"]` from SQLite's table.
@@ -1613,8 +1616,9 @@ export const sqlite3_backup_remaining = (
   deps.sqliteWasm.exports.sqlite3_backup_remaining;
 
 /**
- * Returns how many pages the source database had when the last
- * {@link sqlite3_backup_step} returned.
+ * Returns how many pages the source database had after the last
+ * {@link sqlite3_backup_step} that returned SQLITE_OK or SQLITE_DONE, or 0
+ * before one did.
  *
  * Wasm type `i(i)`. Signature `["sqlite3_backup_pagecount", "int",
  * "sqlite3_backup*"]` from SQLite's table.

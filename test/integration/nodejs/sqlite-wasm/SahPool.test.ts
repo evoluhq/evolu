@@ -1037,7 +1037,7 @@ test("xOpen rejects a database whose path, normalized, is 499 or more UTF-8 byte
 });
 
 // SQLite creates a super-journal with SQLITE_OPEN_EXCLUSIVE, as unix opens it
-// with O_EXCL. opfs-sahpool on trunk refuses it too.
+// with O_EXCL. opfs-sahpool refuses it too since SQLite 3.54.0.
 test("xOpen with SQLITE_OPEN_EXCLUSIVE fails with SQLITE_CANTOPEN when the file exists, and creates a file that does not", async () => {
   const t = await setupSahPool();
   const flags =

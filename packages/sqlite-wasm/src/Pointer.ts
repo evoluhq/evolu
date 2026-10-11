@@ -74,7 +74,10 @@ export type SqliteValuePtr = WasmPtr & Brand<"SqliteValue">;
  */
 export type SqliteOwnedValuePtr = SqliteValuePtr & Brand<"SqliteOwnedValue">;
 
-/** An online backup from one connection's database to another's, `sqlite3_backup*`. */
+/**
+ * An online backup from one connection's database to another's,
+ * `sqlite3_backup*`.
+ */
 export type SqliteBackupPtr = WasmPtr & Brand<"SqliteBackup">;
 
 /** The context of an application-defined function call, `sqlite3_context*`. */
