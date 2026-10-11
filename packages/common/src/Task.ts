@@ -851,6 +851,10 @@ import type {
  *
  * Start Tasks with `run(task)`, as shown above.
  *
+ * If a Task started with `run(task)` returns something other than a Result, the
+ * Run panics. Development builds validate the whole Result; production builds
+ * check only that `ok` is a boolean.
+ *
  * A Task can also be called directly as `task(run)`, but this is rarely needed.
  * The call executes the Task inline in the current Run, as if its body were
  * part of the parent Task, so it does not create a child Run. This is mainly
