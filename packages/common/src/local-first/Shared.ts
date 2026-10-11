@@ -2454,6 +2454,13 @@ const createEvoluTenant =
             break;
           }
           case "LeaderRefused": {
+            console.info("leaderRefused", message.error);
+            // A refused tenant keeps its first error, which its tabs already
+            // received, so a later refusal only releases its port.
+            if (dbWorker.type === "Refused") {
+              currentDbWorkerPort[Symbol.dispose]();
+              break;
+            }
             // The worker refused startup or failed and is releasing its
             // resources. Requests stay unanswered until their instances are
             // disposed. Keep the tenant unavailable, tell each connected tab
@@ -2477,7 +2484,6 @@ const createEvoluTenant =
             ownerTransportApplyRelation.clear();
             dbWorker = { type: "Refused", error: message.error };
             deps.publishSyncState();
-            console.info("leaderRefused", message.error);
             for (const instance of instancesById.values()) {
               reportRefusal(instance.tabPort, message.error);
             }

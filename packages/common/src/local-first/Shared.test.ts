@@ -11291,6 +11291,48 @@ describe("refusal", () => {
     assertEqual(leaderInputs, [{ type: "Dispose" }]);
   });
 
+  it("keeps the first refusal when a worker already requested before it also refuses", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const instance = await setup.createEvoluBeforeDbWorkerLeader();
+    const initDbWorker = await setupTabLeader(setup, disposer);
+    using otherPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
+      initDbWorker.port,
+    );
+    const outputCount = setup.sharedWorkerOutputs.length;
+
+    instance.dbWorkerPort.postMessage({
+      type: "LeaderRefused",
+      error: refusal,
+    });
+    await testWaitForWorkerMessage();
+    otherPort.postMessage({
+      type: "LeaderRefused",
+      error: createUnknownError(new Error("file is not a database")),
+    });
+    await testWaitForWorkerMessage();
+
+    assertEqual(latest().tenants, [
+      { type: "Refused", name: testName, error: refusal },
+    ]);
+    assertEqual(setup.sharedWorkerOutputs.slice(outputCount), [
+      { type: "Error", error: refusal },
+    ]);
+    // A tab that connects later is told the same error.
+    const laterTab = setupTab(setup, disposer);
+    const laterId = createId<"EvoluInstance">(setup.run.deps);
+    disposer.use(await setup.run.ok(acquireLeaderLock(laterId)));
+    const laterChannel = disposer.use(
+      testCreateMessageChannel<EvoluOutput, EvoluInput>(),
+    );
+    laterTab.port.postMessage(
+      createEvoluInput(laterId, laterChannel.port1.native),
+    );
+    await testWaitForWorkerMessage();
+    assertEqual(laterTab.outputs, [{ type: "Error", error: refusal }]);
+  });
+
   const heldRefusal: DatabaseHeldError = {
     type: "DatabaseHeldError",
     name: testName,
