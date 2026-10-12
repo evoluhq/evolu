@@ -76,6 +76,30 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
         }
       },
 
+      iterate: (query, onRow) => {
+        // A statement of its own, because onRow can run queries, which could
+        // otherwise reuse the cached one while it is stepped.
+        const statement = db.prepareSync(query.sql);
+        try {
+          // expo-sqlite's executeSync result steps once more after the last row
+          // when a query returns none, and SQLite then runs the statement again,
+          // so a statement without result columns, as a write is, would run
+          // twice, and an empty SELECT scans twice.
+          // https://github.com/expo/expo/pull/51425
+          if (statement.getColumnNamesSync().length === 0)
+            throw new Error(
+              "SqliteDriver.iterate needs a query that returns rows.",
+            );
+          // Expo only reads the array, but its parameter type is mutable.
+          const rows = statement.executeSync<SqliteRow>(
+            query.parameters as Array<SQLiteBindValue>,
+          );
+          for (const row of rows) if (!onRow(row)) break;
+        } finally {
+          statement.finalizeSync();
+        }
+      },
+
       export: () => {
         const file = db.serializeSync();
         const { buffer } = file;

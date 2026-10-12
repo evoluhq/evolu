@@ -3,11 +3,15 @@ import {
   assert,
   assertEqual,
   assertInstanceOf,
+  assertSame,
+  assertThrows,
   assertType,
   EncryptionKey,
   Name,
+  sql,
   testCreateRun,
   type Result,
+  type SqliteRow,
 } from "@evolu/common";
 import type { SQLiteOpenOptions } from "expo-sqlite";
 import { describe, it, mock } from "node:test";
@@ -19,9 +23,13 @@ import { describe, it, mock } from "node:test";
 const fake = {
   events: [] as Array<string>,
   cipherVersion: null as string | null,
+  rows: [] as Array<SqliteRow>,
+  columnNames: ["a"] as Array<string>,
   reset: () => {
     fake.events = [];
     fake.cipherVersion = null;
+    fake.rows = [];
+    fake.columnNames = ["a"];
   },
 };
 
@@ -44,6 +52,26 @@ mock.module("expo-sqlite", {
         },
         closeSync: () => {
           fake.events.push("close");
+        },
+        prepareSync: (source: string) => {
+          fake.events.push(`prepare ${source}`);
+          return {
+            getColumnNamesSync: () => fake.columnNames,
+            // Steps a row each time the result is iterated further, as
+            // expo-sqlite's executeSync result does.
+            executeSync: (parameters: ReadonlyArray<unknown>) => {
+              fake.events.push(`execute ${JSON.stringify(parameters)}`);
+              return (function* () {
+                for (const row of fake.rows) {
+                  fake.events.push(`step ${JSON.stringify(row)}`);
+                  yield row;
+                }
+              })();
+            },
+            finalizeSync: () => {
+              fake.events.push("finalize");
+            },
+          };
         },
       };
     },
@@ -136,5 +164,77 @@ describe("createExpoSqliteDriver", () => {
     driver[Symbol.dispose]();
 
     assertEqual(fake.events, ["open evolu1-Test.db", "close"]);
+  });
+
+  it("iterates rows on a statement of its own, steps none past the one onRow stops at, and finalizes it, also when onRow throws", async () => {
+    fake.reset();
+    fake.rows = [{ a: 1 }, { a: 2 }, { a: 3 }];
+    await using run = testCreateRun();
+    using driver = await run.ok(
+      createExpoSqliteDriver(testName, { mode: "memory" }),
+    );
+    // Even a query whose statement exec would cache gets a statement of its own.
+    const query = sql.prepared`select a from t where a > ${0};`;
+
+    const rows: Array<SqliteRow> = [];
+    driver.iterate(query, (row) => {
+      rows.push(row);
+      return rows.length < 2;
+    });
+    assertEqual(rows, [{ a: 1 }, { a: 2 }]);
+
+    const thrown = new Error("onRow failed");
+    assertThrows(
+      () => {
+        driver.iterate(query, () => {
+          throw thrown;
+        });
+      },
+      (error) => {
+        assertSame(error, thrown);
+      },
+    );
+
+    assertEqual(fake.events, [
+      'open :memory: {"useNewConnection":true}',
+      `prepare ${query.sql}`,
+      "execute [0]",
+      'step {"a":1}',
+      'step {"a":2}',
+      "finalize",
+      `prepare ${query.sql}`,
+      "execute [0]",
+      'step {"a":1}',
+      "finalize",
+    ]);
+  });
+
+  it("rejects a query without result columns before it runs, which would run it twice, and finalizes its statement", async () => {
+    fake.reset();
+    fake.columnNames = [];
+    await using run = testCreateRun();
+    using driver = await run.ok(
+      createExpoSqliteDriver(testName, { mode: "memory" }),
+    );
+    const query = sql`insert into t values (${1});`;
+
+    assertThrows(
+      () => {
+        driver.iterate(query, () => true);
+      },
+      (error) => {
+        assertInstanceOf(error, Error);
+        assertEqual(
+          error.message,
+          "SqliteDriver.iterate needs a query that returns rows.",
+        );
+      },
+    );
+
+    assertEqual(fake.events, [
+      'open :memory: {"useNewConnection":true}',
+      `prepare ${query.sql}`,
+      "finalize",
+    ]);
   });
 });

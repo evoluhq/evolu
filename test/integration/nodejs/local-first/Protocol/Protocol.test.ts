@@ -59,6 +59,7 @@ import {
 } from "../../../../../packages/common/src/local-first/Timestamp.ts";
 import { getOrThrow } from "../../../../../packages/common/src/Result.ts";
 import { installPolyfills } from "../../../../../packages/common/src/Polyfills.ts";
+import { sql } from "../../../../../packages/common/src/Sqlite.ts";
 import {
   testCreateDeps,
   testCreateRun,
@@ -868,6 +869,33 @@ describe("sync near the size limit", () => {
             size: 1_015_851,
           },
         ]);
+    });
+
+    it("is reported to a client's onChangeTooLarge after its storage iterates, so the callback can write the database", async () => {
+      await using client = await setupSqliteAndRelayStorage();
+      await using relay = await setupSqliteAndRelayStorage();
+      const timestamps = testTimestampsAsc
+        .slice(0, 3)
+        .map(timestampBytesToTimestamp);
+      // better-sqlite3 refuses a write while a query iterates, which an oversized
+      // change after the first in its range would hit.
+      await storeChanges(
+        client,
+        timestamps.map((timestamp, index) => [
+          timestamp,
+          index === 1 ? 1_015_851 : 100,
+        ]),
+      );
+      client.sqlite.exec(sql`create table skipped (size integer);`);
+
+      await syncClientWithRelay(client.run, relay.run, (error) => {
+        client.sqlite.exec(sql`insert into skipped values (${error.size});`);
+      });
+
+      assertSame(relay.storage.getSize(testAppOwnerIdBytes), 2);
+      assertEqual(client.sqlite.exec(sql`select size from skipped;`).rows, [
+        { size: 1_015_851 },
+      ]);
     });
 
     it("is logged by a client without onChangeTooLarge", async () => {

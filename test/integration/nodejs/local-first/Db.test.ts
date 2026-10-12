@@ -292,6 +292,10 @@ const setupDb = async ({
         onExec?.(query);
         return driver.exec(query);
       },
+      iterate: (query, onRow) => {
+        onExec?.(query);
+        driver.iterate(query, onRow);
+      },
       export: () => {
         onExport?.();
         return driver.export();

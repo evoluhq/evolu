@@ -317,7 +317,7 @@ const recordStaleFailure = (t: TestSahPool): void => {
   assertEqual(t.pool.getFailure()?.method, "xDelete");
 };
 
-test("a SqliteError's cause is never a failure the pool recorded before the call, because open, prepare, run, a statement's run and exec clear the record first", async () => {
+test("a SqliteError's cause is never a failure the pool recorded before the call, because open, prepare, run, iterate, a statement's run and iterate, and exec clear the record first", async () => {
   const t = await setupSahPool();
   createJunkFile(t, "/junk.db");
   recordStaleFailure(t);
@@ -340,6 +340,11 @@ test("a SqliteError's cause is never a failure the pool recorded before the call
       SQLITE_CONSTRAINT_NOTNULL,
     ],
     [() => insertNull.run([]), SQLITE_CONSTRAINT_NOTNULL],
+    [
+      () => database.iterate("INSERT INTO t VALUES (NULL)", [], () => true),
+      SQLITE_CONSTRAINT_NOTNULL,
+    ],
+    [() => insertNull.iterate([], () => true), SQLITE_CONSTRAINT_NOTNULL],
     [() => database.exec("SELEC 1"), SQLITE_ERROR],
   ] as const) {
     recordStaleFailure(t);
@@ -350,6 +355,58 @@ test("a SqliteError's cause is never a failure the pool recorded before the call
     assert(result.error.type === "SqliteError", "Expected a SqliteError.");
     assertEqual([result.error.extendedCode, result.error.cause], [code, null]);
   }
+  database[Symbol.dispose]();
+});
+
+test("the operations onRow runs are top-level when the iteration is, so neither their errors nor a later step's carry a failure the pool recorded in an earlier one", async () => {
+  const t = await setupSahPool();
+  const database = getOrThrow(openPoolDatabase(t));
+  assertOk(
+    database.exec(
+      "CREATE TABLE t(a); INSERT INTO t VALUES (1), (2), (3), (4); CREATE TABLE u(a NOT NULL)",
+    ),
+  );
+  // abs() of the smallest integer overflows, which fails the third row's step.
+  const sql = "SELECT a FROM t WHERE abs(-9223372036854775807 - (a = 3)) > 0";
+  const select = getOrThrow(database.prepare(sql));
+  const error = createQuotaExceededError();
+
+  for (const iterate of [
+    (onRow: () => boolean) => database.iterate(sql, [], onRow),
+    (onRow: () => boolean) => select.iterate([], onRow),
+  ]) {
+    const failures: Array<unknown> = [];
+
+    const iterated = iterate(() => {
+      if (failures.length > 0) return true;
+      t.fake.inject((call) =>
+        call.method === "write" && call.at >= sahPoolHeaderSize
+          ? { type: "Throw", error }
+          : null,
+      );
+      const full = database.run("INSERT INTO u VALUES (1)", []);
+      t.fake.inject(null);
+      const notNull = database.run("INSERT INTO u VALUES (NULL)", []);
+      for (const result of [full, notNull]) {
+        assertErr(result);
+        assert(result.error.type === "SqliteError", "Expected a SqliteError.");
+        failures.push([result.error.extendedCode, result.error.cause]);
+      }
+      return true;
+    });
+
+    assertEqual(failures, [
+      [SQLITE_FULL, { method: "xWrite", path: "/evolu1.db-journal", error }],
+      [SQLITE_CONSTRAINT_NOTNULL, null],
+    ]);
+    assertErr(iterated);
+    assert(iterated.error.type === "SqliteError", "Expected a SqliteError.");
+    assertEqual(
+      [iterated.error.message, iterated.error.cause],
+      ["integer overflow", null],
+    );
+  }
+  select[Symbol.dispose]();
   database[Symbol.dispose]();
 });
 
@@ -403,8 +460,13 @@ test("export fails with SQLITE_IOERR and the pool's record as the cause when a p
   reopened[Symbol.dispose]();
 });
 
-test("export fails with the pool's record as the cause also when a callback during it runs a query on the same database or another one on the pool, which leaves the record as it is", async () => {
-  for (const isSameDatabase of [true, false]) {
+test("export fails with the pool's record as the cause also when a callback during it runs a query or an iteration on the same database or another one on the pool, which leaves the record as it is", async () => {
+  for (const [isSameDatabase, isIteration] of [
+    [true, false],
+    [false, false],
+    [true, true],
+    [false, true],
+  ]) {
     const t = await setupSahPool();
     const created = getOrThrow(openPoolDatabase(t));
     assertOk(
@@ -427,7 +489,11 @@ test("export fails with the pool's record as the cause also when a callback duri
           if (isNesting) {
             isNesting = false;
             const database = isSameDatabase ? reopened : other;
-            nestedResults.push(database.run("SELECT 1", []).ok);
+            nestedResults.push(
+              isIteration
+                ? database.iterate("SELECT 1", [], () => true).ok
+                : database.run("SELECT 1", []).ok,
+            );
           }
           return 0;
         },

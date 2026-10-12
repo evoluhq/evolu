@@ -41,7 +41,10 @@ import { computeBalancedBuckets } from "../../../../../packages/common/src/Numbe
 import type { RandomNumber } from "../../../../../packages/common/src/Random.ts";
 import { createRandom } from "../../../../../packages/common/src/Random.ts";
 import { getOrThrow, ok } from "../../../../../packages/common/src/Result.ts";
-import type { SqliteQuery } from "../../../../../packages/common/src/Sqlite.ts";
+import type {
+  Sqlite,
+  SqliteQuery,
+} from "../../../../../packages/common/src/Sqlite.ts";
 import { sql } from "../../../../../packages/common/src/Sqlite.ts";
 import { testCreateDeps } from "../../../../../packages/common/src/Task.ts";
 import type { Millis } from "../../../../../packages/common/src/Time.ts";
@@ -597,6 +600,49 @@ test("iterate", async () => {
   for (let i = 0; i < stopAfter; i++) {
     assertEqualBytes(stopAfterCollected[i], testTimestampsAsc[i]);
   }
+});
+
+test("iterate reads no timestamp past the one the callback stops at", async () => {
+  await using setup = await setupSqliteAndStorage();
+  const { sqlite } = setup;
+  for (const timestamp of testTimestampsAsc) {
+    setup.storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
+  }
+
+  // The rows SQLite returns to the storage's queries.
+  let rowsRead = 0;
+  const storage = createBaseSqliteStorage({
+    sqlite: {
+      ...sqlite,
+      exec: ((query: SqliteQuery) => {
+        const result = sqlite.exec(query);
+        rowsRead += result.rows.length;
+        return result;
+      }) as Sqlite["exec"],
+      iterate: (query, onRow) => {
+        sqlite.iterate(query, (row) => {
+          rowsRead++;
+          return onRow(row);
+        });
+      },
+    },
+    random: createRandom(),
+  });
+
+  const collected: Array<TimestampBytes> = [];
+  storage.iterate(
+    testAppOwnerIdBytes,
+    0 as NonNegativeInt,
+    testTimestampsAsc.length as NonNegativeInt,
+    (timestamp) => {
+      collected.push(timestamp);
+      return collected.length < 3;
+    },
+  );
+
+  assertEqual(collected, testTimestampsAsc.slice(0, 3));
+  // A seek reads the first, and the stream the next two, of 5,000.
+  assertSame(rowsRead, 3);
 });
 
 test("getTimestampByIndex", async () => {

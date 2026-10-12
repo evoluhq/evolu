@@ -15,6 +15,7 @@ import {
   testCreateRun,
   trySync,
   type Result,
+  type SqliteRow,
   type SqliteValue,
   type SqliteValueInput,
   type TestRunDefaultDeps,
@@ -2462,6 +2463,459 @@ test("run on the database prepares one statement without SQLITE_PREPARE_PERSISTE
   assertErr(database.run("select 1; select 2", []), {
     type: "SqliteMultipleStatementsError",
   });
+});
+
+test("a prepared statement iterates its rows as null-prototype objects, steps no row past the one onRow stops at, and runs again", async () => {
+  const t = await setupCallbackDatabase();
+  const select = getOrThrow(t.database.prepare("select a, cb() as c from t"));
+  let steps = 0;
+  t.setCallback(() => {
+    steps++;
+  });
+
+  const rows: Array<SqliteRow> = [];
+  assertOk(
+    select.iterate([], (row) => {
+      rows.push(row);
+      return rows.length < 2;
+    }),
+  );
+
+  assertEqual(rows, [
+    { a: 1, c: 1 },
+    { a: 2, c: 1 },
+  ]);
+  assertSame(Object.getPrototypeOf(rows[0]), null);
+  assertSame(steps, 2);
+  // The iteration reset the statement, so it runs again from the first row.
+  assertEqual(
+    select.run([]),
+    ok({
+      rows: [1, 2, 3, 4, 5].map((a) => ({ a, c: 1 })),
+      changes: 0,
+    }),
+  );
+  select[Symbol.dispose]();
+  t.database[Symbol.dispose]();
+});
+
+test("a prepared statement iterates every row when onRow does not stop it, with its parameters bound, and fails with SqliteParameterCountError without stepping", async () => {
+  const t = await setupCallbackDatabase();
+  const select = getOrThrow(
+    t.database.prepare("select a, cb() as c from t where a > ?"),
+  );
+  let steps = 0;
+  t.setCallback(() => {
+    steps++;
+  });
+
+  const rows: Array<SqliteRow> = [];
+  assertOk(
+    select.iterate([number(2)], (row) => {
+      rows.push(row);
+      return true;
+    }),
+  );
+  assertEqual(
+    rows,
+    [3, 4, 5].map((a) => ({ a, c: 1 })),
+  );
+
+  steps = 0;
+  assertErr(
+    select.iterate([], () => true),
+    { type: "SqliteParameterCountError", expected: 1, actual: 0 },
+  );
+  assertSame(steps, 0);
+  select[Symbol.dispose]();
+  t.database[Symbol.dispose]();
+});
+
+test("iterate fails with the failed step's error after passing the rows before it, and the statement iterates again", async () => {
+  const { database } = await setupSqliteDatabase();
+  assertOk(
+    database.exec("create table t(a); insert into t values (1), (2), (3), (4)"),
+  );
+  // abs() of the smallest integer overflows, which fails the third row's step.
+  const select = getOrThrow(
+    database.prepare(
+      "select a, case when a = 3 then abs(-9223372036854775807 - 1) else 0 end as b from t",
+    ),
+  );
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const rows: Array<SqliteRow> = [];
+    assertErr(
+      select.iterate([], (row) => {
+        rows.push(row);
+        return true;
+      }),
+      {
+        type: "SqliteError",
+        operation: "step",
+        extendedCode: SQLITE_ERROR,
+        message: "integer overflow",
+        sqlOffset: null,
+        cause: null,
+      },
+    );
+    assertEqual(rows, [
+      { a: 1, b: 0 },
+      { a: 2, b: 0 },
+    ]);
+  }
+});
+
+test("iterate fails with the step's error, with the sqlOffset that the reset after it clears", async () => {
+  const { database } = await setupSqliteDatabase();
+  assertOk(database.exec("create table t(a, b); insert into t values (1, 2)"));
+  const select = getOrThrow(database.prepare("select a, b from t"));
+  // The step re-prepares the statement, which no longer parses.
+  assertOk(database.exec("alter table t drop column b"));
+  const rows: Array<SqliteRow> = [];
+
+  assertErr(
+    select.iterate([], (row) => {
+      rows.push(row);
+      return true;
+    }),
+    {
+      type: "SqliteError",
+      operation: "step",
+      extendedCode: SQLITE_ERROR,
+      message: "no such column: b",
+      sqlOffset: 10,
+      cause: null,
+    },
+  );
+  assertEqual(rows, []);
+  select[Symbol.dispose]();
+});
+
+test("iterate resets its statement and rethrows when onRow throws, and the instance and the statement keep working", async () => {
+  const t = await setupCallbackDatabase();
+  const select = getOrThrow(t.database.prepare("select a from t"));
+  const thrown = new Error("onRow failed");
+
+  assertThrows(
+    () =>
+      select.iterate([], () => {
+        throw thrown;
+      }),
+    (error) => {
+      assertSame(error, thrown);
+    },
+  );
+
+  assertFalse(t.sqliteWasm.isBroken());
+  assertEqual(
+    select.run([]),
+    ok({ rows: [1, 2, 3, 4, 5].map((a) => ({ a })), changes: 0 }),
+  );
+  select[Symbol.dispose]();
+  t.database[Symbol.dispose]();
+});
+
+test("a statement run, iterated or disposed from onRow of its own iteration throws before entering wasm, and the statement keeps working", async () => {
+  const t = await setupCallbackDatabase();
+  const select = getOrThrow(t.database.prepare("select a from t"));
+
+  for (const reenter of [
+    () => select.run([]),
+    () => select.iterate([], () => true),
+    () => {
+      select[Symbol.dispose]();
+    },
+  ])
+    assertThrows(
+      () =>
+        select.iterate([], () => {
+          reenter();
+          return true;
+        }),
+      (error) => {
+        assertInstanceOf(error, Error);
+        assertEqual(error.message, runningStatementMessage);
+      },
+    );
+
+  assertFalse(t.sqliteWasm.isBroken());
+  assertEqual(select.run([]).ok, true);
+  select[Symbol.dispose]();
+  t.database[Symbol.dispose]();
+});
+
+test("onRow can run other statements on the same database, and a database disposed from onRow throws before entering wasm and is disposed later", async () => {
+  const t = await setupCallbackDatabase();
+  assertOk(t.database.exec("create table u(a)"));
+  const select = getOrThrow(t.database.prepare("select a from t"));
+  const insert = getOrThrow(t.database.prepare("insert into u values (?)"));
+
+  assertOk(
+    select.iterate([], (row) => {
+      assertOk(insert.run([row.a as FiniteNumber]));
+      assertOk(t.database.exec("update u set a = a"));
+      return true;
+    }),
+  );
+  assertEqual(
+    t.database.run("select count(*) as count from u", []),
+    ok({ rows: [{ count: 5 }], changes: 0 }),
+  );
+
+  assertThrows(
+    () =>
+      select.iterate([], () => {
+        t.database[Symbol.dispose]();
+        return true;
+      }),
+    (error) => {
+      assertInstanceOf(error, Error);
+      assertEqual(error.message, runningDatabaseMessage);
+    },
+  );
+  assertFalse(t.sqliteWasm.isBroken());
+  insert[Symbol.dispose]();
+  select[Symbol.dispose]();
+  t.database[Symbol.dispose]();
+});
+
+test("iterate lets a throw from onRow that broke the instance escape at once, so SQLite is not entered again, not even to reset the statement", async () => {
+  let resets = 0;
+  const deps = await setupSqliteWasmWith((sqliteWasm) => ({
+    sqlite3_column_type: (pStmt, iCol) =>
+      iCol === 1
+        ? (6 as SqliteDataType)
+        : sqliteWasm.exports.sqlite3_column_type(pStmt, iCol),
+    sqlite3_reset: (pStmt) => {
+      resets++;
+      return sqliteWasm.exports.sqlite3_reset(pStmt);
+    },
+  }));
+  const database = getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }));
+  const select = getOrThrow(database.prepare("select 1 as a"));
+  resets = 0;
+
+  assertThrows(
+    () =>
+      select.iterate([], () => {
+        // Its second column breaks the instance.
+        database.run("select 1 as a, 2 as b", []);
+        return true;
+      }),
+    (thrown) => {
+      assertInstanceOf(thrown, Error);
+      assertEqual(thrown.message, "exhaustiveCheck unhandled case: 6");
+    },
+  );
+  assertTrue(deps.sqliteWasm.isBroken());
+  assertSame(resets, 0);
+});
+
+test("a nested call that broke the instance ends iterate with the instance's refusal, also when onRow caught what it threw, and iterate enters SQLite no more", async () => {
+  for (const onDatabase of [false, true])
+    for (const continues of [false, true]) {
+      let broken = false;
+      const callsAfterBreak: Array<string> = [];
+      const deps = await setupSqliteWasmWith((sqliteWasm) => ({
+        sqlite3_column_type: (pStmt, iCol) => {
+          if (iCol !== 1)
+            return sqliteWasm.exports.sqlite3_column_type(pStmt, iCol);
+          broken = true;
+          return 6 as SqliteDataType;
+        },
+        sqlite3_step: (pStmt) => {
+          if (broken) callsAfterBreak.push("step");
+          return sqliteWasm.exports.sqlite3_step(pStmt);
+        },
+        sqlite3_reset: (pStmt) => {
+          if (broken) callsAfterBreak.push("reset");
+          return sqliteWasm.exports.sqlite3_reset(pStmt);
+        },
+        sqlite3_finalize: (pStmt) => {
+          if (broken) callsAfterBreak.push("finalize");
+          return sqliteWasm.exports.sqlite3_finalize(pStmt);
+        },
+      }));
+      const database = getOrThrow(
+        createSqliteDatabase(deps)({ type: "Memory" }),
+      );
+      assertOk(
+        database.exec("create table t(a); insert into t values (1), (2), (3)"),
+      );
+      const select = getOrThrow(database.prepare("select a from t"));
+      // Its second column breaks the instance, and onRow carries on.
+      const onRow = () => {
+        try {
+          database.run("select 1 as a, 2 as b", []);
+        } catch (error) {
+          assertInstanceOf(error, Error);
+        }
+        return continues;
+      };
+
+      assertThrows(
+        () =>
+          onDatabase
+            ? database.iterate("select a from t", [], onRow)
+            : select.iterate([], onRow),
+        (thrown) => {
+          assertInstanceOf(thrown, Error);
+          assertEqual(
+            thrown.message,
+            "The SQLite wasm instance is broken: an exception escaped a wasm call.",
+          );
+          assertInstanceOf(thrown.cause, Error);
+          assertEqual(
+            thrown.cause.message,
+            "exhaustiveCheck unhandled case: 6",
+          );
+        },
+      );
+      assertTrue(deps.sqliteWasm.isBroken());
+      assertEqual(callsAfterBreak, []);
+    }
+});
+
+test("iterate stopped before the last row reports a commit failure of a write with RETURNING, as run does, and the write is rolled back", async () => {
+  const { database } = await setupSqliteDatabase();
+  assertOk(
+    database.exec(
+      "pragma foreign_keys = on; create table p(id integer primary key); create table c(pid references p(id) deferrable initially deferred)",
+    ),
+  );
+  const sql = "insert into c values (1), (2) returning pid";
+  const insert = getOrThrow(database.prepare(sql));
+  const failure = {
+    type: "SqliteError",
+    operation: "step",
+    extendedCode: SQLITE_CONSTRAINT_FOREIGNKEY,
+    message: "FOREIGN KEY constraint failed",
+    sqlOffset: null,
+    cause: null,
+  } as const;
+
+  // The commit runs in the reset after onRow stops at the first row.
+  assertErr(
+    insert.iterate([], () => false),
+    failure,
+  );
+  assertErr(
+    database.iterate(sql, [], () => false),
+    failure,
+  );
+  assertErr(insert.run([]), failure);
+
+  assertEqual(
+    database.run("select count(*) as count from c", []),
+    ok({ rows: [{ count: 0 }], changes: 0 }),
+  );
+  // A query stopped early has nothing to commit.
+  assertOk(database.iterate("select 1 union all select 2", [], () => false));
+});
+
+test("iterate frees the values above 64 KiB it bound, also when onRow stops it or throws", async () => {
+  const deps = await setupSqliteWasm();
+  const memoryUsed = setupMemoryUsed(deps);
+  const database = getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }));
+  const statement = getOrThrow(
+    database.prepare(
+      "select length(?) as blob from (select 1 union all select 2)",
+    ),
+  );
+  // NULL takes no memory.
+  assertOk(statement.run([null]));
+  const baseline = memoryUsed();
+
+  assertOk(statement.iterate([new Uint8Array(70_000)], () => false));
+  const afterStop = memoryUsed();
+  assertThrows(
+    () =>
+      statement.iterate([new Uint8Array(70_000)], () => {
+        throw new Error("onRow failed");
+      }),
+    (thrown) => {
+      assertInstanceOf(thrown, Error);
+    },
+  );
+  const afterThrow = memoryUsed();
+
+  assertEqual([afterStop, afterThrow], [baseline, baseline]);
+});
+
+test("iterate on the database prepares one statement without SQLITE_PREPARE_PERSISTENT, iterates it and finalizes it, also when it fails or onRow throws", async () => {
+  const prepareFlags: Array<number> = [];
+  const deps = await setupSqliteWasmWith((sqliteWasm) => ({
+    sqlite3_prepare_v3: (pDb, zSql, nByte, prepFlags, ppStmt, pzTail) => {
+      prepareFlags.push(prepFlags);
+      return sqliteWasm.exports.sqlite3_prepare_v3(
+        pDb,
+        zSql,
+        nByte,
+        prepFlags,
+        ppStmt,
+        pzTail,
+      );
+    },
+  }));
+  const memoryUsed = setupMemoryUsed(deps);
+  const database = getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }));
+  assertOk(
+    database.exec(
+      "create table t(a not null); insert into t values (1), (2), (3)",
+    ),
+  );
+  prepareFlags.length = 0;
+  const iterates = () => {
+    const rows: Array<SqliteRow> = [];
+    assertOk(
+      database.iterate("select a from t where a > ?", [number(1)], (row) => {
+        rows.push(row);
+        return false;
+      }),
+    );
+    assertEqual(rows, [{ a: 2 }]);
+    assertErr(
+      database.iterate("insert into t values (null)", [], () => true),
+      {
+        type: "SqliteError",
+        operation: "step",
+        extendedCode: SQLITE_CONSTRAINT_NOTNULL,
+        message: "NOT NULL constraint failed: t.a",
+        sqlOffset: null,
+        cause: null,
+      },
+    );
+    assertErr(
+      database.iterate("select ?", [], () => true),
+      {
+        type: "SqliteParameterCountError",
+        expected: 1,
+        actual: 0,
+      },
+    );
+    assertThrows(
+      () =>
+        database.iterate("select a from t", [], () => {
+          throw new Error("onRow failed");
+        }),
+      (error) => {
+        assertInstanceOf(error, Error);
+        assertEqual(error.message, "onRow failed");
+      },
+    );
+  };
+
+  iterates();
+  assertEqual(prepareFlags, [0, 0, 0, 0]);
+  const used = memoryUsed();
+  for (let index = 0; index < 20; index++) iterates();
+  assertEqual(memoryUsed(), used);
+  assertErr(
+    database.iterate("select 1; select 2", [], () => true),
+    { type: "SqliteMultipleStatementsError" },
+  );
+  database[Symbol.dispose]();
 });
 
 // tester1.c-pp.js 'sqlite3.oo1' 'Table t', 'selectArray/Object()',

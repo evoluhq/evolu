@@ -47,6 +47,11 @@ const setupNodeSqliteDriver =
         const rows = statement.all(...parameters) as Array<SqliteRow>;
         return { rows, changes: 0 };
       },
+      iterate: ({ sql, parameters }, onRow) => {
+        onExec(sql);
+        for (const row of db.prepare(sql).iterate(...parameters))
+          if (!onRow(row as SqliteRow)) break;
+      },
       export: () => new Uint8Array(),
       deleteDatabase: constVoid,
       [Symbol.dispose]: () => {

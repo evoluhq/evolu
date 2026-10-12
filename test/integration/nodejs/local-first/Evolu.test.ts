@@ -195,6 +195,9 @@ describe("Evolu integration", () => {
       assertNotUndefined(driver);
       return ok({
         exec: (query) => driver.exec(query),
+        iterate: (query, onRow) => {
+          driver.iterate(query, onRow);
+        },
         export: () => driver.export(),
         deleteDatabase: () => driver.deleteDatabase(),
         [Symbol.dispose]: constVoid,

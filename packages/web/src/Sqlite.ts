@@ -166,6 +166,14 @@ export const createWasmSqliteDriver =
         );
       },
 
+      iterate: (query, onRow) => {
+        // A statement of its own, because onRow can run queries, which could
+        // otherwise run the cached one while it is iterated.
+        getOrThrowWithMessage(
+          database.iterate(query.sql, query.parameters, onRow),
+        );
+      },
+
       export: () => getOrThrowWithMessage(database.export()),
 
       deleteDatabase: () => {

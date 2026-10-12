@@ -45,6 +45,7 @@ import {
   writePoolFile,
 } from "../sqlite-wasm/_sqliteJs.ts";
 import { setupSqliteWasm } from "../sqlite-wasm/_sqliteWasm.ts";
+import { describeSqliteDriverIterate } from "./_iterate.ts";
 
 const testName = Name.orThrow("Test");
 // The pool directory of testName.
@@ -267,3 +268,7 @@ test("the wait ends once another context releases its pool file, and the databas
   assertEqual(await released, ok());
   using _driver = await setup.open();
 });
+
+describeSqliteDriverIterate(async () =>
+  (await setupDriver(setupFakeOpfs())).open({ mode: "memory" }),
+);

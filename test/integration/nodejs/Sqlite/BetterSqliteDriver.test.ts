@@ -12,6 +12,7 @@ import BetterSQLite from "better-sqlite3";
 import { existsSync, rmSync } from "fs";
 import { afterEach, describe, it } from "node:test";
 import { createBetterSqliteDriver } from "../../../../packages/nodejs/src/Sqlite.ts";
+import { describeSqliteDriverIterate } from "./_iterate.ts";
 
 const testName = Name.orThrow("Test");
 
@@ -222,3 +223,7 @@ describe("createBetterSqliteDriver", () => {
     });
   });
 });
+
+describeSqliteDriverIterate(() =>
+  testCreateRun().ok(createBetterSqliteDriver(testName, { mode: "memory" })),
+);

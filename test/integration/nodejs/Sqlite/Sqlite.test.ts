@@ -35,6 +35,7 @@ import {
   type SqliteDriver,
   type SqliteQuery,
   SqliteQueryParameters,
+  type SqliteRow,
   type SqliteQueryString,
   SqliteValue,
 } from "../../../../packages/common/src/Sqlite.ts";
@@ -253,6 +254,7 @@ describe("transactions", () => {
           return { rows: [], changes: 0 };
         },
         export: () => new Uint8Array(),
+        iterate: constVoid,
         deleteDatabase: constVoid,
         [Symbol.dispose]: () => {
           // No cleanup needed
@@ -309,6 +311,7 @@ describe("transactions", () => {
           throw new Error("Query failed");
         },
         export: () => new Uint8Array(),
+        iterate: constVoid,
         deleteDatabase: constVoid,
         [Symbol.dispose]: () => {
           // No cleanup needed
@@ -351,6 +354,7 @@ describe("transactions", () => {
           return { rows: [], changes: 0 };
         },
         export: () => new Uint8Array(),
+        iterate: constVoid,
         deleteDatabase: constVoid,
         [Symbol.dispose]: constVoid,
       };
@@ -388,6 +392,7 @@ describe("export", () => {
         export: () => {
           throw new Error("Export failed");
         },
+        iterate: constVoid,
         deleteDatabase: constVoid,
         [Symbol.dispose]: constVoid,
       };
@@ -430,6 +435,42 @@ test("logQueryExecutionTime logs the query and its duration", async () => {
       },
     ],
   );
+});
+
+test("iterate traces its query and logs its duration and query plan when its options ask for them", async () => {
+  // Each clock reading advances the clock by 1ms.
+  await using run = testCreateRun({
+    ...testCreateSqliteDep,
+    time: testCreateTime({ autoIncrement: "sync" }),
+  });
+  await using sqlite = await run.ok(createSqlite(testName, { mode: "memory" }));
+  const query = {
+    ...sql`select 1 as a;`,
+    options: { logQueryExecutionTime: true, logExplainQueryPlan: true },
+  };
+  run.deps.console.clearEntries();
+
+  const rows: Array<SqliteRow> = [];
+  sqlite.iterate(query, (row) => {
+    rows.push(row);
+    return true;
+  });
+
+  assertEqual(rows, [{ a: 1 }]);
+  const entries = run.deps.console.getEntriesSnapshot();
+  assertEqual(
+    entries.filter(({ method }) => method === "trace"),
+    [{ method: "trace", path: ["sql"], args: [{ query }] }],
+  );
+  const logs = entries.filter(({ method }) => method === "log");
+  assertEqual(
+    logs.slice(0, 2).map(({ args }) => args),
+    [
+      ["[logQueryExecutionTime]", { query, duration: "1.000ms" }],
+      ["[logExplainQueryPlan]", query],
+    ],
+  );
+  assertEqual(logs.length, 3);
 });
 
 describe("logExplainQueryPlan", () => {
@@ -497,6 +538,7 @@ test("async dispose is idempotent", async () => {
       const driver: SqliteDriver = {
         exec: () => ({ rows: [], changes: 0 }),
         export: () => new Uint8Array(),
+        iterate: constVoid,
         deleteDatabase: constVoid,
         [Symbol.dispose]: () => {
           driverDisposeCount++;
@@ -514,6 +556,7 @@ test("async dispose is idempotent", async () => {
 
 test("sync methods throw after sqlite is disposed", async () => {
   let execCalls = 0;
+  let iterateCalls = 0;
   let exportCalls = 0;
 
   await using setup = await testSetupSqlite({
@@ -522,6 +565,9 @@ test("sync methods throw after sqlite is disposed", async () => {
         exec: () => {
           execCalls++;
           return { rows: [], changes: 0 };
+        },
+        iterate: () => {
+          iterateCalls++;
         },
         export: () => {
           exportCalls++;
@@ -542,6 +588,10 @@ test("sync methods throw after sqlite is disposed", async () => {
     Error,
   );
   assertEqual(execError.message, "Cannot use a disposed object.");
+  const iterateError = assertThrowsInstanceOf(() => {
+    sqlite.iterate(sql`select 1;`, () => true);
+  }, Error);
+  assertEqual(iterateError.message, "Cannot use a disposed object.");
   const transactionError = assertThrowsInstanceOf(
     () =>
       sqlite.transaction(() => {
@@ -554,6 +604,7 @@ test("sync methods throw after sqlite is disposed", async () => {
   assertEqual(exportError.message, "Cannot use a disposed object.");
 
   assertEqual(execCalls, 0);
+  assertEqual(iterateCalls, 0);
   assertEqual(exportCalls, 0);
 });
 
@@ -563,6 +614,7 @@ test("createSqlite returns error when driver creation is aborted", async () => {
     return ok({
       exec: () => ({ rows: [], changes: 0 }),
       export: () => new Uint8Array(),
+      iterate: constVoid,
       deleteDatabase: constVoid,
       [Symbol.dispose]: constVoid,
     });

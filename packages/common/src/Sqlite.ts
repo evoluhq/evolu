@@ -50,6 +50,23 @@ export interface Sqlite extends AsyncDisposable {
   ) => SqliteExecResult<R>;
 
   /**
+   * Runs a query that reads and returns rows, such as a SELECT, and passes its
+   * rows to `onRow` one at a time until it returns `false`, so SQLite steps no
+   * row after the one it stops at. A query whose plan sorts, groups or
+   * aggregates still reads all its input before the first row, so stream a
+   * query that an index orders. A driver may reject a query without result
+   * columns.
+   *
+   * The callback can read this database with other queries, but must not write
+   * it: better-sqlite3 refuses writes while a query iterates, and SQLite may or
+   * may not return rows changed meanwhile.
+   */
+  readonly iterate: (
+    query: SqliteQuery,
+    onRow: (row: SqliteRow) => boolean,
+  ) => void;
+
+  /**
    * Executes a transaction, running the provided callback within a begin/commit
    * block.
    *
@@ -170,7 +187,8 @@ export const eqSqliteValue: Eq<SqliteValueInput> = (x, y) =>
 export interface SqliteQueryOptions {
   /**
    * If set to `true`, logs the time taken to execute the SQL query. Useful for
-   * performance monitoring and identifying slow queries.
+   * performance monitoring and identifying slow queries. For
+   * {@link Sqlite.iterate}, the time includes what its `onRow` takes.
    */
   readonly logQueryExecutionTime?: boolean;
 
@@ -274,6 +292,22 @@ export type SqliteRow = Record<string, SqliteValueInput>;
 export interface SqliteDriver extends Disposable {
   readonly exec: (query: SqliteQuery) => SqliteExecResult;
 
+  /**
+   * Runs a query that reads and returns rows, as {@link Sqlite.iterate}
+   * describes, and passes its rows to `onRow` one at a time until it returns
+   * `false` or the rows end, stepping no row past the one it stops at. Then it
+   * resets or finalizes the statement, also when `onRow` throws, which it
+   * rethrows. It may throw for a query without result columns.
+   *
+   * `onRow` can read with {@link SqliteDriver.exec}, so an iteration must not
+   * step a statement that `exec` can reuse, such as a cached prepared
+   * statement.
+   */
+  readonly iterate: (
+    query: SqliteQuery,
+    onRow: (row: SqliteRow) => boolean,
+  ) => void;
+
   /** Disposes this driver, then deletes its persistent database file. */
   readonly deleteDatabase: () => void;
 
@@ -340,43 +374,55 @@ export const createSqlite =
     );
     console.debug("SQLite driver created");
 
+    // Runs a query with the logging its options ask for.
+    const runQuery = <T>(query: SqliteQuery, execute: () => T): T => {
+      console.trace({ query });
+
+      const start =
+        query.options?.logQueryExecutionTime === true
+          ? time.performance.now()
+          : null;
+      const result = execute();
+      if (start !== null) {
+        const duration = performanceDurationBetween(
+          start,
+          time.performance.now(),
+        );
+        console.log("[logQueryExecutionTime]", {
+          query,
+          duration: `${duration.toFixed(3)}ms`,
+        });
+      }
+
+      if (query.options?.logExplainQueryPlan) {
+        const plan = driver.exec({
+          ...query,
+          sql: `EXPLAIN QUERY PLAN ${query.sql}` as SafeSql,
+        });
+        console.log("[logExplainQueryPlan]", query);
+        console.log(
+          drawSqliteQueryPlan(
+            plan.rows as unknown as Array<SqliteQueryPlanRow>,
+          ),
+        );
+      }
+
+      return result;
+    };
+
     return ok(
       disposable<Sqlite>(
         {
           exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
-            console.trace({ query });
-
-            const start =
-              query.options?.logQueryExecutionTime === true
-                ? time.performance.now()
-                : null;
-            const result = driver.exec(query);
-            if (start !== null) {
-              const duration = performanceDurationBetween(
-                start,
-                time.performance.now(),
-              );
-              console.log("[logQueryExecutionTime]", {
-                query,
-                duration: `${duration.toFixed(3)}ms`,
-              });
-            }
-
-            if (query.options?.logExplainQueryPlan) {
-              const result = driver.exec({
-                ...query,
-                sql: `EXPLAIN QUERY PLAN ${query.sql}` as SafeSql,
-              });
-              console.log("[logExplainQueryPlan]", query);
-              console.log(
-                drawSqliteQueryPlan(
-                  result.rows as unknown as Array<SqliteQueryPlanRow>,
-                ),
-              );
-            }
-
+            const result = runQuery(query, () => driver.exec(query));
             console.trace({ result });
             return result as SqliteExecResult<R>;
+          },
+
+          iterate: (query, onRow) => {
+            runQuery(query, () => {
+              driver.iterate(query, onRow);
+            });
           },
 
           transaction: ((callback: () => Result<unknown, unknown> | void) => {

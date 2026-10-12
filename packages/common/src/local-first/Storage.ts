@@ -14,7 +14,7 @@ import type { UnknownError } from "../Error.ts";
 import { decrement } from "../Number.ts";
 import type { RandomDep } from "../Random.ts";
 import { err, ok } from "../Result.ts";
-import type { SqliteDep } from "../Sqlite.ts";
+import type { Sqlite, SqliteDep } from "../Sqlite.ts";
 import { sql, SqliteValue } from "../Sqlite.ts";
 import type { Task } from "../Task.ts";
 import { Millis } from "../Time.ts";
@@ -194,7 +194,9 @@ export interface Storage {
   /**
    * Calls `callback` with the owner's timestamps and their indexes from `begin`
    * up to, but not including, `end`, where `begin` is at most `end`, until the
-   * callback returns `false`.
+   * callback returns `false`. No timestamp after the one it stops at is read.
+   * The callback can read, but must not write, the storage's database, as
+   * {@link Sqlite.iterate} requires.
    */
   readonly iterate: (
     ownerId: OwnerIdBytes,
@@ -693,27 +695,22 @@ export const createBaseSqliteStorage = (
     if (!callback(first, begin)) return;
     if (length === 1) return;
 
-    /**
-     * TODO: In rare cases, we might overfetch a lot of rows here, but we don't
-     * have real usage numbers yet. Fetching one row at a time would probably be
-     * slower in almost all cases. In the future, we should fetch in chunks
-     * (e.g., 1,000 rows at a time). For now, consider logging unused rows to
-     * gather data and calculate an average, then use that information to
-     * determine an optimal chunk size. Before implementing chunking, be sure to
-     * run performance tests (including fetching one by one).
-     */
-    const result = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
-      select t
-      from evolu_timestamp
-      where ownerId = ${ownerId} and t > ${first}
-      order by t
-      limit ${length - 1};
-    `);
-
-    for (let i = 0; i < result.rows.length; i++) {
-      const index = (begin + 1 + i) as NonNegativeInt;
-      if (!callback(result.rows[i].t, index)) return;
-    }
+    // The rows are streamed, so SQLite reads none past the one the callback
+    // stops at, as sync does once its frame is full.
+    let index = begin;
+    deps.sqlite.iterate(
+      sql`
+        select t
+        from evolu_timestamp
+        where ownerId = ${ownerId} and t > ${first}
+        order by t
+        limit ${length - 1};
+      `,
+      (row) => {
+        index++;
+        return callback(row.t as TimestampBytes, index);
+      },
+    );
   },
 
   deleteOwner: (ownerId) => {

@@ -57,6 +57,15 @@ export const createBetterSqliteDriver: CreateSqliteDriver =
         return { rows: [], changes };
       },
 
+      iterate: (query, onRow) => {
+        // A statement of its own, because onRow can run queries, which could
+        // otherwise reuse the cached one while it is busy. Leaving the loop,
+        // also by a throw, resets it.
+        for (const row of db.prepare(query.sql).iterate(query.parameters)) {
+          if (!onRow(row as SqliteRow)) break;
+        }
+      },
+
       export: () => {
         const file = db.serialize();
         const { buffer } = file;

@@ -1964,9 +1964,12 @@ const sync =
           // A pending skip stays pending until the range is written.
           const isSkipPending = skip;
           // Only a throw from the storage itself is a storage failure. A throw
-          // from the callback, such as from onChangeTooLarge or onMessage, is
-          // a defect, rethrown after iterating.
+          // from the callback, such as from onMessage, is a defect, rethrown
+          // after iterating.
           let callbackError = null as { readonly error: unknown } | null;
+          // Reported after iterating, so onChangeTooLarge can write the
+          // database, which storage forbids while it iterates.
+          const changesTooLarge: Array<ProtocolChangeTooLargeError> = [];
 
           try {
             deps.storage.iterate(
@@ -2034,7 +2037,7 @@ const sync =
                       getTimestampsRangeReserve(emptyOutputTimestamps, true),
                     );
                     if (!fitsEmptyOutput) {
-                      onChangeTooLarge({
+                      changesTooLarge.push({
                         type: "ProtocolChangeTooLargeError",
                         timestamp: timestampBinary,
                         size: message.change.length as PositiveInt,
@@ -2059,6 +2062,7 @@ const sync =
           }
 
           if (callbackError) throw callbackError.error;
+          for (const error of changesTooLarge) onChangeTooLarge(error);
 
           if (iterateFailed) {
             return err(ProtocolErrorCode.SyncError);

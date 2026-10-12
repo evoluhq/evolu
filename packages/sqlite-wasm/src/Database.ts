@@ -26,10 +26,11 @@
  *   the code of the parser errors that set it, because SQLite keeps an offset
  *   until a later prepare succeeds or a statement resets.
  * - The VFS records the first failure since the last top-level call (open,
- *   prepare, run, exec, export), and {@link SqliteError.cause} carries it. The
- *   database clears the record before each such call. A call that runs inside
- *   another call of a database on the same VFS, as a query a callback runs
- *   does, is not top-level, so it leaves the record to the outer call.
+ *   prepare, run, iterate, exec, export), and {@link SqliteError.cause} carries
+ *   it. The database clears the record before each such call. A call that runs
+ *   inside another call of a database on the same VFS, as a query a SQL
+ *   function or trace callback runs from inside wasm does, is not top-level, so
+ *   it leaves the record to the outer call.
  * - Every call, disposal included, enters wasm through {@link SqliteWasm.call}. An
  *   exception or trap that escapes wasm, such as from a call through a disposed
  *   function pointer, is a defect: it is rethrown, and every later call on any
@@ -187,6 +188,17 @@
  *   comes from the last step, so it is not lost. A run whose read fails is cut
  *   short, and its reset completes the statement, so a write with RETURNING is
  *   committed although the run fails.
+ * - {@link SqliteStatement.iterate} steps the same way but passes each row to its
+ *   callback between steps, outside any wasm frame, and stops when it returns
+ *   false. When the callback stops a write with RETURNING early, the reset
+ *   commits it, and the iteration returns that commit's error. Operations the
+ *   callback runs are top-level when the iteration is, and the iteration clears
+ *   the record after the callback returns, so a later step's error carries no
+ *   failure of theirs. It resets on every path that leaves the instance working
+ *   and rethrows what the callback throws once the call into wasm returns,
+ *   which then has not broken the instance. A nested call that broke the
+ *   instance ends the iteration with the instance's refusal at once, also when
+ *   the callback caught what that call threw.
  * - `changes` compares `sqlite3_total_changes64` before and after the run: 0 when
  *   it did not move, `sqlite3_changes64` otherwise, as in better-sqlite3, and
  *   unlike it also 0 when `sqlite3_stmt_readonly` is true, as for a SELECT
@@ -230,6 +242,7 @@
 import {
   assert,
   brand,
+  constVoid,
   disposable,
   err,
   exhaustiveCheck,
@@ -359,6 +372,16 @@ export interface SqliteDatabase extends Disposable {
   ) => Result<SqliteRunResult, SqlitePrepareError | SqliteRunError>;
 
   /**
+   * Prepares one statement, iterates it once as {@link SqliteStatement.iterate}
+   * does and finalizes it, also when `onRow` throws.
+   */
+  readonly iterate: (
+    sql: string,
+    parameters: ReadonlyArray<SqliteValue>,
+    onRow: (row: SqliteRow) => boolean,
+  ) => Result<void, SqlitePrepareError | SqliteRunError>;
+
+  /**
    * Runs SQL that can hold several statements, without parameters, and discards
    * any rows. Meant for schema changes and pragmas.
    *
@@ -399,6 +422,23 @@ export interface SqliteStatement extends Disposable {
   readonly run: (
     parameters: ReadonlyArray<SqliteValue>,
   ) => Result<SqliteRunResult, SqliteRunError>;
+
+  /**
+   * Binds the parameters and steps the rows one at a time, passing each to
+   * `onRow` until it returns false or the rows end, so no row after the one it
+   * stops at is stepped. A query whose plan sorts, groups or aggregates still
+   * reads all its input before the first row. Then it resets the statement,
+   * also when a step fails or `onRow` throws, which it rethrows. When `onRow`
+   * stops a write with RETURNING early, the reset commits it, and iterate
+   * returns that commit's error.
+   *
+   * The callback can run other statements and operations of the same database,
+   * but not run, iterate or dispose this statement, which throws.
+   */
+  readonly iterate: (
+    parameters: ReadonlyArray<SqliteValue>,
+    onRow: (row: SqliteRow) => boolean,
+  ) => Result<void, SqliteRunError>;
 }
 
 /** The result of {@link SqliteStatement.run}. */
@@ -774,8 +814,8 @@ export const createSqliteDatabase =
     // call, so the cause of a SqliteError is a failure of this operation. A
     // VFS that throws, as a disposed pool does, then throws before wasm is
     // entered, without breaking the instance. An operation inside another on
-    // the same VFS, as a query a callback runs, keeps the record, which the
-    // outer operation still reads.
+    // the same VFS, as a query a SQL function or trace callback runs from
+    // inside wasm, keeps the record, which the outer operation still reads.
     const callOperation = <T>(fn: () => T): T => {
       runningOperations++;
       try {
@@ -792,6 +832,7 @@ export const createSqliteDatabase =
         runningOperations--;
       }
     };
+
     return callOperation(() => {
       const bindBlob = sqlite3_bind_blob(deps);
       const bindDouble = sqlite3_bind_double(deps);
@@ -1042,9 +1083,11 @@ export const createSqliteDatabase =
         let names: ReadonlyArray<string> | null = null;
         let namesReprepares = 0;
 
-        const run = (
+        // Binds the parameters, returning whether the bindings must be cleared
+        // after the run.
+        const bind = (
           parameters: ReadonlyArray<SqliteValue>,
-        ): Result<SqliteRunResult, SqliteRunError> => {
+        ): Result<boolean, SqliteRunError> => {
           if (parameters.length !== parameterCount)
             return err({
               type: "SqliteParameterCountError",
@@ -1144,9 +1187,15 @@ export const createSqliteDatabase =
             if (clearsBindings) clearBindings(stmt);
             return err(bindError);
           }
+          return ok(clearsBindings);
+        };
 
-          const totalChanges = totalChanges64(db);
-          const rows: Array<SqliteRow> = [];
+        // Steps the bound statement, passing each row to onRow until it
+        // returns false, and returns the error that ended the steps, if any.
+        const stepRows = (
+          onRow: (row: SqliteRow) => boolean,
+        ): SqliteError | null => {
+          let rowCount = 0;
           let rc: SqliteResultCode;
           // A read that fails because SQLite is out of memory leaves the loop
           // with SQLITE_ROW.
@@ -1154,7 +1203,7 @@ export const createSqliteDatabase =
             // A schema change re-prepares the statement, and SELECT * can then
             // return other columns, so the first row checks the counter.
             const reprepares =
-              rows.length === 0
+              rowCount === 0
                 ? stmtStatus(stmt, SQLITE_STMTSTATUS_REPREPARE, 0)
                 : namesReprepares;
             if (names == null || reprepares !== namesReprepares) {
@@ -1206,18 +1255,41 @@ export const createSqliteDatabase =
                   exhaustiveCheck(type);
               }
             }
-            rows.push(row);
+            rowCount++;
+            if (!onRow(row)) return null;
           }
+          return rc === SQLITE_DONE
+            ? null
+            : rc === SQLITE_ROW
+              ? toCodeError("step", SQLITE_NOMEM)
+              : toSqliteError(db, "step");
+        };
+
+        // After SQLITE_DONE it returns SQLITE_OK, and after a failed step it
+        // returns that step's error again. After a row, as when an iteration
+        // stops early, it completes the statement, whose commit can then fail,
+        // and that error is returned.
+        const resetStatement = (
+          clearsBindings: boolean,
+        ): SqliteError | null => {
           const error =
-            rc === SQLITE_DONE
-              ? null
-              : rc === SQLITE_ROW
-                ? toCodeError("step", SQLITE_NOMEM)
-                : toSqliteError(db, "step");
-          // After SQLITE_DONE it returns SQLITE_OK, and after a failure it
-          // repeats it, so its result is ignored.
-          reset(stmt);
+            reset(stmt) === SQLITE_OK ? null : toSqliteError(db, "step");
           if (clearsBindings) clearBindings(stmt);
+          return error;
+        };
+
+        const run = (
+          parameters: ReadonlyArray<SqliteValue>,
+        ): Result<SqliteRunResult, SqliteRunError> => {
+          const bound = bind(parameters);
+          if (!bound.ok) return bound;
+          const totalChanges = totalChanges64(db);
+          const rows: Array<SqliteRow> = [];
+          const error = stepRows((row) => {
+            rows.push(row);
+            return true;
+          });
+          resetStatement(bound.value);
           if (error) return err(error);
           // SQLite keeps the count of the last INSERT, UPDATE or DELETE across
           // other statements, also one that a function of this statement ran,
@@ -1229,7 +1301,60 @@ export const createSqliteDatabase =
           return ok({ rows, changes });
         };
 
-        return { parameterCount, run };
+        // onRow runs between steps, outside any wasm frame, so what it throws
+        // does not break the instance. It ends the steps, the statement is
+        // reset, and the throw reaches the caller after the call into wasm
+        // returns. A nested call that broke the instance ends the iteration
+        // with the instance's refusal at once, also when onRow caught what that
+        // call threw, so SQLite never resumes on that state.
+        const iterate = (
+          parameters: ReadonlyArray<SqliteValue>,
+          onRow: (row: SqliteRow) => boolean,
+        ): IterateResult<SqliteRunError> => {
+          const bound = bind(parameters);
+          if (!bound.ok) return { type: "Settled", result: err(bound.error) };
+          let thrown = null as { readonly error: unknown } | null;
+          const error = stepRows((row) => {
+            try {
+              let continues: boolean;
+              if (vfs == null) continues = onRow(row);
+              else {
+                // onRow runs outside any wasm frame, so the operations it runs
+                // are top-level when the iteration is and clear the VFS's
+                // failure record themselves. Then a top-level iteration clears
+                // it again, so its later failure carries none of theirs.
+                const running = runningOperationsByVfs.get(vfs) as number;
+                runningOperationsByVfs.set(vfs, running - 1);
+                try {
+                  continues = onRow(row);
+                  if (running === 1) vfs.clearFailure();
+                } finally {
+                  runningOperationsByVfs.set(vfs, running);
+                }
+              }
+              if (deps.sqliteWasm.isBroken()) deps.sqliteWasm.call(constVoid);
+              return continues;
+            } catch (error) {
+              if (deps.sqliteWasm.isBroken()) throw error;
+              thrown = { error };
+              return false;
+            }
+          });
+          const resetError = resetStatement(bound.value);
+          if (thrown) return { type: "Thrown", error: thrown.error };
+          const failure = error ?? resetError;
+          return { type: "Settled", result: failure ? err(failure) : ok() };
+        };
+
+        return { parameterCount, run, iterate };
+      };
+
+      // Rethrows what onRow threw, once the call into wasm has returned.
+      const rethrowOnRowError = <E>(
+        iterated: IterateResult<E>,
+      ): Result<void, E> => {
+        if (iterated.type === "Thrown") throw iterated.error;
+        return iterated.result;
       };
 
       const database = disposable<SqliteDatabase>(
@@ -1262,6 +1387,17 @@ export const createSqliteDatabase =
                       running = false;
                     }
                   },
+                  iterate: (parameters, onRow) => {
+                    if (running) throw new Error(runningStatementMessage);
+                    running = true;
+                    try {
+                      return rethrowOnRowError(
+                        callOperation(() => runner.iterate(parameters, onRow)),
+                      );
+                    } finally {
+                      running = false;
+                    }
+                  },
                 },
                 statementDisposer,
               );
@@ -1282,6 +1418,23 @@ export const createSqliteDatabase =
               finalize(prepared.value);
               return result;
             }),
+
+          iterate: (sql, parameters, onRow) => {
+            const iterated = callOperation(
+              (): IterateResult<SqlitePrepareError | SqliteRunError> => {
+                const prepared = prepareStatement(sql, 0);
+                if (!prepared.ok)
+                  return { type: "Settled", result: err(prepared.error) };
+                const iterated = createRunner(prepared.value).iterate(
+                  parameters,
+                  onRow,
+                );
+                finalize(prepared.value);
+                return iterated;
+              },
+            );
+            return rethrowOnRowError(iterated);
+          },
 
           exec: (sql) =>
             callOperation(() => {
@@ -1596,6 +1749,20 @@ const isPageAuthenticationError = (
 const lowercaseHexDigit = (nibble: number): number =>
   nibble < 10 ? 0x30 + nibble : 0x61 - 10 + nibble;
 
+/**
+ * What an iteration's call into wasm returns: its result, or what onRow threw,
+ * which is rethrown once the call has returned.
+ */
+type IterateResult<E> = IterateSettled<E> | IterateThrown;
+
+interface IterateSettled<E> extends Typed<"Settled"> {
+  readonly result: Result<void, E>;
+}
+
+interface IterateThrown extends Typed<"Thrown"> {
+  readonly error: unknown;
+}
+
 const runningStatementMessage =
   "A SqliteStatement cannot run or be disposed while it runs.";
 
@@ -1625,8 +1792,9 @@ const isValidSqlText = (sql: string): boolean =>
 
 // How many operations of databases on each VFS are running, so only the
 // outermost clears the VFS's failure record. The record is one per VFS, and a
-// query a callback runs during an operation is an operation too, on the same
-// database or another one on the VFS.
+// query a callback runs from inside wasm during an operation is an operation
+// too, on the same database or another one on the VFS. An iteration lowers the
+// count while its onRow runs, outside wasm.
 const runningOperationsByVfs = /*#__PURE__*/ new WeakMap<SqliteVfs, number>();
 
 // Whether UTF-8 SQL from start to end holds no statement, only the tokens

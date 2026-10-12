@@ -651,10 +651,17 @@ const createSide = async (
         if (counting) sqlRows += result.rows.length;
         return result;
       },
+      // A streamed row counts as one exec returns does.
+      iterate: (query: SqliteQuery, onRow: (row: SqliteRow) => boolean) => {
+        sqlite.iterate(query, (row) => {
+          if (counting) sqlRows++;
+          return onRow(row);
+        });
+      },
     },
     (method) => {
       if (!counting) return;
-      if (method === "exec") sqlStatements++;
+      if (method === "exec" || method === "iterate") sqlStatements++;
       else if (method === "transaction") sqlTransactions++;
     },
   );

@@ -100,8 +100,9 @@ the protocol's own decoding.
 - `redundantMessages`: messages written to a side that already stored their
   timestamp, in both directions.
 - `clientSqlStatements`, `clientSqlRows`, `relaySqlStatements`, and
-  `relaySqlRows`. They include `iterate` overfetch and reads of changes that
-  were not sent. Statements cost the most in a WASM and OPFS client.
+  `relaySqlRows`. They count rows SQLite returns to `exec` or streams to
+  `iterate`, including reads of changes that were not sent. Statements cost the
+  most in a WASM and OPFS client.
 
 **Diagnostics** are stored and printed when they change, but never gate:
 
