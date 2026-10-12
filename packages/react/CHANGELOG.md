@@ -1,5 +1,54 @@
 # @evolu/react
 
+## 11.2.1
+
+### Patch Changes
+
+- 2c20a45: Rejected loads and exports that SQLite fails instead of refusing the database
+
+  Since 8.20.3, a query or an export that SQLite failed, such as a query with a syntax error in a raw SQL fragment or one calling `json_extract` on text that is not JSON, refused its database. Every tab got an `UnknownError` as `evoluError`, the load or export stayed pending, and mutations waiting behind it or made after it were never stored. Before 8.20.3, the database stopped answering while `evoluError` stayed `null`, and in React Native a failed query was fatal. A mutation was also rolled back and reported as failed when one of its instance's subscribed queries failed on the data it wrote.
+
+  Now only the failed query fails. `loadQuery` rejects with an `UnknownError` of SQLite's error, other queries load, mutations are stored, and `evoluError` is not set. A rejected load stays cached until a mutation or sync invalidates it, so React's `useQuery` throws the error to the nearest error boundary instead of suspending again. When SQLite fails a subscribed query's refresh, the query keeps its rows, its loads reject until a refresh succeeds, and its subscribers are notified, so `useQuery` throws then. The mutation that caused the refresh is stored and its `onComplete` runs, unless the error, such as an I/O error, made SQLite roll the mutation back. `exportDatabase` rejects with an `UnknownError`, and the next call exports again.
+
+  `loadQuery` no longer always resolves, so put React views whose queries can fail, such as ones built from SQL a user wrote, behind an error boundary, and catch where you await a load. Vue's `useQuery` and Svelte's `queryState` keep their rows. A failed load they start, and in Vue also a cached failed load, is reported as an unhandled rejection, and a failed refresh is not reported.
+
+- 2c20a45: Removed the promise options of useQuery and useQueries
+
+  `useQuery` no longer accepts a `promise` option, and `useQueries` no longer accepts `promises`. They were redundant: Evolu caches each load, so a query preloaded with `evolu.loadQuery` before rendering is not loaded again, and `useQuery` reads the same cached load, including its failure. Drop the options and keep the preload:
+
+  ```ts
+  import {
+    assertType,
+    createQueryBuilder,
+    testEvoluSchema,
+    type Evolu,
+    type QueryRows,
+    type TestEvoluSchema,
+  } from "@evolu/common";
+  import { createEvoluBinding } from "@evolu/react";
+
+  const { useQuery } = createEvoluBinding<TestEvoluSchema>();
+  const createQuery = createQueryBuilder(testEvoluSchema);
+  const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+
+  // Preload before rendering, for example in a router loader.
+  const preloadTodos = (evolu: Evolu<TestEvoluSchema>) =>
+    evolu.loadQuery(allTodos);
+
+  const useTodos = (promise: ReturnType<typeof preloadTodos>) => {
+    // @ts-expect-error useQuery no longer accepts a promise option.
+    useQuery(allTodos, { promise });
+    // Reads the load preloadTodos started.
+    return useQuery(allTodos);
+  };
+
+  assertType<ReturnType<typeof useTodos>, QueryRows<typeof allTodos.Row>>();
+  ```
+
+- Updated dependencies [2c20a45]
+- Updated dependencies [8aa6676]
+  - @evolu/common@8.22.1
+
 ## 11.2.0
 
 ### Minor Changes
