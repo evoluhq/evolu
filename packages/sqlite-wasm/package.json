@@ -1,6 +1,6 @@
 {
   "name": "@evolu/sqlite-wasm",
-  "version": "3.54.0-build1",
+  "version": "3.54.0-build2",
   "description": "SQLite compiled to WebAssembly, with Evolu's own TypeScript layer, which also encrypts databases",
   "keywords": [
     "evolu",
@@ -60,7 +60,7 @@
     "wabt": "1.0.39"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.20.3"
+    "@evolu/common": "^8.21.0"
   },
   "publishConfig": {
     "access": "public",
