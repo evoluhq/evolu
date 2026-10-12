@@ -195,6 +195,33 @@ const loadRelayModuleWithMockedTransport = async (
   return { relayModule, server, wss };
 };
 
+/**
+ * Creates a connection for a relay on mocked transport. It pauses and resumes
+ * as ws does, and its send writes at once.
+ */
+const createFakeSocket = (mock: TestContext["mock"]) => {
+  class FakeSocket extends EventEmitter {
+    readonly readyState = 1;
+    readonly bufferedAmount = 0;
+    isPaused = false;
+    readonly close = mock.fn();
+    readonly ping = mock.fn();
+    readonly terminate = mock.fn();
+    readonly send = mock.fn(
+      (_data: Uint8Array, _options: unknown, callback: () => void) => {
+        callback();
+      },
+    );
+    readonly pause = mock.fn(() => {
+      this.isPaused = true;
+    });
+    readonly resume = mock.fn(() => {
+      this.isPaused = false;
+    });
+  }
+  return new FakeSocket();
+};
+
 const assertEventually = async (condition: () => boolean): Promise<void> => {
   const deadline = Date.now() + 1000;
 
@@ -206,6 +233,17 @@ const assertEventually = async (condition: () => boolean): Promise<void> => {
   }
 
   assertTrue(condition());
+};
+
+/** Waits until `read` returns the same value 200 ms apart. */
+const waitUntilStable = async (read: () => number): Promise<void> => {
+  let previous: number;
+  do {
+    previous = read();
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 200);
+    });
+  } while (read() !== previous);
 };
 
 /**
@@ -273,6 +311,50 @@ const setupSubscriber = async (
     ]);
 
   return { subscriber, closed, broadcast, received };
+};
+
+/**
+ * Stores about 1.3 MB of the app owner's changes, so the reply to a
+ * {@link createFullRound} fills a frame.
+ */
+const setupStoredHistory = async (
+  setup: Awaited<ReturnType<typeof startTestRelay>>,
+  url: string,
+): Promise<void> => {
+  await using writer = await testSetupWebSocket(url);
+  const createId = testCreateId();
+  for (let frame = 0; frame < 2; frame++) {
+    const messages = Array.from({ length: 80 }, (_, index) =>
+      testCreateCrdtMessage(
+        createId(),
+        frame * 100 + index + 1,
+        "x".repeat(8000),
+      ),
+    );
+    assertNonEmptyArray(messages);
+    const response = writer.waitForMessage();
+    writer.send(
+      createProtocolMessageFromCrdtMessages(setup.run.deps)(
+        testAppOwner,
+        messages,
+      ),
+    );
+    await response;
+  }
+};
+
+/** A sync round of a client with nothing stored for the app owner. */
+const createFullRound = (): Uint8Array => {
+  const round = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Request,
+    subscriptionFlag: SubscriptionFlags.Subscribe,
+  });
+  round.addRange({
+    type: RangeType.Timestamps,
+    upperBound: InfiniteUpperBound,
+    timestamps: createTimestampsBuffer(),
+  });
+  return round.unwrap();
 };
 
 describe("createRelay", () => {
@@ -427,6 +509,55 @@ describe("createRelay", () => {
     await closed;
   });
 
+  it("neither pings nor terminates a connection while it serves its requests, and pings it again after", async (t) => {
+    const { relayModule, wss } = await loadRelayModuleWithMockedTransport(
+      t.mock,
+    );
+    const continueQuotaCheck = Promise.withResolvers<boolean>();
+    const isOwnerWithinQuota = t.mock.fn(() => continueQuotaCheck.promise);
+    await using run = testCreateRun({
+      ...relayModule.createRelayDeps(),
+      console: testCreateConsole(),
+    });
+    await using _relay = await run.ok(
+      relayModule.createRelay({
+        port: Port.orThrow(0),
+        name: testName,
+        isOwnerWithinQuota,
+        pingInterval: "1s",
+      }),
+    );
+    // Disposed before the relay, whose disposal would otherwise wait for the
+    // quota check after a failed assertion.
+    using disposer = new DisposableStack();
+    disposer.defer(() => {
+      continueQuotaCheck.resolve(true);
+    });
+    const ws = createFakeSocket(t.mock);
+    wss.clients.add(ws);
+    wss.emit("connection", ws, { socket: new EventEmitter() });
+
+    // The relay does not read the connection while it serves the upload, so
+    // no answer to a ping could arrive.
+    ws.emit(
+      "message",
+      createProtocolMessageFromCrdtMessages(run.deps)(testAppOwner, [
+        testCreateCrdtMessage(testCreateId()(), 1, "Victoria"),
+      ]),
+    );
+    await assertEventually(() => isOwnerWithinQuota.mock.callCount() === 1);
+    run.deps.time.advance("1s");
+    run.deps.time.advance("1s");
+    assertSame(ws.ping.mock.callCount(), 0);
+    assertSame(ws.terminate.mock.callCount(), 0);
+
+    continueQuotaCheck.resolve(true);
+    await assertEventually(() => ws.resume.mock.callCount() === 1);
+    run.deps.time.advance("1s");
+    assertSame(ws.ping.mock.callCount(), 1);
+    assertSame(ws.terminate.mock.callCount(), 0);
+  });
+
   it("terminates a connection more than 16 MB behind on broadcasts", async () => {
     await using setup = await startTestRelay();
     const { subscriber, broadcast, received } = await setupSubscriber(setup);
@@ -437,36 +568,15 @@ describe("createRelay", () => {
     assertSame(await received(50), "close");
   });
 
-  it("keeps a connection whose replies to its own requests exceed 16 MB", async (t) => {
+  it("serves a connection's requests only as fast as it reads the replies", async (t) => {
     await using setup = await startTestRelay({ pingInterval: "50ms" });
     const { time } = setup.run.deps;
     const url = `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`;
-    {
-      await using writer = await testSetupWebSocket(url);
-      const createId = testCreateId();
-      for (let frame = 0; frame < 2; frame++) {
-        const messages = Array.from({ length: 80 }, (_, index) =>
-          testCreateCrdtMessage(
-            createId(),
-            frame * 100 + index + 1,
-            "x".repeat(8000),
-          ),
-        );
-        assertNonEmptyArray(messages);
-        const response = writer.waitForMessage();
-        writer.send(
-          createProtocolMessageFromCrdtMessages(setup.run.deps)(
-            testAppOwner,
-            messages,
-          ),
-        );
-        await response;
-      }
-    }
+    await setupStoredHistory(setup, url);
 
     // A client with nothing stored asks for the owner's history in more
-    // rounds than 16 full replies, as one socket does for many owners, and
-    // reads them slowly.
+    // rounds than the connection's buffers hold replies, as one socket does
+    // for many owners, and stops reading.
     const client = new WsWebSocket(url);
     // A paused client never answers the relay's close at disposal, which would
     // turn any failure below into a test timeout.
@@ -483,22 +593,11 @@ describe("createRelay", () => {
         if (++receivedCount === roundCount) resolve("received");
       });
     });
-    client.pause();
-    const round = createProtocolMessageBuffer(testAppOwner.id, {
-      messageType: MessageType.Request,
-      subscriptionFlag: SubscriptionFlags.Subscribe,
-    });
-    round.addRange({
-      type: RangeType.Timestamps,
-      upperBound: InfiniteUpperBound,
-      timestamps: createTimestampsBuffer(),
-    });
-    const roundBytes = round.unwrap();
-    for (let index = 0; index < roundCount; index++) client.send(roundBytes);
 
-    // From here on, every send is the relay queuing a reply to this client.
-    const repliesQueued = Promise.withResolvers<void>();
+    // The relay's sends to this client, and the bytes its socket for the
+    // client still holds.
     let replyCount = 0;
+    let getRelayBufferedAmount = (): number => 0;
     // oxlint-disable-next-line typescript/unbound-method -- Called with each socket as `this` below.
     const { send } = WsWebSocket.prototype;
     t.mock.method(
@@ -506,11 +605,23 @@ describe("createRelay", () => {
       "send",
       function (this: WsWebSocket, ...args: Parameters<typeof send>) {
         send.apply(this, args);
-        if (++replyCount === roundCount) repliesQueued.resolve();
+        if (this === client) return;
+        getRelayBufferedAmount = () => this.bufferedAmount;
+        replyCount++;
       },
     );
-    await repliesQueued.promise;
 
+    client.pause();
+    const round = createFullRound();
+    for (let index = 0; index < roundCount; index++) client.send(round);
+
+    // Once a reply waits for the paused client, the relay serves no more of
+    // its requests.
+    await assertEventually(() => getRelayBufferedAmount() > 0);
+    await waitUntilStable(() => replyCount);
+    assertTrue(replyCount < roundCount);
+
+    // The waiting reply keeps the connection through pings it cannot answer.
     time.advance("50ms");
     time.advance("50ms");
     client.resume();
@@ -522,6 +633,148 @@ describe("createRelay", () => {
 
     client.close();
     await closed;
+  });
+
+  it("stops reading a connection while its requests wait", async () => {
+    await using setup = await startTestRelay();
+    const url = `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`;
+    await setupStoredHistory(setup, url);
+
+    const client = new WsWebSocket(url);
+    using disposer = new DisposableStack();
+    disposer.defer(() => {
+      client.terminate();
+    });
+    await once(client, "open");
+    const closed = once(client, "close");
+    const roundCount = 30;
+    const uploadCount = 40;
+    let receivedCount = 0;
+    const received = new Promise<"received">((resolve) => {
+      client.on("message", () => {
+        if (++receivedCount === roundCount + uploadCount) resolve("received");
+      });
+    });
+
+    // The replies to these rounds fill the paused client's buffers, so the
+    // uploads after them, of about 500 KB each and 20 MB in total, wait.
+    client.pause();
+    const round = createFullRound();
+    for (let index = 0; index < roundCount; index++) client.send(round);
+    const createId = testCreateId();
+    for (let upload = 0; upload < uploadCount; upload++) {
+      const messages = Array.from({ length: 80 }, (_, index) =>
+        testCreateCrdtMessage(
+          createId(),
+          1000 + upload * 100 + index + 1,
+          "x".repeat(8000),
+        ),
+      );
+      assertNonEmptyArray(messages);
+      client.send(
+        createProtocolMessageFromCrdtMessages(setup.run.deps)(
+          testAppOwner,
+          messages,
+        ),
+      );
+    }
+
+    // The relay does not read them, so they wait in TCP and the client.
+    await waitUntilStable(() => client.bufferedAmount);
+    assertTrue(client.bufferedAmount > 0);
+
+    client.resume();
+    assertSame(
+      await Promise.race([received, closed.then(() => "close")]),
+      "received",
+    );
+    assertSame(client.readyState, WsWebSocket.OPEN);
+
+    client.close();
+    await closed;
+  });
+
+  it("keeps no subscription of a connection that closed while its requests waited", async (t) => {
+    const { relayModule, wss } = await loadRelayModuleWithMockedTransport(
+      t.mock,
+    );
+    const console = testCreateConsole();
+    await using run = testCreateRun({
+      ...relayModule.createRelayDeps(),
+      console,
+    });
+    await using _relay = await run.ok(
+      relayModule.createRelay({
+        port: Port.orThrow(0),
+        name: testName,
+        isOwnerWithinQuota: () => true,
+      }),
+    );
+
+    // A client sends many subscribing requests, as a client of many owners
+    // does when it connects, and closes before the relay serves them.
+    const client = createFakeSocket(t.mock);
+    wss.emit("connection", client, { socket: new EventEmitter() });
+    const round = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      subscriptionFlag: SubscriptionFlags.Subscribe,
+    }).unwrap();
+    for (let index = 0; index < 20; index++) client.emit("message", round);
+    client.emit("close");
+    await assertEventually(() => client.resume.mock.callCount() === 1);
+
+    // An upload from another connection then has no one to broadcast to.
+    const writer = createFakeSocket(t.mock);
+    wss.emit("connection", writer, { socket: new EventEmitter() });
+    writer.emit(
+      "message",
+      createProtocolMessageFromCrdtMessages(run.deps)(testAppOwner, [
+        testCreateCrdtMessage(testCreateId()(), 1, "Victoria"),
+      ]),
+    );
+    await assertEventually(() => writer.send.mock.callCount() === 1);
+    assertSame(client.send.mock.callCount(), 0);
+    assertEqual(
+      console
+        .getEntriesSnapshot()
+        .filter((entry) => entry.args[0] === "broadcast")
+        .map((entry) => entry.args[2]),
+      [0],
+    );
+  });
+
+  it("serves other connections between the requests of one", async () => {
+    await using setup = await startTestRelay();
+    const url = `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`;
+    const busy = new WsWebSocket(url);
+    const other = new WsWebSocket(url);
+    using disposer = new DisposableStack();
+    disposer.defer(() => {
+      busy.terminate();
+      other.terminate();
+    });
+    await Promise.all([once(busy, "open"), once(other, "open")]);
+
+    const replies: Array<"busy" | "other"> = [];
+    busy.on("message", () => {
+      replies.push("busy");
+    });
+    other.on("message", () => {
+      replies.push("other");
+    });
+
+    const request = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+    }).unwrap();
+    const busyCount = 100;
+    const firstBusyReply = once(busy, "message");
+    for (let index = 0; index < busyCount; index++) busy.send(request);
+    await firstBusyReply;
+    other.send(request);
+
+    await assertEventually(() => replies.length === busyCount + 1);
+    // The other connection's reply comes before the busy one's last.
+    assertTrue(replies.indexOf("other") < busyCount);
   });
 
   it("rejects websocket upgrades without ownerId", async () => {
@@ -762,14 +1015,38 @@ describe("createRelay", () => {
     assertSame(entry.args[0], error);
   });
 
-  it("logs invalid websocket messages without crashing the relay", async () => {
-    await using setup = await setupRelay();
-    const { console, ws } = setup;
-    console.clearEntries();
+  it("logs an invalid request and serves the requests after it", async (t) => {
+    const { relayModule, wss } = await loadRelayModuleWithMockedTransport(
+      t.mock,
+    );
+    const console = testCreateConsole();
+    await using run = testCreateRun({
+      ...relayModule.createRelayDeps(),
+      console,
+    });
+    await using _relay = await run.ok(
+      relayModule.createRelay({
+        port: Port.orThrow(0),
+        name: testName,
+        isOwnerWithinQuota: () => true,
+      }),
+    );
+    const ws = createFakeSocket(t.mock);
+    wss.emit("connection", ws, { socket: new EventEmitter() });
 
-    ws.send(new Uint8Array([1, 2, 3]));
-    await assertEventually(() =>
-      console.getEntriesSnapshot().some((entry) => entry.method === "error"),
+    ws.emit("message", new Uint8Array([1, 2, 3]));
+    ws.emit(
+      "message",
+      createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+      }).unwrap(),
+    );
+
+    await assertEventually(() => ws.send.mock.callCount() === 1);
+    assertSame(
+      console.getEntriesSnapshot().filter((entry) => entry.method === "error")
+        .length,
+      1,
     );
   });
 
@@ -1379,6 +1656,13 @@ describe("createRelay", () => {
 
     class FakeSocket extends EventEmitter {
       readonly send = t.mock.fn();
+      isPaused = false;
+      pause(): void {
+        this.isPaused = true;
+      }
+      resume(): void {
+        this.isPaused = false;
+      }
     }
 
     const ws = new FakeSocket();
@@ -1398,7 +1682,10 @@ describe("createRelay", () => {
     continueQuotaCheck.resolve(true);
     await disposePromise;
 
-    await assertEventually(() => ws.send.mock.callCount() === 1);
+    // Aborting the relay's Run aborts the Task serving the connection, so the
+    // request in flight gets no reply, and the queued one is not served.
+    assertSame(ws.send.mock.callCount(), 0);
+    assertSame(isOwnerWithinQuota.mock.callCount(), 1);
     assertFalse(
       console.getEntriesSnapshot().some((entry) => entry.method === "error"),
     );

@@ -42,3 +42,8 @@ for the full list.
 ```bash
 PORT=4001 EVOLU_RELAY_MAX_OWNER_BYTES=10MiB npx @evolu/relay
 ```
+
+The relay serves each connection's requests one at a time and serves other
+connections between them, and one request holds it only briefly, but many
+connections can still load it. Run it behind a reverse proxy that serves TLS,
+and limit connections per IP address there.

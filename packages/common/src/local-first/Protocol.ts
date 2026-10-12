@@ -1753,6 +1753,21 @@ const decodeMessages = (
 const minEncryptedDbChangeLength = xChaCha20Poly1305NonceLength + 1 + 16;
 
 /**
+ * The storage reads {@link sync} makes for one answer at most. A search or a
+ * fingerprint is one read, a split into fingerprinted buckets is 16, and a
+ * Timestamps range costs one more for every 32 timestamps it iterates and for
+ * every 128 KiB of a change it reads only to skip, as too large for any frame.
+ *
+ * An answer to a frame whose ranges take at most 30,000 bytes, the default,
+ * needs at most about 4,500. From about 56,000 bytes, an owner with more than
+ * about 130,000 changes can need up to about 14,500, so such an answer stops at
+ * the limit and sync takes more rounds. The limit keeps an answer to a crafted
+ * frame to about 0.1 s of searches, or 0.3 s to 0.6 s of fingerprints with
+ * 50,000 to 900,000 stored changes.
+ */
+const maxSyncStorageReads = 8_192;
+
+/**
  * Answers the ranges into `output`, returning whether it has anything to send.
  *
  * Every write except a closing one is a trial (see
@@ -1772,6 +1787,12 @@ const minEncryptedDbChangeLength = xChaCha20Poly1305NonceLength + 1 + 16;
  * a request or a split lists its timestamp, so a peer that lacks it may ask for
  * it once per sync and gets an answer without it. Fingerprints keep disagreeing
  * about it, so every sync narrows them to it, skips it again, and ends.
+ *
+ * An answer makes at most {@link maxSyncStorageReads} storage reads, weighted as
+ * it describes, because a frame of ranges that each cost reads but add nothing
+ * to the answer, such as empty Timestamps ranges, would hold the event loop for
+ * about a second. At that limit, the frame closes as when a write does not
+ * fit.
  *
  * A throw from storage, or from a split's checks of what storage returned, is
  * logged and returns `SyncError`, except an AbortError from a split's reads,
@@ -1814,6 +1835,15 @@ const sync =
     // the next non-skip range.
     let skip = false;
     let nonSkipRangeAdded = false;
+
+    // The storage reads of this answer, weighted as maxSyncStorageReads
+    // describes.
+    let storageReadCount = 0;
+    const countStorageReads = (reads = 1): boolean => {
+      if (storageReadCount + reads > maxSyncStorageReads) return false;
+      storageReadCount += reads;
+      return true;
+    };
 
     const skipRange = (
       range: SkipRange | FingerprintRange | TimestampsRange,
@@ -1891,6 +1921,14 @@ const sync =
     for (const range of ranges) {
       const currentUpperBound = range.upperBound;
 
+      // A search of an empty remainder or for InfiniteUpperBound reads nothing.
+      if (
+        prevIndex < storageSize &&
+        currentUpperBound !== InfiniteUpperBound &&
+        !countStorageReads()
+      )
+        return closeWithFingerprint();
+
       const lower = prevIndex;
       let upper: NonNegativeInt;
       try {
@@ -1912,6 +1950,8 @@ const sync =
         }
 
         case RangeType.Fingerprint: {
+          if (lower < upper && !countStorageReads())
+            return closeWithFingerprint();
           let ourFingerprint: Fingerprint;
           try {
             ourFingerprint = deps.storage.fingerprint(
@@ -1929,6 +1969,10 @@ const sync =
             break;
           }
 
+          // readSplitRanges splits 32 items or more into 16 buckets, reading a
+          // fingerprint of each, and lists fewer.
+          if (upper - lower >= 32 && !countStorageReads(16))
+            return closeWithFingerprint();
           let splitRanges: ReadonlyArray<
             FingerprintRange | TimestampsRangeWithTimestampsBuffer
           >;
@@ -1952,6 +1996,8 @@ const sync =
         }
 
         case RangeType.Timestamps: {
+          if (lower < upper && !countStorageReads())
+            return closeWithFingerprint();
           let endBound = currentUpperBound;
 
           const timestampsWeNeed = new Map(
@@ -1978,6 +2024,17 @@ const sync =
               upper,
               (timestamp, index) => {
                 try {
+                  if (
+                    index > lower &&
+                    (index - lower) % 32 === 0 &&
+                    !countStorageReads()
+                  ) {
+                    exceeded = true;
+                    endBound = timestamp;
+                    upper = index;
+                    return false;
+                  }
+
                   const timestampString = timestamp.join();
                   const timestampBinary = timestampBytesToTimestamp(timestamp);
 
@@ -2036,7 +2093,14 @@ const sync =
                       },
                       getTimestampsRangeReserve(emptyOutputTimestamps, true),
                     );
-                    if (!fitsEmptyOutput) {
+                    // Read only to be skipped, it adds nothing to the frame,
+                    // and at the limit the range ends before it.
+                    if (
+                      !fitsEmptyOutput &&
+                      countStorageReads(
+                        Math.ceil(message.change.length / 131_072),
+                      )
+                    ) {
                       changesTooLarge.push({
                         type: "ProtocolChangeTooLargeError",
                         timestamp: timestampBinary,

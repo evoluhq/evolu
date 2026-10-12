@@ -321,6 +321,251 @@ test("a mismatched range too small to split returns its own timestamps", async (
   assertEqualBytes(response.message, expected.unwrap());
 });
 
+describe("the storage reads of an answer", () => {
+  // Stored timestamps are 2 ms apart, so a bound 1 ms before one lies between
+  // it and the one before.
+  const createStoredTimestamp = (index: number, offset = 0): Timestamp =>
+    createTimestamp({
+      millis: Millis.orThrow(1_000 + 2 * index + offset),
+      counter: Counter.orThrow(0),
+      nodeId: NodeId.orThrow("0000000000000001"),
+    });
+  const boundAt = (index: number) =>
+    timestampToTimestampBytes(createStoredTimestamp(index));
+  const boundBefore = (index: number) =>
+    timestampToTimestampBytes(createStoredTimestamp(index, -1));
+  const listStored = (begin: number, end: number) =>
+    Array.from({ length: end - begin }, (_, index) =>
+      createStoredTimestamp(begin + index),
+    );
+
+  /**
+   * Stores `count` changes of 100 bytes, except the one at `oversizedIndex`,
+   * which is too large for any frame.
+   */
+  const setupStoredItems = async (
+    count: number,
+    oversizedIndex?: number,
+  ): Promise<TestSqliteAndRelayStorageSetup> => {
+    const setup = await setupSqliteAndRelayStorage();
+    await storeChanges(
+      setup,
+      Array.from({ length: count }, (_, index) => [
+        createStoredTimestamp(index),
+        index === oversizedIndex ? 1_015_851 : 100,
+      ]),
+    );
+    return setup;
+  };
+
+  const createRequest = () =>
+    createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      rangesMaxSize: ProtocolMessageRangesMaxSize.orThrow(100_000),
+    });
+
+  /** A response with `ranges` that closes with a Fingerprint range. */
+  const createClosingResponse = (
+    storage: Storage,
+    begin: number,
+    end: number,
+    ranges: ReadonlyArray<
+      Parameters<ProtocolMessageBuffer["addRange"]>[0]
+    > = [],
+  ) => {
+    const response = createResponse();
+    for (const range of ranges) response.addRange(range);
+    response.addRange({
+      type: RangeType.Fingerprint,
+      upperBound: InfiniteUpperBound,
+      fingerprint: storage.fingerprint(
+        testAppOwnerIdBytes,
+        NonNegativeInt.orThrow(begin),
+        NonNegativeInt.orThrow(end),
+      ),
+    });
+    return response.unwrap();
+  };
+
+  /**
+   * Adds a Skip range and an empty Timestamps range, a search each, then
+   * Timestamps ranges each listing its one stored item from the first, a search
+   * and an iteration each.
+   */
+  const addReads = (request: ProtocolMessageBuffer, ranges: number) => {
+    request.addRange({ type: RangeType.Skip, upperBound: boundBefore(0) });
+    request.addRange(createTimestampsRange(boundAt(0), []));
+    for (let index = 0; index < ranges; index++)
+      request.addRange(
+        createTimestampsRange(boundAt(index + 1), listStored(index, index + 1)),
+      );
+  };
+
+  for (const type of [RangeType.Fingerprint, RangeType.Timestamps] as const) {
+    test(`an answer to ${type === RangeType.Fingerprint ? "Fingerprint" : "Timestamps"} ranges makes at most 8,192 counted reads, counting no read of an empty range`, async () => {
+      const count = 8_300;
+      await using setup = await setupStoredItems(count);
+      const { run, storage } = setup;
+      let calls = 0;
+      const countingStorage: Storage = {
+        ...storage,
+        findLowerBound: (...args) => {
+          calls++;
+          return storage.findLowerBound(...args);
+        },
+        fingerprint: (...args) => {
+          calls++;
+          return storage.fingerprint(...args);
+        },
+        iterate: (...args) => {
+          calls++;
+          storage.iterate(...args);
+        },
+      };
+      await using countingRun = run.create({ storage: countingStorage });
+      const addRange = (
+        request: ProtocolMessageBuffer,
+        begin: number,
+        end: number,
+        upperBound: TimestampsRangeWithTimestampsBuffer["upperBound"],
+      ) => {
+        if (type === RangeType.Fingerprint)
+          request.addRange({
+            type,
+            upperBound,
+            fingerprint: storage.fingerprint(
+              testAppOwnerIdBytes,
+              NonNegativeInt.orThrow(begin),
+              NonNegativeInt.orThrow(end),
+            ),
+          });
+        else
+          request.addRange(
+            createTimestampsRange(upperBound, listStored(begin, end)),
+          );
+      };
+
+      // A search for the Skip range, a search for the empty range and its
+      // uncounted read, and then a search and a read per item, until 8,192
+      // counted reads and the closing fingerprint.
+      const request = createRequest();
+      request.addRange({
+        type: RangeType.Skip,
+        upperBound: boundBefore(4_100),
+      });
+      addRange(request, 4_100, 4_100, boundAt(4_100));
+      for (let index = 4_100; index < count - 1; index++)
+        addRange(request, index, index + 1, boundAt(index + 1));
+      addRange(request, count - 1, count, InfiniteUpperBound);
+
+      const response = await countingRun.orThrow(
+        applyProtocolMessageAsRelay(request.unwrap()),
+      );
+
+      assertEqualBytes(
+        response.message,
+        createClosingResponse(storage, 0, count),
+      );
+      assertSame(calls, 8_194);
+    });
+  }
+
+  test("a search of an empty remainder or for InfiniteUpperBound is not counted", async () => {
+    const count = 40;
+    await using setup = await setupStoredItems(count);
+    const { run } = setup;
+    const request = createRequest();
+    request.addRange(
+      createTimestampsRange(boundAt(count), listStored(0, count)),
+    );
+    for (let index = 0; index < 9_000; index++)
+      request.addRange(createTimestampsRange(boundAt(count + index + 1), []));
+    request.addRange(createTimestampsRange(InfiniteUpperBound, []));
+
+    const response = await run.orThrow(
+      applyProtocolMessageAsRelay(request.unwrap()),
+    );
+
+    assertEqualBytes(response.message, emptyResponse);
+  });
+
+  test("a Timestamps range costs a read for every 32 items it iterates, and at the limit it ends before the next 32", async () => {
+    const count = 4_200;
+    await using setup = await setupStoredItems(count);
+    const { run, storage } = setup;
+    // 8,190 reads, then a search and an iteration of 64 listed items.
+    const request = createRequest();
+    addReads(request, 4_094);
+    request.addRange(
+      createTimestampsRange(boundAt(4_158), listStored(4_094, 4_158)),
+    );
+    request.addRange(createTimestampsRange(InfiniteUpperBound, []));
+
+    const response = await run.orThrow(
+      applyProtocolMessageAsRelay(request.unwrap()),
+    );
+
+    // The range ends at the 33rd item, before the iteration reads the next 32.
+    assertEqualBytes(
+      response.message,
+      createClosingResponse(storage, 4_126, count, [
+        { type: RangeType.Skip, upperBound: boundAt(4_094) },
+        createTimestampsRange(boundAt(4_126), listStored(4_094, 4_126)),
+      ]),
+    );
+  });
+
+  test("a split into buckets costs 16 reads, so at the limit the frame closes instead", async () => {
+    const count = 4_200;
+    await using setup = await setupStoredItems(count);
+    const { run, storage } = setup;
+    // 8,180 reads, then a search and a fingerprint of 40 items that differ.
+    const request = createRequest();
+    addReads(request, 4_089);
+    request.addRange({
+      type: RangeType.Fingerprint,
+      upperBound: boundAt(4_129),
+      fingerprint: new Uint8Array(fingerprintSize) as Fingerprint,
+    });
+    request.addRange(createTimestampsRange(InfiniteUpperBound, []));
+
+    const response = await run.orThrow(
+      applyProtocolMessageAsRelay(request.unwrap()),
+    );
+
+    assertEqualBytes(
+      response.message,
+      createClosingResponse(storage, 0, count),
+    );
+  });
+
+  test("a change too large for any frame costs a read for every 128 KiB, so at the limit the range ends before it", async () => {
+    const count = 4_200;
+    await using setup = await setupStoredItems(count, 4_094);
+    const { run, storage } = setup;
+    // 8,190 reads, then a search and an iteration of a range whose first
+    // change the peer lacks, which costs 8 more to read and skip.
+    const request = createRequest();
+    addReads(request, 4_094);
+    request.addRange(
+      createTimestampsRange(boundAt(4_096), listStored(4_095, 4_096)),
+    );
+    request.addRange(createTimestampsRange(InfiniteUpperBound, []));
+
+    const response = await run.orThrow(
+      applyProtocolMessageAsRelay(request.unwrap()),
+    );
+
+    assertEqualBytes(
+      response.message,
+      createClosingResponse(storage, 4_094, count, [
+        { type: RangeType.Skip, upperBound: boundAt(4_094) },
+        createTimestampsRange(boundAt(4_094), []),
+      ]),
+    );
+  });
+});
+
 describe("sync near the size limit", () => {
   /**
    * Three small changes, 107 changes whose messages nearly fill a frame, and

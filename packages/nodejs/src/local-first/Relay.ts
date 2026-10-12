@@ -1,5 +1,6 @@
 import {
   assert,
+  callback,
   createRandom,
   createRelation,
   createSqlite,
@@ -18,6 +19,7 @@ import {
   tryAsync,
   trySync,
   Uint8Array,
+  yieldNow,
 } from "@evolu/common";
 import {
   applyProtocolMessageAsRelay,
@@ -29,6 +31,7 @@ import {
   parseOwnerIdFromOwnerWebSocketTransportUrl,
   type Relay,
   type RelayConfig,
+  type StorageDep,
 } from "@evolu/common/local-first";
 import { once } from "events";
 import { existsSync } from "fs";
@@ -52,15 +55,18 @@ export interface NodeJsRelayConfig extends RelayConfig {
    * that delays the answer keeps its connection. A connection with data still
    * queued in the relay for it, such as a large reply on a slow link, is not
    * pinged or terminated until the operating system takes the data, because the
-   * answer waits behind it; TCP ends such a connection if its path is dead. A
+   * answer waits behind it; TCP ends such a connection if its path is dead. Nor
+   * is a connection whose requests the relay is serving, because it does not
+   * read the connection meanwhile; it is pinged again once they are served. A
    * connection is terminated instead of queuing a broadcast that would leave
    * more than 16 MB of broadcasts unsent to it, whether its client stopped
    * reading or reads more slowly than its owners' traffic arrives; the client
    * reconciles after it reconnects. Replies to a client's own requests do not
-   * count, because their total follows its requests. Data the operating system
-   * already holds still delays the answer, so a link too slow to send it within
-   * an interval reconnects once, after the data ahead of the ping arrives. The
-   * traffic also keeps NAT mappings alive. Defaults to thirty seconds.
+   * count, because the relay writes them one at a time; see {@link createRelay}.
+   * Data the operating system already holds still delays the answer, so a link
+   * too slow to send it within an interval reconnects once, after the data
+   * ahead of the ping arrives. The traffic also keeps NAT mappings alive.
+   * Defaults to thirty seconds.
    */
   readonly pingInterval?: PositiveDuration;
 }
@@ -79,6 +85,17 @@ export const createRelayDeps = (): RelayDeps => ({
  *
  * Use {@link createRelayDeps} to create dependencies for better-sqlite3, or
  * provide a custom SQLite driver implementation.
+ *
+ * The relay serves each connection's requests one at a time, in order, and
+ * serves other connections between them. It does not read a connection while
+ * its requests wait, and it serves a request only after the previous reply is
+ * written to the connection, so a client that sends requests faster than it
+ * reads the replies is slowed down instead of growing the relay's memory. A
+ * request waiting for an asynchronous `isOwnerWithinQuota` holds the later
+ * requests of its connection, which the relay meanwhile neither reads nor
+ * pings, so the callback should settle quickly. One answer makes a bounded
+ * number of storage reads, so one request holds the relay only briefly. Limit
+ * connections per IP address in a reverse proxy in front of the relay.
  *
  * For uptime monitors and container health checks, the relay answers `GET` and
  * `HEAD` requests for `/health` with status 200 and `{"status":"ok"}` while its
@@ -185,10 +202,11 @@ export const createRelay =
       for (const client of wss.clients) {
         if (client.readyState !== WebSocket.OPEN) continue;
         // A client cannot answer before it receives the data queued ahead of
-        // the ping, such as a large reply on a slow link. The relay cannot
-        // see that data move, so it leaves the connection to TCP, which ends
-        // it if the path is dead.
-        if (client.bufferedAmount > 0) continue;
+        // the ping, such as a large reply on a slow link, and its answer is
+        // not read while its requests are served. The relay cannot see that
+        // data move, so it leaves the connection to TCP, which ends it if the
+        // path is dead.
+        if (client.bufferedAmount > 0 || client.isPaused) continue;
         if (!activeSockets.has(client)) {
           console.debug("terminating unresponsive connection");
           client.terminate();
@@ -356,26 +374,60 @@ export const createRelay =
         },
       };
 
+      // The connection's requests are served one at a time, in order, and the
+      // connection is not read while they wait, so further requests wait in
+      // TCP instead of in the relay. Each request first yields to the event
+      // loop, so other connections are served between them, and waits until
+      // the previous reply is written to the socket, so a client that stops
+      // reading stops being served.
+      const requests: Array<Uint8Array> = [];
+
+      const serveRequests: Task<void, never, StorageDep> = async (run) => {
+        try {
+          while (requests.length > 0) {
+            await run.ok(yieldNow);
+            // A close during the yield empties the queue, so a request taken
+            // before it would subscribe the closed connection again.
+            const request = requests.shift();
+            if (request === undefined) break;
+
+            const response = await run.abortable(
+              applyProtocolMessageAsRelay(request, options),
+            );
+            if (!response.ok) {
+              if (response.error.type === "AbortError") break;
+              console.error(response);
+              continue;
+            }
+
+            await run.ok(
+              callback<void>(({ resolve }) => {
+                ws.send(response.value.message, { binary: true }, () => {
+                  resolve(ok());
+                });
+              }),
+            );
+          }
+        } finally {
+          ws.resume();
+        }
+        return ok();
+      };
+
       ws.on("message", (message) => {
         if (isDisposing || !Uint8Array.is(message)) return;
 
-        void (async () => {
-          const response = await relayRun.abortable(
-            applyProtocolMessageAsRelay(message, options),
-          );
-
-          if (!response.ok) {
-            if (response.error.type === "AbortError") return;
-            console.error(response);
-            return;
-          }
-
-          ws.send(response.value.message, { binary: true });
-        })();
+        requests.push(message);
+        // ws still emits the messages of the read it is parsing.
+        if (ws.isPaused) return;
+        ws.pause();
+        void relayRun.abortable(serveRequests);
       });
 
       ws.on("close", () => {
         ownerSocketRelation.removeByB(ws);
+        // A closed connection's replies have nowhere to go.
+        requests.length = 0;
         console.debug("ws close", wss.clients.size);
       });
 
