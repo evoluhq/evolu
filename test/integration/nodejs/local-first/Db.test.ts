@@ -26,6 +26,7 @@ import {
 import {
   createUnknownError,
   defectToError,
+  type UnknownError,
 } from "../../../../packages/common/src/Error.ts";
 import {
   constVoid,
@@ -54,7 +55,10 @@ import {
   MessageType,
   ProtocolErrorCode,
 } from "../../../../packages/common/src/local-first/Protocol.ts";
-import type { Query } from "../../../../packages/common/src/local-first/Query.ts";
+import {
+  kyselySql,
+  type Query,
+} from "../../../../packages/common/src/local-first/Query.ts";
 import {
   createQueryBuilder,
   QuarantineOrigin,
@@ -93,7 +97,11 @@ import {
   type LockManagerDep,
 } from "../../../../packages/common/src/LockManager.ts";
 import { installPolyfills } from "../../../../packages/common/src/Polyfills.ts";
-import { err, ok } from "../../../../packages/common/src/Result.ts";
+import {
+  err,
+  ok,
+  type Result,
+} from "../../../../packages/common/src/Result.ts";
 import { createSet, emptySet } from "../../../../packages/common/src/Set.ts";
 import {
   createSqlite,
@@ -1007,7 +1015,7 @@ describe("query and mutation flow", () => {
               rowsByQuery: new Map([
                 [
                   '["select \\"id\\", \\"value\\" from \\"_localTable\\"",[],[]]',
-                  [{ id: "ofZXw_hAfJ8fIcpFxi6nag", value: "local only" }],
+                  ok([{ id: "ofZXw_hAfJ8fIcpFxi6nag", value: "local only" }]),
                 ],
               ]),
               type: "Mutate",
@@ -1146,12 +1154,12 @@ describe("query and mutation flow", () => {
               rowsByQuery: new Map([
                 [
                   '["select \\"id\\", \\"value\\" from \\"_localTable\\"",[],[]]',
-                  [
+                  ok([
                     {
                       id: "ofZXw_hAfJ8fIcpFxi6nag",
                       value: "local only updated",
                     },
-                  ],
+                  ]),
                 ],
               ]),
               type: "Mutate",
@@ -1290,7 +1298,7 @@ describe("query and mutation flow", () => {
               rowsByQuery: new Map([
                 [
                   '["select \\"id\\", \\"value\\" from \\"_localTable\\"",[],[]]',
-                  [],
+                  ok([]),
                 ],
               ]),
               type: "Mutate",
@@ -1579,7 +1587,7 @@ describe("query and mutation flow", () => {
               rowsByQuery: new Map([
                 [
                   '["select \\"id\\", \\"name\\" from \\"testTable\\"",[],[]]',
-                  [{ id: "ofZXw_hAfJ8fIcpFxi6nag", name: "queryable" }],
+                  ok([{ id: "ofZXw_hAfJ8fIcpFxi6nag", name: "queryable" }]),
                 ],
               ]),
               type: "Query",
@@ -2277,7 +2285,7 @@ describe("sync message flow", () => {
               rowsByQuery: new Map([
                 [
                   '["select \\"id\\", \\"name\\" from \\"testTable\\"",[],[]]',
-                  [{ id: "ofZXw_hAfJ8fIcpFxi6nag", name: "after" }],
+                  ok([{ id: "ofZXw_hAfJ8fIcpFxi6nag", name: "after" }]),
                 ],
               ]),
               type: "Mutate",
@@ -2565,7 +2573,7 @@ describe("sync message flow", () => {
               rowsByQuery: new Map([
                 [
                   '["select \\"id\\", \\"name\\" from \\"testTable\\"",[],[]]',
-                  [{ id: "ofZXw_hAfJ8fIcpFxi6nag", name: "synced" }],
+                  ok([{ id: "ofZXw_hAfJ8fIcpFxi6nag", name: "synced" }]),
                 ],
               ]),
               type: "Query",
@@ -3188,7 +3196,8 @@ describe("sync message flow", () => {
 
       const rows = response.message.rowsByQuery.get(query);
       assertNotUndefined(rows);
-      return rows;
+      assertOk(rows);
+      return rows.value;
     };
 
     const selectHistoryRows = (setup: DbWorkerSetup) =>
@@ -4389,13 +4398,13 @@ describe("quarantine replay", () => {
                 rowsByQuery: new Map([
                   [
                     '["select \\"id\\", \\"name\\", \\"note\\" from \\"testTable\\"",[],[]]',
-                    [
+                    ok([
                       {
                         id: "ofZXw_hAfJ8fIcpFxi6nag",
                         name: "known",
                         note: "later",
                       },
-                    ],
+                    ]),
                   ],
                 ]),
                 type: "Query",
@@ -4717,7 +4726,7 @@ describe("quarantine replay", () => {
 
       assertEqual(
         output.response.message.rowsByQuery.get(testTableWithNoteQuery),
-        [{ id: rowId, name: "known", note: "newer" }],
+        ok([{ id: rowId, name: "known", note: "newer" }]),
       );
     }
 
@@ -4887,7 +4896,10 @@ describe("quarantine replay", () => {
               id: setup.evoluInstanceId,
               message: {
                 rowsByQuery: new Map([
-                  [futureTableQuery, [{ id: futureRowId, name: "future row" }]],
+                  [
+                    futureTableQuery,
+                    ok([{ id: futureRowId, name: "future row" }]),
+                  ],
                 ]),
                 type: "Query",
               },
@@ -5308,6 +5320,10 @@ describe("write replay", () => {
               if (armed && matches) {
                 armed = false;
                 failed = true;
+                // A failed subscribed query is answered on its own, so it
+                // fails the write only after an error, such as an I/O
+                // error, made SQLite roll the transaction back.
+                if (failure === "query") dbSetup.sqlite.exec(sql`rollback;`);
                 throw injected;
               }
             },
@@ -5335,14 +5351,15 @@ describe("write replay", () => {
           const output = setup.outputs[0];
           assertSame(output.type, "OnQueuedResponse");
           if (kind === "local") {
-            assertEqual(output.response, {
-              type: "ForEvolu",
-              id: setup.evoluInstanceId,
-              message: {
-                type: "MutateFailed",
-                error: createUnknownError(injected),
-              },
-            });
+            assertSame(output.response.type, "ForEvolu");
+            assertSame(output.response.id, setup.evoluInstanceId);
+            assertSame(output.response.message.type, "MutateFailed");
+            // After SQLite's own rollback, the answer is the failed commit.
+            if (failure !== "query")
+              assertEqual(
+                output.response.message.error,
+                createUnknownError(injected),
+              );
           } else {
             assertSame(output.response.message.type, "ApplySyncMessage");
             assertFalse(output.response.message.didWriteMessages);
@@ -5514,7 +5531,7 @@ describe("clock drift quarantine", () => {
           assertSame(output.response.message.type, "Mutate");
           assertEqual(
             output.response.message.rowsByQuery.get(testTableQuery),
-            [],
+            ok([]),
           );
           assertEqual(setup.getClock(), {
             ...context.clock,
@@ -5530,7 +5547,7 @@ describe("clock drift quarantine", () => {
           // the instance sees the quarantined rows before it runs onComplete.
           assertEqual(
             output.response.message.rowsByQuery.get(quarantineQuery),
-            quarantinedRows(quarantinedTimestamp),
+            ok(quarantinedRows(quarantinedTimestamp)),
           );
         }
         assertEqual(setup.sqlite.exec(sql`select * from testTable;`).rows, []);
@@ -7052,66 +7069,215 @@ describe("worker failure", () => {
     ]);
   });
 
-  it("refuses with an UnknownError when SQLite fails a query, reports the panic once, and releases the leader lock", async () => {
-    const error = new Error("no such column: name");
-    let armed = false;
+  it("answers a query SQLite fails with an UnknownError, loads the other queries, and keeps serving", async () => {
+    const error = new Error("no such column: note");
     await using dbSetup = await setupDb({
       onExec: (query) => {
-        if (armed && query.sql.includes('from "testTable"')) throw error;
+        if (query.sql.includes('"note" from "testTable"')) throw error;
       },
     });
-    await using setup = await setupDbWorker({ dbSetup });
-    armed = true;
+    const console = testCreateConsole({ level: "error" });
+    await using setup = await setupDbWorker({ dbSetup, console });
+    const attemptId = setup.createId();
 
     const outputs = await postRequest(
       setup,
       {
         type: "ForEvolu",
         id: setup.evoluInstanceId,
-        message: { type: "Query", queries: createSet([testTableQuery]) },
+        message: {
+          type: "Query",
+          queries: createSet([testTableWithNoteQuery, testTableQuery]),
+        },
+      },
+      attemptId,
+    );
+
+    assertEqual(outputs, [
+      {
+        type: "OnQueuedResponse",
+        attemptId,
+        response: {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: {
+            type: "Query",
+            rowsByQuery: new Map<
+              Query,
+              Result<ReadonlyArray<never>, UnknownError>
+            >([
+              [testTableWithNoteQuery, err(createUnknownError(error))],
+              [testTableQuery, ok([])],
+            ]),
+          },
+        },
+      },
+    ]);
+    assertEqual(setup.reportDefect.getDefects(), []);
+    // Not logged, because tabs report a worker's logged errors as evoluError.
+    assertEqual(console.getEntriesSnapshot(), []);
+
+    const id = setup.createId();
+    const mutation = await postRequest(
+      setup,
+      setupMutateRequest(
+        setup.evoluInstanceId,
+        [
+          createMutationChange({
+            table: "testTable",
+            id,
+            values: { name: "stored" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ],
+        { subscribedQueries: createSet([testTableQuery]) },
+      ),
+    );
+
+    assertLength(mutation, 1);
+    assertSame(mutation[0].type, "OnQueuedResponse");
+    assertSame(mutation[0].response.message.type, "Mutate");
+    assertEqual(
+      mutation[0].response.message.rowsByQuery.get(testTableQuery),
+      ok([{ id, name: "stored" }]),
+    );
+  });
+
+  it("stores a mutation whose subscribed query SQLite fails on the new data", async () => {
+    const console = testCreateConsole({ level: "error" });
+    await using setup = await setupDbWorker({ console });
+    // Prepares, then fails for a row whose name is not JSON.
+    const jsonQuery = createQuery((db) =>
+      db
+        .selectFrom("testTable")
+        .select([
+          "id",
+          kyselySql<number | null>`json_extract("name", '$.a')`.as("a"),
+        ]),
+    );
+    const id = setup.createId();
+
+    const outputs = await postRequest(
+      setup,
+      setupMutateRequest(
+        setup.evoluInstanceId,
+        [
+          createMutationChange({
+            table: "testTable",
+            id,
+            values: { name: "not json" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ],
+        { subscribedQueries: createSet([jsonQuery, testTableQuery]) },
+      ),
+    );
+
+    assertLength(outputs, 1);
+    const [output] = outputs;
+    assertSame(output.type, "OnQueuedResponse");
+    assertSame(output.response.message.type, "Mutate");
+    const { rowsByQuery } = output.response.message;
+    const jsonRows = rowsByQuery.get(jsonQuery);
+    assertNotUndefined(jsonRows);
+    assertErr(jsonRows);
+    const { message, code } = jsonRows.error.error as {
+      readonly message: unknown;
+      readonly code: unknown;
+    };
+    assertEqual(
+      { message, code },
+      {
+        message: "malformed JSON",
+        code: "SQLITE_ERROR",
+      },
+    );
+    assertEqual(
+      rowsByQuery.get(testTableQuery),
+      ok([{ id, name: "not json" }]),
+    );
+    assertEqual(
+      setup.sqlite.exec(sql`select "id", "name" from "testTable";`).rows,
+      [{ id, name: "not json" }],
+    );
+    assertEqual(readStoredClock(setup), setup.getClock());
+    assertEqual(console.getEntriesSnapshot(), []);
+  });
+
+  it("answers an export SQLite fails with an UnknownError and keeps serving", async () => {
+    const error = new Error("out of memory");
+    let armed = false;
+    await using dbSetup = await setupDb({
+      onExport: () => {
+        if (!armed) return;
+        armed = false;
+        throw error;
+      },
+    });
+    await using setup = await setupDbWorker({ dbSetup });
+    armed = true;
+    const attemptId = setup.createId();
+    const exportRequest: DbWorkerRequest = {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: { type: "Export" },
+    };
+
+    assertEqual(await postRequest(setup, exportRequest, attemptId), [
+      {
+        type: "OnQueuedResponse",
+        attemptId,
+        response: {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: { type: "ExportFailed", error: createUnknownError(error) },
+        },
+      },
+    ]);
+    assertEqual(setup.reportDefect.getDefects(), []);
+
+    const next = await postRequest(setup, exportRequest);
+    assertLength(next, 1);
+    assertSame(next[0].type, "OnQueuedResponse");
+    assertSame(next[0].response.message.type, "Export");
+  });
+
+  it("refuses with an UnknownError when handling a request throws, reports the panic once, and releases the leader lock", async () => {
+    await using setup = await setupDbWorker();
+    const defect = new Error("defect while handling a request");
+    // Iterating the queries throws outside the per-query handling, as a
+    // response that cannot be posted would.
+    const queries = createSet([testTableQuery]);
+    Object.defineProperty(queries, Symbol.iterator, {
+      value: () => {
+        throw defect;
+      },
+    });
+
+    const outputs = await postRequest(
+      setup,
+      {
+        type: "ForEvolu",
+        id: setup.evoluInstanceId,
+        message: { type: "Query", queries },
       },
       setup.createId(),
       "activity",
     );
 
     assertEqual(outputs, [
-      { type: "LeaderRefused", error: createUnknownError(error) },
+      { type: "LeaderRefused", error: createUnknownError(defect) },
     ]);
     const defects = setup.reportDefect.getDefects();
     assertLength(defects, 1);
-    assertSame(defectToError(defects[0]), error);
+    assertSame(defectToError(defects[0]), defect);
     // Wait for the failed worker to release its leader lock.
     await using run = testCreateRun({ lockManager: setup.lockManager });
     await using _lock = await run.ok(acquireLeaderLock(setup.workerName));
     await testWaitForWorkerMessage();
     assertEqual(setup.outputs, []);
-  });
-
-  it("refuses with an UnknownError when SQLite fails an export", async () => {
-    const error = new Error("out of memory");
-    let armed = false;
-    await using dbSetup = await setupDb({
-      onExport: () => {
-        if (armed) throw error;
-      },
-    });
-    await using setup = await setupDbWorker({ dbSetup });
-    armed = true;
-
-    const outputs = await postRequest(
-      setup,
-      {
-        type: "ForEvolu",
-        id: setup.evoluInstanceId,
-        message: { type: "Export" },
-      },
-      setup.createId(),
-      "activity",
-    );
-
-    assertEqual(outputs, [
-      { type: "LeaderRefused", error: createUnknownError(error) },
-    ]);
   });
 
   it("refuses with an UnknownError after a defect while applying sync, without answering the apply", async () => {

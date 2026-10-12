@@ -39,19 +39,22 @@
  * ### Failure
  *
  * Once the worker holds its port, a throw that ends it, such as a startup that
- * cannot open or read the database, a query or an export that SQLite fails, or
- * a defect while applying sync, panics the worker, which reports it, and is
- * posted to the SharedWorker as a refusal with an {@link UnknownError} before
- * the database lock is released. The SharedWorker then treats the database as
- * refused and tells its tabs instead of waiting for the worker forever. A
- * mutation or a received sync batch that SQLite fails to store is answered with
- * an {@link UnknownError}, and a received frame whose ranges SQLite fails to
+ * cannot open or read the database or a defect while applying sync, panics the
+ * worker, which reports it, and is posted to the SharedWorker as a refusal with
+ * an {@link UnknownError} before the database lock is released. The SharedWorker
+ * then treats the database as refused and tells its tabs instead of waiting for
+ * the worker forever. A mutation or a received sync batch that SQLite fails to
+ * store is answered with an {@link UnknownError}, as is each query or export
+ * that SQLite fails, and a received frame whose ranges SQLite fails to
  * reconcile and an owner whose sync round SQLite fails to create are logged and
- * reported as failed, so the database stays available. A dispose message, the
- * SharedWorker ending, or an abort that is not a panic posts nothing. When a
- * worker fails before it gets its port, such as a web worker whose script fails
- * to load, the tab that hosts it posts the refusal in its place; see
- * {@link CreateDbWorker}.
+ * reported as failed, so the database stays available. A subscribed query that
+ * SQLite fails does not fail its mutation, unless its error, such as an I/O
+ * error or no memory, made SQLite roll the transaction back; then the commit
+ * fails and the mutation is answered with an {@link UnknownError}. A dispose
+ * message, the SharedWorker ending, or an abort that is not a panic posts
+ * nothing. When a worker fails before it gets its port, such as a web worker
+ * whose script fails to load, the tab that hosts it posts the refusal in its
+ * place; see {@link CreateDbWorker}.
  *
  * @module
  */
@@ -143,7 +146,7 @@ import {
   type ProtocolMessage,
   type ProtocolTimestampMismatchError,
 } from "./Protocol.ts";
-import type { Query, RowsByQueryMap } from "./Query.ts";
+import type { Query } from "./Query.ts";
 import type { MutationChange, SqliteSchemaDep } from "./Schema.ts";
 import {
   ensureSqliteSchema,
@@ -415,10 +418,10 @@ export const startDbWorker =
       await run.ok(
         callback<void>(({ resolve, reject }) => {
           port.onMessage = (input) => {
-            // A throw, such as a query or export SQLite fails or a response
-            // that cannot be posted, panics this worker's Run like a task
-            // defect, so the database is refused. Mutations answer their
-            // failures instead.
+            // A throw, such as a response that cannot be posted, panics this
+            // worker's Run like a task defect, so the database is refused.
+            // Mutations, queries, and exports answer their SQLite failures
+            // instead.
             try {
               if (input.type === "Dispose") {
                 resolve(ok());
@@ -481,7 +484,8 @@ export const startDbWorker =
                 } else {
                   // SQLite can fail a write the app cannot prevent, such as on
                   // a full disk. The transaction has rolled back, so the
-                  // mutation is answered and the database stays available.
+                  // mutation is answered and the database stays available. A
+                  // subscribed query SQLite fails is answered on its own.
                   const mutation = trySync(
                     () =>
                       handleMutation({
@@ -551,13 +555,13 @@ export const startDbWorker =
               }
 
               if (request.message.type === "Export") {
+                const file = trySync(() => sqlite.export(), createUnknownError);
                 postQueuedResponse({
                   type: "ForEvolu",
                   id: request.id,
-                  message: {
-                    type: "Export",
-                    file: sqlite.export(),
-                  },
+                  message: file.ok
+                    ? { type: "Export", file: file.value }
+                    : { type: "ExportFailed", error: file.error },
                 });
               }
             } catch (error) {
@@ -1225,7 +1229,10 @@ const handleMutation =
       OwnerId,
       NonEmptyReadonlyArray<CrdtMessage>
     >;
-    readonly rowsByQuery: RowsByQueryMap;
+    readonly rowsByQuery: ReadonlyMap<
+      Query,
+      Result<ReadonlyArray<SqliteRow>, UnknownError>
+    >;
   } =>
     getOk(
       deps.sqlite.transaction(() => {
@@ -1270,6 +1277,14 @@ const handleMutation =
 
         if (messagesByOwnerId.size > 0) saveClock(deps)(clockTimestamp);
 
+        // A subscribed query SQLite fails does not fail the mutation, because
+        // a failed statement leaves the transaction open. After errors such
+        // as an I/O error or no memory, SQLite rolls the transaction back
+        // itself, so the commit fails and the mutation is answered as failed
+        // with nothing stored. Reading last ensures no write runs after such
+        // a rollback, where it would be committed on its own. The answer then
+        // carries the failed commit, not the query's error; see the TODO in
+        // the Sqlite transaction.
         return ok({
           type: "Mutate",
           clock: clockTimestamp,
@@ -1447,14 +1462,34 @@ const dbChangeToColumns = (change: DbChange, now: Millis) => {
   return values;
 };
 
+/**
+ * Loads each query on its own, so a query SQLite fails, such as one with a
+ * syntax error or one reading data its SQL functions cannot handle, fails only
+ * itself. SQLite keeps the connection usable.
+ */
 const loadQueries =
   (deps: SqliteDep) =>
-  (queries: Iterable<Query>): Map<Query, ReadonlyArray<SqliteRow>> => {
-    const rowsByQuery = new Map<Query, ReadonlyArray<SqliteRow>>();
+  (
+    queries: Iterable<Query>,
+  ): Map<Query, Result<ReadonlyArray<SqliteRow>, UnknownError>> => {
+    const rowsByQuery = new Map<
+      Query,
+      Result<ReadonlyArray<SqliteRow>, UnknownError>
+    >();
 
     for (const query of queries) {
-      const { rows } = deps.sqlite.exec(sqliteQueryStringToSqliteQuery(query));
-      rowsByQuery.set(query, rows);
+      // Not logged: tabs report a worker's console errors as an UnknownError,
+      // which would block the app for a failure only this load has. A trap
+      // that broke SQLite's wasm instance is answered too, as for exports and
+      // mutations, and every later request then fails. It takes a bug in
+      // SQLite or its VFS, so it does not refuse the database.
+      rowsByQuery.set(
+        query,
+        trySync(
+          () => deps.sqlite.exec(sqliteQueryStringToSqliteQuery(query)).rows,
+          createUnknownError,
+        ),
+      );
     }
 
     return rowsByQuery;

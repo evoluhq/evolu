@@ -211,8 +211,10 @@
  * batch SQLite fails to store, for example on a full disk, is rolled back and
  * fails its route with an `UnknownError`. An exception while the database
  * worker reconciles a received frame's ranges is logged there and fails that
- * route with `SyncFailed`. Any other exception in the database worker, such as
- * a query or an export SQLite fails, refuses the database with an
+ * route with `SyncFailed`. A query or an export SQLite fails is answered to the
+ * instance that requested it with an {@link UnknownError}, and the instance
+ * keeps the query's previous rows. Any other exception in the database worker,
+ * such as a response it cannot post, refuses the database with an
  * {@link UnknownError}. A frame the relay silently drops, such as invalid data,
  * leaves the count above zero until the liveness rule below replaces the
  * socket.
@@ -380,13 +382,7 @@ import {
   type ProtocolQuotaError,
   type ProtocolTimestampMismatchError,
 } from "./Protocol.ts";
-import {
-  makePatches,
-  type Patch,
-  type Query,
-  type Row,
-  type RowsByQueryMap,
-} from "./Query.ts";
+import { makePatches, type Patch, type Query, type Row } from "./Query.ts";
 import { isLocalOnlyTable, type MutationChange } from "./Schema.ts";
 import type { CrdtMessage, StorageWriteMessagesError } from "./Storage.ts";
 import { orderTimestamp, type Timestamp } from "./Timestamp.ts";
@@ -1280,7 +1276,14 @@ export type EvoluInput =
 export type EvoluOutput =
   | {
       readonly type: "OnPatchesByQuery";
-      readonly patchesByQuery: ReadonlyMap<Query, ReadonlyArray<Patch>>;
+      /**
+       * Each query with patches of its rows, or SQLite's failure, which keeps
+       * the query's previous rows.
+       */
+      readonly patchesByQuery: ReadonlyMap<
+        Query,
+        Result<ReadonlyArray<Patch>, UnknownError>
+      >;
       readonly onCompleteIds: ReadonlyArray<Id>;
     }
   | {
@@ -1289,6 +1292,10 @@ export type EvoluOutput =
   | {
       readonly type: "OnExport";
       readonly file: Uint8Array<ArrayBuffer>;
+    }
+  | {
+      readonly type: "OnExportFailed";
+      readonly error: UnknownError;
     }
   | {
       /** The mutation with these onComplete callbacks could not be stored. */
@@ -1378,7 +1385,11 @@ export type DbWorkerQueuedResponse =
               OwnerId,
               NonEmptyReadonlyArray<CrdtMessage>
             >;
-            readonly rowsByQuery: RowsByQueryMap;
+            /** The subscribed queries, each with its rows or SQLite's failure. */
+            readonly rowsByQuery: ReadonlyMap<
+              Query,
+              Result<ReadonlyArray<Row>, UnknownError>
+            >;
           }
         | {
             /** The mutation threw, so it rolled back and nothing was stored. */
@@ -1387,11 +1398,20 @@ export type DbWorkerQueuedResponse =
           }
         | {
             readonly type: "Query";
-            readonly rowsByQuery: RowsByQueryMap;
+            /** Each query with its rows or SQLite's failure. */
+            readonly rowsByQuery: ReadonlyMap<
+              Query,
+              Result<ReadonlyArray<Row>, UnknownError>
+            >;
           }
         | {
             readonly type: "Export";
             readonly file: Uint8Array<ArrayBuffer>;
+          }
+        | {
+            /** SQLite failed the export; nothing changed. */
+            readonly type: "ExportFailed";
+            readonly error: UnknownError;
           };
     }
   | {
@@ -2667,14 +2687,23 @@ const createEvoluTenant =
         case "Mutate":
         case "Query": {
           if (instance) {
-            const patchesByQuery = new Map<Query, ReadonlyArray<Patch>>();
+            const patchesByQuery = new Map<
+              Query,
+              Result<ReadonlyArray<Patch>, UnknownError>
+            >();
 
             for (const [query, rows] of response.message.rowsByQuery) {
+              // A failed query keeps its rows in the tab, so they stay the
+              // base for its next patches.
+              if (!rows.ok) {
+                patchesByQuery.set(query, rows);
+                continue;
+              }
               patchesByQuery.set(
                 query,
-                makePatches(instance.rowsByQuery.get(query), rows),
+                ok(makePatches(instance.rowsByQuery.get(query), rows.value)),
               );
-              instance.rowsByQuery.set(query, rows);
+              instance.rowsByQuery.set(query, rows.value);
             }
 
             instance.port.postMessage({
@@ -2766,6 +2795,13 @@ const createEvoluTenant =
             { type: "OnExport", file: response.message.file },
             [response.message.file.buffer],
           );
+          break;
+
+        case "ExportFailed":
+          instance?.port.postMessage({
+            type: "OnExportFailed",
+            error: response.message.error,
+          });
           break;
 
         default:

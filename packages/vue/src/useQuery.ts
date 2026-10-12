@@ -13,6 +13,12 @@ import { useEvolu } from "./useEvolu.ts";
  * Load and subscribe to the query, returning a ref that stays in sync with
  * Evolu changes.
  *
+ * When SQLite fails the query, the rows stay empty or show rows the query
+ * loaded earlier in this Evolu instance, so they do not signal the failure.
+ * Each failed load the composable awaits, including a cached failure or a
+ * rejected `promise`, is reported as an unhandled rejection. When SQLite fails
+ * a later refresh, the rows keep their values, and nothing is reported.
+ *
  * During server rendering, it only loads the query, so the rows are empty, as
  * on the client before the query loads. Server rendering starts when the server
  * renderer does, so a call on the server before that, such as from a store that

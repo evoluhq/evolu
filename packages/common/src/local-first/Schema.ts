@@ -523,7 +523,9 @@ export interface MutationOptions {
    * reflect them. Useful for follow-up work (e.g., notifications, navigation)
    * after insert, update, or upsert. It never runs when the database is
    * unavailable or the mutation could not be stored, which
-   * {@link EvoluErrorDep.evoluError} reports.
+   * {@link EvoluErrorDep.evoluError} reports. It still runs when SQLite fails a
+   * subscribed query, which then keeps its previous rows; see
+   * {@link Evolu.loadQuery}.
    *
    * An Evolu instance stores its mutations in batches, each in one transaction.
    * A batch holds the mutations made before Evolu sends it in a microtask,

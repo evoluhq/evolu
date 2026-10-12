@@ -19,7 +19,10 @@ export const evoluSvelteDeps = /*#__PURE__*/ createEvoluDeps();
  * Loads and subscribes to the query that `observedQuery` returns, and returns
  * an object whose `rows` update when the data changes. `rows` holds only rows
  * of the current query, so it is empty until that query loads and while there
- * is no query.
+ * is no query. When SQLite fails the query, `rows` keeps the rows the query
+ * last loaded, if any. Only the failure of a load `queryState` starts is
+ * reported, as an unhandled rejection; a failed refresh, or a load that returns
+ * a cached failure, reports nothing. See {@link Evolu.loadQuery}.
  *
  * It creates an `$effect`, so call it where Svelte allows one, such as during
  * component initialization or inside `$effect.root`. The subscription ends when

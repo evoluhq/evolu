@@ -92,7 +92,8 @@ import {
 import { createTimestamp, maxNodeId, type Timestamp } from "./Timestamp.ts";
 import { acquireLeaderLock, testCreateLockManager } from "../LockManager.ts";
 import { installPolyfills } from "../Polyfills.ts";
-import { ok } from "../Result.ts";
+import { err, ok, type Result } from "../Result.ts";
+import type { Patch, Query, Row } from "./Query.ts";
 import { createSet } from "../Set.ts";
 import type { SqliteSchema } from "../Sqlite.ts";
 import { createStore } from "../Store.ts";
@@ -7093,7 +7094,7 @@ describe("with one evolu instance", () => {
           id,
           message: {
             type: "Query",
-            rowsByQuery: new Map([[testQuery, []]]),
+            rowsByQuery: new Map([[testQuery, ok([])]]),
           },
         },
       });
@@ -7163,7 +7164,7 @@ describe("with one evolu instance", () => {
             clock: createTimestamp(),
             type: "Mutate",
             messagesByOwnerId: new Map(),
-            rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
+            rowsByQuery: new Map([[testQuery, ok([{ value: 1 }])]]),
           },
         },
       });
@@ -7195,7 +7196,7 @@ describe("with one evolu instance", () => {
           id,
           message: {
             type: "Query",
-            rowsByQuery: new Map([[testQuery, [{ value: 2 }]]]),
+            rowsByQuery: new Map([[testQuery, ok([{ value: 2 }])]]),
           },
         },
       });
@@ -7208,14 +7209,14 @@ describe("with one evolu instance", () => {
 
       assertEqual(mutateOutput.onCompleteIds, [mutateOnCompleteId]);
       assertEqual(queryOutput.onCompleteIds, []);
-      assertEqual(mutateOutput.patchesByQuery.get(testQuery)?.[0], {
-        op: "replaceAll",
-        value: [{ value: 1 }],
-      });
-      assertEqual(queryOutput.patchesByQuery.get(testQuery)?.[0], {
-        op: "replaceAll",
-        value: [{ value: 2 }],
-      });
+      assertEqual(
+        mutateOutput.patchesByQuery.get(testQuery),
+        ok([{ op: "replaceAll", value: [{ value: 1 }] }]),
+      );
+      assertEqual(
+        queryOutput.patchesByQuery.get(testQuery),
+        ok([{ op: "replaceAll", value: [{ value: 2 }] }]),
+      );
     });
 
     it("refreshes sibling instances after mutate responses", async () => {
@@ -7276,7 +7277,7 @@ describe("with one evolu instance", () => {
           id: secondId,
           message: {
             type: "Query",
-            rowsByQuery: new Map([[testQuery, [{ value: 0 }]]]),
+            rowsByQuery: new Map([[testQuery, ok([{ value: 0 }])]]),
           },
         },
       });
@@ -7318,7 +7319,7 @@ describe("with one evolu instance", () => {
             clock: createTimestamp(),
             type: "Mutate",
             messagesByOwnerId: new Map(),
-            rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
+            rowsByQuery: new Map([[testQuery, ok([{ value: 1 }])]]),
           },
         },
       });
@@ -7535,6 +7536,158 @@ describe("with one evolu instance", () => {
       assertEqual(evoluOutputs, []);
     });
 
+    it("forwards a query SQLite failed to its instance and patches it later against the rows the tab kept", async () => {
+      await using setup = await setupSharedWorker();
+      const { createEvolu, run, sharedWorkerOutputs } = setup;
+      const { time } = run.deps;
+      const { dbInputs, dbWorkerPort, evoluChannel, id } = await createEvolu();
+      const outputs: Array<EvoluOutput> = [];
+      evoluChannel.port2.onMessage = (output) => {
+        outputs.push(output);
+      };
+      using errors = testCreateBroadcastChannel<ConsoleEntryOrError>(
+        consoleEntryOrErrorBroadcastChannelName,
+      );
+      const broadcasts: Array<ConsoleEntryOrError> = [];
+      errors.onMessage = (output) => {
+        broadcasts.push(output);
+      };
+      const outputCount = sharedWorkerOutputs.length;
+      const error = createUnknownError(new Error("malformed JSON"));
+      const onCompleteId = createId(run.deps);
+      const otherQuery = createTestQuery((db) =>
+        db.selectFrom("test").select(["value"]),
+      );
+
+      const respond = async (
+        input: EvoluInput,
+        message: ExtractTyped<DbWorkerQueuedResponse, "ForEvolu">["message"],
+      ) => {
+        evoluChannel.port2.postMessage(input);
+        time.advance("10s");
+        await testWaitForWorkerMessage();
+        const dbInput = dbInputs.at(-1);
+        assertNotUndefined(dbInput);
+        assertSame(dbInput.request.message.type, input.type);
+        dbWorkerPort.postMessage({
+          type: "OnQueuedResponse",
+          attemptId: dbInput.attemptId,
+          response: { type: "ForEvolu", id, message },
+        });
+        await testWaitForWorkerMessage();
+      };
+      const query: EvoluInput = {
+        type: "Query",
+        queries: createSet([testQuery]),
+      };
+
+      await respond(query, {
+        type: "Query",
+        rowsByQuery: new Map([[testQuery, ok([{ value: 1 }])]]),
+      });
+      await respond(
+        {
+          type: "Mutate",
+          changes: [
+            {
+              ownerId: testAppOwner.id,
+              ...testCreateCrdtMessage(createId(run.deps), 1, "not json")
+                .change,
+            },
+          ],
+          onCompleteIds: [onCompleteId],
+          subscribedQueries: new Set([testQuery, otherQuery]),
+        },
+        {
+          type: "Mutate",
+          clock: createTimestamp(),
+          messagesByOwnerId: new Map(),
+          // The query after the failed one still loads.
+          rowsByQuery: new Map<Query, Result<ReadonlyArray<Row>, UnknownError>>(
+            [
+              [testQuery, err(error)],
+              [otherQuery, ok([{ value: 2 }])],
+            ],
+          ),
+        },
+      );
+      await respond(query, {
+        type: "Query",
+        rowsByQuery: new Map([[testQuery, ok([{ value: 1 }])]]),
+      });
+
+      assertEqual(outputs, [
+        {
+          type: "OnPatchesByQuery",
+          patchesByQuery: new Map([
+            [testQuery, ok([{ op: "replaceAll", value: [{ value: 1 }] }])],
+          ]),
+          onCompleteIds: [],
+        },
+        {
+          type: "OnPatchesByQuery",
+          patchesByQuery: new Map<
+            Query,
+            Result<ReadonlyArray<Patch>, UnknownError>
+          >([
+            [testQuery, err(error)],
+            [otherQuery, ok([{ op: "replaceAll", value: [{ value: 2 }] }])],
+          ]),
+          onCompleteIds: [onCompleteId],
+        },
+        // The tab kept the rows, so nothing changed.
+        {
+          type: "OnPatchesByQuery",
+          patchesByQuery: new Map([[testQuery, ok([])]]),
+          onCompleteIds: [],
+        },
+      ]);
+      assertEqual(sharedWorkerOutputs.slice(outputCount), []);
+      assertEqual(broadcasts, []);
+    });
+
+    it("forwards a failed export to its instance only", async () => {
+      await using setup = await setupSharedWorker();
+      const { createEvolu, run, sharedWorkerOutputs } = setup;
+      const { time } = run.deps;
+      const { dbInputs, dbWorkerPort, evoluChannel, id } = await createEvolu();
+      const outputs: Array<EvoluOutput> = [];
+      evoluChannel.port2.onMessage = (output) => {
+        outputs.push(output);
+      };
+      using errors = testCreateBroadcastChannel<ConsoleEntryOrError>(
+        consoleEntryOrErrorBroadcastChannelName,
+      );
+      const broadcasts: Array<ConsoleEntryOrError> = [];
+      errors.onMessage = (output) => {
+        broadcasts.push(output);
+      };
+      const outputCount = sharedWorkerOutputs.length;
+      const error = createUnknownError(new Error("out of memory"));
+
+      evoluChannel.port2.postMessage({ type: "Export" });
+      time.advance("10s");
+      await testWaitForWorkerMessage();
+      const exportInput = dbInputs.at(-1);
+      assertNotUndefined(exportInput);
+      assertSame(exportInput.request.message.type, "Export");
+
+      dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: exportInput.attemptId,
+        response: {
+          type: "ForEvolu",
+          id,
+          message: { type: "ExportFailed", error },
+        },
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(outputs, [{ type: "OnExportFailed", error }]);
+      assertEqual(sharedWorkerOutputs.slice(outputCount), []);
+      assertEqual(broadcasts, []);
+    });
+
     it("forwards export responses back to the evolu port", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run } = setup;
@@ -7605,13 +7758,48 @@ describe("with one evolu instance", () => {
           id: createId<"EvoluInstance">(run.deps),
           message: {
             type: "Query",
-            rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
+            rowsByQuery: new Map([[testQuery, ok([{ value: 1 }])]]),
           },
         },
       });
       await testWaitForWorkerMessage();
 
       assertEqual(outputs, []);
+    });
+
+    it("ignores a failed export for a missing instance", async () => {
+      await using setup = await setupSharedWorker();
+      const { createEvolu, run, sharedWorkerOutputs } = setup;
+      const { time } = run.deps;
+      const { dbInputs, dbWorkerPort, evoluChannel } = await createEvolu();
+      const outputs: Array<EvoluOutput> = [];
+      evoluChannel.port2.onMessage = (output) => {
+        outputs.push(output);
+      };
+      const outputCount = sharedWorkerOutputs.length;
+
+      evoluChannel.port2.postMessage({ type: "Export" });
+      time.advance("10s");
+      await testWaitForWorkerMessage();
+      const exportInput = dbInputs.at(-1);
+      assertNotUndefined(exportInput);
+
+      dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: exportInput.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: createId<"EvoluInstance">(run.deps),
+          message: {
+            type: "ExportFailed",
+            error: createUnknownError(new Error("out of memory")),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(outputs, []);
+      assertEqual(sharedWorkerOutputs.slice(outputCount), []);
     });
   });
 
@@ -7707,7 +7895,7 @@ describe("with one evolu instance", () => {
               [readonlyOwner.id, messages],
               [createId<"OwnerId">(run.deps), messages],
             ]),
-            rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
+            rowsByQuery: new Map([[testQuery, ok([{ value: 1 }])]]),
           },
         },
       });
@@ -9695,7 +9883,7 @@ describe("with one evolu instance", () => {
                 [testCreateCrdtMessage(createId(run.deps), 1, "closed")],
               ],
             ]),
-            rowsByQuery: new Map([[testQuery, [{ value: 2 }]]]),
+            rowsByQuery: new Map([[testQuery, ok([{ value: 2 }])]]),
           },
         },
       });
@@ -9704,7 +9892,7 @@ describe("with one evolu instance", () => {
       assertEqual(outputs.at(-1), {
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [testQuery, [{ op: "replaceAll", value: [{ value: 2 }] }]],
+          [testQuery, ok([{ op: "replaceAll", value: [{ value: 2 }] }])],
         ]),
         onCompleteIds: [],
       });
@@ -10135,7 +10323,7 @@ describe("with one evolu instance", () => {
           id,
           message: {
             type: "Query",
-            rowsByQuery: new Map([[testQuery, []]]),
+            rowsByQuery: new Map([[testQuery, ok([])]]),
           },
         },
       };

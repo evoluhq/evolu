@@ -1,10 +1,22 @@
-import { act, createElement, StrictMode, type FC } from "react";
+import {
+  act,
+  Component,
+  createElement,
+  StrictMode,
+  Suspense,
+  type FC,
+  type ReactNode,
+} from "react";
 import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { beforeAll, test } from "vitest";
 import {
   assertEqual,
   assertSame,
 } from "../../../../packages/common/src/Assert.ts";
+import { emptyArray } from "../../../../packages/common/src/Array.ts";
+import { createUnknownError } from "../../../../packages/common/src/Error.ts";
+import { constVoid } from "../../../../packages/common/src/Function.ts";
 import type { Evolu } from "../../../../packages/common/src/local-first/Evolu.ts";
 import {
   createOwnerWebSocketTransport,
@@ -22,6 +34,11 @@ import type {
   SyncRoute,
   SyncState,
 } from "../../../../packages/common/src/local-first/Shared.ts";
+import type {
+  Query,
+  QueryRows,
+} from "../../../../packages/common/src/local-first/Query.ts";
+import { testGlobalUnhandledRejections } from "../../../../packages/common/src/Platform.ts";
 import { createStore } from "../../../../packages/common/src/Store.ts";
 import { testCreateDeps } from "../../../../packages/common/src/Task.ts";
 import { Millis } from "../../../../packages/common/src/Time.ts";
@@ -37,7 +54,8 @@ beforeAll(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 });
 
-const { EvoluContext, useOwner, useOwnerSyncStatus } = createEvoluBinding();
+const { EvoluContext, useOwner, useOwnerSyncStatus, useQueries, useQuery } =
+  createEvoluBinding();
 
 /** An Evolu stub that records each owner registration and its release. */
 const createEvoluStub = (calls: Array<string>): Evolu =>
@@ -88,6 +106,129 @@ const Registration: FC<{
   ]);
   return null;
 };
+
+/** Records the error it catches; React has no function error boundaries. */
+class ErrorBoundary extends Component<
+  { readonly children?: ReactNode; readonly onError: (error: unknown) => void },
+  { readonly failed: boolean }
+> {
+  override state = { failed: false };
+
+  static getDerivedStateFromError(): { readonly failed: boolean } {
+    return { failed: true };
+  }
+
+  override componentDidCatch(error: unknown): void {
+    this.props.onError(error);
+  }
+
+  override render(): ReactNode {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+test("useQueries throws a query SQLite failed to the error boundary without an unhandled rejection", async () => {
+  using unhandledRejections = testGlobalUnhandledRejections();
+  const queries = ["a" as Query, "b" as Query] as const;
+  // Pending loads as Evolu creates them, with React's status preset.
+  const loads = queries.map(() => {
+    const load = Promise.withResolvers<QueryRows>();
+    void Object.assign(load.promise, { status: "pending" });
+    return load;
+  });
+  const evolu = {
+    loadQueries: (loaded: ReadonlyArray<Query>) =>
+      loaded.map((query) => loads[queries.indexOf(query)].promise),
+    subscribeQuery: () => () => constVoid,
+    getQueryRows: () => emptyArray,
+  } as unknown as Evolu;
+  const caught: Array<unknown> = [];
+  const Rows: FC = () => {
+    useQueries([...queries]);
+    return null;
+  };
+  const root = createRoot(document.createElement("div"));
+  const error = createUnknownError(new Error("incomplete input"));
+
+  // oxlint-disable-next-line typescript/require-await -- An async act waits for the render that suspends.
+  await act(async () => {
+    root.render(
+      createElement(
+        EvoluContext,
+        { value: evolu },
+        createElement(
+          ErrorBoundary,
+          {
+            onError: (error) => {
+              caught.push(error);
+            },
+          },
+          createElement(Suspense, { fallback: null }, createElement(Rows)),
+        ),
+      ),
+    );
+  });
+  // As Evolu settles one answer for both queries. React suspended on the
+  // first load, so it has not read the second one yet.
+  // oxlint-disable-next-line typescript/require-await -- An async act flushes the render that retries after the ping.
+  await act(async () => {
+    loads[0].resolve(emptyArray);
+    void Object.assign(loads[0].promise, {
+      status: "fulfilled",
+      value: emptyArray,
+    });
+    loads[1].reject(error);
+    void Object.assign(loads[1].promise, { status: "rejected", reason: error });
+  });
+
+  assertEqual(caught, [error]);
+  assertEqual(await unhandledRejections.settle(), []);
+  act(() => {
+    root.unmount();
+  });
+});
+
+test("useQuery and useQueries handle the loads they start while server rendering", async () => {
+  using unhandledRejections = testGlobalUnhandledRejections();
+  const loads: Array<PromiseWithResolvers<QueryRows>> = [];
+  const loadQuery = (): Promise<QueryRows> => {
+    const load = Promise.withResolvers<QueryRows>();
+    void Object.assign(load.promise, { status: "pending" });
+    loads.push(load);
+    return load.promise;
+  };
+  const evolu = {
+    loadQuery,
+    loadQueries: (queries: ReadonlyArray<Query>) =>
+      queries.map(() => loadQuery()),
+    subscribeQuery: () => () => constVoid,
+    getQueryRows: () => emptyArray,
+  } as unknown as Evolu;
+  const OneQuery: FC = () => {
+    useQuery("a" as Query);
+    return null;
+  };
+  const TwoQueries: FC = () => {
+    useQueries(["b" as Query, "c" as Query]);
+    return null;
+  };
+
+  renderToString(
+    createElement(
+      EvoluContext,
+      { value: evolu },
+      createElement(OneQuery),
+      createElement(TwoQueries),
+    ),
+  );
+  assertEqual(loads.length, 3);
+
+  // The loads fail after the render, which never reads them, as when
+  // hydration yields before the render that does.
+  const error = createUnknownError(new Error("incomplete input"));
+  for (const load of loads) load.reject(error);
+  assertEqual(await unhandledRejections.settle(), []);
+});
 
 test("registers an equal owner once and releases it on change and unmount", () => {
   using setup = setupUseOwner();

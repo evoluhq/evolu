@@ -22,7 +22,7 @@ import { createConsole } from "../Console.ts";
 import type { DecryptWithXChaCha20Poly1305Error } from "../Crypto.ts";
 import type { UnknownError } from "../Error.ts";
 import { createUnknownError } from "../Error.ts";
-import { disposable, exhaustiveCheck, todo } from "../Function.ts";
+import { constVoid, disposable, exhaustiveCheck, todo } from "../Function.ts";
 import {
   acquireLeaderLock,
   acquireLeaderLockCallback,
@@ -38,7 +38,7 @@ import {
 } from "../Object.ts";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.ts";
 import { createRefCountByKey } from "../RefCount.ts";
-import { err, ok } from "../Result.ts";
+import { err, ok, type Result } from "../Result.ts";
 import { createSet, isNonEmptySet } from "../Set.ts";
 import {
   SqliteBoolean,
@@ -594,20 +594,26 @@ export interface Evolu<
   /**
    * Load {@link Query} and return a promise with {@link QueryRows}.
    *
-   * The returned promise always resolves successfully because all data are
-   * local and the query is typed. If the database is refused, because it
-   * refused startup or its worker failed, for example on a query SQLite failed,
-   * unanswered loads stay pending until disposal resolves them with empty rows.
-   * Observe {@link EvoluErrorDep.evoluError} to display the refusal
-   * independently of query loading.
+   * The returned promise rejects with an {@link UnknownError} when SQLite fails
+   * the query, for example on a syntax error in a raw SQL fragment or on data
+   * its SQL functions cannot read, such as `json_extract` on text that is not
+   * JSON. Only that query fails: other queries load, mutations are stored, and
+   * {@link EvoluErrorDep.evoluError} is not set. React's `useQuery` throws the
+   * error to the nearest error boundary. If the database is refused, because it
+   * refused startup or its worker failed, unanswered loads stay pending until
+   * disposal resolves them with empty rows. Observe
+   * {@link EvoluErrorDep.evoluError} to display the refusal independently of
+   * query loading.
    *
    * Loading is batched. Returned promises are cached while pending and can be
-   * reused after fulfillment, which prevents redundant database queries and
+   * reused after they settle, which prevents redundant database queries and
    * supports React Suspense (stable references while pending). A mutation or
    * incoming sync invalidates the cache of an unsubscribed query, so its next
-   * load reads again. A subscribed query keeps its cached rows and the
-   * subscription refreshes them, so a load can return rows that a pending
-   * refresh is about to replace.
+   * load reads again. A subscribed query keeps its cached result and the
+   * subscription refreshes it, so a load can return rows that a pending refresh
+   * is about to replace. When SQLite fails a refresh, the query keeps its rows,
+   * its loads reject until a refresh succeeds, and its subscribers are
+   * notified, so React's `useQuery` throws the error then.
    *
    * To subscribe a query for automatic updates, use
    * {@link Evolu.subscribeQuery}.
@@ -762,8 +768,9 @@ export interface Evolu<
    * of starting parallel exports.
    *
    * The pending promise rejects if this {@link Evolu} instance is disposed
-   * before export completion. If the database is refused, export stays pending
-   * until disposal; see {@link Evolu.loadQuery}.
+   * before export completion, and with an {@link UnknownError} when SQLite fails
+   * the export, after which the next call exports again. If the database is
+   * refused, export stays pending until disposal; see {@link Evolu.loadQuery}.
    */
   readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
@@ -1432,8 +1439,9 @@ export const createEvolu =
         value?: QueryRows;
         reason?: unknown;
       };
-      resolve: (rows: QueryRows) => void;
-      releaseOnResolve: boolean;
+      readonly resolve: (rows: QueryRows) => void;
+      readonly reject: (error: UnknownError) => void;
+      releaseOnSettle: boolean;
     }
 
     /**
@@ -1444,51 +1452,59 @@ export const createEvolu =
       new Map<Query, LoadingPromise>(),
       (loadingPromisesByQuery) => {
         for (const loadingPromise of loadingPromisesByQuery.values()) {
-          if (loadingPromise.promise.status === "fulfilled") continue;
-          fulfillLoadingPromise(loadingPromise, emptyArray);
+          if (loadingPromise.promise.status !== "pending") continue;
+          settleLoadingPromise(loadingPromise, ok(emptyArray));
         }
         loadingPromisesByQuery.clear();
       },
     );
 
-    const fulfillLoadingPromise = (
+    const settleLoadingPromise = (
       loadingPromise: LoadingPromise,
-      rows: QueryRows,
+      result: Result<QueryRows, UnknownError>,
     ): void => {
       /**
-       * Pending promises must be resolved in place to preserve identity for
-       * current awaiters. Fulfilled promises are replaced with a new resolved
-       * promise so future loads see the latest rows.
+       * Pending promises must be settled in place to preserve identity for
+       * current awaiters. Settled promises are replaced with a new settled
+       * promise so future loads see the latest result.
        */
-      if (loadingPromise.promise.status !== "fulfilled") {
-        loadingPromise.resolve(rows);
+      if (loadingPromise.promise.status === "pending") {
+        if (result.ok) loadingPromise.resolve(result.value);
+        else loadingPromise.reject(result.error);
+      } else if (result.ok) {
+        loadingPromise.promise = Promise.resolve(result.value);
       } else {
-        loadingPromise.promise = Promise.resolve(rows);
+        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Loads reject with a plain-object UnknownError, as Evolu errors are plain objects.
+        loadingPromise.promise = Promise.reject(result.error);
+        // No caller holds the replacement yet; the next load returns it.
+        void loadingPromise.promise.catch(constVoid);
       }
 
       /** See {@link LoadingPromise.promise}. */
-      void Object.assign(loadingPromise.promise, {
-        status: "fulfilled",
-        value: rows,
-      });
+      void Object.assign(
+        loadingPromise.promise,
+        result.ok
+          ? { status: "fulfilled", value: result.value }
+          : { status: "rejected", reason: result.error },
+      );
     };
 
     /**
      * Mutations and refreshes invalidate query snapshots. Keep loading promises
      * only for actively subscribed queries and release unsubscribed ones.
      *
-     * Fulfilled promises can be dropped immediately because no awaiter is
-     * waiting on them. Pending promises must stay alive until they resolve so
-     * current awaiters keep the same promise identity.
+     * Settled promises can be dropped immediately because no awaiter is waiting
+     * on them. Pending promises must stay alive until they settle so current
+     * awaiters keep the same promise identity.
      */
     const releaseUnsubscribedLoadingPromises = (): void => {
       for (const [query, loadingPromise] of loadingPromisesByQuery) {
         if (subscribedQueriesRefCount.has(query)) continue;
 
-        if (loadingPromise.promise.status === "fulfilled") {
+        if (loadingPromise.promise.status !== "pending") {
           loadingPromisesByQuery.delete(query);
         } else {
-          loadingPromise.releaseOnResolve = true;
+          loadingPromise.releaseOnSettle = true;
         }
       }
     };
@@ -1534,27 +1550,43 @@ export const createEvolu =
             const nextRowsByQueryMap = new Map(state);
 
             for (const [query, patches] of message.patchesByQuery) {
+              if (!patches.ok) {
+                // A query SQLite failed keeps its rows. A subscribed one gets
+                // an equal copy, so its subscribers render now and read the
+                // rejected load.
+                if (subscribedQueriesRefCount.has(query))
+                  nextRowsByQueryMap.set(query, [
+                    ...(state.get(query) ?? emptyArray),
+                  ]);
+                continue;
+              }
               nextRowsByQueryMap.set(
                 query,
-                applyPatches(patches, state.get(query) ?? emptyArray),
+                applyPatches(patches.value, state.get(query) ?? emptyArray),
               );
             }
 
-            for (const query of message.patchesByQuery.keys()) {
+            for (const [query, patches] of message.patchesByQuery) {
               const loadingPromise = loadingPromisesByQuery.get(query);
               if (!loadingPromise) continue;
 
-              const rows = nextRowsByQueryMap.get(query);
-              assertNotUndefined(rows);
-
-              fulfillLoadingPromise(loadingPromise, rows);
+              if (patches.ok) {
+                const rows = nextRowsByQueryMap.get(query);
+                assertNotUndefined(rows);
+                settleLoadingPromise(loadingPromise, ok(rows));
+              } else {
+                // Like rows, the failure stays cached until invalidated, so
+                // React's retry after an error boundary does not load again,
+                // unless a mutation or sync invalidated it while pending.
+                settleLoadingPromise(loadingPromise, patches);
+              }
 
               /**
-               * Release promises flagged during mutation when they finish
-               * resolving. This keeps in-flight promise identity stable and
-               * prevents stale cache entries after completion.
+               * Release promises flagged during mutation when they settle. This
+               * keeps in-flight promise identity stable and prevents stale
+               * cache entries after completion.
                */
-              if (loadingPromise.releaseOnResolve) {
+              if (loadingPromise.releaseOnSettle) {
                 loadingPromisesByQuery.delete(query);
               }
             }
@@ -1588,6 +1620,16 @@ export const createEvolu =
               "OnExport received without pending export.",
             );
             exportDatabasePending.resolve(message.file);
+            exportDatabasePending = null;
+            break;
+          }
+
+          case "OnExportFailed": {
+            assert(
+              exportDatabasePending,
+              "OnExportFailed received without pending export.",
+            );
+            exportDatabasePending.reject(message.error);
             exportDatabasePending = null;
             break;
           }
@@ -1759,14 +1801,15 @@ export const createEvolu =
         return loadingPromise.promise as Promise<QueryRows<R>>;
       }
 
-      const { promise, resolve } = Promise.withResolvers<QueryRows>();
+      const { promise, resolve, reject } = Promise.withResolvers<QueryRows>();
       const typedPromise = promise as LoadingPromise["promise"];
       typedPromise.status = "pending";
 
       loadingPromisesByQuery.set(query, {
         promise: typedPromise,
         resolve,
-        releaseOnResolve: false,
+        reject,
+        releaseOnSettle: false,
       });
 
       queryBatch.push(query);
@@ -1888,10 +1931,10 @@ export const createEvolu =
             // subscribes. Register first so subsequent invalidations also
             // refresh this query.
             const loadingPromise = loadingPromisesByQuery.get(query);
-            if (loadingPromise?.releaseOnResolve) {
+            if (loadingPromise?.releaseOnSettle) {
               // Retain the pending promise for its awaiters, but queue a read
               // after the mutation or sync that invalidated its result.
-              loadingPromise.releaseOnResolve = false;
+              loadingPromise.releaseOnSettle = false;
               queryBatch.push(query);
             } else if (!loadingPromise) {
               const rows = rowsByQueryMapStore.get().get(query);
@@ -1901,7 +1944,7 @@ export const createEvolu =
                 void loadQuery(query);
                 const entry = loadingPromisesByQuery.get(query);
                 assertNotUndefined(entry);
-                fulfillLoadingPromise(entry, rows);
+                settleLoadingPromise(entry, ok(rows));
               }
             }
 

@@ -1,13 +1,17 @@
 import {
+  assert,
   assertEqual,
   assertInstanceOf,
+  assertSame,
   constVoid,
   createRun,
   createUnknownError,
   id,
+  NonEmptyTrimmedString100,
   ok,
   testStubGlobal,
   testWaitForWorkerMessage,
+  UnknownError,
   type CreateSqliteDriver,
   type EvoluDeps,
   type EvoluError,
@@ -18,6 +22,7 @@ import {
   createEvolu,
   createOwnerWebSocketTransport,
   createQueryBuilder,
+  kyselySql,
   testAppOwner,
 } from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
@@ -27,38 +32,30 @@ import { createEvoluDeps } from "./shared.ts";
 
 installPolyfills();
 
-/**
- * Creates a SQLite driver for an in-memory node:sqlite database. `onExec` sees
- * each statement first and can throw to fail it.
- */
-const setupNodeSqliteDriver =
-  (onExec: (sql: string) => void = constVoid): CreateSqliteDriver =>
-  () =>
-  () => {
-    const db = new DatabaseSync(":memory:");
-    return ok({
-      exec: ({ sql, parameters }) => {
-        onExec(sql);
-        const statement = db.prepare(sql);
-        if (statement.columns().length === 0) {
-          const { changes } = statement.run(...parameters);
-          return { rows: [], changes: Number(changes) };
-        }
-        const rows = statement.all(...parameters) as Array<SqliteRow>;
-        return { rows, changes: 0 };
-      },
-      iterate: ({ sql, parameters }, onRow) => {
-        onExec(sql);
-        for (const row of db.prepare(sql).iterate(...parameters))
-          if (!onRow(row as SqliteRow)) break;
-      },
-      export: () => new Uint8Array(),
-      deleteDatabase: constVoid,
-      [Symbol.dispose]: () => {
-        db.close();
-      },
-    });
-  };
+/** Creates a SQLite driver for an in-memory node:sqlite database. */
+const setupNodeSqliteDriver = (): CreateSqliteDriver => () => () => {
+  const db = new DatabaseSync(":memory:");
+  return ok({
+    exec: ({ sql, parameters }) => {
+      const statement = db.prepare(sql);
+      if (statement.columns().length === 0) {
+        const { changes } = statement.run(...parameters);
+        return { rows: [], changes: Number(changes) };
+      }
+      const rows = statement.all(...parameters) as Array<SqliteRow>;
+      return { rows, changes: 0 };
+    },
+    iterate: ({ sql, parameters }, onRow) => {
+      for (const row of db.prepare(sql).iterate(...parameters))
+        if (!onRow(row as SqliteRow)) break;
+    },
+    export: () => new Uint8Array(),
+    deleteDatabase: constVoid,
+    [Symbol.dispose]: () => {
+      db.close();
+    },
+  });
+};
 
 /** Resolves with the deps' first EvoluError. */
 const waitForEvoluError = (deps: EvoluDeps): Promise<EvoluError | null> =>
@@ -211,7 +208,7 @@ describe("createEvoluDeps", () => {
     );
   });
 
-  it("reports a database whose query SQLite fails as an UnknownError", async () => {
+  it("rejects a query SQLite fails and keeps the database available", async () => {
     const reportError =
       mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>();
     using _errorUtils = testStubGlobal("ErrorUtils", {
@@ -220,34 +217,78 @@ describe("createEvoluDeps", () => {
         mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
       reportError,
     });
-    const error = new Error("no such column: title");
     using deps = createEvoluDeps({
       reloadApp: constVoid,
-      createSqliteDriver: setupNodeSqliteDriver((sql) => {
-        if (sql.includes('from "todo"')) throw error;
-      }),
+      createSqliteDriver: setupNodeSqliteDriver(),
     });
-    const evoluError = waitForEvoluError(deps);
-    const schema = { todo: { id: id("Todo") } };
+    const schema = {
+      todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
+    };
+    const createQuery = createQueryBuilder(schema);
+    // A filter a user wrote, which SQLite fails to prepare.
+    const brokenQuery = createQuery((db) =>
+      db
+        .selectFrom("todo")
+        .select("id")
+        .where(kyselySql<boolean>`title = 1 +`),
+    );
+    const titlesQuery = createQuery((db) =>
+      db.selectFrom("todo").select("title"),
+    );
     await using run = createRun(deps);
-    await using evolu = await run.ok(
-      createEvolu(schema, {
-        appName: AppName.orThrow("query"),
-        appOwner: testAppOwner,
-        transports: [],
-        memoryOnly: true,
-      }),
-    );
+    let tenantDisposed = Promise.resolve();
+    {
+      await using evolu = await run.ok(
+        createEvolu(schema, {
+          appName: AppName.orThrow("query"),
+          appOwner: testAppOwner,
+          transports: [],
+          memoryOnly: true,
+        }),
+      );
 
-    void evolu.loadQuery(
-      createQueryBuilder(schema)((db) => db.selectFrom("todo").select("id")),
-    );
+      // A refused database would set evoluError instead.
+      const outcome = await Promise.race([
+        evolu.loadQuery(brokenQuery).then(
+          () => ({ type: "Loaded" }) as const,
+          (error: unknown) => ({ type: "Rejected", error }) as const,
+        ),
+        waitForEvoluError(deps).then(
+          (error) => ({ type: "EvoluError", error }) as const,
+        ),
+      ]);
 
-    assertEqual(await evoluError, createUnknownError(error));
-    // The worker's panic is reported once.
-    assertEqual(
-      reportError.mock.calls.map((call) => call.arguments[0]),
-      [error],
-    );
+      assertSame(outcome.type, "Rejected");
+      assert(
+        UnknownError.is(outcome.error),
+        "The load rejects with an UnknownError.",
+      );
+      const { message } = outcome.error.error as { readonly message: unknown };
+      assertSame(message, "incomplete input");
+
+      const inserted = Promise.withResolvers<void>();
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("stored") },
+        { onComplete: inserted.resolve },
+      );
+      await inserted.promise;
+      assertEqual(await evolu.loadQuery(titlesQuery), [{ title: "stored" }]);
+      assertSame(deps.evoluError.get(), null);
+      assertEqual(reportError.mock.calls, []);
+
+      // The in-process SharedWorker disposes the database's tenant once it is
+      // idle after its last instance. Until then, a later test's deps could
+      // host the database's next worker.
+      tenantDisposed = new Promise<void>((resolve) => {
+        const unsubscribe = deps.syncState.subscribe(() => {
+          if (deps.syncState.get()?.tenants.some((t) => t.name === evolu.name))
+            return;
+          unsubscribe();
+          resolve();
+        });
+      });
+    }
+    await tenantDisposed;
   });
 });

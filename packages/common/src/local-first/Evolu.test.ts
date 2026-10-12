@@ -19,6 +19,7 @@ import type { Brand } from "../Brand.ts";
 import { createBuffer } from "../Bytes.ts";
 import type { ConsoleEntry, TestConsole } from "../Console.ts";
 import { testCreateConsole } from "../Console.ts";
+import { createUnknownError, type UnknownError } from "../Error.ts";
 import { constVoid } from "../Function.ts";
 import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
 import {
@@ -50,6 +51,7 @@ import {
   ProtocolErrorCode,
   ProtocolMessageRangesMaxSize,
 } from "./Protocol.ts";
+import type { Patch, Query } from "./Query.ts";
 import { createQueryBuilder } from "./Schema.ts";
 import {
   consoleEntryOrErrorBroadcastChannelName,
@@ -71,7 +73,7 @@ import {
   testCreateLockManager,
 } from "../LockManager.ts";
 import { installPolyfills } from "../Polyfills.ts";
-import { err, ok } from "../Result.ts";
+import { err, ok, type Result } from "../Result.ts";
 import { SqliteBoolean } from "../Sqlite.ts";
 import { explicitAbortReason, testCreateDeps, testCreateRun } from "../Task.ts";
 import { testCreateId } from "../Test.ts";
@@ -1908,7 +1910,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [{ title: "A" }] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2210,7 +2212,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2245,7 +2247,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [
             todoTitleQuery,
-            [{ op: "replaceAll", value: [{ title: "Synced" }] }],
+            ok([{ op: "replaceAll", value: [{ title: "Synced" }] }]),
           ],
         ]),
         onCompleteIds: [],
@@ -2283,7 +2285,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2293,7 +2295,10 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [{ title: "New" }] }]],
+          [
+            todoTitleQuery,
+            ok([{ op: "replaceAll", value: [{ title: "New" }] }]),
+          ],
         ]),
         onCompleteIds: [],
       });
@@ -2319,7 +2324,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2343,7 +2348,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2366,7 +2371,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [
             todoTitleQuery,
-            [{ op: "replaceAll", value: [{ title: "Synced" }] }],
+            ok([{ op: "replaceAll", value: [{ title: "Synced" }] }]),
           ],
         ]),
         onCompleteIds: [],
@@ -2400,7 +2405,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2565,7 +2570,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [{ title: "R" }] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "R" }] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2591,7 +2596,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [{ title: "A" }] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2638,7 +2643,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [{ title: "A" }] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2650,7 +2655,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [{ title: "B" }] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "B" }] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2665,6 +2670,145 @@ describe("Evolu", () => {
       unsubscribe();
     });
 
+    it("rejects a load SQLite failed and keeps the rejection cached until a mutation", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      const error = createUnknownError(new Error("incomplete input"));
+
+      const load = evolu.loadQuery(todoTitleQuery);
+      // Handled before it rejects, as React use() handles a pending promise.
+      const rejection = assertRejects(load, error);
+      await testWaitForWorkerMessage();
+      evoluInputs.length = 0;
+
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([[todoTitleQuery, err(error)]]),
+        onCompleteIds: [],
+      });
+      await testWaitForWorkerMessage();
+
+      // React use() reads a rejection synchronously.
+      assert("status" in load, "Cached promises expose React status");
+      assertSame(load.status, "rejected");
+      assert("reason" in load, "Rejected promises expose their reason");
+      assertSame(load.reason, error);
+      await rejection;
+      assertSame(evolu.loadQuery(todoTitleQuery), load);
+      assertEqual(evolu.getQueryRows(todoTitleQuery), []);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, []);
+
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("M") });
+      await testWaitForWorkerMessage();
+      evoluInputs.length = 0;
+
+      assertNotSame(evolu.loadQuery(todoTitleQuery), load);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [
+        { type: "Query", queries: new Set([todoTitleQuery]) },
+      ]);
+    });
+
+    it("keeps a subscribed query's rows when its refresh fails and rejects its next load", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      const error = createUnknownError(new Error("malformed JSON"));
+      let notifications = 0;
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(() => {
+        notifications += 1;
+      });
+
+      const firstLoad = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
+        ]),
+        onCompleteIds: [],
+      });
+      const rows = await firstLoad;
+      notifications = 0;
+      const otherLoad = evolu.loadQuery(todoTitleDescQuery);
+
+      // The query after the failed one still loads.
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map<
+          Query,
+          Result<ReadonlyArray<Patch>, UnknownError>
+        >([
+          [todoTitleQuery, err(error)],
+          [
+            todoTitleDescQuery,
+            ok([{ op: "replaceAll", value: [{ title: "C" }] }]),
+          ],
+        ]),
+        onCompleteIds: [],
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(await otherLoad, [{ title: "C" }]);
+      assertEqual(evolu.getQueryRows(todoTitleDescQuery), [{ title: "C" }]);
+      // Equal rows, but a new array, so subscribers render and read the
+      // rejected load.
+      assertEqual(evolu.getQueryRows(todoTitleQuery), rows);
+      assertNotSame(evolu.getQueryRows(todoTitleQuery), rows);
+      assertSame(notifications, 1);
+      const failedLoad = evolu.loadQuery(todoTitleQuery);
+      assertNotSame(failedLoad, firstLoad);
+      assert("status" in failedLoad, "Cached promises expose React status");
+      assertSame(failedLoad.status, "rejected");
+
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "B" }] }])],
+        ]),
+        onCompleteIds: [],
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(await evolu.loadQuery(todoTitleQuery), [{ title: "B" }]);
+      assertSame(notifications, 2);
+      // Handled late, so node:test would fail this test had the cached
+      // rejection been reported as unhandled.
+      await assertRejects(failedLoad, error);
+      unsubscribe();
+    });
+
+    it("releases a load SQLite failed after a mutation invalidated it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      const error = createUnknownError(new Error("malformed JSON"));
+
+      const load = evolu.loadQuery(todoTitleQuery);
+      const rejection = assertRejects(load, error);
+      await testWaitForWorkerMessage();
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("M") });
+      await testWaitForWorkerMessage();
+
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([[todoTitleQuery, err(error)]]),
+        onCompleteIds: [],
+      });
+      await rejection;
+      evoluInputs.length = 0;
+
+      // The failure answered a read the mutation made stale, so it is not
+      // cached.
+      assertNotSame(evolu.loadQuery(todoTitleQuery), load);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [
+        { type: "Query", queries: new Set([todoTitleQuery]) },
+      ]);
+    });
+
     it("OnPatchesByQuery ignores queries without loading promises", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs, postEvoluOutput } = setup;
@@ -2673,7 +2817,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [{ title: "X" }] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "X" }] }])],
         ]),
         onCompleteIds: [],
       });
@@ -2696,7 +2840,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
-          [todoTitleQuery, [{ op: "replaceAll", value: [{ title: "A" }] }]],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
         ]),
         onCompleteIds: [],
       });
@@ -3242,6 +3386,37 @@ describe("Evolu", () => {
       );
     });
 
+    it("throws when OnExportFailed arrives without pending export", async () => {
+      const channels: Array<{
+        readonly port1: {
+          onMessage: ((message: EvoluOutput) => void) | null;
+        };
+      }> = [];
+
+      await using setup = await setupRunWithEvoluDeps({
+        createMessageChannel: <Input, Output = never>() => {
+          const channel = testCreateMessageChannel<Input, Output>();
+          channels.push(channel as never);
+          return channel;
+        },
+      });
+      const { run } = setup;
+      await run.ok(testCreateEvolu);
+
+      const evoluChannel = channels.find((channel) => channel.port1.onMessage);
+      assertNonNullable(evoluChannel?.port1.onMessage);
+
+      assertEqual(
+        assertThrowsInstanceOf(() => {
+          evoluChannel.port1.onMessage?.({
+            type: "OnExportFailed",
+            error: createUnknownError(new Error("out of memory")),
+          });
+        }, Error).message,
+        "OnExportFailed received without pending export.",
+      );
+    });
+
     it("exports database for one caller", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs, postEvoluOutput } = setup;
@@ -3316,6 +3491,27 @@ describe("Evolu", () => {
       postEvoluOutput({ type: "OnExport", file: secondFile });
 
       assertEqualBytes(await thirdExport, secondFile);
+    });
+
+    it("rejects a failed export and exports again on the next call", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      const error = createUnknownError(new Error("out of memory"));
+
+      const failedExport = evolu.exportDatabase();
+      await testWaitForWorkerMessage();
+      postEvoluOutput({ type: "OnExportFailed", error });
+
+      await assertRejects(failedExport, error);
+
+      const nextExport = evolu.exportDatabase();
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [{ type: "Export" }, { type: "Export" }]);
+
+      const file = new Uint8Array([1, 2, 3]);
+      postEvoluOutput({ type: "OnExport", file });
+      assertEqualBytes(await nextExport, file);
     });
 
     it("aborting run-wrapped export does not cancel shared export", async () => {

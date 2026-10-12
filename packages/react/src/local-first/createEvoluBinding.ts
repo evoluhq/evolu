@@ -14,7 +14,6 @@ import {
   type OwnerSyncStatus,
   type Queries,
   type QueriesToQueryRows,
-  type QueriesToQueryRowsPromises,
   type Query,
   type QueryRows,
   type Row,
@@ -47,21 +46,20 @@ export interface ReactBinding<S extends EvoluSchema = EvoluSchema> {
    *
    * Note that `useQuery` uses React Suspense. It means every usage of
    * `useQuery` blocks rendering until loading is completed. To avoid loading
-   * waterfall with more queries, use `useQueries`.
+   * waterfall with more queries, use `useQueries`. A query SQLite fails throws
+   * its error to the nearest error boundary; see {@link Evolu.loadQuery}.
+   * Resetting the boundary throws the cached error again until a mutation or
+   * sync invalidates it.
    *
-   * The `promise` option allows preloading queries before rendering, which can
-   * be useful for complex queries that might take noticeable time even with
-   * local data. However, this is rarely needed as local queries are typically
-   * fast.
+   * To start loading before rendering, which is rarely needed as local queries
+   * are typically fast, call {@link Evolu.loadQuery}. `useQuery` then reads the
+   * same cached load.
    */
   readonly useQuery: <R extends Row>(
     query: Query<S, R>,
     options?: Partial<{
       /** Without subscribing to changes. */
       readonly once: boolean;
-
-      /** Reuse existing promise instead of loading so query will not suspense. */
-      readonly promise: Promise<QueryRows<R>>;
     }>,
   ) => QueryRows<R>;
 
@@ -75,12 +73,6 @@ export interface ReactBinding<S extends EvoluSchema = EvoluSchema> {
     options?: Partial<{
       /** Queries that should be only loaded, not subscribed to. */
       readonly once: [...OQ];
-
-      /** Reuse existing promises instead of loading so query will not suspense. */
-      readonly promises: [
-        ...QueriesToQueryRowsPromises<Q>,
-        ...QueriesToQueryRowsPromises<OQ>,
-      ];
     }>,
   ) => [...QueriesToQueryRows<Q>, ...QueriesToQueryRows<OQ>];
 
@@ -212,16 +204,17 @@ export const createEvoluBinding = <
     query: Query<S, R>,
     options: Partial<{
       readonly once: boolean;
-      readonly promise: Promise<QueryRows<R>>;
     }> = {},
   ): QueryRows<R> => {
     const evolu = useEvolu();
     const isSSR = useIsSsr();
 
     if (isSSR) {
-      if (!options.promise) void evolu.loadQuery(query);
+      // A load that fails before the render after hydration reads it would
+      // otherwise also be reported as unhandled.
+      void evolu.loadQuery(query).then(constVoid, constVoid);
     } else {
-      use(options.promise ?? evolu.loadQuery(query));
+      use(evolu.loadQuery(query));
     }
 
     return useQuerySubscription(query, options);
@@ -231,10 +224,6 @@ export const createEvoluBinding = <
     queries: [...Q],
     options: Partial<{
       readonly once: [...OQ];
-      readonly promises: [
-        ...QueriesToQueryRowsPromises<Q>,
-        ...QueriesToQueryRowsPromises<OQ>,
-      ];
     }> = {},
   ): [...QueriesToQueryRows<Q>, ...QueriesToQueryRows<OQ>] => {
     const evolu = useEvolu();
@@ -242,13 +231,12 @@ export const createEvoluBinding = <
     const allQueries = once ? queries.concat(once) : queries;
 
     const wasSSR = useIsSsr();
-    if (wasSSR) {
-      if (!options.promises) void evolu.loadQueries(allQueries);
-    } else if (options.promises) {
-      options.promises.map(use);
-    } else {
-      evolu.loadQueries(allQueries).map(use);
-    }
+    const promises = evolu.loadQueries(allQueries);
+    // While server rendering, as in useQuery. Otherwise, use() suspends on the
+    // first pending promise, so a later one that fails before React reads it
+    // would also be reported as unhandled.
+    for (const promise of promises) void promise.then(constVoid, constVoid);
+    if (!wasSSR) promises.map(use);
 
     return allQueries.map((query, index) =>
       // Safe until the number of queries is stable.
