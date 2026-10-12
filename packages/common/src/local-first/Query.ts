@@ -30,6 +30,7 @@ import { createMutableRecord, isPlainObject } from "../Object.ts";
 import type { SqliteQueryString, SqliteValueInput } from "../Sqlite.ts";
 import { eqSqliteValue } from "../Sqlite.ts";
 import { createId, String } from "../Type.ts";
+import type { CompileTimeError } from "../Types.ts";
 import type { EvoluSchema } from "./Schema.ts";
 
 export { sql as kyselySql } from "kysely";
@@ -154,6 +155,10 @@ export interface Row {
  * accidental parsing of ordinary string columns that merely happen to start
  * with `{` or `[`.
  *
+ * SQLite JSON cannot hold a `Uint8Array`, so selecting one is a compile-time
+ * error. Select it outside this helper. The check needs a concrete row type, so
+ * a function generic over the selection cannot pass it to this helper.
+ *
  * ### Example
  *
  * ```ts
@@ -199,12 +204,17 @@ export interface Row {
  * >();
  * ```
  */
-export const evoluJsonArrayFrom = <O>(
+export function evoluJsonArrayFrom<O>(
   expr: SelectQueryBuilderExpression<O>,
-): RawBuilder<Array<KyselySimplify<O>>> =>
-  kyselySqlBuilder`(select ${kyselySqlBuilder.lit(kyselyJsonIdentifier)} || coalesce(json_group_array(json_object(${kyselySqlBuilder.join(
+  ...error: JsonUint8ArrayError<"evoluJsonArrayFrom", O>
+): RawBuilder<Array<KyselySimplify<O>>>;
+export function evoluJsonArrayFrom<O>(
+  expr: SelectQueryBuilderExpression<O>,
+): RawBuilder<Array<KyselySimplify<O>>> {
+  return kyselySqlBuilder`(select ${kyselySqlBuilder.lit(kyselyJsonIdentifier)} || coalesce(json_group_array(json_object(${kyselySqlBuilder.join(
     getSqliteJsonObjectArgs(expr.toOperationNode(), "agg"),
   )})), '[]') from ${expr} as agg)`;
+}
 
 /**
  * An improved Evolu version of Kysely's SQLite `jsonObjectFrom` helper.
@@ -214,6 +224,10 @@ export const evoluJsonArrayFrom = <O>(
  * per-runtime identifier and only parses values carrying that prefix, avoiding
  * accidental parsing of ordinary string columns that merely happen to start
  * with `{` or `[`.
+ *
+ * SQLite JSON cannot hold a `Uint8Array`, so selecting one is a compile-time
+ * error. Select it outside this helper. The check needs a concrete row type, so
+ * a function generic over the selection cannot pass it to this helper.
  *
  * The subquery must only return one row.
  *
@@ -264,12 +278,17 @@ export const evoluJsonArrayFrom = <O>(
  * >();
  * ```
  */
-export const evoluJsonObjectFrom = <O>(
+export function evoluJsonObjectFrom<O>(
   expr: SelectQueryBuilderExpression<O>,
-): RawBuilder<KyselySimplify<O> | null> =>
-  kyselySqlBuilder`(select ${kyselySqlBuilder.lit(kyselyJsonIdentifier)} || json_object(${kyselySqlBuilder.join(
+  ...error: JsonUint8ArrayError<"evoluJsonObjectFrom", O>
+): RawBuilder<KyselySimplify<O> | null>;
+export function evoluJsonObjectFrom<O>(
+  expr: SelectQueryBuilderExpression<O>,
+): RawBuilder<KyselySimplify<O> | null> {
+  return kyselySqlBuilder`(select ${kyselySqlBuilder.lit(kyselyJsonIdentifier)} || json_object(${kyselySqlBuilder.join(
     getSqliteJsonObjectArgs(expr.toOperationNode(), "obj"),
   )}) from ${expr} as obj)`;
+}
 
 /**
  * An improved Evolu version of Kysely's SQLite `jsonBuildObject` helper.
@@ -279,6 +298,10 @@ export const evoluJsonObjectFrom = <O>(
  * per-runtime identifier and only parses values carrying that prefix, avoiding
  * accidental parsing of ordinary string columns that merely happen to start
  * with `{` or `[`.
+ *
+ * SQLite JSON cannot hold a `Uint8Array`, so selecting one is a compile-time
+ * error. Select it outside this helper. The check needs a concrete row type, so
+ * a function generic over the selection cannot pass it to this helper.
  *
  * ### Example
  *
@@ -325,18 +348,51 @@ export const evoluJsonObjectFrom = <O>(
  * >();
  * ```
  */
-export const evoluJsonBuildObject = <
+export function evoluJsonBuildObject<
   O extends Record<string, Expression<unknown>>,
 >(
   obj: O,
-): RawBuilder<
-  KyselySimplify<{
-    [K in keyof O]: O[K] extends Expression<infer V> ? V : never;
-  }>
-> =>
-  kyselySqlBuilder`${kyselySqlBuilder.lit(kyselyJsonIdentifier)} || json_object(${kyselySqlBuilder.join(
+  ...error: JsonUint8ArrayError<"evoluJsonBuildObject", ExpressionValues<O>>
+): RawBuilder<KyselySimplify<ExpressionValues<O>>>;
+export function evoluJsonBuildObject<
+  O extends Record<string, Expression<unknown>>,
+>(obj: O): RawBuilder<KyselySimplify<ExpressionValues<O>>> {
+  return kyselySqlBuilder`${kyselySqlBuilder.lit(kyselyJsonIdentifier)} || json_object(${kyselySqlBuilder.join(
     Object.keys(obj).flatMap((k) => [kyselySqlBuilder.lit(k), obj[k]]),
   )})`;
+}
+
+// An optional field, as a conditional spread makes, keeps its value type, not
+// never, so the blob check sees it.
+type ExpressionValues<O extends Record<string, Expression<unknown>>> = {
+  [K in keyof O]: Exclude<O[K], undefined> extends Expression<infer V>
+    ? V
+    : never;
+};
+
+// SQLite JSON cannot hold blobs: json_object fails on one at run time, only
+// once a row has one, or, when the bytes happen to be valid JSONB, returns a
+// JSON value instead of them. Each variant of a union is checked, because its
+// keyof holds only the keys every variant shares. An `any` value is not
+// rejected, as it says nothing.
+type JsonUint8ArrayError<Helper extends string, O> = true extends (
+  O extends unknown
+    ? {
+        [K in keyof O]-?: 0 extends 1 & O[K]
+          ? false
+          : [Extract<O[K], Uint8Array>] extends [never]
+            ? false
+            : true;
+      }[keyof O]
+    : never
+)
+  ? [
+      error: CompileTimeError<
+        Helper,
+        "SQLite JSON cannot hold a Uint8Array. Select it outside this helper."
+      >,
+    ]
+  : [];
 
 export const getJsonObjectArgs = (
   node: SelectQueryNode,

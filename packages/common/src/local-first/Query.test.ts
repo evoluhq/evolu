@@ -7,7 +7,12 @@ import {
   assertThrowsInstanceOf,
   assertTrue,
 } from "../Assert.ts";
-import { ColumnNode, type SelectQueryNode } from "kysely";
+import {
+  ColumnNode,
+  type Expression,
+  type SelectQueryBuilder,
+  type SelectQueryNode,
+} from "kysely";
 
 import type { Query, Row } from "./Query.ts";
 import {
@@ -22,7 +27,12 @@ import {
 } from "./Query.ts";
 import { createQueryBuilder } from "./Schema.ts";
 import { sqliteQueryStringToSqliteQuery } from "../Sqlite.ts";
-import { assertType, id, NonEmptyTrimmedString100 } from "../Type.ts";
+import {
+  assertType,
+  id,
+  NonEmptyTrimmedString100,
+  Uint8Array as Uint8ArrayType,
+} from "../Type.ts";
 
 const PersonId = id("Person");
 const PetId = id("Pet");
@@ -197,6 +207,84 @@ test("getJsonObjectArgs returns empty array for nodes without selections", () =>
   assertNotUndefined(operationNode);
 
   assertEqual(getJsonObjectArgs(operationNode, "agg"), []);
+});
+
+test("Evolu JSON helpers reject Uint8Array values at compile time", () => {
+  const FileSchema = {
+    file: {
+      id: id("File"),
+      name: NonEmptyTrimmedString100,
+      data: Uint8ArrayType,
+    },
+  };
+  const createFileQuery = createQueryBuilder(FileSchema);
+
+  createFileQuery((db) =>
+    db
+      .selectFrom("file")
+      .select("id")
+      .select((eb) => [
+        // @ts-expect-error ⛔ evoluJsonArrayFrom error: SQLite JSON cannot hold a Uint8Array. Select it outside this helper.
+        evoluJsonArrayFrom(eb.selectFrom("file").select(["id", "data"])).as(
+          "files",
+        ),
+        // @ts-expect-error ⛔ evoluJsonObjectFrom error: SQLite JSON cannot hold a Uint8Array. Select it outside this helper.
+        evoluJsonObjectFrom(eb.selectFrom("file").select(["id", "data"])).as(
+          "file",
+        ),
+        // @ts-expect-error ⛔ evoluJsonBuildObject error: SQLite JSON cannot hold a Uint8Array. Select it outside this helper.
+        evoluJsonBuildObject({ data: eb.ref("data") }).as("object"),
+      ]),
+  );
+
+  const files = createFileQuery((db) =>
+    db
+      .selectFrom("file")
+      .select(["id", "data"])
+      .select((eb) => [
+        evoluJsonBuildObject({ name: eb.ref("name") }).as("object"),
+      ]),
+  );
+  assertType<typeof files.Row.data, Uint8Array | null>();
+
+  // An `any` value says nothing about its type, so it is not rejected.
+  createFileQuery((db) =>
+    db
+      .selectFrom("file")
+      .select(() => [
+        evoluJsonBuildObject({ anything: kyselySql<any>`data` }).as("object"),
+      ]),
+  );
+
+  // Each variant of a union is checked, not only the keys they share.
+  const buildEither = (
+    values:
+      | { readonly data: Expression<Uint8Array | null> }
+      | { readonly name: Expression<string | null> },
+  ) =>
+    // @ts-expect-error ⛔ evoluJsonBuildObject error: SQLite JSON cannot hold a Uint8Array. Select it outside this helper.
+    evoluJsonBuildObject(values);
+  void buildEither;
+
+  // An optional field, as a conditional spread makes, is checked too.
+  const selectOptionalData = (includeData: boolean) =>
+    createFileQuery((db) =>
+      db.selectFrom("file").select((eb) => [
+        // @ts-expect-error ⛔ evoluJsonBuildObject error: SQLite JSON cannot hold a Uint8Array. Select it outside this helper.
+        evoluJsonBuildObject({
+          name: eb.ref("name"),
+          ...(includeData ? { data: eb.ref("data") } : {}),
+        }).as("object"),
+      ]),
+    );
+  void selectOptionalData;
+
+  const wrap = <DB, TB extends keyof DB, O>(
+    qb: SelectQueryBuilder<DB, TB, O>,
+  ) =>
+    // @ts-expect-error A function generic over the selection cannot pass it to this helper, because the check needs a concrete row type.
+    evoluJsonArrayFrom(qb);
+  void wrap;
 });
 
 test("evoluJsonArrayFrom rejects selectAll subqueries", () => {
