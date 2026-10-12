@@ -851,3 +851,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} శాతం లిటరల్ కాదు. "50%" లేదా "12.5%" వంటి విలువను ఉపయోగించండి.`;
+
+/**
+ * Formats a LeancasedError in Telugu.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} leancase రూపంలో ఉండాలి.`;

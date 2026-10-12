@@ -858,3 +858,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι λεκτικό ποσοστού. Χρησιμοποιήστε μια τιμή όπως "50%" ή "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Greek.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να είναι σε leancase.`;

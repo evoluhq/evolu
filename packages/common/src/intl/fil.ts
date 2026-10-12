@@ -853,3 +853,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang literal ng porsiyento. Gumamit ng halagang tulad ng "50%" o "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Filipino.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat nakasulat sa leancase.`;

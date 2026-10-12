@@ -745,3 +745,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal peratusan. Gunakan nilai seperti "50%" atau "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Malay.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} mesti dalam format leancase.`;

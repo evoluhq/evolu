@@ -865,3 +865,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `The value ${safelyStringifyUnknownValue(error.value)} is not a percentage literal. Use a value such as "50%" or "12.5%".`;
+
+/**
+ * Formats a LeancasedError in English.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `The value ${safelyStringifyUnknownValue(error.value)} must be in leancase.`;

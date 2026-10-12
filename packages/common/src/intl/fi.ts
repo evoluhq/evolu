@@ -851,3 +851,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole prosenttiliteraali. Käytä esimerkiksi arvoa "50%" tai "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Finnish.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava leancase-muodossa.`;

@@ -858,3 +858,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije literal postotka. Upotrijebite vrijednost poput "50%" ili "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Croatian.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti u obliku leancase.`;

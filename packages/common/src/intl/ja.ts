@@ -852,3 +852,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} はパーセントのリテラルではありません。"50%" または "12.5%" のような値を使用してください。`;
+
+/**
+ * Formats a LeancasedError in Japanese.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は leancase である必要があります。`;

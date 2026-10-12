@@ -849,3 +849,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি শতাংশের literal নয়। "50%" বা "12.5%"-এর মতো একটি মান ব্যবহার করুন।`;
+
+/**
+ * Formats a LeancasedError in Bengali.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি অবশ্যই leancase-এ লেখা হতে হবে।`;

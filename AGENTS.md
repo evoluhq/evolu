@@ -236,9 +236,10 @@ for a post, run `node scripts/code-image.mts --help`.
   never a patch, however simple the migration: add the new name in a minor, keep
   the old one as a `@deprecated` alias that names its replacement, and remove
   deprecated aliases together in an occasional major.
-- Local-first APIs, including their platform and framework integrations, are not
-  stable yet. Incompatible changes to them, including renames and removals, are
-  patch, not major; use minor for additions, and document migration impact.
+- Local-first APIs, including their platform and framework integrations, and
+  APIs marked `@experimental` are not stable yet. Incompatible changes to them,
+  including renames and removals, are patch, not major; use minor for additions,
+  and document migration impact.
 - `@evolu/sqlite-wasm` does not follow semver. It is versioned
   `<SQLite version>-build<n>`, any build may change its API, and
   `scripts/version-sqlite-wasm.mts` replaces the version its changeset bump

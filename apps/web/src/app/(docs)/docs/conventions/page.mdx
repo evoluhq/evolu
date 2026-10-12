@@ -1101,10 +1101,10 @@ of libraries compiled against it still name it. Remove deprecated aliases
 together in an occasional major release. Libraries that declare Evolu packages
 as peer dependencies then rarely have to move their ranges.
 
-Local-first APIs, including their platform and framework integrations, are not
-stable yet. Incompatible changes to them, renames and removals included, are
-patch releases. Additions are minor. Their changesets document the migration
-impact.
+Local-first APIs, including their platform and framework integrations, and APIs
+marked `@experimental` are not stable yet. Incompatible changes to them, renames
+and removals included, are patch releases. Additions are minor. Their changesets
+document the migration impact.
 
 `@evolu/sqlite-wasm` is the exception to semantic versioning. Like SQLite's own
 npm package, it is versioned `<SQLite version>-build<n>`, and any build may

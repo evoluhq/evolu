@@ -852,3 +852,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un literal de procentaj. Folosiți o valoare precum "50%" sau "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Romanian.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie scrisă în leancase.`;

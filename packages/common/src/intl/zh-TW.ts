@@ -842,3 +842,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是百分比字面值。請使用 "50%" 或 "12.5%" 這樣的值。`;
+
+/**
+ * Formats a LeancasedError in Traditional Chinese.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 必須為 leancase。`;

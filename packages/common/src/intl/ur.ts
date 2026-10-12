@@ -763,3 +763,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} فیصد کا لٹرل نہیں ہے۔ "50%" یا "12.5%" جیسی قدر استعمال کریں۔`;
+
+/**
+ * Formats a LeancasedError in Urdu.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} leancase میں ہونی چاہیے۔`;

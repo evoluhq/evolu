@@ -849,3 +849,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 백분율 리터럴이 아닙니다. "50%" 또는 "12.5%" 같은 값을 사용하세요.`;
+
+/**
+ * Formats a LeancasedError in Korean.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 leancase여야 합니다.`;

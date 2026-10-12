@@ -846,3 +846,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ลิเทอรัลเปอร์เซ็นต์ ใช้ค่าเช่น "50%" หรือ "12.5%"`;
+
+/**
+ * Formats a LeancasedError in Thai.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องอยู่ในรูปแบบ leancase`;

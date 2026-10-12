@@ -58,6 +58,7 @@ import * as Type from "../Type.ts";
 import { DurationLiteral } from "../Time.ts";
 import { PercentageLiteral } from "../Number.ts";
 import { ByteSizeLiteral } from "../Bytes.ts";
+import { LeancasedString } from "../Leancase.ts";
 import { ok, type Result } from "../Result.ts";
 import { mapObject, objectToEntries } from "../Object.ts";
 
@@ -178,6 +179,7 @@ const formattersFor = (locale: typeof en) => ({
   Isbn: locale.formatIsbnError,
   Json: locale.formatJsonError,
   JsonValue: locale.formatJsonValueError,
+  Leancased: locale.formatLeancasedError,
   Length2: locale.formatLengthError,
   Length16: locale.formatLengthError,
   LessThan1: locale.formatLessThanError,
@@ -314,6 +316,7 @@ const typesByLocale = Type.localizeTypes(
     JsonObject: Type.JsonObject,
     JsonValue: Type.JsonValue,
     JsonValueFromJson: Type.JsonValueFromJson,
+    LeancasedString,
     Literal: Type.literal("yes"),
     Mnemonic: Type.Mnemonic,
     Name: Type.Name,
@@ -515,6 +518,7 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
   (f) => f.formatUppercasedError({ type: "Uppercased", value: "abc" }),
   (f) => f.formatLowercasedError({ type: "Lowercased", value: "ABC" }),
   (f) => f.formatTrimmedError({ type: "Trimmed", value: " a " }),
+  (f) => f.formatLeancasedError({ type: "Leancased", value: "Hello." }),
   (f) => f.formatWellFormedError({ type: "WellFormed", value: "\uD800" }),
   (f) =>
     f.formatNormalizedError({

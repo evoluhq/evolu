@@ -22,6 +22,7 @@ export * from "./Hash.ts";
 export * from "./Http.ts";
 export * from "./Identicon.ts";
 export * from "./LeakDetector.ts";
+export * from "./Leancase.ts";
 export * from "./LockManager.ts";
 export * from "./Lookup.ts";
 export * from "./Microtask.ts";

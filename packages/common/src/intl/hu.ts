@@ -855,3 +855,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem százalékliterál. Használjon például "50%" vagy "12.5%" értéket.`;
+
+/**
+ * Formats a LeancasedError in Hungarian.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek leancase-formátumúnak kell lennie.`;

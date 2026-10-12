@@ -849,3 +849,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו ליטרל של אחוזים. יש להשתמש בערך כגון "50%" או "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Hebrew.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות בפורמט leancase.`;

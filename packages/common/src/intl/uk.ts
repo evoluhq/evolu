@@ -855,3 +855,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є відсотковим літералом. Використовуйте значення на кшталт "50%" або "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Ukrainian.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має бути записане у форматі leancase.`;

@@ -851,3 +851,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சதவீத literal அல்ல. "50%" அல்லது "12.5%" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;
+
+/**
+ * Formats a LeancasedError in Tamil.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} leancase வடிவத்தில் இருக்க வேண்டும்.`;

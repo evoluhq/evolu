@@ -852,3 +852,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} není procentní literál. Použijte například "50%" nebo "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Czech.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být v leancase.`;

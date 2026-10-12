@@ -784,3 +784,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là literal phần trăm. Hãy dùng giá trị như "50%" hoặc "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Vietnamese.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} phải được viết theo leancase.`;

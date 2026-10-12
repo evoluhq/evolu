@@ -754,3 +754,13 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si literali ya asilimia. Tumia thamani kama "50%" au "12.5%".`;
+
+/**
+ * Formats a LeancasedError in Swahili.
+ *
+ * @experimental
+ */
+export const formatLeancasedError: TypeErrorFormatter<
+  TypeValueError<"Leancased">
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe katika leancase.`;
