@@ -1,0 +1,143 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+import { LeancaseConverter } from "@/components/LeancaseConverter";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2026-10-12",
+  title: "introducing leancase",
+  description:
+    "a minimal writing style with exact rules, a normal form, and a function in evolu",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+i noticed that more and more people write like this. no capital letters, no period at the end of a line. it saves typing, and it removes noise when eyes parse the text, so i gave it a name: leancase
+
+"lean" means minimal, it pairs with "lowercase", and it's a nod to [lean](https://lean-lang.org), the language
+
+## the rules
+
+1. everything is lowercase, including sentence starts, names, and acronyms: ai, lean, wasm, c
+2. links with a scheme, @handles, #hashtags, and code marked with backticks keep their exact case, because changing them can break them or change their meaning
+3. no period at the end of a line or paragraph
+4. periods between sentences on the same line stay
+5. punctuation that carries meaning stays: commas, colons, apostrophes, hyphens in compounds like "ai-generated," and question marks
+6. spelling and grammar stay correct. the casualness is in the look, not in mistakes, which is what separates leancase from sloppy texting
+7. line breaks separate thoughts, roughly one idea per paragraph
+8. wording never changes. leancase only touches capitalization and final periods
+
+## examples
+
+every pair below runs as a test:
+
+```ts
+import { assertEqual, leancase } from "@evolu/common";
+
+assertEqual(
+  leancase("I noticed people write like this. It saves typing."),
+  "i noticed people write like this. it saves typing",
+);
+assertEqual(
+  leancase("I build AI tools with Lean, WASM, and C."),
+  "i build ai tools with lean, wasm, and c",
+);
+assertEqual(
+  leancase(
+    "Call `leancase()`, then read https://evolu.dev/docs/api-reference/common/Leancase.",
+  ),
+  "call `leancase()`, then read https://evolu.dev/docs/api-reference/common/Leancase",
+);
+assertEqual(
+  leancase("Thanks @Steida for #LocalFirst!"),
+  "thanks @Steida for #LocalFirst!",
+);
+assertEqual(leancase("Wait..."), "wait...");
+assertEqual(leancase("Is it idempotent?"), "is it idempotent?");
+assertEqual(leancase("Apples, pears, etc."), "apples, pears, etc");
+assertEqual(leancase("(An aside.)"), "(an aside)");
+assertEqual(
+  leancase(
+    "Writing code is dead, long live reading tests, er, learning formal verification then formalizing all the things.",
+  ),
+  "writing code is dead, long live reading tests, er, learning formal verification then formalizing all the things",
+);
+```
+
+## why it works
+
+leancase marks every boundary once. a line break already ends a sentence, so a period before it repeats it. a period in the middle of a line already ends a sentence, so a capital letter after it repeats it. leancase drops the repeats
+
+it also reads the way people talk: speech has no capital letters, and a line break works like a pause
+
+names and acronyms are different. their capitals are not repeats, they carry information: us and `US`, it and `IT`, go and `Go`. leancase drops them anyway for a uniform look, and context almost always tells them apart
+
+## a normal form
+
+rule 8 is the important one. it makes leancase a pure formatting transform: any text converts mechanically, and converting it again changes nothing. in lean terms, the conversion is idempotent, so leancase is a normal form: exactly the text the conversion leaves unchanged
+
+the conversion enforces rules 1 to 4, and rules 5 and 8 say it changes nothing else. rules 6 and 7 are writing advice that no conversion can check
+
+that's also how evolu validates it. `LeancasedString` accepts a string only when `leancase` returns it unchanged, the same way `TrimmedString` accepts a string only when `trim` does
+
+## try it
+
+<LeancaseConverter />
+
+## in evolu
+
+leancase ships in `@evolu/common` as an experimental api:
+
+```ts
+import {
+  assertEqual,
+  assertOk,
+  leancase,
+  LeancasedString,
+} from "@evolu/common";
+
+const docs = "https://evolu.dev/docs/api-reference/common/Leancase";
+const post = leancase(`Thanks, @Steida. See ${docs}.`);
+assertEqual(post, `thanks, @Steida. see ${docs}`);
+assertOk(LeancasedString.fromUnknown(post), post);
+```
+
+## the edge cases
+
+rules for people can be loose. rules for code have to be exact, so these are the decisions behind `leancase` and `LeancasedString`:
+
+- code keeps its case only when it's marked with backticks or a code fence. unmarked, `toLeancase` would become toleancase
+- a url needs a scheme, like `https://`. bare domains such as evolu.dev are lowercased with any path after them, so write the scheme when a path is case-sensitive
+- a url can start right after other text, as in japanese, where no space comes before it
+- a period hiding behind closing marks is still a final period: `(an aside.)` becomes `(an aside)`
+- two or more periods in a row stay, so an ellipsis survives...
+- an abbreviation at the end of a line loses its period: `etc.` becomes `etc`
+- a line with nothing but periods, spaces, and closing marks ends no sentence, so it stays
+- lowercasing ignores the locale, so your language settings don't change the result. the price is turkish, where `I` should become a dotless `ı`
+- markdown is not supported. a soft line break inside a paragraph renders as a space, so dropping the period before it would merge two sentences. this post applies leancase per paragraph, not per source line
+
+## from tests to proofs
+
+> writing code is dead, long live reading tests, er, learning formal verification then formalizing all the things
+
+leancase was specified by tests first: an example for every rule and edge case, then property tests with [fast-check](https://fast-check.dev) that throw thousands of random strings at three claims. converting twice equals converting once. line by line, only case changes and only final periods are removed. the result is always a valid `LeancasedString`
+
+the property tests found a bug the examples missed. a line with nothing but a period between `\r` and `\n` lost the period, and the two line breaks merged into one windows line break. that's how the rule about lines without content was born
+
+thousands of random strings make idempotence very likely, not certain. a proof in lean would make it certain
+
+## experimental
+
+the rules may still change, so leancase is experimental and can change in a minor or patch release. if you find text where it does the wrong thing, [open an issue](https://github.com/evoluhq/evolu/issues)
+
+## is this a joke?
+
+half a joke, half serious. i noticed a writing style and wanted to give it a name. once the name had exact rules, code could convert text to it and validate it, and both can be useful:
+
+- a chat or social app can offer leancase as a style for posts, so people who like the look don't have to fight their phone's autocapitalization
+- an app whose ui text is all lowercase can validate it and its translations with `LeancasedString`, so a capital letter or a final period never ships by accident
+- short casual text, such as notifications, status lines, and bot messages, can be written normally and converted to leancase before it's shown

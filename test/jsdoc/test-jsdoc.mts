@@ -16,6 +16,8 @@ export const schemaSourcePattern =
   "apps/web/src/app/(docs)/docs/schema/page.mdx";
 export const testingSourcePattern =
   "apps/web/src/app/(docs)/docs/testing/page.mdx";
+export const leancasePostSourcePattern =
+  "apps/web/src/app/(landing)/blog/leancase/page.mdx";
 // TODO: When all documentation pages are included, exclude the Library page.
 // Its only TypeScript block documents installPolyfills, which this harness
 // already injects into every generated example.
@@ -26,6 +28,7 @@ export const documentationSourcePatterns = [
   resourceManagementSourcePattern,
   schemaSourcePattern,
   testingSourcePattern,
+  leancasePostSourcePattern,
 ] as const;
 
 export const selectJSDocIncludes = (

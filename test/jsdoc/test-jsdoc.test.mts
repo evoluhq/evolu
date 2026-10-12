@@ -4,6 +4,7 @@ import {
   changesetSourcePattern,
   conventionsSourcePattern,
   jsdocSourcePattern,
+  leancasePostSourcePattern,
   resourceManagementSourcePattern,
   schemaSourcePattern,
   selectJSDocIncludes,
@@ -19,6 +20,7 @@ describe("selectJSDocIncludes", () => {
       resourceManagementSourcePattern,
       schemaSourcePattern,
       testingSourcePattern,
+      leancasePostSourcePattern,
     ]);
   });
 
