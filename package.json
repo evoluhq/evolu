@@ -81,7 +81,7 @@
     "prettier": "^3.9.6",
     "prettier-plugin-embed": "^0.5.1",
     "prettier-plugin-jsdoc": "^1.8.0",
-    "prettier-plugin-sql-cst": "^0.22.1",
+    "prettier-plugin-sql-cst": "^0.23.0",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "sherif": "1.13.0",
     "shiki": "^4.4.3",

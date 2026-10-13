@@ -704,10 +704,8 @@ const migrateToVersion2 = ({ sqlite }: SqliteDep): void => {
       add column "quarantinedAt" integer;
     `,
     sql`
-      create index evolu_message_quarantine_reason_timestamp on evolu_message_quarantine (
-        "reason",
-        "timestamp"
-      );
+      create index evolu_message_quarantine_reason_timestamp
+      on evolu_message_quarantine ("reason", "timestamp");
     `,
   ]) {
     sqlite.exec(query);
@@ -764,20 +762,13 @@ const initializeDb =
 
       // Index for reading database changes by owner and timestamp.
       sql`
-        create index evolu_history_ownerId_timestamp on evolu_history (
-          "ownerId",
-          "timestamp"
-        );
+        create index evolu_history_ownerId_timestamp
+        on evolu_history ("ownerId", "timestamp");
       `,
 
       sql`
-        create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
-          "ownerId",
-          "table",
-          "id",
-          "column",
-          "timestamp" desc
-        );
+        create unique index evolu_history_ownerId_table_id_column_timestampDesc
+        on evolu_history ("ownerId", "table", "id", "column", "timestamp" desc);
       `,
 
       /**
@@ -836,10 +827,8 @@ const initializeDb =
     // last, as the migration creates it, so Evolu's own indexes are listed in one
     // order in fresh and migrated databases.
     sqlite.exec(sql`
-      create index evolu_message_quarantine_reason_timestamp on evolu_message_quarantine (
-        "reason",
-        "timestamp"
-      );
+      create index evolu_message_quarantine_reason_timestamp
+      on evolu_message_quarantine ("reason", "timestamp");
     `);
   };
 

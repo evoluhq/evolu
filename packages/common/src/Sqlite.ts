@@ -750,9 +750,8 @@ export const getSqliteSchema =
       select
         sqlite_master.name as tableName,
         table_info.name as columnName
-      from
-        sqlite_master
-        join pragma_table_info(sqlite_master.name) as table_info;
+      from sqlite_master
+      join pragma_table_info(sqlite_master.name) as table_info;
     `);
 
     tableAndColumnInfoRows.rows.forEach(({ tableName, columnName }) => {

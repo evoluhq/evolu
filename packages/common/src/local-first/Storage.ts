@@ -646,7 +646,10 @@ export const createBaseSqliteStorage = (
     // A batch has no known size, so unlike the CTEs bounded by
     // skiplistMaxLevel, the planner would make the owner's timestamps the outer
     // loop. A cross join keeps the order as written, so each timestamp is
-    // looked up by primary key.
+    // looked up by primary key. The condition is in where, not on, because
+    // sql-parser-cst, which formats this SQL, rejects cross join ... on and
+    // Prettier then leaves the query unformatted
+    // (https://github.com/nene/sql-parser-cst/issues/140).
     const result = deps.sqlite.exec<{
       timestampBytes: TimestampBytes;
     }>(sql`
@@ -663,10 +666,9 @@ export const createBaseSqliteStorage = (
           where pos <= length(${concatenatedTimestamps})
         )
       select s.timestampBytes
-      from
-        split_timestamps s
-        cross join evolu_timestamp t
-          on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
+      from split_timestamps s
+      cross join evolu_timestamp t
+      where t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
     `);
 
     return result.rows.map((row) => row.timestampBytes);
@@ -764,14 +766,8 @@ export const createBaseSqliteStorageTables = (deps: SqliteDep): void => {
     `,
 
     sql`
-      create index evolu_timestamp_index on evolu_timestamp (
-        "ownerId",
-        "l",
-        "t",
-        "h1",
-        "h2",
-        "c"
-      );
+      create index evolu_timestamp_index
+      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c");
     `,
 
     /**
@@ -940,10 +936,9 @@ const insertTimestamp =
                         ih2
                       ),
                       iif(node.t is not null, ic + node.c, ic)
-                    from
-                      fc
-                      left join evolu_timestamp as node
-                        on b and node.ownerId = ${ownerId} and node.t = nt
+                    from fc
+                    left join evolu_timestamp as node
+                      on b and node.ownerId = ${ownerId} and node.t = nt
                     where cl > 0
                   )
                 insert into evolu_timestamp (ownerId, t, l, h1, h2, c)
@@ -1027,10 +1022,9 @@ const insertTimestamp =
                     node.h2,
                     null
                   )
-                from
-                  fp
-                  left join evolu_timestamp as node
-                    on fp.b and node.ownerId = ${ownerId} and node.t = fp.nt
+                from fp
+                left join evolu_timestamp as node
+                  on fp.b and node.ownerId = ${ownerId} and node.t = fp.nt
                 where fp.cl > ${level}
               ),
               u(t, h1, h2) as (
@@ -1104,10 +1098,9 @@ const insertTimestamp =
                         p.t,
                         (${h1} | node.h1) - (${h1} & node.h1),
                         (${h2} | node.h2) - (${h2} & node.h2)
-                      from
-                        p
-                        join evolu_timestamp as node
-                          on node.ownerId = ${ownerId} and node.t = p.t
+                      from p
+                      join evolu_timestamp as node
+                        on node.ownerId = ${ownerId} and node.t = p.t
                       where p.t is not p.pt
                     )
                   update evolu_timestamp
@@ -1164,13 +1157,12 @@ const insertTimestamp =
                         node.h1,
                         node.h2,
                         node.c
-                      from
-                        c0
-                        left join evolu_timestamp as node
-                          on c0.b
-                          and c0.cl < ${level}
-                          and node.ownerId = ${ownerId}
-                          and node.t = c0.nt
+                      from c0
+                      left join evolu_timestamp as node
+                        on c0.b
+                        and c0.cl < ${level}
+                        and node.ownerId = ${ownerId}
+                        and node.t = c0.nt
                       where cl > 0
                     ),
                     c1(l, t, h1, h2, c) as (
@@ -1199,9 +1191,8 @@ const insertTimestamp =
                         (c2.h1 | c3.h1) - (c2.h1 & c3.h1),
                         (c2.h2 | c3.h2) - (c2.h2 & c3.h2),
                         c2.c + c3.c
-                      from
-                        c3
-                        join c2 on c2.rn = c3.rn + 1
+                      from c3
+                      join c2 on c2.rn = c3.rn + 1
                     ),
                     c4(l, t, h1, h2, c, rn) as (
                       select l, t, h1, h2, c, max(rn)
@@ -1245,12 +1236,11 @@ const insertTimestamp =
                         iif(not n.b and n.nt is not null, node.h1, null),
                         iif(not n.b and n.nt is not null, node.h2, null),
                         iif(not n.b and n.nt is not null, node.c, null)
-                      from
-                        n
-                        left join evolu_timestamp as node
-                          on not n.b
-                          and node.ownerId = ${ownerId}
-                          and node.t = n.nt
+                      from n
+                      left join evolu_timestamp as node
+                        on not n.b
+                        and node.ownerId = ${ownerId}
+                        and node.t = n.nt
                       where iif(n.b, n.l - 1 > (select min(l) from c4), 1)
                     ),
                     u(ut, uh1, uh2, uc) as (
@@ -1679,10 +1669,9 @@ const fingerprintRanges =
               c1.h2,
               iif(c1.ic + node.c <= c1.c, ${x("c1.h2", "node.h2")}, c1.h2)
             )
-          from
-            c1
-            left join evolu_timestamp as node
-              on not c1.b and node.ownerId = ${ownerId} and node.t = c1.nt
+          from c1
+          left join evolu_timestamp as node
+            on not c1.b and node.ownerId = ${ownerId} and node.t = c1.nt
           where iif(c1.b, 1, c1.ic != c1.c) and c1.dl >= 1
         ),
         c2(h1, h2, t, rn) as (
@@ -1708,9 +1697,8 @@ const fingerprintRanges =
             c2.rn,
             ${x("c3.oh1", "c2.h1")},
             ${x("c3.oh2", "c2.h2")}
-          from
-            c2
-            join c3 on c2.rn = c3.rn + 1
+          from c2
+          join c3 on c2.rn = c3.rn + 1
         )
       select b, cast(h1 as text) as h1, cast(h2 as text) as h2
       from c3;
