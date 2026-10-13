@@ -4,31 +4,21 @@ import { join, resolve } from "node:path";
 
 const repositoryDirectory = resolve(import.meta.dirname, "../..");
 
-// Svelte is excluded because importing @evolu/svelte creates web dependencies,
-// which Node.js cannot provide, and its runes need the Svelte compiler.
+// Svelte is excluded because its examples use runes, which need the Svelte
+// compiler and a component.
 export const jsdocSourcePattern = "packages/!(svelte)/src/**/*.{ts,tsx}";
 export const changesetSourcePattern = ".changeset/*.md";
-export const conventionsSourcePattern =
-  "apps/web/src/app/(docs)/docs/conventions/page.mdx";
-export const resourceManagementSourcePattern =
-  "apps/web/src/app/(docs)/docs/resource-management/page.mdx";
-export const schemaSourcePattern =
-  "apps/web/src/app/(docs)/docs/schema/page.mdx";
-export const testingSourcePattern =
-  "apps/web/src/app/(docs)/docs/testing/page.mdx";
-export const leancasePostSourcePattern =
-  "apps/web/src/app/(landing)/blog/leancase/page.mdx";
-// TODO: When all documentation pages are included, exclude the Library page.
-// Its only TypeScript block documents installPolyfills, which this harness
-// already injects into every generated example.
+// Every handwritten documentation page and blog post. The API reference pages
+// are generated from the JSDoc above.
+export const pageSourcePatterns = [
+  "apps/web/src/app/(docs)/docs/page.mdx",
+  "apps/web/src/app/(docs)/docs/!(api-reference)/**/page.mdx",
+  "apps/web/src/app/(landing)/**/page.mdx",
+] as const;
 export const documentationSourcePatterns = [
   jsdocSourcePattern,
   changesetSourcePattern,
-  conventionsSourcePattern,
-  resourceManagementSourcePattern,
-  schemaSourcePattern,
-  testingSourcePattern,
-  leancasePostSourcePattern,
+  ...pageSourcePatterns,
 ] as const;
 
 export const selectJSDocIncludes = (
@@ -67,6 +57,10 @@ export const testEvoluJSDocExamples = async (
         repositoryDirectory,
         "packages/nodejs/src/TestJSDoc.ts",
       ),
+      "@evolu/common/polyfills": join(
+        repositoryDirectory,
+        "packages/common/src/Polyfills.ts",
+      ),
       "@evolu/common/local-first": join(
         repositoryDirectory,
         "packages/common/src/local-first/index.ts",
@@ -76,9 +70,21 @@ export const testEvoluJSDocExamples = async (
         repositoryDirectory,
         "test/jsdoc/test-jsdoc-react-native.mts",
       ),
+      "@evolu/react-native/expo-sqlite": join(
+        repositoryDirectory,
+        "test/jsdoc/test-jsdoc-react-native-expo-sqlite.mts",
+      ),
+      "@evolu/react-web": join(
+        repositoryDirectory,
+        "test/jsdoc/test-jsdoc-react-web.mts",
+      ),
       "@evolu/sqlite-wasm": join(
         repositoryDirectory,
         "packages/sqlite-wasm/src/index.ts",
+      ),
+      "@evolu/svelte": join(
+        repositoryDirectory,
+        "test/jsdoc/test-jsdoc-svelte.mts",
       ),
       "@evolu/vue": join(repositoryDirectory, "packages/vue/src/index.ts"),
       "@evolu/web": join(repositoryDirectory, "test/jsdoc/test-jsdoc-web.mts"),

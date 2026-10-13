@@ -1088,6 +1088,16 @@ declarations.
 Use a `ts` fence, or a `tsx` fence for JSX, which the harness transforms before
 running it. The harness rejects other spellings, such as `typescript`.
 
+On a documentation page, an example that continues an earlier one can hide the
+setup it needs, such as the schema the page already defined, between
+`// ---cut-start---` and `// ---cut-end---` lines. The harness compiles and runs
+them, but the website, its copy button, and its Markdown for LLMs leave them
+out. Hide only what the page already shows or names, keep the visible imports,
+and hide an assertion only when it would distract from what the example
+teaches. JSDoc examples hide nothing, because editors show them as written. A
+Svelte component goes in a `svelte` fence, which the harness skips, because
+Node.js cannot run it.
+
 Prove the documented contract with assertions instead of describing expected
 output only in comments. Use `assertType` for static contracts, `assertEqual`
 for Data comparisons, `assertSame` for SameValue or reference identity,
@@ -1096,10 +1106,11 @@ for invariants and narrowing, and `assertOk` or `assertErr` for Results.
 
 After changing examples or exported APIs, run `pnpm test:jsdoc`, which checks
 the configured sources, and for a changed file outside them also run
-`pnpm test:jsdoc <changed-file>`. The configured sources include the JSDoc of
-every package except `@evolu/svelte`, whose examples need the Svelte compiler,
-and only some documentation pages; a passing suite does not prove that every
-documentation page was tested.
+`pnpm test:jsdoc <changed-file>`. The configured sources are every changeset,
+every handwritten documentation page and blog post, and the JSDoc of every
+package except `@evolu/svelte`, whose examples need the Svelte compiler. In
+Node.js, the examples run Evolu's workers in-process over in-memory SQLite and
+cannot reach relays.
 
 ### API reference organization
 

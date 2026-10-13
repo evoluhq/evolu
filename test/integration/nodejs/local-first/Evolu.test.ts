@@ -1448,19 +1448,19 @@ describe("Evolu integration", () => {
         indexes: [
           {
             name: "evolu_history_ownerId_timestamp",
-            sql: 'create index evolu_history_ownerId_timestamp on evolu_history (\n          "ownerId",\n          "timestamp"\n        )',
+            sql: 'create index evolu_history_ownerId_timestamp\n        on evolu_history ("ownerId", "timestamp")',
           },
           {
             name: "evolu_history_ownerId_table_id_column_timestampDesc",
-            sql: 'create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (\n          "ownerId",\n          "table",\n          "id",\n          "column",\n          "timestamp" desc\n        )',
+            sql: 'create unique index evolu_history_ownerId_table_id_column_timestampDesc\n        on evolu_history ("ownerId", "table", "id", "column", "timestamp" desc)',
           },
           {
             name: "evolu_timestamp_index",
-            sql: 'create index evolu_timestamp_index on evolu_timestamp (\n        "ownerId",\n        "l",\n        "t",\n        "h1",\n        "h2",\n        "c"\n      )',
+            sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           {
             name: "evolu_message_quarantine_reason_timestamp",
-            sql: 'create index evolu_message_quarantine_reason_timestamp on evolu_message_quarantine (\n        "reason",\n        "timestamp"\n      )',
+            sql: 'create index evolu_message_quarantine_reason_timestamp\n      on evolu_message_quarantine ("reason", "timestamp")',
           },
         ],
         tables: {

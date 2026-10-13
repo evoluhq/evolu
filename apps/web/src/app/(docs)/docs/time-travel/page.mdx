@@ -15,11 +15,41 @@ Using the `Schema`, `TodoId`, and Evolu instance from [Get started](/docs/local-
 
 ```ts
 import {
+  assertEqual,
   createQueryBuilder,
   idToIdBytes,
   millisToDateIso,
+  NonEmptyTrimmedString100,
   timestampBytesToTimestamp,
 } from "@evolu/common";
+// ---cut-start---
+import {
+  AppName,
+  createEvolu,
+  id,
+  nullOr,
+  SqliteBoolean,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const TodoId = id("Todo");
+type TodoId = typeof TodoId.Output;
+const Schema = {
+  todo: {
+    id: TodoId,
+    title: NonEmptyTrimmedString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("TimeTravel"),
+    appOwner: testAppOwner,
+  }),
+);
+// ---cut-end---
 
 const createQuery = createQueryBuilder(Schema);
 const titleHistoryQuery = (todoId: TodoId) =>
@@ -37,17 +67,23 @@ const titleHistoryQuery = (todoId: TodoId) =>
       .orderBy("timestamp", "desc"),
   );
 
-const handleHistoryClick = (todoId: TodoId) => {
-  void evolu.loadQuery(titleHistoryQuery(todoId)).then((rows) => {
-    const rowsWithTimestamp = rows.map((row) => ({
-      value: row.value,
-      timestamp: millisToDateIso(
-        timestampBytesToTimestamp(row.timestamp).millis,
-      ),
-    }));
-    alert(JSON.stringify(rowsWithTimestamp, null, 2));
-  });
-};
+const { id: todoId } = evolu.insert("todo", {
+  title: NonEmptyTrimmedString100.orThrow("Buy milk"),
+});
+evolu.update("todo", {
+  id: todoId,
+  title: NonEmptyTrimmedString100.orThrow("Buy oat milk"),
+});
+
+const rows = await evolu.loadQuery(titleHistoryQuery(todoId));
+const rowsWithTimestamp = rows.map((row) => ({
+  value: row.value,
+  timestamp: millisToDateIso(timestampBytesToTimestamp(row.timestamp).millis),
+}));
+assertEqual(
+  rowsWithTimestamp.map((row) => row.value),
+  ["Buy oat milk", "Buy milk"],
+);
 ```
 
 This API isn’t fully type-safe, but it’s not a concern. Evolu Schemas are append-only. Once an app is released, do not rename or change the type of an existing table or column — only add new tables or columns to evolve your schema; changing existing columns or types breaks compatibility with historical data.

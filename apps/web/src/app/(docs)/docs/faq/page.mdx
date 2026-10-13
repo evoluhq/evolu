@@ -93,8 +93,15 @@ saved something. To ask at another moment, or never, pass your own
 ```ts
 import { constVoid } from "@evolu/common";
 import { createEvoluDeps } from "@evolu/web";
+// ---cut-start---
+import { createRun } from "@evolu/web";
+// ---cut-end---
 
 const deps = createEvoluDeps({ requestPersistentStorage: constVoid });
+// ---cut-start---
+
+await using _run = createRun(deps);
+// ---cut-end---
 ```
 
 A user who wants nothing kept on the device needs the app to offer the
@@ -105,9 +112,33 @@ A user who wants nothing kept on the device needs the app to offer the
 Use `exportDatabase` method on Evolu instance.
 
 ```ts
+// ---cut-start---
+import {
+  AppName,
+  assertTrue,
+  createEvolu,
+  id,
+  NonEmptyTrimmedString100,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("FaqExportDatabase"),
+    appOwner: testAppOwner,
+  }),
+);
+// ---cut-end---
+
 const database = await evolu.exportDatabase();
 const sizeInBytes = database.length;
-console.log(`Database size: ${sizeInBytes} bytes`);
+// ---cut-start---
+
+assertTrue(sizeInBytes > 0);
+// ---cut-end---
 ```
 
 ## How to delete OPFS Sqlite in browser?
@@ -138,6 +169,13 @@ The following setup reuses the shared `run` and persisted `appOwner` from [Creat
 
 ```ts
 import { AppName, createEvolu, id } from "@evolu/common";
+// ---cut-start---
+import { assertEqual, createQueryBuilder, testAppOwner } from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const run = createRun(createEvoluDeps());
+const appOwner = testAppOwner;
+// ---cut-end---
 
 const PreferencesId = id("Preferences");
 type PreferencesId = typeof PreferencesId.Output;
@@ -153,10 +191,27 @@ const DeviceSchema = {
 const deviceEvolu = await run.ok(
   createEvolu(DeviceSchema, {
     appName: AppName.orThrow("MyApp-Device"),
-    transports: [], // No sync - stays local to device
+    // No sync - stays local to device
+    transports: [],
     appOwner,
   }),
 );
+// ---cut-start---
+
+const { id: preferencesId } = deviceEvolu.insert("_preferences", {});
+const createQuery = createQueryBuilder(DeviceSchema);
+assertEqual(
+  await deviceEvolu.loadQuery(
+    createQuery((db) =>
+      db
+        .selectFrom("_preferences")
+        .select("id")
+        .where("id", "=", preferencesId),
+    ),
+  ),
+  [{ id: preferencesId }],
+);
+// ---cut-end---
 ```
 
 This approach gives us:
@@ -179,6 +234,17 @@ import {
   NonEmptyTrimmedString1000,
   sqliteTrue,
 } from "@evolu/common";
+// ---cut-start---
+import {
+  AppName,
+  assertEqual,
+  createEvolu,
+  createIdFromString,
+  createQueryBuilder,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+// ---cut-end---
 
 const DocumentId = id("Document");
 
@@ -196,6 +262,19 @@ const Schema = {
     content: NonEmptyTrimmedString,
   },
 };
+// ---cut-start---
+
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("FaqDocumentDrafts"),
+    appOwner: testAppOwner,
+  }),
+);
+const documentId = createIdFromString<"Document">("faq-document");
+const title = NonEmptyTrimmedString1000.orThrow("Shopping list");
+const content = NonEmptyTrimmedString.orThrow("Milk and bread");
+// ---cut-end---
 
 // Save draft locally on every keystroke (no sync)
 evolu.upsert("_documentDraft", {
@@ -207,6 +286,29 @@ evolu.upsert("_documentDraft", {
 // When ready to sync (e.g., on blur, route change)
 evolu.update("_documentDraft", { id: documentId, isDeleted: sqliteTrue });
 evolu.upsert("document", { id: documentId, title, content });
+// ---cut-start---
+
+const createQuery = createQueryBuilder(Schema);
+assertEqual(
+  await evolu.loadQuery(
+    createQuery((db) =>
+      db.selectFrom("_documentDraft").select("id").where("id", "=", documentId),
+    ),
+  ),
+  [],
+);
+assertEqual(
+  await evolu.loadQuery(
+    createQuery((db) =>
+      db
+        .selectFrom("document")
+        .select(["title", "content"])
+        .where("id", "=", documentId),
+    ),
+  ),
+  [{ title, content }],
+);
+// ---cut-end---
 ```
 
 Evolu batches mutations queued in the same microtask and applies them in a SQLite transaction. The draft deletion and document upsert above are therefore applied together. Local tables use the same mutation and reactive query APIs as synced tables.
@@ -219,6 +321,26 @@ Use `createIdFromString` to convert external IDs into valid Evolu IDs. Using the
 
 ```ts
 import { createIdFromString, NonEmptyTrimmedString100 } from "@evolu/common";
+// ---cut-start---
+import {
+  AppName,
+  assertEqual,
+  createEvolu,
+  createQueryBuilder,
+  id,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("FaqExternalIds"),
+    appOwner: testAppOwner,
+  }),
+);
+// ---cut-end---
 
 // Use the table's ID brand, matching TodoId from the getting-started schema.
 const todoId = createIdFromString<"Todo">("external-todo-456");
@@ -227,6 +349,18 @@ evolu.upsert("todo", {
   id: todoId,
   title: NonEmptyTrimmedString100.orThrow("Task from external system"),
 });
+// ---cut-start---
+
+const createQuery = createQueryBuilder(Schema);
+assertEqual(
+  await evolu.loadQuery(
+    createQuery((db) =>
+      db.selectFrom("todo").select("title").where("id", "=", todoId),
+    ),
+  ),
+  [{ title: "Task from external system" }],
+);
+// ---cut-end---
 ```
 
 This ensures that multiple clients creating records with the same external identifier will generate the same Evolu ID.
@@ -263,6 +397,16 @@ import {
   id,
   NonEmptyTrimmedString100,
 } from "@evolu/common";
+// ---cut-start---
+import {
+  AppName,
+  assertEqual,
+  createEvolu,
+  createQueryBuilder,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+// ---cut-end---
 
 const CategorySchema = {
   category: { id: id("Category"), name: NonEmptyTrimmedString100 },
@@ -283,6 +427,28 @@ const seedDefaultData = (evolu: Evolu<typeof CategorySchema>) => {
 
 // Create an instance with CategorySchema and call seedDefaultData(evolu)
 // from a setup button or onboarding step.
+// ---cut-start---
+
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(CategorySchema, {
+    appName: AppName.orThrow("FaqSeedDefaultData"),
+    appOwner: testAppOwner,
+  }),
+);
+// Seeding twice upserts the same rows instead of duplicating them.
+seedDefaultData(evolu);
+seedDefaultData(evolu);
+const createQuery = createQueryBuilder(CategorySchema);
+assertEqual(
+  await evolu.loadQuery(
+    createQuery((db) =>
+      db.selectFrom("category").select("name").orderBy("name"),
+    ),
+  ),
+  [{ name: "Entertainment" }, { name: "Groceries" }, { name: "Utilities" }],
+);
+// ---cut-end---
 ```
 
 **Note**: Using `createIdFromString` ensures deterministic IDs, so if a user clicks the button on multiple devices (e.g., after restoring their account but before sync completes), the same data will be upserted rather than duplicated.
@@ -293,6 +459,39 @@ Using `CategorySchema` and `seedDefaultData` above, with the shared `run` and pe
 
 ```ts
 import { AppName, createEvolu } from "@evolu/common";
+// ---cut-start---
+import {
+  assertEqual,
+  createIdFromString,
+  createQueryBuilder,
+  type Evolu,
+  id,
+  NonEmptyTrimmedString100,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const CategorySchema = {
+  category: { id: id("Category"), name: NonEmptyTrimmedString100 },
+};
+
+const seedDefaultData = (evolu: Evolu<typeof CategorySchema>) => {
+  for (const [externalId, name] of [
+    ["groceries", "Groceries"],
+    ["utilities", "Utilities"],
+    ["entertainment", "Entertainment"],
+  ] as const) {
+    evolu.upsert("category", {
+      id: createIdFromString<"Category">(externalId),
+      name: NonEmptyTrimmedString100.orThrow(name),
+    });
+  }
+};
+
+const run = createRun(createEvoluDeps());
+const appOwner = testAppOwner;
+const isFirstLogin = true;
+// ---cut-end---
 
 // Start without sync
 const evolu = await run.ok(
@@ -312,6 +511,27 @@ if (isFirstLogin) {
 const unuseOwner = evolu.useOwner(appOwner, [
   { type: "WebSocket", url: "wss://free.evoluhq.com" },
 ]);
+// ---cut-start---
+
+const createQuery = createQueryBuilder(CategorySchema);
+assertEqual(
+  await evolu.loadQuery(
+    createQuery((db) =>
+      db
+        .selectFrom("category")
+        .select("name")
+        .where("id", "in", [
+          createIdFromString<"Category">("entertainment"),
+          createIdFromString<"Category">("groceries"),
+          createIdFromString<"Category">("utilities"),
+        ])
+        .orderBy("name"),
+    ),
+  ),
+  [{ name: "Entertainment" }, { name: "Groceries" }, { name: "Utilities" }],
+);
+unuseOwner();
+// ---cut-end---
 ```
 
 For reference data that rarely changes (like country or currency lists), consider whether it needs to be in the database at all—it might be better as a constant in your code or imported from a package.

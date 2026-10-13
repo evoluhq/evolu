@@ -2,13 +2,9 @@ import { assertEqual, assertThrowsInstanceOf } from "@evolu/common";
 import { describe, it } from "node:test";
 import {
   changesetSourcePattern,
-  conventionsSourcePattern,
   jsdocSourcePattern,
-  leancasePostSourcePattern,
-  resourceManagementSourcePattern,
-  schemaSourcePattern,
+  pageSourcePatterns,
   selectJSDocIncludes,
-  testingSourcePattern,
 } from "./test-jsdoc.mts";
 
 describe("selectJSDocIncludes", () => {
@@ -16,11 +12,7 @@ describe("selectJSDocIncludes", () => {
     assertEqual(selectJSDocIncludes([]), [
       jsdocSourcePattern,
       changesetSourcePattern,
-      conventionsSourcePattern,
-      resourceManagementSourcePattern,
-      schemaSourcePattern,
-      testingSourcePattern,
-      leancasePostSourcePattern,
+      ...pageSourcePatterns,
     ]);
   });
 

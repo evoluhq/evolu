@@ -23,6 +23,7 @@
 import { readFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { stripHiddenLines } from "../apps/web/src/mdx/remark.mjs";
 
 export interface CodeBlock {
   /** One-based position among the file's code blocks. */
@@ -65,7 +66,10 @@ export const extractCodeBlocks = (
           .map((line) => line.trim())
           .find((line) => line !== "") ?? null);
     for (const fence of region.text.matchAll(fencePattern)) {
-      const code = (fence[4] ?? "").replace(/\s+$/u, "");
+      // Documentation pages hide setup lines that the website does not show.
+      const code = (
+        isMarkdown ? stripHiddenLines(fence[4] ?? "") : (fence[4] ?? "")
+      ).replace(/\s+$/u, "");
       if (code.trim() === "") continue;
       blocks.push({
         index: blocks.length + 1,

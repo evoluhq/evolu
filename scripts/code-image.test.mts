@@ -140,6 +140,29 @@ describe("extractCodeBlocks", () => {
     ]);
   });
 
+  it("removes the hidden lines of Markdown examples", () => {
+    const source = [
+      "```ts",
+      'import { a } from "a";',
+      "// ---cut-start---",
+      "const b = a;",
+      "// ---cut-end---",
+      "",
+      "use(b);",
+      "```",
+    ].join("\n");
+
+    assertEqual(extractCodeBlocks(source, "page.mdx"), [
+      {
+        index: 1,
+        line: 2,
+        lang: "ts",
+        code: 'import { a } from "a";\n\nuse(b);',
+        documents: null,
+      },
+    ]);
+  });
+
   it("skips empty blocks", () => {
     assertEqual(extractCodeBlocks("```ts\n\n```", "empty.mdx"), []);
   });

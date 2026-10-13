@@ -101,11 +101,23 @@ Without Effect, I could no longer use Effect Schema. I hoped another library mig
 **Done. TDD FTW.** Here are a few examples of what it looks like:
 
 ```ts
+import { brand, err, ok, String, type TypeError } from "@evolu/common";
+// ---cut-start---
+import {
+  assertEqual,
+  assertErr,
+  assertOk,
+  assertType,
+  type Brand,
+} from "@evolu/common";
+/* oxlint-disable eslint/no-console -- The example logs the validation result. */
+// ---cut-end---
+
 const CurrencyCode = brand(
   "CurrencyCode",
   String,
   (value) =>
-    /^[A-Z]{3}$/.test(value)
+    /^[A-Z]{3}$/u.test(value)
       ? ok()
       : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
   (error) => `Invalid currency code: ${error.value}`,
@@ -125,11 +137,35 @@ if (result.ok) {
 } else {
   console.error(CurrencyCode.formatError(result.error));
 }
+// ---cut-start---
+
+assertType<CurrencyCode, string & Brand<"CurrencyCode">>();
+assertOk(result, "USD");
+const invalid = CurrencyCode.fromUnknown("usd");
+assertErr(invalid, { type: "CurrencyCode", value: "usd" });
+assertEqual(
+  CurrencyCode.formatError(invalid.error),
+  "Invalid currency code: usd",
+);
+// ---cut-end---
 ```
 
 Branded Types are often better as reusable factories—for example, instead of a `TrimmedString`:
 
 ```ts
+import {
+  brand,
+  err,
+  maxLength,
+  ok,
+  String,
+  type BrandFactory,
+  type TypeError,
+} from "@evolu/common";
+// ---cut-start---
+import { assertErr, assertOk, assertType, type Brand } from "@evolu/common";
+// ---cut-end---
+
 const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (parent) =>
   brand(
     "Trimmed",
@@ -150,18 +186,51 @@ const TrimmedString = trimmed(String);
 // string & Brand<"Trimmed">
 type TrimmedString = typeof TrimmedString.Output;
 
+const Note = maxLength(1000)(String);
 const TrimmedNote = trimmed(Note);
+// ---cut-start---
+
+assertType<TrimmedString, string & Brand<"Trimmed">>();
+assertOk(TrimmedString.fromUnknown("Evolu"), "Evolu");
+assertErr(TrimmedString.fromUnknown(" Evolu"), {
+  type: "Trimmed",
+  value: " Evolu",
+});
+assertType<
+  typeof TrimmedNote.Output,
+  string & Brand<"MaxLength1000"> & Brand<"Trimmed">
+>();
+assertOk(TrimmedNote.fromUnknown("Buy milk"), "Buy milk");
+// ---cut-end---
 ```
 
 Sometimes it's useful to add semantic meaning to an existing type without changing its behavior:
 
 ```ts
+import { brand, maxLength, minLength, TrimmedString } from "@evolu/common";
+// ---cut-start---
+import { assertErr, assertOk, assertType, type Brand } from "@evolu/common";
+// ---cut-end---
+
 const SimplePassword = brand(
   "SimplePassword",
   minLength(8)(maxLength(64)(TrimmedString)),
 );
 // string & Brand<"Trimmed"> & Brand<"MinLength8"> & Brand<"MaxLength64"> & Brand<"SimplePassword">
 type SimplePassword = typeof SimplePassword.Output;
+// ---cut-start---
+
+assertType<
+  SimplePassword,
+  string &
+    Brand<"Trimmed"> &
+    Brand<"MinLength8"> &
+    Brand<"MaxLength64"> &
+    Brand<"SimplePassword">
+>();
+assertOk(SimplePassword.fromUnknown("correct horse"), "correct horse");
+assertErr(SimplePassword.fromUnknown("short"));
+// ---cut-end---
 ```
 
 It turns out we don’t need pipe or chaining at all—just `Result` and plain functions. Evolu Type lives in a single file, yet does a lot.
@@ -188,7 +257,7 @@ The protocol avoids JSON because:
 It uses structure-aware encoding, significantly outperforming generic binary
 serialization formats. Take a look at this message:
 
-```ts
+```text
 [
   0, 59, 193, 30, 13, 197, 129, 241, 80, 15, 255, 45, 234, 249, 223, 59, 136, 0,
   1, 2, 31, 153, 253, 156, 250, 238, 50, 128, 220, 15, 246, 3, 165, 3, 194, 1,
@@ -196,7 +265,7 @@ serialization formats. Take a look at this message:
   1, 203, 2, 193, 1, 227, 1, 200, 1, 222, 150, 18, 226, 55, 217, 28, 212, 64,
   171, 66, 134, 3, 198, 1, 159, 1, 151, 1, 196, 1, 173, 62, 135, 33, 0, 31, 77,
   160, 38, 240, 26, 164, 100, 89, 31,
-];
+]
 ```
 
 Here’s how to interpret it:
@@ -206,8 +275,8 @@ Here’s how to interpret it:
 
 Then comes the sync phase metadata:
 
-```ts
-[0, 1, 2, 31];
+```text
+[0, 1, 2, 31]
 ```
 
 - `0` - no data yet; we’re in the syncing phase
@@ -228,15 +297,15 @@ A single `Timestamp` normally takes 16 bytes:
 
 Thanks to aforementioned optimizations, the entire message fits in just **100 bytes**.
 
-On the next sync, say we have **32 timestamps** instead of 31. At that point, the protocol switches strategy: it sends **16 fingerprints** instead of full timestamp data.
+On the next sync, say we have **32 timestamps** instead of 31. At that point, the protocol switches strategy: it sends **16 fingerprints** instead of full timestamp data. The dump below is trimmed; the full message has only 272 bytes.
 
-```ts
+```text
 [
   0, 185, 172, 128, 111, 7, 182, 206, 234, 32, 23, 112, 226, 170, 156, 211, 88,
   0, 16, 247, 138, 215, 250, 238, 50, 203, 2, 187, 2, 200, 2, 201, 2, 205, 2,
   217, 2, 201, 2, 131, 28, 230, 2, 217, 2, 175, 2, 205, 2, 238, 25, 135, 20, 0,
   15, 183, 244, 1, 145, 23, 166, 60, 55, 15, 1,
-]; // trimmed for preview — full message has only 272 bytes
+]
 ```
 
 That's **272 bytes** for **16 fingerprints**, representing the entire database (or part of it)—not the data itself, just compact summaries used for reconciliation.

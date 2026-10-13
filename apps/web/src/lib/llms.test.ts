@@ -1,4 +1,4 @@
-import { assertEqual, assertTrue } from "@evolu/common";
+import { assertEqual, assertThrowsInstanceOf, assertTrue } from "@evolu/common";
 import { registerHooks } from "node:module";
 import { resolve } from "node:path";
 import { after, beforeEach, describe, it, mock } from "node:test";
@@ -126,6 +126,104 @@ export const sections = [{ title: "Intro", id: "intro" }];
 [Root](https://evolu.dev/docs/testing)
 [Relative](https://evolu.dev/docs/testing)
 [External](https://example.com)`,
+    );
+  });
+
+  it("keeps code examples as written", () => {
+    assertEqual(
+      cleanMdxContent(`
+import { Heading } from "@/components/Heading";
+
+<SinglePlatformCodeGroup>
+
+\`\`\`tsx {{ title: 'React' }}
+import { FC } from "react";
+
+export const App: FC = () => <Section title="Todos"><Todo /></Section>;
+const first = handlers[0](event);
+\`\`\`
+
+</SinglePlatformCodeGroup>
+`),
+      `\`\`\`tsx {{ title: 'React' }}
+import { FC } from "react";
+
+export const App: FC = () => <Section title="Todos"><Todo /></Section>;
+const first = handlers[0](event);
+\`\`\``,
+    );
+  });
+
+  it("ends a code example only at a fence at least as long as its opener", () => {
+    const source = [
+      "````md",
+      "```ts",
+      "const a = 1;",
+      "```",
+      "<Example />",
+      "````",
+    ].join("\n");
+    assertEqual(cleanMdxContent(source), source);
+  });
+
+  it("keeps a code example inside a note quoted", () => {
+    assertEqual(
+      cleanMdxContent(
+        [
+          "<Note>",
+          "  Read this.",
+          "",
+          "```ts",
+          "const a = 1;",
+          "const b = 2;",
+          "```",
+          "</Note>",
+        ].join("\n"),
+      ),
+      "> Read this.\n> \n> ```ts\n> const a = 1;\n> const b = 2;\n> ```",
+    );
+  });
+
+  it("throws when a component would remove a code example", () => {
+    assertEqual(
+      assertThrowsInstanceOf(
+        () => cleanMdxContent("<Tabs>\n\n```ts\nconst a = 1;\n```\n\n</Tabs>"),
+        Error,
+      ).message,
+      "Cleaning MDX removed 1 of 1 code examples.",
+    );
+  });
+
+  it("drops the blank line after hidden lines that open a code example", () => {
+    assertEqual(
+      cleanMdxContent(
+        [
+          "Text.",
+          "",
+          "```ts",
+          "// ---cut-start---",
+          "const answer = 42;",
+          "// ---cut-end---",
+          "",
+          "console.log(answer);",
+          "```",
+        ].join("\n"),
+      ),
+      "Text.\n\n```ts\nconsole.log(answer);\n```",
+    );
+  });
+
+  it("removes the hidden lines of code examples", () => {
+    assertEqual(
+      cleanMdxContent(`
+\`\`\`ts
+// ---cut-start---
+const answer = 42;
+// ---cut-end---
+console.log(answer);
+\`\`\`
+`),
+      "```ts\nconsole.log(answer);\n```",
     );
   });
 });

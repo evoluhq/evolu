@@ -10,15 +10,7 @@ Also known as "passing arguments"
 
 What is Dependency Injection? Someone once called it 'really just a pretentious way to say "taking an argument,"' and while it does involve taking or passing arguments, not every instance of that qualifies as Dependency Injection.
 
-Some function arguments are local—say, the return value of one function passed to another—and often used just once. Others, like a database instance, are global and needed across many functions. Traditionally, when something must be shared across functions, we might export it from a module and let other modules import it directly:
-
-```ts
-// db.ts
-export const db = createDb();
-
-// user.ts
-import { db } from "./db"; // 🚨 Direct import creates tight coupling
-```
+Some function arguments are local—say, the return value of one function passed to another—and often used just once. Others, like a database instance, are global and needed across many functions. Traditionally, when something must be shared across functions, we might export it from a module, such as `export const db = createDb()` in `db.ts`, and let other modules import it directly with `import { db } from "./db"`.
 
 This turns `db` into a [service locator](https://blog.ploeh.dk/2010/02/03/ServiceLocatorisanAnti-Pattern/), a well-known anti-pattern—other modules "locate" the service by importing it. The problem? It's hard to test (you can't easily swap `db` for a mock) and hard to refactor (every module that imports `db` is tightly coupled to that specific instance).
 
@@ -29,20 +21,34 @@ This guide explains [Pure DI](https://blog.ploeh.dk/2014/06/10/pure-di/) convent
 Imagine we have a function that does something with time:
 
 ```ts
+// ---cut-start---
+import { assertTrue } from "@evolu/common";
+// ---cut-end---
 // 🚨 Implicitly depends on global Date—a service we "locate" from global scope
 const timeUntilEvent = (eventTimestamp: number): number => {
   const currentTime = Date.now();
   return eventTimestamp - currentTime;
 };
+// ---cut-start---
+
+assertTrue(timeUntilEvent(0) < 0);
+// ---cut-end---
 ```
 
 This is better, but still not ideal:
 
 ```ts
+// ---cut-start---
+import { assertEqual } from "@evolu/common";
+// ---cut-end---
 const timeUntilEvent = (date: Date, eventTimestamp: number): number => {
   const currentTime = date.getTime();
   return eventTimestamp - currentTime;
 };
+// ---cut-start---
+
+assertEqual(timeUntilEvent(new Date(1000), 3000), 2000);
+// ---cut-end---
 ```
 
 - We are mixing function dependencies (`date`) with function arguments (`eventTimestamp`)
@@ -69,6 +75,13 @@ Note we’re using an interface instead of a class. This is called "programming 
 Let's use the `Time` dependency:
 
 ```ts
+// ---cut-start---
+import { assertEqual } from "@evolu/common";
+
+interface Time {
+  readonly now: () => number;
+}
+// ---cut-end---
 // Currying splits dependencies from the function’s arguments
 const timeUntilEvent =
   (time: Time) =>
@@ -76,6 +89,10 @@ const timeUntilEvent =
     const currentTime = time.now();
     return eventTimestamp - currentTime;
   };
+// ---cut-start---
+
+assertEqual(timeUntilEvent({ now: () => 1000 })(3000), 2000);
+// ---cut-end---
 ```
 
 This is better, but what if we need another dependency, like a `Logger`?
@@ -92,6 +109,20 @@ export interface Logger {
 Passing multiple dependencies can get verbose:
 
 ```ts
+// ---cut-start---
+import { assertEqual } from "@evolu/common";
+
+interface Time {
+  readonly now: () => number;
+}
+
+interface Logger {
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
+}
+// ---cut-end---
 const timeUntilEvent =
   (time: Time, logger: Logger) =>
   (eventTimestamp: number): number => {
@@ -99,11 +130,36 @@ const timeUntilEvent =
     const currentTime = time.now();
     return eventTimestamp - currentTime;
   };
+// ---cut-start---
+
+const messages: Array<unknown> = [];
+const logger: Logger = {
+  log: (message) => {
+    messages.push(message);
+  },
+};
+assertEqual(timeUntilEvent({ now: () => 1000 }, logger)(3000), 2000);
+assertEqual(messages, ["..."]);
+// ---cut-end---
 ```
 
 This attempt isn’t ideal either:
 
 ```ts
+// ---cut-start---
+import { assertEqual } from "@evolu/common";
+
+interface Time {
+  readonly now: () => number;
+}
+
+interface Logger {
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
+}
+// ---cut-end---
 // 🚨 Don't do that.
 const timeUntilEvent =
   (deps: Time & Logger) =>
@@ -112,6 +168,17 @@ const timeUntilEvent =
     const currentTime = deps.now();
     return eventTimestamp - currentTime;
   };
+// ---cut-start---
+
+const messages: Array<unknown> = [];
+const logger: Logger = {
+  log: (message) => {
+    messages.push(message);
+  },
+};
+assertEqual(timeUntilEvent({ now: () => 1000, ...logger })(3000), 2000);
+assertEqual(messages, ["..."]);
+// ---cut-end---
 ```
 
 The previous example isn't ideal because dependencies with overlapping property names would clash.
@@ -124,6 +191,10 @@ The example calculates the time remaining until a given event timestamp using a 
 Factory functions (`createTime` and `createLogger`) instantiate these dependencies, and they’re passed as a single deps object to the `timeUntilEvent` function. The use of `Partial<LoggerDep>` makes the logger optional.
 
 ```ts
+// ---cut-start---
+/* oxlint-disable eslint/no-console -- The example Logger writes to the console. */
+import { assert, assertEqual } from "@evolu/common";
+// ---cut-end---
 export interface Time {
   readonly now: () => number;
 }
@@ -174,11 +245,42 @@ const deps: TimeDep & Partial<LoggerDep> = {
 };
 
 timeUntilEvent(deps)(1742329310767);
+// ---cut-start---
+
+assert(deps.logger, "Expected the logger to be injected.");
+assertEqual(
+  timeUntilEvent({ time: { now: () => 1742329300767 } })(1742329310767),
+  10_000,
+);
+// ---cut-end---
 ```
 
 Note that passing `deps` manually isn't as verbose as you might think:
 
 ```ts
+// ---cut-start---
+/* oxlint-disable eslint/no-console -- The example Logger writes to the console. */
+interface Time {
+  readonly now: () => number;
+}
+
+interface Logger {
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
+}
+
+const createTime = (): Time => ({
+  now: () => Date.now(),
+});
+
+const createLogger = (): Logger => ({
+  log: (...args) => {
+    console.log(...args);
+  },
+});
+// ---cut-end---
 export interface TimeDep {
   readonly time: Time;
 }
@@ -223,6 +325,20 @@ The last thing you need to know is that factory functions can also be dependenci
 A factory function as a dependency:
 
 ```ts
+// ---cut-start---
+/* oxlint-disable eslint/no-console -- The example Logger writes to the console. */
+interface Time {
+  readonly now: () => number;
+}
+
+interface TimeDep {
+  readonly time: Time;
+}
+
+const createTime = (): Time => ({
+  now: () => Date.now(),
+});
+// ---cut-end---
 export interface LoggerConfig {
   readonly level: "info" | "debug";
 }
@@ -247,6 +363,12 @@ export const createLogger: CreateLogger = (config) => ({
 });
 
 type AppDeps = CreateLoggerDep & TimeDep;
+
+const runApp = (deps: AppDeps) => {
+  // LoggerConfig is available now.
+  const logger = deps.createLogger({ level: "debug" });
+  logger.log("Started at", deps.time.now());
+};
 
 // Note we pass `createLogger` as a factory, not calling it yet.
 // It will be called later when LoggerConfig becomes available.
@@ -284,7 +406,13 @@ Btw, Evolu provides [Console](/docs/api-reference/common/Console).
 Dependencies often perform operations that can fail. Use the [`Result`](/docs/api-reference/common/Result/type-aliases/Result) type to make errors explicit and type-safe. The key principle: **expose domain errors, not implementation errors**.
 
 ```ts
-import { Result, ok, err } from "@evolu/common";
+import type { Result } from "@evolu/common";
+// ---cut-start---
+
+interface Data {
+  readonly name: string;
+}
+// ---cut-end---
 
 // Domain errors that callers care about
 interface StorageFullError {
@@ -312,6 +440,41 @@ export interface StorageDep {
 With typed errors, testing failure scenarios is straightforward:
 
 ```ts
+import { assertErr, err } from "@evolu/common";
+import { test } from "node:test";
+// ---cut-start---
+import type { Result } from "@evolu/common";
+
+interface Data {
+  readonly name: string;
+}
+
+interface StorageFullError {
+  readonly type: "StorageFullError";
+}
+
+interface PermissionError {
+  readonly type: "PermissionError";
+}
+
+interface Storage {
+  readonly save: (
+    data: Data,
+  ) => Result<void, StorageFullError | PermissionError>;
+}
+
+interface StorageDep {
+  readonly storage: Storage;
+}
+
+const saveUserData =
+  (deps: StorageDep) =>
+  (data: Data): Result<void, StorageFullError | PermissionError> =>
+    deps.storage.save(data);
+
+const userData: Data = { name: "Ada" };
+// ---cut-end---
+
 const createFailingStorage = (): Storage => ({
   save: () => err({ type: "StorageFullError" }),
 });
@@ -319,7 +482,7 @@ const createFailingStorage = (): Storage => ({
 test("handles storage full error", () => {
   const deps = { storage: createFailingStorage() };
   const result = saveUserData(deps)(userData);
-  expect(result).toEqual(err({ type: "StorageFullError" }));
+  assertErr(result, { type: "StorageFullError" });
 });
 ```
 
@@ -328,13 +491,46 @@ test("handles storage full error", () => {
 Avoiding global state makes testing and composition easier. Here's an example with mocked dependencies:
 
 ```ts
+import { assertEqual } from "@evolu/common";
+import { test } from "node:test";
+// ---cut-start---
+
+interface Time {
+  readonly now: () => number;
+}
+
+interface TimeDep {
+  readonly time: Time;
+}
+
+interface Logger {
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
+}
+
+interface LoggerDep {
+  readonly logger: Logger;
+}
+
+const timeUntilEvent =
+  (deps: TimeDep & Partial<LoggerDep>) =>
+  (eventTimestamp: number): number => {
+    deps.logger?.log("Calculating time until event...");
+    const currentTime = deps.time.now();
+    return eventTimestamp - currentTime;
+  };
+// ---cut-end---
+
 const testCreateTime = (): Time => ({
-  now: () => 1234567890, // Fixed time for testing
+  // Fixed time for testing
+  now: () => 1234567890,
 });
 
 test("timeUntilEvent calculates correctly", () => {
   const deps = { time: testCreateTime() };
-  expect(timeUntilEvent(deps)(1234568890)).toBe(1000);
+  assertEqual(timeUntilEvent(deps)(1234568890), 1000);
 });
 ```
 
@@ -347,10 +543,53 @@ Evolu provides [`testCreateTime`](/docs/api-reference/common/Time/functions/test
 Since deps are regular JS objects, you can spread them:
 
 ```ts
+// ---cut-start---
+/* oxlint-disable eslint/no-console -- The example Logger writes to the console. */
+import { assertSame } from "@evolu/common";
+
+interface Time {
+  readonly now: () => number;
+}
+
+interface TimeDep {
+  readonly time: Time;
+}
+
+interface Logger {
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
+}
+
+interface LoggerDep {
+  readonly logger: Logger;
+}
+
+const createTime = (): Time => ({
+  now: () => Date.now(),
+});
+
+const createLogger = (): Logger => ({
+  log: (...args) => {
+    console.log(...args);
+  },
+});
+
+type AppDeps = LoggerDep & TimeDep;
+
+const fooDeps: LoggerDep = { logger: createLogger() };
+const barDeps: TimeDep = { time: createTime() };
+// ---cut-end---
 const appDeps: AppDeps = {
   ...fooDeps,
   ...barDeps,
 };
+// ---cut-start---
+
+assertSame(appDeps.logger, fooDeps.logger);
+assertSame(appDeps.time, barDeps.time);
+// ---cut-end---
 ```
 
 ### Optional Deps
@@ -358,11 +597,50 @@ const appDeps: AppDeps = {
 Use `Partial` and conditional spreading to make deps optional:
 
 ```ts
+// ---cut-start---
+/* oxlint-disable eslint/no-console -- The example Logger writes to the console. */
+import { assert } from "@evolu/common";
+
+interface Time {
+  readonly now: () => number;
+}
+
+interface TimeDep {
+  readonly time: Time;
+}
+
+interface Logger {
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
+}
+
+interface LoggerDep {
+  readonly logger: Logger;
+}
+
+const createTime = (): Time => ({
+  now: () => Date.now(),
+});
+
+const createLogger = (): Logger => ({
+  log: (...args) => {
+    console.log(...args);
+  },
+});
+
+const enableLogging = true;
+// ---cut-end---
 const deps: TimeDep & Partial<LoggerDep> = {
   time: createTime(),
   // Inject the dependency conditionally
   ...(enableLogging && { logger: createLogger() }),
 };
+// ---cut-start---
+
+assert(deps.logger, "Expected the logger to be injected.");
+// ---cut-end---
 ```
 
 ### Refining Deps
@@ -370,19 +648,75 @@ const deps: TimeDep & Partial<LoggerDep> = {
 To reuse existing deps while swapping specific parts, use `Omit`. For example, if `AppDeps` includes `CreateSqliteDriverDep` and other deps, but you want to replace `CreateSqliteDriverDep` with `SqliteDep`:
 
 ```ts
+import type { CreateSqliteDriverDep, SqliteDep } from "@evolu/common";
+// ---cut-start---
+import { assertType } from "@evolu/common";
+
+interface Time {
+  readonly now: () => number;
+}
+
+interface TimeDep {
+  readonly time: Time;
+}
+
+interface Logger {
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
+}
+
+interface LoggerDep {
+  readonly logger: Logger;
+}
+// ---cut-end---
+
 export type AppDeps = CreateSqliteDriverDep & LoggerDep & TimeDep;
 
 export type AppInstanceDeps = Omit<AppDeps, keyof CreateSqliteDriverDep> &
   SqliteDep;
+// ---cut-start---
+
+assertType<keyof AppInstanceDeps, "logger" | "sqlite" | "time">();
+// ---cut-end---
 ```
 
 To remove multiple deps, like `CreateSqliteDriverDep` and `LoggerDep`, use a union of keys:
 
 ```ts
+// ---cut-start---
+import { assertType, type CreateSqliteDriverDep } from "@evolu/common";
+
+interface Time {
+  readonly now: () => number;
+}
+
+interface TimeDep {
+  readonly time: Time;
+}
+
+interface Logger {
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
+}
+
+interface LoggerDep {
+  readonly logger: Logger;
+}
+
+type AppDeps = CreateSqliteDriverDep & LoggerDep & TimeDep;
+// ---cut-end---
 export type TimeOnlyDeps = Omit<
   AppDeps,
   keyof CreateSqliteDriverDep | keyof LoggerDep
 >;
+// ---cut-start---
+
+assertType<keyof TimeOnlyDeps, "time">();
+// ---cut-end---
 ```
 
 ### Handling Clashes
@@ -390,6 +724,17 @@ export type TimeOnlyDeps = Omit<
 When combining deps with `&` (e.g., `LoggerDep & TimeDep`), property clashes are rare but possible. The fix is simple—use distinct wrappers:
 
 ```ts
+// ---cut-start---
+import { assertType } from "@evolu/common";
+
+interface LoggerA {
+  readonly log: (message: string) => void;
+}
+
+interface LoggerB {
+  readonly log: (level: "info" | "debug", message: string) => void;
+}
+// ---cut-end---
 export interface LoggerADep {
   readonly loggerA: LoggerA;
 }
@@ -397,6 +742,10 @@ export interface LoggerADep {
 export interface LoggerBDep {
   readonly loggerB: LoggerB;
 }
+// ---cut-start---
+
+assertType<keyof (LoggerADep & LoggerBDep), "loggerA" | "loggerB">();
+// ---cut-end---
 ```
 
 ## FAQ
@@ -406,13 +755,24 @@ export interface LoggerBDep {
 A dependency is anything that interacts with the outside world—like time (`Date`), logging (`console`), databases—or holds shared state, like [`Ref`](/docs/api-reference/common/Ref) and [`Store`](/docs/api-reference/common/Store). Regular function arguments are not dependencies because they are immutable—now you know why Evolu [recommends readonly objects](/docs/conventions#immutability).
 
 ```ts
+import type { Ref } from "@evolu/common";
+// ---cut-start---
+import { assertEqual, createRef } from "@evolu/common";
+// ---cut-end---
+
 interface CounterRefDep {
   readonly counterRef: Ref<number>;
 }
 
 const increment = (deps: CounterRefDep) => {
-  deps.counterRef.modify((n) => n + 1);
+  deps.counterRef.update((n) => n + 1);
 };
+// ---cut-start---
+
+const counterRef = createRef(0);
+increment({ counterRef });
+assertEqual(counterRef.get(), 1);
+// ---cut-end---
 ```
 
 <Note>
@@ -428,26 +788,60 @@ const increment = (deps: CounterRefDep) => {
 Dependencies must not use generic type parameters—that would leak implementation details into domain logic and tightly couple consumers to specific implementations.
 
 ```ts
+// ---cut-start---
+import { assertEqual } from "@evolu/common";
+
+interface UserRow {
+  readonly id: string;
+  readonly name: string;
+}
+// ---cut-end---
 // Avoid: Generic parameter leaks implementation detail
 interface Storage<Row> {
-  query: (sql: string) => ReadonlyArray<Row>;
+  readonly query: (sql: string) => ReadonlyArray<Row>;
 }
 
 // Now every function using Storage must know about Row
 const getUsers = (deps: { storage: Storage<UserRow> }) =>
   deps.storage.query("SELECT * FROM users");
+// ---cut-start---
+
+const users: ReadonlyArray<UserRow> = [{ id: "1", name: "Ada" }];
+assertEqual(getUsers({ storage: { query: () => users } }), users);
+// ---cut-end---
 ```
 
 The problem: `UserRow` might be SQLite-specific. If you switch to IndexedDB, the row shape could differ, breaking all code that depends on `Storage<UserRow>`.
 
 ```ts
+// ---cut-start---
+import { assertOk, ok, type Result } from "@evolu/common";
+
+interface User {
+  readonly id: string;
+  readonly name: string;
+}
+
+interface StorageError {
+  readonly type: "StorageError";
+}
+
+interface StorageDep {
+  readonly storage: Storage;
+}
+// ---cut-end---
 // Good: No generic, implementation hidden
 interface Storage {
-  getUsers: () => Result<ReadonlyArray<User>, StorageError>;
+  readonly getUsers: () => Result<ReadonlyArray<User>, StorageError>;
 }
 
 // Consumer doesn't know or care how data is stored
 const getUsers = (deps: StorageDep) => deps.storage.getUsers();
+// ---cut-start---
+
+const users: ReadonlyArray<User> = [{ id: "1", name: "Ada" }];
+assertOk(getUsers({ storage: { getUsers: () => ok(users) } }), users);
+// ---cut-end---
 ```
 
 By hiding the generic, the `Storage` interface becomes implementation-agnostic. You can swap SQLite for IndexedDB without changing any code that depends on `Storage`.
@@ -463,13 +857,88 @@ By hiding the generic, the `Storage` interface becomes implementation-agnostic. 
 Use `type` for dependency compositions like `A & B & Partial<C>`. Interfaces can be declaration-merged across files, which is useful for some extensibility patterns but risky for dependency contracts because accidental merges can silently change required deps.
 
 ```ts
+// ---cut-start---
+import { assertType } from "@evolu/common";
+
+interface Time {
+  readonly now: () => number;
+}
+
+interface TimeDep {
+  readonly time: Time;
+}
+
+interface Logger {
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
+}
+
+interface LoggerDep {
+  readonly logger: Logger;
+}
+
+interface Metrics {
+  readonly increment: (name: string) => void;
+}
+
+interface MetricsDep {
+  readonly metrics: Metrics;
+}
+// ---cut-end---
 // Prefer: closed composition
 type AppDeps = LoggerDep & TimeDep & Partial<MetricsDep>;
+// ---cut-start---
 
+assertType<keyof AppDeps, "logger" | "metrics" | "time">();
+// ---cut-end---
+```
+
+```ts
+// ---cut-start---
+import { assertType } from "@evolu/common";
+
+interface Time {
+  readonly now: () => number;
+}
+
+interface TimeDep {
+  readonly time: Time;
+}
+
+interface Logger {
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
+}
+
+interface LoggerDep {
+  readonly logger: Logger;
+}
+
+interface Metrics {
+  readonly increment: (name: string) => void;
+}
+
+interface Storage {
+  readonly save: (data: string) => void;
+}
+// ---cut-end---
 // Avoid for composed deps: interface can be merged elsewhere
 interface AppDeps extends LoggerDep, TimeDep {
   readonly metrics?: Metrics;
 }
+// ---cut-start---
+
+// Another declaration merges into AppDeps and adds a required dependency.
+interface AppDeps {
+  readonly storage: Storage;
+}
+
+assertType<keyof AppDeps, "logger" | "metrics" | "storage" | "time">();
+// ---cut-end---
 ```
 
 Use interfaces for concrete dependency contracts (`Time`, `Logger`, `Storage`) and dep wrappers (`TimeDep`, `LoggerDep`). Use type aliases when combining multiple deps.

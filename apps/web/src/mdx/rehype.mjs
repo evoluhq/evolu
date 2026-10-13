@@ -28,7 +28,7 @@ const rehypeShiki = () => {
   return async (tree) => {
     highlighter ??= await getSingletonHighlighter({
       themes: ["vesper"],
-      langs: ["js", "typescript", "bash", "tsx", "sql", "json"],
+      langs: ["js", "typescript", "bash", "tsx", "sql", "json", "svelte"],
     });
 
     visit(tree, "element", (node) => {

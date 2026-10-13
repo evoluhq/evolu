@@ -26,15 +26,28 @@ But after evaluating it for [Evolu](https://evolu.dev), I decided to use plain w
 Comlink wraps `postMessage` with ES6 Proxy, so instead of:
 
 ```ts
+// ---cut-start---
+import { assertEqual } from "@evolu/common";
+/* oxlint-disable unicorn/prefer-add-event-listener -- Each port has one handler. */
+
+// A MessagePort stands in for a Web Worker, which Node.js does not have.
+const { port1: worker, port2: workerScope } = new MessageChannel();
+workerScope.onmessage = () => {
+  workerScope.postMessage([{ name: "Alice" }]);
+};
+const { promise: handled, resolve: handleResult } =
+  Promise.withResolvers<unknown>();
+// ---cut-end---
 worker.postMessage({ type: "query", sql: "SELECT * FROM users" });
 worker.onmessage = (e) => handleResult(e.data);
+// ---cut-start---
+
+assertEqual(await handled, [{ name: "Alice" }]);
+worker.close();
+// ---cut-end---
 ```
 
-You write:
-
-```ts
-const result = await workerProxy.query("SELECT * FROM users");
-```
+You write `const result = await workerProxy.query("SELECT * FROM users")`.
 
 It also provides `Comlink.proxy()` for callbacks, `Comlink.transfer()` for transferables, and supports SharedWorker, iframes, and Node's worker_threads.
 
@@ -53,15 +66,60 @@ While Proxy performance is fast enough for most use cases, issue [#647](https://
 Instead of Comlink's Proxy abstraction, Evolu uses [`MessageChannel`](https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel) and a simple [`Callbacks<T>`](/docs/api-reference/common/Callbacks) utility for request-response correlation:
 
 ```ts
+import type { Id } from "@evolu/common";
+// ---cut-start---
+import { assertEqual, createCallbacks, testCreateDeps } from "@evolu/common";
+// ---cut-end---
+
 interface Callbacks<T> {
-  register: (callback: (arg: T) => void) => CallbackId;
-  execute: (id: CallbackId, arg: T) => void;
+  readonly register: (callback: (arg: T) => void) => Id;
+  readonly execute: (id: Id, arg: T) => void;
 }
+// ---cut-start---
+
+// The real Callbacks implements this simplified interface.
+const callbacks: Callbacks<string> = createCallbacks<string>(testCreateDeps());
+let received = "";
+const callbackId = callbacks.register((value) => {
+  received = value;
+});
+callbacks.execute(callbackId, "hello");
+assertEqual(received, "hello");
+// ---cut-end---
 ```
 
 Combined with `Promise.withResolvers`, you get clean RPC:
 
 ```ts
+import { createCallbacks, type Id } from "@evolu/common";
+// ---cut-start---
+import { assertEqual, testCreateDeps } from "@evolu/common";
+/* oxlint-disable unicorn/prefer-add-event-listener -- Each port has one handler. */
+
+type QueryResult = ReadonlyArray<{ readonly name: string }>;
+const deps = testCreateDeps();
+// A MessagePort stands in for the port of a worker's MessageChannel.
+const { port1: queryPort, port2: workerPort } = new MessageChannel();
+interface QueryRequest {
+  readonly sql: string;
+  readonly callbackId: Id;
+}
+// The worker holds the first request and answers the second one first.
+let heldRequest: QueryRequest | null = null;
+const respond = ({ sql, callbackId }: QueryRequest) => {
+  const result: QueryResult = [{ name: sql }];
+  workerPort.postMessage({ callbackId, result });
+};
+workerPort.onmessage = (e: MessageEvent<QueryRequest>) => {
+  if (heldRequest === null) {
+    heldRequest = e.data;
+    return;
+  }
+  respond(e.data);
+  respond(heldRequest);
+};
+// ---cut-end---
+
 const callbacks = createCallbacks<QueryResult>(deps);
 
 const query = async (sql: string): Promise<QueryResult> => {
@@ -72,9 +130,19 @@ const query = async (sql: string): Promise<QueryResult> => {
 };
 
 // When response arrives:
-queryPort.onmessage = (e) => {
+queryPort.onmessage = (
+  e: MessageEvent<{ callbackId: Id; result: QueryResult }>,
+) => {
   callbacks.execute(e.data.callbackId, e.data.result);
 };
+// ---cut-start---
+
+assertEqual(await Promise.all([query("A"), query("B")]), [
+  [{ name: "A" }],
+  [{ name: "B" }],
+]);
+queryPort.close();
+// ---cut-end---
 ```
 
 No Proxy, no WeakRef finalization registry, no magic. Just a Map of pending callbacks. It works with any transport - postMessage, WebSocket, whatever.
