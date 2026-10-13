@@ -7,7 +7,7 @@ import { ReactLogo } from "@/components/icons/frameworks/React";
 import { SvelteLogo } from "@/components/icons/frameworks/Svelte";
 import { VueLogo } from "@/components/icons/frameworks/Vue";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect } from "react";
+import { type FC, Suspense, useEffect } from "react";
 
 const platforms = [
   {
@@ -44,7 +44,7 @@ const platforms = [
 const platformIds = new Set(platforms.map(({ id }) => id));
 
 // Component with URL state - needs to be wrapped in Suspense
-const PlatformSelectorWithURL = (): React.ReactElement => {
+const PlatformSelectorWithURL: FC = () => {
   const { preferredLanguages, addPreferredLanguage } =
     usePreferredLanguageStore();
   const searchParams = useSearchParams();
@@ -100,7 +100,7 @@ const PlatformSelectorWithURL = (): React.ReactElement => {
 };
 
 // Fallback component without URL state
-const PlatformSelectorFallback = (): React.ReactElement => {
+const PlatformSelectorFallback: FC = () => {
   const { preferredLanguages, addPreferredLanguage } =
     usePreferredLanguageStore();
 
@@ -120,13 +120,10 @@ const PlatformSelectorFallback = (): React.ReactElement => {
 };
 
 // Shared UI component
-const PlatformSelectorUI = ({
-  currentPlatform,
-  onPlatformChange,
-}: {
+const PlatformSelectorUI: FC<{
   currentPlatform: string;
   onPlatformChange: (platformId: string) => void;
-}): React.ReactElement => (
+}> = ({ currentPlatform, onPlatformChange }) => (
   <fieldset className="mb-6">
     <legend className="text-sm/6 font-semibold">Choose a platform</legend>
     <div className="mt-2 flex flex-wrap gap-2">
@@ -165,7 +162,7 @@ const PlatformSelectorUI = ({
 );
 
 // Main export with Suspense boundary
-export const PlatformSelector = (): React.ReactElement => (
+export const PlatformSelector: FC = () => (
   <Suspense fallback={<PlatformSelectorFallback />}>
     <PlatformSelectorWithURL />
   </Suspense>

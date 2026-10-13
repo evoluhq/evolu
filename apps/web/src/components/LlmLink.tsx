@@ -2,8 +2,9 @@
 
 import { usePathname } from "next/navigation";
 import { IconFileText } from "@tabler/icons-react";
+import type { FC } from "react";
 
-export const LlmLink = (): React.ReactElement | null => {
+export const LlmLink: FC = () => {
   const pathname = usePathname();
 
   // Only show on docs pages

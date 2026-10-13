@@ -125,6 +125,12 @@ for a post, run `node scripts/code-image.mts --help`.
   variables, owned resources, listeners/timers, local functions, returned API.
 - Inline single-use, non-exported options types without `readonly`. Use readonly
   interfaces for exported or reused options. Destructure options in parameters.
+- Type React components as `FC<Props>` with props inline, without `readonly`,
+  and destructured in the parameter, also for exported components. Declare
+  `children` as `ReactNode`, required unless the component works without it;
+  `PropsWithChildren` would make it optional. A component that only forwards
+  its props takes `props` whole, and a generic component annotates its
+  parameter, since a value typed as `FC` cannot be generic.
 - Avoid getters/setters. Use readonly properties for stable values and explicit
   functions for values that change or require computation.
 - Side-effecting union switches use `exhaustiveCheck` in `default`.

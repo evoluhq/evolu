@@ -98,8 +98,8 @@ const setupUseOwner = () => {
 
 // Recreates the owner and transports on every render, as callers usually do.
 const Registration: FC<{
-  readonly owner: ReadonlyOwner | Owner | null;
-  readonly url: string;
+  owner: ReadonlyOwner | Owner | null;
+  url: string;
 }> = ({ owner, url }) => {
   useOwner(owner && { ...owner }, [
     createOwnerWebSocketTransport({ url, ownerId: testAppOwner.id }),
@@ -414,7 +414,7 @@ const setupUseOwnerSyncStatus = () => {
     return null;
   };
 
-  const SyncStatus: FC<{ readonly owner: ReadonlyOwner | Owner | null }> = ({
+  const SyncStatus: FC<{ owner: ReadonlyOwner | Owner | null }> = ({
     owner,
   }) => {
     statuses.push(useOwnerSyncStatus(syncState, owner));
@@ -531,7 +531,7 @@ test("rejects an owner that may be undefined", () => {
     createAppOwnerSyncState(openConnection, completeRoute),
   );
   const statuses: Array<OwnerSyncStatus> = [];
-  const SyncStatus: FC<{ readonly owner: Owner | undefined }> = ({ owner }) => {
+  const SyncStatus: FC<{ owner: Owner | undefined }> = ({ owner }) => {
     // @ts-expect-error No overload takes an owner that may be undefined, which would mean the app owner; pass null while there is none.
     statuses.push(useOwnerSyncStatus(syncState, owner));
     return null;

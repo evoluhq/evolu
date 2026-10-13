@@ -1,5 +1,6 @@
 import { type Metadata } from "next";
 import Link from "next/link";
+import type { FC } from "react";
 
 import { Card } from "@/components/Card";
 import { SimpleLayout } from "@/components/SimpleLayout";
@@ -7,7 +8,7 @@ import { RssIcon } from "@/components/icons/RssIcon";
 import { type ArticleWithSlug, getAllArticles } from "@/lib/blog";
 import { formatDate } from "@/lib/formatDate";
 
-const Article = ({ article }: { article: ArticleWithSlug }) => (
+const Article: FC<{ article: ArticleWithSlug }> = ({ article }) => (
   <article className="md:grid md:grid-cols-4 md:items-baseline">
     <Card className="md:col-span-3">
       <Card.Title href={`/blog/${article.slug}`}>{article.title}</Card.Title>
@@ -37,7 +38,7 @@ export const metadata: Metadata = {
   description: "Restore data ownership",
 };
 
-const ArticlesIndex = async (): Promise<React.ReactElement> => {
+const ArticlesIndex: FC = async () => {
   const articles = await getAllArticles();
 
   return (

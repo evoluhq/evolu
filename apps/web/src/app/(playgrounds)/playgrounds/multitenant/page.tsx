@@ -4,6 +4,7 @@ import { installPolyfills } from "@evolu/common/polyfills";
 installPolyfills();
 
 import dynamic from "next/dynamic";
+import type { FC } from "react";
 
 /**
  * Using dynamic with ssr: false emulates SPA behavior in Next.js.
@@ -21,10 +22,10 @@ const EvoluMultitenantExample = dynamic(
   { ssr: false },
 );
 
-export default function Page(): React.ReactElement {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 bg-zinc-100">
-      <EvoluMultitenantExample />
-    </div>
-  );
-}
+const Page: FC = () => (
+  <div className="flex h-full flex-col items-center justify-center gap-4 bg-zinc-100">
+    <EvoluMultitenantExample />
+  </div>
+);
+
+export default Page;

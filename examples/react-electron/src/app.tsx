@@ -1,7 +1,7 @@
 import "./App.css";
-import type { ReactElement } from "react";
+import type { FC } from "react";
 import { EvoluMinimalExample } from "../components/EvoluMinimalExample";
 
-const App = (): ReactElement => <EvoluMinimalExample />;
+const App: FC = () => <EvoluMinimalExample />;
 
 export default App;

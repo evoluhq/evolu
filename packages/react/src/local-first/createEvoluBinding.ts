@@ -26,16 +26,14 @@ import {
   useMemo,
   useRef,
   useSyncExternalStore,
+  type FC,
   type ReactNode,
 } from "react";
 import { useIsSsr } from "./useIsSsr.ts";
 
 export interface ReactBinding<S extends EvoluSchema = EvoluSchema> {
   /** Provides {@link Evolu} to React descendants consumed via `useEvolu`. */
-  readonly EvoluContext: React.FC<{
-    readonly value: Evolu<S>;
-    readonly children?: ReactNode;
-  }>;
+  readonly EvoluContext: FC<{ value: Evolu<S>; children?: ReactNode }>;
 
   /** Returns the current {@link Evolu} instance from `EvoluContext`. */
   readonly useEvolu: () => Evolu<S>;

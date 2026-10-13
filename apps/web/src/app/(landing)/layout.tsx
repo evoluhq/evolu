@@ -1,4 +1,5 @@
 import { type Metadata } from "next";
+import type { FC, ReactNode } from "react";
 
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
@@ -11,19 +12,15 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <div className="mx-auto h-full max-w-5xl">
-      <Header variant="landing" />
+const RootLayout: FC<{ children: ReactNode }> = ({ children }) => (
+  <div className="mx-auto h-full max-w-5xl">
+    <Header variant="landing" />
 
-      <div className="relative flex h-full flex-col px-4 pt-14 sm:px-6 lg:px-8">
-        <main className="flex-auto">{children}</main>
-        <Footer />
-      </div>
+    <div className="relative flex h-full flex-col px-4 pt-14 sm:px-6 lg:px-8">
+      <main className="flex-auto">{children}</main>
+      <Footer />
     </div>
-  );
-}
+  </div>
+);
+
+export default RootLayout;

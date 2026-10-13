@@ -1,19 +1,14 @@
-import { useId } from "react";
+import { type FC, useId } from "react";
 
-export const GridPattern = ({
-  width,
-  height,
-  x,
-  y,
-  squares,
-  ...props
-}: React.ComponentPropsWithoutRef<"svg"> & {
-  width: number;
-  height: number;
-  x: string | number;
-  y: string | number;
-  squares?: Array<[x: number, y: number]>;
-}): React.ReactElement => {
+export const GridPattern: FC<
+  React.ComponentPropsWithoutRef<"svg"> & {
+    width: number;
+    height: number;
+    x: string | number;
+    y: string | number;
+    squares?: Array<[x: number, y: number]>;
+  }
+> = ({ width, height, x, y, squares, ...props }) => {
   const patternId = useId();
 
   return (

@@ -1,6 +1,6 @@
-export const Logo = (
-  props: React.ComponentPropsWithoutRef<"svg">,
-): React.ReactElement => (
+import type { FC } from "react";
+
+export const Logo: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg viewBox="0 0 99 23" aria-hidden="true" {...props}>
     <path
       fill="currentColor"

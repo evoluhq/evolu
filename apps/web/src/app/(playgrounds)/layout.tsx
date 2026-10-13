@@ -1,10 +1,9 @@
 import "@/styles/tailwind.css";
 // import "@tailwindcss/forms";
 
-export default function PlaygroundLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.ReactNode {
-  return children;
-}
+import type { FC, ReactNode } from "react";
+
+const PlaygroundLayout: FC<{ children: ReactNode }> = ({ children }) =>
+  children;
+
+export default PlaygroundLayout;

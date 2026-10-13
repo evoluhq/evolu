@@ -1,3 +1,5 @@
+import type { FC } from "react";
+
 import { Button } from "@/components/Button";
 import ViteLogo from "@/components/icons/frameworks/Vite";
 
@@ -10,7 +12,7 @@ const examples = [
   },
 ];
 
-export const VueExamples = (): React.ReactElement => (
+export const VueExamples: FC = () => (
   <div className="my-16 xl:max-w-none">
     <div className="not-prose mt-4 grid grid-cols-1 gap-x-6 gap-y-10 border-t border-zinc-900/5 pt-10 sm:grid-cols-2 xl:max-w-none xl:grid-cols-2 dark:border-white/5">
       {examples.map((example) => (

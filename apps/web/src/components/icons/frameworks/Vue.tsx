@@ -1,6 +1,6 @@
-import { type SVGProps } from "react";
+import { type FC, type SVGProps } from "react";
 
-export const VueLogo = (props: SVGProps<SVGSVGElement>): React.ReactElement => (
+export const VueLogo: FC<SVGProps<SVGSVGElement>> = (props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="1em"

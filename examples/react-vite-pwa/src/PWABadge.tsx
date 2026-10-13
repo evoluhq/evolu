@@ -1,9 +1,9 @@
 import "./PWABadge.css";
 
-import type { ReactElement } from "react";
+import type { FC } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
-const PWABadge = (): ReactElement => {
+const PWABadge: FC = () => {
   // check for updates every hour
   const period = 60 * 60 * 1000;
 

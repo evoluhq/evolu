@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { FC } from "react";
 
 /**
  * Evolu supports server-side rendering (SSR) even with web-only deps, but
@@ -18,6 +19,6 @@ const EvoluMinimalExample = dynamic(
   { ssr: false },
 );
 
-export default function Home(): React.ReactNode {
-  return <EvoluMinimalExample />;
-}
+const Home: FC = () => <EvoluMinimalExample />;
+
+export default Home;

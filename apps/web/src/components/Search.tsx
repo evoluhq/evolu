@@ -12,7 +12,7 @@ import { Dialog, DialogBackdrop, DialogPanel } from "@headlessui/react";
 import clsx from "clsx";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  forwardRef,
+  type FC,
   Suspense,
   useCallback,
   useEffect,
@@ -96,7 +96,7 @@ const useAutocomplete = ({ close }: { close: () => void }) => {
   return { autocomplete, autocompleteState };
 };
 
-const SearchIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+const SearchIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
     <path
       strokeLinecap="round"
@@ -106,7 +106,7 @@ const SearchIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
   </svg>
 );
 
-const NoResultsIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+const NoResultsIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
     <path
       strokeLinecap="round"
@@ -116,7 +116,7 @@ const NoResultsIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
   </svg>
 );
 
-const LoadingIcon = (props: React.ComponentPropsWithoutRef<"svg">) => {
+const LoadingIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => {
   const id = useId();
 
   return (
@@ -145,7 +145,10 @@ const LoadingIcon = (props: React.ComponentPropsWithoutRef<"svg">) => {
   );
 };
 
-const HighlightQuery = ({ text, query }: { text: string; query: string }) => (
+const HighlightQuery: FC<{ text: string; query: string }> = ({
+  text,
+  query,
+}) => (
   <Highlighter
     highlightClassName="underline bg-transparent text-blue-500"
     searchWords={[query]}
@@ -154,20 +157,14 @@ const HighlightQuery = ({ text, query }: { text: string; query: string }) => (
   />
 );
 
-const SearchResult = ({
-  result,
-  resultIndex,
-  autocomplete,
-  collection,
-  query,
-}: {
+const SearchResult: FC<{
   result: Result;
   resultIndex: number;
   autocomplete: Autocomplete;
   // @ts-expect-error - `autocompleteState` is not used in this component
   collection: AutocompleteCollection<Result>;
   query: string;
-}) => {
+}> = ({ result, resultIndex, autocomplete, collection, query }) => {
   const id = useId();
 
   return (
@@ -196,16 +193,12 @@ const SearchResult = ({
   );
 };
 
-const SearchResults = ({
-  autocomplete,
-  query,
-  collection,
-}: {
+const SearchResults: FC<{
   autocomplete: Autocomplete;
   query: string;
   // @ts-expect-error - `autocompleteState` is not used in this component
   collection: AutocompleteCollection<Result>;
-}) => {
+}> = ({ autocomplete, query, collection }) => {
   if (collection.items.length === 0) {
     return (
       <div className="p-6 text-center">
@@ -237,22 +230,20 @@ const SearchResults = ({
   );
 };
 
-const SearchInput = forwardRef<
-  React.ComponentRef<"input">,
-  {
-    autocomplete: Autocomplete;
-    // @ts-expect-error - `autocompleteState` is not used in this component
-    autocompleteState: AutocompleteState<Result> | EmptyObject;
-    onClose: () => void;
-  }
->(function SearchInput({ autocomplete, autocompleteState, onClose }, inputRef) {
+const SearchInput: FC<{
+  ref: React.Ref<React.ComponentRef<"input">>;
+  autocomplete: Autocomplete;
+  // @ts-expect-error - `autocompleteState` is not used in this component
+  autocompleteState: AutocompleteState<Result> | EmptyObject;
+  onClose: () => void;
+}> = ({ ref, autocomplete, autocompleteState, onClose }) => {
   const inputProps = autocomplete.getInputProps({ inputElement: null });
 
   return (
     <div className="group relative flex h-12">
       <SearchIcon className="pointer-events-none absolute top-0 left-3 h-full w-5 stroke-zinc-500" />
       <input
-        ref={inputRef}
+        ref={ref}
         data-autofocus
         className={clsx(
           "flex-auto appearance-none border-none! border-transparent bg-transparent pl-10 text-zinc-900 placeholder:text-zinc-500 focus:w-full focus:flex-none focus:ring-0! focus:outline-hidden! sm:text-sm dark:text-white [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden [&::-webkit-search-results-button]:hidden [&::-webkit-search-results-decoration]:hidden",
@@ -284,20 +275,16 @@ const SearchInput = forwardRef<
       )}
     </div>
   );
-});
+};
 
-const SearchDialog = ({
-  open,
-  setOpen,
-  className,
-}: {
+const SearchDialog: FC<{
   open: boolean;
   setOpen: (open: boolean) => void;
   className?: string;
-}) => {
+}> = ({ open, setOpen, className }) => {
   const formRef = useRef<React.ComponentRef<"form">>(null);
   const panelRef = useRef<React.ComponentRef<"div">>(null);
-  const inputRef = useRef<React.ComponentRef<typeof SearchInput>>(null);
+  const inputRef = useRef<React.ComponentRef<"input">>(null);
   const { autocomplete, autocompleteState } = useAutocomplete({
     close() {
       setOpen(false);
@@ -417,7 +404,7 @@ const subscribeToPlatform = (): (() => void) => () => {};
 const getModifierKey = (): string => (isApplePlatform() ? "⌘" : "Ctrl ");
 const getServerModifierKey = (): string => "Ctrl ";
 
-export const Search = (): React.ReactElement => {
+export const Search: FC = () => {
   const modifierKey = useSyncExternalStore(
     subscribeToPlatform,
     getModifierKey,
@@ -446,7 +433,7 @@ export const Search = (): React.ReactElement => {
   );
 };
 
-export const MobileSearch = (): React.ReactElement => {
+export const MobileSearch: FC = () => {
   const { buttonProps, dialogProps } = useSearchProps();
 
   return (

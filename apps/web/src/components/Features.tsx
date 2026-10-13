@@ -8,6 +8,7 @@ import {
 } from "motion/react";
 import clsx from "clsx";
 import Link from "next/link";
+import type { FC } from "react";
 
 import { GridPattern } from "@/components/GridPattern";
 import {
@@ -128,25 +129,17 @@ const features: Array<Feature> = [
   },
 ];
 
-const FeatureIcon = ({
-  icon: Icon,
-}: {
-  icon: Feature["icon"];
-}): React.ReactElement => (
+const FeatureIcon: FC<{ icon: Feature["icon"] }> = ({ icon: Icon }) => (
   <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white ring-1 ring-zinc-900/25 backdrop-blur-[2px] transition duration-300 group-hover:bg-white/50 group-hover:ring-zinc-900/50 dark:bg-white/10 dark:ring-white/15 dark:group-hover:bg-zinc-300/10 dark:group-hover:ring-zinc-400">
     <Icon className="h-5 w-5 stroke-zinc-700 transition-colors duration-300 group-hover:stroke-zinc-900 dark:stroke-zinc-400 dark:group-hover:stroke-zinc-400" />
   </div>
 );
 
-const FeaturePattern = ({
-  mouseX,
-  mouseY,
-  pattern,
-}: {
+const FeaturePattern: FC<{
   mouseX: MotionValue<number>;
   mouseY: MotionValue<number>;
   pattern: (typeof patterns)[number];
-}) => {
+}> = ({ mouseX, mouseY, pattern }) => {
   const maskImage = useMotionTemplate`radial-gradient(180px at ${mouseX}px ${mouseY}px, white, transparent)`;
   const style = { maskImage, WebkitMaskImage: maskImage };
 
@@ -179,7 +172,10 @@ const FeaturePattern = ({
   );
 };
 
-const Feature = ({ feature, index }: { feature: Feature; index: number }) => {
+const Feature: FC<{ feature: Feature; index: number }> = ({
+  feature,
+  index,
+}) => {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
@@ -223,13 +219,10 @@ const Feature = ({ feature, index }: { feature: Feature; index: number }) => {
   );
 };
 
-const FeatureGrid = ({
-  features,
-  columns,
-}: {
+const FeatureGrid: FC<{
   features: ReadonlyArray<Feature>;
   columns: 2 | 4;
-}): React.ReactElement => (
+}> = ({ features, columns }) => (
   <div
     className={clsx(
       "not-prose grid grid-cols-1 gap-2 sm:grid-cols-2 lg:gap-8",
@@ -242,16 +235,12 @@ const FeatureGrid = ({
   </div>
 );
 
-export const Features = (): React.ReactElement => (
+export const Features: FC = () => (
   <FeatureGrid features={features} columns={4} />
 );
 
 /** Evolu Library features. The bundle size comes from the bundle snapshot. */
-export const LibraryFeatures = ({
-  bundleSize,
-}: {
-  bundleSize: string;
-}): React.ReactElement => (
+export const LibraryFeatures: FC<{ bundleSize: string }> = ({ bundleSize }) => (
   <FeatureGrid
     columns={2}
     features={[

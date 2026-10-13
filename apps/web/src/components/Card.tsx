@@ -1,7 +1,8 @@
 import clsx from "clsx";
 import Link from "next/link";
+import type { FC, ReactNode } from "react";
 
-const ChevronRightIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+const ChevronRightIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" {...props}>
     <path
       d="M6.75 5.75 9.25 8l-2.5 2.25"
@@ -31,10 +32,10 @@ export const Card = <T extends React.ElementType = "div">({
   );
 };
 
-Card.Link = ({
+const CardLink: FC<React.ComponentPropsWithoutRef<typeof Link>> = ({
   children,
   ...props
-}: React.ComponentPropsWithoutRef<typeof Link>) => (
+}) => (
   <>
     <div className="absolute -inset-x-4 -inset-y-6 z-0 scale-95 bg-zinc-50 opacity-0 transition group-hover:scale-100 group-hover:opacity-100 sm:-inset-x-6 sm:rounded-2xl dark:bg-zinc-800/50" />
     <Link {...props}>
@@ -43,6 +44,8 @@ Card.Link = ({
     </Link>
   </>
 );
+
+Card.Link = CardLink;
 
 Card.Title = <T extends React.ElementType = "h2">({
   as,
@@ -61,13 +64,15 @@ Card.Title = <T extends React.ElementType = "h2">({
   );
 };
 
-Card.Description = ({ children }: { children: React.ReactNode }) => (
+const CardDescription: FC<{ children: ReactNode }> = ({ children }) => (
   <p className="relative z-10 mt-2 text-base text-zinc-600 max-sm:leading-[1.6] dark:text-zinc-400">
     {children}
   </p>
 );
 
-Card.Cta = ({ children }: { children: React.ReactNode }) => (
+Card.Description = CardDescription;
+
+const CardCta: FC<{ children: ReactNode }> = ({ children }) => (
   <div
     aria-hidden="true"
     className="relative z-10 mt-4 flex items-center text-sm font-medium text-blue-500"
@@ -76,6 +81,8 @@ Card.Cta = ({ children }: { children: React.ReactNode }) => (
     <ChevronRightIcon className="ml-1 h-4 w-4 stroke-current" />
   </div>
 );
+
+Card.Cta = CardCta;
 
 Card.Eyebrow = <T extends React.ElementType = "p">({
   as,

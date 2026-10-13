@@ -1,12 +1,10 @@
-export const SimpleLayout = ({
-  title,
-  intro,
-  children,
-}: {
+import type { FC, ReactNode } from "react";
+
+export const SimpleLayout: FC<{
   title: string;
   intro: string;
-  children?: React.ReactNode;
-}): React.ReactElement => (
+  children?: ReactNode;
+}> = ({ title, intro, children }) => (
   <div className="mt-12">
     <header className="max-w-2xl">
       <h1 className="text-4xl font-bold tracking-tight text-zinc-800 sm:text-5xl dark:text-zinc-100">

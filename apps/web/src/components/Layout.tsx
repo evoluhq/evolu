@@ -9,6 +9,7 @@ import sections from "@/data/sections.json";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { FC, ReactNode } from "react";
 
 // Imported by this client module rather than passed from the server layout: a
 // prop would serialize the whole map into every docs page's RSC payload, while
@@ -18,11 +19,7 @@ import { usePathname } from "next/navigation";
 // promise shared with a parallel-route slot).
 const sectionsByRoute: Readonly<Record<string, Array<Section>>> = sections;
 
-export const Layout = ({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.ReactElement => {
+export const Layout: FC<{ children: ReactNode }> = ({ children }) => {
   const pathname = usePathname();
 
   return (

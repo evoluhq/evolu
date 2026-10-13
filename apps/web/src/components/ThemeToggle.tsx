@@ -1,7 +1,8 @@
 import { IconMoonFilled, IconSun } from "@tabler/icons-react";
 import { useTheme } from "next-themes";
+import type { FC } from "react";
 
-export const ThemeToggle = (): React.ReactElement => {
+export const ThemeToggle: FC = () => {
   const { resolvedTheme, setTheme } = useTheme();
   const otherTheme = resolvedTheme === "dark" ? "light" : "dark";
 

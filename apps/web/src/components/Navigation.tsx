@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { type FC, type ReactNode, useState } from "react";
 
 import { useSectionStore } from "@/components/SectionProvider";
 import { Tag } from "@/components/Tag";
@@ -24,15 +24,11 @@ const useInitialValue = <T,>(value: T, condition = true) => {
   return condition ? initialValue : value;
 };
 
-const TopLevelNavItem = ({
-  href,
-  target,
-  children,
-}: {
+const TopLevelNavItem: FC<{
   href: string;
   target?: string;
-  children: React.ReactNode;
-}) => (
+  children: ReactNode;
+}> = ({ href, target, children }) => (
   <li className="md:hidden">
     <Link
       href={href}
@@ -44,19 +40,13 @@ const TopLevelNavItem = ({
   </li>
 );
 
-const NavLink = ({
-  href,
-  children,
-  tag,
-  active = false,
-  isAnchorLink = false,
-}: {
+const NavLink: FC<{
   href: string;
-  children: React.ReactNode;
   tag?: string | undefined;
   active?: boolean;
   isAnchorLink?: boolean;
-}) => (
+  children: ReactNode;
+}> = ({ href, children, tag, active = false, isAnchorLink = false }) => (
   <Link
     href={href}
     aria-current={active ? "page" : undefined}
@@ -79,12 +69,9 @@ const NavLink = ({
   </Link>
 );
 
-const VisibleSectionHighlight = ({
+const VisibleSectionHighlight: FC<{ group: NavGroup; pathname: string }> = ({
   group,
   pathname,
-}: {
-  group: NavGroup;
-  pathname: string;
 }) => {
   const [sections, visibleSections] = useInitialValue(
     [
@@ -122,12 +109,9 @@ const VisibleSectionHighlight = ({
   );
 };
 
-const ActivePageMarker = ({
+const ActivePageMarker: FC<{ group: NavGroup; pathname: string }> = ({
   group,
   pathname,
-}: {
-  group: NavGroup;
-  pathname: string;
 }) => {
   const itemHeight = remToPx(2);
   const offset = remToPx(0.25);
@@ -148,12 +132,9 @@ const ActivePageMarker = ({
   );
 };
 
-const NavigationGroup = ({
+const NavigationGroup: FC<{ group: NavGroup; className?: string }> = ({
   group,
   className,
-}: {
-  group: NavGroup;
-  className?: string;
 }) => {
   // If this is the mobile navigation then we always render the initial
   // state, so that the state does not change during the close animation.
@@ -237,9 +218,9 @@ const NavigationGroup = ({
   );
 };
 
-export const Navigation = (
-  props: React.ComponentPropsWithoutRef<"nav">,
-): React.ReactElement => {
+export const Navigation: FC<React.ComponentPropsWithoutRef<"nav">> = (
+  props,
+) => {
   const pathname = usePathname();
 
   return (

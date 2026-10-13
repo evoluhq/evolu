@@ -1,7 +1,7 @@
 "use client";
 
 import { assert, type DisposableRun, type Run } from "@evolu/common";
-import { createContext, use, type ReactNode } from "react";
+import { createContext, use, type FC, type ReactNode } from "react";
 
 /**
  * Creates typed React Context and hook for {@link Run}.
@@ -16,6 +16,7 @@ import { createContext, use, type ReactNode } from "react";
  * ```tsx
  * import { assertEqual, createRun } from "@evolu/common";
  * import { createRunBinding } from "@evolu/react";
+ * import type { FC } from "react";
  * import { renderToString } from "react-dom/server";
  *
  * interface GreetingDep {
@@ -25,7 +26,7 @@ import { createContext, use, type ReactNode } from "react";
  * await using run = createRun<GreetingDep>({ greeting: "Hello" });
  * const { RunContext, useRun } = createRunBinding<typeof run>();
  *
- * const Greeting = () => <p>{useRun().deps.greeting}</p>;
+ * const Greeting: FC = () => <p>{useRun().deps.greeting}</p>;
  *
  * assertEqual(
  *   renderToString(
@@ -48,6 +49,7 @@ import { createContext, use, type ReactNode } from "react";
  *   type DisposableRun,
  * } from "@evolu/common";
  * import { createRunBinding } from "@evolu/react";
+ * import type { FC } from "react";
  * import { renderToString } from "react-dom/server";
  *
  * interface GreetingDep {
@@ -56,7 +58,7 @@ import { createContext, use, type ReactNode } from "react";
  *
  * const { RunContext, useRun } =
  *   createRunBinding<DisposableRun<GreetingDep>>();
- * const Greeting = () => <p>{useRun().deps.greeting}</p>;
+ * const Greeting: FC = () => <p>{useRun().deps.greeting}</p>;
  *
  * await using run = testCreateRun({ greeting: "Hi" });
  *
@@ -73,9 +75,9 @@ import { createContext, use, type ReactNode } from "react";
 export const createRunBinding = <
   R extends DisposableRun<any> = DisposableRun,
 >(): {
-  readonly RunContext: React.FC<{
-    readonly value: Run<R extends DisposableRun<infer D> ? D : never>;
-    readonly children?: ReactNode;
+  readonly RunContext: FC<{
+    value: Run<R extends DisposableRun<infer D> ? D : never>;
+    children?: ReactNode;
   }>;
   readonly useRun: () => Run<R extends DisposableRun<infer D> ? D : never>;
 } => {

@@ -1,5 +1,5 @@
-import type { SVGProps } from "react";
-const ViteLogo = (props: SVGProps<SVGSVGElement>): React.ReactElement => (
+import type { FC, SVGProps } from "react";
+const ViteLogo: FC<SVGProps<SVGSVGElement>> = (props) => (
   <svg
     width="1em"
     height="1em"

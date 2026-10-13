@@ -13,7 +13,7 @@ import {
   useState,
   useSyncExternalStore,
   type FC,
-  type PropsWithChildren,
+  type ReactNode,
 } from "react";
 
 const AppSchema = {
@@ -128,7 +128,7 @@ export const EvoluMultitenantExample: FC = () => {
   );
 };
 
-const DeviceEvoluContext: FC<PropsWithChildren> = ({ children }) => {
+const DeviceEvoluContext: FC<{ children: ReactNode }> = ({ children }) => {
   const deviceEvolu = use(devicePromise);
 
   return (
@@ -354,9 +354,10 @@ const AppOwnersItem: FC<{
   </li>
 );
 
-const AppEvoluContext: FC<
-  PropsWithChildren<{ readonly appOwner: Evolu.AppOwner }>
-> = ({ appOwner, children }) => {
+const AppEvoluContext: FC<{
+  appOwner: Evolu.AppOwner;
+  children: ReactNode;
+}> = ({ appOwner, children }) => {
   const run = useRun();
   const [appEvolu, setAppEvolu] = useState<Evolu.Evolu<typeof AppSchema>>();
 

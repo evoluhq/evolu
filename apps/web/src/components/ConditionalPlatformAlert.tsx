@@ -1,19 +1,17 @@
 "use client";
 
+import type { FC, ReactNode } from "react";
+
 import { Announcement, Note, Warn } from "@/components/Alerts";
 import { usePreferredLanguageStore } from "@/components/Code";
 
 type AlertType = "warning" | "info" | "announcement";
 
-export const ConditionalPlatformAlert = ({
-  platform,
-  type = "warning",
-  children,
-}: {
+export const ConditionalPlatformAlert: FC<{
   platform: Array<string>;
   type?: AlertType;
-  children: React.ReactNode;
-}): React.ReactElement | null => {
+  children: ReactNode;
+}> = ({ platform, type = "warning", children }) => {
   const { preferredLanguages } = usePreferredLanguageStore();
 
   const mostRecentPlatform = preferredLanguages[preferredLanguages.length - 1];

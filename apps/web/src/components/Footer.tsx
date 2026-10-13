@@ -2,19 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { FC, ReactNode } from "react";
 
 import { Button } from "@/components/Button";
 import { navigation } from "@/lib/navigation";
 
-const PageLink = ({
-  label,
-  page,
-  previous = false,
-}: {
+const PageLink: FC<{
   label: string;
   page: { href: string; title: string };
   previous?: boolean;
-}) => (
+}> = ({ label, page, previous = false }) => (
   <>
     <Button
       href={page.href}
@@ -35,7 +32,7 @@ const PageLink = ({
   </>
 );
 
-const PageNavigation = () => {
+const PageNavigation: FC = () => {
   const pathname = usePathname();
   const allPages = navigation.flatMap((group) => group.links);
   const currentPageIndex = allPages.findIndex((page) => page.href === pathname);
@@ -64,17 +61,15 @@ const PageNavigation = () => {
   );
 };
 
-export const XIcon = (
-  props: React.ComponentPropsWithoutRef<"svg">,
-): React.ReactElement => (
+export const XIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
     <path d="M11.1527 8.92804L16.2525 3H15.044L10.6159 8.14724L7.07919 3H3L8.34821 10.7835L3 17H4.20855L8.88474 11.5643L12.6198 17H16.699L11.1524 8.92804H11.1527ZM9.49748 10.8521L8.95559 10.077L4.644 3.90978H6.50026L9.97976 8.88696L10.5216 9.66202L15.0446 16.1316H13.1883L9.49748 10.8524V10.8521Z" />
   </svg>
 );
 
-export const GitHubIcon = (
-  props: React.ComponentPropsWithoutRef<"svg">,
-): React.ReactElement => (
+export const GitHubIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (
+  props,
+) => (
   <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
     <path
       fillRule="evenodd"
@@ -84,30 +79,26 @@ export const GitHubIcon = (
   </svg>
 );
 
-export const DiscordIcon = (
-  props: React.ComponentPropsWithoutRef<"svg">,
-): React.ReactElement => (
+export const DiscordIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (
+  props,
+) => (
   <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
     <path d="M16.238 4.515a14.842 14.842 0 0 0-3.664-1.136.055.055 0 0 0-.059.027 10.35 10.35 0 0 0-.456.938 13.702 13.702 0 0 0-4.115 0 9.479 9.479 0 0 0-.464-.938.058.058 0 0 0-.058-.027c-1.266.218-2.497.6-3.664 1.136a.052.052 0 0 0-.024.02C1.4 8.023.76 11.424 1.074 14.782a.062.062 0 0 0 .024.042 14.923 14.923 0 0 0 4.494 2.272.058.058 0 0 0 .064-.02c.346-.473.654-.972.92-1.496a.057.057 0 0 0-.032-.08 9.83 9.83 0 0 1-1.404-.669.058.058 0 0 1-.029-.046.058.058 0 0 1 .023-.05c.094-.07.189-.144.279-.218a.056.056 0 0 1 .058-.008c2.946 1.345 6.135 1.345 9.046 0a.056.056 0 0 1 .059.007c.09.074.184.149.28.22a.058.058 0 0 1 .023.049.059.059 0 0 1-.028.046 9.224 9.224 0 0 1-1.405.669.058.058 0 0 0-.033.033.056.056 0 0 0 .002.047c.27.523.58 1.022.92 1.495a.056.056 0 0 0 .062.021 14.878 14.878 0 0 0 4.502-2.272.055.055 0 0 0 .016-.018.056.056 0 0 0 .008-.023c.375-3.883-.63-7.256-2.662-10.246a.046.046 0 0 0-.023-.021Zm-9.223 8.221c-.887 0-1.618-.814-1.618-1.814s.717-1.814 1.618-1.814c.908 0 1.632.821 1.618 1.814 0 1-.717 1.814-1.618 1.814Zm5.981 0c-.887 0-1.618-.814-1.618-1.814s.717-1.814 1.618-1.814c.908 0 1.632.821 1.618 1.814 0 1-.71 1.814-1.618 1.814Z" />
   </svg>
 );
 
-export const SocialLink = ({
-  href,
-  icon: Icon,
-  children,
-}: {
+export const SocialLink: FC<{
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-}): React.ReactElement => (
+  children: ReactNode;
+}> = ({ href, icon: Icon, children }) => (
   <Link href={href} target="_blank" className="group">
     <span className="sr-only">{children}</span>
     <Icon className="h-5 w-5 fill-zinc-700 transition group-hover:fill-zinc-900 dark:fill-zinc-400 dark:group-hover:fill-zinc-100" />
   </Link>
 );
 
-const SmallPrint = () => (
+const SmallPrint: FC = () => (
   <div className="flex flex-col items-center justify-between gap-5 border-t border-zinc-900/5 pt-8 sm:flex-row dark:border-white/5">
     <p className="text-xs text-zinc-600 dark:text-zinc-400">
       &copy; {new Date().getFullYear()} Evolu
@@ -126,7 +117,7 @@ const SmallPrint = () => (
   </div>
 );
 
-export const Footer = (): React.ReactElement => (
+export const Footer: FC = () => (
   <footer className="mx-auto w-full max-w-2xl space-y-10 pb-16 lg:max-w-5xl">
     <PageNavigation />
     <SmallPrint />

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { FC } from "react";
 import { getSingletonHighlighter } from "shiki";
 
 import { Code, CodeGroup, Pre } from "@/components/Code";
@@ -11,11 +12,9 @@ import { Code, CodeGroup, Pre } from "@/components/Code";
  * compile and that each `@ts-expect-error` line is a compile error. It doesn't
  * check the quoted error messages.
  */
-export const SnippetCodeGroup = async ({
-  snippets,
-}: {
+export const SnippetCodeGroup: FC<{
   snippets: ReadonlyArray<{ title: string; file: string }>;
-}): Promise<React.ReactElement> => {
+}> = async ({ snippets }) => {
   const highlighter = await getSingletonHighlighter({
     themes: ["vesper"],
     langs: ["typescript"],

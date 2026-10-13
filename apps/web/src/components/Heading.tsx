@@ -2,13 +2,13 @@
 
 import { useInView } from "motion/react";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { type FC, type ReactNode, useEffect, useRef } from "react";
 
 import { useSectionStore } from "@/components/SectionProvider";
 import { Tag } from "@/components/Tag";
 import { remToPx } from "@/lib/remToPx";
 
-const AnchorIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+const AnchorIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg
     viewBox="0 0 20 20"
     fill="none"
@@ -20,13 +20,10 @@ const AnchorIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
   </svg>
 );
 
-const Eyebrow = ({
-  tag,
-  label,
-}: {
+const Eyebrow: FC<{
   tag?: string | undefined;
   label?: string | undefined;
-}) => {
+}> = ({ tag, label }) => {
   if (!tag && !label) {
     return null;
   }
@@ -44,14 +41,10 @@ const Eyebrow = ({
   );
 };
 
-const Anchor = ({
+const Anchor: FC<{ id: string; inView: boolean; children: ReactNode }> = ({
   id,
   inView,
   children,
-}: {
-  id: string;
-  inView: boolean;
-  children: React.ReactNode;
 }) => (
   <Link
     href={`#${id}`}

@@ -5,13 +5,14 @@ installQuickCryptoPolyfills();
 installReactNativePolyfills();
 
 import { Stack } from "expo-router";
+import type { FC } from "react";
 
-export default function RootLayout(): React.ReactNode {
-  return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-      }}
-    />
-  );
-}
+const RootLayout: FC = () => (
+  <Stack
+    screenOptions={{
+      headerShown: false,
+    }}
+  />
+);
+
+export default RootLayout;

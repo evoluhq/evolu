@@ -1,7 +1,7 @@
 "use client";
 
 import { leancase } from "@evolu/common";
-import { useId, useState } from "react";
+import { type FC, useId, useState } from "react";
 
 const exampleText = [
   "I noticed people write like this. It's faster to type.",
@@ -15,7 +15,7 @@ const labelClassName =
 const textareaClassName =
   "w-full resize-y rounded-md border border-zinc-300 bg-white p-3 font-mono text-base text-zinc-800 sm:text-sm focus:border-blue-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
 
-export const LeancaseConverter = (): React.ReactElement => {
+export const LeancaseConverter: FC = () => {
   const id = useId();
   const [text, setText] = useState(exampleText);
   const result = leancase(text);

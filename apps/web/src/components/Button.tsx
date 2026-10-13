@@ -1,7 +1,8 @@
 import clsx from "clsx";
 import Link from "next/link";
+import type { FC } from "react";
 
-const ArrowIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+const ArrowIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
     <path
       stroke="currentColor"
@@ -24,21 +25,15 @@ const variantStyles = {
   text: "text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-500",
 };
 
-type ButtonProps = {
-  variant?: keyof typeof variantStyles;
-  arrow?: "left" | "right" | "top-right";
-} & (
-  | React.ComponentPropsWithoutRef<typeof Link>
-  | (React.ComponentPropsWithoutRef<"button"> & { href?: undefined })
-);
-
-export const Button = ({
-  variant = "primary",
-  className,
-  children,
-  arrow,
-  ...props
-}: ButtonProps): React.ReactElement => {
+export const Button: FC<
+  {
+    variant?: keyof typeof variantStyles;
+    arrow?: "left" | "right" | "top-right";
+  } & (
+    | React.ComponentPropsWithoutRef<typeof Link>
+    | (React.ComponentPropsWithoutRef<"button"> & { href?: undefined })
+  )
+> = ({ variant = "primary", className, children, arrow, ...props }) => {
   className = clsx(
     "inline-flex gap-0.5 justify-center overflow-hidden text-sm font-medium transition",
     variantStyles[variant],

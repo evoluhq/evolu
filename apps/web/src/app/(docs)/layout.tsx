@@ -1,4 +1,5 @@
 import { type Metadata } from "next";
+import type { FC, ReactNode } from "react";
 
 import { Layout } from "@/components/Layout";
 
@@ -11,10 +12,8 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.ReactElement {
-  return <Layout>{children}</Layout>;
-}
+const RootLayout: FC<{ children: ReactNode }> = ({ children }) => (
+  <Layout>{children}</Layout>
+);
+
+export default RootLayout;

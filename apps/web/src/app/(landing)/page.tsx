@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { FC, ReactNode } from "react";
 
 import { Button } from "@/components/Button";
 import { Features, LibraryFeatures } from "@/components/Features";
@@ -20,12 +21,9 @@ export const metadata: Metadata = {
 const linkClassName =
   "font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 transition hover:decoration-zinc-500 dark:text-white dark:decoration-zinc-600 dark:hover:decoration-zinc-400";
 
-const Section = ({
+const Section: FC<{ title: string; children: ReactNode }> = ({
   title,
   children,
-}: {
-  title: string;
-  children: React.ReactNode;
 }) => (
   <section className="mx-auto mt-24 w-full max-w-3xl">
     <h2 className="text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl dark:text-white">
@@ -35,18 +33,15 @@ const Section = ({
   </section>
 );
 
-const Facts = ({ children }: { children: React.ReactNode }) => (
+const Facts: FC<{ children: ReactNode }> = ({ children }) => (
   <dl className="mt-8 grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
     {children}
   </dl>
 );
 
-const Fact = ({
+const Fact: FC<{ title: string; children: ReactNode }> = ({
   title,
   children,
-}: {
-  title: string;
-  children: React.ReactNode;
 }) => (
   <div>
     <dt className="font-semibold text-zinc-900 dark:text-white">{title}</dt>
@@ -56,7 +51,7 @@ const Fact = ({
   </div>
 );
 
-const Lead = ({ children }: { children: React.ReactNode }) => (
+const Lead: FC<{ children: ReactNode }> = ({ children }) => (
   <p className="mt-4 text-base text-zinc-600 dark:text-zinc-400">{children}</p>
 );
 
@@ -83,7 +78,7 @@ const projects = [
   },
 ];
 
-export default async function Page(): Promise<React.ReactElement> {
+const Page: FC = async () => {
   // Homepage.test.ts bundles src/homepage/task.ts and measures it.
   const bundleSnapshot = await readFile(
     join(process.cwd(), "../../test/bundle/Bundle/Homepage.test.ts.snapshot"),
@@ -313,4 +308,6 @@ export default async function Page(): Promise<React.ReactElement> {
       </section>
     </div>
   );
-}
+};
+
+export default Page;

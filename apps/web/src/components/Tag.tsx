@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import type { FC } from "react";
 
 const variantStyles = {
   small: "",
@@ -40,15 +41,15 @@ const valueColorMap = {
   DELETE: "rose",
 } as Record<string, keyof typeof colorStyles>;
 
-export const Tag = ({
-  children,
-  variant = "medium",
-  color = valueColorMap[children] ?? "blue",
-}: {
+export const Tag: FC<{
   children: keyof typeof valueColorMap & (string | object);
   variant?: keyof typeof variantStyles;
   color?: keyof typeof colorStyles;
-}): React.ReactElement => (
+}> = ({
+  children,
+  variant = "medium",
+  color = valueColorMap[children] ?? "blue",
+}) => (
   <span
     className={clsx(
       "font-mono text-[0.625rem] leading-6 font-semibold",

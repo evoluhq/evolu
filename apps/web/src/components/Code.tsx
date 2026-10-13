@@ -5,6 +5,7 @@ import clsx from "clsx";
 import {
   Children,
   createContext,
+  type FC,
   isValidElement,
   type ReactNode,
   useContext,
@@ -42,7 +43,7 @@ const getPanelTitle = ({
   return "Code";
 };
 
-const ClipboardIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+const ClipboardIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
     <path
       strokeWidth="0"
@@ -56,7 +57,7 @@ const ClipboardIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
   </svg>
 );
 
-const CopyButton = ({ code }: { code: string }) => {
+const CopyButton: FC<{ code: string }> = ({ code }) => {
   const [copyCount, setCopyCount] = useState(0);
   const copied = copyCount > 0;
 
@@ -110,13 +111,10 @@ const CopyButton = ({ code }: { code: string }) => {
   );
 };
 
-const CodePanelHeader = ({
-  tag,
-  label,
-}: {
+const CodePanelHeader: FC<{
   tag?: string | undefined;
   label?: string | undefined;
-}) => {
+}> = ({ tag, label }) => {
   if (!tag && !label) {
     return null;
   }
@@ -138,17 +136,12 @@ const CodePanelHeader = ({
   );
 };
 
-const CodePanel = ({
-  children,
-  tag,
-  label,
-  code,
-}: {
-  children: React.ReactNode;
+const CodePanel: FC<{
   tag?: string;
   label?: string;
   code?: string;
-}) => {
+  children: ReactNode;
+}> = ({ children, tag, label, code }) => {
   // Handle cases where children might be multiple nodes, text, or empty
   const childrenArray = Children.toArray(children);
   const child = childrenArray.length === 1 ? childrenArray[0] : null;
@@ -179,7 +172,7 @@ const CodePanel = ({
       code = childrenArray[0];
     } else {
       // Try to extract text content from children
-      const extractTextFromChildren = (nodes: Array<React.ReactNode>): string =>
+      const extractTextFromChildren = (nodes: Array<ReactNode>): string =>
         nodes
           .map((node) => {
             if (typeof node === "string") return node;
@@ -191,7 +184,7 @@ const CodePanel = ({
               "children" in node.props
             ) {
               return extractTextFromChildren(
-                Children.toArray(node.props.children as React.ReactNode),
+                Children.toArray(node.props.children as ReactNode),
               );
             }
             return "";
@@ -219,12 +212,9 @@ const CodePanel = ({
   );
 };
 
-const CodeGroupHeader = ({
+const CodeGroupHeader: FC<{ title: string; children: ReactNode }> = ({
   title,
   children,
-}: {
-  title: string;
-  children: React.ReactNode;
 }) => {
   const hasTabs = Children.count(children) > 1;
 
@@ -267,10 +257,10 @@ const CodeGroupHeader = ({
   );
 };
 
-const CodeGroupPanels = ({
+const CodeGroupPanels: FC<React.ComponentPropsWithoutRef<typeof CodePanel>> = ({
   children,
   ...props
-}: React.ComponentPropsWithoutRef<typeof CodePanel>) => {
+}) => {
   const hasTabs = Children.count(children) > 1;
 
   if (hasTabs) {
@@ -307,13 +297,11 @@ export const usePreferredLanguageStore = /*#__PURE__*/ create<{
 
 const CodeGroupContext = createContext(false);
 
-export const CodeGroup = ({
-  children,
-  title,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof CodeGroupPanels> & {
-  title: string;
-}): React.ReactElement => {
+export const CodeGroup: FC<
+  React.ComponentPropsWithoutRef<typeof CodeGroupPanels> & {
+    title: string;
+  }
+> = ({ children, title, ...props }) => {
   const hasTabs = Children.count(children) > 1;
 
   const containerClassName =
@@ -342,13 +330,11 @@ export const CodeGroup = ({
   );
 };
 
-export const SinglePlatformCodeGroup = ({
-  children,
-  title,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof CodeGroupPanels> & {
-  title?: string;
-}): React.ReactElement => {
+export const SinglePlatformCodeGroup: FC<
+  React.ComponentPropsWithoutRef<typeof CodeGroupPanels> & {
+    title?: string;
+  }
+> = ({ children, title, ...props }) => {
   const { preferredLanguages } = usePreferredLanguageStore();
   const currentPlatform =
     preferredLanguages[preferredLanguages.length - 1] ?? "React";
@@ -392,10 +378,10 @@ export const SinglePlatformCodeGroup = ({
   );
 };
 
-export const Code = ({
+export const Code: FC<React.ComponentPropsWithoutRef<"code">> = ({
   children,
   ...props
-}: React.ComponentPropsWithoutRef<"code">): React.ReactElement => {
+}) => {
   const isGrouped = useContext(CodeGroupContext);
 
   if (isGrouped) {
@@ -410,11 +396,10 @@ export const Code = ({
   return <code {...props}>{children}</code>;
 };
 
-export const Pre = ({
+export const Pre: FC<React.ComponentPropsWithoutRef<typeof CodeGroup>> = ({
   children,
   ...props
-}: React.ComponentPropsWithoutRef<typeof CodeGroup>):
-  React.ReactElement | ReactNode => {
+}) => {
   const isGrouped = useContext(CodeGroupContext);
 
   if (isGrouped) {

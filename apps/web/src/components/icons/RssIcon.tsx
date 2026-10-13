@@ -1,6 +1,6 @@
-export const RssIcon = (
-  props: React.ComponentPropsWithoutRef<"svg">,
-): React.ReactElement => (
+import type { FC } from "react";
+
+export const RssIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="32"

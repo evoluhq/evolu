@@ -1,6 +1,6 @@
-export const CheckIcon = (
-  props: React.ComponentPropsWithoutRef<"svg">,
-): React.ReactElement => (
+import type { FC } from "react";
+
+export const CheckIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
     <path
       strokeLinecap="round"

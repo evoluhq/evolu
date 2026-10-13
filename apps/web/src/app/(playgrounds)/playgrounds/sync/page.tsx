@@ -4,6 +4,7 @@ import { installPolyfills } from "@evolu/common/polyfills";
 installPolyfills();
 
 import dynamic from "next/dynamic";
+import type { FC } from "react";
 
 // SQLite and the worker dependencies are initialized in the browser.
 const EvoluSyncExample = dynamic(
@@ -11,6 +12,6 @@ const EvoluSyncExample = dynamic(
   { ssr: false },
 );
 
-export default function Page(): React.ReactElement {
-  return <EvoluSyncExample />;
-}
+const Page: FC = () => <EvoluSyncExample />;
+
+export default Page;

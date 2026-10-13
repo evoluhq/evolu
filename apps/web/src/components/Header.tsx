@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import { motion } from "motion/react";
 import Link from "next/link";
-import { forwardRef, Suspense, useEffect, useRef } from "react";
+import { type FC, type ReactNode, Suspense, useEffect, useRef } from "react";
 
 import { DiscordIcon, GitHubIcon, SocialLink } from "@/components/Footer";
 import { Logo } from "@/components/Logo";
@@ -27,15 +27,11 @@ import {
   useMobileNavigationStore,
 } from "@/hooks/use-nav";
 
-const TopLevelNavItem = ({
-  href,
-  target = "_self",
-  children,
-}: {
+const TopLevelNavItem: FC<{
   href: string;
   target?: string;
-  children: React.ReactNode;
-}) => (
+  children: ReactNode;
+}> = ({ href, target = "_self", children }) => (
   <li>
     <Link
       href={href}
@@ -47,7 +43,7 @@ const TopLevelNavItem = ({
   </li>
 );
 
-const MenuIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+const MenuIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg
     viewBox="0 0 10 9"
     fill="none"
@@ -59,13 +55,13 @@ const MenuIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
   </svg>
 );
 
-const XIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+const XIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
     <path d="M11.1527 8.92804L16.2525 3H15.044L10.6159 8.14724L7.07919 3H3L8.34821 10.7835L3 17H4.20855L8.88474 11.5643L12.6198 17H16.699L11.1524 8.92804H11.1527ZM9.49748 10.8521L8.95559 10.077L4.644 3.90978H6.50026L9.97976 8.88696L10.5216 9.66202L15.0446 16.1316H13.1883L9.49748 10.8524V10.8521Z" />
   </svg>
 );
 
-const XCloseIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+const XCloseIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg
     viewBox="0 0 10 9"
     fill="none"
@@ -77,12 +73,9 @@ const XCloseIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
   </svg>
 );
 
-const MobileNavigationDialog = ({
+const MobileNavigationDialog: FC<{ isOpen: boolean; close: () => void }> = ({
   isOpen,
   close,
-}: {
-  isOpen: boolean;
-  close: () => void;
 }) => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -143,7 +136,7 @@ const MobileNavigationDialog = ({
   );
 };
 
-export const MobileNavigation = (): React.ReactElement => {
+export const MobileNavigation: FC = () => {
   const isInsideMobileNavigation = useIsInsideMobileNavigation();
   const { isOpen, toggle, close } = useMobileNavigationStore();
   const ToggleIcon = isOpen ? XCloseIcon : MenuIcon;
@@ -167,12 +160,11 @@ export const MobileNavigation = (): React.ReactElement => {
   );
 };
 
-export const Header = /*#__PURE__*/ forwardRef<
-  React.ComponentRef<"div">,
-  React.ComponentPropsWithoutRef<"div"> & {
+export const Header: FC<
+  React.ComponentPropsWithRef<"div"> & {
     variant?: "landing" | "docs";
   }
->(function Header({ className, variant = "docs", ...props }, ref) {
+> = ({ className, variant = "docs", ...props }) => {
   const { isOpen: mobileNavIsOpen } = useMobileNavigationStore();
   const isInsideMobileNavigation = useIsInsideMobileNavigation();
 
@@ -181,7 +173,6 @@ export const Header = /*#__PURE__*/ forwardRef<
   return (
     <div
       {...props}
-      ref={ref}
       className={clsx(
         className,
         "fixed inset-x-0 top-0 z-50 flex h-14 items-center justify-between gap-12 bg-white px-4 transition sm:px-6 lg:left-72 lg:z-30 lg:px-8 xl:left-80 dark:bg-zinc-900",
@@ -254,4 +245,4 @@ export const Header = /*#__PURE__*/ forwardRef<
       </div>
     </div>
   );
-});
+};

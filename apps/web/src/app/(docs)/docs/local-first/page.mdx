@@ -138,7 +138,7 @@ import { AppName, createEvolu } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-web";
 import { createRun } from "@evolu/web";
-import { Suspense, use, type ReactNode } from "react";
+import { Suspense, use, type FC, type ReactNode } from "react";
 
 const run = createRun(createEvoluDeps());
 const evoluPromise = run.ok(
@@ -150,11 +150,11 @@ const evoluPromise = run.ok(
 
 const { EvoluContext, useEvolu, useQuery } = createEvoluBinding<typeof Schema>();
 
-const EvoluProvider = ({ children }: { children: ReactNode }) => (
+const EvoluProvider: FC<{ children: ReactNode }> = ({ children }) => (
   <EvoluContext value={use(evoluPromise)}>{children}</EvoluContext>
 );
 
-export const App = ({ children }: { children: ReactNode }) => (
+export const App: FC<{ children: ReactNode }> = ({ children }) => (
   <Suspense fallback={null}>
     <EvoluProvider>{children}</EvoluProvider>
   </Suspense>
@@ -168,7 +168,7 @@ import { AppName, createEvolu } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
 import { createRun } from "@evolu/react-native";
-import { Suspense, use, type ReactNode } from "react";
+import { Suspense, use, type FC, type ReactNode } from "react";
 
 const run = createRun(createEvoluDeps());
 const evoluPromise = run.ok(
@@ -180,11 +180,11 @@ const evoluPromise = run.ok(
 
 const { EvoluContext, useEvolu, useQuery } = createEvoluBinding<typeof Schema>();
 
-const EvoluProvider = ({ children }: { children: ReactNode }) => (
+const EvoluProvider: FC<{ children: ReactNode }> = ({ children }) => (
   <EvoluContext value={use(evoluPromise)}>{children}</EvoluContext>
 );
 
-export const App = ({ children }: { children: ReactNode }) => (
+export const App: FC<{ children: ReactNode }> = ({ children }) => (
   <Suspense fallback={null}>
     <EvoluProvider>{children}</EvoluProvider>
   </Suspense>
@@ -198,7 +198,7 @@ import { AppName, createEvolu } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
 import { createRun } from "@evolu/react-native";
-import { Suspense, use, type ReactNode } from "react";
+import { Suspense, use, type FC, type ReactNode } from "react";
 
 const run = createRun(createEvoluDeps());
 const evoluPromise = run.ok(
@@ -210,11 +210,11 @@ const evoluPromise = run.ok(
 
 const { EvoluContext, useEvolu, useQuery } = createEvoluBinding<typeof Schema>();
 
-const EvoluProvider = ({ children }: { children: ReactNode }) => (
+const EvoluProvider: FC<{ children: ReactNode }> = ({ children }) => (
   <EvoluContext value={use(evoluPromise)}>{children}</EvoluContext>
 );
 
-export const App = ({ children }: { children: ReactNode }) => (
+export const App: FC<{ children: ReactNode }> = ({ children }) => (
   <Suspense fallback={null}>
     <EvoluProvider>{children}</EvoluProvider>
   </Suspense>

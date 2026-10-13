@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  type FC,
+  type ReactNode,
   createContext,
   useContext,
   useEffect,
@@ -129,13 +131,10 @@ const SectionStoreContext = createContext<StoreApi<SectionState> | null>(null);
 const useIsomorphicLayoutEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
 
-export const SectionProvider = ({
-  sections,
-  children,
-}: {
+export const SectionProvider: FC<{
   sections: Array<Section>;
-  children: React.ReactNode;
-}): React.ReactElement => {
+  children: ReactNode;
+}> = ({ sections, children }) => {
   const [sectionStore] = useState(() => createSectionStore(sections));
 
   useVisibleSections(sectionStore);

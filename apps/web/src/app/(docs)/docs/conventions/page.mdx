@@ -414,6 +414,42 @@ assertEqual(backoffDelays(), [1000, 2000, 4000]);
 assertEqual(backoffDelays({ backoff: "linear", maxAttempts: 2 }), [1000, 2000]);
 ```
 
+## React components
+
+Type React components as `FC<Props>`. Keep props inline, without `readonly`, and
+destructure them in the parameter, also for exported components. Destructuring
+leaves the props object unreachable, so `readonly` would add nothing. Declare
+`children` as `ReactNode`, required unless the component works without it.
+`PropsWithChildren` would make it optional.
+
+```tsx
+import { assertEqual } from "@evolu/common";
+import type { FC, ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+export const Section: FC<{ title: string; children: ReactNode }> = ({
+  title,
+  children,
+}) => (
+  <section>
+    <h2>{title}</h2>
+    {children}
+  </section>
+);
+
+assertEqual(
+  renderToStaticMarkup(<Section title="Todos">Buy milk</Section>),
+  "<section><h2>Todos</h2>Buy milk</section>",
+);
+
+// @ts-expect-error Section requires children.
+const _empty = <Section title="Todos" />;
+```
+
+A component that only forwards its props, such as an icon that spreads them
+onto `<svg>`, takes `props` whole. A value typed as `FC` cannot be generic, so
+a generic component annotates its parameter instead.
+
 ## Switch exhaustiveness
 
 In a side-effecting switch over a union, call `exhaustiveCheck` in `default`.

@@ -3,14 +3,7 @@ import * as Evolu from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
 import { createRun } from "@evolu/react-native";
 import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
-import {
-  Suspense,
-  use,
-  useEffect,
-  useState,
-  type FC,
-  type ReactElement,
-} from "react";
+import { Suspense, use, useEffect, useState, type FC } from "react";
 import {
   AccessibilityInfo,
   ScrollView,
@@ -108,7 +101,7 @@ type EvoluFiber = ReturnType<typeof createEvoluFiber>;
 const parseTodoTitle = (value: string) =>
   Evolu.NonEmptyTrimmedString100.fromUnknown(value.trim());
 
-export default function Index(): ReactElement {
+const Index: FC = () => {
   const [evoluFiber, setEvoluFiber] = useState<EvoluFiber>(createEvoluFiber);
   const [isRecreatingEvolu, setIsRecreatingEvolu] = useState(false);
   const [evoluGeneration, setEvoluGeneration] = useState(1);
@@ -179,7 +172,9 @@ export default function Index(): ReactElement {
       </ScrollView>
     </SafeAreaView>
   );
-}
+};
+
+export default Index;
 
 const LoadingState: FC<{
   generation: number;

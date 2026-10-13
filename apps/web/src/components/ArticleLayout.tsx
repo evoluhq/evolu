@@ -1,9 +1,10 @@
 import { Prose } from "@/components/Prose";
 import { type ArticleWithSlug } from "@/lib/blog";
 import { formatDate } from "@/lib/formatDate";
-import { IconPointFilled, type ReactNode } from "@tabler/icons-react";
+import { IconPointFilled } from "@tabler/icons-react";
+import type { FC, ReactNode } from "react";
 
-const ArrowLeftIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+const ArrowLeftIcon: FC<React.ComponentPropsWithoutRef<"svg">> = (props) => (
   <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" {...props}>
     <path
       d="M7.25 11.25 3.75 8m0 0 3.5-3.25M3.75 8h8.5"
@@ -14,13 +15,10 @@ const ArrowLeftIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
   </svg>
 );
 
-export const ArticleLayout = ({
-  article,
-  children,
-}: {
+export const ArticleLayout: FC<{
   article: ArticleWithSlug;
-  children: React.ReactNode;
-}): ReactNode => (
+  children: ReactNode;
+}> = ({ article, children }) => (
   <div className="mt-12">
     <div className="xl:relative">
       <div className="mx-auto max-w-3xl pb-12">

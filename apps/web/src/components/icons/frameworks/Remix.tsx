@@ -1,8 +1,6 @@
-import type { SVGProps } from "react";
+import type { FC, SVGProps } from "react";
 
-export const RemixLogo = (
-  props: SVGProps<SVGSVGElement>,
-): React.ReactElement => (
+export const RemixLogo: FC<SVGProps<SVGSVGElement>> = (props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="1em"

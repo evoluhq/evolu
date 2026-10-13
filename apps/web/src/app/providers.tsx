@@ -1,7 +1,7 @@
 "use client";
 
 import { ThemeProvider, useTheme } from "next-themes";
-import { useEffect } from "react";
+import { type FC, type ReactNode, useEffect } from "react";
 
 // ThemeToggle stores the opposite of the shown theme, an override of the
 // system theme. Whenever the shown theme matches the system theme, after a
@@ -13,7 +13,7 @@ import { useEffect } from "react";
 // override still shows the next morning. This deliberately differs
 // from https://lea.verou.me/blog/2026/dark-mode-toggles/, which keeps the
 // override until the next press.
-const ThemeWatcher = () => {
+const ThemeWatcher: FC = () => {
   const { resolvedTheme, setTheme } = useTheme();
 
   useEffect(() => {
@@ -37,11 +37,7 @@ const ThemeWatcher = () => {
   return null;
 };
 
-export const Providers = ({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.ReactElement => (
+export const Providers: FC<{ children: ReactNode }> = ({ children }) => (
   <ThemeProvider
     attribute="class"
     defaultTheme="system"

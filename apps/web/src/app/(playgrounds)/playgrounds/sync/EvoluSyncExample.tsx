@@ -34,7 +34,14 @@ import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-web";
 import { createRun } from "@evolu/web";
 import { clsx } from "clsx";
-import { Suspense, use, useState, useSyncExternalStore, type FC } from "react";
+import {
+  Suspense,
+  use,
+  useState,
+  useSyncExternalStore,
+  type FC,
+  type ReactNode,
+} from "react";
 
 const AppSchema = {
   todo: {
@@ -714,7 +721,7 @@ const RelayRegistration: FC<{ url: string }> = ({ url }) => {
 
 const StatusBadge: FC<{
   tone: "success" | "progress" | "neutral" | "error";
-  children: React.ReactNode;
+  children: ReactNode;
 }> = ({ tone, children }) => (
   <span
     className={clsx(
