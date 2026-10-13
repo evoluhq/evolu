@@ -289,6 +289,10 @@ export interface EvoluConfig {
    *
    * `[{ type: "WebSocket", url: "wss://free.evoluhq.com" }]`.
    *
+   * It's a testing relay that admits anyone and may delete data, so set your
+   * own relays before release, as
+   * [Relay](https://www.evolu.dev/docs/relay#hosting-evolu-relay) describes.
+   *
    * ### Example
    *
    * ```ts

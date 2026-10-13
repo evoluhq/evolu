@@ -151,7 +151,7 @@ assertEqual(createAppOwner(mnemonicToOwnerSecret(appOwner.mnemonic)), appOwner);
 
 The following snippets continue from the schema and `appOwner` above.
 
-Create one shared Run for your application's Evolu instances. Omit `transports` to use the default relay, provide your own relay URLs, or pass `transports: []` to disable synchronization.
+Create one shared Run for your application's Evolu instances. Omit `transports` to sync through `free.evoluhq.com`, a [testing relay](/docs/relay#hosting-evolu-relay) whose data may be deleted, provide your own relay URLs, or pass `transports: []` to disable synchronization. Set your own relays before release.
 
 <SinglePlatformCodeGroup>
 
