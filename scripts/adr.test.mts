@@ -116,13 +116,14 @@ describe("docs/adr", () => {
     );
   });
 
-  it("points to accepted records only from outside docs/adr", () => {
+  it("points code only to accepted records", () => {
     assertEqual(
       references
         .filter(({ file, target }) => {
           const status = statusByFile.get(target.slice("docs/adr/".length));
+          // Documentation, such as records or a dated blog post, may link any.
           return (
-            !file.startsWith("docs/adr/") &&
+            !/\.mdx?$/u.test(file) &&
             status != null &&
             status !== "- Status: Accepted"
           );

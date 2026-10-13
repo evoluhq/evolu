@@ -1161,8 +1161,8 @@ conflicts with one needs an accepted superseding ADR first.
 Code that a decision governs points to its accepted ADR with a comment naming
 the path, such as `// See docs/adr/sync-uses-websocket-not-webtransport.md.`
 `scripts/adr.test.mts` checks the file names and the template, that every link
-and reference to an ADR resolves, and that nothing outside `docs/adr` points to
-an ADR that is not accepted.
+and reference to an ADR resolves, and that code points only to accepted ADRs.
+Documentation, such as a blog post, may link an ADR of any status.
 
 ## Versioning
 
