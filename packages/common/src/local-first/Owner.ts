@@ -439,10 +439,14 @@ export type OwnerTransport = OwnerWebSocketTransport;
  *
  * ## Authentication via URL
  *
- * The {@link OwnerId} is passed as a URL query parameter. While this approach is
- * generally discouraged for authentication tokens (they get logged), it's safe
- * here because OwnerId is pseudonymous and used only for access verification -
- * it provides no ability to read encrypted data or write changes.
+ * The {@link OwnerId} is passed as a URL query parameter, because browsers can't
+ * set custom headers on a WebSocket handshake. URLs often get logged, and
+ * whoever reads an OwnerId there can't decrypt changes but can download the
+ * owner's encrypted changes and timestamps from the relay and subscribe to new
+ * ones, as
+ * [Privacy](https://www.evolu.dev/docs/privacy#relay-blindness-by-design)
+ * describes. On a relay that hasn't stored the owner's write key yet, they can
+ * also store their own and so lock the owner out of writing there.
  *
  * See: [HTTP headers in Websockets client
  * API](https://stackoverflow.com/questions/4361173/http-headers-in-websockets-client-api/74564827#74564827)

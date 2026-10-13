@@ -8,6 +8,12 @@ import {
 import BetterSQLite, { type Statement } from "better-sqlite3";
 import { rmSync } from "fs";
 
+/**
+ * A {@link CreateSqliteDriver} on better-sqlite3, which the Evolu Relay uses. It
+ * stores a database in the file `<name>.db`, relative to the working directory,
+ * and doesn't encrypt it: in the `encrypted` mode, it ignores the key and
+ * stores the same plain file. In the `memory` mode, it stores no file.
+ */
 export const createBetterSqliteDriver: CreateSqliteDriver =
   (name, options) => () => {
     const filename = options?.mode === "memory" ? ":memory:" : `${name}.db`;

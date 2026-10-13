@@ -14,7 +14,7 @@ All data Evolu syncs is encrypted end-to-end. This means:
 - Data is always encrypted when it leaves the device
 - The Evolu Relay receives only encrypted data
 - Only devices with the correct encryption keys can decrypt the data
-- Data intercepted in transit or taken from a relay can't be decrypted, though the relay and anyone who knows an OwnerId see the [metadata listed below](#relay-blindness-by-design)
+- Data intercepted in transit or taken from a relay can't be decrypted, though the relay sees the [metadata listed below](#relay-blindness-by-design), and anyone who knows an OwnerId sees the owner's timestamps, NodeIds, and approximate change sizes
 
 ## Encryption on the device
 
@@ -23,7 +23,7 @@ All data Evolu syncs is encrypted end-to-end. This means:
 
 The database key is derived from the app owner's secret, which Evolu doesn't store, so the database is only as safe as the place the app keeps that secret. The examples use `testAppOwner`, whose secret is public, so use it only for testing.
 
-With the `memoryOnly` option, the database is kept in memory and nothing is stored on the device.
+With the `memoryOnly` option, the database is kept in memory and nothing is stored on the device. Instances with the same `appName` and `appOwner` share one database, which keeps the mode it was opened with until a few seconds after the last of them is disposed, so `evolu.devicePersistence` tells which mode an instance got.
 
 ## API design prevents data leaks
 
@@ -45,12 +45,12 @@ The Evolu Relay can't decrypt user data. What the relay sees:
 - **Timestamps**: When changes occurred (for synchronization ordering)
 - **NodeId**: Every timestamp includes a random ID of the database that wrote the change. It's the same for every owner the database writes changes for, so a relay can link those owners, even across IP addresses
 - **Encrypted binary blobs**: The actual data, encrypted and padded, so only its approximate size shows
-- **Write key**: A token that authorizes writes for an owner. By default, it's the same on every relay the owner uses
-- **IP addresses**: Network addresses of connecting clients (standard for any network service unless using Tor or similar privacy networks). Owners synced over one connection are linked to each other
+- **Write key**: A token that authorizes writes for an owner. It's the same on every relay the owner uses
+- **IP addresses**: Network addresses of connecting clients (standard for any network service unless using Tor or similar privacy networks). Owners synced over one connection are linked to each other, and by default all owners sync over one connection per relay
 
 The relay functions purely as a message buffer for synchronization and backup—it stores and forwards encrypted messages without any ability to decrypt them.
 
-The relay stores what it sees in a plain SQLite file. The changes are already encrypted end-to-end, and the relay needs the rest to sync.
+The relay stores all of the above except IP addresses in a plain SQLite file. The changes are already encrypted end-to-end, and the relay needs the rest to sync. Write keys are stored unhashed. Hashing them wouldn't hide them from the relay, which receives them with every write, and a write key only lets whoever has it store data for the owner, not read or forge changes.
 
 ## Timestamp metadata
 
@@ -98,7 +98,7 @@ Since every key is derived from the owner secret, an owner's keys are only as st
 | 32 bytes     | 24 words | 256 bits           | about 128 bits   |
 | 16 bytes     | 12 words | 128 bits           | about 64 bits    |
 
-Evolu also accepts owner secrets of 16 to 28 bytes (12 to 21 words), for example for owners created by other apps. A 16-byte secret still gives 128 bits of security against classical computers, which is far beyond any classical attack, but leaves less margin against a future quantum computer. That can be the right trade-off: a 12-word or 20-word backup is easier for users to write down and check, and not every app's data needs to stay private for decades. A mobile wallet meant for small amounts is an example. Its Bitcoin keys rely on elliptic curves that a quantum computer could break anyway, so a longer backup phrase would cost usability without removing that risk.
+Evolu also accepts owner secrets of 16, 20, 24, or 28 bytes (12, 15, 18, or 21 words), for example for owners created by other apps. A 16-byte secret still gives 128 bits of security against classical computers, which is far beyond any classical attack, but leaves less margin against a future quantum computer. That can be the right trade-off: a 12-word BIP-39 or 20-word SLIP-39 backup is easier for users to write down and check, and not every app's data needs to stay private for decades. A mobile wallet meant for small amounts is an example. Its Bitcoin keys rely on elliptic curves that a quantum computer could break anyway, so a longer backup phrase would cost usability without removing that risk.
 
 Length alone is not entropy. A secret derived from a smaller root is no stronger than the root, because derivation can't add randomness. For example, a 32-byte owner secret derived from a 20-word SLIP-39 share, which holds 16 bytes, has only 128 bits of entropy.
 
