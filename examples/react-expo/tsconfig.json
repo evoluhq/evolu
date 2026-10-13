@@ -3,6 +3,7 @@
   "compilerOptions": {
     "rewriteRelativeImportExtensions": true,
     "strict": true,
+    "exactOptionalPropertyTypes": true,
     "paths": {
       "@/*": [
         "./*"

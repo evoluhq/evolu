@@ -15,6 +15,7 @@
     "allowJs": true,
     "checkJs": true,
     "isolatedModules": true,
+    "exactOptionalPropertyTypes": true,
     "moduleDetection": "force"
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]

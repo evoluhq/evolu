@@ -45,7 +45,7 @@ import { registerSW } from "virtual:pwa-register";
 })
 export class PwaBadgeComponent implements OnDestroy {
   private updateSW?: (reloadPage?: boolean) => Promise<void>;
-  private swUpdateTimer?: ReturnType<typeof setInterval>;
+  private swUpdateTimer: ReturnType<typeof setInterval> | undefined;
 
   readonly updateAvailable = signal(false);
   readonly offlineReady = signal(false);
