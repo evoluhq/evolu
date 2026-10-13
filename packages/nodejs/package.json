@@ -1,6 +1,6 @@
 {
   "name": "@evolu/nodejs",
-  "version": "4.3.2",
+  "version": "4.3.3",
   "description": "Evolu for Node.js",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
@@ -74,7 +74,7 @@
     "webpack": "^5.111.1"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.22.2",
+    "@evolu/common": "^8.22.3",
     "@evolu/oxlint-config": "^0.3.0",
     "@evolu/typescript-config": "^0.1.1",
     "oxlint": "^1.87.0",

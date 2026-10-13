@@ -100,6 +100,70 @@ describe("relay Docker release recovery", () => {
     });
   }
 
+  for (const [packFailures, exitCode, expectedPacks] of [
+    [
+      2,
+      0,
+      [
+        "@evolu/relay@3.1.0",
+        "@evolu/relay@3.1.0",
+        "@evolu/relay@3.1.0",
+        "@evolu/common@8.22.1",
+        "@evolu/nodejs@4.3.2",
+      ],
+    ],
+    [1000, 1, Array.from({ length: 90 }, () => "@evolu/relay@3.1.0")],
+  ] as const) {
+    it(`waits until npm can download each package when ${packFailures} downloads fail`, () => {
+      const directory = mkdtempSync(join(tmpdir(), "evolu-docker-npm-"));
+      try {
+        const packLog = join(directory, "pack.log");
+        writeFileSync(packLog, "");
+        const script = setupWorkflowScript(
+          setupWorkflowStep("name: Wait for npm to serve"),
+        );
+        const result = spawnSync(
+          "bash",
+          [
+            "-euo",
+            "pipefail",
+            "-c",
+            `npm() {
+              case "$1 $3" in
+                "view dependencies") printf '{"@evolu/common":"8.22.1","@evolu/nodejs":"4.3.2"}\\n' ;;
+                "pack --dry-run")
+                  printf '%s\\n' "$2" >> "$PACK_LOG"
+                  [ "$(( $(wc -l < "$PACK_LOG") ))" -gt "$PACK_FAILURES" ]
+                  ;;
+                *) return 1 ;;
+              esac
+            }
+            sleep() { :; }
+            ${script}`,
+          ],
+          {
+            env: {
+              ...process.env,
+              VERSION: "3.1.0",
+              PACK_LOG: packLog,
+              PACK_FAILURES: `${packFailures}`,
+            },
+            encoding: "utf8",
+            timeout: 5000,
+          },
+        );
+        assertSame(result.error, undefined);
+        assertSame(result.status, exitCode);
+        assertEqual(
+          readFileSync(packLog, "utf8").trim().split("\n"),
+          expectedPacks,
+        );
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
+
   for (const [currentVersion, expectedTags] of [
     ["3.1.0", ["3.1.0", "3.1", "3", "latest"]],
     ["3.2.0", ["3.1.0"]],
