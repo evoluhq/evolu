@@ -396,7 +396,10 @@ export const createRelay =
             );
             if (!response.ok) {
               if (response.error.type === "AbortError") break;
-              console.error(response);
+              console.error("invalid protocol request", {
+                byteLength: request.length,
+                error: response.error.error,
+              });
               continue;
             }
 

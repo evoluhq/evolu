@@ -12,6 +12,7 @@ import {
   constFalse,
   constTrue,
   createPanicAbortReason,
+  isPlainObject,
   Port,
   sql,
   testCreateConsole,
@@ -1013,7 +1014,7 @@ describe("createRelay", () => {
     assertSame(entry.args[0], error);
   });
 
-  it("logs an invalid request and serves the requests after it", async (t) => {
+  it("logs an invalid request's length and decode error, not its bytes, and serves the requests after it", async (t) => {
     const { relayModule, wss } = await loadRelayModuleWithMockedTransport(
       t.mock,
     );
@@ -1032,20 +1033,28 @@ describe("createRelay", () => {
     const ws = createFakeSocket(t.mock);
     wss.emit("connection", ws, { socket: new EventEmitter() });
 
-    ws.emit("message", new Uint8Array([1, 2, 3]));
-    ws.emit(
-      "message",
-      createProtocolMessageBuffer(testAppOwner.id, {
-        messageType: MessageType.Request,
-      }).unwrap(),
-    );
+    const request = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      writeKey: testAppOwner.writeKey,
+    }).unwrap();
+    // Without its last byte, the request still holds the OwnerId and the
+    // write key but can't be decoded.
+    const invalidRequest = request.slice(0, -1);
+    ws.emit("message", invalidRequest);
+    ws.emit("message", request);
 
     await assertEventually(() => ws.send.mock.callCount() === 1);
-    assertSame(
-      console.getEntriesSnapshot().filter((entry) => entry.method === "error")
-        .length,
-      1,
-    );
+    const errors = console
+      .getEntriesSnapshot()
+      .filter((entry) => entry.method === "error");
+    assertSame(errors.length, 1);
+    const [message, details] = errors[0].args;
+    assertSame(message, "invalid protocol request");
+    assertTrue(isPlainObject(details));
+    assertEqual(Object.keys(details).toSorted(), ["byteLength", "error"]);
+    assertSame(details.byteLength, invalidRequest.length);
+    assertInstanceOf(details.error, Error);
+    assertSame(details.error.message, "Buffer parse ended prematurely");
   });
 
   it("closes its connections and exits when a defect panics it", async (t) => {

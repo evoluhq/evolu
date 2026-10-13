@@ -768,8 +768,7 @@ export interface CompleteSyncRoute extends Typed<"Complete"> {
  * It is the error itself, so it carries its details, such as the expected and
  * actual timestamps of a {@link ProtocolTimestampMismatchError}. A skipped
  * message adds {@link DecryptWithXChaCha20Poly1305Error} and
- * {@link ProtocolChangeTooLargeError}. A {@link ProtocolInvalidDataError} leaves
- * out its data, which can be a whole frame. An {@link UnknownError} means SQLite
+ * {@link ProtocolChangeTooLargeError}. An {@link UnknownError} means SQLite
  * failed to store received messages, for example on a full disk. `WriteFailed`
  * means a `writeMessages` call that threw, logged by the protocol, and
  * `SyncFailed` means a logged failure while creating a round or reconciling
@@ -777,7 +776,7 @@ export interface CompleteSyncRoute extends Typed<"Complete"> {
  */
 export type SyncRouteError = (
   | Exclude<ProtocolError, ProtocolInvalidDataError>
-  | (Omit<ProtocolInvalidDataError, "data" | "error"> & {
+  | (Omit<ProtocolInvalidDataError, "error"> & {
       readonly error: UnknownError;
     })
   | StorageWriteMessagesError
@@ -1648,8 +1647,7 @@ const routeToPending = (progress: RouteProgress): PendingRoute => {
 
 /**
  * Converts an error to a {@link SyncRouteError}: a caught value becomes an
- * {@link UnknownError}, and a {@link ProtocolInvalidDataError} leaves out its
- * data, which can be a whole frame.
+ * {@link UnknownError}.
  */
 const errorToSyncRouteError = (
   error:
@@ -1661,11 +1659,10 @@ const errorToSyncRouteError = (
     | Typed<"SyncFailed">,
   at: Millis,
 ): SyncRouteError => {
-  if (error.type === "ProtocolInvalidDataError") {
-    const { data: _data, ...rest } = error;
-    return { ...rest, error: createUnknownError(rest.error), at };
-  }
-  if (error.type === "DecryptWithXChaCha20Poly1305Error")
+  if (
+    error.type === "ProtocolInvalidDataError" ||
+    error.type === "DecryptWithXChaCha20Poly1305Error"
+  )
     return { ...error, error: createUnknownError(error.error), at };
   return { ...error, at };
 };
@@ -3015,8 +3012,7 @@ const createEvoluTenant =
             // which carries no relay error, so any other error or a skip means
             // a bug, such as databases holding different keys for the owner.
             // Each is reported as an unexpected failure. A Failed result was
-            // logged, which reports it already. An error is the failure, and
-            // like a route, the report leaves out its frame.
+            // logged, which reports it already. An error is the failure.
             const unexpected = error !== null ? failure : skippedError;
             if (unexpected !== null)
               deps.postConsoleEntryOrError({

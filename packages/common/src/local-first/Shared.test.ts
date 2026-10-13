@@ -2053,7 +2053,6 @@ describe("sync state", () => {
 
           const error = {
             type: "ProtocolInvalidDataError",
-            data: Uint8Array.of(255),
             error: "late range decoding failure",
           } satisfies ProtocolInvalidDataError;
           const continuation = createProtocolMessageForUnsubscribe(
@@ -2803,7 +2802,6 @@ describe("sync state", () => {
         );
         const error = {
           type: "ProtocolInvalidDataError",
-          data: Uint8Array.of(255),
           error: "decoding failed",
         } satisfies ProtocolInvalidDataError;
         await respondToApplySync(
@@ -2814,8 +2812,7 @@ describe("sync state", () => {
         );
 
         // Nothing is posted as an error. The route shows the error that ended
-        // the round, without its data, which requests one round, as any
-        // failure does.
+        // the round, which requests one round, as any failure does.
         assertEqual(errors, []);
         const failed = routeOf(latest());
         assertSame(failed.type, "Pending");
@@ -2883,7 +2880,6 @@ describe("sync state", () => {
         );
         const error = {
           type: "ProtocolInvalidDataError",
-          data: Uint8Array.of(255),
           error: "decoding failed",
         } satisfies ProtocolInvalidDataError;
 
@@ -3080,7 +3076,6 @@ describe("sync state", () => {
           ok: false,
           error: {
             type: "ProtocolInvalidDataError",
-            data: Uint8Array.of(255),
             error: new Error("invalid varint"),
           },
         });
@@ -5823,7 +5818,6 @@ describe("sync state", () => {
           ok: false,
           error: {
             type: "ProtocolInvalidDataError",
-            data: Uint8Array.of(255),
             error: "decoding failed",
           },
         },
@@ -5853,9 +5847,7 @@ describe("sync state", () => {
       result: ApplySyncResponse["result"];
       skipped: DecryptWithXChaCha20Poly1305Error | null;
       posted:
-        | Omit<ProtocolInvalidDataError, "data">
-        | DecryptWithXChaCha20Poly1305Error
-        | null;
+        ProtocolInvalidDataError | DecryptWithXChaCha20Poly1305Error | null;
     }>;
     for (const { outcome, result, skipped, posted } of siblingCopyOutcomes) {
       it(`${posted === null ? "does not post" : "posts an UnknownError for"} a sibling continuation copy's ${outcome}`, async () => {
@@ -5876,8 +5868,8 @@ describe("sync state", () => {
         await respondToApplySync(sibling, false, result, skipped);
 
         // No relay sent the copy, so no route can show its problem. An error
-        // or a skip means a bug and is posted as an unexpected failure,
-        // without the frame, as a route shows it. The protocol already logged
+        // or a skip means a bug and is posted as an unexpected failure, as a
+        // route shows it. The protocol already logged
         // a Failed result, and the tab turns that log into an unexpected
         // failure, so it is not posted again.
         assertEqual(
@@ -9562,7 +9554,6 @@ describe("with one evolu instance", () => {
               ok: false,
               error: {
                 type: "ProtocolInvalidDataError",
-                data: new Uint8Array(),
                 error: "boom",
               },
             },

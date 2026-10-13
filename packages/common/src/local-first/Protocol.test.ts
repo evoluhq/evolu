@@ -727,7 +727,6 @@ test("decryptAndDecodeDbChange rejects a newer EncryptedDbChange version", () =>
   assertErr(newer);
   assertEqual(newer.error.type, "ProtocolInvalidDataError");
   if (newer.error.type === "ProtocolInvalidDataError") {
-    assertSame(newer.error.data, newerVersion.change);
     assertInstanceOf(newer.error.error, Error);
     assertEqual(
       newer.error.error.message,
@@ -752,7 +751,6 @@ test("decryptAndDecodeDbChange rejects a timestamp with reserved millis", () => 
   assertErr(result);
   assertEqual(result.error.type, "ProtocolInvalidDataError");
   if (result.error.type === "ProtocolInvalidDataError") {
-    assertSame(result.error.data, forged.change);
     assertInstanceOf(result.error.error, Error);
     assertEqual(result.error.error.message, "TimestampBytes");
   }
@@ -2401,7 +2399,6 @@ describe("decoding before applying", () => {
     const result = await apply(tooLarge);
 
     assertErr(result);
-    assertSame(result.error.data, tooLarge);
     assertInstanceOf(result.error.error, Error);
     assertSame(result.error.error.message, "Request is too large");
     assertEqual(sideEffects, []);
@@ -2443,7 +2440,6 @@ describe("decoding before applying", () => {
         error.type === "ProtocolInvalidDataError",
         "Expected invalid data",
       );
-      assertSame(error.data, message);
       assertInstanceOf(error.error, Error);
       assertSame(error.error.message, "Invalid RangeType: 127");
       assertSame(writeCount, 0);
@@ -2611,7 +2607,6 @@ describe("decoding before applying", () => {
     assertErr(result);
     const { error } = result;
     assert(error.type === "ProtocolInvalidDataError", "Expected invalid data");
-    assertSame(error.data, request);
     assertInstanceOf(error.error, Error);
     assertSame(error.error.message, "Expected a Response or a Broadcast");
   });

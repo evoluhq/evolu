@@ -5141,7 +5141,6 @@ describe("write replay", () => {
     const { result, didWriteMessages, clock } = output.response.message;
     assertErr(result);
     assertSame(result.error.type, "ProtocolInvalidDataError");
-    assertEqual(result.error.data, request.message.inputMessage);
     assertInstanceOf(result.error.error, Error);
     assertSame(result.error.error.message, "Invalid RangeType: 127");
     assertFalse(didWriteMessages);

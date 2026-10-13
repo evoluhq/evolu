@@ -433,7 +433,6 @@ export const parseProtocolHeader = (
   } catch (error) {
     return err<ProtocolInvalidDataError>({
       type: "ProtocolInvalidDataError",
-      data: inputMessage,
       error,
     });
   }
@@ -496,7 +495,8 @@ export interface ProtocolVersionError
 
 /**
  * Error for a malformed {@link ProtocolMessage} or {@link EncryptedDbChange},
- * with its bytes as `data` and the decoding error as `error`.
+ * with the decoding error as `error`. It holds none of the message's bytes, so
+ * it carries no OwnerId or write key.
  *
  * A protocol message is decoded whole before any of it is applied, so a
  * malformed one has no effect, and a relay does not reply to it. A message of a
@@ -505,7 +505,6 @@ export interface ProtocolVersionError
  * error.
  */
 export interface ProtocolInvalidDataError extends Typed<"ProtocolInvalidDataError"> {
-  readonly data: Uint8Array;
   readonly error: unknown;
 }
 
@@ -1230,7 +1229,6 @@ export const applyProtocolMessageAsClient =
     if (message.type === "Request") {
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",
-        data: inputMessage,
         error: new ProtocolDecodeError("Expected a Response or a Broadcast"),
       });
     }
@@ -1393,7 +1391,6 @@ export const applyProtocolMessageAsRelay =
     )
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",
-        data: inputMessage,
         error: new ProtocolDecodeError("Request is too large"),
       });
 
@@ -1415,7 +1412,6 @@ export const applyProtocolMessageAsRelay =
     if (request.type !== "Request") {
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",
-        data: inputMessage,
         error: new ProtocolDecodeError("Expected a Request"),
       });
     }
@@ -1639,7 +1635,6 @@ const decodeProtocolMessage = (
   } catch (error) {
     return err<ProtocolInvalidDataError>({
       type: "ProtocolInvalidDataError",
-      data: inputMessage,
       error,
     });
   }
@@ -2538,7 +2533,6 @@ export const decryptAndDecodeDbChange = (
   } catch (error) {
     return err<ProtocolInvalidDataError>({
       type: "ProtocolInvalidDataError",
-      data: message.change,
       error,
     });
   }
