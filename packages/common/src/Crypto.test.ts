@@ -103,10 +103,13 @@ test("createPadmePaddedLength pads lengths near and above 2 GiB", () => {
 
   assertSame(createPadmePadding(2_147_483_647 as NonNegativeInt).length, 1);
 
-  // Lengths above 2^53 - 2^46 pad past Number.MAX_SAFE_INTEGER.
-  assertThrowsInstanceOf(
+  const error = assertThrowsInstanceOf(
     () => createPadmePaddedLength(8_936_830_510_563_329 as NonNegativeInt),
     Error,
+  );
+  assertSame(
+    error.message,
+    "The length exceeds 2^53 - 2^46, whose padded length would exceed Number.MAX_SAFE_INTEGER.",
   );
 });
 

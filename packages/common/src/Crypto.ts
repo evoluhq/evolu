@@ -12,6 +12,7 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha512 } from "@noble/hashes/sha2.js";
 import { randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
+import { assert } from "./Assert.ts";
 import type { RandomLibDep } from "./Random.ts";
 import type { Result } from "./Result.ts";
 import { trySync } from "./Result.ts";
@@ -364,6 +365,10 @@ export const decryptWithXChaCha20Poly1305 = (
 export const createPadmePaddedLength = (
   length: NonNegativeInt,
 ): NonNegativeInt => {
+  assert(
+    length <= 2 ** 53 - 2 ** 46,
+    "The length exceeds 2^53 - 2^46, whose padded length would exceed Number.MAX_SAFE_INTEGER.",
+  );
   if (length === 0) return zeroNonNegativeInt;
   // Plain arithmetic, because 32-bit bitwise operators wrap lengths of 2 GiB
   // and more. Dividing and multiplying by a power of two is exact.
@@ -371,7 +376,7 @@ export const createPadmePaddedLength = (
   const e = high > 0 ? 63 - Math.clz32(high) : 31 - Math.clz32(length);
   const s = 32 - Math.clz32(e);
   const step = 2 ** Math.max(0, e - s);
-  return NonNegativeInt.orThrow(Math.ceil(length / step) * step);
+  return (Math.ceil(length / step) * step) as NonNegativeInt;
 };
 
 /**

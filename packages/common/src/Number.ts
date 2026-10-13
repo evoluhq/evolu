@@ -5,6 +5,7 @@
  */
 
 import type { NonEmptyReadonlyArray } from "./Array.ts";
+import { assert } from "./Assert.ts";
 import type { IsBranded } from "./Brand.ts";
 import type { Result } from "./Result.ts";
 import { err, ok } from "./Result.ts";
@@ -235,6 +236,9 @@ export const max = <T extends number>(
  * least the minimum number of items. Returns a success result if the minimum is
  * met, or an error result with the required number of items if not.
  *
+ * Throws when `numberOfBuckets` times `minNumberOfItemsPerBucket` exceeds
+ * `Number.MAX_SAFE_INTEGER`, because no item count can meet such a minimum.
+ *
  * ### Example
  *
  * ```ts
@@ -271,9 +275,13 @@ export const computeBalancedBuckets = (
   minNumberOfItemsPerBucket = 2 as PositiveInt,
 ): Result<NonEmptyReadonlyArray<PositiveInt>, PositiveInt> => {
   const minRequiredItems = numberOfBuckets * minNumberOfItemsPerBucket;
+  assert(
+    Number.isSafeInteger(minRequiredItems),
+    "numberOfBuckets times minNumberOfItemsPerBucket exceeds Number.MAX_SAFE_INTEGER.",
+  );
 
   if (numberOfItems < minRequiredItems)
-    return err(PositiveInt.orThrow(minRequiredItems));
+    return err(minRequiredItems as PositiveInt);
 
   const indexes: Array<PositiveInt> = [];
   const itemsPerBucket = Math.floor(numberOfItems / numberOfBuckets);

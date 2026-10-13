@@ -5,6 +5,7 @@ import {
   assertFalse,
   assertOk,
   assertSame,
+  assertThrowsInstanceOf,
   assertTrue,
 } from "./Assert.ts";
 
@@ -203,6 +204,20 @@ test("computeBalancedBuckets", () => {
       2 as PositiveInt,
     ),
     err(6),
+  );
+
+  const error = assertThrowsInstanceOf(
+    () =>
+      computeBalancedBuckets(
+        0 as NonNegativeInt,
+        Number.MAX_SAFE_INTEGER as PositiveInt,
+        2 as PositiveInt,
+      ),
+    Error,
+  );
+  assertSame(
+    error.message,
+    "numberOfBuckets times minNumberOfItemsPerBucket exceeds Number.MAX_SAFE_INTEGER.",
   );
 });
 
