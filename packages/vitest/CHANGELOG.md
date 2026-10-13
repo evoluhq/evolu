@@ -1,5 +1,13 @@
 # @evolu/vitest
 
+## 2.0.3
+
+### Patch Changes
+
+- c791716: Allowed Vitest 5 as a peer dependency
+
+  `@evolu/vitest` now accepts Vitest 5 in addition to Vitest 4.1.2 and later. Its assertions work unchanged on both.
+
 ## 2.0.2
 
 ### Patch Changes

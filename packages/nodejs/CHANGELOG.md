@@ -1,5 +1,23 @@
 # @evolu/nodejs
 
+## 4.3.2
+
+### Patch Changes
+
+- c791716: Required oxlint 1.87 and oxlint-tsgolint 7.0.2004
+
+  oxlint 1.86 and later require oxlint-tsgolint 7.0.2003 or later, so the previous peers, oxlint `^1.79.0` with oxlint-tsgolint pinned to 7.0.2001, conflicted with current oxlint. `@evolu/oxlint-config` and `@evolu/nodejs` now require oxlint `^1.87.0` and oxlint-tsgolint 7.0.2004.
+
+  `@evolu/oxlint-config` also updates eslint-plugin-jsdoc to 65.
+
+- a9d2ff0: Allowed documentation examples to install Evolu's polyfills themselves
+
+  `testJSDocExamples` now preloads Evolu's polyfills in the process that runs the examples instead of adding an `installPolyfills` import to each example. An example that imports and calls `installPolyfills` itself no longer fails with a duplicate identifier, and the modules an example imports run with the polyfills already installed.
+
+- Updated dependencies [c791716]
+- Updated dependencies [ca3ce67]
+  - @evolu/oxlint-config@0.3.0
+
 ## 4.3.1
 
 ### Patch Changes
