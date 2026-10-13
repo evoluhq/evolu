@@ -17,9 +17,20 @@ const records = markdownFiles
 const statusByFile = new Map(
   records.map(({ file, lines }) => [file, lines[3] ?? ""]),
 );
+// CI runs tests in a container whose user does not own the checkout, and git
+// refuses such a repository unless safe.directory allows it.
 const grep = spawnSync(
   "git",
-  ["grep", "--untracked", "-I", "-o", "-E", "docs/adr/[0-9A-Za-z_.-]+\\.md"],
+  [
+    "-c",
+    "safe.directory=*",
+    "grep",
+    "--untracked",
+    "-I",
+    "-o",
+    "-E",
+    "docs/adr/[0-9A-Za-z_.-]+\\.md",
+  ],
   { cwd: root, encoding: "utf8" },
 );
 // git grep exits with 1 when nothing matches.
