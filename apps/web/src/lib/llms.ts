@@ -1,13 +1,34 @@
 import fs from "fs";
 import { navigation } from "./navigation.ts";
 
+// As in CommonMark, a fence closes at a run of its character at least as long
+// as the one that opened it.
+const codeFencePattern =
+  /^[ \t]*((`|~)\2{2,})[^\n]*\n[\s\S]*?^[ \t]*\1\2*[ \t]*$/gmu;
+const codeFencePlaceholder = "\uE000";
+// What precedes a placeholder on its line, such as a quote prefix from a note,
+// precedes every line of the restored code fence.
+const codeFencePlaceholderPattern = /^(.*?)\uE000(\d+)\uE000/gmu;
+
 /**
- * Cleans MDX content by removing imports, exports, JSX components, and
- * converting relative links.
+ * Cleans MDX content by removing imports, exports, and JSX components, and
+ * converting relative links. Code examples are kept as written. It throws when
+ * a component that wraps a code example would remove it, because only code
+ * groups are unwrapped.
  */
 export const cleanMdxContent = (content: string): string => {
-  // Remove import statements - ensuring we catch all top-level imports
+  // Code examples are set aside, so no replacement below changes them.
+  const codeFences: Array<string> = [];
   let cleanedContent = content.replaceAll(
+    codeFencePattern,
+    (codeFence: string) => {
+      codeFences.push(codeFence);
+      return `${codeFencePlaceholder}${codeFences.length - 1}${codeFencePlaceholder}`;
+    },
+  );
+
+  // Remove import statements - ensuring we catch all top-level imports
+  cleanedContent = cleanedContent.replaceAll(
     /^import\s+.*?['"].*?['"];?\s*$/gmu,
     "",
   );
@@ -40,6 +61,12 @@ export const cleanMdxContent = (content: string): string => {
     },
   );
 
+  // Unwrap code groups, keeping their code examples
+  cleanedContent = cleanedContent.replaceAll(
+    /<\/?(?:SinglePlatform)?CodeGroup\b[^>]*>/gu,
+    "",
+  );
+
   // Remove self-closing JSX component tags
   cleanedContent = cleanedContent.replaceAll(/<[A-Z][a-zA-Z]*[^>]*\/>/gu, "");
 
@@ -48,10 +75,6 @@ export const cleanMdxContent = (content: string): string => {
     /<[A-Z][a-zA-Z]*[^>]*>[\s\S]*?<\/[A-Z][a-zA-Z]*>/gu,
     "",
   );
-
-  // Remove CodeGroup tags but keep their content
-  cleanedContent = cleanedContent.replaceAll(/<CodeGroup.*?>/gu, "");
-  cleanedContent = cleanedContent.replaceAll("</CodeGroup>", "");
 
   // Convert relative links to absolute links with predefined prefix
   const baseUrl = "https://evolu.dev/";
@@ -70,6 +93,22 @@ export const cleanMdxContent = (content: string): string => {
 
   // Clean up multiple consecutive blank lines
   cleanedContent = cleanedContent.replaceAll(/\n{3,}/gu, "\n\n");
+
+  let restoredCodeFenceCount = 0;
+  cleanedContent = cleanedContent.replaceAll(
+    codeFencePlaceholderPattern,
+    (_placeholder: string, linePrefix: string, index: string) => {
+      restoredCodeFenceCount++;
+      return (codeFences[Number(index)] ?? "")
+        .split("\n")
+        .map((line) => `${linePrefix}${line}`)
+        .join("\n");
+    },
+  );
+  if (restoredCodeFenceCount !== codeFences.length)
+    throw new Error(
+      `Cleaning MDX removed ${codeFences.length - restoredCodeFenceCount} of ${codeFences.length} code examples.`,
+    );
 
   return cleanedContent.trim();
 };
