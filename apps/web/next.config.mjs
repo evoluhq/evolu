@@ -30,10 +30,6 @@ const nextConfig = {
     "@evolu/sqlite-wasm",
     "@evolu/web",
   ],
-  experimental: {
-    // @typescript/typescript6 exposes the compiler API and tsc6, not tsc.
-    useTypeScriptCli: false,
-  },
   turbopack: {
     resolveAlias: {
       "Db.worker.js": "../../packages/web/src/local-first/Db.worker.ts",

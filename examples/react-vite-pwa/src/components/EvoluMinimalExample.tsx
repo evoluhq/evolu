@@ -413,10 +413,11 @@ const OwnerActions: FC = () => {
             AppOwner secret is not persisted in browser storage.
           </p>
           <p>
-            An application that does not require encryption at rest can use an
-            unencrypted SQLite database for simpler persistence without repeated
-            authentication. Data extracted from browser storage can then be read
-            directly.
+            An application that does not require encryption at rest can persist
+            the AppOwner secret in browser storage to avoid repeated
+            authentication. Anyone who extracts browser storage then has that
+            secret, which decrypts the database and also lets them read and
+            write the owner&apos;s synced data on its relays.
           </p>
           <p>
             Reset requires disposing every active instance, deleting the local
