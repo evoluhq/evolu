@@ -6,7 +6,9 @@ ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-alpine
 
 # The published @evolu/relay version, or a packed tarball path relative to the
-# build context for verifying unpublished changes (see CONTRIBUTING.md).
+# build context for verifying unpublished changes (see CONTRIBUTING.md). Why the
+# image installs the published package: see
+# docs/adr/relay-image-installs-published-package.md.
 ARG RELAY_PACKAGE=@evolu/relay@latest
 
 # droast ignore=DF008,DF031 reason="cd scopes installation to the temporary context mount; release CI supplies an exact package version, while manual builds default to latest."

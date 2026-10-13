@@ -1128,6 +1128,42 @@ prose.
 
 TypeDoc warnings fail CI. Resolve every warning emitted by `pnpm build:docs`.
 
+## Decision records
+
+Record a decision that no single code site owns, such as why sync uses
+WebSocket and not WebTransport, or why the relay's Docker image installs the
+published npm package instead of a bundle, as an architecture decision record
+(ADR) in [`docs/adr`](https://github.com/evoluhq/evolu/tree/main/docs/adr),
+whose README explains what an ADR is. Write one only when the decision is hard
+to reverse, surprising without context, and the result of a real trade-off. The
+reason for one piece of code stays in a `//` comment at that code, such as why
+an oversized mutation throws, and behavior and constraints stay in module JSDoc,
+such as how Evolu handles clock drift.
+
+Copy `docs/adr/template.md` to a file named with a short slug of the title, and
+state the decision in the title. Keep the record to one or two pages and link
+module docs, issues, and measurements instead of restating them. Before
+proposing a design, check `docs/adr` for an ADR that already proposes or
+rejects it.
+
+A new ADR is Proposed, so contributors and agents can read the design before it
+is decided. It does not bind and is revised until a maintainer accepts or
+rejects it. Its date is the day it was proposed until a maintainer accepts or
+rejects it, and then the day of that decision. A rejected ADR stays, so the
+idea is not proposed again.
+
+Do not rewrite an accepted or rejected ADR beyond fixing typos and links. When a
+decision changes, propose a new ADR. When a maintainer accepts it, change the
+old one's status to `Superseded by` with a link to the new one and move the
+code's pointers to the new one. An accepted ADR binds, so a change that
+conflicts with one needs an accepted superseding ADR first.
+
+Code that a decision governs points to its accepted ADR with a comment naming
+the path, such as `// See docs/adr/sync-uses-websocket-not-webtransport.md.`
+`scripts/adr.test.mts` checks the file names and the template, that every link
+and reference to an ADR resolves, and that nothing outside `docs/adr` points to
+an ADR that is not accepted.
+
 ## Versioning
 
 Published packages follow semantic versioning. Fixes are patch releases,

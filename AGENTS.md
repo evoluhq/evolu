@@ -201,6 +201,17 @@ for a post, run `node scripts/code-image.mts --help`.
   `{@link}`. Avoid pipes in the first sentence and alignment-only edits.
 - A workaround for a browser, runtime, or dependency bug gets a `//` comment
   at the code describing the behavior and linking the upstream issue.
+- Read the ADRs in `docs/adr` that the code you change points to. Accepted ADRs
+  bind: when a task conflicts with one, stop and ask. Proposed ADRs are context;
+  do not implement one before a maintainer accepts it. Before proposing a
+  design, check `docs/adr` for an ADR that proposes or rejects it. Record a
+  decision that no single code site owns, such as WebSocket over WebTransport
+  or how the relay's Docker image is built, as a Proposed ADR from
+  `docs/adr/template.md` only when it is hard to reverse, surprising without
+  context, and a real trade-off. Only a maintainer accepts or rejects an ADR;
+  when they do, set its status and date. Point to an accepted ADR from the code
+  it governs with a comment naming its path, supersede it only through an ADR
+  a maintainer accepted, and run `pnpm test:node scripts/adr.test.mts`.
 - TypeScript examples are standalone and deterministic, with explicit imports
   and assertions. Use `ts` fences, or `tsx` for JSX; other spellings fail. On a
   documentation page, setup the page already shows or names, and assertions

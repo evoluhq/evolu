@@ -427,6 +427,8 @@ export const createSharedReadonlyOwner = (
   encryptionKey: sharedOwner.encryptionKey,
 });
 
+// Why WebSocket and not WebTransport: see
+// docs/adr/sync-uses-websocket-not-webtransport.md.
 /**
  * Transport configuration for connecting to relays.
  *
