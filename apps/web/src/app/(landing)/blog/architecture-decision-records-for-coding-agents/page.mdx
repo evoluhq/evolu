@@ -1,0 +1,145 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2026-10-13",
+  title: "Architecture decision records for coding agents",
+  description:
+    "Evolu now writes down the decisions no single file owns as short architecture decision records, adapted for AI agents working in parallel: named, not numbered, with proposals agents must not implement and a test that keeps code pointing at accepted decisions.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+More and more of Evolu is written by AI coding agents, often several sessions
+at once. They read the code and the comments in it well. What they could not
+read was why some things are the way they are.
+
+Why does the relay's Docker image install the published npm package instead of
+a bundle? Why does sync use WebSocket and not WebTransport? The answers existed,
+in my notes, in chat transcripts, and in the private memory of the agent on my
+machine. Contributors, other agents, and sessions on other machines saw only
+the code. So rejected ideas kept coming back, and each time someone researched
+them again.
+
+Evolu now writes those decisions down as architecture decision records.
+
+## What an ADR is
+
+An architecture decision record, or ADR, is a short document that records one
+decision: the context that forced it, what was decided, the alternatives
+considered, and the consequences. Michael Nygard coined the term in 2011, and
+Martin Fowler's
+[Architecture Decision Record](https://martinfowler.com/bliki/ArchitectureDecisionRecord.html)
+is a good introduction.
+
+Two ideas make it work. A record is short, so it gets written and read. And a
+decided record is never rewritten. When a decision changes, a new record
+supersedes the old one, so the log shows which decision governed the code and
+for how long.
+
+## Where the why goes
+
+Evolu already had places for reasons. Module documentation describes how
+something behaves and what constrains it, such as how Evolu handles clock
+drift. A comment at a piece of code explains why that code is the way it is,
+such as why an oversized mutation throws.
+
+An ADR is for a decision that no single place in the code owns. Some decisions
+shape several places: the relay image follows from how the package is built,
+released, and installed. Others are about something the code does not do, such
+as use WebTransport. Even then, we write an ADR only when the decision is hard
+to reverse, surprising without context, and a real trade-off. Anything else
+gets a comment at the code.
+
+## What we changed for agents
+
+Most ADR guides assume a team of people. We changed four things for agents
+working in parallel.
+
+**Names, not numbers.** ADRs are traditionally numbered. Two agent sessions in
+different worktrees can both pick the same next number, and renumbering breaks
+every path that points to the record. Evolu names each file after its title,
+such as `sync-uses-websocket-not-webtransport.md`. Numbers make sense for
+specifications like Bitcoin's BIPs, which other projects cite. An ADR is read
+by the people and agents working on one codebase, and they find it by its
+path.
+
+**Proposed means do not implement.** Nygard's and Fowler's ADRs already start
+as Proposed. We use that status for designs that used to stay in one agent's
+memory, so other sessions and contributors can read them before they are
+decided. A Proposed ADR does not bind, and agents must not implement it. Only a
+maintainer accepts or rejects it. Unlike Fowler, we keep rejected ADRs, so the
+next agent with the same idea finds out why it lost.
+
+**Pointers in the code.** Agents read the code they change, but they don't
+always go looking for documentation elsewhere. So code that a decision governs
+points to its ADR:
+
+```text
+// Why WebSocket and not WebTransport: see
+// docs/adr/sync-uses-websocket-not-webtransport.md.
+```
+
+`AGENTS.md`, which most coding agents load at the start of every session, tells
+them to read the ADRs the code points to, to check `docs/adr` before proposing
+a design, to stop and ask when a task conflicts with an accepted ADR, and to
+write new ones as Proposed.
+
+**A test for the rules.** Instructions are advice. A test is not.
+[`scripts/adr.test.mts`](https://github.com/evoluhq/evolu/blob/main/scripts/adr.test.mts)
+checks that every record follows the template, that every path to an ADR
+resolves, that code points only to accepted ADRs, and that an ADR is superseded
+only by an accepted one. It runs with the other unit tests in under a second.
+
+## The template
+
+Every ADR starts from the same template:
+
+```text
+# The decision, stated as a sentence
+
+- Date: YYYY-MM-DD
+- Status: Proposed
+
+## Context
+
+The problem or constraint that forces a decision. Link issues, module docs, and
+measurements instead of restating them.
+
+## Decision
+
+What we decide and why, in a few sentences.
+
+## Rejected alternatives
+
+- An alternative: why it loses.
+
+## Consequences
+
+What gets easier or harder, what this rules out, and what would make us revisit
+the decision.
+```
+
+The rejected alternatives are what stop an idea from coming back. Our first
+records are
+[why Evolu writes ADRs](https://github.com/evoluhq/evolu/blob/main/docs/adr/record-architecture-decisions.md),
+[why the relay image installs the published npm package](https://github.com/evoluhq/evolu/blob/main/docs/adr/relay-image-installs-published-package.md),
+and
+[why sync uses WebSocket, not WebTransport yet](https://github.com/evoluhq/evolu/blob/main/docs/adr/sync-uses-websocket-not-webtransport.md).
+Each fits on about a page.
+
+## Try it
+
+We have only just started, so this post describes the setup, not results.
+Everything is in the repository: the
+[README](https://github.com/evoluhq/evolu/blob/main/docs/adr/README.md), the
+[template](https://github.com/evoluhq/evolu/blob/main/docs/adr/template.md),
+the [rules](/docs/conventions#decision-records), and the test. Copy whatever
+helps. If your agents work in parallel, the two changes we would start with are
+names instead of numbers and the rule that agents never implement a Proposed
+ADR.
