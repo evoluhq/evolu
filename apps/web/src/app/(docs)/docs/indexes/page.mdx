@@ -32,6 +32,8 @@ const allTodos = createQuery(
   performance.
 </Note>
 
+Without an index on the columns a query filters, joins, or sorts by, SQLite reads the whole table, and a nested query, such as one built with `evoluJsonArrayFrom`, reads it again for each parent row. Measured through Evolu with native SQLite on a MacBook Air, a page of 50 todos sorted by `createdAt` from a table of 100,000 took about 5 milliseconds with an index and 15 without one, while nesting those todos into 100 projects took about 90 milliseconds with an index on `projectId` and 700 without one. Browsers and slower devices take longer.
+
 For deeper insights into how SQLite indexes work under the hood, read [this in-depth guide](https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346).
 
 <Heading level={2} id="usage">

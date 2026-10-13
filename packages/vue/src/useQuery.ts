@@ -20,7 +20,8 @@ import { useEvolu } from "./useEvolu.ts";
  * rows keep their values, and nothing is reported.
  *
  * To start loading earlier, such as in a router guard, call `evolu.loadQuery`.
- * The composable then reads the same cached load.
+ * The composable then reuses that load unless a mutation or sync drops it
+ * first.
  *
  * During server rendering, it only loads the query, so the rows are empty, as
  * on the client before the query loads. Server rendering starts when the server
@@ -49,8 +50,8 @@ import { useEvolu } from "./useEvolu.ts";
  * // Load the rows without subscribing to changes.
  * const useTodosOnce = () => useQuery(allTodos, { once: true });
  *
- * // Prefetch the rows, for example in a router guard. useQuery then reads
- * // the same cached load.
+ * // Prefetch the rows, for example in a router guard. useQuery then reuses
+ * // that load unless a mutation or sync drops it first.
  * const prefetchTodos = (evolu: Evolu<TestEvoluSchema>) =>
  *   evolu.loadQuery(allTodos);
  *

@@ -52,8 +52,8 @@ export interface ReactBinding<S extends EvoluSchema = EvoluSchema> {
    * sync invalidates it.
    *
    * To start loading before rendering, which is rarely needed as local queries
-   * are typically fast, call {@link Evolu.loadQuery}. `useQuery` then reads the
-   * same cached load.
+   * are typically fast, call {@link Evolu.loadQuery}. `useQuery` then reuses
+   * that load unless a mutation or sync drops it first.
    */
   readonly useQuery: <R extends Row>(
     query: Query<S, R>,

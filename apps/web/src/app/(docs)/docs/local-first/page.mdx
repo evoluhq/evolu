@@ -405,6 +405,10 @@ const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
 
 </SinglePlatformCodeGroup>
 
+In React, `useQuery` suspends until its query loads, so render it inside `Suspense`. To load several queries at once, without a waterfall of suspensions, use `useQueries`. A query SQLite fails, for example one with a syntax error in a raw SQL fragment, throws to the nearest error boundary, while other queries and mutations keep working.
+
+Local queries are typically fast, especially with [indexes](/docs/indexes), so preloading is rarely needed. To start loading before a component renders, call `evolu.loadQuery`; `useQuery` reuses that load unless a mutation or sync drops it first.
+
 ## Delete data
 
 To delete a row, set `isDeleted` to `sqliteTrue` (1). Synced tables use **soft deletes**. Tables prefixed with `_` delete the row permanently and have no sync history. In the examples below, `todoId` is the ID of the row to delete.
