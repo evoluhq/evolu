@@ -88,6 +88,9 @@ const packageSubpathSegmentPattern = /^[a-z\d][a-z\d._~-]*$/iu;
 const polyfillsPath = fileURLToPath(
   import.meta.resolve("@evolu/common/polyfills"),
 );
+// Preloaded by the process that runs examples, so examples may declare any
+// name and the modules they import run with the polyfills too.
+const installPolyfillsFile = "install-polyfills.ts";
 
 /**
  * Lints, compiles, and executes every TypeScript example in the included JSDoc
@@ -97,7 +100,8 @@ const polyfillsPath = fileURLToPath(
  * without compilation errors are then imported in source order by one Node.js
  * process. Lint, compilation, and execution failures are reported together.
  * Examples are linted with `@evolu/oxlint-config`. Evolu's required polyfills
- * are installed before each example runs.
+ * are installed before each example and the modules it imports run, without
+ * declaring anything an example could collide with.
  *
  * TypeScript examples use `ts` fences, or `tsx` fences for JSX. Other spellings
  * of them, such as `typescript` or `TS`, fail instead of leaving the example
@@ -204,16 +208,22 @@ export const testJSDocExamples = async ({
       JSON.stringify({ type: "module" }),
     );
     createPackageAliases(temporaryDirectory, aliases);
+    const installPolyfillsPath = join(temporaryDirectory, installPolyfillsFile);
+    writeFileSync(
+      installPolyfillsPath,
+      [
+        `import { installPolyfills } from ${JSON.stringify(pathToImportSpecifier(installPolyfillsPath, polyfillsPath))};`,
+        "installPolyfills();",
+        "",
+      ].join("\n"),
+    );
 
     const generatedExamples = examples.map((example, index) => {
       const generatedPath = join(
         temporaryDirectory,
         `example-${index}.${example.language}`,
       );
-      writeFileSync(
-        generatedPath,
-        transformJSDocExample(example, generatedPath),
-      );
+      writeFileSync(generatedPath, example.source);
       return { ...example, generatedPath } satisfies GeneratedJSDocExample;
     });
     const compilerConfigPath = join(temporaryDirectory, "tsconfig.json");
@@ -424,7 +434,7 @@ const oxlintOutputToError = (
         label !== undefined,
         `Oxlint did not report a source location for ${diagnostic.filename}.`,
       );
-      const line = example.sourceLine + label.span.line - 5;
+      const line = example.sourceLine + label.span.line - 1;
       const filePath = relative(workingDirectory, example.filePath);
       const code = diagnostic.code ?? "";
       return {
@@ -562,16 +572,6 @@ const getLineNumber = (source: string, offset: number): number => {
   return line;
 };
 
-const transformJSDocExample = (
-  example: JSDocExample,
-  generatedPath: string,
-): string =>
-  [
-    `import { installPolyfills } from ${JSON.stringify(pathToImportSpecifier(generatedPath, polyfillsPath))};`,
-    "installPolyfills();",
-    example.source,
-  ].join("\n\n");
-
 const resolveTypeScriptCompiler = (
   workingDirectory: string,
   typescriptPackage: string,
@@ -664,7 +664,11 @@ const runJSDocExamples = async (
 
   await runProcess(
     process.execPath,
-    [runnerPath],
+    [
+      "--import",
+      pathToFileURL(join(temporaryDirectory, installPolyfillsFile)).href,
+      runnerPath,
+    ],
     workingDirectory,
     "Node.js execution",
   );

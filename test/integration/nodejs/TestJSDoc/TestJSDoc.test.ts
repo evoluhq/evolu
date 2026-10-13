@@ -479,6 +479,34 @@ test("testJSDocExamples installs Evolu polyfills", async () => {
   }
 });
 
+test("testJSDocExamples runs examples that install Evolu polyfills", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "README.md");
+    writeFileSync(
+      sourcePath,
+      [
+        "```ts",
+        'import { installPolyfills } from "@evolu/common/polyfills";',
+        "installPolyfills();",
+        "```",
+      ].join("\n"),
+    );
+
+    await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: [sourcePath],
+      typescriptPackage: "@typescript/native",
+    });
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
 test("testJSDocExamples supports package subpath aliases", async () => {
   mkdirSync(temporaryRoot, { recursive: true });
   const temporaryDirectory = mkdtempSync(
