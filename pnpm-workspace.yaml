@@ -5,7 +5,7 @@ nodeLinker: hoisted
 allowBuilds:
   "@parcel/watcher": true
   "@tailwindcss/oxide": true
-  better-sqlite3: true
+  better-sqlite3: false
   electron: true
   electron-winstaller: true
   esbuild: true

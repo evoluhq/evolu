@@ -57,7 +57,7 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "^13.0.3",
     "ws": "^8.22.0"
   },
   "devDependencies": {
