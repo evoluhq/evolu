@@ -1,5 +1,13 @@
 # @evolu/relay
 
+## 4.2.11
+
+### Patch Changes
+
+- Updated dependencies [c791716]
+- Updated dependencies [a9d2ff0]
+  - @evolu/nodejs@4.3.2
+
 ## 4.2.10
 
 ### Patch Changes
