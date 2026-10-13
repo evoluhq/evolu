@@ -69,6 +69,40 @@ describe("createEvoluDeps", () => {
     assertNonNullable(deps);
   });
 
+  it("installs the polyfills it needs, such as DisposableStack, which Safari lacks", () => {
+    using _sharedWorker = testStubGlobal(
+      "SharedWorker",
+      class {
+        readonly port =
+          createClosableNativePort<unknown>() as unknown as NativeMessagePort<
+            never,
+            unknown
+          >;
+      },
+    );
+    using _addEventListener = testStubGlobal("addEventListener", () => {});
+    using _removeEventListener = testStubGlobal(
+      "removeEventListener",
+      () => {},
+    );
+    // testStubGlobal itself creates a DisposableStack, so this restores the
+    // native one by hand.
+    const descriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "DisposableStack",
+    );
+    assertNonNullable(descriptor);
+    Reflect.deleteProperty(globalThis, "DisposableStack");
+    try {
+      using deps = createEvoluDeps();
+
+      assertNonNullable(deps);
+      assertSame(typeof globalThis.DisposableStack, "function");
+    } finally {
+      Object.defineProperty(globalThis, "DisposableStack", descriptor);
+    }
+  });
+
   describe("database refusals", () => {
     const createRefusal = (
       storedVersion: number,

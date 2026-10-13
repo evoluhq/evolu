@@ -9,6 +9,7 @@ import {
   type UnknownError,
   type UnsupportedDbVersionError,
 } from "@evolu/common";
+import { installPolyfills } from "@evolu/common/polyfills";
 import type {
   SharedWorker as CommonSharedWorker,
   CreateDbWorker,
@@ -84,6 +85,9 @@ export interface SharedWorkerUnsupportedDep {
  * save state first. It should end by reloading the page, because the other
  * build waits until this tab reloads or closes, and a page restored from the
  * back-forward cache cannot work until it reloads.
+ *
+ * It installs the polyfills Evolu needs, such as `DisposableStack`, which
+ * Safari lacks, so apps don't have to call `installPolyfills` first.
  */
 export const createEvoluDeps = (
   deps: Partial<ConsoleDep> &
@@ -91,6 +95,7 @@ export const createEvoluDeps = (
     Partial<SharedWorkerUnsupportedDep> &
     Partial<RequestPersistentStorageDep> = {},
 ): EvoluDeps => {
+  installPolyfills();
   installOneTabSharedWorkerPolyfill();
   const reloadThisApp = deps.reloadApp ?? reloadApp;
   // A page an automatic reload loaded never announces its build, so two builds
