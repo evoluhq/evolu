@@ -7,14 +7,13 @@ import type { FC } from "react";
 
 const examples = [
   {
-    demo: "/docs/examples/react/nextjs",
     repo: "https://github.com/evoluhq/evolu/tree/main/examples/react-nextjs",
     name: "Next.js",
     description: "Example usage of Next.js with Evolu.",
     logo: NextjsLogo,
   },
   {
-    repo: "https://github.com/evoluhq/evolu/tree/main/apps/expo",
+    repo: "https://github.com/evoluhq/evolu/tree/main/examples/react-expo",
     name: "Expo",
     description: "Evolu on mobile with Expo.",
     logo: ExpoLogo,
@@ -46,15 +45,6 @@ export const ReactExamples: FC = () => (
               {example.description}
             </p>
             <p className="mt-4 flex items-center gap-3">
-              {/* {example.demo && (
-                  <Button
-                    href={example.demo}
-                    target="_self"
-                    variant="secondary"
-                  >
-                    Demo
-                  </Button>
-                )} */}
               {example.repo && (
                 <Button href={example.repo} target="_blank" variant="text">
                   Go to repository
