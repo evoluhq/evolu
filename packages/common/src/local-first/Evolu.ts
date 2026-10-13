@@ -279,8 +279,11 @@ export interface EvoluConfig {
    *
    * Use {@link createOwnerWebSocketTransport} to create WebSocket transport
    * configurations with proper URL formatting and {@link OwnerId} inclusion. The
-   * {@link OwnerId} in the URL enables relay authentication, allowing relay
-   * servers to control access (e.g., for paid tiers or private instances).
+   * {@link OwnerId} in the URL lets a relay's `isOwnerAllowed` admit or reject
+   * owners, for example for paid tiers, but anyone who knows an OwnerId can
+   * name it, so a private relay needs access control beyond the OwnerId, as
+   * [Privacy](https://www.evolu.dev/docs/privacy#relay-blindness-by-design)
+   * describes.
    *
    * The default value is:
    *
@@ -312,7 +315,7 @@ export interface EvoluConfig {
    * const _localOnlyBeforeAuthentication =
    *   [] satisfies ReadonlyArray<OwnerTransport>;
    *
-   * // Include the OwnerId when the relay authenticates owners.
+   * // Include the OwnerId when the relay admits owners by it.
    * const authenticatedRelay = [
    *   createOwnerWebSocketTransport({
    *     url: "wss://relay.example.com",

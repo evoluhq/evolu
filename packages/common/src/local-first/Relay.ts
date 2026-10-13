@@ -82,7 +82,8 @@ export interface RelayConfig extends StorageConfig {
    * first write key presented for an owner, so anyone who learns an OwnerId
    * before the owner's own write key reaches the relay can claim it. The owner
    * then gets {@link ProtocolWriteKeyError} on this relay until the operator
-   * deletes the owner's row in `evolu_writeKey`. This callback does not prevent
+   * deletes everything the relay stores for that OwnerId, which removes the
+   * squatter's key and the data stored with it. This callback does not prevent
    * that: it receives only the OwnerId of a connection, which a squatter can
    * name as well, and every message on the connection can name another owner.
    *
@@ -114,7 +115,7 @@ export interface RelayConfig extends StorageConfig {
    * const appOwner = createAppOwner(
    *   createOwnerSecret({ randomBytes: createRandomBytes() }),
    * );
-   * // Client: include the OwnerId so the relay can authenticate the connection.
+   * // Client: include the OwnerId so the relay can admit the connection.
    * const transport = createOwnerWebSocketTransport({
    *   url: "wss://relay.evolu.dev",
    *   ownerId: appOwner.id,

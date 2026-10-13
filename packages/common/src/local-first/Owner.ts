@@ -26,9 +26,9 @@
  * An {@link OwnerSecret} deterministically derives three independent values
  * using SLIP-21:
  *
- * - {@link OwnerId}: the public identifier.
+ * - {@link OwnerId}: the identifier relays use to find the owner's data.
  * - {@link OwnerEncryptionKey}: the symmetric key that protects the data.
- * - {@link OwnerWriteKey}: the rotatable token that authorizes writes.
+ * - {@link OwnerWriteKey}: the token that authorizes writes.
  *
  * Only holders of the encryption key can create an owner's changes. Each change
  * is encrypted and authenticated together with its timestamp, so a relay, or
@@ -160,9 +160,10 @@ export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Output;
 /**
  * A token that authorizes write operations for an {@link Owner}.
  *
- * The initial key is derived from {@link OwnerSecret}. Replace it with a random
- * key from {@link createOwnerWriteKey} to rotate write access without changing
- * the owner identity or encryption key.
+ * The initial key is derived from {@link OwnerSecret}. Relays keep the first
+ * write key they receive for an owner and reject any other, so a write key
+ * can't be rotated yet: an owner with a key from {@link createOwnerWriteKey}
+ * can't write to or sync with relays that already store its previous key.
  *
  * @group Core
  */
@@ -170,7 +171,8 @@ export const OwnerWriteKey = /*#__PURE__*/ brand("OwnerWriteKey", Entropy16);
 export type OwnerWriteKey = typeof OwnerWriteKey.Output;
 
 /**
- * Creates a random {@link OwnerWriteKey} for rotating write access.
+ * Creates a random {@link OwnerWriteKey}. A relay that already stores another
+ * write key for the owner rejects it, as {@link OwnerWriteKey} describes.
  *
  * @group Core
  */
@@ -186,14 +188,14 @@ export const createOwnerWriteKey = (deps: RandomBytesDep): OwnerWriteKey =>
  * mnemonic holds 16 bytes, and 15, 18, and 21 words hold 20, 24, and 28 bytes.
  *
  * {@link createOwnerSecret} generates 32 random bytes, which keep the owner
- * post-quantum safe. The {@link OwnerId} is public and derived from the secret,
- * so anyone who stores an owner's encrypted data can test guesses of the secret
- * offline, and a quantum computer needs only about the square root of the
- * guesses. 32 random bytes leave about 128 bits of security, while 16 bytes
- * leave about 64. A secret derived from a smaller root, such as a 20-word
- * SLIP-39 share, is no stronger than that root, whatever its length. Shorter
- * secrets are accepted for owners created outside Evolu, typically from 12-word
- * mnemonics.
+ * post-quantum safe. The {@link OwnerId} is derived from the secret, and every
+ * relay the owner uses knows it, so anyone who has it, such as a relay that
+ * stores the owner's encrypted data, can test guesses of the secret offline,
+ * and a quantum computer needs only about the square root of the guesses. 32
+ * random bytes leave about 128 bits of security, while 16 bytes leave about 64.
+ * A secret derived from a smaller root, such as a 20-word SLIP-39 share, is no
+ * stronger than that root, whatever its length. Shorter secrets are accepted
+ * for owners created outside Evolu, typically from 12-word mnemonics.
  *
  * @group Core
  */
@@ -437,7 +439,7 @@ export type OwnerTransport = OwnerWebSocketTransport;
 /**
  * WebSocket transport configuration.
  *
- * ## Authentication via URL
+ * ## OwnerId in the URL
  *
  * The {@link OwnerId} is passed as a URL query parameter, because browsers can't
  * set custom headers on a WebSocket handshake. URLs often get logged, and
