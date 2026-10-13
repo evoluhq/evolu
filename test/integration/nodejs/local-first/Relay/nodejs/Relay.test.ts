@@ -171,14 +171,12 @@ const loadRelayModuleWithMockedTransport = async (
   const wss = new FakeWebSocketServer();
 
   mock.module("http", {
-    // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
     exports: {
       createServer: () => server,
     },
   });
 
   mock.module("ws", {
-    // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
     exports: {
       WebSocket: { OPEN: 1 },
       WebSocketServer: function MockWebSocketServer() {

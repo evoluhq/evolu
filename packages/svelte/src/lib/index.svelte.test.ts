@@ -29,7 +29,6 @@ const svelteHooks = registerHooks({
 
 // The module creates web dependencies on import, which need browser APIs.
 mock.module("@evolu/web", {
-  // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
   exports: { createEvoluDeps: () => ({}) },
 });
 

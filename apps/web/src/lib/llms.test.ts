@@ -16,11 +16,9 @@ const mdxFiles = [
 const fastGlob = mock.fn(() => Promise.resolve(mdxFiles));
 
 mock.module("fast-glob", {
-  // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
   exports: { default: fastGlob },
 });
 mock.module("./navigation.ts", {
-  // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
   exports: {
     navigation: [
       {

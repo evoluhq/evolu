@@ -192,7 +192,7 @@ jobs:
             run: pnpm exec vitest run --coverage --mode=chromium --project='browser-*' && pnpm test:bundle
     # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
     env:
       HOME: /root
     steps:
@@ -234,7 +234,7 @@ jobs:
         browser: [chromium, firefox, webkit]
     # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
     env:
       HOME: /root
     steps:
@@ -275,7 +275,7 @@ jobs:
         browser: [firefox, webkit]
     # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
     env:
       # The Playwright container runs as root, but GitHub otherwise sets HOME
       # to /github/home, which is owned by pwuser and breaks Firefox.

@@ -2,7 +2,7 @@
 
 This benchmark guards the `JsonValue` MessagePack codec in
 [`Bytes.ts`](../../packages/common/src/Bytes.ts) against accidental
-performance regressions. It compares Evolu with msgpackr 2.0.5, configured like
+performance regressions. It compares Evolu with msgpackr 2.1.0, configured like
 the previous Protocol implementation with `variableMapSize: true` and
 `useRecords: false`. Native acceleration is disabled so both codecs run in
 JavaScript.
