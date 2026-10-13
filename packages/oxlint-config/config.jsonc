@@ -96,17 +96,14 @@
     "jsdoc-js/no-undefined-types": [
       "error",
       {
-        // Oxlint's JS-plugin scope does not expose ambient types from the
-        // TypeScript libraries configured by tsconfig, unlike ESLint.
+        // eslint-plugin-jsdoc predefines the ECMAScript library types, but
+        // Oxlint's JS-plugin scope does not expose the DOM library types
+        // configured by tsconfig, unlike ESLint.
         // https://github.com/oxc-project/oxc/issues/25995
         "definedTypes": [
           "AbortController",
           "AbortSignal",
-          "AsyncDisposable",
-          "Disposable",
           "LockManager",
-          "PromiseLike",
-          "ReadonlyArray",
           "Response"
         ]
       }
