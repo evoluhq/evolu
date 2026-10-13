@@ -1,5 +1,21 @@
 # @evolu/oxlint-config
 
+## 0.3.0
+
+### Minor Changes
+
+- ca3ce67: Enabled linting of generated empty object types
+
+  The shared config now reports type operations that resolve to `{}`, such as `Omit<Row | null, "id">`, `Pick<Row, never>`, or `Record<never, never>`. `{}` accepts any non-nullish value, including numbers and strings, so such a type silently stops checking. The rule is oxlint's `typescript/no-generated-empty-object-type`, which the suspicious category includes since oxlint 1.86. Write `{}` where an empty object type is intended.
+
+### Patch Changes
+
+- c791716: Required oxlint 1.87 and oxlint-tsgolint 7.0.2004
+
+  oxlint 1.86 and later require oxlint-tsgolint 7.0.2003 or later, so the previous peers, oxlint `^1.79.0` with oxlint-tsgolint pinned to 7.0.2001, conflicted with current oxlint. `@evolu/oxlint-config` and `@evolu/nodejs` now require oxlint `^1.87.0` and oxlint-tsgolint 7.0.2004.
+
+  `@evolu/oxlint-config` also updates eslint-plugin-jsdoc to 65.
+
 ## 0.2.0
 
 ### Minor Changes

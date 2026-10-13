@@ -7,13 +7,14 @@ import { readPinnedWasm } from "../../../packages/sqlite-wasm/scripts/check-wasm
  * the pinned wasm, with how to get it, instead of letting each test fail to
  * load it.
  *
- * It checks once Vite resolves the project's config. Vitest gets that far only
- * for the projects it runs, because it stops resolving one that its `--project`
- * filter excludes.
+ * It checks once Vitest creates the project's Vite server, which it does only
+ * for the projects its `--project` filter includes. Vitest resolves the config
+ * of every project before it filters them, so a check there would also run for
+ * excluded projects.
  */
 export const checkSqliteWasm: Plugin = {
   name: "evolu:check-sqlite-wasm",
-  configResolved: () => {
+  configureServer: () => {
     readPinnedWasm();
   },
 };

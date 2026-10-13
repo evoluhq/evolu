@@ -64,13 +64,11 @@ describe("relay configuration", () => {
     });
     t.mock.method(process, "chdir", () => {});
     t.mock.module("node:fs", {
-      // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
       exports: { mkdirSync: () => {} },
     });
     let main: Task<void> | undefined;
     let config: NodeJsRelayConfig | undefined;
     t.mock.module("@evolu/nodejs", {
-      // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
       exports: {
         createRelayDeps: () => ({}),
         runMain: () => (task: Task<void>) => {

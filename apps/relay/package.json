@@ -1,6 +1,6 @@
 {
   "name": "@evolu/relay",
-  "version": "4.2.10",
+  "version": "4.2.11",
   "description": "Evolu Relay server",
   "keywords": [
     "evolu",
@@ -37,7 +37,7 @@
   },
   "devDependencies": {
     "@evolu/typescript-config": "workspace:*",
-    "@types/node": "^24.10.9",
+    "@types/node": "^24.19.2",
     "@typescript/native": "npm:typescript@^7.0.2"
   },
   "engines": {

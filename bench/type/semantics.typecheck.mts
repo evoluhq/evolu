@@ -510,10 +510,7 @@ type IsAssignableTo<Actual, Expected> =
 
 type PositiveIndex = Exclude<Index, 0>;
 
-type ExpectedStrictObject<
-  Required,
-  Optional = Readonly<Record<never, never>>,
-> = {
+type ExpectedStrictObject<Required, Optional = {}> = {
   readonly [Key in keyof Required]: Required[Key];
 } & {
   readonly [Key in keyof Optional]?: Optional[Key];

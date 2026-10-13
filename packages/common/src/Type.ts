@@ -15469,7 +15469,7 @@ const getNamesBeforeSymbol = (value: object): ReadonlyArray<string> => {
 };
 
 type PlainObjectError = ObjectError<
-  Readonly<Record<never, never>>,
+  {},
   ObjectPropertyAccessError | ObjectExcessPropertyError
 >;
 
@@ -18988,7 +18988,7 @@ export type UnknownResult = typeof UnknownResult.Output;
  */
 export type TypedType<
   Tag extends TypeName,
-  Props extends ObjectProps = Readonly<Record<never, never>>,
+  Props extends ObjectProps = {},
   Rest extends ObjectRecordTypeNode | undefined = undefined,
 > = ObjectType<TypedProps<Tag, Props>, Rest>;
 

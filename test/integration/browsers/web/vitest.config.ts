@@ -26,11 +26,11 @@ export default defineProject(({ mode }) => ({
     include: ["test/integration/browsers/web/**/*.test.ts"],
     name: "browser-web",
     setupFiles: ["./test/integration/browsers/web/_setup.ts"],
+    api: { port: 63317 },
     browser: {
       enabled: true,
       // WebKit OPFS sync access handles fail in Playwright's ephemeral context.
       provider: playwright({ persistentContext: true }),
-      api: { port: 63317 },
       headless: true,
       instances: createBrowserInstances({
         coverage: process.argv.includes("--coverage"),

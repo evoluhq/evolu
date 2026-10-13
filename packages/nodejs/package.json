@@ -1,6 +1,6 @@
 {
   "name": "@evolu/nodejs",
-  "version": "4.3.1",
+  "version": "4.3.2",
   "description": "Evolu for Node.js",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
@@ -58,27 +58,27 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
-    "ws": "^8.21.3"
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/oxlint-config": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
     "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^24.10.9",
-    "@types/ws": "^8.18.1",
+    "@types/node": "^24.19.2",
+    "@types/ws": "^8.18.2",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "oxlint": "^1.79.0",
-    "oxlint-tsgolint": "7.0.2001",
-    "vite": "^8.2.2",
-    "webpack": "^5.109.2"
+    "oxlint": "^1.87.0",
+    "oxlint-tsgolint": "7.0.2004",
+    "vite": "^8.3.4",
+    "webpack": "^5.111.1"
   },
   "peerDependencies": {
     "@evolu/common": "^8.22.1",
-    "@evolu/oxlint-config": "^0.2.0",
+    "@evolu/oxlint-config": "^0.3.0",
     "@evolu/typescript-config": "^0.1.1",
-    "oxlint": "^1.79.0",
-    "oxlint-tsgolint": "7.0.2001",
+    "oxlint": "^1.87.0",
+    "oxlint-tsgolint": "7.0.2004",
     "typescript": ">=7.0.0",
     "vite": ">=8.0.0",
     "webpack": ">=5.108.4"

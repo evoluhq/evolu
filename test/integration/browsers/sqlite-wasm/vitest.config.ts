@@ -25,6 +25,7 @@ export default defineProject(({ mode }) => ({
     include: ["test/integration/browsers/sqlite-wasm/*.test.ts"],
     name: "browser-sqlite-wasm",
     setupFiles: ["./test/integration/browsers/sqlite-wasm/_setup.ts"],
+    api: { port: 63318 },
     browser: {
       enabled: true,
       // WebKit OPFS sync access handles fail in Playwright's ephemeral context.
@@ -36,7 +37,6 @@ export default defineProject(({ mode }) => ({
           "../../../../node_modules/.cache/vitest-playwright-user-data-sqlite-wasm",
         ),
       }),
-      api: { port: 63318 },
       headless: true,
       instances: createBrowserInstances({
         coverage: process.argv.includes("--coverage"),

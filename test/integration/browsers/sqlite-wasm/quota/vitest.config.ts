@@ -45,10 +45,10 @@ export default defineProject(({ mode }) => ({
     include: ["test/integration/browsers/sqlite-wasm/quota/*.test.ts"],
     name: "browser-sqlite-wasm-quota",
     setupFiles: ["./test/integration/browsers/sqlite-wasm/_setup.ts"],
+    api: { port: 63320 },
     browser: {
       enabled: true,
       provider: playwright({ persistentContext: userDataDir }),
-      api: { port: 63320 },
       headless: true,
       instances: createBrowserInstances({
         coverage: process.argv.includes("--coverage"),

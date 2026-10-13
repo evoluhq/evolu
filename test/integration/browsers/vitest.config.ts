@@ -13,12 +13,6 @@ export default defineProject(({ mode }) => ({
   oxc: {
     target: "es2025",
   },
-  server: {
-    forwardConsole: {
-      unhandledErrors: false,
-      logLevels: ["error", "warn"],
-    },
-  },
   test: {
     fileParallelism: false,
     include: [
@@ -34,10 +28,10 @@ export default defineProject(({ mode }) => ({
     ],
     name: "browser-integration",
     setupFiles: ["./test/integration/shared/_setup.ts"],
+    api: { port: 63316 },
     browser: {
       enabled: true,
       provider: playwright(),
-      api: { port: 63316 },
       headless: true,
       commands: {
         startWsServer: async () => {

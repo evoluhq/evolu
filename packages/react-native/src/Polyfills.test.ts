@@ -237,7 +237,10 @@ describe("installPolyfills", () => {
         reject: () => undefined,
       };
     };
-    const promiseTry = () => Promise.resolve("existing");
+    // promise.try replaces a Promise.try that wraps the promise its callback
+    // returns (https://github.com/tc39/ecma262/pull/3883).
+    const promiseTry: NonNullable<PromiseStatics["try"]> = (func, ...args) =>
+      Promise.resolve(func(...args));
 
     (Promise as PromiseStatics).withResolvers = withResolvers;
     (Promise as PromiseStatics).try = promiseTry;

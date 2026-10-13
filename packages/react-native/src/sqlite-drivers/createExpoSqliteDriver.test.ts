@@ -34,7 +34,6 @@ const fake = {
 };
 
 mock.module("expo-sqlite", {
-  // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
   exports: {
     openDatabaseSync: (databaseName: string, options?: SQLiteOpenOptions) => {
       fake.events.push(

@@ -13,7 +13,6 @@ import type {
 const nodeAvailableParallelism = mock.fn<() => number>();
 
 mock.module("node:os", {
-  // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
   exports: { availableParallelism: nodeAvailableParallelism },
 });
 

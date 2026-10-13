@@ -5,7 +5,6 @@ const randomLibConstructor = mock.fn<(seed?: string) => void>();
 const randomLibNext = mock.fn<() => number>();
 
 mock.module("random", {
-  // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
   exports: {
     Random: class {
       next = randomLibNext;

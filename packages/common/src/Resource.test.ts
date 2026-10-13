@@ -1369,10 +1369,7 @@ describe("ResettableResource", () => {
 
     assertEqual(resources.getCreateCount(), 1);
     assertNotUndefined(resettable.get());
-    assertType<
-      ReturnType<typeof resettable.get>,
-      BorrowedResource<Disposable> | undefined
-    >();
+    assertType<typeof resettable.get, () => {} | undefined>();
   });
 
   it("leaves nothing running when the first creation aborts", async () => {
@@ -3281,9 +3278,7 @@ describe("SharedResourceByKeyWithClaims", () => {
           claim: number,
           resourceKeys: NonEmptyReadonlyArray<string>,
           callback: (
-            resources: NonEmptyReadonlyArray<
-              readonly [BorrowedResource<Disposable>, string]
-            >,
+            resources: NonEmptyReadonlyArray<readonly [{}, string]>,
           ) => Task<R, E, D>,
         ) => Task<R, E, D>
       >();
@@ -4053,10 +4048,7 @@ describe("SharedResourceByKeyWithClaims", () => {
       const visitedKeys: Array<string> = [];
       let forEachResourceForClaim = (
         _claim: string,
-        _callback: (
-          resource: BorrowedResource<Disposable>,
-          resourceKey: string,
-        ) => void,
+        _callback: (resource: {}, resourceKey: string) => void,
       ): void => {
         throw new Error("forEachResourceForClaim is not initialized.");
       };
