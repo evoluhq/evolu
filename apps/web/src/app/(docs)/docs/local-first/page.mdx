@@ -102,6 +102,21 @@ const Schema = {
     isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
   },
 };
+// ---cut-start---
+
+const allTodos = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select(["id", "title", "isCompleted"]),
+);
+Evolu.assertType<
+  typeof allTodos.Row,
+  {
+    id: TodoId;
+    title: Evolu.NonEmptyTrimmedString100 | null;
+    isCompleted: Evolu.SqliteBoolean | null;
+  }
+>();
+Evolu.assertErr(Schema.todo.title.fromUnknown(""));
+// ---cut-end---
 ```
 
 <Note>
@@ -120,11 +135,18 @@ import {
   createOwnerSecret,
   createRandomBytes,
 } from "@evolu/common";
+// ---cut-start---
+import { assertEqual, mnemonicToOwnerSecret } from "@evolu/common";
+// ---cut-end---
 
 // First run only. Persist the secret and restore the owner on later runs.
 const appOwner = createAppOwner(
   createOwnerSecret({ randomBytes: createRandomBytes() }),
 );
+// ---cut-start---
+
+assertEqual(createAppOwner(mnemonicToOwnerSecret(appOwner.mnemonic)), appOwner);
+// ---cut-end---
 ```
 
 The following snippets continue from the schema and `appOwner` above.
@@ -133,12 +155,34 @@ Create one shared Run for your application's Evolu instances. Omit `transports` 
 
 <SinglePlatformCodeGroup>
 
-```ts {{ title: 'React', language: 'tsx' }}
+```tsx {{ title: 'React' }}
 import { AppName, createEvolu } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-web";
 import { createRun } from "@evolu/web";
 import { Suspense, use, type FC, type ReactNode } from "react";
+// ---cut-start---
+import {
+  assertEqual,
+  assertSame,
+  createQueryBuilder,
+  id,
+  NonEmptyTrimmedString100,
+  nullOr,
+  SqliteBoolean,
+  testAppOwner,
+} from "@evolu/common";
+import { prerender } from "react-dom/static";
+
+const Schema = {
+  todo: {
+    id: id("Todo"),
+    title: NonEmptyTrimmedString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+const appOwner = testAppOwner;
+// ---cut-end---
 
 const run = createRun(createEvoluDeps());
 const evoluPromise = run.ok(
@@ -148,7 +192,8 @@ const evoluPromise = run.ok(
   }),
 );
 
-const { EvoluContext, useEvolu, useQuery } = createEvoluBinding<typeof Schema>();
+const { EvoluContext, useEvolu, useQuery } =
+  createEvoluBinding<typeof Schema>();
 
 const EvoluProvider: FC<{ children: ReactNode }> = ({ children }) => (
   <EvoluContext value={use(evoluPromise)}>{children}</EvoluContext>
@@ -161,14 +206,55 @@ export const App: FC<{ children: ReactNode }> = ({ children }) => (
 );
 
 // Call useEvolu() and useQuery() in components inside EvoluProvider.
+// ---cut-start---
+
+const allTodos = createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").selectAll(),
+);
+const evolu = await evoluPromise;
+
+const TodoCount: FC = () => {
+  assertSame(useEvolu(), evolu);
+  return <p>{useQuery(allTodos).length}</p>;
+};
+
+const { prelude } = await prerender(
+  <App>
+    <TodoCount />
+  </App>,
+);
+assertEqual(await new Response(prelude).text(), "<!--$--><p>0</p><!--/$-->");
+// ---cut-end---
 ```
 
-```ts {{ title: 'React Native', language: 'tsx' }}
+```tsx {{ title: 'React Native' }}
 import { AppName, createEvolu } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
 import { createRun } from "@evolu/react-native";
 import { Suspense, use, type FC, type ReactNode } from "react";
+// ---cut-start---
+import {
+  assertEqual,
+  assertSame,
+  createQueryBuilder,
+  id,
+  NonEmptyTrimmedString100,
+  nullOr,
+  SqliteBoolean,
+  testAppOwner,
+} from "@evolu/common";
+import { prerender } from "react-dom/static";
+
+const Schema = {
+  todo: {
+    id: id("Todo"),
+    title: NonEmptyTrimmedString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+const appOwner = testAppOwner;
+// ---cut-end---
 
 const run = createRun(createEvoluDeps());
 const evoluPromise = run.ok(
@@ -178,7 +264,8 @@ const evoluPromise = run.ok(
   }),
 );
 
-const { EvoluContext, useEvolu, useQuery } = createEvoluBinding<typeof Schema>();
+const { EvoluContext, useEvolu, useQuery } =
+  createEvoluBinding<typeof Schema>();
 
 const EvoluProvider: FC<{ children: ReactNode }> = ({ children }) => (
   <EvoluContext value={use(evoluPromise)}>{children}</EvoluContext>
@@ -191,14 +278,55 @@ export const App: FC<{ children: ReactNode }> = ({ children }) => (
 );
 
 // Call useEvolu() and useQuery() in components inside EvoluProvider.
+// ---cut-start---
+
+const allTodos = createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").selectAll(),
+);
+const evolu = await evoluPromise;
+
+const TodoCount: FC = () => {
+  assertSame(useEvolu(), evolu);
+  return <p>{useQuery(allTodos).length}</p>;
+};
+
+const { prelude } = await prerender(
+  <App>
+    <TodoCount />
+  </App>,
+);
+assertEqual(await new Response(prelude).text(), "<!--$--><p>0</p><!--/$-->");
+// ---cut-end---
 ```
 
-```ts {{ title: 'Expo', language: 'tsx' }}
+```tsx {{ title: 'Expo' }}
 import { AppName, createEvolu } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
 import { createRun } from "@evolu/react-native";
 import { Suspense, use, type FC, type ReactNode } from "react";
+// ---cut-start---
+import {
+  assertEqual,
+  assertSame,
+  createQueryBuilder,
+  id,
+  NonEmptyTrimmedString100,
+  nullOr,
+  SqliteBoolean,
+  testAppOwner,
+} from "@evolu/common";
+import { prerender } from "react-dom/static";
+
+const Schema = {
+  todo: {
+    id: id("Todo"),
+    title: NonEmptyTrimmedString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+const appOwner = testAppOwner;
+// ---cut-end---
 
 const run = createRun(createEvoluDeps());
 const evoluPromise = run.ok(
@@ -208,7 +336,8 @@ const evoluPromise = run.ok(
   }),
 );
 
-const { EvoluContext, useEvolu, useQuery } = createEvoluBinding<typeof Schema>();
+const { EvoluContext, useEvolu, useQuery } =
+  createEvoluBinding<typeof Schema>();
 
 const EvoluProvider: FC<{ children: ReactNode }> = ({ children }) => (
   <EvoluContext value={use(evoluPromise)}>{children}</EvoluContext>
@@ -221,12 +350,50 @@ export const App: FC<{ children: ReactNode }> = ({ children }) => (
 );
 
 // Call useEvolu() and useQuery() in components inside EvoluProvider.
+// ---cut-start---
+
+const allTodos = createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").selectAll(),
+);
+const evolu = await evoluPromise;
+
+const TodoCount: FC = () => {
+  assertSame(useEvolu(), evolu);
+  return <p>{useQuery(allTodos).length}</p>;
+};
+
+const { prelude } = await prerender(
+  <App>
+    <TodoCount />
+  </App>,
+);
+assertEqual(await new Response(prelude).text(), "<!--$--><p>0</p><!--/$-->");
+// ---cut-end---
 ```
 
 ```ts {{ title: 'Svelte' }}
 import { AppName, createEvolu } from "@evolu/common";
 import { evoluSvelteDeps } from "@evolu/svelte";
 import { createRun } from "@evolu/web";
+// ---cut-start---
+import {
+  assertSame,
+  id,
+  NonEmptyTrimmedString100,
+  nullOr,
+  SqliteBoolean,
+  testAppOwner,
+} from "@evolu/common";
+
+const Schema = {
+  todo: {
+    id: id("Todo"),
+    title: NonEmptyTrimmedString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+const appOwner = testAppOwner;
+// ---cut-end---
 
 const run = createRun(evoluSvelteDeps);
 const evolu = await run.ok(
@@ -235,6 +402,10 @@ const evolu = await run.ok(
     appOwner,
   }),
 );
+// ---cut-start---
+
+assertSame(evolu.appOwner, appOwner);
+// ---cut-end---
 ```
 
 ```ts {{ title: 'Vue' }}
@@ -242,6 +413,25 @@ import { AppName, createEvolu } from "@evolu/common";
 import { createEvoluDeps, createRun } from "@evolu/web";
 import { provideEvolu } from "@evolu/vue";
 import { defineComponent } from "vue";
+// ---cut-start---
+import {
+  assertSame,
+  id,
+  NonEmptyTrimmedString100,
+  nullOr,
+  SqliteBoolean,
+  testAppOwner,
+} from "@evolu/common";
+
+const Schema = {
+  todo: {
+    id: id("Todo"),
+    title: NonEmptyTrimmedString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+const appOwner = testAppOwner;
+// ---cut-end---
 
 const run = createRun(createEvoluDeps());
 const evolu = await run.ok(
@@ -258,11 +448,34 @@ export default defineComponent({
     return { insert, update };
   },
 });
+// ---cut-start---
+
+assertSame(evolu.appOwner, appOwner);
+// ---cut-end---
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
 import { AppName, createEvolu } from "@evolu/common";
 import { createEvoluDeps, createRun } from "@evolu/web";
+// ---cut-start---
+import {
+  assertSame,
+  id,
+  NonEmptyTrimmedString100,
+  nullOr,
+  SqliteBoolean,
+  testAppOwner,
+} from "@evolu/common";
+
+const Schema = {
+  todo: {
+    id: id("Todo"),
+    title: NonEmptyTrimmedString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+const appOwner = testAppOwner;
+// ---cut-end---
 
 const run = createRun(createEvoluDeps());
 const evolu = await run.ok(
@@ -271,6 +484,10 @@ const evolu = await run.ok(
     appOwner,
   }),
 );
+// ---cut-start---
+
+assertSame(evolu.appOwner, appOwner);
+// ---cut-end---
 ```
 
 </SinglePlatformCodeGroup>
@@ -279,49 +496,223 @@ const evolu = await run.ok(
 
 <SinglePlatformCodeGroup>
 
-```ts {{ title: 'React', language: 'tsx' }}
-const { insert, update } = useEvolu();
+```tsx {{ title: 'React' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createEvoluDeps } from "@evolu/react-web";
+import { createRun } from "@evolu/web";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
 
-const { id } = insert("todo", {
-  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
-  isCompleted: Evolu.sqliteFalse,
-});
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstMutateReact"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { EvoluContext, useEvolu } = createEvoluBinding<typeof Schema>();
 
-update("todo", { id, isCompleted: Evolu.sqliteTrue });
+const CreateTodo: FC = () => {
+  // ---cut-end---
+  const { insert, update } = useEvolu();
+
+  const { id } = insert("todo", {
+    title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+    isCompleted: Evolu.sqliteFalse,
+  });
+
+  update("todo", { id, isCompleted: Evolu.sqliteTrue });
+  // ---cut-start---
+  return null;
+};
+
+renderToString(
+  <EvoluContext value={evolu}>
+    <CreateTodo />
+  </EvoluContext>,
+);
+const allTodos = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select(["title", "isCompleted"]),
+);
+Evolu.assertEqual(await evolu.loadQuery(allTodos), [
+  { title: "New Todo", isCompleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
-```ts {{ title: 'React Native', language: 'tsx' }}
-const { insert, update } = useEvolu();
+```tsx {{ title: 'React Native' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createRun } from "@evolu/react-native";
+import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
 
-const { id } = insert("todo", {
-  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
-  isCompleted: Evolu.sqliteFalse,
-});
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstMutateReactNative"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { EvoluContext, useEvolu } = createEvoluBinding<typeof Schema>();
 
-update("todo", { id, isCompleted: Evolu.sqliteTrue });
+const CreateTodo: FC = () => {
+  // ---cut-end---
+  const { insert, update } = useEvolu();
+
+  const { id } = insert("todo", {
+    title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+    isCompleted: Evolu.sqliteFalse,
+  });
+
+  update("todo", { id, isCompleted: Evolu.sqliteTrue });
+  // ---cut-start---
+  return null;
+};
+
+renderToString(
+  <EvoluContext value={evolu}>
+    <CreateTodo />
+  </EvoluContext>,
+);
+const allTodos = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select(["title", "isCompleted"]),
+);
+Evolu.assertEqual(await evolu.loadQuery(allTodos), [
+  { title: "New Todo", isCompleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
-```ts {{ title: 'Expo', language: 'tsx' }}
-const { insert, update } = useEvolu();
+```tsx {{ title: 'Expo' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createRun } from "@evolu/react-native";
+import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
 
-const { id } = insert("todo", {
-  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
-  isCompleted: Evolu.sqliteFalse,
-});
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstMutateExpo"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { EvoluContext, useEvolu } = createEvoluBinding<typeof Schema>();
 
-update("todo", { id, isCompleted: Evolu.sqliteTrue });
+const CreateTodo: FC = () => {
+  // ---cut-end---
+  const { insert, update } = useEvolu();
+
+  const { id } = insert("todo", {
+    title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+    isCompleted: Evolu.sqliteFalse,
+  });
+
+  update("todo", { id, isCompleted: Evolu.sqliteTrue });
+  // ---cut-start---
+  return null;
+};
+
+renderToString(
+  <EvoluContext value={evolu}>
+    <CreateTodo />
+  </EvoluContext>,
+);
+const allTodos = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select(["title", "isCompleted"]),
+);
+Evolu.assertEqual(await evolu.loadQuery(allTodos), [
+  { title: "New Todo", isCompleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
-```ts {{ title: 'Svelte', language: 'ts' }}
+```ts {{ title: 'Svelte' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { evoluSvelteDeps } from "@evolu/svelte";
+import { createRun } from "@evolu/web";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(evoluSvelteDeps);
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstMutateSvelte"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+// ---cut-end---
 const { id } = evolu.insert("todo", {
   title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
   isCompleted: Evolu.sqliteFalse,
 });
 
 evolu.update("todo", { id, isCompleted: Evolu.sqliteTrue });
+// ---cut-start---
+
+const allTodos = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select(["title", "isCompleted"]),
+);
+Evolu.assertEqual(await evolu.loadQuery(allTodos), [
+  { title: "New Todo", isCompleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
-```ts {{ title: 'Vue', language: 'ts' }}
+```ts {{ title: 'Vue' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstMutateVue"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+// ---cut-end---
 const { insert, update } = evolu;
 
 const { id } = insert("todo", {
@@ -330,15 +721,52 @@ const { id } = insert("todo", {
 });
 
 update("todo", { id, isCompleted: Evolu.sqliteTrue });
+// ---cut-start---
+
+const allTodos = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select(["title", "isCompleted"]),
+);
+Evolu.assertEqual(await evolu.loadQuery(allTodos), [
+  { title: "New Todo", isCompleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstMutateVanilla"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+// ---cut-end---
 const { id } = evolu.insert("todo", {
   title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
   isCompleted: Evolu.sqliteFalse,
 });
 
 evolu.update("todo", { id, isCompleted: Evolu.sqliteTrue });
+// ---cut-start---
+
+const allTodos = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select(["title", "isCompleted"]),
+);
+Evolu.assertEqual(await evolu.loadQuery(allTodos), [
+  { title: "New Todo", isCompleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
 </SinglePlatformCodeGroup>
@@ -350,49 +778,255 @@ Evolu uses type-safe TypeScript SQL query builder [Kysely](https://github.com/ko
 Let's start with a simple `Query`.
 
 ```ts
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+// ---cut-end---
 const createQuery = Evolu.createQueryBuilder(Schema);
 const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+// ---cut-start---
+
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstQuery"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+evolu.insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+});
+const todos = await evolu.loadQuery(allTodos);
+Evolu.assertEqual(
+  todos.map((todo) => todo.title),
+  ["New Todo"],
+);
+// ---cut-end---
 ```
 
 Once we have a query, we can load or subscribe to it.
 
 <SinglePlatformCodeGroup>
 
-```ts {{ title: 'React' }}
-// Inside a component, use the useQuery binding created above.
-const todos = useQuery(allTodos);
+```tsx {{ title: 'React' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createEvoluDeps } from "@evolu/react-web";
+import { createRun } from "@evolu/web";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstQueryReact"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { EvoluContext, useQuery } = createEvoluBinding<typeof Schema>();
+const createQuery = Evolu.createQueryBuilder(Schema);
+const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+
+const Todos: FC = () => {
+  // ---cut-end---
+  // Inside a component, use the useQuery binding created above.
+  const todos = useQuery(allTodos);
+  // ---cut-start---
+  Evolu.assertType<typeof todos, Evolu.QueryRows<typeof allTodos.Row>>();
+  return null;
+};
+
+renderToString(
+  <EvoluContext value={evolu}>
+    <Todos />
+  </EvoluContext>,
+);
+// ---cut-end---
 ```
 
-```ts {{ title: 'React Native' }}
-// Inside a component, use the useQuery binding created above.
-const todos = useQuery(allTodos);
+```tsx {{ title: 'React Native' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createRun } from "@evolu/react-native";
+import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstQueryReactNative"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { EvoluContext, useQuery } = createEvoluBinding<typeof Schema>();
+const createQuery = Evolu.createQueryBuilder(Schema);
+const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+
+const Todos: FC = () => {
+  // ---cut-end---
+  // Inside a component, use the useQuery binding created above.
+  const todos = useQuery(allTodos);
+  // ---cut-start---
+  Evolu.assertType<typeof todos, Evolu.QueryRows<typeof allTodos.Row>>();
+  return null;
+};
+
+renderToString(
+  <EvoluContext value={evolu}>
+    <Todos />
+  </EvoluContext>,
+);
+// ---cut-end---
 ```
 
-```ts {{ title: 'Expo' }}
-// Inside a component, use the useQuery binding created above.
-const todos = useQuery(allTodos);
+```tsx {{ title: 'Expo' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createRun } from "@evolu/react-native";
+import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstQueryExpo"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { EvoluContext, useQuery } = createEvoluBinding<typeof Schema>();
+const createQuery = Evolu.createQueryBuilder(Schema);
+const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+
+const Todos: FC = () => {
+  // ---cut-end---
+  // Inside a component, use the useQuery binding created above.
+  const todos = useQuery(allTodos);
+  // ---cut-start---
+  Evolu.assertType<typeof todos, Evolu.QueryRows<typeof allTodos.Row>>();
+  return null;
+};
+
+renderToString(
+  <EvoluContext value={evolu}>
+    <Todos />
+  </EvoluContext>,
+);
+// ---cut-end---
 ```
 
-```ts {{ title: 'Svelte' }}
-import { queryState } from "@evolu/svelte";
+```svelte {{ title: 'Svelte' }}
+<script lang="ts">
+  import { queryState } from "@evolu/svelte";
+  // Export evolu (Create Evolu) and allTodos (above) from ./evolu.ts.
+  import { allTodos, evolu } from "./evolu";
 
-// Query once
-const todosOnce = await evolu.loadQuery(allTodos);
-// todosOnce contains all rows
+  // Query once
+  const todosOnce = evolu.loadQuery(allTodos);
 
-// Subscribe to changes, automatically filled when the Data changes
-const todos = queryState(evolu, () => allTodos);
-// todos.rows for all entries
-// Note this only works in .svelte or .svelte.js / .svelte.ts files due to the Svelte compiler
+  // Subscribe to changes, automatically filled when the Data changes.
+  // queryState works only in .svelte, .svelte.js, and .svelte.ts files.
+  const todos = queryState(evolu, () => allTodos);
+</script>
+
+{#await todosOnce then rows}
+  <p>{rows.length} todos loaded once</p>
+{/await}
+
+<ul>
+  {#each todos.rows as todo (todo.id)}
+    <li>{todo.title}</li>
+  {/each}
+</ul>
 ```
 
 ```ts {{ title: 'Vue' }}
 import { useQuery } from "@evolu/vue";
+// ---cut-start---
+import * as Evolu from "@evolu/common";
 
-const todos = useQuery(allTodos);
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const createQuery = Evolu.createQueryBuilder(Schema);
+const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+
+const useTodos = () => {
+  // ---cut-end---
+
+  const todos = useQuery(allTodos);
+  // ---cut-start---
+  return todos.value;
+};
+
+Evolu.assertType<
+  ReturnType<typeof useTodos>,
+  Evolu.QueryRows<typeof allTodos.Row>
+>();
+// ---cut-end---
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const createQuery = Evolu.createQueryBuilder(Schema);
+const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstQueryVanilla"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { promise: changedRows, resolve: onRowsChange } =
+  Promise.withResolvers<Evolu.QueryRows<typeof allTodos.Row>>();
+// ---cut-end---
 // Query once
 const todos = await evolu.loadQuery(allTodos);
 
@@ -400,7 +1034,22 @@ const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
   const rows = evolu.getQueryRows(allTodos);
 
   // do something with rows
+  // ---cut-start---
+  onRowsChange(rows);
+  // ---cut-end---
 });
+// ---cut-start---
+
+Evolu.assertEqual(todos, []);
+const { id: todoId } = evolu.insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+});
+Evolu.assertEqual(
+  (await changedRows).map((row) => row.id),
+  [todoId],
+);
+unsubscribe();
+// ---cut-end---
 ```
 
 </SinglePlatformCodeGroup>
@@ -415,42 +1064,271 @@ To delete a row, set `isDeleted` to `sqliteTrue` (1). Synced tables use **soft d
 
 <SinglePlatformCodeGroup>
 
-```ts {{ title: 'React', language: 'tsx' }}
-const { update } = useEvolu();
+```tsx {{ title: 'React' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createEvoluDeps } from "@evolu/react-web";
+import { createRun } from "@evolu/web";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
 
-// Mark a todo as deleted
-update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstDeleteReact"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { EvoluContext, useEvolu } = createEvoluBinding<typeof Schema>();
+const { id: todoId } = evolu.insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+});
+
+const DeleteTodo: FC = () => {
+  // ---cut-end---
+  const { update } = useEvolu();
+
+  // Mark a todo as deleted
+  update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+  // ---cut-start---
+  return null;
+};
+
+renderToString(
+  <EvoluContext value={evolu}>
+    <DeleteTodo />
+  </EvoluContext>,
+);
+const todoById = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select("isDeleted").where("id", "=", todoId),
+);
+Evolu.assertEqual(await evolu.loadQuery(todoById), [
+  { isDeleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
-```ts {{ title: 'React Native', language: 'tsx' }}
-const { update } = useEvolu();
+```tsx {{ title: 'React Native' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createRun } from "@evolu/react-native";
+import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
 
-// Mark a todo as deleted
-update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstDeleteReactNative"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { EvoluContext, useEvolu } = createEvoluBinding<typeof Schema>();
+const { id: todoId } = evolu.insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+});
+
+const DeleteTodo: FC = () => {
+  // ---cut-end---
+  const { update } = useEvolu();
+
+  // Mark a todo as deleted
+  update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+  // ---cut-start---
+  return null;
+};
+
+renderToString(
+  <EvoluContext value={evolu}>
+    <DeleteTodo />
+  </EvoluContext>,
+);
+const todoById = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select("isDeleted").where("id", "=", todoId),
+);
+Evolu.assertEqual(await evolu.loadQuery(todoById), [
+  { isDeleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
-```ts {{ title: 'Expo', language: 'tsx' }}
-const { update } = useEvolu();
+```tsx {{ title: 'Expo' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createRun } from "@evolu/react-native";
+import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
 
-// Mark a todo as deleted
-update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstDeleteExpo"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { EvoluContext, useEvolu } = createEvoluBinding<typeof Schema>();
+const { id: todoId } = evolu.insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+});
+
+const DeleteTodo: FC = () => {
+  // ---cut-end---
+  const { update } = useEvolu();
+
+  // Mark a todo as deleted
+  update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+  // ---cut-start---
+  return null;
+};
+
+renderToString(
+  <EvoluContext value={evolu}>
+    <DeleteTodo />
+  </EvoluContext>,
+);
+const todoById = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select("isDeleted").where("id", "=", todoId),
+);
+Evolu.assertEqual(await evolu.loadQuery(todoById), [
+  { isDeleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
-```ts {{ title: 'Svelte', language: 'ts' }}
+```ts {{ title: 'Svelte' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { evoluSvelteDeps } from "@evolu/svelte";
+import { createRun } from "@evolu/web";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(evoluSvelteDeps);
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstDeleteSvelte"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { id: todoId } = evolu.insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+});
+// ---cut-end---
 // Mark a todo as deleted
 evolu.update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+// ---cut-start---
+
+const todoById = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select("isDeleted").where("id", "=", todoId),
+);
+Evolu.assertEqual(await evolu.loadQuery(todoById), [
+  { isDeleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
-```ts {{ title: 'Vue', language: 'ts' }}
+```ts {{ title: 'Vue' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstDeleteVue"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { id: todoId } = evolu.insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+});
+// ---cut-end---
 const { update } = evolu;
 
 // Mark a todo as deleted
 update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+// ---cut-start---
+
+const todoById = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select("isDeleted").where("id", "=", todoId),
+);
+Evolu.assertEqual(await evolu.loadQuery(todoById), [
+  { isDeleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstDeleteVanilla"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const { id: todoId } = evolu.insert("todo", {
+  title: Evolu.NonEmptyTrimmedString100.orThrow("New Todo"),
+});
+// ---cut-end---
 // Mark a todo as deleted
 evolu.update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+// ---cut-start---
+
+const todoById = Evolu.createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select("isDeleted").where("id", "=", todoId),
+);
+Evolu.assertEqual(await evolu.loadQuery(todoById), [
+  { isDeleted: Evolu.sqliteTrue },
+]);
+// ---cut-end---
 ```
 
 </SinglePlatformCodeGroup>
@@ -458,6 +1336,19 @@ evolu.update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
 When querying, filter out deleted rows:
 
 ```ts
+// ---cut-start---
+import * as Evolu from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = {
+  todo: {
+    id: Evolu.id("Todo"),
+    title: Evolu.NonEmptyTrimmedString100,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+  },
+};
+const createQuery = Evolu.createQueryBuilder(Schema);
+// ---cut-end---
 const activeTodos = createQuery((db) =>
   db
     .selectFrom("todo")
@@ -466,6 +1357,25 @@ const activeTodos = createQuery((db) =>
     .where("isDeleted", "is not", Evolu.sqliteTrue)
     .orderBy("createdAt"),
 );
+// ---cut-start---
+
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  Evolu.createEvolu(Schema, {
+    appName: Evolu.AppName.orThrow("LocalFirstActiveTodos"),
+    appOwner: Evolu.testAppOwner,
+  }),
+);
+const title = Evolu.NonEmptyTrimmedString100.orThrow("New Todo");
+const { id: activeTodoId } = evolu.insert("todo", { title });
+const { id: deletedTodoId } = evolu.insert("todo", { title });
+evolu.update("todo", { id: deletedTodoId, isDeleted: Evolu.sqliteTrue });
+const todos = await evolu.loadQuery(activeTodos);
+Evolu.assertEqual(
+  todos.map((todo) => todo.id),
+  [activeTodoId],
+);
+// ---cut-end---
 ```
 
 <Warn>
@@ -483,40 +1393,220 @@ const activeTodos = createQuery((db) =>
 
 <SinglePlatformCodeGroup>
 
-```ts {{ title: 'React', language: 'tsx' }}
-// Inside a component, use the binding created above.
-const owner = useEvolu().appOwner;
-const mnemonic = owner.mnemonic;
+```tsx {{ title: 'React' }}
+// ---cut-start---
+import {
+  AppName,
+  assertEqual,
+  createEvolu,
+  id,
+  NonEmptyTrimmedString100,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createEvoluDeps } from "@evolu/react-web";
+import { createRun } from "@evolu/web";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("LocalFirstProtectReact"),
+    appOwner: testAppOwner,
+  }),
+);
+const { EvoluContext, useEvolu } = createEvoluBinding<typeof Schema>();
+
+const RecoveryPhrase: FC = () => {
+  // ---cut-end---
+  // Inside a component, use the binding created above.
+  const owner = useEvolu().appOwner;
+  const mnemonic = owner.mnemonic;
+  // ---cut-start---
+  return <p>{mnemonic}</p>;
+};
+
+assertEqual(
+  renderToString(
+    <EvoluContext value={evolu}>
+      <RecoveryPhrase />
+    </EvoluContext>,
+  ),
+  `<p>${testAppOwner.mnemonic}</p>`,
+);
+// ---cut-end---
 ```
 
-```ts {{ title: 'React Native', language: 'tsx' }}
-// Inside a component, use the binding created above.
-const owner = useEvolu().appOwner;
-const mnemonic = owner.mnemonic;
+```tsx {{ title: 'React Native' }}
+// ---cut-start---
+import {
+  AppName,
+  assertEqual,
+  createEvolu,
+  id,
+  NonEmptyTrimmedString100,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createRun } from "@evolu/react-native";
+import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("LocalFirstProtectReactNative"),
+    appOwner: testAppOwner,
+  }),
+);
+const { EvoluContext, useEvolu } = createEvoluBinding<typeof Schema>();
+
+const RecoveryPhrase: FC = () => {
+  // ---cut-end---
+  // Inside a component, use the binding created above.
+  const owner = useEvolu().appOwner;
+  const mnemonic = owner.mnemonic;
+  // ---cut-start---
+  return <p>{mnemonic}</p>;
+};
+
+assertEqual(
+  renderToString(
+    <EvoluContext value={evolu}>
+      <RecoveryPhrase />
+    </EvoluContext>,
+  ),
+  `<p>${testAppOwner.mnemonic}</p>`,
+);
+// ---cut-end---
 ```
 
-```ts {{ title: 'Expo', language: 'tsx' }}
-// Inside a component, use the binding created above.
-const owner = useEvolu().appOwner;
-const mnemonic = owner.mnemonic;
+```tsx {{ title: 'Expo' }}
+// ---cut-start---
+import {
+  AppName,
+  assertEqual,
+  createEvolu,
+  id,
+  NonEmptyTrimmedString100,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createRun } from "@evolu/react-native";
+import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import type { FC } from "react";
+import { renderToString } from "react-dom/server";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("LocalFirstProtectExpo"),
+    appOwner: testAppOwner,
+  }),
+);
+const { EvoluContext, useEvolu } = createEvoluBinding<typeof Schema>();
+
+const RecoveryPhrase: FC = () => {
+  // ---cut-end---
+  // Inside a component, use the binding created above.
+  const owner = useEvolu().appOwner;
+  const mnemonic = owner.mnemonic;
+  // ---cut-start---
+  return <p>{mnemonic}</p>;
+};
+
+assertEqual(
+  renderToString(
+    <EvoluContext value={evolu}>
+      <RecoveryPhrase />
+    </EvoluContext>,
+  ),
+  `<p>${testAppOwner.mnemonic}</p>`,
+);
+// ---cut-end---
 ```
 
 ```ts {{ title: 'Svelte' }}
+// ---cut-start---
+import {
+  AppName,
+  assertSame,
+  createEvolu,
+  id,
+  NonEmptyTrimmedString100,
+  testAppOwner,
+} from "@evolu/common";
+import { evoluSvelteDeps } from "@evolu/svelte";
+import { createRun } from "@evolu/web";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(evoluSvelteDeps);
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("LocalFirstProtectSvelte"),
+    appOwner: testAppOwner,
+  }),
+);
+// ---cut-end---
 const owner = evolu.appOwner;
 const mnemonic = owner.mnemonic;
+// ---cut-start---
+
+assertSame(mnemonic, testAppOwner.mnemonic);
+// ---cut-end---
 ```
 
-```ts {{ title: 'Vue', language: 'ts' }}
+```ts {{ title: 'Vue' }}
 import { useEvolu } from "@evolu/vue";
+// ---cut-start---
+import { assertType, type Mnemonic } from "@evolu/common";
 
-const evolu = useEvolu();
-const owner = evolu.appOwner;
-const mnemonic = owner.mnemonic;
+const useMnemonic = () => {
+  // ---cut-end---
+
+  const evolu = useEvolu();
+  const owner = evolu.appOwner;
+  const mnemonic = owner.mnemonic;
+  // ---cut-start---
+  return mnemonic;
+};
+
+assertType<ReturnType<typeof useMnemonic>, Mnemonic>();
+// ---cut-end---
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
+// ---cut-start---
+import {
+  AppName,
+  assertSame,
+  createEvolu,
+  id,
+  NonEmptyTrimmedString100,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("LocalFirstProtectVanilla"),
+    appOwner: testAppOwner,
+  }),
+);
+// ---cut-end---
 const owner = evolu.appOwner;
 const mnemonic = owner.mnemonic;
+// ---cut-start---
+
+assertSame(mnemonic, testAppOwner.mnemonic);
+// ---cut-end---
 ```
 
 </SinglePlatformCodeGroup>

@@ -41,12 +41,10 @@ for a post, run `node scripts/code-image.mts --help`.
   `pnpm typecheck`, which checks all TypeScript except `examples/` and
   `apps/web/deploy/` and is fast.
 - After changing documentation examples or exported APIs, run
-  `pnpm test:jsdoc`, which checks the default patterns in
-  `test/jsdoc/test-jsdoc.mts` in seconds. For a changed file outside them,
-  also run `pnpm test:jsdoc <changed-file>`; such files may hold older
-  failing examples, so make the changed examples pass and report the others
-  without fixing them. `packages/svelte` is excluded because Node.js cannot
-  run its examples.
+  `pnpm test:jsdoc`, which checks the JSDoc of every package, every
+  changeset, and every handwritten docs page and blog post. Pass files, such
+  as `pnpm test:jsdoc <changed-file>`, to check only those. `packages/svelte`
+  is excluded because Node.js cannot run its examples.
 - After changing MDX pages, the MDX plugins in `apps/web/src/mdx/`,
   `apps/web/src/lib/navigation.ts`, exported declarations in `packages/*/src`,
   the types they reference, their JSDoc, or API reference organization, or
@@ -204,7 +202,10 @@ for a post, run `node scripts/code-image.mts --help`.
 - A workaround for a browser, runtime, or dependency bug gets a `//` comment
   at the code describing the behavior and linking the upstream issue.
 - TypeScript examples are standalone and deterministic, with explicit imports
-  and assertions. Use `ts` fences, or `tsx` for JSX; other spellings fail.
+  and assertions. Use `ts` fences, or `tsx` for JSX; other spellings fail. On a
+  documentation page, setup the page already shows or names, and assertions
+  that would distract, may sit between `// ---cut-start---` and
+  `// ---cut-end---` lines, which the website hides.
 - Prove contracts: `assertType` for types, `assertEqual` for Data, `assertSame`
   for SameValue/reference identity, `assertTrue`/`assertFalse` for predicates,
   `assert` for invariants/narrowing, and `assertOk`/`assertErr` for Results.

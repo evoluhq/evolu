@@ -195,6 +195,39 @@ const first = handlers[0](event);
       "Cleaning MDX removed 1 of 1 code examples.",
     );
   });
+
+  it("drops the blank line after hidden lines that open a code example", () => {
+    assertEqual(
+      cleanMdxContent(
+        [
+          "Text.",
+          "",
+          "```ts",
+          "// ---cut-start---",
+          "const answer = 42;",
+          "// ---cut-end---",
+          "",
+          "console.log(answer);",
+          "```",
+        ].join("\n"),
+      ),
+      "Text.\n\n```ts\nconsole.log(answer);\n```",
+    );
+  });
+
+  it("removes the hidden lines of code examples", () => {
+    assertEqual(
+      cleanMdxContent(`
+\`\`\`ts
+// ---cut-start---
+const answer = 42;
+// ---cut-end---
+console.log(answer);
+\`\`\`
+`),
+      "```ts\nconsole.log(answer);\n```",
+    );
+  });
 });
 
 describe("loadMdxContent", () => {

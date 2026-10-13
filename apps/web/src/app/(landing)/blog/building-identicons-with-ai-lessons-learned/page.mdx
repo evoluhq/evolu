@@ -221,7 +221,19 @@ Here are all four identicon styles, each generated from 10 different owner IDs:
 Each identicon is deterministic: the same ID always generates the same visual representation.
 
 ```ts
+import { createIdenticon } from "@evolu/common";
+// ---cut-start---
+import { assertEqual, assertTrue, testAppOwner } from "@evolu/common";
+
+const ownerId = testAppOwner.id;
+// ---cut-end---
+
 const svg = createIdenticon(ownerId, "sutnar");
+// ---cut-start---
+
+assertTrue(svg.startsWith("<svg"));
+assertEqual(createIdenticon(ownerId, "sutnar"), svg);
+// ---cut-end---
 ```
 
 The function extracts bytes from the ID and uses them to deterministically generate colors, shapes, and compositions. No randomness, no external dependencies—just pure, predictable visual identity generation.

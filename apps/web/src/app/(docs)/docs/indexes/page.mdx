@@ -14,6 +14,22 @@ Using the `Schema` from [Define schema](/docs/local-first#define-schema):
 
 ```ts
 import { createQueryBuilder } from "@evolu/common";
+// ---cut-start---
+import {
+  AppName,
+  assertTrue,
+  createConsole,
+  createConsoleArrayOutput,
+  createEvolu,
+  id,
+  NonEmptyTrimmedString100,
+  testAppOwner,
+  type ConsoleEntry,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+// ---cut-end---
 
 const createQuery = createQueryBuilder(Schema);
 const allTodos = createQuery(
@@ -23,6 +39,23 @@ const allTodos = createQuery(
     // logExplainQueryPlan: false,
   },
 );
+// ---cut-start---
+
+const entries: Array<ConsoleEntry> = [];
+const run = createRun(
+  createEvoluDeps({
+    console: createConsole({ output: createConsoleArrayOutput(entries) }),
+  }),
+);
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("IndexesLogQueryExecutionTime"),
+    appOwner: testAppOwner,
+  }),
+);
+await evolu.loadQuery(allTodos);
+assertTrue(entries.some(({ args }) => args[0] === "[logQueryExecutionTime]"));
+// ---cut-end---
 ```
 
 <Note>
@@ -44,6 +77,28 @@ Using the schema, shared `run`, and `appOwner` from [Create Evolu](/docs/local-f
 
 ```ts
 import { AppName, createEvolu } from "@evolu/common";
+// ---cut-start---
+import {
+  assertTrue,
+  createConsole,
+  createConsoleArrayOutput,
+  createQueryBuilder,
+  id,
+  NonEmptyTrimmedString100,
+  testAppOwner,
+  type ConsoleEntry,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const entries: Array<ConsoleEntry> = [];
+const run = createRun(
+  createEvoluDeps({
+    console: createConsole({ output: createConsoleArrayOutput(entries) }),
+  }),
+);
+const appOwner = testAppOwner;
+// ---cut-end---
 
 const evolu = await run.ok(
   createEvolu(Schema, {
@@ -54,6 +109,22 @@ const evolu = await run.ok(
     appOwner,
   }),
 );
+// ---cut-start---
+
+const createQuery = createQueryBuilder(Schema);
+const todosByCreatedAt = createQuery(
+  (db) => db.selectFrom("todo").select("id").orderBy("createdAt"),
+  { logExplainQueryPlan: true },
+);
+await evolu.loadQuery(todosByCreatedAt);
+assertTrue(
+  entries.some(({ args }) =>
+    args.some(
+      (arg) => typeof arg === "string" && arg.includes("todoCreatedAt"),
+    ),
+  ),
+);
+// ---cut-end---
 ```
 
 Evolu handles this automatically—it will create any new indexes you define and drop those no longer present in the `indexes` array.

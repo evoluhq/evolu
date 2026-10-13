@@ -1,4 +1,5 @@
 import fs from "fs";
+import { stripHiddenLines } from "../mdx/remark.mjs";
 import { navigation } from "./navigation.ts";
 
 // As in CommonMark, a fence closes at a run of its character at least as long
@@ -11,18 +12,26 @@ const codeFencePlaceholder = "\uE000";
 const codeFencePlaceholderPattern = /^(.*?)\uE000(\d+)\uE000/gmu;
 
 /**
- * Cleans MDX content by removing imports, exports, and JSX components, and
- * converting relative links. Code examples are kept as written. It throws when
- * a component that wraps a code example would remove it, because only code
- * groups are unwrapped.
+ * Cleans MDX content by removing imports, exports, JSX components, and the
+ * hidden lines of code examples, and converting relative links. Code examples
+ * are otherwise kept as written. It throws when a component that wraps a code
+ * example would remove it, because only code groups are unwrapped.
  */
 export const cleanMdxContent = (content: string): string => {
-  // Code examples are set aside, so no replacement below changes them.
+  // Code examples are set aside, so no replacement below changes them, and
+  // lose their hidden lines as on the website.
   const codeFences: Array<string> = [];
   let cleanedContent = content.replaceAll(
     codeFencePattern,
     (codeFence: string) => {
-      codeFences.push(codeFence);
+      const lines = codeFence.split("\n");
+      codeFences.push(
+        [
+          lines[0],
+          stripHiddenLines(lines.slice(1, -1).join("\n")),
+          lines.at(-1),
+        ].join("\n"),
+      );
       return `${codeFencePlaceholder}${codeFences.length - 1}${codeFencePlaceholder}`;
     },
   );

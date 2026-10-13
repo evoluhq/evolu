@@ -40,6 +40,9 @@ Writing exact Effect code without Effect is obviously not possible—Effect is a
 The main reason many people fell in love with fp-ts was its Either type. It’s essentially a typed error. Once you understand it, you want to use it everywhere. Evolu has [Result](/docs/api-reference/common/Result/type-aliases/Result), and it looks like this:
 
 ```ts
+// ---cut-start---
+import { assertEqual } from "@evolu/common";
+// ---cut-end---
 type Result<T, E> = Ok<T> | Err<E>;
 
 interface Ok<T> {
@@ -54,6 +57,13 @@ interface Err<E> {
 
 const ok = <T>(value: T): Ok<T> => ({ ok: true, value });
 const err = <E>(error: E): Err<E> => ({ ok: false, error });
+// ---cut-start---
+
+const parsed: Result<number, string> = ok(42);
+const failed: Result<number, string> = err("Not a number");
+assertEqual(parsed, { ok: true, value: 42 });
+assertEqual(failed, { ok: false, error: "Not a number" });
+// ---cut-end---
 ```
 
 `Result` works with both sync and async code, comes with a few handy helpers, and that’s it. Learn more in the [Result docs](/docs/api-reference/common/Result/type-aliases/Result).
@@ -63,6 +73,10 @@ const err = <E>(error: E): Err<E> => ({ ok: false, error });
 Evolu uses a convention-based approach to dependency injection—no runtime, no libraries, just plain TypeScript. Dependencies are defined as interfaces, grouped into objects, and passed explicitly. Optional dependencies use Partial, and you can conditionally inject them as needed.
 
 ```ts
+// ---cut-start---
+/* oxlint-disable eslint/no-console -- The example Logger writes to the console. */
+import { assert, assertEqual } from "@evolu/common";
+// ---cut-end---
 export interface Time {
   readonly now: () => number;
 }
@@ -72,7 +86,10 @@ export interface TimeDep {
 }
 
 export interface Logger {
-  readonly log: (message?: any, ...optionalParams: Array<any>) => void;
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
 }
 
 export interface LoggerDep {
@@ -109,6 +126,14 @@ const deps: TimeDep & Partial<LoggerDep> = {
 };
 
 timeUntilEvent(deps)(1742329310767);
+// ---cut-start---
+
+assert(deps.logger, "Expected the logger to be injected.");
+assertEqual(
+  timeUntilEvent({ time: { now: () => 1742329300767 } })(1742329310767),
+  10_000,
+);
+// ---cut-end---
 ```
 
 This pattern keeps your code testable, composable, and easy to understand—without any external DI framework. Learn more in the [Dependency Injection docs](/docs/dependency-injection).
@@ -118,20 +143,36 @@ This pattern keeps your code testable, composable, and easy to understand—with
 Evolu has [Type](/docs/api-reference/common/Type)—a validation library similar to Zod, but designed around `Result` instead of throwing exceptions. It provides branded types for constraints and typed errors with decoupled formatters.
 
 ```ts
+import {
+  DateIso,
+  Email,
+  Id,
+  minLength,
+  object,
+  optional,
+  regex,
+  String,
+} from "@evolu/common";
+// ---cut-start---
+import { assertErr, assertOk, assertType, type Brand } from "@evolu/common";
+// ---cut-end---
+
 // Branded constraints
 const NonEmptyString = minLength(1)(String);
 // string & Brand<"MinLength1">
 type NonEmptyString = typeof NonEmptyString.Output;
 
 // Basic validation with Result
-const result = NonEmptyString.fromUnknown("hello"); // Ok<NonEmptyString>
-const error = NonEmptyString.fromUnknown(""); // Err<MinLengthError<1>>
+// Ok<NonEmptyString>
+const result = NonEmptyString.fromUnknown("hello");
+// Err<MinLengthError<1>>
+const error = NonEmptyString.fromUnknown("");
 
 // Many factories
-export const Name = regex("Name", /^[a-z0-9-]{1,42}$/i)(NonEmptyString);
+const Name = regex("Name", /^[a-z0-9-]{1,42}$/iu)(NonEmptyString);
 
 // string & Brand<"MinLength1"> & Brand<"Name">
-export type Name = typeof Name.Output;
+type Name = typeof Name.Output;
 
 // Complex objects
 const User = object({
@@ -139,6 +180,19 @@ const User = object({
   email: Email,
   createdAt: optional(DateIso),
 });
+// ---cut-start---
+
+assertType<NonEmptyString, string & Brand<"MinLength1">>();
+assertOk(result, "hello");
+assertErr(error, { type: "MinLength1", value: "", min: 1 });
+
+assertType<Name, string & Brand<"MinLength1"> & Brand<"Name">>();
+assertOk(Name.fromUnknown("evolu-42"), "evolu-42");
+
+assertOk(
+  User.fromUnknown({ id: "AAAAAAAAAAAAAAAAAAAAAA", email: "ada@example.com" }),
+);
+// ---cut-end---
 ```
 
 And much more—yet the entire Evolu Type is just one file with comprehensive tests, designed to be understood by reading the source (as the whole Evolu Library was). Learn more in the [Type docs](/docs/api-reference/common/Type).

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { compile, createProcessor } from "@mdx-js/mdx";
+import type { Nodes as HastNodes } from "hast";
 import type { Nodes } from "mdast";
 import { navigation } from "../../../../apps/web/src/lib/navigation.ts";
 import { rehypePlugins } from "../../../../apps/web/src/mdx/rehype.mjs";
@@ -138,17 +139,39 @@ const findLinkProblem = ({ pathname, hash }: URL): string | null => {
   return jsxIds.has(id) ? null : "no such anchor";
 };
 
+const hiddenLineMarkerPattern = /^\s*\/\/ ---cut-(?:start|end)---\s*$/mu;
+
 /**
  * Compiles an MDX page served at `pageUrl` with the web build's remark and
- * rehype plugins and returns its internal links that do not resolve.
+ * rehype plugins, checks that its code examples show no hidden lines, and
+ * returns its internal links that do not resolve.
  */
 const checkPage = async (
   filePath: string,
   pageUrl: string,
 ): Promise<ReadonlyArray<string>> => {
+  // The code each example shows and copies, which rehypeShiki stores on its
+  // pre element.
+  const codeExamples: Array<string> = [];
+  const collectCodeExamples = () => (tree: HastNodes) => {
+    const visit = (node: HastNodes): void => {
+      if (
+        node.type === "element" &&
+        node.tagName === "pre" &&
+        typeof node.properties.code === "string"
+      )
+        codeExamples.push(node.properties.code);
+      if ("children" in node) for (const child of node.children) visit(child);
+    };
+    visit(tree);
+  };
   await compile(
     { path: filePath, value: readFileSync(filePath, "utf8") },
-    { remarkPlugins, rehypePlugins },
+    { remarkPlugins, rehypePlugins: [...rehypePlugins, collectCodeExamples] },
+  );
+  assert.ok(
+    !codeExamples.some((code) => hiddenLineMarkerPattern.test(code)),
+    `${filePath} shows hidden lines of a code example.`,
   );
   return findBrokenLinks(filePath, pageUrl);
 };
