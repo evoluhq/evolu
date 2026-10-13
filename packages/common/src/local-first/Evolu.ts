@@ -1729,10 +1729,18 @@ export const createEvolu =
             : null,
         };
 
-        assert(
-          DbChange.is(dbChange),
-          `Invalid DbChange for table '${String(table)}'.`,
-        );
+        if (!DbChange.is(dbChange)) {
+          // TypeScript allows an undefined optional column unless
+          // exactOptionalPropertyTypes is enabled, so name it.
+          const undefinedColumn = Object.keys(changeValues).find(
+            (column) => changeValues[column] === undefined,
+          );
+          throw new Error(
+            undefinedColumn === undefined
+              ? `Invalid DbChange for table '${String(table)}'.`
+              : `Column '${undefinedColumn}' of table '${String(table)}' is undefined. Omit it instead. TypeScript reports this only with exactOptionalPropertyTypes, which Evolu requires.`,
+          );
+        }
 
         // Copy binary values, so what is saved is what was passed: the caller
         // can change a Uint8Array before the batch is sent, a view of a

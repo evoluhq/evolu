@@ -3039,6 +3039,26 @@ describe("Evolu", () => {
         },
       ]);
     });
+
+    it("names an undefined column, which TypeScript allows without exactOptionalPropertyTypes", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      const todoId = TodoId.orThrow(createIdFromString("todo-invalid"));
+
+      const undefinedError = assertThrowsInstanceOf(() => {
+        evolu.update("todo", { id: todoId, title: undefined } as never);
+      }, Error);
+      assertSame(
+        undefinedError.message,
+        "Column 'title' of table 'todo' is undefined. Omit it instead. TypeScript reports this only with exactOptionalPropertyTypes, which Evolu requires.",
+      );
+
+      const invalidError = assertThrowsInstanceOf(() => {
+        evolu.update("todo", { id: todoId, title: {} } as never);
+      }, Error);
+      assertSame(invalidError.message, "Invalid DbChange for table 'todo'.");
+    });
   });
 
   describe("mutation size", () => {
