@@ -4777,7 +4777,7 @@ describe("collection helpers", () => {
         it("an empty record", () => {
           const task = all({});
 
-          assertType<typeof task, Task<Record<never, never>>>();
+          assertType<typeof task, Task<{}>>();
         });
 
         it("a record", () => {
@@ -4920,7 +4920,7 @@ describe("collection helpers", () => {
         it("an empty record", () => {
           const task = allSettled({});
 
-          assertType<typeof task, Task<Record<never, never>>>();
+          assertType<typeof task, Task<{}>>();
         });
 
         it("a record", () => {
@@ -5136,7 +5136,7 @@ describe("collection helpers", () => {
         it("an empty record", () => {
           const task = all({}, () => () => ok("unused"));
 
-          assertType<typeof task, Task<Record<never, never>>>();
+          assertType<typeof task, Task<{}>>();
         });
 
         it("a record", () => {
@@ -5348,7 +5348,7 @@ describe("collection helpers", () => {
         it("an empty record", () => {
           const task = allSettled({}, () => () => ok("unused"));
 
-          assertType<typeof task, Task<Record<never, never>>>();
+          assertType<typeof task, Task<{}>>();
         });
 
         it("a record", () => {

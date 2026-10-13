@@ -476,10 +476,7 @@ const formatTestTypeError: TypeErrorFormatter<TypeError> = (error) =>
 // information.
 type FormattableTypeNode = TypeNode & { readonly formatError: unknown };
 
-type ExpectedStrictObject<
-  Required,
-  Optional = Readonly<Record<never, never>>,
-> = {
+type ExpectedStrictObject<Required, Optional = {}> = {
   readonly [Key in keyof Required]: Required[Key];
 } & {
   readonly [Key in keyof Optional]?: Optional[Key];
@@ -18977,10 +18974,7 @@ describe("Object", () => {
         "Object",
         Readonly<Record<string, unknown>>,
         Readonly<Record<string, unknown>>,
-        ObjectError<
-          Readonly<Record<never, never>>,
-          ObjectPropertyAccessError | ObjectExcessPropertyError
-        >
+        ObjectError<{}, ObjectPropertyAccessError | ObjectExcessPropertyError>
       >
     >();
     assertSame(Object.parent, null);
@@ -21473,14 +21467,8 @@ describe("object", () => {
 
       assertType<typeof Model.Input, Readonly<Record<string, never>>>();
       assertType<typeof Model.Output, Readonly<Record<string, never>>>();
-      assertType<
-        typeof Model.Error,
-        ObjectError<Readonly<Record<never, never>>>
-      >();
-      assertType<
-        InferErrors<typeof Model>,
-        ObjectError<Readonly<Record<never, never>>>
-      >();
+      assertType<typeof Model.Error, ObjectError<{}>>();
+      assertType<InferErrors<typeof Model>, ObjectError<{}>>();
       assertEqual(
         Model.fromUnknown(value),
         err({
@@ -22075,17 +22063,11 @@ describe("object", () => {
       );
       assertType<
         typeof Model.Input,
-        ExpectedStrictObject<
-          Readonly<Record<never, never>>,
-          { readonly value: string }
-        >
+        ExpectedStrictObject<{}, { readonly value: string }>
       >();
       assertType<
         typeof Model.Output,
-        ExpectedStrictObject<
-          Readonly<Record<never, never>>,
-          { readonly value: number }
-        >
+        ExpectedStrictObject<{}, { readonly value: number }>
       >();
     });
 
@@ -25681,8 +25663,7 @@ describe("Data", () => {
     assertType<IsData<any>, false>();
     assertType<IsData<unknown>, false>();
     assertType<IsData<object>, false>();
-    assertType<IsData<NonNullable<unknown>>, false>();
-    assertType<IsData<Readonly<Record<never, never>>>, false>();
+    assertType<IsData<{}>, false>();
     assertType<IsData<globalThis.ArrayBuffer>, false>();
     assertType<IsData<never>, true>();
     assertType<IsData<void>, true>();

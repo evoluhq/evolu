@@ -292,7 +292,7 @@ test("eqData", () => {
     readonly run: () => void;
   }
   const service: Service = { run: () => undefined };
-  const broadObject: NonNullable<unknown> = new WeakMap();
+  const broadObject: {} = new WeakMap();
   void (() => {
     // @ts-expect-error ⛔ eqData error: Actual and expected values must consist only of Data.
     eqData(service, service);

@@ -1024,8 +1024,8 @@ describe("assertOk and assertErr", () => {
   });
 
   it("compares a broad object Ok value by identity", () => {
-    const value: NonNullable<unknown> = new WeakMap();
-    const result: Result<NonNullable<unknown>, TestError> = ok(value);
+    const value: {} = new WeakMap();
+    const result: Result<{}, TestError> = ok(value);
 
     assertOk(result, value);
     nodeAssert.throws(

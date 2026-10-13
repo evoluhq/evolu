@@ -124,9 +124,6 @@
     // The deprecated rule rejects intentional {} type operations. Focused
     // TypeScript rules cover unsafe function and wrapper object types.
     "typescript/ban-types": "off",
-    // Evolu intentionally produces {} with Readonly<Record<never, never>> for
-    // empty object props and NonNullable<unknown> for any non-nullish value.
-    "typescript/no-generated-empty-object-type": "off",
     // TypeScript's noImplicitReturns understands exhaustive unions and
     // intentional return types more accurately than this ESLint-compatible
     // rule.
