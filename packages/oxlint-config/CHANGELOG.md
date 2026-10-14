@@ -1,5 +1,13 @@
 # @evolu/oxlint-config
 
+## 0.3.1
+
+### Patch Changes
+
+- 5cc173c: Updated eslint-plugin-jsdoc to 65.3.1
+
+  Its `no-undefined-types` rule now knows the ECMAScript library types, such as `ReadonlyArray`, `PromiseLike`, and `Disposable`, so the shared config no longer lists them in `definedTypes`. Linting results stay the same.
+
 ## 0.3.0
 
 ### Minor Changes
