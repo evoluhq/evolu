@@ -374,6 +374,8 @@ export const startDbWorker =
           );
           let initialClock: Timestamp;
           if (versionColumns.size === 0) {
+            // The SharedWorker stamps with its session's node ID, but earlier
+            // releases stamp with the stored one, so it is random too.
             initialClock = createInitialTimestamp(dbDeps);
             initializeDb(dbDeps)(initialClock);
           } else {

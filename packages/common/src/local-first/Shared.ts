@@ -8,7 +8,9 @@
  * every build whose worker code differs gets its own SharedWorker, and all of
  * them open the same databases. Only one may use them at a time: a request
  * retried after another worker wrote from the same stored clock can reuse that
- * write's timestamps and then is skipped as already stored.
+ * write's timestamps and then is skipped as already stored. Each worker stamps
+ * with its own session NodeId, but an earlier release stamps with the NodeId
+ * stored in the clock, which can be another worker's.
  *
  * The worker therefore takes an origin-wide lock before it answers any tab and
  * holds it for its lifetime. A worker of another build waits, with its tabs'
@@ -385,7 +387,11 @@ import {
 import { makePatches, type Patch, type Query, type Row } from "./Query.ts";
 import { isLocalOnlyTable, type MutationChange } from "./Schema.ts";
 import type { CrdtMessage, StorageWriteMessagesError } from "./Storage.ts";
-import { orderTimestamp, type Timestamp } from "./Timestamp.ts";
+import {
+  createInitialTimestamp,
+  orderTimestamp,
+  type Timestamp,
+} from "./Timestamp.ts";
 
 export type SharedWorker = CommonSharedWorker<
   SharedWorkerInput,
@@ -2294,6 +2300,12 @@ const createEvoluTenant =
     const console = deps.console.child(name).child("SharedWorker");
     console.setLevel(consoleLevel);
 
+    // Every clock adopted from a DbWorker gets the session's NodeId, never the
+    // stored one, so a copy of the database, such as a backup restored on
+    // another device, stamps under its own NodeId from its first write. See
+    // docs/adr/node-id-is-random-per-session.md.
+    const nodeId = createInitialTimestamp(deps).nodeId;
+
     interface EvoluInstance extends AsyncDisposable {
       readonly id: EvoluInstanceId;
       /** A null lease reserves a registration while its transports are acquired. */
@@ -2365,7 +2377,10 @@ const createEvoluTenant =
 
     interface LeadingDbWorker extends Typed<"Leading"> {
       readonly port: MessagePort<DbWorkerInput, DbWorkerOutput>;
-      /** The greatest clock the tenant's leading database workers reported. */
+      /**
+       * The greatest clock the tenant's leading database workers reported, with
+       * the session's NodeId.
+       */
       clock: Timestamp;
       /** The dispatched queue head, which stays queued until it is answered. */
       activeDispatch: {
@@ -2449,11 +2464,10 @@ const createEvoluTenant =
               // A replacement may advance the clock by releasing quarantine,
               // or start behind it with an empty memoryOnly database. Keep the
               // greater clock; pending writes retain their captured inputs.
-              clock:
-                previous.type !== "Leading" ||
-                orderTimestamp(previous.clock, message.clock) === -1
-                  ? message.clock
-                  : previous.clock,
+              clock: adoptClock(
+                previous.type === "Leading" ? previous.clock : null,
+                message.clock,
+              ),
               activeDispatch: null,
             };
             // A replacement leader may have committed writes whose responses
@@ -2521,11 +2535,10 @@ const createEvoluTenant =
             // Replays report their computed clock, which a replacement leader
             // may have passed at startup. Keep the greater clock.
             if (
-              (response.message.type === "Mutate" ||
-                response.message.type === "ApplySyncMessage") &&
-              orderTimestamp(leading.clock, response.message.clock) === -1
+              response.message.type === "Mutate" ||
+              response.message.type === "ApplySyncMessage"
             )
-              leading.clock = response.message.clock;
+              leading.clock = adoptClock(leading.clock, response.message.clock);
             switch (entry.type) {
               case "Read":
               case "Write":
@@ -2570,6 +2583,16 @@ const createEvoluTenant =
         },
         [dbWorkerChannel.port1.native],
       );
+    };
+
+    // The current clock already has the session's NodeId, so this compares
+    // only millis and counter.
+    const adoptClock = (
+      current: Timestamp | null,
+      reported: Timestamp,
+    ): Timestamp => {
+      const clock = { ...reported, nodeId };
+      return current && orderTimestamp(clock, current) <= 0 ? current : clock;
     };
 
     const refreshQueries = (exceptInstanceId?: EvoluInstanceId): void => {
@@ -3612,8 +3635,6 @@ const createEvoluTenant =
   };
 
 // TODO: SharedWorker follow-ups.
-// - Rotate the node ID when a copied database is detected; see the Duplicate
-//   node IDs section in the Timestamp module.
 // - Detect a DbWorker that ends without refusing its database, such as one the
 //   platform kills, so its queue does not stop silently. A DbWorker that throws
 //   refuses its database. Defer restarting a failed worker until failure
