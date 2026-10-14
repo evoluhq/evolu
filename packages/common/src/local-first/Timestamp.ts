@@ -169,17 +169,17 @@
  * still at least as far ahead, for every owner, including a new one.
  * Re-authored rows and a migration to a new owner would be quarantined too.
  * Recovery there therefore starts by resetting the clock to system time with a
- * fresh random node ID, which keeps timestamps stamped after the reset distinct
+ * new session node ID, which keeps timestamps stamped after the reset distinct
  * from the future ones. The SharedWorker must adopt the reset clock although it
- * is older than its session clock, and, like node ID rotation, the reset runs
- * as its own request, never inside a replayed write. The reset is never
- * automatic, because a clock that fell back, as after a dead clock battery,
- * looks the same, and resetting then would stamp changes in the past. Nor is it
- * a standalone action: after it, local edits to columns holding future-stamped
- * values are stored but lose last-writer-wins without being quarantined, so the
- * reset belongs only inside the migration to a new owner. Such a device can be
- * recognized by local-origin drift quarantine whose timestamps exceed their
- * quarantine time by about the skew.
+ * is older than its session clock, and the reset runs as its own request, never
+ * inside a replayed write. The reset is never automatic, because a clock that
+ * fell back, as after a dead clock battery, looks the same, and resetting then
+ * would stamp changes in the past. Nor is it a standalone action: after it,
+ * local edits to columns holding future-stamped values are stored but lose
+ * last-writer-wins without being quarantined, so the reset belongs only inside
+ * the migration to a new owner. Such a device can be recognized by local-origin
+ * drift quarantine whose timestamps exceed their quarantine time by about the
+ * skew.
  *
  * ### Range ceiling
  *
@@ -191,55 +191,26 @@
  *
  * ### Duplicate node IDs
  *
- * Detection and recovery are deliberately deferred to separate work. This
- * includes the receive-first collision below, where a local mutation can
- * complete without being stored.
+ * The node ID is random per session. The SharedWorker generates one when it
+ * starts using a database and puts it into every clock it gets from the
+ * database, so every timestamp the session stamps carries it. The stored clock
+ * keeps millis and counter monotonic; earlier releases also read its node ID.
+ * Tabs and Evolu instances sharing one database coordinate their writes through
+ * the session's clock.
  *
- * The node ID is random per database and persisted in the clock. A database
- * copied to another device, as when an operating system backup is restored to a
- * new phone while the old one stays in use, leaves both independent copies
- * stamping from the same node ID and clock. Tabs and Evolu instances sharing
- * one database coordinate their writes through its shared clock.
+ * A node ID per database would break when the database is copied, as when an
+ * operating system backup is restored to a new phone while the old one stays in
+ * use. Both copies would stamp from the same node ID and clock, and two changes
+ * for the same owner stamped in the same logical millisecond with the same
+ * counter would get identical timestamps. Each copy would keep its own change,
+ * relays and third devices the first to arrive, and a copy that received the
+ * other's timestamp first would skip its own change while `onComplete` still
+ * ran. Range fingerprints hash only timestamps, so sync could not heal it. A
+ * copy instead starts a session with a new node ID before it writes.
  *
- * For the same owner, two changes stamped in the same logical millisecond with
- * the same counter get identical timestamps. If both copies write before
- * receiving the other's change, each keeps its own version, while relays and
- * third devices keep the first arrival. The copies can diverge with no error.
- * This is likely while the copied clock is ahead of both devices' system time,
- * because both stamp counters 1, 2, 3 in the same millisecond.
- *
- * Receiving first can instead lose a local change. A copy quarantines an
- * incoming timestamp beyond the drift limit without advancing its clock. Its
- * next local mutation can then produce that same timestamp. The timestamp is
- * already in the owner's set, so the local change is skipped: it is stored in
- * neither application tables, history, nor quarantine, but `onComplete` still
- * runs. The previously received change remains stored under that timestamp.
- *
- * Detection: a received message whose timestamp is new to the owner's set but
- * carries the local node ID cannot be ours, because every timestamp authored
- * locally is already in the set before it can be sent, and a restored or
- * recreated database mints a fresh node ID. `applyMessages` knows both facts
- * when `insertTimestamp` reports a new timestamp. Messages whose timestamps are
- * already stored are invisible to this rule; a new timestamp from the copy
- * trips it.
- *
- * An empty `memoryOnly` replacement is an exception: it can retain the
- * SharedWorker's previous clock and node ID while losing the timestamp set.
- * Detection must account for this before rotation, or our own earlier messages
- * could be mistaken for another database's changes.
- *
- * Handling: rotate the local node ID to a fresh random one, which changes only
- * future timestamps, and report the copy through sync state or the error store
- * so the application can warn that edits before detection may have diverged or
- * been lost. Both copies detect each other and rotate, after which detection
- * stops because messages with the old ID are no longer ours. Rotation cannot
- * heal past collisions. Deleting and resyncing the database automatically is
- * rejected: it drops unsynced changes and local-only tables, needs a relay, and
- * does not recover the dropped half of a collision; restore from mnemonic is
- * its manual form. The rotation must not happen inside the replayed write: a
- * replay sees nothing new and would save the input clock with the old node ID
- * again. The write's response flags the detection and the SharedWorker enqueues
- * a separate rotation request, which is harmless to replay.
+ * Only a copy of a running session, such as a restored virtual machine
+ * snapshot, keeps its node ID, and an earlier release that opens a copy stamps
+ * with the stored one.
  *
  * @module
  */
@@ -318,14 +289,15 @@ export const minCounter = 0 as Counter;
 export const maxCounter = 65535 as Counter;
 
 /**
- * A NodeId identifies the database that stamped a timestamp. It is 64 random
- * bits, generated when the database is created and persisted in its clock.
+ * A NodeId identifies the session that stamped a timestamp. It is 64 random
+ * bits, which the SharedWorker generates when it starts using a database, so it
+ * identifies neither a device nor a database.
  *
- * Only databases that share an owner can collide, so random collisions are
- * negligible. Identical timestamps (same millis, counter, and NodeId) are the
- * same message to sync: one of the changes is lost, and the affected devices
- * see different data while they appear synced. The realistic case is a copied
- * database, described in the Timestamp module's Duplicate node IDs section.
+ * Identical timestamps (same millis, counter, and NodeId) are the same message
+ * to sync: one of the changes is lost, and the affected devices see different
+ * data while they appear synced. Only sessions that write for one owner can
+ * collide, so random collisions are negligible; see the Timestamp module's
+ * Duplicate node IDs section.
  */
 export const NodeId = /*#__PURE__*/ regex("NodeId", /^[a-f0-9]{16}$/u)(String);
 export type NodeId = typeof NodeId.Output;

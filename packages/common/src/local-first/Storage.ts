@@ -304,11 +304,11 @@ export type StorageWriteMessagesError = StorageQuotaError | UnknownError;
  * fingerprint, so it needs a new protocol version.
  *
  * A write-key holder can also store a change under a timestamp another device
- * has not used yet, such as a later one with that device's NodeId, because
- * relays accept timestamps from any time. A relay keeps the first change stored
- * for a timestamp, so it does not store the device's change when it arrives,
- * and peers that sync through that relay later get the stored one instead. A
- * new fingerprint does not close this.
+ * has not used yet, such as a later one with the NodeId of that device's
+ * session, because relays accept timestamps from any time. A relay keeps the
+ * first change stored for a timestamp, so it does not store the device's change
+ * when it arrives, and peers that sync through that relay later get the stored
+ * one instead. A new fingerprint does not close this.
  *
  * @group Ranges
  */

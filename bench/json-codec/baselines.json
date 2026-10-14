@@ -5,8 +5,8 @@
         "platform": "darwin",
         "arch": "arm64",
         "cpu": "Apple M5",
-        "nodeVersion": "24.19.0",
-        "msgpackrVersion": "2.0.5",
+        "nodeVersion": "24.20.0",
+        "msgpackrVersion": "2.1.0",
         "msgpackrNativeAcceleration": false,
         "batchSize": 1000,
         "repeatCount": 5,
@@ -17,16 +17,16 @@
       },
       "measurementsNs": {
         "smallMixed": {
-          "evoluEncode": 266,
-          "msgpackrEncode": 313,
-          "evoluDecode": 298,
-          "msgpackrDecode": 413
+          "evoluEncode": 276,
+          "msgpackrEncode": 299,
+          "evoluDecode": 294,
+          "msgpackrDecode": 406
         },
         "largeNested": {
-          "evoluEncode": 11913,
-          "msgpackrEncode": 11495,
-          "evoluDecode": 18084,
-          "msgpackrDecode": 19614
+          "evoluEncode": 11648,
+          "msgpackrEncode": 11075,
+          "evoluDecode": 20276,
+          "msgpackrDecode": 18507
         }
       }
     }
