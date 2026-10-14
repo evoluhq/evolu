@@ -6,14 +6,14 @@
         "arch": "arm64",
         "cpu": "Apple M5",
         "nodeVersion": "24.20.0",
-        "sqliteVersion": "3.53.2"
+        "sqliteVersion": "3.53.4"
       },
       "measurementsMs": {
-        "append": 297,
-        "prepend": 1016,
-        "insert": 1498,
+        "append": 309,
+        "prepend": 1106,
+        "insert": 1562,
         "getTimestampByIndex": 30,
-        "fingerprintRanges": 166
+        "fingerprintRanges": 154
       }
     }
   ]
