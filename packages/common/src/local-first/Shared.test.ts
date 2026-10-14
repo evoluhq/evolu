@@ -89,7 +89,13 @@ import {
   testCreateCrdtMessage,
   type StorageWriteMessagesError,
 } from "./Storage.ts";
-import { createTimestamp, maxNodeId, type Timestamp } from "./Timestamp.ts";
+import {
+  Counter,
+  createTimestamp,
+  maxNodeId,
+  NodeId,
+  type Timestamp,
+} from "./Timestamp.ts";
 import { acquireLeaderLock, testCreateLockManager } from "../LockManager.ts";
 import { installPolyfills } from "../Polyfills.ts";
 import { err, ok, type Result } from "../Result.ts";
@@ -9537,6 +9543,8 @@ describe("with one evolu instance", () => {
       assertSame(firstApplyInput.request.type, "ForSharedWorker");
       assertSame(firstApplyInput.request.message.type, "ApplySyncMessage");
       assertEqual(firstApplyInput.request.message.owner, testAppOwner);
+      assertTrue("clock" in firstApplyInput);
+      const { nodeId } = firstApplyInput.clock;
 
       const receivedClock = createTimestamp({ millis: Millis.orThrow(1000) });
       dbWorkerPort.postMessage({
@@ -9599,7 +9607,7 @@ describe("with one evolu instance", () => {
       const responseApplyInput = dbInputs.at(-1);
       assertNotUndefined(responseApplyInput);
       assertTrue("clock" in responseApplyInput);
-      assertEqual(responseApplyInput.clock, receivedClock);
+      assertEqual(responseApplyInput.clock, { ...receivedClock, nodeId });
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
         attemptId: responseApplyInput.attemptId,
@@ -9649,7 +9657,7 @@ describe("with one evolu instance", () => {
       const mutateInput = dbInputs.at(-1);
       assertNotUndefined(mutateInput);
       assertTrue("clock" in mutateInput);
-      assertEqual(mutateInput.clock, receivedClock);
+      assertEqual(mutateInput.clock, { ...receivedClock, nodeId });
     });
 
     it("ignores broadcast and converged apply sync results", async () => {
@@ -10051,7 +10059,8 @@ describe("with one evolu instance", () => {
       const original = first.dbInputs[0];
       assertTrue("clock" in original);
       const capturedNow = original.now;
-      assertEqual(original.clock, initialClock);
+      const { nodeId } = original.clock;
+      assertEqual(original.clock, { ...initialClock, nodeId });
       setup.run.deps.time.advance("10s");
       await first.releaseDbWorkerLeader();
 
@@ -10079,7 +10088,7 @@ describe("with one evolu instance", () => {
       const replay = inputs[0];
       assertTrue("clock" in replay);
       assertEqual(replay.request, original.request);
-      assertEqual(replay.clock, initialClock);
+      assertEqual(replay.clock, { ...initialClock, nodeId });
       assertSame(replay.now, capturedNow);
       assertNotSame(replay.attemptId, original.attemptId);
 
@@ -10115,7 +10124,7 @@ describe("with one evolu instance", () => {
       assertSame(inputs.length, 2);
       const secondReplay = inputs[1];
       assertTrue("clock" in secondReplay);
-      assertEqual(secondReplay.clock, initialClock);
+      assertEqual(secondReplay.clock, { ...initialClock, nodeId });
       assertSame(secondReplay.now, capturedNow);
       assertEqual(secondReplay.request, original.request);
       assertNotSame(secondReplay.attemptId, replay.attemptId);
@@ -10131,7 +10140,7 @@ describe("with one evolu instance", () => {
       assertEqual(siblingOutputs.splice(0), [{ type: "RefreshQueries" }]);
       const next = inputs[2];
       assertTrue("clock" in next);
-      assertEqual(next.clock, committedClock);
+      assertEqual(next.clock, { ...committedClock, nodeId });
       assertTrue(next.now > capturedNow);
 
       port.postMessage(currentResponse);
@@ -10159,7 +10168,7 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
       assertSame(inputs.length, 4);
       assertTrue("clock" in inputs[3]);
-      assertEqual(inputs[3].clock, finalClock);
+      assertEqual(inputs[3].clock, { ...finalClock, nodeId });
     });
 
     it("reconciles every transport after a leader replacement", async () => {
@@ -10341,7 +10350,9 @@ describe("with one evolu instance", () => {
       assertLength(nextDbInputs, 2);
       const fresh = nextDbInputs[1];
       assertTrue("clock" in fresh);
-      assertEqual(fresh.clock, initialClock);
+      // The session keeps its clock and its own NodeId.
+      assertEqual(fresh.clock, { ...initialClock, nodeId: fresh.clock.nodeId });
+      assertNotSame(fresh.clock.nodeId, maxNodeId);
     });
 
     it("keeps the replacement leader's clock after a stale local-only replay and refreshes subscribed queries", async () => {
@@ -10380,7 +10391,8 @@ describe("with one evolu instance", () => {
       assertLength(instance.dbInputs, 1);
       const original = instance.dbInputs[0];
       assertTrue("clock" in original);
-      assertEqual(original.clock, initialClock);
+      const { nodeId } = original.clock;
+      assertEqual(original.clock, { ...initialClock, nodeId });
       await instance.releaseDbWorkerLeader();
 
       const leaderChannel = disposer.use(
@@ -10423,7 +10435,7 @@ describe("with one evolu instance", () => {
       assertSame(inputs.length, 1);
       const replay = inputs[0];
       assertTrue("clock" in replay);
-      assertEqual(replay.clock, initialClock);
+      assertEqual(replay.clock, { ...initialClock, nodeId });
 
       // A local-only replay reports its captured clock. The session clock
       // stays at the leader's, so the next write sorts after whatever the
@@ -10448,7 +10460,165 @@ describe("with one evolu instance", () => {
       assertSame(inputs.length, 2);
       const fresh = inputs[1];
       assertTrue("clock" in fresh);
-      assertEqual(fresh.clock, startupClock);
+      assertEqual(fresh.clock, { ...startupClock, nodeId });
+    });
+
+    it("stamps with the session's NodeId, never one a DbWorker reports", async () => {
+      await using setup = await setupSharedWorker();
+      using disposer = new DisposableStack();
+      const storedNodeId = NodeId.orThrow("0123456789abcdef");
+      const instance = await setup.createEvolu({
+        releaseDbWorkerLeaderOnDispose: false,
+        initialClock: createTimestamp({
+          millis: Millis.orThrow(23),
+          nodeId: storedNodeId,
+        }),
+      });
+      const mutation: ExtractTyped<EvoluInput, "Mutate"> = {
+        type: "Mutate",
+        changes: [
+          {
+            ownerId: testAppOwner.id,
+            ...DbChange.orThrow({
+              table: "_registry",
+              id: createId(setup.run.deps),
+              values: { secret: new Uint8Array([1]) },
+              isInsert: true,
+              isDelete: null,
+            }),
+          },
+        ],
+        subscribedQueries: new Set(),
+        onCompleteIds: [],
+      };
+      const respond = (
+        port: typeof instance.dbWorkerPort,
+        request: ExtractTyped<DbWorkerInput, "Request">,
+        clock: Timestamp,
+      ) => {
+        port.postMessage({
+          type: "OnQueuedResponse",
+          attemptId: request.attemptId,
+          response: {
+            type: "ForEvolu",
+            id: instance.id,
+            message: {
+              type: "Mutate",
+              clock,
+              messagesByOwnerId: new Map(),
+              rowsByQuery: new Map(),
+            },
+          },
+        });
+      };
+      const replaceLeader = async (clock: Timestamp) => {
+        const init = await setupTabLeader(setup, disposer, "silent");
+        const port = disposer.use(
+          testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(init.port),
+        );
+        const inputs: Array<ExtractTyped<DbWorkerInput, "Request">> = [];
+        port.onMessage = (input) => {
+          if (input.type === "Request") inputs.push(input);
+        };
+        port.postMessage({ type: "LeaderAcquired", clock });
+        await testWaitForWorkerMessage();
+        return { port, inputs };
+      };
+
+      // The first write keeps the stored clock's millis and counter, but not
+      // its NodeId, so a copy of the database stamps under its own.
+      instance.evoluChannel.port2.postMessage(mutation);
+      await testWaitForWorkerMessage();
+      const first = instance.dbInputs.at(-1);
+      assertNotUndefined(first);
+      assertTrue("clock" in first);
+      const { nodeId } = first.clock;
+      assertNotSame(nodeId, storedNodeId);
+      assertEqual(
+        first.clock,
+        createTimestamp({ millis: Millis.orThrow(23), nodeId }),
+      );
+      const committed = createTimestamp({
+        millis: Millis.orThrow(23),
+        counter: Counter.orThrow(1),
+        nodeId,
+      });
+      respond(instance.dbWorkerPort, first, committed);
+      await testWaitForWorkerMessage();
+      await instance.releaseDbWorkerLeader();
+
+      // A replacement reporting the same millis and counter with a NodeId that
+      // sorts after the session's does not replace it.
+      const tied = await replaceLeader({ ...committed, nodeId: maxNodeId });
+      instance.evoluChannel.port2.postMessage(mutation);
+      await testWaitForWorkerMessage();
+      const second = tied.inputs.at(-1);
+      assertNotUndefined(second);
+      assertTrue("clock" in second);
+      assertEqual(second.clock, committed);
+      // A response's clock is adopted with the session's NodeId too.
+      const responded = { ...committed, counter: Counter.orThrow(2) };
+      respond(tied.port, second, { ...responded, nodeId: maxNodeId });
+      await testWaitForWorkerMessage();
+      instance.evoluChannel.port2.postMessage(mutation);
+      await testWaitForWorkerMessage();
+      const third = tied.inputs.at(-1);
+      assertNotUndefined(third);
+      assertTrue("clock" in third);
+      assertEqual(third.clock, responded);
+      respond(tied.port, third, responded);
+      await testWaitForWorkerMessage();
+
+      // A later clock is adopted with the session's NodeId.
+      const later = await replaceLeader(
+        createTimestamp({ millis: Millis.orThrow(1000), nodeId: storedNodeId }),
+      );
+      instance.evoluChannel.port2.postMessage(mutation);
+      await testWaitForWorkerMessage();
+      const fourth = later.inputs.at(-1);
+      assertNotUndefined(fourth);
+      assertTrue("clock" in fourth);
+      assertEqual(
+        fourth.clock,
+        createTimestamp({ millis: Millis.orThrow(1000), nodeId }),
+      );
+    });
+
+    it("gives each database's session its own NodeId", async () => {
+      await using setup = await setupSharedWorker();
+      // Both databases start from the same stored clock, as sibling databases
+      // of one owner in one SharedWorker can.
+      const first = await setup.createEvolu();
+      const second = await setup.createEvolu({
+        tenantName: Name.orThrow("second"),
+      });
+      const mutation: ExtractTyped<EvoluInput, "Mutate"> = {
+        type: "Mutate",
+        changes: [
+          {
+            ownerId: testAppOwner.id,
+            ...DbChange.orThrow({
+              table: "_registry",
+              id: createId(setup.run.deps),
+              values: { secret: new Uint8Array([1]) },
+              isInsert: true,
+              isDelete: null,
+            }),
+          },
+        ],
+        subscribedQueries: new Set(),
+        onCompleteIds: [],
+      };
+      first.evoluChannel.port2.postMessage(mutation);
+      second.evoluChannel.port2.postMessage(mutation);
+      await testWaitForWorkerMessage();
+      const firstWrite = first.dbInputs.at(-1);
+      const secondWrite = second.dbInputs.at(-1);
+      assertNotUndefined(firstWrite);
+      assertNotUndefined(secondWrite);
+      assertTrue("clock" in firstWrite);
+      assertTrue("clock" in secondWrite);
+      assertNotSame(firstWrite.clock.nodeId, secondWrite.clock.nodeId);
     });
   });
 

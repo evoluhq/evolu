@@ -153,11 +153,11 @@ describe("Evolu integration", () => {
     createWebSocket?: CreateWebSocket;
     waitForDatabaseRelease?: WaitForDatabaseRelease;
     /**
-     * Seeds the DbWorker's randomness, which creates the database's node ID,
-     * and the tab's, which names the SharedWorker's sync state channel. Devices
-     * of one owner need different seeds, because devices sharing a node ID act
-     * as a copied database and can silently lose changes, and devices sharing a
-     * channel receive each other's sync state.
+     * Seeds the DbWorker's randomness and the tab's, which creates the
+     * session's node ID and names the SharedWorker's sync state channel.
+     * Devices of one owner need different seeds, because devices sharing a node
+     * ID act as copies of one running session and can silently lose changes,
+     * and devices sharing a channel receive each other's sync state.
      */
     seed?: string;
   } = {}) => {
@@ -318,7 +318,7 @@ describe("Evolu integration", () => {
   /** One SharedWorker observing its relay frames and native socket cleanup. */
   const setupDevice = async (options: {
     createSqliteDriver?: CreateSqliteDriver;
-    /** Distinct per device, so each device's database has its own node ID. */
+    /** Distinct per device, so each device's session has its own node ID. */
     seed: string;
   }) => {
     let constructedCount = 0;
@@ -1510,7 +1510,7 @@ describe("Evolu integration", () => {
           rows: [
             {
               clock: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 10, 107, 242, 21, 194, 198, 154, 76,
+                0, 0, 0, 0, 0, 0, 0, 1, 162, 140, 107, 238, 5, 65, 113, 168,
               ]),
             },
           ],
@@ -1527,7 +1527,7 @@ describe("Evolu integration", () => {
               ]),
               table: "todo",
               timestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 10, 107, 242, 21, 194, 198, 154, 76,
+                0, 0, 0, 0, 0, 0, 0, 1, 162, 140, 107, 238, 5, 65, 113, 168,
               ]),
               value: "Integration todo",
             },
@@ -1540,7 +1540,7 @@ describe("Evolu integration", () => {
               ]),
               table: "todo",
               timestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 10, 107, 242, 21, 194, 198, 154, 76,
+                0, 0, 0, 0, 0, 0, 0, 1, 162, 140, 107, 238, 5, 65, 113, 168,
               ]),
               value: "1970-01-01T00:00:00.000Z",
             },
@@ -1552,15 +1552,15 @@ describe("Evolu integration", () => {
           rows: [
             {
               c: 1,
-              h1: 203560577542550,
-              h2: 200327465842175,
+              h1: 279533803806496,
+              h2: 127423211401616,
               l: 1,
               ownerId: new Uint8Array([
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
               ]),
               t: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 10, 107, 242, 21, 194, 198, 154, 76,
+                0, 0, 0, 0, 0, 0, 0, 1, 162, 140, 107, 238, 5, 65, 113, 168,
               ]),
             },
           ],
@@ -1570,10 +1570,10 @@ describe("Evolu integration", () => {
           rows: [
             {
               firstTimestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 10, 107, 242, 21, 194, 198, 154, 76,
+                0, 0, 0, 0, 0, 0, 0, 1, 162, 140, 107, 238, 5, 65, 113, 168,
               ]),
               lastTimestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 10, 107, 242, 21, 194, 198, 154, 76,
+                0, 0, 0, 0, 0, 0, 0, 1, 162, 140, 107, 238, 5, 65, 113, 168,
               ]),
               ownerId: new Uint8Array([
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
