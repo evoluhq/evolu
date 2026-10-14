@@ -44,7 +44,6 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,mts,md,mdx}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,mts,md,mdx}\"",
     "version": "changeset version && node scripts/version-sqlite-wasm.mts",
-    "release": "pnpm build && pnpm changeset publish",
     "ios": "pnpm --dir examples/react-expo ios",
     "android": "pnpm --dir examples/react-expo android",
     "examples:toggle-deps": "node ./scripts/toggle-examples-deps.mts",

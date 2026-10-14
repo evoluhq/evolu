@@ -4,12 +4,14 @@ Run these commands from the repository root.
 
 ## Release
 
-`@evolu/relay` is versioned and published by Changesets like every other
-package. After npm publication, the Docker release workflow installs that exact
-package version. The push job checks Docker Hub on every attempt, including
-reruns of only a failed job. If its image already exists, the workflow reuses
-its digest and repairs tags without rebuilding or signing it. Reruns of older
-releases leave the current release's stable aliases unchanged.
+`@evolu/relay` is versioned by Changesets and staged on npm like every other
+package, and npm publishes it once a maintainer approves it. The Docker release
+workflow waits up to 15 minutes for that and installs that exact package
+version. If the approval comes later, run the Docker workflow on main after
+it. The push job checks Docker Hub on every attempt, including reruns of only
+a failed job. If its image already exists, the workflow reuses its digest and
+repairs tags without rebuilding or signing it. Reruns of older releases leave
+the current release's stable aliases unchanged.
 
 GitHub build provenance is generated only for an image built by that job,
 before repairing tags. A retry does not repair missing provenance for an

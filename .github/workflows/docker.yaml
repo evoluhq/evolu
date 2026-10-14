@@ -70,10 +70,14 @@ jobs:
               ;;
           esac
 
-      # npm's CDN caches each package's version list for up to five minutes, a
-      # new release can take longer to appear, and its tarball can return 404 for
+      # npm serves a staged release only once a maintainer approves it, its CDN
+      # caches each package's version list for up to five minutes, a new
+      # release can take longer to appear, and its tarball can return 404 for
       # minutes after npm lists it, so wait until npm can download the relay and
-      # each @evolu package it depends on, as npm install does.
+      # each @evolu package it depends on, as npm install does. The wait stays
+      # short, as a longer one would hold the Release run, and a pending run of
+      # a newer commit can replace a pending Version Packages run. If the
+      # approval comes later, run this workflow on main after it.
       - name: Wait for npm to serve @evolu/relay@${{ env.VERSION }}
         if: steps.image.outputs.published == 'false'
         run: |
@@ -87,7 +91,7 @@ jobs:
             if is_served; then exit 0; fi
             sleep 10
           done
-          echo "npm did not serve @evolu/relay@$VERSION and its @evolu dependencies after 90 attempts" >&2
+          echo "npm did not serve @evolu/relay@$VERSION and its @evolu dependencies after 90 attempts. If it awaits approval on npm, run the Docker workflow on main after approving it." >&2
           exit 1
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
