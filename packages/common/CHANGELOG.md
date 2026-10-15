@@ -1,5 +1,47 @@
 # @evolu/common
 
+## 8.23.0
+
+### Minor Changes
+
+- 5402ec8: Declared the Standard Schema types without depending on @standard-schema/spec
+
+  `@evolu/common` no longer depends on `@standard-schema/spec`. It declares the
+  spec's `StandardSchemaV1` types itself, as the spec invites implementers to, and
+  they are unchanged. It now also exports the spec's `StandardTypedV1`, which
+  names the inferred input and output types of a schema.
+
+  ```ts
+  import {
+    assertType,
+    NonEmptyTrimmedString100,
+    type StandardTypedV1,
+  } from "@evolu/common";
+
+  const types = NonEmptyTrimmedString100["~standard"].types;
+
+  assertType<
+    typeof types,
+    StandardTypedV1.Types<string, NonEmptyTrimmedString100> | undefined
+  >();
+  ```
+
+### Patch Changes
+
+- 5402ec8: Pinned external runtime dependencies to exact versions
+
+  A version range let an app that installed or updated Evolu resolve a newer
+  release of a dependency that Evolu was never tested with, including a
+  compromised one. These packages now depend on the exact versions they were
+  tested with. Their own dependencies still resolve within the ranges they
+  declare, so an app's lockfile is what fixes the whole tree. Peer dependencies
+  keep their ranges. If an app also depends on one of these dependencies in
+  another version, its package manager installs both copies.
+
+  A newer release of one of them, such as a security fix, reaches an app only
+  with an Evolu release that updates it, or sooner through its package manager's
+  overrides.
+
 ## 8.22.4
 
 ### Patch Changes
