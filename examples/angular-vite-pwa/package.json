@@ -15,7 +15,7 @@
     "@evolu/web": "workspace:*"
   },
   "devDependencies": {
-    "@analogjs/vite-plugin-angular": "^2.8.0",
+    "@analogjs/vite-plugin-angular": "^2.8.1",
     "@angular/build": "^22.2.2",
     "@angular/compiler-cli": "^22.2.2",
     "@tailwindcss/vite": "^4.1.18",

@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@evolu/typescript-config": "workspace:*",
-    "oxlint": "^1.87.0",
+    "oxlint": "^1.88.0",
     "oxlint-tsgolint": "7.0.2004"
   },
   "peerDependencies": {
