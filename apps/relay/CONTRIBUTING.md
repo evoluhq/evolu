@@ -15,7 +15,9 @@ the npm approval comes later, rerun the job. It checks Docker Hub on every
 attempt, including reruns of only a failed job. If its image already exists,
 the workflow reuses its digest and repairs tags without rebuilding or signing
 it. Reruns of older releases leave the current release's stable aliases
-unchanged.
+unchanged. A base image update, such as one from Dependabot, reaches users only
+with a new relay version, so add a patch changeset for `@evolu/relay` to its
+pull request.
 
 GitHub build provenance is generated only for an image built by that job,
 before repairing tags. A retry does not repair missing provenance for an

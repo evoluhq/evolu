@@ -57,8 +57,8 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
-    "ws": "^8.22.0"
+    "better-sqlite3": "13.0.3",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",

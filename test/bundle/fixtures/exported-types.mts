@@ -34,6 +34,7 @@ export const Inventory = /*#__PURE__*/ object({ labels: LabelSet });
 export const Attributes = /*#__PURE__*/ object({ id: String }, Rest);
 
 export const productFrom = Product.from;
+export const productTypes = Product["~standard"].types;
 export const labelsFrom = Labels.from;
 export const labelSetFrom = LabelSet.from;
 export const labelCountsFrom = LabelCounts.from;

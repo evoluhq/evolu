@@ -5,7 +5,7 @@
  */
 
 import * as Kysely from "kysely";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { StandardSchemaV1 } from "../StandardSchema.ts";
 import { assert, assertNonNullable } from "../Assert.ts";
 import { getOwnProp, mapObject, type ReadonlyRecord } from "../Object.ts";
 import {

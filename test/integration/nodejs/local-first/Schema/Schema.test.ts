@@ -26,6 +26,10 @@ import {
   SqliteBoolean,
   type SqliteSchema,
 } from "../../../../../packages/common/src/Sqlite.ts";
+import type {
+  StandardSchemaV1,
+  StandardTypedV1,
+} from "../../../../../packages/common/src/StandardSchema.ts";
 import {
   assertType,
   Boolean,
@@ -393,6 +397,94 @@ describe("Zod", () => {
   it("ValidateSchema returns schema type when valid", () => {
     type Result = ValidateSchema<typeof _Schema>;
     assertType<Result, typeof _Schema>();
+  });
+
+  it("declares Standard Schema types identical to the spec's", () => {
+    // Evolu declares the Standard Schema types itself, so a third-party
+    // implementer checks they still match the spec. Input and output differ,
+    // so a swapped type parameter fails.
+    const ZodFiniteNumber = z
+      .number()
+      .transform((value): FiniteNumber => value as FiniteNumber);
+    assertType<
+      z.core.$ZodStandardSchema<typeof ZodFiniteNumber>,
+      StandardSchemaV1.Props<number, FiniteNumber>
+    >();
+    assertType<
+      StandardSchemaV1.InferOutput<typeof ZodFiniteNumber>,
+      FiniteNumber
+    >();
+    assertType<StandardSchemaV1.InferInput<typeof ZodFiniteNumber>, number>();
+    type ZodProps = z.core.$ZodStandardSchema<typeof ZodFiniteNumber>;
+    assertType<
+      StandardSchemaV1<number, FiniteNumber>,
+      { readonly "~standard": ZodProps }
+    >();
+    assertType<
+      StandardTypedV1.Props<number, FiniteNumber>,
+      Omit<ZodProps, "validate">
+    >();
+    assertType<
+      StandardTypedV1<number, FiniteNumber>,
+      { readonly "~standard": StandardTypedV1.Props<number, FiniteNumber> }
+    >();
+    assertType<
+      StandardSchemaV1.Types<number, FiniteNumber>,
+      NonNullable<ZodProps["types"]>
+    >();
+    // Every namespace member keeps the spec's name and shape.
+    assertType<
+      ReturnType<ZodProps["validate"]>,
+      | StandardSchemaV1.Result<FiniteNumber>
+      | Promise<StandardSchemaV1.Result<FiniteNumber>>
+    >();
+    assertType<
+      StandardSchemaV1.Result<FiniteNumber>,
+      | StandardSchemaV1.SuccessResult<FiniteNumber>
+      | StandardSchemaV1.FailureResult
+    >();
+    assertType<
+      StandardSchemaV1.FailureResult["issues"],
+      ReadonlyArray<StandardSchemaV1.Issue>
+    >();
+    assertType<
+      StandardSchemaV1.Issue["path"],
+      ReadonlyArray<PropertyKey | StandardSchemaV1.PathSegment> | undefined
+    >();
+    assertType<
+      Parameters<ZodProps["validate"]>[1],
+      StandardSchemaV1.Options | undefined
+    >();
+    // InferInput and InferOutput accept any Standard Typed, not only schemas.
+    assertType<
+      StandardSchemaV1.InferInput<StandardTypedV1<number, FiniteNumber>>,
+      number
+    >();
+    assertType<
+      StandardSchemaV1.InferOutput<StandardTypedV1<number, FiniteNumber>>,
+      FiniteNumber
+    >();
+    // The type parameters keep the spec's defaults.
+    assertType<StandardSchemaV1, StandardSchemaV1<unknown, unknown>>();
+    assertType<StandardSchemaV1<number>, StandardSchemaV1<number, number>>();
+    assertType<StandardTypedV1, StandardTypedV1<unknown, unknown>>();
+    assertType<StandardTypedV1<number>, StandardTypedV1<number, number>>();
+    assertType<
+      StandardSchemaV1.Props<number>,
+      StandardSchemaV1.Props<number, number>
+    >();
+    assertType<
+      StandardTypedV1.Props<number>,
+      StandardTypedV1.Props<number, number>
+    >();
+    assertType<
+      StandardTypedV1.Types<number>,
+      StandardTypedV1.Types<number, number>
+    >();
+    assertType<
+      StandardSchemaV1.Types<number>,
+      StandardSchemaV1.Types<number, number>
+    >();
   });
 
   describe("mutation value types", () => {

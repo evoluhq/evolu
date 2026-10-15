@@ -1,9 +1,6 @@
 // The local-first prelude of the package root. ../index.ts star-exports this
 // module, so TypeScript reports a name that clashes with another root
 // module (TS2308). An explicit re-export in index.ts would silently shadow it.
-// StandardSchemaV1 is here because schema columns are Standard Schema
-// validators.
-export type { StandardSchemaV1 } from "@standard-schema/spec";
 export type { DatabaseHeldError, UnsupportedDbVersionError } from "./Db.ts";
 export { AppName, createEvolu, maxMutationSize, testAppName } from "./Evolu.ts";
 export type {

@@ -1,4 +1,5 @@
-# Keeps the commit SHAs that workflows pin GitHub Actions to up to date.
+# Keeps the commit SHAs that workflows pin GitHub Actions to, and the digest
+# the relay image's base is pinned to, up to date.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -14,3 +15,14 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  - package-ecosystem: docker
+    directory: "/apps/relay"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # A new Node.js major goes with .nvmrc and is upgraded by hand.
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]

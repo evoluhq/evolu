@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
 
-ARG NODE_VERSION=24
-
+# The digest pins the base image, so a re-pointed tag can't change it.
+# Dependabot proposes each Node.js 24 release and base rebuild a week after it
+# is published (.github/dependabot.yml).
 # droast ignore=DF011 reason="The published Relay package needs the Node runtime; no separate compilation stage is needed."
-FROM node:${NODE_VERSION}-alpine
+FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
 
 # The published @evolu/relay version, or a packed tarball path relative to the
 # build context for verifying unpublished changes (see CONTRIBUTING.md). Why the
@@ -11,10 +12,12 @@ FROM node:${NODE_VERSION}-alpine
 # docs/adr/relay-image-installs-published-package.md.
 ARG RELAY_PACKAGE=@evolu/relay@latest
 
+# No package in the relay's tree needs an install script, and better-sqlite3
+# ships prebuilt binaries, so none runs.
 # droast ignore=DF008,DF031 reason="cd scopes installation to the temporary context mount; release CI supplies an exact package version, while manual builds default to latest."
 RUN --mount=type=bind,target=/context,readonly \
     cd /context && \
-    npm install --global "${RELAY_PACKAGE}" && \
+    npm install --global --ignore-scripts "${RELAY_PACKAGE}" && \
     npm cache clean --force
 
 ENV NODE_ENV=production

@@ -76,7 +76,7 @@ importers:
         specifier: ^5.0.4
         version: 5.0.4(@vitest/browser@5.0.4)(vitest@5.0.4)
       better-sqlite3:
-        specifier: ^13.0.3
+        specifier: 13.0.3
         version: 13.0.3
       msgpackr:
         specifier: 2.1.0
@@ -130,7 +130,7 @@ importers:
         specifier: ^5.111.1
         version: 5.111.1(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.29)(sharp@0.35.5(@types/node@24.19.2))
       ws:
-        specifier: ^8.22.0
+        specifier: 8.22.0
         version: 8.22.0
       zod:
         specifier: ^4.6.6
@@ -693,19 +693,16 @@ importers:
   packages/common:
     dependencies:
       '@noble/ciphers':
-        specifier: ^2.4.0
+        specifier: 2.4.0
         version: 2.4.0
       '@noble/hashes':
-        specifier: ^2.4.0
+        specifier: 2.4.0
         version: 2.4.0
       '@scure/bip39':
-        specifier: ^2.4.0
+        specifier: 2.4.0
         version: 2.4.0
-      '@standard-schema/spec':
-        specifier: ^1.1.0
-        version: 1.1.0
       kysely:
-        specifier: ^0.29.6
+        specifier: 0.29.6
         version: 0.29.6
       random:
         specifier: 5.5.1
@@ -727,13 +724,13 @@ importers:
   packages/nodejs:
     dependencies:
       better-sqlite3:
-        specifier: ^13.0.3
+        specifier: 13.0.3
         version: 13.0.3
       typescript:
         specifier: '>=7.0.0'
         version: 7.0.2
       ws:
-        specifier: ^8.22.0
+        specifier: 8.22.0
         version: 8.22.0
     devDependencies:
       '@evolu/common':
@@ -773,7 +770,7 @@ importers:
   packages/oxlint-config:
     dependencies:
       eslint-plugin-jsdoc:
-        specifier: ^65.3.1
+        specifier: 65.3.1
         version: 65.3.1(@typescript/typescript6@6.0.2)(eslint@10.8.1(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)
     devDependencies:
       '@evolu/typescript-config':
@@ -813,37 +810,37 @@ importers:
   packages/react-native:
     dependencies:
       array-from-async:
-        specifier: ^3.0.0
+        specifier: 3.0.0
         version: 3.0.0
       array.prototype.tosorted:
-        specifier: ^1.1.4
+        specifier: 1.1.4
         version: 1.1.4
       promise.try:
-        specifier: ^2.0.2
+        specifier: 2.0.2
         version: 2.0.2
       promise.withresolvers:
-        specifier: ^1.0.4
+        specifier: 1.0.4
         version: 1.0.4
       set.prototype.difference:
-        specifier: ^1.1.7
+        specifier: 1.1.7
         version: 1.1.7
       set.prototype.intersection:
-        specifier: ^1.1.8
+        specifier: 1.1.8
         version: 1.1.8
       set.prototype.isdisjointfrom:
-        specifier: ^1.1.5
+        specifier: 1.1.5
         version: 1.1.5
       set.prototype.issubsetof:
-        specifier: ^1.1.4
+        specifier: 1.1.4
         version: 1.1.4
       set.prototype.issupersetof:
-        specifier: ^1.1.3
+        specifier: 1.1.3
         version: 1.1.3
       set.prototype.symmetricdifference:
-        specifier: ^1.1.3
+        specifier: 1.1.3
         version: 1.1.3
       set.prototype.union:
-        specifier: ^1.1.3
+        specifier: 1.1.3
         version: 1.1.3
     devDependencies:
       '@evolu/common':
@@ -4626,9 +4623,6 @@ packages:
   '@sindresorhus/transliterate@2.3.1':
     resolution: {integrity: sha512-gVaaGtKYMYAMmI8buULVH3A2TXVJ98QiwGwI7ddrWGuGidGC2uRt4FHs22+8iROJ0QTzju9CuMjlVsrvpqsdhA==}
     engines: {node: '>=20'}
-
-  '@standard-schema/spec@1.1.0':
-    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@sveltejs/acorn-typescript@1.0.13':
     resolution: {integrity: sha512-wgKggnhZVL9Bfx1OaKKTrYY9BFRk6C8UAkQNUcIv1+llzYrIqy+RZm5HPKzn0NpEBvTVhTqB4kQyllZywsRBRQ==}
@@ -14111,8 +14105,6 @@ snapshots:
       escape-string-regexp: 5.0.0
 
   '@sindresorhus/transliterate@2.3.1': {}
-
-  '@standard-schema/spec@1.1.0': {}
 
   '@sveltejs/acorn-typescript@1.0.13(acorn@8.18.0)':
     dependencies:

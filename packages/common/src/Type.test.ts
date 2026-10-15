@@ -41,7 +41,7 @@ import {
 import { testCreateDeps } from "./Task.ts";
 import { Millis, testCreateTime } from "./Time.ts";
 import { utf8ToBytes } from "./Bytes.ts";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { StandardSchemaV1 } from "./StandardSchema.ts";
 import * as fc from "fast-check";
 import {
   Age,

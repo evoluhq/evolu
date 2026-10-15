@@ -99,11 +99,45 @@ const assertWorkspaceTargets = (
   }
 };
 
+const repositoryDirectory = new URL("../", import.meta.url);
+
+// A library's lockfile is not published, so a range lets an install that
+// resolves it anew, such as adding or updating the library, pick a newer,
+// untested version, such as a compromised release. Published packages
+// therefore pin external runtime dependencies exactly.
+for (const packageDirectory of [...packageDirectories, "apps/relay"]) {
+  const {
+    name,
+    dependencies = {},
+    optionalDependencies = {},
+  } = JSON.parse(
+    await readFile(
+      new URL(`${packageDirectory}/package.json`, repositoryDirectory),
+      "utf8",
+    ),
+  ) as {
+    readonly name: string;
+    readonly dependencies?: Readonly<Record<string, string>>;
+    readonly optionalDependencies?: Readonly<Record<string, string>>;
+  };
+  for (const [dependency, version] of Object.entries({
+    ...dependencies,
+    ...optionalDependencies,
+  })) {
+    // pnpm publishes workspace:* as the exact version, but workspace:^ as a range.
+    if (version === "workspace:*") continue;
+    match(
+      version,
+      /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u,
+      `${name} must pin ${dependency} to an exact version, not ${version}`,
+    );
+  }
+}
+
 // Packed with its prepack, which checks that the wasm is the pinned one, builds
 // the package and copies the wasm into dist.
 const sqliteWasmDirectory = "packages/sqlite-wasm";
 
-const repositoryDirectory = new URL("../", import.meta.url);
 // Node.js imports a module from its real path, which macOS's temporary
 // directory is not.
 const temporaryDirectory = await realpath(

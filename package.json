@@ -72,7 +72,7 @@
     "@vitest/browser": "^5.0.4",
     "@vitest/browser-playwright": "^5.0.4",
     "@vitest/coverage-v8": "^5.0.4",
-    "better-sqlite3": "^13.0.3",
+    "better-sqlite3": "13.0.3",
     "msgpackr": "2.1.0",
     "oxlint": "^1.87.0",
     "oxlint-tsgolint": "7.0.2004",
@@ -90,7 +90,7 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.4",
     "webpack": "^5.111.1",
-    "ws": "^8.22.0",
+    "ws": "8.22.0",
     "zod": "^4.6.6"
   },
   "engines": {

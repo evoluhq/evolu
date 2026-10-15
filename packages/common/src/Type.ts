@@ -453,7 +453,7 @@ import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/ciphers/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { StandardSchemaV1 } from "./StandardSchema.ts";
 import {
   createMutableArray,
   type AtLeastTwoReadonlyArray,

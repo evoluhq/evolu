@@ -65,8 +65,9 @@ for a post, run `node scripts/code-image.mts --help`.
 - After changing storage algorithms, SQL, indexes, or query plans, select the
   relevant storage tests. Run `pnpm bench:storage` only when the user
   explicitly requests it.
-- After changing a published package's `exports`, `publishConfig`, `types`, or
-  `files`, or its build configuration, run `pnpm build`, then
+- After changing a published package's `dependencies`,
+  `optionalDependencies`, `exports`, `publishConfig`, `types`, or `files`, or
+  its build configuration, run `pnpm build`, then
   `pnpm check:packages`, which packs all packages and needs their built `dist`
   and the pinned SQLite wasm.
 - After changing dependencies in any `package.json`, run `pnpm lint:sherif`.
@@ -88,6 +89,27 @@ for a post, run `node scripts/code-image.mts --help`.
   used by `pnpm test:node` and `pnpm test:bundle`, counts a timed-out test as
   cancelled, not failed, so `fail 0` can hide a timeout; check the exit code and
   the cancelled count before reporting a pass.
+
+## Third-party packages
+
+- Ask before adding a runtime dependency to a published package; first check
+  whether a few lines of our own code would do. Report its repository,
+  maintainers, dependency count, and
+  `npm view <pkg>@<version> _npmUser maintainers dist.attestations --json`.
+- Published packages pin external runtime dependencies to exact versions, which
+  `pnpm check:packages` enforces; peer dependencies keep ranges. Keep
+  `@noble/hashes` at the exact version `@scure/bip39` depends on, so apps
+  install one copy.
+- When a runtime dependency of a published package changes, read
+  `npm diff --diff=<pkg>@<old> --diff=<pkg>@<new>`, compare
+  `npm view <pkg>@<old> _npmUser maintainers dist.attestations --json` with
+  `<new>`, and report new dependencies, install scripts, network, filesystem,
+  or `eval` use, minified or encoded code, and a changed publisher or
+  maintainer or lost provenance. Add a changeset; an update that changes no
+  behavior is a patch.
+- Ask before allowing a package's install scripts in `allowBuilds` or
+  excluding it from pnpm's release-age check, and check
+  `git diff pnpm-workspace.yaml` after installs.
 
 ## Module structure and naming
 

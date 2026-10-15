@@ -61,17 +61,17 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "array-from-async": "^3.0.0",
-    "array.prototype.tosorted": "^1.1.4",
-    "promise.try": "^2.0.2",
-    "promise.withresolvers": "^1.0.4",
-    "set.prototype.difference": "^1.1.7",
-    "set.prototype.intersection": "^1.1.8",
-    "set.prototype.isdisjointfrom": "^1.1.5",
-    "set.prototype.issubsetof": "^1.1.4",
-    "set.prototype.issupersetof": "^1.1.3",
-    "set.prototype.symmetricdifference": "^1.1.3",
-    "set.prototype.union": "^1.1.3"
+    "array-from-async": "3.0.0",
+    "array.prototype.tosorted": "1.1.4",
+    "promise.try": "2.0.2",
+    "promise.withresolvers": "1.0.4",
+    "set.prototype.difference": "1.1.7",
+    "set.prototype.intersection": "1.1.8",
+    "set.prototype.isdisjointfrom": "1.1.5",
+    "set.prototype.issubsetof": "1.1.4",
+    "set.prototype.issupersetof": "1.1.3",
+    "set.prototype.symmetricdifference": "1.1.3",
+    "set.prototype.union": "1.1.3"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
