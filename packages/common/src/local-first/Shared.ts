@@ -1510,6 +1510,12 @@ interface EvoluTenant extends AsyncDisposable {
 
   readonly getSyncTenant: () => SyncTenant;
 
+  /**
+   * Whether this tenant applies sync messages for the owner: an instance has a
+   * writable registration for it, and the database was not refused.
+   */
+  readonly isApplyingOwner: (ownerId: OwnerId) => boolean;
+
   readonly refreshSyncRoutes: () => void;
 
   readonly requestCreateSyncMessages: (
@@ -2870,7 +2876,14 @@ const createEvoluTenant =
                     messages,
                   ),
                 );
-              if (currentTenantsByName.size > 1) {
+              // Other tenants drop a copy unless they apply sync messages for
+              // the owner, so encrypt one only when one of them does.
+              if (
+                [...currentTenantsByName].some(
+                  ([tenantName, tenant]) =>
+                    tenantName !== name && tenant.isApplyingOwner(ownerId),
+                )
+              ) {
                 broadcastProtocolMessages(
                   ownerId,
                   createProtocolBroadcastMessagesFromCrdtMessages(run.deps)(
@@ -3333,6 +3346,13 @@ const createEvoluTenant =
       return ownersById;
     };
 
+    // Applying a sync message requires the write key, and a refused database
+    // applies none.
+    const getApplyingOwner = (ownerId: OwnerId): Owner | undefined =>
+      dbWorker.type === "Refused"
+        ? undefined
+        : getUsedOwnersById(new Set([ownerId])).get(ownerId);
+
     const requestCreateSyncMessages = (
       ownerIds: ReadonlySet<OwnerId>,
       target: SyncTarget,
@@ -3556,6 +3576,8 @@ const createEvoluTenant =
                 ),
               },
 
+        isApplyingOwner: (ownerId) => getApplyingOwner(ownerId) !== undefined,
+
         refreshSyncRoutes,
 
         addInstance: (message, tabPort, onDisposed) => {
@@ -3721,8 +3743,7 @@ const createEvoluTenant =
           source,
           continues,
         ): void => {
-          if (dbWorker.type === "Refused") return;
-          const owner = getUsedOwnersById(new Set([ownerId])).get(ownerId);
+          const owner = getApplyingOwner(ownerId);
           if (!owner) return;
 
           console.debug("requestApplySyncMessage", {

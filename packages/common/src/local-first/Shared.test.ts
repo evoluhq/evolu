@@ -11687,6 +11687,120 @@ describe("local delivery between databases", () => {
     }
   });
 
+  it("encrypts local copies of a mutation only for databases that apply them", async (t) => {
+    await using setup = await setupSharedWorker({
+      createWebSocket: testCreateWebSocket({ isOpen: false }),
+    });
+    // Each encryption draws one nonce, so nonce draws count encrypted copies.
+    const randomBytesCreate = t.mock.method(
+      setup.run.deps.randomBytes,
+      "create",
+    );
+    const transports = [
+      createOwnerWebSocketTransport({
+        url: "wss://local-encryption.example",
+        ownerId: testAppOwner.id,
+      }),
+    ] as const;
+    const addOwner = async (
+      instance: TestEvoluInstance,
+      owner: SyncOwner["owner"],
+    ): Promise<void> => {
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "add", owner: { owner, transports } }],
+      });
+      await testWaitForWorkerMessage();
+    };
+    const writer = await setup.createEvolu();
+    await addOwner(writer, testAppOwner);
+
+    const countMutationNonceDraws = async (): Promise<number> => {
+      const message = testCreateCrdtMessage(
+        createId(setup.run.deps),
+        1,
+        "encrypted",
+      );
+      writer.evoluChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [{ ...message.change, ownerId: testAppOwner.id }],
+        onCompleteIds: [],
+        subscribedQueries: new Set(),
+      });
+      await testWaitForWorkerMessage();
+      assertLength(writer.dbInputs, 1);
+      const [mutation] = writer.dbInputs;
+      writer.dbInputs.splice(0);
+      randomBytesCreate.mock.resetCalls();
+      writer.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: mutation.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: writer.id,
+          message: {
+            type: "Mutate",
+            clock: createTimestamp(),
+            messagesByOwnerId: new Map([[testAppOwner.id, [message]]]),
+            rowsByQuery: new Map(),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+      return randomBytesCreate.mock.calls.filter(
+        ({ arguments: [bytesLength] }) =>
+          bytesLength === xChaCha20Poly1305NonceLength,
+      ).length;
+    };
+
+    // Every transport is closed, so no upload is encrypted, and the writer's
+    // own database gets no copy.
+    assertSame(await countMutationNonceDraws(), 0);
+
+    // A database without the owner, with another owner, with readonly access,
+    // or refused would drop a copy, so none is encrypted for it.
+    const unregistered = await setup.createEvolu({
+      tenantName: Name.orThrow("local-unregistered"),
+    });
+    assertSame(await countMutationNonceDraws(), 0);
+
+    const unrelated = await setup.createEvolu({
+      tenantName: Name.orThrow("local-unrelated"),
+    });
+    await addOwner(unrelated, testAppOwner2);
+    assertSame(await countMutationNonceDraws(), 0);
+
+    const readonly = await setup.createEvolu({
+      tenantName: Name.orThrow("local-readonly"),
+    });
+    await addOwner(readonly, {
+      id: testAppOwner.id,
+      encryptionKey: testAppOwner.encryptionKey,
+    });
+    assertSame(await countMutationNonceDraws(), 0);
+
+    const refused = await setup.createEvolu({
+      tenantName: Name.orThrow("local-refused"),
+    });
+    await addOwner(refused, testAppOwner);
+    refused.dbWorkerPort.postMessage({
+      type: "LeaderRefused",
+      error: createUnknownError(new Error("disk I/O error")),
+    });
+    await testWaitForWorkerMessage();
+    assertSame(await countMutationNonceDraws(), 0);
+
+    // A database with writable access gets an encrypted copy.
+    const sibling = await setup.createEvolu({
+      tenantName: Name.orThrow("local-sibling"),
+    });
+    await addOwner(sibling, testAppOwner);
+    assertSame(await countMutationNonceDraws(), 1);
+    assertLength(sibling.dbInputs, 1);
+    for (const instance of [unregistered, unrelated, readonly])
+      assertEqual(instance.dbInputs, []);
+  });
+
   it("reconciles new continuation copies through other relays and ignores duplicates", async () => {
     const createWebSocket = testCreateWebSocket();
     await using setup = await setupSharedWorker({ createWebSocket });
