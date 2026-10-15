@@ -2,6 +2,8 @@
 # https://www.electronjs.org/docs/latest/tutorial/tutorial-first-app#initializing-your-npm-project
 nodeLinker: hoisted
 
+# Only packages set to true here may run install scripts. An install fails when
+# an unlisted package has one, so each new entry is a decision.
 allowBuilds:
   "@parcel/watcher": true
   "@tailwindcss/oxide": true
@@ -13,7 +15,54 @@ allowBuilds:
   msgpackr-extract: true
   react-native-nitro-modules: true
   sharp: true
-  unrs-resolver: true
+
+# Installs take only versions published at least a day ago, when most malicious
+# releases have been caught and removed, and no version published with weaker
+# trust evidence than an earlier one, such as one missing the provenance its
+# predecessors had. Setting the age makes pnpm enforce it strictly. Evolu's own
+# packages install as soon as they are released, which examples switched to the
+# published packages (pnpm examples:toggle-deps) need right after a release.
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - "@evolu/*"
+trustPolicy: no-downgrade
+# Versions published with weaker evidence than an earlier version of the same
+# package, each checked by hand. Each entry covers one version only.
+trustPolicyExclude:
+  # Expo SDK 57 patches, which an Expo maintainer publishes by hand, while SDK
+  # 58 publishes from GitHub Actions. Delete them after upgrading Expo in
+  # packages/react-native and examples/react-expo to SDK 58.
+  - "@expo/cli@57.0.29"
+  - "@expo/config-plugins@57.0.10"
+  - "@expo/config@57.0.10"
+  - "@expo/fingerprint@0.20.14"
+  - "@expo/image-utils@0.11.6"
+  - "@expo/inline-modules@0.1.8"
+  - "@expo/local-build-cache-provider@57.0.9"
+  - "@expo/metro-config@57.0.13"
+  - "@expo/metro-file-map@57.0.4"
+  - "@expo/prebuild-config@57.0.18"
+  - "@expo/require-utils@57.0.6"
+  - "@expo/router-server@57.0.12"
+  - "@expo/ui@57.0.23"
+  - "babel-preset-expo@57.0.15"
+  - "expo-asset@57.0.19"
+  - "expo-constants@57.0.21"
+  - "expo-linking@57.0.12"
+  - "expo-modules-autolinking@57.0.15"
+  - "expo-modules-core@57.0.22"
+  - "expo-modules-jsi@57.1.2"
+  - "expo-router@57.0.26"
+  - "expo-splash-screen@57.0.10"
+  - "expo-sqlite@57.0.4"
+  - "expo@57.0.28"
+  # The npm team's 2023 security backports, after 7.5.4 had provenance.
+  - semver@5.7.2
+  - semver@6.3.1
+  # Published by its maintainer without the provenance 4.0.1 had.
+  - chokidar@4.0.3
+  # Published by its maintainer the same day as 2.5.0, without its provenance.
+  - "@trickfilm400/rollup-plugin-off-main-thread@3.0.0-pre1"
 
 packages:
   - apps/*

@@ -108,7 +108,9 @@ for a post, run `node scripts/code-image.mts --help`.
   maintainer or lost provenance. Add a changeset; an update that changes no
   behavior is a patch.
 - Ask before allowing a package's install scripts in `allowBuilds` or
-  excluding it from pnpm's release-age check, and check
+  weakening the release-age or trust checks in `pnpm-workspace.yaml` or
+  `apps/web/deploy/.npmrc`, such as with a `minimumReleaseAgeExclude` or
+  `trustPolicyExclude` entry. pnpm can write such entries itself, so check
   `git diff pnpm-workspace.yaml` after installs.
 
 ## Module structure and naming
