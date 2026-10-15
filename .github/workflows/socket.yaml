@@ -18,6 +18,8 @@ concurrency:
   group: socket-scan-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   socket-security:
     # Dependabot runs get no secrets, so the scan would fail; Socket's GitHub
@@ -35,6 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           # For PRs, fetch one additional commit for proper diff analysis
           fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
 
