@@ -64,6 +64,7 @@ export const navigation: Array<NavGroup> = [
     title: "Other",
     links: [
       { title: "Comparison", href: "/docs/comparison" },
+      { title: "Supply chain", href: "/docs/supply-chain" },
       { title: "Showcase", href: "/docs/showcase" },
       { title: "Changelog", href: "https://github.com/evoluhq/evolu/releases" },
     ],

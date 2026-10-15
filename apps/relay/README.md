@@ -28,6 +28,28 @@ directory containing that file.
 Tags follow the npm package version: `4.0.0`, `4.0`, `4`, and `latest` for the
 newest stable release. Prerelease versions only get their full version tag.
 
+## Verify the image
+
+Each image is signed with a GitHub artifact attestation. With the
+[GitHub CLI](https://cli.github.com), check that this repository's Docker
+workflow on `main` built an image, and print the digest it verified:
+
+```bash
+gh attestation verify oci://docker.io/evoluhq/relay:4.2.15 \
+  --repo evoluhq/evolu \
+  --signer-workflow evoluhq/evolu/.github/workflows/docker.yaml \
+  --source-ref refs/heads/main \
+  --format json \
+  --jq '.[].verificationResult.statement.subject[] | "\(.name)@sha256:\(.digest.sha256)"'
+```
+
+To run exactly the image you verified, replace `docker.io/evoluhq/relay:4` in
+the `docker run` command above, or the `image` in `docker-compose.yml`, with
+the printed reference, such as `docker.io/evoluhq/relay@sha256:…`. Tags such as
+`4` move to each new release, so verify each new version before you move to it.
+[Supply chain](https://www.evolu.dev/docs/supply-chain) explains what the
+attestation proves and what it doesn't.
+
 ## Restarts
 
 A defect, a bug the relay cannot recover from, makes it close its connections
