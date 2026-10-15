@@ -106,23 +106,36 @@ const fixMdxFile = (
   const lines = newContent.split("\n");
   const result: Array<string> = [];
   let skipUntilLevel = 0;
+  let lastSkippedLine = "";
 
   for (const line of lines) {
+    const headingMatch = /^(#{2,6}) /u.exec(line);
+    const level = headingMatch ? headingMatch[1].length : 0;
     // TypeDoc emits a member's anchor before its heading, so it ends the
-    // previous member's skipped section.
-    if (/^<a id="[^"]+"><\/a>$/u.test(line)) skipUntilLevel = 0;
-    const headingMatch = /^(#{2,4}) /u.exec(line);
-    if (headingMatch) {
-      const level = headingMatch[1].length;
-      if (/^#{2,4} (?:Type Parameters?|Parameters?|Returns?)$/u.test(line)) {
-        skipUntilLevel = level;
-        continue;
-      }
-      if (skipUntilLevel > 0 && level <= skipUntilLevel) {
-        skipUntilLevel = 0;
-      }
+    // previous member's skipped section, as does a heading at the same or a
+    // higher level.
+    if (
+      skipUntilLevel > 0 &&
+      (/^<a id="[^"]+"><\/a>$/u.test(line) ||
+        (level > 0 && level <= skipUntilLevel))
+    ) {
+      skipUntilLevel = 0;
+      // The rule the theme puts between members ends a skipped section that
+      // closes a member, so keep it. A union return type puts rules between
+      // its members, but never after the last one.
+      if (lastSkippedLine === "---") result.push("---", "");
+    }
+    // parametersFormat "none" in typedoc.json omits Parameters and Type
+    // Parameters sections, but the Markdown theme has no option to omit
+    // Returns sections. A returned function's signature nests its own Returns
+    // section, which the outer one skips with the rest of its content.
+    if (skipUntilLevel === 0 && /^#{2,6} Returns?$/u.test(line)) {
+      skipUntilLevel = level;
+      lastSkippedLine = "";
+      continue;
     }
     if (skipUntilLevel === 0) result.push(line);
+    else if (line.trim() !== "") lastSkippedLine = line;
   }
   newContent = result.join("\n");
 

@@ -29,7 +29,7 @@
   "expandParameters": true,
   "readme": "none",
   "indexFormat": "table",
-  "parametersFormat": "table",
+  "parametersFormat": "none",
   "interfacePropertiesFormat": "list",
   "classPropertiesFormat": "list",
   "enumMembersFormat": "table",
