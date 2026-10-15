@@ -1,7 +1,13 @@
 name: Docker
 
+# Builds the relay image from the published package, as
+# docs/adr/relay-image-installs-published-package.md decides. Each finished
+# Release run on main starts it, so its wait for approval never holds Release.
 on:
-  workflow_call:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions: {}
@@ -16,15 +22,25 @@ env:
 jobs:
   version:
     name: Relay version
-    if: github.repository == 'evoluhq/evolu' && github.ref == 'refs/heads/main'
+    # A failed Release run may not have staged the relay. A Release run of a
+    # fork's pull request can have a branch named main too.
+    if: >-
+      github.repository == 'evoluhq/evolu' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      exists: ${{ steps.exists.outputs.exists }}
     steps:
+      # A rerun of an older Release run builds that run's relay, not main's.
+      # A manual run has no head_sha and checks out main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
       - name: Read the relay version
@@ -33,10 +49,36 @@ jobs:
           version=$(jq -r .version apps/relay/package.json)
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      # Only a run whose image is missing needs the push job, whose environment
+      # asks for approval.
+      - name: Look up the image on Docker Hub
+        id: exists
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          status=$(curl --silent --show-error --retry 3 --max-time 30 \
+            --output /dev/null --write-out '%{http_code}' \
+            "https://hub.docker.com/v2/namespaces/evoluhq/repositories/relay/tags/$VERSION")
+          case "$status" in
+            200) echo "exists=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "exists=false" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "Docker Hub lookup failed with HTTP $status" >&2
+              exit 1
+              ;;
+          esac
+
   push:
     name: Push relay image
     needs: version
+    # A manual run always runs this job, which repairs an existing image's tags.
+    if: github.event_name == 'workflow_dispatch' || needs.version.outputs.exists == 'false'
     runs-on: ubuntu-latest
+    # The environment holds the Docker Hub token. Only main can use it, and each
+    # run needs the maintainer's approval, given after approving the staged
+    # relay on npm. Its Prevent self-review stays off, as the maintainer, its
+    # only reviewer, starts the runs and reruns.
+    environment: docker-hub
     permissions:
       artifact-metadata: write
       attestations: write
@@ -74,10 +116,8 @@ jobs:
       # caches each package's version list for up to five minutes, a new
       # release can take longer to appear, and its tarball can return 404 for
       # minutes after npm lists it, so wait until npm can download the relay and
-      # each @evolu package it depends on, as npm install does. The wait stays
-      # short, as a longer one would hold the Release run, and a pending run of
-      # a newer commit can replace a pending Version Packages run. If the
-      # approval comes later, run this workflow on main after it.
+      # each @evolu package it depends on, as npm install does. If the npm
+      # approval comes later, rerun this job.
       - name: Wait for npm to serve @evolu/relay@${{ env.VERSION }}
         if: steps.image.outputs.published == 'false'
         run: |
@@ -91,11 +131,12 @@ jobs:
             if is_served; then exit 0; fi
             sleep 10
           done
-          echo "npm did not serve @evolu/relay@$VERSION and its @evolu dependencies after 90 attempts. If it awaits approval on npm, run the Docker workflow on main after approving it." >&2
+          echo "npm did not serve @evolu/relay@$VERSION and its @evolu dependencies after 90 attempts. If it awaits approval on npm, rerun this job after approving it." >&2
           exit 1
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
@@ -108,6 +149,8 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # The builds use no cache, as jobs on main that run dependency code can
+      # write the Actions cache this job would read.
       - name: Build amd64 image for the smoke test
         if: steps.image.outputs.published == 'false'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -116,8 +159,6 @@ jobs:
           build-args: RELAY_PACKAGE=@evolu/relay@${{ env.VERSION }}
           load: true
           tags: evolu/relay:smoke
-          cache-from: type=gha,scope=relay
-          cache-to: type=gha,scope=relay,mode=max
 
       - name: Smoke test on a custom port
         if: steps.image.outputs.published == 'false'
@@ -167,7 +208,6 @@ jobs:
           push: true
           tags: ${{ env.IMAGE }}:${{ env.VERSION }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=relay
           provenance: true
           sbom: true
 

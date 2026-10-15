@@ -166,16 +166,6 @@ jobs:
           version=$(jq -r '.[] | select(.name == "@evolu/sqlite-wasm") | .version' <<<"$PUBLISHED")
           [ -z "$version" ] || gh release edit "@evolu/sqlite-wasm@$version" --prerelease=false --latest=false
 
-  docker:
-    needs: publish
-    permissions:
-      artifact-metadata: write
-      attestations: write
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/docker.yaml
-    secrets: inherit
-
   # Deploys the export that the Checks workflow's build-web job built to
   # Cloudflare. The job holding the token runs no code from the repository's
   # dependencies and restores no shared cache: its cone-mode sparse checkout

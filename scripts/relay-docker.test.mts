@@ -100,6 +100,91 @@ describe("relay Docker release recovery", () => {
     });
   }
 
+  it("runs after Release and pushes from the docker-hub environment", () => {
+    const jobs = workflow.split(/\n {2}(?=\S)/u);
+    const version = jobs.find((job) => job.startsWith("version:\n"));
+    const push = jobs.find((job) => job.startsWith("push:\n"));
+    const release = readFileSync(
+      new URL(".github/workflows/release.yaml", root),
+      "utf8",
+    );
+
+    assertTrue(
+      workflow.includes(
+        "  workflow_run:\n    workflows: [Release]\n    types: [completed]\n    branches: [main]\n",
+      ),
+    );
+    // Only a successful Release run of this repository, or a manual run, goes
+    // on, and only a missing image or a manual run asks for approval.
+    assertEqual(
+      version?.match(/\n {4}if: >-\n((?: {6}.+\n)+)/u)?.[1],
+      [
+        "      github.repository == 'evoluhq/evolu' && github.ref == 'refs/heads/main' &&",
+        "      (github.event_name == 'workflow_dispatch' ||",
+        "      (github.event.workflow_run.conclusion == 'success' &&",
+        "      github.event.workflow_run.head_repository.full_name == github.repository))",
+        "",
+      ].join("\n"),
+    );
+    assertEqual(
+      push?.match(/\n {4}if: (.+)\n/u)?.[1],
+      "github.event_name == 'workflow_dispatch' || needs.version.outputs.exists == 'false'",
+    );
+    assertEqual(push?.match(/\n {4}environment: (.+)\n/u)?.[1], "docker-hub");
+    assertSame(release.includes("docker.yaml"), false);
+    assertSame(release.includes("secrets: inherit"), false);
+  });
+
+  for (const [status, curlExit, exists] of [
+    ["200", 0, "true"],
+    ["404", 0, "false"],
+    ["503", 0, undefined],
+    ["000", 6, undefined],
+  ] as const) {
+    it(`asks for approval only when the image lookup returns 404, here ${status} with exit ${curlExit}`, () => {
+      const directory = mkdtempSync(join(tmpdir(), "evolu-docker-exists-"));
+      try {
+        const output = join(directory, "output");
+        writeFileSync(output, "");
+        const script = setupWorkflowScript(
+          setupWorkflowStep("name: Look up the image on Docker Hub"),
+        );
+        const result = spawnSync(
+          "bash",
+          [
+            "-euo",
+            "pipefail",
+            "-c",
+            `curl() { printf '%s' "$CURL_STATUS"; return "$CURL_EXIT"; }
+            ${script}`,
+          ],
+          {
+            env: {
+              ...process.env,
+              VERSION: "3.1.0",
+              GITHUB_OUTPUT: output,
+              CURL_STATUS: status,
+              CURL_EXIT: `${curlExit}`,
+            },
+            encoding: "utf8",
+            timeout: 5000,
+          },
+        );
+        assertSame(result.error, undefined);
+        const outputs = readFileSync(output, "utf8");
+        if (exists === undefined) {
+          assertTrue(result.status !== 0);
+          assertSame(outputs, "");
+        } else {
+          assertSame(result.status, 0);
+          assertSame(outputs, `exists=${exists}\n`);
+        }
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
+
   for (const [packFailures, exitCode, expectedPacks] of [
     [
       2,
