@@ -1,0 +1,112 @@
+export const metadata = {
+  title: "Supply chain",
+  description:
+    "How Evolu's releases reach npm and Docker Hub, what each safeguard proves, and how to verify a release.",
+};
+
+# Supply chain
+
+Whoever compromises a package, or the account that publishes it, reaches every app that installs it. This page explains how Evolu's releases reach npm and Docker Hub, what each safeguard proves and what it doesn't, how to verify a release yourself, and what apps can do to protect themselves. To report a vulnerability or a suspected compromise, follow the [security policy](https://github.com/evoluhq/evolu/security/policy).
+
+## Releases need the maintainer's approval
+
+GitHub Actions releases Evolu's packages from the `main` branch of [evoluhq/evolu](https://github.com/evoluhq/evolu). When a merged Changesets pull request bumps their versions, the Release workflow packs the packages and stages them on npm. npm keeps a staged version out of installs until the maintainer approves it on npm with a hardware security key, which no token in CI can do. The maintainer approves only after checking that every commit since the previous release is one they made or reviewed.
+
+Each package's [trusted publisher](https://docs.npmjs.com/trusted-publishers) lets the workflow only stage, and only from the workflow's `npm` environment, a GitHub setting that only `main` can use. Each package also requires two-factor authentication to publish and refuses tokens. The job that stages the packages installs no npm package and runs only actions pinned by commit SHA, so none of the repository's dependencies runs while the job can get its token from npm.
+
+## The relay image needs a second approval
+
+After a release, the Docker workflow builds the [`evoluhq/relay`](https://hub.docker.com/r/evoluhq/relay) image from the `@evolu/relay` package published on npm, not from the repository, so the image runs the code npm serves. It installs the package with install scripts disabled, on a Node.js base image pinned by digest, and signs the image with a [GitHub artifact attestation](https://docs.github.com/en/actions/concepts/security/artifact-attestations).
+
+The workflow pushes the image only after the maintainer approves its deployment to the `docker-hub` environment on GitHub, which holds the Docker Hub token. That approval keeps a compromised dependency or workflow run from pushing an image by itself. Unlike the approval on npm, it's given on GitHub, so it doesn't protect against a takeover of the maintainer's GitHub account, as [Limits](#limits) explains.
+
+## Dependencies
+
+Evolu's published packages pin their direct runtime dependencies to exact versions, so a new version of one reaches apps only in a new Evolu release. Before such a release, the maintainer reads the diff between its old and new versions and compares their publishers, maintainers, and provenance. Those dependencies' own dependencies use version ranges, such as the ones the polyfills of `@evolu/react-native` depend on, so new versions of them reach apps whenever apps update their lockfiles, and the relay image whenever it's built. No package in the current dependency trees of Evolu's packages runs an install script. pnpm 11 still stops an install of `@evolu/nodejs` or `@evolu/relay` to ask about better-sqlite3, because it ships build files; set `better-sqlite3: false` in `allowBuilds`, as its prebuilt binaries need no build. Frameworks such as React, Vue, and Expo are peer dependencies, which apps install themselves.
+
+Development dependencies don't ship to apps, but they run on the maintainer's computer and in CI. Their installs take only versions published at least a day ago and refuse a version with weaker trust evidence, such as missing provenance, than an earlier version of the same package. The exceptions, each checked by hand, are listed in `pnpm-workspace.yaml`.
+
+## The repository
+
+- The maintainer keeps the SSH key for Git pushes and the key that approves npm releases on a hardware security key, a Trezor Safe 7, so malware on the maintainer's computer can't copy them, and its secure element makes them hard to extract from a stolen device. Its firmware is open source and reproducibly built, so what it does can be checked rather than trusted. The GitHub CLI token on that computer can't change code.
+- `main` can't be force-pushed or deleted, and GitHub releases published after October 15, 2026 are immutable, so their tags can't move.
+- Workflows reference actions by full commit SHA, which the repository requires, the default workflow token is read-only, and checkouts keep no credentials. The jobs that hold the npm, Docker Hub, and website credentials run no install scripts of dependencies.
+- CodeQL, secret scanning with push protection, Dependabot alerts, and malware alerts check the repository and its dependencies.
+
+## What each safeguard proves
+
+Provenance is not approval. A provenance attestation proves where a package was built: the repository, the workflow, and the commit. It doesn't prove that anyone wanted that commit released. Someone who takes over the maintainer's GitHub session can commit to `main` in GitHub's web interface, and a build of that commit gets valid provenance. The approval on npm is what stops such a commit: the version stays staged until the maintainer, who checks every commit since the previous release, approves it with a hardware security key, which a GitHub session can't use.
+
+| Safeguard          | Proves                                                   | Doesn't prove                                      |
+| ------------------ | -------------------------------------------------------- | -------------------------------------------------- |
+| Registry signature | The installed tarball is the one npm published           | Who published it                                   |
+| Provenance         | Which repository, workflow, and commit built the package | That the maintainer wanted it released             |
+| Approver           | That the maintainer's npm account approved the version   | That the code is safe; an approval is not an audit |
+| Image attestation  | That a Docker workflow on `main` built the image         | That the maintainer's GitHub account wasn't taken  |
+
+## Verify a release
+
+Each version of an Evolu package published since October 15, 2026 shows GitHub Actions as its publisher, the maintainer as its approver, and a provenance attestation:
+
+```bash
+npm view @evolu/common@8.23.0 _npmUser dist.attestations --json
+```
+
+```json
+{
+  "_npmUser": {
+    "name": "GitHub Actions",
+    "approver": { "name": "steida" }
+  },
+  "dist.attestations": {
+    "provenance": { "predicateType": "https://slsa.dev/provenance/v1" }
+  }
+}
+```
+
+The output above is shortened. Report a version published since that date that lacks any of the three as a suspected compromise. In a project installed with npm, `npm audit signatures` checks the registry signature of every installed package and the provenance of each package that has it.
+
+For the relay image, the [GitHub CLI](https://cli.github.com) checks that the Docker workflow on `main` built it and prints the digest it verified:
+
+```bash
+gh attestation verify oci://docker.io/evoluhq/relay:4.2.15 \
+  --repo evoluhq/evolu \
+  --signer-workflow evoluhq/evolu/.github/workflows/docker.yaml \
+  --source-ref refs/heads/main \
+  --format json \
+  --jq '.[].verificationResult.statement.subject[] | "\(.name)@sha256:\(.digest.sha256)"'
+```
+
+Run the image by that digest, such as `docker.io/evoluhq/relay@sha256:…`, instead of a tag, because tags such as `4` move to each new release.
+
+## Limits
+
+Where a fix for a gap is known, it's described with the gap.
+
+- **Reviews of each change are not an audit.** Before a release, the maintainer and two AI models from different vendors review each change, which catches many bugs early, but they review one change at a time, and none of them is independent of the project. A periodic independent audit of the whole codebase would add both.
+- **The maintainer checks commits, not the packed packages.** The job that builds and packs them installs development dependencies and runs their build tools, such as the TypeScript compiler, so a compromised development dependency could change a release without any change to Evolu's code, and the release would still get valid provenance. Reviewing the packed packages would close this: before approving, the maintainer could download each staged package with `npm stage download` and review its diff against the previous version, as with commits. Reproducible builds alone wouldn't, because a build on the maintainer's computer runs the same locked development dependencies.
+- **GitHub asks for a second factor only at sign-in.** GitHub requires an authenticator app next to security keys, whose codes can be phished, and a session stolen from a browser needs no second factor at all. Whoever gets in either way can commit to `main` and approve the `docker-hub` deployment, so they can change this website, which deploys from every push to `main`, and push a relay image that passes the attestation check above. They can't publish a package on their own, because npm asks for the maintainer's hardware key at every approval. A commit they make appears under the maintainer's name, so only the maintainer's check of every commit before a release keeps it out of the next one. Signing the image with a key kept outside GitHub would make its check independent of GitHub. Until then, if you want the approval on npm to cover your relay, run `@evolu/relay` from npm, installed from your lockfile.
+
+## Protect your app
+
+These settings protect any app, not only one built on Evolu:
+
+- **Install from a lockfile.** Commit it, and install with `pnpm install --frozen-lockfile` or `npm ci` in CI, so a new version reaches your app only when you update the lockfile.
+- **Wait a day before installing new versions.** Most malicious versions are found and removed within hours. pnpm 10.16 and later read `minimumReleaseAge` in minutes. pnpm 11 waits a day by default, but when no older version matches, it installs the new one anyway unless `minimumReleaseAge` is set explicitly, as below. npm 11.10 and later read `min-release-age` in days. The wait also delays security fixes; to take one sooner, list the package in `minimumReleaseAgeExclude` for pnpm or `min-release-age-exclude` for npm 11.17 and later.
+- **Refuse trust downgrades.** With `trustPolicy: no-downgrade`, pnpm 10.21 and later refuse a version published with weaker trust evidence than an earlier one, such as a version published with a stolen token after earlier versions came from a trusted publisher. Some maintainers still publish by hand, as Expo does for its SDK 57 patches, so check each refused version and list it in `trustPolicyExclude`.
+- **Allow install scripts one package at a time.** pnpm 10 and later run a dependency's install scripts only for packages you allow, with `allowBuilds` in pnpm 11. With npm, `ignore-scripts=true` turns off install scripts, your project's own included.
+- **Pin the relay image by digest**, verify a new image as [shown above](#verify-a-release) before you move the pin, and watch the [evoluhq/evolu releases](https://github.com/evoluhq/evolu/releases) to learn when a security fix needs a new pin.
+
+For pnpm, in `pnpm-workspace.yaml`:
+
+```text
+minimumReleaseAge: 1440
+trustPolicy: no-downgrade
+```
+
+For npm, run these in the project's directory, which writes them to its `.npmrc`:
+
+```bash
+npm config set min-release-age 1 --location=project
+npm config set ignore-scripts true --location=project
+```
