@@ -18,7 +18,10 @@ import {
 } from "../Assert.ts";
 import { createBuffer, encodeNonNegativeInt } from "../Bytes.ts";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
-import type { DecryptWithXChaCha20Poly1305Error } from "../Crypto.ts";
+import {
+  xChaCha20Poly1305NonceLength,
+  type DecryptWithXChaCha20Poly1305Error,
+} from "../Crypto.ts";
 import { createUnknownError, UnknownError } from "../Error.ts";
 import { isPlainObject } from "../Object.ts";
 import type {
@@ -9423,6 +9426,104 @@ describe("with one evolu instance", () => {
       assertSame(input.request.type, "ForSharedWorker");
       assertSame(input.request.message.type, "ApplySyncMessage");
       assertTrue(input.request.message.continues);
+    });
+
+    it("encrypts a write's upload only while a claimed transport is open", async (t) => {
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
+      await using setup = await setupSharedWorker({ createWebSocket });
+      // Each encryption draws one nonce, so nonce draws count encryptions.
+      const randomBytesCreate = t.mock.method(
+        setup.run.deps.randomBytes,
+        "create",
+      );
+      const instance = await setup.createEvolu();
+      const transports = [
+        createOwnerWebSocketTransport({
+          url: "wss://closed-upload.example",
+          ownerId: testAppOwner.id,
+        }),
+        createOwnerWebSocketTransport({
+          url: "wss://opening-upload.example",
+          ownerId: testAppOwner.id,
+        }),
+      ] as const;
+      const otherOwnerTransport = createOwnerWebSocketTransport({
+        url: "wss://other-owner-upload.example",
+        ownerId: testAppOwner2.id,
+      });
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { action: "add", owner: { owner: testAppOwner, transports } },
+          {
+            action: "add",
+            owner: { owner: testAppOwner2, transports: [otherOwnerTransport] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      createWebSocket.open(otherOwnerTransport.url);
+      await testWaitForWorkerMessage();
+      assertEqual(
+        await respondToSyncRound(instance, createWebSocket, testAppOwner2),
+        [otherOwnerTransport.url],
+      );
+
+      const writeAndCountNonceDraws = async (): Promise<number> => {
+        const message = testCreateCrdtMessage(
+          createId(setup.run.deps),
+          1,
+          "upload",
+        );
+        instance.evoluChannel.port2.postMessage({
+          type: "Mutate",
+          changes: [{ ...message.change, ownerId: testAppOwner.id }],
+          onCompleteIds: [],
+          subscribedQueries: new Set(),
+        });
+        await testWaitForWorkerMessage();
+        const mutation = instance.dbInputs.at(-1);
+        assertNotUndefined(mutation);
+        assertSame(mutation.request.type, "ForEvolu");
+        randomBytesCreate.mock.resetCalls();
+        instance.dbWorkerPort.postMessage({
+          type: "OnQueuedResponse",
+          attemptId: mutation.attemptId,
+          response: {
+            type: "ForEvolu",
+            id: instance.id,
+            message: {
+              type: "Mutate",
+              clock: createTimestamp(),
+              messagesByOwnerId: new Map([[testAppOwner.id, [message]]]),
+              rowsByQuery: new Map(),
+            },
+          },
+        });
+        await testWaitForWorkerMessage();
+        return randomBytesCreate.mock.calls.filter(
+          ({ arguments: [bytesLength] }) =>
+            bytesLength === xChaCha20Poly1305NonceLength,
+        ).length;
+      };
+
+      // The round a transport starts when it opens reads the write from the
+      // database, so nothing is encrypted while every transport claimed for
+      // the write's owner is closed, even with another owner's open.
+      assertSame(await writeAndCountNonceDraws(), 0);
+      assertEqual(createWebSocket.sentMessages, []);
+
+      createWebSocket.open(transports[1].url);
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(instance, createWebSocket), [
+        transports[1].url,
+      ]);
+
+      assertSame(await writeAndCountNonceDraws(), 1);
+      assertEqual(
+        createWebSocket.sentMessages.map(({ url }) => url),
+        [transports[1].url],
+      );
     });
 
     it("sends unsubscribe when the last transport claim is removed", async () => {

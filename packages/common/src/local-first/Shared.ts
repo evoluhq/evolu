@@ -2859,13 +2859,17 @@ const createEvoluTenant =
               const owner = writersById.get(ownerId);
               if (!owner) continue;
 
-              protocolMessagesByOwnerId.set(
-                ownerId,
-                createProtocolMessageFromCrdtMessages(run.deps)(
-                  owner,
-                  messages,
-                ),
-              );
+              // The round a transport starts when it opens reads the write
+              // from the database, so an upload is encrypted only while one is
+              // open.
+              if (isAnyTransportOpen(ownerId, allTransports))
+                protocolMessagesByOwnerId.set(
+                  ownerId,
+                  createProtocolMessageFromCrdtMessages(run.deps)(
+                    owner,
+                    messages,
+                  ),
+                );
               if (currentTenantsByName.size > 1) {
                 broadcastProtocolMessages(
                   ownerId,
@@ -2981,14 +2985,10 @@ const createEvoluTenant =
         if (!writable) continue;
         for (const key of transportKeys) {
           const route = getRoute(ownerId, key);
-          let isOpen = false;
-          deps.transports.forEachResourceForClaim(
-            ownerId,
-            (webSocket, transport) => {
-              if (structuralLookup(transport) === key && webSocket.isOpen())
-                isOpen = true;
-            },
-          );
+          const isOpen = isAnyTransportOpen(ownerId, {
+            type: "Transport",
+            key,
+          });
           // A received frame is applied asynchronously, so between a reply and
           // its continuation the owner can have no request outstanding or
           // waiting. A dispatched entry stays queued until it is answered. A
@@ -3304,6 +3304,22 @@ const createEvoluTenant =
         structuralLookup,
       );
 
+    /** Whether a transport claimed for the owner within `target` is open. */
+    const isAnyTransportOpen = (
+      ownerId: OwnerId,
+      target: SyncTarget,
+    ): boolean => {
+      let isOpen = false;
+      deps.transports.forEachResourceForClaim(
+        ownerId,
+        (webSocket, transport) => {
+          if (isTargetTransport(target, transport) && webSocket.isOpen())
+            isOpen = true;
+        },
+      );
+      return isOpen;
+    };
+
     const getUsedOwnersById = (
       ownerIds: ReadonlySet<OwnerId>,
     ): ReadonlyMap<OwnerId, Owner> => {
@@ -3346,14 +3362,9 @@ const createEvoluTenant =
       }
       refreshSyncRoutes();
       deps.publishSyncState();
-      const ownersToSync = [...usedOwnersById.values()].filter(({ id }) => {
-        let hasOpenTransport = false;
-        deps.transports.forEachResourceForClaim(id, (webSocket, transport) => {
-          if (isTargetTransport(target, transport) && webSocket.isOpen())
-            hasOpenTransport = true;
-        });
-        return hasOpenTransport;
-      });
+      const ownersToSync = [...usedOwnersById.values()].filter(({ id }) =>
+        isAnyTransportOpen(id, target),
+      );
 
       if (!isNonEmptyArray(ownersToSync)) return;
 
