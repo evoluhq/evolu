@@ -98,10 +98,10 @@
  * WebSocket transports are shared resources keyed by their configuration and
  * claimed by owner ID, so every tenant (one named local database) using an
  * owner shares that owner's sockets, whichever tenant claimed them. An incoming
- * frame is offered to every tenant with a writable registration for its owner,
- * and each tenant reconciles independently: the protocol exchange is stateless
- * per message and message writes are idempotent, so a response that answered
- * another tenant's request is still a valid reconciliation step.
+ * frame is offered to every tenant with a writable registration for its owner.
+ * Each stores the frame's messages, which is idempotent, but only the tenant
+ * whose request a Response answers reconciles it, as Synchronization completion
+ * describes.
  *
  * Traffic goes only where it is needed. A continuation returns to the transport
  * that produced the response, a round started by a socket opening or by a
@@ -157,22 +157,35 @@
  * A protocol frame carries the owner ID and the message type but nothing that
  * correlates it with a request, and a relay answers a converged round, an
  * upload that fits one frame, and an Unsubscribe alike with a header-only
- * Response. Every tenant with a writable registration applies every frame for
- * its owner, so a tenant cannot tell which response answered its own request.
+ * Response. So the shared worker keeps the outstanding requests of an owner on
+ * a socket from one sender at a time: a tenant, or the worker itself for an
+ * Unsubscribe. A Request waits while another sender's requests are outstanding
+ * or other requests wait. Once the outstanding requests are answered, the
+ * sender of the oldest waiting request sends all its waiting requests, except
+ * that the worker's Unsubscribe and tenants' requests never pass each other, so
+ * a round that claims the owner again never goes before an earlier Unsubscribe.
+ * Every Response, including a relay's version-mismatch reply, which has no
+ * message type, answers the sender whose requests are outstanding, in whatever
+ * order the relay answers them. An opening socket drops the outstanding and
+ * waiting requests, because requests on the previous connection are never
+ * answered and its rounds start again.
  *
- * Completion is therefore counted, not attributed. The shared worker counts
- * outstanding requests per owner and socket: every Request sent on an open
- * socket, including an Unsubscribe, increments the count; every Response,
- * including a relay's version-mismatch reply, which has no message type,
- * decrements it; and an opening socket resets it, because requests on the
- * previous connection are never answered. A route, one tenant's use of one
- * owner through one transport, is complete when:
+ * Every tenant with a writable registration applies every frame for its owner,
+ * so each database stores the messages any reply carries. Only the sender of
+ * the requests a Response answers reconciles its ranges and may continue; the
+ * others only store its messages and record any relay error it carries. If
+ * every tenant continued every Response, the requests would multiply with each
+ * round of a catch-up. Tenants using one owner through one socket therefore
+ * take turns: a waiting request is delayed, but no request is added.
+ *
+ * Completion is counted: a route, one tenant's use of one owner through one
+ * transport, is complete when:
  *
  * - The tenant is not refused and the socket is open.
- * - The count is zero.
+ * - No request for the owner is outstanding or waiting on the socket.
  * - The tenant has no apply for the owner queued for that transport or for every
- *   transport, because a frame is applied asynchronously, so the count reads
- *   zero in the middle of a chain.
+ *   transport, because a frame is applied asynchronously, so between a reply
+ *   and its continuation the owner can have no request outstanding or waiting.
  * - The tenant has no replicated write for the owner queued, because its upload
  *   is sent only after the database worker answers it.
  * - The tenant has sent a round through the transport since the last event that
@@ -192,34 +205,38 @@
  * database may store a change too large to send, or messages stored elsewhere
  * may not have reached it; it is published as {@link SettledSyncRoute}.
  *
- * A reconciliation chain ends only with a converged result, a failure, a
- * refusal of the database, a dropped frame, or a continuation that finds the
- * socket closed, and relay errors reach every applying tenant, so these
- * conditions mean every chain, including this tenant's, converged. A local
- * Broadcast from a sibling tenant holds every route of its owner until it is
- * applied, because it arrives without a request of its own; one that fails to
- * apply or skips a message requires a round through every transport whose route
- * has not skipped one.
+ * A reconciliation chain, a request and the continuations its sender makes for
+ * the replies, ends only with a converged result, a failure, a refusal of the
+ * database, a dropped frame, a reopen, which drops its outstanding and waiting
+ * requests, or a continuation that finds the socket closed, and relay errors
+ * reach every applying tenant, so these conditions mean every chain this tenant
+ * started through the transport since the last event that requires a round
+ * converged. Another tenant's continuation can make the route pending again. A
+ * local Broadcast from a sibling tenant holds every route of its owner until it
+ * is applied, because it arrives without a request of its own; one that fails
+ * to apply or skips a message requires a round through every transport whose
+ * route has not skipped one.
  *
  * A failed result on a route requests one round through it. Any further failure
  * before the route settles requests no round of its own and waits for the next
  * round another event requests, such as an explicit request or a reopen, so a
  * persistent failure cannot loop; a converged reply in between does not end the
- * wait, because it may answer another tenant's round on the shared socket. An
- * exception while the database worker creates a round is logged there and fails
- * the round's routes with `SyncFailed` without a retry. A mutation that throws
- * is rolled back and reported as an {@link UnknownError} to the tab that made
- * it, or to every tab when its Evolu instance was disposed first. A received
- * batch SQLite fails to store, for example on a full disk, is rolled back and
- * fails its route with an `UnknownError`. An exception while the database
- * worker reconciles a received frame's ranges is logged there and fails that
- * route with `SyncFailed`. A query or an export SQLite fails is answered to the
+ * wait, because it may answer a request sent before the failure. An exception
+ * while the database worker creates a round is logged there and fails the
+ * round's routes with `SyncFailed` without a retry. A mutation that throws is
+ * rolled back and reported as an {@link UnknownError} to the tab that made it,
+ * or to every tab when its Evolu instance was disposed first. A received batch
+ * SQLite fails to store, for example on a full disk, is rolled back and fails
+ * its route with an `UnknownError`. An exception while the database worker
+ * reconciles a received frame's ranges is logged there and fails that route
+ * with `SyncFailed`. A query or an export SQLite fails is answered to the
  * instance that requested it with an {@link UnknownError}, and the instance
  * keeps the query's previous rows. Any other exception in the database worker,
  * such as a response it cannot post, refuses the database with an
  * {@link UnknownError}. A frame the relay silently drops, such as invalid data,
- * leaves the count above zero until the liveness rule below replaces the
- * socket.
+ * leaves its request outstanding, and the requests of other databases for its
+ * owner on that socket, uploads included, waiting, until the liveness rule
+ * below replaces the socket and the reopen's rounds reconcile them.
  *
  * A result that skipped a message records the error on the route as its
  * `skippedError`, without ending its chain, so it requests no round. A message
@@ -265,8 +282,9 @@
  * waiting after a failure, and ends with the transport. A settled route that is
  * incomplete does not count, because its reconciliation has ended. A reply's
  * speed proves nothing, because a recovery on a slow link starts with small
- * replies that arrive quickly. The reopen resets the counts and starts the open
- * rounds, so a dropped frame delays a route instead of stranding it.
+ * replies that arrive quickly. The reopen drops the outstanding and waiting
+ * requests and starts the open rounds, so a dropped frame delays a route
+ * instead of stranding it.
  *
  * The shared worker sends nothing while idle, so a path that dies then may go
  * unnoticed until its next request; until then, changes from other devices stop
@@ -1338,6 +1356,13 @@ export type DbWorkerWriteRequest =
         readonly type: "ApplySyncMessage";
         readonly owner: Owner;
         readonly inputMessage: Uint8Array;
+        /**
+         * Whether the database may answer the frame with a continuation. A
+         * relay's Response to another database's request continues that
+         * database's reconciliation, so this one only stores its messages and
+         * reports any relay error.
+         */
+        readonly continues: boolean;
       };
     };
 
@@ -1496,6 +1521,7 @@ interface EvoluTenant extends AsyncDisposable {
     ownerId: OwnerId,
     inputMessage: Uint8Array,
     source: ApplySyncMessageSource,
+    continues: boolean,
   ) => void;
 }
 
@@ -1713,14 +1739,26 @@ interface RefreshAllSyncRoutesDep {
 /** Outstanding requests per owner and socket, shared by every tenant. */
 interface SyncRequests {
   /**
-   * Counts a Request sent on an open socket. The caller refreshes every
-   * tenant's routes once after its sends.
+   * Sends a Request on an open socket for its sender: a tenant, or null for the
+   * worker's own Unsubscribe. While another sender's requests for the owner are
+   * outstanding on the socket, or other requests wait, it waits for its
+   * sender's turn. The caller refreshes every tenant's routes once after its
+   * sends.
    */
-  readonly noteSent: (ownerId: OwnerId, key: StructuralLookupKey) => void;
-  readonly getOutstanding: (
+  readonly send: (
     ownerId: OwnerId,
     key: StructuralLookupKey,
-  ) => number;
+    message: ProtocolMessage,
+    sender: Name | null,
+  ) => void;
+  /**
+   * Whether a request of the owner is outstanding on the socket. Requests wait
+   * only while one is.
+   */
+  readonly hasOutstanding: (
+    ownerId: OwnerId,
+    key: StructuralLookupKey,
+  ) => boolean;
 }
 
 interface SyncRequestsDep {
@@ -1878,14 +1916,25 @@ export const initSharedWorker =
       readonly id: SyncTransportId;
       readonly label: string;
       /**
-       * Outstanding requests per owner; `silentSince` is when the first of them
-       * was sent or a Response for the owner last arrived. It is monotonic, so
-       * a system clock adjustment cannot make a request look timed out or keep
+       * Outstanding requests per owner, all from one sender: a tenant, or null
+       * for the worker's own Unsubscribe. A request waits while another
+       * sender's requests are outstanding or other requests wait, until its
+       * sender's turn. `silentSince` is when the first outstanding request was
+       * sent or a Response for the owner last arrived. It is monotonic, so a
+       * system clock adjustment cannot make a request look timed out or keep
        * one from timing out.
        */
       readonly outstandingByOwnerId: Map<
         OwnerId,
-        { count: number; silentSince: PerformanceTime }
+        {
+          sender: Name | null;
+          count: number;
+          silentSince: PerformanceTime;
+          readonly waiting: Array<{
+            readonly sender: Name | null;
+            readonly message: ProtocolMessage;
+          }>;
+        }
       >;
       /**
        * The timeout of every request on the socket: frames arrive one after
@@ -1950,7 +1999,7 @@ export const initSharedWorker =
       });
     };
 
-    // Socket counters and owner claims are shared by all tenants. Refresh
+    // Outstanding requests and owner claims are shared by all tenants. Refresh
     // after their complete event, independently of snapshot publication.
     const refreshAllSyncRoutes = (): void => {
       for (const tenant of currentTenantsByName.values())
@@ -2020,22 +2069,34 @@ export const initSharedWorker =
     };
 
     const syncRequests: SyncRequests = {
-      noteSent: (ownerId, key) => {
+      send: (ownerId, key, message, sender) => {
         const entry = transportsByKey.get(key);
         assertNonNullable(entry);
+        assertNonNullable(entry.socket);
         const outstanding = entry.outstandingByOwnerId.get(ownerId);
-        if (outstanding) outstanding.count++;
-        else
+        if (!outstanding) {
+          entry.socket.send(message);
           entry.outstandingByOwnerId.set(ownerId, {
+            sender,
             count: 1,
             silentSince: deps.time.performance.now(),
+            waiting: [],
           });
+        } else if (
+          outstanding.sender === sender &&
+          outstanding.waiting.length === 0
+        ) {
+          entry.socket.send(message);
+          outstanding.count++;
+        } else {
+          outstanding.waiting.push({ sender, message });
+        }
         if (entry.timeoutId === null)
           armSyncRequestTimeout(entry, entry.timeout);
         publishSyncState();
       },
-      getOutstanding: (ownerId, key) =>
-        transportsByKey.get(key)?.outstandingByOwnerId.get(ownerId)?.count ?? 0,
+      hasOutstanding: (ownerId, key) =>
+        transportsByKey.get(key)?.outstandingByOwnerId.has(ownerId) ?? false,
     };
 
     const transports = disposer.use(
@@ -2164,33 +2225,69 @@ export const initSharedWorker =
                   });
 
                   // A Response, or a version-mismatch reply without a message
-                  // type, answers a request.
-                  const { messageType } = headerResult.value;
-                  if (
+                  // type, answers an outstanding request of the owner, which
+                  // all come from one sender, so only that sender may continue.
+                  // Other frames answer none.
+                  const { ownerId, messageType } = headerResult.value;
+                  const isAnswer =
                     messageType === MessageType.Response ||
-                    messageType === undefined
-                  ) {
-                    const { ownerId } = headerResult.value;
+                    messageType === undefined;
+                  let sender: Name | null = null;
+                  if (isAnswer) {
                     const outstanding = entry.outstandingByOwnerId.get(ownerId);
                     if (outstanding) {
-                      outstanding.count--;
+                      sender = outstanding.sender;
                       outstanding.silentSince = run.deps.time.performance.now();
-                      if (outstanding.count === 0)
-                        entry.outstandingByOwnerId.delete(ownerId);
+                      outstanding.count--;
+                      if (outstanding.count === 0) {
+                        const { waiting } = outstanding;
+                        const next = waiting.at(0);
+                        if (next) {
+                          // The next sender's waiting requests go out
+                          // together, so senders that take turns wait for the
+                          // other senders' turns, not one round trip per
+                          // request. The worker's Unsubscribe and tenants'
+                          // requests do not pass each other, so a round that
+                          // claims the owner again never goes before it. Other
+                          // senders' requests keep waiting in send order. A
+                          // transport being disposed has dropped its socket and
+                          // drops them.
+                          const barrier = waiting.findIndex(
+                            (request) =>
+                              (request.sender === null) !==
+                              (next.sender === null),
+                          );
+                          const end = barrier === -1 ? waiting.length : barrier;
+                          const requests: typeof waiting = [];
+                          let kept = 0;
+                          // Compacted in place, because spreading a long queue
+                          // into a call would exceed the argument limit.
+                          for (const request of waiting.slice(0, end))
+                            if (request.sender === next.sender)
+                              requests.push(request);
+                            else waiting[kept++] = request;
+                          waiting.splice(kept, end - kept);
+                          for (const request of requests)
+                            entry.socket?.send(request.message);
+                          outstanding.sender = next.sender;
+                          outstanding.count = requests.length;
+                        } else entry.outstandingByOwnerId.delete(ownerId);
+                      }
                     }
                     if (entry.outstandingByOwnerId.size === 0)
                       clearSyncRequestTimeout(entry);
                     publishSyncState();
                   }
 
-                  for (const tenant of currentTenantsByName.values())
+                  for (const [tenantName, tenant] of currentTenantsByName)
                     tenant.requestApplySyncMessage(
-                      headerResult.value.ownerId,
+                      ownerId,
                       message,
                       target,
+                      !isAnswer || tenantName === sender,
                     );
-                  // Do not complete a sibling after decrementing the shared
-                  // counter but before its apply has been queued.
+                  // Do not complete a sibling after answering a shared
+                  // outstanding request but before its apply has been queued.
                   refreshAllSyncRoutes();
                 },
               }),
@@ -2227,8 +2324,12 @@ export const initSharedWorker =
 
             onLastClaimRemoved: (ownerId, webSocket, transport) => {
               if (webSocket.isOpen()) {
-                webSocket.send(createProtocolMessageForUnsubscribe(ownerId));
-                syncRequests.noteSent(ownerId, structuralLookup(transport));
+                syncRequests.send(
+                  ownerId,
+                  structuralLookup(transport),
+                  createProtocolMessageForUnsubscribe(ownerId),
+                  null,
+                );
               }
               refreshAllSyncRoutes();
             },
@@ -2888,11 +2989,11 @@ const createEvoluTenant =
                 isOpen = true;
             },
           );
-          // A received frame is applied asynchronously, so the counter alone
-          // reads zero in the middle of a chain. A dispatched entry stays
-          // queued until it is answered. A sibling's local Broadcast contains
-          // messages that are unstored until it is applied, so it leaves every
-          // route of the owner incomplete.
+          // A received frame is applied asynchronously, so between a reply and
+          // its continuation the owner can have no request outstanding or
+          // waiting. A dispatched entry stays queued until it is answered. A
+          // sibling's local Broadcast contains messages that are unstored until
+          // it is applied, so it leaves every route of the owner incomplete.
           const hasQueuedApply =
             pendingApplyCountForAllRoutesByOwnerId.has(ownerId) ||
             ownerTransportApplyRelation.getCount(ownerId, key) > 0;
@@ -2902,7 +3003,7 @@ const createEvoluTenant =
           const hasQueuedWrite = pendingWriteCountByOwnerId.has(ownerId);
           const isReconciled =
             isOpen &&
-            deps.syncRequests.getOutstanding(ownerId, key) === 0 &&
+            !deps.syncRequests.hasOutstanding(ownerId, key) &&
             !hasQueuedApply &&
             !hasQueuedWrite;
           // Settling drops the failure, so the next one requests a round
@@ -3103,10 +3204,12 @@ const createEvoluTenant =
       for (const [tenantName, tenant] of currentTenantsByName) {
         if (tenantName === name) continue;
         for (const message of messages)
-          tenant.requestApplySyncMessage(ownerId, message, {
-            type: "Local",
-            uploadTarget: target,
-          });
+          tenant.requestApplySyncMessage(
+            ownerId,
+            message,
+            { type: "Local", uploadTarget: target },
+            true,
+          );
       }
     };
 
@@ -3133,9 +3236,8 @@ const createEvoluTenant =
               byteLength: protocolMessage.byteLength,
             });
 
-            webSocket.send(protocolMessage);
             const key = structuralLookup(transport);
-            deps.syncRequests.noteSent(ownerId, key);
+            deps.syncRequests.send(ownerId, key, protocolMessage, name);
             const route = getRoute(ownerId, key);
             route.lastSentAt = deps.time.now();
             if (isRound)
@@ -3146,7 +3248,8 @@ const createEvoluTenant =
           },
         );
       }
-      // Sends raise counters shared by every tenant; one refresh covers them.
+      // Sends add outstanding or waiting requests that every tenant's routes
+      // count; one refresh covers them.
       if (protocolMessagesByOwnerId.size > 0) deps.refreshAllSyncRoutes();
     };
 
@@ -3601,7 +3704,12 @@ const createEvoluTenant =
 
         requestCreateSyncMessages,
 
-        requestApplySyncMessage: (ownerId, inputMessage, source): void => {
+        requestApplySyncMessage: (
+          ownerId,
+          inputMessage,
+          source,
+          continues,
+        ): void => {
           if (dbWorker.type === "Refused") return;
           const owner = getUsedOwnersById(new Set([ownerId])).get(ownerId);
           if (!owner) return;
@@ -3616,7 +3724,12 @@ const createEvoluTenant =
             type: "ApplySyncMessage",
             request: {
               type: "ForSharedWorker",
-              message: { type: "ApplySyncMessage", owner, inputMessage },
+              message: {
+                type: "ApplySyncMessage",
+                owner,
+                inputMessage,
+                continues,
+              },
             },
             source,
           };
@@ -3646,8 +3759,10 @@ const createEvoluTenant =
 //   frame changes a route timestamp, so each frame broadcasts a full snapshot
 //   to every tab. Throttling needs a wall-clock policy and a deterministic way
 //   to test it.
-// - Measure sync traffic before bounding it: several tenants using one owner
-//   multiply rounds, and a bulk catch-up from one relay starts up to one round
-//   to each other relay per frame that stores new messages, depending on queued
-//   round coalescing. Forwarding the stored messages the way mutation uploads
-//   do would replace those rounds.
+// - Measure sync traffic before bounding it: tenants using one owner through
+//   one socket each download a catch-up, because a waiting request was
+//   created before another tenant's reply stored the same messages (two
+//   databases receive 12 frames for a 6-frame catch-up), and a bulk catch-up
+//   from one relay starts up to one round to each other relay per frame that
+//   stores new messages, depending on queued round coalescing. Forwarding the
+//   stored messages the way mutation uploads do would replace those rounds.

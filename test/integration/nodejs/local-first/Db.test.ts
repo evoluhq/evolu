@@ -611,7 +611,7 @@ const setupApplySyncRequest = (
   owner: Owner = testAppOwner,
 ): ExtractTyped<DbWorkerWriteRequest, "ForSharedWorker"> => ({
   type: "ForSharedWorker",
-  message: { type: "ApplySyncMessage", owner, inputMessage },
+  message: { type: "ApplySyncMessage", owner, inputMessage, continues: true },
 });
 
 type QueuedResponse = ExtractTyped<DbWorkerOutput, "OnQueuedResponse">;
@@ -2716,6 +2716,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: await createBroadcastProtocolMessage([
             {
               timestamp: createTimestamp({
@@ -2947,6 +2948,88 @@ describe("sync message flow", () => {
         },
         { name: "_localTable", rows: [] },
       ],
+    });
+  });
+
+  it("ApplySyncMessage that does not continue stores messages without reconciling", async () => {
+    await using setup = await setupDbWorker();
+    // The database and the relay each have a change the other lacks, so the
+    // relay's answer asks for a continuation.
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        createMutationChange({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "local" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      ]),
+    );
+    await using relay = await setupSqliteAndRelayStorage();
+    await relay.run.orThrow(
+      applyProtocolMessageAsRelay(
+        createProtocolMessageFromCrdtMessages(testCreateDeps())(testAppOwner, [
+          {
+            timestamp: createTimestamp({
+              millis: Millis.orThrow(1),
+              counter: 0 as never,
+            }),
+            change: DbChange.orThrow({
+              table: "testTable",
+              id: setup.createId(),
+              values: { name: "remote" },
+              isInsert: true,
+              isDelete: null,
+            }),
+          },
+        ]),
+      ),
+    );
+    const request = getQueuedSharedWorkerMessage(
+      await postRequest(setup, {
+        type: "ForSharedWorker",
+        message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+      }),
+      "CreateSyncMessages",
+    ).protocolMessagesByOwnerId.get(testAppOwner.id);
+    assertNotUndefined(request);
+    const relayResponse = await relay.run.orThrow(
+      applyProtocolMessageAsRelay(request),
+    );
+    const apply = async (continues: boolean) => {
+      const { didWriteMessages, result } = getQueuedSharedWorkerMessage(
+        await postRequest(setup, {
+          type: "ForSharedWorker",
+          message: {
+            type: "ApplySyncMessage",
+            owner: testAppOwner,
+            inputMessage: relayResponse.message,
+            continues,
+          },
+        }),
+        "ApplySyncMessage",
+      );
+      assertOk(result);
+      return { didWriteMessages, type: result.value.type };
+    };
+
+    assertEqual(await apply(false), {
+      didWriteMessages: true,
+      type: "Readonly",
+    });
+    assertEqual(
+      setup.sqlite
+        .exec<{ readonly name: string }>(sql`
+          select name from testTable order by name;
+        `)
+        .rows.map(({ name }) => name),
+      ["local", "remote"],
+    );
+    assertEqual(await apply(true), {
+      didWriteMessages: false,
+      type: "Response",
     });
   });
 
@@ -3447,6 +3530,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: protocolMessage,
         },
       });
@@ -3459,6 +3543,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: protocolMessage,
         },
       });
@@ -3675,6 +3760,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: await createBroadcastProtocolMessage([
             {
               timestamp: createTimestamp({
@@ -3698,6 +3784,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: await createBroadcastProtocolMessage([
             {
               timestamp: createTimestamp({
@@ -3733,6 +3820,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: await createBroadcastProtocolMessage([
             {
               timestamp: createTimestamp({
@@ -3756,6 +3844,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: await createBroadcastProtocolMessage([
             {
               timestamp: createTimestamp({
@@ -3804,6 +3893,7 @@ describe("sync message flow", () => {
           message: {
             type: "ApplySyncMessage",
             owner: testAppOwner,
+            continues: true,
             inputMessage: await createBroadcastProtocolMessage([
               {
                 timestamp: createTimestamp({
@@ -3831,6 +3921,7 @@ describe("sync message flow", () => {
           message: {
             type: "ApplySyncMessage",
             owner: testAppOwner,
+            continues: true,
             inputMessage: await createBroadcastProtocolMessage([
               {
                 timestamp: createTimestamp({
@@ -3875,6 +3966,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: await createBroadcastProtocolMessage([
             {
               timestamp: createTimestamp({
@@ -3898,6 +3990,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: await createBroadcastProtocolMessage([
             {
               timestamp: createTimestamp({
@@ -3940,6 +4033,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: await createBroadcastProtocolMessage([
             {
               timestamp: createTimestamp({
@@ -3963,6 +4057,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: await createBroadcastProtocolMessage([
             {
               timestamp: createTimestamp({
@@ -4093,6 +4188,7 @@ describe("sync message flow", () => {
         message: {
           type: "ApplySyncMessage",
           owner: testAppOwner,
+          continues: true,
           inputMessage: relayResponse.message,
         },
       },
@@ -4312,6 +4408,7 @@ describe("quarantine replay", () => {
           message: {
             type: "ApplySyncMessage",
             owner: testAppOwner,
+            continues: true,
             inputMessage: protocolMessage,
           },
         }),
@@ -5012,6 +5109,7 @@ describe("quarantine replay", () => {
           message: {
             type: "ApplySyncMessage",
             owner: testAppOwner,
+            continues: true,
             inputMessage: await createBroadcastProtocolMessage([
               {
                 timestamp: createTimestamp({
@@ -5039,6 +5137,7 @@ describe("quarantine replay", () => {
           message: {
             type: "ApplySyncMessage",
             owner: testAppOwner,
+            continues: true,
             inputMessage: await createBroadcastProtocolMessage([
               {
                 timestamp: createTimestamp({
@@ -5177,6 +5276,7 @@ describe("quarantine replay", () => {
             message: {
               type: "ApplySyncMessage",
               owner: testAppOwner,
+              continues: true,
               inputMessage: protocolMessage,
             },
           },
@@ -5458,7 +5558,12 @@ const createReplayRequest = (
       : encoded;
   return {
     type: "ForSharedWorker",
-    message: { type: "ApplySyncMessage", owner: testAppOwner, inputMessage },
+    message: {
+      type: "ApplySyncMessage",
+      owner: testAppOwner,
+      inputMessage,
+      continues: true,
+    },
   };
 };
 

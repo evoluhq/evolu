@@ -35,7 +35,10 @@ import {
   createOwnerWebSocketTransport,
   testAppOwner,
 } from "../../../../packages/common/src/local-first/Owner.ts";
-import { createProtocolBroadcastMessagesFromCrdtMessages } from "../../../../packages/common/src/local-first/Protocol.ts";
+import {
+  createProtocolBroadcastMessagesFromCrdtMessages,
+  createProtocolMessageFromCrdtMessages,
+} from "../../../../packages/common/src/local-first/Protocol.ts";
 import {
   createQueryBuilder,
   QuarantineOrigin,
@@ -1076,6 +1079,110 @@ describe("Evolu integration", () => {
       assertEqual(relay.getTimestamps(), localTimestamps);
     }
     assertEqual(await first.loadQuery(todoTitlesQuery), [{ title }]);
+    assertEqual(device.setup.tabErrors, []);
+    assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("continues each relay reply in only one database", async () => {
+    await using relays = await setupRelays("evolu-attributed-replies");
+    const { relayA } = relays;
+    const transport = createOwnerWebSocketTransport({
+      url: `ws://127.0.0.1:${relayA.port}`,
+      ownerId: testAppOwner.id,
+    });
+
+    // More changes than one frame holds, so a database needs two replies.
+    const changeCount = 6_000;
+    const deps = testCreateDeps();
+    const messages = Array.from({ length: changeCount }, (_, i) => ({
+      timestamp: createTimestamp({ millis: Millis.orThrow(1_000 + i) }),
+      change: DbChange.orThrow({
+        table: "todo",
+        id: createIdFromString(`attributed-${i}`),
+        values: { title: `Todo ${i} `.padEnd(90, "x") },
+        isInsert: true,
+        isDelete: null,
+      }),
+    }));
+    {
+      const frames: Array<Uint8Array> = [];
+      for (let i = 0; i < changeCount; i += 2_000) {
+        const chunk = messages.slice(i, i + 2_000);
+        assertNonEmptyArray(chunk);
+        frames.push(
+          createProtocolMessageFromCrdtMessages(deps)(testAppOwner, chunk),
+        );
+      }
+      const seeded = Promise.withResolvers<void>();
+      using _seedingTimeout = setTimeout(() => {
+        seeded.reject(
+          new Error("Timed out waiting for the relay to store the seed data"),
+        );
+      }, 5_000);
+      const seeder = new WebSocket(transport.url);
+      seeder.binaryType = "arraybuffer";
+      seeder.addEventListener("error", () => {
+        seeded.reject(new Error("The seeding socket failed"));
+      });
+      let replyCount = 0;
+      seeder.addEventListener("message", () => {
+        if (++replyCount === frames.length) seeded.resolve();
+      });
+      seeder.addEventListener("open", () => {
+        for (const frame of frames) seeder.send(new Uint8Array(frame));
+      });
+      await seeded.promise;
+      seeder.close();
+    }
+    assertSame(relayA.getTimestamps().length, changeCount);
+
+    const tenantDriversByName = new Map<Name, SqliteDriver>();
+    await using device = await setupDevice({
+      seed: "device",
+      createSqliteDriver: (name) => async (run) => {
+        const result = await run(testCreateSqliteDep.createSqliteDriver(name));
+        if (result.ok) tenantDriversByName.set(name, result.value);
+        return result;
+      },
+    });
+    using states = setupSyncStates(device.setup.syncStateChannelName);
+    let receivedCount = 0;
+    device.setOnMessage(() => {
+      receivedCount++;
+    });
+    const createTenant = (appName: string) =>
+      device.setup.run.ok(
+        createEvolu(Schema, {
+          appName: AppName.orThrow(appName),
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+    await using first = await createTenant("FirstTenant");
+    await using second = await createTenant("SecondTenant");
+    const tenants = [first, second];
+    for (const tenant of tenants) tenant.useOwner(testAppOwner, [transport]);
+
+    await states.waitForState(() =>
+      tenants.every(
+        ({ name }) =>
+          syncStateToRelaySyncStates(
+            states.getState(),
+            name,
+            testAppOwner.id,
+          ).at(0)?.route.type === "Complete",
+      ),
+    );
+    for (const { name } of tenants) {
+      const driver = tenantDriversByName.get(name);
+      assertNotUndefined(driver);
+      assertEqual(driver.exec(sql`select count(*) as count from todo;`).rows, [
+        { count: changeCount },
+      ]);
+    }
+    // The device receives one reply to each of each database's two requests.
+    // When every database continued every reply, it received 2 + 4 frames.
+    assertSame(receivedCount, 4);
     assertEqual(device.setup.tabErrors, []);
     assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
   });

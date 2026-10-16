@@ -461,12 +461,14 @@ export const startDbWorker =
                 };
                 const request = input.request;
                 if (request.type === "ForSharedWorker") {
-                  const { owner, inputMessage } = request.message;
+                  const { owner, inputMessage, continues } = request.message;
                   void dbWorkerRun(async (run) => {
                     storage.setRequestContext(owner.encryptionKey, context);
                     const result = await run(
                       applyProtocolMessageAsClient(inputMessage, {
-                        writeKey: owner.writeKey,
+                        // Without the write key, the frame's messages are
+                        // stored, but its ranges are not reconciled.
+                        ...(continues && { writeKey: owner.writeKey }),
                         onChangeTooLarge: storage.onChangeTooLarge,
                       }),
                     );
