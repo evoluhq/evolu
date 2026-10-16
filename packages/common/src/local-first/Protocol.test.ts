@@ -1883,6 +1883,7 @@ describe("E2E errors", () => {
         },
       ],
     );
+    let broadcastCount = 0;
     /** Returns the relay's response and what it logged for the write. */
     const relayResponseFor = async (
       writeMessages: StorageDep["storage"]["writeMessages"],
@@ -1895,7 +1896,11 @@ describe("E2E errors", () => {
         },
       } satisfies StorageDep);
       const { message } = await run.orThrow(
-        applyProtocolMessageAsRelay(initiatorMessage),
+        applyProtocolMessageAsRelay(initiatorMessage, {
+          broadcast: () => {
+            broadcastCount++;
+          },
+        }),
       );
       return { message, logged: run.deps.console.getEntriesSnapshot() };
     };
@@ -1938,6 +1943,128 @@ describe("E2E errors", () => {
       ["error"],
     );
     assertSame(failed.logged[0]?.args[0], unknownError);
+    // Messages the relay did not store are not broadcast.
+    assertSame(broadcastCount, 0);
+  });
+
+  it("relay rejects messages without a write key before storing or broadcasting them", async () => {
+    const deps = testCreateDeps();
+    const request = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      subscriptionFlag: SubscriptionFlags.Subscribe,
+    });
+    request.addMessage(
+      createEncryptedCrdtMessage(deps, createTestCrdtMessage(deps)),
+    );
+    const sideEffects: Array<string> = [];
+    // A storage that accepts writes, so a relay that skipped the check would
+    // store and broadcast the messages.
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        writeMessages: () => () => {
+          sideEffects.push("writeMessages");
+          return ok();
+        },
+      },
+    } satisfies StorageDep);
+
+    const response = await run.orThrow(
+      applyProtocolMessageAsRelay(request.unwrap(), {
+        subscribe: () => {
+          sideEffects.push("subscribe");
+        },
+        broadcast: () => {
+          sideEffects.push("broadcast");
+        },
+      }),
+    );
+
+    // Subscribing needs no write key, unlike storing and broadcasting.
+    assertEqual(sideEffects, ["subscribe"]);
+    assertEqual(
+      await run(applyProtocolMessageAsClient(response.message)),
+      err({ type: "ProtocolWriteKeyError", ownerId: testAppOwner.id }),
+    );
+  });
+
+  it("relay propagates an abort from writeMessages without logging it", async () => {
+    const deps = testCreateDeps();
+    const abort = createAbortError({ type: "Stop" });
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        validateWriteKey: constTrue,
+        writeMessages: () => () => {
+          // oxlint-disable-next-line typescript/only-throw-error -- AbortError is Task abort control flow.
+          throw abort;
+        },
+      },
+    } satisfies StorageDep);
+
+    const result = await run.abortable(
+      applyProtocolMessageAsRelay(
+        createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
+          createTestCrdtMessage(deps),
+        ]),
+      ),
+    );
+
+    assertErr(result);
+    assertSame(result.error, abort);
+    assertEqual(run.deps.console.getEntriesSnapshot(), []);
+  });
+
+  it("relay broadcasts a request up to its totalMaxSize", async () => {
+    const totalMaxSize = ProtocolMessageMaxSize.orThrow(2_000_000);
+    const request = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      writeKey: testAppOwner.writeKey,
+      totalMaxSize,
+    });
+    // Larger together than a frame of the default size.
+    for (const millis of [1, 2, 3])
+      request.addMessage({
+        timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
+        change: new Uint8Array(500_000) as EncryptedDbChange,
+      });
+    const broadcasts: Array<Uint8Array> = [];
+    {
+      await using run = testCreateRun({
+        storage: {
+          ...shouldNotBeCalledStorageDep.storage,
+          validateWriteKey: constTrue,
+          writeMessages: () => () => ok(),
+        },
+      } satisfies StorageDep);
+      await run.orThrow(
+        applyProtocolMessageAsRelay(request.unwrap(), {
+          totalMaxSize,
+          broadcast: (_ownerId, message) => {
+            broadcasts.push(message);
+          },
+        }),
+      );
+    }
+
+    assertLength(broadcasts, 1);
+    const [broadcast] = broadcasts;
+    assertTrue(broadcast.length > defaultProtocolMessageMaxSize);
+    const writtenCounts: Array<number> = [];
+    await using run = testCreateRun({
+      storage: {
+        ...shouldNotBeCalledStorageDep.storage,
+        writeMessages: (_ownerId, messages) => () => {
+          writtenCounts.push(messages.length);
+          return ok();
+        },
+      },
+    } satisfies StorageDep);
+    assertEqual(
+      await run(applyProtocolMessageAsClient(broadcast)),
+      ok({ type: "Broadcast" }),
+    );
+    assertEqual(writtenCounts, [3]);
   });
 });
 
