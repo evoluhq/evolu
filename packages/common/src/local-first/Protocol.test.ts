@@ -769,6 +769,28 @@ test("decryptAndDecodeDbChange rejects a timestamp with reserved millis", () => 
   }
 });
 
+test("decryptAndDecodeDbChange keeps the values of an invalid change out of its error", () => {
+  const deps = testCreateDeps();
+  const crdtMessage = createTestCrdtMessage(deps);
+  const invalid = createEncryptedCrdtMessage(deps, {
+    ...crdtMessage,
+    // DbChange rejects a reserved system column.
+    change: {
+      ...crdtMessage.change,
+      values: { createdAt: "x", title: "A private note" },
+    } as unknown as DbChange,
+  });
+
+  const result = decryptAndDecodeDbChange(invalid, testAppOwner.encryptionKey);
+  assertErr(result);
+  assertSame(result.error.type, "ProtocolInvalidDataError");
+  if (result.error.type === "ProtocolInvalidDataError") {
+    assertInstanceOf(result.error.error, Error);
+    assertSame(result.error.error.message, "Invalid DbChange");
+    assertSame(result.error.error.cause, undefined);
+  }
+});
+
 const shouldNotBeCalled = () => {
   throw new Error("should not be called");
 };

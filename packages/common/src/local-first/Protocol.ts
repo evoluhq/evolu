@@ -2521,15 +2521,17 @@ export const decryptAndDecodeDbChange = (
       values[column] = value;
     }
 
-    const dbChange = DbChange.orThrow({
+    const dbChange = DbChange.fromUnknown({
       table,
       id,
       values,
       isInsert: flags[0],
       isDelete: flags[1] ? flags[2] : null,
     });
+    // The validation error holds the decrypted values, so it is not kept.
+    if (!dbChange.ok) throw new ProtocolDecodeError("Invalid DbChange");
 
-    return ok(dbChange);
+    return ok(dbChange.value);
   } catch (error) {
     return err<ProtocolInvalidDataError>({
       type: "ProtocolInvalidDataError",
