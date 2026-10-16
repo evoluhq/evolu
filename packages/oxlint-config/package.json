@@ -1,6 +1,6 @@
 {
   "name": "@evolu/oxlint-config",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Strict Oxlint configuration and custom rules for Evolu projects",
   "keywords": [
     "evolu",
