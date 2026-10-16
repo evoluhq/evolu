@@ -30,7 +30,7 @@ export const sections = [];
 
 Visible.
 
-## Parameters
+## Returns
 
 ### Nested
 
@@ -46,7 +46,27 @@ Also kept.
 
 #### Returns
 
+##### Function
+
+###### Returns
+
 Removed.
+
+---
+
+##### Type Literal
+
+Removed.
+
+#### Call Signature
+
+Overload kept.
+
+##### Returns
+
+Removed.
+
+---
 
 <a id="name"></a>
 
@@ -64,10 +84,14 @@ Member kept.
       /export const metadata = \{ title: 'mapArray - API reference' \};/u,
     );
     assert.match(fixed, /\[API reference\]\(\/docs\/api-reference\) › common/u);
-    assert.doesNotMatch(fixed, /## Parameters/u);
+    assert.doesNotMatch(fixed, /## Returns/u);
     assert.match(fixed, /## Example/u);
     assert.match(fixed, /### Returning resources from Tasks/u);
     assert.match(fixed, /Also kept\./u);
+    assert.match(
+      fixed,
+      /Also kept\.\n\n#### Call Signature\n\nOverload kept\.\n\n---\n\n<a id="name">/u,
+    );
     assert.doesNotMatch(fixed, /Removed\./u);
     assert.match(fixed, /<a id="name"><\/a>\n\n### name\n\nMember kept\./u);
     assert.match(

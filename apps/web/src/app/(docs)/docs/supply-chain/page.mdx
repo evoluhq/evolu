@@ -1,0 +1,87 @@
+export const metadata = {
+  title: "Supply chain",
+  description:
+    "The practices Evolu follows to keep its releases safe, how to verify a release, and the settings apps can use.",
+};
+
+# Supply chain
+
+Whoever compromises a package, or the account that publishes it, reaches every app that installs it. This page lists the practices Evolu follows, with the exact settings, so apps can verify its releases and other maintainers can copy them. [Approving npm releases with a Trezor](/blog/approving-npm-releases-with-a-trezor) tells the story behind them. To report a vulnerability or a suspected compromise, follow the [security policy](https://github.com/evoluhq/evolu/security/policy).
+
+## Releases
+
+The Release workflow only stages each version on npm, which keeps it out of installs until the maintainer approves it with a hardware security key, a [Trezor Safe 7](https://trezor.io/trezor-safe-7). Before approving, the maintainer reviews every commit since the previous release. Any npm token with write access, such as the session token of `npm login`, can stage a version too, so the maintainer approves only what a Release run on `main` staged, matched by a stage ID its log prints, or by the shasum it printed together with one.
+
+Each package's [trusted publisher](https://docs.npmjs.com/trusted-publishers) allows only staging, only from the workflow's `npm` environment, which only `main` can use, and each package requires two-factor authentication to publish and refuses tokens for publishing. npm accepts a stage or a publish from any trusted publisher of a package, so remove each one that can publish first (`npm trust list`, `npm trust revoke`).
+
+```bash
+npm trust github <package> --repo evoluhq/evolu --file release.yaml --env npm --allow-stage-publish
+npm access set mfa=publish <package>
+```
+
+## Keys
+
+Git pushes use an SSH key (`ssh-keygen -t ecdsa-sk`) that the Trezor computes from its seed for each push, after a touch on the device, and the Trezor is the only second factor on npm, apart from recovery codes kept offline. No API token or SSH key file on the maintainer's computer can push code or publish a package on its own. Everything else is gone: npm tokens, the other SSH keys and tokens on GitHub that can push, unused repository secrets, OAuth and GitHub apps, and environments, and everyone else's access on GitHub, npm, and Docker Hub. Old packages require two-factor authentication to publish too.
+
+The Trezor stays locked until its PIN is entered on its own touchscreen. Two secure elements check the PIN, and after ten wrong tries the device wipes itself. Its firmware is open source and reproducibly built, and a Trezor restored from the seed has the same keys.
+
+## CI and the repository
+
+- Actions are pinned by full commit SHA, which the repository requires. The default workflow token is read-only, and no checkout keeps its token.
+- The job that stages on npm installs nothing, so no dependency code runs while it can get its npm token. The jobs that hold the Docker Hub and website credentials run no install scripts, and none of these jobs restores anything from the Actions cache, which jobs running dependency code can write.
+- The [`evoluhq/relay`](https://hub.docker.com/r/evoluhq/relay) image is built from the `@evolu/relay` package npm serves, on a base image pinned by digest, signed with a [GitHub artifact attestation](https://docs.github.com/en/actions/concepts/security/artifact-attestations), and pushed only after the maintainer approves its `docker-hub` deployment on GitHub.
+- `main` can't be force-pushed or deleted, GitHub releases published after October 15, 2026 are immutable, and CodeQL, secret scanning, Dependabot alerts, and malware alerts are on.
+
+## Dependencies
+
+- Published packages pin their direct runtime dependencies to exact versions. Before a release updates one, the maintainer reads its `npm diff` and compares the publishers, maintainers, and provenance of both versions.
+- The dependencies of those dependencies use version ranges, so new versions reach apps when apps update their lockfiles, and reach the relay image at its next build once they're a day old.
+- Every npm and pnpm install the project runs takes only versions at least a day old, except Evolu's own packages, and pnpm also refuses trust downgrades, apart from exceptions checked by hand in `pnpm-workspace.yaml`.
+- No package in the dependency trees of Evolu's published packages runs an install script. pnpm 11 fails an install of `@evolu/nodejs` or `@evolu/relay` until better-sqlite3, which ships build files, is in `allowBuilds`; set it to `false`, as its prebuilt binaries need no build.
+
+## Verify a release
+
+Each Evolu version published since October 15, 2026 names GitHub Actions as its publisher and `steida`, the maintainer, as its approver in `_npmUser`, and has a provenance attestation in `dist.attestations`. Report one that lacks any of them as a suspected compromise.
+
+```bash
+npm view @evolu/common@8.23.0 _npmUser dist.attestations --json
+```
+
+In a project installed with npm, `npm audit signatures` checks every installed package's registry signature and, where present, its provenance. For the relay image, the [GitHub CLI](https://cli.github.com) checks that the Docker workflow on `main` built it and prints its digest. Run the image by that digest rather than by a tag such as `4`, which moves to each new release.
+
+```bash
+gh attestation verify oci://docker.io/evoluhq/relay:4.2.15 \
+  --repo evoluhq/evolu \
+  --signer-workflow evoluhq/evolu/.github/workflows/docker.yaml \
+  --source-ref refs/heads/main \
+  --format json \
+  --jq '.[].verificationResult.statement.subject[] | "\(.name)@sha256:\(.digest.sha256)"'
+```
+
+## Limits
+
+- **Reviews are not an audit.** The maintainer and two AI models from different vendors review each change, one change at a time. Evolu hasn't had an independent audit yet.
+- **The review covers commits, not the packed packages.** A compromised development tool in the packing job could change a release without changing Evolu's code. Diffing each staged package, which `npm stage download` allows, would close this.
+- **GitHub asks for a second factor only at sign-in**, and it requires an authenticator app or SMS alongside security keys, whose codes can be phished. A stolen GitHub session can't publish to npm, but it can commit to `main` under the maintainer's name, change this website, and approve the `docker-hub` deployment, which pushes a relay image that passes the attestation check. Signing the image with a key kept outside GitHub would make its check independent of GitHub; until then, to have the npm approval cover your relay, run `@evolu/relay` from npm, installed from a lockfile.
+
+## Recommended settings
+
+These settings protect any app, not only one built on Evolu:
+
+- **Install from a lockfile**, with `pnpm install --frozen-lockfile` or `npm ci`.
+- **Wait a day for new versions**, as most malicious versions are removed within hours. Set pnpm's `minimumReleaseAge` (10.16+, in minutes) explicitly, as pnpm 11's default installs a newer version when no older one matches. npm 11.10+ reads `min-release-age`, in days. For an urgent fix, use `minimumReleaseAgeExclude` or npm 11.17's `min-release-age-exclude`.
+- **Refuse trust downgrades**, versions published with weaker evidence than an earlier one, such as with a stolen token after earlier versions came from a trusted publisher, with pnpm 10.21+ `trustPolicy: no-downgrade`. Some maintainers still publish by hand, as Expo does for its SDK 57 patches, so check each refused version and list it in `trustPolicyExclude` (10.22+).
+- **Allow install scripts one package at a time.** pnpm 10+ runs them only for the packages you allow, in `allowBuilds` since 10.26. npm's `ignore-scripts=true` turns them all off, the project's own included.
+- **Pin the relay image by digest**, verify a new image as [shown above](#verify-a-release) before moving the pin, and watch the [evoluhq/evolu releases](https://github.com/evoluhq/evolu/releases) for security fixes.
+
+```text
+# pnpm-workspace.yaml
+minimumReleaseAge: 1440
+trustPolicy: no-downgrade
+```
+
+```bash
+# npm, run in the project's directory
+npm config set min-release-age 1 --location=project
+npm config set ignore-scripts true --location=project
+```

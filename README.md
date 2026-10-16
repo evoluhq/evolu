@@ -28,7 +28,7 @@ Install Corepack independently of Node.js and enable the pnpm version pinned in
 `package.json`:
 
 ```sh
-npm install --global corepack@latest
+npm install --global --min-release-age=1 corepack@latest
 corepack enable pnpm
 ```
 

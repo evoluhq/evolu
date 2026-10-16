@@ -14,21 +14,15 @@
  * - Renderer phase (BEGIN): Replaces types with simplified versions after
  *   monorepo packages are merged, avoiding serialization warnings.
  *
- * It also defines the `evolu` router, which gives members the anchors that type
- * parameters with the same names would otherwise take.
+ * It also defines the `evolu` router, which links a type parameter to its
+ * same-named member.
  */
 
-import type {
-  Application,
-  Context,
-  PageDefinition,
-  RouterTarget,
-} from "typedoc";
+import type { Application, Context, PageDefinition, Reflection } from "typedoc";
 import {
   Converter,
   DeclarationReflection,
   IntrinsicType,
-  Reflection,
   ReflectionKind,
   RendererEvent,
   TypeScript as ts,
@@ -206,18 +200,14 @@ const copyCommentFromConst = (refl: DeclarationReflection): void => {
 };
 
 /**
- * The member router of typedoc-plugin-markdown without type parameter anchors.
- *
- * With the `table` parametersFormat, the Markdown theme renders type parameters
- * without anchors, but TypeDoc slugs them before members, so the `Input`
- * property of `Type<Name, Input, ...>` got the anchor `input-1` and links to
- * `#input` went nowhere. Without an anchor, a link to a type parameter falls
- * back to its page.
+ * The member router of typedoc-plugin-markdown that links a type parameter to
+ * its same-named member.
  *
  * TypeScript merges an interface's type parameter and its member with the same
  * name into one symbol whose first declaration is the type parameter, so
  * TypeDoc resolves a JSDoc link to `Input` and the inherited `Type.Input` to
- * the type parameter. Such a type parameter links to its member.
+ * the type parameter of `Type<Name, Input, ...>`. The member carries the
+ * documentation, so such a type parameter links to it.
  */
 class EvoluRouter extends MemberRouter {
   override buildChildPages(
@@ -233,18 +223,6 @@ class EvoluRouter extends MemberRouter {
       );
       if (member === undefined || !this.hasUrl(member)) continue;
       this.fullUrls.set(typeParameter, this.getFullUrl(member));
-      const anchor = this.anchors.get(member);
-      if (anchor !== undefined) this.anchors.set(typeParameter, anchor);
     }
-  }
-
-  protected override buildAnchors(
-    target: RouterTarget,
-    pageTarget: RouterTarget,
-  ): void {
-    // typedoc-plugin-markdown slugs type parameters but renders no anchors for
-    // them: https://github.com/typedoc2md/typedoc-plugin-markdown/issues/909
-    if (target instanceof Reflection && target.isTypeParameter()) return;
-    super.buildAnchors(target, pageTarget);
   }
 }
