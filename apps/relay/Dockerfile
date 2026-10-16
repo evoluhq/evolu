@@ -13,11 +13,16 @@ FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659b
 ARG RELAY_PACKAGE=@evolu/relay@latest
 
 # No package in the relay's tree needs an install script, and better-sqlite3
-# ships prebuilt binaries, so none runs.
+# ships prebuilt binaries, so none runs. Without a lockfile, npm resolves the
+# dependencies' version ranges at build time, so it takes only versions
+# published at least a day ago, as the workspace does (pnpm-workspace.yaml),
+# except Evolu's own packages, which the release builds the image from right
+# after publishing them.
 # droast ignore=DF008,DF031 reason="cd scopes installation to the temporary context mount; release CI supplies an exact package version, while manual builds default to latest."
 RUN --mount=type=bind,target=/context,readonly \
     cd /context && \
-    npm install --global --ignore-scripts "${RELAY_PACKAGE}" && \
+    npm install --global --ignore-scripts --min-release-age=1 \
+      "--min-release-age-exclude=@evolu/*" "${RELAY_PACKAGE}" && \
     npm cache clean --force
 
 ENV NODE_ENV=production

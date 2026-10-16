@@ -303,3 +303,26 @@ describe("relay Docker release recovery", () => {
     });
   }
 });
+
+describe("relay Dockerfile", () => {
+  it("installs only day-old dependencies, except Evolu's own packages", () => {
+    const dockerfile = readFileSync(
+      new URL("apps/relay/Dockerfile", root),
+      "utf8",
+    );
+    const install = dockerfile
+      .replaceAll("\\\n", " ")
+      .split("\n")
+      .find((line) => line.includes("npm install --global"));
+    assertNotUndefined(install);
+    const args = install.split(/\s+/u);
+    assertEqual(
+      [
+        "--ignore-scripts",
+        "--min-release-age=1",
+        '"--min-release-age-exclude=@evolu/*"',
+      ].filter((flag) => !args.includes(flag)),
+      [],
+    );
+  });
+});
