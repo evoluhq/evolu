@@ -47,7 +47,7 @@ Each Evolu version published since October 15, 2026 names GitHub Actions as its 
 npm view @evolu/common@8.23.0 _npmUser dist.attestations --json
 ```
 
-In a project installed with npm, `npm audit signatures` checks every installed package's registry signature and, where present, its provenance. For the relay image, the [GitHub CLI](https://cli.github.com) checks that the Docker workflow on `main` built it and prints its digest. Run the image by that digest rather than by a tag such as `4`, which moves to each new release.
+In a project installed with npm, `npm audit signatures` checks every installed package's registry signature and, where present, its provenance. In a pnpm 11.1+ project, `pnpm audit signatures` checks the registry signatures only. For the relay image, the [GitHub CLI](https://cli.github.com) checks that the Docker workflow on `main` built it and prints its digest. Run the image by that digest rather than by a tag such as `4`, which moves to each new release.
 
 ```bash
 gh attestation verify oci://docker.io/evoluhq/relay:4.2.15 \
@@ -62,16 +62,16 @@ gh attestation verify oci://docker.io/evoluhq/relay:4.2.15 \
 
 - **Reviews are not an audit.** The maintainer and two AI models from different vendors review each change, one change at a time. Evolu hasn't had an independent audit yet.
 - **The review covers commits, not the packed packages.** A compromised development tool in the packing job could change a release without changing Evolu's code. Diffing each staged package, which `npm stage download` allows, would close this.
-- **GitHub asks for a second factor only at sign-in**, and it requires an authenticator app or SMS alongside security keys, whose codes can be phished. A stolen GitHub session can't publish to npm, but it can commit to `main` under the maintainer's name, change this website, and approve the `docker-hub` deployment, which pushes a relay image that passes the attestation check. Signing the image with a key kept outside GitHub would make its check independent of GitHub; until then, to have the npm approval cover your relay, run `@evolu/relay` from npm, installed from a lockfile.
+- **GitHub asks for a second factor only at sign-in**, and it requires an authenticator app or SMS alongside security keys, whose codes can be phished. A stolen GitHub session can't publish to npm, but it can commit to `main` under the maintainer's name, change this website, and approve the `docker-hub` deployment, which pushes a relay image that passes the attestation check. Signing the image with a key kept outside GitHub would make its check independent of GitHub; until then, running `@evolu/relay` from npm, installed from a lockfile, puts the relay under the npm approval.
 
 ## Recommended settings
 
-These settings protect any app, not only one built on Evolu:
+These settings protect any app, not only one built on Evolu. To have a coding agent check an app for them, along with its Evolu releases and relay image, copy the [evolu-supply-chain](https://github.com/evoluhq/evolu/blob/main/.github/skills/evolu-supply-chain/SKILL.md) skill into the app's skills directory.
 
 - **Install from a lockfile**, with `pnpm install --frozen-lockfile` or `npm ci`.
 - **Wait a day for new versions**, as most malicious versions are removed within hours. Set pnpm's `minimumReleaseAge` (10.16+, in minutes) explicitly, as pnpm 11's default installs a newer version when no older one matches. npm 11.10+ reads `min-release-age`, in days. For an urgent fix, use `minimumReleaseAgeExclude` or npm 11.17's `min-release-age-exclude`.
 - **Refuse trust downgrades**, versions published with weaker evidence than an earlier one, such as with a stolen token after earlier versions came from a trusted publisher, with pnpm 10.21+ `trustPolicy: no-downgrade`. Some maintainers still publish by hand, as Expo does for its SDK 57 patches, so check each refused version and list it in `trustPolicyExclude` (10.22+).
-- **Allow install scripts one package at a time.** pnpm 10+ runs them only for the packages you allow, in `allowBuilds` since 10.26. npm's `ignore-scripts=true` turns them all off, the project's own included.
+- **Allow install scripts one package at a time.** pnpm 10+ runs them only for the packages listed in `allowBuilds`, or in `onlyBuiltDependencies` before 10.26. npm's `ignore-scripts=true` turns them all off, the project's own included.
 - **Pin the relay image by digest**, verify a new image as [shown above](#verify-a-release) before moving the pin, and watch the [evoluhq/evolu releases](https://github.com/evoluhq/evolu/releases) for security fixes.
 
 ```text
