@@ -110,13 +110,20 @@ jobs:
 
   # Stages the packed releases on npm, where each becomes public only after a
   # maintainer approves it with two-factor authentication, which no token in CI
-  # can do. Approve with `npm stage approve` in the order the stage step staged
-  # them, which puts dependencies first, and only when every commit since the
-  # last release is known and each expected version is staged once. Reject a
-  # version together with each staged version that depends on it. Each
-  # package's trusted publisher allows only staging, only from the npm
-  # environment, which only main can use, and the package requires 2FA and
-  # disallows tokens for publishing. Never add --allow-publish:
+  # can do. Approve only what the stage step of a run on main staged, in its
+  # order, which puts dependencies first, and only when every commit since the
+  # last release is known. Any npm token with write access, such as the session
+  # token of `npm login`, can stage a version too, so match each version to
+  # that step's log: pass `npm stage approve` one stage ID it printed per
+  # command, as npm 11 ignores further IDs, or on npmjs.com approve the version
+  # whose shasum it printed together with a stage ID, as npm prints the shasum
+  # before staging, also for a version it failed to stage. A run skips a tagged
+  # version, so take a skipped version's ID from the log of the earlier run, or
+  # the earlier attempt of the same run, on main that staged it. Reject a
+  # version together with each staged version that depends on it. Each package's trusted
+  # publisher allows only staging, only from the npm environment, which only
+  # main can use, and the package requires 2FA and disallows tokens for
+  # publishing. Never add --allow-publish:
   #   npm trust github <package> --repo evoluhq/evolu --file release.yaml --env npm --allow-stage-publish
   #   npm access set mfa=publish <package>
   # The job holding the OIDC token installs nothing and runs no lifecycle
