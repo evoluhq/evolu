@@ -1,0 +1,140 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2026-10-16",
+  title: "Approving npm releases with a Trezor",
+  description:
+    "Every Evolu release waits on npm until I approve it with a Trezor, so a stolen push key, token, or GitHub session can't publish it. Here is how it works and why a Trezor.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+In September, an attacker pushed malicious code to the main branch of
+[Zod](https://github.com/colinhacks/zod). Its maintainer believes a malicious
+npm package, run during a local test, took the Git push key. The attacker also
+changed Zod's release workflow to run on pushes to `main`. The workflow
+[started](https://github.com/colinhacks/zod/actions/runs/35592436622), but its
+publishing job waited for an approval that never came, and no Zod release
+reached npm. As the maintainer
+[wrote](https://news.ycombinator.com/item?id=50057591), Zod uses
+environment-scoped trusted publishing, so a push credential alone can't release
+it. Nub, another project by the same maintainer, had no such step: its
+release run published several of its packages, and npm's malware scanner
+blocked only the main one.
+
+Many release workflows work like Nub's, and until this week, so did Evolu's:
+whatever reached `main` got published. Evolu encrypts data end to end, so its
+relays never see the keys. The app does, and a malicious Evolu release would
+run inside the app.
+
+Now each release waits on npm until I approve it with a
+[Trezor](https://trezor.io), which a stolen push key, token, or GitHub session
+doesn't have. This post describes how, so that other maintainers can copy it.
+The details, with commands to verify a release, are on the
+[Supply chain](/docs/supply-chain) page.
+
+## Releases wait for my approval
+
+npm added
+[staged publishing](https://docs.npmjs.com/cli/commands/npm-stage) in May: a
+staged version is uploaded but kept out of installs until a maintainer approves
+it on npm with two-factor authentication.
+
+Changesets can't stage releases yet, as its support for staging is still an
+[open pull request](https://github.com/changesets/changesets/pull/2183), so
+Evolu's release workflow runs `npm stage publish` through
+[a short script](https://github.com/evoluhq/evolu/blob/main/scripts/stage-packages.mts).
+Each package's [trusted publisher](https://docs.npmjs.com/trusted-publishers),
+which lets the workflow upload without a stored token, allows only staging, and
+only from a GitHub environment that only `main` can use. Each package also
+requires two-factor authentication to publish and refuses tokens for
+publishing:
+
+```bash
+npm trust github <package> --repo evoluhq/evolu --file release.yaml --env npm --allow-stage-publish
+npm access set mfa=publish <package>
+```
+
+npm accepts a stage or a publish from any of a package's trusted publishers, so
+before adding a stage-only one, remove each one that can publish:
+`npm trust list` shows them, and `npm trust revoke` removes them.
+
+Before I approve, I review every commit since the previous release, and I
+approve only the versions that the release run on `main` staged. Each approval
+takes a touch on the Trezor, and anyone can check who approved a version:
+
+```bash
+npm view @evolu/common@8.23.0 _npmUser
+```
+
+## Keys on a Trezor
+
+Evolu's Git push key never leaves the Trezor. It's an SSH key
+(`ssh-keygen -t ecdsa-sk`) that a Trezor Safe 7, a hardware wallet whose
+Universal firmware also works as a FIDO2 security key, computes from its seed
+for each push, after a touch on the device. The same Trezor is my only second
+factor on npm, apart from recovery codes I keep offline.
+
+Why a Trezor? It stays locked until its PIN is entered on its own touchscreen.
+Two secure elements check the PIN, and after ten wrong tries, with a growing
+wait between them, the device wipes itself, so a stolen Trezor doesn't give up
+its keys easily. The screen shows which site a request is for, so malware can't
+pass off a touch for one site as a touch for another. The firmware is open
+source and reproducibly built. And because the keys are computed from the
+wallet's seed, a Trezor restored from the seed has the same keys, so nothing
+has to be registered again.
+
+A Trezor isn't the only hardware key that works. A YubiKey costs less and does
+the same job, but its firmware isn't open source, so it has to be trusted
+rather than verified, and its keys can't be backed up, so losing it means
+registering a new key everywhere. A Trezor's seed can be backed up as Shamir
+shares instead: any two of three, for example, restore every key, and a single
+share reveals nothing. Trezor made the first widely available hardware wallet,
+in 2014, and because a broken one means stolen money, its open firmware has
+drawn more than a decade of scrutiny from researchers and its own bug bounty.
+I chose it for that track record, and because Trezor Suite uses Evolu for
+[Suite Sync](https://trezor.io/guides/trezor-suite/suite-sync), which keeps
+wallet labels in sync across devices.
+
+## The rest of the pipeline
+
+I also went through GitHub, npm, and Docker Hub and removed everything a
+release doesn't need: old tokens and repository secrets, OAuth and GitHub apps
+we no longer use, unused environments, and access for everyone but me. No API
+token or SSH key file left on my computer can push code or publish a package
+on its own.
+
+The Docker image of Evolu Relay, the server that apps sync through, is built
+from the package npm serves, signed with a GitHub artifact attestation, and
+pushed only after a separate approval. Actions are pinned by commit SHA, the
+default workflow token is read-only, and no checkout keeps its token. Published
+packages pin their direct runtime dependencies exactly. Every npm and pnpm
+install we run takes only versions at least a day old, and pnpm also refuses
+trust downgrades.
+
+## Summary
+
+The rule behind all of this: the step that publishes must need something that
+a stolen push key, CI token, or GitHub session doesn't have. On npm, that
+means approving staged releases with a hardware key, after reviewing every
+commit since the previous release, and pushing to Git with the same key. Then
+close the other ways in: delete npm tokens, run `npm access set mfa=publish`
+on old packages too, make a hardware key the only second factor of every npm
+account that can publish, with recovery codes kept offline, and remove from
+GitHub the other SSH keys and tokens that can push. For installs, set a release
+age explicitly and, with pnpm, refuse trust downgrades, as the
+[Supply chain](/docs/supply-chain#recommended-settings) page shows. The
+[release workflow](https://github.com/evoluhq/evolu/blob/main/.github/workflows/release.yaml)
+shows how the pieces fit together, and the Supply chain page's
+[Limits](/docs/supply-chain#limits) list what the setup doesn't cover yet.
+
+If there's a gap we missed, or a better way to close one,
+[open an issue](https://github.com/evoluhq/evolu/issues). To report a
+vulnerability or a suspected compromise, follow the
+[security policy](https://github.com/evoluhq/evolu/security/policy).
