@@ -1474,6 +1474,18 @@ test("parseProtocolHeader parses any version and rejects malformed ones", () => 
   }
 });
 
+test("ProtocolDecodeError keeps its name when its class is renamed, as minifiers do", () => {
+  // An unknown message type.
+  const result = parseProtocolHeader(
+    new Uint8Array([1, ...new Uint8Array(16), 9]),
+  );
+  assertErr(result);
+  const { error } = result.error;
+  assertInstanceOf(error, Error);
+  const Renamed = class G extends (error.constructor as ErrorConstructor) {};
+  assertSame(new Renamed("x").name, "ProtocolDecodeError");
+});
+
 describe("E2E versioning", () => {
   it("same versions", async () => {
     await using run = testCreateRun(shouldNotBeCalledStorageDep);

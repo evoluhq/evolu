@@ -1720,7 +1720,8 @@ const decodeMessageType = (input: Buffer): MessageType => {
 class ProtocolDecodeError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = this.constructor.name;
+    // A literal, because minifiers rename classes.
+    this.name = "ProtocolDecodeError";
   }
 }
 

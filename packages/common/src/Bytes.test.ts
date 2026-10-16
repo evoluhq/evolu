@@ -101,6 +101,11 @@ describe("BufferError", () => {
     assertEqual(error.message, "test error");
   });
 
+  it("keeps its name when its class is renamed, as minifiers do", () => {
+    const Renamed = class G extends BufferError {};
+    assertEqual(new Renamed("x").name, "BufferError");
+  });
+
   it("constructs without Error.captureStackTrace", () => {
     const descriptor = globalThis.Object.getOwnPropertyDescriptor(
       Error,
