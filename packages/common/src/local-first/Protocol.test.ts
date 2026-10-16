@@ -264,6 +264,19 @@ test("encodeSqliteValue/decodeSqliteValue replaces a lone surrogate in a string 
   assertSame(decodeSqliteValue(buffer), "a�b");
 });
 
+test("encodeSqliteValue encodes JSON text with an escaped lone surrogate as a string", () => {
+  // JSON.stringify escapes a lone surrogate, such as one left by cutting a
+  // string in the middle of an emoji.
+  const value = JSON.stringify({ title: "Hi \u{1F44B}".slice(0, 4) });
+  assertSame(value, '{"title":"Hi \\ud83d"}');
+  const buffer = createBuffer();
+
+  encodeSqliteValue(buffer, value);
+
+  assertSame(buffer.unwrap()[0], ProtocolValueType.String);
+  assertSame(decodeSqliteValue(buffer), value);
+});
+
 test("encodeSqliteValue/decodeSqliteValue keeps a byte order mark in a string", () => {
   for (const value of ["\uFEFFabc", "\uFEFF", "a\uFEFFb"]) {
     const buffer = createBuffer();

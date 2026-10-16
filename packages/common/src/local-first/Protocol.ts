@@ -2611,7 +2611,11 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
       }
 
       const json = Json.from.parent(value);
-      if (json.ok) {
+      // Text that survives the JSON.stringify round trip below writes a lone
+      // surrogate as a lowercase \udXXX escape. As Json it would be sent as
+      // WTF-8, which @evolu/common 8.6 and earlier decode with U+FFFD, so such
+      // text is sent as a string, which every decoder reads exactly.
+      if (json.ok && !value.includes("\\ud")) {
         const jsonValue = jsonToJsonValue(json.value);
         const jsonBuffer = createBuffer();
         try {
