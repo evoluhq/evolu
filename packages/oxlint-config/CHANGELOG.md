@@ -1,5 +1,13 @@
 # @evolu/oxlint-config
 
+## 0.3.3
+
+### Patch Changes
+
+- 939b943: Updated eslint-plugin-jsdoc to 65.3.4
+
+  Its `no-undefined-types` rule, the one the shared config enables, parsed every JSDoc comment of a file again for each comment it checked, so linting time grew quadratically with a file's comments. It now parses them once per file. Linting the Evolu repository takes about half the time, with the same results.
+
 ## 0.3.2
 
 ### Patch Changes
