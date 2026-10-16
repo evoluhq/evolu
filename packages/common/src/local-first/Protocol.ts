@@ -22,26 +22,39 @@
  *
  * ## Message structure
  *
- * | Field                          | Notes                     |
- * | :----------------------------- | :------------------------ |
- * | **Header**                     |                           |
- * | - {@link protocolVersion}      |                           |
- * | - {@link OwnerId}              | {@link Owner}             |
- * | - messageType                  | {@link MessageType}       |
- * | **Request (messageType=0)**    |                           |
- * | - hasWriteKey                  | 0 = no, 1 = yes           |
- * | - {@link OwnerWriteKey}        | If hasWriteKey = 1        |
- * | - subscriptionFlag             | {@link SubscriptionFlags} |
- * | **Response (messageType=1)**   |                           |
- * | - {@link ProtocolErrorCode}    |                           |
- * | **Broadcast (messageType=2)**  |                           |
- * | - (no additional fields)       |                           |
- * | **Messages**                   |                           |
- * | - {@link NonNegativeInt}       | A number of messages.     |
- * | - {@link EncryptedCrdtMessage} |                           |
- * | **Ranges**                     |                           |
- * | - {@link NonNegativeInt}       | Number of ranges.         |
- * | - {@link Range}                |                           |
+ * | Field                         | Notes                                 |
+ * | :---------------------------- | :------------------------------------ |
+ * | **Header**                    |                                       |
+ * | - {@link protocolVersion}     |                                       |
+ * | - {@link OwnerId}             | {@link Owner}                         |
+ * | - messageType                 | {@link MessageType}                   |
+ * | **Request (messageType=0)**   |                                       |
+ * | - hasWriteKey                 | 0 = no, 1 = yes                       |
+ * | - {@link OwnerWriteKey}       | If hasWriteKey = 1                    |
+ * | - subscriptionFlag            | {@link SubscriptionFlags}             |
+ * | **Response (messageType=1)**  |                                       |
+ * | - {@link ProtocolErrorCode}   | Decoders read nothing after an error. |
+ * | **Broadcast (messageType=2)** | Only Messages follow.                 |
+ * | **Messages**                  | Always present.                       |
+ * | - count                       | Number of messages.                   |
+ * | - timestamps                  | Columns, as described below.          |
+ * | - changes                     | Each a length and its bytes.          |
+ * | **Ranges**                    | Omitted when there are none.          |
+ * | - count                       | Number of ranges.                     |
+ * | - upper bounds                | Columns, without the last one.        |
+ * | - types                       | One {@link RangeType} per range.      |
+ * | - payloads                    | In range order, as described below.   |
+ *
+ * Every number is a {@link NonNegativeInt} varint. Timestamps are encoded as
+ * columns: the millis of each as a delta from the previous one, the first from
+ * 0, then runs of a {@link Counter} and its length, then runs of a
+ * {@link NodeId}'s 8 bytes and its length. A list of messages has its count
+ * before them. Range upper bounds have none, because they are one fewer than
+ * the ranges count. A Skip range has no payload, a Fingerprint range its 12
+ * bytes, and a Timestamps range a count followed by its timestamps as columns.
+ * Each change is an {@link EncryptedDbChange}, in the order of the timestamps.
+ * After an error code, encoders write a Messages count of 0, which decoders do
+ * not read.
  *
  * Range upper bounds must not decrease. The last range always has
  * {@link InfiniteUpperBound}, which is not encoded. A message with decreasing
@@ -75,15 +88,15 @@
  * synchronized.
  *
  * The **non-initiator answers every request it can decode** to provide sync
- * completion feedback, even with empty messages containing only the header and
- * no error. This allows the initiator to detect when synchronization is
+ * completion feedback, even with a Response that has no messages, no ranges,
+ * and no error. This allows the initiator to detect when synchronization is
  * complete. A request it cannot decode, or one larger than the relay's
  * `totalMaxSize`, gets no answer and has no effect.
  *
  * Ranges are compared by their {@link Fingerprint}, which anyone who can write
  * for an owner can make collide. Its documentation describes the consequences.
  *
- * Both **Messages** and **Ranges** are optional, allowing each side to send,
+ * **Messages** and **Ranges** may each be empty, allowing each side to send,
  * sync, or only subscribe data as needed.
  *
  * When the initiator sends data, the {@link OwnerWriteKey} is required as a
@@ -508,7 +521,11 @@ export interface ProtocolInvalidDataError extends Typed<"ProtocolInvalidDataErro
   readonly error: unknown;
 }
 
-/** Error when a {@link OwnerWriteKey} is invalid, missing, or fails validation. */
+/**
+ * Error when the relay's storage rejects a request's {@link OwnerWriteKey}, or a
+ * request with messages has none. A storage that throws while validating a key
+ * causes a {@link ProtocolWriteError}.
+ */
 export interface ProtocolWriteKeyError
   extends OwnerError, Typed<"ProtocolWriteKeyError"> {}
 
@@ -761,10 +778,11 @@ export const createProtocolMessageForUnsubscribe = (
  * Mutable builder for constructing {@link ProtocolMessage} respecting size
  * limits.
  *
- * A frame never exceeds `totalMaxSize`. Make ordinary writes inside `tryWrite`,
- * which keeps them only if the frame can still be closed. A write outside a
- * trial is a closing write: `addMessage` and `addRange` assert that the frame
- * fits `totalMaxSize`.
+ * A frame never exceeds `totalMaxSize`. Make a write that may not fit inside
+ * `tryWrite`, which keeps it only if the frame can still be closed; a write
+ * known to fit, such as a closing write, can be made outside. Outside a trial,
+ * `addMessage` and `addRange` assert that the frame fits `totalMaxSize`; they
+ * do not check `rangesMaxSize`.
  *
  * The builder references each change, which `unwrap` copies into the frame it
  * returns, so a change must not be modified while the builder is in use.
@@ -1164,7 +1182,8 @@ export interface ApplyProtocolMessageAsClientResponse extends Typed<"Response"> 
 
 /**
  * Result of {@link applyProtocolMessageAsClient}: the response needed nothing
- * more, because its ranges all matched or it carried none.
+ * more, because its ranges all matched, it carried none, or they differed only
+ * by stored changes too large to send, which `onChangeTooLarge` reports.
  */
 export interface ApplyProtocolMessageAsClientConverged extends Typed<"Converged"> {}
 
@@ -1741,11 +1760,11 @@ const decodeMessages = (
   return messages;
 };
 
-// The smallest envelope encodeAndEncryptDbChange can produce: the nonce, a
-// 1-byte ciphertext length, and the 16-byte Poly1305 tag. Every v1 client sends
-// at least 77 bytes. The relay quota counts change bytes, so a relay storing
-// shorter changes, zero-length ones above all, would store rows the quota does
-// not count.
+// The smallest envelope that can decrypt: the nonce, a 1-byte ciphertext
+// length, and the 16-byte Poly1305 tag of an empty plaintext. Every v1
+// client sends at least 77 bytes. The relay quota counts change bytes, so a
+// relay storing shorter changes, zero-length ones above all, would store rows
+// the quota does not count.
 const minEncryptedDbChangeLength = xChaCha20Poly1305NonceLength + 1 + 16;
 
 /**
@@ -1754,12 +1773,15 @@ const minEncryptedDbChangeLength = xChaCha20Poly1305NonceLength + 1 + 16;
  * Timestamps range costs one more for every 32 timestamps it iterates and for
  * every 128 KiB of a change it reads only to skip, as too large for any frame.
  *
- * An answer to a frame whose ranges take at most 30,000 bytes, the default,
- * needs at most about 4,500. From about 56,000 bytes, an owner with more than
- * about 130,000 changes can need up to about 14,500, so such an answer stops at
- * the limit and sync takes more rounds. The limit keeps an answer to a crafted
- * frame to about 0.1 s of searches, or 0.3 s to 0.6 s of fingerprints with
- * 50,000 to 900,000 stored changes.
+ * An answer to a frame that sync wrote, whose ranges take at most 30,000 bytes,
+ * the default, stays below the limit; the costliest such frame found, of
+ * Fingerprint ranges, needs about 6,400. From about 42,000 bytes, such a frame
+ * can reach the limit against an owner with about 7,500 changes, so its answer
+ * stops at the limit and sync takes more rounds. A crafted frame reaches the
+ * limit from about 16,400 bytes of repeated Skip ranges against any owner with
+ * a change. The limit keeps an answer to a crafted frame to about 0.1 s of
+ * searches, or 0.3 s to 0.6 s of fingerprints with 50,000 to 900,000 stored
+ * changes.
  */
 const maxSyncStorageReads = 8_192;
 
@@ -2541,7 +2563,11 @@ export const decryptAndDecodeDbChange = (
   }
 };
 
-// Small ints are encoded into ProtocolValueType, saving one byte per int.
+/**
+ * Type codes of a {@link SqliteValue} in an {@link EncryptedDbChange}. A
+ * non-negative integer below 20 is written as its own code, which saves a
+ * byte.
+ */
 export const ProtocolValueType = {
   // 0-19 small ints
 
@@ -2573,6 +2599,19 @@ export const ProtocolValueType = {
   // Increment, Decrement, Patch, whatever.
 } as const;
 
+/**
+ * Writes a {@link SqliteValue} as a {@link ProtocolValueType} code followed by
+ * its payload.
+ *
+ * A string takes the first form that reproduces it exactly: empty; a
+ * {@link DateIso} as its time; an {@link Id} as its 16 bytes; JSON text as
+ * MessagePack, when `JSON.stringify` writes exactly that text, it nests no
+ * deeper than decoding allows, and it contains no `\ud`, which begins the
+ * escape of a lone surrogate; or Base64Url as its bytes. Any other string is
+ * UTF-8, with a lone surrogate replaced by U+FFFD. A non-negative safe integer
+ * other than -0 is a varint, and any other number is MessagePack, which writes
+ * a negative integer from -2^31 as an int and the rest as a float64.
+ */
 export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
   if (value === null) {
     encodeNonNegativeInt(buffer, ProtocolValueType.Null);
@@ -2683,6 +2722,13 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
   buffer.extend(value);
 };
 
+/**
+ * Reads a {@link SqliteValue} that {@link encodeSqliteValue} wrote. It throws on
+ * input it cannot read, such as an unknown type code or truncated bytes, so a
+ * caller decoding untrusted bytes catches it, as
+ * {@link decryptAndDecodeDbChange} does. Invalid UTF-8 in a string reads as
+ * U+FFFD.
+ */
 export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
   const type = decodeNonNegativeInt(buffer);
 
