@@ -29,7 +29,7 @@ The Trezor stays locked until its PIN is entered on its own touchscreen. Two sec
 
 - Actions are pinned by full commit SHA, which the repository requires. The default workflow token is read-only, and no checkout keeps its token.
 - The job that stages on npm installs nothing, so no dependency code runs while it can get its npm token. The jobs that hold the Docker Hub and website credentials run no install scripts, and none of these jobs restores anything from the Actions cache, which jobs running dependency code can write.
-- The [`evoluhq/relay`](https://hub.docker.com/r/evoluhq/relay) image is built from the `@evolu/relay` package npm serves, on a base image pinned by digest, signed with a [GitHub artifact attestation](https://docs.github.com/en/actions/concepts/security/artifact-attestations), and pushed only after the maintainer approves its `docker-hub` deployment on GitHub.
+- The [`evoluhq/relay`](https://hub.docker.com/r/evoluhq/relay) image is built from the `@evolu/relay` version npm serves after the maintainer's approval, on a base image pinned by digest, and signed with a [GitHub artifact attestation](https://docs.github.com/en/actions/concepts/security/artifact-attestations). A job on `main` pushes it once npm serves that version.
 - `main` can't be force-pushed or deleted, GitHub releases published after October 15, 2026 are immutable, and CodeQL, secret scanning, Dependabot alerts, and malware alerts are on.
 
 ## Dependencies
@@ -62,7 +62,7 @@ gh attestation verify oci://docker.io/evoluhq/relay:4.2.15 \
 
 - **Reviews are not an audit.** The maintainer and two AI models from different vendors review each change, one change at a time. Evolu hasn't had an independent audit yet.
 - **The review covers commits, not the packed packages.** A compromised development tool in the packing job could change a release without changing Evolu's code. Diffing each staged package, which `npm stage download` allows, would close this.
-- **GitHub asks for a second factor only at sign-in**, and it requires an authenticator app or SMS alongside security keys, whose codes can be phished. A stolen GitHub session can't publish to npm, but it can commit to `main` under the maintainer's name, change this website, and approve the `docker-hub` deployment, which pushes a relay image that passes the attestation check. Signing the image with a key kept outside GitHub would make its check independent of GitHub; until then, running `@evolu/relay` from npm, installed from a lockfile, puts the relay under the npm approval.
+- **GitHub asks for a second factor only at sign-in**, and it requires an authenticator app or SMS alongside security keys, whose codes can be phished. A stolen GitHub session can't publish to npm, but it can commit to `main` under the maintainer's name, change this website, and change the relay's Dockerfile or the Docker workflow, which then push a relay image that passes the attestation check. Signing the image with a key kept outside GitHub would make its check independent of GitHub; until then, running `@evolu/relay` from npm, installed from a lockfile, puts the relay under the npm approval.
 
 ## Recommended settings
 

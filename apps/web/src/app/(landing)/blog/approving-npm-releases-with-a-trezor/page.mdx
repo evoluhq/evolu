@@ -111,12 +111,11 @@ token or SSH key file left on my computer can push code or publish a package
 on its own.
 
 The Docker image of Evolu Relay, the server that apps sync through, is built
-from the package npm serves, signed with a GitHub artifact attestation, and
-pushed only after a separate approval. Actions are pinned by commit SHA, the
-default workflow token is read-only, and no checkout keeps its token. Published
-packages pin their direct runtime dependencies exactly. Every npm and pnpm
-install we run takes only versions at least a day old, and pnpm also refuses
-trust downgrades.
+from the version npm serves after my approval, and signed with a GitHub artifact
+attestation. Actions are pinned by commit SHA, the default workflow token is
+read-only, and no checkout keeps its token. Published packages pin their direct
+runtime dependencies exactly. Every npm and pnpm install we run takes only
+versions at least a day old, and pnpm also refuses trust downgrades.
 
 ## Summary
 

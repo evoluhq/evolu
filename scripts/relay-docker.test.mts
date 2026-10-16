@@ -100,7 +100,7 @@ describe("relay Docker release recovery", () => {
     });
   }
 
-  it("runs after Release and pushes from the docker-hub environment", () => {
+  it("runs after Release and hourly, and pushes from the docker-hub environment", () => {
     const jobs = workflow.split(/\n {2}(?=\S)/u);
     const version = jobs.find((job) => job.startsWith("version:\n"));
     const push = jobs.find((job) => job.startsWith("push:\n"));
@@ -111,24 +111,78 @@ describe("relay Docker release recovery", () => {
 
     assertTrue(
       workflow.includes(
-        "  workflow_run:\n    workflows: [Release]\n    types: [completed]\n    branches: [main]\n",
+        [
+          "on:",
+          "  workflow_run:",
+          "    workflows: [Release]",
+          "    types: [completed]",
+          "    branches: [main]",
+          "  schedule:",
+          '    - cron: "17 * * * *"',
+          "  workflow_dispatch:",
+          "",
+        ].join("\n"),
       ),
     );
-    // Only a successful Release run of this repository, or a manual run, goes
-    // on, and only a missing image or a manual run asks for approval.
+    // Only a successful Release run of this repository, or a scheduled or
+    // manual run on main, goes on.
     assertEqual(
       version?.match(/\n {4}if: >-\n((?: {6}.+\n)+)/u)?.[1],
       [
         "      github.repository == 'evoluhq/evolu' && github.ref == 'refs/heads/main' &&",
-        "      (github.event_name == 'workflow_dispatch' ||",
+        "      (github.event_name != 'workflow_run' ||",
         "      (github.event.workflow_run.conclusion == 'success' &&",
         "      github.event.workflow_run.head_repository.full_name == github.repository))",
         "",
       ].join("\n"),
     );
+    // Watching npm fits in the job's timeout, which fits in GitHub's limit,
+    // and only one run after Release watches at a time.
+    assertEqual(version?.match(/\n {4}timeout-minutes: (.+)\n/u)?.[1], "355");
+    assertTrue(
+      version?.includes(
+        "    concurrency:\n      group: ${{ github.event_name == 'workflow_run' && 'relay-docker-watch' || github.run_id }}\n      cancel-in-progress: false\n",
+      ),
+    );
+    // Both jobs read the Release run's commit, also when rerun.
+    for (const job of [version, push]) {
+      assertTrue(
+        job?.includes(
+          "        with:\n          ref: ${{ github.event.workflow_run.head_sha }}\n          persist-credentials: false\n",
+        ),
+      );
+    }
+    // The npm check runs only for a missing image, watches only after Release,
+    // and the push job reads it.
+    assertTrue(
+      version?.includes("      served: ${{ steps.npm.outputs.served }}\n"),
+    );
+    const npmCheck = setupWorkflowStep("name: Check that npm serves the relay");
+    assertTrue(
+      npmCheck.includes(
+        "        id: npm\n        if: steps.exists.outputs.exists == 'false'\n",
+      ),
+    );
+    assertTrue(
+      npmCheck.includes(
+        "          WATCH_SECONDS: ${{ github.event_name == 'workflow_run' && 19800 || 0 }}\n",
+      ),
+    );
+    // Only pushes of one version wait for each other.
+    assertSame(workflow.includes("\nconcurrency:"), false);
+    assertTrue(
+      push?.includes(
+        "    concurrency:\n      group: relay-docker-${{ needs.version.outputs.version }}\n      cancel-in-progress: false\n",
+      ),
+    );
+    // Only an image npm serves, or a manual run whose image exists, is pushed.
     assertEqual(
-      push?.match(/\n {4}if: (.+)\n/u)?.[1],
-      "github.event_name == 'workflow_dispatch' || needs.version.outputs.exists == 'false'",
+      push?.match(/\n {4}if: >-\n((?: {6}.+\n)+)/u)?.[1],
+      [
+        "      needs.version.outputs.served == 'true' ||",
+        "      (github.event_name == 'workflow_dispatch' && needs.version.outputs.exists == 'true')",
+        "",
+      ].join("\n"),
     );
     assertEqual(push?.match(/\n {4}environment: (.+)\n/u)?.[1], "docker-hub");
     assertSame(release.includes("docker.yaml"), false);
@@ -141,7 +195,7 @@ describe("relay Docker release recovery", () => {
     ["503", 0, undefined],
     ["000", 6, undefined],
   ] as const) {
-    it(`asks for approval only when the image lookup returns 404, here ${status} with exit ${curlExit}`, () => {
+    it(`looks up the image, failing unless Docker Hub returns 200 or 404, here ${status} with exit ${curlExit}`, () => {
       const directory = mkdtempSync(join(tmpdir(), "evolu-docker-exists-"));
       try {
         const output = join(directory, "output");
@@ -185,27 +239,40 @@ describe("relay Docker release recovery", () => {
     });
   }
 
-  for (const [packFailures, exitCode, expectedPacks] of [
-    [
-      2,
-      0,
-      [
-        "@evolu/relay@3.1.0",
-        "@evolu/relay@3.1.0",
-        "@evolu/relay@3.1.0",
-        "@evolu/common@8.22.1",
-        "@evolu/nodejs@4.3.2",
-      ],
-    ],
-    [1000, 1, Array.from({ length: 90 }, () => "@evolu/relay@3.1.0")],
+  const relayPacks = [
+    "@evolu/relay@3.1.0",
+    "@evolu/common@8.22.1",
+    "@evolu/nodejs@4.3.2",
+  ];
+  for (const [
+    watchSeconds,
+    failing,
+    viewFailures,
+    served,
+    expectedViews,
+    expectedPacks,
+  ] of [
+    // A scheduled or manual run checks once.
+    [0, "", 0, "true", 1, relayPacks],
+    [0, "@evolu/nodejs@4.3.2", 0, "false", 1, relayPacks],
+    [0, "@evolu/relay@3.1.0", 0, "false", 1, ["@evolu/relay@3.1.0"]],
+    [0, "", 1, "false", 1, []],
+    // A run after Release checks every 30 seconds until npm serves the relay
+    // or 19800 seconds pass.
+    [19800, "", 3, "true", 4, relayPacks],
+    [19800, "", 1000, "false", 661, []],
   ] as const) {
-    it(`waits until npm can download each package when ${packFailures} downloads fail`, () => {
+    it(`reports npm serves the relay only when it can download each package, watching ${watchSeconds} seconds, failing ${failing || "nothing"} and ${viewFailures} views`, () => {
       const directory = mkdtempSync(join(tmpdir(), "evolu-docker-npm-"));
       try {
+        const output = join(directory, "output");
+        const viewLog = join(directory, "view.log");
         const packLog = join(directory, "pack.log");
+        writeFileSync(output, "");
+        writeFileSync(viewLog, "");
         writeFileSync(packLog, "");
         const script = setupWorkflowScript(
-          setupWorkflowStep("name: Wait for npm to serve"),
+          setupWorkflowStep("name: Check that npm serves the relay"),
         );
         const result = spawnSync(
           "bash",
@@ -215,32 +282,47 @@ describe("relay Docker release recovery", () => {
             "-c",
             `npm() {
               case "$1 $3" in
-                "view dependencies") printf '{"@evolu/common":"8.22.1","@evolu/nodejs":"4.3.2"}\\n' ;;
+                "view dependencies")
+                  printf 'view\\n' >> "$VIEW_LOG"
+                  [ "$(( $(wc -l < "$VIEW_LOG") ))" -gt "$VIEW_FAILURES" ] || return 1
+                  printf '{"@evolu/common":"8.22.1","@evolu/nodejs":"4.3.2","better-sqlite3":"12.4.1"}\\n'
+                  ;;
                 "pack --dry-run")
+                  [ "$4" = --prefer-online ] || return 1
                   printf '%s\\n' "$2" >> "$PACK_LOG"
-                  [ "$(( $(wc -l < "$PACK_LOG") ))" -gt "$PACK_FAILURES" ]
+                  [ "$2" != "$FAILING" ]
                   ;;
                 *) return 1 ;;
               esac
             }
-            sleep() { :; }
+            # Bash counts SECONDS from the value assigned to it.
+            sleep() { SECONDS=$(( SECONDS + $1 )); }
             ${script}`,
           ],
           {
             env: {
               ...process.env,
               VERSION: "3.1.0",
+              WATCH_SECONDS: `${watchSeconds}`,
+              GITHUB_OUTPUT: output,
+              VIEW_LOG: viewLog,
               PACK_LOG: packLog,
-              PACK_FAILURES: `${packFailures}`,
+              FAILING: failing,
+              VIEW_FAILURES: `${viewFailures}`,
             },
             encoding: "utf8",
             timeout: 5000,
           },
         );
         assertSame(result.error, undefined);
-        assertSame(result.status, exitCode);
+        assertSame(result.status, 0);
+        assertSame(readFileSync(output, "utf8"), `served=${served}\n`);
+        assertSame(
+          readFileSync(viewLog, "utf8").split("\n").filter(Boolean).length,
+          expectedViews,
+        );
         assertEqual(
-          readFileSync(packLog, "utf8").trim().split("\n"),
+          readFileSync(packLog, "utf8").split("\n").filter(Boolean),
           expectedPacks,
         );
       } finally {

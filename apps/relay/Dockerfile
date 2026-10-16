@@ -16,8 +16,8 @@ ARG RELAY_PACKAGE=@evolu/relay@latest
 # ships prebuilt binaries, so none runs. Without a lockfile, npm resolves the
 # dependencies' version ranges at build time, so it takes only versions
 # published at least a day ago, as the workspace does (pnpm-workspace.yaml),
-# except Evolu's own packages, which the release builds the image from right
-# after publishing them.
+# except Evolu's own packages, which the Docker workflow builds the image from
+# soon after npm serves them.
 # droast ignore=DF008,DF031 reason="cd scopes installation to the temporary context mount; release CI supplies an exact package version, while manual builds default to latest."
 RUN --mount=type=bind,target=/context,readonly \
     cd /context && \

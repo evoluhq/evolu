@@ -1,20 +1,22 @@
 name: Docker
 
 # Builds the relay image from the published package, as
-# docs/adr/relay-image-installs-published-package.md decides. Each finished
-# Release run on main starts it, so its wait for approval never holds Release.
+# docs/adr/relay-image-installs-published-package.md decides, once npm serves
+# it, which npm does only after a maintainer approves the staged release. Each
+# finished Release run on main starts it to watch npm for that run's relay
+# version, so the image follows a prompt approval within minutes. An hourly run
+# checks main's relay version once, which picks up a later approval. It runs at
+# minute 17, as GitHub delays scheduled runs at the start of an hour.
 on:
   workflow_run:
     workflows: [Release]
     types: [completed]
     branches: [main]
+  schedule:
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions: {}
-
-concurrency:
-  group: relay-docker
-  cancel-in-progress: false
 
 env:
   IMAGE: docker.io/evoluhq/relay
@@ -26,18 +28,29 @@ jobs:
     # fork's pull request can have a branch named main too.
     if: >-
       github.repository == 'evoluhq/evolu' && github.ref == 'refs/heads/main' &&
-      (github.event_name == 'workflow_dispatch' ||
+      (github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
+    # A run after Release watches npm for 330 minutes, which leaves 25 minutes
+    # of GitHub's 6-hour limit for a job for setup and a slow last npm call.
+    timeout-minutes: 355
+    # Runs after Release watch one at a time, and only the newest waiting one is
+    # kept, so pushes to main during a slow approval don't each hold a runner.
+    # The newest reads main's newest relay version, and the hourly run picks up
+    # an approval no watch saw.
+    concurrency:
+      group: ${{ github.event_name == 'workflow_run' && 'relay-docker-watch' || github.run_id }}
+      cancel-in-progress: false
     permissions:
       contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       exists: ${{ steps.exists.outputs.exists }}
+      served: ${{ steps.npm.outputs.served }}
     steps:
-      # A rerun of an older Release run builds that run's relay, not main's.
-      # A manual run has no head_sha and checks out main.
+      # A run after Release reads that run's relay version, also when rerun. A
+      # scheduled or manual run has no head_sha and checks out main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -49,8 +62,8 @@ jobs:
           version=$(jq -r .version apps/relay/package.json)
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      # Only a run whose image is missing needs the push job, whose environment
-      # asks for approval.
+      # Only a missing image needs the npm check. A manual run whose image exists
+      # repairs its tags.
       - name: Look up the image on Docker Hub
         id: exists
         env:
@@ -68,16 +81,47 @@ jobs:
               ;;
           esac
 
+      # npm serves a staged release only once a maintainer approves it, and its
+      # tarball can return 404 for minutes after npm lists it, so check that npm
+      # can download the relay and each @evolu package it depends on, as npm
+      # install does. A run after Release checks every 30 seconds for 330
+      # minutes; other runs check once.
+      - name: Check that npm serves the relay
+        id: npm
+        if: steps.exists.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          WATCH_SECONDS: ${{ github.event_name == 'workflow_run' && 19800 || 0 }}
+        run: |
+          is_served() {
+            dependencies=$(npm view "@evolu/relay@$VERSION" dependencies --json 2>/dev/null) || return 1
+            for package in "@evolu/relay@$VERSION" $(jq -r 'to_entries[] | select(.key | startswith("@evolu/")) | "\(.key)@\(.value)"' <<< "$dependencies"); do
+              npm pack "$package" --dry-run --prefer-online > /dev/null 2>&1 || return 1
+            done
+          }
+          until is_served; do
+            if [ "$SECONDS" -ge "$WATCH_SECONDS" ]; then
+              echo "::notice::npm does not serve @evolu/relay@$VERSION and its @evolu dependencies yet, so nothing is pushed."
+              echo "served=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "served=true" >> "$GITHUB_OUTPUT"
+
   push:
     name: Push relay image
     needs: version
-    # A manual run always runs this job, which repairs an existing image's tags.
-    if: github.event_name == 'workflow_dispatch' || needs.version.outputs.exists == 'false'
+    # A manual run whose image exists repairs its tags.
+    if: >-
+      needs.version.outputs.served == 'true' ||
+      (github.event_name == 'workflow_dispatch' && needs.version.outputs.exists == 'true')
     runs-on: ubuntu-latest
-    # The environment holds the Docker Hub token. Only main can use it, and each
-    # run needs the maintainer's approval, given after approving the staged
-    # relay on npm. Its Prevent self-review stays off, as the maintainer, its
-    # only reviewer, starts the runs and reruns.
+    # Pushes of one version run one at a time, so they don't race on its tags.
+    concurrency:
+      group: relay-docker-${{ needs.version.outputs.version }}
+      cancel-in-progress: false
+    # The environment holds the Docker Hub token, and only main can use it.
     environment: docker-hub
     permissions:
       artifact-metadata: write
@@ -111,28 +155,6 @@ jobs:
               exit 1
               ;;
           esac
-
-      # npm serves a staged release only once a maintainer approves it, its CDN
-      # caches each package's version list for up to five minutes, a new
-      # release can take longer to appear, and its tarball can return 404 for
-      # minutes after npm lists it, so wait until npm can download the relay and
-      # each @evolu package it depends on, as npm install does. If the npm
-      # approval comes later, rerun this job.
-      - name: Wait for npm to serve @evolu/relay@${{ env.VERSION }}
-        if: steps.image.outputs.published == 'false'
-        run: |
-          is_served() {
-            dependencies=$(npm view "@evolu/relay@$VERSION" dependencies --json 2>/dev/null) || return 1
-            for package in "@evolu/relay@$VERSION" $(jq -r 'to_entries[] | select(.key | startswith("@evolu/")) | "\(.key)@\(.value)"' <<< "$dependencies"); do
-              npm pack "$package" --dry-run --prefer-online > /dev/null 2>&1 || return 1
-            done
-          }
-          for _ in $(seq 1 90); do
-            if is_served; then exit 0; fi
-            sleep 10
-          done
-          echo "npm did not serve @evolu/relay@$VERSION and its @evolu dependencies after 90 attempts. If it awaits approval on npm, rerun this job after approving it." >&2
-          exit 1
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
