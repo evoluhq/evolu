@@ -10,6 +10,7 @@ import {
 import type { Brand } from "../../../../../packages/common/src/Brand.ts";
 import type {
   MutationValues,
+  SystemColumns,
   ValidateColumnTypes,
   ValidateIdColumnType,
   ValidateNoSystemColumns,
@@ -33,6 +34,7 @@ import type {
 import {
   assertType,
   Boolean,
+  type DateIso,
   FiniteNumber,
   Id,
   id,
@@ -268,6 +270,19 @@ describe("ValidateSchema", () => {
 });
 
 describe("createQueryBuilder", () => {
+  it("types createdAt as DateIso and updatedAt as DateIso or null", () => {
+    const createQuery = createQueryBuilder({ todo: { id: TodoId } });
+    const query = createQuery((db) =>
+      db.selectFrom("todo").select(["createdAt", "updatedAt"]),
+    );
+
+    assertType<SystemColumns["updatedAt"], DateIso | null>();
+    assertType<
+      [(typeof query.Row)["createdAt"], (typeof query.Row)["updatedAt"]],
+      [DateIso, DateIso | null]
+    >();
+  });
+
   it("asserts that compiled parameters are SqliteQueryParameters", () => {
     const createQuery = createQueryBuilder({
       todo: {

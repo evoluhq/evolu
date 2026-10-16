@@ -63,7 +63,7 @@ import type {
   Row,
 } from "./Query.ts";
 import type { CrdtMessage, DbChange } from "./Storage.ts";
-import { TimestampBytes } from "./Timestamp.ts";
+import { type Timestamp, TimestampBytes } from "./Timestamp.ts";
 
 /**
  * Any Standard Schema V1 declaration.
@@ -445,22 +445,35 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
 /**
  * System columns that are implicitly defined by Evolu.
  *
- * - `createdAt`: Set by Evolu on row creation, derived from Timestamp.
- * - `updatedAt`: Set by Evolu on every row change, derived from Timestamp.
+ * - `createdAt`: The time of the row's earliest change.
+ * - `updatedAt`: The time of the row's latest change, or null while the row has
+ *   only one change.
  * - `isDeleted`: Soft delete flag created by Evolu and used by the developer to
  *   mark rows as deleted.
  * - `ownerId`: Represents ownership and logically partitions the database.
+ *
+ * Every insert, update, and upsert is a change, so an upsert of an existing row
+ * sets `updatedAt`. A change that arrives late can move `createdAt` earlier,
+ * never later. For "last changed", use `updatedAt ?? createdAt`.
+ *
+ * Evolu takes both times from the {@link Timestamp} of each change, which orders
+ * the changes of a synchronized table, so a device computes the same values
+ * whatever order it receives the changes in. A
+ * {@link isLocalOnlyTable | local-only} table uses the time of each mutation
+ * instead, and a change made at the time the row was created, such as one in
+ * the same batch as its insert, does not set `updatedAt`. Neither column can be
+ * set manually.
  *
  * @group Core
  */
 export const SystemColumns: ObjectType<{
   readonly createdAt: typeof DateIso;
-  readonly updatedAt: typeof DateIso;
+  readonly updatedAt: UnionType<readonly [typeof DateIso, typeof Null]>;
   readonly isDeleted: UnionType<readonly [typeof SqliteBoolean, typeof Null]>;
   readonly ownerId: typeof OwnerId;
 }> = /*#__PURE__*/ object({
   createdAt: DateIso,
-  updatedAt: DateIso,
+  updatedAt: /*#__PURE__*/ nullOr(DateIso),
   isDeleted: /*#__PURE__*/ nullOr(SqliteBoolean),
   ownerId: OwnerId,
 });

@@ -451,7 +451,7 @@ assertEqual(
 // ---cut-end---
 ```
 
-**Note**: Using `createIdFromString` ensures deterministic IDs, so if a user clicks the button on multiple devices (e.g., after restoring their account but before sync completes), the same data will be upserted rather than duplicated.
+**Note**: Using `createIdFromString` ensures deterministic IDs, so if a user clicks the button on multiple devices (e.g., after restoring their account but before sync completes), the same data will be upserted rather than duplicated. Upserting an existing row does not change its `createdAt`, but an upsert from a device that had not synced yet can move it earlier. Upserting also writes the passed columns again, so seeding after the user edited a row replaces that edit.
 
 **Alternative approach**: Create Evolu without transports initially, verify the user through a backend service that knows whether it's their first login, then have the client insert data explicitly before enabling sync:
 

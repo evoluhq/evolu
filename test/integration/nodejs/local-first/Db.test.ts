@@ -1125,24 +1125,31 @@ describe("query and mutation flow", () => {
     });
 
     assertEqual(
-      await postRequest(setup, {
-        type: "ForEvolu",
-        id: setup.evoluInstanceId,
-        message: {
-          type: "Mutate",
-          changes: [
-            createMutationChange({
-              table: "_localTable",
-              id: rowId,
-              values: { value: "local only updated" },
-              isInsert: false,
-              isDelete: null,
-            }),
-          ],
-          onCompleteIds: [],
-          subscribedQueries: createSet([localTableQuery]),
+      await postRequest(
+        setup,
+        {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: {
+            type: "Mutate",
+            changes: [
+              createMutationChange({
+                table: "_localTable",
+                id: rowId,
+                values: { value: "local only updated" },
+                isInsert: false,
+                isDelete: null,
+              }),
+            ],
+            onCompleteIds: [],
+            subscribedQueries: createSet([localTableQuery]),
+          },
         },
-      }),
+        setup.createId(),
+        "response",
+        // A change at the creation time counts as a replay of the insert.
+        { clock: setup.getClock(), now: Millis.orThrow(1) },
+      ),
       [
         {
           attemptId: "dXpWgmgRSqCJV_tQPAS7Ug",
@@ -1260,7 +1267,7 @@ describe("query and mutation flow", () => {
               id: "ofZXw_hAfJ8fIcpFxi6nag",
               isDeleted: null,
               ownerId: "BSf-8mxNjgk72yD-D7rr1A",
-              updatedAt: "1970-01-01T00:00:00.000Z",
+              updatedAt: "1970-01-01T00:00:00.001Z",
               value: "local only updated",
             },
           ],
@@ -1545,6 +1552,196 @@ describe("query and mutation flow", () => {
     );
     assertSame(setup.getClock().millis, context.now);
     assertSame(setup.getClock().counter, 0);
+  });
+
+  for (const table of ["_localTable", "testTable"] as const) {
+    it(`${table} mutations set createdAt from the first change and updatedAt from later ones`, async () => {
+      await using setup = await setupDbWorker({
+        time: testCreateTime({
+          startAt: Millis.orThrow(100),
+          autoIncrement: "sync",
+        }),
+      });
+      const column = table === "_localTable" ? "value" : "name";
+      const insertedId = setup.createId();
+      const createdByUpdateId = setup.createId();
+
+      const mutateAt = async (
+        id: Id,
+        value: string,
+        isInsert: boolean,
+      ): Promise<string> => {
+        const now = setup.time.now();
+        await postRequest(
+          setup,
+          setupMutateRequest(setup.evoluInstanceId, [
+            createMutationChange({
+              table,
+              id,
+              values: { [column]: value },
+              isInsert,
+              isDelete: null,
+            }),
+          ]),
+          setup.createId(),
+          "response",
+          { clock: setup.getClock(), now },
+        );
+        return millisToDateIso(now);
+      };
+      const selectRows = () =>
+        setup.sqlite.exec(sql`
+          select ${sql.identifier(column)} as "value", "createdAt", "updatedAt"
+          from ${sql.identifier(table)}
+          order by "createdAt";
+        `).rows;
+
+      const insertedAt = await mutateAt(insertedId, "inserted", true);
+      assertEqual(selectRows(), [
+        { value: "inserted", createdAt: insertedAt, updatedAt: null },
+      ]);
+
+      // An upsert of an existing row changes it.
+      const upsertedAt = await mutateAt(insertedId, "upserted", true);
+      // An update of a missing row creates it.
+      const createdByUpdateAt = await mutateAt(
+        createdByUpdateId,
+        "updated",
+        false,
+      );
+
+      assertEqual(selectRows(), [
+        { value: "upserted", createdAt: insertedAt, updatedAt: upsertedAt },
+        { value: "updated", createdAt: createdByUpdateAt, updatedAt: null },
+      ]);
+    });
+  }
+
+  it("local-only insert and update in one request leave updatedAt null", async () => {
+    await using setup = await setupDbWorker();
+    const rowId = setup.createId();
+
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        createMutationChange({
+          table: "_localTable",
+          id: rowId,
+          values: { value: "inserted" },
+          isInsert: true,
+          isDelete: null,
+        }),
+        createMutationChange({
+          table: "_localTable",
+          id: rowId,
+          values: { value: "updated" },
+          isInsert: false,
+          isDelete: null,
+        }),
+      ]),
+    );
+
+    // Changes of one request share its time, and a change at the creation
+    // time cannot be told apart from a replay of the insert.
+    assertEqual(
+      setup.sqlite.exec(sql`
+        select "value", "createdAt", "updatedAt" from "_localTable";
+      `).rows,
+      [
+        {
+          value: "updated",
+          createdAt: millisToDateIso(setup.time.now()),
+          updatedAt: null,
+        },
+      ],
+    );
+  });
+
+  it("local-only mutations fill a missing createdAt, count an undelete, and recreate a deleted row", async () => {
+    await using setup = await setupDbWorker({
+      time: testCreateTime({
+        startAt: Millis.orThrow(100),
+        autoIncrement: "sync",
+      }),
+    });
+    const legacyId = setup.createId();
+    const undeletedId = setup.createId();
+    const recreatedId = setup.createId();
+
+    const mutateAt = async (
+      id: Id,
+      values: Readonly<Record<string, SqliteValue>>,
+      isInsert: boolean,
+      isDelete: boolean | null,
+    ): Promise<string> => {
+      const now = setup.time.now();
+      await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            table: "_localTable",
+            id,
+            values,
+            isInsert,
+            isDelete,
+          }),
+        ]),
+        setup.createId(),
+        "response",
+        { clock: setup.getClock(), now },
+      );
+      return millisToDateIso(now);
+    };
+    const selectRow = (id: Id) =>
+      setup.sqlite.exec(sql`
+        select "createdAt", "updatedAt", "isDeleted"
+        from "_localTable"
+        where "id" = ${id};
+      `).rows;
+
+    // Earlier releases left createdAt null on a row an update created.
+    const legacyCreatedAt = millisToDateIso(Millis.orThrow(50));
+    setup.sqlite.exec(sql`
+      insert into "_localTable" ("ownerId", "id", "value", "updatedAt")
+      values (${testAppOwner.id}, ${legacyId}, ${"legacy"}, ${legacyCreatedAt});
+    `);
+    const legacyChangedAt = await mutateAt(
+      legacyId,
+      { value: "changed" },
+      false,
+      null,
+    );
+    assertEqual(selectRow(legacyId), [
+      {
+        createdAt: legacyCreatedAt,
+        updatedAt: legacyChangedAt,
+        isDeleted: null,
+      },
+    ]);
+
+    const undeletedCreatedAt = await mutateAt(
+      undeletedId,
+      { value: "row" },
+      true,
+      null,
+    );
+    const undeletedAt = await mutateAt(undeletedId, {}, false, false);
+    assertEqual(selectRow(undeletedId), [
+      { createdAt: undeletedCreatedAt, updatedAt: undeletedAt, isDeleted: 0 },
+    ]);
+
+    await mutateAt(recreatedId, { value: "row" }, true, null);
+    await mutateAt(recreatedId, {}, false, true);
+    assertEqual(selectRow(recreatedId), []);
+    const recreatedAt = await mutateAt(
+      recreatedId,
+      { value: "again" },
+      true,
+      null,
+    );
+    assertEqual(selectRow(recreatedId), [
+      { createdAt: recreatedAt, updatedAt: null, isDeleted: null },
+    ]);
   });
 
   it("query returns current state", async () => {
@@ -3287,6 +3484,187 @@ describe("sync message flow", () => {
       );
     });
 
+    it("createdAt is the earliest change and updatedAt the latest in every delivery order", async () => {
+      const rowId = testCreateId()<"TestTable">();
+      // Inserts and upserts mark a change as an insert, which does not decide
+      // createdAt: the update at 1 is the row's first change.
+      const changeAt = (millis: number, isInsert: boolean): CrdtMessage => ({
+        timestamp: createTimestamp({
+          millis: Millis.orThrow(millis),
+          counter: 0 as never,
+        }),
+        change: DbChange.orThrow({
+          table: "testTable",
+          id: rowId,
+          values: { name: `at ${millis}` },
+          isInsert,
+          isDelete: null,
+        }),
+      });
+      const changes = [
+        changeAt(1, false),
+        changeAt(2, true),
+        changeAt(3, false),
+        changeAt(4, true),
+      ];
+      const broadcasts = await Promise.all(
+        changes.map((change) => createBroadcastProtocolMessage([change])),
+      );
+      const permutations = (
+        indexes: ReadonlyArray<number>,
+      ): ReadonlyArray<ReadonlyArray<number>> =>
+        indexes.length <= 1
+          ? [indexes]
+          : indexes.flatMap((index) =>
+              permutations(indexes.filter((other) => other !== index)).map(
+                (rest) => [index, ...rest],
+              ),
+            );
+      const orders = permutations([0, 1, 2, 3]);
+      assertLength(orders, 24);
+
+      for (const order of orders) {
+        await using setup = await setupDbWorker({
+          sqliteSchema: createTestSqliteSchema(["name", "note"]),
+        });
+        for (const [delivered, index] of order.entries()) {
+          await postRequest(setup, setupApplySyncRequest(broadcasts[index]));
+          // A row with one change has no updatedAt yet.
+          if (delivered === 0) {
+            assertEqual(
+              selectTestTableRows(setup).map(({ createdAt, updatedAt }) => ({
+                createdAt,
+                updatedAt,
+              })),
+              [
+                {
+                  createdAt: millisToDateIso(changes[index].timestamp.millis),
+                  updatedAt: null,
+                },
+              ],
+            );
+          }
+        }
+
+        assertEqual(selectTestTableRows(setup), [
+          {
+            createdAt: "1970-01-01T00:00:00.001Z",
+            id: rowId,
+            isDeleted: null,
+            name: "at 4",
+            note: null,
+            updatedAt: "1970-01-01T00:00:00.004Z",
+          },
+        ]);
+        // Time rows keep isInsert in their names for readDbChange.
+        assertEqual(
+          selectHistoryRows(setup)
+            .filter(({ column }) => column !== "name")
+            .map(({ column, value }) => ({ column, value })),
+          [
+            { column: "createdAt", value: "1970-01-01T00:00:00.002Z" },
+            { column: "createdAt", value: "1970-01-01T00:00:00.004Z" },
+            { column: "updatedAt", value: "1970-01-01T00:00:00.001Z" },
+            { column: "updatedAt", value: "1970-01-01T00:00:00.003Z" },
+          ],
+        );
+      }
+    });
+
+    it("creates a row from a change without values", async () => {
+      await using setup = await setupDbWorker({
+        sqliteSchema: createTestSqliteSchema(["name", "note"]),
+      });
+      const rowId = setup.createId();
+
+      await postRequest(
+        setup,
+        setupApplySyncRequest(
+          await createBroadcastProtocolMessage([
+            {
+              timestamp: createTimestamp({
+                millis: Millis.orThrow(1),
+                counter: 0 as never,
+              }),
+              change: DbChange.orThrow({
+                table: "testTable",
+                id: rowId,
+                values: {},
+                isInsert: true,
+                isDelete: null,
+              }),
+            },
+          ]),
+        ),
+      );
+
+      assertEqual(selectTestTableRows(setup), [
+        {
+          createdAt: "1970-01-01T00:00:00.001Z",
+          id: rowId,
+          isDeleted: null,
+          name: null,
+          note: null,
+          updatedAt: null,
+        },
+      ]);
+    });
+
+    it("recomputes a row stored by an earlier release on its next change", async () => {
+      await using setup = await setupDbWorker({
+        sqliteSchema: createTestSqliteSchema(["name", "note"]),
+      });
+      const rowId = setup.createId();
+      const applyAt = async (millis: number, isInsert: boolean) => {
+        await postRequest(
+          setup,
+          setupApplySyncRequest(
+            await createBroadcastProtocolMessage([
+              {
+                timestamp: createTimestamp({
+                  millis: Millis.orThrow(millis),
+                  counter: 0 as never,
+                }),
+                change: DbChange.orThrow({
+                  table: "testTable",
+                  id: rowId,
+                  values: { name: `at ${millis}` },
+                  isInsert,
+                  isDelete: null,
+                }),
+              },
+            ]),
+          ),
+        );
+      };
+
+      await applyAt(1, true);
+      await applyAt(3, true);
+      // Earlier releases stored the latest insert or upsert as createdAt and
+      // the latest update as updatedAt.
+      setup.sqlite.exec(sql`
+        update testTable
+        set
+          "createdAt" = ${"1970-01-01T00:00:00.003Z"},
+          "updatedAt" = null;
+      `);
+
+      await applyAt(2, false);
+
+      assertEqual(
+        selectTestTableRows(setup).map(({ createdAt, updatedAt }) => ({
+          createdAt,
+          updatedAt,
+        })),
+        [
+          {
+            createdAt: "1970-01-01T00:00:00.001Z",
+            updatedAt: "1970-01-01T00:00:00.003Z",
+          },
+        ],
+      );
+    });
+
     it("Newer message wins even when delivered first", async () => {
       await using setup = await setupDbWorker();
 
@@ -3540,12 +3918,12 @@ describe("sync message flow", () => {
 
       assertEqual(selectTestTableRows(setup), [
         {
-          createdAt: "1970-01-01T00:00:00.002Z",
+          createdAt: "1970-01-01T00:00:00.001Z",
           id: rowId,
           isDeleted: 1,
           name: "new",
           note: null,
-          updatedAt: "1970-01-01T00:00:00.001Z",
+          updatedAt: "1970-01-01T00:00:00.002Z",
         },
       ]);
     });
@@ -3605,12 +3983,12 @@ describe("sync message flow", () => {
 
       assertEqual(selectTestTableRows(setup), [
         {
-          createdAt: "1970-01-01T00:00:00.002Z",
+          createdAt: "1970-01-01T00:00:00.001Z",
           id: rowId,
           isDeleted: 0,
           name: "restored",
           note: null,
-          updatedAt: "1970-01-01T00:00:00.001Z",
+          updatedAt: "1970-01-01T00:00:00.002Z",
         },
       ]);
     });
@@ -4053,22 +4431,6 @@ describe("quarantine replay", () => {
               value: "known",
             },
             {
-              column: "createdAt",
-              id: new Uint8Array([
-                161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
-                167, 106,
-              ]),
-              ownerId: new Uint8Array([
-                5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
-                235, 212,
-              ]),
-              table: "testTable",
-              timestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              ]),
-              value: "1970-01-01T00:00:00.001Z",
-            },
-            {
               column: "isDeleted",
               id: new Uint8Array([
                 161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
@@ -4083,6 +4445,22 @@ describe("quarantine replay", () => {
                 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               ]),
               value: 0,
+            },
+            {
+              column: "createdAt",
+              id: new Uint8Array([
+                161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
+                167, 106,
+              ]),
+              ownerId: new Uint8Array([
+                5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
+                235, 212,
+              ]),
+              table: "testTable",
+              timestamp: new Uint8Array([
+                0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              ]),
+              value: "1970-01-01T00:00:00.001Z",
             },
           ],
         },
@@ -4264,22 +4642,6 @@ describe("quarantine replay", () => {
               value: "known",
             },
             {
-              column: "createdAt",
-              id: new Uint8Array([
-                161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
-                167, 106,
-              ]),
-              ownerId: new Uint8Array([
-                5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
-                235, 212,
-              ]),
-              table: "testTable",
-              timestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              ]),
-              value: "1970-01-01T00:00:00.001Z",
-            },
-            {
               column: "isDeleted",
               id: new Uint8Array([
                 161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
@@ -4294,6 +4656,22 @@ describe("quarantine replay", () => {
                 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               ]),
               value: 0,
+            },
+            {
+              column: "createdAt",
+              id: new Uint8Array([
+                161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
+                167, 106,
+              ]),
+              ownerId: new Uint8Array([
+                5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
+                235, 212,
+              ]),
+              table: "testTable",
+              timestamp: new Uint8Array([
+                0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              ]),
+              value: "1970-01-01T00:00:00.001Z",
             },
           ],
         },
@@ -4514,22 +4892,6 @@ describe("quarantine replay", () => {
               value: "known",
             },
             {
-              column: "createdAt",
-              id: new Uint8Array([
-                161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
-                167, 106,
-              ]),
-              ownerId: new Uint8Array([
-                5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
-                235, 212,
-              ]),
-              table: "testTable",
-              timestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              ]),
-              value: "1970-01-01T00:00:00.001Z",
-            },
-            {
               column: "isDeleted",
               id: new Uint8Array([
                 161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
@@ -4544,6 +4906,22 @@ describe("quarantine replay", () => {
                 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               ]),
               value: 0,
+            },
+            {
+              column: "createdAt",
+              id: new Uint8Array([
+                161, 246, 87, 195, 248, 64, 124, 159, 31, 33, 202, 69, 198, 46,
+                167, 106,
+              ]),
+              ownerId: new Uint8Array([
+                5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
+                235, 212,
+              ]),
+              table: "testTable",
+              timestamp: new Uint8Array([
+                0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              ]),
+              value: "1970-01-01T00:00:00.001Z",
             },
             {
               column: "note",

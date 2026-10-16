@@ -953,6 +953,18 @@ const systemColumnsWithoutOwnerId = systemColumns.difference(
   new Set(["ownerId"]),
 );
 
+/**
+ * Applies one column of a change and records it in `evolu_history`.
+ *
+ * A value column and `isDeleted` take the latest change (last-writer-wins).
+ * Every applied change also stores one time row, named `createdAt` when its
+ * `isInsert` is set and `updatedAt` otherwise, so `readDbChange` can restore
+ * the flag for sync. After storing a time row, both columns are recomputed from
+ * the row's time rows: `createdAt` from its earliest change, and `updatedAt`
+ * from its latest change, or null while the row has only one. The result
+ * depends only on which changes were applied, not on their order, and replaces
+ * values earlier releases computed differently.
+ */
 const applyColumnChange =
   (deps: SqliteDep) =>
   (
@@ -965,27 +977,31 @@ const applyColumnChange =
     value: SqliteValue,
     timestampBytes: TimestampBytes,
   ): void => {
-    deps.sqlite.exec(sql.prepared`
-      with
-        existingTimestamp as (
-          select 1
-          from evolu_history
-          where
-            "ownerId" = ${ownerIdBytes}
-            and "table" = ${table}
-            and "id" = ${idBytes}
-            and "column" = ${column}
-            and "timestamp" >= ${timestampBytes}
-          limit 1
-        )
-      insert into ${sql.identifier(table)}
-        ("ownerId", "id", ${sql.identifier(column)})
-      select ${ownerId}, ${id}, ${value}
-      where not exists (select 1 from existingTimestamp)
-      on conflict ("ownerId", "id") do update
-        set ${sql.identifier(column)} = ${value}
-        where not exists (select 1 from existingTimestamp);
-    `);
+    const isTimeColumn = column === "createdAt" || column === "updatedAt";
+
+    if (!isTimeColumn) {
+      deps.sqlite.exec(sql.prepared`
+        with
+          existingTimestamp as (
+            select 1
+            from evolu_history
+            where
+              "ownerId" = ${ownerIdBytes}
+              and "table" = ${table}
+              and "id" = ${idBytes}
+              and "column" = ${column}
+              and "timestamp" >= ${timestampBytes}
+            limit 1
+          )
+        insert into ${sql.identifier(table)}
+          ("ownerId", "id", ${sql.identifier(column)})
+        select ${ownerId}, ${id}, ${value}
+        where not exists (select 1 from existingTimestamp)
+        on conflict ("ownerId", "id") do update
+          set ${sql.identifier(column)} = ${value}
+          where not exists (select 1 from existingTimestamp);
+      `);
+    }
 
     deps.sqlite.exec(sql.prepared`
       insert into evolu_history
@@ -1001,6 +1017,98 @@ const applyColumnChange =
         )
       on conflict do nothing;
     `);
+
+    if (isTimeColumn) {
+      // Two seeks per time column, for its earliest and latest row, on the
+      // unique index. A single query with "column" in (...) ordered by
+      // "timestamp" makes SQLite use evolu_history_ownerId_timestamp and read
+      // the owner's whole history.
+      deps.sqlite.exec(sql.prepared`
+        with
+          firstChange as (
+            select *
+            from (
+              select *
+              from (
+                select "timestamp", "value"
+                from evolu_history
+                where
+                  "ownerId" = ${ownerIdBytes}
+                  and "table" = ${table}
+                  and "id" = ${idBytes}
+                  and "column" = 'createdAt'
+                order by "timestamp"
+                limit 1
+              )
+              union all
+              select *
+              from (
+                select "timestamp", "value"
+                from evolu_history
+                where
+                  "ownerId" = ${ownerIdBytes}
+                  and "table" = ${table}
+                  and "id" = ${idBytes}
+                  and "column" = 'updatedAt'
+                order by "timestamp"
+                limit 1
+              )
+            )
+            order by "timestamp"
+            limit 1
+          ),
+          lastChange as (
+            select *
+            from (
+              select *
+              from (
+                select "timestamp", "value"
+                from evolu_history
+                where
+                  "ownerId" = ${ownerIdBytes}
+                  and "table" = ${table}
+                  and "id" = ${idBytes}
+                  and "column" = 'createdAt'
+                order by "timestamp" desc
+                limit 1
+              )
+              union all
+              select *
+              from (
+                select "timestamp", "value"
+                from evolu_history
+                where
+                  "ownerId" = ${ownerIdBytes}
+                  and "table" = ${table}
+                  and "id" = ${idBytes}
+                  and "column" = 'updatedAt'
+                order by "timestamp" desc
+                limit 1
+              )
+            )
+            order by "timestamp" desc
+            limit 1
+          )
+        insert into ${sql.identifier(table)}
+          ("ownerId", "id", "createdAt", "updatedAt")
+        select
+          ${ownerId},
+          ${id},
+          firstChange."value",
+          case
+            when lastChange."timestamp" = firstChange."timestamp" then null
+            else lastChange."value"
+          end
+        from
+          firstChange,
+          lastChange
+        where true
+        on conflict ("ownerId", "id") do update
+          set
+            "createdAt" = excluded."createdAt",
+            "updatedAt" = excluded."updatedAt";
+      `);
+    }
   };
 
 /**
@@ -1285,25 +1393,46 @@ const handleMutation =
       }),
     );
 
+/**
+ * Applies a change of a local-only table, which keeps no history. The change
+ * that creates the row sets `createdAt` and leaves `updatedAt` null; a later
+ * change sets `updatedAt`. A change at the time the row was created leaves
+ * `updatedAt`, because without history it cannot be told apart from the
+ * creating change replayed after its response was lost, and a replay must
+ * change nothing. Changes of one request share its time.
+ */
 const applyLocalOnlyChange =
   (deps: SqliteDep) =>
   (change: MutationChange, now: Millis): void => {
+    const table = sql.identifier(change.table);
+    const { ownerId, id } = change;
+
     if (change.isDelete) {
       deps.sqlite.exec(sql`
-        delete from ${sql.identifier(change.table)}
-        where "ownerId" = ${change.ownerId} and "id" = ${change.id};
+        delete from ${table}
+        where "ownerId" = ${ownerId} and "id" = ${id};
       `);
     } else {
-      const ownerId = change.ownerId;
-      const columns = dbChangeToColumns(change, now);
+      const date = millisToDateIso(now);
+      // Earlier releases left createdAt null on a row an update created, and
+      // updatedAt holds the time of its latest update, the earliest time left.
+      deps.sqlite.exec(sql.prepared`
+        insert into ${table} ("ownerId", "id", "createdAt")
+        values (${ownerId}, ${id}, ${date})
+        on conflict ("ownerId", "id") do update
+          set
+            "createdAt" = coalesce("createdAt", "updatedAt", ${date}),
+            "updatedAt" = case
+              when "createdAt" = ${date} then "updatedAt"
+              else ${date}
+            end;
+      `);
 
-      for (const [column, value] of columns) {
+      for (const [column, value] of dbChangeToColumns(change)) {
         deps.sqlite.exec(sql.prepared`
-          insert into ${sql.identifier(change.table)}
-            ("ownerId", "id", ${sql.identifier(column)})
-          values (${ownerId}, ${change.id}, ${value})
-          on conflict ("ownerId", "id") do update
-            set ${sql.identifier(column)} = ${value};
+          update ${table}
+          set ${sql.identifier(column)} = ${value}
+          where "ownerId" = ${ownerId} and "id" = ${id};
         `);
       }
     }
@@ -1361,7 +1490,11 @@ const applyMessages =
       wroteNewMessages = true;
 
       const hasDrift = isTimestampBeyondMaxDrift(deps)(timestamp.millis, now);
-      const columns = dbChangeToColumns(change, timestamp.millis);
+      // SystemColumns are not encoded in change.values.
+      const columns = appendToArray(dbChangeToColumns(change), [
+        change.isInsert ? "createdAt" : "updatedAt",
+        millisToDateIso(timestamp.millis),
+      ]);
       const idBytes = idToIdBytes(change.id);
 
       for (const [column, value] of columns) {
@@ -1430,27 +1563,22 @@ const applyMessages =
     return wroteNewMessages;
   };
 
-const dbChangeToColumns = (change: DbChange, now: Millis) => {
+/** The columns a change sets, `isDeleted` included, without its time. */
+const dbChangeToColumns = (
+  change: DbChange,
+): ReadonlyArray<readonly [string, SqliteValue]> => {
   // DbChange validated every value as a SqliteValue; only its Partial record
   // type admits undefined.
-  let values = objectToEntries(change.values) as ReadonlyArray<
+  const values = objectToEntries(change.values) as ReadonlyArray<
     [string, SqliteValue]
   >;
+  if (change.isDelete == null) return values;
 
-  // SystemColumns are not encoded in change.values.
-  values = appendToArray(values, [
-    change.isInsert ? "createdAt" : "updatedAt",
-    millisToDateIso(now),
+  return appendToArray(values, [
+    "isDeleted",
+    // SQLite boolean values are fixed to the finite numbers 0 and 1.
+    booleanToSqliteBoolean(change.isDelete) as FiniteNumber,
   ]);
-  if (change.isDelete != null) {
-    values = appendToArray(values, [
-      "isDeleted",
-      // SQLite boolean values are fixed to the finite numbers 0 and 1.
-      booleanToSqliteBoolean(change.isDelete) as FiniteNumber,
-    ]);
-  }
-
-  return values;
 };
 
 /**

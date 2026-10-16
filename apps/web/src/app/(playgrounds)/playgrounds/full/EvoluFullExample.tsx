@@ -756,7 +756,7 @@ const AccountTab: FC = () => {
 const deletedProjectsQuery = createQuery((db) =>
   db
     .selectFrom("project")
-    .select(["id", "name", "updatedAt"])
+    .select(["id", "name", "createdAt", "updatedAt"])
     .where("isDeleted", "is", sqliteTrue)
     .where("name", "is not", null)
     .$narrowType<{ name: KyselyNotNull }>()
@@ -768,7 +768,14 @@ type DeletedProjectsRow = typeof deletedProjectsQuery.Row;
 const deletedTodosQuery = createQuery((db) =>
   db
     .selectFrom("todo")
-    .select(["id", "title", "isCompleted", "projectId", "updatedAt"])
+    .select([
+      "id",
+      "title",
+      "isCompleted",
+      "projectId",
+      "createdAt",
+      "updatedAt",
+    ])
     .select((eb) => [
       evoluJsonObjectFrom(
         eb
@@ -859,7 +866,8 @@ const TrashTabDeletedProjectItem: FC<{
         <div className="flex-1">
           <h3 className="font-medium text-gray-900">{project.name}</h3>
           <p className="text-sm text-gray-500">
-            Deleted {new Date(project.updatedAt).toLocaleString()}
+            Deleted{" "}
+            {new Date(project.updatedAt ?? project.createdAt).toLocaleString()}
           </p>
         </div>
       </div>
@@ -895,7 +903,8 @@ const TrashTabDeletedTodoItem: FC<{
         <div className="flex-1">
           <h3 className="font-medium text-gray-900">{todo.title}</h3>
           <p className="text-sm text-gray-500">
-            {projectName} • Deleted {new Date(todo.updatedAt).toLocaleString()}
+            {projectName} • Deleted{" "}
+            {new Date(todo.updatedAt ?? todo.createdAt).toLocaleString()}
           </p>
         </div>
       </div>

@@ -41,7 +41,7 @@ import type { Evolu } from "./Evolu.ts";
 import type { Owner, OwnerError, OwnerIdBytes, SharedOwner } from "./Owner.ts";
 import { OwnerId, OwnerWriteKey } from "./Owner.ts";
 import type { ProtocolQuotaError, ProtocolWriteError } from "./Protocol.ts";
-import { systemColumnsWithId } from "./Schema.ts";
+import { type SystemColumns, systemColumnsWithId } from "./Schema.ts";
 import type { syncStateToOwnerSyncStatus } from "./Shared.ts";
 import {
   createTimestamp,
@@ -519,6 +519,10 @@ export interface ValidDbChangeValuesError extends TypeError<"ValidDbChangeValues
 /**
  * A DbChange is a change to a table row. Together with a unique
  * {@link Timestamp}, it forms a {@link CrdtMessage}.
+ *
+ * `isInsert` is set for a change made by an insert or upsert. It is stored and
+ * synced with the change, but `createdAt` and `updatedAt` come from the times
+ * of a row's changes alone; see {@link SystemColumns}.
  *
  * @group Messages
  */
