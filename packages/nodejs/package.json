@@ -74,7 +74,7 @@
     "webpack": "^5.111.1"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.23.1",
+    "@evolu/common": "^8.23.2",
     "@evolu/oxlint-config": "^0.3.3",
     "@evolu/typescript-config": "^0.1.1",
     "oxlint": "^1.87.0",

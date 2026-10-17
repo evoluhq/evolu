@@ -1,5 +1,58 @@
 # @evolu/common
 
+## 8.23.2
+
+### Patch Changes
+
+- 644fe0e: Stopped encrypting the upload of a write made while every relay socket is closed
+
+  The SharedWorker encrypted each synced write for upload even when none of its owner's relay sockets was open, although it sends uploads only through open sockets and keeps none for a closed one. The round that a socket starts when it opens reads the write from the database and encrypts it then, so encrypting it while offline was wasted. The upload is now encrypted only while one of the owner's sockets is open.
+
+- 7f13706: Kept the names of decoding errors in minified bundles
+
+  The `BufferError` or `ProtocolDecodeError` that a `ProtocolInvalidDataError`
+  holds took its name from its class, which a minifier renames, so production
+  builds showed a name such as `G`. Both now keep their names. On the web, an
+  error in sync state still shows `Error`, because the database worker posts it
+  to the shared worker, and structured cloning names every custom error `Error`.
+
+- c63a5a6: Fixed JSON text with a lone surrogate reading differently on older devices
+
+  `JSON.stringify` writes a lone surrogate, such as one left by cutting a string
+  in the middle of an emoji, as an escape like `\ud83d`. Evolu sent a string value
+  holding such JSON text in its compact JSON encoding, which `@evolu/common` 8.6
+  and earlier decode with the surrogate replaced by U+FFFD. Devices on those
+  versions stored different text for the same change without noticing. Such text
+  is now sent as a plain string, which every version decodes exactly.
+
+- d3a6119: Fixed sync requests multiplying when several databases use one owner
+
+  When two or more databases in one app, Evolu instances with a different
+  `appName` or `appOwner`, synced the same owner through the same relay, each of
+  them answered every relay reply for that owner with its own continuation. A
+  catch-up longer than one frame then multiplied its requests by the number of
+  databases with every round: two databases downloading 5.7 MB received 126
+  frames, 107 MB, instead of 12.
+
+  Now only the database whose request a reply answers continues it. The other
+  databases store the reply's messages without reconciling it, so each database
+  sends one request per round. Databases using one owner through one relay take
+  turns: while one database's requests for the owner are unanswered, another's
+  wait.
+
+- 8ce5f69: Stopped encrypting a second copy of each synced write for open databases that drop it
+
+  A relay doesn't send an upload back to the socket it came from, so the SharedWorker also delivers a copy of each synced write to the other databases open in it. It encrypted that copy whenever more than one database was open, although a database drops it unless one of its Evolu instances uses the owner with write access. An app that kept a second database open, such as a local-only one for device data, thus encrypted every synced write a second time for nothing. The copy is now encrypted only when another open database uses the owner with write access.
+
+- a5da2ab: Kept the decrypted values of an invalid received change out of its error
+
+  A received change that decrypted but failed validation, for example because it
+  set a reserved system column, caused a `ProtocolInvalidDataError` whose cause
+  held the change's decrypted values. The error reached the route's sync state in
+  every tab, where an app may log or report it. It now says only
+  `Invalid DbChange`. Only a writer that holds the owner's encryption key can send
+  such a change.
+
 ## 8.23.1
 
 ### Patch Changes

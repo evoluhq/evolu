@@ -1,5 +1,18 @@
 # @evolu/relay
 
+## 4.2.17
+
+### Patch Changes
+
+- Updated dependencies [644fe0e]
+- Updated dependencies [7f13706]
+- Updated dependencies [c63a5a6]
+- Updated dependencies [d3a6119]
+- Updated dependencies [8ce5f69]
+- Updated dependencies [a5da2ab]
+  - @evolu/common@8.23.2
+  - @evolu/nodejs@4.3.4
+
 ## 4.2.16
 
 ### Patch Changes
