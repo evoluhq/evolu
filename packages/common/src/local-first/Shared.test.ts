@@ -8216,6 +8216,79 @@ describe("with one evolu instance", () => {
       assertEqual(createWebSocket.sentMessages, []);
     });
 
+    for (const [name, removesOwner, errorCode] of [
+      ["a sender that stops using the owner", true, ProtocolErrorCode.NoError],
+      ["a relay error Response", false, ProtocolErrorCode.QuotaError],
+    ] as const) {
+      it(`passes the turn to a waiting tenant after the answer to ${name}`, async () => {
+        const createWebSocket = testCreateWebSocket();
+        await using setup = await setupSharedWorker({ createWebSocket });
+        const first = await setup.createEvolu();
+        const second = await setup.createEvolu({
+          tenantName: Name.orThrow("second-tenant"),
+        });
+        const transport = createOwnerWebSocketTransport({
+          url: "wss://turn-handover.example",
+          ownerId: testAppOwner.id,
+        });
+        const syncOwner = {
+          owner: testAppOwner,
+          transports: [transport],
+        } as const;
+        const continuesOf = ({ dbInputs }: TestEvoluInstance): boolean => {
+          const input = dbInputs.at(-1);
+          assertNotUndefined(input);
+          assertSame(input.request.type, "ForSharedWorker");
+          assertSame(input.request.message.type, "ApplySyncMessage");
+          return input.request.message.continues;
+        };
+        const takeSentUrls = (): ReadonlyArray<string> =>
+          createWebSocket.sentMessages.splice(0).map(({ url }) => url);
+
+        for (const [instance, sentUrls] of [
+          [first, [transport.url]],
+          [second, []],
+        ] as const) {
+          instance.evoluChannel.port2.postMessage({
+            type: "UseOwner",
+            actions: [{ action: "add", owner: syncOwner }],
+          });
+          await testWaitForWorkerMessage();
+          assertEqual(
+            await respondToSyncRound(instance, createWebSocket),
+            sentUrls,
+          );
+        }
+
+        if (removesOwner) {
+          first.evoluChannel.port2.postMessage({
+            type: "UseOwner",
+            actions: [{ action: "remove", owner: syncOwner }],
+          });
+          await testWaitForWorkerMessage();
+        }
+        createWebSocket.message(
+          transport.url,
+          protocolMessageToArrayBuffer(
+            createProtocolMessageBuffer(testAppOwner.id, {
+              messageType: MessageType.Response,
+              errorCode,
+            }).unwrap(),
+          ),
+        );
+        await testWaitForWorkerMessage();
+        assertFalse(continuesOf(second));
+        assertEqual(takeSentUrls(), [transport.url]);
+        await respondToApplySync(second, false, {
+          ok: true,
+          value: { type: "Readonly" },
+        });
+
+        await answerRequest(createWebSocket, transport.url);
+        assertTrue(continuesOf(second));
+      });
+    }
+
     it("sends every waiting request of the next sender and keeps another sender's waiting between them", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
