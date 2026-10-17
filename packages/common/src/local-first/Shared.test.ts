@@ -3881,6 +3881,67 @@ describe("sync state", () => {
       );
     });
 
+    it("leaves only the closed transport's route incomplete and starts no round through it", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const instance = await setup.createEvolu();
+      const transports = [
+        createOwnerWebSocketTransport({
+          url: "wss://closing-one-a.example",
+          ownerId: testAppOwner.id,
+        }),
+        createOwnerWebSocketTransport({
+          url: "wss://closing-one-b.example",
+          ownerId: testAppOwner.id,
+        }),
+      ] as const;
+      const routeTypes = (): ReadonlyArray<SyncRoute["type"]> =>
+        transports.map((_, index) => routeOf(latest(), testName, index).type);
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { owner: { owner: testAppOwner, transports }, action: "add" },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      // Each transport's first claim starts a round through that transport.
+      await respondToSyncRound(instance, createWebSocket);
+      await respondToSyncRound(instance, createWebSocket);
+      for (const { url } of transports) {
+        createWebSocket.message(url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(instance, false, {
+          ok: true,
+          value: { type: "Converged" },
+        });
+      }
+      assertEqual(routeTypes(), ["Complete", "Complete"]);
+
+      createWebSocket.close(transports[1].url);
+      await testWaitForWorkerMessage();
+      assertEqual(routeTypes(), ["Complete", "Pending"]);
+
+      // Messages stored from the open transport would start a round through
+      // the closed one, which could not send it.
+      createWebSocket.message(
+        transports[0].url,
+        protocolMessageToArrayBuffer(
+          createProtocolMessageBuffer(testAppOwner.id, {
+            messageType: MessageType.Broadcast,
+          }).unwrap(),
+        ),
+      );
+      await testWaitForWorkerMessage();
+      const inputCount = instance.dbInputs.length;
+      await respondToApplySync(instance, true, {
+        ok: true,
+        value: { type: "Broadcast" },
+      });
+      assertSame(instance.dbInputs.length, inputCount);
+    });
+
     it("disconnects a first connection that fails without a close", async () => {
       const createWebSocket = testCreateWebSocket({ isOpen: false });
       await using setup = await setupSharedWorker({ createWebSocket });
