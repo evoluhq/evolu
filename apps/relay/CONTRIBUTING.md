@@ -18,14 +18,17 @@ hourly run; after that, run the Docker workflow on main, which repairs the other
 tags. To push sooner, run the Docker workflow on main; if npm doesn't serve the
 version yet, the run pushes nothing. A version that main has moved past gets no
 image if no watch saw npm serve it, unless all jobs of its Release run's Docker
-run are rerun, which pushes only its version tag. GitHub disables scheduled
-workflows after 60 days without repository activity, so after such a pause,
-enable the Docker workflow again. The push job checks Docker Hub on every
-attempt, including reruns of only a failed job. A manual run whose image already
-exists reuses its digest and repairs tags without rebuilding or signing it.
-Reruns of older runs leave the current release's stable aliases unchanged. A
-base image update, such as one from Dependabot, reaches users only with a new
-relay version, so add a patch changeset for `@evolu/relay` to its pull request.
+run are rerun, which pushes only its version tag. A failed Release run starts no
+watch, and neither does a rerun of its Docker run, so rerun the Release run's
+failed jobs; when that attempt succeeds, it starts a new Docker run. GitHub
+disables scheduled workflows after 60 days without repository activity, so after
+such a pause, enable the Docker workflow again. The push job checks Docker Hub
+on every attempt, including reruns of only a failed job. A manual run whose
+image already exists reuses its digest and repairs tags without rebuilding or
+signing it. Reruns of older runs leave the current release's stable aliases
+unchanged. A base image update, such as one from Dependabot, reaches users only
+with a new relay version, so add a patch changeset for `@evolu/relay` to its
+pull request.
 
 GitHub build provenance is generated only for an image built by that job,
 before repairing tags. A retry does not repair missing provenance for an
