@@ -26,7 +26,7 @@ Everything that handles a key or a page runs in constant time. The software path
 
 XChaCha20-Poly1305, which encrypts Evolu's sync messages, comes from the vendored [Monocypher](https://monocypher.org), in the byte layout of `@evolu/common`'s `encryptWithXChaCha20Poly1305`.
 
-The vendored files are copied byte for byte from a pinned BearSSL commit and Monocypher release. Their READMEs list each file's SHA-256, which `test/vendor.test.mts` checks.
+The vendored files are copied byte for byte from a pinned BearSSL commit and Monocypher release. Their READMEs list each file's SHA-256, which `test/vendor.test.mts` checks. The weekly Upstream pins workflow (the repository's `scripts/check-upstream-pins.mts`) opens an issue when BearSSL, Monocypher or SQLite has something newer than its pin.
 
 ## Storage functions
 

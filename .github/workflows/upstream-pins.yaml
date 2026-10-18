@@ -1,0 +1,40 @@
+# Opens or updates an issue when SQLite, BearSSL or Monocypher, which Evolu's
+# SQLite core pins, has a newer upstream, and closes it once all are current
+# (scripts/check-upstream-pins.mts).
+name: Upstream pins
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A dispatch during the weekly run would otherwise open a second issue.
+concurrency: upstream-pins
+
+jobs:
+  check:
+    name: Check upstream pins
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No install: the script uses only Node.js and git, so no dependency
+      # code runs with this job's token.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Check
+        run: node scripts/check-upstream-pins.mts --issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
