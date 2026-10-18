@@ -63,9 +63,11 @@ CI configuration the app doesn't have, as couldn't check.
 
 ## 2. Verify the installed Evolu releases
 
-Take each `@evolu/*` package and version from the lockfile's `packages` keys,
-without peer suffixes such as `(@evolu/common@8.23.0)`. Get each version's
-publish time in UTC with:
+Take each `@evolu/*` package and version from the lockfile. In
+`pnpm-lock.yaml`, they are the `packages` keys, without peer suffixes such as
+`(@evolu/common@8.23.0)`. In `package-lock.json`, the keys are paths such as
+`node_modules/@evolu/common`, and each entry's `version` field holds the
+version. Get each version's publish time in UTC with:
 
 ```bash
 npm view @evolu/<package> 'time[<version>]'
@@ -77,15 +79,25 @@ Then, for every version:
 npm view @evolu/<package>@<version> _npmUser dist.attestations --json
 ```
 
-Each must name GitHub Actions as `_npmUser.name` and have
-`dist.attestations.provenance`. A version published at or after
-2026-10-15T00:00Z must also name `steida` as `_npmUser.approver.name`. If
-`_npmUser` prints as a `name <email>` string, it has no approver, which only
-versions published before then may lack. Report any version that fails as a
+npm prints `_npmUser` as an object only when it has an approver, and otherwise
+as a `name <email>` string, so take the publisher's name from `_npmUser.name` or
+from that string.
+
+- A version published at or after 2026-10-15T00:00Z must name GitHub Actions
+  as its publisher and `steida` as `_npmUser.approver.name`, and have
+  `dist.attestations.provenance`.
+- An older version predates staged publishing and has no approver. Each package
+  moved to publishing from GitHub Actions with provenance on its own date, and
+  earlier versions, and the first version of a newer package, were published
+  by `steida` without provenance. So an older version must name `steida` or
+  GitHub Actions as its publisher. Report it as not verifiable by an approval,
+  not as a compromise, and propose upgrading to the newest approved version
+  once it is older than the app's release age.
+
+Report any other publisher, or a newer version that fails a check, as a
 suspected compromise, and tell the user to follow
 https://github.com/evoluhq/evolu/security/policy instead of opening a public
-issue. For an older version, propose upgrading to the newest approved one once
-it is older than the app's release age.
+issue.
 
 Run `pnpm audit signatures` (pnpm 11.1+) or `npm audit signatures`. pnpm checks
 only registry signatures; npm also checks provenance.
