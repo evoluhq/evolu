@@ -265,7 +265,7 @@ for a post, run `node scripts/code-image.mts --help`.
   additions, major for breaking changes, also in Changesets pre-release mode.
   Create it with `pnpm changeset --minor <packages> -m "<title>"` (likewise
   `--patch` or `--major`; comma-separate packages), which rejects misspelled or
-  ignored packages, then write the body in the file it prints.
+  private packages, then write the body in the file it prints.
 - Changesets are release notes describing the final change relative to committed
   code. Start with a short, standalone, past-tense title without a trailing
   period, explain observable behavior or migration impact, and keep unrelated

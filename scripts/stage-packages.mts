@@ -55,8 +55,8 @@ const { plan } = JSON.parse(
 ) as { readonly plan: ReadonlyArray<ReadonlyArray<Release>> };
 const releases = plan.flat();
 
-// The config versions private packages without tagging them, so Changesets
-// plans no tag-only release.
+// The config neither versions nor tags private packages, so Changesets plans
+// no tag-only release.
 for (const { kind, name } of releases) {
   if (kind !== "publish") {
     throw new Error(`Cannot stage the ${kind} release of ${name}`);
