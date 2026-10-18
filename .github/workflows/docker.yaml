@@ -254,23 +254,19 @@ jobs:
           # A rerun of an older release must not move stable aliases backwards.
           git fetch --no-tags --depth=1 origin main
           current_version=$(git show FETCH_HEAD:apps/relay/package.json | jq -er .version)
-          args=()
+          tags=()
           while IFS= read -r tag; do
             if [ "$current_version" != "$VERSION" ] && [ "$tag" != "$IMAGE:$VERSION" ]; then continue; fi
-            if [ -n "$tag" ]; then args+=(--tag "$tag"); fi
+            if [ -n "$tag" ]; then tags+=("$tag"); fi
           done <<< "$TAGS"
+          args=()
+          for tag in "${tags[@]}"; do args+=(--tag "$tag"); done
           docker buildx imagetools create --prefer-index=false \
             "${args[@]}" "$IMAGE@$DIGEST"
-
-      - name: Summary
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-          DIGEST: ${{ steps.image.outputs.digest || steps.push.outputs.digest }}
-        run: |
           {
             echo "### Relay image"
             echo
-            for tag in $TAGS; do echo "- $tag"; done
+            for tag in "${tags[@]}"; do echo "- $tag"; done
             echo
             echo "Digest: \`$DIGEST\`"
           } >> "$GITHUB_STEP_SUMMARY"

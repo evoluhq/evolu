@@ -335,18 +335,22 @@ describe("relay Docker release recovery", () => {
     ["3.1.0", ["3.1.0", "3.1", "3", "latest"]],
     ["3.2.0", ["3.1.0"]],
   ] as const) {
-    it(`repairs the existing digest's tags with ${currentVersion} on main`, () => {
+    it(`repairs the existing digest's tags with ${currentVersion} on main and lists them`, () => {
       const script = setupWorkflowScript(
         setupWorkflowStep("name: Reconcile image tags"),
       );
       const digest = `sha256:${"b".repeat(64)}`;
-      const result = spawnSync(
-        "bash",
-        [
-          "-euo",
-          "pipefail",
-          "-c",
-          `docker() { printf '%s\\n' "$@"; }
+      const directory = mkdtempSync(join(tmpdir(), "evolu-docker-tags-"));
+      try {
+        const summary = join(directory, "summary");
+        writeFileSync(summary, "");
+        const result = spawnSync(
+          "bash",
+          [
+            "-euo",
+            "pipefail",
+            "-c",
+            `docker() { printf '%s\\n' "$@"; }
         git() {
           case "$1" in
             fetch) return 0 ;;
@@ -355,33 +359,46 @@ describe("relay Docker release recovery", () => {
           esac
         }
         ${script}`,
-        ],
-        {
-          env: {
-            ...process.env,
-            IMAGE: "docker.io/evoluhq/relay",
-            DIGEST: digest,
-            VERSION: "3.1.0",
-            CURRENT_VERSION: currentVersion,
-            TAGS: "docker.io/evoluhq/relay:3.1.0\ndocker.io/evoluhq/relay:3.1\ndocker.io/evoluhq/relay:3\ndocker.io/evoluhq/relay:latest\n",
+          ],
+          {
+            env: {
+              ...process.env,
+              IMAGE: "docker.io/evoluhq/relay",
+              DIGEST: digest,
+              VERSION: "3.1.0",
+              CURRENT_VERSION: currentVersion,
+              TAGS: "docker.io/evoluhq/relay:3.1.0\ndocker.io/evoluhq/relay:3.1\ndocker.io/evoluhq/relay:3\ndocker.io/evoluhq/relay:latest\n",
+              GITHUB_STEP_SUMMARY: summary,
+            },
+            encoding: "utf8",
+            timeout: 5000,
           },
-          encoding: "utf8",
-          timeout: 5000,
-        },
-      );
-      assertSame(result.error, undefined);
-      assertSame(result.status, 0);
-      assertEqual(result.stdout.trim().split("\n"), [
-        "buildx",
-        "imagetools",
-        "create",
-        "--prefer-index=false",
-        ...expectedTags.flatMap((tag) => [
-          "--tag",
-          `docker.io/evoluhq/relay:${tag}`,
-        ]),
-        `docker.io/evoluhq/relay@${digest}`,
-      ]);
+        );
+        assertSame(result.error, undefined);
+        assertSame(result.status, 0);
+        assertEqual(result.stdout.trim().split("\n"), [
+          "buildx",
+          "imagetools",
+          "create",
+          "--prefer-index=false",
+          ...expectedTags.flatMap((tag) => [
+            "--tag",
+            `docker.io/evoluhq/relay:${tag}`,
+          ]),
+          `docker.io/evoluhq/relay@${digest}`,
+        ]);
+        // The summary lists only the tags the step set.
+        assertEqual(readFileSync(summary, "utf8").split("\n"), [
+          "### Relay image",
+          "",
+          ...expectedTags.map((tag) => `- docker.io/evoluhq/relay:${tag}`),
+          "",
+          `Digest: \`${digest}\``,
+          "",
+        ]);
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
     });
   }
 });
