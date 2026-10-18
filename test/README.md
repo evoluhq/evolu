@@ -98,6 +98,21 @@ pnpm exec vitest run --sequence.seed=123 --project=node-integration
 Replaying a fixed seed turns an occasional order-dependent failure into a
 deterministic local reproduction.
 
+## Cost tests
+
+A test that proves an algorithm stays linear compares its cost with a linear
+baseline measured in the same run, not with a fixed time. Measure both with
+thread CPU time, `process.threadCpuUsage()`, which other processes on a loaded
+runner do not add to. Pick the bound between the ratios of the correct code and
+of a regressed version, measured with coverage on, because coverage slows code
+unevenly. Measure a ratio that a garbage collection could explain again, and
+fail at once on one no pause explains, so a regression fails by assertion before
+the test timeout. The `unique` cost test in `packages/common/src/Type.test.ts`
+follows this.
+
+Tests of how long something waits, such as a busy timeout, keep wall-clock
+time, because waiting uses no CPU.
+
 ## Integration tests
 
 Integration tests exercise real platform implementations, external systems, or

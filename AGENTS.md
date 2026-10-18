@@ -256,6 +256,8 @@ for a post, run `node scripts/code-image.mts --help`.
 - Create fresh dependencies per test. Library-exported helpers use `testX`;
   local/test-only setup helpers use `setupX`. `testCreateDeps` and `testCreateRun`
   are in `packages/common/src/Task.ts`.
+- Cost tests compare thread CPU time with a linear baseline from the same run,
+  not a fixed time; wait tests keep wall-clock time. See `test/README.md`.
 
 ## Changesets and versioning
 
