@@ -925,6 +925,27 @@ importers:
         specifier: ^0.4.2
         version: 0.4.3
 
+  packages/sqlite-core:
+    devDependencies:
+      '@evolu/common':
+        specifier: workspace:*
+        version: link:../common
+      '@evolu/sqlite-wasm-2.2.4':
+        specifier: npm:@evolu/sqlite-wasm@2.2.4
+        version: '@evolu/sqlite-wasm@2.2.4'
+      '@evolu/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
+      '@typescript/native':
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
   packages/sqlite-wasm:
     dependencies:
       '@awasm/noble':

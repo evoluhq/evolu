@@ -47,3 +47,7 @@ packages/sqlite-wasm/wasm-cache/
 
 # packages/svelte
 packages/svelte/.svelte-kit
+
+# packages/sqlite-core
+packages/sqlite-core/build*/
+packages/sqlite-core/sqlite-cache/

@@ -8,3 +8,5 @@ apps/web/src/app/(docs)/docs/api-reference/**/*.mdx
 packages/common/src/local-first/PublicKysely.ts
 # Type benchmark fixtures stay compact, because bench:type measures their lines.
 bench/type/fixtures/
+# Upstream license files vendored verbatim into the SQLite core.
+packages/sqlite-core/vendor/*/LICEN*

@@ -3,7 +3,11 @@
   "name": "API Reference",
   "entryPointStrategy": "packages",
   "entryPoints": ["packages/*"],
-  "exclude": ["packages/oxlint-config", "packages/typescript-config"],
+  "exclude": [
+    "packages/oxlint-config",
+    "packages/sqlite-core",
+    "packages/typescript-config"
+  ],
   "packageOptions": {
     "entryPoints": ["src/**/*.ts"],
     "exclude": [

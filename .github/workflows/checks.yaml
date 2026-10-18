@@ -114,6 +114,39 @@ jobs:
             packages/sqlite-wasm/wasm/build-info.json
           if-no-files-found: error
 
+  # Builds Evolu's SQLite core in C with sanitizers on the host and runs its C
+  # and TypeScript tests. The amalgamation comes from the pinned SQLite source.
+  sqlite-core:
+    name: SQLite core (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      # Only the archives, SQLite's and expo-sqlite's, which every use verifies
+      # against their pinned hashes, not what's generated from them.
+      - name: Cache source archives
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
+
+      - name: Test
+        run: pnpm test:sqlite-core
+
   type-benchmarks:
     name: Type benchmarks
     runs-on: ubuntu-latest

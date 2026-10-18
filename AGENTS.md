@@ -79,6 +79,13 @@ for a post, run `node scripts/code-image.mts --help`.
   `packages/sqlite-wasm/wasm/sqlite3.wasm` and fail when it is missing or stale
   after a pin change. Get the pinned one with `pnpm sqlite-wasm:download`, which
   needs network access.
+- After changing `packages/sqlite-core`, run the affected C tests with
+  `node packages/sqlite-core/scripts/test.mts <test-name-prefix>` and the
+  affected TypeScript test files with `pnpm test:node`, then
+  `pnpm test:sqlite-core` once. It needs
+  clang, make, unzip and zip, on Linux also OpenSSL's development headers and
+  clang's shared AddressSanitizer runtime, and network access the first time,
+  to fetch the pinned SQLite source and expo-sqlite releases.
 - After changing browser APIs, platform-sensitive behavior, polyfills, workers,
   or browser test configuration, run the affected browser projects with
   `pnpm exec vitest run --project=<project> <test-files>`, which runs them in
@@ -288,3 +295,9 @@ for a post, run `node scripts/code-image.mts --help`.
   `<SQLite version>-build<n>`, any build may change its API, and
   `scripts/version-sqlite-wasm.mts` replaces the version its changeset bump
   computes, so the bump type only selects its release-notes heading.
+- `@evolu/sqlite-core` is private, and its code will ship inside
+  `@evolu/sqlite-wasm`, `@evolu/nodejs` and `@evolu/react-native` as each
+  binding lands. Changesets skips private packages, so a change to it needs a
+  changeset for each published package that already ships the change, and none
+  while none does. Never name it in a changeset: Changesets never consumes such
+  a file, which keeps the release workflow from publishing.

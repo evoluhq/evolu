@@ -1,0 +1,16 @@
+{
+  "name": "@evolu/sqlite-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Evolu's SQLite core in C: unmodified SQLite with Evolu's encryption codec, shared by the web, React Native and Node.js builds",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/sqlite-wasm-2.2.4": "npm:@evolu/sqlite-wasm@2.2.4",
+    "@evolu/typescript-config": "workspace:*",
+    "@types/node": "^24.19.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}
