@@ -64,4 +64,19 @@ describe("GitHub workflows", () => {
       [],
     );
   });
+
+  // The website deploy job holds the Cloudflare token, and its npm ci, like
+  // any npm install there, reads these settings from the folder's .npmrc.
+  it("install Wrangler without install scripts or new versions", () => {
+    const npmrc = readFileSync(
+      new URL("apps/web/deploy/.npmrc", root),
+      "utf8",
+    ).split("\n");
+    assertEqual(
+      ["min-release-age=1", "ignore-scripts=true"].filter(
+        (setting) => !npmrc.includes(setting),
+      ),
+      [],
+    );
+  });
 });

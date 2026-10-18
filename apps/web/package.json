@@ -9,7 +9,7 @@
     "dev:docs": "node ./src/scripts/dev-docs.mts",
     "fix:docs": "node ./src/scripts/fix-api-reference.mts && node ./src/scripts/generate-sections.mts",
     "lint": "oxlint .",
-    "start": "cd deploy && npm ci --ignore-scripts --no-audit --no-fund && WRANGLER_SEND_METRICS=false node serve.mts"
+    "start": "cd deploy && npm ci --no-audit --no-fund && WRANGLER_SEND_METRICS=false node serve.mts"
   },
   "browserslist": [
     "baseline newly available",
