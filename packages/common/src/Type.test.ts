@@ -41,6 +41,7 @@ import {
 import { testCreateDeps } from "./Task.ts";
 import { Millis, testCreateTime } from "./Time.ts";
 import { utf8ToBytes } from "./Bytes.ts";
+import { eqData } from "./Eq.ts";
 import type { StandardSchemaV1 } from "./StandardSchema.ts";
 import * as fc from "fast-check";
 import {
@@ -17327,10 +17328,31 @@ describe("unique", () => {
       (_, index) => new Map([["key", index]]),
     );
 
+    // Thread CPU time counts only this thread, so other processes on a loaded
+    // runner do not add to it.
+    const cpuTimeOf = (run: () => void): number => {
+      const start = process.threadCpuUsage();
+      run();
+      const { user, system } = process.threadCpuUsage(start);
+      return user + system;
+    };
+
     for (const value of [blobs, vectors, sets, maps]) {
-      const start = performance.now();
-      assertOk(Items.from.parent(value));
-      assertTrue(performance.now() - start < 1000);
+      // Comparing the array with a copy compares each item once, so a linear
+      // check costs about as much. Pairwise comparisons cost hundreds of times
+      // more, and a key describing each byte 7 to 80 times more.
+      const copy = structuredClone(value);
+      let attempts = 0;
+      let ratio: number;
+      // Garbage collection can inflate one measurement, so a ratio over the
+      // bound is measured again unless it is too high for a pause to explain.
+      do {
+        const linearCost = cpuTimeOf(() => assertTrue(eqData(value, copy)));
+        ratio =
+          cpuTimeOf(() => assertOk(Items.from.parent(value))) / linearCost;
+        attempts++;
+      } while (attempts < 3 && ratio >= 4 && ratio < 100);
+      assertTrue(ratio < 4);
     }
   });
 
