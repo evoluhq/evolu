@@ -101,6 +101,11 @@
  * - `fd_write`, for C-side diagnostics, writes complete lines of stdout with
  *   {@link Console.log} and of stderr with {@link Console.error}, and fails any
  *   other descriptor with EBADF.
+ * - WASI `random_get`, which the C core's `getentropy` calls for salts and IVs in
+ *   chunks of at most 256 bytes, fills memory from {@link RandomBytes}. What it
+ *   throws goes to {@link ReportDefect}, and `random_get` returns EIO (29), so
+ *   the core fails the write that needed the bytes. A trap, or a broken
+ *   instance, is handled as installed functions handle it.
  *
  * The `__syscall_*` imports return -ENOSYS (-52), and the remaining WASI `fd_*`
  * imports return ENOSYS (52), as WASI errors are positive: only `openat` of
@@ -329,12 +334,27 @@ export const createSqliteWasm =
       return heapDataView;
     };
 
+    // What escaped a call and broke the instance.
+    let brokenBy: { readonly error: unknown } | null = null;
+
+    const isBroken = (): boolean => brokenBy != null;
+
+    const refuseIfBroken = (): void => {
+      if (brokenBy)
+        throw new Error(
+          "The SQLite wasm instance is broken: an exception escaped a wasm call.",
+          { cause: brokenBy.error },
+        );
+    };
+
     // 4. Instantiate, set the C stack's limits and run the static constructors.
     const context: SqliteWasmImportContext = {
       ...run.deps,
       memory,
       getHeapU8,
       getHeapDataView,
+      isBroken,
+      refuseIfBroken,
     };
     const imports = mapObject(sqliteWasmImports, (namespace) =>
       mapObject(namespace, (createImport) => createImport(context)),
@@ -381,9 +401,6 @@ export const createSqliteWasm =
     if (code !== SQLITE_OK)
       return err({ type: "SqliteWasmInitializeError", code });
 
-    // What escaped a call and broke the instance.
-    let brokenBy: { readonly error: unknown } | null = null;
-
     const sqliteWasm: SqliteWasm = {
       exports,
       functionTable: instance.exports
@@ -391,11 +408,7 @@ export const createSqliteWasm =
       getHeapU8,
       getHeapDataView,
       call: (fn) => {
-        if (brokenBy)
-          throw new Error(
-            "The SQLite wasm instance is broken: an exception escaped a wasm call.",
-            { cause: brokenBy.error },
-          );
+        refuseIfBroken();
         try {
           return fn();
         } catch (error) {
@@ -403,7 +416,7 @@ export const createSqliteWasm =
           throw error;
         }
       },
-      isBroken: () => brokenBy != null,
+      isBroken,
     };
 
     // 7. Register the default VFS.
@@ -436,11 +449,13 @@ export const createSqliteWasm =
       [
         "xRandomness",
         (_vfs: SqliteVfsPtr, byteLength: number, pOut: WasmPtr) => {
-          for (let offset = 0; offset < byteLength; offset += 65536)
-            getHeapU8().set(
-              run.deps.randomBytes.create(Math.min(65536, byteLength - offset)),
-              pOut + offset,
+          for (let offset = 0; offset < byteLength; offset += 65536) {
+            // Before the heap view, since RandomBytes can grow the memory.
+            const bytes = run.deps.randomBytes.create(
+              Math.min(65536, byteLength - offset),
             );
+            getHeapU8().set(bytes, pOut + offset);
+          }
           return byteLength;
         },
       ],
@@ -613,10 +628,14 @@ const callExport = (
     : 0;
 };
 
-interface SqliteWasmImportContext extends ConsoleDep, TimeDep {
+interface SqliteWasmImportContext
+  extends ConsoleDep, RandomBytesDep, ReportDefectDep, TimeDep {
   readonly memory: WebAssembly.Memory;
   readonly getHeapU8: SqliteWasm["getHeapU8"];
   readonly getHeapDataView: SqliteWasm["getHeapDataView"];
+  readonly isBroken: SqliteWasm["isBroken"];
+  /** Throws the refusal of {@link SqliteWasm.call} once the instance is broken. */
+  readonly refuseIfBroken: () => void;
 }
 
 // The JavaScript API does not expose the minimum a binary declares for its
@@ -639,6 +658,30 @@ const EINVAL = 28;
 
 // WASI's EBADF, "bad file descriptor".
 const EBADF = 8;
+
+// WASI's EIO, "I/O error".
+const EIO = 29;
+
+/**
+ * Reports a defect that a function called from wasm caught, so it does not
+ * cross into wasm. When ReportDefect itself throws, both are reported after a
+ * microtask, outside wasm.
+ */
+const reportDefectInWasmCall = (
+  reportDefect: ReportDefect,
+  error: unknown,
+): void => {
+  try {
+    reportDefect(error);
+  } catch (reporterError) {
+    reportDefectAfterMicrotask(
+      new AggregateError(
+        [error, reporterError],
+        "ReportDefect failed while reporting a defect",
+      ),
+    );
+  }
+};
 
 // Every import the loader implements, by module and name, each created from
 // the instance's context.
@@ -794,6 +837,28 @@ const sqliteWasmImports: ReadonlyRecord<
         return 0;
       };
     },
+    random_get:
+      ({ randomBytes, reportDefect, getHeapU8, isBroken, refuseIfBroken }) =>
+      (pBuffer: number, byteLength: number) => {
+        try {
+          const bytes = randomBytes.create(byteLength);
+          // As installWasmFunctions does: RandomBytes that caught what a nested
+          // call that broke the instance threw doesn't return into the core.
+          refuseIfBroken();
+          // A fresh view, since RandomBytes can grow the memory.
+          getHeapU8().set(bytes, pBuffer);
+          return 0;
+        } catch (error) {
+          // As installWasmFunctions does: a trap, or what a nested call that
+          // broke the instance threw, unwinds, and a ReportDefect that broke
+          // it throws the refusal, so the core never resumes on that state.
+          if (error instanceof WebAssembly.RuntimeError || isBroken())
+            throw error;
+          reportDefectInWasmCall(reportDefect, error);
+          refuseIfBroken();
+          return EIO;
+        }
+      },
   },
 };
 
@@ -931,16 +996,7 @@ export const installWasmFunctions =
             deps.sqliteWasm.isBroken()
           )
             throw error;
-          try {
-            deps.reportDefect(error);
-          } catch (reporterError) {
-            reportDefectAfterMicrotask(
-              new AggregateError(
-                [error, reporterError],
-                "ReportDefect failed while reporting a defect",
-              ),
-            );
-          }
+          reportDefectInWasmCall(deps.reportDefect, error);
           // ReportDefect can break the instance too, by a nested call, so this
           // throws the refusal as above instead of returning into SQLite.
           if (deps.sqliteWasm.isBroken()) deps.sqliteWasm.call(constVoid);

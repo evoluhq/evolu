@@ -1,6 +1,7 @@
 import {
   assert,
   assertEqual,
+  assertFalse,
   assertInstanceOf,
   assertRejects,
   assertThrows,
@@ -18,13 +19,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   compileCached,
   type CompileCachedOptions,
-  vendoredPublicHeaders,
+  compileUnits,
+  cSources,
+  sourceDirectory,
   writeAtomically,
 } from "../scripts/compile.mts";
 
@@ -203,16 +206,64 @@ describe("writeAtomically", () => {
   });
 });
 
-describe("vendoredPublicHeaders", () => {
-  it("returns the contents of every header the core may include from vendored libraries", () => {
-    const headers = vendoredPublicHeaders();
+describe("compileUnits", () => {
+  const vendorDirectory = join(import.meta.dirname, "../vendor");
 
-    for (const declaration of [
-      "br_aes_ct64_cbcenc_keys",
-      "br_sha512_context",
-      "crypto_aead_lock",
-    ])
-      assertTrue(headers.includes(declaration));
+  it("compiles the core's own sources with the given SQLite flags first, warnings as errors and only the vendored libraries' public includes", () => {
+    const units = compileUnits(["-DSQLITE_THREADSAFE=0", "-Isqlite"]).filter(
+      ({ source }) => source.startsWith(sourceDirectory),
+    );
+
+    assertEqual(
+      units.map(({ source }) => source),
+      cSources(sourceDirectory),
+    );
+    for (const { flags, headers } of units) {
+      assertEqual(flags.slice(0, 2), ["-DSQLITE_THREADSAFE=0", "-Isqlite"]);
+      assertTrue(flags.includes("-std=c11"));
+      assertTrue(flags.includes("-Werror"));
+      assertTrue(flags.includes(`-I${sourceDirectory}`));
+      assertTrue(flags.includes(`-I${join(vendorDirectory, "bearssl/inc")}`));
+      assertFalse(flags.includes(`-I${join(vendorDirectory, "bearssl/src")}`));
+      // The core's headers and the vendored public ones.
+      for (const declaration of [
+        "evolu_codec_open",
+        "br_aes_ct64_cbcenc_keys",
+        "br_sha512_context",
+        "crypto_aead_lock",
+      ])
+        assertTrue(headers().includes(declaration));
+    }
+  });
+
+  it("compiles every vendored source, also in subdirectories, with its library's private includes, no warning flags and none of the SQLite flags", () => {
+    const units = compileUnits(["-DSQLITE_THREADSAFE=0", "-Isqlite"]).filter(
+      ({ source }) => source.startsWith(vendorDirectory),
+    );
+
+    // In UTF-16 code unit order, whatever the locale, because the order is
+    // the wasm's link order.
+    assertEqual(
+      units.map(({ source }) => relative(vendorDirectory, source)),
+      readdirSync(vendorDirectory, { recursive: true, encoding: "utf8" })
+        .filter((path) => path.endsWith(".c"))
+        .toSorted(),
+    );
+    const bearssl = units.filter(({ source }) =>
+      source.startsWith(join(vendorDirectory, "bearssl")),
+    );
+    assertTrue(bearssl.some(({ source }) => source.includes("symcipher")));
+    for (const { flags } of units)
+      assertFalse(
+        flags.includes("-DSQLITE_THREADSAFE=0") || flags.includes("-Isqlite"),
+      );
+    for (const { flags, headers } of bearssl) {
+      assertTrue(flags.includes("-std=c11"));
+      assertTrue(flags.includes(`-I${join(vendorDirectory, "bearssl/src")}`));
+      assertFalse(flags.some((flag) => flag.startsWith("-W")));
+      // Its internal headers, such as inner.h.
+      assertTrue(headers().includes("br_aes_ct64_bitslice_Sbox"));
+    }
   });
 });
 

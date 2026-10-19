@@ -34,8 +34,8 @@ export interface PublishedWasm {
  * download says to build the wasm from source.
  */
 export const publishedWasm: PublishedWasm = {
-  version: "3.54.0-build1",
-  sha256: "6344a38dfc0f5dfdd2086a50e11daaa8002234e4aaa9575847d1247e5ba53899",
+  version: "3.54.1-build1",
+  sha256: "a2807bf90834a5a0edaf9d6610d30a33940957a445949f4484b3be54270f047d",
 };
 
 /** The published package, the pin, and where {@link downloadWasm} writes. */

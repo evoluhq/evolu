@@ -32,5 +32,6 @@
   "wasi_snapshot_preview1.fd_read": {"kind":"function","type":"i(iiii)"},
   "wasi_snapshot_preview1.fd_seek": {"kind":"function","type":"i(ijii)"},
   "wasi_snapshot_preview1.fd_sync": {"kind":"function","type":"i(i)"},
-  "wasi_snapshot_preview1.fd_write": {"kind":"function","type":"i(iiii)"}
+  "wasi_snapshot_preview1.fd_write": {"kind":"function","type":"i(iiii)"},
+  "wasi_snapshot_preview1.random_get": {"kind":"function","type":"i(ii)"}
 }

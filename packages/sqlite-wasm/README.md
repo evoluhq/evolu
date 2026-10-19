@@ -59,6 +59,19 @@ To build or verify it, use an [emsdk](https://emscripten.org/docs/getting_starte
 EMSDK=/path/to/emsdk node scripts/build-wasm.mts
 ```
 
+Without emsdk, build it with Docker 28 or later in the Emscripten image CI uses, pinned by the same digest. Run `pnpm install` first, then this in the repository root. The image's Node.js is older than the repository's, so the command mounts the repository's version from the official `node` image, which Docker doesn't pull for a mount by itself. A build in this image on Linux gave the same bytes as one with emsdk on macOS:
+
+```sh
+docker pull node:24.20.0-slim
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v evolu-sqlite-wasm:/tmp \
+  -v "$PWD":/src -w /src \
+  --mount type=image,source=node:24.20.0-slim,target=/node \
+  emscripten/emsdk:6.0.3@sha256:bb0910e6a18bb9bd7cb31ae4ed40f9073148b78cb2cdb8ea8676454e0d85425c \
+  /node/usr/local/bin/node packages/sqlite-wasm/scripts/build-wasm.mts
+```
+
+The build runs in the `evolu-sqlite-wasm` volume rather than in the repository, because building on a macOS host's file share can lose the permissions SQLite's configure sets. A failed build keeps its work directory there, so to pin the wasm it names, run `packages/sqlite-wasm/scripts/generate.mts --pin-build` with that path in the same command instead of `build-wasm.mts`. `docker volume rm evolu-sqlite-wasm` removes the work directories.
+
 SQLite's makefile puts the 512 KiB C stack directly above SQLite's static data. In SQLite's own build, SQL that is legal but nests deeply, such as a chain of 600 triggers where SQLite allows 1,000, runs the stack into that data and overwrites it without an error. With 2.2.4, such an insert never returned. Built without the check, our binary was left failing with `SQLITE_NOMEM`, even to open another database. So we build with `-sSTACK_OVERFLOW_CHECK=2`. With it, every function compares the stack pointer it sets with the stack's limits, and our loader turns an overflow into a `WebAssembly.RuntimeError`, which breaks the instance as any trap does. The check adds 19,648 bytes, 3,954 with `gzip -9`. In Node.js 24 on an Apple M5, our micro benchmarks of `run` and `exec` on an in-memory database take 1% to 5% longer with it.
 
 ## Bundlers

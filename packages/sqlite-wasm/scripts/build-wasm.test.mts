@@ -16,24 +16,26 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { createServer } from "node:http";
 import { arch, release, tmpdir, type } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  compileUnits,
+  sourceDirectory,
+} from "@evolu/sqlite-core/scripts/compile.mts";
 import createWabt from "wabt";
 import {
   buildWasm,
   checkConfigMake,
   checkMakeLog,
-  checkManifestUuid,
   checkToolchain,
   createBuildEnvironment,
-  fetchPinned,
   verifyWasm,
   type BuildWasmOptions,
 } from "./build-wasm.mts";
@@ -60,7 +62,25 @@ describe("buildWasm", () => {
           sqliteSource: build.options.sqliteSource,
           emscripten: "6.0.3",
           wasmStrip: "1.0.39",
-          make: makeWasm,
+          make: makeWasmWithCore(),
+          // Each unit's flags without a path of the work directory or this
+          // machine.
+          core: compileUnits(wasmSqliteFlags).map(
+            ({ source, flags, headers }) => ({
+              source: relative(sqliteCoreDirectory, source),
+              flags: [
+                "-c",
+                "-O2",
+                ...flags.map((flag) =>
+                  flag.startsWith("-I/")
+                    ? `-I${relative(sqliteCoreDirectory, flag.slice(2))}`
+                    : flag,
+                ),
+              ],
+              sha256: sha256(readFileSync(source)),
+              headersSha256: sha256(new TextEncoder().encode(headers())),
+            }),
+          ),
         },
         toolchain: {
           emcc: emcc603,
@@ -93,7 +113,8 @@ describe("buildWasm", () => {
       `unzip -q ${join(build.cache, "sqlite.zip")}`,
       `configure --with-emsdk=${build.emsdk}`,
       "make sqlite3.c",
-      makeWasm.join(" "),
+      ...coreCompiles(),
+      makeWasmWithCore().join(" "),
     ]);
   });
 
@@ -177,7 +198,7 @@ describe("buildWasm", () => {
     await assertBuildKeepsWork(
       build.options,
       (work) =>
-        `${makeWasm.join(" ")} failed (2); see ${join(work, "logs/make-wasm.log")}:\nmake: *** Error 1\n`,
+        `${makeWasmWithCore().join(" ")} failed (2); see ${join(work, "logs/make-wasm.log")}:\nmake: *** Error 1\n`,
     );
   });
 
@@ -234,111 +255,6 @@ describe("buildWasm", () => {
     await assertBuildRefused(
       build.options,
       `${path}: sha3-256 ${sha3(tampered)}, pinned ${build.options.sqliteSource.hash}`,
-    );
-  });
-});
-
-describe("fetchPinned", () => {
-  it("downloads a missing archive into the cache", async (t) => {
-    const bytes = new TextEncoder().encode("archive");
-    const url = await setupServer(t, 200, bytes);
-    const cache = setupDirectory(t);
-
-    const path = await fetchPinned(
-      { url, file: "archive.zip", hash: sha3(bytes) },
-      cache,
-    );
-
-    assertEqual(path, join(cache, "archive.zip"));
-    assertEqualBytes(readFileSync(path), bytes);
-  });
-
-  it("creates a missing cache directory", async (t) => {
-    const bytes = new TextEncoder().encode("archive");
-    const url = await setupServer(t, 200, bytes);
-    const cache = join(setupDirectory(t), "wasm-cache");
-
-    const path = await fetchPinned(
-      { url, file: "archive.zip", hash: sha3(bytes) },
-      cache,
-    );
-
-    assertEqualBytes(readFileSync(path), bytes);
-  });
-
-  it("refuses a download whose hash differs and does not cache it", async (t) => {
-    const tampered = new TextEncoder().encode("tampered");
-    const url = await setupServer(t, 200, tampered);
-    const cache = setupDirectory(t);
-    const pinned = sha3(new TextEncoder().encode("archive"));
-
-    await assertRejectsWithMessage(
-      fetchPinned({ url, file: "archive.zip", hash: pinned }, cache),
-      `${url}: sha3-256 ${sha3(tampered)}, pinned ${pinned}`,
-    );
-    assertFalse(existsSync(join(cache, "archive.zip")));
-  });
-
-  it("refuses an unsuccessful download", async (t) => {
-    const url = await setupServer(t, 404, new TextEncoder().encode("missing"));
-    const cache = setupDirectory(t);
-
-    await assertRejectsWithMessage(
-      fetchPinned({ url, file: "archive.zip", hash: "pinned" }, cache),
-      `${url}: HTTP 404`,
-    );
-    assertFalse(existsSync(join(cache, "archive.zip")));
-  });
-
-  it("uses a cached archive without downloading it", async (t) => {
-    const bytes = new TextEncoder().encode("archive");
-    const cache = setupDirectory(t);
-    writeFileSync(join(cache, "archive.zip"), bytes);
-
-    const path = await fetchPinned(
-      { url: unreachableUrl, file: "archive.zip", hash: sha3(bytes) },
-      cache,
-    );
-
-    assertEqual(path, join(cache, "archive.zip"));
-  });
-
-  it("refuses a cached archive whose hash differs", async (t) => {
-    const tampered = new TextEncoder().encode("tampered");
-    const cache = setupDirectory(t);
-    const path = join(cache, "archive.zip");
-    writeFileSync(path, tampered);
-    const pinned = sha3(new TextEncoder().encode("archive"));
-
-    await assertRejectsWithMessage(
-      fetchPinned(
-        { url: unreachableUrl, file: "archive.zip", hash: pinned },
-        cache,
-      ),
-      `${path}: sha3-256 ${sha3(tampered)}, pinned ${pinned}`,
-    );
-  });
-});
-
-describe("checkManifestUuid", () => {
-  it("accepts a tree whose manifest.uuid is the pinned check-in", (t) => {
-    const tree = setupDirectory(t);
-    writeFileSync(join(tree, "manifest.uuid"), `${checkIn}\n`);
-
-    checkManifestUuid(tree, checkIn);
-  });
-
-  it("refuses a tree whose manifest.uuid is another check-in", (t) => {
-    const tree = setupDirectory(t);
-    const other =
-      "4a75bdd007ec52935fdbecc6ed448951bb2e28d1aaca6f641c7b33e4e09459bc";
-    writeFileSync(join(tree, "manifest.uuid"), `${other}\n`);
-
-    assertThrowsWithMessage(
-      () => {
-        checkManifestUuid(tree, checkIn);
-      },
-      `${join(tree, "manifest.uuid")}: check-in ${other}, pinned ${checkIn}`,
     );
   });
 });
@@ -640,7 +556,9 @@ describe("build-wasm.mts CLI", () => {
  * misses the cache fails.
  */
 const setupBuild = async (t: TestContext) => {
-  const root = setupDirectory(t);
+  // The physical path, which the fake emcc's shell reports, also where a
+  // directory such as macOS's /var is a symlink.
+  const root = realpathSync(setupDirectory(t));
   const commands = join(root, "commands");
   const record = (command: string) => `echo "${command} $*" >> "${commands}"`;
 
@@ -656,7 +574,17 @@ const setupBuild = async (t: TestContext) => {
   const emsdk = setupEmsdk(t);
   mkdirSync(join(emsdk, "bin"));
   mkdirSync(join(emsdk, "upstream/bin"), { recursive: true });
-  writeTool(join(emsdk, "bin/emcc"), `echo '${emcc603}'`);
+  // emcc -c <flags> <sources>, in ext/wasm/evolu-core, recorded with the
+  // work directory's tree as <tree>.
+  writeTool(
+    join(emsdk, "bin/emcc"),
+    [
+      `[ "$1" = --version ] && echo '${emcc603}' && exit 0`,
+      "tree=$(cd ../../.. && pwd -P)",
+      `echo "emcc $*" | sed "s|$tree|<tree>|g" >> "${commands}"`,
+      'for source in "$@"; do case $source in *.c) : > "$(basename "$source" .c).o" ;; esac; done',
+    ].join("\n"),
+  );
   writeTool(join(emsdk, "bin/cc"), "echo 'cc 17.0.0'");
   writeTool(join(emsdk, "upstream/bin/clang"), "echo 'clang version 22.0.0'");
   writeTool(
@@ -699,6 +627,7 @@ const setupBuild = async (t: TestContext) => {
       hash: sha3(sqliteZip),
       directory: "sqlite-src",
       checkIn,
+      version: "3.54.1",
     },
     wasmSha256: sha256(wasm),
     outputDirectory: join(root, "wasm"),
@@ -857,6 +786,45 @@ const setupTinyWasm = async (): Promise<Uint8Array> =>
     .toBinary({}).buffer;
 
 /**
+ * The flags only the core's own units get: SQLite's wasm compiles without
+ * threads, against the work directory's tree, where `make sqlite3.c` generates
+ * sqlite3.h. The vendored libraries' units get none of them.
+ */
+const wasmSqliteFlags = ["-DSQLITE_THREADSAFE=0", "-I<tree>"];
+
+const sqliteCoreDirectory = join(sourceDirectory, "..");
+
+/**
+ * The emcc calls that compile the core's units, one for each set of units that
+ * share their flags.
+ */
+const coreCompiles = (): ReadonlyArray<string> =>
+  [
+    ...Map.groupBy(compileUnits(wasmSqliteFlags), ({ flags }) =>
+      flags.join(" "),
+    ),
+  ].map(([flags, units]) =>
+    ["emcc -c -O2", flags, ...units.map(({ source }) => source)].join(" "),
+  );
+
+/**
+ * The command that builds the wasm with the core's objects, relative to
+ * ext/wasm, linked into the vanilla build, which keeps the core's exports.
+ */
+const makeWasmWithCore = (): ReadonlyArray<string> => [
+  ...makeWasm.slice(0, -1),
+  [
+    "emcc.flags.vanilla=",
+    compileUnits(wasmSqliteFlags)
+      .map(({ source }) => `evolu-core/${basename(source, ".c")}.o`)
+      .join(" "),
+    " -Wl,--export=evolu_codec_register -Wl,--export=evolu_codec_open",
+    " -Wl,--export=evolu_codec_take_failure -Wl,--export=evolu_skiplist_register",
+  ].join(""),
+  "jswasm/sqlite3.wasm",
+];
+
+/**
  * The command that builds the wasm: Emscripten's stack overflow check, SQLite's
  * bare-bones export list, and its bare-bones options with JSON, math functions
  * and in-memory temporary files.
@@ -955,30 +923,4 @@ const setupDirectory = (t: TestContext): string => {
     rmSync(directory, { recursive: true, force: true });
   });
   return directory;
-};
-
-/** Serves `body` with `status` on a local port and returns its URL. */
-const setupServer = async (
-  t: TestContext,
-  status: number,
-  body: Uint8Array,
-): Promise<string> => {
-  const server = createServer((_request, response) => {
-    response.writeHead(status);
-    response.end(body);
-  });
-  await new Promise<void>((resolve) => {
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  t.after(
-    () =>
-      new Promise<void>((resolve) => {
-        server.close(() => {
-          resolve();
-        });
-      }),
-  );
-  const address = server.address();
-  assert(typeof address === "object" && address != null, "Server address");
-  return `http://127.0.0.1:${address.port}/archive.zip`;
 };

@@ -24,7 +24,12 @@ import { join } from "node:path";
 import { describe, it, test, type TestContext } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import createWabt from "wabt";
-import type { Binding, VariadicBinding, VariadicVariant } from "./bindings.mts";
+import type {
+  Binding,
+  EvoluBinding,
+  VariadicBinding,
+  VariadicVariant,
+} from "./bindings.mts";
 import {
   compareWasmBuilds,
   findStaleSources,
@@ -42,9 +47,11 @@ import {
 } from "./generate.mts";
 
 test("importing generate.mts generates nothing", () => {
-  const outputs = ["../src/CApi.ts", "../src/Constants.ts"].map(
-    (path) => new URL(path, import.meta.url),
-  );
+  const outputs = [
+    "../src/CApi.ts",
+    "../src/Constants.ts",
+    "../src/EvoluCApi.ts",
+  ].map((path) => new URL(path, import.meta.url));
   const readModifiedTimes = () =>
     outputs.map((output) => statSync(output).mtimeMs);
   const before = readModifiedTimes();
@@ -177,6 +184,134 @@ describe("generate", () => {
         }),
         [
           "sqlite3__wasm_db_reset: not a public C function; remove its metadata",
+        ],
+      );
+    });
+  });
+
+  describe("Evolu's functions", () => {
+    it("generates the C core's functions into their own module, typed by their metadata", async () => {
+      const { cApi, evoluCApi } = await setupSources(
+        setupInputs({
+          exports: { evolu_skiplist_register: fn("i(i)") },
+          evoluBindings: { evolu_skiplist_register: setupEvoluBinding() },
+        }),
+      );
+
+      assertTrue(
+        includesCode(
+          evoluCApi,
+          "readonly evolu_skiplist_register: (db: SqliteDbPtr) => SqliteResultCode;",
+        ),
+      );
+      assertTrue(
+        includesCode(
+          evoluCApi,
+          `/**
+           * Registers the functions.
+           *
+           * Wasm type \`i(i)\`, signature \`["evolu_skiplist_register", "int", "sqlite3*"]\` from Evolu's metadata.
+           */
+          export const evolu_skiplist_register = (deps: SqliteWasmDep): EvoluCExports["evolu_skiplist_register"] =>
+            (deps.sqliteWasm.exports as SqliteCExports & EvoluCExports).evolu_skiplist_register;`,
+        ),
+      );
+      assertTrue(
+        includesCode(
+          evoluCApi,
+          'import type { SqliteResultCode } from "./Constants.ts";',
+        ),
+      );
+      assertTrue(
+        includesCode(
+          evoluCApi,
+          'import type { SqliteDbPtr } from "./Pointer.ts";',
+        ),
+      );
+      assertFalse(cApi.includes("evolu_skiplist_register"));
+    });
+
+    it("links the first mention of another of Evolu's functions in a doc, but not the documented one", async () => {
+      const { evoluCApi } = await setupSources(
+        setupInputs({
+          exports: {
+            evolu_skiplist_register: fn("i(i)"),
+            evolu_core_register: fn("i(i)"),
+          },
+          evoluBindings: {
+            evolu_skiplist_register: setupEvoluBinding(),
+            evolu_core_register: setupEvoluBinding({
+              doc: "Calls evolu_skiplist_register, as evolu_core_register and evolu_skiplist_register say.",
+            }),
+          },
+        }),
+      );
+
+      assertTrue(
+        includesCode(
+          evoluCApi,
+          "Calls {@link evolu_skiplist_register}, as evolu_core_register and evolu_skiplist_register say.",
+        ),
+      );
+    });
+
+    it("lists an exported Evolu function without metadata", async () => {
+      await assertProblems(
+        setupInputs({ exports: { evolu_skiplist_register: fn("i(i)") } }),
+        [
+          "evolu_skiplist_register: exported, but scripts/bindings.mts has no metadata",
+          "1 exported C functions lack metadata in scripts/bindings.mts.",
+        ],
+      );
+    });
+
+    it("lists Evolu metadata whose wasm type differs from the binary's", async () => {
+      await assertProblems(
+        setupInputs({
+          exports: { evolu_skiplist_register: fn("i(ii)") },
+          evoluBindings: { evolu_skiplist_register: setupEvoluBinding() },
+        }),
+        [
+          "evolu_skiplist_register: the signature gives wasm type i(i), but the binary exports i(ii)",
+        ],
+      );
+    });
+
+    it("lists Evolu metadata for a function the binary does not export", async () => {
+      await assertProblems(
+        setupInputs({
+          exports: { evolu_skiplist_register: { kind: "global" } },
+          evoluBindings: { evolu_skiplist_register: setupEvoluBinding() },
+        }),
+        [
+          "evolu_skiplist_register: not a function the binary exports; remove its metadata",
+          "evolu_skiplist_register: an Evolu C name, but the binary exports a global",
+        ],
+      );
+    });
+
+    it("lists Evolu metadata for a name that is not Evolu's", async () => {
+      await assertProblems(
+        setupInputs({
+          exports: { sqlite3__wasm_db_reset: fn("i(i)") },
+          evoluBindings: { sqlite3__wasm_db_reset: setupEvoluBinding() },
+        }),
+        [
+          "sqlite3__wasm_db_reset: not an Evolu C function, whose names start with evolu_; remove its metadata",
+        ],
+      );
+    });
+
+    it("lists an optional parameter of an Evolu function", async () => {
+      await assertProblems(
+        setupInputs({
+          exports: { evolu_skiplist_register: fn("i(i)") },
+          evoluBindings: {
+            evolu_skiplist_register: setupEvoluBinding({ params: ["db?"] }),
+          },
+        }),
+        [
+          "evolu_skiplist_register: only a variadic function's shim arguments can be optional",
         ],
       );
     });
@@ -1470,12 +1605,15 @@ describe("runGenerateCli", () => {
     const logged = setupLog(t);
     const cApi = new URL("src/CApi.ts", directory);
     const constants = new URL("src/Constants.ts", directory);
+    const evoluCApi = new URL("src/EvoluCApi.ts", directory);
     const readSources = () =>
-      [cApi, constants].map((source) => readFileSync(source, "utf8"));
+      [cApi, constants, evoluCApi].map((source) =>
+        readFileSync(source, "utf8"),
+      );
     // The copies of the package's sources, which are up to date.
     const generated = readSources();
-    writeFileSync(cApi, "stale");
-    writeFileSync(constants, "stale");
+    for (const source of [cApi, constants, evoluCApi])
+      writeFileSync(source, "stale");
 
     assertEqual(await runGenerateCli([], directory), 0);
     assertEqual(readSources(), generated);
@@ -1499,7 +1637,7 @@ describe("runGenerateCli", () => {
       readFileSync(exportsPath, "utf8"),
     ) as PinnedExports;
     writeFileSync(exportsPath, JSON.stringify(exports));
-    const sources = ["src/CApi.ts", "src/Constants.ts"].map(
+    const sources = ["src/CApi.ts", "src/Constants.ts", "src/EvoluCApi.ts"].map(
       (path) => new URL(path, directory),
     );
     for (const source of sources) writeFileSync(source, "stale");
@@ -1510,7 +1648,7 @@ describe("runGenerateCli", () => {
     ]);
     assertEqual(
       sources.map((source) => readFileSync(source, "utf8")),
-      ["stale", "stale"],
+      ["stale", "stale", "stale"],
     );
   });
 });
@@ -1530,6 +1668,7 @@ const setupPackage = (t: TestContext): URL => {
     "scripts/upstream/sqlite3-wasm-exports.json",
     "src/CApi.ts",
     "src/Constants.ts",
+    "src/EvoluCApi.ts",
   ])
     copyFileSync(
       new URL(`../${path}`, import.meta.url),
@@ -1575,6 +1714,17 @@ const setupBinding = (
   ...binding,
 });
 
+/** Creates the metadata of `evolu_skiplist_register`. */
+const setupEvoluBinding = (
+  binding: Partial<EvoluBinding> = {},
+): EvoluBinding => ({
+  doc: "Registers the functions.",
+  signature: ["int", "sqlite3*"],
+  params: ["db"],
+  result: "SqliteResultCode",
+  ...binding,
+});
+
 /**
  * Creates generator inputs with two functions in the table, the build and the
  * metadata, and the pinned enum JSON, plus the given table entries, exports and
@@ -1585,12 +1735,14 @@ const setupInputs = ({
   exports = {},
   bindings = {},
   variadicBindings = {},
+  evoluBindings = {},
   enumJson = pinnedEnumJson,
 }: {
   table?: ReadonlyArray<string>;
   exports?: PinnedExports;
   bindings?: Readonly<Record<string, Binding>>;
   variadicBindings?: Readonly<Record<string, VariadicBinding>>;
+  evoluBindings?: Readonly<Record<string, EvoluBinding>>;
   enumJson?: Uint8Array;
 } = {}): GenerateInputs => ({
   glue: [
@@ -1619,6 +1771,7 @@ const setupInputs = ({
     ...bindings,
   },
   variadicBindings,
+  evoluBindings,
 });
 
 const setupSources = async (

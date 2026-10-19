@@ -13,14 +13,14 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
   compileCached,
-  compileVendoredLibraries,
+  compileUnits,
+  coreFlags,
+  coreHeaders,
   cSources,
   headerContents,
   run,
   sourceDirectory,
   testDirectory,
-  vendoredPublicHeaders,
-  vendoredPublicIncludes,
   writeAtomically,
 } from "./compile.mts";
 import type { PinnedSqliteSource, PreparedSqlite } from "./sqlite-source.mts";
@@ -51,7 +51,6 @@ export const buildTestRunner = ({
     "-fno-sanitize-recover=all",
   ];
   const sqliteFlags = [
-    ...sanitized,
     `-I${sqlite.directory}`,
     `-I${sourceDirectory}`,
     "-DSQLITE_CUSTOM_INCLUDE=sqlite_config.h",
@@ -61,17 +60,30 @@ export const buildTestRunner = ({
 
   const sqliteObject = compileCached({
     cc,
-    flags: sqliteFlags,
+    flags: [...sanitized, ...sqliteFlags],
     source: sqlite.sqlite3c,
     extraKey: () =>
       readFileSync(join(sourceDirectory, "sqlite_config.h"), "utf8"),
     objectsDirectory,
   });
-  const vendoredObjects = compileVendoredLibraries({
-    cc,
-    flags: sanitized,
-    objectsDirectory,
-  });
+  const testFlags = [
+    ...sqliteFlags,
+    `-DEVOLU_TEST_SQLITE_VERSION="${source.version}"`,
+    `-DEVOLU_TEST_SQLITE_CHECK_IN="${source.checkIn}"`,
+    // The crypto layer's hooks: a probe of primitives that run without DIT, a
+    // random source that fails and the core's allocations that fail.
+    "-DEVOLU_TEST_HOOKS",
+  ];
+  const unitObjects = compileUnits(testFlags).map(
+    ({ source, flags, headers }) =>
+      compileCached({
+        cc,
+        flags: [...sanitized, ...flags],
+        source,
+        extraKey: headers,
+        objectsDirectory,
+      }),
+  );
 
   const testFiles = cSources(testDirectory);
   const suites = testFiles
@@ -94,35 +106,15 @@ export const buildTestRunner = ({
     );
   });
 
-  // Each object of the core and the tests depends on every header of both
-  // and the vendored headers they may include.
-  const headers = (): string =>
-    [
-      headerContents(sourceDirectory),
-      headerContents(testDirectory),
-      vendoredPublicHeaders(),
-    ].join("\n");
-  const testObjects = [
-    ...cSources(sourceDirectory),
-    ...testFiles,
-    suitesFile,
-  ].map((file) =>
+  // A test object depends on every header of the tests and of the core.
+  const testHeaders = (): string =>
+    [coreHeaders(), headerContents(testDirectory)].join("\n");
+  const testObjects = [...testFiles, suitesFile].map((file) =>
     compileCached({
       cc,
-      flags: [
-        ...sqliteFlags,
-        ...vendoredPublicIncludes(),
-        "-Wall",
-        "-Wextra",
-        "-Werror",
-        `-DEVOLU_TEST_SQLITE_VERSION="${source.version}"`,
-        `-DEVOLU_TEST_SQLITE_CHECK_IN="${source.checkIn}"`,
-        // The crypto layer's hooks: a probe of primitives that run without DIT
-        // and a random source that fails.
-        "-DEVOLU_TEST_HOOKS",
-      ],
+      flags: [...sanitized, ...testFlags, ...coreFlags()],
       source: file,
-      extraKey: headers,
+      extraKey: testHeaders,
       objectsDirectory,
     }),
   );
@@ -133,7 +125,7 @@ export const buildTestRunner = ({
       ...sanitized,
       ...testObjects,
       sqliteObject,
-      ...vendoredObjects,
+      ...unitObjects,
       // The codec's tests open databases on several threads.
       "-pthread",
       "-lm",

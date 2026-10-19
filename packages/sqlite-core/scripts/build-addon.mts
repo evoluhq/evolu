@@ -25,13 +25,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   compileCached,
-  compileVendoredLibraries,
-  cSources,
-  headerContents,
+  compileUnits,
+  coreFlags,
+  coreHeaders,
   run,
   sourceDirectory,
-  vendoredPublicHeaders,
-  vendoredPublicIncludes,
   writeAtomically,
 } from "./compile.mts";
 import type { PreparedSqlite } from "./sqlite-source.mts";
@@ -84,8 +82,7 @@ export const buildAddon = ({
         ]
       : ["-O2"]),
   ];
-  const coreFlags = [
-    ...optimized,
+  const sqliteFlags = [
     `-I${sqlite.directory}`,
     `-I${sourceDirectory}`,
     "-DSQLITE_CUSTOM_INCLUDE=sqlite_config.h",
@@ -97,45 +94,29 @@ export const buildAddon = ({
 
   const sqliteObject = compileCached({
     cc,
-    flags: coreFlags,
+    flags: [...optimized, ...sqliteFlags],
     source: sqlite.sqlite3c,
     extraKey: () =>
       readFileSync(join(sourceDirectory, "sqlite_config.h"), "utf8"),
     objectsDirectory,
   });
-  const vendoredObjects = compileVendoredLibraries({
-    cc,
-    flags: optimized,
-    objectsDirectory,
-  });
-  // A core object depends on every header in src/ and the vendored headers it
-  // may include.
-  const coreHeaders = (): string =>
-    [headerContents(sourceDirectory), vendoredPublicHeaders()].join("\n");
-  const coreObjects = cSources(sourceDirectory).map((source) =>
-    compileCached({
-      cc,
-      flags: [
-        ...coreFlags,
-        ...vendoredPublicIncludes(),
-        "-Wall",
-        "-Wextra",
-        "-Werror",
-      ],
-      source,
-      extraKey: coreHeaders,
-      objectsDirectory,
-    }),
+  const unitObjects = compileUnits(sqliteFlags).map(
+    ({ source, flags, headers }) =>
+      compileCached({
+        cc,
+        flags: [...optimized, ...flags],
+        source,
+        extraKey: headers,
+        objectsDirectory,
+      }),
   );
 
   const addonObject = compileCached({
     cc,
     flags: [
-      ...coreFlags,
-      ...vendoredPublicIncludes(),
-      "-Wall",
-      "-Wextra",
-      "-Werror",
+      ...optimized,
+      ...sqliteFlags,
+      ...coreFlags(),
       `-isystem${nodeIncludeDirectory}`,
       `-DNAPI_VERSION=${napiVersion}`,
     ],
@@ -170,8 +151,7 @@ export const buildAddon = ({
       ...(sanitize && process.platform !== "darwin" ? ["-shared-libasan"] : []),
       addonObject,
       sqliteObject,
-      ...coreObjects,
-      ...vendoredObjects,
+      ...unitObjects,
       "-o",
       output,
     ]);

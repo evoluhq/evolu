@@ -52,9 +52,10 @@ Paths are relative to this directory and equal to their upstream paths.
   `br_range_*` byte-order functions the AES and SHA-2 files call; without
   them those symbols stay undefined at link time.
 
-`compileVendoredLibraries` in `scripts/compile.mts`, which `scripts/build.mts`
-and `scripts/build-addon.mts` call, compiles every `.c` file here with `inc`
-and `src` on the include path.
+`compileUnits` in `scripts/compile.mts` lists every `.c` file here with only
+`inc` and `src` on the include path. The native builds, `scripts/build.mts`
+and `scripts/build-addon.mts`, and `@evolu/sqlite-wasm`'s
+`scripts/build-wasm.mts` compile them.
 
 ## SHA-256 of the copied files
 

@@ -1,11 +1,12 @@
 /**
- * Generates `src/CApi.ts` and `src/Constants.ts` from SQLite's own metadata.
+ * Generates `src/CApi.ts`, `src/Constants.ts` and `src/EvoluCApi.ts` from
+ * SQLite's own metadata and the pinned binary.
  *
  * Inputs, pinned in `scripts/upstream` from the one release the binary is built
- * from, SQLite 3.54.0:
+ * from, SQLite 3.54.1:
  *
  * - `sqlite3-api-glue.c-pp.js`: SQLite's JavaScript glue, verbatim from
- *   `ext/wasm/api` of sqlite-src-3540000.zip. Its `bindingSignatures` table
+ *   `ext/wasm/api` of sqlite-src-3540100.zip. Its `bindingSignatures` table
  *   gives the C types of the functions SQLite's JavaScript binds.
  * - `sqlite3-wasm-enum.json`: the exact bytes of the string
  *   `sqlite3__wasm_enum_json()` returns in the binary, with every SQLITE_*
@@ -29,6 +30,12 @@
  * declares some int-returning functions as void and omits functions SQLite
  * binds by hand, so the metadata corrects and supplements it, and every
  * binding's wasm type must equal the pinned one.
+ *
+ * Every exported function named `evolu_*` is a function of Evolu's C core and
+ * needs metadata in `evoluBindings`, which gives its signature, since the table
+ * omits it, and its wasm type must equal the pinned one. Those functions go to
+ * `src/EvoluCApi.ts`, which the package's entry points don't re-export, so they
+ * stay internal and `SqliteCExports` leaves them out.
  *
  * The variadic `sqlite3_config`, `sqlite3_db_config` and `sqlite3_vtab_config`
  * are not exported, so coverage cannot ask for them; their metadata names the
@@ -92,8 +99,10 @@ import {
 } from "typescript";
 import {
   bindings,
+  evoluBindings,
   variadicBindings,
   type Binding,
+  type EvoluBinding,
   type VariadicBinding,
   type VariadicVariant,
 } from "./bindings.mts";
@@ -275,6 +284,11 @@ interface ResolvedVariadic {
   readonly variants: ReadonlyArray<ResolvedVariant>;
 }
 
+interface ResolvedEvoluBinding extends ResolvedSignature {
+  readonly name: string;
+  readonly binding: EvoluBinding;
+}
+
 interface ResolvedVariant extends ResolvedSignature {
   readonly variant: VariadicVariant;
   /** The arguments after the option. */
@@ -336,6 +350,7 @@ const importsJsonPath = "scripts/upstream/sqlite3-wasm-imports.json";
 const exportsJsonPath = "scripts/upstream/sqlite3-wasm-exports.json";
 const cApiPath = "src/CApi.ts";
 const constantsPath = "src/Constants.ts";
+const evoluCApiPath = "src/EvoluCApi.ts";
 
 /**
  * Runs the command line the module documentation describes on the package in a
@@ -393,6 +408,7 @@ export const runGenerateCli = async (
     pinned: readPinnedBuild(directory),
     bindings,
     variadicBindings,
+    evoluBindings,
   });
   if (!generated.ok) {
     for (const problem of generated.error.problems) log(problem);
@@ -402,6 +418,7 @@ export const runGenerateCli = async (
   const sources = [
     [new URL(cApiPath, directory), generated.value.cApi],
     [new URL(constantsPath, directory), generated.value.constants],
+    [new URL(evoluCApiPath, directory), generated.value.evoluCApi],
   ] as const;
   if (!values.check) {
     for (const [path, content] of sources) writeFileSync(path, content);
@@ -420,12 +437,17 @@ export interface GenerateInputs {
   readonly pinned: WasmBuild;
   readonly bindings: Readonly<Record<string, Binding>>;
   readonly variadicBindings: Readonly<Record<string, VariadicBinding>>;
+  readonly evoluBindings: Readonly<Record<string, EvoluBinding>>;
 }
 
-/** The formatted contents of `src/CApi.ts` and `src/Constants.ts`. */
+/**
+ * The formatted contents of `src/CApi.ts`, `src/Constants.ts` and
+ * `src/EvoluCApi.ts`.
+ */
 export interface GeneratedSources {
   readonly cApi: string;
   readonly constants: string;
+  readonly evoluCApi: string;
 }
 
 /** The problems of the metadata, one message each. */
@@ -443,6 +465,7 @@ export const generate = async ({
   pinned,
   bindings,
   variadicBindings,
+  evoluBindings,
 }: GenerateInputs): Promise<Result<GeneratedSources, GenerateError>> => {
   // The glue is preprocessed as for the build, which defines no c-pp symbol
   // the table depends on, such as enable-see.
@@ -488,15 +511,21 @@ export const generate = async ({
         ),
       ),
   );
+  const resolvedEvolu = Object.entries(evoluBindings).flatMap(
+    ([name, binding]) =>
+      collect(() => resolveEvoluBinding(name, binding, pinned.exports)),
+  );
 
   const missing: Array<string> = [];
   for (const [name, pinnedExport] of Object.entries(pinned.exports)) {
-    if (!isPublicCName(name)) continue;
+    const isEvolu = isEvoluCName(name);
+    if (!isEvolu && !isPublicCName(name)) continue;
     if (pinnedExport.kind !== "function")
       problems.push(
-        `${name}: a public C name, but the binary exports a ${pinnedExport.kind}`,
+        `${name}: ${isEvolu ? "an Evolu" : "a public"} C name, but the binary exports a ${pinnedExport.kind}`,
       );
-    else if (!(name in bindings)) missing.push(name);
+    else if (!(name in (isEvolu ? evoluBindings : bindings)))
+      missing.push(name);
   }
   for (const name of missing)
     problems.push(
@@ -519,6 +548,10 @@ export const generate = async ({
       new URL(constantsPath, packageDirectory),
       emitConstants(pinned, enumJson),
     ),
+    evoluCApi: await formatTypeScript(
+      new URL(evoluCApiPath, packageDirectory),
+      emitEvoluCApi(resolvedEvolu),
+    ),
   });
 };
 
@@ -537,6 +570,9 @@ export const findStaleSources = (
  */
 const isPublicCName = (name: string): boolean =>
   /^sqlite3(?:session|changeset|changegroup)?_(?!_)/u.test(name);
+
+/** Whether an export is a function of Evolu's C core. */
+const isEvoluCName = (name: string): boolean => name.startsWith("evolu_");
 
 /**
  * Runs the subset of SQLite's c-pp preprocessor the glue uses: `//#define`,
@@ -937,6 +973,41 @@ const resolveVariadic = (
   return { name, binding, params, variants };
 };
 
+/**
+ * Checks the metadata of a function of Evolu's C core against the pinned
+ * exports and resolves its types.
+ */
+const resolveEvoluBinding = (
+  name: string,
+  binding: EvoluBinding,
+  exports: PinnedExports,
+): ResolvedEvoluBinding => {
+  const fail = failFor(name);
+
+  if (!isEvoluCName(name))
+    fail(
+      "not an Evolu C function, whose names start with evolu_; remove its metadata",
+    );
+  const pinnedExport = exports[name];
+  const pinnedType =
+    pinnedExport?.kind === "function"
+      ? pinnedExport.type
+      : fail("not a function the binary exports; remove its metadata");
+
+  const entry = signatureEntry(binding.signature);
+  const resolved = resolveSignature(fail, {
+    name,
+    entry,
+    resultType: entry.result,
+    params: binding.params,
+    result: binding.result,
+    pinnedType,
+  });
+  if (resolved.params.some((param) => param.optional))
+    fail("only a variadic function's shim arguments can be optional");
+  return { name, binding, ...resolved };
+};
+
 const failFor =
   (name: string) =>
   (message: string): never => {
@@ -1051,23 +1122,11 @@ const emitCApi = (
     `${indent} */`,
   ];
 
-  const typeNames = new Set<string>();
-  for (const { params, result } of [
+  const importsByModule = typeImportsByModule([
     ...resolved,
     ...resolved.flatMap(({ overloads }) => overloads),
     ...variants,
-  ])
-    for (const type of [...params.map((param) => param.ts), result])
-      for (const part of type.split("|").map((name) => name.trim()))
-        if (part in narrowTypes) typeNames.add(part);
-
-  const importsByModule = new Map<GeneratedImport, Array<string>>();
-  for (const typeName of [...typeNames].toSorted()) {
-    const narrowType = narrowTypes[typeName];
-    const names = importsByModule.get(narrowType.module) ?? [];
-    names.push(`type ${typeName}`);
-    importsByModule.set(narrowType.module, names);
-  }
+  ]);
   // The options a variadic function dispatches and the result code it returns
   // for any other option are values; the options of one that is its shim only
   // appear in its option type.
@@ -1087,30 +1146,6 @@ const emitCApi = (
     ...optionImports,
     ...(importsByModule.get("./Constants.ts") ?? []),
   ]);
-
-  const imports = [...importsByModule.entries()]
-    .toSorted(([a], [b]) => a.localeCompare(b))
-    .map(([module, names]) =>
-      names.every((name) => name.startsWith("type "))
-        ? `import type { ${names.map((name) => name.slice(5)).join(", ")} } from "${module}";`
-        : `import { ${names.join(", ")} } from "${module}";`,
-    );
-
-  const parameterList = (
-    params: ReadonlyArray<ResolvedParam>,
-    { optional }: { optional: boolean },
-  ): string =>
-    params
-      .map(
-        (param) =>
-          `${param.name}${optional && param.optional ? "?" : ""}: ${param.ts}`,
-      )
-      .join(", ");
-
-  const functionType = (
-    params: ReadonlyArray<ResolvedParam>,
-    result: string,
-  ): string => `(${parameterList(params, { optional: false })}) => ${result}`;
 
   const provenance = ({ binding, signature }: ResolvedBinding): string => {
     const tableSignature = `\`[${signature.join(", ")}]\``;
@@ -1243,7 +1278,7 @@ const emitCApi = (
     " * @module",
     " */",
     "",
-    ...imports,
+    ...importDeclarations(importsByModule),
     'import type { SqliteWasmDep, installWasmFunctions } from "./Wasm.ts";',
     "",
     "/**",
@@ -1286,6 +1321,102 @@ const emitCApi = (
     ...variadics.flatMap(emitVariadic),
   ].join("\n");
 };
+
+const emitEvoluCApi = (resolved: ReadonlyArray<ResolvedEvoluBinding>): string =>
+  [
+    "/**",
+    " * The functions of Evolu's C core, which the binary exports for this",
+    " * package's own bindings, typed as `CApi.ts` types SQLite's. The package's",
+    " * entry points don't re-export this module, and {@link SqliteCExports} leaves",
+    " * these exports out, so each function reads its export from",
+    " * `SqliteWasm.exports` through a cast. The build guard hashes the export",
+    " * names, so a binary without them fails to load.",
+    " *",
+    " * Generated by `scripts/generate.mts` from the metadata in",
+    " * `scripts/bindings.mts`, with every wasm type checked against the binary's",
+    " * pinned exports. Do not edit.",
+    " *",
+    " * @module",
+    " */",
+    "",
+    'import type { SqliteCExports } from "./CApi.ts";',
+    ...importDeclarations(typeImportsByModule(resolved)),
+    'import type { SqliteWasmDep } from "./Wasm.ts";',
+    "",
+    "/** The functions of Evolu's C core as the wasm exports them. */",
+    "export interface EvoluCExports {",
+    ...resolved.map(
+      ({ name, params, result }) =>
+        `  readonly ${name}: ${functionType(params, result)};`,
+    ),
+    "}",
+    "",
+    ...resolved.flatMap(({ name, binding, wasmType, signature }) => [
+      "/**",
+      ` * ${linkCNames(
+        binding.doc,
+        resolved.map((evoluBinding) => evoluBinding.name),
+        name,
+      )}`,
+      " *",
+      ` * Wasm type \`${wasmType}\`, signature \`[${signature.join(", ")}]\` from Evolu's metadata.`,
+      " */",
+      `export const ${name} = (deps: SqliteWasmDep): EvoluCExports["${name}"] =>`,
+      `  (deps.sqliteWasm.exports as SqliteCExports & EvoluCExports).${name};`,
+      "",
+    ]),
+  ].join("\n");
+
+/** The narrowing types the signatures use, by the module that exports them. */
+const typeImportsByModule = (
+  signatures: ReadonlyArray<Pick<ResolvedSignature, "params" | "result">>,
+): Map<GeneratedImport, Array<string>> => {
+  const typeNames = new Set<string>();
+  for (const { params, result } of signatures)
+    for (const type of [...params.map((param) => param.ts), result])
+      for (const part of type.split("|").map((name) => name.trim()))
+        if (part in narrowTypes) typeNames.add(part);
+
+  const importsByModule = new Map<GeneratedImport, Array<string>>();
+  for (const typeName of [...typeNames].toSorted()) {
+    const narrowType = narrowTypes[typeName];
+    const names = importsByModule.get(narrowType.module) ?? [];
+    names.push(`type ${typeName}`);
+    importsByModule.set(narrowType.module, names);
+  }
+  return importsByModule;
+};
+
+/**
+ * The import declarations of the names, sorted by module, with `type` before a
+ * type-only name.
+ */
+const importDeclarations = (
+  importsByModule: ReadonlyMap<GeneratedImport, ReadonlyArray<string>>,
+): Array<string> =>
+  [...importsByModule.entries()]
+    .toSorted(([a], [b]) => a.localeCompare(b))
+    .map(([module, names]) =>
+      names.every((name) => name.startsWith("type "))
+        ? `import type { ${names.map((name) => name.slice(5)).join(", ")} } from "${module}";`
+        : `import { ${names.join(", ")} } from "${module}";`,
+    );
+
+const parameterList = (
+  params: ReadonlyArray<ResolvedParam>,
+  { optional }: { optional: boolean },
+): string =>
+  params
+    .map(
+      (param) =>
+        `${param.name}${optional && param.optional ? "?" : ""}: ${param.ts}`,
+    )
+    .join(", ");
+
+const functionType = (
+  params: ReadonlyArray<ResolvedParam>,
+  result: string,
+): string => `(${parameterList(params, { optional: false })}) => ${result}`;
 
 /**
  * Links the first mention of each generated C function in a documentation text,

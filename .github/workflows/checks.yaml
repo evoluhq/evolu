@@ -61,24 +61,27 @@ jobs:
 
       # The build reproduces its pinned bytes or fails, so unchanged inputs
       # give the same wasm: this workflow, which pins the Emscripten image by
-      # digest, the build script, which pins the source and the Emscripten
-      # version, check-wasm.mts, which pins the output, and the lockfile,
-      # which pins wabt. The cache is saved only after a build.
+      # digest, the build script, which pins the Emscripten version, the SQLite
+      # core's sources and scripts, which pin the SQLite source and list the
+      # core's compile units, check-wasm.mts, which pins the output, and the
+      # lockfile, which pins wabt. hashFiles doesn't expand braces, so each
+      # directory is its own pattern. The cache is saved only after a build.
       - name: Restore built wasm
         id: built
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/sqlite-wasm/wasm
-          key: sqlite-wasm-${{ hashFiles('.github/workflows/checks.yaml', 'packages/sqlite-wasm/scripts/build-wasm.mts', 'packages/sqlite-wasm/scripts/check-wasm.mts', 'pnpm-lock.yaml') }}
+          key: sqlite-wasm-${{ hashFiles('.github/workflows/checks.yaml', 'packages/sqlite-wasm/scripts/build-wasm.mts', 'packages/sqlite-wasm/scripts/check-wasm.mts', 'packages/sqlite-core/src/**', 'packages/sqlite-core/vendor/**', 'packages/sqlite-core/scripts/**', 'pnpm-lock.yaml') }}
 
-      # The build script holds the archive's pin, so a new pin gets a new
-      # cache. The build verifies a cached archive against the pin anyway.
+      # sqlite-source.mts holds the archive's pin, so a new pin gets a new
+      # cache, and a change to the core's C doesn't download the archive
+      # again. The build verifies a cached archive against the pin anyway.
       - name: Cache source archive
         if: steps.built.outputs.cache-hit != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/sqlite-wasm/wasm-cache
-          key: sqlite-wasm-sources-${{ hashFiles('packages/sqlite-wasm/scripts/build-wasm.mts') }}
+          key: sqlite-wasm-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts') }}
 
       # A failed build keeps its work directory, with the logs and the wasm
       # that differs from the pins, under TMPDIR.

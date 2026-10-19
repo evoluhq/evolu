@@ -1,10 +1,11 @@
 /**
- * What the host test build (build.mts) and the Node-API addon build
- * (build-addon.mts) share: the C sources of the core and its vendored
- * libraries, a compile cache keyed by inputs, which test processes running in
- * parallel share, compiling each object once, and atomic writes, so they never
- * see a partial file. Every source is compiled into a cached object and
- * binaries link only objects, so their debug information stays in those
+ * What the host test build (build.mts), the Node-API addon build
+ * (build-addon.mts) and `@evolu/sqlite-wasm`'s wasm build share: the C sources
+ * of the core and its vendored libraries with the flags each compiles with, and
+ * for the host builds, a compile cache keyed by inputs, which test processes
+ * running in parallel share, compiling each object once, and atomic writes, so
+ * they never see a partial file. Every source is compiled into a cached object
+ * and binaries link only objects, so their debug information stays in those
  * content-addressed objects, where debuggers and sanitizers find it, and
  * macOS's linker writes no .dSYM beside them.
  *
@@ -60,68 +61,87 @@ const presentLibraries = (): ReadonlyArray<VendoredLibrary> =>
     existsSync(join(vendorDirectory, name)),
   );
 
-/** The `-I` flags the core's own code compiles with for vendored headers. */
-export const vendoredPublicIncludes = (): ReadonlyArray<string> =>
-  presentLibraries().flatMap(({ name, publicIncludes }) =>
+/**
+ * A C source and the flags it compiles with, to which a build adds its own,
+ * such as its optimization and sanitizers.
+ */
+export interface CompileUnit {
+  readonly source: string;
+  readonly flags: ReadonlyArray<string>;
+  /** Reads the headers its object may depend on, each time it's called. */
+  readonly headers: () => string;
+}
+
+/**
+ * The flags the core's own C compiles with: C11, warnings as errors, and the
+ * core's and the vendored libraries' public include directories. A source that
+ * includes the core's headers, such as a test or the addon, takes them too.
+ */
+export const coreFlags = (): ReadonlyArray<string> => [
+  "-std=c11",
+  "-Wall",
+  "-Wextra",
+  "-Werror",
+  `-I${sourceDirectory}`,
+  ...presentLibraries().flatMap(({ name, publicIncludes }) =>
     publicIncludes.map(
       (include) => `-I${join(vendorDirectory, name, include)}`,
     ),
-  );
+  ),
+];
 
 /**
- * The contents of every header in the vendored libraries' public include
- * directories, sorted by path, which the core's objects may depend on.
+ * The contents of the core's headers and of the vendored libraries' public
+ * ones, which an object compiled with {@link coreFlags} may depend on.
  */
-export const vendoredPublicHeaders = (): string =>
-  presentLibraries()
-    .flatMap(({ name, publicIncludes }) =>
-      publicIncludes.flatMap((include) =>
-        listFiles(join(vendorDirectory, name, include)).filter((file) =>
-          file.endsWith(".h"),
+export const coreHeaders = (): string =>
+  [
+    headerContents(sourceDirectory),
+    ...presentLibraries()
+      .flatMap(({ name, publicIncludes }) =>
+        publicIncludes.flatMap((include) =>
+          listFiles(join(vendorDirectory, name, include)).filter((file) =>
+            file.endsWith(".h"),
+          ),
         ),
-      ),
-    )
-    .map((file) => readFileSync(file, "utf8"))
-    .join("\n");
+      )
+      .map((file) => readFileSync(file, "utf8")),
+  ].join("\n");
 
 /**
- * Compiles every vendored library with `flags` plus its private includes and
- * returns the object files, cached in `objectsDirectory`. A file's cache key
- * includes every header of its library, which its object may depend on.
+ * The core's compile units, which the host builds and the wasm build compile
+ * alike: the core's own sources with the build's `sqliteFlags`, such as where
+ * SQLite's `sqlite3.h` is and the options SQLite compiles with, then
+ * {@link coreFlags}, and every vendored library's sources, in subdirectories
+ * too, with only that library's private includes and no warning flags, since
+ * that code isn't the core's to change. A vendored source's object may depend
+ * on every header of its library.
  */
-export const compileVendoredLibraries = ({
-  cc,
-  flags,
-  objectsDirectory,
-}: {
-  cc: string;
-  flags: ReadonlyArray<string>;
-  objectsDirectory: string;
-}): ReadonlyArray<string> =>
-  presentLibraries().flatMap(({ name, privateIncludes }) => {
+export const compileUnits = (
+  sqliteFlags: ReadonlyArray<string>,
+): ReadonlyArray<CompileUnit> => [
+  ...cSources(sourceDirectory).map((source) => ({
+    source,
+    flags: [...sqliteFlags, ...coreFlags()],
+    headers: coreHeaders,
+  })),
+  ...presentLibraries().flatMap(({ name, privateIncludes }) => {
     const directory = join(vendorDirectory, name);
     const files = listFiles(directory);
+    const flags = [
+      "-std=c11",
+      ...privateIncludes.map((include) => `-I${join(directory, include)}`),
+    ];
     const headers = (): string =>
       files
         .filter((file) => file.endsWith(".h"))
         .map((file) => readFileSync(file, "utf8"))
         .join("\n");
-    const libraryFlags = [
-      ...flags,
-      ...privateIncludes.map((include) => `-I${join(directory, include)}`),
-    ];
     return files
       .filter((file) => file.endsWith(".c"))
-      .map((file) =>
-        compileCached({
-          cc,
-          flags: libraryFlags,
-          source: file,
-          extraKey: headers,
-          objectsDirectory,
-        }),
-      );
-  });
+      .map((source) => ({ source, flags, headers }));
+  }),
+];
 
 /** What {@link compileCached} compiles and where it keeps the object. */
 export interface CompileCachedOptions {
@@ -292,11 +312,17 @@ export const run = (
   return result.stdout;
 };
 
-/** Returns every file under a directory, sorted by relative path. */
+/**
+ * Returns every file under a directory, sorted by relative path in UTF-16 code
+ * unit order. Not `localeCompare`, whose order depends on the host's locale,
+ * because the order is the wasm's link order.
+ */
 const listFiles = (directory: string): ReadonlyArray<string> =>
   readdirSync(directory, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
     .map((entry) => join(entry.parentPath, entry.name))
-    .toSorted((a, b) =>
-      relative(directory, a).localeCompare(relative(directory, b)),
-    );
+    .toSorted((a, b) => {
+      const pathA = relative(directory, a);
+      const pathB = relative(directory, b);
+      return pathA < pathB ? -1 : pathA > pathB ? 1 : 0;
+    });

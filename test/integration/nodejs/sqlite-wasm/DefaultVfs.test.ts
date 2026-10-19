@@ -299,6 +299,35 @@ test("the default VFS's xRandomness fills memory from RandomBytes in chunks of a
   );
 });
 
+test("the default VFS's xRandomness writes RandomBytes' bytes also when creating them grows the memory", async () => {
+  const deps = testCreateDeps();
+  const created: Array<Uint8Array> = [];
+  let isGrowing = false;
+  const randomBytes = {
+    create: (length: number) => {
+      const bytes = deps.randomBytes.create(length);
+      if (isGrowing) {
+        isGrowing = false;
+        const ptr = getOrThrow(allocWasm(t)(32 * 1024 * 1024));
+        t.sqliteWasm.exports.sqlite3_free(ptr);
+        created.push(bytes);
+      }
+      return bytes;
+    },
+  } as RandomBytes;
+  const t = await setupDefaultVfs({ ...deps, randomBytes });
+  const pOut = getOrThrow(allocWasm(t)(16));
+  const before = t.sqliteWasm.getHeapU8().byteLength;
+
+  isGrowing = true;
+  assertEqual(t.callMethod("xRandomness", 16, pOut), 16);
+
+  assertTrue(t.sqliteWasm.getHeapU8().byteLength > before);
+  assertEqual(created.length, 1);
+  assertEqual(t.sqliteWasm.getHeapU8().slice(pOut, pOut + 16), created[0]);
+  assertEqual(t.reportDefect.getDefects(), []);
+});
+
 test("the default VFS's xSleep returns at once, having slept 0 microseconds", async () => {
   const time = testCreateTime();
   const t = await setupDefaultVfs({ ...testCreateDeps(), time });

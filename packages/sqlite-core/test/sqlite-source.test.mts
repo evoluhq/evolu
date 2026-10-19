@@ -46,10 +46,10 @@ describe("sqliteSource", () => {
 });
 
 describe("fetchPinned", () => {
-  it("downloads an archive, checks its SHA3-256 and keeps it in the cache", async (t) => {
+  it("downloads an archive, checks its SHA3-256 and keeps it in the cache, which it creates when missing", async (t) => {
     const bytes = new TextEncoder().encode("archive");
     const server = await setupServer(t, bytes);
-    const cache = setupDirectory(t);
+    const cache = join(setupDirectory(t), "cache");
     const archive = pinned(server.url, bytes);
 
     const path = await fetchPinned(archive, cache);

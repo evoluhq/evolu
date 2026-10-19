@@ -5,6 +5,10 @@
   "description": "Evolu's SQLite core in C: unmodified SQLite with Evolu's encryption codec, shared by the web, React Native and Node.js builds",
   "license": "MIT",
   "type": "module",
+  "exports": {
+    "./scripts/compile.mts": "./scripts/compile.mts",
+    "./scripts/sqlite-source.mts": "./scripts/sqlite-source.mts"
+  },
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/sqlite-wasm-2.2.4": "npm:@evolu/sqlite-wasm@2.2.4",

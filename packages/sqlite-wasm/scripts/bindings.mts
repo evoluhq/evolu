@@ -7,7 +7,8 @@
  * {@link bindings}, and an entry for any other function fails generation; the
  * generator's module documentation says which exports are public. The variadic
  * C functions, which the binary does not export, are in
- * {@link variadicBindings}.
+ * {@link variadicBindings}, and the functions of Evolu's C core in
+ * {@link evoluBindings}.
  *
  * Parameter names come from sqlite3.h where it names them. Where it leaves a
  * parameter unnamed, the name is the one the header gives the same kind of
@@ -153,6 +154,31 @@ export interface VariadicVariant {
 
   /** The exported union type of the options, required for more than one. */
   readonly opType?: { readonly name: string; readonly doc: string };
+}
+
+/**
+ * The metadata of a function of Evolu's C core, which the binary exports for
+ * this package's own bindings. SQLite's table omits it, so the metadata gives
+ * its signature.
+ */
+export interface EvoluBinding {
+  /** The JSDoc paragraph of the generated function. */
+  readonly doc: string;
+
+  /**
+   * The signature in the table's syntax: the result type, then one type per
+   * argument.
+   */
+  readonly signature: readonly [result: string, ...args: Array<string>];
+
+  /**
+   * Parameter names in C order, as `packages/sqlite-core/src` names them, with
+   * the syntax of {@link Binding.params}.
+   */
+  readonly params: ReadonlyArray<string>;
+
+  /** Replaces the TypeScript result type, as {@link Binding.result} does. */
+  readonly result?: string;
 }
 
 const c3ref = (page: string): string => `https://sqlite.org/c3ref/${page}.html`;
@@ -1515,5 +1541,33 @@ export const variadicBindings: Readonly<Record<string, VariadicBinding>> = {
         },
       },
     ],
+  },
+};
+
+/** The metadata of every function of Evolu's C core, in output order. */
+export const evoluBindings: Readonly<Record<string, EvoluBinding>> = {
+  evolu_codec_register: {
+    doc: "Registers a codec VFS named name over the VFS named inner_name, or the default VFS when it's NULL, without making it the default. Returns SQLITE_OK, also when a codec VFS of that name over the same inner VFS is registered already, SQLITE_ERROR when there's no such inner VFS, SQLITE_MISUSE when another VFS has the name or the inner VFS is a codec VFS, or SQLITE_NOMEM.",
+    signature: ["int", "string", "string"],
+    params: ["name", "inner_name: CStringPtr | NullPtr"],
+    result: "SqliteResultCode",
+  },
+  evolu_codec_open: {
+    doc: "Opens the database filename on the codec VFS named vfs, read-write, created when missing, with extended result codes. With a 32-byte key, the database is encrypted; with NULL, it's plaintext. Flags are 0, 1 to open SQLCipher 4's files too, or 2 to keep the journal checksums over the plaintext; both, any other bit, or a vfs that names no codec VFS return SQLITE_MISUSE with *db NULL. As with sqlite3_open_v2, *db is set to the connection, unless memory runs out, also when the open fails, and the caller closes it. Returns SQLITE_MISUSE when a key was given but SQLite opened no database file through a codec VFS, as for an in-memory database. Every connection it opens attaches databases read-only and has the SQL functions that evolu_skiplist_register registers.",
+    signature: ["int", "string", "**", "string", "*", "int"],
+    params: ["filename", "db", "vfs", "key: WasmPtr | NullPtr", "flags"],
+    result: "SqliteResultCode",
+  },
+  evolu_codec_take_failure: {
+    doc: "Moves the first failure the codec recorded for db's main database into the 8 bytes at failure and clears it: the failure's type, an i32 from 0 for none to 3, at 0, and the page number, a u32, at 4. Returns SQLITE_OK, SQLITE_NOTFOUND when the main database isn't open on a codec VFS, or SQLITE_MISUSE when db is NULL.",
+    signature: ["int", "sqlite3*", "*"],
+    params: ["db: SqliteDbPtr | NullPtr", "failure"],
+    result: "SqliteResultCode",
+  },
+  evolu_skiplist_register: {
+    doc: "Registers the SQL functions of Evolu's timestamp skiplist, and evolu_core_version, which returns the core's version, on a connection.",
+    signature: ["int", "sqlite3*"],
+    params: ["db"],
+    result: "SqliteResultCode",
   },
 };

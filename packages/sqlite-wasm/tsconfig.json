@@ -4,5 +4,5 @@
     "types": ["node"]
   },
   "include": ["src", "scripts/*.mts"],
-  "references": [{ "path": "../common" }]
+  "references": [{ "path": "../common" }, { "path": "../sqlite-core" }]
 }

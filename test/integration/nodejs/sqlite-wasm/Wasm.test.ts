@@ -17,6 +17,7 @@ import {
   testCreateTime,
   trySync,
   type PerformanceTime,
+  type RandomBytes,
   type Result,
   type Time,
 } from "@evolu/common";
@@ -231,9 +232,9 @@ test("createSqliteWasm loads the pinned binary", async () => {
     new TextDecoder().decode(
       heap.subarray(versionPtr, heap.indexOf(0, versionPtr)),
     ),
-    "3.54.0",
+    "3.54.1",
   );
-  assertEqual(sqlite3_libversion_number(deps)(), 3054000);
+  assertEqual(sqlite3_libversion_number(deps)(), 3054001);
 });
 
 test("createSqliteWasm compiles bytes", async () => {
@@ -244,7 +245,7 @@ test("createSqliteWasm compiles bytes", async () => {
   assertOk(result);
   assertEqual(
     sqlite3_libversion_number({ sqliteWasm: result.value })(),
-    3054000,
+    3054001,
   );
 });
 
@@ -260,7 +261,7 @@ test("createSqliteWasm compiles a plain ArrayBuffer, such as Response.arrayBuffe
   assertOk(result);
   assertEqual(
     sqlite3_libversion_number({ sqliteWasm: result.value })(),
-    3054000,
+    3054001,
   );
 });
 
@@ -276,7 +277,7 @@ test("createSqliteWasm compiles a Response of type application/wasm while it str
   assertOk(result);
   assertEqual(
     sqlite3_libversion_number({ sqliteWasm: result.value })(),
-    3054000,
+    3054001,
   );
   assertEqual(
     compileStreaming.mock.calls.map((call) => call.arguments),
@@ -296,7 +297,7 @@ test("createSqliteWasm compiles a promised Response of type application/wasm, su
   assertOk(result);
   assertEqual(
     sqlite3_libversion_number({ sqliteWasm: result.value })(),
-    3054000,
+    3054001,
   );
   assertEqual(
     compileStreaming.mock.calls.map((call) => call.arguments),
@@ -341,7 +342,7 @@ for (const contentType of [
       assertOk(result);
       assertEqual(
         sqlite3_libversion_number({ sqliteWasm: result.value })(),
-        3054000,
+        3054001,
       );
     }
     assertEqual(compileStreaming.mock.callCount(), 0);
@@ -431,8 +432,8 @@ test("createSqliteWasm fails with SqliteWasmUnknownImport before instantiating a
         (import "env" "emscripten_get_now" (func (result f64)))
         (import "wasi_snapshot_preview1" "proc_exit" (func (param i32)))
         (import "wasi_snapshot_preview2" "x" (func))
-        ;; Emscripten's abort, exit, mmap and heap maximum, and WASI's
-        ;; random_get, which the pinned binary does not import.
+        ;; Emscripten's abort, exit, mmap and heap maximum, which the pinned
+        ;; binary does not import.
         (import "env" "_abort_js" (func))
         (import "env" "exit" (func (param i32)))
         (import "env" "_mmap_js"
@@ -440,8 +441,6 @@ test("createSqliteWasm fails with SqliteWasmUnknownImport before instantiating a
         (import "env" "_munmap_js"
           (func (param i32 i32 i32 i32 i32 i64) (result i32)))
         (import "env" "emscripten_get_heap_max" (func (result i32)))
-        (import "wasi_snapshot_preview1" "random_get"
-          (func (param i32 i32) (result i32)))
         (func (export "__wasm_call_ctors") unreachable))`),
     ),
   );
@@ -456,9 +455,93 @@ test("createSqliteWasm fails with SqliteWasmUnknownImport before instantiating a
       "env._mmap_js",
       "env._munmap_js",
       "env.emscripten_get_heap_max",
-      "wasi_snapshot_preview1.random_get",
     ],
   });
+});
+
+test("the loader's random_get fills memory from RandomBytes", async () => {
+  const randomBytes = {
+    create: (length: number) => Uint8Array.from({ length }, (_, i) => i + 1),
+  } as RandomBytes;
+  await using run = testCreateRun({ randomBytes });
+
+  const result = await run(
+    createSqliteWasm(
+      assembleWat(`(module
+        (import "env" "memory" (memory 1))
+        (import "wasi_snapshot_preview1" "random_get"
+          (func $random_get (param i32 i32) (result i32)))
+        (func (export "__wasm_call_ctors")
+          (if (call $random_get (i32.const 16) (i32.const 8))
+            (then unreachable))
+          ;; The bytes 1 to 8, little-endian, and nothing past them.
+          (if (i64.ne (i64.load (i32.const 16)) (i64.const 0x0807060504030201))
+            (then unreachable))
+          (if (i32.load8_u (i32.const 24))
+            (then unreachable))))`),
+    ),
+  );
+
+  assertConstructorsReturned(result);
+});
+
+test("the loader's random_get reports what RandomBytes throws as a defect and fails with EIO", async () => {
+  const error = new Error("no randomness");
+  const deps = testCreateDeps();
+  // Runs draw their ids from RandomBytes too, so only the 5 bytes the module
+  // asks for fail.
+  const randomBytes = {
+    create: (length: number) => {
+      if (length === 5) throw error;
+      return deps.randomBytes.create(length);
+    },
+  } as RandomBytes;
+  await using run = testCreateRun({ ...deps, randomBytes });
+
+  const result = await run(
+    createSqliteWasm(
+      assembleWat(`(module
+        (import "env" "memory" (memory 1))
+        (import "wasi_snapshot_preview1" "random_get"
+          (func $random_get (param i32 i32) (result i32)))
+        (func (export "__wasm_call_ctors")
+          ;; WASI's EIO.
+          (if (i32.ne (call $random_get (i32.const 16) (i32.const 5))
+                      (i32.const 29))
+            (then unreachable))))`),
+    ),
+  );
+
+  assertConstructorsReturned(result);
+  assertEqual(run.deps.reportDefect.getDefects(), [error]);
+});
+
+test("the loader's random_get lets a WebAssembly.RuntimeError that RandomBytes throws unwind, unreported, as a trap does", async () => {
+  const trap = new WebAssembly.RuntimeError("unreachable");
+  const deps = testCreateDeps();
+  const randomBytes = {
+    create: (length: number) => {
+      if (length === 5) throw trap;
+      return deps.randomBytes.create(length);
+    },
+  } as RandomBytes;
+  await using run = testCreateRun({ ...deps, randomBytes });
+
+  const result = await run(
+    createSqliteWasm(
+      assembleWat(`(module
+        (import "env" "memory" (memory 1))
+        (import "wasi_snapshot_preview1" "random_get"
+          (func $random_get (param i32 i32) (result i32)))
+        (func (export "__wasm_call_ctors")
+          (drop (call $random_get (i32.const 16) (i32.const 5)))))`),
+    ),
+  );
+
+  assertErr(result);
+  assert(result.error.type === "SqliteWasmCompileError", result.error.type);
+  assertSame(result.error.cause, trap);
+  assertEqual(run.deps.reportDefect.getDefects(), []);
 });
 
 test("createSqliteWasm fails with SqliteWasmCompileError when its memory cannot be allocated", async (t) => {

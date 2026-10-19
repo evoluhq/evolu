@@ -1,7 +1,8 @@
 /**
- * Builds `wasm/sqlite3.wasm`: plain SQLite 3.54.0 from sqlite.org's source zip,
- * compiled to WebAssembly by Emscripten 6.0.3 with SQLite's own makefile,
- * unpatched. The build fails unless its bytes equal the pinned ones.
+ * Builds `wasm/sqlite3.wasm`: SQLite from sqlite.org's source zip, which
+ * `@evolu/sqlite-core` pins, with Evolu's C core linked in, compiled to
+ * WebAssembly by Emscripten 6.0.3 with SQLite's own makefile, unpatched. The
+ * build fails unless its bytes equal the pinned ones.
  *
  * Only the wasm is built, because Evolu replaces SQLite's JavaScript with its
  * own.
@@ -9,7 +10,10 @@
  * Every input is pinned, and the build fails closed when anything differs:
  *
  * 1. The SQLite source zip by the SHA3-256 sqlite.org publishes on its download
- *    page, and the tree by the check-in its `manifest.uuid` names.
+ *    page, and the tree by the check-in its `manifest.uuid` names, both pinned
+ *    in `@evolu/sqlite-core`'s `scripts/sqlite-source.mts`, so the wasm and the
+ *    native builds compile the same SQLite. The core's sources are in this
+ *    repository.
  * 2. Emscripten by its version, and wasm-strip by the version of the npm package
  *    wabt, whose bytes the lockfile pins.
  * 3. The output by its sha256. emsdk verifies no checksum of what it downloads,
@@ -27,39 +31,51 @@
  *    and the wasm-strip of wabt. Without wasm-strip, the `-Oz -g3` build keeps
  *    its debug info; without wasm-opt, it is not optimized.
  * 3. `make sqlite3.c`, the amalgamation the wasm compiles, which `ext/wasm`
- *    requires to exist.
- * 4. `make "emcc_opt=-Oz -sSTACK_OVERFLOW_CHECK=2" barebones=1 SQLITE_OPT=...
- *    jswasm/sqlite3.wasm` in `ext/wasm`, at the optimization level `make dist`
- *    and `make npm` use, without the JavaScript deliverables they also build.
- *    `-sSTACK_OVERFLOW_CHECK=2` makes each function compare the stack pointer
- *    it sets with the C stack's limits and call `__handle_stack_overflow`
- *    instead of leaving the stack, which the loader turns into a trap. The
- *    makefile's `-sGLOBAL_BASE` puts the 512 KiB stack directly above the
- *    static data and rules out Emscripten's `--stack-first`, so without the
- *    check, SQL nested deeply enough would overwrite that data silently, as it
- *    does in SQLite's own release build. `barebones=1` selects SQLite's
- *    bare-bones export list, and `SQLITE_OPT` replaces the makefile's compile
- *    options, so no optional feature, such as FTS5, R*Tree or the session
- *    extension, and none of SQLite's C test helpers is compiled. The options
- *    are the omissions of SQLite's bare-bones build except `SQLITE_OMIT_JSON`,
- *    since Evolu queries JSON, and `SQLITE_OMIT_GET_TABLE`, which only makes
- *    the wasm larger, plus `SQLITE_ENABLE_MATH_FUNCTIONS`, which apps can call
- *    through Evolu's query builder, and `SQLITE_TEMP_STORE=3`, which keeps
- *    temporary files in memory. `sqlite3-wasm.c` hard-codes the rest, such as
- *    no threads, UTF-16 or extension loading. The make log must not say that
- *    wasm-opt failed, which the makefile otherwise ignores.
- * 5. Check the sha256 of the wasm, and check it against the pins of
+ *    requires to exist, and its `sqlite3.h`, which the core includes.
+ * 4. `emcc -c -O2` of the core's compile units, which `@evolu/sqlite-core`'s
+ *    `scripts/compile.mts` lists with their flags, into `ext/wasm/evolu-core`,
+ *    one call for each set of units that share their flags. The core gets
+ *    `-DSQLITE_THREADSAFE=0`, the value `sqlite3-wasm.c` gives SQLite, and the
+ *    tree's `sqlite3.h`, and no other SQLite option.
+ * 5. `make "emcc_opt=-Oz -sSTACK_OVERFLOW_CHECK=2" barebones=1 SQLITE_OPT=...
+ *    emcc.flags.vanilla=... jswasm/sqlite3.wasm` in `ext/wasm`, at the
+ *    optimization level `make dist` and `make npm` use, without the JavaScript
+ *    deliverables they also build. `-sSTACK_OVERFLOW_CHECK=2` makes each
+ *    function compare the stack pointer it sets with the C stack's limits and
+ *    call `__handle_stack_overflow` instead of leaving the stack, which the
+ *    loader turns into a trap. The makefile's `-sGLOBAL_BASE` puts the 512 KiB
+ *    stack directly above the static data and rules out Emscripten's
+ *    `--stack-first`, so without the check, SQL nested deeply enough would
+ *    overwrite that data silently, as it does in SQLite's own release build.
+ *    `barebones=1` selects SQLite's bare-bones export list, and `SQLITE_OPT`
+ *    replaces the makefile's compile options, so no optional feature, such as
+ *    FTS5, R*Tree or the session extension, and none of SQLite's C test helpers
+ *    is compiled. The options are the omissions of SQLite's bare-bones build
+ *    except `SQLITE_OMIT_JSON`, since Evolu queries JSON, and
+ *    `SQLITE_OMIT_GET_TABLE`, which only makes the wasm larger, plus
+ *    `SQLITE_ENABLE_MATH_FUNCTIONS`, which apps can call through Evolu's query
+ *    builder, and `SQLITE_TEMP_STORE=3`, which keeps temporary files in memory.
+ *    `sqlite3-wasm.c` hard-codes the rest, such as no threads, UTF-16 or
+ *    extension loading. `emcc.flags.vanilla`, which the vanilla build's link
+ *    references and nothing defines for it, names the core's objects, relative
+ *    to `ext/wasm`, and `-Wl,--export=` for each of the core's functions the
+ *    bindings call, which wasm-ld then keeps. The variable is undocumented, so
+ *    an upstream refactor breaks this step, which the pins catch. The make log
+ *    must not say that wasm-opt failed, which the makefile otherwise ignores.
+ * 6. Check the sha256 of the wasm, and check it against the pins of
  *    `scripts/generate.mts` as `generate.mts --verify-build` does. That also
  *    compiles and instantiates it in Node.js.
- * 6. Write `wasm/sqlite3.wasm` and `wasm/build-info.json`, which records the
- *    inputs, the tool versions and the output's sha256, and remove the
- *    temporary directory. A failed build keeps it for inspection.
+ * 7. Write `wasm/sqlite3.wasm` and `wasm/build-info.json`, which records the
+ *    inputs, with the sha256 of each of the core's sources and of the headers
+ *    it may depend on, the tool versions and the output's sha256, and remove
+ *    the temporary directory. A failed build keeps it for inspection.
  *
  * Usage: `EMSDK=/path/to/emsdk node scripts/build-wasm.mts`
  *
  * - `EMSDK`: an emsdk root with Emscripten 6.0.3 installed and activated. The
- *   script sources its `emsdk_env.sh`, and SQLite's configure finds the SDK
- *   through it. The `emscripten/emsdk` Docker image sets it.
+ *   script sources its `emsdk_env.sh`, which also selects emsdk's Python for
+ *   emcc, and SQLite's configure finds the SDK through it. The
+ *   `emscripten/emsdk` Docker image sets it.
  * - `SQLITE_WASM_CACHE`: where the downloaded archive is kept, `wasm-cache` when
  *   unset or empty. A cached archive is verified like a downloaded one.
  * - `TMPDIR`: where the temporary build directory is created.
@@ -69,12 +85,14 @@
  * On macOS, a GNU-style `sed` shim from `scripts/gnu-sed` comes first in PATH,
  * because the makefile runs `sed -i` without a suffix.
  *
- * To upgrade an input, change its pin and build. The build then fails with the
- * new output's sha256 and keeps the wasm in the temporary directory; review it,
- * pin it with `node scripts/generate.mts --pin-build <wasm>`, regenerate, and
- * pin its sha256 in `wasmSha256` of `scripts/check-wasm.mts`. An Emscripten
- * upgrade also changes the image tag and the digest of its multi-arch index in
- * `.github/workflows/checks.yaml`, and a wabt upgrade the exact version of the
+ * To upgrade an input, change its pin and build. A change to the core's sources
+ * is such an input too. The build then fails with the new output's sha256 and
+ * keeps the wasm in the temporary directory; review it, pin it with `node
+ * scripts/generate.mts --pin-build <wasm>`, regenerate, and pin its sha256 in
+ * `wasmSha256` of `scripts/check-wasm.mts`. An Emscripten upgrade also changes
+ * the image tag and the digest of its multi-arch index in
+ * `.github/workflows/checks.yaml` and in the README's Docker command, which a
+ * Node.js upgrade changes too, and a wabt upgrade the exact version of the
  * `wabt` devDependency, and with it the lockfile. After a release publishes the
  * new wasm, set its version and sha256 in `publishedWasm` of
  * `scripts/download-wasm.mts`.
@@ -84,7 +102,6 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   closeSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -93,23 +110,20 @@ import {
   writeFileSync,
 } from "node:fs";
 import { arch, release, tmpdir, type } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  compileUnits,
+  sourceDirectory,
+} from "@evolu/sqlite-core/scripts/compile.mts";
+import {
+  checkManifestUuid,
+  fetchPinned,
+  type PinnedSqliteSource,
+  sqliteSource,
+} from "@evolu/sqlite-core/scripts/sqlite-source.mts";
 import { wasmSha256 } from "./check-wasm.mts";
 import { verifyWasmBuild } from "./generate.mts";
-
-/** A source archive pinned by its URL, cache file name and SHA3-256. */
-export interface PinnedArchive {
-  readonly url: string;
-  readonly file: string;
-  readonly hash: string;
-}
-
-/** The SQLite source zip, pinned also by the check-in of its tree. */
-export interface PinnedSqliteSource extends PinnedArchive {
-  readonly directory: string;
-  readonly checkIn: string;
-}
 
 /** The `--version` lines of the tools whose versions the build pins. */
 export interface Toolchain {
@@ -130,18 +144,10 @@ export interface BuildWasmOptions {
   readonly platform: NodeJS.Platform;
 }
 
-const sqliteSource: PinnedSqliteSource = {
-  url: "https://sqlite.org/2026/sqlite-src-3540000.zip",
-  file: "sqlite-src-3540000.zip",
-  hash: "a5c29342ca185abcda332448fbb27c536661245be27e20199b46c49099b0e15e",
-  directory: "sqlite-src-3540000",
-  checkIn: "be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3",
-};
-
 const emscriptenVersion = "6.0.3";
 const wasmStripVersion = "1.0.39";
 
-const makeArguments = [
+const makeOptions = [
   "emcc_opt=-Oz -sSTACK_OVERFLOW_CHECK=2",
   "barebones=1",
   `SQLITE_OPT=${[
@@ -153,8 +159,21 @@ const makeArguments = [
     "-DSQLITE_OMIT_WAL",
     "-DSQLITE_ENABLE_MATH_FUNCTIONS",
   ].join(" ")}`,
-  "jswasm/sqlite3.wasm",
 ];
+
+/** The core's functions the wasm exports, which its bindings call. */
+const coreExports = [
+  "evolu_codec_register",
+  "evolu_codec_open",
+  "evolu_codec_take_failure",
+  "evolu_skiplist_register",
+];
+
+/** Where in ext/wasm the core's objects are compiled. */
+const coreObjectsDirectory = "evolu-core";
+
+/** The root of `@evolu/sqlite-core`, which build-info.json's paths are under. */
+const sqliteCoreDirectory = join(sourceDirectory, "..");
 
 const outputDirectory = fileURLToPath(new URL("../wasm/", import.meta.url));
 const defaultCacheDirectory = fileURLToPath(
@@ -234,6 +253,41 @@ export const buildWasm = async ({
   );
 
   run("make-sqlite3.c", "make", ["sqlite3.c"], tree);
+
+  // The core, compiled as SQLite's wasm is, without threads, against the
+  // sqlite3.h that make generated, with one emcc call for each set of units
+  // that share their flags. The vendored libraries' units get neither.
+  const units = compileUnits(["-DSQLITE_THREADSAFE=0", `-I${tree}`]);
+  const compileFlags = ["-c", "-O2"];
+  const objects = join(extWasm, coreObjectsDirectory);
+  mkdirSync(objects);
+  [...Map.groupBy(units, ({ flags }) => flags.join(" ")).values()].forEach(
+    (group, index) => {
+      run(
+        `compile-core-${index + 1}`,
+        "emcc",
+        [
+          ...compileFlags,
+          ...group[0].flags,
+          ...group.map(({ source }) => source),
+        ],
+        objects,
+      );
+    },
+  );
+  // The vanilla build links what emcc.flags.vanilla names, which nothing else
+  // sets. The objects are relative to ext/wasm, where make runs, so
+  // build-info.json records no path of the work directory.
+  const makeArguments = [
+    ...makeOptions,
+    `emcc.flags.vanilla=${[
+      ...units.map(
+        ({ source }) => `${coreObjectsDirectory}/${basename(source, ".c")}.o`,
+      ),
+      ...coreExports.map((name) => `-Wl,--export=${name}`),
+    ].join(" ")}`,
+    "jswasm/sqlite3.wasm",
+  ];
   checkMakeLog(run("make-wasm", "make", makeArguments, extWasm));
   const wasmPath = join(extWasm, "jswasm/sqlite3.wasm");
   const wasm = readFileSync(wasmPath);
@@ -249,6 +303,20 @@ export const buildWasm = async ({
       emscripten: emscriptenVersion,
       wasmStrip: wasmStripVersion,
       make: ["make", ...makeArguments],
+      // Each include directory as <tree> or relative to sqlite-core, so the
+      // file holds no path of the work directory or this machine.
+      core: units.map(({ source, flags, headers }) => ({
+        source: relative(sqliteCoreDirectory, source),
+        flags: [...compileFlags, ...flags].map((flag) =>
+          !flag.startsWith("-I")
+            ? flag
+            : flag === `-I${tree}`
+              ? "-I<tree>"
+              : `-I${relative(sqliteCoreDirectory, flag.slice(2))}`,
+        ),
+        sha256: createHash("sha256").update(readFileSync(source)).digest("hex"),
+        headersSha256: createHash("sha256").update(headers()).digest("hex"),
+      })),
     },
     toolchain: {
       ...toolchain,
@@ -352,33 +420,6 @@ export const checkToolchain = (env: NodeJS.ProcessEnv): Toolchain => {
   return { emcc, wasmStrip };
 };
 
-/** Returns the path of a pinned archive in the cache, downloading it first. */
-export const fetchPinned = async (
-  archive: PinnedArchive,
-  cacheDirectory: string,
-): Promise<string> => {
-  const path = join(cacheDirectory, archive.file);
-  if (existsSync(path)) {
-    checkHash(path, readFileSync(path), archive.hash);
-    return path;
-  }
-  const response = await fetch(archive.url);
-  if (!response.ok) throw new Error(`${archive.url}: HTTP ${response.status}`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  checkHash(archive.url, bytes, archive.hash);
-  mkdirSync(cacheDirectory, { recursive: true });
-  writeFileSync(path, bytes);
-  return path;
-};
-
-/** Checks that an unpacked SQLite tree is the pinned check-in. */
-export const checkManifestUuid = (tree: string, checkIn: string): void => {
-  const path = join(tree, "manifest.uuid");
-  const actual = readFileSync(path, "utf8").trim();
-  if (actual !== checkIn)
-    throw new Error(`${path}: check-in ${actual}, pinned ${checkIn}`);
-};
-
 /**
  * Checks the tools configure found for ext/wasm: emcc, wasm-opt, and the
  * wasm-strip at `wasmStrip`.
@@ -424,13 +465,6 @@ export const verifyWasm = async (
     ...(actual === sha256 ? [] : [`sha256 ${actual}, pinned ${sha256}`]),
     ...(await verifyWasmBuild(bytes)),
   ];
-};
-
-/** Throws when the bytes from `source` do not have the pinned SHA3-256. */
-const checkHash = (source: string, bytes: Uint8Array, hash: string): void => {
-  const actual = createHash("sha3-256").update(bytes).digest("hex");
-  if (actual !== hash)
-    throw new Error(`${source}: sha3-256 ${actual}, pinned ${hash}`);
 };
 
 /** Returns the first line a command prints for `--version`. */

@@ -955,6 +955,9 @@ importers:
       '@evolu/common':
         specifier: workspace:*
         version: link:../common
+      '@evolu/sqlite-core':
+        specifier: workspace:*
+        version: link:../sqlite-core
       '@evolu/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
