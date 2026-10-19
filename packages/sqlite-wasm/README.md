@@ -62,10 +62,10 @@ EMSDK=/path/to/emsdk node scripts/build-wasm.mts
 Without emsdk, build it with Docker 28 or later in the Emscripten image CI uses, pinned by the same digest. Run `pnpm install` first, then this in the repository root. The image's Node.js is older than the repository's, so the command mounts the repository's version from the official `node` image, which Docker doesn't pull for a mount by itself. A build in this image on Linux gave the same bytes as one with emsdk on macOS:
 
 ```sh
-docker pull node:24.20.0-slim
+docker pull node:24.22.0-slim
 docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v evolu-sqlite-wasm:/tmp \
   -v "$PWD":/src -w /src \
-  --mount type=image,source=node:24.20.0-slim,target=/node \
+  --mount type=image,source=node:24.22.0-slim,target=/node \
   emscripten/emsdk:6.0.3@sha256:bb0910e6a18bb9bd7cb31ae4ed40f9073148b78cb2cdb8ea8676454e0d85425c \
   /node/usr/local/bin/node packages/sqlite-wasm/scripts/build-wasm.mts
 ```
