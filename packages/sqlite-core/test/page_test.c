@@ -270,6 +270,55 @@ static void page_1_with_another_salt_replaces_the_salt(void) {
   evolu_page_codec_destroy(codec);
 }
 
+static void page_decrypt_with_a_salt_leaves_the_codec_as_it_was(void) {
+  size_t size = 1024;
+  uint8_t old_page1[1024];
+  uint8_t old_page2[1024];
+  CHECK(encrypt_two_pages(size, old_page1, old_page2));
+  CHECK(encrypt_two_pages(size, page1, page2));
+  evolu_page_codec *codec = evolu_page_codec_create(test_key, 0);
+  CHECK(codec != NULL);
+
+  // Page 1's own salt decrypts it and page 2, without giving a salt or
+  // proving the key.
+  memcpy(altered, page1, size);
+  CHECK(evolu_page_decrypt_with_salt(codec, page1, 1, altered, size));
+  CHECK_EQ_BYTES(altered, header_string, sizeof header_string);
+  memcpy(altered, page2, size);
+  CHECK(evolu_page_decrypt_with_salt(codec, page1, 2, altered, size));
+  fill_page(plaintext, size, 2);
+  CHECK_EQ_BYTES(altered, plaintext, size - 80);
+  CHECK(!evolu_page_is_key_proven(codec));
+  CHECK(!evolu_page_has_salt(codec, page1));
+  CHECK_EQ_INT(evolu_page_layout_of(codec), EVOLU_PAGE_LAYOUT_UNKNOWN);
+
+  // Another database's salt fails, and so does a page 1 that doesn't store
+  // the salt, leaving the page as it was.
+  memcpy(altered, page2, size);
+  CHECK(!evolu_page_decrypt_with_salt(codec, old_page1, 2, altered, size));
+  CHECK_EQ_BYTES(altered, page2, size);
+  memcpy(altered, old_page1, size);
+  CHECK(!evolu_page_decrypt_with_salt(codec, page1, 1, altered, size));
+  CHECK_EQ_BYTES(altered, old_page1, size);
+
+  // A codec with a salt and a proven key keeps them.
+  memcpy(altered, old_page1, size);
+  CHECK(evolu_page_decrypt(codec, 1, altered, size));
+  memcpy(altered, page2, size);
+  CHECK(evolu_page_decrypt_with_salt(codec, page1, 2, altered, size));
+  CHECK(evolu_page_has_salt(codec, old_page1));
+  memcpy(altered, old_page2, size);
+  CHECK(evolu_page_decrypt(codec, 2, altered, size));
+  evolu_page_codec_destroy(codec);
+
+  // Another key fails.
+  codec = evolu_page_codec_create(other_key, 0);
+  CHECK(codec != NULL);
+  memcpy(altered, page2, size);
+  CHECK(!evolu_page_decrypt_with_salt(codec, page1, 2, altered, size));
+  evolu_page_codec_destroy(codec);
+}
+
 static void page_refuses_sizes_that_are_no_page_size(void) {
   static const size_t sizes[] = {0, 16, 104, 256, 1000, 4097, 131072};
   evolu_page_codec *codec = evolu_page_codec_create(test_key, 0);
@@ -407,6 +456,10 @@ static void page_calls_run_with_dit_and_restore_the_callers(void) {
     memcpy(decrypted, ciphertext, 4096);
     ok = ok && evolu_page_decrypt(codec, 2, decrypted, 4096);
     restored &= evolu_dit_is_set() == expected;
+    memcpy(decrypted, ciphertext, 4096);
+    if (codec != NULL)
+      (void)evolu_page_decrypt_with_salt(codec, salt, 2, decrypted, 4096);
+    restored &= evolu_dit_is_set() == expected;
     if (codec != NULL) evolu_page_use_salt(codec, salt);
     restored &= evolu_dit_is_set() == expected;
     evolu_page_codec_destroy(codec);
@@ -427,6 +480,7 @@ void page_suite(void) {
   RUN(page_new_codecs_get_random_salts_and_every_page_a_fresh_iv);
   RUN(page_salt_comes_only_from_a_page_1_that_authenticates);
   RUN(page_1_with_another_salt_replaces_the_salt);
+  RUN(page_decrypt_with_a_salt_leaves_the_codec_as_it_was);
   RUN(page_sqlcipher_layout_decrypts_only_when_allowed);
   RUN(page_codec_writes_and_keeps_the_layout_it_learned);
   RUN(page_new_database_gets_the_default_layout);

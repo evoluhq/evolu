@@ -348,14 +348,17 @@ static int read_journal(CodecFile *file, uint8_t *buffer, int amount,
     return SQLITE_IOERR_SHORT_READ;
   }
   uint32_t stored_sum = sampled_sum(buffer, amount);
-  // A rollback reads up to the end of a journal that hasn't counted its
-  // records, where a kept one can hold another database's page-1 record with
-  // the same key. Once the key is proven, such a record fails, or its salt
-  // would replace the proven one before SQLite's checksum ends the journal.
+  // Only check_journal gives a journal's records their salt. A rollback reads
+  // up to the end of a journal that hasn't counted its records, where a kept
+  // one can hold another database's page-1 record, and it reads a record's
+  // page before it skips one above the original size. So a page-1 record with
+  // another salt fails, or its salt would replace the codec's, proving a key
+  // that wrote no record of this journal's transaction or giving an emptied
+  // database an earlier database's salt.
   int is_key_proven =
       evolu_page_is_key_proven(database->codec) && !file->is_key_unproven;
-  int is_other_salt = page_number == 1 && is_key_proven &&
-                      !evolu_page_has_salt(database->codec, buffer);
+  int is_other_salt =
+      page_number == 1 && !evolu_page_has_salt(database->codec, buffer);
   if (!is_other_salt && evolu_page_decrypt(database->codec, page_number,
                                            buffer, (size_t)amount)) {
     records->stored_sum = stored_sum;
@@ -597,54 +600,202 @@ static const sqlite3_io_methods codec_io_methods = {
 };
 
 /*
- * Reads the page of a rollback journal's first page-1 record into the
- * database's scratch buffer, setting *record_page_size to its size, or to 0
- * when the journal has no such record. Returns an I/O or memory error, or
- * SQLITE_OK.
- *
- * It reads the journal much as SQLite reads a hot one: the sector and page
- * sizes from the first header, and segments that each start with a header at
- * a multiple of the sector size, with SQLite's magic and the number of records
- * that follow it, where 0xFFFFFFFF counts the records up to the end of the
- * file. A count of 0 does too, although a hot journal's rollback takes it as
- * none: the callers check the page they get.
+ * A walk over a hot rollback journal's records in the order SQLite's rollback
+ * reads them (pager_playback, pager_playback_one_page), up to where it stops.
+ * The first header gives the sector and page sizes and the database's size in
+ * pages before the transaction. Each segment starts with a header at a
+ * multiple of the sector size, with SQLite's magic, the number of records that
+ * follow it, 0 for none and 0xFFFFFFFF for the records up to the end of the
+ * file, which synchronous = OFF writes, and the initializer of their
+ * checksums.
  */
-static int read_journal_page1(sqlite3_file *journal, sqlite3_int64 size,
-                              CodecFile *database, size_t *record_page_size) {
-  *record_page_size = 0;
+typedef struct {
+  sqlite3_file *journal;
+  sqlite3_int64 size;
+  uint32_t sector_size;
+  uint32_t page_size;
+  uint32_t original_size;
+  /* The page that holds SQLite's lock byte, which it never journals. */
+  uint32_t lock_page;
+  uint32_t checksum_init;
+  uint32_t records_left;
+  /* Where the next record, or the header before it, starts. */
+  sqlite3_int64 at;
+} JournalWalk;
+
+typedef struct {
+  uint32_t page_number;
+  /*
+   * Whether SQLite compares the record's checksum, which it does for a page
+   * within the original size; it skips any other page.
+   */
+  int has_checksum;
+  uint32_t checksum;
+  /* Where the record starts. */
+  sqlite3_int64 at;
+} JournalRecord;
+
+/*
+ * Starts a walk over a journal of size bytes. Returns SQLITE_OK, SQLITE_DONE
+ * for a journal whose first header SQLite wouldn't read, or an I/O error.
+ */
+static int start_journal_walk(JournalWalk *walk, sqlite3_file *journal,
+                              sqlite3_int64 size) {
   uint8_t header[28];
   int count;
   int rc = read_counted(journal, header, sizeof header, 0, &count);
   if (rc != SQLITE_OK && rc != SQLITE_IOERR_SHORT_READ) return rc;
-  uint32_t sector_size = read_be32(header + 20);
-  uint32_t page_size = read_be32(header + 24);
-  if (sector_size < 32 || sector_size > 65536 ||
-      (sector_size & (sector_size - 1)) != 0 || !evolu_page_is_size(page_size))
-    return SQLITE_OK;
-  sqlite3_int64 record_size = (sqlite3_int64)page_size + 8;
-  for (sqlite3_int64 at = 0; at + sector_size <= size;) {
-    rc = read_counted(journal, header, sizeof header, at, &count);
+  walk->journal = journal;
+  walk->size = size;
+  walk->sector_size = read_be32(header + 20);
+  walk->page_size = read_be32(header + 24);
+  walk->original_size = read_be32(header + 16);
+  walk->records_left = 0;
+  walk->at = 0;
+  if (count != (int)sizeof header || walk->sector_size < 32 ||
+      walk->sector_size > 65536 ||
+      (walk->sector_size & (walk->sector_size - 1)) != 0 ||
+      !evolu_page_is_size(walk->page_size))
+    return SQLITE_DONE;
+  walk->lock_page = 0x40000000u / walk->page_size + 1;
+  return SQLITE_OK;
+}
+
+/*
+ * Reads the walk's next record into record and its page into page, which
+ * holds the walk's page size. Returns SQLITE_OK, SQLITE_DONE where the
+ * rollback stops, or an I/O error. The rollback stops at a header that the
+ * file doesn't hold whole or whose magic differs, at a record numbered 0 or
+ * with the lock-byte page, and at a record the file doesn't hold whole, which
+ * it reads short. A segment whose count runs past the end of the file still
+ * plays its whole records. The caller stops at a checksum that differs.
+ */
+static int next_journal_record(JournalWalk *walk, uint8_t *page,
+                               JournalRecord *record) {
+  sqlite3_int64 record_size = (sqlite3_int64)walk->page_size + 8;
+  int count;
+  int rc;
+  while (walk->records_left == 0) {
+    sqlite3_int64 at = (walk->at + walk->sector_size - 1) / walk->sector_size *
+                       walk->sector_size;
+    if (at + walk->sector_size > walk->size) return SQLITE_DONE;
+    uint8_t header[16];
+    rc = read_counted(walk->journal, header, sizeof header, at, &count);
     if (rc != SQLITE_OK && rc != SQLITE_IOERR_SHORT_READ) return rc;
-    if (memcmp(header, journal_magic, sizeof journal_magic) != 0) break;
+    if (count != (int)sizeof header ||
+        memcmp(header, journal_magic, sizeof journal_magic) != 0)
+      return SQLITE_DONE;
+    walk->at = at + walk->sector_size;
+    walk->checksum_init = read_be32(header + 12);
     uint32_t records = read_be32(header + 8);
-    sqlite3_int64 end = at + sector_size + records * record_size;
-    if (records == 0 || records == 0xffffffff || end > size) end = size;
-    sqlite3_int64 record_at = at + sector_size;
-    for (; record_at + record_size <= end; record_at += record_size) {
-      uint8_t number[4];
-      rc = read_counted(journal, number, sizeof number, record_at, &count);
-      if (rc != SQLITE_OK && rc != SQLITE_IOERR_SHORT_READ) return rc;
-      if (read_be32(number) != 1) continue;
-      uint8_t *page = scratch_of(database, page_size);
-      if (page == NULL) return SQLITE_IOERR_NOMEM;
-      rc = read_counted(journal, page, (int)page_size, record_at + 4, &count);
-      if (rc != SQLITE_OK && rc != SQLITE_IOERR_SHORT_READ) return rc;
-      *record_page_size = page_size;
+    walk->records_left =
+        records == 0xffffffff
+            ? (uint32_t)((walk->size - walk->at) / record_size)
+            : records;
+    // A count of 0 plays no record, and the next header would follow.
+    if (walk->records_left == 0 && records == 0) continue;
+    if (walk->records_left == 0) return SQLITE_DONE;
+  }
+  if (walk->at + record_size > walk->size) return SQLITE_DONE;
+  uint8_t bytes[4];
+  rc = read_counted(walk->journal, bytes, sizeof bytes, walk->at, &count);
+  if (rc != SQLITE_OK) return rc == SQLITE_IOERR_SHORT_READ ? SQLITE_DONE : rc;
+  record->page_number = read_be32(bytes);
+  rc = read_counted(walk->journal, page, (int)walk->page_size, walk->at + 4,
+                    &count);
+  if (rc != SQLITE_OK) return rc == SQLITE_IOERR_SHORT_READ ? SQLITE_DONE : rc;
+  rc = read_counted(walk->journal, bytes, sizeof bytes,
+                    walk->at + 4 + walk->page_size, &count);
+  if (rc != SQLITE_OK) return rc == SQLITE_IOERR_SHORT_READ ? SQLITE_DONE : rc;
+  record->checksum = read_be32(bytes);
+  record->has_checksum = record->page_number <= walk->original_size;
+  record->at = walk->at;
+  walk->at += record_size;
+  walk->records_left--;
+  if (record->page_number == 0 || record->page_number == walk->lock_page)
+    return SQLITE_DONE;
+  return SQLITE_OK;
+}
+
+/*
+ * Sets *is_plaintext to whether the first page-1 record a hot journal's
+ * rollback reaches is plaintext: it and every record before it match their
+ * checksums as stored, and it starts with SQLite's header string. Returns an
+ * I/O or memory error, or SQLITE_OK.
+ */
+static int find_plaintext_page1(sqlite3_file *journal, sqlite3_int64 size,
+                                CodecFile *database, int *is_plaintext) {
+  *is_plaintext = 0;
+  JournalWalk walk;
+  int rc = start_journal_walk(&walk, journal, size);
+  if (rc != SQLITE_OK) return rc == SQLITE_DONE ? SQLITE_OK : rc;
+  uint8_t *page = scratch_of(database, walk.page_size);
+  if (page == NULL) return SQLITE_IOERR_NOMEM;
+  JournalRecord record;
+  while ((rc = next_journal_record(&walk, page, &record)) == SQLITE_OK) {
+    if (record.has_checksum &&
+        record.checksum !=
+            walk.checksum_init + sampled_sum(page, (int)walk.page_size))
+      break;
+    if (record.page_number == 1) {
+      *is_plaintext = memcmp(page, sqlite_header_string, 16) == 0;
+      break;
+    }
+  }
+  return rc == SQLITE_DONE ? SQLITE_OK : rc;
+}
+
+/*
+ * Reads into the database's scratch buffer the page of the first page-1
+ * record a hot journal's rollback reaches with that record's salt, setting
+ * *record_page_size to its size, or to 0 when there's none. It and every
+ * record before it must authenticate with the HMAC key of the record's salt,
+ * a page above the original size too, because read_journal decrypts a
+ * record's page before SQLite skips it, and match their checksums where SQLite
+ * compares them: over the stored page with stored checksums, and over the
+ * decrypted one with plaintext checksums, as read_journal has SQLite compare.
+ * The check changes nothing in the codec. Returns an I/O or memory error, or
+ * SQLITE_OK.
+ */
+static int read_reachable_page1(sqlite3_file *journal, sqlite3_int64 size,
+                                CodecFile *database,
+                                size_t *record_page_size) {
+  *record_page_size = 0;
+  JournalWalk walk;
+  int rc = start_journal_walk(&walk, journal, size);
+  if (rc != SQLITE_OK) return rc == SQLITE_DONE ? SQLITE_OK : rc;
+  int page_size = (int)walk.page_size;
+  uint8_t *page = scratch_of(database, walk.page_size);
+  if (page == NULL) return SQLITE_IOERR_NOMEM;
+  JournalRecord record;
+  while ((rc = next_journal_record(&walk, page, &record)) == SQLITE_OK &&
+         record.page_number != 1)
+    ;
+  if (rc != SQLITE_OK) return rc == SQLITE_DONE ? SQLITE_OK : rc;
+  uint8_t salt[EVOLU_PAGE_SALT_SIZE];
+  memcpy(salt, page, sizeof salt);
+  sqlite3_int64 page1_at = record.at;
+  int is_stored = has_stored_checksums(database);
+  rc = start_journal_walk(&walk, journal, size);
+  while (rc == SQLITE_OK &&
+         (rc = next_journal_record(&walk, page, &record)) == SQLITE_OK) {
+    uint32_t sum = sampled_sum(page, page_size);
+    int is_authentic = evolu_page_decrypt_with_salt(
+        database->codec, salt, record.page_number, page, walk.page_size);
+    if (is_authentic && !is_stored) sum = sampled_sum(page, page_size);
+    evolu_wipe(page, walk.page_size);
+    if (!is_authentic ||
+        (record.has_checksum && record.checksum != walk.checksum_init + sum))
+      break;
+    if (record.at == page1_at) {
+      int count;
+      rc = read_counted(journal, page, page_size, record.at + 4, &count);
+      if (rc != SQLITE_OK) return rc;
+      *record_page_size = walk.page_size;
       return SQLITE_OK;
     }
-    at = (record_at + sector_size - 1) / sector_size * sector_size;
   }
-  return SQLITE_OK;
+  return rc == SQLITE_DONE ? SQLITE_OK : rc;
 }
 
 /*
@@ -682,25 +833,28 @@ static int check_journal(CodecFile *database, CodecFile *journal_file) {
   if (rc != SQLITE_OK && rc != SQLITE_IOERR_SHORT_READ) return SQLITE_CANTOPEN;
   if (journal_start[0] == 0 || read_be32(journal_start + 16) == 0)
     return SQLITE_OK;
-  size_t record_page_size;
   if (codec == NULL) {
     // A crash can tear a plaintext database's page 1 only after SQLite
     // journaled and synced it, so its journal holds a plaintext page-1 record,
-    // while an encrypted journal's record starts with the salt.
-    if (read_journal_page1(journal, journal_size, database,
-                           &record_page_size) != SQLITE_OK)
+    // which the rollback restores, while an encrypted journal's record starts
+    // with the salt. A journal kept by journal_mode = PERSIST or locking_mode =
+    // EXCLUSIVE can hold an earlier database's records past its own, which the
+    // rollback never reaches.
+    int is_plaintext;
+    if (find_plaintext_page1(journal, journal_size, database, &is_plaintext) !=
+        SQLITE_OK)
       return SQLITE_CANTOPEN;
-    if (record_page_size != 0 &&
-        memcmp(database->scratch, sqlite_header_string, 16) == 0)
-      return SQLITE_OK;
+    if (is_plaintext) return SQLITE_OK;
     record_failure(database, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED, 0);
     return SQLITE_CANTOPEN;
   }
   // The database's page 1 stores the salt, even when another connection
   // created the database again since a page 1 proved this codec's key. A
-  // journal's page-1 record does too, for a page 1 a crash tore, but a journal
-  // kept by journal_mode = PERSIST or locking_mode = EXCLUSIVE can also hold an
-  // earlier database's records past its own, so it comes second.
+  // journal's page-1 record does too, for a page 1 a crash tore, but only one
+  // the rollback reaches with that salt: a kept journal can hold an earlier
+  // database's records past its own, whose page-1 record another key wrote,
+  // and taking its salt would prove that key and end the rollback at the
+  // first record of this journal's own transaction.
   size_t page_size;
   int decrypted = decrypt_page1(database, &page_size, &rc);
   if (decrypted < 0) return SQLITE_CANTOPEN;
@@ -708,8 +862,9 @@ static int check_journal(CodecFile *database, CodecFile *journal_file) {
     evolu_wipe(database->scratch, page_size);
     return SQLITE_OK;
   }
-  if (read_journal_page1(journal, journal_size, database, &record_page_size) !=
-      SQLITE_OK)
+  size_t record_page_size;
+  if (read_reachable_page1(journal, journal_size, database,
+                           &record_page_size) != SQLITE_OK)
     return SQLITE_CANTOPEN;
   if (record_page_size != 0) {
     int authenticated =

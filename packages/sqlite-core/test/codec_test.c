@@ -1405,6 +1405,159 @@ static void codec_crashes_roll_back_over_4096_byte_sectors(void) {
 }
 
 /*
+ * Leaves at stale the journal a transaction, sql, wrote over a copy of the
+ * database at from, with its first header zeroed as journal_mode = PERSIST
+ * leaves it. Returns whether it could.
+ */
+static int make_stale_journal(const char *from, int flags, const char *sql,
+                              const char *stale) {
+  char source[512];
+  char source_journal[600];
+  path_of(source, "stale-tail-source.db");
+  snprintf(source_journal, sizeof source_journal, "%s-journal", source);
+  remove_database(source);
+  if (!copy_file(from, source)) return 0;
+  crash_writes = 0;
+  crash_at = 0;
+  has_crashed = 0;
+  sqlite3 *db = NULL;
+  int ok = evolu_codec_open(source, &db, crash_codec_vfs_name, test_key,
+                            flags) == SQLITE_OK &&
+           sqlite3_exec(db, sql, NULL, NULL, NULL) == SQLITE_OK &&
+           copy_file(source_journal, stale);
+  sqlite3_close(db);
+  remove_database(source);
+  return ok && fill_bytes(stale, 0, 28, 0);
+}
+
+/*
+ * Crashes sql at every write over a copy of the database at base whose
+ * journal starts as stale, or as none, over files with 4096-byte sectors, and
+ * checks each crash opens wholly before or after it, with no hot journal.
+ * Returns 0 with a message on the first that doesn't.
+ */
+static int crashes_roll_back_over_a_stale_tail(const Kind *kind,
+                                               const char *base,
+                                               const char *stale,
+                                               const char *sql,
+                                               char message[200]) {
+  char path[512];
+  char copy[512];
+  char journal[600];
+  path_of(path, "stale-tail-work.db");
+  path_of(copy, "stale-tail-copy.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  for (int write = 1;; write++) {
+    remove_database(path);
+    if (!copy_file(base, path) ||
+        (stale != NULL && !copy_file(stale, journal)))
+      return 0;
+    crash_writes = 0;
+    crash_at = write;
+    has_crashed = 0;
+    crash_path = path;
+    crash_copy = copy;
+    sqlite3 *db = NULL;
+    int rc = evolu_codec_open(path, &db, crash_codec_vfs_name, test_key,
+                              kind->flags);
+    if (rc == SQLITE_OK) rc = sqlite3_exec(db, sql, NULL, NULL, NULL);
+    sqlite3_close(db);
+    if (!has_crashed) return rc == SQLITE_OK && write > 20;
+    rc = evolu_codec_open(copy, &db, vfs_name, test_key, kind->flags);
+    State state = state_of(db);
+    sqlite3_close(db);
+    if (rc != SQLITE_OK || state.ok != 1 ||
+        !((state.original == MATRIX_ROWS && state.updated == 0) ||
+          (state.original == 0 && state.updated == MATRIX_ROWS)) ||
+        has_hot_journal(copy)) {
+      snprintf(message, 200, "%s, write %d: open %d, %lld original, %lld "
+               "updated", kind->name, write, rc, state.original,
+               state.updated);
+      return 0;
+    }
+  }
+}
+
+/*
+ * A journal kept by journal_mode = PERSIST holds a stale tail past the
+ * records of the transaction that crashes over it: the same database's, or
+ * another database's with the same key and another salt. With 4096-byte
+ * sectors, crashes tear page 1's salt, so the rollback takes it from a
+ * journal page-1 record, which must be the one it reaches.
+ */
+static void codec_crashes_roll_back_over_stale_tails_of_kept_journals(void) {
+  CHECK(set_up());
+  CHECK(register_crash_vfs());
+  char base[512];
+  char other[512];
+  char stale_same[512];
+  char stale_other[512];
+  path_of(base, "stale-tail-base.db");
+  path_of(other, "stale-tail-other.db");
+  path_of(stale_same, "stale-tail-same.journal");
+  path_of(stale_other, "stale-tail-other.journal");
+  // A plain update journals page 1 last, at the commit; the other journals it
+  // first and again after spills began segments.
+  static const char *const transactions[] = {
+      "pragma journal_mode = persist; %s; pragma cache_size = 3; update t set "
+      "v = 'updated' || id",
+      "pragma journal_mode = persist; %s; pragma cache_size = 3; begin; pragma "
+      "user_version = 7; update t set v = 'updated' || id where id <= 6; "
+      "pragma user_version = 8; update t set v = 'updated' || id; commit"};
+  crash_sector_size = 4096;
+  for (size_t k = 0; k < sizeof kinds / sizeof kinds[0]; k++) {
+    int ok = create_base(&kinds[k], base);
+    remove_database(other);
+    sqlite3 *db = NULL;
+    crash_writes = 0;
+    crash_at = 0;
+    has_crashed = 0;
+    // More rows for a longer tail.
+    ok = ok &&
+         evolu_codec_open(other, &db, crash_codec_vfs_name, test_key,
+                          kinds[k].flags) == SQLITE_OK &&
+         create_rows(db, 60) == SQLITE_OK;
+    sqlite3_close(db);
+    ok = ok &&
+         make_stale_journal(base, kinds[k].flags,
+                            "pragma cache_size = 3; begin; pragma "
+                            "user_version = 3; update t set v = 's' || id",
+                            stale_same) &&
+         make_stale_journal(other, kinds[k].flags,
+                            "pragma synchronous = off; pragma cache_size = 3; "
+                            "begin; update t set v = 's' || id; pragma "
+                            "user_version = 3",
+                            stale_other);
+    if (!ok) {
+      crash_sector_size = 0;
+      test_fail(__FILE__, __LINE__, kinds[k].name);
+      return;
+    }
+    const char *stales[] = {NULL, stale_same, stale_other};
+    for (size_t s = 0; s < sizeof stales / sizeof stales[0]; s++)
+      for (size_t t = 0; t < sizeof transactions / sizeof transactions[0]; t++)
+        for (size_t y = 0;
+             y < sizeof synchronous_modes / sizeof synchronous_modes[0];
+             y++) {
+          char sql[512];
+          char message[200] = "";
+          snprintf(sql, sizeof sql, transactions[t], synchronous_modes[y]);
+          if (!crashes_roll_back_over_a_stale_tail(&kinds[k], base, stales[s],
+                                                   sql, message)) {
+            crash_sector_size = 0;
+            test_fail(__FILE__, __LINE__, message);
+            return;
+          }
+        }
+  }
+  crash_sector_size = 0;
+  remove_database(base);
+  remove_database(other);
+  unlink(stale_same);
+  unlink(stale_other);
+}
+
+/*
  * Crashes sql, run on a copy of the database at base, at every write, as the
  * crash VFS does, and checks that opening each crash's files passes check,
  * records no failure and leaves no hot journal. Returns 0 with a message on
@@ -2612,6 +2765,511 @@ static void codec_hot_journal_survives_a_wrong_key_and_no_key(void) {
   CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
 }
 
+/* Keeps the journal, with synchronous = OFF counting its records to its end. */
+static const char kept_journal[] = "pragma journal_mode = persist; "
+                                   "pragma synchronous = off; "
+                                   "pragma cache_size = 10; ";
+
+/*
+ * Leaves at crash a database with key whose transaction, sql after begin,
+ * crashed over the journal that an earlier database at the same path, with
+ * earlier_key, kept: the crash's records come first, and the earlier
+ * transaction's follow, page 1 last. With reader, a connection opens crash
+ * with earlier_key and proves it on the earlier database before the crash
+ * replaces it. Returns the step's result.
+ */
+static int crash_over_a_kept_journal(const char *crash, int flags,
+                                     const uint8_t *earlier_key,
+                                     const uint8_t *key, const char *sql,
+                                     sqlite3 **reader) {
+  char path[512];
+  char source[512];
+  char path_journal[600];
+  char crash_journal[600];
+  char statements[512];
+  path_of(path, "kept-journal.db");
+  path_of(source, "kept-journal-source.db");
+  snprintf(path_journal, sizeof path_journal, "%s-journal", path);
+  snprintf(crash_journal, sizeof crash_journal, "%s-journal", crash);
+  remove_database(path);
+  remove_database(source);
+  remove_database(crash);
+  sqlite3 *db = NULL;
+  int rc = evolu_codec_open(path, &db, vfs_name, earlier_key, flags);
+  if (rc == SQLITE_OK) rc = create_rows(db, 300);
+  snprintf(statements, sizeof statements,
+           "%supdate t set v = 'earlier' || id", kept_journal);
+  if (rc == SQLITE_OK) rc = sqlite3_exec(db, statements, NULL, NULL, NULL);
+  sqlite3_close(db);
+  db = NULL;
+  if (rc == SQLITE_OK && reader != NULL) {
+    if (!copy_file(path, crash)) rc = SQLITE_ERROR;
+    if (rc == SQLITE_OK)
+      rc = evolu_codec_open(crash, reader, vfs_name, earlier_key, flags);
+    if (rc == SQLITE_OK && query_int(*reader, "select count(*) from t") != 300)
+      rc = SQLITE_ERROR;
+  }
+  // A database with another key replaces the file, and the journal stays.
+  if (rc == SQLITE_OK)
+    rc = evolu_codec_open(source, &db, vfs_name, key, flags);
+  if (rc == SQLITE_OK) rc = create_rows(db, 200);
+  sqlite3_close(db);
+  db = NULL;
+  if (rc == SQLITE_OK && !copy_file(source, path)) rc = SQLITE_ERROR;
+  if (rc == SQLITE_OK)
+    rc = evolu_codec_open(path, &db, vfs_name, key, flags);
+  snprintf(statements, sizeof statements, "%sbegin; %s", kept_journal, sql);
+  if (rc == SQLITE_OK) rc = sqlite3_exec(db, statements, NULL, NULL, NULL);
+  if (rc == SQLITE_OK &&
+      !(copy_file(path, crash) && copy_file(path_journal, crash_journal)))
+    rc = SQLITE_ERROR;
+  sqlite3_close(db);
+  remove_database(path);
+  remove_database(source);
+  return rc;
+}
+
+/*
+ * The earlier key authenticates the earlier transaction's page-1 record past
+ * the crash's records, but playback reaches that record only through the
+ * crash's records, which fail with that key. So it can't take the record's
+ * salt and prove itself, which would end playback at the crash's first record
+ * and delete the hot journal, leaving the transaction half-applied.
+ */
+static void codec_earlier_key_keeps_the_hot_journal_of_a_replacing_database(
+    void) {
+  CHECK(set_up());
+  typedef struct {
+    const char *sql;
+    int is_proven;
+  } Case;
+  static const Case cases[] = {
+      // The crash journals no page 1.
+      {"update t set v = 'updated' || id", 0},
+      // It journals page 1 first.
+      {"pragma user_version = 7; update t set v = 'updated' || id", 0},
+      // A connection whose key the earlier database proved opens it.
+      {"update t set v = 'updated' || id", 1},
+  };
+  static const int flags[] = {0, EVOLU_CODEC_PLAINTEXT_CHECKSUMS};
+  char crash[512];
+  char journal[600];
+  char journal_copy[600];
+  path_of(crash, "kept-journal-crash.db");
+  snprintf(journal, sizeof journal, "%s-journal", crash);
+  snprintf(journal_copy, sizeof journal_copy, "%s-copy", journal);
+  for (size_t f = 0; f < sizeof flags / sizeof flags[0]; f++)
+    for (size_t c = 0; c < sizeof cases / sizeof cases[0]; c++) {
+      sqlite3 *reader = NULL;
+      CHECK_EQ_INT(crash_over_a_kept_journal(
+                       crash, flags[f], test_key, other_key, cases[c].sql,
+                       cases[c].is_proven ? &reader : NULL),
+                   SQLITE_OK);
+      CHECK(copy_file(journal, journal_copy));
+
+      sqlite3 *db = reader;
+      int rc = reader != NULL
+                   ? sqlite3_exec(reader, "select count(*) from t", NULL, NULL,
+                                  NULL)
+                   : evolu_codec_open(crash, &db, vfs_name, test_key, flags[f]);
+      CHECK(rc == SQLITE_CORRUPT || rc == SQLITE_NOTADB);
+      evolu_codec_failure failure;
+      CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+      CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION);
+      sqlite3_close(db);
+      CHECK(same_files(journal, journal_copy));
+
+      CHECK_EQ_INT(evolu_codec_open(crash, &db, vfs_name, other_key, flags[f]),
+                   SQLITE_OK);
+      CHECK(!file_exists(journal));
+      CHECK(has_original_rows(db));
+      CHECK_EQ_INT(query_int(db, "pragma user_version"), 0);
+      CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+      unlink(journal_copy);
+    }
+}
+
+/*
+ * Reads at path the journal a transaction, statements after begin, left with
+ * synchronous = OFF on a database with key, leaving its journal in *journal
+ * and its size in *size, and the database's first 16 bytes in salt. Returns
+ * the step's result.
+ */
+static int read_kept_journal(const char *path, const uint8_t *key,
+                             const char *create, const char *statements,
+                             uint8_t **journal, size_t *size,
+                             uint8_t salt[16]) {
+  char journal_path[600];
+  char sql[512];
+  snprintf(journal_path, sizeof journal_path, "%s-journal", path);
+  remove_database(path);
+  *journal = NULL;
+  sqlite3 *db = NULL;
+  int rc = evolu_codec_open(path, &db, vfs_name, key,
+                            EVOLU_CODEC_PLAINTEXT_CHECKSUMS);
+  if (rc == SQLITE_OK && create != NULL)
+    rc = sqlite3_exec(db, create, NULL, NULL, NULL);
+  snprintf(sql, sizeof sql, "%sbegin; %s", kept_journal, statements);
+  if (rc == SQLITE_OK) rc = sqlite3_exec(db, sql, NULL, NULL, NULL);
+  if (rc == SQLITE_OK) *journal = read_file(journal_path, size);
+  size_t database_size;
+  uint8_t *database = read_file(path, &database_size);
+  if (rc == SQLITE_OK && (*journal == NULL || database == NULL ||
+                          database_size < 16 || *size < 28))
+    rc = SQLITE_ERROR;
+  if (rc == SQLITE_OK) memcpy(salt, database, 16);
+  free(database);
+  sqlite3_close(db);
+  remove_database(path);
+  return rc;
+}
+
+/* The sector size a journal's first header stores. */
+static uint32_t journal_sector_size(const uint8_t *journal) {
+  return (uint32_t)journal[20] << 24 | (uint32_t)journal[21] << 16 |
+         (uint32_t)journal[22] << 8 | journal[23];
+}
+
+/*
+ * A new database's first transaction journals no page, and its journal's
+ * header stores an original size of 0. PERSIST with synchronous = OFF leaves
+ * an earlier database's records past it, its page 1 first. The rollback skips
+ * every record, but the codec reads each first, and a page-1 record's salt
+ * mustn't become the codec's, or the emptied database would be created again
+ * with the earlier database's salt.
+ */
+static void codec_rollback_of_a_new_database_takes_no_stale_salt(void) {
+  CHECK(set_up());
+  char path[512];
+  char earlier[512];
+  char journal[600];
+  path_of(path, "stale-salt-new.db");
+  path_of(earlier, "stale-salt-new-earlier.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  char create[256];
+  snprintf(create, sizeof create,
+           "create table t (id integer primary key, v text);"
+           "with recursive n(i) as (select 1 union all select i + 1 from n "
+           "where i < 50) insert into t select i, printf('%%.3000c', 'x') "
+           "from n");
+  uint8_t *stale = NULL;
+  size_t stale_size;
+  uint8_t earlier_salt[16];
+  CHECK_EQ_INT(read_kept_journal(earlier, test_key, create,
+                                 "pragma user_version = 7; update t set v = 'u'",
+                                 &stale, &stale_size, earlier_salt),
+               SQLITE_OK);
+  uint32_t sector_size = journal_sector_size(stale);
+  CHECK(stale[sector_size + 3] == 1 && stale_size > sector_size);
+
+  // The new database's crashed first transaction.
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(evolu_codec_open(path, &db, vfs_name, test_key,
+                                EVOLU_CODEC_PLAINTEXT_CHECKSUMS),
+               SQLITE_OK);
+  char sql[512];
+  snprintf(sql, sizeof sql, "%sbegin; %s", kept_journal, create);
+  CHECK_EQ_INT(sqlite3_exec(db, sql, NULL, NULL, NULL), SQLITE_OK);
+  size_t size;
+  uint8_t *bytes = read_file(journal, &size);
+  char crash[512];
+  char crash_journal[600];
+  path_of(crash, "stale-salt-new-crash.db");
+  snprintf(crash_journal, sizeof crash_journal, "%s-journal", crash);
+  remove_database(crash);
+  CHECK(copy_file(path, crash));
+  sqlite3_close(db);
+  remove_database(path);
+  CHECK(bytes != NULL && size >= sector_size && bytes[16] == 0 &&
+        bytes[17] == 0 && bytes[18] == 0 && bytes[19] == 0);
+  memcpy(stale, bytes, sector_size);
+  free(bytes);
+  CHECK(write_file(crash_journal, stale, stale_size));
+  free(stale);
+
+  // The stale page-1 record fails, and the rollback, which emptied the
+  // database first, keeps the journal.
+  CHECK_EQ_INT(evolu_codec_open(crash, &db, vfs_name, test_key,
+                                EVOLU_CODEC_PLAINTEXT_CHECKSUMS),
+               SQLITE_NOTADB);
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+  CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION);
+  CHECK_EQ_INT(failure.page_number, 1);
+  sqlite3_close(db);
+  CHECK(file_exists(crash_journal));
+
+  // The next open deletes the journal of the empty database, which gets a
+  // salt of its own.
+  CHECK_EQ_INT(evolu_codec_open(crash, &db, vfs_name, test_key,
+                                EVOLU_CODEC_PLAINTEXT_CHECKSUMS),
+               SQLITE_OK);
+  CHECK(!file_exists(crash_journal));
+  CHECK_EQ_INT(query_int(db, "pragma page_count"), 0);
+  CHECK_EQ_INT(create_rows(db, 3), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  bytes = read_file(crash, &size);
+  CHECK(bytes != NULL && size >= 16);
+  int is_earlier_salt = memcmp(bytes, earlier_salt, 16) == 0;
+  free(bytes);
+  CHECK(!is_earlier_salt);
+  remove_database(crash);
+}
+
+/*
+ * A transaction that crashed before it journaled a record leaves only its
+ * header, and PERSIST with synchronous = OFF leaves an earlier database's
+ * records past it, its page 1 first. A wrong key can't take that record's salt
+ * either, so it keeps the journal, which the right key then deletes.
+ */
+static void codec_wrong_key_keeps_a_journal_of_only_stale_records(void) {
+  CHECK(set_up());
+  char path[512];
+  char earlier[512];
+  char source[512];
+  char source_journal[600];
+  char journal[600];
+  path_of(path, "only-stale.db");
+  path_of(earlier, "only-stale-earlier.db");
+  path_of(source, "only-stale-source.db");
+  snprintf(source_journal, sizeof source_journal, "%s-journal", source);
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  uint8_t *stale = NULL;
+  size_t stale_size;
+  uint8_t salt[16];
+  CHECK_EQ_INT(read_kept_journal(earlier, test_key,
+                                 "create table t (id integer primary key, v "
+                                 "text); insert into t (v) values ('earlier')",
+                                 "pragma user_version = 7; update t set v = 'u'",
+                                 &stale, &stale_size, salt),
+               SQLITE_OK);
+  uint32_t sector_size = journal_sector_size(stale);
+  CHECK(stale[sector_size + 3] == 1);
+
+  // A database with other_key, and the header its next transaction wrote.
+  remove_database(source);
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(evolu_codec_open(source, &db, vfs_name, other_key,
+                                EVOLU_CODEC_PLAINTEXT_CHECKSUMS),
+               SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 200), SQLITE_OK);
+  CHECK(copy_file(source, path));
+  char sql[512];
+  snprintf(sql, sizeof sql, "%sbegin; update t set v = 'updated' || id",
+           kept_journal);
+  CHECK_EQ_INT(sqlite3_exec(db, sql, NULL, NULL, NULL), SQLITE_OK);
+  size_t size;
+  uint8_t *bytes = read_file(source_journal, &size);
+  sqlite3_close(db);
+  remove_database(source);
+  CHECK(bytes != NULL && size >= sector_size);
+  memcpy(stale, bytes, sector_size);
+  free(bytes);
+  CHECK(write_file(journal, stale, stale_size));
+  free(stale);
+
+  CHECK(evolu_codec_open(path, &db, vfs_name, test_key,
+                         EVOLU_CODEC_PLAINTEXT_CHECKSUMS) != SQLITE_OK);
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+  CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION);
+  sqlite3_close(db);
+  CHECK(file_exists(journal));
+
+  CHECK_EQ_INT(evolu_codec_open(path, &db, vfs_name, other_key,
+                                EVOLU_CODEC_PLAINTEXT_CHECKSUMS),
+               SQLITE_OK);
+  CHECK(!file_exists(journal));
+  CHECK(has_original_rows(db));
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  remove_database(path);
+}
+
+/*
+ * A plaintext database's transaction kept its journal, page 1 last, and an
+ * encrypted database replaced the file and crashed over it, so the earlier
+ * plaintext page-1 record follows the crash's encrypted records. The rollback
+ * stops at the first encrypted record, whose checksum differs, so without a
+ * key that page-1 record can't stand for the journal, and the open keeps it.
+ */
+static void codec_keyless_open_keeps_a_hot_journal_past_a_stale_plaintext_tail(
+    void) {
+  CHECK(set_up());
+  static const int flags[] = {0, EVOLU_CODEC_PLAINTEXT_CHECKSUMS};
+  char crash[512];
+  char crash_copy[512];
+  char journal[600];
+  char journal_copy[600];
+  path_of(crash, "plaintext-tail.db");
+  path_of(crash_copy, "plaintext-tail-copy.db");
+  snprintf(journal, sizeof journal, "%s-journal", crash);
+  snprintf(journal_copy, sizeof journal_copy, "%s-copy", journal);
+  for (size_t f = 0; f < sizeof flags / sizeof flags[0]; f++) {
+    CHECK_EQ_INT(crash_over_a_kept_journal(crash, flags[f], NULL, test_key,
+                                           "update t set v = 'updated' || id",
+                                           NULL),
+                 SQLITE_OK);
+    CHECK(copy_file(crash, crash_copy) && copy_file(journal, journal_copy));
+
+    sqlite3 *db = NULL;
+    CHECK_EQ_INT(evolu_codec_open(crash, &db, vfs_name, NULL, flags[f]),
+                 SQLITE_CANTOPEN);
+    evolu_codec_failure failure;
+    CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+    CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED);
+    sqlite3_close(db);
+    CHECK(same_files(crash, crash_copy));
+    CHECK(same_files(journal, journal_copy));
+
+    CHECK_EQ_INT(evolu_codec_open(crash, &db, vfs_name, test_key, flags[f]),
+                 SQLITE_OK);
+    CHECK(!file_exists(journal));
+    CHECK(has_original_rows(db));
+    CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+    remove_database(crash_copy);
+    unlink(journal_copy);
+  }
+}
+
+/* Writes value big-endian over the 4 bytes at offset in the file at path. */
+static int write_be32_at(const char *path, size_t offset, uint32_t value) {
+  uint8_t bytes[4] = {(uint8_t)(value >> 24), (uint8_t)(value >> 16),
+                      (uint8_t)(value >> 8), (uint8_t)value};
+  int ok = 1;
+  for (size_t i = 0; ok && i < sizeof bytes; i++)
+    ok = fill_bytes(path, offset + i, 1, bytes[i]);
+  return ok;
+}
+
+/* The big-endian u32 at offset in the file at path, or 0. */
+static uint32_t read_be32_at(const char *path, size_t offset) {
+  size_t size;
+  uint8_t *bytes = read_file(path, &size);
+  uint32_t value = 0;
+  if (bytes != NULL && offset + 4 <= size)
+    value = (uint32_t)bytes[offset] << 24 | (uint32_t)bytes[offset + 1] << 16 |
+            (uint32_t)bytes[offset + 2] << 8 | bytes[offset + 3];
+  free(bytes);
+  return value;
+}
+
+/*
+ * A hot journal whose first header counts no record plays none, so the
+ * plaintext page-1 record that follows it can't stand for the journal of an
+ * encrypted database, which a keyless open then keeps.
+ */
+static void codec_keyless_open_reads_no_record_past_a_count_of_0(void) {
+  CHECK(set_up());
+  char path[512];
+  char plain[512];
+  char journal[600];
+  char plain_journal[600];
+  char journal_copy[600];
+  path_of(path, "count-0.db");
+  path_of(plain, "count-0-plain.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  snprintf(plain_journal, sizeof plain_journal, "%s-journal", plain);
+  snprintf(journal_copy, sizeof journal_copy, "%s-copy", journal);
+  CHECK_EQ_INT(create_crashed_database(path, test_key), SQLITE_OK);
+  // A plaintext journal of page 1 first, whose first header then counts none.
+  CHECK_EQ_INT(create_crashed_database_with(plain, NULL,
+                                            "pragma user_version = 7; update "
+                                            "t set v = 'updated' || id"),
+               SQLITE_OK);
+  uint32_t sector_size = read_be32_at(plain_journal, 20);
+  CHECK(read_be32_at(plain_journal, sector_size) == 1);
+  CHECK(write_be32_at(plain_journal, 8, 0));
+  CHECK(copy_file(plain_journal, journal) && copy_file(journal, journal_copy));
+  remove_database(plain);
+
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, NULL, &db), SQLITE_CANTOPEN);
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+  CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED);
+  sqlite3_close(db);
+  CHECK(same_files(journal, journal_copy));
+  remove_database(path);
+  unlink(journal_copy);
+}
+
+/*
+ * The rollback of a plaintext journal whose page-1 record is in a later
+ * segment, after spills began new segments, each with its own checksum
+ * initializer, restores a page 1 a crash tore.
+ */
+static void codec_keyless_rollback_restores_page_1_from_a_later_segment(void) {
+  CHECK(set_up());
+  char path[512];
+  char journal[600];
+  path_of(path, "later-segment.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  CHECK_EQ_INT(create_crashed_database_with(
+                   path, NULL,
+                   "update t set v = 'updated' || id where id <= 100;"
+                   "pragma user_version = 7; update t set v = 'updated' || id"),
+               SQLITE_OK);
+  CHECK(fill_bytes(path, 0, 16, 0));
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, NULL, &db), SQLITE_OK);
+  CHECK(!file_exists(journal));
+  CHECK(has_original_rows(db));
+  CHECK_EQ_INT(query_int(db, "pragma user_version"), 0);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  remove_database(path);
+}
+
+/*
+ * The rollback stops at a record numbered 0 or with the lock-byte page, and
+ * skips one numbered above the original size without checking its checksum,
+ * so a plaintext page-1 record past the first doesn't stand for the journal,
+ * and past the second does.
+ */
+static void codec_keyless_open_stops_where_the_rollback_stops(void) {
+  CHECK(set_up());
+  char path[512];
+  char journal[600];
+  char journal_copy[600];
+  path_of(path, "rollback-stops.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  snprintf(journal_copy, sizeof journal_copy, "%s-copy", journal);
+  for (int i = 0; i < 3; i++) {
+    CHECK_EQ_INT(create_crashed_database_with(
+                     path, NULL,
+                     "update t set v = 'updated' || id where id <= 100;"
+                     "pragma user_version = 7; update t set v = 'updated' || "
+                     "id"),
+                 SQLITE_OK);
+    CHECK(fill_bytes(path, 0, 16, 0));
+    uint32_t sector_size = read_be32_at(journal, 20);
+    uint32_t page_size = read_be32_at(journal, 24);
+    uint32_t original_size = read_be32_at(journal, 16);
+    CHECK(read_be32_at(journal, sector_size) != 1 && original_size > 0);
+    uint32_t numbers[] = {0, 0x40000000u / page_size + 1, original_size + 1};
+    CHECK(write_be32_at(journal, sector_size, numbers[i]));
+    sqlite3 *db = NULL;
+    if (i < 2) {
+      CHECK(copy_file(journal, journal_copy));
+      CHECK_EQ_INT(open_db(path, NULL, &db), SQLITE_CANTOPEN);
+      sqlite3_close(db);
+      CHECK(same_files(journal, journal_copy));
+      unlink(journal_copy);
+    } else {
+      // Playback skips the record, so its page keeps the spilled update.
+      CHECK(flip_bit(journal, sector_size + 4 + page_size));
+      CHECK_EQ_INT(open_db(path, NULL, &db), SQLITE_OK);
+      CHECK(!file_exists(journal));
+      CHECK_EQ_INT(query_int(db, "select count(*) from pragma_integrity_check "
+                                 "where integrity_check = 'ok'"),
+                   1);
+      CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+    }
+    remove_database(path);
+  }
+}
+
 static void codec_register_is_idempotent_and_needs_the_inner_vfs(void) {
   CHECK(set_up());
   CHECK_EQ_INT(evolu_codec_register(vfs_name, NULL), SQLITE_OK);
@@ -2819,7 +3477,8 @@ static void codec_database_refuses_a_backup_from_a_wal_database(void) {
   refuses_a_backup_from_a_wal_database(NULL);
 }
 
-static void remove_directory(void) {
+/* Removes every database the tests create. */
+static void remove_databases(void) {
   static const char *const names[] = {
       "round-trip.db",     "other-key.db",          "other-key-copy.db",
       "plaintext.db",      "secure-delete.db",      "vacuum.db",
@@ -2844,13 +3503,24 @@ static void remove_directory(void) {
       "replaced.db",       "replaced-source.db",    "unproven-then-own.db",
       "unproven-then-own-source.db", "nested.db", "nested-other.db",
       "nested-plain.db", "minimal.db", "never-wal.db", "wal-backup.db",
-      "wal-backup-source.db"};
+      "wal-backup-source.db", "stale-tail-work.db", "stale-tail-copy.db",
+      "kept-journal-crash.db", "plaintext-tail.db"};
   char path[512];
   for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
     path_of(path, names[i]);
     remove_database(path);
   }
-  rmdir(directory);
+}
+
+/*
+ * Every database the tests create is in remove_databases' list, so the
+ * temporary directory is empty after it and its removal succeeds.
+ */
+static void codec_tests_remove_every_database_they_create(void) {
+  CHECK(set_up());
+  remove_databases();
+  CHECK_EQ_INT(rmdir(directory), 0);
+  directory[0] = '\0';
 }
 
 void codec_suite(void) {
@@ -2881,6 +3551,7 @@ void codec_suite(void) {
   RUN(codec_opens_sqlcipher_files_only_when_allowed_whatever_their_page_size_bytes);
   RUN(codec_crashes_and_rollbacks_restore_every_layout_and_journal_mode);
   RUN(codec_crashes_roll_back_over_4096_byte_sectors);
+  RUN(codec_crashes_roll_back_over_stale_tails_of_kept_journals);
   RUN(codec_open_registers_the_core_functions);
   RUN(codec_journal_stores_writes_of_another_size_than_its_pages);
   RUN(codec_refuses_keying_through_sql);
@@ -2907,5 +3578,17 @@ void codec_suite(void) {
   RUN(codec_keeps_the_first_failure_until_taken);
   RUN(codec_rolls_back_a_hot_journal_that_stores_no_plaintext);
   RUN(codec_hot_journal_survives_a_wrong_key_and_no_key);
-  if (directory[0] != '\0') remove_directory();
+  RUN(codec_earlier_key_keeps_the_hot_journal_of_a_replacing_database);
+  RUN(codec_rollback_of_a_new_database_takes_no_stale_salt);
+  RUN(codec_wrong_key_keeps_a_journal_of_only_stale_records);
+  RUN(codec_keyless_open_keeps_a_hot_journal_past_a_stale_plaintext_tail);
+  RUN(codec_keyless_open_reads_no_record_past_a_count_of_0);
+  RUN(codec_keyless_rollback_restores_page_1_from_a_later_segment);
+  RUN(codec_keyless_open_stops_where_the_rollback_stops);
+  RUN(codec_tests_remove_every_database_they_create);
+  // Also when a filter skipped that test or it failed.
+  if (directory[0] != '\0') {
+    remove_databases();
+    rmdir(directory);
+  }
 }

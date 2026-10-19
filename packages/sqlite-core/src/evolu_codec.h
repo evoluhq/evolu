@@ -134,13 +134,21 @@
  *   would roll back, whose first byte isn't 0 and whose first header stores an
  *   original size other than 0 pages, takes the salt from the first of these
  *   that authenticates: the database's page 1 at the page size it stores and,
- *   for SQLCipher's files, at 4096, and, for a page 1 a crash tore, the
- *   journal's first page-1 record, which comes second because a journal kept
+ *   for SQLCipher's files, at 4096, and, for a page 1 a crash tore, the first
+ *   page-1 record the rollback reaches with that record's salt. A journal kept
  *   by journal_mode = PERSIST or locking_mode = EXCLUSIVE can hold an earlier
- *   database's records past its own. When neither does, it takes the
+ *   database's records past its own, so that record and every record before
+ *   it must authenticate with its salt, and match its checksum where SQLite
+ *   compares it, before any of them changes the codec. The codec reads the
+ *   journal as SQLite's rollback does: segments of the records each header
+ *   counts, 0 for none and 0xFFFFFFFF for those up to the end of the file, up
+ *   to a record numbered 0 or with the lock-byte page, one the file doesn't
+ *   hold whole or a checksum that differs, skipping a page above the original
+ *   size without its checksum. When neither authenticates, it takes the
  *   database's first 16 bytes while no page 1 has proven the key, and keeps
  *   the salt once one has, because a database keeps its salt while it has
- *   pages and a tear must not replace it.
+ *   pages and a tear must not replace it. Only this gives a journal's records
+ *   their salt: a page-1 record with another salt never does.
  * - A wrong key, with which no page 1 authenticates, restores no page of a hot
  *   journal: SQLite only truncates the database to the original size its
  *   header stores, dropping pages the transaction appended, before the
@@ -157,8 +165,9 @@
  *   leaving the transaction half-applied. So opening a hot journal of an
  *   unkeyed database whose first 16 bytes aren't SQLite's header string fails
  *   with SQLITE_CANTOPEN, recording EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED,
- *   unless the journal's first page-1 record starts with that string, as a
- *   plaintext database's does when a crash tore its page 1.
+ *   unless the first page-1 record the rollback reaches, with every record
+ *   before it matching its checksum, starts with that string, as a plaintext
+ *   database's does when a crash tore its page 1.
  *   SQLite counts a journal it can't open as hot, and its rollback then can't
  *   open it either, so the statement fails and the journal stays for the key.
  *

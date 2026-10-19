@@ -46,8 +46,9 @@
  * heap, and wipes them when it's destroyed. Temporaries holding plaintext, key
  * material or MAC state are wiped before a function returns.
  *
- * evolu_page_codec_create, evolu_page_encrypt, evolu_page_decrypt and
- * evolu_page_use_salt run with DIT on where the CPU has it (evolu_crypto.h).
+ * evolu_page_codec_create, evolu_page_encrypt, evolu_page_decrypt,
+ * evolu_page_decrypt_with_salt and evolu_page_use_salt run with DIT on where
+ * the CPU has it (evolu_crypto.h).
  *
  * A codec belongs to one database file and is used from one thread at a time.
  */
@@ -122,6 +123,18 @@ evolu_page_result evolu_page_encrypt(evolu_page_codec *codec,
  */
 int evolu_page_decrypt(evolu_page_codec *codec, uint32_t page_number,
                        uint8_t *page, size_t size);
+
+/*
+ * Authenticates a whole page with the HMAC key of the first
+ * EVOLU_PAGE_SALT_SIZE bytes of salt and decrypts it in place, returning 1, as
+ * evolu_page_decrypt does with the codec's salt, but without changing the
+ * codec: a page 1 gives no salt, records no layout and proves no key. Returns
+ * 0, leaving the page as it was, also for a page 1 that doesn't store salt.
+ * It checks a salt before a codec takes it.
+ */
+int evolu_page_decrypt_with_salt(const evolu_page_codec *codec,
+                                 const uint8_t *salt, uint32_t page_number,
+                                 uint8_t *page, size_t size);
 
 /*
  * Takes the first EVOLU_PAGE_SALT_SIZE bytes of salt as the salt, as a

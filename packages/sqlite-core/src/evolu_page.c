@@ -224,6 +224,43 @@ evolu_page_result evolu_page_encrypt(evolu_page_codec *codec,
   return result;
 }
 
+/*
+ * Whether a page authenticates with hmac_key, setting *layout to the layout it
+ * authenticated in: the codec's, or, for a page 1 of a codec that has none,
+ * the first that authenticates.
+ */
+static int authenticate(const evolu_page_codec *codec,
+                        const evolu_hmac_sha512_key *hmac_key,
+                        uint32_t page_number, const uint8_t *page, size_t size,
+                        evolu_page_layout *layout) {
+  *layout = codec->layout;
+  if (page_number != 1) {
+    uint8_t tag[HMAC_SIZE];
+    compute_hmac(hmac_key, page_number, 0, page, size, tag);
+    return evolu_constant_time_equal(
+        tag, page + size - EVOLU_PAGE_RESERVED_SIZE + IV_SIZE, sizeof tag);
+  }
+  // A file keeps its layout.
+  if (*layout != EVOLU_PAGE_LAYOUT_UNKNOWN)
+    return is_page1_authentic(hmac_key, *layout, page, size);
+  *layout = EVOLU_PAGE_LAYOUT_MULTIPLE_CIPHERS;
+  if (is_page1_authentic(hmac_key, *layout, page, size)) return 1;
+  if (!(codec->flags & EVOLU_PAGE_ALLOW_SQLCIPHER_LAYOUT)) return 0;
+  *layout = EVOLU_PAGE_LAYOUT_SQLCIPHER;
+  return is_page1_authentic(hmac_key, *layout, page, size);
+}
+
+/* Decrypts in place a page that authenticated in layout. */
+static void decrypt_authentic(const evolu_page_codec *codec,
+                              evolu_page_layout layout, uint32_t page_number,
+                              uint8_t *page, size_t size) {
+  size_t end = size - EVOLU_PAGE_RESERVED_SIZE;
+  size_t start = encrypted_start(layout, page_number);
+  decrypt_cbc_cs3(&codec->aes, page + end, page + start, end - start);
+  if (page_number == 1)
+    memcpy(page, sqlite_header_string, sizeof sqlite_header_string);
+}
+
 static int decrypt_page(evolu_page_codec *codec, uint32_t page_number,
                         uint8_t *page, size_t size) {
   if (!evolu_page_is_size(size)) return 0;
@@ -240,25 +277,9 @@ static int decrypt_page(evolu_page_codec *codec, uint32_t page_number,
     return 0;
   }
 
-  size_t end = size - EVOLU_PAGE_RESERVED_SIZE;
-  evolu_page_layout layout = codec->layout;
-  int is_authentic;
-  if (page_number != 1) {
-    uint8_t tag[HMAC_SIZE];
-    compute_hmac(hmac_key, page_number, 0, page, size, tag);
-    is_authentic =
-        evolu_constant_time_equal(tag, page + end + IV_SIZE, sizeof tag);
-  } else if (layout != EVOLU_PAGE_LAYOUT_UNKNOWN) {
-    // A file keeps its layout.
-    is_authentic = is_page1_authentic(hmac_key, layout, page, size);
-  } else {
-    layout = EVOLU_PAGE_LAYOUT_MULTIPLE_CIPHERS;
-    is_authentic = is_page1_authentic(hmac_key, layout, page, size);
-    if (!is_authentic && (codec->flags & EVOLU_PAGE_ALLOW_SQLCIPHER_LAYOUT)) {
-      layout = EVOLU_PAGE_LAYOUT_SQLCIPHER;
-      is_authentic = is_page1_authentic(hmac_key, layout, page, size);
-    }
-  }
+  evolu_page_layout layout;
+  int is_authentic =
+      authenticate(codec, hmac_key, page_number, page, size, &layout);
   if (is_other_salt) {
     // A page 1 that fails to authenticate, such as a stale page in a journal
     // or one a power loss tore, would give its salt to every page written
@@ -268,20 +289,44 @@ static int decrypt_page(evolu_page_codec *codec, uint32_t page_number,
   }
   if (!is_authentic) return 0;
 
-  size_t start = encrypted_start(layout, page_number);
-  decrypt_cbc_cs3(&codec->aes, page + end, page + start, end - start);
+  decrypt_authentic(codec, layout, page_number, page, size);
   if (page_number == 1) {
-    memcpy(page, sqlite_header_string, sizeof sqlite_header_string);
     codec->is_key_proven = 1;
     codec->layout = layout;
   }
   return 1;
 }
 
+static int decrypt_page_with_salt(const evolu_page_codec *codec,
+                                  const uint8_t *salt, uint32_t page_number,
+                                  uint8_t *page, size_t size) {
+  if (!evolu_page_is_size(size)) return 0;
+  // A page 1 stores its own salt, so it takes no other.
+  if (page_number == 1 && memcmp(page, salt, EVOLU_PAGE_SALT_SIZE) != 0)
+    return 0;
+  evolu_hmac_sha512_key hmac_key;
+  derive_hmac_key(codec->key, salt, &hmac_key);
+  evolu_page_layout layout;
+  int is_authentic =
+      authenticate(codec, &hmac_key, page_number, page, size, &layout);
+  evolu_hmac_sha512_key_wipe(&hmac_key);
+  if (is_authentic) decrypt_authentic(codec, layout, page_number, page, size);
+  return is_authentic;
+}
+
 int evolu_page_decrypt(evolu_page_codec *codec, uint32_t page_number,
                        uint8_t *page, size_t size) {
   unsigned dit = evolu_dit_begin();
   int decrypted = decrypt_page(codec, page_number, page, size);
+  evolu_dit_end(dit);
+  return decrypted;
+}
+
+int evolu_page_decrypt_with_salt(const evolu_page_codec *codec,
+                                 const uint8_t *salt, uint32_t page_number,
+                                 uint8_t *page, size_t size) {
+  unsigned dit = evolu_dit_begin();
+  int decrypted = decrypt_page_with_salt(codec, salt, page_number, page, size);
   evolu_dit_end(dit);
   return decrypted;
 }
