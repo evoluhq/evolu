@@ -46,7 +46,7 @@
 #include <sys/random.h>
 #include <sys/types.h>
 #elif defined(__wasm__)
-#error "evolu_random_bytes on wasm (crypto.getRandomValues) comes in Phase 1"
+#include <unistd.h>
 #elif defined(_WIN32)
 #error "evolu_random_bytes on Windows (BCryptGenRandom) comes in Phase 2"
 #else
@@ -107,6 +107,16 @@ evolu_crypto_result evolu_random_bytes(uint8_t *output, size_t size) {
     defined(__OpenBSD__) || defined(__NetBSD__)
   // The kernel-seeded generator never fails and needs no file descriptor.
   arc4random_buf(output, size);
+#elif defined(__wasm__)
+  // Emscripten's getentropy takes at most 256 bytes and calls WASI's
+  // random_get, the wasm's one import for randomness, which the loader
+  // implements with crypto.getRandomValues and fails when that throws.
+  while (size > 0) {
+    size_t chunk = size < 256 ? size : 256;
+    if (getentropy(output, chunk) != 0) return EVOLU_CRYPTO_RANDOM_FAILED;
+    output += chunk;
+    size -= chunk;
+  }
 #else
   while (size > 0) {
     // getrandom blocks until the kernel's pool is seeded, then returns at
@@ -228,6 +238,17 @@ const evolu_aes256_impl *evolu_aes256_hardware(void) {
 #ifdef EVOLU_TEST_HOOKS
 int evolu_test_dit_missed;
 int evolu_test_random_fails;
+int evolu_test_allocations_left = -1;
+
+int evolu_test_allocation_fails(void) {
+  if (evolu_test_allocations_left == -1) return 0;
+  if (evolu_test_allocations_left > 0) {
+    evolu_test_allocations_left--;
+    return 0;
+  }
+  evolu_test_allocations_left = -2;
+  return 1;
+}
 #endif
 
 void evolu_aes256_init(evolu_aes256 *aes,

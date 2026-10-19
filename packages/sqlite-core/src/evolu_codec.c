@@ -3,8 +3,20 @@
 #include "evolu_crypto.h"
 #include "evolu_skiplist.h"
 
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+
+// The failure's layout, which bindings read from memory, as the web's reads
+// it from wasm, where the wasm types of its pointer can't pin it.
+_Static_assert(sizeof(evolu_codec_failure_type) == 4,
+               "evolu_codec_failure_type is 4 bytes");
+_Static_assert(sizeof(evolu_codec_failure) == 8,
+               "evolu_codec_failure is 8 bytes");
+_Static_assert(offsetof(evolu_codec_failure, type) == 0,
+               "evolu_codec_failure's type is at 0");
+_Static_assert(offsetof(evolu_codec_failure, page_number) == 4,
+               "evolu_codec_failure's page number is at 4");
 
 static const uint8_t sqlite_header_string[16] = "SQLite format 3";
 
@@ -151,6 +163,9 @@ static void record_failure(CodecFile *database, evolu_codec_failure_type type,
 /* The database's scratch buffer of at least size bytes, or NULL. */
 static uint8_t *scratch_of(CodecFile *database, size_t size) {
   if (database->scratch_size >= size) return database->scratch;
+#ifdef EVOLU_TEST_HOOKS
+  if (evolu_test_allocation_fails()) return NULL;
+#endif
   uint8_t *scratch = malloc(size);
   if (scratch == NULL) return NULL;
   free(database->scratch);
@@ -799,10 +814,19 @@ static int read_reachable_page1(sqlite3_file *journal, sqlite3_int64 size,
 }
 
 /*
+ * What opening a journal returns for a check that failed with rc: SQLITE_NOMEM
+ * for a memory error, which a retry can pass, and SQLITE_CANTOPEN otherwise.
+ */
+static int journal_check_error(int rc) {
+  return rc == SQLITE_IOERR_NOMEM ? SQLITE_NOMEM : SQLITE_CANTOPEN;
+}
+
+/*
  * The checks of opening an existing journal, before SQLite rolls it back:
  * the salt for its records' HMAC key, and the refusal of a hot journal of an
  * unkeyed database whose first bytes aren't SQLite's header string, unless its
- * page-1 record is plaintext. Returns SQLITE_OK or SQLITE_CANTOPEN.
+ * page-1 record is plaintext. Returns SQLITE_OK, SQLITE_NOMEM or
+ * SQLITE_CANTOPEN.
  */
 static int check_journal(CodecFile *database, CodecFile *journal_file) {
   sqlite3_file *journal = journal_file->inner;
@@ -841,9 +865,8 @@ static int check_journal(CodecFile *database, CodecFile *journal_file) {
     // EXCLUSIVE can hold an earlier database's records past its own, which the
     // rollback never reaches.
     int is_plaintext;
-    if (find_plaintext_page1(journal, journal_size, database, &is_plaintext) !=
-        SQLITE_OK)
-      return SQLITE_CANTOPEN;
+    rc = find_plaintext_page1(journal, journal_size, database, &is_plaintext);
+    if (rc != SQLITE_OK) return journal_check_error(rc);
     if (is_plaintext) return SQLITE_OK;
     record_failure(database, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED, 0);
     return SQLITE_CANTOPEN;
@@ -857,15 +880,14 @@ static int check_journal(CodecFile *database, CodecFile *journal_file) {
   // first record of this journal's own transaction.
   size_t page_size;
   int decrypted = decrypt_page1(database, &page_size, &rc);
-  if (decrypted < 0) return SQLITE_CANTOPEN;
+  if (decrypted < 0) return journal_check_error(rc);
   if (decrypted) {
     evolu_wipe(database->scratch, page_size);
     return SQLITE_OK;
   }
   size_t record_page_size;
-  if (read_reachable_page1(journal, journal_size, database,
-                           &record_page_size) != SQLITE_OK)
-    return SQLITE_CANTOPEN;
+  rc = read_reachable_page1(journal, journal_size, database, &record_page_size);
+  if (rc != SQLITE_OK) return journal_check_error(rc);
   if (record_page_size != 0) {
     int authenticated =
         evolu_page_decrypt(codec, 1, database->scratch, record_page_size);
@@ -1010,9 +1032,13 @@ int evolu_codec_register(const char *name, const char *inner_name) {
   if (name == NULL) return SQLITE_MISUSE;
   int rc = sqlite3_initialize();
   if (rc != SQLITE_OK) return rc;
-  // NULL, which enters nothing, in a build without threads.
+  // A build with SQLITE_THREADSAFE=0, as the wasm, has no mutex functions,
+  // and its single thread needs none. The core's files see only sqlite3.h,
+  // where the macro is undefined natively, which keeps the mutex there.
+#if !defined(SQLITE_THREADSAFE) || SQLITE_THREADSAFE
   sqlite3_mutex *mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_STATIC_APP1);
   sqlite3_mutex_enter(mutex);
+#endif
   sqlite3_vfs *inner = sqlite3_vfs_find(inner_name);
   sqlite3_vfs *existing = sqlite3_vfs_find(name);
   size_t name_size = strlen(name) + 1;
@@ -1028,6 +1054,10 @@ int evolu_codec_register(const char *name, const char *inner_name) {
     rc = existing->xOpen == codec_open && ((CodecVfs *)existing)->inner == inner
              ? SQLITE_OK
              : SQLITE_MISUSE;
+#ifdef EVOLU_TEST_HOOKS
+  } else if (evolu_test_allocation_fails()) {
+    rc = SQLITE_NOMEM;
+#endif
   } else if ((vfs = calloc(1, sizeof *vfs + name_size)) == NULL) {
     rc = SQLITE_NOMEM;
   } else {
@@ -1055,7 +1085,9 @@ int evolu_codec_register(const char *name, const char *inner_name) {
     rc = sqlite3_vfs_register(&vfs->base, 0);
     if (rc != SQLITE_OK) free(vfs);
   }
+#if !defined(SQLITE_THREADSAFE) || SQLITE_THREADSAFE
   sqlite3_mutex_leave(mutex);
+#endif
   return rc;
 }
 

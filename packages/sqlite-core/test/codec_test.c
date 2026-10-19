@@ -2643,6 +2643,174 @@ static void codec_write_without_randomness_writes_nothing(void) {
   CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
 }
 
+/*
+ * The codec's own allocations, the C library's rather than SQLite's, which
+ * SQLite's heap limit can't fail. Opening an existing database allocates the
+ * page codec and the scratch buffer, which page 1's read takes: each fails the
+ * open with SQLITE_NOMEM, records no failure and leaves the database as it
+ * was.
+ */
+static void codec_fails_cleanly_when_its_own_allocations_fail(void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "own-allocations.db");
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 20), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+
+  int failed = 0;
+  for (int allowed = 0;; allowed++) {
+    db = NULL;
+    evolu_test_allocations_left = allowed;
+    int rc = open_db(path, test_key, &db);
+    int is_exhausted = evolu_test_allocations_left < 0;
+    evolu_test_allocations_left = -1;
+    evolu_codec_failure failure = {EVOLU_CODEC_FAILURE_NONE, 0};
+    if (db != NULL) evolu_codec_take_failure(db, &failure);
+    sqlite3_close(db);
+    CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_NONE);
+    if (!is_exhausted) {
+      CHECK_EQ_INT(rc, SQLITE_OK);
+      break;
+    }
+    failed++;
+    CHECK_EQ_INT(rc & 0xff, SQLITE_NOMEM);
+    CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+    CHECK_EQ_INT(query_int(db, "select count(*) from t"), 20);
+    CHECK_EQ_INT(query_int(db, "select count(*) from pragma_integrity_check "
+                               "where integrity_check = 'ok'"),
+                 1);
+    CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  }
+  // The page codec's and the scratch buffer's.
+  CHECK_EQ_INT(failed, 2);
+
+  // The codec VFS's, which registers nothing, so a retry succeeds.
+  evolu_test_allocations_left = 0;
+  CHECK_EQ_INT(evolu_codec_register("evolu-codec-no-memory", NULL),
+               SQLITE_NOMEM);
+  evolu_test_allocations_left = -1;
+  CHECK(sqlite3_vfs_find("evolu-codec-no-memory") == NULL);
+  CHECK_EQ_INT(evolu_codec_register("evolu-codec-no-memory", NULL), SQLITE_OK);
+  remove_database(path);
+}
+
+/*
+ * A new database's page 1 allocates nothing, so its first write allocates the
+ * scratch buffer: that failure fails the write with SQLITE_NOMEM, records no
+ * failure and leaves the database empty, and the connection then writes.
+ */
+static void codec_fails_cleanly_when_a_new_databases_first_write_cant_allocate(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "own-allocations-new.db");
+  int failed_writes = 0;
+  for (int allowed = 0;; allowed++) {
+    remove_database(path);
+    sqlite3 *db = NULL;
+    evolu_test_allocations_left = allowed;
+    int rc = open_db(path, test_key, &db);
+    int is_open = rc == SQLITE_OK;
+    if (is_open) rc = create_rows(db, 20);
+    int is_exhausted = evolu_test_allocations_left < 0;
+    evolu_test_allocations_left = -1;
+    evolu_codec_failure failure = {EVOLU_CODEC_FAILURE_NONE, 0};
+    if (db != NULL) evolu_codec_take_failure(db, &failure);
+    CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_NONE);
+    if (!is_exhausted) {
+      CHECK_EQ_INT(rc, SQLITE_OK);
+      CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+      break;
+    }
+    CHECK_EQ_INT(rc & 0xff, SQLITE_NOMEM);
+    if (is_open) {
+      failed_writes++;
+      CHECK_EQ_INT(query_int(db, "select count(*) from sqlite_schema"), 0);
+      CHECK_EQ_INT(create_rows(db, 20), SQLITE_OK);
+      CHECK_EQ_INT(query_int(db, "select count(*) from t"), 20);
+    }
+    CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  }
+  CHECK_EQ_INT(failed_writes, 1);
+  remove_database(path);
+}
+
+/*
+ * Opening a database with a hot journal checks the journal before SQLite rolls
+ * it back, allocating the scratch buffer where page 1's read didn't: with the
+ * key when a crash tore page 1's salt, in page 1's decryption, or also its
+ * page size, in the walk to the journal's page-1 record, and without it when a
+ * crash tore a plaintext page 1. Each failure fails the open with
+ * SQLITE_NOMEM, records no failure and leaves the database and its journal
+ * byte-identical, and the next open rolls the journal back.
+ */
+static void codec_fails_cleanly_when_checking_a_hot_journal_cant_allocate(
+    void) {
+  CHECK(set_up());
+  static const struct {
+    const uint8_t *key;
+    size_t torn;
+    int allocations;
+  } cases[] = {
+      // The page codec's, then the scratch buffer's.
+      {test_key, 16, 2},
+      {test_key, 18, 2},
+      // The scratch buffer's alone.
+      {NULL, 16, 1},
+  };
+  char path[512];
+  char journal[600];
+  char copy[512];
+  char journal_copy[600];
+  path_of(path, "own-allocations-hot.db");
+  path_of(copy, "own-allocations-hot-copy.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  snprintf(journal_copy, sizeof journal_copy, "%s-journal", copy);
+  for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+    const uint8_t *key = cases[i].key;
+    CHECK_EQ_INT(create_crashed_database_with(path, key,
+                                              "pragma user_version = 7; update "
+                                              "t set v = 'updated' || id"),
+                 SQLITE_OK);
+    CHECK(fill_bytes(path, 0, cases[i].torn, 0));
+    CHECK(copy_file(path, copy));
+    CHECK(copy_file(journal, journal_copy));
+    int failed = 0;
+    for (int allowed = 0;; allowed++) {
+      sqlite3 *db = NULL;
+      evolu_test_allocations_left = allowed;
+      int rc = open_db(path, key, &db);
+      int is_exhausted = evolu_test_allocations_left < 0;
+      evolu_test_allocations_left = -1;
+      evolu_codec_failure failure = {EVOLU_CODEC_FAILURE_NONE, 0};
+      if (db != NULL) evolu_codec_take_failure(db, &failure);
+      sqlite3_close(db);
+      CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_NONE);
+      if (!is_exhausted) {
+        CHECK_EQ_INT(rc, SQLITE_OK);
+        break;
+      }
+      failed++;
+      CHECK_EQ_INT(rc & 0xff, SQLITE_NOMEM);
+      CHECK(same_files(path, copy));
+      CHECK(same_files(journal, journal_copy));
+    }
+    CHECK_EQ_INT(failed, cases[i].allocations);
+
+    sqlite3 *db = NULL;
+    CHECK_EQ_INT(open_db(path, key, &db), SQLITE_OK);
+    CHECK(!file_exists(journal));
+    CHECK(has_original_rows(db));
+    CHECK_EQ_INT(query_int(db, "pragma user_version"), 0);
+    CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  }
+  remove_database(path);
+  remove_database(copy);
+}
+
 /* The codec keeps the first failure it records until it's taken. */
 static void codec_keeps_the_first_failure_until_taken(void) {
   CHECK(set_up());
@@ -3504,7 +3672,9 @@ static void remove_databases(void) {
       "unproven-then-own-source.db", "nested.db", "nested-other.db",
       "nested-plain.db", "minimal.db", "never-wal.db", "wal-backup.db",
       "wal-backup-source.db", "stale-tail-work.db", "stale-tail-copy.db",
-      "kept-journal-crash.db", "plaintext-tail.db"};
+      "kept-journal-crash.db", "plaintext-tail.db", "own-allocations.db",
+      "own-allocations-new.db", "own-allocations-hot.db",
+      "own-allocations-hot-copy.db"};
   char path[512];
   for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
     path_of(path, names[i]);
@@ -3576,6 +3746,9 @@ void codec_suite(void) {
   RUN(codec_runs_its_crypto_with_dit);
   RUN(codec_write_without_randomness_writes_nothing);
   RUN(codec_keeps_the_first_failure_until_taken);
+  RUN(codec_fails_cleanly_when_its_own_allocations_fail);
+  RUN(codec_fails_cleanly_when_a_new_databases_first_write_cant_allocate);
+  RUN(codec_fails_cleanly_when_checking_a_hot_journal_cant_allocate);
   RUN(codec_rolls_back_a_hot_journal_that_stores_no_plaintext);
   RUN(codec_hot_journal_survives_a_wrong_key_and_no_key);
   RUN(codec_earlier_key_keeps_the_hot_journal_of_a_replacing_database);

@@ -255,9 +255,17 @@ int evolu_dit_is_set(void);
  * the XChaCha20-Poly1305 wrappers call, so the tests check that the page codec
  * and XChaCha20-Poly1305 turn DIT on around them. While
  * evolu_test_random_fails is set, evolu_random_bytes fails.
+ *
+ * evolu_test_allocations_left counts the core's own allocations from the C
+ * library, the page codec, the codec VFS and a database's scratch buffer,
+ * which SQLite's heap limit can't fail. At -1, the default, none fails. From
+ * 0 up, each takes one, and the one that finds 0 fails and leaves it at -2,
+ * where every later one fails too. evolu_test_allocation_fails takes one.
  */
 extern int evolu_test_dit_missed;
 extern int evolu_test_random_fails;
+extern int evolu_test_allocations_left;
+int evolu_test_allocation_fails(void);
 #define EVOLU_PROBE_DIT()                                                      \
   do {                                                                         \
     if (evolu_crypto_has_dit() && !evolu_dit_is_set())                         \

@@ -170,6 +170,8 @@
  *   database's does when a crash tore its page 1.
  *   SQLite counts a journal it can't open as hot, and its rollback then can't
  *   open it either, so the statement fails and the journal stays for the key.
+ *   Running out of memory while checking a journal fails its open with
+ *   SQLITE_NOMEM instead, and the journal stays too.
  *
  * ## Threat model
  *
@@ -186,7 +188,8 @@
  * primitives defend against observers sharing the CPU's caches.
  *
  * Threads: each file, like each SQLite connection, is used from one thread at
- * a time. Registration is serialized.
+ * a time. Registration is serialized, except in a build with
+ * SQLITE_THREADSAFE=0, such as the wasm, which has one thread.
  */
 #ifndef EVOLU_CODEC_H
 #define EVOLU_CODEC_H
@@ -214,17 +217,24 @@ extern "C" {
 #define EVOLU_CODEC_PLAINTEXT_CHECKSUMS 2
 #define EVOLU_CODEC_RESERVED_SIZE EVOLU_PAGE_RESERVED_SIZE
 
+/*
+ * The values are part of the ABI that bindings read, such as the web's, which
+ * reads the failure from wasm memory.
+ */
 typedef enum {
   EVOLU_CODEC_FAILURE_NONE = 0,
   /* A page, page_number, failed to authenticate. */
-  EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION,
+  EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION = 1,
   /* SQLite asked for something the codec can't keep encrypted. */
-  EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED,
+  EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED = 2,
   /* The platform's random source failed during a write. */
-  EVOLU_CODEC_FAILURE_RANDOM,
+  EVOLU_CODEC_FAILURE_RANDOM = 3,
 } evolu_codec_failure_type;
 
-/* The first failure the codec recorded for a database since it was taken. */
+/*
+ * The first failure the codec recorded for a database since it was taken: 8
+ * bytes, the type at 0 and the page number at 4, as evolu_codec.c asserts.
+ */
 typedef struct {
   evolu_codec_failure_type type;
   /* The page, for EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION; otherwise 0. */
