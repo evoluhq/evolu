@@ -36,6 +36,7 @@ import {
 } from "../../../../packages/sqlite-wasm/src/Constants.ts";
 import { allocWasm } from "../../../../packages/sqlite-wasm/src/Memory.ts";
 import type {
+  CStringPtr,
   SqliteDbPtr,
   SqliteFilePtr,
   SqliteVfsPtr,
@@ -57,7 +58,11 @@ export interface TestSahPool extends TestDatabase {
     directory?: SahPoolOptions["directory"],
   ) => Promise<Result<SahPool, SahPoolError>>;
 
-  /** Returns the pool's registered VFS, or 0 when there is none. */
+  /**
+   * Returns the pool's raw VFS, found through Evolu's codec registered under
+   * the pool's name, or the registered VFS of another name, or 0 when there is
+   * none.
+   */
   readonly findVfs: (vfsName?: string) => SqliteVfsPtr | 0;
 
   /** Calls a method of the pool's VFS, passing the VFS first. */
@@ -72,7 +77,7 @@ export interface TestSahPool extends TestDatabase {
    * returns the result code, the file and the output flags.
    */
   readonly openFile: (
-    name: string | null,
+    name: string,
     flags: number,
   ) => {
     readonly rc: number;
@@ -88,8 +93,8 @@ export interface TestSahPool extends TestDatabase {
   ) => number;
 
   /**
-   * Opens a database on the pool's VFS, or the named one, returning the handle
-   * SQLite returns even on failure.
+   * Opens a database without a key through Evolu's codec under the pool's name,
+   * or on the named VFS, returning the handle SQLite returns even on failure.
    */
   readonly openDatabase: (
     filename: string,
@@ -131,8 +136,24 @@ export const setupSahPool = async ({
 
   const pool = getOrThrow(await openPool());
 
-  const findVfs = (vfsName = pool.vfsName) =>
-    sqlite3_vfs_find(t)(t.cString(vfsName));
+  // A pool's name finds Evolu's codec, so a pool's raw VFS is reached through
+  // the codec's inner, the pointer right after its sqlite3_vfs.
+  const findVfs = (vfsName = pool.vfsName): SqliteVfsPtr | 0 => {
+    const found = sqlite3_vfs_find(t)(t.cString(vfsName));
+    if (found === 0 || !vfsName.startsWith("opfs-sahpool:")) return found;
+    const raw = t.readPtr(
+      (found + sqlite3_vfs_layout.sizeof) as WasmPtr,
+    ) as SqliteVfsPtr;
+    const { xOpen, zName } = sqlite3_vfs_layout.members;
+    assert(
+      t.text(t.readPtr((raw + zName.offset) as WasmPtr) as CStringPtr) ===
+        `evolu-raw:${vfsName}` &&
+        t.readPtr((raw + xOpen.offset) as WasmPtr) !==
+          t.readPtr((found + xOpen.offset) as WasmPtr),
+      "The pool's name finds no codec over its raw VFS",
+    );
+    return raw;
+  };
 
   const callFunction = (
     struct: number,
@@ -171,7 +192,7 @@ export const setupSahPool = async ({
     t.sqliteWasm.getHeapDataView().setInt32(pOutFlags, -1, true);
     // SQLite passes a name followed by its URI parameters, which end with an
     // empty one.
-    const zName = name == null ? 0 : t.cString(`${name}\0\0`);
+    const zName = t.cString(`${name}\0\0`);
     const rc = callVfs("xOpen", zName, pFile, flags, pOutFlags);
     return {
       rc,

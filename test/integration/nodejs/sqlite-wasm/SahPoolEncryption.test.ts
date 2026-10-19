@@ -1,29 +1,29 @@
 /**
- * The encryption of `SahPool`, on the pinned binary over a fake OPFS, through
- * its VFS: connections the C API opens while a key is registered for their
- * path.
+ * Evolu's codec over `SahPool`, on the pinned binary over a fake OPFS, through
+ * the C API: connections `evolu_codec_open` opens on the pool's name, as
+ * EncryptedFile databases do with their key and File databases without one.
  *
- * `@evolu/sqlite-wasm` 2.2.4, whose SQLite3 Multiple Ciphers encrypted the
- * databases of `@evolu/web` 3, is the reference. Keyed with the `sqlcipher`
- * scheme and the raw key, it opens what the pool writes, and the pool opens
- * what it writes. `node:crypto` checks the format independently.
+ * `@evolu/sqlite-core` tests the codec's format and rules natively. These run
+ * them in the wasm build, over the pool: the format against `node:crypto`, also
+ * at other page sizes; the hot journals a dead worker leaves, whose first bytes
+ * a crash can tear; the keyless journal check, whose read of the pool can
+ * throw; a full storage during an encrypted journal write; and a random source
+ * that throws. `@evolu/sqlite-wasm` 2.2.4, whose SQLite3 Multiple Ciphers
+ * encrypted the databases of `@evolu/web` 3, is the reference: keyed with the
+ * `sqlcipher` scheme and the raw key, it opens what the codec writes, and the
+ * codec opens what it writes.
  */
 
-import { cbc as wasmCbc, sha512 as wasmSha512 } from "@awasm/noble";
-import { hmac } from "@awasm/noble/hmac.js";
-import { cbc as nobleCbc, sha512 as nobleSha512 } from "@awasm/noble/noble.js";
-import { cbc, sha512 } from "@awasm/noble/stub.js";
 import {
   assert,
   assertEqual,
   assertEqualBytes,
+  assertErr,
   assertFalse,
-  assertInstanceOf,
-  assertThrows,
+  assertOk,
   assertTrue,
   bytesToHex,
   EncryptionKey,
-  eqUint8Array,
   getOrThrow,
   testCreateDeps,
   type NonNegativeInt,
@@ -43,25 +43,23 @@ import {
   SQLITE_CORRUPT,
   SQLITE_FCNTL_RESERVE_BYTES,
   SQLITE_FULL,
-  SQLITE_IOERR,
-  SQLITE_IOERR_READ,
-  SQLITE_IOERR_SHORT_READ,
   SQLITE_IOERR_WRITE,
   SQLITE_NOTADB,
   SQLITE_OK,
-  SQLITE_OPEN_CREATE,
-  SQLITE_OPEN_MAIN_DB,
   SQLITE_OPEN_MAIN_JOURNAL,
-  SQLITE_OPEN_READWRITE,
-  sqlite3_vfs_layout,
 } from "../../../../packages/sqlite-wasm/src/Constants.ts";
-import { SqliteVfsPath } from "../../../../packages/sqlite-wasm/src/Database.ts";
+import {
+  createSqliteDatabase,
+  SqliteVfsPath,
+  type SqliteCodecError,
+  type SqliteFailure,
+} from "../../../../packages/sqlite-wasm/src/Database.ts";
+import {
+  evolu_codec_open,
+  evolu_codec_take_failure,
+} from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import { allocWasm } from "../../../../packages/sqlite-wasm/src/Memory.ts";
-import type {
-  SqliteDbPtr,
-  SqliteFilePtr,
-  WasmPtr,
-} from "../../../../packages/sqlite-wasm/src/Pointer.ts";
+import type { SqliteDbPtr } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
 import { sahPoolHeaderSize } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
 import {
   crashAfterWrites,
@@ -94,43 +92,66 @@ const reservedSize = 80;
 const latin1 = new TextDecoder("latin1");
 
 /**
- * Opens a path of the pool on its VFS with the key registered for the open, and
- * asks for the bytes the pool reserves, as an EncryptedFile database does.
+ * Opens a path of the pool with `evolu_codec_open` on the pool's name, as an
+ * EncryptedFile database does with its key, staged in wasm memory for the open
+ * and then zeroed and freed, and a File database without one, both with
+ * plaintext checksums. Returns the result code and the connection, which the
+ * caller closes also when the open failed.
  */
+const openCodec = (t: TestSahPool, path: string, key: EncryptionKey | null) => {
+  const pKey = key == null ? 0 : getOrThrow(allocWasm(t)(32));
+  if (key != null) t.sqliteWasm.getHeapU8().set(key, pKey);
+  // 2 is EVOLU_CODEC_PLAINTEXT_CHECKSUMS.
+  const rc = evolu_codec_open(t)(
+    t.cString(path),
+    t.scratch.out,
+    t.cString(t.pool.vfsName),
+    pKey,
+    2,
+  );
+  const db = t.readPtr(t.scratch.out) as SqliteDbPtr;
+  if (pKey !== 0) {
+    t.sqliteWasm.getHeapU8().fill(0, pKey, pKey + 32);
+    sqlite3_free(t)(pKey);
+  }
+  return { rc, db };
+};
+
+/** Opens a path of the pool with a key, as {@link openCodec} does. */
 const openEncrypted = (
   t: TestSahPool,
   path = "/evolu1.db",
   key: EncryptionKey = testKey,
 ): SqliteDbPtr => {
-  const opened = (() => {
-    using _registration = t.pool.registerKey(SqliteVfsPath.orThrow(path), key);
-    return t.openDatabase(path);
-  })();
-  assertEqual(opened.rc, SQLITE_OK);
-  reserveBytes(t, opened.db);
-  return opened.db;
+  const { rc, db } = openCodec(t, path, key);
+  assertEqual(rc, SQLITE_OK);
+  return db;
 };
 
 /**
- * Asks for the bytes the pool reserves at the end of each page, or for another
- * number of them.
+ * Takes the first failure the codec recorded for the main database of a
+ * connection since the last take, as a SqliteError's cause carries it, or null
+ * for none.
  */
-const reserveBytes = (
+const takeCodecFailure = (
   t: TestSahPool,
   db: SqliteDbPtr,
-  reserved = reservedSize,
-): void => {
-  const pReserve = getOrThrow(allocWasm(t)(4));
-  t.sqliteWasm.getHeapDataView().setInt32(pReserve, reserved, true);
-  assertEqual(
-    sqlite3_file_control(t)(
-      db,
-      t.cString("main"),
-      SQLITE_FCNTL_RESERVE_BYTES,
-      pReserve,
-    ),
-    SQLITE_OK,
-  );
+): SqliteCodecError | null => {
+  const pFailure = getOrThrow(allocWasm(t)(8));
+  assertEqual(evolu_codec_take_failure(t)(db, pFailure), SQLITE_OK);
+  const view = t.sqliteWasm.getHeapDataView();
+  const type = view.getInt32(pFailure, true);
+  const pageNumber = view.getUint32(pFailure + 4, true);
+  sqlite3_free(t)(pFailure);
+  // The values of C's evolu_codec_failure_type.
+  assert(type >= 0 && type <= 3, "An unknown codec failure type");
+  return type === 0
+    ? null
+    : type === 1
+      ? { type: "SqlitePageAuthenticationError", pageNumber }
+      : type === 2
+        ? { type: "SqliteEncryptionUnsupported" }
+        : { type: "SqliteRandomSourceError" };
 };
 
 /**
@@ -244,9 +265,9 @@ const decryptCbcCs3 = (
 };
 
 /**
- * Authenticates and decrypts a page with `node:crypto`, as the module
- * documentation of `SahPool.ts` describes the format, returning it with
- * SQLite's header string restored on page 1, or null when its HMAC differs.
+ * Authenticates and decrypts a page with `node:crypto`, as `evolu_page.h` of
+ * `@evolu/sqlite-core` describes the format, returning it with SQLite's header
+ * string restored on page 1, or null when its HMAC differs.
  */
 const decryptPageWithNodeCrypto = (
   stored: Uint8Array,
@@ -304,7 +325,7 @@ const decryptWithNodeCrypto = (
   return pages;
 };
 
-test("a database opened while a key is registered for its path stores neither SQLite's header string nor a row anywhere in its file, and 2.2.4 opens it with the sqlcipher scheme and the raw key, reading every row", async () => {
+test("an encrypted database stores neither SQLite's header string nor a row anywhere in its file, and 2.2.4 opens it with the sqlcipher scheme and the raw key, reading every row", async () => {
   const t = await setupSahPool();
   const db = openEncrypted(t);
   assertEqual(t.exec(createRowsSql, db), SQLITE_OK);
@@ -320,7 +341,7 @@ test("a database opened while a key is registered for its path stores neither SQ
   reference.close();
 });
 
-test("a database 2.2.4 encrypted with the sqlcipher scheme and the raw key opens with the key registered, reads every row and takes new rows, which 2.2.4 reads", async () => {
+test("a database 2.2.4 encrypted with the sqlcipher scheme and the raw key opens with the key, reads every row and takes new rows, which 2.2.4 reads", async () => {
   const t = await setupSahPool();
   await writeWithSqliteJs(t, createRowsSql);
   assertEqual(hasPlaintext(readFile(t)), false);
@@ -338,7 +359,7 @@ test("a database 2.2.4 encrypted with the sqlcipher scheme and the raw key opens
   again.close();
 });
 
-test("every page the pool encrypts authenticates and decrypts with node:crypto to the page SQLite has: HMAC-SHA512 keyed by PBKDF2-HMAC-SHA512 of the key and the salt XOR 0x3a with 2 iterations, over the encrypted bytes, the IV and the little-endian page number, and AES-256-CBC from byte 24 of page 1, with CBC-CS3, and from byte 0 of other pages", async () => {
+test("every page the codec encrypts authenticates and decrypts with node:crypto to the page SQLite has: HMAC-SHA512 keyed by PBKDF2-HMAC-SHA512 of the key and the salt XOR 0x3a with 2 iterations, over the encrypted bytes, the IV and the little-endian page number, and AES-256-CBC from byte 24 of page 1, with CBC-CS3, and from byte 0 of other pages", async () => {
   const t = await setupSahPool();
   const db = openEncrypted(t);
   assertEqual(t.exec(createRowsSql, db), SQLITE_OK);
@@ -379,25 +400,22 @@ const flipByte = (t: TestSahPool, offset: number, path = "/evolu1.db") => {
   t.fake.writeFile(slotPath, bytes);
 };
 
-test("a database opened with another key registered fails to read page 1 with SQLITE_NOTADB, the pool records a SqlitePageAuthenticationError for page 1, and nothing is written", async () => {
+test("a database opened with another key fails to open with SQLITE_NOTADB, the codec records a SqlitePageAuthenticationError for page 1, and nothing is written", async () => {
   const t = await setupSahPool();
   const created = openEncrypted(t);
   assertEqual(t.exec(createRowsSql, created), SQLITE_OK);
   close(t, created);
   const start = t.fake.calls.length;
 
-  const db = openEncrypted(t, "/evolu1.db", otherKey);
-  t.pool.clearFailure();
-  const rc = t.exec("SELECT count(*) FROM t", db);
+  const { rc, db } = openCodec(t, "/evolu1.db", otherKey);
 
   assertEqual(
     [rc, sqlite3_extended_errcode(t)(db)],
     [SQLITE_NOTADB, SQLITE_NOTADB],
   );
-  assertEqual(t.pool.getFailure(), {
-    method: "xRead",
-    path: "/evolu1.db",
-    error: { type: "SqlitePageAuthenticationError", pageNumber: 1 },
+  assertEqual(takeCodecFailure(t, db), {
+    type: "SqlitePageAuthenticationError",
+    pageNumber: 1,
   });
   close(t, db);
   assertEqual(modifyingCalls(t.fake.calls.slice(start)), []);
@@ -406,31 +424,32 @@ test("a database opened with another key registered fails to read page 1 with SQ
   close(t, again);
 });
 
-test("a page altered in its encrypted bytes, its IV or its HMAC fails to read with SQLITE_CORRUPT, or SQLITE_NOTADB for page 1, and the pool records a SqlitePageAuthenticationError for it", async () => {
+test("a page altered in its encrypted bytes, its IV or its HMAC fails to read with SQLITE_CORRUPT, or SQLITE_NOTADB for page 1, which fails the open, and the codec records a SqlitePageAuthenticationError for it", async () => {
   const t = await setupSahPool();
   const created = openEncrypted(t);
   assertEqual(t.exec(createRowsSql, created), SQLITE_OK);
   close(t, created);
   const ivOffset = pageSize - reservedSize;
+  // The page, the offset of the flipped byte, and the codes of the open and of
+  // a read of every page.
   const offsets = [
-    [5, 4 * pageSize + 100, SQLITE_CORRUPT],
-    [5, 4 * pageSize + ivOffset + 3, SQLITE_CORRUPT],
-    [5, 4 * pageSize + ivOffset + 16 + 40, SQLITE_CORRUPT],
-    [1, 100, SQLITE_NOTADB],
-    [1, ivOffset, SQLITE_NOTADB],
+    [5, 4 * pageSize + 100, SQLITE_OK, SQLITE_CORRUPT],
+    [5, 4 * pageSize + ivOffset + 3, SQLITE_OK, SQLITE_CORRUPT],
+    [5, 4 * pageSize + ivOffset + 16 + 40, SQLITE_OK, SQLITE_CORRUPT],
+    [1, 100, SQLITE_NOTADB, SQLITE_NOTADB],
+    [1, ivOffset, SQLITE_NOTADB, SQLITE_NOTADB],
   ] as const;
 
-  for (const [pageNumber, offset, code] of offsets) {
+  for (const [pageNumber, offset, openCode, code] of offsets) {
     flipByte(t, offset);
-    const db = openEncrypted(t);
-    t.pool.clearFailure();
-    const rc = t.exec("SELECT count(*) FROM t", db);
+    const { rc, db } = openCodec(t, "/evolu1.db", testKey);
 
-    assertEqual([rc, sqlite3_extended_errcode(t)(db)], [code, code]);
-    assertEqual(t.pool.getFailure(), {
-      method: "xRead",
-      path: "/evolu1.db",
-      error: { type: "SqlitePageAuthenticationError", pageNumber },
+    assertEqual(rc, openCode);
+    assertEqual(t.exec("SELECT count(*) FROM t", db), code);
+    assertEqual(sqlite3_extended_errcode(t)(db), code);
+    assertEqual(takeCodecFailure(t, db), {
+      type: "SqlitePageAuthenticationError",
+      pageNumber,
     });
     close(t, db);
     flipByte(t, offset);
@@ -444,7 +463,7 @@ test("a page altered in its encrypted bytes, its IV or its HMAC fails to read wi
 // Byte 20 of page 1, which is neither encrypted nor authenticated, tells SQLite
 // how many bytes each page reserves, so another value would make it read
 // overflow pages at another usable size and return other bytes as data.
-test("a page 1 whose reserved bytes are not 80, as 81 or 79, fails to read with SQLITE_NOTADB, recording a SqlitePageAuthenticationError for page 1, rather than a blob that overflows pages being read as other bytes, and sqlite3_serialize, which exports, fails too", async () => {
+test("a page 1 whose reserved bytes are not 80, as 81 or 79, fails to read with SQLITE_NOTADB, which fails the open, the codec recording a SqlitePageAuthenticationError for page 1, rather than a blob that overflows pages being read as other bytes, and sqlite3_serialize, which exports, fails too", async () => {
   const t = await setupSahPool();
   const created = openEncrypted(t);
   const blobSql = "SELECT hex(b) FROM big WHERE id = 1";
@@ -467,17 +486,16 @@ test("a page 1 whose reserved bytes are not 80, as 81 or 79, fails to read with 
 
   for (const reserved of [81, 79]) {
     setReservedBytes(reserved);
-    const db = openEncrypted(t);
-    t.pool.clearFailure();
+    const { rc, db } = openCodec(t, "/evolu1.db", testKey);
 
+    assertEqual(rc, SQLITE_NOTADB);
     assertEqual(
       [t.exec(blobSql, db), sqlite3_extended_errcode(t)(db)],
       [SQLITE_NOTADB, SQLITE_NOTADB],
     );
-    assertEqual(t.pool.getFailure(), {
-      method: "xRead",
-      path: "/evolu1.db",
-      error: { type: "SqlitePageAuthenticationError", pageNumber: 1 },
+    assertEqual(takeCodecFailure(t, db), {
+      type: "SqlitePageAuthenticationError",
+      pageNumber: 1,
     });
     const pSize = getOrThrow(allocWasm(t)(8));
     assertEqual(sqlite3_serialize(t)(db, t.cString("main"), pSize, 0), 0);
@@ -553,7 +571,7 @@ const journalChecksum = (nonce: number, page: Uint8Array): number => {
   return checksum;
 };
 
-test("the hot journal of a transaction an encrypted database's dead worker left holds no row, its records' pages authenticate and decrypt with node:crypto as pages of the database to what SQLite's checksums cover, and the pool rolls it back", async () => {
+test("the hot journal of a transaction an encrypted database's dead worker left holds no row, its records' pages authenticate and decrypt with node:crypto as pages of the database to what SQLite's checksums cover, and the codec rolls it back", async () => {
   const t = await setupSahPool();
   const db = openEncrypted(t);
   assertEqual(t.exec(`${createRowsSql}; ${spillSql}`, db), SQLITE_OK);
@@ -595,7 +613,7 @@ const pageIvs = (file: Uint8Array): ReadonlyArray<string> =>
     pageIv(file.subarray(index * pageSize, (index + 1) * pageSize)),
   );
 
-test("every page the pool encrypts, in the database and in its journal's records, stores an IV of its own, and a page written again stores a new one", async () => {
+test("every page the codec encrypts, in the database and in its journal's records, stores an IV of its own, and a page written again stores a new one", async () => {
   const t = await setupSahPool();
   const db = openEncrypted(t);
   assertEqual(t.exec(createRowsSql, db), SQLITE_OK);
@@ -636,7 +654,7 @@ test("two new databases with the same key get salts of their own, neither all ze
   assertEqual(new Set([...salts, "00".repeat(16)]).size, 3);
 });
 
-test("2.2.4 rolls back the hot journal the pool wrote, and the pool rolls back the hot journal 2.2.4 wrote", async () => {
+test("2.2.4 rolls back the hot journal the codec wrote, and the codec rolls back the hot journal 2.2.4 wrote", async () => {
   const t = await setupSahPool();
   const db = openEncrypted(t);
   assertEqual(t.exec(`${createRowsSql}; ${spillSql}`, db), SQLITE_OK);
@@ -654,201 +672,15 @@ test("2.2.4 rolls back the hot journal the pool wrote, and the pool rolls back t
   assertEqual(other.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
   assertEqual(hasPlaintext(readFile(other, "/evolu1.db-journal")), false);
 
-  const rolledByPool = openEncrypted(other);
+  const rolledByCodec = openEncrypted(other);
 
-  assertEqual(other.selectText(rowsSql, rolledByPool), "200:200");
+  assertEqual(other.selectText(rowsSql, rolledByCodec), "200:200");
   assertEqual(other.pool.getPaths(), ["/evolu1.db"]);
-  assertEqual(other.selectText("PRAGMA integrity_check", rolledByPool), "ok");
-  close(other, rolledByPool);
+  assertEqual(other.selectText("PRAGMA integrity_check", rolledByCodec), "ok");
+  close(other, rolledByCodec);
 });
 
-/**
- * Opens a database and its journal through the pool's VFS as SQLite's pager
- * does, with the journal's name after the database's in one block that starts
- * with four NUL bytes, and the key registered while the database opens.
- */
-const openPagerFiles = (t: TestSahPool, key: EncryptionKey = testKey) => {
-  const names = new TextEncoder().encode(
-    "\0\0\0\0/evolu1.db\0\0/evolu1.db-journal\0",
-  );
-  const pNames = getOrThrow(allocWasm(t)(names.length));
-  t.sqliteWasm.getHeapU8().set(names, pNames);
-  const vfs = t.findVfs();
-  const szOsFile = t.readPtr(
-    (vfs + sqlite3_vfs_layout.members.szOsFile.offset) as WasmPtr,
-  );
-  const openRc = (offset: number, flags: number) => {
-    const pFile = getOrThrow(
-      allocWasm(t)(szOsFile),
-    ) as WasmPtr as SqliteFilePtr;
-    const rc = t.callVfs(
-      "xOpen",
-      pNames + offset,
-      pFile,
-      flags | SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE,
-      0,
-    );
-    return { rc, pFile };
-  };
-  const open = (offset: number, flags: number): SqliteFilePtr => {
-    const { rc, pFile } = openRc(offset, flags);
-    assertEqual(rc, SQLITE_OK);
-    return pFile;
-  };
-  const database = (() => {
-    using _registration = t.pool.registerKey(
-      SqliteVfsPath.orThrow("/evolu1.db"),
-      key,
-    );
-    return open(4, SQLITE_OPEN_MAIN_DB);
-  })();
-  const journal = open(4 + "/evolu1.db\0\0".length, SQLITE_OPEN_MAIN_JOURNAL);
-
-  const writeRc = (pFile: SqliteFilePtr, bytes: Uint8Array, at: number) => {
-    const pBuffer = getOrThrow(allocWasm(t)(bytes.length));
-    t.sqliteWasm.getHeapU8().set(bytes, pBuffer);
-    return t.callIo(pFile, "xWrite", pBuffer, bytes.length, BigInt(at));
-  };
-  const write = (pFile: SqliteFilePtr, bytes: Uint8Array, at: number) => {
-    assertEqual(writeRc(pFile, bytes, at), SQLITE_OK);
-  };
-  const read = (pFile: SqliteFilePtr, byteLength: number, at: number) => {
-    const pBuffer = getOrThrow(allocWasm(t)(byteLength));
-    const rc = t.callIo(pFile, "xRead", pBuffer, byteLength, BigInt(at));
-    return {
-      rc,
-      bytes: t.sqliteWasm.getHeapU8().slice(pBuffer, pBuffer + byteLength),
-    };
-  };
-  return { database, journal, write, writeRc, read };
-};
-
-/** A page of SQLite's, its bytes from a seed, with page 1's header. */
-const createPage = (seed: number, isPage1 = false): Uint8Array => {
-  const page = Uint8Array.from(
-    { length: pageSize },
-    (_, index) => (index * seed) & 0xff,
-  );
-  page.fill(0, pageSize - reservedSize);
-  if (isPage1) {
-    page.set(new TextEncoder().encode("SQLite format 3\0"));
-    page.set([pageSize >> 8, 0, 1, 1, reservedSize, 64, 32, 32], 16);
-  }
-  return page;
-};
-
-const uint32Be = (value: number): Uint8Array => {
-  const bytes = new Uint8Array(4);
-  new DataView(bytes.buffer).setUint32(0, value);
-  return bytes;
-};
-
-test("in a journal, the pool encrypts and decrypts as that page of its database the page-sized write or read at P + 4 right after a 4-byte one at P, which numbers it, and stores as they are the record's number and checksum, a header written right after the checksum, and a page-sized write elsewhere after 4 bytes", async () => {
-  const t = await setupSahPool();
-  const { database, journal, write, read } = openPagerFiles(t);
-  write(database, createPage(3, true), 0);
-  const header = Uint8Array.from({ length: 4096 }, (_, index) => index & 0xff);
-  const page = createPage(7);
-  const checksum = uint32Be(0x01020304);
-  // A record of page 2 at 4096, then a header right after its checksum.
-  const records = 4096 + 4 + pageSize + 4;
-
-  write(journal, header, 0);
-  write(journal, uint32Be(2), 4096);
-  write(journal, page, 4096 + 4);
-  write(journal, checksum, 4096 + 4 + pageSize);
-  write(journal, header, records);
-  write(journal, uint32Be(3), records + 4096);
-  write(journal, page, records + 4096 + 8);
-
-  const stored = readFile(t, "/evolu1.db-journal");
-  const salt = readFile(t).subarray(0, 16);
-  assertEqualBytes(stored.subarray(0, 4096), header);
-  assertEqualBytes(stored.subarray(4096, 4100), uint32Be(2));
-  const decrypted = decryptPageWithNodeCrypto(
-    stored.subarray(4100, 4100 + pageSize),
-    2,
-    testKey,
-    salt,
-  );
-  assertTrue(decrypted != null);
-  // The reserved bytes hold the IV and the HMAC, as stored.
-  const end = pageSize - reservedSize;
-  assertEqualBytes(decrypted.subarray(0, end), page.subarray(0, end));
-  assertEqualBytes(stored.subarray(records - 4, records), checksum);
-  assertEqualBytes(stored.subarray(records, records + 4096), header);
-  assertEqualBytes(
-    stored.subarray(records + 4096 + 8, records + 4096 + 8 + pageSize),
-    page,
-  );
-
-  assertEqual(read(journal, 4096, 0), { rc: SQLITE_OK, bytes: header });
-  assertEqual(read(journal, 4, 4096).rc, SQLITE_OK);
-  const readPage = read(journal, pageSize, 4100);
-  assertEqual(readPage.rc, SQLITE_OK);
-  assertEqualBytes(readPage.bytes.subarray(0, end), page.subarray(0, end));
-  assertEqual(read(journal, 4, records - 4), {
-    rc: SQLITE_OK,
-    bytes: checksum,
-  });
-  assertEqual(read(journal, 4096, records), { rc: SQLITE_OK, bytes: header });
-  assertEqual(t.callIo(journal, "xClose"), SQLITE_OK);
-  assertEqual(t.callIo(database, "xClose"), SQLITE_OK);
-});
-
-test("reads of part of page 1, the first 100 bytes and the change counter at 24, return page 1 decrypted when it authenticates and as stored when it does not, recording nothing", async () => {
-  const t = await setupSahPool();
-  const created = openPagerFiles(t);
-  const page1 = createPage(3, true);
-  created.write(created.database, page1, 0);
-  assertEqual(t.callIo(created.journal, "xClose"), SQLITE_OK);
-  assertEqual(t.callIo(created.database, "xClose"), SQLITE_OK);
-  const stored = readFile(t);
-
-  for (const [key, expected] of [
-    [testKey, page1],
-    [otherKey, stored],
-  ] as const) {
-    const { database, journal, read } = openPagerFiles(t, key);
-    t.pool.clearFailure();
-
-    assertEqual(read(database, 100, 0), {
-      rc: SQLITE_OK,
-      bytes: expected.slice(0, 100),
-    });
-    assertEqual(read(database, 16, 24), {
-      rc: SQLITE_OK,
-      bytes: expected.slice(24, 40),
-    });
-    assertEqual(t.pool.getFailure(), null);
-    assertEqual(t.callIo(journal, "xClose"), SQLITE_OK);
-    assertEqual(t.callIo(database, "xClose"), SQLITE_OK);
-  }
-});
-
-test("a read of part of page 1 whose stored page size is no page size, such as 0, returns page 1 as stored, recording nothing", async () => {
-  const t = await setupSahPool();
-  const { database, journal, write, read } = openPagerFiles(t);
-  write(database, createPage(3, true), 0);
-  const slotPath = t.findSlotPath("/evolu1.db");
-  const slot = t.fake.readFile(slotPath);
-  assertTrue(slot != null);
-  // Bytes 16 and 17 hold the page size.
-  slot.fill(0, sahPoolHeaderSize + 16, sahPoolHeaderSize + 18);
-  t.fake.writeFile(slotPath, slot);
-  const stored = readFile(t);
-  t.pool.clearFailure();
-
-  assertEqual(read(database, 100, 0), {
-    rc: SQLITE_OK,
-    bytes: stored.slice(0, 100),
-  });
-  assertEqual(t.pool.getFailure(), null);
-  assertEqual(t.callIo(journal, "xClose"), SQLITE_OK);
-  assertEqual(t.callIo(database, "xClose"), SQLITE_OK);
-});
-
-test("databases of 1024-, 4096- and 65536-byte pages, the last stored in page 1 as 1, authenticate and decrypt with node:crypto to the pages SQLite has, return page 1's first 100 bytes decrypted, and 2.2.4 reads every row", async () => {
+test("databases of 1024-, 4096- and 65536-byte pages, the last stored in page 1 as 1, authenticate and decrypt with node:crypto to the pages SQLite has, open again with the key, and 2.2.4 reads every row", async () => {
   for (const size of [1024, 4096, 65536]) {
     const t = await setupSahPool();
     const db = openEncrypted(t);
@@ -875,13 +707,10 @@ test("databases of 1024-, 4096- and 65536-byte pages, the last stored in page 1 
         plaintext.subarray(offset, offset + size - reservedSize),
       );
     }
-    const { database, journal, read } = openPagerFiles(t);
-    assertEqual(read(database, 100, 0), {
-      rc: SQLITE_OK,
-      bytes: plaintext.slice(0, 100),
-    });
-    assertEqual(t.callIo(journal, "xClose"), SQLITE_OK);
-    assertEqual(t.callIo(database, "xClose"), SQLITE_OK);
+    const reopened = openEncrypted(t);
+    assertEqual(t.selectText(rowsSql, reopened), "200:200");
+    assertEqual(t.selectText("PRAGMA page_size", reopened), `${size}`);
+    close(t, reopened);
     const reference = await openWithSqliteJs(t);
     assertEqual(reference.selectValue(rowsSql), "200:200");
     assertEqual(reference.selectValue("PRAGMA integrity_check"), "ok");
@@ -985,12 +814,13 @@ test("a hot journal whose page-1 record is not its first rolls back a database w
       assertEqual(next.selectText(rowsSql, reopened), "200:200");
       assertEqual(next.selectText("PRAGMA integrity_check", reopened), "ok");
       assertEqual(next.pool.getFailure(), null);
+      assertEqual(takeCodecFailure(next, reopened), null);
       assertEqual(next.pool.getPaths(), ["/evolu1.db"]);
       close(next, reopened);
     }
 });
 
-test("a hot journal without a page-1 record fails to roll back a database whose page 1's salt is zeros with SQLITE_CORRUPT, recording a SqlitePageAuthenticationError for the first record, and keeps the journal", async () => {
+test("a hot journal without a page-1 record fails to roll back a database whose page 1's salt is zeros with SQLITE_CORRUPT, which fails the open, the codec recording a SqlitePageAuthenticationError for the first record, and keeps the journal", async () => {
   const t = await setupSahPool();
   const db = openEncrypted(t);
   assertEqual(t.exec(`${createRowsSql}; ${spillSql}`, db), SQLITE_OK);
@@ -999,20 +829,15 @@ test("a hot journal without a page-1 record fails to roll back a database whose 
   assertTrue(records.length > 1);
   assertFalse(records.some(({ pageNumber }) => pageNumber === 1));
   zeroBytes(next, 0, 16);
-  const reopened = openEncrypted(next);
-  next.pool.clearFailure();
 
-  assertEqual(next.exec(rowsSql, reopened), SQLITE_CORRUPT);
+  const reopened = openCodec(next, "/evolu1.db", testKey);
 
-  assertEqual(next.pool.getFailure(), {
-    method: "xRead",
-    path: "/evolu1.db-journal",
-    error: {
-      type: "SqlitePageAuthenticationError",
-      pageNumber: records[0].pageNumber,
-    },
+  assertEqual(reopened.rc, SQLITE_CORRUPT);
+  assertEqual(takeCodecFailure(next, reopened.db), {
+    type: "SqlitePageAuthenticationError",
+    pageNumber: records[0].pageNumber,
   });
-  close(next, reopened);
+  close(next, reopened.db);
   assertEqual(next.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
 });
 
@@ -1021,7 +846,7 @@ test("a hot journal without a page-1 record fails to roll back a database whose 
 // mode or journal_mode = PERSIST keeps still holds the previous transaction's
 // records, so a worker that dies right after writing a record's page number
 // leaves it before a stale page, encrypted as another page.
-test("a journal record a dead worker left torn under synchronous = OFF, in a journal that exclusive locking mode or journal_mode = PERSIST kept, ends the rollback for the right key, which reads every row with no journal left, as plain SQLite does, while a wrong key fails with SQLITE_CORRUPT and keeps the journal", async () => {
+test("a journal record a dead worker left torn under synchronous = OFF, in a journal that exclusive locking mode or journal_mode = PERSIST kept, ends the rollback for the right key, which reads every row with no journal left, as plain SQLite does, while a wrong key fails to open with SQLITE_CORRUPT and keeps the journal", async () => {
   for (const journalPragma of [
     "PRAGMA locking_mode = EXCLUSIVE",
     "PRAGMA journal_mode = PERSIST",
@@ -1047,22 +872,21 @@ test("a journal record a dead worker left torn under synchronous = OFF, in a jou
       journal.byteOffset,
     ).getUint32(4096);
 
-    const wrongKey = openEncrypted(next, "/evolu1.db", otherKey);
-    next.pool.clearFailure();
+    const wrongKey = openCodec(next, "/evolu1.db", otherKey);
 
-    assertEqual(next.exec(rowsSql, wrongKey), SQLITE_CORRUPT);
-    assertEqual(next.pool.getFailure(), {
-      method: "xRead",
-      path: "/evolu1.db-journal",
-      error: { type: "SqlitePageAuthenticationError", pageNumber },
+    assertEqual(wrongKey.rc, SQLITE_CORRUPT);
+    assertEqual(takeCodecFailure(next, wrongKey.db), {
+      type: "SqlitePageAuthenticationError",
+      pageNumber,
     });
-    close(next, wrongKey);
+    close(next, wrongKey.db);
     assertEqual(next.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
-    const reopened = openEncrypted(next);
     next.pool.clearFailure();
+    const reopened = openEncrypted(next);
     assertEqual(next.selectText(rowsSql, reopened), "200:200");
     assertEqual(next.selectText("PRAGMA integrity_check", reopened), "ok");
     assertEqual(next.pool.getFailure(), null);
+    assertEqual(takeCodecFailure(next, reopened), null);
     assertEqual(next.pool.getPaths(), ["/evolu1.db"]);
     close(next, reopened);
   }
@@ -1075,7 +899,7 @@ test("a journal record a dead worker left torn under synchronous = OFF, in a jou
 // locking mode skips, that commit would write every page with that salt. A
 // page 1 that does not reserve 80 bytes fails before its salt is looked at, so
 // the stale page gets 80 in byte 20, as one stale page in 256 has.
-test("a journal record's page 1 that fails to authenticate, as the stale page after page 1's number in a journal that exclusive locking mode kept, whose write failed, changes no salt, so the next commit keeps every page readable", async () => {
+test("a journal record's page 1 that fails to authenticate, as the stale page after page 1's number in a journal that exclusive locking mode kept, whose write failed with SQLITE_IOERR_WRITE, or with SQLITE_FULL for a QuotaExceededError, which the pool records, changes no salt, so the next commit keeps every page readable", async () => {
   for (const [error, code] of [
     [new DOMException("Failed.", "InvalidStateError"), SQLITE_IOERR_WRITE],
     [createQuotaExceededError(), SQLITE_FULL],
@@ -1110,9 +934,16 @@ test("a journal record's page 1 that fails to authenticate, as the stale page af
       failed = true;
       return { type: "Throw", error };
     });
+    t.pool.clearFailure();
 
     assertFalse(t.exec("CREATE TABLE u(x)", db) === SQLITE_OK);
     assertEqual(sqlite3_extended_errcode(t)(db), code);
+    assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
+      method: "xWrite",
+      path: "/evolu1.db-journal",
+      error,
+    });
     t.fake.inject(null);
     assertTrue(failed);
     assertEqual(t.exec(insertRowsSql(201, 210), db), SQLITE_OK);
@@ -1125,11 +956,6 @@ test("a journal record's page 1 that fails to authenticate, as the stale page af
     assertEqualBytes(readFile(t).subarray(0, 16), salt);
   }
 });
-
-const encryptionUnsupported = (
-  method: "xOpen" | "xRead" | "xWrite",
-  path: string | null,
-) => ({ method, path, error: { type: "SahPoolEncryptionUnsupported" } });
 
 // Torn first bytes of page 1 must not give the salt when a connection opens its
 // own hot journal, or the rollback stops at the first record and deletes the
@@ -1153,7 +979,7 @@ test("a connection whose key is proven rolls its own hot journal back wholly alt
   });
   assertEqual(
     t.exec("UPDATE t SET a = 'changed' WHERE rowid % 40 = 0", db),
-    SQLITE_IOERR,
+    SQLITE_IOERR_WRITE,
   );
   t.fake.inject(null);
   assertEqual(t.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
@@ -1191,7 +1017,7 @@ test("a connection whose key is proven rolls back another connection's hot journ
         }
       : null;
   });
-  assertEqual(t.exec(spillSql, writer), SQLITE_IOERR);
+  assertEqual(t.exec(spillSql, writer), SQLITE_IOERR_WRITE);
   close(t, writer);
   t.fake.inject(null);
   assertEqual(t.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
@@ -1232,7 +1058,7 @@ test("a connection whose key the uncommitted page 1 of a new database proved rol
       ? { type: "Throw", error }
       : null;
   });
-  assertEqual(t.exec(createRowsSql, creator), SQLITE_IOERR);
+  assertEqual(t.exec(createRowsSql, creator), SQLITE_IOERR_WRITE);
   t.fake.inject(null);
   close(t, creator);
   assertEqual(t.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
@@ -1259,6 +1085,7 @@ test("a connection whose key the uncommitted page 1 of a new database proved rol
 
   assertEqual(t.selectText("PRAGMA integrity_check", reader), "ok");
   assertEqual(t.pool.getFailure(), null);
+  assertEqual(takeCodecFailure(t, reader), null);
   assertEqual(t.pool.getPaths(), ["/evolu1.db"]);
   close(t, reader);
 });
@@ -1336,7 +1163,7 @@ test("a database that a connection with the key creates after rolling back a new
 // synchronous = OFF, which writes the magic with the header. So such a
 // leftover journal opens, and SQLite then fails to read page 1 without the key,
 // as without a journal.
-test("a connection without the key to an encrypted database with a leftover journal that is not hot, as PERSIST and TRUNCATE keep it and a crash before its first sync leaves it, fails with SQLITE_NOTADB from SQLite, recording nothing, as without a journal", async () => {
+test("an open without the key of an encrypted database with a leftover journal that is not hot, as PERSIST and TRUNCATE keep it and a crash before its first sync leaves it, fails with SQLITE_NOTADB from SQLite, recording nothing, as without a journal", async () => {
   for (const journalMode of ["PERSIST", "TRUNCATE", "DELETE"]) {
     const created = await setupSahPool();
     const db = openEncrypted(created);
@@ -1362,13 +1189,13 @@ test("a connection without the key to an encrypted database with a leftover jour
       assertEqual(journal[0], 0);
       assertTrue(journal.subarray(16, 20).some((byte) => byte !== 0));
     }
-    const keyless = t.openDatabase("/evolu1.db");
-    assertEqual(keyless.rc, SQLITE_OK);
     t.pool.clearFailure();
 
-    assertEqual(t.exec(rowsSql, keyless.db), SQLITE_NOTADB);
+    const keyless = openCodec(t, "/evolu1.db", null);
 
+    assertEqual(keyless.rc, SQLITE_NOTADB);
     assertEqual(t.pool.getFailure(), null);
+    assertEqual(takeCodecFailure(t, keyless.db), null);
     close(t, keyless.db);
   }
 });
@@ -1378,19 +1205,41 @@ test("a connection without the key to an encrypted database with a leftover jour
 // journal and delete it, leaving the transaction half-applied. A journal SQLite
 // cannot open counts as hot, and a rollback that cannot open it fails. Only an
 // empty database has no first bytes, so zeros there, as a torn write can leave
-// in place of the salt, do not prove the database is not encrypted.
-test("a connection without the key to an encrypted database whose dead worker left a hot journal fails with SQLITE_CANTOPEN, recording a SahPoolEncryptionUnsupportedError for the journal, also when the database's salt is zeros, or what reading the database's first 16 bytes threw, changes neither file, and the right key then rolls the journal back wholly", async () => {
+// in place of the salt, do not prove the database is not encrypted. A pool
+// read that throws during that check fails the codec's check without the codec
+// recording anything, so the pool's failure is the cause.
+test("a File database opened on an encrypted database whose dead worker left a hot journal fails with SQLITE_CANTOPEN, caused by the codec's SqliteEncryptionUnsupportedError, also when the database's salt is zeros, or by the pool's failure when reading the database's first 16 bytes or the journal's first bytes throws, changes neither file, and the right key then rolls the journal back wholly", async () => {
   const readError = new DOMException("Failed.", "InvalidStateError");
   // Creating a table journals page 1, whose salt the rollback restores, so the
   // key can roll the journal back although the database's salt is zeros.
   const spillPageOneSql =
     "PRAGMA cache_size = 10; BEGIN; CREATE TABLE u(x); UPDATE t SET a = 'changed' || randomblob(500)";
-  for (const [fault, failure, zeroSalt] of [
-    [null, encryptionUnsupported("xOpen", "/evolu1.db-journal"), false],
-    [null, encryptionUnsupported("xOpen", "/evolu1.db-journal"), true],
+  const unsupported: SqliteFailure = {
+    type: "SqliteCodecFailure",
+    error: { type: "SqliteEncryptionUnsupported" },
+  };
+  // The read that throws, by the path and the length of a read at offset 0.
+  for (const [fault, cause, zeroSalt] of [
+    [null, unsupported, false],
+    [null, unsupported, true],
     [
-      { type: "Throw", error: readError },
-      { method: "xOpen", path: "/evolu1.db-journal", error: readError },
+      { path: "/evolu1.db", length: 16 },
+      {
+        type: "SqliteVfsFailure",
+        method: "xRead",
+        path: "/evolu1.db",
+        error: readError,
+      },
+      false,
+    ],
+    [
+      { path: "/evolu1.db-journal", length: 20 },
+      {
+        type: "SqliteVfsFailure",
+        method: "xRead",
+        path: "/evolu1.db-journal",
+        error: readError,
+      },
       false,
     ],
   ] as const) {
@@ -1410,21 +1259,30 @@ test("a connection without the key to an encrypted database whose dead worker le
     const next = await setupAfterCrash(t);
     const database = readFile(next);
     const journal = readFile(next, "/evolu1.db-journal");
-    const keyless = next.openDatabase("/evolu1.db");
-    assertEqual(keyless.rc, SQLITE_OK);
-    next.fake.inject((call) =>
-      call.method === "read" &&
-      call.at === sahPoolHeaderSize &&
-      call.length === 16
-        ? fault
-        : null,
-    );
-    next.pool.clearFailure();
+    if (fault != null) {
+      const slotPath = next.findSlotPath(fault.path);
+      next.fake.inject((call) =>
+        call.method === "read" &&
+        call.path === slotPath &&
+        call.at === sahPoolHeaderSize &&
+        call.length === fault.length
+          ? { type: "Throw", error: readError }
+          : null,
+      );
+    }
 
-    assertEqual(next.exec(rowsSql, keyless.db), SQLITE_CANTOPEN);
-    assertEqual(next.pool.getFailure(), failure);
+    const keyless = createSqliteDatabase(next)({
+      type: "File",
+      vfs: next.pool,
+      path: SqliteVfsPath.orThrow("/evolu1.db"),
+    });
+
     next.fake.inject(null);
-    close(next, keyless.db);
+    assertErr(keyless);
+    assertEqual(
+      [keyless.error.extendedCode, keyless.error.cause],
+      [SQLITE_CANTOPEN, cause],
+    );
     assertEqual(next.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
     assertEqualBytes(readFile(next), database);
     assertEqualBytes(readFile(next, "/evolu1.db-journal"), journal);
@@ -1436,41 +1294,44 @@ test("a connection without the key to an encrypted database whose dead worker le
   }
 });
 
-// A page 1 that reserves other than 80 bytes would fail every later read.
-test("a new encrypted database whose page 1 reserves other than 80 bytes, none or 81, fails to write it with SQLITE_IOERR_WRITE, recording a SahPoolEncryptionUnsupportedError", async () => {
-  for (const reserved of [null, 81]) {
-    const t = await setupSahPool();
-    const db = (() => {
-      using _registration = t.pool.registerKey(
-        SqliteVfsPath.orThrow("/evolu1.db"),
-        testKey,
-      );
-      return t.openDatabase("/evolu1.db").db;
-    })();
-    if (reserved != null) reserveBytes(t, db, reserved);
-    t.pool.clearFailure();
+// A page 1 that reserves other than 80 bytes would fail every later read. The
+// open asks for 80, and SQLite lowers no new database's reserved bytes below
+// what was asked for, so only more can reach the codec.
+test("a new encrypted database whose page 1 reserves more than 80 bytes, 81, fails to write it with SQLITE_IOERR_WRITE, the codec recording a SqliteEncryptionUnsupportedError", async () => {
+  const t = await setupSahPool();
+  const db = openEncrypted(t);
+  const pReserve = getOrThrow(allocWasm(t)(4));
+  t.sqliteWasm.getHeapDataView().setInt32(pReserve, 81, true);
+  assertEqual(
+    sqlite3_file_control(t)(
+      db,
+      t.cString("main"),
+      SQLITE_FCNTL_RESERVE_BYTES,
+      pReserve,
+    ),
+    SQLITE_OK,
+  );
+  sqlite3_free(t)(pReserve);
 
-    assertEqual(t.exec("CREATE TABLE t(a)", db), SQLITE_IOERR);
-    assertEqual(sqlite3_extended_errcode(t)(db), SQLITE_IOERR_WRITE);
-    assertEqual(
-      t.pool.getFailure(),
-      encryptionUnsupported("xWrite", "/evolu1.db"),
-    );
-    close(t, db);
-  }
+  assertEqual(t.exec("CREATE TABLE t(a)", db), SQLITE_IOERR_WRITE);
+
+  assertEqual(takeCodecFailure(t, db), {
+    type: "SqliteEncryptionUnsupported",
+  });
+  close(t, db);
 });
 
 // Plain SQLite's VACUUM writes page 1 with the new page size in its header but
 // in pages of the old size, which every later read of page 1 would fail to
 // authenticate. SQLite3 Multiple Ciphers patches VACUUM to keep the old size.
-test("a VACUUM that would change an encrypted database's page size, also one run after the pragma, fails with SQLITE_IOERR_WRITE, recording a SahPoolEncryptionUnsupportedError, and leaves the database as it was, while a VACUUM that keeps the page size works", async () => {
+test("a VACUUM that would change an encrypted database's page size, also one run after the pragma, fails with SQLITE_IOERR_WRITE, the codec recording a SqliteEncryptionUnsupportedError, and leaves the database as it was, while a VACUUM that keeps the page size works", async () => {
   for (const [before, sql, rc] of [
-    ["", "PRAGMA page_size = 4096; VACUUM", SQLITE_IOERR],
-    ["", "PRAGMA page_size = 16384; VACUUM", SQLITE_IOERR],
-    ["", "PRAGMA page_size = 65536; VACUUM", SQLITE_IOERR],
+    ["", "PRAGMA page_size = 4096; VACUUM", SQLITE_IOERR_WRITE],
+    ["", "PRAGMA page_size = 16384; VACUUM", SQLITE_IOERR_WRITE],
+    ["", "PRAGMA page_size = 65536; VACUUM", SQLITE_IOERR_WRITE],
     // The pragma alone leaves an existing database's page size, but the
     // connection keeps it for its next VACUUM.
-    ["PRAGMA page_size = 4096", "VACUUM", SQLITE_IOERR],
+    ["PRAGMA page_size = 4096", "VACUUM", SQLITE_IOERR_WRITE],
     ["", "PRAGMA page_size = 8192; VACUUM", SQLITE_OK],
     ["", "VACUUM", SQLITE_OK],
     ["", "PRAGMA auto_vacuum = FULL; VACUUM", SQLITE_OK],
@@ -1478,17 +1339,14 @@ test("a VACUUM that would change an encrypted database's page size, also one run
     const t = await setupSahPool();
     const db = openEncrypted(t);
     assertEqual(t.exec(`${createRowsSql}; ${before}`, db), SQLITE_OK);
-    t.pool.clearFailure();
+    assertEqual(takeCodecFailure(t, db), null);
 
     assertEqual(t.exec(sql, db), rc);
 
-    if (rc === SQLITE_IOERR) {
-      assertEqual(sqlite3_extended_errcode(t)(db), SQLITE_IOERR_WRITE);
-      assertEqual(
-        t.pool.getFailure(),
-        encryptionUnsupported("xWrite", "/evolu1.db"),
-      );
-    } else assertEqual(t.pool.getFailure(), null);
+    assertEqual(
+      takeCodecFailure(t, db),
+      rc === SQLITE_OK ? null : { type: "SqliteEncryptionUnsupported" },
+    );
     assertEqual(t.selectText(rowsSql, db), "200:200");
     assertEqual(t.selectText("PRAGMA page_size", db), `${pageSize}`);
     assertEqual(t.selectText("PRAGMA integrity_check", db), "ok");
@@ -1503,139 +1361,7 @@ test("a VACUUM that would change an encrypted database's page size, also one run
   }
 });
 
-test("an encrypted database's read that is not a whole page and lies past page 1, which is zero-filled, or write that is not a whole page, fails with SQLITE_IOERR_READ or SQLITE_IOERR_WRITE, recording a SahPoolEncryptionUnsupportedError", async () => {
-  const t = await setupSahPool();
-  const { database, journal, write, writeRc, read } = openPagerFiles(t);
-  write(database, createPage(3, true), 0);
-  write(database, createPage(5), pageSize);
-  const stored = readFile(t);
-  t.pool.clearFailure();
-
-  assertEqual(read(database, 100, pageSize + 10), {
-    rc: SQLITE_IOERR_READ,
-    bytes: new Uint8Array(100),
-  });
-  assertEqual(
-    t.pool.getFailure(),
-    encryptionUnsupported("xRead", "/evolu1.db"),
-  );
-  t.pool.clearFailure();
-  for (const [byteLength, at] of [
-    [100, 0],
-    [pageSize, 100],
-    [pageSize * 2, 0],
-  ] as const) {
-    assertEqual(
-      writeRc(database, new Uint8Array(byteLength).fill(1), at),
-      SQLITE_IOERR_WRITE,
-    );
-    assertEqual(
-      t.pool.getFailure(),
-      encryptionUnsupported("xWrite", "/evolu1.db"),
-    );
-    t.pool.clearFailure();
-  }
-  assertEqualBytes(readFile(t), stored);
-  assertEqual(t.callIo(journal, "xClose"), SQLITE_OK);
-  assertEqual(t.callIo(database, "xClose"), SQLITE_OK);
-});
-
-test("a whole-page read of a page whose HMAC differs returns SQLITE_CORRUPT with the page zero-filled", async () => {
-  const t = await setupSahPool();
-  const { database, journal, write, read } = openPagerFiles(t);
-  write(database, createPage(3, true), 0);
-  write(database, createPage(5), pageSize);
-  // The last byte of page 2's HMAC.
-  flipByte(t, 2 * pageSize - 1);
-
-  assertEqual(read(database, pageSize, pageSize), {
-    rc: SQLITE_CORRUPT,
-    bytes: new Uint8Array(pageSize),
-  });
-  assertEqual(t.callIo(journal, "xClose"), SQLITE_OK);
-  assertEqual(t.callIo(database, "xClose"), SQLITE_OK);
-});
-
-test("a whole-page read of page 1 at another size than page 1 stores returns page 1 decrypted at its stored size, the read's first bytes of it and zeros past it, recording nothing, and with page 1 shorter than its stored size fails with SQLITE_NOTADB with the read zero-filled, recording a SqlitePageAuthenticationError", async () => {
-  const t = await setupSahPool();
-  const { database, journal, write, read } = openPagerFiles(t);
-  write(database, createPage(3, true), 0);
-  write(database, createPage(5), pageSize);
-  const slotPath = t.findSlotPath("/evolu1.db");
-  const stored = t.fake.readFile(slotPath);
-  assertTrue(stored != null);
-  // With its IV and HMAC in the reserved bytes, as SQLite reads it.
-  const page1 = read(database, pageSize, 0);
-  assertEqual(page1.rc, SQLITE_OK);
-  const page1AndZeros = new Uint8Array(2 * pageSize);
-  page1AndZeros.set(page1.bytes);
-  t.pool.clearFailure();
-
-  assertEqual(read(database, pageSize / 2, 0), {
-    rc: SQLITE_OK,
-    bytes: page1.bytes.slice(0, pageSize / 2),
-  });
-  assertEqual(read(database, 2 * pageSize, 0), {
-    rc: SQLITE_OK,
-    bytes: page1AndZeros,
-  });
-  t.fake.writeFile(slotPath, stored.slice(0, sahPoolHeaderSize + pageSize));
-  assertEqual(read(database, 2 * pageSize, 0), {
-    rc: SQLITE_IOERR_SHORT_READ,
-    bytes: page1AndZeros,
-  });
-  assertEqual(t.pool.getFailure(), null);
-  t.fake.writeFile(slotPath, stored.slice(0, sahPoolHeaderSize + 100));
-  assertEqual(read(database, pageSize / 2, 0), {
-    rc: SQLITE_NOTADB,
-    bytes: new Uint8Array(pageSize / 2),
-  });
-  assertEqual(t.pool.getFailure(), {
-    method: "xRead",
-    path: "/evolu1.db",
-    error: { type: "SqlitePageAuthenticationError", pageNumber: 1 },
-  });
-  assertEqual(t.callIo(journal, "xClose"), SQLITE_OK);
-  assertEqual(t.callIo(database, "xClose"), SQLITE_OK);
-});
-
-// SQLite reads a page only within the file, so a page that ends early was cut
-// off or torn, and zeros in its place would pass as its data, which no
-// integrity check notices in an overflow page. A page past the end, as page 1
-// of an empty file, reads nothing and stays a short read.
-test("a whole-page read of an encrypted database that ends mid-page fails with SQLITE_CORRUPT with the whole page zero-filled, recording a SqlitePageAuthenticationError, so neither ciphertext nor zeros reach SQLite as the page, while a read past the end returns SQLITE_IOERR_SHORT_READ, recording nothing", async () => {
-  const t = await setupSahPool();
-  const { database, journal, write, read } = openPagerFiles(t);
-  write(database, createPage(3, true), 0);
-  write(database, createPage(5), pageSize);
-  const slotPath = t.findSlotPath("/evolu1.db");
-  const stored = t.fake.readFile(slotPath);
-  assertTrue(stored != null);
-  t.fake.writeFile(
-    slotPath,
-    stored.slice(0, sahPoolHeaderSize + pageSize + 100),
-  );
-  t.pool.clearFailure();
-
-  assertEqual(read(database, pageSize, 2 * pageSize), {
-    rc: SQLITE_IOERR_SHORT_READ,
-    bytes: new Uint8Array(pageSize),
-  });
-  assertEqual(t.pool.getFailure(), null);
-  assertEqual(read(database, pageSize, pageSize), {
-    rc: SQLITE_CORRUPT,
-    bytes: new Uint8Array(pageSize),
-  });
-  assertEqual(t.pool.getFailure(), {
-    method: "xRead",
-    path: "/evolu1.db",
-    error: { type: "SqlitePageAuthenticationError", pageNumber: 2 },
-  });
-  assertEqual(t.callIo(journal, "xClose"), SQLITE_OK);
-  assertEqual(t.callIo(database, "xClose"), SQLITE_OK);
-});
-
-test("an encrypted database whose file lost its last byte fails to read the blob whose end the last page holds with SQLITE_CORRUPT, recording a SqlitePageAuthenticationError for that page, and its integrity check reports the page, instead of zeros passing as the blob's end", async () => {
+test("an encrypted database whose file lost its last byte fails to read the blob whose end the last page holds with SQLITE_CORRUPT, the codec recording a SqlitePageAuthenticationError for that page, and its integrity check reports the page, instead of zeros passing as the blob's end", async () => {
   const t = await setupSahPool();
   const created = openEncrypted(t);
   assertEqual(
@@ -1652,85 +1378,18 @@ test("an encrypted database whose file lost its last byte fails to read the blob
   const lastPage = (stored.length - sahPoolHeaderSize) / pageSize;
   t.fake.writeFile(slotPath, stored.slice(0, stored.length - 1));
   const db = openEncrypted(t);
-  t.pool.clearFailure();
 
   assertEqual(t.exec("SELECT hex(v) FROM b", db), SQLITE_CORRUPT);
 
-  assertEqual(t.pool.getFailure(), {
-    method: "xRead",
-    path: "/evolu1.db",
-    error: { type: "SqlitePageAuthenticationError", pageNumber: lastPage },
+  assertEqual(takeCodecFailure(t, db), {
+    type: "SqlitePageAuthenticationError",
+    pageNumber: lastPage,
   });
   assertFalse(t.selectText("PRAGMA integrity_check", db) === "ok");
   close(t, db);
 });
 
-// SQLite rolls a hot journal back before it reads the database's page 1.
-test("a hot journal's record page read before its database's page 1, whose salt its HMAC key needs, decrypts with the salt that opening the journal read from the database's first 16 bytes when no page 1 authenticates, also when page 1 stores no page size and the journal's first header no sizes, and with the database empty returns SQLITE_CORRUPT with the page zero-filled, recording a SqlitePageAuthenticationError", async () => {
-  const page = createPage(7);
-  // The reserved bytes hold the IV and the HMAC, as stored.
-  const end = pageSize - reservedSize;
-  // SQLite's magic, 1 record, the original size of 2 pages, and the sector
-  // and page sizes, so SQLite would roll the journal back.
-  const header = new Uint8Array(4096);
-  header.set([0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7]);
-  for (const [at, value] of [
-    [8, 1],
-    [16, 2],
-    [20, 4096],
-    [24, pageSize],
-  ])
-    new DataView(header.buffer).setUint32(at, value);
-  const headerWithoutSizes = header.slice();
-  headerWithoutSizes.fill(0, 20, 28);
-  // Page 1's byte that a case flips, so page 1 keeps its salt but fails to
-  // authenticate, or null for an empty database.
-  for (const [flippedByte, journalHeader] of [
-    [100, header],
-    // The page size.
-    [16, headerWithoutSizes],
-    [null, header],
-  ] as const) {
-    const t = await setupSahPool();
-    const created = openPagerFiles(t);
-    if (flippedByte != null)
-      created.write(created.database, createPage(3, true), 0);
-    created.write(created.journal, journalHeader, 0);
-    created.write(created.journal, uint32Be(2), 4096);
-    created.write(created.journal, page, 4100);
-    assertEqual(t.callIo(created.journal, "xClose"), SQLITE_OK);
-    assertEqual(t.callIo(created.database, "xClose"), SQLITE_OK);
-    if (flippedByte != null) flipByte(t, flippedByte);
-    const { database, journal, read } = openPagerFiles(t);
-    t.pool.clearFailure();
-
-    assertEqual(read(journal, 4, 4096), {
-      rc: SQLITE_OK,
-      bytes: uint32Be(2),
-    });
-    const record = read(journal, pageSize, 4100);
-
-    if (flippedByte == null) {
-      assertEqual(record, {
-        rc: SQLITE_CORRUPT,
-        bytes: new Uint8Array(pageSize),
-      });
-      assertEqual(t.pool.getFailure(), {
-        method: "xRead",
-        path: "/evolu1.db-journal",
-        error: { type: "SqlitePageAuthenticationError", pageNumber: 2 },
-      });
-    } else {
-      assertEqual(record.rc, SQLITE_OK);
-      assertEqualBytes(record.bytes.subarray(0, end), page.subarray(0, end));
-      assertEqual(t.pool.getFailure(), null);
-    }
-    assertEqual(t.callIo(journal, "xClose"), SQLITE_OK);
-    assertEqual(t.callIo(database, "xClose"), SQLITE_OK);
-  }
-});
-
-test("a write whose encryption throws, as when random bytes cannot be created, fails with SQLITE_IOERR_WRITE, recording what was thrown, and stores nothing", async () => {
+test("a write whose encryption throws, as when random bytes cannot be created, fails with SQLITE_IOERR_WRITE, caused by the codec's SqliteRandomSourceError, reports what was thrown as one defect, and stores nothing", async () => {
   const deps = testCreateDeps();
   const randomBytesError = new Error("No entropy");
   let failRandomBytes = false;
@@ -1741,222 +1400,37 @@ test("a write whose encryption throws, as when random bytes cannot be created, f
     }) as RandomBytes["create"],
   };
   const t = await setupSahPool({ deps: { ...deps, randomBytes } });
-  const { database, journal, write, writeRc } = openPagerFiles(t);
-  write(database, createPage(3, true), 0);
+  using database = getOrThrow(
+    createSqliteDatabase(t)({
+      type: "EncryptedFile",
+      vfs: t.pool,
+      path: SqliteVfsPath.orThrow("/evolu1.db"),
+      key: testKey,
+    }),
+  );
+  assertOk(database.exec(createRowsSql));
   const stored = readFile(t);
-  t.pool.clearFailure();
   failRandomBytes = true;
 
-  assertEqual(writeRc(database, createPage(5), pageSize), SQLITE_IOERR_WRITE);
-  assertEqual(t.pool.getFailure(), {
-    method: "xWrite",
-    path: "/evolu1.db",
-    error: randomBytesError,
-  });
-  assertEqualBytes(readFile(t), stored);
+  const inserted = database.exec(insertRowsSql(201, 201));
+
   failRandomBytes = false;
-  write(database, createPage(5), pageSize);
-  assertEqual(t.callIo(journal, "xClose"), SQLITE_OK);
-  assertEqual(t.callIo(database, "xClose"), SQLITE_OK);
-});
-
-test("a key registered for a path encrypts only that path's database and only when it opens as a main database, a registration that is disposed encrypts nothing more, and registering the path again before then throws", async () => {
-  const t = await setupSahPool();
-  const openPlain = (path: string) => {
-    const { rc, db } = t.openDatabase(path);
-    assertEqual(rc, SQLITE_OK);
-    assertEqual(t.exec("CREATE TABLE t(a)", db), SQLITE_OK);
-    close(t, db);
-  };
-  {
-    const path = SqliteVfsPath.orThrow("/evolu1.db");
-    using _registration = t.pool.registerKey(path, testKey);
-    assertThrows(
-      () => t.pool.registerKey(path, otherKey),
-      (thrown) => {
-        assertInstanceOf(thrown, Error);
-        assertEqual(
-          thrown.message,
-          "A key is already registered for /evolu1.db.",
-        );
-      },
-    );
-    using _disposed = t.pool.registerKey(
-      SqliteVfsPath.orThrow("/after.db"),
-      testKey,
-    );
-    using _journal = t.pool.registerKey(
-      SqliteVfsPath.orThrow("/journal.db"),
-      testKey,
-    );
-    const { db } = t.openDatabase("/evolu1.db");
-    reserveBytes(t, db);
-    assertEqual(t.exec(createRowsSql, db), SQLITE_OK);
-    close(t, db);
-    openPlain("/other.db");
-    const journal = t.openFile(
-      "/journal.db",
-      SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_MAIN_JOURNAL,
-    );
-    assertEqual(journal.rc, SQLITE_OK);
-    const pPage = getOrThrow(allocWasm(t)(pageSize));
-    t.sqliteWasm.getHeapU8().set(createPage(3, true), pPage);
-    assertEqual(
-      t.callIo(journal.pFile, "xWrite", pPage, pageSize, 0n),
-      SQLITE_OK,
-    );
-    assertEqual(t.callIo(journal.pFile, "xClose"), SQLITE_OK);
-  }
-  openPlain("/after.db");
-
-  assertEqual(hasPlaintext(readFile(t)), false);
-  for (const path of ["/other.db", "/after.db", "/journal.db"])
-    assertEqual(
-      latin1.decode(readFile(t, path).subarray(0, 15)),
-      "SQLite format 3",
-    );
-  const unkeyed = t.openDatabase("/evolu1.db").db;
-  assertEqual(t.exec("SELECT count(*) FROM t", unkeyed), SQLITE_NOTADB);
-  close(t, unkeyed);
-});
-
-test("the key never reaches SQLite's memory, the caller's key stays as it was, and the copies the pool takes of it are zeroed once the registration is disposed and the database closed", async () => {
-  const copies: Array<Uint8Array> = [];
-  class TrackedBytes extends Uint8Array {
-    constructor(length: number) {
-      super(length);
-      copies.push(this);
-    }
-  }
-  const tracked = new TrackedBytes(32);
-  tracked.set(testKey);
-  const key = EncryptionKey.orThrow(tracked);
-  const t = await setupSahPool();
-  const isInHeap = () =>
-    Buffer.from(t.sqliteWasm.getHeapU8().buffer).indexOf(testKey) !== -1;
-
-  const db = openEncrypted(t, "/evolu1.db", key);
-  assertEqual(t.exec(createRowsSql, db), SQLITE_OK);
-  assertEqual(isInHeap(), false);
-  close(t, db);
-
-  assertEqual(isInHeap(), false);
-  assertEqualBytes(key, testKey);
-  assertTrue(copies.length >= 3);
-  for (const copy of copies.slice(1))
-    assertEqualBytes(copy, new Uint8Array(32));
-});
-
-test("the pool zeroes each HMAC key it derives once page 1 stores another salt and once the file closes, and the copy of page 1 it decrypts for a read of part of it", async (context) => {
-  // Every key handed to HMAC, the pool's HMAC keys and, through PBKDF2, its
-  // copies of the key, and every buffer HMAC reads.
-  const keys: Array<Uint8Array> = [];
-  const authenticated: Array<Uint8Array> = [];
-  const create = hmac.create.bind(hmac);
-  context.mock.method(
-    hmac,
-    "create",
-    (...[hash, key]: Parameters<typeof hmac.create>) => {
-      keys.push(key);
-      const stream = create(hash, key);
-      const update = stream.update.bind(stream);
-      stream.update = (message) => {
-        authenticated.push(message);
-        return update(message);
-      };
-      return stream;
-    },
-  );
-  const t = await setupSahPool();
-  const isZeros = (bytes: Uint8Array) => bytes.every((byte) => byte === 0);
-  const hmacKeys = () =>
-    keys.filter((key) => key.length === 32 && !eqUint8Array(key, testKey));
-
-  const first = openEncrypted(t);
+  assertErr(inserted);
+  assert(inserted.error.type === "SqliteError", inserted.error.type);
   assertEqual(
-    t.exec(
-      `PRAGMA cache_size = 10; BEGIN; ${createRowsSql}; ROLLBACK; PRAGMA cache_size = -16384`,
-      first,
-    ),
-    SQLITE_OK,
+    [inserted.error.extendedCode, inserted.error.cause],
+    [
+      SQLITE_IOERR_WRITE,
+      {
+        type: "SqliteCodecFailure",
+        error: { type: "SqliteRandomSourceError" },
+      },
+    ],
   );
-  const [firstHmacKey] = hmacKeys();
-  assertTrue(firstHmacKey != null && !isZeros(firstHmacKey));
-  const second = openEncrypted(t);
-  assertEqual(t.exec(createRowsSql, second), SQLITE_OK);
-  // The first connection reads page 1 with the salt the second wrote.
-  assertEqual(t.selectText(rowsSql, first), "200:200");
-  assertTrue(isZeros(firstHmacKey));
-  const third = openEncrypted(t);
-  assertEqual(t.selectText(rowsSql, third), "200:200");
-  for (const db of [first, second, third]) close(t, db);
-
-  assertTrue(hmacKeys().length >= 3);
-  for (const key of keys) assertEqualBytes(key, new Uint8Array(key.length));
-  const heap = t.sqliteWasm.getHeapU8().buffer;
-  const pages = [
-    ...new Set(
-      authenticated
-        .map(({ buffer }) => buffer)
-        .filter((buffer) => buffer !== heap && buffer.byteLength === pageSize),
-    ),
-  ].map((buffer) => new Uint8Array(buffer));
-  assertTrue(pages.some(isZeros));
-  for (const page of pages)
-    assertEqual(latin1.decode(page).includes("SQLite format 3"), false);
-});
-
-test("the pool zeroes the copy of the database's page 1 it decrypts when a hot journal without a page-1 record opens, and the HMAC key of a torn page 1 that fails to authenticate", async (context) => {
-  const keys: Array<Uint8Array> = [];
-  const authenticated: Array<Uint8Array> = [];
-  const create = hmac.create.bind(hmac);
-  context.mock.method(
-    hmac,
-    "create",
-    (...[hash, key]: Parameters<typeof hmac.create>) => {
-      keys.push(key);
-      const stream = create(hash, key);
-      const update = stream.update.bind(stream);
-      stream.update = (message) => {
-        authenticated.push(message);
-        return update(message);
-      };
-      return stream;
-    },
-  );
-  const t = await setupSahPool();
-  const db = openEncrypted(t);
-  // The UPDATE spills before its commit, so the journal has no page-1 record.
-  assertEqual(t.exec(`${createRowsSql}; ${spillSql}`, db), SQLITE_OK);
-  const next = await setupAfterCrash(t);
-  // The dead worker's instance never zeroed anything.
-  const firstKey = keys.length;
-  const firstPage = authenticated.length;
-
-  const reopened = openEncrypted(next);
-  assertEqual(next.selectText(rowsSql, reopened), "200:200");
-  close(next, reopened);
-  zeroBytes(next, 0, 16);
-  const torn = openEncrypted(next);
-  assertEqual(next.exec(rowsSql, torn), SQLITE_NOTADB);
-  close(next, torn);
-
-  const isZeros = (bytes: Uint8Array) => bytes.every((byte) => byte === 0);
-  const newKeys = keys.slice(firstKey);
-  assertTrue(newKeys.length >= 2);
-  for (const key of newKeys) assertTrue(isZeros(key));
-  const heap = next.sqliteWasm.getHeapU8().buffer;
-  const pages = [
-    ...new Set(
-      authenticated
-        .slice(firstPage)
-        .map(({ buffer }) => buffer)
-        .filter((buffer) => buffer !== heap && buffer.byteLength === pageSize),
-    ),
-  ].map((buffer) => new Uint8Array(buffer));
-  assertTrue(pages.length > 0);
-  for (const page of pages)
-    assertEqual(latin1.decode(page).includes("SQLite format 3"), false);
+  assertEqual(t.reportDefect.getDefects(), [randomBytesError]);
+  assertEqualBytes(readFile(t), stored);
+  assertEqual(t.pool.getPaths(), ["/evolu1.db"]);
+  assertOk(database.exec(insertRowsSql(201, 201)));
 });
 
 test("databases of two paths with different keys, both with a hot journal when their worker died, each roll back with their own key", async () => {
@@ -1981,7 +1455,7 @@ test("databases of two paths with different keys, both with a hot journal when t
   assertEqual(next.pool.getPaths(), ["/a.db", "/b.db"]);
 });
 
-test("two connections of a database share its rows, a third with another key fails with SQLITE_NOTADB, and a connection whose rolled-back transaction left no database reads the one another connection then created with another salt", async () => {
+test("two connections of a database share its rows, a third with another key fails to open with SQLITE_NOTADB, and a connection whose rolled-back transaction left no database reads the one another connection then created with another salt", async () => {
   const t = await setupSahPool();
   const first = openEncrypted(t);
   assertEqual(
@@ -1998,16 +1472,16 @@ test("two connections of a database share its rows, a third with another key fai
   assertEqual(t.selectText(rowsSql, first), "200:200");
   assertEqual(t.exec(insertRowsSql(201, 300), first), SQLITE_OK);
   assertEqual(t.selectText(rowsSql, second), "300:300");
-  const third = openEncrypted(t, "/evolu1.db", otherKey);
-  assertEqual(t.exec("SELECT count(*) FROM t", third), SQLITE_NOTADB);
-  for (const db of [first, second, third]) close(t, db);
+  const third = openCodec(t, "/evolu1.db", otherKey);
+  assertEqual(third.rc, SQLITE_NOTADB);
+  for (const db of [first, second, third.db]) close(t, db);
 });
 
 // A connection learns the salt from page 1, which SQLite reads after it rolls a
 // hot journal back, so one that opened the path while it was empty has no
 // salt, and one whose rolled-back transaction left it empty has the salt of a
 // database that no longer exists.
-test("a connection that opened an encrypted path while it was empty, also one whose rolled-back transaction left it empty, rolls back the hot journal that another connection with the key left in the database it then created, and while reading the database's first 16 bytes throws, fails with SQLITE_CANTOPEN, recording what was thrown, and keeps the journal", async () => {
+test("a connection that opened an encrypted path while it was empty, also one whose rolled-back transaction left it empty, rolls back the hot journal that another connection with the key left in the database it then created, and while reading the database's first 16 bytes throws, fails with SQLITE_CANTOPEN, the pool recording what was thrown, and keeps the journal", async () => {
   for (const before of [
     "SELECT 1 FROM sqlite_schema",
     `PRAGMA cache_size = 10; BEGIN; ${createRowsSql}; ROLLBACK; PRAGMA cache_size = -16384`,
@@ -2044,10 +1518,12 @@ test("a connection that opened an encrypted path while it was empty, also one wh
       SQLITE_CANTOPEN,
     );
     assertEqual(t.pool.getFailure(), {
-      method: "xOpen",
-      path: "/evolu1.db-journal",
+      type: "SqliteVfsFailure",
+      method: "xRead",
+      path: "/evolu1.db",
       error,
     });
+    assertEqual(takeCodecFailure(t, reader), null);
     t.fake.inject(null);
     assertEqual(t.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
     t.pool.clearFailure();
@@ -2060,6 +1536,7 @@ test("a connection that opened an encrypted path while it was empty, also one wh
     assertEqual(t.selectText(rowsSql, reader), "200:200");
     assertEqual(t.selectText("PRAGMA integrity_check", reader), "ok");
     assertEqual(t.pool.getFailure(), null);
+    assertEqual(takeCodecFailure(t, reader), null);
     assertEqual(t.pool.getPaths(), ["/evolu1.db"]);
     close(t, reader);
   }
@@ -2067,8 +1544,11 @@ test("a connection that opened an encrypted path while it was empty, also one wh
 
 // A connection that opens an empty file keeps SQLite's default page size, so
 // it reads page 1 whole at 8192 bytes, learns the size page 1 stores, and reads
-// it again at that size.
-test("a connection that opened an encrypted path while it was empty reads the database another connection then created with another page size, smaller or larger, recording nothing, while one with another key fails with SQLITE_NOTADB, recording a SqlitePageAuthenticationError for page 1", async () => {
+// it again at that size. The open read the empty schema, and SQLite ignores a
+// failed read of the schema cookie when a statement names a table that schema
+// lacks, which then fails to prepare with "no such table", so the wrong key
+// reads sqlite_schema.
+test("a connection that opened an encrypted path while it was empty reads the database another connection then created with another page size, smaller or larger, recording nothing, while one with another key fails with SQLITE_NOTADB, the codec recording a SqlitePageAuthenticationError for page 1", async () => {
   for (const size of [1024, 4096, 16384, 65536]) {
     const t = await setupSahPool();
     const reader = openEncrypted(t);
@@ -2083,42 +1563,15 @@ test("a connection that opened an encrypted path while it was empty reads the da
     assertEqual(t.selectText(rowsSql, reader), "200:200");
     assertEqual(t.selectText("PRAGMA page_size", reader), `${size}`);
     assertEqual(t.pool.getFailure(), null);
-    assertEqual(t.exec(rowsSql, wrongKey), SQLITE_NOTADB);
-    assertEqual(t.pool.getFailure(), {
-      method: "xRead",
-      path: "/evolu1.db",
-      error: { type: "SqlitePageAuthenticationError", pageNumber: 1 },
+    assertEqual(takeCodecFailure(t, reader), null);
+    assertEqual(
+      t.exec("SELECT count(*) FROM sqlite_schema", wrongKey),
+      SQLITE_NOTADB,
+    );
+    assertEqual(takeCodecFailure(t, wrongKey), {
+      type: "SqlitePageAuthenticationError",
+      pageNumber: 1,
     });
     for (const db of [reader, wrongKey, creator]) close(t, db);
-  }
-});
-
-test("an app's @awasm/noble backend installed in the stubs before a pool opens stays, and the noble backend, which wraps @noble/ciphers and @noble/hashes, writes what 2.2.4 and node:crypto read", async () => {
-  cbc.install(nobleCbc);
-  sha512.install(nobleSha512);
-  try {
-    const t = await setupSahPool();
-    assertEqual([cbc.getPlatform(), sha512.getPlatform()], ["noble", "noble"]);
-
-    const db = openEncrypted(t);
-    assertEqual(t.exec(createRowsSql, db), SQLITE_OK);
-    const plaintext = serialize(t, db);
-    close(t, db);
-
-    const pages = decryptWithNodeCrypto(readFile(t), testKey);
-    for (const [index, page] of pages.entries()) {
-      assertTrue(typeof page !== "number");
-      const offset = index * pageSize;
-      assertEqualBytes(
-        page.subarray(0, pageSize - reservedSize),
-        plaintext.subarray(offset, offset + pageSize - reservedSize),
-      );
-    }
-    const reference = await openWithSqliteJs(t);
-    assertEqual(reference.selectValue(rowsSql), "200:200");
-    reference.close();
-  } finally {
-    cbc.install(wasmCbc);
-    sha512.install(wasmSha512);
   }
 });

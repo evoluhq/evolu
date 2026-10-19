@@ -8,11 +8,11 @@ import {
   assertThrows,
   assertTrue,
   assertType,
+  EncryptionKey,
   err,
   FiniteNumber,
   getOrThrow,
   ok,
-  testCreateRun,
   trySync,
   type Result,
   type SqliteRow,
@@ -24,6 +24,7 @@ import { test } from "node:test";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 import type { SqliteCExports } from "../../../../packages/sqlite-wasm/src/CApi.ts";
+import type { EvoluCExports } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import {
   sqlite3_auto_extension,
   sqlite3_collation_needed,
@@ -36,7 +37,6 @@ import {
   sqlite3_prepare_v3,
   sqlite3_reset_auto_extension,
   sqlite3_result_int,
-  sqlite3_status64,
   sqlite3_trace_v2,
 } from "../../../../packages/sqlite-wasm/src/CApi.ts";
 import {
@@ -55,20 +55,22 @@ import {
   SQLITE_OK,
   SQLITE_OPEN_CREATE,
   SQLITE_OPEN_EXRESCODE,
+  SQLITE_OPEN_MAIN_DB,
   SQLITE_OPEN_READWRITE,
   SQLITE_PREPARE_PERSISTENT,
-  SQLITE_STATUS_MEMORY_USED,
   SQLITE_TOOBIG,
   SQLITE_TRACE_PROFILE,
   SQLITE_TRANSIENT,
   SQLITE_UTF8,
   SQLITE_WASM_DEALLOC,
+  sqlite3_io_methods_layout,
   type SqliteDataType,
 } from "../../../../packages/sqlite-wasm/src/Constants.ts";
 import {
   createSqliteDatabase,
   sqliteResultCodeToPrimary,
   SqliteVfsPath,
+  type SqliteDatabaseOptions,
   type SqliteError,
   type SqliteOperation,
   type SqliteRunResult,
@@ -89,17 +91,13 @@ import type {
   WasmPtr,
 } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
 import {
-  OpfsName,
-  openSahPool,
-} from "../../../../packages/sqlite-wasm/src/SahPool.ts";
-import {
   installWasmFunctions,
   type SqliteWasm,
-  type SqliteWasmDep,
 } from "../../../../packages/sqlite-wasm/src/Wasm.ts";
-import { setupFakeOpfs } from "./_fakeOpfs.ts";
+import { setupSahPool } from "./_sahPool.ts";
 import {
   setupDatabase,
+  setupMemoryUsed,
   setupSqliteWasm,
   trapEveryOpen,
 } from "./_sqliteWasm.ts";
@@ -119,7 +117,9 @@ const setupSqliteDatabase = async () => {
  * record calls or inject failures around the original exports.
  */
 const setupSqliteWasmWith = async (
-  overrides: (sqliteWasm: SqliteWasm) => Partial<SqliteCExports>,
+  overrides: (
+    sqliteWasm: SqliteWasm,
+  ) => Partial<SqliteCExports & EvoluCExports>,
 ) => {
   const deps = await setupSqliteWasm();
   const { sqliteWasm } = deps;
@@ -129,26 +129,6 @@ const setupSqliteWasmWith = async (
       ...sqliteWasm,
       exports: { ...sqliteWasm.exports, ...overrides(sqliteWasm) },
     },
-  };
-};
-
-/**
- * Returns a function that reads the bytes SQLite has allocated, with its output
- * memory allocated up front, so reading never changes the count.
- */
-const setupMemoryUsed = (deps: SqliteWasmDep) => {
-  const out = getOrThrow(allocWasm(deps)(16));
-  return (): bigint => {
-    assertEqual(
-      sqlite3_status64(deps)(
-        SQLITE_STATUS_MEMORY_USED,
-        out,
-        (out + 8) as WasmPtr,
-        0,
-      ),
-      SQLITE_OK,
-    );
-    return deps.sqliteWasm.getHeapDataView().getBigInt64(out, true);
   };
 };
 
@@ -243,6 +223,51 @@ test("createSqliteDatabase opens :memory: on the default VFS with READWRITE, CRE
       0,
     ],
   ]);
+});
+
+test("a Memory database has Evolu's SQL functions, which evolu_skiplist_register registers", async () => {
+  const { database } = await setupSqliteDatabase();
+
+  assertEqual(
+    getOrThrow(database.run("SELECT evolu_core_version() AS version", [])).rows,
+    [{ version: 1 }],
+  );
+});
+
+test("a Memory database whose evolu_skiplist_register fails, as sqlite3_create_function_v2 can, fails to open with the returned code and closes the connection, leaking nothing", async () => {
+  let isFailing = false;
+  let closeCount = 0;
+  const deps = await setupSqliteWasmWith((sqliteWasm) => ({
+    evolu_skiplist_register: (db) =>
+      isFailing
+        ? SQLITE_NOMEM
+        : (
+            sqliteWasm.exports as SqliteCExports & EvoluCExports
+          ).evolu_skiplist_register(db),
+    sqlite3_close_v2: (db) => {
+      closeCount++;
+      return sqliteWasm.exports.sqlite3_close_v2(db);
+    },
+  }));
+  const memoryUsed = setupMemoryUsed(deps);
+  // The first open allocates SQLite's global state, which stays.
+  getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }))[Symbol.dispose]();
+  closeCount = 0;
+  const baseline = memoryUsed();
+  isFailing = true;
+
+  const opened = createSqliteDatabase(deps)({ type: "Memory" });
+
+  assertErr(opened, {
+    type: "SqliteError",
+    operation: "open",
+    extendedCode: SQLITE_NOMEM,
+    message: "out of memory",
+    sqlOffset: null,
+    cause: null,
+  });
+  assertEqual(closeCount, 1);
+  assertEqual(memoryUsed(), baseline);
 });
 
 // tester1.c-pp.js 'sqlite3.oo1' 'Close db'.
@@ -3204,51 +3229,131 @@ test("a trap escaping a database call breaks the instance: it is rethrown, and e
   );
 });
 
-test("a trap after the connection opened breaks the instance before the open's deferred close, so the connection is never closed on the state the trap left", async () => {
-  const trap = new WebAssembly.RuntimeError("unreachable");
-  let trapsPrepare = false;
-  let closes = 0;
-  const deps = await setupSqliteWasmWith(({ exports }) => ({
-    sqlite3_prepare_v3: (db, zSql, nByte, prepFlags, ppStmt, pzTail) => {
-      if (trapsPrepare) throw trap;
-      return exports.sqlite3_prepare_v3(
-        db,
-        zSql,
-        nByte,
-        prepFlags,
-        ppStmt,
-        pzTail,
-      );
+// evolu_codec_open rolls back a hot journal and reads the schema, so a trap
+// there breaks the instance, and only an installed function lets a trap
+// through, where a pool read that throws fails with SQLITE_IOERR_READ. So the
+// pool's xRead is replaced with one that passes the 100-byte header read
+// sqlite3_open_v2 makes through and traps on the next read: of a File
+// database, page 1 in the schema read, and of an EncryptedFile database, the
+// start of page 1, which the codec reads to decrypt it inside sqlite3_open_v2.
+// Each database exists first, since the schema read of a new one reads
+// nothing.
+test("a trap inside evolu_codec_open breaks the instance before the open's deferred frees, so no C runs on the state the trap left, and an EncryptedFile database's staged key is zeroed anyway", async () => {
+  const key = EncryptionKey.orThrow(new Uint8Array(32).fill(7));
+  const path = SqliteVfsPath.orThrow("/evolu1.db");
+  for (const { type, trappedRead, staged } of [
+    { type: "File", trappedRead: 8192, staged: null },
+    {
+      type: "EncryptedFile",
+      trappedRead: 18,
+      staged: [key, new Uint8Array(key.length)],
     },
-    sqlite3_close_v2: (db) => {
-      closes++;
-      return exports.sqlite3_close_v2(db);
-    },
-  }));
-  // A File database, whose open reads the schema after the connection opened.
-  await using run = testCreateRun({
-    ...deps,
-    opfsRoot: setupFakeOpfs().opfsRoot,
-  });
-  const pool = getOrThrow(
-    await run(openSahPool({ directory: [OpfsName.orThrow(".evolu")] })),
-  );
-  trapsPrepare = true;
+  ] as const) {
+    const t = await setupSahPool();
+    const options: SqliteDatabaseOptions =
+      type === "File"
+        ? { type, vfs: t.pool, path }
+        : { type, vfs: t.pool, path, key };
+    const created = getOrThrow(createSqliteDatabase(t)(options));
+    assertOk(created.exec("CREATE TABLE t(a)"));
+    created[Symbol.dispose]();
+    const trap = new WebAssembly.RuntimeError("unreachable");
+    let isTrapped = false;
+    const reads: Array<readonly [number, number]> = [];
+    const callsAfterTrap: Array<string> = [];
+    const stagedKeys: Array<{
+      readonly pointer: number;
+      readonly bytes: Uint8Array;
+    } | null> = [];
+    const { pFile } = t.openFile(
+      path,
+      SQLITE_OPEN_READWRITE | SQLITE_OPEN_MAIN_DB,
+    );
+    const ioMethods = t.readPtr(pFile);
+    assertEqual(t.callIo(pFile, "xClose"), SQLITE_OK);
+    const { offset, signature } = sqlite3_io_methods_layout.members.xRead;
+    const slot = (ioMethods + offset) as WasmPtr;
+    const xRead = t.sqliteWasm.functionTable.get(t.readPtr(slot)) as (
+      ...args: ReadonlyArray<number | bigint>
+    ) => number;
+    const {
+      pointers: [trapping],
+    } = installWasmFunctions(t)([
+      {
+        signature,
+        fn: (file: number, buffer: number, amount: number, at: bigint) => {
+          reads.push([amount, Number(at)]);
+          if (reads.length === 1) return xRead(file, buffer, amount, at);
+          isTrapped = true;
+          throw trap;
+        },
+      },
+    ]);
+    t.sqliteWasm.getHeapDataView().setUint32(slot, trapping, true);
+    const recordAfterTrap = (name: string) => {
+      if (isTrapped) callsAfterTrap.push(name);
+    };
+    const exports = t.sqliteWasm.exports as SqliteCExports & EvoluCExports;
+    const overrides: Partial<SqliteCExports & EvoluCExports> = {
+      evolu_codec_open: (filename, ppDb, zVfs, zKey, flags) => {
+        stagedKeys.push(
+          zKey === 0
+            ? null
+            : {
+                pointer: zKey,
+                bytes: t.sqliteWasm.getHeapU8().slice(zKey, zKey + key.length),
+              },
+        );
+        return exports.evolu_codec_open(filename, ppDb, zVfs, zKey, flags);
+      },
+      evolu_codec_take_failure: (db, pFailure) => {
+        recordAfterTrap("evolu_codec_take_failure");
+        return exports.evolu_codec_take_failure(db, pFailure);
+      },
+      sqlite3_free: (pointer) => {
+        recordAfterTrap("sqlite3_free");
+        exports.sqlite3_free(pointer);
+      },
+      sqlite3_close_v2: (db) => {
+        recordAfterTrap("sqlite3_close_v2");
+        return exports.sqlite3_close_v2(db);
+      },
+    };
+    const deps = {
+      ...t,
+      sqliteWasm: { ...t.sqliteWasm, exports: { ...exports, ...overrides } },
+    };
 
-  assertThrows(
-    () =>
-      createSqliteDatabase(deps)({
-        type: "File",
-        vfs: pool,
-        path: SqliteVfsPath.orThrow("/evolu1.db"),
-      }),
-    (thrown) => {
-      assertInstanceOf(thrown, SuppressedError);
-      assertSame(thrown.suppressed, trap);
-    },
-  );
-  assertEqual(closes, 0);
-  assertTrue(deps.sqliteWasm.isBroken());
+    assertThrows(
+      () => createSqliteDatabase(deps)(options),
+      (thrown) => {
+        // The scratch memory's refused free, over the open's refused frees,
+        // over the trap.
+        assertInstanceOf(thrown, SuppressedError);
+        assertInstanceOf(thrown.suppressed, SuppressedError);
+        assertSame(thrown.suppressed.suppressed, trap);
+      },
+    );
+
+    assertTrue(t.sqliteWasm.isBroken());
+    assertEqual(reads, [
+      [100, 0],
+      [trappedRead, 0],
+    ]);
+    assertEqual(callsAfterTrap, []);
+    assertEqual(
+      stagedKeys.map(
+        (stagedKey) =>
+          stagedKey && [
+            stagedKey.bytes,
+            t.sqliteWasm
+              .getHeapU8()
+              .slice(stagedKey.pointer, stagedKey.pointer + key.length),
+          ],
+      ),
+      [staged],
+    );
+  }
 });
 
 test("run throws and breaks the instance when SQLite returns a column type that is none of its five, rather than leave the column out of the row", async () => {

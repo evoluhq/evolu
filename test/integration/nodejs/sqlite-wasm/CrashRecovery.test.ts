@@ -180,12 +180,16 @@ test("a new database whose first transaction spilled when its worker died rolls 
   );
   next.pool.clearFailure();
 
+  // Opened without a key, Evolu's codec checks the journal of a database whose
+  // first bytes are not SQLite's header, as these zeros are, by reading its
+  // first header through the pool, which records the read.
   assertEqual(
     next.exec("SELECT count(*) FROM sqlite_schema", reopened),
     SQLITE_CANTOPEN,
   );
   assertEqual(next.pool.getFailure(), {
-    method: "xOpen",
+    type: "SqliteVfsFailure",
+    method: "xRead",
     path: "/test.db-journal",
     error,
   });
@@ -595,6 +599,7 @@ test("a COMMIT in synchronous = EXTRA whose journal's free header cannot be flus
 
   assertEqual(sqlite3_extended_errcode(t)(db), SQLITE_IOERR_DIR_FSYNC);
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xDelete",
     path: "/test.db-journal",
     error,
@@ -848,11 +853,12 @@ test("a power loss after a VACUUM whose journal delete's flush failed leaves a p
       assertEqual(
         vacuumed.ok
           ? null
-          : vacuumed.error.type === "SqliteError" && [
-              vacuumed.error.extendedCode,
-              vacuumed.error.cause?.method,
-              vacuumed.error.cause?.path,
-            ],
+          : vacuumed.error.type === "SqliteError" &&
+              vacuumed.error.cause?.type === "SqliteVfsFailure" && [
+                vacuumed.error.extendedCode,
+                vacuumed.error.cause.method,
+                vacuumed.error.cause.path,
+              ],
         vacuumCode == null ? null : [vacuumCode, "xTruncate", "/test.db"],
       );
       assertEqual(getOrThrow(db.run("SELECT count(*) AS n FROM t", [])).rows, [

@@ -141,7 +141,7 @@ test('an EncryptedFile database keeps its rows for a new worker, which opens it 
   assertEqual(await readSlots(pool.directory), before);
 });
 
-test("an encrypted database opened with another key fails with SQLITE_NOTADB, caused by the pool's SqlitePageAuthenticationError for page 1, whose error holds nothing of either key, also after createEncryptedSqliteDatabase derived the legacy key, leaves its files in OPFS unchanged, and opens again with its key", async () => {
+test("an encrypted database opened with another key fails with SQLITE_NOTADB, caused by the codec's SqlitePageAuthenticationError for page 1, whose error holds nothing of either key, also after createEncryptedSqliteDatabase derived the legacy key, leaves its files in OPFS unchanged, and opens again with its key", async () => {
   await using pool = setupPoolDirectory();
   using worker = await setupSqliteWorker();
   assertOk(await worker.run("openPool", pool.directory));
@@ -169,8 +169,7 @@ test("an encrypted database opened with another key fails with SQLITE_NOTADB, ca
     message: "file is not a database",
     sqlOffset: null,
     cause: {
-      method: "xRead",
-      path: "/evolu1.db",
+      type: "SqliteCodecFailure",
       error: { type: "SqlitePageAuthenticationError", pageNumber: 1 },
     },
   });

@@ -57,14 +57,14 @@ export const loadSqliteWasm: Task<SqliteWasm, SqliteWasmError> = (run) =>
  * Creates the {@link CreateSqliteDriver} of Evolu for the web.
  *
  * A database is the file `/evolu1.db` in a pool of OPFS sync access handles in
- * the directory `.<name>`, in the format of SQLite's opfs-sahpool, and the pool
- * encrypts it in the `encrypted` mode. So the databases `@evolu/web` 3 created
- * with `@evolu/sqlite-wasm` 2.2.4 open unchanged, an encrypted one with the key
- * 2.2.4 derived from the encryption key, which is never rekeyed. 2.2.4 derived
- * it because of a bug in SQLite3 Multiple Ciphers: it took the encryption key,
- * passed in SQLCipher's notation for a raw key, as a passphrase
- * (https://github.com/utelle/SQLite3MultipleCiphers/issues/218), as
- * {@link deriveLegacySqliteKey} of `@evolu/sqlite-wasm` describes. A new
+ * the directory `.<name>`, in the format of SQLite's opfs-sahpool, and Evolu's
+ * codec, in C, encrypts it in the `encrypted` mode. So the databases
+ * `@evolu/web` 3 created with `@evolu/sqlite-wasm` 2.2.4 open unchanged, an
+ * encrypted one with the key 2.2.4 derived from the encryption key, which is
+ * never rekeyed. 2.2.4 derived it because of a bug in SQLite3 Multiple Ciphers:
+ * it took the encryption key, passed in SQLCipher's notation for a raw key, as
+ * a passphrase (https://github.com/utelle/SQLite3MultipleCiphers/issues/218),
+ * as {@link deriveLegacySqliteKey} of `@evolu/sqlite-wasm` describes. A new
  * encrypted database is encrypted with the encryption key itself, so
  * `@evolu/web` 3.4.1 and earlier cannot open it. A database in the `memory`
  * mode uses no OPFS.

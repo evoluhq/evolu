@@ -36,6 +36,8 @@ import {
   sqlite3_get_autocommit,
   sqlite3_malloc,
   sqlite3_vfs_find,
+  sqlite3_vfs_register,
+  sqlite3_vfs_unregister,
 } from "../../../../packages/sqlite-wasm/src/CApi.ts";
 import {
   sqlite3_file_layout,
@@ -56,6 +58,7 @@ import {
   SQLITE_IOERR_SHORT_READ,
   SQLITE_IOERR_TRUNCATE,
   SQLITE_IOERR_WRITE,
+  SQLITE_MISUSE,
   SQLITE_NOMEM,
   SQLITE_NOTFOUND,
   SQLITE_OK,
@@ -78,10 +81,13 @@ import {
   writeWasmBytes,
 } from "../../../../packages/sqlite-wasm/src/Memory.ts";
 import type { SqliteShortWriteError } from "../../../../packages/sqlite-wasm/src/Database.ts";
+import { evolu_codec_open } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import type {
   CStringPtr,
+  SqliteDbPtr,
   SqliteFilePtr,
   SqliteOwnedPtr,
+  SqliteVfsPtr,
   WasmPtr,
 } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
 import {
@@ -101,7 +107,8 @@ import {
   type FakeOpfsFault,
   type FakeOpfsFaultHook,
 } from "./_fakeOpfs.ts";
-import { setupDatabase } from "./_sqliteWasm.ts";
+import type { SqliteWasm } from "../../../../packages/sqlite-wasm/src/Wasm.ts";
+import { setupDatabase, setupMemoryUsed } from "./_sqliteWasm.ts";
 import { openSahPool } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
 
 // tester1 OPFS SyncAccessHandle Pool VFS / SAH sanity checks: the VFS is
@@ -329,21 +336,6 @@ test("xClose leaves the file in the pool", async () => {
 
   assertEqual(access(t, "test"), 1);
   assertEqual(t.pool.getPaths(), ["/test"]);
-});
-
-// SQLite opens a file without a name only for a temporary file, which this
-// build keeps in memory.
-test("xOpen refuses a file without a name with SQLITE_CANTOPEN, leaving pMethods NULL and mapping no path", async () => {
-  const t = await setupSahPool();
-
-  const { rc, pFile } = t.openFile(
-    null,
-    SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_DELETEONCLOSE,
-  );
-
-  assertEqual(rc, SQLITE_CANTOPEN);
-  assertEqual(t.readPtr(pFile), 0);
-  assertEqual(t.pool.getPaths(), []);
 });
 
 // tester1 OPFS SyncAccessHandle Pool VFS / SAH sanity checks, pauseVfs: a
@@ -981,6 +973,7 @@ test("xOpen normalizes names to URL paths, so file:evolu1.db, evolu1.db and /evo
   t.pool.clearFailure();
   assertEqual(t.openFile(`${longest}a`, journalFlags).rc, SQLITE_CANTOPEN);
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xOpen",
     path: `${longest}a`,
     error: { type: "SahPoolInvalidPath", name: `${longest}a` },
@@ -1027,6 +1020,7 @@ test("xOpen rejects a database whose path, normalized, is 499 or more UTF-8 byte
 
     assertEqual(rc, SQLITE_CANTOPEN);
     assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
       method: "xOpen",
       path: new URL(name, "file://localhost/").pathname,
       error: { type: "SahPoolInvalidPath", name },
@@ -1110,6 +1104,35 @@ test("xRandomness fills memory from RandomBytes in chunks of at most 65536 bytes
     assertEqual(copyWasmBytes(t)(pOut, byteLength + 1), expected);
     assertEqual(lengths, byteLength === 16 ? [16] : [65536, 65536, 17]);
   }
+});
+
+test("xRandomness writes RandomBytes' bytes also when creating them grows the memory", async () => {
+  const deps = testCreateDeps();
+  const created: Array<Uint8Array> = [];
+  let isGrowing = false;
+  const randomBytes = {
+    create: (length: number) => {
+      const bytes = deps.randomBytes.create(length);
+      if (isGrowing) {
+        isGrowing = false;
+        const ptr = getOrThrow(allocWasm(t)(32 * 1024 * 1024));
+        sqlite3_free(t)(ptr);
+        created.push(bytes);
+      }
+      return bytes;
+    },
+  } as RandomBytes;
+  const t = await setupSahPool({ deps: { ...deps, randomBytes } });
+  const pOut = getOrThrow(allocWasm(t)(16));
+  const before = t.sqliteWasm.getHeapU8().byteLength;
+
+  isGrowing = true;
+  assertEqual(t.callVfs("xRandomness", 16, pOut), 16);
+
+  assertTrue(t.sqliteWasm.getHeapU8().byteLength > before);
+  assertEqual(created.length, 1);
+  assertEqual(copyWasmBytes(t)(pOut, 16), created[0]);
+  assertEqual(t.reportDefect.getDefects(), []);
 });
 
 test("xSleep returns at once, having slept 0 microseconds", async () => {
@@ -1200,8 +1223,9 @@ test("xSync flushes the file's handle", async () => {
   );
 });
 
-// As in opfs-sahpool, so SQLite handles every pragma itself.
-test("xFileControl returns SQLITE_NOTFOUND for every opcode of a file the pool does not encrypt", async () => {
+// As in opfs-sahpool, so SQLite handles every pragma that Evolu's codec
+// forwards.
+test("xFileControl returns SQLITE_NOTFOUND for every opcode", async () => {
   const t = await setupSahPool();
   const { pFile } = t.openFile(
     "test",
@@ -1373,7 +1397,8 @@ test("the VFS block is zeroed before it is filled in, so pAppData, the xDl* slot
   const byteLength =
     sqlite3_vfs_layout.sizeof +
     sqlite3_io_methods_layout.sizeof +
-    "opfs-sahpool:.evolu\0".length;
+    rawVfsName.length +
+    1;
   const blocks = Array.from({ length: 8 }, () => {
     const pointer = sqlite3_malloc(t)(byteLength);
     assertTrue(pointer !== 0);
@@ -1434,7 +1459,7 @@ test("the VFS struct, the I/O methods and the name are allocated once and never 
 
   assertEqual(pool.vfsName, t.pool.vfsName);
   assertEqual(t.findVfs(), vfs);
-  assertEqual(t.text(zName as CStringPtr), t.pool.vfsName);
+  assertEqual(t.text(zName as CStringPtr), rawVfsName);
   assertEqual(t.sqliteWasm.functionTable.length, tableLength);
   const { rc, db } = t.openDatabase("/test.db");
   assertEqual(rc, SQLITE_OK);
@@ -1488,7 +1513,12 @@ test("a failing handle method makes its VFS method return its own extended code 
 
     assertEqual(call(), rc);
 
-    assertEqual(t.pool.getFailure(), { method, path: "/test", error });
+    assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
+      method,
+      path: "/test",
+      error,
+    });
     t.fake.inject(null);
   }
   assertEqual(t.reportDefect.getDefects(), []);
@@ -1517,6 +1547,7 @@ test("the pool records the first failure until clearFailure, and xGetLastError l
   assertEqual(t.callVfs("xGetLastError", 0, 0), 0);
 
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xRead",
     path: "/test",
     error: readError,
@@ -1525,6 +1556,7 @@ test("the pool records the first failure until clearFailure, and xGetLastError l
   assertEqual(t.pool.getFailure(), null);
   assertEqual(t.callIo(pFile, "xSync", 2), SQLITE_IOERR_FSYNC);
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xSync",
     path: "/test",
     error: syncError,
@@ -1596,6 +1628,7 @@ test("xWrite returns SQLITE_FULL for an error named QuotaExceededError or a coun
     assertEqual(writeFile(t, pFile, new Uint8Array(8)), rc);
 
     assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
       method: "xWrite",
       path: "/test",
       error,
@@ -1619,6 +1652,7 @@ test("xTruncate returns SQLITE_IOERR_TRUNCATE for QuotaExceededError too, not SQ
   assertEqual(t.callIo(pFile, "xTruncate", 0n), SQLITE_IOERR_TRUNCATE);
 
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xTruncate",
     path: "/test",
     error,
@@ -1661,6 +1695,7 @@ test("xOpen with CREATE fails with SQLITE_CANTOPEN when no slot is free, recordi
   assertEqual(rc, SQLITE_CANTOPEN);
   assertEqual(t.readPtr(pFile), 0);
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xOpen",
     path: "/6",
     error: { type: "SahPoolFull", capacity: 6 },
@@ -1700,6 +1735,7 @@ test("xOpen with CREATE fails with SQLITE_FULL when writing the header throws Qu
     assertEqual(opened.rc, rc);
     assertEqual(t.readPtr(opened.pFile), 0);
     assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
       method: "xOpen",
       path: "/test.db-journal",
       error,
@@ -1726,6 +1762,7 @@ test("xOpen with CREATE fails with SQLITE_IOERR_FSYNC when flushing the free slo
   assertEqual(rc, SQLITE_IOERR_FSYNC);
   assertEqual(t.readPtr(pFile), 0);
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xOpen",
     path: "/test.db-journal",
     error,
@@ -1770,6 +1807,7 @@ test("xOpen with CREATE first flushes the free header of a delete whose flush fa
   assertEqual(rc, SQLITE_IOERR_FSYNC);
   assertEqual(t.readPtr(pFile), 0);
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xOpen",
     path: "/c.db-journal",
     error,
@@ -1824,6 +1862,7 @@ test("the first xOpen with CREATE flushes every slot free when the pool opened, 
   assertEqual(rc, SQLITE_IOERR_FSYNC);
   assertEqual(t.readPtr(pFile), 0);
   assertEqual(pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xOpen",
     path: "/test.db-journal",
     error,
@@ -1892,6 +1931,7 @@ test("xDelete fails with SQLITE_IOERR_DELETE when writing the free header fails 
 
     t.fake.inject(null);
     assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
       method: "xDelete",
       path: "/test.db-journal",
       error,
@@ -1961,7 +2001,12 @@ test("xDelete asked for a durable delete flushes a free header whose flush faile
     [
       2,
       SQLITE_IOERR_DIR_FSYNC,
-      { method: "xDelete", path: "/test.db-journal", error },
+      {
+        type: "SqliteVfsFailure",
+        method: "xDelete",
+        path: "/test.db-journal",
+        error,
+      },
     ],
   ] as const) {
     const t = await setupSahPool();
@@ -2076,6 +2121,7 @@ test("xOpen fails with SQLITE_CANTOPEN when reading the size of a slot longer th
     assertEqual(rc, code);
     assertEqual(t.readPtr(pFile), 0);
     assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
       method: "xOpen",
       path: "/other.db-journal",
       error,
@@ -2339,7 +2385,7 @@ test("openSahPool fails with SahPoolSetupError when the VFS cannot be allocated,
       byteLength:
         sqlite3_vfs_layout.sizeof +
         sqlite3_io_methods_layout.sizeof +
-        vfsName.length +
+        rawVfsName.length +
         1,
     },
   });
@@ -2393,6 +2439,132 @@ test("openSahPool fails with SahPoolSetupError when sqlite3_vfs_register fails, 
   assertTrue(sqlite3_vfs_find(t)(t.cString(vfsName)) !== 0);
   // The failed attempt's functions were disposed, so their slots are reused.
   assertEqual(t.sqliteWasm.functionTable.length, tableLength);
+});
+
+test("openSahPool registers Evolu's codec under the pool's name over its raw VFS, which it registers under an internal name and then unregisters", async () => {
+  const t = await setupSahPool();
+  const codec = sqlite3_vfs_find(t)(t.cString(t.pool.vfsName));
+  // CodecVfs's inner, right after its sqlite3_vfs.
+  const raw = t.readPtr((codec + sqlite3_vfs_layout.sizeof) as WasmPtr);
+  const xOpenOf = (vfs: number) =>
+    t.readPtr((vfs + sqlite3_vfs_layout.members.xOpen.offset) as WasmPtr);
+
+  // Only a codec VFS opens with evolu_codec_open; 2 is
+  // EVOLU_CODEC_PLAINTEXT_CHECKSUMS.
+  assertEqual(
+    evolu_codec_open(t)(
+      t.cString("/test.db"),
+      t.scratch.out,
+      t.cString(t.pool.vfsName),
+      0,
+      2,
+    ),
+    SQLITE_OK,
+  );
+  assertEqual(
+    sqlite3_close_v2(t)(t.readPtr(t.scratch.out) as SqliteDbPtr),
+    SQLITE_OK,
+  );
+  assertEqual(
+    t.text(
+      t.readPtr(
+        (raw + sqlite3_vfs_layout.members.zName.offset) as WasmPtr,
+      ) as CStringPtr,
+    ),
+    rawVfsName,
+  );
+  assertTrue(xOpenOf(raw) !== xOpenOf(codec));
+  assertEqual(sqlite3_vfs_find(t)(t.cString(rawVfsName)), 0);
+});
+
+test("openSahPool fails with SahPoolSetupError when the codec cannot register, as when an app holds the pool's name, unregistering and freeing the raw VFS, and a retry succeeds", async () => {
+  const t = await setupDatabase();
+  const fake = setupFakeOpfs();
+  const vfsName = "opfs-sahpool:.evolu";
+  // An app's VFS under the pool's name, a copy of the default VFS.
+  const memory = sqlite3_vfs_find(t)(0);
+  const appVfs = getOrThrow(
+    allocWasm(t)(sqlite3_vfs_layout.sizeof),
+  ) as WasmPtr as SqliteVfsPtr;
+  t.sqliteWasm
+    .getHeapU8()
+    .copyWithin(appVfs, memory, memory + sqlite3_vfs_layout.sizeof);
+  t.sqliteWasm
+    .getHeapDataView()
+    .setInt32(
+      appVfs + sqlite3_vfs_layout.members.zName.offset,
+      t.cString(vfsName),
+      true,
+    );
+  assertEqual(sqlite3_vfs_register(t)(appVfs, 0), SQLITE_OK);
+  await using run = testCreateRun({ ...t, opfsRoot: fake.opfsRoot });
+  const memoryUsed = setupMemoryUsed(t);
+  const before = memoryUsed();
+
+  const result = await run(
+    openSahPool({ directory: [OpfsName.orThrow(".evolu")] }),
+  );
+
+  assertErr(result, {
+    type: "SahPoolSetupError",
+    cause: { type: "SqliteWasmInitializeError", code: SQLITE_MISUSE },
+  });
+  // The raw VFS and the codec's name were freed.
+  assertEqual(memoryUsed(), before);
+  assertEqual(sqlite3_vfs_find(t)(t.cString(rawVfsName)), 0);
+  assertEqual(sqlite3_vfs_find(t)(t.cString(vfsName)), appVfs);
+  for (const fileName of fake.listFiles(".evolu/.opaque"))
+    fake.hold(`.evolu/.opaque/${fileName}`)();
+  const tableLength = t.sqliteWasm.functionTable.length;
+  assertEqual(sqlite3_vfs_unregister(t)(appVfs), SQLITE_OK);
+  const pool = getOrThrow(
+    await run(openSahPool({ directory: [OpfsName.orThrow(".evolu")] })),
+  );
+  assertEqual(pool.vfsName, vfsName);
+  // The failed attempt's functions were disposed, so their slots are reused.
+  assertEqual(t.sqliteWasm.functionTable.length, tableLength);
+});
+
+test("openSahPool fails with SahPoolSetupError when the codec's name cannot be allocated, registering nothing and freeing the raw VFS, and a retry succeeds", async () => {
+  const t = await setupDatabase();
+  const fake = setupFakeOpfs();
+  const vfsName = "opfs-sahpool:.evolu";
+  let mallocFails = true;
+  const { exports } = t.sqliteWasm;
+  const sqliteWasm: SqliteWasm = {
+    ...t.sqliteWasm,
+    exports: {
+      ...exports,
+      sqlite3_malloc: (byteLength) =>
+        mallocFails && byteLength === vfsName.length + 1
+          ? 0
+          : exports.sqlite3_malloc(byteLength),
+    },
+  };
+  await using run = testCreateRun({
+    ...t,
+    opfsRoot: fake.opfsRoot,
+    sqliteWasm,
+  });
+  const memoryUsed = setupMemoryUsed(t);
+  const before = memoryUsed();
+
+  const result = await run(
+    openSahPool({ directory: [OpfsName.orThrow(".evolu")] }),
+  );
+
+  assertErr(result, {
+    type: "SahPoolSetupError",
+    cause: { type: "SqliteNoMem", byteLength: vfsName.length + 1 },
+  });
+  assertEqual(memoryUsed(), before);
+  assertEqual(sqlite3_vfs_find(t)(t.cString(vfsName)), 0);
+  assertEqual(sqlite3_vfs_find(t)(t.cString(rawVfsName)), 0);
+  for (const fileName of fake.listFiles(".evolu/.opaque"))
+    fake.hold(`.evolu/.opaque/${fileName}`)();
+  mallocFails = false;
+  assertOk(await run(openSahPool({ directory: [OpfsName.orThrow(".evolu")] })));
+  assertTrue(sqlite3_vfs_find(t)(t.cString(vfsName)) !== 0);
 });
 
 // The instance rule of Wasm.ts: an exception that escapes a wasm call breaks
@@ -2658,6 +2830,7 @@ test("a COMMIT whose database writes fail returns SQLITE_FULL for a full disk an
 
     assertEqual(sqlite3_extended_errcode(t)(db), extendedCode);
     assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
       method: "xWrite",
       path: "/test.db",
       error,
@@ -2680,6 +2853,9 @@ test("a COMMIT whose database writes fail returns SQLITE_FULL for a full disk an
   }
 });
 
+// The harness opens with sqlite3_open_v2, not evolu_codec_open, which turns
+// attach writes off, so ATTACH here creates files through the codec, as a URI
+// ATTACH from a Memory connection does.
 test("an ATTACH that finds no free slot fails with SQLITE_CANTOPEN and the recorded SahPoolFull, never reaching xClose, and works again after a DETACH", async () => {
   const t = await setupSahPool();
   const { db } = t.openDatabase("/main.db");
@@ -2691,6 +2867,7 @@ test("an ATTACH that finds no free slot fails with SQLITE_CANTOPEN and the recor
   assertEqual(t.exec("ATTACH '/a6.db' AS a6", db), SQLITE_CANTOPEN);
 
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xOpen",
     path: "/a6.db",
     error: { type: "SahPoolFull", capacity: 6 },
@@ -2810,26 +2987,32 @@ test("a committed transaction flushes as SQLite syncs, and the pool adds only th
   }
 });
 
-// Opening a journal of a database without a key, the pool reads the
-// database's first 16 bytes, because a journal that exists can be the hot
-// journal of an encrypted database. A journal the open creates holds nothing
-// to roll back.
-test("a committed transaction reads as SQLite reads, and the pool adds only a read of the first 16 bytes of a database without a key when it opens a journal that exists, as TRUNCATE and PERSIST keep it, not one the transaction creates", async () => {
+// The pool reads only what SQLite asks for. Opening a journal of a database
+// without a key, Evolu's codec reads the database's first 16 bytes through the
+// pool, because a journal that is not empty can be the hot journal of an
+// encrypted database. An empty journal, as TRUNCATE keeps it, or one the open
+// creates holds nothing to roll back.
+test("a committed transaction reads as SQLite reads, and Evolu's codec adds only a read of the first 16 bytes of a database without a key when it opens a journal that is not empty, as PERSIST keeps it, not an empty one or one the transaction creates", async () => {
   // SQLite reads the change counter at 24, the first byte of a journal it
   // keeps, to tell whether it is hot, and 8 bytes after the records to zero
   // a stale header.
-  const truncateOrPersist = [
-    "read@0+16 database",
-    "read@0+1 journal",
-    "read@24+16 database",
-    "read@0+16 database",
-    "read@24576+8 journal",
-  ];
   for (const [pragmas, expected] of [
     ["", ["read@24+16 database", "read@24576+8 journal"]],
     ["PRAGMA locking_mode = EXCLUSIVE;", ["read@16384+8 journal"]],
-    ["PRAGMA journal_mode = TRUNCATE;", truncateOrPersist],
-    ["PRAGMA journal_mode = PERSIST;", truncateOrPersist],
+    [
+      "PRAGMA journal_mode = TRUNCATE;",
+      ["read@0+1 journal", "read@24+16 database", "read@24576+8 journal"],
+    ],
+    [
+      "PRAGMA journal_mode = PERSIST;",
+      [
+        "read@0+16 database",
+        "read@0+1 journal",
+        "read@24+16 database",
+        "read@0+16 database",
+        "read@24576+8 journal",
+      ],
+    ],
   ] as const) {
     const t = await setupSahPool();
     const { db } = t.openDatabase("/test.db");
@@ -3187,6 +3370,7 @@ test("deleting a path that two slots map fails with SQLITE_IOERR_DELETE when the
   );
 
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xDelete",
     path: "/same.db",
     error,
@@ -3245,6 +3429,7 @@ test("deleting a path that two slots map fails with SQLITE_IOERR_DELETE when the
   );
 
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xDelete",
     path: "/same.db",
     error,
@@ -3317,6 +3502,7 @@ test("a write whose journal cannot be created because its header write hits the 
   assertEqual(t.exec("INSERT INTO t VALUES (2)", db), SQLITE_FULL);
 
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xOpen",
     path: "/test.db-journal",
     error,
@@ -3352,6 +3538,7 @@ test("a COMMIT whose journal delete fails returns SQLITE_IOERR_DELETE and keeps 
 
   assertEqual(sqlite3_extended_errcode(t)(db), SQLITE_IOERR_DELETE);
   assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
     method: "xDelete",
     path: "/test.db-journal",
     error,
@@ -3478,6 +3665,7 @@ test("a name with a query, a fragment or a host fails xOpen with SQLITE_CANTOPEN
     assertEqual(rc, SQLITE_CANTOPEN);
     assertEqual(t.readPtr(pFile), 0);
     assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
       method: "xOpen",
       path: null,
       error: { type: "SahPoolInvalidPath", name },
@@ -3485,6 +3673,7 @@ test("a name with a query, a fragment or a host fails xOpen with SQLITE_CANTOPEN
     t.pool.clearFailure();
     assertEqual(t.callVfs("xDelete", t.cString(name), 0), SQLITE_IOERR_DELETE);
     assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
       method: "xDelete",
       path: null,
       error: { type: "SahPoolInvalidPath", name },
@@ -3531,3 +3720,7 @@ test("a journal name with a query, a fragment or a host never resolves to the fi
     data,
   );
 });
+
+// The internal name the pool registers its raw VFS under, which no lookup
+// finds once the codec is registered over it.
+const rawVfsName = "evolu-raw:opfs-sahpool:.evolu";

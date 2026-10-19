@@ -144,11 +144,15 @@ test("inserts that run out of quota fail with SQLITE_FULL caused by the quota er
   assert(error != null, "The inserts never ran out of quota.");
   assert(error.type === "SqliteError", "Expected a SqliteError.");
   assertTrue(runs > 0);
+  assert(
+    error.cause?.type === "SqliteVfsFailure",
+    "Expected the pool's failure.",
+  );
   assertEqual(
-    [error.extendedCode, error.cause?.method],
+    [error.extendedCode, error.cause.method],
     [SQLITE_FULL, "xWrite"],
   );
-  const cause = error.cause?.error as {
+  const cause = error.cause.error as {
     readonly name?: string;
     readonly type?: string;
     readonly requested?: number;

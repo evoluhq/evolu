@@ -24,6 +24,7 @@ import {
   sqlite3_auto_extension,
   sqlite3_reset_auto_extension,
   sqlite3_trace_v2,
+  type SqliteCExports,
 } from "../../../../packages/sqlite-wasm/src/CApi.ts";
 import {
   SQLITE_CANTOPEN,
@@ -33,17 +34,20 @@ import {
   SQLITE_IOERR,
   SQLITE_IOERR_DELETE,
   SQLITE_IOERR_WRITE,
+  SQLITE_MISUSE,
   SQLITE_NOTADB,
   SQLITE_OK,
   SQLITE_OPEN_CREATE,
   SQLITE_OPEN_MAIN_DB,
   SQLITE_OPEN_READWRITE,
+  SQLITE_READONLY,
   SQLITE_TRACE_PROFILE,
 } from "../../../../packages/sqlite-wasm/src/Constants.ts";
 import {
   createSqliteDatabase,
   SqliteVfsPath,
 } from "../../../../packages/sqlite-wasm/src/Database.ts";
+import type { EvoluCExports } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import { allocWasm } from "../../../../packages/sqlite-wasm/src/Memory.ts";
 import type { SqliteDbPtr } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
 import { sahPoolHeaderSize } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
@@ -181,11 +185,113 @@ test("a File database that finds no free slot fails to open with SQLITE_CANTOPEN
     message: "unable to open database file",
     sqlOffset: null,
     cause: {
+      type: "SqliteVfsFailure",
       method: "xOpen",
       path: "/evolu1.db",
       error: { type: "SahPoolFull", capacity: 6 },
     },
   });
+});
+
+/**
+ * The instance's dependencies with `evolu_codec_open` replaced, so a test sees
+ * or changes what the open passes and returns.
+ */
+const setupCodecOpen = (
+  t: TestSahPool,
+  codecOpen: (
+    open: EvoluCExports["evolu_codec_open"],
+  ) => EvoluCExports["evolu_codec_open"],
+): TestSahPool => {
+  const exports = t.sqliteWasm.exports as SqliteCExports & EvoluCExports;
+  return {
+    ...t,
+    sqliteWasm: {
+      ...t.sqliteWasm,
+      exports: {
+        ...exports,
+        evolu_codec_open: codecOpen(exports.evolu_codec_open),
+      } as SqliteCExports,
+    },
+  };
+};
+
+test("a File database opens through evolu_codec_open on the pool's codec, without a key and with plaintext checksums", async () => {
+  const t = await setupSahPool();
+  const opens: Array<unknown> = [];
+  const deps = setupCodecOpen(
+    t,
+    (open) => (filename, ppDb, zVfs, key, flags) => {
+      opens.push([t.text(filename), t.text(zVfs), key, flags]);
+      return open(filename, ppDb, zVfs, key, flags);
+    },
+  );
+
+  const database = getOrThrow(
+    createSqliteDatabase(deps)({
+      type: "File",
+      vfs: t.pool,
+      path: SqliteVfsPath.orThrow("/evolu1.db"),
+    }),
+  );
+
+  // 2 is EVOLU_CODEC_PLAINTEXT_CHECKSUMS.
+  assertEqual(opens, [["/evolu1.db", t.pool.vfsName, 0, 2]]);
+  database[Symbol.dispose]();
+});
+
+// evolu_codec_open fails with SQLITE_MISUSE, the connection's code staying
+// SQLITE_OK, for a keyed open that opened no file through a codec VFS, which
+// a SqliteVfsPath never reaches.
+test("a File database whose open returns another code than the connection reports fails with the returned code's description and closes the connection, so the pool can be disposed", async () => {
+  const t = await setupSahPool();
+  const deps = setupCodecOpen(
+    t,
+    (open) => (filename, ppDb, zVfs, key, flags) => {
+      assertEqual(open(filename, ppDb, zVfs, key, flags), SQLITE_OK);
+      return SQLITE_MISUSE;
+    },
+  );
+
+  const opened = createSqliteDatabase(deps)({
+    type: "File",
+    vfs: t.pool,
+    path: SqliteVfsPath.orThrow("/evolu1.db"),
+  });
+
+  assertErr(opened, {
+    type: "SqliteError",
+    operation: "open",
+    extendedCode: SQLITE_MISUSE,
+    message: "bad parameter or other API misuse",
+    sqlOffset: null,
+    cause: null,
+  });
+  t.pool[Symbol.dispose]();
+});
+
+test("a File database whose open returns no connection, as for flags evolu_codec_open refuses, fails with the returned code's description", async () => {
+  const t = await setupSahPool();
+  const deps = setupCodecOpen(t, () => (_filename, ppDb) => {
+    t.sqliteWasm.getHeapDataView().setInt32(ppDb, 0, true);
+    return SQLITE_MISUSE;
+  });
+
+  const opened = createSqliteDatabase(deps)({
+    type: "File",
+    vfs: t.pool,
+    path: SqliteVfsPath.orThrow("/evolu1.db"),
+  });
+
+  assertErr(opened, {
+    type: "SqliteError",
+    operation: "open",
+    extendedCode: SQLITE_MISUSE,
+    message: "bad parameter or other API misuse",
+    sqlOffset: null,
+    cause: null,
+  });
+  t.pool[Symbol.dispose]();
 });
 
 test("opening a File database on a disposed pool throws before entering wasm, so the instance and its other databases keep working", async () => {
@@ -263,7 +369,7 @@ test("SqliteVfsPath rejects, with SqliteVfsPathError, a path that is not its own
   );
 });
 
-test("SqliteVfsPath accepts a canonical path up to 498 bytes, which a pool lists and deletes by the same path, so a File database at the longest one opens, commits a transaction that writes an attached database, through a super-journal, and opens again", async () => {
+test("SqliteVfsPath accepts a canonical path up to 498 bytes, which a pool lists and deletes by the same path, so a File database at the longest one opens, commits a transaction, attaches another database only for reading, and opens again", async () => {
   const longest = `/${"a".repeat(497)}`;
   for (const value of [
     "/evolu1.db",
@@ -279,13 +385,26 @@ test("SqliteVfsPath accepts a canonical path up to 498 bytes, which a pool lists
     assertEqual(t.pool.unlink(path), ok(true));
   }
   const t = await setupSahPool();
+  const attached = getOrThrow(openPoolDatabase(t, "/b.db"));
+  assertOk(attached.exec("CREATE TABLE u(a); INSERT INTO u VALUES (2)"));
+  attached[Symbol.dispose]();
 
   const database = getOrThrow(openPoolDatabase(t, longest));
   assertOk(
     database.exec(
-      "CREATE TABLE t(a); ATTACH '/b.db' AS b; CREATE TABLE b.u(a); BEGIN; INSERT INTO t VALUES (1); INSERT INTO b.u VALUES (2); COMMIT",
+      "CREATE TABLE t(a); BEGIN; INSERT INTO t VALUES (1); COMMIT; ATTACH '/b.db' AS b",
     ),
   );
+  // evolu_codec_open turns off attach writes, so no transaction spans two
+  // databases.
+  assertErr(database.exec("INSERT INTO b.u VALUES (3)"), {
+    type: "SqliteError",
+    operation: "exec",
+    extendedCode: SQLITE_READONLY,
+    message: "attempt to write a readonly database",
+    sqlOffset: null,
+    cause: null,
+  });
   database[Symbol.dispose]();
 
   using reopened = getOrThrow(openPoolDatabase(t, longest));
@@ -396,7 +515,15 @@ test("the operations onRow runs are top-level when the iteration is, so neither 
     });
 
     assertEqual(failures, [
-      [SQLITE_FULL, { method: "xWrite", path: "/evolu1.db-journal", error }],
+      [
+        SQLITE_FULL,
+        {
+          type: "SqliteVfsFailure",
+          method: "xWrite",
+          path: "/evolu1.db-journal",
+          error,
+        },
+      ],
       [SQLITE_CONSTRAINT_NOTNULL, null],
     ]);
     assertErr(iterated);
@@ -443,7 +570,12 @@ test("export fails with SQLITE_IOERR and the pool's record as the cause when a p
     extendedCode: SQLITE_IOERR,
     message: "disk I/O error",
     sqlOffset: null,
-    cause: { method: "xRead", path: "/evolu1.db", error },
+    cause: {
+      type: "SqliteVfsFailure",
+      method: "xRead",
+      path: "/evolu1.db",
+      error,
+    },
   });
   t.fake.inject(null);
   recordStaleFailure(t);
@@ -528,7 +660,12 @@ test("export fails with the pool's record as the cause also when a callback duri
       extendedCode: SQLITE_IOERR,
       message: "disk I/O error",
       sqlOffset: null,
-      cause: { method: "xRead", path: "/evolu1.db", error },
+      cause: {
+        type: "SqliteVfsFailure",
+        method: "xRead",
+        path: "/evolu1.db",
+        error,
+      },
     });
     assertEqual(nestedResults, [true]);
     t.fake.inject(null);
@@ -643,7 +780,15 @@ test("a statement that fails because the disk is full carries the pool's record 
     assert(failed.error.type === "SqliteError", "Expected a SqliteError.");
     assertEqual(
       [failed.error.extendedCode, failed.error.cause],
-      [SQLITE_FULL, { method: "xWrite", path: "/evolu1.db-journal", error }],
+      [
+        SQLITE_FULL,
+        {
+          type: "SqliteVfsFailure",
+          method: "xWrite",
+          path: "/evolu1.db-journal",
+          error,
+        },
+      ],
     );
   }
   t.fake.inject(null);
@@ -676,7 +821,11 @@ test("opening a File database rolls back a hot journal its dead worker left, and
   assertErr(failed);
   assertEqual(
     [failed.error.operation, failed.error.extendedCode, failed.error.cause],
-    ["open", SQLITE_FULL, { method: "xWrite", path: "/evolu1.db", error }],
+    [
+      "open",
+      SQLITE_FULL,
+      { type: "SqliteVfsFailure", method: "xWrite", path: "/evolu1.db", error },
+    ],
   );
   assertEqual(next.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
   next.fake.inject(null);

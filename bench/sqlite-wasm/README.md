@@ -36,11 +36,8 @@ git -C wa-sqlite checkout 7a4b4241ba7c61ee19121aacd6c93892234ce1a1
   encryption and SQLite3 Multiple Ciphers set it on encrypted connections, so
   this stack separates the cost of the cipher from the cost of `secure_delete`.
 - `evoluEncryptedWasm`: Evolu's layer, encrypted as Evolu does it, with
-  `createEncryptedSqliteDatabase` and a raw key. The pool then encrypts in the
-  format of SQLite3 Multiple Ciphers' `sqlcipher` scheme. It uses the
-  WebAssembly backend of `@awasm/noble`, the pool's default.
-- `evoluEncryptedNoble`: The same with `@awasm/noble`'s noble backend, which
-  wraps the audited `@noble/ciphers` and `@noble/hashes`.
+  `createEncryptedSqliteDatabase` and a raw key. Evolu's codec, in the wasm,
+  then encrypts in the format of SQLite3 Multiple Ciphers' `sqlcipher` scheme.
 - `waSqliteAccessHandlePool`: wa-sqlite's synchronous build with
   `AccessHandlePoolVFS`, the design opfs-sahpool follows.
 - `waSqliteCoopSync`: wa-sqlite's synchronous build with `OPFSCoopSyncVFS`, one

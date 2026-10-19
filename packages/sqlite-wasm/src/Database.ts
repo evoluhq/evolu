@@ -3,13 +3,13 @@
  * typed errors and explicit resource management.
  *
  * Status: {@link createSqliteDatabase} opens Memory databases, and File and
- * EncryptedFile databases on a {@link SqliteVfs} or {@link SqliteEncryptingVfs},
- * which a {@link SahPool} is, and {@link createEncryptedSqliteDatabase} also
- * opens the encrypted databases `@evolu/web` 3 created with
- * `@evolu/sqlite-wasm` 2.2.4 in a pool. The pool's own encryption is tested in
- * Node.js over a fake OPFS against 2.2.4, which creates databases as
- * `@evolu/web` does and leaves a hot journal the pool rolls back, and in
- * Chromium, Firefox and WebKit on real OPFS against 2.2.4.
+ * EncryptedFile databases on a {@link SahPool}, through Evolu's codec, in C,
+ * which encrypts EncryptedFile databases, and
+ * {@link createEncryptedSqliteDatabase} also opens the encrypted databases
+ * `@evolu/web` 3 created with `@evolu/sqlite-wasm` 2.2.4 in a pool. The codec
+ * is tested natively in `@evolu/sqlite-core`, and through the pool in Node.js
+ * over a fake OPFS against 2.2.4, which creates databases as `@evolu/web` does,
+ * and in Chromium, Firefox and WebKit on real OPFS.
  *
  * ## Calls
  *
@@ -25,74 +25,73 @@
  *   `sqlite3_error_offset` only for SQLITE_ERROR from prepare, exec or step,
  *   the code of the parser errors that set it, because SQLite keeps an offset
  *   until a later prepare succeeds or a statement resets.
- * - The VFS records the first failure since the last top-level call (open,
- *   prepare, run, iterate, exec, export), and {@link SqliteError.cause} carries
- *   it. The database clears the record before each such call. A call that runs
- *   inside another call of a database on the same VFS, as a query a SQL
- *   function or trace callback runs from inside wasm does, is not top-level, so
- *   it leaves the record to the outer call.
+ * - The pool records the first failure of its methods, and Evolu's codec the
+ *   first of each database, since the last top-level call (open, prepare, run,
+ *   iterate, exec, export), and {@link SqliteError.cause} carries the pool's, or
+ *   else the codec's. The database clears both records of every database on the
+ *   pool before each such call. A call that runs inside another call of a
+ *   database on the same pool, as a query a SQL function or trace callback runs
+ *   from inside wasm does, is not top-level, so it leaves the records to the
+ *   outer call.
  * - Every call, disposal included, enters wasm through {@link SqliteWasm.call}. An
  *   exception or trap that escapes wasm, such as from a call through a disposed
  *   function pointer, is a defect: it is rethrown, and every later call on any
  *   database of the instance throws without entering wasm, because the C stack
- *   and SQLite's state are left inconsistent. A trap after a File or
- *   EncryptedFile connection opened reaches the caller of the open as a
- *   `SuppressedError` whose `suppressed` is the trap, because the open's
- *   deferred close and the free of its scratch memory are refused as it
- *   unwinds.
+ *   and SQLite's state are left inconsistent. A trap inside `evolu_codec_open`,
+ *   which rolls back a hot journal and reads the schema of a File or
+ *   EncryptedFile database, reaches the caller of the open as a
+ *   `SuppressedError` for the refused free of the open's scratch memory, whose
+ *   `suppressed` is a `SuppressedError` for the refused frees of the path and
+ *   any staged key, whose `suppressed` is the trap. No close is attempted, and
+ *   the staged key is zeroed anyway.
  *
  * ## Opening
  *
- * - A Memory database opens `:memory:` on the default VFS.
+ * - A Memory database opens `:memory:` on the default VFS with READWRITE, CREATE
+ *   and EXRESCODE, and gets Evolu's SQL functions from
+ *   `evolu_skiplist_register`.
  * - A File or EncryptedFile database's path is a {@link SqliteVfsPath}, a
  *   canonical path, which SQLite passes to the VFS as it is, never as a URI or
- *   an in-memory database, followed by the name of the VFS.
- * - A File or EncryptedFile database opens its path on its VFS, an EncryptedFile
- *   database keyed as the next section describes. Either then prepares a query
- *   of `sqlite_schema`, because SQLite reads a file only when a statement needs
- *   it. So the open rolls back a hot journal, and fails for a file that is not
- *   a database, with SQLITE_NOTADB, or for a hot journal that cannot be rolled
- *   back.
- * - The database uses its VFS only through {@link SqliteVfs} or
- *   {@link SqliteEncryptingVfs}, so any VFS that implements them can hold it,
- *   and a driver can open each database on the VFS that has it, as
- *   {@link SqliteVfs.getPaths} tells.
- * - Flags are READWRITE, CREATE and EXRESCODE, so failures during the open
- *   already carry extended codes.
- * - When the open fails, the message is read first and then the handle SQLite
- *   returned anyway is closed with `sqlite3_close_v2`. Without a handle, as
- *   when memory runs out, the error is the open's result code.
+ *   an in-memory database.
+ * - A File or EncryptedFile database opens its path with `evolu_codec_open` on
+ *   its {@link SahPool}, whose name is Evolu's codec over the pool, without a
+ *   key or keyed as the next section describes, and always with
+ *   EVOLU_CODEC_PLAINTEXT_CHECKSUMS, the checksums the TypeScript codec of
+ *   earlier builds and 2.2.4 wrote, because a journal does not record which
+ *   kind it stores. The open is read-write, creates a missing file, uses
+ *   extended codes, registers Evolu's SQL functions and reads `sqlite_schema`,
+ *   so it rolls back a hot journal, and fails for a file that is not a
+ *   database, with SQLITE_NOTADB, or for a hot journal that cannot be rolled
+ *   back. Its connection attaches other databases read-only and creates no
+ *   file, so a transaction never spans two databases.
+ * - A failed open's error takes the connection's message only when the connection
+ *   reports the returned code, because `evolu_codec_open` can fail with
+ *   SQLITE_MISUSE while the connection's code stays SQLITE_OK. Then the handle
+ *   SQLite returned anyway is closed with `sqlite3_close_v2`. Without a handle,
+ *   as when memory runs out, the error is the open's result code.
  *
  * ## Encryption
  *
- * - The VFS encrypts an EncryptedFile database itself, and a {@link SahPool} does
- *   it as SQLite3 Multiple Ciphers' `sqlcipher` scheme did with its default
- *   parameters, those of SQLCipher 4, which `PRAGMA cipher = 'sqlcipher'`
- *   selected in `@evolu/web` 3 with 2.2.4. The open registers the key for the
- *   path with {@link SqliteEncryptingVfs.registerKey} before it enters wasm and
- *   disposes the registration when it returns, by when the VFS has taken the
- *   key for the database file; the module documentation of `SahPool.ts`
- *   describes the pool's format. The key never appears in SQL, a URI, an error
- *   or SQLite's memory, and the caller's key is never modified.
- * - Then `sqlite3_file_control` with SQLITE_FCNTL_RESERVE_BYTES asks for 80 bytes
- *   at the end of each page, where the pool keeps the page's IV and HMAC, which
- *   takes effect for a new database, and `PRAGMA secure_delete = ON` makes
- *   deletes overwrite freed content, as SQLite3 Multiple Ciphers did for every
- *   encrypted connection. A {@link SahPool} refuses to turn it off for an
- *   encrypted database, because a freed page SQLite does not write would fail
- *   to authenticate, as `SahPool.ts` describes.
- * - Registering validates nothing, so the read of `sqlite_schema` checks the key.
- *   A wrong key fails there with SQLITE_NOTADB, from page 1, or with
- *   SQLITE_CORRUPT when the first page of a hot journal is another page, and
- *   {@link SqliteError.cause} is the VFS's {@link SqlitePageAuthenticationError}.
- *   The rollback stops at that first page, which fails to authenticate, so it
- *   writes no page of the journal and keeps the journal for the right key.
- *   Before that page, SQLite truncates the database to the size the journal
- *   records, as the right key's rollback does too. It would extend a shorter
- *   database by one zeroed page, encrypted with the wrong key, but a commit
- *   shrinks the file only after it deletes the journal, and a pool refuses a
- *   VACUUM that would change an encrypted database's page size, so no database
- *   is shorter than its hot journal records.
+ * - Evolu's codec encrypts an EncryptedFile database and its journal as SQLite3
+ *   Multiple Ciphers' `sqlcipher` scheme did with its default parameters, those
+ *   of SQLCipher 4, which `PRAGMA cipher = 'sqlcipher'` selected in
+ *   `@evolu/web` 3 with 2.2.4. `evolu_codec.h` of `@evolu/sqlite-core`
+ *   describes the format and what the codec refuses.
+ * - The open stages the raw key in wasm memory for `evolu_codec_open`, and zeroes
+ *   it through a fresh heap view before freeing it, also when the open fails.
+ *   The codec keeps its own copy, with the keys it derives, in wasm memory
+ *   until the database is disposed, and wipes it then. The key never appears in
+ *   SQL, a URI or an error, and the caller's key is never modified. After a
+ *   trap, no C can run to wipe it, so it stays until the instance ends.
+ * - A keyed open reserves 80 bytes at the end of each page of a new database,
+ *   where the codec keeps the page's IV and HMAC, and turns `secure_delete` on,
+ *   which the codec refuses to turn off. The keying pragmas, such as `PRAGMA
+ *   key`, fail with SQLITE_ERROR, and SQLite ignores ATTACH's `KEY` clause.
+ * - The read of `sqlite_schema` checks the key. A wrong key fails there with
+ *   SQLITE_NOTADB, from page 1, or with SQLITE_CORRUPT when the first record of
+ *   a hot journal is another page, and {@link SqliteError.cause} is the codec's
+ *   {@link SqlitePageAuthenticationError}. The rollback stops at that record, so
+ *   it writes no page of the journal and keeps the journal for the right key.
  * - `@evolu/web` with 2.2.4 ran `PRAGMA key = "x'<hex>'"`, SQLCipher's notation
  *   for a raw key, which SQLite3 Multiple Ciphers 2.2.4 took as a passphrase
  *   because of a bug
@@ -106,13 +105,13 @@
  *   databases it encrypted fail with SQLITE_NOTADB, as with a wrong key, since
  *   page 1 is encrypted from byte 16; they have not opened since `@evolu/web`
  *   3.0.0 (see `SahPool.ts`).
- * - Only page 1 of the database or a record of its journal that failed to
- *   authenticate counts as a wrong key. Another page of the database that fails
- *   means that page 1 proved the key and the page is damaged, so it fails with
- *   SQLITE_CORRUPT and that page as the cause, also with the key 2.2.4 derived.
- *   An I/O error fails with its own code, and the VFS's record as its cause,
- *   and a database whose pages authenticate but whose content is malformed
- *   fails with SQLite's code and no cause.
+ * - Only page 1 that failed to authenticate, or any page while the database has a
+ *   journal, counts as a wrong key. Another page that fails means that page 1
+ *   proved the key and the page is damaged, so it fails with SQLITE_CORRUPT and
+ *   that page as the cause, also with the key 2.2.4 derived. An I/O error fails
+ *   with its own code and the pool's record as its cause, and a database whose
+ *   pages authenticate but whose content is malformed fails with SQLite's code
+ *   and no cause.
  *
  * ## Statements
  *
@@ -229,10 +228,10 @@
  *   such as a read-only empty one, which exports as zero bytes. Pages come
  *   through the pager, so an encrypted database exports as plaintext. SQLite
  *   zero-fills a page that fails to read and reports success, so the export of
- *   a File or EncryptedFile database fails when its VFS recorded a failure
- *   during it, caused by the VFS's record: with SQLITE_CORRUPT for a page that
- *   failed to authenticate, a {@link SqlitePageAuthenticationError}, and with
- *   SQLITE_IOERR otherwise.
+ *   a File or EncryptedFile database fails when the pool or the codec recorded
+ *   a failure during it, caused by that record: with SQLITE_CORRUPT for a page
+ *   that failed to authenticate, a {@link SqlitePageAuthenticationError}, and
+ *   with SQLITE_IOERR otherwise.
  * - Disposing a database finalizes its statements that are still open and then
  *   calls `sqlite3_close_v2`, so no deferred close keeps the VFS's files open.
  *
@@ -244,6 +243,7 @@ import {
   brand,
   constVoid,
   disposable,
+  eqUint8Array,
   err,
   exhaustiveCheck,
   ok,
@@ -282,7 +282,6 @@ import {
   sqlite3_error_offset,
   sqlite3_errstr,
   sqlite3_extended_errcode,
-  sqlite3_file_control,
   sqlite3_finalize,
   sqlite3_free,
   sqlite3_get_autocommit,
@@ -301,7 +300,6 @@ import {
   SQLITE_CORRUPT,
   SQLITE_DONE,
   SQLITE_ERROR,
-  SQLITE_FCNTL_RESERVE_BYTES,
   SQLITE_FLOAT,
   SQLITE_INTEGER,
   SQLITE_IOERR,
@@ -320,6 +318,11 @@ import {
   type SqlitePrimaryResultCode,
   type SqliteResultCode,
 } from "./Constants.ts";
+import {
+  evolu_codec_open,
+  evolu_codec_take_failure,
+  evolu_skiplist_register,
+} from "./EvoluCApi.ts";
 import {
   allocCString,
   allocWasm,
@@ -341,7 +344,6 @@ import type {
 import {
   sahPoolMaxDatabasePathSize,
   type SahPool,
-  type SahPoolEncryptionUnsupportedError,
   type SahPoolFullError,
   type SahPoolInvalidPathError,
 } from "./SahPool.ts";
@@ -478,11 +480,20 @@ export interface SqliteError extends Typed<"SqliteError"> {
    */
   readonly sqlOffset: number | null;
   /**
-   * The first VFS failure since the top-level operation started, such as the
-   * `QuotaExceededError` behind SQLITE_FULL; null when the VFS reported none.
+   * The first failure below SQLite since the top-level operation started, such
+   * as the `QuotaExceededError` behind SQLITE_FULL, or a page that failed to
+   * authenticate; null when neither the pool nor the codec recorded one. When
+   * both did, the pool's, because a failed pool call fails the codec's call
+   * without the codec recording anything.
    */
-  readonly cause: SqliteVfsFailure | null;
+  readonly cause: SqliteFailure | null;
 }
+
+/**
+ * A failure the pool or Evolu's codec recorded, which {@link SqliteError}
+ * carries.
+ */
+export type SqliteFailure = SqliteVfsFailure | SqliteCodecFailure;
 
 /** The operation a {@link SqliteError} comes from. */
 export type SqliteOperation =
@@ -497,8 +508,8 @@ export const sqliteResultCodeToPrimary = (
   code: SqliteResultCode,
 ): SqlitePrimaryResultCode => (code & 0xff) as SqlitePrimaryResultCode;
 
-/** A failure a VFS method recorded before returning an error code. */
-export interface SqliteVfsFailure {
+/** A failure a pool's method recorded before returning an error code. */
+export interface SqliteVfsFailure extends Typed<"SqliteVfsFailure"> {
   readonly method: SqliteVfsMethod;
   /**
    * The path of the file, or null for a method without one or a name that maps
@@ -506,14 +517,47 @@ export interface SqliteVfsFailure {
    */
   readonly path: string | null;
   /**
-   * What the browser threw, such as a `DOMException`, or what the VFS found
-   * wrong, such as a {@link SqliteShortWriteError}, a
-   * {@link SqlitePageAuthenticationError}, a {@link SahPoolFullError}, a
-   * {@link SahPoolInvalidPathError}, or a
-   * {@link SahPoolEncryptionUnsupportedError}.
+   * What the browser threw, such as a `DOMException`, or what the pool found
+   * wrong, such as a {@link SqliteShortWriteError}, a {@link SahPoolFullError} or
+   * a {@link SahPoolInvalidPathError}.
    */
   readonly error: unknown;
 }
+
+/**
+ * The first failure Evolu's codec recorded for the main database of a File or
+ * EncryptedFile connection since the top-level operation started. It has no
+ * method or path, because the codec records a failure of the database's journal
+ * on the database.
+ */
+export interface SqliteCodecFailure extends Typed<"SqliteCodecFailure"> {
+  readonly error: SqliteCodecError;
+}
+
+/** What Evolu's codec found wrong. */
+export type SqliteCodecError =
+  | SqlitePageAuthenticationError
+  | SqliteEncryptionUnsupportedError
+  | SqliteRandomSourceError;
+
+/**
+ * What Evolu's codec refuses because it cannot keep a database encrypted, or
+ * because a database keyed through SQL would stay plaintext. For an encrypted
+ * database, a read or write that is not a whole page, a page 1 that would
+ * change the page size or the reserved bytes, as a VACUUM that changes the page
+ * size writes it, turning `secure_delete` off, or the hot journal of one opened
+ * without its key, which fails with SQLITE_CANTOPEN and stays for the key. For
+ * any database on a pool, the keying pragmas, such as `PRAGMA key`, and a page
+ * 1 that says WAL.
+ */
+export interface SqliteEncryptionUnsupportedError extends Typed<"SqliteEncryptionUnsupported"> {}
+
+/**
+ * The random source failed while Evolu's codec encrypted a page, so the write
+ * failed with SQLITE_IOERR_WRITE. What the source threw went to the instance's
+ * `ReportDefect`.
+ */
+export interface SqliteRandomSourceError extends Typed<"SqliteRandomSourceError"> {}
 
 /** A VFS or I/O method that can record a {@link SqliteVfsFailure}. */
 export type SqliteVfsMethod =
@@ -528,8 +572,7 @@ export type SqliteVfsMethod =
   | "xFileSize"
   | "xLock"
   | "xUnlock"
-  | "xCheckReservedLock"
-  | "xFileControl";
+  | "xCheckReservedLock";
 
 /**
  * A write that stored fewer or more bytes than requested.
@@ -593,43 +636,35 @@ export type SqliteDatabaseOptions =
  */
 export interface SqliteMemoryDatabaseOptions extends Typed<"Memory"> {}
 
-/** An unencrypted database file on a {@link SqliteVfs}, such as a {@link SahPool}. */
+/** An unencrypted database file on a {@link SahPool}. */
 export interface SqliteFileDatabaseOptions extends Typed<"File"> {
-  readonly vfs: SqliteVfs;
+  readonly vfs: SahPool;
   /**
-   * The canonical path of the file on the VFS, such as `/evolu1.db`, by which
-   * the VFS also lists and deletes it.
+   * The canonical path of the file in the pool, such as `/evolu1.db`, by which
+   * the pool also lists and deletes it.
    */
   readonly path: SqliteVfsPath;
 }
 
 /**
- * A database file on a {@link SqliteEncryptingVfs}, which encrypts it, as a
- * {@link SahPool} does in the format of SQLite3 Multiple Ciphers' `sqlcipher`
- * scheme.
+ * A database file on a {@link SahPool} that Evolu's codec encrypts, in the
+ * format of SQLite3 Multiple Ciphers' `sqlcipher` scheme.
  *
- * Only the database file and its journal are encrypted. `VACUUM INTO` and
- * `ATTACH` open their file as a database of its own, which is encrypted only
- * when a key is registered for its path with
- * {@link SqliteEncryptingVfs.registerKey} while they open it. Otherwise they
- * write it unencrypted, because SQLite ignores the `KEY` clause of `ATTACH` and
- * `PRAGMA key`, `rekey` and `cipher`, where 2.2.4 encrypted both with the
- * database's key, or with the `KEY` of `ATTACH`. A file that `ATTACH` creates
- * cannot be encrypted, because SQLite reserves no bytes in it, so with a key
- * registered its first write fails with SQLITE_IOERR_WRITE. `VACUUM INTO` keeps
- * the reserved bytes, so it can create an encrypted copy, which `ATTACH` then
- * opens with its key registered.
+ * Only the database file and its journal are encrypted. The connection attaches
+ * other databases read-only and creates no file, because SQLite ignores the
+ * `KEY` clause of `ATTACH`, and `VACUUM INTO` writes a plaintext file, where
+ * 2.2.4 encrypted both with the database's key or the `KEY` of `ATTACH`.
  */
 export interface SqliteEncryptedFileDatabaseOptions extends Typed<"EncryptedFile"> {
-  readonly vfs: SqliteEncryptingVfs;
+  readonly vfs: SahPool;
   /**
-   * The path of the file on the VFS, as {@link SqliteFileDatabaseOptions.path}
+   * The path of the file in the pool, as {@link SqliteFileDatabaseOptions.path}
    * describes.
    */
   readonly path: SqliteVfsPath;
   /**
-   * The raw key, which {@link SqliteEncryptingVfs.registerKey} gets while the
-   * file opens.
+   * The raw key, which the open stages in wasm memory for the codec, which
+   * keeps its own copy until the database is disposed.
    */
   readonly key: EncryptionKey;
 }
@@ -640,13 +675,12 @@ export interface SqliteVfsPathError extends TypeError<"SqliteVfsPath"> {
 }
 
 /**
- * The canonical path of a database file on a {@link SqliteVfs}, such as
- * `/evolu1.db`, one spelling per file, as {@link SqliteVfs.getPaths} lists it.
+ * The canonical path of a database file on a {@link SahPool}, such as
+ * `/evolu1.db`, one spelling per file, as {@link SahPool.getPaths} lists it.
  *
  * A path is canonical when it is its own `new URL(path,
- * "file://localhost/").pathname`, the path a {@link SahPool} maps a name to, so
- * the VFS opens, lists and deletes the file by the path the database opened it
- * with, and an EncryptedFile database registers its key for that file. A
+ * "file://localhost/").pathname`, the path a pool maps a name to, so the pool
+ * opens, lists and deletes the file by the path the database opened it with. A
  * canonical path starts with `/` and is printable ASCII without `?` or `#`, so
  * SQLite passes it to the VFS as it is, and the paths SQLite derives from it by
  * appending a suffix, as for the journal, are canonical too. It rejects:
@@ -658,8 +692,8 @@ export interface SqliteVfsPathError extends TypeError<"SqliteVfsPath"> {
  * - A path SQLite reads itself: an empty path and `:memory:`, which open an
  *   in-memory database, `:localStorage:` and `:sessionStorage:`, which SQLite
  *   opens on its kvvfs, and a `file:` URI, whose query and fragment SQLite
- *   strips and whose escapes it decodes, so the VFS would get another name, and
- *   an EncryptedFile database would be written without its key.
+ *   strips and whose escapes it decodes, so the pool would get another name,
+ *   and whose `vfs` parameter could name another VFS.
  * - A path longer than {@link sahPoolMaxDatabasePathSize}, 498 bytes, because a
  *   pool slot's header holds a path of up to 510 bytes, and SQLite names a
  *   super-journal by appending 12 bytes to the database's path.
@@ -686,76 +720,7 @@ export const SqliteVfsPath = /*#__PURE__*/ brand(
 export type SqliteVfsPath = typeof SqliteVfsPath.Output;
 
 /**
- * What a database needs from the VFS it opens a file on, and what a driver
- * needs to tell which databases the VFS has and to delete them. A
- * {@link SahPool} is one.
- */
-export interface SqliteVfs {
-  /** The name of the VFS, which a database opens its path with. */
-  readonly vfsName: string;
-
-  /**
-   * Returns the first failure a method of the VFS recorded since the last
-   * {@link SqliteVfs.clearFailure}, which a {@link SqliteError} carries as its
-   * cause.
-   */
-  readonly getFailure: () => SqliteVfsFailure | null;
-
-  /**
-   * Forgets the recorded failure; a database calls it before each operation
-   * that does not run inside another operation on the VFS.
-   */
-  readonly clearFailure: () => void;
-
-  /**
-   * Returns the canonical paths of the files the VFS has, databases and their
-   * journals, such as `/evolu1.db`, so a database opened at a
-   * {@link SqliteVfsPath} is listed by that path. A VFS may derive a file's
-   * canonical path from the name SQLite opened it with, as a {@link SahPool}
-   * lists a file SQLite's opfs-sahpool opened as `evolu1.db` as `/evolu1.db`.
-   */
-  readonly getPaths: () => ReadonlyArray<string>;
-
-  /**
-   * Deletes the file with a canonical path, as {@link SqliteVfs.getPaths}
-   * returns it, and the files SQLite keeps beside it, such as its `-journal`.
-   * The file goes first, so a failure never leaves a database without the
-   * journal that would roll it back. Returns false when the VFS has no file
-   * with the path, as for a path that is not canonical, and throws when a
-   * connection has one of the files open.
-   */
-  readonly unlink: (path: string) => Result<boolean, SqliteVfsIoError>;
-}
-
-/**
- * A {@link SqliteVfs} that encrypts a database file whose path has a key
- * registered while the file opens, as an EncryptedFile database needs.
- *
- * The database asks SQLite to leave the last 80 bytes of each page of a new
- * database unused, so the VFS can store data of its own there, as a
- * {@link SahPool} stores the page's IV and HMAC.
- *
- * A read of a page that fails to authenticate fails with SQLITE_NOTADB for page
- * 1 and SQLITE_CORRUPT for any other page, and records a
- * {@link SqlitePageAuthenticationError}, by which the database tells it from
- * other failures, so an export that reads the page fails with SQLITE_CORRUPT
- * rather than SQLITE_IOERR.
- */
-export interface SqliteEncryptingVfs extends SqliteVfs {
-  /**
-   * Registers a raw key for a path until the registration is disposed, as an
-   * EncryptedFile database does while it opens. The path is the one spelling by
-   * which the VFS opens the file, so it is registered as it is. When the VFS
-   * opens the path as a main database, it copies the key and encrypts that file
-   * and its journal with it until the file closes, also for the file of an
-   * `ATTACH` or `VACUUM INTO` that opens it meanwhile. The caller's key is
-   * never modified.
-   */
-  readonly registerKey: (path: SqliteVfsPath, key: EncryptionKey) => Disposable;
-}
-
-/**
- * The storage of a VFS failed outside SQLite, as when {@link SqliteVfs.unlink}
+ * The storage of a pool failed outside SQLite, as when {@link SahPool.unlink}
  * deletes a file.
  */
 export interface SqliteVfsIoError extends Typed<"SqliteVfsIoError"> {
@@ -768,9 +733,9 @@ export interface SqliteVfsIoError extends Typed<"SqliteVfsIoError"> {
 }
 
 /**
- * A page of an encrypted file that failed to authenticate, because the key is
- * wrong or the page was altered or cut short, as a {@link SqliteEncryptingVfs}
- * records it.
+ * A page of an encrypted database or its journal that failed to authenticate,
+ * because the key is wrong or the page was altered or cut short, as Evolu's
+ * codec records it.
  */
 export interface SqlitePageAuthenticationError extends Typed<"SqlitePageAuthenticationError"> {
   /**
@@ -785,12 +750,13 @@ export interface SqlitePageAuthenticationError extends Typed<"SqlitePageAuthenti
  *
  * With a wrong key or a file that is not a database, it fails with
  * SQLITE_NOTADB, or with SQLITE_CORRUPT for a wrong key and a hot journal whose
- * first record is not page 1. On a {@link SahPool}, an encrypted database opened
- * without its key while it has a hot journal that records pages fails with
- * SQLITE_CANTOPEN, and the journal stays for the key. A leftover journal that
- * is not hot, such as one `journal_mode = PERSIST` or TRUNCATE keeps, gives
- * SQLITE_NOTADB, as no journal does. For encrypted databases that 2.2.4 may
- * have keyed, use {@link createEncryptedSqliteDatabase}.
+ * first record is not page 1. An encrypted database opened without its key
+ * while it has a hot journal that records pages fails with SQLITE_CANTOPEN,
+ * caused by the codec's {@link SqliteEncryptionUnsupportedError}, and the
+ * journal stays for the key. A leftover journal that is not hot, such as one
+ * `journal_mode = PERSIST` or TRUNCATE keeps, gives SQLITE_NOTADB, as no
+ * journal does. For encrypted databases that 2.2.4 may have keyed, use
+ * {@link createEncryptedSqliteDatabase}.
  */
 export const createSqliteDatabase =
   (deps: SqliteWasmDep) =>
@@ -802,20 +768,14 @@ export const createSqliteDatabase =
     // callback of another runs, so the database is not disposed under them.
     let runningOperations = 0;
 
-    // The VFS takes the key when SQLite opens the file. Registered before wasm
-    // is entered, so a VFS that refuses it, as a pool with a key already
-    // registered for the path does, throws without breaking the instance.
-    using _registration =
-      options.type === "EncryptedFile"
-        ? options.vfs.registerKey(options.path, options.key)
-        : null;
-
-    // Clears the VFS's failure record and then calls an operation through
-    // call, so the cause of a SqliteError is a failure of this operation. A
-    // VFS that throws, as a disposed pool does, then throws before wasm is
-    // entered, without breaking the instance. An operation inside another on
-    // the same VFS, as a query a SQL function or trace callback runs from
-    // inside wasm, keeps the record, which the outer operation still reads.
+    // Clears the pool's failure record and the codec's records of the pool's
+    // databases, and then calls an operation through call, so the cause of a
+    // SqliteError is a failure of this operation. A pool that throws, as a
+    // disposed one does, then throws before wasm is entered, without breaking
+    // the instance, and the drain of the codec's records, which enters C, runs
+    // inside the operation's call. An operation inside another on the same
+    // pool, as a query a SQL function or trace callback runs from inside wasm,
+    // keeps the records, which the outer operation still reads.
     const callOperation = <T>(fn: () => T): T => {
       runningOperations++;
       try {
@@ -824,7 +784,10 @@ export const createSqliteDatabase =
         if (running === 0) vfs.clearFailure();
         runningOperationsByVfs.set(vfs, running + 1);
         try {
-          return call(fn);
+          return call(() => {
+            if (running === 0) drainCodecFailures(vfs);
+            return fn();
+          });
         } finally {
           runningOperationsByVfs.set(vfs, running);
         }
@@ -867,6 +830,9 @@ export const createSqliteDatabase =
       const stmtReadonly = sqlite3_stmt_readonly(deps);
       const stmtStatus = sqlite3_stmt_status(deps);
       const totalChanges64 = sqlite3_total_changes64(deps);
+      const codecOpen = evolu_codec_open(deps);
+      const takeFailure = evolu_codec_take_failure(deps);
+      const skiplistRegister = evolu_skiplist_register(deps);
       const alloc = allocWasm(deps);
       const allocString = allocCString(deps);
       const copyBytes = copyWasmBytes(deps);
@@ -901,7 +867,7 @@ export const createSqliteDatabase =
           // SQLite falls back to sqlite3_errstr, so it is never NULL.
           message: readString(errmsg(db) as CStringPtr),
           sqlOffset: offset < 0 ? null : offset,
-          cause: vfs?.getFailure() ?? null,
+          cause: toCause(db),
         };
       };
 
@@ -933,6 +899,46 @@ export const createSqliteDatabase =
       });
       const pzTail = (scratch.out + 4) as WasmPtr;
 
+      // The codec's first failure since the pool's top-level operation
+      // started, copied from C, where closing the connection frees it.
+      let codecFailure: SqliteCodecError | null = null;
+
+      // Moves the codec's record of the database out of C.
+      const takeCodecFailure = (db: SqliteDbPtr): SqliteCodecError | null => {
+        // Beside the output parameters, which a drain another database starts
+        // during a call of this one leaves as they are.
+        const pFailure = (scratch.out + 8) as WasmPtr;
+        // SQLITE_NOTFOUND, for a connection without a codec file, has none.
+        if (takeFailure(db, pFailure) !== SQLITE_OK) return null;
+        const view = deps.sqliteWasm.getHeapDataView();
+        // By the value of C's evolu_codec_failure_type, 0 for none.
+        const type = view.getInt32(pFailure, true);
+        return type === 1
+          ? {
+              type: "SqlitePageAuthenticationError",
+              pageNumber: view.getUint32(pFailure + 4, true),
+            }
+          : type === 2
+            ? { type: "SqliteEncryptionUnsupported" }
+            : type === 3
+              ? { type: "SqliteRandomSourceError" }
+              : null;
+      };
+
+      // The pool's failure, or else the codec's, which each take copies into
+      // the database's slot, where the first stays.
+      const toCause = (db: SqliteDbPtr): SqliteFailure | null => {
+        if (vfs == null) return null;
+        const taken = takeCodecFailure(db);
+        codecFailure ??= taken;
+        return (
+          vfs.getFailure() ??
+          (codecFailure == null
+            ? null
+            : { type: "SqliteCodecFailure", error: codecFailure })
+        );
+      };
+
       // A File or EncryptedFile database's path is followed by the name of its
       // VFS.
       const filename = allocString(
@@ -942,29 +948,92 @@ export const createSqliteDatabase =
       );
       if (!filename.ok) return err(toCodeError("open", SQLITE_NOMEM));
       const zFilename = filename.value;
-      const pathEnd = deps.sqliteWasm.getHeapU8().indexOf(0, zFilename);
-      const rc = (() => {
-        using filenameDisposer = new DisposableStack();
-        filenameDisposer.defer(() => {
-          free(zFilename);
-        });
-        return sqlite3_open_v2(deps)(
-          zFilename,
-          scratch.out,
-          SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXRESCODE,
-          options.type === "Memory" ? 0 : ((pathEnd + 1) as CStringPtr),
-        );
-      })();
+      let rc: SqliteResultCode;
+      {
+        using openDisposer = new DisposableStack();
+        if (options.type === "Memory") {
+          openDisposer.defer(() => {
+            free(zFilename);
+          });
+          rc = sqlite3_open_v2(deps)(
+            zFilename,
+            scratch.out,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXRESCODE,
+            0,
+          );
+        } else {
+          // evolu_codec_open rolls back a hot journal and reads the schema in
+          // a call of its own, so a trap there breaks the instance before it
+          // unwinds to the frees, which then refuse to run C on the state the
+          // trap left.
+          openDisposer.defer(() => {
+            call(() => {
+              free(zFilename);
+            });
+          });
+          let zKey: WasmPtr | 0 = 0;
+          if (options.type === "EncryptedFile") {
+            const { key } = options;
+            const staged = alloc(key.length);
+            if (!staged.ok) return err(toCodeError("open", SQLITE_NOMEM));
+            const pKey = staged.value;
+            openDisposer.defer(() => {
+              call(() => {
+                free(pKey);
+              });
+            });
+            // Zeroed before its free, also when a trap refuses that, through a
+            // fresh view, because memory can grow during the open.
+            openDisposer.defer(() => {
+              deps.sqliteWasm.getHeapU8().fill(0, pKey, pKey + key.length);
+            });
+            deps.sqliteWasm.getHeapU8().set(key, pKey);
+            zKey = pKey;
+          }
+          const zVfs = (deps.sqliteWasm.getHeapU8().indexOf(0, zFilename) +
+            1) as CStringPtr;
+          rc = call(() =>
+            codecOpen(zFilename, scratch.out, zVfs, zKey, plaintextChecksums),
+          );
+        }
+      }
       const db = readPtr(scratch.out) as SqliteDbPtr;
+      // evolu_codec_open registers them on a File or EncryptedFile connection.
+      if (rc === SQLITE_OK && options.type === "Memory")
+        rc = skiplistRegister(db);
       if (rc !== SQLITE_OK) {
+        // The connection's message only when it reports the returned code,
+        // because evolu_codec_open can fail with SQLITE_MISUSE while the
+        // connection's code stays SQLITE_OK. The cause is taken before the
+        // close, which frees the codec's record.
         const error =
-          db === 0 ? toCodeError("open", rc) : toSqliteError(db, "open");
-        closeV2(db);
+          db !== 0 && extendedErrcode(db) === rc
+            ? toSqliteError(db, "open")
+            : {
+                ...toCodeError("open", rc),
+                cause: db === 0 ? null : toCause(db),
+              };
+        call(() => closeV2(db));
         return err(error);
       }
       disposer.defer(() => {
         call(() => closeV2(db));
       });
+      if (vfs != null) {
+        const slots = failureSlotsByVfs.get(vfs) ?? new Set<CodecFailureSlot>();
+        failureSlotsByVfs.set(vfs, slots);
+        const slot: CodecFailureSlot = {
+          drain: () => {
+            codecFailure = null;
+            takeCodecFailure(db);
+          },
+        };
+        slots.add(slot);
+        // Before the close, so no drain takes from a closed connection.
+        disposer.defer(() => {
+          slots.delete(slot);
+        });
+      }
       // Finalized before the close, so no deferred close keeps files open.
       disposer.defer(() => {
         for (const statement of statements) statement[Symbol.dispose]();
@@ -973,7 +1042,6 @@ export const createSqliteDatabase =
       const prepareStatement = (
         sql: string,
         prepFlags: number,
-        operation: "prepare" | "open" = "prepare",
       ): Result<SqliteStmtPtr, SqlitePrepareError> => {
         if (!isValidSqlText(sql)) return err({ type: "SqliteInvalidSqlText" });
         // SQLite parses the SQL in place, while a callback can run a query on
@@ -983,7 +1051,7 @@ export const createSqliteDatabase =
         // first. A run prepares SQL every time, so it is a hot path.
         const capacity = sql.length * 3;
         const allocated = alloc(capacity + 1);
-        if (!allocated.ok) return err(toCodeError(operation, SQLITE_NOMEM));
+        if (!allocated.ok) return err(toCodeError("prepare", SQLITE_NOMEM));
         const zSql = allocated.value;
         try {
           const written = writeText(sql, zSql, capacity);
@@ -996,7 +1064,7 @@ export const createSqliteDatabase =
             scratch.out,
             pzTail,
           );
-          if (rc !== SQLITE_OK) return err(toSqliteError(db, operation));
+          if (rc !== SQLITE_OK) return err(toSqliteError(db, "prepare"));
           const stmt = readPtr(scratch.out) as SqliteStmtPtr;
           if (stmt === 0) return err({ type: "SqliteEmptySqlError" });
           // The rest is scanned, not prepared, because SQLite applies some
@@ -1016,67 +1084,6 @@ export const createSqliteDatabase =
           free(zSql);
         }
       };
-
-      // The steps after the connection opened run in a call of their own, so
-      // a trap in them breaks the instance before it unwinds to the deferred
-      // close, which then refuses to close the connection on the state the
-      // trap left.
-      const prepared = call((): Result<void, SqliteError> => {
-        if (options.type === "EncryptedFile") {
-          // The IV and the HMAC at the end of each page, for a new database. It
-          // returns SQLITE_OK for main, a NULL schema name, and an existing
-          // database keeps what its header says.
-          deps.sqliteWasm
-            .getHeapDataView()
-            .setInt32(scratch.out, encryptedReservedBytes, true);
-          sqlite3_file_control(deps)(
-            db,
-            0,
-            SQLITE_FCNTL_RESERVE_BYTES,
-            scratch.out,
-          );
-          // As SQLite3 Multiple Ciphers did for every encrypted connection.
-          const secureDelete = prepareStatement(
-            "PRAGMA secure_delete = ON",
-            0,
-            "open",
-          );
-          if (!secureDelete.ok) {
-            assert(
-              secureDelete.error.type === "SqliteError",
-              "The pragma is one statement.",
-            );
-            return err(secureDelete.error);
-          }
-          const stepped = step(secureDelete.value);
-          const error =
-            stepped === SQLITE_ROW ? null : toSqliteError(db, "open");
-          finalize(secureDelete.value);
-          if (error) return err(error);
-        }
-
-        // SQLite reads a file only when a statement needs it, so a File or
-        // EncryptedFile database reads its schema now: a hot journal is rolled
-        // back, and a file that is not a database fails the open rather than the
-        // first statement.
-        if (options.type !== "Memory") {
-          const schema = prepareStatement(
-            "SELECT 1 FROM sqlite_schema",
-            0,
-            "open",
-          );
-          if (!schema.ok) {
-            assert(
-              schema.error.type === "SqliteError",
-              "The schema query is one statement.",
-            );
-            return err(schema.error);
-          }
-          finalize(schema.value);
-        }
-        return ok();
-      });
-      if (!prepared.ok) return err(prepared.error);
 
       const createRunner = (stmt: SqliteStmtPtr) => {
         const parameterCount = bindParameterCount(stmt);
@@ -1327,7 +1334,15 @@ export const createSqliteDatabase =
                 runningOperationsByVfs.set(vfs, running - 1);
                 try {
                   continues = onRow(row);
-                  if (running === 1) vfs.clearFailure();
+                  if (running === 1) {
+                    vfs.clearFailure();
+                    // In a call of its own, which refuses an instance onRow
+                    // broke after the iteration's call checked, and breaks it
+                    // on a trap before the statement resets.
+                    call(() => {
+                      drainCodecFailures(vfs);
+                    });
+                  }
                 } finally {
                   runningOperationsByVfs.set(vfs, running);
                 }
@@ -1539,12 +1554,13 @@ export const createSqliteDatabase =
               const bytes = tryCopy(copyBytes, pages, Number(size));
               free(pages);
               // SQLite zero-fills a page it cannot read and reports success.
-              const failure = vfs?.getFailure() ?? null;
+              const failure = toCause(db);
               if (failure != null)
                 return err({
                   ...toCodeError(
                     "export",
-                    isPageAuthenticationError(failure.error)
+                    failure.type === "SqliteCodecFailure" &&
+                      failure.error.type === "SqlitePageAuthenticationError"
                       ? SQLITE_CORRUPT
                       : SQLITE_IOERR,
                   ),
@@ -1574,15 +1590,6 @@ export const createSqliteDatabase =
   };
 
 /**
- * Options for {@link createEncryptedSqliteDatabase}: an EncryptedFile database
- * on a {@link SahPool}, because 2.2.4 wrote only pool files, and the fallback to
- * its key reads the salt with {@link SahPool.read}.
- */
-export interface SqliteEncryptedDatabaseOptions extends SqliteEncryptedFileDatabaseOptions {
-  readonly vfs: SahPool;
-}
-
-/**
  * Opens an EncryptedFile database on a pool, falling back to the key
  * `@evolu/sqlite-wasm` 2.2.4 derived.
  *
@@ -1594,61 +1601,148 @@ export interface SqliteEncryptedDatabaseOptions extends SqliteEncryptedFileDatab
  * that text, not with the key itself. This Task:
  *
  * 1. Opens with the raw key. A new or empty file always accepts it.
- * 2. Only when a wrong key failed it, so page 1 of the database or a record of its
- *    hot journal failed to authenticate, which the pool records as a
- *    {@link SqlitePageAuthenticationError}, reads the first 16 bytes of the file
- *    through {@link SahPool.read}: the unencrypted cipher salt. Another page of
- *    the database that fails to authenticate is damaged, because page 1 proved
- *    the key, so the open fails with SQLITE_CORRUPT.
- * 3. Derives the legacy key with {@link deriveLegacySqliteKey}, opens again with it
- *    as the raw key, and zeroes it.
+ * 2. Only when a wrong key failed it, so page 1, or any page while the database
+ *    has a journal, failed to authenticate, which the codec records as a
+ *    {@link SqlitePageAuthenticationError}, reads the salts through
+ *    {@link SahPool.read}: the file's first 16 bytes, the unencrypted cipher
+ *    salt, and, when they differ, the first 16 bytes of the first page-1 record
+ *    the rollback of its hot journal reaches, which stores the salt
+ *    unencrypted, for a database whose first bytes a crash tore. Another page
+ *    that fails to authenticate is damaged, because page 1 proved the key, so
+ *    the open fails with SQLITE_CORRUPT. A database shorter than 16 bytes has
+ *    no salt, and the raw key's error is returned.
+ * 3. For each salt, derives the legacy key with {@link deriveLegacySqliteKey},
+ *    opens again with it as the raw key, and zeroes it, until an open does not
+ *    fail with a wrong key.
  *
- * The result says which key opened the database. When neither key opens it, the
- * error is the raw key's, unless the second open failed otherwise. Rekeying a
+ * The result says which key opened the database. When no key opens it, the
+ * error is the raw key's, unless a later open failed otherwise. Rekeying a
  * legacy database to the raw key is a separate decision: it rewrites every
  * page, needs space, and makes the database unreadable to 2.2.4 tabs that share
  * the pool.
  */
 export const createEncryptedSqliteDatabase =
   (
-    options: SqliteEncryptedDatabaseOptions,
+    options: SqliteEncryptedFileDatabaseOptions,
   ): Task<
     SqliteEncryptedDatabase,
     SqliteError | SqliteVfsIoError,
     SqliteWasmDep & SubtleCryptoDep
   > =>
   async (run) => {
+    const { vfs, path } = options;
     const open = createSqliteDatabase(run.deps);
     const raw = open(options);
     if (raw.ok) return ok({ database: raw.value, keyDerivation: "Raw" });
-    if (!isWrongKey(raw.error, options.path)) return err(raw.error);
+    if (!isWrongKey(raw.error, options)) return err(raw.error);
 
-    const salt = options.vfs.read(
-      options.path,
-      0 as NonNegativeInt,
-      16 as NonNegativeInt,
-    );
-    if (!salt.ok) {
+    // A database shorter than 16 bytes has no salt, and a junk key would key
+    // its emptied file, so a later start could not open what it wrote.
+    const databaseSalt = vfs.read(path, 0 as NonNegativeInt, saltSize);
+    if (!databaseSalt.ok) {
       assert(
-        salt.error.type === "SqliteVfsIoError",
+        databaseSalt.error.type === "SqliteVfsIoError",
         "The pool has the file the raw key failed to open.",
       );
-      return err(salt.error);
+      return err(databaseSalt.error);
     }
-    const legacyKey = await run.ok(
-      deriveLegacySqliteKey(options.key, salt.value),
-    );
-    let legacy: Result<SqliteDatabase, SqliteError>;
-    try {
-      legacy = open({ ...options, key: legacyKey });
-    } finally {
-      legacyKey.fill(0);
+    if (databaseSalt.value.length < saltSize) return err(raw.error);
+    const salts = [databaseSalt.value];
+
+    // The bytes of the journal, or null for fewer than asked, at the end of the
+    // file, or for a journal the pool no longer has.
+    const readJournal = (
+      offset: number,
+      byteLength: number,
+    ): Result<Uint8Array<ArrayBuffer> | null, SqliteVfsIoError> => {
+      const read = vfs.read(
+        `${path}-journal`,
+        offset as NonNegativeInt,
+        byteLength as NonNegativeInt,
+      );
+      if (!read.ok)
+        return read.error.type === "SahPoolFileNotFound"
+          ? ok(null)
+          : err(read.error);
+      return ok(read.value.length === byteLength ? read.value : null);
+    };
+    const toView = (bytes: Uint8Array<ArrayBuffer>) =>
+      new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+    // Adds the first 16 bytes of the first page-1 record a hot journal's
+    // rollback reaches, when they differ from the database's, walking the
+    // records as SQLite's pager_playback does, without checking their checksums
+    // or authenticating them, since the C open verifies the salt it picks.
+    // Nothing without a hot journal, which starts with SQLite's magic and
+    // records an original size other than 0, or without such a record. The
+    // walk ends at a header the file does not hold whole or whose magic
+    // differs, at a record numbered 0 or with the lock-byte page, and at a
+    // record the file does not hold whole; a first header with an invalid
+    // sector or page size has no records. A segment's count of 0 has no
+    // records, and 0xFFFFFFFF counts the records up to the end of the file.
+    walk: {
+      const first = readJournal(0, 28);
+      if (!first.ok) return first;
+      if (first.value == null) break walk;
+      const header = toView(first.value);
+      const sectorSize = header.getUint32(20);
+      const pageSize = header.getUint32(24);
+      if (
+        header.getUint32(16) === 0 ||
+        !isPowerOfTwoIn(sectorSize, 32, 65536) ||
+        !isPowerOfTwoIn(pageSize, 512, 65536)
+      )
+        break walk;
+      const lockPage = Math.floor(0x4000_0000 / pageSize) + 1;
+      const recordSize = pageSize + 8;
+
+      let at = 0;
+      let recordsLeft = 0;
+      for (;;) {
+        while (recordsLeft === 0) {
+          at = Math.ceil(at / sectorSize) * sectorSize;
+          const segment = readJournal(at, sectorSize);
+          if (!segment.ok) return segment;
+          if (
+            segment.value == null ||
+            !eqUint8Array(segment.value.subarray(0, 8), journalMagic)
+          )
+            break walk;
+          at += sectorSize;
+          const records = toView(segment.value).getUint32(8);
+          // Up to the end of the file, where a record it does not hold whole
+          // ends the walk.
+          recordsLeft = records === 0xffff_ffff ? Infinity : records;
+        }
+        const record = readJournal(at, recordSize);
+        if (!record.ok) return record;
+        if (record.value == null) break walk;
+        const pageNumber = toView(record.value).getUint32(0);
+        at += recordSize;
+        recordsLeft--;
+        if (pageNumber === 0 || pageNumber === lockPage) break walk;
+        if (pageNumber === 1) {
+          const journalSalt = record.value.slice(4, 4 + saltSize);
+          if (!eqUint8Array(journalSalt, databaseSalt.value))
+            salts.push(journalSalt);
+          break walk;
+        }
+      }
     }
-    if (legacy.ok)
-      return ok({ database: legacy.value, keyDerivation: "Legacy224" });
-    return err(
-      isWrongKey(legacy.error, options.path) ? raw.error : legacy.error,
-    );
+
+    for (const salt of salts) {
+      const legacyKey = await run.ok(deriveLegacySqliteKey(options.key, salt));
+      let legacy: Result<SqliteDatabase, SqliteError>;
+      try {
+        legacy = open({ ...options, key: legacyKey });
+      } finally {
+        legacyKey.fill(0);
+      }
+      if (legacy.ok)
+        return ok({ database: legacy.value, keyDerivation: "Legacy224" });
+      if (!isWrongKey(legacy.error, options)) return err(legacy.error);
+    }
+    return err(raw.error);
   };
 
 /** The result of {@link createEncryptedSqliteDatabase}. */
@@ -1726,24 +1820,25 @@ export interface SubtleCryptoDep {
   readonly subtleCrypto: SubtleCrypto;
 }
 
-// A wrong key fails to authenticate page 1 of the database, which is
-// SQLITE_NOTADB, or first a hot journal's first record, which is SQLITE_CORRUPT
-// for any other page. Without a hot journal, SQLite reads page 1 before any
-// other page, and a pool records a record of a journal that fails only until a
-// page 1 proved the key, so another page of the database that fails means that
-// the key fit and the page is damaged.
-const isWrongKey = (error: SqliteError, path: SqliteVfsPath): boolean =>
-  error.cause != null &&
-  isPageAuthenticationError(error.cause.error) &&
-  (error.cause.path !== path || error.cause.error.pageNumber === 1);
+// A wrong key fails to authenticate page 1 of the database, or first a hot
+// journal's first record, which can be any page. The codec records a journal
+// record's failure on the database, so any page counts while the pool still
+// has the database's journal after the failed open: a wrong key never removes
+// a journal that playback could restore from. Without one, SQLite reads page 1
+// before any other page, so another page that fails means that the key fit
+// and the page is damaged.
+const isWrongKey = (
+  error: SqliteError,
+  { vfs, path }: SqliteEncryptedFileDatabaseOptions,
+): boolean =>
+  error.cause?.type === "SqliteCodecFailure" &&
+  error.cause.error.type === "SqlitePageAuthenticationError" &&
+  (error.cause.error.pageNumber === 1 ||
+    vfs.getPaths().includes(`${path}-journal`));
 
-const isPageAuthenticationError = (
-  error: unknown,
-): error is SqlitePageAuthenticationError =>
-  typeof error === "object" &&
-  error !== null &&
-  "type" in error &&
-  error.type === "SqlitePageAuthenticationError";
+// Whether a number is a power of two from min to max.
+const isPowerOfTwoIn = (value: number, min: number, max: number): boolean =>
+  value >= min && value <= max && (value & (value - 1)) === 0;
 
 // The character code of a hex digit in lowercase, as 2.2.4's hex had it.
 const lowercaseHexDigit = (nibble: number): number =>
@@ -1795,7 +1890,27 @@ const isValidSqlText = (sql: string): boolean =>
 // query a callback runs from inside wasm during an operation is an operation
 // too, on the same database or another one on the VFS. An iteration lowers the
 // count while its onRow runs, outside wasm.
-const runningOperationsByVfs = /*#__PURE__*/ new WeakMap<SqliteVfs, number>();
+const runningOperationsByVfs = /*#__PURE__*/ new WeakMap<SahPool, number>();
+
+/** A database's slot for the codec's failure. */
+interface CodecFailureSlot {
+  /** Empties the slot and discards the codec's record of the database. */
+  readonly drain: () => void;
+}
+
+// The slots of the databases open on each pool, which join after a successful
+// open and leave before the close.
+const failureSlotsByVfs = /*#__PURE__*/ new WeakMap<
+  SahPool,
+  Set<CodecFailureSlot>
+>();
+
+// Empties the slot of every database on the pool and discards the codec's
+// records, which a failure SQLite reported as success, as an export's
+// zero-filled page, may have left. Called inside a call, since it enters C.
+const drainCodecFailures = (vfs: SahPool): void => {
+  for (const slot of failureSlotsByVfs.get(vfs) ?? []) slot.drain();
+};
 
 // Whether UTF-8 SQL from start to end holds no statement, only the tokens
 // SQLite 3.54.0's tokenizer skips: a semicolon; a space, which starts with a
@@ -1870,9 +1985,26 @@ const hyphen = 0x2d;
 const slash = 0x2f;
 const semicolon = 0x3b;
 
-// The bytes an EncryptedFile database leaves to its VFS at the end of each
-// page, where the pool keeps the IV and the HMAC.
-const encryptedReservedBytes = 80;
+// EVOLU_CODEC_PLAINTEXT_CHECKSUMS, which every open on a pool passes, because
+// the TypeScript codec of earlier builds and 2.2.4 wrote plaintext checksums,
+// and a journal does not record which kind it stores, so an open with the
+// other kind would take the first record for the journal's end.
+const plaintextChecksums = 2;
+
+// An encrypted database's cipher salt, its first 16 bytes.
+const saltSize = 16 as NonNegativeInt;
+
+// What starts every header of a rollback journal.
+const journalMagic = /*#__PURE__*/ Uint8Array.of(
+  0xd9,
+  0xd5,
+  0x05,
+  0xf9,
+  0x20,
+  0xa1,
+  0x63,
+  0xd7,
+);
 
 // The largest text or blob bound from the scratch memory, which keeps the
 // memory of the largest value it held. A larger value is allocated exactly and

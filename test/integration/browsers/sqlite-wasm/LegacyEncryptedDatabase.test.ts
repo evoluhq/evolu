@@ -136,7 +136,7 @@ const insertZeroblobRowsSql =
 
 // The rollback with the raw key stops at the journal's first page, which that
 // key cannot decrypt.
-test("a transaction 2.2.4 spilled into a database encrypted as @evolu/web does, when its worker was terminated, fails with the raw key with SQLITE_CORRUPT, caused by the pool's SqlitePageAuthenticationError for the journal's first page, without changing any file in OPFS, is rolled back with the legacy key, leaving no journal, takes new rows, and 2.2.4 then reads the rows as they were and the new ones", async () => {
+test("a transaction 2.2.4 spilled into a database encrypted as @evolu/web does, when its worker was terminated, fails with the raw key with SQLITE_CORRUPT, caused by the codec's SqlitePageAuthenticationError for the journal's first page, without changing any file in OPFS, is rolled back with the legacy key, leaving no journal, takes new rows, and 2.2.4 then reads the rows as they were and the new ones", async () => {
   await using pool = setupPoolDirectory();
   {
     using sqliteJs = await setupSqliteJsWorker();
@@ -164,8 +164,7 @@ test("a transaction 2.2.4 spilled into a database encrypted as @evolu/web does, 
   // The first record's page number, after the header's sector.
   const [, journal] = findSlot(before, "/evolu1.db-journal");
   assertEqual(raw.error.cause, {
-    method: "xRead",
-    path: "/evolu1.db-journal",
+    type: "SqliteCodecFailure",
     error: {
       type: "SqlitePageAuthenticationError",
       pageNumber: new DataView(journal.buffer).getUint32(

@@ -8,14 +8,14 @@
  * time, across workers and wasm instances, so the caller must serialize opens
  * of a directory, as Evolu does with its leader Web Lock.
  *
+ * SQLite reaches the pool only through Evolu's codec, in C, which encrypts
+ * EncryptedFile databases, as Evolu's codec below describes.
+ *
  * Status: implemented, and tested in Node.js over a fake OPFS, including the
  * lock table and recovery after a worker died, and in workers of Chromium,
  * Firefox and WebKit on real OPFS, including storage quotas, real in Chromium
  * and Firefox, and pools shared with SQLite's opfs-sahpool as
- * `@evolu/sqlite-wasm` 2.2.4 ships it. Encryption is tested in Node.js over a
- * fake OPFS, against 2.2.4 and `node:crypto`, and in the three engines on real
- * OPFS against 2.2.4, which opens what the pool writes and the reverse, also
- * after either's worker was terminated mid-transaction.
+ * `@evolu/sqlite-wasm` 2.2.4 ships it.
  *
  * ## On-disk format
  *
@@ -136,10 +136,8 @@
  *   a handle ahead of its writes and releases what the file does not use only
  *   when the handle closes, so a file the pool deletes frees no quota for the
  *   pool's other files until the pool is opened again.
- * - For an unencrypted file or a journal, `xRead` zero-fills the rest of a short
- *   read and returns SQLITE_IOERR_SHORT_READ, as SQLite requires. A page of an
- *   encrypted database that ends early fails as one whose HMAC differs, as
- *   Reads and writes under Encryption describes.
+ * - `xRead` zero-fills the rest of a short read and returns
+ *   SQLITE_IOERR_SHORT_READ, as SQLite requires.
  * - Other methods return their specific code, such as SQLITE_IOERR_TRUNCATE,
  *   SQLITE_IOERR_FSYNC or SQLITE_IOERR_FSTAT, so the extended code says which
  *   operation failed.
@@ -156,13 +154,12 @@
  *   with SQLITE_CANTOPEN otherwise. With no free slot, the open fails with
  *   SQLITE_CANTOPEN and records a {@link SahPoolFullError}. A failed open leaves
  *   `pMethods` NULL, so SQLite does not call `xClose`.
- * - A file without a name fails `xOpen` with SQLITE_CANTOPEN. SQLite opens one
- *   only for a temporary file, which this build keeps in memory, and every one
- *   would share a path. It is also the only file SQLite opens with
- *   DELETEONCLOSE, so `xClose` deletes no file. A name that is no valid URL
- *   path, such as `//[`, or whose suffix would not land in its path, fails
- *   `xOpen` with SQLITE_CANTOPEN and `xDelete` with SQLITE_IOERR_DELETE, and
- *   `xAccess` finds no file.
+ * - The codec opens only a main database, its journal and a super-journal, each
+ *   with a name, so no temporary file, the only kind SQLite opens without a
+ *   name or with DELETEONCLOSE, reaches the pool, and `xClose` deletes no file.
+ *   A name that is no valid URL path, such as `//[`, or whose suffix would not
+ *   land in its path, fails `xOpen` with SQLITE_CANTOPEN and `xDelete` with
+ *   SQLITE_IOERR_DELETE, and `xAccess` finds no file.
  * - `xOpen` with CREATE and EXCLUSIVE, as SQLite opens a super-journal, fails
  *   with SQLITE_CANTOPEN when the path exists, as unix's O_EXCL does. It
  *   records no failure, because SQLite checks with `xAccess` that the path is
@@ -218,273 +215,55 @@
  * - Each slot is mapped to exactly one path, free, or unused because a slot
  *   listed after it maps its path, until that path is deleted.
  *
- * ## Encryption
+ * ## Evolu's codec
  *
- * The pool encrypts a database as SQLite3 Multiple Ciphers encrypts it with its
- * `sqlcipher` scheme and that scheme's default parameters, those of SQLCipher
- * 4, so the databases `@evolu/web` 3 encrypted with `@evolu/sqlite-wasm` 2.2.4
- * open unchanged, and 2.2.4 opens what the pool writes. SQLite3 Multiple
- * Ciphers writes SQLCipher 4's pages except that page 1 keeps bytes 16 to 23
- * unencrypted, and so does the pool.
+ * The codec, which `evolu_codec.h` of `@evolu/sqlite-core` describes, encrypts
+ * an EncryptedFile database and its rollback journal page by page, as SQLite3
+ * Multiple Ciphers encrypts them with its `sqlcipher` scheme and that scheme's
+ * default parameters, those of SQLCipher 4, so the databases `@evolu/web` 3
+ * encrypted with `@evolu/sqlite-wasm` 2.2.4 open unchanged, and 2.2.4 opens
+ * what the codec writes. The pool stores what the codec writes as it is, and
+ * the codec does the checks of a hot journal before SQLite rolls it back,
+ * refusing one of an encrypted database opened without its key, so the journal
+ * stays for the key. A super-journal holds only file names, and the build opens
+ * no `-wal` file and keeps temporary files in memory.
  *
  * `@evolu/web` 1.0.1-preview.6 to 2.4.0 also ran `PRAGMA legacy = 4`, which
  * writes SQLCipher 4's own format: 4096-byte pages, and page 1 encrypted and
  * authenticated from byte 16. Those databases have not opened since
- * `@evolu/web` 3.0.0, which dropped the pragma, and the pool does not open
- * them: page 1 fails to authenticate. Reading them, to migrate them later,
- * needs the page size, 4096, before page 1 is decrypted, because SQLite reads
- * it from the encrypted bytes 16 and 17, and page 1 authenticated and decrypted
- * from byte 16 to its reserved bytes, 4000 bytes in whole AES blocks, so
- * without ciphertext stealing. Like the databases of `@evolu/web` 3, they were
- * keyed with the `x'<hex>'` text, so their key is the one
+ * `@evolu/web` 3.0.0, which dropped the pragma, and the codec does not open
+ * them: page 1 fails to authenticate. Like the databases of `@evolu/web` 3,
+ * they were keyed with the `x'<hex>'` text, so their key is the one
  * {@link deriveLegacySqliteKey} derives.
- *
- * ### Keys
- *
- * - {@link SahPool.registerKey} registers a raw 32-byte key for a path until the
- *   registration is disposed. The path is a {@link SqliteVfsPath}, the path
- *   `xOpen` maps the file's name to, so it is registered as it is, and
- *   registering a path again before its registration is disposed throws. Only
- *   an `xOpen` of the path as a main database takes the key, copying it: that
- *   file and its rollback journal are then encrypted until the file closes,
- *   which zeroes the copy and the HMAC key derived from it. Disposing the
- *   registration zeroes its copy, and the caller's key is never modified.
- * - Each open file has its own copy, so connections that open the same path with
- *   different keys do not share one. A journal belongs to the database whose
- *   name its name leads back to, as `sqlite3_filename_database` finds it.
- * - The key never reaches SQLite: no SQL, URI, file name or memory of SQLite
- *   holds it, and no error or recorded failure contains it.
- *
- * ### Pages
- *
- * - Every page ends with 80 reserved bytes: a random 16-byte IV, then a 64-byte
- *   HMAC. The bytes before them, from byte 24 of page 1 and from byte 0 of any
- *   other page, are encrypted with AES-256-CBC, the key and the IV.
- * - Page 1's encrypted bytes are not a whole number of 16-byte blocks. Their last
- *   partial block is encrypted with ciphertext stealing, CBC-CS3: the last
- *   whole block of ciphertext C is replaced by the encryption of C XOR the
- *   partial block padded with zeros, followed by the first bytes of C, as many
- *   as the partial block has.
- * - Bytes 0 to 15 of page 1 hold the salt instead of SQLite's header string,
- *   which decryption restores. Bytes 16 to 23, the page size, the file format
- *   versions, the reserved bytes and the payload fractions, stay unencrypted
- *   and unauthenticated, so SQLite learns the page size and the reserved bytes
- *   before anything is decrypted. A page 1 whose reserved bytes are not 80
- *   fails as an altered page, because SQLite would read every page at another
- *   usable size, and a blob that overflows its page would read as other bytes.
- * - The HMAC is HMAC-SHA512 of the encrypted bytes, the IV and the page number as
- *   a little-endian u32. Its key is PBKDF2-HMAC-SHA512 of the key, salted with
- *   the salt XOR 0x3a, with 2 iterations and 32 bytes. A page is authenticated,
- *   comparing in constant time, before it is decrypted.
- * - The salt is what page 1 stores. The pool learns it from a read of page 1,
- *   whole or in part, that authenticates, which SQLite makes before it reads or
- *   writes any other page of a database that has pages. A page 1 that fails to
- *   authenticate, as a stale page in a journal or a page a power loss tore can,
- *   gives no salt, or every page written later would get its salt. A new
- *   database gets 16 random bytes when the first of its pages is written. The
- *   HMAC key is derived again, and the previous one zeroed, whenever the salt
- *   changes, such as to one another connection wrote.
- * - SQLite rolls a hot journal back before it reads page 1, so a connection can
- *   have no salt, as when it opened the database while it was empty, or a stale
- *   one, as when the database was emptied and created again since a page 1
- *   proved its key. So `xOpen` of a journal that SQLite would roll back, whose
- *   first byte is not 0 and whose first header stores an original size other
- *   than 0 pages, takes the salt from the first of these that authenticates:
- *   the journal's first page-1 record, as below, and the database's page 1,
- *   read at the page size it stores. When neither does, it takes the database's
- *   first 16 bytes while no page 1 has proven the key, and keeps the salt once
- *   one has, because a database keeps its salt while it has pages and a tear
- *   must not replace it. The kept salt is stale only when the database was
- *   created again since, which needs `synchronous = OFF` and a power loss,
- *   where SQLite promises nothing either: otherwise, SQLite syncs the journal's
- *   page-1 record before it writes page 1, so one of the two authenticates. It
- *   takes no salt when the database is empty, or when the original size is 0
- *   pages: such a journal journals no page, and the database's first bytes are
- *   then a hole a spill left before page 1 was written. When a read throws, the
- *   open fails with SQLITE_CANTOPEN, recording what it threw.
- * - Any power of two from 1024 to 65536 bytes is a page size. SQLite raises a
- *   requested 512 to 1024, because a page reserves more than 32 bytes, as with
- *   SQLite3 Multiple Ciphers. A new database gets SQLite's default, 8192 bytes
- *   in this build, as in 2.2.4, unless `PRAGMA page_size` sets another before
- *   its first write.
- * - An existing database's page size cannot change. A VACUUM after `PRAGMA
- *   page_size` sets another size writes page 1 with that size in its header but
- *   in pages of the old size, so every later read of page 1 would fail to
- *   authenticate. Writing a page 1 whose header stores another page size than
- *   its length fails with SQLITE_IOERR_WRITE and records a
- *   {@link SahPoolEncryptionUnsupportedError}, so SQLite rolls the VACUUM back
- *   and the database stays as it was. SQLite3 Multiple Ciphers patches VACUUM
- *   to keep the old page size instead, so in 2.2.4 such a VACUUM succeeds with
- *   the old size. A VACUUM that keeps the page size, and `auto_vacuum`, work.
- * - SQLite must leave the 80 bytes unused. An existing database's header says so,
- *   and for a new one, the database layer asks for them with
- *   SQLITE_FCNTL_RESERVE_BYTES before its first write. Writing a page 1 whose
- *   header reserves another number of bytes fails with SQLITE_IOERR_WRITE and
- *   records a {@link SahPoolEncryptionUnsupportedError}: with fewer, the IV and
- *   the HMAC would overwrite data, and with more, page 1 would fail every
- *   read.
- * - SQLite must write every page it frees. With `secure_delete` off or `FAST`, it
- *   does not write a page that a transaction added and then freed, so the file
- *   keeps zeros there, which fail to authenticate, and an export, which reads
- *   every page, fails with SQLITE_CORRUPT. So for an encrypted database,
- *   `xFileControl` refuses a `PRAGMA secure_delete` whose value is not `on`,
- *   `yes`, `true` or `1`, ignoring case: the pragma fails with SQLITE_ERROR and
- *   a message that says why, recording a
- *   {@link SahPoolEncryptionUnsupportedError}, or with SQLITE_NOMEM when the
- *   message cannot be allocated. A query of the pragma works, and an
- *   EncryptedFile database turns it on. SQLite gives an attached database
- *   `main`'s setting, and applies a pragma without a schema to every attached
- *   database but asks only `main`'s file, so an encrypted database attached to
- *   a connection whose `main` is not encrypted can have it off. SQLite3
- *   Multiple Ciphers lets `secure_delete` be turned off, and 2.2.4's export
- *   returns zeros for such pages without an error.
- *
- * ### Reads and writes
- *
- * - SQLite reads and writes a database one whole page at a time, at an offset
- *   that is a multiple of the page's size, which is the page's number less one
- *   times the size.
- * - A whole page is read, authenticated and decrypted in place. A page whose HMAC
- *   differs, because the key is wrong or the page was altered, is zero-filled
- *   and fails the read with SQLITE_NOTADB for page 1 and SQLITE_CORRUPT for any
- *   other page, as SQLite3 Multiple Ciphers fails it, and records a
- *   {@link SqlitePageAuthenticationError}. A short read zero-fills the whole
- *   page, so no ciphertext reaches SQLite as data. A read that gets nothing is
- *   past the end, as page 1 of an empty file is, and returns
- *   SQLITE_IOERR_SHORT_READ. SQLite reads a page only within the file, so a
- *   page that ends early was cut off or torn and fails as one whose HMAC
- *   differs, or zeros would pass as its data, which no integrity check notices
- *   in an overflow page.
- * - SQLite reads part of page 1 twice: its first 100 bytes when it opens a
- *   database, for the page size and the reserved bytes, and 16 bytes at offset
- *   24, the change counter, when a transaction starts with pages cached. Both
- *   come from page 1 decrypted when it authenticates, and as stored when it
- *   does not, as SQLite3 Multiple Ciphers returns them before a key is set. So
- *   an open learns the unencrypted page size, a page 1 that a crash left torn
- *   does not fail before the key rolls a hot journal back, as below, and a
- *   wrong key fails when page 1 is read whole. A read that is not a whole page
- *   and ends past page 1, by the page size page 1 stores, fails with
- *   SQLITE_IOERR_READ and records a {@link SahPoolEncryptionUnsupportedError}.
- * - A connection that opened the file while it was empty keeps SQLite's default
- *   page size, so when another connection then creates the database with
- *   another page size, it reads page 1 whole at the wrong size. Page 1 is then
- *   authenticated and decrypted at the size it stores, and the read gets its
- *   first bytes, with zeros past it, so SQLite learns the size and reads page 1
- *   again; it fails as a whole page fails. In 2.2.4, such a connection failed
- *   with SQLITE_NOTADB until it was opened again.
- * - A whole page is encrypted with a fresh IV into a buffer of the pool, never in
- *   SQLite's page cache, and written. Any other write fails with
- *   SQLITE_IOERR_WRITE and records a {@link SahPoolEncryptionUnsupportedError}.
- *
- * ### Journals and other files
- *
- * - SQLite writes each record of a rollback journal as the page number in 4
- *   bytes, big-endian, the page, and a 4-byte checksum of the page as SQLite
- *   has it. The page is encrypted as that page of the database, with a fresh
- *   IV, and authenticated and decrypted when it is read, failing as a database
- *   page fails until the key is proven, as below. A read or write of a page's
- *   size at offset P + 4, right after one of 4 bytes at P, is a record's page,
- *   unless those 4 bytes were the checksum right after the previous record's
- *   page. Everything else, the headers, page numbers, checksums and
- *   super-journal name, is stored as it is.
- * - A crash can leave zeros in the first bytes of the database's page 1, whose
- *   salt the records need, and a plain UPDATE journals page 1 last, when its
- *   commit changes the change counter, so the journal's page-1 record, wherever
- *   it is, gives the salt first, as above. The pool finds the first such record
- *   as SQLite reads a hot journal: the sector and page sizes from the first
- *   header, and segments that each start with a header at a multiple of the
- *   sector size, with SQLite's magic and the number of records that follow it,
- *   where 0xFFFFFFFF counts them up to the end of the journal. A count of 0
- *   does too, although SQLite's rollback of a hot journal takes it as none,
- *   because any page 1 that authenticates stores the database's salt.
- * - So a wrong key, with which page 1 never authenticates, never rolls back a hot
- *   journal: the rollback fails at the first page, and the journal stays for
- *   the right key.
- * - Nor does a connection without a key. SQLite would read the journal's pages as
- *   stored, take the first record, whose checksum then differs, as the end of
- *   the journal, and delete it, leaving the transaction half-applied. So
- *   `xOpen` of a journal that exists, whose database is open without a key,
- *   reads the database's first 16 bytes, and fails with SQLITE_CANTOPEN when
- *   the database is not empty, they are not SQLite's header string, as an
- *   encrypted database's salt is not, and SQLite would roll the journal back,
- *   as above, recording a {@link SahPoolEncryptionUnsupportedError}, or when a
- *   read throws, recording what it threw. A journal of a database that had no
- *   pages journals no page, and rolling it back only empties the database, as
- *   for a new database whose first transaction spilled the pages after page 1,
- *   which leaves zeros in place of the header string. A torn write can leave
- *   zeros in place of the salt, so zeros pass only for an empty database: an
- *   encrypted database whose salt is zeros keeps its journal, which its key
- *   rolls back from the journal's page-1 record, as above, and a plaintext one
- *   whose header string is zeros fails such a connection too, rather than risk
- *   the other's journal. SQLite counts a journal it cannot open as hot, and its
- *   rollback then cannot open it either, so the statement fails with
- *   SQLITE_CANTOPEN and the journal stays for the key. A leftover journal that
- *   is not hot opens: `journal_mode = PERSIST` zeroes its header and TRUNCATE
- *   leaves it empty, and a crash before SQLite first syncs a journal leaves
- *   zeros in place of its magic, except with `synchronous = OFF`, which writes
- *   the magic with the header. Such a connection then fails with SQLite's
- *   SQLITE_NOTADB when it reads page 1, as it does without a journal. A journal
- *   that a transaction creates holds nothing to roll back, so opening it reads
- *   nothing of the database.
- * - Once a page 1, of the database or of a record, has authenticated, which
- *   proves the key, a record's page that fails to authenticate is zero-filled,
- *   records nothing, and fails the read with SQLITE_IOERR_SHORT_READ, which
- *   SQLite's rollback takes as the end of the journal, as it takes a record
- *   whose checksum differs. With `synchronous = OFF`, SQLite plays a journal
- *   back to its end and relies on the checksums to stop. A journal that
- *   `journal_mode = PERSIST` or `locking_mode = EXCLUSIVE` keeps still holds
- *   the previous transaction's records, so a crash right after a record's page
- *   number leaves it before a stale page encrypted as another page. SQLite3
- *   Multiple Ciphers fails such a rollback with SQLITE_CORRUPT. The
- *   opfs-sahpool of 2.2.4 never ran one, because it never rolled a journal
- *   back.
- * - A journal header is stored as it is, also one as long as a page that follows
- *   a checksum, which SQLite3 Multiple Ciphers encrypts as a page. Headers are
- *   4096 bytes, the sector size, at most, so that happens only with pages of
- *   4096 bytes or fewer, never Evolu's 8192, and SQLite then reads such a
- *   header as the end of the journal, with either.
- * - SQLite opens no `-wal` file and no temporary file through the pool: the build
- *   omits WAL and keeps temporary files, such as statement journals, sorts and
- *   temporary tables, in memory, also with `PRAGMA temp_store = FILE`.
- * - A super-journal holds only file names. An attached database and the output of
- *   `VACUUM INTO` are main databases of their own, encrypted only when a key is
- *   registered for their path while they open. SQLite reserves no bytes in a
- *   file that `ATTACH` creates, so with a key registered its first write fails,
- *   as above; `VACUUM INTO` reserves the bytes the main database does.
- *
- * ### Primitives
- *
- * - AES-CBC and SHA-512 are the stubs of `@awasm/noble/stub.js`, and HMAC and
- *   PBKDF2 come from its `hmac.js` and `kdf.js` over the SHA-512 stub. Opening
- *   a pool installs `@awasm/noble`'s wasm backend into each stub that has none,
- *   so an app can install another backend before or after, such as
- *   `@awasm/noble/noble.js`, which wraps the audited `@noble/ciphers` and
- *   `@noble/hashes`.
- * - `@awasm/noble` zeroes its wasm memory after each operation, and the pool
- *   zeroes the buffers that held a decrypted page outside SQLite's memory.
  *
  * ## The VFS
  *
- * - It is named `opfs-sahpool:` followed by the names of the directory joined
- *   with `/`, so `[".evolu"]` gets `opfs-sahpool:.evolu` and `["a", "b"]` gets
- *   `opfs-sahpool:a/b`, which no other names get, because no {@link OpfsName}
- *   contains `/`, NUL, where SQLite ends the name, or a lone surrogate, which
- *   UTF-8 cannot encode. It is registered once per VFS name and wasm instance.
- *   It is allocated and registered through `SqliteWasm.call`, so on a broken
+ * - The pool's name is `opfs-sahpool:` followed by the names of the directory
+ *   joined with `/`, so `[".evolu"]` gets `opfs-sahpool:.evolu` and `["a",
+ *   "b"]` gets `opfs-sahpool:a/b`, which no other names get, because no
+ *   {@link OpfsName} contains `/`, NUL, where SQLite ends the name, or a lone
+ *   surrogate, which UTF-8 cannot encode.
+ * - Once per name and wasm instance, the VFS is registered under the internal
+ *   name `evolu-raw:` followed by the pool's name, then Evolu's codec over it
+ *   under the pool's name, and then the VFS is unregistered, also when the
+ *   codec's registration failed, as when an app holds the pool's name. So SQL
+ *   reaches the pool only through the codec, also through the `vfs` parameter
+ *   of a URI that `ATTACH` or `VACUUM INTO` names, and on failure nothing stays
+ *   registered or allocated, and setup fails with {@link SahPoolSetupError}. It
+ *   is all allocated and registered through `SqliteWasm.call`, so on a broken
  *   instance opening a new directory throws before anything is allocated, and
  *   an exception that escapes the registration breaks the instance.
  * - The VFS struct is version 2 with `xCurrentTimeInt64`, and the I/O methods are
  *   version 1 without the shared memory only WAL uses.
  * - Every slot of both structs up to their declared version is a real function,
  *   except the `xDl*` slots: the build omits loadable extensions, so SQLite
- *   never calls them. SQLite tolerates a NULL `xDelete`, `xSectorSize` or
- *   `xGetLastError`, and never calls `xCurrentTime` when `xCurrentTimeInt64` is
- *   set, but VFS shims such as SQLite's cksumvfs forward every slot without
- *   NULL checks. `xGetLastError` reports no system error, writing nothing, so
+ *   never calls them. Evolu's codec forwards most of them without NULL checks,
+ *   though it tolerates a NULL `xDelete`, `xSectorSize` or `xGetLastError`, as
+ *   SQLite does. `xGetLastError` reports no system error, writing nothing, so
  *   it accepts nBuf 0 and a NULL buffer.
- * - `xFileControl` returns SQLITE_NOTFOUND for every opcode, as in opfs-sahpool,
- *   so SQLite handles every pragma itself, except a `PRAGMA secure_delete` that
- *   an encrypted database refuses, as above.
+ * - `xFileControl` returns SQLITE_NOTFOUND for every opcode, as in opfs-sahpool.
+ *   The codec handles its own file controls, such as the keying pragmas, and
+ *   forwards the rest.
  * - `xDeviceCharacteristics` returns 0, and `xSectorSize` returns 4096.
  *   opfs-sahpool returns SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN, which makes SQLite
  *   keep a PERSIST or TRUNCATE journal open after it unlocks. A connection in
@@ -492,16 +271,17 @@
  *   would leave a transaction half-applied. With 0, SQLite closes the journal
  *   when it unlocks, as with unix, and only a connection holding RESERVED
  *   deletes a journal.
- * - The VFS struct, the I/O methods struct and the name are allocated once and
- *   never freed.
+ * - The VFS struct, the I/O methods struct and the internal name are allocated
+ *   once and never freed, and so is the codec.
  *
  * ## Pausing
  *
  * Disposing a {@link SahPool} pauses it: every handle closes, so another worker
- * can take the files over. The VFS stays registered for the lifetime of the
- * wasm instance. While no pool holds its files, `xOpen` fails with
- * SQLITE_CANTOPEN, `xAccess` finds no file, and `xDelete` returns
- * SQLITE_IOERR_DELETE. Opening the same directory again unpauses it.
+ * can take the files over. Evolu's codec over the VFS stays registered under
+ * the pool's name for the lifetime of the wasm instance. While no pool holds
+ * its files, `xOpen` fails with SQLITE_CANTOPEN, `xAccess` finds no file, and
+ * `xDelete` returns SQLITE_IOERR_DELETE. Opening the same directory again
+ * unpauses it.
  *
  * @module
  */
@@ -511,7 +291,6 @@ import {
   brand,
   disposable,
   durationToMillis,
-  eqUint8Array,
   err,
   isNonEmptyArray,
   mapArray,
@@ -528,7 +307,6 @@ import {
   type PositiveDuration,
   type PositiveMillis,
   type Random,
-  type RandomBytes,
   type RandomBytesDep,
   type ReportDefectDep,
   type Result,
@@ -537,16 +315,9 @@ import {
   type Typed,
   type TypeError,
 } from "@evolu/common";
-import { cbc as wasmCbc, sha512 as wasmSha512 } from "@awasm/noble";
-import { hmac } from "@awasm/noble/hmac.js";
-import { pbkdf2 } from "@awasm/noble/kdf.js";
-import { cbc, sha512 } from "@awasm/noble/stub.js";
 import {
   SQLITE_BUSY,
   SQLITE_CANTOPEN,
-  SQLITE_CORRUPT,
-  SQLITE_ERROR,
-  SQLITE_FCNTL_PRAGMA,
   SQLITE_FULL,
   SQLITE_IOERR_DELETE,
   SQLITE_IOERR_DIR_FSYNC,
@@ -561,8 +332,6 @@ import {
   SQLITE_LOCK_PENDING,
   SQLITE_LOCK_RESERVED,
   SQLITE_LOCK_SHARED,
-  SQLITE_NOMEM,
-  SQLITE_NOTADB,
   SQLITE_NOTFOUND,
   SQLITE_OK,
   SQLITE_OPEN_CREATE,
@@ -580,8 +349,7 @@ import {
   type SqliteResultCode,
 } from "./Constants.ts";
 import type {
-  SqliteEncryptingVfs,
-  SqlitePageAuthenticationError,
+  SqliteError,
   SqliteShortWriteError,
   SqliteVfsFailure,
   SqliteVfsIoError,
@@ -589,6 +357,7 @@ import type {
   SqliteVfsPath,
   deriveLegacySqliteKey,
 } from "./Database.ts";
+import { evolu_codec_register } from "./EvoluCApi.ts";
 import {
   allocCString,
   allocWasm,
@@ -612,7 +381,44 @@ import {
  * A pool of sync access handles, and the VFS SQLite opens its files with, on
  * which File and EncryptedFile databases open.
  */
-export interface SahPool extends SqliteEncryptingVfs, Disposable {
+export interface SahPool extends Disposable {
+  /**
+   * The name of the pool's VFS, which a database opens its path with, such as
+   * `opfs-sahpool:.evolu`. It names Evolu's codec over the pool.
+   */
+  readonly vfsName: string;
+
+  /**
+   * Returns the first failure a method of the pool recorded since the last
+   * {@link SahPool.clearFailure}, which a {@link SqliteError} carries as its
+   * cause.
+   */
+  readonly getFailure: () => SqliteVfsFailure | null;
+
+  /**
+   * Forgets the recorded failure; a database calls it before each operation
+   * that does not run inside another operation on the pool.
+   */
+  readonly clearFailure: () => void;
+
+  /**
+   * Returns the canonical paths of the files the pool has, databases and their
+   * journals, such as `/evolu1.db`, so a database opened at a
+   * {@link SqliteVfsPath} is listed by that path. A file SQLite's opfs-sahpool
+   * opened as `evolu1.db` is listed as `/evolu1.db`.
+   */
+  readonly getPaths: () => ReadonlyArray<string>;
+
+  /**
+   * Deletes the file with a canonical path, as {@link SahPool.getPaths} returns
+   * it, and the files SQLite keeps beside it, such as its `-journal`. The file
+   * goes first, so a failure never leaves a database without the journal that
+   * would roll it back. Returns false when the pool has no file with the path,
+   * as for a path that is not canonical, and throws when a connection has one
+   * of the files open.
+   */
+  readonly unlink: (path: string) => Result<boolean, SqliteVfsIoError>;
+
   /**
    * Reads bytes of a file without SQLite, such as the first 16 bytes of an
    * encrypted database, which are its cipher salt. The path is one
@@ -674,10 +480,7 @@ export const openSahPool =
     OpfsRootDep & SqliteWasmDep
   > =>
   async (run) => {
-    const { opfsRoot, random, randomBytes, sqliteWasm, time } = run.deps;
-    // An app may have installed another backend, before or after.
-    cbc.install(wasmCbc, { onlyMissing: true });
-    sha512.install(wasmSha512, { onlyMissing: true });
+    const { opfsRoot, random, sqliteWasm, time } = run.deps;
     // No OpfsName contains "/", NUL or a lone surrogate, so no other names get
     // this name, also as the UTF-8 C string SQLite reads up to its NUL.
     const vfsName = `opfs-sahpool:${directory.join("/")}`;
@@ -838,8 +641,6 @@ export const openSahPool =
 
     const openFiles = new Map<SqliteFilePtr, OpenFile>();
     const lockByPath = new Map<string, PathLock>();
-    // The registered keys, copies the registrations zero when disposed.
-    const keyByPath = new Map<string, Uint8Array<ArrayBuffer>>();
     // The first failure since the last clear.
     let failure: SqliteVfsFailure | null = null;
     const getOpenFile = (pFile: SqliteFilePtr): OpenFile => {
@@ -853,7 +654,7 @@ export const openSahPool =
       path: string | null,
       error: unknown,
     ): void => {
-      failure ??= { method, path, error };
+      failure ??= { type: "SqliteVfsFailure", method, path, error };
     };
 
     // Runs a file's handle operation, which returns a result code, and records
@@ -975,36 +776,14 @@ export const openSahPool =
     const toPath = (zName: CStringPtr): Result<string, unknown> =>
       nameToPath(readCString({ sqliteWasm })(zName));
 
-    // The open database a journal belongs to, found as
-    // sqlite3_filename_database finds it: SQLite puts a journal's name after
-    // its database's name and URI parameters, and four NUL bytes before the
-    // database's name.
-    const findDatabaseFile = (zJournal: CStringPtr): OpenFile | undefined => {
-      const heap = sqliteWasm.getHeapU8();
-      let zName: number = zJournal;
-      while (
-        zName > 4 &&
-        (heap[zName - 1] !== 0 ||
-          heap[zName - 2] !== 0 ||
-          heap[zName - 3] !== 0 ||
-          heap[zName - 4] !== 0)
-      )
-        zName--;
-      return [...openFiles.values()].find((file) => file.zName === zName);
-    };
-
     const methods: SahPoolMethods = {
       xOpen: (
         _vfs: SqliteVfsPtr,
-        zName: CStringPtr | 0,
+        zName: CStringPtr,
         pFile: SqliteFilePtr,
         flags: number,
         pOutFlags: WasmPtr | 0,
       ) => {
-        // SQLite opens a file without a name only for a temporary file, which
-        // this build keeps in memory. Without a name, every such file would
-        // share one path.
-        if (zName === 0) return SQLITE_CANTOPEN;
         const name = readCString({ sqliteWasm })(zName);
         const named = nameToPath(name);
         if (!named.ok) {
@@ -1027,94 +806,7 @@ export const openSahPool =
           utf8Encoder.encode(path).length > sahPoolMaxDatabasePathSize
         )
           return rejectTooLong();
-        const database =
-          (flags & SQLITE_OPEN_MAIN_JOURNAL) === 0
-            ? undefined
-            : findDatabaseFile(zName);
-        // SQLite rolls a hot journal back before it reads the database's page
-        // 1, whose salt authenticates the records, and a connection can have
-        // no salt, or a stale one once the database was emptied and created
-        // again. Without the key, SQLite would read the records as stored,
-        // take the first, whose checksum then differs, as the end of the
-        // journal, and delete it, leaving the transaction half-applied. A
-        // journal SQLite cannot open counts as hot, and a rollback that cannot
-        // open it fails, so the journal stays for the key. A journal the open
-        // creates holds nothing to roll back, so a commit reads no more.
-        const existingSlot = slotByPath.get(path);
-        if (database != null && existingSlot != null) {
-          const start = new Uint8Array(saltSize);
-          const read = trySync(
-            () => database.slot.handle.read(start, { at: sahPoolHeaderSize }),
-            (error) => error,
-          );
-          if (!read.ok) {
-            recordFailure("xOpen", path, read.error);
-            return SQLITE_CANTOPEN;
-          }
-          const codec = database.cipher?.codec;
-          // Without the key, the first bytes matter only when they are not
-          // SQLite's header string, as an encrypted database's salt, which a
-          // torn write can leave as zeros, is not.
-          if (
-            read.value !== 0 &&
-            (codec != null || !eqUint8Array(start, sqliteHeaderString))
-          ) {
-            // Whether SQLite would roll the journal back and no page 1 that
-            // authenticates gave the salt. SQLite rolls back only a journal
-            // whose first byte is not 0, as the magic is not, which it writes
-            // when it first syncs the journal, or with the header when
-            // synchronous = OFF. The journal's first header stores the
-            // database's original size in pages at byte 16, 0 when it had none:
-            // such a journal journals no page, and rolling it back only empties
-            // the database, whose first bytes are then a hole a spill left
-            // before page 1 was written. Any page 1 that authenticates stores
-            // the salt, even when another connection created the database again
-            // since a page 1 proved this codec's key.
-            const unsalted = trySync(
-              () => {
-                const journalStart = new Uint8Array(20);
-                existingSlot.handle.read(journalStart, {
-                  at: sahPoolHeaderSize,
-                });
-                if (
-                  journalStart[0] === 0 ||
-                  journalStart.subarray(16).every((byte) => byte === 0)
-                )
-                  return false;
-                if (codec == null) return true;
-                if (authenticateJournalPage1(existingSlot.handle, codec))
-                  return false;
-                // The database's page 1 at the page size it stores. One that
-                // ends early ends with zeros, which fail to authenticate.
-                const { handle } = database.slot;
-                const header = new Uint8Array(18);
-                handle.read(header, { at: sahPoolHeaderSize });
-                const pageSize = storedPageSize(header);
-                if (!isPageSize(pageSize)) return true;
-                const page = new Uint8Array(pageSize);
-                handle.read(page, { at: sahPoolHeaderSize });
-                const authenticated = codec.decryptPage(1, page);
-                page.fill(0);
-                return !authenticated;
-              },
-              (error) => error,
-            );
-            if (!unsalted.ok) {
-              recordFailure("xOpen", path, unsalted.error);
-              return SQLITE_CANTOPEN;
-            }
-            if (unsalted.value) {
-              if (codec == null) {
-                recordFailure("xOpen", path, encryptionUnsupported);
-                return SQLITE_CANTOPEN;
-              }
-              // A database keeps its salt while it has pages, so a tear must
-              // not replace a proven one.
-              if (!codec.isKeyProven()) codec.useSalt(start);
-            }
-          }
-        }
-        let slot = existingSlot;
+        let slot = slotByPath.get(path);
         // SQLite creates a super-journal with SQLITE_OPEN_EXCLUSIVE, which
         // must not open a file that exists, as unix opens it with O_EXCL.
         if (
@@ -1174,28 +866,7 @@ export const openSahPool =
           slotByPath.set(path, slot);
         }
         if (slot == null) return SQLITE_CANTOPEN;
-        const key =
-          (flags & SQLITE_OPEN_MAIN_DB) === 0 ? undefined : keyByPath.get(path);
-        const cipher: FileCipher | null =
-          key != null
-            ? {
-                type: "Database",
-                codec: createSahPoolCodec({ key: key.slice(), randomBytes }),
-              }
-            : database?.cipher?.type === "Database"
-              ? {
-                  type: "Journal",
-                  codec: database.cipher.codec,
-                  records: createJournalRecords(),
-                }
-              : null;
-        openFiles.set(pFile, {
-          path,
-          slot,
-          lock: SQLITE_LOCK_NONE,
-          zName,
-          cipher,
-        });
+        openFiles.set(pFile, { path, slot, lock: SQLITE_LOCK_NONE });
         const view = sqliteWasm.getHeapDataView();
         view.setInt32(
           pFile + sqlite3_file_layout.members.pMethods.offset,
@@ -1241,11 +912,8 @@ export const openSahPool =
         return SQLITE_OK;
       },
       xClose: (pFile: SqliteFilePtr) => {
-        const file = getOpenFile(pFile);
         unlockFile(pFile, SQLITE_LOCK_NONE);
         openFiles.delete(pFile);
-        if (file.cipher?.type === "Database")
-          file.cipher.codec[Symbol.dispose]();
         return SQLITE_OK;
       },
       xRead: (
@@ -1253,95 +921,16 @@ export const openSahPool =
         pBuf: WasmPtr,
         amount: number,
         offset: bigint,
-      ) => {
-        const file = getOpenFile(pFile);
-        const { cipher, path } = file;
-        return runIo("xRead", file, SQLITE_IOERR_READ, (handle) => {
+      ) =>
+        runIo("xRead", getOpenFile(pFile), SQLITE_IOERR_READ, (handle) => {
           const buffer = sqliteWasm.getHeapU8().subarray(pBuf, pBuf + amount);
-          const at = Number(offset);
-          const read = handle.read(buffer, { at: sahPoolHeaderSize + at });
+          const read = handle.read(buffer, {
+            at: sahPoolHeaderSize + Number(offset),
+          });
           // SQLite requires the rest to be zeros.
           buffer.fill(0, read);
-          const shortRead =
-            read === amount ? SQLITE_OK : SQLITE_IOERR_SHORT_READ;
-          if (cipher == null) return shortRead;
-          const pageNumber =
-            cipher.type === "Database"
-              ? toPageNumber(at, amount)
-              : cipher.records.track(at, buffer);
-          if (pageNumber != null) {
-            // A connection that opened the file while it was empty keeps
-            // SQLite's default page size, so it reads page 1 whole at that
-            // size, learns the size page 1 stores, and reads it again. Page 1
-            // is decrypted at the size it stores, and the read gets its first
-            // bytes, with zeros past it.
-            const storedSize = storedPageSize(buffer);
-            const pageSize =
-              cipher.type === "Database" &&
-              pageNumber === 1 &&
-              isPageSize(storedSize)
-                ? storedSize
-                : amount;
-            const page =
-              pageSize === amount ? buffer : new Uint8Array(pageSize);
-            const pageRead =
-              page === buffer
-                ? read
-                : handle.read(page, { at: sahPoolHeaderSize });
-            // No ciphertext reaches SQLite as data. A short read ends a
-            // journal, and one that reads nothing is past the end, as page 1
-            // of an empty file is. SQLite reads a database's page only within
-            // the file, so one that ends early was cut off or torn, and fails
-            // as a page that does not authenticate, or zeros would pass as its
-            // data.
-            const complete = pageRead === pageSize;
-            if (!complete && (cipher.type === "Journal" || pageRead === 0)) {
-              buffer.fill(0);
-              return SQLITE_IOERR_SHORT_READ;
-            }
-            if (complete && cipher.codec.decryptPage(pageNumber, page)) {
-              if (page === buffer) return SQLITE_OK;
-              buffer.fill(0);
-              buffer.set(page.subarray(0, amount));
-              page.fill(0);
-              return shortRead;
-            }
-            buffer.fill(0);
-            // With the key proven, a record's page that fails to authenticate
-            // ends the journal, as a checksum that differs ends it in SQLite,
-            // whose rollback takes a short read as the end. A crash with
-            // synchronous = OFF can leave a stale page after a new page number.
-            if (cipher.type === "Journal" && cipher.codec.isKeyProven())
-              return SQLITE_IOERR_SHORT_READ;
-            recordFailure("xRead", path, {
-              type: "SqlitePageAuthenticationError",
-              pageNumber,
-            } satisfies SqlitePageAuthenticationError);
-            return pageNumber === 1 ? SQLITE_NOTADB : SQLITE_CORRUPT;
-          }
-          if (cipher.type === "Journal") return shortRead;
-          // Part of page 1: decrypted when it authenticates, as stored
-          // otherwise. Its first bytes up to the end of the page size.
-          const header = new Uint8Array(18);
-          if (handle.read(header, { at: sahPoolHeaderSize }) !== header.length)
-            return shortRead;
-          const pageSize = storedPageSize(header);
-          if (!isPageSize(pageSize)) return shortRead;
-          if (at + amount > pageSize) {
-            buffer.fill(0);
-            recordFailure("xRead", path, encryptionUnsupported);
-            return SQLITE_IOERR_READ;
-          }
-          const page = new Uint8Array(pageSize);
-          if (
-            handle.read(page, { at: sahPoolHeaderSize }) === pageSize &&
-            cipher.codec.decryptPage(1, page)
-          )
-            buffer.set(page.subarray(at, at + amount));
-          page.fill(0);
-          return shortRead;
-        });
-      },
+          return read === amount ? SQLITE_OK : SQLITE_IOERR_SHORT_READ;
+        }),
       xWrite: (
         pFile: SqliteFilePtr,
         pBuf: WasmPtr,
@@ -1349,36 +938,10 @@ export const openSahPool =
         offset: bigint,
       ) => {
         const file = getOpenFile(pFile);
-        const at = Number(offset);
-        const bytes = sqliteWasm.getHeapU8().subarray(pBuf, pBuf + amount);
-        const { cipher } = file;
-        // What to store, or null for what the pool cannot keep encrypted.
-        const sealed = trySync(
-          (): Uint8Array<ArrayBuffer> | null => {
-            if (cipher == null) return bytes;
-            const pageNumber =
-              cipher.type === "Database"
-                ? toPageNumber(at, amount)
-                : cipher.records.track(at, bytes);
-            if (pageNumber != null)
-              return cipher.codec.encryptPage(pageNumber, bytes);
-            // A journal's headers, page numbers and checksums.
-            return cipher.type === "Journal" ? bytes : null;
-          },
-          (error) => error,
-        );
-        if (!sealed.ok || sealed.value == null) {
-          recordFailure(
-            "xWrite",
-            file.path,
-            sealed.ok ? encryptionUnsupported : sealed.error,
-          );
-          return SQLITE_IOERR_WRITE;
-        }
         const written = writeBytes(
           file.slot.handle,
-          sealed.value,
-          sahPoolHeaderSize + at,
+          sqliteWasm.getHeapU8().subarray(pBuf, pBuf + amount),
+          sahPoolHeaderSize + Number(offset),
         );
         if (written.ok) return SQLITE_OK;
         recordFailure("xWrite", file.path, written.error);
@@ -1464,35 +1027,6 @@ export const openSahPool =
           );
         return SQLITE_OK;
       },
-      xFileControl: (pFile: SqliteFilePtr, op: number, pArg: WasmPtr) => {
-        if (op !== SQLITE_FCNTL_PRAGMA) return SQLITE_NOTFOUND;
-        const file = getOpenFile(pFile);
-        if (file.cipher?.type !== "Database") return SQLITE_NOTFOUND;
-        // The pragma's name and value, or NULL for a query, after the slot
-        // for its result or error message.
-        const view = sqliteWasm.getHeapDataView();
-        const zValue = view.getUint32(pArg + 8, true) as CStringPtr | 0;
-        if (
-          readCString({ sqliteWasm })(
-            view.getUint32(pArg + 4, true) as CStringPtr,
-          ).toLowerCase() !== "secure_delete" ||
-          zValue === 0 ||
-          secureDeleteOnValues.has(
-            readCString({ sqliteWasm })(zValue).toLowerCase(),
-          )
-        )
-          return SQLITE_NOTFOUND;
-        // SQLite frees the message.
-        const message = allocCString({ sqliteWasm })(
-          "Cannot turn secure_delete off for an encrypted database, because a freed page it does not write would fail to authenticate.",
-        );
-        if (!message.ok) return SQLITE_NOMEM;
-        // A fresh view, because the allocation can grow memory, which detaches
-        // the one taken before it.
-        sqliteWasm.getHeapDataView().setUint32(pArg, message.value, true);
-        recordFailure("xFileControl", file.path, encryptionUnsupported);
-        return SQLITE_ERROR;
-      },
     };
     registration.setMethods(methods);
     disposer.defer(() => {
@@ -1502,20 +1036,6 @@ export const openSahPool =
     const pool = disposable<SahPool>(
       {
         vfsName,
-        registerKey: (path, key) => {
-          assert(
-            !keyByPath.has(path),
-            `A key is already registered for ${path}.`,
-          );
-          const copy = key.slice();
-          keyByPath.set(path, copy);
-          using keyDisposer = new DisposableStack();
-          keyDisposer.defer(() => {
-            copy.fill(0);
-            if (keyByPath.get(path) === copy) keyByPath.delete(path);
-          });
-          return disposable<Disposable>({}, keyDisposer);
-        },
         getPaths: () => [...slotByPath.keys()],
         read: (path, offset, byteLength) => {
           const slot = slotByPath.get(path);
@@ -1636,20 +1156,6 @@ export interface SahPoolFullError extends Typed<"SahPoolFull"> {
 export interface SahPoolInvalidPathError extends Typed<"SahPoolInvalidPath"> {
   readonly name: string;
 }
-
-/**
- * An access to an encrypted database the pool cannot keep encrypted: a read or
- * write that is not a whole page, other than a read within page 1, or a page 1
- * that reserves other than 80 bytes or stores another page size than its
- * length, as a VACUUM that would change the page size writes it. `xRead`
- * records it when it fails with SQLITE_IOERR_READ and `xWrite` with
- * SQLITE_IOERR_WRITE. `xOpen` records it when it fails with SQLITE_CANTOPEN to
- * open the journal of an encrypted database opened without its key, which would
- * read the journal as stored, and `xFileControl` when it refuses to turn
- * `secure_delete` off for an encrypted database, which would leave freed pages
- * that fail to authenticate.
- */
-export interface SahPoolEncryptionUnsupportedError extends Typed<"SahPoolEncryptionUnsupported"> {}
 
 /**
  * Access to the OPFS root, which `navigator.storage` provides in a dedicated
@@ -1846,8 +1352,7 @@ type SahPoolMethodName =
   | "xFileSize"
   | "xLock"
   | "xUnlock"
-  | "xCheckReservedLock"
-  | "xFileControl";
+  | "xCheckReservedLock";
 
 /**
  * The methods that need a pool's files, with the arguments SQLite passes,
@@ -1862,24 +1367,6 @@ interface OpenFile {
   readonly path: string;
   readonly slot: Slot;
   readonly lock: SqliteLockLevel;
-  /** The name SQLite passed to `xOpen`, which a journal's name leads back to. */
-  readonly zName: CStringPtr | 0;
-  /** How the file is encrypted, or null for a file stored as SQLite writes it. */
-  readonly cipher: FileCipher | null;
-}
-
-/** How an encrypted file is encrypted. */
-type FileCipher = DatabaseCipher | JournalCipher;
-
-/** A main database, encrypted page by page. */
-interface DatabaseCipher extends Typed<"Database"> {
-  readonly codec: SahPoolCodec;
-}
-
-/** A rollback journal, whose records' pages its database's codec encrypts. */
-interface JournalCipher extends Typed<"Journal"> {
-  readonly codec: SahPoolCodec;
-  readonly records: JournalRecords;
 }
 
 /**
@@ -1891,7 +1378,10 @@ interface PathLock {
   readonly shared: number;
 }
 
-/** The VFS of a pool directory, registered once per instance. */
+/**
+ * The VFS of a pool directory, with Evolu's codec over it, registered once per
+ * instance.
+ */
 interface SahPoolRegistration {
   /** The `sqlite3_io_methods` struct a successful `xOpen` sets. */
   readonly ioMethods: WasmPtr;
@@ -1905,7 +1395,8 @@ const claimedVfsNamesByTable = /*#__PURE__*/ new WeakMap<
   Set<string>
 >();
 
-// The registered VFS of each pool directory, by the instance's function table.
+// The VFS of each pool directory, with Evolu's codec over it registered, by
+// the instance's function table.
 const registrationsByTable = /*#__PURE__*/ new WeakMap<
   WebAssembly.Table,
   Map<string, SahPoolRegistration>
@@ -1913,7 +1404,9 @@ const registrationsByTable = /*#__PURE__*/ new WeakMap<
 
 /**
  * Allocates and registers a VFS whose methods call the active pool's, never to
- * be freed.
+ * be freed, under an internal name, then registers Evolu's codec over it under
+ * the pool's name and unregisters it, so SQL reaches the pool only through the
+ * codec. On failure, nothing stays registered or allocated.
  */
 const registerSahPoolVfs = (
   deps: RandomBytesDep & ReportDefectDep & SqliteWasmDep & TimeDep,
@@ -1999,14 +1492,15 @@ const registerSahPoolVfs = (
     [
       "xRandomness",
       (_vfs: SqliteVfsPtr, byteLength: number, pOut: WasmPtr) => {
-        // In chunks of at most 65536 bytes, as crypto.getRandomValues requires.
-        for (let offset = 0; offset < byteLength; offset += 65536)
-          sqliteWasm
-            .getHeapU8()
-            .set(
-              randomBytes.create(Math.min(65536, byteLength - offset)),
-              pOut + offset,
-            );
+        // In chunks of at most 65536 bytes, as crypto.getRandomValues requires,
+        // each created before the heap view, since RandomBytes can grow the
+        // memory.
+        for (let offset = 0; offset < byteLength; offset += 65536) {
+          const bytes = randomBytes.create(
+            Math.min(65536, byteLength - offset),
+          );
+          sqliteWasm.getHeapU8().set(bytes, pOut + offset);
+        }
         return byteLength;
       },
     ],
@@ -2048,14 +1542,17 @@ const registerSahPoolVfs = (
     ["xLock", forward("xLock")],
     ["xUnlock", forward("xUnlock")],
     ["xCheckReservedLock", forward("xCheckReservedLock")],
-    ["xFileControl", forward("xFileControl")],
+    // Evolu's codec above handles the file controls of its files, such as the
+    // keying pragmas, and forwards the rest here.
+    ["xFileControl", () => SQLITE_NOTFOUND],
     ["xSectorSize", () => sahPoolSectorSize],
     // opfs-sahpool returns SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN, which makes
     // SQLite keep a PERSIST or TRUNCATE journal open after it unlocks, but
     // xDelete frees the slot of an open file.
     ["xDeviceCharacteristics", () => 0],
   ];
-  const name = utf8Encoder.encode(`${vfsName}\0`);
+  // A prefix no pool's name has, since each starts with opfs-sahpool:.
+  const name = utf8Encoder.encode(`evolu-raw:${vfsName}\0`);
   // The VFS struct, the I/O methods struct and the name, in one block,
   // allocated through call, so a broken instance throws before anything is
   // allocated or installed.
@@ -2067,6 +1564,14 @@ const registerSahPoolVfs = (
     ),
   );
   if (!allocated.ok) return allocated;
+  // The codec copies its name, so this one is freed once it registered.
+  const codecName = sqliteWasm.call(() => allocCString(deps)(vfsName));
+  if (!codecName.ok) {
+    sqliteWasm.call(() => {
+      sqliteWasm.exports.sqlite3_free(allocated.value);
+    });
+    return codecName;
+  }
   const vfs = allocated.value as WasmPtr as SqliteVfsPtr;
   const ioMethodsPtr = (vfs + sqlite3_vfs_layout.sizeof) as WasmPtr;
   const zName = ioMethodsPtr + sqlite3_io_methods_layout.sizeof;
@@ -2106,7 +1611,16 @@ const registerSahPoolVfs = (
     ]))
       view.setInt32(ioMethodsPtr + ioMembers[member].offset, pointer, true);
 
-    const code = sqliteWasm.exports.sqlite3_vfs_register(vfs, 0);
+    const registered = sqliteWasm.exports.sqlite3_vfs_register(vfs, 0);
+    const code =
+      registered === SQLITE_OK
+        ? evolu_codec_register(deps)(codecName.value, zName as CStringPtr)
+        : registered;
+    // Also when the codec failed to register, as when an app holds the pool's
+    // name, so no SQL ever reaches the pool without it.
+    if (registered === SQLITE_OK)
+      sqliteWasm.exports.sqlite3_vfs_unregister(vfs);
+    sqliteWasm.exports.sqlite3_free(codecName.value);
     if (code !== SQLITE_OK) {
       installed[Symbol.dispose]();
       sqliteWasm.exports.sqlite3_free(allocated.value);
@@ -2243,385 +1757,3 @@ const nameToPath = (name: string): Result<string, unknown> => {
     } satisfies SahPoolInvalidPathError);
   return ok(path);
 };
-
-/** The encryption of a database file, over keys it zeroes when disposed. */
-interface SahPoolCodec extends Disposable {
-  /**
-   * Encrypts a whole page into a buffer of the codec, which stays valid until
-   * the next call, or returns null for a page 1 that reserves other than the 80
-   * bytes of the IV and the HMAC or stores another page size than its length.
-   */
-  readonly encryptPage: (
-    pageNumber: number,
-    page: Uint8Array,
-  ) => Uint8Array<ArrayBuffer> | null;
-
-  /**
-   * Authenticates a whole page and decrypts it in place, returning false and
-   * leaving it as it was when its HMAC differs or, for page 1, when it does not
-   * reserve 80 bytes. A page 1 that authenticates gives the codec its salt.
-   */
-  readonly decryptPage: (pageNumber: number, page: Uint8Array) => boolean;
-
-  /**
-   * Takes the salt a database's page 1 stores, read as stored, until a page 1
-   * that authenticates stores another.
-   */
-  readonly useSalt: (salt: Uint8Array) => void;
-
-  /**
-   * Whether a page 1, of the database or of a journal record, has
-   * authenticated, which proves the key right.
-   */
-  readonly isKeyProven: () => boolean;
-}
-
-/** Creates the codec of a database file, which takes ownership of the key. */
-const createSahPoolCodec = ({
-  key,
-  randomBytes,
-}: {
-  key: Uint8Array<ArrayBuffer>;
-  randomBytes: RandomBytes;
-}): SahPoolCodec => {
-  // Null until the codec reads or writes a page 1.
-  let salted: SaltHmacKey | null = null;
-  let output = new Uint8Array(0);
-  // Never reset, because the key is fixed.
-  let isPage1Authenticated = false;
-  using disposer = new DisposableStack();
-  disposer.defer(() => {
-    key.fill(0);
-    salted?.hmacKey.fill(0);
-  });
-
-  // The codec's salt and HMAC key for its own salt, and otherwise a copy of
-  // the salt with an HMAC key derived anew, which the caller adopts or zeroes.
-  const hmacKeyForSalt = (salt: Uint8Array): SaltHmacKey => {
-    if (salted != null && eqUint8Array(salted.salt, salt)) return salted;
-    const copy = salt.slice();
-    return {
-      salt: copy,
-      hmacKey: pbkdf2(sha512)(
-        key,
-        copy.map((byte) => byte ^ hmacSaltMask),
-        { c: 2, dkLen: 32 },
-      ),
-    };
-  };
-
-  // Makes a salt and its HMAC key the codec's, zeroing the previous HMAC key.
-  const adoptSalt = (next: SaltHmacKey): void => {
-    if (next === salted) return;
-    salted?.hmacKey.fill(0);
-    salted = next;
-  };
-
-  // HMAC-SHA512 of the encrypted bytes, the IV and the page number.
-  const computeHmac = (
-    pageNumber: number,
-    page: Uint8Array,
-    pageHmacKey: Uint8Array,
-    out: Uint8Array,
-  ): void => {
-    const pageNumberLe = new Uint8Array(4);
-    new DataView(pageNumberLe.buffer).setUint32(0, pageNumber, true);
-    hmac
-      .create(sha512, pageHmacKey)
-      .update(page.subarray(encryptedStart(pageNumber), page.length - hmacSize))
-      .update(pageNumberLe)
-      .digestInto(out);
-  };
-
-  return disposable<SahPoolCodec>(
-    {
-      encryptPage: (pageNumber, page) => {
-        // Byte 20 is the reserved bytes. A VACUUM that changes the page size
-        // writes page 1 with the new size in pages of the old one.
-        if (
-          pageNumber === 1 &&
-          (page[20] !== reservedSize || storedPageSize(page) !== page.length)
-        )
-          return null;
-        if (output.length !== page.length) output = new Uint8Array(page.length);
-        const start = encryptedStart(pageNumber);
-        const end = page.length - reservedSize;
-        salted ??= hmacKeyForSalt(randomBytes.create(saltSize));
-        const { salt, hmacKey } = salted;
-        const iv = randomBytes.create(ivSize);
-        encryptCbcCs3(
-          key,
-          iv,
-          page.subarray(start, end),
-          output.subarray(start, end),
-        );
-        if (pageNumber === 1) {
-          output.set(salt, 0);
-          output.set(page.subarray(saltSize, encryptedStart(1)), saltSize);
-        }
-        output.set(iv, end);
-        computeHmac(pageNumber, output, hmacKey, output.subarray(end + ivSize));
-        return output;
-      },
-      decryptPage: (pageNumber, page) => {
-        // The HMAC does not cover byte 20, the reserved bytes, with which
-        // SQLite would read every page at another usable size.
-        if (pageNumber === 1 && page[20] !== reservedSize) return false;
-        const pageSalted =
-          pageNumber === 1
-            ? hmacKeyForSalt(page.subarray(0, saltSize))
-            : salted;
-        if (pageSalted == null) return false;
-        const start = encryptedStart(pageNumber);
-        const end = page.length - reservedSize;
-        const expected = new Uint8Array(hmacSize);
-        computeHmac(pageNumber, page, pageSalted.hmacKey, expected);
-        // In constant time.
-        let difference = 0;
-        for (const [index, byte] of expected.entries())
-          difference |= byte ^ page[end + ivSize + index];
-        // A page 1 that fails to authenticate, such as a stale page in a
-        // journal or one a power loss tore, would give its salt to every page
-        // written later.
-        if (difference !== 0) {
-          if (pageSalted !== salted) pageSalted.hmacKey.fill(0);
-          return false;
-        }
-        adoptSalt(pageSalted);
-        decryptCbcCs3(
-          key,
-          page.slice(end, end + ivSize),
-          page.subarray(start, end),
-          page.subarray(start, end),
-        );
-        if (pageNumber === 1) {
-          page.set(sqliteHeaderString);
-          isPage1Authenticated = true;
-        }
-        return true;
-      },
-      useSalt: (salt) => {
-        adoptSalt(hmacKeyForSalt(salt));
-      },
-      isKeyProven: () => isPage1Authenticated,
-    },
-    disposer,
-  );
-};
-
-/** A salt page 1 stores and the HMAC key derived from it and the key. */
-interface SaltHmacKey {
-  readonly salt: Uint8Array<ArrayBuffer>;
-  readonly hmacKey: Uint8Array;
-}
-
-/**
- * Encrypts with AES-256-CBC, stealing ciphertext for a last partial block as
- * CBC-CS3 does. The output must not overlap the input.
- */
-const encryptCbcCs3 = (
-  key: Uint8Array,
-  iv: Uint8Array,
-  input: Uint8Array,
-  output: Uint8Array,
-): void => {
-  const tail = input.length % aesBlockSize;
-  const whole = input.length - tail;
-  cbc(key, iv, { disablePadding: true }).encrypt(
-    input.subarray(0, whole),
-    output.subarray(0, whole),
-  );
-  if (tail === 0) return;
-  // The last whole block C becomes the encryption of C XOR the partial block
-  // padded with zeros, computed in place, and the partial block the first bytes
-  // of C, so no plaintext stays outside the input.
-  const last = output.subarray(whole - aesBlockSize, whole);
-  output.copyWithin(whole, whole - aesBlockSize, whole - aesBlockSize + tail);
-  for (let index = 0; index < tail; index++)
-    last[index] ^= input[whole + index];
-  cbc(key, zeroIv, { disablePadding: true }).encrypt(last, last);
-};
-
-/** Decrypts what {@link encryptCbcCs3} encrypted. The output may be the input. */
-const decryptCbcCs3 = (
-  key: Uint8Array,
-  iv: Uint8Array,
-  input: Uint8Array,
-  output: Uint8Array,
-): void => {
-  const tail = input.length % aesBlockSize;
-  if (tail === 0) {
-    cbc(key, iv, { disablePadding: true }).decrypt(input, output);
-    return;
-  }
-  const whole = input.length - tail;
-  // The ciphertext with the last whole block C restored: the partial block holds
-  // its first bytes, and the last whole block decrypts to C XOR the partial
-  // block padded with zeros, decrypted into the output, so no plaintext stays
-  // outside it.
-  const blocks = input.slice(0, whole);
-  blocks.set(input.subarray(whole), whole - aesBlockSize);
-  const last = output.subarray(whole - aesBlockSize, whole);
-  cbc(key, zeroIv, { disablePadding: true }).decrypt(
-    input.subarray(whole - aesBlockSize, whole),
-    last,
-  );
-  blocks.set(last.subarray(tail), whole - aesBlockSize + tail);
-  for (let index = 0; index < tail; index++)
-    output[whole + index] = last[index] ^ blocks[whole - aesBlockSize + index];
-  cbc(key, iv, { disablePadding: true }).decrypt(
-    blocks,
-    output.subarray(0, whole),
-  );
-};
-
-/** Tells which reads and writes of a rollback journal are a record's page. */
-interface JournalRecords {
-  /**
-   * Takes the offset and the bytes of a read, after it, or of a write, before
-   * it, and returns the number of the page they are, or null.
-   */
-  readonly track: (at: number, bytes: Uint8Array) => number | null;
-}
-
-/**
- * Creates the {@link JournalRecords} of a journal: a page's size at offset P +
- * 4, right after 4 bytes at P, is the page those bytes number, unless they were
- * the checksum right after the previous record's page.
- */
-const createJournalRecords = (): JournalRecords => {
-  // Where the page whose number was just read or written starts, and the
-  // number, 0 for none.
-  let pageAt = -1;
-  let pageNumber = 0;
-  // Where the checksum after the page just read or written starts.
-  let checksumAt = -1;
-  return {
-    track: (at, bytes) => {
-      const number = pageNumber;
-      const isPage = number > 0 && at === pageAt && isPageSize(bytes.length);
-      const isNumber = bytes.length === 4 && at !== checksumAt;
-      pageAt = isNumber ? at + 4 : -1;
-      pageNumber = isNumber
-        ? new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0)
-        : 0;
-      checksumAt = isPage ? at + bytes.length : -1;
-      return isPage ? number : null;
-    },
-  };
-};
-
-/**
- * Authenticates a copy of the page of a rollback journal's first page-1 record,
- * which proves the key and gives the codec its salt, and zeroes the copy.
- * Returns false when the page fails to authenticate or the journal has no such
- * record.
- *
- * It reads the journal much as SQLite reads a hot one: the sector and page
- * sizes from the first header, and segments that each start with a header at a
- * multiple of the sector size, with SQLite's magic and the number of records
- * that follow it, where 0xFFFFFFFF counts the records up to the end of the
- * file. A count of 0 does too, although a hot journal's rollback takes it as
- * none: any page 1 that authenticates stores the database's salt, so a page 1
- * past the records SQLite would play back still gives the right salt. A record
- * is the page number in 4 bytes, big-endian, the page and a 4-byte checksum.
- */
-const authenticateJournalPage1 = (
-  handle: OpfsSyncAccessHandle,
-  codec: SahPoolCodec,
-): boolean => {
-  const size = handle.getSize() - sahPoolHeaderSize;
-  const read = (bytes: Uint8Array<ArrayBuffer>, at: number): void => {
-    handle.read(bytes, { at: sahPoolHeaderSize + at });
-  };
-  // A journal shorter than a header has zeros for both sizes.
-  const header = new Uint8Array(28);
-  const view = new DataView(header.buffer);
-  read(header, 0);
-  const sectorSize = view.getUint32(20);
-  const pageSize = view.getUint32(24);
-  if (
-    sectorSize < 32 ||
-    sectorSize > 65536 ||
-    (sectorSize & (sectorSize - 1)) !== 0 ||
-    !isPageSize(pageSize)
-  )
-    return false;
-  const recordSize = pageSize + 8;
-  const pageNumber = new Uint8Array(4);
-  for (let at = 0; at + sectorSize <= size;) {
-    read(header, at);
-    if (!eqUint8Array(header.subarray(0, 8), journalMagic)) break;
-    const count = view.getUint32(8);
-    const end =
-      count === 0 || count === 0xffffffff
-        ? size
-        : Math.min(size, at + sectorSize + count * recordSize);
-    let recordAt = at + sectorSize;
-    for (; recordAt + recordSize <= end; recordAt += recordSize) {
-      read(pageNumber, recordAt);
-      if (new DataView(pageNumber.buffer).getUint32(0) !== 1) continue;
-      const page = new Uint8Array(pageSize);
-      read(page, recordAt + 4);
-      const authenticated = codec.decryptPage(1, page);
-      page.fill(0);
-      return authenticated;
-    }
-    at = Math.ceil(recordAt / sectorSize) * sectorSize;
-  }
-  return false;
-};
-
-/**
- * The number of the page a database read or write of whole page is, null for
- * one that is not.
- */
-const toPageNumber = (at: number, byteLength: number): number | null =>
-  isPageSize(byteLength) && at % byteLength === 0 ? at / byteLength + 1 : null;
-
-/**
- * The page size page 1 stores unencrypted in bytes 16 and 17, big-endian, with
- * 1 for 65536, which may be no page size.
- */
-const storedPageSize = (page1: Uint8Array): number => {
-  const size = (page1[16] << 8) | page1[17];
-  return size === 1 ? 65536 : size;
-};
-
-/** Whether a byte count is a page size: a power of two from 512 to 65536. */
-const isPageSize = (byteLength: number): boolean =>
-  byteLength >= 512 &&
-  byteLength <= 65536 &&
-  (byteLength & (byteLength - 1)) === 0;
-
-/** Where the encrypted bytes of a page start. */
-const encryptedStart = (pageNumber: number): number =>
-  pageNumber === 1 ? 24 : 0;
-
-const aesBlockSize = 16;
-const saltSize = 16;
-const ivSize = 16;
-const hmacSize = 64;
-// The IV and the HMAC at the end of every page.
-const reservedSize = ivSize + hmacSize;
-const hmacSaltMask = 0x3a;
-const zeroIv = /*#__PURE__*/ new Uint8Array(aesBlockSize);
-const encryptionUnsupported: SahPoolEncryptionUnsupportedError = {
-  type: "SahPoolEncryptionUnsupported",
-};
-// The values of PRAGMA secure_delete an encrypted database takes, in lower
-// case, as SQLite compares them without case.
-const secureDeleteOnValues = /*#__PURE__*/ new Set(["on", "yes", "true", "1"]);
-const sqliteHeaderString =
-  /*#__PURE__*/ utf8Encoder.encode("SQLite format 3\0");
-// What starts every header of a rollback journal.
-const journalMagic = /*#__PURE__*/ Uint8Array.of(
-  0xd9,
-  0xd5,
-  0x05,
-  0xf9,
-  0x20,
-  0xa1,
-  0x63,
-  0xd7,
-);

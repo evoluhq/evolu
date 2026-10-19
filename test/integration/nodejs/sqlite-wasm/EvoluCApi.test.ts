@@ -4,6 +4,7 @@
  */
 
 import {
+  assert,
   assertEqual,
   assertErr,
   assertInstanceOf,
@@ -18,19 +19,26 @@ import {
 } from "@evolu/common";
 import { test } from "node:test";
 import {
+  SQLITE_CANTOPEN,
+  SQLITE_CORRUPT,
   SQLITE_IOERR_WRITE,
   SQLITE_MISUSE,
   SQLITE_OK,
 } from "../../../../packages/sqlite-wasm/src/Constants.ts";
+import { sqlite3_close_v2 } from "../../../../packages/sqlite-wasm/src/CApi.ts";
 import {
   evolu_codec_open,
-  evolu_codec_register,
   evolu_codec_take_failure,
   evolu_skiplist_register,
 } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import { allocWasm } from "../../../../packages/sqlite-wasm/src/Memory.ts";
-import type { SqliteDbPtr } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
-import { setupSahPool } from "./_sahPool.ts";
+import type {
+  NullPtr,
+  SqliteDbPtr,
+  WasmPtr,
+} from "../../../../packages/sqlite-wasm/src/Pointer.ts";
+import { sahPoolHeaderSize } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
+import { setupSahPool, type TestSahPool } from "./_sahPool.ts";
 import { setupDatabase, trapEveryOpen } from "./_sqliteWasm.ts";
 
 test("evolu_skiplist_register registers the core's SQL functions on a connection", async () => {
@@ -234,26 +242,124 @@ test("a write whose random source throws, with a ReportDefect that breaks the in
   );
 });
 
+// The binding reads the struct as two i32s, and generate.mts maps every
+// pointer type to i32, so only a test on wasm32 pins its layout.
+test("evolu_codec_take_failure writes each failure type in 8 bytes, the type at 0 and the page number unsigned at 4", async () => {
+  const deps = testCreateDeps();
+  let isRandomFailing = false;
+  const randomBytes = {
+    create: (length: number) => {
+      if (isRandomFailing) throw new Error("no randomness");
+      return deps.randomBytes.create(length);
+    },
+  } as RandomBytes;
+  const { t, db } = await setupKeyedDatabase({ ...deps, randomBytes });
+
+  // EVOLU_CODEC_FAILURE_NONE.
+  assertEqual(takeFailureBetweenSentinels(t, db), [0, 0]);
+
+  isRandomFailing = true;
+  assertEqual(t.exec("INSERT INTO t VALUES (1)", db), SQLITE_IOERR_WRITE);
+  isRandomFailing = false;
+  // EVOLU_CODEC_FAILURE_RANDOM.
+  assertEqual(takeFailureBetweenSentinels(t, db), [3, 0]);
+
+  // The worker dies in a transaction, so a hot journal stays.
+  assertEqual(
+    t.exec(
+      "WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c WHERE i < 300) INSERT INTO t SELECT zeroblob(3000) FROM c; PRAGMA cache_size = 10; BEGIN; UPDATE t SET x = randomblob(3000)",
+      db,
+    ),
+    SQLITE_OK,
+  );
+  t.fake.releaseHandles();
+  const next = await setupSahPool({ fake: t.fake });
+  // Its first record, past the header's sector, numbered above 2^31.
+  const journalSlot = next.findSlotPath("/test.db-journal");
+  const journal = next.fake.readFile(journalSlot);
+  assert(journal != null, "The journal's slot exists.");
+  const view = new DataView(journal.buffer, sahPoolHeaderSize);
+  view.setUint32(view.getUint32(20), 0x89abcdef);
+  next.fake.writeFile(journalSlot, journal);
+
+  const keyless = openCodecDatabase(next, null);
+  assertEqual(keyless.rc, SQLITE_CANTOPEN);
+  // EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED.
+  assertEqual(takeFailureBetweenSentinels(next, keyless.db), [2, 0]);
+  assertEqual(sqlite3_close_v2(next)(keyless.db), SQLITE_OK);
+
+  const wrongKey = openCodecDatabase(next, 8);
+  assertEqual(wrongKey.rc, SQLITE_CORRUPT);
+  // EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION.
+  assertEqual(takeFailureBetweenSentinels(next, wrongKey.db), [1, 0x89abcdef]);
+  assertEqual(sqlite3_close_v2(next)(wrongKey.db), SQLITE_OK);
+});
+
 /**
- * Opens a keyed database with a table on a codec VFS over a pool on a fake
- * OPFS, on a fresh instance with the given dependencies.
+ * Takes the connection's codec failure into 8 bytes between 4 sentinel bytes on
+ * each side, asserting that the sentinels stay, and returns its type and page
+ * number.
+ */
+const takeFailureBetweenSentinels = (
+  t: TestSahPool,
+  db: SqliteDbPtr,
+): [number, number] => {
+  const block = getOrThrow(allocWasm(t)(16));
+  t.sqliteWasm.getHeapU8().fill(0xa5, block, block + 16);
+  assertEqual(
+    evolu_codec_take_failure(t)(db, (block + 4) as WasmPtr),
+    SQLITE_OK,
+  );
+  const heap = t.sqliteWasm.getHeapU8();
+  assertEqual(
+    [
+      ...heap.subarray(block, block + 4),
+      ...heap.subarray(block + 12, block + 16),
+    ],
+    Array.from({ length: 8 }, () => 0xa5),
+  );
+  const view = t.sqliteWasm.getHeapDataView();
+  const failure: [number, number] = [
+    view.getInt32(block + 4, true),
+    view.getUint32(block + 8, true),
+  ];
+  t.sqliteWasm.exports.sqlite3_free(block);
+  return failure;
+};
+
+/**
+ * Opens `/test.db` on the pool's codec, keyed with 32 bytes of the given value
+ * or keyless, returning the handle the open returns even on failure.
+ */
+const openCodecDatabase = (t: TestSahPool, keyByte: number | null) => {
+  let key: WasmPtr | NullPtr = 0;
+  if (keyByte != null) {
+    key = getOrThrow(allocWasm(t)(32));
+    t.sqliteWasm.getHeapU8().fill(keyByte, key, key + 32);
+  }
+  const rc = evolu_codec_open(t)(
+    t.cString("/test.db"),
+    t.scratch.out,
+    t.cString(t.pool.vfsName),
+    key,
+    0,
+  );
+  return { rc, db: t.readPtr(t.scratch.out) as SqliteDbPtr };
+};
+
+/**
+ * Opens a keyed database with a table on a pool on a fake OPFS, whose name is
+ * Evolu's codec, on a fresh instance with the given dependencies.
  */
 const setupKeyedDatabase = async (deps: TestRunDefaultDeps) => {
   const t = await setupSahPool({ deps });
   const key = getOrThrow(allocWasm(t)(32));
   t.sqliteWasm.getHeapU8().fill(7, key, key + 32);
   assertEqual(
-    evolu_codec_register(t)(
-      t.cString("evolu-codec"),
-      t.cString(t.pool.vfsName),
-    ),
-    SQLITE_OK,
-  );
-  assertEqual(
     evolu_codec_open(t)(
       t.cString("/test.db"),
       t.scratch.out,
-      t.cString("evolu-codec"),
+      t.cString(t.pool.vfsName),
       key,
       0,
     ),

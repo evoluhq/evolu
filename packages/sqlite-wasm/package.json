@@ -82,8 +82,5 @@
   "engines": {
     "node": ">=24.20.0"
   },
-  "sideEffects": false,
-  "dependencies": {
-    "@awasm/noble": "0.1.4"
-  }
+  "sideEffects": false
 }

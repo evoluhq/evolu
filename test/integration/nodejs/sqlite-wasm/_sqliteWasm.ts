@@ -27,6 +27,7 @@ import {
   sqlite3_finalize,
   sqlite3_open_v2,
   sqlite3_prepare_v2,
+  sqlite3_status64,
   sqlite3_step,
 } from "../../../../packages/sqlite-wasm/src/CApi.ts";
 import {
@@ -34,10 +35,12 @@ import {
   SQLITE_OPEN_CREATE,
   SQLITE_OPEN_READWRITE,
   SQLITE_ROW,
+  SQLITE_STATUS_MEMORY_USED,
   type SqliteResultCode,
 } from "../../../../packages/sqlite-wasm/src/Constants.ts";
 import {
   allocCString,
+  allocWasm,
   createSqliteScratch,
   readCString,
   readUtf8,
@@ -85,6 +88,26 @@ export const trapEveryOpen = (deps: ReportDefectDep & SqliteWasmDep): void => {
   ]);
   assertEqual(sqlite3_auto_extension(deps)(pointers[0]), SQLITE_OK);
   dispose();
+};
+
+/**
+ * Returns a function that reads the bytes SQLite has allocated, with its output
+ * memory allocated up front, so reading never changes the count.
+ */
+export const setupMemoryUsed = (deps: SqliteWasmDep) => {
+  const out = getOrThrow(allocWasm(deps)(16));
+  return (): bigint => {
+    assertEqual(
+      sqlite3_status64(deps)(
+        SQLITE_STATUS_MEMORY_USED,
+        out,
+        (out + 8) as WasmPtr,
+        0,
+      ),
+      SQLITE_OK,
+    );
+    return deps.sqliteWasm.getHeapDataView().getBigInt64(out, true);
+  };
 };
 
 /** A `:memory:` database on a fresh instance, with helpers for it. */
