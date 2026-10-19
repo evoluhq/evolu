@@ -53,6 +53,7 @@
  */
 
 import {
+  assert,
   err,
   fnv1a32,
   isNonEmptyArray,
@@ -465,7 +466,8 @@ export const generate = async ({
     try {
       return [resolve()];
     } catch (error) {
-      problems.push(error instanceof Error ? error.message : String(error));
+      assert(error instanceof Error, "Resolvers throw only Errors.");
+      problems.push(error.message);
       return [];
     }
   };

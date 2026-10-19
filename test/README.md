@@ -52,10 +52,14 @@ pnpm test:node "packages/common/src/Array.test.ts"
 Use an exact path when running one test file. Node expands quoted globs
 consistently across shells when intentionally selecting multiple files.
 
-The unit report lists test files slowest-first, followed by run totals,
-duration, per-source-file coverage percentages, and uncovered lines.
-Node.js 24 reports only source files loaded by the unit suite; integration and
-browser coverage is reported separately.
+The unit report lists test files slowest-first, followed by run totals and
+duration. Then `scripts/test-coverage.mts` lists the source files below 100%
+coverage, with their uncovered lines and the lines of their uncovered branches
+and functions, and checks the totals against the thresholds. It counts coverage
+as Node.js 24 does but merges the coverage of the test processes itself,
+because Node.js 24.22.0 drops a block one test process never ran when another
+never ran the block holding it. Coverage includes only source files loaded by
+the unit suite; integration and browser coverage is reported separately.
 
 Runnable TypeScript examples from JSDoc comments and Markdown files are tested
 by `pnpm test:jsdoc`, which is included in both `pnpm test` and `pnpm verify`.
@@ -167,9 +171,10 @@ unit tests, its Node.js integration tests and
 through its entry point, and fails when they cover less than 100% of the lines,
 branches or functions of the package's `src` and `scripts`. It needs
 `packages/sqlite-wasm/wasm/sqlite3.wasm` like the integration tests, so CI runs
-it with the unit tests in a job that downloads the wasm. Node.js reports only the
-modules the tests load, and counts a branch that spans no whole line, such as one
-arm of a conditional expression, as covered.
+it with the unit tests in a job that downloads the wasm. Coverage includes only
+the modules the tests load, and a line counts as uncovered only when a never-run
+block holds all of it, so a never-run arm of a conditional expression shows only
+as an uncovered branch.
 
 Integration tests use `node:test` unless they need Vitest or its browser
 runner. Native tests under `integration/nodejs` are discovered structurally.
