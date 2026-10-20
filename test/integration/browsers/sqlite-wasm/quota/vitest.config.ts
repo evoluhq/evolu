@@ -40,6 +40,15 @@ export default defineProject(({ mode }) => ({
     target: "es2025",
   },
   plugins: [checkSqliteWasm],
+  // The tests run the harness worker of ../vitest.config.ts, which imports these
+  // too. Preserve import.meta.url so the WASM binary can be located at runtime.
+  optimizeDeps: {
+    exclude: [
+      "@evolu/sqlite-wasm",
+      "@evolu/sqlite-wasm-2.2.4",
+      "@evolu/sqlite-wasm-3.54.0-build2",
+    ],
+  },
   test: {
     fileParallelism: false,
     include: ["test/integration/browsers/sqlite-wasm/quota/*.test.ts"],

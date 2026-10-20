@@ -100,6 +100,10 @@ const createRowsSql =
 const spillSql =
   "PRAGMA cache_size = 10; BEGIN; UPDATE t SET v = randomblob(3000);";
 
+// Its opens of the legacy databases derive the key 2.2.4 used, PBKDF2-HMAC-SHA512
+// with 256,000 iterations, in wasm. With the scans of linear memory, that takes
+// about 6 seconds in Chromium on an Apple M5 and 9 to 12 seconds in Firefox and
+// WebKit on a CI runner, too close to the default 15-second browser timeout.
 test("no key is left in linear memory once an encrypted database is closed or its open with a wrong key failed, raw or legacy, with or without a hot journal: not the raw key, the legacy key or an HMAC key the codec derives, while an open database's key is there once", async () => {
   await using pool = setupPoolDirectory();
   const legacyKey = EncryptionKey.orThrow(
@@ -307,4 +311,4 @@ test("no key is left in linear memory once an encrypted database is closed or it
     "/raw-hot.db",
     "/raw.db",
   ]);
-});
+}, 60_000);
