@@ -1,7 +1,7 @@
 {
   "name": "@evolu/sqlite-wasm",
   "version": "3.54.0-build2",
-  "description": "SQLite compiled to WebAssembly, with Evolu's own TypeScript layer, which also encrypts databases",
+  "description": "SQLite compiled to WebAssembly with Evolu's SQLite core, which encrypts databases, and Evolu's own TypeScript layer",
   "keywords": [
     "evolu",
     "sqlite",
@@ -42,7 +42,8 @@
     "!dist/**/*.test.*",
     "dist/wasm/sqlite3.wasm",
     "src/**",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "build": "tsc --build tsconfig.build.json",

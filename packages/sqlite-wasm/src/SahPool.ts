@@ -226,7 +226,9 @@
  * the codec does the checks of a hot journal before SQLite rolls it back,
  * refusing one of an encrypted database opened without its key, so the journal
  * stays for the key. A super-journal holds only file names, and the build opens
- * no `-wal` file and keeps temporary files in memory.
+ * no `-wal` file and keeps temporary files in memory. Tabs of the builds whose
+ * pool encrypted in TypeScript can share the pool in DELETE journal mode only,
+ * as `Database.ts` describes.
  *
  * `@evolu/web` 1.0.1-preview.6 to 2.4.0 also ran `PRAGMA legacy = 4`, which
  * writes SQLCipher 4's own format: 4096-byte pages, and page 1 encrypted and

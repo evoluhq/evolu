@@ -1,6 +1,6 @@
 /**
- * SQLite compiled to WebAssembly, with Evolu's own TypeScript layer, which also
- * encrypts databases.
+ * SQLite compiled to WebAssembly with Evolu's SQLite core, which encrypts
+ * databases, and Evolu's own TypeScript layer.
  *
  * @module
  * @mergeModuleWith <project>

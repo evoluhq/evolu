@@ -276,6 +276,12 @@ try {
           packedFiles.has(packedWasm),
           `${packageJson.name} packed files must include ${packedWasm}`,
         );
+        // The licenses of the code the wasm contains ask for their notices.
+        const packedNotices = "package/THIRD_PARTY_NOTICES.md";
+        ok(
+          packedFiles.has(packedNotices),
+          `${packageJson.name} packed files must include ${packedNotices}`,
+        );
         const extracted = join(temporaryDirectory, "sqlite-wasm");
         await mkdir(extracted);
         await execFileAsync("tar", ["-xf", tarball, "-C", extracted]);

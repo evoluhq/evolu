@@ -158,6 +158,10 @@ because the persistent browser profile, and on macOS Playwright WebKit's OPFS,
 outlive a run. Its interoperability tests run SQLite's own JavaScript from
 `@evolu/sqlite-wasm` 2.2.4, a test-only dependency installed under the alias
 `@evolu/sqlite-wasm-2.2.4` because the workspace package has the same name.
+Its cross-build tests run `@evolu/sqlite-wasm` 3.54.0-build2, the last build
+whose pool encrypted in TypeScript, installed under the alias
+`@evolu/sqlite-wasm-3.54.0-build2`, in workers `setupSqliteWorker` starts with
+its `build` option.
 The `browser-sqlite-wasm-quota` project runs the storage-quota tests in a
 browser of its own: Chromium's quota is overridden through CDP, Firefox's is
 fixed by a preference its profile's `user.js` sets, and WebKit, which cannot be

@@ -78,7 +78,10 @@ for a post, run `node scripts/code-image.mts --help`.
   coverage. Tests that run SQLite Wasm need the uncommitted
   `packages/sqlite-wasm/wasm/sqlite3.wasm` and fail when it is missing or stale
   after a pin change. Get the pinned one with `pnpm sqlite-wasm:download`, which
-  needs network access.
+  needs network access and fails until a published release holds the pinned
+  wasm, with HTTP 404 while `scripts/download-wasm.mts` names one not yet
+  published; until then, build it as `packages/sqlite-wasm/README.md`
+  describes.
 - After changing `packages/sqlite-core`, run the affected C tests with
   `node packages/sqlite-core/scripts/test.mts <test-name-prefix>` and the
   affected TypeScript test files with `pnpm test:node`, then
@@ -90,6 +93,10 @@ for a post, run `node scripts/code-image.mts --help`.
   crypto layer's files, and on CI, the CPU must report the features its runner
   declares in `.github/workflows/checks.yaml`.
   `node packages/sqlite-core/scripts/test.mts --coverage` lists the C gaps.
+  A change to what the wasm compiles from the core, its `src`, vendored files,
+  `scripts/compile.mts` or `scripts/sqlite-source.mts`, also needs the wasm
+  rebuilt and re-pinned, as `packages/sqlite-wasm/scripts/build-wasm.mts`
+  describes, and `pnpm test:sqlite-wasm`.
   The tests need clang with `llvm-profdata` and `llvm-cov`, which Xcode
   installs, and on Ubuntu the llvm package (installed with clang unless
   Recommends are skipped), make, unzip and zip, on Linux also OpenSSL's
@@ -305,9 +312,9 @@ for a post, run `node scripts/code-image.mts --help`.
   `<SQLite version>-build<n>`, any build may change its API, and
   `scripts/version-sqlite-wasm.mts` replaces the version its changeset bump
   computes, so the bump type only selects its release-notes heading.
-- `@evolu/sqlite-core` is private, and its code will ship inside
-  `@evolu/sqlite-wasm`, `@evolu/nodejs` and `@evolu/react-native` as each
-  binding lands. Changesets skips private packages, so a change to it needs a
+- `@evolu/sqlite-core` is private. Its code ships inside `@evolu/sqlite-wasm`
+  and will ship inside `@evolu/nodejs` and `@evolu/react-native` as their
+  bindings land. Changesets skips private packages, so a change to it needs a
   changeset for each published package that already ships the change, and none
   while none does. Never name it in a changeset: Changesets never consumes such
   a file, which keeps the release workflow from publishing.

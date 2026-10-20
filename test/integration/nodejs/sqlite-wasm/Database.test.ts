@@ -1833,6 +1833,39 @@ test("run reads column names again after a schema change re-prepared the stateme
   assertEqual(columnNameCount, 3);
 });
 
+// SQLite 3.54.0 re-prepared such a statement on every run, as eleven of
+// Evolu's storage queries are, and run read its column names each time.
+test("run doesn't re-prepare a statement with a column = ? term and an ORDER BY, max or a join", async () => {
+  let columnNameCount = 0;
+  const deps = await setupSqliteWasmWith((sqliteWasm) => ({
+    sqlite3_column_name: (pStmt, N) => {
+      columnNameCount++;
+      return sqliteWasm.exports.sqlite3_column_name(pStmt, N);
+    },
+  }));
+  const database = getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }));
+  assertOk(
+    database.exec(`
+      create table t(a, b);
+      create index t_b on t(b);
+      create table u(a);
+      insert into t values (1, 'x'), (2, 'y');
+      insert into u values (1), (2);
+    `),
+  );
+
+  for (const sql of [
+    "select a from t where b = ? order by a",
+    "select max(a) as a from t where b = ?",
+    "select t.a from t join u on u.a = t.a where t.b = ?",
+  ]) {
+    const statement = getOrThrow(database.prepare(sql));
+    columnNameCount = 0;
+    for (const b of ["x", "y", "x"]) assertOk(statement.run([b]));
+    assertEqual(columnNameCount, 1);
+  }
+});
+
 test("run fails with the parser's error and its sqlOffset when a schema change leaves the statement unable to re-prepare", async () => {
   const { database } = await setupSqliteDatabase();
   assertOk(database.exec("create table t(a, b)"));

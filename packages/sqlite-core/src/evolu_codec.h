@@ -13,8 +13,9 @@
  *   pointer for the duration of the call, so no read or write of the file
  *   happens unkeyed. The file takes it before the inner VFS opens it, so no
  *   database the inner VFS's xOpen opens meanwhile on the thread takes it. The
- *   key never appears in SQL, a URI, an error or SQLite's memory; the codec
- *   copies it, and the caller's key is never modified.
+ *   key never appears in SQL, a URI or an error; the codec copies it into
+ *   memory it allocates itself, not through SQLite's allocator, and the
+ *   caller's key is never modified.
  * - A keyed open then asks for EVOLU_CODEC_RESERVED_SIZE reserved bytes at the
  *   end of each page, which takes effect for a new database, and turns
  *   secure_delete on. Every open then reads sqlite_schema, so a hot journal is
@@ -26,8 +27,9 @@
  *   KEY clause of ATTACH. The output of VACUUM INTO is a plaintext file of its
  *   own.
  * - The codec VFS opens only a main database, its rollback journal and a
- *   super-journal, which holds only file names: the core keeps temporary files
- *   in memory (src/sqlite_config.h), and the codec opens no WAL file. Its files
+ *   super-journal, which holds only file names: native builds keep temporary
+ *   files in memory (src/sqlite_config.h), as the wasm build does with
+ *   SQLITE_TEMP_STORE=3, and the codec opens no WAL file. Its files
  *   lack the shared memory WAL needs, so SQLite keeps a database's journal
  *   mode. Under locking_mode = EXCLUSIVE, which needs none, and in a backup
  *   from a WAL database, a database, keyed or not, refuses a page 1 that says
@@ -115,8 +117,9 @@
  *   checksum into the one SQLite computes over the decrypted page, which
  *   matches exactly when the stored one matched, so a stale or torn record
  *   still ends the journal. With EVOLU_CODEC_PLAINTEXT_CHECKSUMS, which the
- *   web passes, checksums stay as SQLite computes them, as the TypeScript
- *   codec and @evolu/sqlite-wasm 2.2.4 roll them back.
+ *   web passes, checksums stay as SQLite computes them, as @evolu/sqlite-wasm
+ *   2.2.4 and the TypeScript codec of its 3.53.4-build1 to 3.54.0-build2 roll
+ *   them back.
  * - A journal doesn't record which checksums it stores, so every open of a
  *   database must pass or omit EVOLU_CODEC_PLAINTEXT_CHECKSUMS as the
  *   connections that may have left its journal did. Otherwise, SQLite takes the
@@ -186,7 +189,10 @@
  * web's existing files (see Journals); or metadata, such as the number of
  * pages, which pages a transaction writes, and timing. Constant-time
  * primitives defend against observers sharing the CPU's caches. Constant time
- * holds for the C code, but wasm and its JIT compilers promise none.
+ * holds for the C code, but wasm and its JIT compilers promise none. The
+ * codec's copy of the key and the keys it derives share the process's memory
+ * with SQLite's heap, in wasm one linear memory, so a memory-disclosure bug in
+ * SQLite could reach them.
  *
  * Threads: each file, like each SQLite connection, is used from one thread at
  * a time. Registration is serialized, except in a build with
@@ -211,7 +217,8 @@ extern "C" {
 
 /*
  * Keeps the journal record checksums SQLite computes over the plaintext, which
- * the web's TypeScript codec and @evolu/sqlite-wasm 2.2.4 read and write. A
+ * @evolu/sqlite-wasm 2.2.4 and the TypeScript codec of its 3.53.4-build1 to
+ * 3.54.0-build2 read and write. A
  * database's opens must all pass it or all omit it, since a journal doesn't
  * record which checksums it stores.
  */

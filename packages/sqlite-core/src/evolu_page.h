@@ -1,9 +1,9 @@
 /*
  * Evolu's page encryption: SQLCipher 4's page format as SQLite3 Multiple
  * Ciphers' sqlcipher scheme writes it with its default parameters and
- * legacy=0, which @evolu/sqlite-wasm 2.2.4 wrote and SahPool.ts of
- * @evolu/sqlite-wasm reads and writes, so the files of every Evolu platform
- * share one format.
+ * legacy=0, which @evolu/sqlite-wasm 2.2.4 wrote, as its builds that
+ * encrypted in TypeScript did, so the files of every Evolu platform share one
+ * format.
  *
  * - Every page ends with 80 reserved bytes: a random 16-byte IV, then a 64-byte
  *   HMAC. The bytes before them, from byte 24 of page 1 and from byte 0 of any

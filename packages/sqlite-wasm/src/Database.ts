@@ -112,6 +112,16 @@
  *   with its own code and the pool's record as its cause, and a database whose
  *   pages authenticate but whose content is malformed fails with SQLite's code
  *   and no cause.
+ * - Tabs of earlier builds can share the pool, taking turns as Evolu's leader
+ *   lock decides. In DELETE mode, SQLite's default, which Evolu keeps, this
+ *   build and 3.53.4-build1 to 3.54.0-build2, whose pool encrypted in
+ *   TypeScript, read and extend each other's databases and roll back each
+ *   other's hot journals. With a journal SQLite keeps, in PERSIST mode or with
+ *   EXCLUSIVE locking and a database recreated at its path, those builds can
+ *   take a stale page 1's salt from the journal and keep a half-applied
+ *   transaction, so sharing a pool is supported in DELETE mode only. 2.2.4
+ *   never rolls back a hot journal, so after a crash here a 2.2.4 tab reads the
+ *   half-written rows, and its next write transaction keeps them.
  *
  * ## Statements
  *
@@ -131,7 +141,7 @@
  *   {@link SqliteInvalidSqlTextError} before SQLite sees it, in
  *   {@link SqliteDatabase.exec} too.
  * - A second statement is found by scanning the rest of the SQL as SQLite
- *   3.54.0's tokenizer reads it, not by preparing it, because SQLite applies
+ *   3.54.1's tokenizer reads it, not by preparing it, because SQLite applies
  *   many pragmas, such as `foreign_keys`, when it prepares them, so SQL that
  *   fails with {@link SqliteMultipleStatementsError} would still change the
  *   connection. Only semicolons, whitespace, UTF-8 byte order marks and
@@ -1619,7 +1629,8 @@ export const createSqliteDatabase =
  * error is the raw key's, unless a later open failed otherwise. Rekeying a
  * legacy database to the raw key is a separate decision: it rewrites every
  * page, needs space, and makes the database unreadable to 2.2.4 tabs that share
- * the pool.
+ * the pool. Tabs of earlier builds can share the pool in DELETE journal mode
+ * only, as this module's documentation describes.
  */
 export const createEncryptedSqliteDatabase =
   (
@@ -1913,7 +1924,7 @@ const drainCodecFailures = (vfs: SahPool): void => {
 };
 
 // Whether UTF-8 SQL from start to end holds no statement, only the tokens
-// SQLite 3.54.0's tokenizer skips: a semicolon; a space, which starts with a
+// SQLite 3.54.1's tokenizer skips: a semicolon; a space, which starts with a
 // space, \t, \n, \f or \r and continues over sqlite3Isspace, which adds \v,
 // while a \v that starts a token is illegal; a UTF-8 byte order mark, a space
 // of its own; a comment from "--" to a newline or the end; and a comment from
