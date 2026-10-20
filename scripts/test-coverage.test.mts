@@ -554,8 +554,9 @@ const setupProject = (
   });
   const directory = join(root, "project");
   // Without the variable through which this test runner tells its child
-  // processes apart, the script's tests run their own test runner.
-  const { NODE_TEST_CONTEXT: _, ...inherited } = process.env;
+  // processes apart, the script's tests run their own test runner. Without
+  // FORCE_COLOR, which CI sets, the script's piped report stays plain text.
+  const { NODE_TEST_CONTEXT: _, FORCE_COLOR: ___, ...inherited } = process.env;
   const env = { ...inherited, TMPDIR: join(root, "tmp") };
   mkdirSync(env.TMPDIR);
   // Without the coverage directory of the tests running this one, which
