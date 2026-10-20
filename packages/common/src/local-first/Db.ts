@@ -547,13 +547,23 @@ export const startDbWorker =
               }
 
               if (request.message.type === "Query") {
+                // The queries share one read transaction, because SQLite
+                // rereads the database's change counter whenever one starts,
+                // and the web's encrypting VFS decrypts page 1 to serve it.
+                // After errors such as an I/O error, SQLite ends the
+                // transaction itself, the queries after it read on their own,
+                // and the commit fails. A trap that broke SQLite's wasm
+                // instance fails both statements too. Neither changes the
+                // answers.
+                trySync(() => sqlite.exec(sql`begin;`));
+                const rowsByQuery = loadQueries(dbDeps)(
+                  request.message.queries,
+                );
+                trySync(() => sqlite.exec(sql`commit;`));
                 postQueuedResponse({
                   type: "ForEvolu",
                   id: request.id,
-                  message: {
-                    type: "Query",
-                    rowsByQuery: loadQueries(dbDeps)(request.message.queries),
-                  },
+                  message: { type: "Query", rowsByQuery },
                 });
                 return;
               }

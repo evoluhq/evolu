@@ -1797,6 +1797,42 @@ describe("query and mutation flow", () => {
     );
   });
 
+  it("query runs the queries of a request in one read transaction", async () => {
+    const statements: Array<string> = [];
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        statements.push(query.sql);
+      },
+    });
+    await using setup = await setupDbWorker({ dbSetup });
+    statements.splice(0);
+
+    const outputs = await postRequest(setup, {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: {
+        type: "Query",
+        queries: createSet<Query>([testTableQuery, localTableQuery]),
+      },
+    });
+
+    assertEqual(statements, [
+      "begin;",
+      sqliteQueryStringToSqliteQuery(testTableQuery).sql,
+      sqliteQueryStringToSqliteQuery(localTableQuery).sql,
+      "commit;",
+    ]);
+    assertLength(outputs, 1);
+    assertSame(outputs[0].type, "OnQueuedResponse");
+    assertEqual(outputs[0].response.message, {
+      type: "Query",
+      rowsByQuery: new Map<Query, Result<ReadonlyArray<never>, UnknownError>>([
+        [testTableQuery, ok([])],
+        [localTableQuery, ok([])],
+      ]),
+    });
+  });
+
   it("export returns current state", async () => {
     await using setup = await setupDbWorker();
 
@@ -7551,79 +7587,140 @@ describe("worker failure", () => {
     ]);
   });
 
-  it("answers a query SQLite fails with an UnknownError, loads the other queries, and keeps serving", async () => {
-    const error = new Error("no such column: note");
-    await using dbSetup = await setupDb({
-      onExec: (query) => {
-        if (query.sql.includes('"note" from "testTable"')) throw error;
-      },
-    });
-    const console = testCreateConsole({ level: "error" });
-    await using setup = await setupDbWorker({ dbSetup, console });
-    const attemptId = setup.createId();
-
-    const outputs = await postRequest(
-      setup,
-      {
-        type: "ForEvolu",
-        id: setup.evoluInstanceId,
-        message: {
-          type: "Query",
-          queries: createSet([testTableWithNoteQuery, testTableQuery]),
+  for (const endsTransaction of [false, true]) {
+    it(`answers a query SQLite fails with an UnknownError, loads the other queries, and keeps serving${endsTransaction ? " after SQLite ends the read transaction" : ""}`, async () => {
+      const error = new Error(
+        endsTransaction ? "disk I/O error" : "no such column: note",
+      );
+      await using dbSetup = await setupDb({
+        onExec: (query) => {
+          if (!query.sql.includes('"note" from "testTable"')) return;
+          // As after an I/O error, which makes SQLite roll the transaction
+          // back itself.
+          if (endsTransaction) dbSetup.sqlite.exec(sql`rollback;`);
+          throw error;
         },
-      },
-      attemptId,
-    );
+      });
+      const console = testCreateConsole({ level: "error" });
+      await using setup = await setupDbWorker({ dbSetup, console });
+      const attemptId = setup.createId();
 
-    assertEqual(outputs, [
-      {
-        type: "OnQueuedResponse",
-        attemptId,
-        response: {
+      const outputs = await postRequest(
+        setup,
+        {
           type: "ForEvolu",
           id: setup.evoluInstanceId,
           message: {
             type: "Query",
-            rowsByQuery: new Map<
-              Query,
-              Result<ReadonlyArray<never>, UnknownError>
-            >([
-              [testTableWithNoteQuery, err(createUnknownError(error))],
-              [testTableQuery, ok([])],
-            ]),
+            queries: createSet([testTableWithNoteQuery, testTableQuery]),
           },
         },
+        attemptId,
+        "activity",
+      );
+
+      assertEqual(outputs, [
+        {
+          type: "OnQueuedResponse",
+          attemptId,
+          response: {
+            type: "ForEvolu",
+            id: setup.evoluInstanceId,
+            message: {
+              type: "Query",
+              rowsByQuery: new Map<
+                Query,
+                Result<ReadonlyArray<never>, UnknownError>
+              >([
+                [testTableWithNoteQuery, err(createUnknownError(error))],
+                [testTableQuery, ok([])],
+              ]),
+            },
+          },
+        },
+      ]);
+      assertEqual(setup.reportDefect.getDefects(), []);
+      // Not logged, because tabs report a worker's logged errors as evoluError.
+      assertEqual(console.getEntriesSnapshot(), []);
+
+      // The mutation begins its own transaction, so the read one has ended.
+      const id = setup.createId();
+      const mutation = await postRequest(
+        setup,
+        setupMutateRequest(
+          setup.evoluInstanceId,
+          [
+            createMutationChange({
+              table: "testTable",
+              id,
+              values: { name: "stored" },
+              isInsert: true,
+              isDelete: null,
+            }),
+          ],
+          { subscribedQueries: createSet([testTableQuery]) },
+        ),
+      );
+
+      assertLength(mutation, 1);
+      assertSame(mutation[0].type, "OnQueuedResponse");
+      assertSame(mutation[0].response.message.type, "Mutate");
+      assertEqual(
+        mutation[0].response.message.rowsByQuery.get(testTableQuery),
+        ok([{ id, name: "stored" }]),
+      );
+    });
+  }
+
+  it("answers each query with the error of a SQLite instance that fails every statement, without refusing the database", async () => {
+    // As after a trap that broke SQLite's wasm instance.
+    const error = new Error("unreachable");
+    let broken = false;
+    await using dbSetup = await setupDb({
+      onExec: () => {
+        if (broken) throw error;
       },
-    ]);
-    assertEqual(setup.reportDefect.getDefects(), []);
-    // Not logged, because tabs report a worker's logged errors as evoluError.
-    assertEqual(console.getEntriesSnapshot(), []);
+    });
+    await using setup = await setupDbWorker({ dbSetup });
+    const queryRequest: DbWorkerRequest = {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: {
+        type: "Query",
+        queries: createSet<Query>([testTableQuery, localTableQuery]),
+      },
+    };
+    broken = true;
 
-    const id = setup.createId();
-    const mutation = await postRequest(
+    const outputs = await postRequest(
       setup,
-      setupMutateRequest(
-        setup.evoluInstanceId,
-        [
-          createMutationChange({
-            table: "testTable",
-            id,
-            values: { name: "stored" },
-            isInsert: true,
-            isDelete: null,
-          }),
-        ],
-        { subscribedQueries: createSet([testTableQuery]) },
-      ),
+      queryRequest,
+      setup.createId(),
+      "activity",
     );
 
-    assertLength(mutation, 1);
-    assertSame(mutation[0].type, "OnQueuedResponse");
-    assertSame(mutation[0].response.message.type, "Mutate");
-    assertEqual(
-      mutation[0].response.message.rowsByQuery.get(testTableQuery),
-      ok([{ id, name: "stored" }]),
-    );
+    assertLength(outputs, 1);
+    assertSame(outputs[0].type, "OnQueuedResponse");
+    assertEqual(outputs[0].response.message, {
+      type: "Query",
+      rowsByQuery: new Map<Query, Result<ReadonlyArray<never>, UnknownError>>([
+        [testTableQuery, err(createUnknownError(error))],
+        [localTableQuery, err(createUnknownError(error))],
+      ]),
+    });
+    assertEqual(setup.reportDefect.getDefects(), []);
+
+    broken = false;
+    const next = await postRequest(setup, queryRequest);
+    assertLength(next, 1);
+    assertSame(next[0].type, "OnQueuedResponse");
+    assertEqual(next[0].response.message, {
+      type: "Query",
+      rowsByQuery: new Map<Query, Result<ReadonlyArray<never>, UnknownError>>([
+        [testTableQuery, ok([])],
+        [localTableQuery, ok([])],
+      ]),
+    });
   });
 
   it("stores a mutation whose subscribed query SQLite fails on the new data", async () => {
