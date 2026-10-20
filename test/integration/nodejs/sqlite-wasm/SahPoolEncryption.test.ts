@@ -7,11 +7,12 @@
  * them in the wasm build, over the pool: the format against `node:crypto`, also
  * at other page sizes; the hot journals a dead worker leaves, whose first bytes
  * a crash can tear; the keyless journal check, whose read of the pool can
- * throw; a full storage during an encrypted journal write; and a random source
- * that throws. `@evolu/sqlite-wasm` 2.2.4, whose SQLite3 Multiple Ciphers
- * encrypted the databases of `@evolu/web` 3, is the reference: keyed with the
- * `sqlcipher` scheme and the raw key, it opens what the codec writes, and the
- * codec opens what it writes.
+ * throw; a full storage during an encrypted journal write; a random source that
+ * throws; and the file control SQLite sends when a write transaction starts.
+ * `@evolu/sqlite-wasm` 2.2.4, whose SQLite3 Multiple Ciphers encrypted the
+ * databases of `@evolu/web` 3, is the reference: keyed with the `sqlcipher`
+ * scheme and the raw key, it opens what the codec writes, and the codec opens
+ * what it writes.
  */
 
 import {
@@ -41,12 +42,17 @@ import {
 import {
   SQLITE_CANTOPEN,
   SQLITE_CORRUPT,
+  SQLITE_FCNTL_PRAGMA,
   SQLITE_FCNTL_RESERVE_BYTES,
   SQLITE_FULL,
   SQLITE_IOERR_WRITE,
   SQLITE_NOTADB,
   SQLITE_OK,
+  SQLITE_OPEN_CREATE,
+  SQLITE_OPEN_MAIN_DB,
   SQLITE_OPEN_MAIN_JOURNAL,
+  SQLITE_OPEN_READWRITE,
+  sqlite3_io_methods_layout,
 } from "../../../../packages/sqlite-wasm/src/Constants.ts";
 import {
   createSqliteDatabase,
@@ -59,8 +65,13 @@ import {
   evolu_codec_take_failure,
 } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import { allocWasm } from "../../../../packages/sqlite-wasm/src/Memory.ts";
-import type { SqliteDbPtr } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
+import type {
+  CStringPtr,
+  SqliteDbPtr,
+  WasmPtr,
+} from "../../../../packages/sqlite-wasm/src/Pointer.ts";
 import { sahPoolHeaderSize } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
+import { installWasmFunctions } from "../../../../packages/sqlite-wasm/src/Wasm.ts";
 import {
   crashAfterWrites,
   createQuotaExceededError,
@@ -1431,6 +1442,67 @@ test("a write whose encryption throws, as when random bytes cannot be created, f
   assertEqualBytes(readFile(t), stored);
   assertEqual(t.pool.getPaths(), ["/evolu1.db"]);
   assertOk(database.exec(insertRowsSql(201, 201)));
+});
+
+// sqlite3-wasm.c defines SQLITE_EXPERIMENTAL_PRAGMA_20251114, so SQLite sends
+// the pragma as a file control when a write transaction starts from none, with
+// 1, or 2 for an exclusive one, and ignores what the VFS returns.
+test("a write transaction that starts from none sends SQLite's experimental_pragma_20251114 file control, which the codec forwards to the pool, recording no failure, with the key and without", async () => {
+  for (const key of [testKey, null]) {
+    const t = await setupSahPool();
+    const pragmas: Array<ReadonlyArray<string | null>> = [];
+    // The I/O methods every file of the pool's raw VFS shares.
+    const { pFile } = t.openFile(
+      "/evolu1.db",
+      SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_MAIN_DB,
+    );
+    const ioMethods = t.readPtr(pFile);
+    assertEqual(t.callIo(pFile, "xClose"), SQLITE_OK);
+    const { offset, signature } =
+      sqlite3_io_methods_layout.members.xFileControl;
+    const slot = (ioMethods + offset) as WasmPtr;
+    const xFileControl = t.sqliteWasm.functionTable.get(t.readPtr(slot)) as (
+      file: number,
+      op: number,
+      arg: number,
+    ) => number;
+    const {
+      pointers: [recording],
+    } = installWasmFunctions(t)([
+      {
+        signature,
+        fn: (file: number, op: number, arg: number) => {
+          // The slot for the result, the pragma's name, and its value.
+          if (op === SQLITE_FCNTL_PRAGMA)
+            pragmas.push([
+              t.text(t.readPtr((arg + 4) as WasmPtr) as CStringPtr),
+              t.text(t.readPtr((arg + 8) as WasmPtr) as CStringPtr),
+            ]);
+          return xFileControl(file, op, arg);
+        },
+      },
+    ]);
+    t.sqliteWasm.getHeapDataView().setUint32(slot, recording, true);
+    const { rc, db } = openCodec(t, "/evolu1.db", key);
+    assertEqual(rc, SQLITE_OK);
+    pragmas.length = 0;
+
+    assertEqual(
+      t.exec(
+        "CREATE TABLE t(a); BEGIN EXCLUSIVE; INSERT INTO t VALUES (1); COMMIT",
+        db,
+      ),
+      SQLITE_OK,
+    );
+
+    assertEqual(pragmas, [
+      ["experimental_pragma_20251114", "1"],
+      ["experimental_pragma_20251114", "2"],
+    ]);
+    assertEqual(takeCodecFailure(t, db), null);
+    assertEqual(t.selectText("SELECT count(*) FROM t", db), "1");
+    close(t, db);
+  }
 });
 
 test("databases of two paths with different keys, both with a hot journal when their worker died, each roll back with their own key", async () => {

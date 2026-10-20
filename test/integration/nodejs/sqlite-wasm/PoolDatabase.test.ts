@@ -240,6 +240,16 @@ test("a File database opens through evolu_codec_open on the pool's codec, withou
   database[Symbol.dispose]();
 });
 
+test("a File database has Evolu's SQL functions, which evolu_codec_open registers", async () => {
+  const t = await setupSahPool();
+  using database = getOrThrow(openPoolDatabase(t));
+
+  assertEqual(
+    getOrThrow(database.run("SELECT evolu_core_version() AS version", [])).rows,
+    [{ version: 1 }],
+  );
+});
+
 // evolu_codec_open fails with SQLITE_MISUSE, the connection's code staying
 // SQLITE_OK, for a keyed open that opened no file through a codec VFS, which
 // a SqliteVfsPath never reaches.

@@ -21,7 +21,6 @@ import {
   openSahPool,
   sqliteWasmUrl,
   type SahPool,
-  type SahPoolOptions,
   type SqliteWasm,
 } from "@evolu/sqlite-wasm-3.54.0-build2";
 import { readFileSync } from "node:fs";
@@ -36,17 +35,16 @@ export interface TsBuildPool extends TestRunDefaultDeps {
 }
 
 /**
- * Opens a pool of 3.54.0-build2 in a directory of a fake OPFS, on a fresh
- * instance with fresh or the given dependencies. One pool holds a directory's
- * files at a time, so the C build's pool of the directory is disposed first.
+ * Opens a pool of 3.54.0-build2 in the `.evolu` directory of a fake OPFS, the C
+ * build's default in `setupSahPool`, on a fresh instance with fresh or the
+ * given dependencies. One pool holds a directory's files at a time, so the C
+ * build's pool of the directory is disposed first.
  */
 export const setupTsBuildPool = async ({
   fake,
-  directory = [OpfsName.orThrow(".evolu")],
   deps = testCreateDeps(),
 }: {
   fake: FakeOpfs;
-  directory?: SahPoolOptions["directory"];
   deps?: TestRunDefaultDeps;
 }): Promise<TsBuildPool> => {
   await using run = testCreateRun(deps);
@@ -56,6 +54,8 @@ export const setupTsBuildPool = async ({
     opfsRoot: fake.opfsRoot,
     sqliteWasm,
   });
-  const pool = getOrThrow(await poolRun(openSahPool({ directory })));
+  const pool = getOrThrow(
+    await poolRun(openSahPool({ directory: [OpfsName.orThrow(".evolu")] })),
+  );
   return { ...deps, sqliteWasm, pool };
 };

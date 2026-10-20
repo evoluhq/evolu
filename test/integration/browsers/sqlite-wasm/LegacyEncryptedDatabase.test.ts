@@ -7,7 +7,9 @@
  * must open unchanged and without losing data, also with the hot journal a tab
  * closed mid-transaction left, and must stay readable by 2.2.4, which older
  * tabs and cached PWAs still run, also after the pool's worker was terminated
- * mid-transaction. `@evolu/web` keyed them with `PRAGMA key = "x'<hex>'"`,
+ * mid-transaction. 2.2.4 never rolls back that worker's hot journal, so its
+ * next write transaction keeps the rows the terminated one half wrote, a limit
+ * these tests pin. `@evolu/web` keyed them with `PRAGMA key = "x'<hex>'"`,
  * which SQLite3 Multiple Ciphers 2.2.4 took as a passphrase, so they open with
  * the key derived from it, as
  * `test/integration/nodejs/sqlite-wasm/LegacyEncryptedDatabase.test.ts`
@@ -291,3 +293,94 @@ test("a 2.2.4 tab that opens the pool after a worker was terminated mid-transact
   );
   assertEqual(await sqliteJs.run("getFileNames"), ["/evolu1.db"]);
 });
+
+// The rows 1 to 300 of table t and how many of them are unchanged, as
+// snapshotSql reports them.
+const firstRowsSnapshotSql =
+  "SELECT count(*) || ':' || sum(v = zeroblob(3000)) AS snapshot FROM t WHERE id <= 300";
+
+// 2.2.4 takes the terminated worker's hot journal for a live one, so its own
+// write transaction writes its journal over the first header and then deletes
+// it, and the terminated transaction's records are never played back. A commit
+// never reads past 2.2.4's own records. A rollback reads to the end of the
+// journal, because 2.2.4's header counts 0 records, and stops at the first of
+// the terminated transaction's, whose checksums fail the initializer of the
+// header 2.2.4 wrote.
+for (const [ending, sql, rowCount] of [
+  ["commits", "INSERT INTO t(id, v) VALUES (301, zeroblob(3000))", 301],
+  [
+    "rolls back",
+    "BEGIN; INSERT INTO t(id, v) VALUES (301, zeroblob(3000)); ROLLBACK",
+    300,
+  ],
+] as const)
+  test(`a 2.2.4 tab that opens the pool after a worker was terminated mid-transaction on a database 2.2.4 encrypted as @evolu/web does, and ${ending} a write transaction, deletes the journal, so the pool then opens the database as Legacy224 with the rows the terminated transaction half wrote, which pass integrity_check`, async () => {
+    await using pool = setupPoolDirectory();
+    {
+      using sqliteJs = await setupSqliteJsWorker();
+      await sqliteJs.run("openEvoluWebDatabase", pool.directory, testKey);
+      await sqliteJs.run("exec", "evolu1.db", createRowsSql);
+      await sqliteJs.run("close", "evolu1.db");
+      await sqliteJs.run("pausePool");
+    }
+    {
+      using crashed = await setupSqliteWorker();
+      assertOk(await crashed.run("openPool", pool.directory));
+      const { database } = okOrThrow(
+        await crashed.run(
+          "openEncryptedDatabaseWithFallback",
+          pool.directory,
+          "/evolu1.db",
+          testKey,
+        ),
+      );
+      assertOk(await crashed.run("exec", database, spillSql));
+      crashed.terminate();
+    }
+    await waitForReleasedSlots(pool.directory);
+    using sqliteJs = await setupSqliteJsWorker();
+    await sqliteJs.run("openEvoluWebDatabase", pool.directory, testKey);
+    assertEqual((await sqliteJs.run("getFileNames")).toSorted(), [
+      "/evolu1.db",
+      "/evolu1.db-journal",
+    ]);
+    const halfWritten = await sqliteJs.run(
+      "selectValue",
+      "evolu1.db",
+      firstRowsSnapshotSql,
+    );
+    assertTrue(halfWritten !== "300:300");
+
+    await sqliteJs.run("exec", "evolu1.db", sql);
+
+    assertEqual(await sqliteJs.run("getFileNames"), ["/evolu1.db"]);
+    await sqliteJs.run("close", "evolu1.db");
+    await sqliteJs.run("pausePool");
+    using worker = await setupSqliteWorker();
+    assertOk(await worker.run("openPool", pool.directory));
+    const { database, keyDerivation } = okOrThrow(
+      await worker.run(
+        "openEncryptedDatabaseWithFallback",
+        pool.directory,
+        "/evolu1.db",
+        testKey,
+      ),
+    );
+    assertEqual(keyDerivation, "Legacy224");
+    assertEqual(
+      okOrThrow(
+        await worker.run(
+          "run",
+          database,
+          `SELECT count(*) AS n, (${firstRowsSnapshotSql}) AS snapshot FROM t`,
+          [],
+        ),
+      ).rows,
+      [{ n: rowCount, snapshot: halfWritten }],
+    );
+    assertEqual(
+      okOrThrow(await worker.run("run", database, "PRAGMA integrity_check", []))
+        .rows,
+      [{ integrity_check: "ok" }],
+    );
+  });

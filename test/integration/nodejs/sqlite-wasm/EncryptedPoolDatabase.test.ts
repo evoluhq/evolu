@@ -4,30 +4,42 @@
  *
  * `PoolDatabase.test.ts` covers what a pool adds, and
  * `SahPoolEncryption.test.ts` Evolu's codec over the pool; these cover what an
- * EncryptedFile database adds: the open through `evolu_codec_open`, the key
- * staged for it and what happens to its bytes, the reserved bytes as SQLite3
- * Multiple Ciphers had them, secure_delete, which stays on, the keying pragmas,
- * ATTACH and VACUUM INTO, which the codec does not key, a wrong key, export,
- * the codec's failures, and recovery from an encrypted hot journal, which an
- * open without the key keeps.
+ * EncryptedFile database adds: the open through `evolu_codec_open`, also when
+ * SQLite's memory runs out, the key staged for it and what happens to its
+ * bytes, Evolu's SQL functions, the reserved bytes as SQLite3 Multiple Ciphers
+ * had them, secure_delete, which stays on, the keying pragmas, ATTACH and
+ * VACUUM INTO, which the codec does not key, also with a URI naming a VFS, a
+ * wrong key, export, the codec's failures, also beside the pool's and in nested
+ * operations, and recovery from an encrypted hot journal, which an open without
+ * the key keeps.
  */
 
 import {
   assert,
   assertEqual,
-  assertEqualBytes,
   assertErr,
   assertFalse,
+  assertInstanceOf,
   assertOk,
+  assertThrows,
   assertTrue,
   EncryptionKey,
   getOrThrow,
+  ok,
   testCreateDeps,
   type NonNegativeInt,
   type RandomBytes,
 } from "@evolu/common";
 import { test } from "node:test";
 import {
+  sqlite3_auto_extension,
+  sqlite3_create_function_v2,
+  sqlite3_exec,
+  sqlite3_extended_errcode,
+  sqlite3_free,
+  sqlite3_reset_auto_extension,
+  sqlite3_status64,
+  sqlite3_trace_v2,
   sqlite3_vfs_find,
   type SqliteCExports,
 } from "../../../../packages/sqlite-wasm/src/CApi.ts";
@@ -35,27 +47,41 @@ import {
   SQLITE_CANTOPEN,
   SQLITE_CORRUPT,
   SQLITE_ERROR,
+  SQLITE_IOERR,
   SQLITE_IOERR_WRITE,
   SQLITE_MISUSE,
   SQLITE_NOMEM,
   SQLITE_NOTADB,
+  SQLITE_OK,
   SQLITE_READONLY,
+  SQLITE_STATUS_MEMORY_USED,
+  SQLITE_TRACE_PROFILE,
+  SQLITE_UTF8,
   sqlite3_vfs_layout,
+  type SqliteDataType,
 } from "../../../../packages/sqlite-wasm/src/Constants.ts";
 import {
   createEncryptedSqliteDatabase,
   createSqliteDatabase,
   SqliteVfsPath,
   type SqliteError,
+  type SqliteFailure,
 } from "../../../../packages/sqlite-wasm/src/Database.ts";
 import type { EvoluCExports } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
-import { copyWasmBytes } from "../../../../packages/sqlite-wasm/src/Memory.ts";
+import {
+  allocWasm,
+  copyWasmBytes,
+} from "../../../../packages/sqlite-wasm/src/Memory.ts";
 import type {
   CStringPtr,
+  SqliteDbPtr,
   WasmPtr,
 } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
 import { sahPoolHeaderSize } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
-import type { SqliteWasm } from "../../../../packages/sqlite-wasm/src/Wasm.ts";
+import {
+  installWasmFunctions,
+  type SqliteWasm,
+} from "../../../../packages/sqlite-wasm/src/Wasm.ts";
 import { setupSahPool, type TestSahPool } from "./_sahPool.ts";
 import { setupMemoryUsed } from "./_sqliteWasm.ts";
 import {
@@ -314,6 +340,16 @@ test("an EncryptedFile database opens through evolu_codec_open on the pool's cod
   database[Symbol.dispose]();
 });
 
+test("an EncryptedFile database has Evolu's SQL functions, which evolu_codec_open registers", async () => {
+  const t = await setupSahPool();
+  using database = getOrThrow(openEncryptedDatabase(t));
+
+  assertEqual(
+    getOrThrow(database.run("SELECT evolu_core_version() AS version", [])).rows,
+    [{ version: 1 }],
+  );
+});
+
 test("an EncryptedFile database whose key's staging block cannot be allocated fails to open with SQLITE_NOMEM before evolu_codec_open, freeing what the open allocated, and a later open succeeds", async () => {
   const t = await setupSahPool();
   const exports = t.sqliteWasm.exports as SqliteCExports & EvoluCExports;
@@ -363,6 +399,124 @@ test("an EncryptedFile database whose key's staging block cannot be allocated fa
   assertEqual(memoryUsed(), before);
   isStagingFailing = false;
   getOrThrow(createSqliteDatabase(deps)(options))[Symbol.dispose]();
+});
+
+// PRAGMA hard_heap_limit only lowers an instance's limit, and the wasm does not
+// export sqlite3_hard_heap_limit64, so each open gets a fresh instance. An
+// allocation fails when it would bring what SQLite holds to the limit, so each
+// open's limit is the most the open before it held, which fails the allocation
+// that held it or an earlier one. So the sweep fails every allocation that
+// holds more than any before it, the only ones a limit fails first, from the
+// open's peak down to its first allocation. The codec's own allocations use
+// libc's malloc, which the limit does not count.
+test("an EncryptedFile database whose open runs out of SQLite's memory at each allocation a lower PRAGMA hard_heap_limit can fail, each holding more than any before it, fails with SQLITE_NOMEM, closes its connection, so the pool can be disposed, frees all it allocated, and zeroes its key's staging block", async () => {
+  const created = await setupSahPool();
+  const database = getOrThrow(openEncryptedDatabase(created));
+  assertOk(database.exec("CREATE TABLE t(a); INSERT INTO t VALUES ('row')"));
+  database[Symbol.dispose]();
+  created.pool[Symbol.dispose]();
+
+  // Opens the database on a fresh instance, with the limit that far above what
+  // SQLite holds before the open, or with none, and returns the most the open
+  // held above that.
+  const openWithLimit = async (headroom: bigint | null) => {
+    const t = await setupSahPool({ fake: created.fake });
+    const pStatus = getOrThrow(allocWasm(t)(16));
+    // Returns what SQLite holds and the most it held since the last call.
+    const readMemoryUsed = () => {
+      assertEqual(
+        sqlite3_status64(t)(
+          SQLITE_STATUS_MEMORY_USED,
+          pStatus,
+          (pStatus + 8) as WasmPtr,
+          1,
+        ),
+        SQLITE_OK,
+      );
+      const view = t.sqliteWasm.getHeapDataView();
+      return {
+        used: view.getBigInt64(pStatus, true),
+        highwater: view.getBigInt64(pStatus + 8, true),
+      };
+    };
+    const before = readMemoryUsed().used;
+    if (headroom != null) {
+      const sql = t.cString(`PRAGMA hard_heap_limit = ${before + headroom}`);
+      assertEqual(sqlite3_exec(t)(t.db, sql, 0, 0, 0), SQLITE_OK);
+      sqlite3_free(t)(sql);
+      assertEqual(readMemoryUsed().used, before);
+    }
+    const exports = t.sqliteWasm.exports as SqliteCExports & EvoluCExports;
+    let pKey = 0;
+    let isStaged = false;
+    let db = 0 as SqliteDbPtr;
+    const freedKeys: Array<Uint8Array> = [];
+    const sqliteWasm: SqliteWasm = {
+      ...t.sqliteWasm,
+      exports: {
+        ...exports,
+        evolu_codec_open: (filename, ppDb, zVfs, key, flags) => {
+          pKey = key;
+          isStaged = true;
+          const rc = exports.evolu_codec_open(filename, ppDb, zVfs, key, flags);
+          db = t.readPtr(ppDb) as SqliteDbPtr;
+          return rc;
+        },
+        sqlite3_free: (ptr) => {
+          if (ptr !== 0 && ptr === pKey) {
+            freedKeys.push(copyWasmBytes(t)(ptr, testKey.length));
+            pKey = 0;
+          }
+          exports.sqlite3_free(ptr);
+        },
+      } satisfies SqliteCExports & EvoluCExports as SqliteCExports,
+    };
+
+    const opened = createSqliteDatabase({ ...t, sqliteWasm })({
+      type: "EncryptedFile",
+      vfs: t.pool,
+      path: SqliteVfsPath.orThrow("/evolu1.db"),
+      key: testKey,
+    });
+
+    const memory = readMemoryUsed();
+    if (opened.ok) {
+      // Some limits fail an allocation SQLite falls back from, such as the
+      // page cache's, and the open succeeds, but never with a failure the
+      // open swallowed, which its connection would still report.
+      assertEqual(sqlite3_extended_errcode(t)(db), SQLITE_OK);
+      opened.value[Symbol.dispose]();
+    } else {
+      assertErr(opened, {
+        type: "SqliteError",
+        operation: "open",
+        extendedCode: SQLITE_NOMEM,
+        message: "out of memory",
+        sqlOffset: null,
+        cause: null,
+      });
+      assertEqual(memory.used, before);
+      assertEqual(freedKeys, isStaged ? [new Uint8Array(testKey.length)] : []);
+    }
+    t.pool[Symbol.dispose]();
+    return { isOk: opened.ok, isStaged, peak: memory.highwater - before };
+  };
+  const unlimited = await openWithLimit(null);
+  assertTrue(unlimited.isOk);
+  const failures = { staged: 0, unstaged: 0 };
+
+  let headroom = unlimited.peak + 1n;
+  for (let run = 0; headroom > 0n; run++) {
+    const opened = await openWithLimit(headroom);
+    // Above the open's peak, nothing fails.
+    if (run === 0) assertTrue(opened.isOk);
+    if (!opened.isOk) failures[opened.isStaged ? "staged" : "unstaged"]++;
+    assertTrue(opened.peak < headroom);
+    headroom = opened.peak;
+  }
+
+  // Both inside evolu_codec_open and before the key was staged for it.
+  assertTrue(failures.staged > 0 && failures.unstaged > 0);
 });
 
 // evolu_codec_open returns SQLITE_MISUSE while the connection reports
@@ -518,9 +672,10 @@ test("a SqliteError's cause is never a codec failure an earlier operation that f
 /**
  * Leaves an EncryptedFile database whose first freelist trunk page fails to
  * authenticate, which `PRAGMA integrity_check` reads and reports in its rows
- * while it succeeds, so the codec records a failure that no error takes.
+ * while it succeeds, so the codec records a failure that no error takes, and
+ * returns that page's number.
  */
-const setupDamagedFreelist = (t: TestSahPool): void => {
+const setupDamagedFreelist = (t: TestSahPool): number => {
   const database = getOrThrow(openEncryptedDatabase(t));
   assertOk(
     database.exec(
@@ -540,6 +695,7 @@ const setupDamagedFreelist = (t: TestSahPool): void => {
   const offset = sahPoolHeaderSize + (trunk - 1) * 8192 + 200;
   file[offset] = (file[offset] ?? 0) ^ 0xff;
   t.fake.writeFile(databaseSlot, file);
+  return trunk;
 };
 
 // The drain moves the codec's record out of C, which only an error would
@@ -624,6 +780,292 @@ test("a disposed EncryptedFile database leaves the pool's drains, so no later op
   assertFalse(takes.includes(disposed));
 });
 
+/**
+ * Leaves an EncryptedFile database of 300 rows at a path of the pool whose page
+ * 5 fails to authenticate, which an open, reading only page 1, does not
+ * notice.
+ */
+const setupDamagedPage = (t: TestSahPool, path = "/evolu1.db"): void => {
+  const database = getOrThrow(openEncryptedDatabase(t, testKey, path));
+  assertOk(
+    database.exec(
+      "CREATE TABLE t(a); WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c WHERE i < 300) INSERT INTO t SELECT 'marker' || i || zeroblob(1000) FROM c",
+    ),
+  );
+  database[Symbol.dispose]();
+  const slot = t.findSlotPath(path);
+  const file = t.fake.readFile(slot);
+  assert(file != null, "The database's slot exists.");
+  const offset = sahPoolHeaderSize + 4 * 8192 + 200;
+  file[offset] = (file[offset] ?? 0) ^ 0xff;
+  t.fake.writeFile(slot, file);
+};
+
+const damagedPageFailure: SqliteFailure = {
+  type: "SqliteCodecFailure",
+  error: { type: "SqlitePageAuthenticationError", pageNumber: 5 },
+};
+
+// SQLite zero-fills both pages and reports success, so the export reads the
+// records, and the pool's is the cause also when the codec's came first.
+test("an export during which a page fails to authenticate and another page's read throws fails with SQLITE_IOERR, caused by the pool's record of the read, whichever failed first", async () => {
+  for (const thrownPage of [3, 8]) {
+    const t = await setupSahPool();
+    setupDamagedPage(t);
+    using database = getOrThrow(openEncryptedDatabase(t));
+    const databaseSlot = t.findSlotPath("/evolu1.db");
+    const error = new DOMException("Failed.", "InvalidStateError");
+    t.fake.inject((call) =>
+      call.method === "read" &&
+      call.path === databaseSlot &&
+      call.at === sahPoolHeaderSize + (thrownPage - 1) * 8192
+        ? { type: "Throw", error }
+        : null,
+    );
+
+    const exported = database.export();
+
+    t.fake.inject(null);
+    assertErr(exported, {
+      type: "SqliteError",
+      operation: "export",
+      extendedCode: SQLITE_IOERR,
+      message: "disk I/O error",
+      sqlOffset: null,
+      cause: {
+        type: "SqliteVfsFailure",
+        method: "xRead",
+        path: "/evolu1.db",
+        error,
+      },
+    });
+  }
+});
+
+/**
+ * Registers a SQL function `nested` on the connections opened until the
+ * returned function is called, which calls `fn` and returns NULL.
+ */
+const setupNestedFunction = (t: TestSahPool, fn: () => void) => {
+  const name = t.cString("nested");
+  const {
+    pointers: [xFunc, xEntryPoint],
+  } = installWasmFunctions(t)([
+    { signature: "v(pip)", fn },
+    {
+      signature: "i(ppp)",
+      fn: (db: SqliteDbPtr) =>
+        sqlite3_create_function_v2(t)(
+          db,
+          name,
+          0,
+          SQLITE_UTF8,
+          0,
+          xFunc,
+          0,
+          0,
+          0,
+        ),
+    },
+  ]);
+  assertEqual(sqlite3_auto_extension(t)(xEntryPoint), SQLITE_OK);
+  return (): void => {
+    sqlite3_reset_auto_extension(t)();
+  };
+};
+
+// SQLite calls a function inside the wasm call of the operation running it.
+test("a query or an iteration that a SQL function runs on the same database or another one on the pool is not top-level, so it leaves the codec's record of the operation running the function, whose later error is caused by it", async () => {
+  for (const [isSameDatabase, isIteration] of [
+    [true, false],
+    [false, false],
+    [true, true],
+    [false, true],
+  ]) {
+    const t = await setupSahPool();
+    const trunk = setupDamagedFreelist(t);
+    using other = getOrThrow(openEncryptedDatabase(t, testKey, "/other.db"));
+    const nestedResults: Array<boolean> = [];
+    const stopRegistering = setupNestedFunction(t, () => {
+      const nested = isSameDatabase ? database : other;
+      nestedResults.push(
+        isIteration
+          ? nested.iterate("SELECT 1", [], () => true).ok
+          : nested.run("SELECT 1", []).ok,
+      );
+    });
+    using database = getOrThrow(openEncryptedDatabase(t));
+    stopRegistering();
+    const executed = database.exec(
+      "PRAGMA integrity_check; SELECT nested(); SELECT * FROM missing",
+    );
+
+    assertErr(executed, {
+      type: "SqliteError",
+      operation: "exec",
+      extendedCode: SQLITE_ERROR,
+      message: "no such table: missing",
+      sqlOffset: null,
+      cause: {
+        type: "SqliteCodecFailure",
+        error: { type: "SqlitePageAuthenticationError", pageNumber: trunk },
+      },
+    });
+    assertEqual(nestedResults, [true]);
+  }
+});
+
+// sqlite3_serialize zero-fills a page that fails to read and reports success,
+// so a query that took the codec's record would make the export succeed.
+test("export fails with SQLITE_CORRUPT, caused by the codec's record of a page that fails to authenticate, also when a trace callback during it runs a query or an iteration on the same database or another one on the pool, which leaves the record as it is", async () => {
+  for (const [isSameDatabase, isIteration] of [
+    [true, false],
+    [false, false],
+    [true, true],
+    [false, true],
+  ]) {
+    const t = await setupSahPool();
+    setupDamagedPage(t);
+    using other = getOrThrow(openEncryptedDatabase(t, testKey, "/other.db"));
+    let isNesting = false;
+    const nestedResults: Array<boolean> = [];
+    const {
+      pointers: [xTrace, xEntryPoint],
+    } = installWasmFunctions(t)([
+      {
+        signature: "i(ippp)",
+        // SQLite calls it when a statement finishes, also when the export
+        // finalizes its query of the page count, after it read the pages.
+        fn: () => {
+          if (isNesting) {
+            isNesting = false;
+            const nested = isSameDatabase ? database : other;
+            nestedResults.push(
+              isIteration
+                ? nested.iterate("SELECT 1", [], () => true).ok
+                : nested.run("SELECT 1", []).ok,
+            );
+          }
+          return 0;
+        },
+      },
+      {
+        signature: "i(ppp)",
+        fn: (db: SqliteDbPtr) =>
+          sqlite3_trace_v2(t)(db, SQLITE_TRACE_PROFILE, xTrace, 0),
+      },
+    ]);
+    assertEqual(sqlite3_auto_extension(t)(xEntryPoint), SQLITE_OK);
+    using database = getOrThrow(openEncryptedDatabase(t));
+    sqlite3_reset_auto_extension(t)();
+    isNesting = true;
+
+    const exported = database.export();
+
+    assertErr(exported, {
+      type: "SqliteError",
+      operation: "export",
+      extendedCode: SQLITE_CORRUPT,
+      message: "database disk image is malformed",
+      sqlOffset: null,
+      cause: damagedPageFailure,
+    });
+    assertEqual(nestedResults, [true]);
+  }
+});
+
+test("a query or an iteration that a SQL function runs on another database of the pool carries no cause from that database's earlier failure, because the operation running the function drained every database of the pool when it started", async () => {
+  for (const isIteration of [false, true]) {
+    const t = await setupSahPool();
+    setupDamagedPage(t, "/other.db");
+    using other = getOrThrow(openEncryptedDatabase(t, testKey, "/other.db"));
+    const nestedErrors: Array<unknown> = [];
+    const stopRegistering = setupNestedFunction(t, () => {
+      const nested = isIteration
+        ? other.iterate("SELECT * FROM missing", [], () => true)
+        : other.run("SELECT * FROM missing", []);
+      nestedErrors.push(nested.ok ? null : nested.error);
+    });
+    using database = getOrThrow(openEncryptedDatabase(t));
+    stopRegistering();
+    const corrupt = other.run("SELECT count(*) FROM t WHERE a LIKE 'x%'", []);
+    assertErr(corrupt);
+    assert(corrupt.error.type === "SqliteError", corrupt.error.type);
+    assertEqual(corrupt.error.cause, damagedPageFailure);
+
+    assertOk(database.run("SELECT nested()", []));
+
+    assertEqual(nestedErrors, [
+      {
+        type: "SqliteError",
+        operation: "prepare",
+        extendedCode: SQLITE_ERROR,
+        message: "no such table: missing",
+        sqlOffset: null,
+        cause: null,
+      },
+    ]);
+  }
+});
+
+// The iteration drains the codec's records after onRow in a call of its own,
+// which refuses the instance onRow broke.
+test("an operation that onRow runs on an EncryptedFile database and that breaks the instance, which onRow catches, ends the iteration with the instance's refusal before the iteration drains the codec's records, so no take runs on the state the break left", async () => {
+  const t = await setupSahPool();
+  const exports = t.sqliteWasm.exports as SqliteCExports & EvoluCExports;
+  let isBreaking = false;
+  let hasBroken = false;
+  const takesAfterBreak: Array<number> = [];
+  const sqliteWasm: SqliteWasm = {
+    ...t.sqliteWasm,
+    exports: {
+      ...exports,
+      // A type that is none of SQLite's five breaks the instance.
+      sqlite3_column_type: (pStmt, iCol) => {
+        if (!isBreaking) return exports.sqlite3_column_type(pStmt, iCol);
+        hasBroken = true;
+        return 6 as SqliteDataType;
+      },
+      evolu_codec_take_failure: (db, pFailure) => {
+        if (hasBroken) takesAfterBreak.push(db);
+        return exports.evolu_codec_take_failure(db, pFailure);
+      },
+    } satisfies SqliteCExports & EvoluCExports as SqliteCExports,
+  };
+  const database = getOrThrow(
+    createSqliteDatabase({ ...t, sqliteWasm })({
+      type: "EncryptedFile",
+      vfs: t.pool,
+      path: SqliteVfsPath.orThrow("/evolu1.db"),
+      key: testKey,
+    }),
+  );
+  assertOk(database.exec("CREATE TABLE t(a); INSERT INTO t VALUES (1), (2)"));
+
+  assertThrows(
+    () =>
+      database.iterate("SELECT a FROM t", [], () => {
+        isBreaking = true;
+        try {
+          database.run("SELECT 1 AS a", []);
+        } catch (error) {
+          assertInstanceOf(error, Error);
+        }
+        return true;
+      }),
+    (thrown) => {
+      assertInstanceOf(thrown, Error);
+      assertEqual(
+        thrown.message,
+        "The SQLite wasm instance is broken: an exception escaped a wasm call.",
+      );
+    },
+  );
+  assertTrue(hasBroken);
+  assertTrue(t.sqliteWasm.isBroken());
+  assertEqual(takesAfterBreak, []);
+});
+
 test("an EncryptedFile database whose random source throws while it writes fails with SQLITE_IOERR_WRITE, caused by the codec's SqliteRandomSourceError, and reports what it threw as one defect", async () => {
   const deps = testCreateDeps();
   const error = new Error("no randomness");
@@ -706,6 +1148,34 @@ test("VACUUM INTO from an EncryptedFile database writes a plaintext file, which 
   assertEqual(t.pool.getPaths(), ["/evolu1.db", "/backup.db"]);
 });
 
+/**
+ * The pragmas SQLCipher and SQLite3 Multiple Ciphers key a database or
+ * configure its cipher with.
+ */
+const keyingPragmaSql = [
+  "PRAGMA key = 'secret'",
+  "PRAGMA hexkey = '00'",
+  "PRAGMA textkey = 'secret'",
+  "PRAGMA rekey = 'secret'",
+  "PRAGMA hexrekey = '00'",
+  "PRAGMA textrekey = 'secret'",
+  "PRAGMA cipher = 'sqlcipher'",
+  "PRAGMA main.Cipher_Compatibility = 4",
+];
+
+const keyingPragmaError: SqliteError = {
+  type: "SqliteError",
+  operation: "exec",
+  extendedCode: SQLITE_ERROR,
+  message:
+    "Databases are keyed only through evolu_codec_open, never through SQL.",
+  sqlOffset: null,
+  cause: {
+    type: "SqliteCodecFailure",
+    error: { type: "SqliteEncryptionUnsupported" },
+  },
+};
+
 // SQLite would ignore them, so a database keyed through SQL would be stored in
 // plaintext, with the key in the SQL.
 test("an EncryptedFile database refuses PRAGMA key, rekey, cipher and their variants with SQLITE_ERROR and the codec's message, caused by the codec's SqliteEncryptionUnsupportedError, and keeps its key", async () => {
@@ -713,34 +1183,32 @@ test("an EncryptedFile database refuses PRAGMA key, rekey, cipher and their vari
   const database = getOrThrow(openEncryptedDatabase(t));
   assertOk(database.exec("CREATE TABLE t(a); INSERT INTO t VALUES ('row')"));
 
-  for (const sql of [
-    "PRAGMA key = 'secret'",
-    "PRAGMA hexkey = '00'",
-    "PRAGMA textkey = 'secret'",
-    "PRAGMA rekey = 'secret'",
-    "PRAGMA hexrekey = '00'",
-    "PRAGMA textrekey = 'secret'",
-    "PRAGMA cipher = 'sqlcipher'",
-    "PRAGMA main.Cipher_Compatibility = 4",
-  ])
-    assertErr(database.exec(sql), {
-      type: "SqliteError",
-      operation: "exec",
-      extendedCode: SQLITE_ERROR,
-      message:
-        "Databases are keyed only through evolu_codec_open, never through SQL.",
-      sqlOffset: null,
-      cause: {
-        type: "SqliteCodecFailure",
-        error: { type: "SqliteEncryptionUnsupported" },
-      },
-    });
+  for (const sql of keyingPragmaSql)
+    assertErr(database.exec(sql), keyingPragmaError);
 
   database[Symbol.dispose]();
   using reopened = getOrThrow(openEncryptedDatabase(t));
   assertEqual(getOrThrow(reopened.run("SELECT a FROM t", [])).rows, [
     { a: "row" },
   ]);
+});
+
+// The codec refuses them for every connection it opens, with a key or without.
+test("a File database refuses the keying pragmas as an EncryptedFile database does, because it opens through the codec too, while a Memory database, which does not, ignores them, as SQLite does", async () => {
+  const t = await setupSahPool();
+  using file = getOrThrow(
+    createSqliteDatabase(t)({
+      type: "File",
+      vfs: t.pool,
+      path: SqliteVfsPath.orThrow("/plain.db"),
+    }),
+  );
+  using memory = getOrThrow(createSqliteDatabase(t)({ type: "Memory" }));
+
+  for (const sql of keyingPragmaSql) {
+    assertErr(file.exec(sql), keyingPragmaError);
+    assertEqual(memory.run(sql, []), ok({ rows: [], changes: 0 }));
+  }
 });
 
 // The scenario of CrashRecovery.test.ts with the transaction's pages and its
@@ -872,6 +1340,104 @@ test("opening the encrypted database whose dead worker left a hot journal as a F
   reopened[Symbol.dispose]();
 });
 
+// The wasm interprets URIs, so ATTACH, also the one VACUUM INTO runs, opens a
+// URI's file on the VFS its vfs parameter names, and rolls back the file's hot
+// journal. The raw VFS under the codec would do that with plaintext checksums,
+// which end the rollback at the first encrypted record, leaving the
+// transaction half-applied. So the pool unregisters the raw VFS, and the
+// pool's name opens the file through the codec without a key, which refuses
+// an encrypted hot journal. The codec records that on the attached file, which
+// no take reads.
+test("a VACUUM INTO or a URI ATTACH naming the pool's VFS opens the encrypted database with a hot journal through the codec without the key, so it fails with SQLITE_CANTOPEN and no cause, from an EncryptedFile or a Memory connection, changing neither file, while naming the raw VFS's internal name fails with no such vfs, and the key then rolls the journal back wholly", async () => {
+  const t = await setupSahPool();
+  const database = getOrThrow(openEncryptedDatabase(t));
+  assertOk(
+    database.exec(
+      "CREATE TABLE t(a); WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c WHERE i < 300) INSERT INTO t SELECT 'marker' || zeroblob(3000) FROM c; PRAGMA cache_size = 10; BEGIN; UPDATE t SET a = 'changed' || randomblob(3000)",
+    ),
+  );
+  t.fake.releaseHandles();
+  const next = await setupSahPool({ fake: t.fake });
+  const readFiles = () =>
+    ["/evolu1.db", "/evolu1.db-journal"].map((path) =>
+      getOrThrow(
+        next.pool.read(path, 0 as NonNegativeInt, (1 << 22) as NonNegativeInt),
+      ),
+    );
+  const files = readFiles();
+  using encrypted = getOrThrow(openEncryptedDatabase(next, testKey, "/b.db"));
+  using memory = getOrThrow(createSqliteDatabase(next)({ type: "Memory" }));
+  const rawVfsName = `evolu-raw:${next.pool.vfsName}`;
+
+  for (const [connection, sql, extendedCode, message] of [
+    [
+      encrypted,
+      `VACUUM INTO 'file:/evolu1.db?vfs=${next.pool.vfsName}'`,
+      SQLITE_CANTOPEN,
+      "unable to open database file",
+    ],
+    [
+      memory,
+      `VACUUM INTO 'file:/evolu1.db?vfs=${next.pool.vfsName}'`,
+      SQLITE_CANTOPEN,
+      "unable to open database file",
+    ],
+    [
+      memory,
+      `ATTACH 'file:/evolu1.db?vfs=${next.pool.vfsName}' AS attached`,
+      SQLITE_CANTOPEN,
+      "unable to open database file",
+    ],
+    [
+      encrypted,
+      `VACUUM INTO 'file:/evolu1.db?vfs=${rawVfsName}'`,
+      SQLITE_ERROR,
+      `no such vfs: ${rawVfsName}`,
+    ],
+    [
+      memory,
+      `VACUUM INTO 'file:/evolu1.db?vfs=${rawVfsName}'`,
+      SQLITE_ERROR,
+      `no such vfs: ${rawVfsName}`,
+    ],
+    [
+      memory,
+      `ATTACH 'file:/evolu1.db?vfs=${rawVfsName}' AS attached`,
+      SQLITE_ERROR,
+      `no such vfs: ${rawVfsName}`,
+    ],
+  ] as const)
+    assertErr(connection.exec(sql), {
+      type: "SqliteError",
+      operation: "exec",
+      extendedCode,
+      message,
+      sqlOffset: null,
+      cause: null,
+    });
+
+  assertEqual(next.pool.getPaths(), [
+    "/evolu1.db",
+    "/evolu1.db-journal",
+    "/b.db",
+  ]);
+  assertEqual(readFiles(), files);
+  using reopened = getOrThrow(openEncryptedDatabase(next));
+  assertEqual(next.pool.getPaths(), ["/evolu1.db", "/b.db"]);
+  assertEqual(
+    getOrThrow(
+      reopened.run(
+        "SELECT count(*) AS n, sum(a = 'marker' || zeroblob(3000)) AS unchanged FROM t",
+        [],
+      ),
+    ).rows,
+    [{ n: 300, unchanged: 300 }],
+  );
+  assertEqual(getOrThrow(reopened.run("PRAGMA integrity_check", [])).rows, [
+    { integrity_check: "ok" },
+  ]);
+});
+
 // SQLite would strip the query, so the pool would get another name than the
 // database opened, and a vfs parameter could name a VFS other than the codec.
 test("an EncryptedFile database's path is a SqliteVfsPath, which rejects a SQLite URI such as file:secret.db?nolock=1, so no URI can open the database by another name or on another VFS", async () => {
@@ -900,25 +1466,4 @@ test("an EncryptedFile database's path is a SqliteVfsPath, which rejects a SQLit
     }));
 
   assertEqual(t.pool.getPaths(), []);
-});
-
-/** Whether the bytes occur anywhere in the instance's memory. */
-const isInHeap = (t: TestSahPool, bytes: Uint8Array): boolean =>
-  Buffer.from(t.sqliteWasm.getHeapU8().buffer).indexOf(bytes) !== -1;
-
-// The codec keeps its copy of the key in wasm memory while the database is
-// open, and the open zeroes the block it staged the key in.
-test("the key is in wasm memory only while the database is open, so it is gone once the database is disposed, a wrong key is gone once its open failed, and the caller's key stays as it was", async () => {
-  const key = EncryptionKey.orThrow(new Uint8Array(testKey));
-  const t = await setupSahPool();
-
-  const database = getOrThrow(openEncryptedDatabase(t, key));
-  assertOk(database.exec("CREATE TABLE t(a)"));
-  assertErr(openEncryptedDatabase(t, otherKey));
-
-  assertTrue(isInHeap(t, testKey));
-  assertFalse(isInHeap(t, otherKey));
-  database[Symbol.dispose]();
-  assertFalse(isInHeap(t, testKey));
-  assertEqualBytes(key, testKey);
 });

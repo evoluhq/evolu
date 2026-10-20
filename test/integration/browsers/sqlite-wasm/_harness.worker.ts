@@ -134,14 +134,14 @@ const buildsByName: Record<HarnessBuild, Build> = {
   },
   // Typed as the C build, whose pool and errors differ: a worker loads one
   // build, which opens only the pools it made, and the steps return its
-  // errors as they are.
+  // errors as they are. The members are still checked by name.
   "3.54.0-build2": {
     wasmUrl: tsBuildWasmUrl,
     createSqliteWasm: tsBuildCreateSqliteWasm,
     openSahPool: tsBuildOpenSahPool,
     createSqliteDatabase: tsBuildCreateSqliteDatabase,
     createEncryptedSqliteDatabase: tsBuildCreateEncryptedSqliteDatabase,
-  } as unknown as Build,
+  } satisfies Record<keyof Build, unknown> as unknown as Build,
 };
 
 let build = buildsByName.c;
@@ -685,6 +685,38 @@ const steps = {
     return deps.sqliteWasm.call(
       () => sqlite3_vfs_find(deps)(cString(vfsName)) !== 0,
     );
+  },
+
+  /**
+   * Returns the names of the keys whose bytes, or any 8-byte quarter of them,
+   * are in the instance's linear memory, once for each place.
+   */
+  findKeys: (
+    keys: ReadonlyArray<readonly [name: string, key: Uint8Array]>,
+  ): ReadonlyArray<string> => {
+    // Searched as text of one character per byte, whose indexOf is fast.
+    const toText = (bytes: Uint8Array) => {
+      let text = "";
+      for (let at = 0; at < bytes.length; at += 8192)
+        text += String.fromCharCode(...bytes.subarray(at, at + 8192));
+      return text;
+    };
+    const memory = toText(getDeps().sqliteWasm.getHeapU8());
+    const found: Array<string> = [];
+    for (const [name, key] of keys) {
+      const starts = new Set<number>();
+      for (const offset of [0, 8, 16, 24]) {
+        const quarter = toText(key.subarray(offset, offset + 8));
+        for (
+          let at = memory.indexOf(quarter);
+          at !== -1;
+          at = memory.indexOf(quarter, at + 1)
+        )
+          starts.add(at - offset);
+      }
+      for (const _ of starts) found.push(name);
+    }
+    return found;
   },
 };
 

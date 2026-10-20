@@ -386,7 +386,7 @@ test("createEncryptedSqliteDatabase opens a new database with the raw key, repor
   again.database[Symbol.dispose]();
 });
 
-test("createEncryptedSqliteDatabase opens a database 2.2.4 keyed, whose raw key fails with SQLITE_NOTADB having written nothing, with the key derived from its first 16 bytes, reporting Legacy224, zeroes that key, leaves no copy of the raw key in the heap, and never rekeys it", async () => {
+test("createEncryptedSqliteDatabase opens a database 2.2.4 keyed, whose raw key fails with SQLITE_NOTADB having written nothing, with the key derived from its first 16 bytes, reporting Legacy224, zeroes that key, and never rekeys it", async () => {
   const t = await setupSahPool();
   const db = await openLegacyKeyedDatabase(t, testKey, testSalt);
   assertEqual(
@@ -411,10 +411,6 @@ test("createEncryptedSqliteDatabase opens a database 2.2.4 keyed, whose raw key 
   assertEqual(
     spy.derivedBits.map((bits) => new Uint8Array(bits)),
     [new Uint8Array(32)],
-  );
-  assertEqual(
-    Buffer.from(t.sqliteWasm.getHeapU8().buffer).indexOf(testKey),
-    -1,
   );
   assertEqual(getOrThrow(database.run("SELECT a FROM t", [])).rows, [
     { a: "legacy row" },
@@ -941,6 +937,37 @@ test("a key that fits neither as raw nor as 2.2.4 derived it fails with the raw 
     }),
   );
   assertEqual(spy.getImports(), 1);
+  t.pool[Symbol.dispose]();
+});
+
+// The journal's salt is a candidate only when it differs from the database's,
+// so a wrong key costs one derivation.
+test("a key that fits neither, on a database 2.2.4 keyed with the hot journal of a transaction that journaled page 1, whose record stores the database's salt, fails with the raw attempt's error after deriving the legacy key once, and keeps the journal", async () => {
+  const t = await setupLegacyHotJournal();
+  const journalPageOne = getOrThrow(
+    t.pool.read(
+      "/evolu1.db-journal",
+      4096 as NonNegativeInt,
+      20 as NonNegativeInt,
+    ),
+  );
+  assertEqual(new DataView(journalPageOne.buffer).getUint32(0), 1);
+  assertEqual(
+    journalPageOne.slice(4),
+    getOrThrow(
+      t.pool.read("/evolu1.db", 0 as NonNegativeInt, 16 as NonNegativeInt),
+    ),
+  );
+  const otherKey = EncryptionKey.orThrow(new Uint8Array(32).fill(9));
+  const raw = openEncryptedDatabase(t, otherKey);
+  assertErr(raw);
+  const spy = spySubtleCrypto();
+
+  const opened = await openWithFallback(t, spy.subtleCrypto, otherKey);
+
+  assertEqual(opened, err(raw.error));
+  assertEqual(spy.getImports(), 1);
+  assertEqual(t.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
   t.pool[Symbol.dispose]();
 });
 

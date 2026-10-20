@@ -20,6 +20,7 @@ import {
   type SqliteValueInput,
   type TestRunDefaultDeps,
 } from "@evolu/common";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
@@ -232,6 +233,58 @@ test("a Memory database has Evolu's SQL functions, which evolu_skiplist_register
     getOrThrow(database.run("SELECT evolu_core_version() AS version", [])).rows,
     [{ version: 1 }],
   );
+});
+
+// The core's SHA-256 runs only there. SahPoolEncryption.test.ts checks the
+// codec's AES-256, HMAC-SHA512 and PBKDF2-HMAC-SHA512 against node:crypto.
+test("evolu_skiplist_fingerprints fingerprints each timestamp with the first 12 bytes of its SHA-256, as node:crypto computes it", async () => {
+  const { database } = await setupSqliteDatabase();
+  // The table and index Storage.ts of @evolu/common creates.
+  assertOk(
+    database.exec(
+      'CREATE TABLE evolu_timestamp ("ownerId" BLOB NOT NULL, "t" BLOB NOT NULL, "h1" INTEGER, "h2" INTEGER, "c" INTEGER, "l" INTEGER NOT NULL, PRIMARY KEY ("ownerId", "t")) STRICT; CREATE INDEX evolu_timestamp_index ON evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
+    ),
+  );
+  const owner = new Uint8Array(16).fill(1);
+  const timestamps = [0, 1, 2].map((index) =>
+    Uint8Array.from({ length: 16 }, (_, byte) => index * 16 + byte),
+  );
+  assertOk(database.exec("BEGIN"));
+  for (const timestamp of timestamps)
+    assertEqual(
+      getOrThrow(
+        database.run("SELECT evolu_skiplist_insert(?, ?, 1) AS inserted", [
+          owner,
+          timestamp,
+        ]),
+      ).rows,
+      [{ inserted: 1 }],
+    );
+  assertOk(database.exec("COMMIT"));
+  // A bucket per timestamp, as big-endian 8-byte counts.
+  const buckets = new Uint8Array(8 * timestamps.length);
+  for (const index of timestamps.keys())
+    new DataView(buckets.buffer).setBigUint64(8 * index, BigInt(index + 1));
+
+  const { rows } = getOrThrow(
+    database.run("SELECT evolu_skiplist_fingerprints(?, ?) AS records", [
+      owner,
+      buckets,
+    ]),
+  );
+
+  // Each record is the fingerprint of its bucket's timestamp and the next
+  // timestamp, or zeros after the last.
+  assertEqual(rows, [
+    {
+      records: Uint8Array.from(
+        timestamps.flatMap((timestamp, index) => [
+          ...createHash("sha256").update(timestamp).digest().subarray(0, 12),
+          ...(timestamps[index + 1] ?? new Uint8Array(16)),
+        ]),
+      ),
+    },
+  ]);
 });
 
 test("a Memory database whose evolu_skiplist_register fails, as sqlite3_create_function_v2 can, fails to open with the returned code and closes the connection, leaking nothing", async () => {
