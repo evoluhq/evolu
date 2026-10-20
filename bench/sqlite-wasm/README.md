@@ -2,13 +2,15 @@
 
 This benchmark measures SQLite stacks in browsers on real OPFS. It compares
 Evolu's own TypeScript layer in
-[`packages/sqlite-wasm`](../../packages/sqlite-wasm/README.md),
-`@evolu/sqlite-wasm` 2.2.4, which `@evolu/web` shipped until 3.4.1, and
+[`packages/sqlite-wasm`](../../packages/sqlite-wasm/README.md), whose pages
+Evolu's SQLite core encrypts in C, `@evolu/sqlite-wasm` 3.54.0-build2, the last
+build that encrypted them in TypeScript, `@evolu/sqlite-wasm` 2.2.4, which
+`@evolu/web` shipped until 3.4.1, and
 [wa-sqlite](https://github.com/rhashimoto/wa-sqlite).
 
 It runs wa-sqlite's benchmark workloads, so you can compare its results with
-wa-sqlite's own. It also compares Evolu's own encryption with the one it
-replaces, SQLite3 Multiple Ciphers in 2.2.4.
+wa-sqlite's own. It also compares Evolu's own encryption with the TypeScript
+codec it replaces and with SQLite3 Multiple Ciphers in 2.2.4.
 
 ## Prerequisites
 
@@ -38,6 +40,11 @@ git -C wa-sqlite checkout 7a4b4241ba7c61ee19121aacd6c93892234ce1a1
 - `evoluEncryptedWasm`: Evolu's layer, encrypted as Evolu does it, with
   `createEncryptedSqliteDatabase` and a raw key. Evolu's codec, in the wasm,
   then encrypts in the format of SQLite3 Multiple Ciphers' `sqlcipher` scheme.
+- `sqliteWasm3540Build2`: `@evolu/sqlite-wasm` 3.54.0-build2, Evolu's layer
+  before its SQLite core, a `Pool` database on its opfs-sahpool rewrite.
+- `sqliteWasm3540Build2Encrypted`: The same, encrypted with
+  `createEncryptedSqliteDatabase` and a raw key by the pool's TypeScript codec,
+  in the same format, so it is the reference for the C codec's cost.
 - `waSqliteAccessHandlePool`: wa-sqlite's synchronous build with
   `AccessHandlePoolVFS`, the design opfs-sahpool follows.
 - `waSqliteCoopSync`: wa-sqlite's synchronous build with `OPFSCoopSyncVFS`, one

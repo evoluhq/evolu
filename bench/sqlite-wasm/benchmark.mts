@@ -79,10 +79,12 @@ interface StackBuild {
 // stack here.
 const createStackDefinitions = ({
   evolu,
+  sqliteWasm3540Build2,
   waSqlite,
   sqliteWasm224,
 }: {
   evolu: StackBuild;
+  sqliteWasm3540Build2: StackBuild;
   waSqlite: StackBuild;
   sqliteWasm224: StackBuild;
 }): ReadonlyArray<StackDefinition> => [
@@ -115,6 +117,26 @@ const createStackDefinitions = ({
     encrypted: true,
     build: evolu,
     revision: 2,
+  },
+  {
+    id: "sqliteWasm3540Build2",
+    label: "3.54.0-build2",
+    worker: "stacks/sqlite-wasm-3.54.0-build2.worker.mts",
+    options: { database: "Pool" },
+    connectionSql: "",
+    encrypted: false,
+    build: sqliteWasm3540Build2,
+    revision: 1,
+  },
+  {
+    id: "sqliteWasm3540Build2Encrypted",
+    label: "3.54.0-build2, encrypted",
+    worker: "stacks/sqlite-wasm-3.54.0-build2.worker.mts",
+    options: { database: "EncryptedPool" },
+    connectionSql: "",
+    encrypted: true,
+    build: sqliteWasm3540Build2,
+    revision: 1,
   },
   {
     id: "waSqliteAccessHandlePool",
@@ -243,16 +265,10 @@ const sha256 = (data: string | Uint8Array): string =>
   createHash("sha256").update(data).digest("hex");
 
 const PackageJson = record(String, JsonValue);
-const readPackageVersion = async (name: string): Promise<string> => {
+/** Reads the version of the package whose package.json is at the URL. */
+const readPackageVersion = async (packageJsonUrl: URL): Promise<string> => {
   const packageJson = getOrThrow(
-    PackageJson.fromUnknown(
-      JSON.parse(
-        await readFile(
-          new URL(import.meta.resolve(`${name}/package.json`)),
-          "utf8",
-        ),
-      ),
-    ),
+    PackageJson.fromUnknown(JSON.parse(await readFile(packageJsonUrl, "utf8"))),
   );
   return getOrThrow(String.fromUnknown(packageJson.version));
 };
@@ -271,10 +287,23 @@ const evoluWasm = await readFile(evoluWasmUrl).catch((error: unknown) => {
 
 const stackDefinitions = createStackDefinitions({
   evolu: { name: "Evolu sqlite3.wasm", version: sha256(evoluWasm) },
+  sqliteWasm3540Build2: {
+    name: "@evolu/sqlite-wasm",
+    // Its exports leave out its package.json, two directories above its
+    // entry point.
+    version: await readPackageVersion(
+      new URL(
+        "../../package.json",
+        import.meta.resolve("@evolu/sqlite-wasm-3.54.0-build2"),
+      ),
+    ),
+  },
   waSqlite: { name: "wa-sqlite", version: waSqliteCommit },
   sqliteWasm224: {
     name: "@evolu/sqlite-wasm",
-    version: await readPackageVersion("@evolu/sqlite-wasm-2.2.4"),
+    version: await readPackageVersion(
+      new URL(import.meta.resolve("@evolu/sqlite-wasm-2.2.4/package.json")),
+    ),
   },
 });
 
@@ -318,7 +347,9 @@ const machine = {
       ? `macOS ${execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).trim()}`
       : `${type()} ${release()}`,
   nodeVersion: process.versions.node,
-  playwrightVersion: await readPackageVersion("playwright"),
+  playwrightVersion: await readPackageVersion(
+    new URL(import.meta.resolve("playwright/package.json")),
+  ),
 };
 
 const configuration = {
@@ -403,8 +434,8 @@ const main = async (): Promise<void> => {
           stackDefinitions.map((stack) => `bench/sqlite-wasm/${stack.worker}`),
         ),
       ],
-      // Its JavaScript finds sqlite3.wasm next to itself.
-      exclude: ["@evolu/sqlite-wasm-2.2.4"],
+      // Their JavaScript finds sqlite3.wasm next to itself.
+      exclude: ["@evolu/sqlite-wasm-2.2.4", "@evolu/sqlite-wasm-3.54.0-build2"],
     },
     server: {
       host: "127.0.0.1",
@@ -1022,17 +1053,19 @@ const formatMarkdown = (engineResults: ReadonlyArray<EngineResult>): string => {
   }
 
   // The compile options that differ between the builds, from any stack of each.
+  // The stacks of a build share its StackBuild, and builds can share a name,
+  // as the published @evolu/sqlite-wasm builds do.
   const builds = Map.groupBy(
     measuredDefinitions,
-    (definition) => definition.build.name,
+    (definition) => definition.build,
   );
   const compileOptionsByBuild = new Map(
-    [...builds].map(([name, definitions]) => {
+    [...builds].map(([build, definitions]) => {
       const stack = measured.find((result) =>
         definitions.some((definition) => definition.id === result.id),
       );
       return [
-        name,
+        build,
         new Map(
           (stack?.compileOptions ?? []).map((option) => {
             const separator = option.indexOf("=");
@@ -1065,8 +1098,8 @@ const formatMarkdown = (engineResults: ReadonlyArray<EngineResult>): string => {
     "",
     `| Option | ${[...builds]
       .map(
-        ([name, definitions]) =>
-          `${name} (${definitions.map((definition) => definition.label).join("; ")})`,
+        ([build, definitions]) =>
+          `${build.name} (${definitions.map((definition) => definition.label).join("; ")})`,
       )
       .join(" | ")} |`,
     `| --- | ${[...builds].map(() => "---").join(" | ")} |`,
