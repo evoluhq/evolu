@@ -70,10 +70,10 @@ pnpm playwright:install
 Run the browser install step again after Playwright updates or if the browser cache was removed.
 
 The tests of `packages/sqlite-core`, which `pnpm test` runs, need
-[clang](https://clang.llvm.org), make, unzip and zip, on Linux also OpenSSL's
-development headers and clang's shared AddressSanitizer runtime, and network
-access the first time, to fetch the pinned SQLite source and expo-sqlite
-releases.
+[clang](https://clang.llvm.org) with its llvm-profdata and llvm-cov, make,
+unzip and zip, on Linux also OpenSSL's development headers and clang's shared
+AddressSanitizer runtime, and network access the first time, to fetch the
+pinned SQLite source and expo-sqlite releases.
 
 Build scripts
 
@@ -127,7 +127,7 @@ Testing
 - `pnpm test:bundle:update` - Rebuild common and regenerate bundle-size snapshots
 - `pnpm test:jsdoc` - Compile and run documentation examples
 - `pnpm test:sqlite-wasm` - Run the `@evolu/sqlite-wasm` unit and Node.js integration tests, failing below 100% line, branch or function coverage
-- `pnpm test:sqlite-core` - Run the tests of Evolu's own SQLite core, with its C tests under AddressSanitizer and UndefinedBehaviorSanitizer, once with hardware and once with software crypto
+- `pnpm test:sqlite-core` - Run the tests of Evolu's own SQLite core, with its C tests under AddressSanitizer and UndefinedBehaviorSanitizer, once with hardware and once with software crypto, failing below 100% line, branch or function coverage of the C its host compiles
 - `pnpm check:sqlite-wasm` - Check that the generated `@evolu/sqlite-wasm` C API and constants match their pins and metadata
 
 Unit, integration, and bundle test suites randomize execution order and print a

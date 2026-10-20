@@ -7,6 +7,11 @@
  * build generates the runner's list of suites from the file names, so adding a
  * test file needs no other change.
  *
+ * The core's own C, src/, is also instrumented for source-based coverage
+ * (coverage.mts), so each run of the runner writes a profile where
+ * `LLVM_PROFILE_FILE` names. SQLite, the vendored libraries and the tests
+ * aren't, since nothing measures them.
+ *
  * @module
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -23,6 +28,7 @@ import {
   testDirectory,
   writeAtomically,
 } from "./compile.mts";
+import { coverageFlags } from "./coverage.mts";
 import type { PinnedSqliteSource, PreparedSqlite } from "./sqlite-source.mts";
 
 /**
@@ -78,7 +84,11 @@ export const buildTestRunner = ({
     ({ source, flags, headers }) =>
       compileCached({
         cc,
-        flags: [...sanitized, ...flags],
+        flags: [
+          ...sanitized,
+          ...flags,
+          ...(source.startsWith(sourceDirectory) ? coverageFlags : []),
+        ],
         source,
         extraKey: headers,
         objectsDirectory,
@@ -123,6 +133,8 @@ export const buildTestRunner = ({
   writeAtomically(runner, (output) => {
     run(cc, [
       ...sanitized,
+      // Links the profile runtime, which writes the profile at exit.
+      ...coverageFlags,
       ...testObjects,
       sqliteObject,
       ...unitObjects,

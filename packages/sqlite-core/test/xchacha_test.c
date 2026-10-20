@@ -385,7 +385,8 @@ static void xchacha_restores_the_callers_dit(void) {
   for (int caller = 0; caller < 2; caller++) {
     // DIT as the caller set it, on or off, whatever an earlier call left.
     evolu_dit_end((unsigned)caller);
-    int expected = caller && evolu_crypto_has_dit();
+    int expected =
+        caller && (evolu_crypto_hardware() & EVOLU_CRYPTO_DIT) != 0;
     evolu_test_dit_missed = 0;
     encrypt_forgery_input(input);
     int after_encrypt = evolu_dit_is_set();

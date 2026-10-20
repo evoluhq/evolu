@@ -571,6 +571,21 @@ describe("addon", () => {
       },
       sqliteErrorIs("unable to open database file", 14, 14),
     );
+    // A failed codec open, plain or keyed, gives a connection with no codec
+    // file.
+    const missing = join(setupDirectory(t), "missing", "db.sqlite");
+    assertThrows(
+      () => {
+        addon.openCodec(missing, null);
+      },
+      sqliteErrorIs("unable to open database file", 14, 14),
+    );
+    assertThrows(
+      () => {
+        addon.openCodec(missing, new Uint8Array(32));
+      },
+      sqliteErrorIs("unable to open database file", 14, 14),
+    );
     addon.finalize(insert);
   });
 

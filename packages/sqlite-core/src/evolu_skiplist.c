@@ -329,19 +329,13 @@ static int fail_argument(sqlite3_context *context, const char *message) {
 }
 
 /*
- * Returns a blob argument's bytes, or NULL after failing the context with
- * SQLITE_NOMEM, as when SQLite can't expand a zeroblob. A blob of 0 bytes has
- * none, so callers ask only for longer ones.
- */
-static const void *blob_of(sqlite3_context *context, sqlite3_value *value) {
-  const void *bytes = sqlite3_value_blob(value);
-  if (bytes == NULL) sqlite3_result_error_nomem(context);
-  return bytes;
-}
-
-/*
  * Starts a call for a 16-byte owner, or fails the context for any other
  * argument.
+ *
+ * A blob argument's bytes, here and below, are never NULL for a blob that has
+ * some: every build omits incremental blobs (SQLITE_OMIT_INCRBLOB), so SQLite
+ * writes a zeroblob's zeros when it makes one, and sqlite3_value_blob has
+ * nothing to expand.
  */
 static int start_call(sqlite3_context *context, sqlite3_value *owner,
                       Call *call) {
@@ -351,9 +345,9 @@ static int start_call(sqlite3_context *context, sqlite3_value *owner,
     return fail_argument(context, "the owner must be a 16-byte blob");
   call->context = context;
   call->db = sqlite3_context_db_handle(context);
-  call->owner = blob_of(context, owner);
+  call->owner = sqlite3_value_blob(owner);
   call->owner_size = TIMESTAMP_SIZE;
-  return call->owner != NULL;
+  return 1;
 }
 
 /* Copies a 16-byte timestamp argument, or fails the context for another. */
@@ -362,9 +356,7 @@ static int read_timestamp(sqlite3_context *context, sqlite3_value *value,
   if (sqlite3_value_type(value) != SQLITE_BLOB ||
       sqlite3_value_bytes(value) != TIMESTAMP_SIZE)
     return fail_argument(context, "the timestamp must be a 16-byte blob");
-  const void *bytes = blob_of(context, value);
-  if (bytes == NULL) return 0;
-  memcpy(t, bytes, TIMESTAMP_SIZE);
+  memcpy(t, sqlite3_value_blob(value), TIMESTAMP_SIZE);
   return 1;
 }
 
@@ -455,10 +447,10 @@ static CallResult insert(Call *call, const uint8_t t[TIMESTAMP_SIZE],
   if (run_change(call, call->insert) != CALL_OK) return CALL_FAILED;
 
   for (int m = 1; m <= max_level; m++) {
-    // The same node is first at consecutive levels.
+    // The same node is first at consecutive levels. A level with a first node
+    // has one at every level below, as the loop above took them.
     if (!has_first[m] ||
-        (m > 1 && has_first[m - 1] &&
-         memcmp(firsts[m - 1].t, firsts[m].t, TIMESTAMP_SIZE) == 0))
+        (m > 1 && memcmp(firsts[m - 1].t, firsts[m].t, TIMESTAMP_SIZE) == 0))
       continue;
     Node *first = &firsts[m];
     Summary updated = first->summary;
@@ -548,8 +540,7 @@ static void fingerprints_function(sqlite3_context *context, int argc,
     sqlite3_result_error_toobig(context);
     return;
   }
-  const uint8_t *buckets = blob_of(context, argv[1]);
-  if (buckets == NULL) return;
+  const uint8_t *buckets = sqlite3_value_blob(argv[1]);
   // Freed by SQLite, or here on a failure.
   uint8_t *ranges = sqlite3_malloc64((sqlite3_uint64)count * RANGE_SIZE);
   if (ranges == NULL) {

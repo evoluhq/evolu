@@ -16,11 +16,13 @@
 #include "evolu_skiplist.h"
 #include "sqlcipher_pages.h"
 #include "sqlite3.h"
+#include "sqlite_allocator.h"
 
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 static const char vfs_name[] = "evolu-codec-test";
@@ -254,8 +256,12 @@ static void codec_refuses_turning_secure_delete_off(void) {
     CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED);
     CHECK_EQ_INT(query_int(db, "pragma secure_delete"), 1);
   }
-  CHECK_EQ_INT(sqlite3_exec(db, "pragma secure_delete = On", NULL, NULL, NULL),
-               SQLITE_OK);
+  // Every spelling SQLite reads as on.
+  static const char *const accepted[] = {
+      "pragma secure_delete = On", "pragma secure_delete = yes",
+      "pragma secure_delete = TRUE", "pragma secure_delete = 1"};
+  for (size_t i = 0; i < sizeof accepted / sizeof accepted[0]; i++)
+    CHECK_EQ_INT(sqlite3_exec(db, accepted[i], NULL, NULL, NULL), SQLITE_OK);
   CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
 
   // A plaintext database can turn it off.
@@ -510,7 +516,13 @@ static void codec_connection_opened_while_empty_reads_another_page_size(void) {
     CHECK_EQ_INT(sqlite3_close(writer), SQLITE_OK);
 
     // The reader keeps SQLite's default page size, so it reads page 1 whole
-    // at that size first.
+    // at that size first, after its header, whose read decrypts page 1 at its
+    // own size into the scratch buffer, which it can fail to allocate.
+    evolu_test_allocations_left = 0;
+    long long rows = query_int(reader, "select count(*) from t");
+    evolu_test_allocations_left = -1;
+    CHECK_EQ_INT(rows, -1);
+    CHECK_EQ_INT(sqlite3_errcode(reader), SQLITE_NOMEM);
     CHECK_EQ_INT(query_int(reader, "select count(*) from t"), 5);
     evolu_codec_failure failure;
     CHECK_EQ_INT(evolu_codec_take_failure(reader, &failure), SQLITE_OK);
@@ -2689,9 +2701,9 @@ static void codec_fails_cleanly_when_its_own_allocations_fail(void) {
 
   // The codec VFS's, which registers nothing, so a retry succeeds.
   evolu_test_allocations_left = 0;
-  CHECK_EQ_INT(evolu_codec_register("evolu-codec-no-memory", NULL),
-               SQLITE_NOMEM);
+  int rc = evolu_codec_register("evolu-codec-no-memory", NULL);
   evolu_test_allocations_left = -1;
+  CHECK_EQ_INT(rc, SQLITE_NOMEM);
   CHECK(sqlite3_vfs_find("evolu-codec-no-memory") == NULL);
   CHECK_EQ_INT(evolu_codec_register("evolu-codec-no-memory", NULL), SQLITE_OK);
   remove_database(path);
@@ -3452,6 +3464,10 @@ static void codec_register_is_idempotent_and_needs_the_inner_vfs(void) {
   CHECK_EQ_INT(evolu_codec_register("evolu-codec-stacked", vfs_name),
                SQLITE_MISUSE);
   CHECK(sqlite3_vfs_find("evolu-codec-stacked") == NULL);
+  // A name a codec VFS over another inner VFS has.
+  CHECK(register_crash_vfs());
+  CHECK_EQ_INT(evolu_codec_register(crash_codec_vfs_name, NULL),
+               SQLITE_MISUSE);
 }
 
 /*
@@ -3476,14 +3492,9 @@ static int minimal_open(sqlite3_vfs *vfs, sqlite3_filename name,
 static const char minimal_vfs_name[] = "evolu-codec-test-minimal";
 static const char minimal_codec_vfs_name[] = "evolu-codec-test-over-minimal";
 
-/*
- * A codec over such a VFS reads each missing method as SQLite does: no error
- * number for a file that can't be opened, a deletion that succeeds, and
- * SQLite's default sector size.
- */
-static void codec_inner_vfs_may_lack_optional_methods(void) {
-  CHECK(set_up());
-  CHECK(register_crash_vfs());
+/* Registers the minimal VFS and a codec VFS over it, once. */
+static int register_minimal_vfs(void) {
+  if (!register_crash_vfs()) return 0;
   crash_writes = 0;
   crash_at = 0;
   has_crashed = 0;
@@ -3499,10 +3510,20 @@ static void codec_inner_vfs_may_lack_optional_methods(void) {
     minimal.xOpen = minimal_open;
     minimal.xDelete = NULL;
     minimal.xGetLastError = NULL;
-    CHECK_EQ_INT(sqlite3_vfs_register(&minimal, 0), SQLITE_OK);
+    if (sqlite3_vfs_register(&minimal, 0) != SQLITE_OK) return 0;
   }
-  CHECK_EQ_INT(evolu_codec_register(minimal_codec_vfs_name, minimal_vfs_name),
-               SQLITE_OK);
+  return evolu_codec_register(minimal_codec_vfs_name, minimal_vfs_name) ==
+         SQLITE_OK;
+}
+
+/*
+ * A codec over such a VFS reads each missing method as SQLite does: no error
+ * number for a file that can't be opened, a deletion that succeeds, and
+ * SQLite's default sector size.
+ */
+static void codec_inner_vfs_may_lack_optional_methods(void) {
+  CHECK(set_up());
+  CHECK(register_minimal_vfs());
   char path[512];
   path_of(path, "missing-directory/missing.db");
   sqlite3 *db = NULL;
@@ -3645,6 +3666,1066 @@ static void codec_database_refuses_a_backup_from_a_wal_database(void) {
   refuses_a_backup_from_a_wal_database(NULL);
 }
 
+/*
+ * A VFS over the default one whose files fail the fault_at-th call, counting
+ * from 1, of xRead, xWrite, xTruncate, xSync and xFileSize with that
+ * method's I/O error, as a failing disk does, and pass every other call.
+ * fault_calls counts them. While fault_flip_at isn't -1, every third read at
+ * that offset gets one of its bytes flipped, as a file that changed between
+ * reads gives it; fault_flip_reads counts the reads there.
+ */
+static sqlite3_vfs *fault_inner;
+static int fault_at;
+static int fault_calls;
+static sqlite3_int64 fault_flip_at = -1;
+static int fault_flip_reads;
+
+typedef struct {
+  sqlite3_file base;
+  sqlite3_file *inner;
+} FaultFile;
+
+static int faults(void) { return ++fault_calls == fault_at; }
+
+static int fault_read(sqlite3_file *file, void *buffer, int amount,
+                      sqlite3_int64 offset) {
+  if (faults()) return SQLITE_IOERR_READ;
+  sqlite3_file *inner = ((FaultFile *)file)->inner;
+  int rc = inner->pMethods->xRead(inner, buffer, amount, offset);
+  if (offset == fault_flip_at && ++fault_flip_reads % 3 == 0)
+    ((uint8_t *)buffer)[amount / 2] ^= 1;
+  return rc;
+}
+
+static int fault_write(sqlite3_file *file, const void *buffer, int amount,
+                       sqlite3_int64 offset) {
+  if (faults()) return SQLITE_IOERR_WRITE;
+  sqlite3_file *inner = ((FaultFile *)file)->inner;
+  return inner->pMethods->xWrite(inner, buffer, amount, offset);
+}
+
+static int fault_truncate(sqlite3_file *file, sqlite3_int64 size) {
+  if (faults()) return SQLITE_IOERR_TRUNCATE;
+  sqlite3_file *inner = ((FaultFile *)file)->inner;
+  return inner->pMethods->xTruncate(inner, size);
+}
+
+static int fault_sync(sqlite3_file *file, int flags) {
+  if (faults()) return SQLITE_IOERR_FSYNC;
+  sqlite3_file *inner = ((FaultFile *)file)->inner;
+  return inner->pMethods->xSync(inner, flags);
+}
+
+static int fault_file_size(sqlite3_file *file, sqlite3_int64 *size) {
+  if (faults()) return SQLITE_IOERR_FSTAT;
+  sqlite3_file *inner = ((FaultFile *)file)->inner;
+  return inner->pMethods->xFileSize(inner, size);
+}
+
+#define FAULT_FORWARD(name, parameters, arguments)                             \
+  static int fault_##name parameters {                                         \
+    sqlite3_file *inner = ((FaultFile *)file)->inner;                          \
+    return inner->pMethods->x##name arguments;                                 \
+  }
+
+FAULT_FORWARD(Close, (sqlite3_file * file), (inner))
+FAULT_FORWARD(Lock, (sqlite3_file * file, int level), (inner, level))
+FAULT_FORWARD(Unlock, (sqlite3_file * file, int level), (inner, level))
+FAULT_FORWARD(CheckReservedLock, (sqlite3_file * file, int *result),
+              (inner, result))
+FAULT_FORWARD(FileControl, (sqlite3_file * file, int op, void *arg),
+              (inner, op, arg))
+FAULT_FORWARD(SectorSize, (sqlite3_file * file), (inner))
+FAULT_FORWARD(DeviceCharacteristics, (sqlite3_file * file), (inner))
+
+static const sqlite3_io_methods fault_io_methods = {
+    1,
+    fault_Close,
+    fault_read,
+    fault_write,
+    fault_truncate,
+    fault_sync,
+    fault_file_size,
+    fault_Lock,
+    fault_Unlock,
+    fault_CheckReservedLock,
+    fault_FileControl,
+    fault_SectorSize,
+    fault_DeviceCharacteristics,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+};
+
+static int fault_open(sqlite3_vfs *vfs, sqlite3_filename name,
+                      sqlite3_file *file, int flags, int *out_flags) {
+  (void)vfs;
+  FaultFile *fault_file = (FaultFile *)file;
+  fault_file->inner = (sqlite3_file *)(fault_file + 1);
+  int rc = fault_inner->xOpen(fault_inner, name, fault_file->inner, flags,
+                              out_flags);
+  if (rc != SQLITE_OK) {
+    if (fault_file->inner->pMethods != NULL)
+      fault_file->inner->pMethods->xClose(fault_file->inner);
+    fault_file->base.pMethods = NULL;
+    return rc;
+  }
+  fault_file->base.pMethods = &fault_io_methods;
+  return SQLITE_OK;
+}
+
+static const char fault_vfs_name[] = "evolu-codec-test-fault";
+static const char fault_codec_vfs_name[] = "evolu-codec-test-over-fault";
+
+/* Registers the fault VFS and a codec VFS over it, once. */
+static int register_fault_vfs(void) {
+  static sqlite3_vfs vfs;
+  if (sqlite3_vfs_find(fault_vfs_name) == NULL) {
+    fault_inner = sqlite3_vfs_find(NULL);
+    vfs = *fault_inner;
+    vfs.zName = fault_vfs_name;
+    vfs.pNext = NULL;
+    vfs.szOsFile = (int)sizeof(FaultFile) + fault_inner->szOsFile;
+    vfs.xOpen = fault_open;
+    if (sqlite3_vfs_register(&vfs, 0) != SQLITE_OK) return 0;
+  }
+  return evolu_codec_register(fault_codec_vfs_name, fault_vfs_name) ==
+         SQLITE_OK;
+}
+
+/* Copies the database at from and its journal, when it has one, to to. */
+static int copy_database(const char *from, const char *to) {
+  char from_journal[600];
+  char to_journal[600];
+  snprintf(from_journal, sizeof from_journal, "%s-journal", from);
+  snprintf(to_journal, sizeof to_journal, "%s-journal", to);
+  remove_database(to);
+  return copy_file(from, to) &&
+         (!file_exists(from_journal) || copy_file(from_journal, to_journal));
+}
+
+/*
+ * A hot journal whose page-1 record the check reads again as other bytes, as
+ * when the journal changed in between, gives no salt: the proven key then
+ * keeps the journal rather than ending its rollback at that record, and a
+ * later read rolls it back.
+ */
+static void codec_hot_journal_check_keeps_a_journal_whose_page_1_record_changed(
+    void) {
+  CHECK(set_up());
+  CHECK(register_fault_vfs());
+  fault_at = 0;
+  char path[512];
+  char source[512];
+  char journal[600];
+  path_of(path, "changed-record.db");
+  path_of(source, "changed-record-source.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  remove_database(path);
+  remove_database(source);
+  sqlite3 *reader = NULL;
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(
+      evolu_codec_open(path, &reader, fault_codec_vfs_name, test_key, 0),
+      SQLITE_OK);
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 200), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  // The reader's page 1 proves the key with the first salt.
+  CHECK_EQ_INT(query_int(reader, "select count(*) from t"), 200);
+
+  // The database is created again, with another salt, its transaction, which
+  // journals page 1 first, crashes, and page 1's salt is torn.
+  CHECK_EQ_INT(open_db(source, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 200), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(crash_over(source, path, test_key,
+                          "pragma user_version = 7; "
+                          "update t set v = 'updated' || id"),
+               SQLITE_OK);
+  CHECK(fill_bytes(path, 0, 16, 0));
+
+  // SQLite opens the journal to see whether it's hot and again to roll it
+  // back, and each check reads the page-1 record in its two walks and then
+  // again, so every third read there is a check's last.
+  fault_flip_at = read_be32_at(journal, 20) + 4;
+  fault_flip_reads = 0;
+  long long rows = query_int(reader, "select count(*) from t");
+  fault_flip_at = -1;
+  CHECK_EQ_INT(rows, -1);
+  CHECK(file_exists(journal));
+  CHECK(has_original_rows(reader));
+  CHECK(!file_exists(journal));
+  CHECK_EQ_INT(sqlite3_close(reader), SQLITE_OK);
+  remove_database(path);
+}
+
+#define FAULT_ROWS 20
+
+/*
+ * Creates at path a database of FAULT_ROWS rows, with the hot journal of a
+ * transaction that changed page 1 and spilled updated rows when is_hot, and
+ * with its first torn bytes zeros. Returns 0 when a step fails.
+ */
+static int create_fault_base(const char *path, const uint8_t *key, int is_hot,
+                             size_t torn) {
+  char source[512];
+  char source_journal[600];
+  char journal[600];
+  snprintf(source, sizeof source, "%s-source", path);
+  snprintf(source_journal, sizeof source_journal, "%s-journal", source);
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  remove_database(source);
+  remove_database(path);
+  sqlite3 *db = NULL;
+  int ok = open_db(source, key, &db) == SQLITE_OK &&
+           create_rows(db, FAULT_ROWS) == SQLITE_OK;
+  // The smallest cache spills updated pages into the database.
+  if (ok && is_hot)
+    ok = sqlite3_exec(db,
+                      "pragma cache_size = 10; begin; pragma user_version = 7; "
+                      "update t set v = 'updated' || id",
+                      NULL, NULL, NULL) == SQLITE_OK &&
+         copy_file(source_journal, journal);
+  ok = ok && copy_file(source, path) &&
+       (torn == 0 || fill_bytes(path, 0, torn, 0));
+  sqlite3_close(db);
+  remove_database(source);
+  return ok;
+}
+
+/*
+ * Whether the database at path, opened without faults, is whole and holds
+ * its rows as they were, or as the update after the faults wrote them.
+ */
+static int is_before_or_after_faults(const char *path, const uint8_t *key) {
+  sqlite3 *db = NULL;
+  int ok =
+      open_db(path, key, &db) == SQLITE_OK &&
+      query_int(db, "select count(*) from pragma_integrity_check where "
+                    "integrity_check = 'ok'") == 1 &&
+      query_int(db, "pragma user_version") == 0 &&
+      (query_int(db,
+                 "select count(*) from t where v like 'evolu-secret-row%'") ==
+           FAULT_ROWS ||
+       query_int(db, "select count(*) from t where v like 'faulted%'") ==
+           FAULT_ROWS);
+  sqlite3_close(db);
+  return ok;
+}
+
+/*
+ * Every call of the inner VFS's files that can fail does, one at a time,
+ * while a connection opens a database, which rolls back its hot journal when
+ * it has one, reads it whole and updates every row: the open, the read or the
+ * update fails or succeeds, and the database, opened again without the
+ * failure, is whole, as it was or as the update wrote it. A failure that
+ * SQLite doesn't tolerate comes back as an I/O error, or as SQLITE_CANTOPEN
+ * from the check of a hot journal, and never as a codec failure, which would
+ * say the key is wrong or a page was altered. Hot journals of an intact page
+ * 1, of a page 1 a crash tore the salt of, or also its page size, which only
+ * the journal's page-1 record gives, and of a plaintext database whose torn
+ * page 1 the journal restores.
+ */
+static void codec_fails_cleanly_whichever_inner_call_fails(void) {
+  CHECK(set_up());
+  CHECK(register_fault_vfs());
+  static const struct {
+    const uint8_t *key;
+    size_t torn;
+    int is_hot;
+  } cases[] = {
+      {test_key, 0, 0}, {test_key, 0, 1},  {test_key, 16, 1},
+      {test_key, 18, 1}, {NULL, 0, 0},     {NULL, 16, 1},
+  };
+  char base[512];
+  char path[512];
+  path_of(base, "fault-base.db");
+  path_of(path, "fault.db");
+  for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+    const uint8_t *key = cases[i].key;
+    CHECK(create_fault_base(base, key, cases[i].is_hot, cases[i].torn));
+    int failures = 0;
+    for (int at = 1;; at++) {
+      CHECK(copy_database(base, path));
+      fault_calls = 0;
+      fault_at = at;
+      sqlite3 *db = NULL;
+      int rc = evolu_codec_open(path, &db, fault_codec_vfs_name, key, 0);
+      if (rc == SQLITE_OK)
+        rc = sqlite3_exec(db,
+                          "select count(*) from t where v like 'x%'; update t "
+                          "set v = 'faulted' || id",
+                          NULL, NULL, NULL);
+      evolu_codec_failure failure = {EVOLU_CODEC_FAILURE_NONE, 0};
+      if (db != NULL) evolu_codec_take_failure(db, &failure);
+      int closed = sqlite3_close(db);
+      int is_reached = fault_calls >= at;
+      fault_at = 0;
+      if (!is_reached) {
+        CHECK_EQ_INT(rc, SQLITE_OK);
+        CHECK_EQ_INT(closed, SQLITE_OK);
+        break;
+      }
+      failures++;
+      if (!(rc == SQLITE_OK || (rc & 0xff) == SQLITE_IOERR ||
+            rc == SQLITE_CANTOPEN) ||
+          failure.type != EVOLU_CODEC_FAILURE_NONE ||
+          !is_before_or_after_faults(path, key)) {
+        char message[128];
+        snprintf(message, sizeof message, "case %zu, call %d: %d, failure %d",
+                 i, at, rc, failure.type);
+        test_fail(__FILE__, __LINE__, message);
+        return;
+      }
+    }
+    CHECK(failures > 0);
+  }
+  remove_database(base);
+  remove_database(path);
+}
+
+/*
+ * A connection opened while the database was empty reads page 1 whole at
+ * SQLite's default page size, then decrypts it at its own: each call of the
+ * inner file's that fails meanwhile fails the read, never as a codec failure,
+ * and the next one reads. SQLite reports some of those failures as
+ * SQLITE_ERROR, since a schema it can't read has no table t.
+ */
+static void codec_reader_of_another_page_size_fails_cleanly_when_a_read_fails(
+    void) {
+  CHECK(set_up());
+  CHECK(register_fault_vfs());
+  char path[512];
+  path_of(path, "empty-open-faults.db");
+  int failures = 0;
+  for (int at = 1;; at++) {
+    remove_database(path);
+    sqlite3 *reader = NULL;
+    sqlite3 *writer = NULL;
+    CHECK_EQ_INT(
+        evolu_codec_open(path, &reader, fault_codec_vfs_name, test_key, 0),
+        SQLITE_OK);
+    CHECK_EQ_INT(open_db(path, test_key, &writer), SQLITE_OK);
+    CHECK_EQ_INT(sqlite3_exec(writer, "pragma page_size = 16384", NULL, NULL,
+                              NULL),
+                 SQLITE_OK);
+    CHECK_EQ_INT(create_rows(writer, 5), SQLITE_OK);
+    CHECK_EQ_INT(sqlite3_close(writer), SQLITE_OK);
+    fault_calls = 0;
+    fault_at = at;
+    long long rows = query_int(reader, "select count(*) from t");
+    int is_reached = fault_calls >= at;
+    fault_at = 0;
+    evolu_codec_failure failure;
+    CHECK_EQ_INT(evolu_codec_take_failure(reader, &failure), SQLITE_OK);
+    long long rows_after = query_int(reader, "select count(*) from t");
+    CHECK_EQ_INT(sqlite3_close(reader), SQLITE_OK);
+    CHECK_EQ_INT(rows_after, 5);
+    CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_NONE);
+    if (!is_reached) {
+      CHECK_EQ_INT(rows, 5);
+      break;
+    }
+    failures++;
+    CHECK_EQ_INT(rows, -1);
+  }
+  CHECK(failures > 0);
+  remove_database(path);
+}
+
+/*
+ * Opening a database, with SQLite's allocations failing from the n-th on for
+ * every n until one opens whole, fails with SQLITE_NOMEM and leaves the
+ * database as it was, whether it's new, existing, plaintext or with a hot
+ * journal. So do the refusals of the pragmas, whose messages SQLite
+ * allocates.
+ */
+static void codec_fails_cleanly_when_sqlite_cant_allocate(void) {
+  CHECK(set_up());
+  static const struct {
+    const uint8_t *key;
+    int is_new;
+    int is_hot;
+  } cases[] = {
+      {test_key, 1, 0}, {test_key, 0, 0}, {NULL, 0, 0}, {test_key, 0, 1}};
+  char base[512];
+  char path[512];
+  path_of(base, "sqlite-allocations-base.db");
+  path_of(path, "sqlite-allocations.db");
+  for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+    const uint8_t *key = cases[i].key;
+    remove_database(base);
+    if (!cases[i].is_new)
+      CHECK(create_fault_base(base, key, cases[i].is_hot, 0));
+    for (int allowed = 0;; allowed++) {
+      if (cases[i].is_new) remove_database(path);
+      else CHECK(copy_database(base, path));
+      sqlite3 *db = NULL;
+      test_sqlite_allocations_left = allowed;
+      int rc = open_db(path, key, &db);
+      int is_exhausted = test_sqlite_allocations_left == -2;
+      test_sqlite_allocations_left = -1;
+      sqlite3_close(db);
+      if (!is_exhausted) {
+        CHECK_EQ_INT(rc, SQLITE_OK);
+        break;
+      }
+      if ((rc & 0xff) != SQLITE_NOMEM ||
+          (!cases[i].is_new && !is_before_or_after_faults(path, key))) {
+        char message[128];
+        snprintf(message, sizeof message, "case %zu, allocation %d: %d", i,
+                 allowed, rc);
+        test_fail(__FILE__, __LINE__, message);
+        return;
+      }
+    }
+  }
+
+  static const char *const refused[] = {"pragma key = 'x'",
+                                        "pragma secure_delete = off"};
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  for (size_t i = 0; i < sizeof refused / sizeof refused[0]; i++)
+    for (int allowed = 0;; allowed++) {
+      test_sqlite_allocations_left = allowed;
+      int rc = sqlite3_exec(db, refused[i], NULL, NULL, NULL);
+      int is_exhausted = test_sqlite_allocations_left == -2;
+      test_sqlite_allocations_left = -1;
+      if (!is_exhausted) {
+        CHECK_EQ_INT(rc, SQLITE_ERROR);
+        break;
+      }
+      CHECK_EQ_INT(rc, SQLITE_NOMEM);
+    }
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  remove_database(base);
+  remove_database(path);
+}
+
+/*
+ * The codec refuses reads and writes SQLite never makes: of a whole page at a
+ * negative offset or past page 4294967295, where no page is, including the
+ * offsets whose page number, cut to 32 bits, would be page 4294967295 or page
+ * 1, and reads of part of page 1 past its first 100 bytes. A read of a whole
+ * page past the end of the file reads zeros, short, as SQLite expects of a
+ * file.
+ */
+static void
+codec_refuses_reads_and_writes_where_no_page_is_and_reads_zeros_past_the_end(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "no-page.db");
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 3), SQLITE_OK);
+  int page_size = (int)query_int(db, "pragma page_size");
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  char copy[512];
+  path_of(copy, "no-page-copy.db");
+  CHECK(copy_file(path, copy));
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  sqlite3_file *file = database_file(db);
+  static uint8_t page[65536];
+  static const uint8_t zeros[65536];
+  const struct {
+    int amount;
+    sqlite3_int64 offset;
+  } refused[] = {{page_size, -page_size},
+                 {page_size, -2 * (sqlite3_int64)page_size},
+                 {page_size, (sqlite3_int64)0xffffffff * page_size},
+                 {page_size, (sqlite3_int64)0x100000000 * page_size},
+                 {20, 90}};
+  for (size_t i = 0; i < sizeof refused / sizeof refused[0]; i++) {
+    memset(page, 1, sizeof page);
+    CHECK_EQ_INT(file->pMethods->xRead(file, page, refused[i].amount,
+                                       refused[i].offset),
+                 SQLITE_IOERR_READ);
+    CHECK_EQ_BYTES(page, zeros, (size_t)refused[i].amount);
+    evolu_codec_failure failure;
+    CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+    CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED);
+    if (refused[i].amount != page_size) continue;
+    CHECK_EQ_INT(file->pMethods->xWrite(file, page, page_size,
+                                        refused[i].offset),
+                 SQLITE_IOERR_WRITE);
+    CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+    CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED);
+  }
+  CHECK(same_files(path, copy));
+  memset(page, 1, sizeof page);
+  CHECK_EQ_INT(file->pMethods->xRead(file, page, page_size,
+                                     (sqlite3_int64)page_size * 1000),
+               SQLITE_IOERR_SHORT_READ);
+  CHECK_EQ_BYTES(page, zeros, (size_t)page_size);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  remove_database(path);
+  remove_database(copy);
+}
+
+/*
+ * A page 1 whose write format version, byte 19, isn't 1, as for WAL, is
+ * refused like one whose read format version, byte 18, isn't.
+ */
+static void codec_refuses_page_1_with_a_write_format_version_other_than_1(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  char copy[512];
+  path_of(path, "write-version.db");
+  path_of(copy, "write-version-copy.db");
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 3), SQLITE_OK);
+  int page_size = (int)query_int(db, "pragma page_size");
+  CHECK(copy_file(path, copy));
+  sqlite3_file *file = database_file(db);
+  static uint8_t page[65536];
+  CHECK_EQ_INT(file->pMethods->xRead(file, page, page_size, 0), SQLITE_OK);
+  CHECK_EQ_INT(page[18], 1);
+  page[19] = 2;
+  CHECK_EQ_INT(file->pMethods->xWrite(file, page, page_size, 0),
+               SQLITE_IOERR_WRITE);
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+  CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED);
+  CHECK(same_files(path, copy));
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  remove_database(path);
+  remove_database(copy);
+}
+
+/*
+ * An open that fails, as in a missing directory, still gives the connection,
+ * which the caller closes, but SQLite opened no database file for it, so it
+ * has no failure to take, keyed or not.
+ */
+static void codec_failed_open_has_no_failure_to_take(void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "missing-directory/missing.db");
+  const uint8_t *const keys[] = {test_key, NULL};
+  for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
+    sqlite3 *db = NULL;
+    int rc = open_db(path, keys[i], &db);
+    evolu_codec_failure failure;
+    int taken = db == NULL ? -1 : evolu_codec_take_failure(db, &failure);
+    int closed = sqlite3_close(db);
+    CHECK_EQ_INT(rc, SQLITE_CANTOPEN);
+    CHECK_EQ_INT(taken, SQLITE_NOTFOUND);
+    CHECK_EQ_INT(closed, SQLITE_OK);
+  }
+}
+
+/* Only a connection a codec VFS opened has failures to take. */
+static void codec_take_failure_needs_a_codec_connection(void) {
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(NULL, &failure), SQLITE_MISUSE);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(sqlite3_open_v2(":memory:", &db, SQLITE_OPEN_READWRITE, NULL),
+               SQLITE_OK);
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_NOTFOUND);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+}
+
+/*
+ * A VFS over the default one that reports a time, as an inner VFS of
+ * iVersion 1, or of iVersion 2 without xCurrentTimeInt64, does, and counts
+ * its sleeps. The iVersion 1 one has an xCurrentTimeInt64, which only a
+ * caller that ignores iVersion calls, so it counts its calls too.
+ */
+static double clock_days;
+static int clock_int64_calls;
+static int clock_sleeps;
+
+static int clock_current_time(sqlite3_vfs *vfs, double *now) {
+  (void)vfs;
+  *now = clock_days;
+  return SQLITE_OK;
+}
+
+static int clock_current_time_int64(sqlite3_vfs *vfs, sqlite3_int64 *now) {
+  (void)vfs;
+  (void)now;
+  clock_int64_calls++;
+  return SQLITE_ERROR;
+}
+
+static int clock_sleep(sqlite3_vfs *vfs, int microseconds) {
+  (void)vfs;
+  clock_sleeps++;
+  sqlite3_vfs *inner = sqlite3_vfs_find(NULL);
+  return inner->xSleep(inner, microseconds);
+}
+
+/*
+ * The codec VFS forwards to its inner VFS what SQLite asks of a VFS: the
+ * time, which SQLite reads through the connection's VFS for 'now', from an
+ * inner VFS without xCurrentTimeInt64 too, whose days out of a 64-bit
+ * millisecond count's range give 0; the sleep of a busy timeout; and the
+ * randomness and the time as a Julian day, which SQLite asks only of the
+ * default VFS.
+ */
+static void codec_vfs_forwards_time_sleep_and_randomness(void) {
+  CHECK(set_up());
+  static sqlite3_vfs clocks[2];
+  static const char clock_names[2][40] = {"evolu-codec-test-clock-1",
+                                          "evolu-codec-test-clock-2"};
+  static const char clock_codec_vfs_names[2][40] = {
+      "evolu-codec-test-over-clock-1", "evolu-codec-test-over-clock-2"};
+  for (int i = 0; i < 2; i++) {
+    if (sqlite3_vfs_find(clock_names[i]) == NULL) {
+      clocks[i] = *sqlite3_vfs_find(NULL);
+      clocks[i].zName = clock_names[i];
+      clocks[i].pNext = NULL;
+      clocks[i].iVersion = i + 1;
+      clocks[i].xCurrentTime = clock_current_time;
+      clocks[i].xCurrentTimeInt64 = i == 0 ? clock_current_time_int64 : NULL;
+      clocks[i].xSleep = clock_sleep;
+      CHECK_EQ_INT(sqlite3_vfs_register(&clocks[i], 0), SQLITE_OK);
+    }
+    CHECK_EQ_INT(evolu_codec_register(clock_codec_vfs_names[i], clock_names[i]),
+                 SQLITE_OK);
+    sqlite3_vfs *codec = sqlite3_vfs_find(clock_codec_vfs_names[i]);
+    // 2000-01-01, then days past what a 64-bit millisecond count holds.
+    static const struct {
+      double days;
+      sqlite3_int64 milliseconds;
+    } times[] = {{2451544.5, 211813444800000LL}, {1e300, 0}, {-1e300, 0}};
+    clock_int64_calls = 0;
+    for (size_t j = 0; j < sizeof times / sizeof times[0]; j++) {
+      clock_days = times[j].days;
+      sqlite3_int64 now = -1;
+      CHECK_EQ_INT(codec->xCurrentTimeInt64(codec, &now), SQLITE_OK);
+      CHECK_EQ_INT(now, times[j].milliseconds);
+    }
+    CHECK_EQ_INT(clock_int64_calls, 0);
+  }
+
+  char path[512];
+  path_of(path, "vfs-methods.db");
+  remove_database(path);
+  sqlite3 *db = NULL;
+  sqlite3 *other = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 3), SQLITE_OK);
+  long long seconds = query_int(db, "select unixepoch()");
+  CHECK(seconds >= (long long)time(NULL) - 1 &&
+        seconds <= (long long)time(NULL) + 1);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  // Through the codec over a clock, whose sleeps are counted.
+  CHECK_EQ_INT(evolu_codec_open(path, &db, clock_codec_vfs_names[1], test_key,
+                                0),
+               SQLITE_OK);
+  CHECK_EQ_INT(evolu_codec_open(path, &other, clock_codec_vfs_names[1],
+                                test_key, 0),
+               SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_exec(other, "begin exclusive", NULL, NULL, NULL),
+               SQLITE_OK);
+  sqlite3_busy_timeout(db, 5);
+  clock_sleeps = 0;
+  CHECK_EQ_INT(query_int(db, "select count(*) from t"), -1);
+  CHECK_EQ_INT(sqlite3_errcode(db), SQLITE_BUSY);
+  CHECK(clock_sleeps > 0);
+  CHECK_EQ_INT(sqlite3_close(other), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  remove_database(path);
+
+  sqlite3_vfs *codec = sqlite3_vfs_find(vfs_name);
+  uint8_t random[32] = {0};
+  CHECK_EQ_INT(codec->xRandomness(codec, (int)sizeof random, (char *)random),
+               (int)sizeof random);
+  static const uint8_t zeros[32];
+  CHECK(memcmp(random, zeros, sizeof random) != 0);
+  double days = 0;
+  CHECK_EQ_INT(codec->xCurrentTime(codec, &days), SQLITE_OK);
+  CHECK(days > 2451544.5);
+}
+
+/* Cuts the file at path to its first size bytes. */
+static int truncate_file(const char *path, size_t size) {
+  size_t old_size;
+  uint8_t *bytes = read_file(path, &old_size);
+  int ok = bytes != NULL && size <= old_size && write_file(path, bytes, size);
+  free(bytes);
+  return ok;
+}
+
+/*
+ * A database cut within page 1, which SQLite reads whole, fails as not a
+ * database rather than reading zeros past the cut.
+ */
+static void codec_database_cut_within_page_1_fails_as_not_a_database(void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "cut-page-1.db");
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 3), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK(truncate_file(path, 1000));
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_NOTADB);
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+  CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION);
+  CHECK_EQ_INT(failure.page_number, 1);
+  sqlite3_close(db);
+  remove_database(path);
+}
+
+/*
+ * A journal record's page the file holds only part of, as a crash can cut
+ * the end of a journal, reads as zeros, short, which ends SQLite's rollback.
+ */
+static void codec_journal_page_cut_short_reads_zeros_short(void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "cut-record.db");
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 5), SQLITE_OK);
+  int page_size = (int)query_int(db, "pragma page_size");
+  CHECK_EQ_INT(sqlite3_exec(db, "begin; update t set v = 'updated' || id",
+                            NULL, NULL, NULL),
+               SQLITE_OK);
+  sqlite3_file *journal = NULL;
+  CHECK_EQ_INT(sqlite3_file_control(db, "main", SQLITE_FCNTL_JOURNAL_POINTER,
+                                    &journal),
+               SQLITE_OK);
+  sqlite3_int64 size = 0;
+  CHECK_EQ_INT(journal->pMethods->xFileSize(journal, &size), SQLITE_OK);
+  // Read as a record whose page starts 4 bytes before the end of a page that
+  // ends the file: its number, then its page, past the end.
+  uint8_t number[4];
+  CHECK_EQ_INT(journal->pMethods->xRead(journal, number, 4, size - page_size),
+               SQLITE_OK);
+  CHECK((number[0] | number[1] | number[2] | number[3]) != 0);
+  static uint8_t page[65536];
+  static const uint8_t zeros[65536];
+  memset(page, 1, sizeof page);
+  CHECK_EQ_INT(
+      journal->pMethods->xRead(journal, page, page_size, size - page_size + 4),
+      SQLITE_IOERR_SHORT_READ);
+  CHECK_EQ_BYTES(page, zeros, (size_t)page_size);
+  CHECK_EQ_INT(sqlite3_exec(db, "rollback", NULL, NULL, NULL), SQLITE_OK);
+  CHECK_EQ_INT(query_int(db, "select count(*) from t where v like 'evolu-%'"),
+               5);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  remove_database(path);
+}
+
+/*
+ * A record's checksum the file holds only part of, as a crash can cut the end
+ * of a journal, reads short, with zeros past the cut, as xRead must.
+ */
+static void codec_journal_checksum_cut_short_reads_zeros_past_the_cut(void) {
+  CHECK(set_up());
+  char path[512];
+  char journal_path[600];
+  path_of(path, "cut-checksum.db");
+  snprintf(journal_path, sizeof journal_path, "%s-journal", path);
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 5), SQLITE_OK);
+  int page_size = (int)query_int(db, "pragma page_size");
+  CHECK_EQ_INT(sqlite3_exec(db, "begin; update t set v = 'updated' || id",
+                            NULL, NULL, NULL),
+               SQLITE_OK);
+  sqlite3_file *journal = NULL;
+  CHECK_EQ_INT(sqlite3_file_control(db, "main", SQLITE_FCNTL_JOURNAL_POINTER,
+                                    &journal),
+               SQLITE_OK);
+  // The first record follows the first header, a sector long.
+  sqlite3_int64 at = read_be32_at(journal_path, 20);
+  CHECK(truncate_file(journal_path, (size_t)(at + 4 + page_size + 2)));
+  uint8_t number[4];
+  static uint8_t page[65536];
+  uint8_t checksum[4] = {1, 1, 1, 1};
+  CHECK_EQ_INT(journal->pMethods->xRead(journal, number, 4, at), SQLITE_OK);
+  CHECK_EQ_INT(journal->pMethods->xRead(journal, page, page_size, at + 4),
+               SQLITE_OK);
+  CHECK_EQ_INT(
+      journal->pMethods->xRead(journal, checksum, 4, at + 4 + page_size),
+      SQLITE_IOERR_SHORT_READ);
+  CHECK_EQ_INT(checksum[2] | checksum[3], 0);
+  sqlite3_exec(db, "rollback", NULL, NULL, NULL);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  remove_database(path);
+}
+
+/*
+ * Hot journals of a database whose first bytes a crash tore, without a page-1
+ * record, in shapes that end the check's walk where SQLite's rollback stops:
+ * as it is, ending at a header that isn't one; cut after its first segment's
+ * records, ending where the next header would start, which a walk past it
+ * would read as an I/O error; with a count past those records, likewise; and
+ * with headers SQLite reads as no journal: cut short, of a sector or page
+ * size SQLite refuses, or with a count SQLite computes from a file without a
+ * whole record. Each ends as without a page-1 record: a plaintext database's
+ * first bytes are refused, and an encrypted database's are no salt, so
+ * SQLite's rollback of its records fails to authenticate them, and without a
+ * rollback, page 1 fails.
+ */
+static void codec_hot_journal_check_of_malformed_journals_ends_as_without_a_page_1_record(
+    void) {
+  CHECK(set_up());
+  enum { AS_IS, ONE_SEGMENT, PAST_RECORDS, CUT_HEADER, SECTOR_16,
+         SECTOR_128K, SECTOR_1000, PAGE_1000, NO_WHOLE_RECORD };
+  char path[512];
+  char journal[600];
+  path_of(path, "walked.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  for (int is_keyed = 0; is_keyed < 2; is_keyed++)
+    for (int shape = AS_IS; shape <= NO_WHOLE_RECORD; shape++) {
+      const uint8_t *key = is_keyed ? test_key : NULL;
+      CHECK_EQ_INT(create_crashed_database(path, key), SQLITE_OK);
+      CHECK(fill_bytes(path, 0, 16, 0));
+      uint32_t sector_size = read_be32_at(journal, 20);
+      uint32_t records = read_be32_at(journal, 8);
+      size_t first_segment =
+          sector_size + records * (read_be32_at(journal, 24) + 8);
+      int ok = 1;
+      if (shape == ONE_SEGMENT || shape == PAST_RECORDS)
+        ok = truncate_file(journal, first_segment);
+      if (shape == PAST_RECORDS)
+        ok = ok && write_be32_at(journal, 8, records + 3);
+      if (shape == CUT_HEADER) ok = truncate_file(journal, 24);
+      if (shape == SECTOR_16) ok = write_be32_at(journal, 20, 16);
+      if (shape == SECTOR_128K) ok = write_be32_at(journal, 20, 131072);
+      if (shape == SECTOR_1000) ok = write_be32_at(journal, 20, 1000);
+      if (shape == PAGE_1000) ok = write_be32_at(journal, 24, 1000);
+      if (shape == NO_WHOLE_RECORD)
+        ok = write_be32_at(journal, 8, 0xffffffff) &&
+             truncate_file(journal, sector_size);
+      CHECK(ok);
+      sqlite3 *db = NULL;
+      int rc = open_db(path, key, &db);
+      evolu_codec_failure failure = {EVOLU_CODEC_FAILURE_NONE, 0};
+      if (db != NULL) evolu_codec_take_failure(db, &failure);
+      sqlite3_close(db);
+      int expected = !is_keyed ? SQLITE_CANTOPEN
+                     : shape <= PAST_RECORDS ? SQLITE_CORRUPT
+                                             : SQLITE_NOTADB;
+      if (rc != expected ||
+          failure.type != (is_keyed
+                               ? EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION
+                               : EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED)) {
+        char message[128];
+        snprintf(message, sizeof message, "keyed %d, shape %d: %d, failure %d",
+                 is_keyed, shape, rc, failure.type);
+        test_fail(__FILE__, __LINE__, message);
+        return;
+      }
+    }
+  remove_database(path);
+}
+
+/*
+ * SQLite compares no checksum of a record whose page is past the database's
+ * original size, which the journal's first header gives, nor does the check
+ * of a hot journal, so such a record before the page-1 record that restores a
+ * torn salt doesn't end the check, even with a stale checksum. With a header
+ * that says 2 pages, the first record's page is past it, and its checksum,
+ * flipped, is stale: the check still takes the page-1 record's salt, and then
+ * SQLite, which cuts the database to 2 pages, finds it corrupt itself.
+ */
+static void codec_hot_journal_check_skips_checksums_past_the_original_size(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  char journal[600];
+  path_of(path, "past-original.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  CHECK_EQ_INT(create_crashed_database_with(
+                   path, test_key,
+                   "update t set v = 'early' || id where id <= 3; pragma "
+                   "user_version = 7; update t set v = 'updated' || id"),
+               SQLITE_OK);
+  CHECK(fill_bytes(path, 0, 16, 0));
+  uint32_t sector_size = read_be32_at(journal, 20);
+  uint32_t page_size = read_be32_at(journal, 24);
+  CHECK(read_be32_at(journal, 16) > 2);
+  CHECK(write_be32_at(journal, 16, 2));
+  CHECK(read_be32_at(journal, sector_size) > 2);
+  CHECK(flip_bit(journal, sector_size + 4 + page_size));
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_CORRUPT);
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+  CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_NONE);
+  sqlite3_close(db);
+  remove_database(path);
+}
+
+/*
+ * The codec VFS opens a super-journal, which a hot journal of a transaction
+ * over attached databases names, as its inner VFS does.
+ */
+static void codec_vfs_opens_a_super_journal_as_its_inner_vfs_does(void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "super-journal");
+  static const uint8_t names[8] = "a-journ";
+  CHECK(write_file(path, names, sizeof names));
+  sqlite3_vfs *codec = sqlite3_vfs_find(vfs_name);
+  sqlite3_file *file = calloc(1, (size_t)codec->szOsFile);
+  CHECK(file != NULL);
+  int out_flags = 0;
+  int rc = codec->xOpen(codec, path, file,
+                        SQLITE_OPEN_READONLY | SQLITE_OPEN_SUPER_JOURNAL,
+                        &out_flags);
+  uint8_t read[8] = {0};
+  if (rc == SQLITE_OK) {
+    rc = file->pMethods->xRead(file, read, sizeof read, 0);
+    file->pMethods->xClose(file);
+  }
+  free(file);
+  unlink(path);
+  CHECK_EQ_INT(rc, SQLITE_OK);
+  CHECK_EQ_BYTES(read, names, sizeof names);
+}
+
+/* A VFS over a codec VFS, whose files wrap the codec's without faults. */
+static sqlite3_vfs *outer_inner;
+
+static int outer_open(sqlite3_vfs *vfs, sqlite3_filename name,
+                      sqlite3_file *file, int flags, int *out_flags) {
+  (void)vfs;
+  FaultFile *outer = (FaultFile *)file;
+  outer->inner = (sqlite3_file *)(outer + 1);
+  int rc = outer_inner->xOpen(outer_inner, name, outer->inner, flags,
+                              out_flags);
+  if (rc != SQLITE_OK) {
+    if (outer->inner->pMethods != NULL)
+      outer->inner->pMethods->xClose(outer->inner);
+    outer->base.pMethods = NULL;
+    return rc;
+  }
+  outer->base.pMethods = &fault_io_methods;
+  return SQLITE_OK;
+}
+
+/*
+ * A VFS over a codec VFS reads a database through it, but writes none: the
+ * codec opens a journal only for a database file it opened itself, whose
+ * codec the journal's records use, and SQLite's database file is the outer
+ * VFS's.
+ */
+static void codec_vfs_under_another_vfs_opens_no_journal(void) {
+  CHECK(set_up());
+  CHECK(register_fault_vfs());
+  static const char outer_name[] = "evolu-codec-test-outer";
+  static sqlite3_vfs outer;
+  if (sqlite3_vfs_find(outer_name) == NULL) {
+    outer_inner = sqlite3_vfs_find(vfs_name);
+    outer = *sqlite3_vfs_find(NULL);
+    outer.zName = outer_name;
+    outer.pNext = NULL;
+    outer.szOsFile = (int)sizeof(FaultFile) + outer_inner->szOsFile;
+    outer.xOpen = outer_open;
+    CHECK_EQ_INT(sqlite3_vfs_register(&outer, 0), SQLITE_OK);
+  }
+  char path[512];
+  path_of(path, "outer.db");
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, NULL, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 3), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE, outer_name),
+               SQLITE_OK);
+  CHECK_EQ_INT(query_int(db, "select count(*) from t"), 3);
+  int rc = sqlite3_exec(db, "insert into t (v) values ('x')", NULL, NULL, NULL);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  remove_database(path);
+  CHECK_EQ_INT(rc, SQLITE_CANTOPEN);
+}
+
+/*
+ * A journal SQLite couldn't delete, as over an inner VFS without xDelete, of
+ * a database that's still empty, holds nothing to check: the database writes
+ * over it with a random salt, not the zeros its empty file reads as. In
+ * journal_mode = PERSIST, since without xDelete, SQLite would find each
+ * committed journal hot.
+ */
+static void codec_kept_journal_of_an_empty_database_holds_nothing_to_check(
+    void) {
+  CHECK(set_up());
+  CHECK(register_minimal_vfs());
+  char path[512];
+  char journal[600];
+  path_of(path, "empty-kept-journal.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  remove_database(path);
+  static uint8_t junk[600];
+  memset(junk, 1, sizeof junk);
+  CHECK(write_file(path, junk, 0));
+  CHECK(write_file(journal, junk, sizeof junk));
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(
+      evolu_codec_open(path, &db, minimal_codec_vfs_name, test_key, 0),
+      SQLITE_OK);
+  int rc = sqlite3_exec(db, "pragma journal_mode = persist", NULL, NULL, NULL);
+  if (rc == SQLITE_OK) rc = create_rows(db, 3);
+  long long rows = query_int(db, "select count(*) from t");
+  sqlite3_close(db);
+  size_t size = 0;
+  uint8_t *bytes = read_file(path, &size);
+  static const uint8_t zeros[16];
+  int is_zero_salt =
+      bytes == NULL || size < 16 || memcmp(bytes, zeros, sizeof zeros) == 0;
+  free(bytes);
+  remove_database(path);
+  CHECK_EQ_INT(rc, SQLITE_OK);
+  CHECK_EQ_INT(rows, 3);
+  CHECK(!is_zero_salt);
+}
+
+/*
+ * A journal shorter than its first header plays nothing back, so the
+ * database opens as it was. A database cut to fewer bytes than its salt
+ * takes the salt from its hot journal's page-1 record, which the rollback
+ * restores.
+ */
+static void codec_journal_or_database_shorter_than_their_headers(void) {
+  CHECK(set_up());
+  char path[512];
+  char journal[600];
+  path_of(path, "short-header.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 3), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  static const uint8_t magic[12] = {0xd9, 0xd5, 0x05, 0xf9,
+                                    0x20, 0xa1, 0x63, 0xd7};
+  CHECK(write_file(journal, magic, sizeof magic));
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(query_int(db, "select count(*) from t"), 3);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+
+  CHECK(create_fault_base(path, test_key, 1, 0));
+  CHECK(truncate_file(path, 8));
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(query_int(db, "pragma user_version"), 0);
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+  CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_NONE);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  remove_database(path);
+}
+
 /* Removes every database the tests create. */
 static void remove_databases(void) {
   static const char *const names[] = {
@@ -3661,6 +4742,7 @@ static void remove_databases(void) {
       "tampered-size.db",  "both-flags.db",       "not-codec-vfs.db",
       "other-reads.db",         "recreated.db",
       "recreated-source.db", "partial-writes.db",   "partial-writes-copy.db",
+      "changed-record.db", "changed-record-source.db",
       "caller-key.db",     "attached.db",           "stale-salt.db",
       "stale-salt-source.db", "stale-salt-other.db", "no-page-size.db",
       "crash-work.db",     "crash-copy.db",         "skiplist-snapshot.db",
@@ -3674,7 +4756,14 @@ static void remove_databases(void) {
       "wal-backup-source.db", "stale-tail-work.db", "stale-tail-copy.db",
       "kept-journal-crash.db", "plaintext-tail.db", "own-allocations.db",
       "own-allocations-new.db", "own-allocations-hot.db",
-      "own-allocations-hot-copy.db"};
+      "own-allocations-hot-copy.db", "fault-base.db", "fault.db",
+      "sqlite-allocations-base.db", "sqlite-allocations.db", "no-page.db",
+      "no-page-copy.db",
+      "write-version.db", "write-version-copy.db", "vfs-methods.db",
+      "cut-page-1.db", "cut-record.db", "walked.db", "past-original.db",
+      "cut-checksum.db",
+      "super-journal", "outer.db", "empty-kept-journal.db",
+      "short-header.db", "empty-open-faults.db"};
   char path[512];
   for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
     path_of(path, names[i]);
@@ -3695,6 +4784,23 @@ static void codec_tests_remove_every_database_they_create(void) {
 
 void codec_suite(void) {
   RUN(codec_register_is_idempotent_and_needs_the_inner_vfs);
+  RUN(codec_fails_cleanly_whichever_inner_call_fails);
+  RUN(codec_fails_cleanly_when_sqlite_cant_allocate);
+  RUN(codec_reader_of_another_page_size_fails_cleanly_when_a_read_fails);
+  RUN(codec_refuses_reads_and_writes_where_no_page_is_and_reads_zeros_past_the_end);
+  RUN(codec_refuses_page_1_with_a_write_format_version_other_than_1);
+  RUN(codec_failed_open_has_no_failure_to_take);
+  RUN(codec_take_failure_needs_a_codec_connection);
+  RUN(codec_vfs_forwards_time_sleep_and_randomness);
+  RUN(codec_database_cut_within_page_1_fails_as_not_a_database);
+  RUN(codec_journal_page_cut_short_reads_zeros_short);
+  RUN(codec_journal_checksum_cut_short_reads_zeros_past_the_cut);
+  RUN(codec_hot_journal_check_of_malformed_journals_ends_as_without_a_page_1_record);
+  RUN(codec_hot_journal_check_skips_checksums_past_the_original_size);
+  RUN(codec_vfs_opens_a_super_journal_as_its_inner_vfs_does);
+  RUN(codec_vfs_under_another_vfs_opens_no_journal);
+  RUN(codec_kept_journal_of_an_empty_database_holds_nothing_to_check);
+  RUN(codec_journal_or_database_shorter_than_their_headers);
   RUN(codec_inner_vfs_may_lack_optional_methods);
   RUN(codec_database_never_switches_to_wal);
   RUN(codec_database_refuses_a_backup_from_a_wal_database);
@@ -3730,6 +4836,7 @@ void codec_suite(void) {
   RUN(codec_refuses_other_reads_before_reading);
   RUN(codec_open_refuses_a_vfs_that_isnt_a_codec_vfs);
   RUN(codec_proven_key_takes_a_recreated_databases_salt_for_its_hot_journal);
+  RUN(codec_hot_journal_check_keeps_a_journal_whose_page_1_record_changed);
   RUN(codec_hot_journal_takes_the_salt_of_page_1_before_a_stale_record);
   RUN(codec_rollback_keeps_the_salt_past_a_stale_page_1_record);
   RUN(codec_rollback_keeps_the_salt_past_a_page_1_record_left_unsynced);

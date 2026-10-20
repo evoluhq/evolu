@@ -82,10 +82,19 @@ for a post, run `node scripts/code-image.mts --help`.
 - After changing `packages/sqlite-core`, run the affected C tests with
   `node packages/sqlite-core/scripts/test.mts <test-name-prefix>` and the
   affected TypeScript test files with `pnpm test:node`, then
-  `pnpm test:sqlite-core` once. It needs
-  clang, make, unzip and zip, on Linux also OpenSSL's development headers and
-  clang's shared AddressSanitizer runtime, and network access the first time,
-  to fetch the pinned SQLite source and expo-sqlite releases.
+  `pnpm test:sqlite-core` once, which fails when the C tests cover less than
+  every line, branch, or function of `src` that the host compiles. On a CPU
+  that lacks a hardware crypto feature its architecture's paths use, such as
+  an arm64 one without SHA-512 or DIT, it allows gaps only in the crypto
+  layer's files, and on CI, the CPU must report the features its runner
+  declares in `.github/workflows/checks.yaml`.
+  `node packages/sqlite-core/scripts/test.mts --coverage` lists the C gaps.
+  The tests need clang with `llvm-profdata` and `llvm-cov`, which Xcode
+  installs, and on Ubuntu the llvm package (installed with clang unless
+  Recommends are skipped), make, unzip and zip, on Linux also OpenSSL's
+  development headers and clang's shared AddressSanitizer runtime, and network
+  access the first time, to fetch the pinned SQLite source and expo-sqlite
+  releases.
 - After changing browser APIs, platform-sensitive behavior, polyfills, workers,
   or browser test configuration, run the affected browser projects with
   `pnpm exec vitest run --project=<project> <test-files>`, which runs them in

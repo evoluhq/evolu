@@ -44,9 +44,9 @@ A plain database, such as the relay's, whose data is already encrypted, needs no
 
 ## Tests
 
-Run `pnpm test:sqlite-core` in the repository root. It needs [clang](https://clang.llvm.org), make, unzip and zip, on Linux also OpenSSL's development headers and clang's shared AddressSanitizer runtime. The first run needs network access to fetch the pinned SQLite source and expo-sqlite releases into `sqlite-cache/`, and compiles SQLite once. Compiled objects are cached in `build/`, keyed by their sources, flags and compiler. `SQLITE_CORE_CACHE` and `SQLITE_CORE_BUILD` choose other directories.
+Run `pnpm test:sqlite-core` in the repository root. It needs [clang](https://clang.llvm.org) with its `llvm-profdata` and `llvm-cov`, which Xcode installs, and on Ubuntu the llvm package (installed with clang unless Recommends are skipped), make, unzip and zip, on Linux also OpenSSL's development headers and clang's shared AddressSanitizer runtime. The first run needs network access to fetch the pinned SQLite source and expo-sqlite releases into `sqlite-cache/`, and compiles SQLite once. Compiled objects are cached in `build/`, keyed by their sources, flags and compiler. `SQLITE_CORE_CACHE` and `SQLITE_CORE_BUILD` choose other directories.
 
-The C tests run under AddressSanitizer and UndefinedBehaviorSanitizer, once with hardware crypto and once on the software path. To run the C tests whose names start with a prefix:
+The C tests run under AddressSanitizer and UndefinedBehaviorSanitizer, once with hardware crypto and once on the software path, and together they must cover every line, function and branch of `src/` that the host compiles, which `src/` keeps to the code its architecture and OS can run. That needs a CPU with every hardware crypto feature its architecture's paths use: AES on x86-64, and AES, SHA-512 and DIT on arm64, which Apple silicon has. On another CPU, such as one of GitHub's arm64 Linux runners, which report no DIT, the check allows gaps only in the crypto layer's files and lists them. Each CI runner declares the features its CPU reports in the Checks workflow, and fails when they differ. They make each call of the inner VFS's files, each allocation of the core's own and each of SQLite's fail in turn, so error paths run too. To run the C tests whose names start with a prefix, and with `--coverage` list what the run left uncovered:
 
 ```sh
 node packages/sqlite-core/scripts/test.mts codec_
@@ -54,7 +54,7 @@ node packages/sqlite-core/scripts/test.mts codec_
 
 The TypeScript tests check the codec against two references that share no code with it: pages encrypted and decrypted with `node:crypto`, and `@evolu/sqlite-wasm` 2.2.4, rolling back each other's hot journals. They build the SQLCipher of expo-sqlite 57.0.4 and 58.0.13 on the host and crash it at every write, and they check the storage functions against `Storage.ts`'s SQL. The addon's tests also run with the sanitizers. Crash tests copy the files as a power loss would leave them before each write of a transaction, for both page-1 layouts, every rollback journal mode, and 512- and 4096-byte sectors, and check that each crash leaves the database wholly before or after the transaction.
 
-The `SQLite core` job of the Checks workflow runs the tests on Linux and macOS.
+The `SQLite core` job of the Checks workflow runs the tests on x86-64 and arm64 Linux and on arm64 macOS.
 
 ## Status
 

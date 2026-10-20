@@ -59,11 +59,12 @@ typedef struct {
   sqlite3_int64 checksum_at;
   /*
    * The sums of the bytes SQLite's checksum samples of that page, encrypted as
-   * stored and decrypted as SQLite has it, valid when has_sums.
+   * stored and decrypted as SQLite has it. SQLite reads or writes a record's
+   * checksum only right after it read or wrote the record's page whole, which
+   * set them.
    */
   uint32_t stored_sum;
   uint32_t plain_sum;
-  int has_sums;
 } JournalRecords;
 
 typedef struct CodecFile CodecFile;
@@ -163,10 +164,7 @@ static void record_failure(CodecFile *database, evolu_codec_failure_type type,
 /* The database's scratch buffer of at least size bytes, or NULL. */
 static uint8_t *scratch_of(CodecFile *database, size_t size) {
   if (database->scratch_size >= size) return database->scratch;
-#ifdef EVOLU_TEST_HOOKS
-  if (evolu_test_allocation_fails()) return NULL;
-#endif
-  uint8_t *scratch = malloc(size);
+  uint8_t *scratch = evolu_calloc(1, size);
   if (scratch == NULL) return NULL;
   free(database->scratch);
   database->scratch = scratch;
@@ -188,8 +186,8 @@ static int read_counted(sqlite3_file *file, void *buffer, int amount,
   sqlite3_int64 size;
   int size_rc = file->pMethods->xFileSize(file, &size);
   if (size_rc != SQLITE_OK) return size_rc;
-  if (size > offset)
-    *count = size - offset < amount ? (int)(size - offset) : amount;
+  // A short read ends at the end of the file, before amount bytes.
+  if (size > offset) *count = (int)(size - offset);
   return rc;
 }
 
@@ -348,14 +346,13 @@ static int read_journal(CodecFile *file, uint8_t *buffer, int amount,
     // A stored checksum, the initializer plus the stored sum, becomes the
     // initializer plus the sum of the page SQLite read, decrypted, which is
     // what SQLite compares it with. That holds exactly when the stored one
-    // matched the stored page, so a stale or torn record still fails.
-    if (count == 4 && records->has_sums && has_stored_checksums(database))
+    // matched the stored page, so a stale or torn record still fails. A short
+    // read keeps the zeros past the end of the file, as xRead must.
+    if (rc == SQLITE_OK && has_stored_checksums(database))
       write_be32(buffer, read_be32(buffer) - records->stored_sum +
                              records->plain_sum);
-    records->has_sums = 0;
     return rc;
   }
-  records->has_sums = 0;
   if (page_number == 0) return rc;
   // A short read ends a journal.
   if (count != amount) {
@@ -378,7 +375,6 @@ static int read_journal(CodecFile *file, uint8_t *buffer, int amount,
                                            buffer, (size_t)amount)) {
     records->stored_sum = stored_sum;
     records->plain_sum = sampled_sum(buffer, amount);
-    records->has_sums = 1;
     return SQLITE_OK;
   }
   memset(buffer, 0, (size_t)amount);
@@ -415,18 +411,17 @@ static int write_page(CodecFile *file, CodecFile *database,
                       sqlite3_int64 offset, uint32_t *stored_sum) {
   uint8_t *output = scratch_of(database, (size_t)amount);
   if (output == NULL) return SQLITE_IOERR_NOMEM;
-  switch (evolu_page_encrypt(database->codec, page_number, page,
-                             (size_t)amount, output)) {
-  case EVOLU_PAGE_OK:
+  evolu_page_result result = evolu_page_encrypt(
+      database->codec, page_number, page, (size_t)amount, output);
+  if (result == EVOLU_PAGE_OK) {
     if (stored_sum != NULL) *stored_sum = sampled_sum(output, amount);
     return file->inner->pMethods->xWrite(file->inner, output, amount, offset);
-  case EVOLU_PAGE_UNSUPPORTED:
-    record_failure(database, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED, 0);
-    return SQLITE_IOERR_WRITE;
-  case EVOLU_PAGE_RANDOM_FAILED:
-    record_failure(database, EVOLU_CODEC_FAILURE_RANDOM, 0);
-    return SQLITE_IOERR_WRITE;
   }
+  record_failure(database,
+                 result == EVOLU_PAGE_RANDOM_FAILED
+                     ? EVOLU_CODEC_FAILURE_RANDOM
+                     : EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED,
+                 0);
   return SQLITE_IOERR_WRITE;
 }
 
@@ -466,19 +461,14 @@ static int codec_write(sqlite3_file *base, const void *buffer, int amount,
         track_journal_record(records, offset, buffer, amount, &is_checksum);
     if (page_number != 0) {
       records->plain_sum = sampled_sum(buffer, amount);
-      int rc = write_page(file, file->database, page_number, buffer, amount,
-                          offset, &records->stored_sum);
-      records->has_sums = rc == SQLITE_OK;
-      return rc;
+      return write_page(file, file->database, page_number, buffer, amount,
+                        offset, &records->stored_sum);
     }
     // A journal's headers and page numbers are stored as they are, and a
     // record's checksum covers its page as stored, as SQLCipher computes it:
     // SQLite's initializer, SQLite's checksum less its sum, plus the stored
     // sum.
-    int is_stored_checksum = is_checksum && records->has_sums &&
-                             has_stored_checksums(file->database);
-    records->has_sums = 0;
-    if (is_stored_checksum) {
+    if (is_checksum && has_stored_checksums(file->database)) {
       uint8_t checksum[4];
       write_be32(checksum, read_be32(buffer) - records->plain_sum +
                                records->stored_sum);
@@ -553,17 +543,16 @@ static int codec_file_control(sqlite3_file *base, int op, void *arg) {
   // value, NULL for a query.
   char **pragma = arg;
   // SQLite would ignore them, so a database keyed through SQL would be stored
-  // in plaintext, with the key in the SQL.
-  if (op == SQLITE_FCNTL_PRAGMA && file->type == SQLITE_OPEN_MAIN_DB &&
-      is_keying_pragma(pragma[1])) {
+  // in plaintext, with the key in the SQL. SQLite sends a pragma only to a
+  // database's file.
+  if (op == SQLITE_FCNTL_PRAGMA && is_keying_pragma(pragma[1])) {
     pragma[0] = sqlite3_mprintf("Databases are keyed only through "
                                 "evolu_codec_open, never through SQL.");
     if (pragma[0] == NULL) return SQLITE_NOMEM;
     record_failure(file, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED, 0);
     return SQLITE_ERROR;
   }
-  if (op == SQLITE_FCNTL_PRAGMA && file->type == SQLITE_OPEN_MAIN_DB &&
-      file->codec != NULL) {
+  if (op == SQLITE_FCNTL_PRAGMA && file->codec != NULL) {
     if (sqlite3_stricmp(pragma[1], "secure_delete") == 0 && pragma[2] != NULL &&
         !is_secure_delete_on(pragma[2])) {
       // SQLite frees the message.
@@ -694,11 +683,11 @@ static int next_journal_record(JournalWalk *walk, uint8_t *page,
     sqlite3_int64 at = (walk->at + walk->sector_size - 1) / walk->sector_size *
                        walk->sector_size;
     if (at + walk->sector_size > walk->size) return SQLITE_DONE;
+    // Within the file, so whole. So are the record's reads below.
     uint8_t header[16];
     rc = read_counted(walk->journal, header, sizeof header, at, &count);
-    if (rc != SQLITE_OK && rc != SQLITE_IOERR_SHORT_READ) return rc;
-    if (count != (int)sizeof header ||
-        memcmp(header, journal_magic, sizeof journal_magic) != 0)
+    if (rc != SQLITE_OK) return rc;
+    if (memcmp(header, journal_magic, sizeof journal_magic) != 0)
       return SQLITE_DONE;
     walk->at = at + walk->sector_size;
     walk->checksum_init = read_be32(header + 12);
@@ -714,14 +703,14 @@ static int next_journal_record(JournalWalk *walk, uint8_t *page,
   if (walk->at + record_size > walk->size) return SQLITE_DONE;
   uint8_t bytes[4];
   rc = read_counted(walk->journal, bytes, sizeof bytes, walk->at, &count);
-  if (rc != SQLITE_OK) return rc == SQLITE_IOERR_SHORT_READ ? SQLITE_DONE : rc;
+  if (rc != SQLITE_OK) return rc;
   record->page_number = read_be32(bytes);
   rc = read_counted(walk->journal, page, (int)walk->page_size, walk->at + 4,
                     &count);
-  if (rc != SQLITE_OK) return rc == SQLITE_IOERR_SHORT_READ ? SQLITE_DONE : rc;
+  if (rc != SQLITE_OK) return rc;
   rc = read_counted(walk->journal, bytes, sizeof bytes,
                     walk->at + 4 + walk->page_size, &count);
-  if (rc != SQLITE_OK) return rc == SQLITE_IOERR_SHORT_READ ? SQLITE_DONE : rc;
+  if (rc != SQLITE_OK) return rc;
   record->checksum = read_be32(bytes);
   record->has_checksum = record->page_number <= walk->original_size;
   record->at = walk->at;
@@ -810,7 +799,9 @@ static int read_reachable_page1(sqlite3_file *journal, sqlite3_int64 size,
       return SQLITE_OK;
     }
   }
-  return rc == SQLITE_DONE ? SQLITE_OK : rc;
+  // The walk reads what the first one read, which reached page1_at, so it
+  // ends before only at a record that fails, or at an I/O error.
+  return rc;
 }
 
 /*
@@ -889,6 +880,9 @@ static int check_journal(CodecFile *database, CodecFile *journal_file) {
   rc = read_reachable_page1(journal, journal_size, database, &record_page_size);
   if (rc != SQLITE_OK) return journal_check_error(rc);
   if (record_page_size != 0) {
+    // It authenticated with its own salt in the walk, so it does again, which
+    // gives the codec that salt and proves the key, unless the journal
+    // changed since.
     int authenticated =
         evolu_page_decrypt(codec, 1, database->scratch, record_page_size);
     evolu_wipe(database->scratch, record_page_size);
@@ -969,27 +963,6 @@ static int codec_full_pathname(sqlite3_vfs *vfs, const char *name, int size,
   return inner->xFullPathname(inner, name, size, output);
 }
 
-static void *codec_dl_open(sqlite3_vfs *vfs, const char *name) {
-  sqlite3_vfs *inner = ((CodecVfs *)vfs)->inner;
-  return inner->xDlOpen(inner, name);
-}
-
-static void codec_dl_error(sqlite3_vfs *vfs, int size, char *message) {
-  sqlite3_vfs *inner = ((CodecVfs *)vfs)->inner;
-  inner->xDlError(inner, size, message);
-}
-
-static void (*codec_dl_sym(sqlite3_vfs *vfs, void *handle,
-                           const char *symbol))(void) {
-  sqlite3_vfs *inner = ((CodecVfs *)vfs)->inner;
-  return inner->xDlSym(inner, handle, symbol);
-}
-
-static void codec_dl_close(sqlite3_vfs *vfs, void *handle) {
-  sqlite3_vfs *inner = ((CodecVfs *)vfs)->inner;
-  inner->xDlClose(inner, handle);
-}
-
 static int codec_randomness(sqlite3_vfs *vfs, int size, char *output) {
   sqlite3_vfs *inner = ((CodecVfs *)vfs)->inner;
   return inner->xRandomness(inner, size, output);
@@ -1030,19 +1003,20 @@ static int codec_current_time_int64(sqlite3_vfs *vfs, sqlite3_int64 *now) {
 
 int evolu_codec_register(const char *name, const char *inner_name) {
   if (name == NULL) return SQLITE_MISUSE;
-  int rc = sqlite3_initialize();
-  if (rc != SQLITE_OK) return rc;
   // A build with SQLITE_THREADSAFE=0, as the wasm, has no mutex functions,
   // and its single thread needs none. The core's files see only sqlite3.h,
-  // where the macro is undefined natively, which keeps the mutex there.
+  // where the macro is undefined natively, which keeps the mutex there. A
+  // static mutex needs no initialized SQLite.
 #if !defined(SQLITE_THREADSAFE) || SQLITE_THREADSAFE
   sqlite3_mutex *mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_STATIC_APP1);
   sqlite3_mutex_enter(mutex);
 #endif
+  // sqlite3_vfs_find initializes SQLite and finds nothing when that fails.
   sqlite3_vfs *inner = sqlite3_vfs_find(inner_name);
   sqlite3_vfs *existing = sqlite3_vfs_find(name);
   size_t name_size = strlen(name) + 1;
   CodecVfs *vfs = NULL;
+  int rc;
   if (inner == NULL) {
     rc = SQLITE_ERROR;
   } else if (inner->xOpen == codec_open) {
@@ -1054,11 +1028,7 @@ int evolu_codec_register(const char *name, const char *inner_name) {
     rc = existing->xOpen == codec_open && ((CodecVfs *)existing)->inner == inner
              ? SQLITE_OK
              : SQLITE_MISUSE;
-#ifdef EVOLU_TEST_HOOKS
-  } else if (evolu_test_allocation_fails()) {
-    rc = SQLITE_NOMEM;
-#endif
-  } else if ((vfs = calloc(1, sizeof *vfs + name_size)) == NULL) {
+  } else if ((vfs = evolu_calloc(1, sizeof *vfs + name_size)) == NULL) {
     rc = SQLITE_NOMEM;
   } else {
     char *vfs_name = (char *)(vfs + 1);
@@ -1072,18 +1042,17 @@ int evolu_codec_register(const char *name, const char *inner_name) {
     vfs->base.xDelete = codec_delete;
     vfs->base.xAccess = codec_access;
     vfs->base.xFullPathname = codec_full_pathname;
-    vfs->base.xDlOpen = codec_dl_open;
-    vfs->base.xDlError = codec_dl_error;
-    vfs->base.xDlSym = codec_dl_sym;
-    vfs->base.xDlClose = codec_dl_close;
+    // SQLite calls xDlOpen, xDlError, xDlSym and xDlClose only to load an
+    // extension, which every build of the core omits
+    // (SQLITE_OMIT_LOAD_EXTENSION), so they stay NULL, as the inner VFS's are.
     vfs->base.xRandomness = codec_randomness;
     vfs->base.xSleep = codec_sleep;
     vfs->base.xCurrentTime = codec_current_time;
     vfs->base.xGetLastError = codec_get_last_error;
     vfs->base.xCurrentTimeInt64 = codec_current_time_int64;
-    // Registered for the life of the process, so never freed.
+    // Registered for the life of the process, so never freed. It fails only
+    // when SQLite can't initialize, which sqlite3_vfs_find did.
     rc = sqlite3_vfs_register(&vfs->base, 0);
-    if (rc != SQLITE_OK) free(vfs);
   }
 #if !defined(SQLITE_THREADSAFE) || SQLITE_THREADSAFE
   sqlite3_mutex_leave(mutex);
@@ -1117,9 +1086,10 @@ int evolu_codec_open(const char *filename, sqlite3 **db, const char *vfs,
   rc = evolu_skiplist_register(*db);
   if (rc != SQLITE_OK) return rc;
   // SQLite ignores ATTACH's KEY clause, so a database written through ATTACH
-  // would be stored in plaintext. VACUUM and VACUUM INTO still write.
-  rc = sqlite3_db_config(*db, SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE, 0, NULL);
-  if (rc != SQLITE_OK) return rc;
+  // would be stored in plaintext. VACUUM and VACUUM INTO still write. It
+  // fails only for an option the SQLite doesn't know, and the core compiles
+  // against the sqlite3.h that defines it.
+  sqlite3_db_config(*db, SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE, 0, NULL);
   if (key != NULL) {
     if (!own.is_taken) return SQLITE_MISUSE;
     // The IV and the HMAC at the end of each page, for a new database. An
@@ -1137,10 +1107,12 @@ int evolu_codec_open(const char *filename, sqlite3 **db, const char *vfs,
 
 int evolu_codec_take_failure(sqlite3 *db, evolu_codec_failure *failure) {
   if (db == NULL) return SQLITE_MISUSE;
+  // sqlite3_file_control sets file only when it succeeds: a connection whose
+  // open failed has no database for "main", and one in memory has a file
+  // without methods.
   sqlite3_file *file = NULL;
-  if (sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file) !=
-          SQLITE_OK ||
-      file == NULL || file->pMethods != &codec_io_methods)
+  sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
+  if (file == NULL || file->pMethods != &codec_io_methods)
     return SQLITE_NOTFOUND;
   CodecFile *database = (CodecFile *)file;
   *failure = database->failure;

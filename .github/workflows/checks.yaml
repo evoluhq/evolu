@@ -118,7 +118,10 @@ jobs:
           if-no-files-found: error
 
   # Builds Evolu's SQLite core in C with sanitizers on the host and runs its C
-  # and TypeScript tests. The amalgamation comes from the pinned SQLite source.
+  # and TypeScript tests, whose C tests must cover every line, function and
+  # branch of the core's C compiled for the runner's CPU and OS: x86-64 Linux,
+  # arm64 Linux, the hardware paths and CPU detection Android shares, and
+  # arm64 macOS. The amalgamation comes from the pinned SQLite source.
   sqlite-core:
     name: SQLite core (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -128,7 +131,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # The crypto features each runner's CPU reports, as the tests'
+        # EVOLU_CRYPTO_* mask: AES 1, SHA-512 2 and DIT 4. A runner that
+        # reports another fails. GitHub's arm64 Linux runners report no DIT.
+        include:
+          - os: ubuntu-latest
+            cpu: 1
+          - os: ubuntu-24.04-arm
+            cpu: 3
+          - os: macos-latest
+            cpu: 7
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -149,6 +161,8 @@ jobs:
 
       - name: Test
         run: pnpm test:sqlite-core
+        env:
+          EVOLU_TEST_EXPECTED_CPU: ${{ matrix.cpu }}
 
   type-benchmarks:
     name: Type benchmarks

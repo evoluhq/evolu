@@ -245,9 +245,9 @@ typedef struct {
  * Registers a codec VFS named name over the VFS named inner_name, or the
  * default VFS when it's NULL, without making it the default. Returns
  * SQLITE_OK, also when a codec VFS of that name over the same inner VFS is
- * registered already, SQLITE_ERROR when there's no such inner VFS,
- * SQLITE_MISUSE when name is NULL, another VFS has the name, or the inner VFS
- * is a codec VFS, or SQLITE_NOMEM.
+ * registered already, SQLITE_ERROR when there's no such inner VFS or SQLite
+ * fails to initialize, SQLITE_MISUSE when name is NULL, another VFS has the
+ * name, or the inner VFS is a codec VFS, or SQLITE_NOMEM.
  */
 int evolu_codec_register(const char *name, const char *inner_name);
 

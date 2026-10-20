@@ -7,7 +7,8 @@
  * table that expanded its key.
  *
  * Hardware paths live in evolu_crypto_hw.c: AES chosen at evolu_aes256_init,
- * SHA-512 per call, from the detected features and the hardware switch.
+ * SHA-512 per call, from the detected features evolu_crypto_set_hardware
+ * leaves on. Each is compiled only for the CPU family that has it.
  *
  * SHA-256 is BearSSL's sha2small as is. SHA-512's buffering and padding are
  * Evolu's own, around one compression function, sha512_blocks, because that's
@@ -36,15 +37,23 @@
 #include "evolu_crypto_hw.h"
 
 #include <stdatomic.h>
+#include <stdlib.h>
 #include <string.h>
 
 #if defined(__APPLE__) || defined(__ANDROID__) || defined(__FreeBSD__) ||      \
     defined(__OpenBSD__) || defined(__NetBSD__)
-#include <stdlib.h>
+// stdlib.h, above, declares arc4random_buf.
 #elif defined(__linux__)
 #include <errno.h>
 #include <sys/random.h>
 #include <sys/types.h>
+#ifdef EVOLU_TEST_HOOKS
+ssize_t (*evolu_test_getrandom)(void *buffer, size_t size,
+                                unsigned flags) = getrandom;
+#define EVOLU_GETRANDOM evolu_test_getrandom
+#else
+#define EVOLU_GETRANDOM getrandom
+#endif
 #elif defined(__wasm__)
 #include <unistd.h>
 #elif defined(_WIN32)
@@ -121,7 +130,7 @@ evolu_crypto_result evolu_random_bytes(uint8_t *output, size_t size) {
   while (size > 0) {
     // getrandom blocks until the kernel's pool is seeded, then returns at
     // most size bytes; a signal can interrupt it before it returns any.
-    ssize_t read = getrandom(output, size, 0);
+    ssize_t read = EVOLU_GETRANDOM(output, size, 0);
     if (read < 0) {
       if (errno == EINTR) continue;
       return EVOLU_CRYPTO_RANDOM_FAILED;
@@ -191,6 +200,7 @@ static void aes256_ct_cbc_decrypt(const evolu_aes256 *aes,
 const evolu_aes256_impl evolu_aes256_ct = {
     aes256_ct_init, aes256_ct_cbc_encrypt, aes256_ct_cbc_decrypt};
 
+#ifdef EVOLU_HW_AES_PATH
 static void aes256_hardware_init(evolu_aes256 *aes,
                                  const uint8_t key[EVOLU_AES256_KEY_SIZE]) {
   evolu_hw_aes256_expand(key, aes->keys.hardware.encrypt,
@@ -212,49 +222,52 @@ static void aes256_hardware_cbc_decrypt(const evolu_aes256 *aes,
 static const evolu_aes256_impl aes256_hardware = {
     aes256_hardware_init, aes256_hardware_cbc_encrypt,
     aes256_hardware_cbc_decrypt};
+#endif
 
-/* Whether to use the CPU's instructions; see evolu_crypto_set_hardware. */
-static atomic_int is_hardware_enabled = 1;
+/* The features evolu_crypto_set_hardware leaves on. */
+static atomic_int hardware_features = EVOLU_CRYPTO_ALL;
 
-void evolu_crypto_set_hardware(int enabled) {
-  atomic_store_explicit(&is_hardware_enabled, enabled != 0,
-                        memory_order_relaxed);
+int evolu_crypto_set_hardware(int features) {
+  return atomic_exchange_explicit(&hardware_features, features,
+                                  memory_order_relaxed);
 }
 
-int evolu_crypto_is_hardware_enabled(void) {
-  return atomic_load_explicit(&is_hardware_enabled, memory_order_relaxed);
-}
-
-/* Whether the CPU has a feature and the hardware switch is on. */
-static int uses_hardware(int feature) {
-  return atomic_load_explicit(&is_hardware_enabled, memory_order_relaxed) &&
-         (evolu_hw_features() & feature) != 0;
+int evolu_crypto_hardware(void) {
+  return evolu_hw_features() &
+         atomic_load_explicit(&hardware_features, memory_order_relaxed);
 }
 
 const evolu_aes256_impl *evolu_aes256_hardware(void) {
-  return (evolu_hw_features() & EVOLU_HW_AES) ? &aes256_hardware : NULL;
+#ifdef EVOLU_HW_AES_PATH
+  if (evolu_crypto_hardware() & EVOLU_CRYPTO_AES) return &aes256_hardware;
+#endif
+  return NULL;
 }
 
 #ifdef EVOLU_TEST_HOOKS
 int evolu_test_dit_missed;
 int evolu_test_random_fails;
 int evolu_test_allocations_left = -1;
+size_t evolu_test_sha512_hardware_blocks;
+#endif
 
-int evolu_test_allocation_fails(void) {
-  if (evolu_test_allocations_left == -1) return 0;
+void *evolu_calloc(size_t count, size_t size) {
+#ifdef EVOLU_TEST_HOOKS
   if (evolu_test_allocations_left > 0) {
     evolu_test_allocations_left--;
-    return 0;
+  } else if (evolu_test_allocations_left != -1) {
+    evolu_test_allocations_left = -2;
+    return NULL;
   }
-  evolu_test_allocations_left = -2;
-  return 1;
-}
 #endif
+  return calloc(count, size);
+}
 
 void evolu_aes256_init(evolu_aes256 *aes,
                        const uint8_t key[EVOLU_AES256_KEY_SIZE]) {
-  if (uses_hardware(EVOLU_HW_AES)) {
-    evolu_aes256_init_with(aes, &aes256_hardware, key);
+  const evolu_aes256_impl *hardware = evolu_aes256_hardware();
+  if (hardware != NULL) {
+    evolu_aes256_init_with(aes, hardware, key);
     return;
   }
   // BearSSL advises aes_ct64 wherever 64-bit arithmetic is native, which
@@ -352,42 +365,48 @@ static void sha512_blocks_bearssl(uint64_t state[8], const uint8_t *blocks,
   evolu_wipe(bytes, sizeof bytes);
 }
 
-int evolu_crypto_has_sha512_hardware(void) {
-  return (evolu_hw_features() & EVOLU_HW_SHA512) != 0;
-}
-
-int evolu_sha512_uses_hardware(void) { return uses_hardware(EVOLU_HW_SHA512); }
-
 /* The dispatch point every SHA-512 block goes through. */
 static void sha512_blocks(uint64_t state[8], const uint8_t *blocks,
                           size_t count) {
-  if (uses_hardware(EVOLU_HW_SHA512))
+#ifdef EVOLU_HW_ARM64_PATHS
+  if (evolu_crypto_hardware() & EVOLU_CRYPTO_SHA512) {
     evolu_hw_sha512_blocks(state, blocks, count);
-  else
-    sha512_blocks_bearssl(state, blocks, count);
+    return;
+  }
+#endif
+  sha512_blocks_bearssl(state, blocks, count);
 }
 
-int evolu_crypto_has_dit(void) {
-  return (evolu_hw_features() & EVOLU_HW_DIT) != 0;
-}
-
+#ifdef EVOLU_HW_ARM64_PATHS
 /* PSTATE.DIT in arm64's DIT register. */
 #define DIT_BIT ((uint64_t)1 << 24)
 
+/* Whether the crypto layer uses DIT. */
+static int uses_dit(void) {
+  return (evolu_crypto_hardware() & EVOLU_CRYPTO_DIT) != 0;
+}
+
 unsigned evolu_dit_begin(void) {
-  if (!evolu_crypto_has_dit()) return 0;
+  if (!uses_dit()) return 0;
   uint64_t previous = evolu_hw_dit_read();
   evolu_hw_dit_write(DIT_BIT);
   return (previous & DIT_BIT) != 0;
 }
 
 void evolu_dit_end(unsigned previous) {
-  if (evolu_crypto_has_dit()) evolu_hw_dit_write(previous ? DIT_BIT : 0);
+  if (uses_dit()) evolu_hw_dit_write(previous ? DIT_BIT : 0);
 }
 
 int evolu_dit_is_set(void) {
-  return evolu_crypto_has_dit() && (evolu_hw_dit_read() & DIT_BIT) != 0;
+  return uses_dit() && (evolu_hw_dit_read() & DIT_BIT) != 0;
 }
+#else
+unsigned evolu_dit_begin(void) { return 0; }
+
+void evolu_dit_end(unsigned previous) { (void)previous; }
+
+int evolu_dit_is_set(void) { return 0; }
+#endif
 
 void evolu_sha512_init(evolu_sha512 *sha) {
   memcpy(sha->state, sha512_initial_state, sizeof sha->state);

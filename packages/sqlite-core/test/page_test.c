@@ -329,6 +329,8 @@ static void page_refuses_sizes_that_are_no_page_size(void) {
     CHECK_EQ_INT(evolu_page_encrypt(codec, 2, plaintext, sizes[s], ciphertext),
                  EVOLU_PAGE_UNSUPPORTED);
     CHECK(!evolu_page_decrypt(codec, 2, decrypted, sizes[s]));
+    CHECK(!evolu_page_decrypt_with_salt(codec, test_key, 2, decrypted,
+                                        sizes[s]));
     CHECK_EQ_BYTES(decrypted, plaintext, 1024);
   }
   CHECK(evolu_page_is_size(512) && evolu_page_is_size(65536));
@@ -444,7 +446,8 @@ static void page_calls_run_with_dit_and_restore_the_callers(void) {
   for (int caller = 0; caller < 2; caller++) {
     // DIT as the caller set it, on or off, whatever an earlier call left.
     evolu_dit_end((unsigned)caller);
-    int expected = caller && evolu_crypto_has_dit();
+    int expected =
+        caller && (evolu_crypto_hardware() & EVOLU_CRYPTO_DIT) != 0;
     int restored = 1;
     evolu_test_dit_missed = 0;
     evolu_page_codec *codec = evolu_page_codec_create(test_key, 0);

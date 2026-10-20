@@ -129,11 +129,8 @@ static void decrypt_cbc_cs3(const evolu_aes256 *aes,
 
 static evolu_page_codec *create_codec(const uint8_t key[EVOLU_PAGE_KEY_SIZE],
                                       int flags) {
-#ifdef EVOLU_TEST_HOOKS
-  if (evolu_test_allocation_fails()) return NULL;
-#endif
   // Outside SQLite's heap, which holds pages and statements.
-  evolu_page_codec *codec = calloc(1, sizeof *codec);
+  evolu_page_codec *codec = evolu_calloc(1, sizeof *codec);
   if (codec == NULL) return NULL;
   codec->flags = flags;
   memcpy(codec->key, key, EVOLU_PAGE_KEY_SIZE);

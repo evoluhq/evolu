@@ -17,8 +17,8 @@
  * implementation that expanded its key, since each one has its own key
  * schedule; evolu_aes256_init picks the CPU's when it has one. SHA-512 runs
  * every block through one compression function, the CPU's when it has one.
- * evolu_crypto_set_hardware turns both off, for tests and the CI run on the
- * software path.
+ * evolu_crypto_set_hardware leaves out features, for tests, which then run as
+ * on CPUs without them, and the CI run on the software path.
  *
  * DIT: on arm64 CPUs with data independent timing (FEAT_DIT), the codec and
  * XChaCha20-Poly1305 turn it on around their work with evolu_dit_begin and
@@ -29,9 +29,10 @@
  * keys overwrite the stack BearSSL used below them, best-effort, since C
  * can't promise that a stack is cleared.
  *
- * Global state: the detected CPU features, written once, and the hardware
- * switch. Contexts belong to their caller and can be used from any thread,
- * one thread at a time. A pointer may be NULL when its size is 0.
+ * Global state: the detected CPU features, written once, and the features
+ * evolu_crypto_set_hardware leaves on. Contexts belong to their caller and
+ * can be used from any thread, one thread at a time. A pointer may be NULL
+ * when its size is 0.
  */
 #ifndef EVOLU_CRYPTO_H
 #define EVOLU_CRYPTO_H
@@ -79,6 +80,13 @@ void evolu_wipe_stack(void);
 int evolu_constant_time_equal(const void *a, const void *b, size_t size);
 
 /*
+ * Allocates count zeroed elements of size bytes from the C library, for the
+ * core's own buffers, which stay outside SQLite's heap. Returns NULL when it
+ * fails, which the C test runner's build can make it do (EVOLU_TEST_HOOKS).
+ */
+void *evolu_calloc(size_t count, size_t size);
+
+/*
  * Fills output with size bytes from the platform's CSPRNG. Returns
  * EVOLU_CRYPTO_RANDOM_FAILED, with output in an unspecified state, when the
  * source fails.
@@ -116,13 +124,13 @@ typedef struct {
 
 /*
  * The CPU's AES-256, ARMv8's AES instructions or x86's AES-NI, or NULL when it
- * has neither.
+ * has neither or evolu_crypto_set_hardware left AES out.
  */
 const evolu_aes256_impl *evolu_aes256_hardware(void);
 
 /*
- * Expands key with the CPU's implementation, or the software default for this
- * target when it has none or the hardware switch is off.
+ * Expands key with evolu_aes256_hardware's implementation, or the software
+ * default for this target when that's NULL.
  */
 void evolu_aes256_init(evolu_aes256 *aes,
                        const uint8_t key[EVOLU_AES256_KEY_SIZE]);
@@ -217,28 +225,29 @@ void evolu_hmac_sha512_update(evolu_hmac_sha512 *mac, const uint8_t *data,
 void evolu_hmac_sha512_final(evolu_hmac_sha512 *mac,
                              uint8_t tag[EVOLU_SHA512_SIZE]);
 
-/* Whether the CPU has SHA-512 instructions, ARMv8.2's. */
-int evolu_crypto_has_sha512_hardware(void);
-
-/* Whether SHA-512 runs on the CPU's instructions now. */
-int evolu_sha512_uses_hardware(void);
+/* AES instructions: ARMv8's or x86's AES-NI. */
+#define EVOLU_CRYPTO_AES 1
+/* ARMv8.2's SHA-512 instructions. */
+#define EVOLU_CRYPTO_SHA512 2
+/* arm64's data independent timing, FEAT_DIT. */
+#define EVOLU_CRYPTO_DIT 4
+#define EVOLU_CRYPTO_ALL                                                       \
+  (EVOLU_CRYPTO_AES | EVOLU_CRYPTO_SHA512 | EVOLU_CRYPTO_DIT)
 
 /*
- * Sets whether the crypto layer uses the CPU's AES and SHA-512 instructions
- * where it has them, 1 by default: for tests and the CI run on the software
- * path, set while no crypto call runs. An AES context keeps the
- * implementation it was expanded with.
+ * Sets which of the CPU's features above the crypto layer uses,
+ * EVOLU_CRYPTO_ALL by default, so tests can run as on a CPU without some of
+ * them, EVOLU_CRYPTO_DIT for the CI run on the software path, and returns the
+ * previous setting. Set while no crypto call runs and DIT is off. An AES
+ * context keeps the implementation it was expanded with.
  */
-void evolu_crypto_set_hardware(int enabled);
+int evolu_crypto_set_hardware(int features);
 
-/* Whether the hardware switch is on. */
-int evolu_crypto_is_hardware_enabled(void);
-
-/* Whether the CPU has data independent timing, arm64's FEAT_DIT. */
-int evolu_crypto_has_dit(void);
+/* The features the crypto layer uses: the CPU's that are set. */
+int evolu_crypto_hardware(void);
 
 /*
- * Turns DIT on where the CPU has it and returns what to pass to
+ * Turns DIT on where the crypto layer uses it and returns what to pass to
  * evolu_dit_end, which restores the previous state, so calls nest. A no-op
  * returning 0 elsewhere.
  */
@@ -251,26 +260,34 @@ int evolu_dit_is_set(void);
 #ifdef EVOLU_TEST_HOOKS
 /*
  * The C test runner's hooks. EVOLU_PROBE_DIT sets evolu_test_dit_missed when
- * it runs without DIT on a CPU that has it, which AES, HMAC-SHA512, PBKDF2 and
- * the XChaCha20-Poly1305 wrappers call, so the tests check that the page codec
- * and XChaCha20-Poly1305 turn DIT on around them. While
+ * it runs without DIT where the crypto layer uses DIT, which AES, HMAC-SHA512,
+ * PBKDF2 and the XChaCha20-Poly1305 wrappers call, so the tests check that the
+ * page codec and XChaCha20-Poly1305 turn DIT on around them. It has no
+ * branch, whose side that never runs would be a gap in the coverage. While
  * evolu_test_random_fails is set, evolu_random_bytes fails.
+ * evolu_test_sha512_hardware_blocks counts the blocks SHA-512's hardware path
+ * compresses.
  *
- * evolu_test_allocations_left counts the core's own allocations from the C
- * library, the page codec, the codec VFS and a database's scratch buffer,
- * which SQLite's heap limit can't fail. At -1, the default, none fails. From
- * 0 up, each takes one, and the one that finds 0 fails and leaves it at -2,
- * where every later one fails too. evolu_test_allocation_fails takes one.
+ * evolu_test_allocations_left counts the core's own allocations, every
+ * evolu_calloc: the page codec, the codec VFS and a database's scratch
+ * buffer, which SQLite's heap limit can't fail. At -1, the default, none
+ * fails. From 0 up, each takes one, and the one that finds 0 fails and leaves
+ * it at -2, where every later one fails too.
  */
 extern int evolu_test_dit_missed;
 extern int evolu_test_random_fails;
 extern int evolu_test_allocations_left;
-int evolu_test_allocation_fails(void);
+extern size_t evolu_test_sha512_hardware_blocks;
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <sys/types.h>
+/* What evolu_random_bytes calls for getrandom, which a test can replace. */
+extern ssize_t (*evolu_test_getrandom)(void *buffer, size_t size,
+                                       unsigned flags);
+#endif
 #define EVOLU_PROBE_DIT()                                                      \
-  do {                                                                         \
-    if (evolu_crypto_has_dit() && !evolu_dit_is_set())                         \
-      evolu_test_dit_missed = 1;                                               \
-  } while (0)
+  ((void)(evolu_test_dit_missed |=                                             \
+          (int)((evolu_crypto_hardware() & EVOLU_CRYPTO_DIT) != 0) &           \
+          (int)!evolu_dit_is_set()))
 #else
 #define EVOLU_PROBE_DIT() ((void)0)
 #endif

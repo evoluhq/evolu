@@ -15,6 +15,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <errno.h>
+#include <sys/types.h>
+#endif
+
 /*
  * Decodes a lowercase hex string into out, which must hold half its length,
  * and returns the number of bytes written.
@@ -650,49 +655,96 @@ static void crypto_aes256_rejects_partial_blocks(void) {
   check_partial_blocks(&evolu_aes256_ct);
 }
 
-static void crypto_aes256_init_picks_the_cpus_or_the_target_default(void) {
-  uint8_t key[EVOLU_AES256_KEY_SIZE];
-  from_hex(key, sp800_38a_key);
-  evolu_aes256 aes;
-  evolu_aes256_init(&aes, key);
-  const evolu_aes256_impl *hardware = evolu_aes256_hardware();
-  if (evolu_crypto_is_hardware_enabled() && hardware != NULL)
-    CHECK(aes.impl == hardware);
-  else
-    CHECK(aes.impl == &evolu_aes256_ct64 || aes.impl == &evolu_aes256_ct);
-
-  int was_enabled = evolu_crypto_is_hardware_enabled();
-  evolu_crypto_set_hardware(0);
-  evolu_aes256_init(&aes, key);
-  int uses_sha512_hardware = evolu_sha512_uses_hardware();
-  evolu_crypto_set_hardware(1);
-  int uses_sha512_hardware_when_enabled = evolu_sha512_uses_hardware();
-  evolu_crypto_set_hardware(was_enabled);
-#if UINTPTR_MAX > UINT32_MAX || defined(__wasm__)
-  CHECK(aes.impl == &evolu_aes256_ct64);
-#else
-  CHECK(aes.impl == &evolu_aes256_ct);
-#endif
-  CHECK(!uses_sha512_hardware);
-  CHECK_EQ_INT(uses_sha512_hardware_when_enabled,
-               evolu_crypto_has_sha512_hardware());
-  evolu_aes256_wipe(&aes);
+/* The CPU's features, whatever evolu_crypto_set_hardware left on. */
+static int cpu_features(void) {
+  int previous = evolu_crypto_set_hardware(EVOLU_CRYPTO_ALL);
+  int features = evolu_crypto_hardware();
+  evolu_crypto_set_hardware(previous);
+  return features;
 }
 
 /*
- * The hardware path runs where it must be tested: Apple silicon, whose M1 and
- * later have AES and SHA-512 instructions and DIT, and CI's 64-bit runners,
- * which have AES instructions. Other 64-bit CPUs, such as a Raspberry Pi 4's,
- * may lack them and take the software path.
+ * With any subset of the CPU's features left on, the crypto layer runs as on
+ * a CPU that has only those, such as ARMv8.0's AES without SHA-512 or DIT:
+ * AES and SHA-512 on the instructions of those left on, otherwise on the
+ * target's software default, DIT only when it's left on, and every
+ * combination matches the published vectors.
  */
-static void crypto_hardware_exists_on_apple_silicon_and_ci(void) {
-#if defined(__aarch64__) && defined(__APPLE__)
-  CHECK(evolu_aes256_hardware() != NULL);
-  CHECK(evolu_crypto_has_sha512_hardware());
-  CHECK(evolu_crypto_has_dit());
-#elif defined(__aarch64__) || defined(__x86_64__) || defined(_M_X64)
+static void crypto_runs_as_on_a_cpu_with_each_subset_of_its_features(void) {
+  uint8_t key[EVOLU_AES256_KEY_SIZE];
+  uint8_t iv[EVOLU_AES_BLOCK_SIZE];
+  uint8_t plaintext[64];
+  uint8_t ciphertext[64];
+  uint8_t data[64];
+  uint8_t digest[EVOLU_SHA512_SIZE];
+  uint8_t abc_digest[EVOLU_SHA512_SIZE];
+  from_hex(key, sp800_38a_key);
+  from_hex(plaintext, sp800_38a_plaintext);
+  from_hex(ciphertext, sp800_38a_ciphertext);
+  from_hex(abc_digest, "ddaf35a193617abacc417349ae204131"
+                       "12e6fa4e89a97ea20a9eeee64b55d39a"
+                       "2192992a274fc1a836ba3c23a3feebbd"
+                       "454d4423643ce80e2a9ac94fa54ca49f");
+#if UINTPTR_MAX > UINT32_MAX || defined(__wasm__)
+  const evolu_aes256_impl *software = &evolu_aes256_ct64;
+#else
+  const evolu_aes256_impl *software = &evolu_aes256_ct;
+#endif
+  int cpu = cpu_features();
+  int previous = evolu_crypto_set_hardware(EVOLU_CRYPTO_ALL);
+  int mismatches = 0;
+  for (int features = 0; features <= EVOLU_CRYPTO_ALL; features++) {
+    evolu_crypto_set_hardware(features);
+    int used = cpu & features;
+    mismatches += evolu_crypto_hardware() != used;
+
+    evolu_aes256 aes;
+    evolu_aes256_init(&aes, key);
+    const evolu_aes256_impl *hardware = evolu_aes256_hardware();
+    mismatches += (hardware != NULL) != ((used & EVOLU_CRYPTO_AES) != 0);
+    mismatches += aes.impl != (hardware != NULL ? hardware : software);
+    from_hex(iv, sp800_38a_iv);
+    memcpy(data, plaintext, sizeof data);
+    evolu_aes256_cbc_encrypt(&aes, iv, data, sizeof data);
+    mismatches += memcmp(data, ciphertext, sizeof data) != 0;
+    evolu_aes256_wipe(&aes);
+
+    evolu_test_sha512_hardware_blocks = 0;
+    evolu_sha512_digest((const uint8_t *)"abc", 3, digest);
+    mismatches += memcmp(digest, abc_digest, sizeof digest) != 0;
+    mismatches += (evolu_test_sha512_hardware_blocks != 0) !=
+                  ((used & EVOLU_CRYPTO_SHA512) != 0);
+
+    unsigned dit = evolu_dit_begin();
+    mismatches += evolu_dit_is_set() != ((used & EVOLU_CRYPTO_DIT) != 0);
+    evolu_dit_end(dit);
+    mismatches += evolu_dit_is_set();
+  }
+  evolu_crypto_set_hardware(previous);
+  CHECK_EQ_INT(mismatches, 0);
+}
+
+/*
+ * The hardware paths run where they must be tested. Each CI runner declares
+ * the features its CPU reports in EVOLU_TEST_EXPECTED_CPU, a mask of
+ * EVOLU_CRYPTO_*, so a runner that loses one fails rather than leaving its
+ * paths untested. GitHub's arm64 Linux runners, for example, report no DIT.
+ * Apple silicon, whose M1 and later have AES and SHA-512 instructions and
+ * DIT, has them all, which macOS's runner declares. Other 64-bit CPUs may
+ * lack some, such as a Raspberry Pi 4's, which has no AES, or a Pi 5's, which
+ * has no SHA-512 or DIT, and take the software paths.
+ */
+static void crypto_hardware_is_what_ci_declares_and_all_on_apple_silicon(
+    void) {
   // GitHub Actions sets CI.
-  if (getenv("CI") != NULL) CHECK(evolu_aes256_hardware() != NULL);
+  if (getenv("CI") != NULL) {
+    const char *expected = getenv("EVOLU_TEST_EXPECTED_CPU");
+    CHECK(expected != NULL);
+    CHECK_EQ_INT(cpu_features(), atoi(expected));
+    return;
+  }
+#if defined(__aarch64__) && defined(__APPLE__)
+  CHECK_EQ_INT(cpu_features(), EVOLU_CRYPTO_ALL);
 #endif
 }
 
@@ -767,27 +819,32 @@ static void crypto_sha512_hardware_matches_software_at_every_size(void) {
   uint8_t data[1000];
   uint64_t state = 0xfedcba0987654321;
   for (size_t i = 0; i < sizeof data; i++) data[i] = (uint8_t)next_random(&state);
-  int was_enabled = evolu_crypto_is_hardware_enabled();
+  int previous = evolu_crypto_set_hardware(0);
   int differs = 0;
   for (size_t size = 0; size <= sizeof data && !differs; size++) {
     uint8_t software[EVOLU_SHA512_SIZE];
     uint8_t hardware[EVOLU_SHA512_SIZE];
     evolu_crypto_set_hardware(0);
     evolu_sha512_digest(data, size, software);
-    evolu_crypto_set_hardware(1);
+    evolu_crypto_set_hardware(EVOLU_CRYPTO_ALL);
     evolu_sha512_digest(data, size, hardware);
     differs = memcmp(hardware, software, sizeof software) != 0;
   }
-  evolu_crypto_set_hardware(was_enabled);
+  evolu_crypto_set_hardware(previous);
   CHECK(!differs);
 }
 
 static void crypto_dit_is_set_between_begin_and_end(void) {
-  if (!evolu_crypto_has_dit()) {
-    CHECK_EQ_INT(evolu_dit_begin(), 0);
-    CHECK(!evolu_dit_is_set());
-    return;
-  }
+  // Without DIT among the features, it stays off.
+  int previous =
+      evolu_crypto_set_hardware(EVOLU_CRYPTO_ALL & ~EVOLU_CRYPTO_DIT);
+  unsigned off = evolu_dit_begin();
+  int is_set = evolu_dit_is_set();
+  evolu_dit_end(off);
+  evolu_crypto_set_hardware(previous);
+  CHECK_EQ_INT(off, 0);
+  CHECK(!is_set);
+  if ((evolu_crypto_hardware() & EVOLU_CRYPTO_DIT) == 0) return;
   CHECK(!evolu_dit_is_set());
   unsigned outer = evolu_dit_begin();
   CHECK(evolu_dit_is_set());
@@ -839,7 +896,8 @@ static void crypto_probe_flags_each_primitive_run_without_dit(void) {
     evolu_hmac_sha512_key_wipe(&mac_key);
     if (with_dit) evolu_dit_end(previous);
     for (size_t i = 0; i < sizeof fired / sizeof fired[0]; i++)
-      CHECK_EQ_INT(fired[i], !with_dit && evolu_crypto_has_dit());
+      CHECK_EQ_INT(fired[i], !with_dit && (evolu_crypto_hardware() &
+                                           EVOLU_CRYPTO_DIT) != 0);
   }
 }
 
@@ -859,10 +917,63 @@ static void crypto_aes256_wipe_zeroes_the_key_schedule(void) {
   CHECK_EQ_BYTES(&aes, &zero, sizeof aes);
 }
 
+#if defined(__linux__) && !defined(__ANDROID__)
+static int getrandom_calls;
+
+/* Interrupted before any byte, then one byte, then every byte asked. */
+static ssize_t interrupted_getrandom(void *buffer, size_t size,
+                                     unsigned flags) {
+  (void)flags;
+  getrandom_calls++;
+  if (getrandom_calls == 1) {
+    errno = EINTR;
+    return -1;
+  }
+  if (getrandom_calls == 2) {
+    memset(buffer, 0xab, 1);
+    return 1;
+  }
+  memset(buffer, 0xcd, size);
+  return (ssize_t)size;
+}
+
+static ssize_t failing_getrandom(void *buffer, size_t size, unsigned flags) {
+  (void)buffer;
+  (void)size;
+  (void)flags;
+  errno = ENOSYS;
+  return -1;
+}
+
+/*
+ * On Linux, evolu_random_bytes calls getrandom again after a signal
+ * interrupted it and after it returned fewer bytes than asked, and fails when
+ * it fails otherwise.
+ */
+static void crypto_random_bytes_retries_and_fails_as_getrandom_does(void) {
+  ssize_t (*real)(void *, size_t, unsigned) = evolu_test_getrandom;
+  uint8_t output[16];
+  getrandom_calls = 0;
+  evolu_test_getrandom = interrupted_getrandom;
+  evolu_crypto_result interrupted = evolu_random_bytes(output, sizeof output);
+  evolu_test_getrandom = failing_getrandom;
+  evolu_crypto_result failed = evolu_random_bytes(output, sizeof output);
+  evolu_test_getrandom = real;
+  CHECK_EQ_INT(interrupted, EVOLU_CRYPTO_OK);
+  CHECK_EQ_INT(getrandom_calls, 3);
+  CHECK_EQ_INT(output[0], 0xab);
+  for (size_t i = 1; i < sizeof output; i++) CHECK_EQ_INT(output[i], 0xcd);
+  CHECK_EQ_INT(failed, EVOLU_CRYPTO_RANDOM_FAILED);
+}
+#endif
+
 void crypto_suite(void) {
   RUN(crypto_wipe_zeroes_only_the_given_bytes);
   RUN(crypto_constant_time_equal_compares_every_byte);
   RUN(crypto_random_bytes_differ_between_calls);
+#if defined(__linux__) && !defined(__ANDROID__)
+  RUN(crypto_random_bytes_retries_and_fails_as_getrandom_does);
+#endif
   RUN(crypto_sha256_matches_fips_180_examples);
   RUN(crypto_sha256_incremental_equals_one_shot);
   RUN(crypto_sha512_matches_fips_180_examples);
@@ -878,8 +989,8 @@ void crypto_suite(void) {
   RUN(crypto_aes256_ct64_chains_across_calls);
   RUN(crypto_aes256_ct_chains_across_calls);
   RUN(crypto_aes256_rejects_partial_blocks);
-  RUN(crypto_aes256_init_picks_the_cpus_or_the_target_default);
-  RUN(crypto_hardware_exists_on_apple_silicon_and_ci);
+  RUN(crypto_runs_as_on_a_cpu_with_each_subset_of_its_features);
+  RUN(crypto_hardware_is_what_ci_declares_and_all_on_apple_silicon);
   RUN(crypto_aes256_hardware_matches_sp800_38a);
   RUN(crypto_aes256_hardware_chains_across_calls);
   RUN(crypto_aes256_hardware_rejects_partial_blocks);

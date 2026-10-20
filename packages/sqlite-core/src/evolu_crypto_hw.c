@@ -25,6 +25,8 @@
  */
 #include "evolu_crypto_hw.h"
 
+#include "evolu_crypto.h"
+
 #include <stdatomic.h>
 #include <string.h>
 
@@ -44,34 +46,39 @@
 #define AES_TARGET __attribute__((target("aes,sse2")))
 #endif
 
+/*
+ * The CPU reports each feature as a bit or a flag, which become the feature's
+ * bit by arithmetic, not by branches: what a CPU reports never changes, so a
+ * branch on it would take one side on every machine that runs the tests.
+ */
 #if defined(__aarch64__) && defined(__APPLE__)
+/* 1 when the sysctl is set, 0 when it's 0 or unknown. */
 static int sysctl_flag(const char *name) {
   int value = 0;
   size_t size = sizeof value;
-  return sysctlbyname(name, &value, &size, NULL, 0) == 0 && value != 0;
+  return (sysctlbyname(name, &value, &size, NULL, 0) == 0) & (value != 0);
 }
 #endif
 
 static int detect_features(void) {
-  int features = 0;
 #if defined(__aarch64__) && defined(__APPLE__)
-  // Every Apple arm64 CPU has AES, which older macOS doesn't report.
-  features |= EVOLU_HW_AES;
-  if (sysctl_flag("hw.optional.arm.FEAT_SHA512") ||
-      sysctl_flag("hw.optional.armv8_2_sha512"))
-    features |= EVOLU_HW_SHA512;
-  if (sysctl_flag("hw.optional.arm.FEAT_DIT")) features |= EVOLU_HW_DIT;
+  // Every Apple arm64 CPU has AES, which older macOS doesn't report. The
+  // FEAT_ names exist since macOS 12 and iOS 15.
+  return EVOLU_CRYPTO_AES |
+         EVOLU_CRYPTO_SHA512 * sysctl_flag("hw.optional.arm.FEAT_SHA512") |
+         EVOLU_CRYPTO_DIT * sysctl_flag("hw.optional.arm.FEAT_DIT");
 #elif defined(__aarch64__) && defined(__linux__)
   // arm64's HWCAP bits, from the kernel's asm/hwcap.h.
   unsigned long hwcap = getauxval(AT_HWCAP);
-  if (hwcap & (1UL << 3)) features |= EVOLU_HW_AES;
-  if (hwcap & (1UL << 21)) features |= EVOLU_HW_SHA512;
-  if (hwcap & (1UL << 24)) features |= EVOLU_HW_DIT;
+  return (int)(((hwcap >> 3) & 1) * EVOLU_CRYPTO_AES |
+               ((hwcap >> 21) & 1) * EVOLU_CRYPTO_SHA512 |
+               ((hwcap >> 24) & 1) * EVOLU_CRYPTO_DIT);
 #elif defined(__x86_64__) || defined(_M_X64)
   __builtin_cpu_init();
-  if (__builtin_cpu_supports("aes")) features |= EVOLU_HW_AES;
+  return EVOLU_CRYPTO_AES * (__builtin_cpu_supports("aes") != 0);
+#else
+  return 0;
 #endif
-  return features;
 }
 
 /* -1 until detected. Threads that race compute the same value. */
@@ -86,7 +93,7 @@ int evolu_hw_features(void) {
   return features;
 }
 
-#if defined(__aarch64__) || defined(__x86_64__) || defined(_M_X64)
+#ifdef EVOLU_HW_AES_PATH
 
 /* Applies the AES S-box to each of a word's 4 bytes. */
 AES_TARGET static void sub_word(uint8_t word[4]) {
@@ -275,34 +282,9 @@ AES_TARGET void evolu_hw_aes256_cbc_decrypt(const uint8_t keys[15][16],
 
 #endif
 
-#else
-
-void evolu_hw_aes256_expand(const uint8_t key[32], uint8_t encrypt[15][16],
-                            uint8_t decrypt[15][16]) {
-  (void)key;
-  (void)encrypt;
-  (void)decrypt;
-}
-
-void evolu_hw_aes256_cbc_encrypt(const uint8_t keys[15][16], uint8_t iv[16],
-                                 uint8_t *data, size_t size) {
-  (void)keys;
-  (void)iv;
-  (void)data;
-  (void)size;
-}
-
-void evolu_hw_aes256_cbc_decrypt(const uint8_t keys[15][16], uint8_t iv[16],
-                                 uint8_t *data, size_t size) {
-  (void)keys;
-  (void)iv;
-  (void)data;
-  (void)size;
-}
-
 #endif
 
-#if defined(__aarch64__)
+#ifdef EVOLU_HW_ARM64_PATHS
 
 /* FIPS 180-4 section 4.2.3: SHA-512's round constants. */
 static const uint64_t sha512_k[80] = {
@@ -337,6 +319,9 @@ static const uint64_t sha512_k[80] = {
 SHA512_TARGET void evolu_hw_sha512_blocks(uint64_t state[8],
                                           const uint8_t *blocks,
                                           size_t count) {
+#ifdef EVOLU_TEST_HOOKS
+  evolu_test_sha512_hardware_blocks += count;
+#endif
   uint64x2_t ab = vld1q_u64(state);
   uint64x2_t cd = vld1q_u64(state + 2);
   uint64x2_t ef = vld1q_u64(state + 4);
@@ -392,18 +377,5 @@ void evolu_hw_dit_write(uint64_t value) {
   // https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms
   if (value != 0) __asm__ volatile("dsb nsh\n\tisb sy" ::: "memory");
 }
-
-#else
-
-void evolu_hw_sha512_blocks(uint64_t state[8], const uint8_t *blocks,
-                            size_t count) {
-  (void)state;
-  (void)blocks;
-  (void)count;
-}
-
-uint64_t evolu_hw_dit_read(void) { return 0; }
-
-void evolu_hw_dit_write(uint64_t value) { (void)value; }
 
 #endif
