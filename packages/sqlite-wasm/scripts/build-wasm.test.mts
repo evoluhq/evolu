@@ -41,7 +41,7 @@ import {
 } from "./build-wasm.mts";
 
 describe("buildWasm", () => {
-  it("writes the wasm and build-info.json and removes the work directory", async (t) => {
+  it("writes the wasm, its symbol map and build-info.json and removes the work directory", async (t) => {
     const build = await setupBuild(t);
 
     await buildWasm(build.options);
@@ -49,6 +49,13 @@ describe("buildWasm", () => {
     assertEqualBytes(
       readFileSync(join(build.options.outputDirectory, "sqlite3.wasm")),
       build.wasm,
+    );
+    assertEqual(
+      readFileSync(
+        join(build.options.outputDirectory, "sqlite3.symbols"),
+        "utf8",
+      ),
+      symbolMap,
     );
     assertEqual(
       JSON.parse(
@@ -602,7 +609,9 @@ const setupBuild = async (t: TestContext) => {
       '[ "$1" = --version ] && echo "GNU Make 4.4.1" && exit 0',
       record("make"),
       '[ "$1" = sqlite3.c ] && exit 0',
-      `mkdir -p jswasm && cp "${wasmPath}" jswasm/sqlite3.wasm`,
+      `mkdir -p jswasm/vanilla && cp "${wasmPath}" jswasm/sqlite3.wasm`,
+      // Emscripten names the map after the vanilla build's JavaScript.
+      `printf '${symbolMap.replaceAll("\n", "\\n")}' > jswasm/vanilla/sqlite3.js.symbols`,
     ].join("\n"),
   );
 
@@ -809,7 +818,8 @@ const coreCompiles = (): ReadonlyArray<string> =>
 
 /**
  * The command that builds the wasm with the core's objects, relative to
- * ext/wasm, linked into the vanilla build, which keeps the core's exports.
+ * ext/wasm, linked into the vanilla build, which keeps the core's exports and
+ * emits a symbol map.
  */
 const makeWasmWithCore = (): ReadonlyArray<string> => [
   ...makeWasm.slice(0, -1),
@@ -820,9 +830,13 @@ const makeWasmWithCore = (): ReadonlyArray<string> => [
       .join(" "),
     " -Wl,--export=evolu_codec_register -Wl,--export=evolu_codec_open",
     " -Wl,--export=evolu_codec_take_failure -Wl,--export=evolu_skiplist_register",
+    " --emit-symbol-map",
   ].join(""),
   "jswasm/sqlite3.wasm",
 ];
+
+// What emcc --emit-symbol-map writes: a function index and name per line.
+const symbolMap = "0:__syscall_faccessat\n1:fd_close\n";
 
 /**
  * The command that builds the wasm: Emscripten's stack overflow check, SQLite's

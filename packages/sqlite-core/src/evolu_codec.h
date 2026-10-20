@@ -185,7 +185,8 @@
  * web's older builds can roll back each other's journals, and kept for the
  * web's existing files (see Journals); or metadata, such as the number of
  * pages, which pages a transaction writes, and timing. Constant-time
- * primitives defend against observers sharing the CPU's caches.
+ * primitives defend against observers sharing the CPU's caches. Constant time
+ * holds for the C code, but wasm and its JIT compilers promise none.
  *
  * Threads: each file, like each SQLite connection, is used from one thread at
  * a time. Registration is serialized, except in a build with

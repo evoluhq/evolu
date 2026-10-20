@@ -22,7 +22,7 @@ The key reaches the database file through a thread-local pointer while `evolu_co
 
 ## Cryptography
 
-Everything that handles a key or a page runs in constant time. The software path, the only one in WebAssembly, uses the vendored [BearSSL](https://www.bearssl.org)'s bitsliced constant-time AES, `aes_ct64`, or `aes_ct` on 32-bit CPUs, and its SHA-256 and SHA-512. It's slower than table-based AES, whose memory accesses depend on the key. Native builds use the CPU's AES instructions, ARMv8's or x86's AES-NI, and ARMv8.2's SHA-512 instructions when it has them, detected once. On arm64 CPUs with data independent timing, the codec and XChaCha20-Poly1305 turn it on around their work. HMAC-SHA512 and PBKDF2-HMAC-SHA512 are Evolu's own, a few dozen lines over BearSSL's SHA-512.
+Everything that handles a key or a page runs in constant time. Constant time holds for the C code, but WebAssembly and its JIT compilers promise none. The software path, the only one in WebAssembly, uses the vendored [BearSSL](https://www.bearssl.org)'s bitsliced constant-time AES, `aes_ct64`, or `aes_ct` on 32-bit CPUs, and its SHA-256 and SHA-512. It's slower than table-based AES, whose memory accesses depend on the key. Native builds use the CPU's AES instructions, ARMv8's or x86's AES-NI, and ARMv8.2's SHA-512 instructions when it has them, detected once. On arm64 CPUs with data independent timing, the codec and XChaCha20-Poly1305 turn it on around their work. HMAC-SHA512 and PBKDF2-HMAC-SHA512 are Evolu's own, a few dozen lines over BearSSL's SHA-512.
 
 XChaCha20-Poly1305, which encrypts Evolu's sync messages, comes from the vendored [Monocypher](https://monocypher.org), in the byte layout of `@evolu/common`'s `encryptWithXChaCha20Poly1305`.
 

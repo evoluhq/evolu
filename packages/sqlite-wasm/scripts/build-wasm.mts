@@ -58,17 +58,21 @@
  *    `sqlite3-wasm.c` hard-codes the rest, such as no threads, UTF-16 or
  *    extension loading. `emcc.flags.vanilla`, which the vanilla build's link
  *    references and nothing defines for it, names the core's objects, relative
- *    to `ext/wasm`, and `-Wl,--export=` for each of the core's functions the
- *    bindings call, which wasm-ld then keeps. The variable is undocumented, so
- *    an upstream refactor breaks this step, which the pins catch. The make log
+ *    to `ext/wasm`, `-Wl,--export=` for each of the core's functions the
+ *    bindings call, which wasm-ld then keeps, and `--emit-symbol-map`, which
+ *    writes the function names the stripped wasm lacks to a file of its own and
+ *    leaves the wasm's bytes as they are. The variable is undocumented, so an
+ *    upstream refactor breaks this step, which the pins catch. The make log
  *    must not say that wasm-opt failed, which the makefile otherwise ignores.
  * 6. Check the sha256 of the wasm, and check it against the pins of
  *    `scripts/generate.mts` as `generate.mts --verify-build` does. That also
  *    compiles and instantiates it in Node.js.
- * 7. Write `wasm/sqlite3.wasm` and `wasm/build-info.json`, which records the
- *    inputs, with the sha256 of each of the core's sources and of the headers
- *    it may depend on, the tool versions and the output's sha256, and remove
- *    the temporary directory. A failed build keeps it for inspection.
+ * 7. Write `wasm/sqlite3.wasm`, its symbol map `wasm/sqlite3.symbols`, which
+ *    `scripts/constant-time.mts` reads, and `wasm/build-info.json`, which
+ *    records the inputs, with the sha256 of each of the core's sources and of
+ *    the headers it may depend on, the tool versions and the output's sha256,
+ *    and remove the temporary directory. A failed build keeps it for
+ *    inspection.
  *
  * Usage: `EMSDK=/path/to/emsdk node scripts/build-wasm.mts`
  *
@@ -102,6 +106,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   closeSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -285,6 +290,7 @@ export const buildWasm = async ({
         ({ source }) => `${coreObjectsDirectory}/${basename(source, ".c")}.o`,
       ),
       ...coreExports.map((name) => `-Wl,--export=${name}`),
+      "--emit-symbol-map",
     ].join(" ")}`,
     "jswasm/sqlite3.wasm",
   ];
@@ -334,6 +340,11 @@ export const buildWasm = async ({
   };
   mkdirSync(outputDirectory, { recursive: true });
   writeFileSync(join(outputDirectory, "sqlite3.wasm"), wasm);
+  // Emscripten names the map after the vanilla build's JavaScript.
+  copyFileSync(
+    join(extWasm, "jswasm/vanilla/sqlite3.js.symbols"),
+    join(outputDirectory, "sqlite3.symbols"),
+  );
   writeFileSync(
     join(outputDirectory, "build-info.json"),
     `${JSON.stringify(buildInfo, null, 2)}\n`,
