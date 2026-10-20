@@ -54,20 +54,22 @@ const fixtureSource = /*#__PURE__*/ fileURLToPath(
 );
 
 /**
- * Builds the fixture against a release's SQLCipher and returns its path. The
- * extracted amalgamation and the objects compiled from it and the fixture are
- * cached.
+ * Builds the fixture against a release's SQLCipher for `platform` and returns
+ * its path. The extracted amalgamation and the objects compiled from it and the
+ * fixture are cached.
  */
 export const buildSqlcipherFixture = async ({
   expoSqlite,
   cacheDirectory,
   buildDirectory,
   cc = "clang",
+  platform = process.platform,
 }: {
   expoSqlite: ExpoSqlite;
   cacheDirectory: string;
   buildDirectory: string;
   cc?: string;
+  platform?: NodeJS.Platform;
 }): Promise<string> => {
   const directory = join(cacheDirectory, `expo-sqlite-${expoSqlite.version}`);
   const sqlite3c = join(directory, "sqlite3.c");
@@ -96,7 +98,7 @@ export const buildSqlcipherFixture = async ({
     }
   }
 
-  const isMac = process.platform === "darwin";
+  const isMac = platform === "darwin";
   // The flags of ExpoSQLite.podspec that shape SQLCipher's files, with the
   // crypto provider of each platform. Its feature flags, such as FTS, the
   // session extension or API armor, change no page or journal format.

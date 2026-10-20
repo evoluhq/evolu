@@ -25,7 +25,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const sourceDirectory = /*#__PURE__*/ fileURLToPath(
@@ -313,16 +313,13 @@ export const run = (
 };
 
 /**
- * Returns every file under a directory, sorted by relative path in UTF-16 code
- * unit order. Not `localeCompare`, whose order depends on the host's locale,
- * because the order is the wasm's link order.
+ * Returns every file under a directory, sorted in UTF-16 code unit order, which
+ * sorts them by relative path, since they share the directory's prefix. Not
+ * `localeCompare`, whose order depends on the host's locale, because the order
+ * is the wasm's link order.
  */
 const listFiles = (directory: string): ReadonlyArray<string> =>
   readdirSync(directory, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
     .map((entry) => join(entry.parentPath, entry.name))
-    .toSorted((a, b) => {
-      const pathA = relative(directory, a);
-      const pathB = relative(directory, b);
-      return pathA < pathB ? -1 : pathA > pathB ? 1 : 0;
-    });
+    .toSorted();

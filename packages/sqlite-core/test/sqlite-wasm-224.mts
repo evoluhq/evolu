@@ -13,8 +13,7 @@ import sqlite3InitModule from "@evolu/sqlite-wasm-2.2.4";
 export type SqliteJs = Awaited<ReturnType<typeof sqlite3InitModule>>;
 
 /** Loads a new instance of `@evolu/sqlite-wasm` 2.2.4. */
-export const setupSqliteJs = (): Promise<SqliteJs> =>
-  sqlite3InitModule({ print: () => undefined, printErr: () => undefined });
+export const setupSqliteJs = (): Promise<SqliteJs> => sqlite3InitModule();
 
 /** The SQL that keys a 2.2.4 connection with a raw key, as Evolu does. */
 export const sqliteJsKeySql = (key: Uint8Array): string =>

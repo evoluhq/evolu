@@ -1,4 +1,5 @@
 import {
+  assert,
   assertEqual,
   assertFalse,
   assertInstanceOf,
@@ -8,7 +9,7 @@ import {
   assertTrue,
 } from "@evolu/common";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it, type TestContext } from "node:test";
@@ -28,6 +29,7 @@ import {
   type SqliteCoreStatement,
   type SqliteCoreValue,
 } from "./addon.mts";
+import { setupFakeBuild } from "./fake-build.mts";
 import { setupAddonPath, setupAddonTimeout } from "./setup-addon.mts";
 
 // V8 exposes gc to contexts created after this flag is set.
@@ -55,12 +57,81 @@ describe("buildAddon", () => {
       `${join(prefix, "include", "node")} has no node_api.h: the addon needs the Node.js headers that official Node.js builds install next to bin/node`,
     );
   });
+
+  it("links a bundle on macOS and a shared library elsewhere, which the sanitized build links against the shared runtime", (t) => {
+    const build = setupFakeBuild(t);
+    const platformFlags = new Set([
+      "-bundle",
+      "-undefined",
+      "dynamic_lookup",
+      "-shared",
+      "-shared-libasan",
+    ]);
+    const linkFlags = (platform: NodeJS.Platform) => {
+      buildAddon({
+        sqlite: build.sqlite,
+        outputDirectory: build.env.SQLITE_CORE_BUILD,
+        cc: build.cc,
+        sanitize: true,
+        platform,
+      });
+      const link = build.commands().at(-1);
+      assert(link != null, "The addon was linked.");
+      return link.filter((arg) => platformFlags.has(arg));
+    };
+
+    assertEqual(linkFlags("darwin"), [
+      "-bundle",
+      "-undefined",
+      "dynamic_lookup",
+    ]);
+    assertEqual(linkFlags("linux"), ["-shared", "-shared-libasan"]);
+  });
 });
 
 describe("sanitizerPreload", () => {
+  it("finds the runtime of the platform and the architecture, and names the variable that preloads it", (t) => {
+    const { cc, directory } = setupFakeBuild(t);
+    const runtime = (name: string): string => {
+      const path = join(directory, name);
+      writeFileSync(path, "");
+      return path;
+    };
+    const macos = runtime("libclang_rt.asan_osx_dynamic.dylib");
+    const aarch64 = runtime("libclang_rt.asan-aarch64.so");
+
+    assertEqual(sanitizerPreload({ cc, platform: "darwin", arch: "arm64" }), {
+      variable: "DYLD_INSERT_LIBRARIES",
+      path: macos,
+    });
+    assertEqual(sanitizerPreload({ cc, platform: "linux", arch: "arm64" }), {
+      variable: "LD_PRELOAD",
+      path: aarch64,
+    });
+    // Without one named for the architecture, the one of a per-target runtime
+    // directory.
+    const perTarget = runtime("libclang_rt.asan.so");
+    assertEqual(sanitizerPreload({ cc, platform: "linux", arch: "x64" }), {
+      variable: "LD_PRELOAD",
+      path: perTarget,
+    });
+  });
+
+  it("throws when the compiler has no shared runtime", (t) => {
+    const { cc } = setupFakeBuild(t);
+
+    assertEqual(
+      thrownMessage(
+        () => sanitizerPreload({ cc, platform: "linux", arch: "x64" }),
+        Error,
+      ),
+      `${cc} has no shared AddressSanitizer runtime: libclang_rt.asan-x86_64.so, libclang_rt.asan.so`,
+    );
+  });
+
   it("throws the error of a compiler that doesn't run", () => {
     assertThrows(
-      () => sanitizerPreload("evolu-sqlite-core-no-such-cc"),
+      () => sanitizerPreload({ cc: "evolu-sqlite-core-no-such-cc" }),
       (error) => {
         assertEqual((error as NodeJS.ErrnoException).code, "ENOENT");
       },

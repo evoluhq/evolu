@@ -8,7 +8,7 @@ import {
   assertTrue,
 } from "@evolu/common";
 import { execFile, spawnSync } from "node:child_process";
-import {
+import fs, {
   existsSync,
   mkdtempSync,
   readdirSync,
@@ -18,8 +18,9 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
@@ -27,6 +28,7 @@ import {
   type CompileCachedOptions,
   compileUnits,
   cSources,
+  run,
   sourceDirectory,
   writeAtomically,
 } from "../scripts/compile.mts";
@@ -111,6 +113,29 @@ describe("compileCached", () => {
     assertEqual(await compiling, object);
   });
 
+  it("returns the object that the lock's holder compiled while it waited", async (t) => {
+    const { directory, options, compiles } = setupCompiler(t);
+    const object = await compileInProcess(options);
+    rmSync(object);
+    // A running holder's fresh lock, which the process waits for.
+    writeFileSync(`${object}.lock`, String(process.pid));
+    const compiling = compileInProcess(options);
+    // It waits once it has written its claim.
+    const claimed = () =>
+      readdirSync(join(directory, "objects")).some((name) =>
+        name.startsWith(`${basename(object)}.lock.`),
+      );
+    for (let i = 0; !claimed(); i++) {
+      assert(i < 500, "The process didn't wait.");
+      await sleep(20);
+    }
+    writeFileSync(object, "compiled");
+
+    assertEqual(await compiling, object);
+    assertEqual(readFileSync(object, "utf8"), "compiled");
+    assertEqual(compiles(), 1);
+  });
+
   it("takes over a lock that names its own pid, which an earlier process left", async (t) => {
     const { options, compiles } = setupCompiler(t);
     const object = await compileInProcess(options);
@@ -144,6 +169,31 @@ describe("compileCached", () => {
     assertEqual(compiles(), 2);
   });
 
+  it("throws when it can't link the lock, as on a file system without hard links, leaving no claim", (t) => {
+    const { directory, options, compiles } = setupCompiler(t);
+    const linkSync = t.mock.method(fs, "linkSync", () => {
+      throw Object.assign(new Error("EPERM: operation not permitted, link"), {
+        code: "EPERM",
+      });
+    });
+    // compile.mts imports linkSync, whose binding this updates.
+    syncBuiltinESMExports();
+    try {
+      assertThrows(
+        () => compileCached(options),
+        (error) => {
+          assertEqual((error as NodeJS.ErrnoException).code, "EPERM");
+        },
+      );
+    } finally {
+      linkSync.mock.restore();
+      syncBuiltinESMExports();
+    }
+
+    assertEqual(readdirSync(join(directory, "objects")), []);
+    assertEqual(compiles(), 0);
+  });
+
   it("takes over a lock whose holder exited or held it longer than a compile takes", async (t) => {
     const { directory, options, compiles } = setupCompiler(t);
     const object = await compileInProcess(options);
@@ -167,6 +217,28 @@ describe("compileCached", () => {
     assertEqual(readdirSync(join(directory, "objects")), [
       object.slice(join(directory, "objects/").length),
     ]);
+  });
+});
+
+describe("run", () => {
+  it("returns what a command printed and throws with its output when it fails", () => {
+    assertEqual(run("sh", ["-c", "echo out"]), "out\n");
+    assertThrows(
+      () => run("sh", ["-c", "echo out; echo err >&2; exit 3"]),
+      (error) => {
+        assertInstanceOf(error, Error);
+        assertEqual(error.message, "sh exited with 3\nout\nerr\n");
+      },
+    );
+  });
+
+  it("throws the error of a command that doesn't run", () => {
+    assertThrows(
+      () => run("evolu-sqlite-core-no-such-command", []),
+      (error) => {
+        assertEqual((error as NodeJS.ErrnoException).code, "ENOENT");
+      },
+    );
   });
 });
 

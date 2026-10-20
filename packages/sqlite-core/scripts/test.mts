@@ -1,7 +1,7 @@
 /**
  * Builds the C core's test runner and runs it. As a script, it runs the tests
- * whose name starts with its argument, or all of them, and exits with the
- * runner's status:
+ * whose name starts with its argument, or all of them, and fails unless the
+ * runner passed:
  *
  *     node packages/sqlite-core/scripts/test.mts [filter]
  *
@@ -25,17 +25,20 @@ import { defaultBuildDirectory, defaultCacheDirectory } from "./paths.mts";
 import { prepareSqlite, sqliteSource } from "./sqlite-source.mts";
 
 /**
- * Builds and runs the C tests, returning the runner's path, status and output.
- * The run writes its coverage profile into `profileDirectory`.
+ * Builds the C tests with the C compiler `cc` and runs them, returning the
+ * runner's path, status and output. The run writes its coverage profile into
+ * `profileDirectory`.
  */
 export const runCoreTests = async ({
   env,
   filter,
   profileDirectory,
+  cc = "clang",
 }: {
   env: NodeJS.ProcessEnv;
   filter?: string;
   profileDirectory: string;
+  cc?: string;
 }): Promise<{
   readonly runner: string;
   readonly status: number | null;
@@ -51,6 +54,7 @@ export const runCoreTests = async ({
     sqlite,
     source: sqliteSource,
     outputDirectory: buildDirectory,
+    cc,
   });
   // A hung test fails the run, since spawnSync blocks the test runner's
   // timeout. Each process names its profile with its pid.
@@ -98,7 +102,7 @@ if (import.meta.main) {
       for (const gap of gaps)
         process.stdout.write(`${formatCoverageGap(gap, process.cwd())}\n`);
     }
-    process.exitCode = result.status ?? 1;
+    process.exitCode = result.status === 0 ? 0 : 1;
   } finally {
     rmSync(profileDirectory, { recursive: true, force: true });
   }

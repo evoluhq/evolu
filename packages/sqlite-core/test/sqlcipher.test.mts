@@ -12,9 +12,11 @@ import {
   assertThrows,
   bytesToHex,
 } from "@evolu/common";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -23,6 +25,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import { run } from "../scripts/compile.mts";
 import {
   defaultBuildDirectory,
   defaultCacheDirectory,
@@ -32,6 +35,7 @@ import {
   type SqliteCoreAddon,
   type SqliteCoreDatabase,
 } from "./addon.mts";
+import { setupFakeBuild } from "./fake-build.mts";
 import { setupAddon, setupAddonTimeout } from "./setup-addon.mts";
 import {
   buildSqlcipherFixture,
@@ -250,3 +254,78 @@ for (const expoSqlite of expoSqliteReleases)
       }
     });
   });
+
+describe("buildSqlcipherFixture", () => {
+  it("extracts a release's amalgamation from its tarball and builds with each platform's crypto provider", async (t) => {
+    const build = setupFakeBuild(t);
+    const cacheDirectory = build.env.SQLITE_CORE_CACHE;
+    const staged = join(build.directory, "staged");
+    mkdirSync(join(staged, "package/vendor/sqlcipher"), { recursive: true });
+    for (const name of ["sqlite3.c", "sqlite3.h"])
+      writeFileSync(join(staged, "package/vendor/sqlcipher", name), name);
+    const file = "expo-sqlite-0.0.0.tgz";
+    run("tar", ["-czf", join(cacheDirectory, file), "-C", staged, "package"]);
+    const expoSqlite = {
+      version: "0.0.0",
+      sqlcipher: "0.0.0",
+      url: `https://registry.npmjs.org/expo-sqlite/-/${file}`,
+      file,
+      hash: createHash("sha3-256")
+        .update(readFileSync(join(cacheDirectory, file)))
+        .digest("hex"),
+    };
+
+    for (const platform of ["darwin", "linux"] as const)
+      await buildSqlcipherFixture({
+        expoSqlite,
+        cacheDirectory,
+        buildDirectory: build.env.SQLITE_CORE_BUILD,
+        cc: build.cc,
+        platform,
+      });
+
+    for (const name of ["sqlite3.c", "sqlite3.h"])
+      assertEqual(
+        readFileSync(join(cacheDirectory, "expo-sqlite-0.0.0", name), "utf8"),
+        name,
+      );
+    // SQLCipher's and the fixture's compiles, then the link, for each.
+    const platformArgs = new Set([
+      "-DSQLCIPHER_CRYPTO_CC",
+      "-DSQLCIPHER_CRYPTO_OPENSSL",
+      "-framework",
+      "Security",
+      "CoreFoundation",
+      "-lcrypto",
+      "-lpthread",
+      "-ldl",
+      "-lm",
+    ]);
+    assertEqual(
+      build
+        .commands()
+        .map((args) => args.filter((arg) => platformArgs.has(arg))),
+      [
+        ["-DSQLCIPHER_CRYPTO_CC"],
+        ["-DSQLCIPHER_CRYPTO_CC"],
+        ["-framework", "Security", "-framework", "CoreFoundation"],
+        ["-DSQLCIPHER_CRYPTO_OPENSSL"],
+        ["-DSQLCIPHER_CRYPTO_OPENSSL"],
+        ["-lcrypto", "-lpthread", "-ldl", "-lm"],
+      ],
+    );
+  });
+});
+
+describe("runSqlcipherFixture", () => {
+  it("throws when the fixture can't run", (t) => {
+    const { directory } = setupFakeBuild(t);
+
+    assertThrows(
+      () => runSqlcipherFixture(join(directory, "fixture"), []),
+      (error) => {
+        assertEqual((error as NodeJS.ErrnoException).code, "ENOENT");
+      },
+    );
+  });
+});

@@ -43,7 +43,8 @@ const napiVersion = 10;
 
 /**
  * Builds the addon into `outputDirectory` and returns its path. `cc` is the C
- * compiler and `nodeExecutable` the Node.js whose headers are used.
+ * compiler, `nodeExecutable` the Node.js whose headers are used, and `platform`
+ * the one the addon is linked for.
  */
 export const buildAddon = ({
   sqlite,
@@ -51,12 +52,14 @@ export const buildAddon = ({
   cc = "clang",
   nodeExecutable = process.execPath,
   sanitize = false,
+  platform = process.platform,
 }: {
   sqlite: PreparedSqlite;
   outputDirectory: string;
   cc?: string;
   nodeExecutable?: string;
   sanitize?: boolean;
+  platform?: NodeJS.Platform;
 }): string => {
   const nodeIncludeDirectory = join(
     dirname(dirname(nodeExecutable)),
@@ -144,11 +147,11 @@ export const buildAddon = ({
       ...optimized,
       // A loadable bundle on macOS, as node-gyp links addons, which has no
       // install name to record the temporary output path in.
-      ...(process.platform === "darwin"
+      ...(platform === "darwin"
         ? ["-bundle", "-undefined", "dynamic_lookup"]
         : ["-shared"]),
       // Against the runtime's shared library, which the process preloads.
-      ...(sanitize && process.platform !== "darwin" ? ["-shared-libasan"] : []),
+      ...(sanitize && platform !== "darwin" ? ["-shared-libasan"] : []),
       addonObject,
       sqliteObject,
       ...unitObjects,
@@ -162,18 +165,24 @@ export const buildAddon = ({
 /**
  * The environment variable and the path of the sanitizer runtime that a Node.js
  * process must preload to load the sanitized addon: clang's shared
- * AddressSanitizer runtime, through DYLD_INSERT_LIBRARIES on macOS and
- * LD_PRELOAD elsewhere.
+ * AddressSanitizer runtime for `platform` and `arch`, through
+ * DYLD_INSERT_LIBRARIES on macOS and LD_PRELOAD elsewhere.
  */
-export const sanitizerPreload = (
+export const sanitizerPreload = ({
   cc = "clang",
-): { readonly variable: string; readonly path: string } => {
-  const isMac = process.platform === "darwin";
-  const arch = process.arch === "arm64" ? "aarch64" : "x86_64";
+  platform = process.platform,
+  arch = process.arch,
+}: {
+  cc?: string;
+  platform?: NodeJS.Platform;
+  arch?: NodeJS.Architecture;
+} = {}): { readonly variable: string; readonly path: string } => {
+  const isMac = platform === "darwin";
+  const runtimeArch = arch === "arm64" ? "aarch64" : "x86_64";
   // clang prints a name it can't find as given, not as an absolute path.
   const names = isMac
     ? ["libclang_rt.asan_osx_dynamic.dylib"]
-    : [`libclang_rt.asan-${arch}.so`, "libclang_rt.asan.so"];
+    : [`libclang_rt.asan-${runtimeArch}.so`, "libclang_rt.asan.so"];
   for (const name of names) {
     const path = run(cc, [`-print-file-name=${name}`]).trim();
     if (path !== name && existsSync(path))

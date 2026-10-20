@@ -11,6 +11,7 @@ import {
   isFullCoverageExpected,
   measureCoverage,
 } from "../scripts/coverage.mts";
+import { setupFakeBuild } from "./fake-build.mts";
 
 it("reports each uncovered line, function and branch outcome", (t) => {
   const { directory, sources, binary, profiles } = setupProgram(t);
@@ -32,6 +33,7 @@ it("reports each uncovered line, function and branch outcome", (t) => {
       "src/program.c:6: line never ran",
       "src/program.c:1: function twice never ran",
       "src/program.c:5:7: condition never true",
+      "src/program.c:1:34: condition never evaluated",
       "src/program.c:2:22: condition never false, expanded at src/program.c:7",
     ],
   );
@@ -41,7 +43,7 @@ it("reports each uncovered line, function and branch outcome", (t) => {
     [
       { count: 7, covered: 5 },
       { count: 2, covered: 1 },
-      { count: 4, covered: 2 },
+      { count: 6, covered: 2 },
     ],
   );
 });
@@ -107,13 +109,41 @@ it("throws when no run wrote a profile", (t) => {
   assertEqual(error.message, `${profiles} has no profile of ${binary}`);
 });
 
+it("throws when clang has no llvm-profdata and when llvm-profdata fails", (t) => {
+  const { cc, directory } = setupFakeBuild(t);
+  const profiles = join(directory, "profiles");
+  mkdirSync(profiles);
+  writeFileSync(join(profiles, "1.profraw"), "");
+  const profdata = join(directory, "llvm-profdata");
+  const measure = () =>
+    measureCoverage({
+      binary: join(directory, "program"),
+      profileDirectory: profiles,
+      sourceDirectory: directory,
+      cc,
+    });
+
+  assertEqual(
+    assertThrowsInstanceOf(measure, Error).message,
+    `${cc} has no llvm-profdata: spawnSync ${profdata} ENOENT`,
+  );
+  writeFileSync(profdata, "#!/bin/sh\necho 'malformed profile' >&2\nexit 1\n", {
+    mode: 0o755,
+  });
+  assertEqual(
+    assertThrowsInstanceOf(measure, Error).message,
+    `${profdata} exited with 1\nmalformed profile\n`,
+  );
+});
+
 /**
- * A program that runs without arguments, leaving a function, a line and two
- * outcomes.
+ * A program whose run without arguments leaves a function, a line, the
+ * condition in that function and an outcome of each of its other two conditions
+ * uncovered.
  */
 const programFiles: Readonly<Record<string, string>> = {
   "program.c": [
-    "static int twice(int x) { return 2 * x; }",
+    "static int twice(int x) { return x > 0 ? 2 * x : 0; }",
     "#define POSITIVE(x) ((x) > 0 ? 1 : 0)",
     "int main(int argc, char **argv) {",
     "  (void)argv;",
