@@ -39,6 +39,9 @@ importers:
       '@evolu/sqlite-wasm-2.2.4':
         specifier: npm:@evolu/sqlite-wasm@2.2.4
         version: '@evolu/sqlite-wasm@2.2.4'
+      '@evolu/sqlite-wasm-3.54.0-build2':
+        specifier: npm:@evolu/sqlite-wasm@3.54.0-build2
+        version: '@evolu/sqlite-wasm@3.54.0-build2(@evolu/common@packages+common)'
       '@evolu/typescript-config':
         specifier: workspace:*
         version: link:packages/typescript-config
@@ -1289,6 +1292,21 @@ packages:
     peerDependencies:
       ajv: '>=8'
 
+  '@awasm/noble@0.1.4':
+    resolution: {integrity: sha512-LFkAq7VnGc8Hum4x12yxBsyoQYq9mWDf02j1lltzXaeZ14qcXwEYnOl5ByJ49xiBk1L7h6m3vkKkInvtDUIvOg==}
+    engines: {node: '>= 22.22.0'}
+    peerDependencies:
+      '@awasm/compiler': 0.1.3
+      '@noble/ciphers': ~2.2.0
+      '@noble/hashes': ~2.2.0
+    peerDependenciesMeta:
+      '@awasm/compiler':
+        optional: true
+      '@noble/ciphers':
+        optional: true
+      '@noble/hashes':
+        optional: true
+
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
     engines: {node: '>=6.9.0'}
@@ -2363,6 +2381,12 @@ packages:
   '@evolu/sqlite-wasm@2.2.4':
     resolution: {integrity: sha512-/JOYGFN93QspD2C8HVxVgBUlFWqJ1IpaVuIhEB53u4+ZvE+D3LjpNHDYiwZgf0n7VaH2U85OY5eV3wUrWc3scg==}
     hasBin: true
+
+  '@evolu/sqlite-wasm@3.54.0-build2':
+    resolution: {integrity: sha512-OdoChSezG07LBJvQ3UvIFqLolr6/hxM2iBLshBqECUPn12PpCckQtdfAzU94zBayLN/zo50fvCKKHhhFasgIBA==}
+    engines: {node: '>=24.20.0'}
+    peerDependencies:
+      '@evolu/common': ^8.21.0
 
   '@expo-google-fonts/material-symbols@0.4.42':
     resolution: {integrity: sha512-KZmHZRcthJ3KFZZlpzHjopA9guZgWR9fb3uVZlTR0BNlvG2pw1bnYBCpkze2PB0vRllwGhAM7lWXsfmcWCbXYg==}
@@ -10663,6 +10687,8 @@ snapshots:
       jsonpointer: 5.0.1
       leven: 3.1.0
 
+  '@awasm/noble@0.1.4': {}
+
   '@babel/code-frame@7.29.7':
     dependencies:
       '@babel/helper-validator-identifier': 7.29.7
@@ -11987,6 +12013,15 @@ snapshots:
       levn: 0.4.1
 
   '@evolu/sqlite-wasm@2.2.4': {}
+
+  '@evolu/sqlite-wasm@3.54.0-build2(@evolu/common@packages+common)':
+    dependencies:
+      '@awasm/noble': 0.1.4
+      '@evolu/common': link:packages/common
+    transitivePeerDependencies:
+      - '@awasm/compiler'
+      - '@noble/ciphers'
+      - '@noble/hashes'
 
   '@expo-google-fonts/material-symbols@0.4.42': {}
 

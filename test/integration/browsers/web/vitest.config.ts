@@ -17,7 +17,11 @@ export default defineProject(({ mode }) => ({
   plugins: [checkSqliteWasm],
   optimizeDeps: {
     // Preserve import.meta.url so the WASM binary can be located at runtime.
-    exclude: ["@evolu/sqlite-wasm", "@evolu/sqlite-wasm-2.2.4"],
+    exclude: [
+      "@evolu/sqlite-wasm",
+      "@evolu/sqlite-wasm-2.2.4",
+      "@evolu/sqlite-wasm-3.54.0-build2",
+    ],
   },
   test: {
     exclude: ["**/node_modules/**", "**/dist/**"],

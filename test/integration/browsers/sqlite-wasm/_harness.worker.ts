@@ -4,10 +4,11 @@
  * in WebKit. It also runs as a SharedWorker.
  *
  * It runs the steps `setupSqliteWorker` in `_harness.ts` sends, through
- * `serveSteps`. The first step loads the binary, fetched from Vite as
- * `application/wasm`, so it compiles as it streams. A step fails once the
- * binary has reported a defect, such as an exception a VFS method threw,
- * because SQLite ignores the result of some methods, such as `xClose`.
+ * `serveSteps`. The first step loads the binary of a {@link HarnessBuild},
+ * fetched from Vite as `application/wasm`, so it compiles as it streams. A step
+ * fails once the binary has reported a defect, such as an exception a VFS
+ * method threw, because SQLite ignores the result of some methods, such as
+ * `xClose`.
  *
  * @module
  */
@@ -91,6 +92,13 @@ import {
   createSqliteWasm,
   type SqliteWasmDep,
 } from "../../../../packages/sqlite-wasm/src/Wasm.ts";
+import {
+  createEncryptedSqliteDatabase as tsBuildCreateEncryptedSqliteDatabase,
+  createSqliteDatabase as tsBuildCreateSqliteDatabase,
+  createSqliteWasm as tsBuildCreateSqliteWasm,
+  openSahPool as tsBuildOpenSahPool,
+  sqliteWasmUrl as tsBuildWasmUrl,
+} from "@evolu/sqlite-wasm-3.54.0-build2";
 import { serveSteps } from "./_serve.ts";
 
 installPolyfills();
@@ -100,6 +108,43 @@ const sqliteWasmUrl = new URL(
   import.meta.url,
 );
 
+/**
+ * A build the worker loads: the C build of `packages/sqlite-wasm`, or
+ * `@evolu/sqlite-wasm` 3.54.0-build2, the last build whose pool encrypts in
+ * TypeScript. Both have the same C API, so the steps that call it run on
+ * either.
+ */
+export type HarnessBuild = "c" | "3.54.0-build2";
+
+interface Build {
+  readonly wasmUrl: URL;
+  readonly createSqliteWasm: typeof createSqliteWasm;
+  readonly openSahPool: typeof openSahPool;
+  readonly createSqliteDatabase: typeof createSqliteDatabase;
+  readonly createEncryptedSqliteDatabase: typeof createEncryptedSqliteDatabase;
+}
+
+const buildsByName: Record<HarnessBuild, Build> = {
+  c: {
+    wasmUrl: sqliteWasmUrl,
+    createSqliteWasm,
+    openSahPool,
+    createSqliteDatabase,
+    createEncryptedSqliteDatabase,
+  },
+  // Typed as the C build, whose pool and errors differ: a worker loads one
+  // build, which opens only the pools it made, and the steps return its
+  // errors as they are.
+  "3.54.0-build2": {
+    wasmUrl: tsBuildWasmUrl,
+    createSqliteWasm: tsBuildCreateSqliteWasm,
+    openSahPool: tsBuildOpenSahPool,
+    createSqliteDatabase: tsBuildCreateSqliteDatabase,
+    createEncryptedSqliteDatabase: tsBuildCreateEncryptedSqliteDatabase,
+  } as unknown as Build,
+};
+
+let build = buildsByName.c;
 let loaded: (TestRunDefaultDeps & SqliteWasmDep & OpfsRootDep) | null = null;
 
 const getDeps = () => {
@@ -235,16 +280,17 @@ const getOpaqueDirectory = async (
 let heldSlot: FileSystemSyncAccessHandle | null = null;
 
 const steps = {
-  /** Loads the binary, with test dependencies from the seed. */
-  load: async (seed: string): Promise<void> => {
+  /** Loads the binary of the build, with test dependencies from the seed. */
+  load: async (seed: string, buildName: HarnessBuild): Promise<void> => {
+    build = buildsByName[buildName];
     const deps = testCreateDeps({ seed });
     await using run = testCreateRun(deps);
-    const response = await fetch(sqliteWasmUrl);
+    const response = await fetch(build.wasmUrl);
     if (!response.ok)
       throw new Error(
-        `Cannot fetch ${sqliteWasmUrl.pathname} (${response.status}). Download it with pnpm sqlite-wasm:download in the repository root, or build it from source as packages/sqlite-wasm/README.md#the-webassembly describes.`,
+        `Cannot fetch ${build.wasmUrl.pathname} (${response.status}).${buildName === "c" ? " Download it with pnpm sqlite-wasm:download in the repository root, or build it from source as packages/sqlite-wasm/README.md#the-webassembly describes." : ""}`,
       );
-    const sqliteWasm = getOrThrow(await run(createSqliteWasm(response)));
+    const sqliteWasm = getOrThrow(await run(build.createSqliteWasm(response)));
     loaded = { ...deps, sqliteWasm, opfsRoot: navigator.storage };
   },
 
@@ -274,7 +320,7 @@ const steps = {
       ...(options.heldTimeout == null ? {} : { time: createTime() }),
     });
     const opened = await run(
-      openSahPool({ ...options, directory: [directory] }),
+      build.openSahPool({ ...options, directory: [directory] }),
     );
     if (!opened.ok) return opened;
     poolsByDirectory.set(directory, opened.value);
@@ -310,7 +356,7 @@ const steps = {
     directory: OpfsName,
     path: string,
   ): Result<number, SqliteError> => {
-    const opened = createSqliteDatabase(getDeps())({
+    const opened = build.createSqliteDatabase(getDeps())({
       type: "File",
       vfs: getPool(directory),
       path: SqliteVfsPath.orThrow(path),
@@ -328,7 +374,7 @@ const steps = {
     path: string,
     key: EncryptionKey,
   ): Result<number, SqliteError> => {
-    const opened = createSqliteDatabase(getDeps())({
+    const opened = build.createSqliteDatabase(getDeps())({
       type: "EncryptedFile",
       vfs: getPool(directory),
       path: SqliteVfsPath.orThrow(path),
@@ -361,7 +407,7 @@ const steps = {
       subtleCrypto: crypto.subtle,
     });
     const opened = await run(
-      createEncryptedSqliteDatabase({
+      build.createEncryptedSqliteDatabase({
         type: "EncryptedFile",
         vfs: getPool(directory),
         path: SqliteVfsPath.orThrow(path),

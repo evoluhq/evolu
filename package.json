@@ -61,6 +61,7 @@
     "@evolu/nodejs": "workspace:*",
     "@evolu/oxlint-config": "workspace:*",
     "@evolu/sqlite-wasm-2.2.4": "npm:@evolu/sqlite-wasm@2.2.4",
+    "@evolu/sqlite-wasm-3.54.0-build2": "npm:@evolu/sqlite-wasm@3.54.0-build2",
     "@evolu/typescript-config": "workspace:*",
     "@evolu/vitest": "workspace:*",
     "@mdx-js/mdx": "^3.1.1",

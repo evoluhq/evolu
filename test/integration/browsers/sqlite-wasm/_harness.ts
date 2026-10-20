@@ -5,8 +5,10 @@
  * WebKit, so each test starts workers with {@link setupSqliteWorker} and sends
  * them steps. A test that needs two contexts, such as a held slot or a crash,
  * starts two workers and ends one with {@link SqliteWorker.terminate}, as
- * closing a tab does. {@link setupSqliteJsWorker} starts a worker running
- * SQLite's own JavaScript of `@evolu/sqlite-wasm` 2.2.4 instead.
+ * closing a tab does. A worker loads the C build or 3.54.0-build2, the last
+ * build whose pool encrypts in TypeScript, so a test can open one pool with
+ * both. {@link setupSqliteJsWorker} starts a worker running SQLite's own
+ * JavaScript of `@evolu/sqlite-wasm` 2.2.4 instead.
  *
  * @module
  */
@@ -29,7 +31,7 @@ import {
   sahPoolHeaderSize,
   sahPoolOpaqueDirectoryName,
 } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
-import type { HarnessSteps } from "./_harness.worker.ts";
+import type { HarnessBuild, HarnessSteps } from "./_harness.worker.ts";
 import type { SqliteJsSteps } from "./_sqliteJs.worker.ts";
 import type { WorkerSteps } from "./_serve.ts";
 
@@ -233,12 +235,13 @@ export type HarnessResponse =
     };
 
 /**
- * Starts a module worker that loads the binary, or, with `shared`, a
- * SharedWorker of its own.
+ * Starts a module worker that loads the binary of the build, the C build by
+ * default, or, with `shared`, a SharedWorker of its own.
  */
 export const setupSqliteWorker = async ({
   shared = false,
-}: { shared?: boolean } = {}): Promise<SqliteWorker> => {
+  build = "c",
+}: { shared?: boolean; build?: HarnessBuild } = {}): Promise<SqliteWorker> => {
   const worker = connectWorker<HarnessSteps>(
     shared
       ? new SharedWorker(new URL("./_harness.worker.ts", import.meta.url), {
@@ -250,7 +253,7 @@ export const setupSqliteWorker = async ({
         }),
   );
   try {
-    await worker.run("load", crypto.randomUUID());
+    await worker.run("load", crypto.randomUUID(), build);
   } catch (error) {
     worker.terminate();
     throw error;
