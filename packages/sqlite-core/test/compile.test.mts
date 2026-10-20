@@ -232,6 +232,29 @@ describe("run", () => {
     );
   });
 
+  it("runs a command with env but without a preloaded library", () => {
+    // In env, not in process.env, where they would break other commands.
+    // Node.js, unlike macOS's protected /bin/sh, keeps DYLD_INSERT_LIBRARIES.
+    const env = {
+      ...process.env,
+      LD_PRELOAD: "libpreloaded.so",
+      DYLD_INSERT_LIBRARIES: "libpreloaded.dylib",
+      EVOLU_SQLITE_CORE_KEPT: "kept",
+    };
+    assertEqual(
+      run(
+        process.execPath,
+        [
+          "-e",
+          'const { LD_PRELOAD, DYLD_INSERT_LIBRARIES, EVOLU_SQLITE_CORE_KEPT } = process.env; console.log(LD_PRELOAD ?? "unset", DYLD_INSERT_LIBRARIES ?? "unset", EVOLU_SQLITE_CORE_KEPT);',
+        ],
+        undefined,
+        env,
+      ),
+      "unset unset kept\n",
+    );
+  });
+
   it("throws the error of a command that doesn't run", () => {
     assertThrows(
       () => run("evolu-sqlite-core-no-such-command", []),

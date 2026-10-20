@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { it } from "node:test";
 import { sanitizerPreload } from "../scripts/build-addon.mts";
+import { setupAddonPath } from "./setup-addon.mts";
 
 // The test files that drive the addon, which run again against its sanitized
 // build. Listed by hand, since a list this file computed could include this
@@ -23,7 +24,7 @@ const addonTestFiles = [
 ].map((name) => join(import.meta.dirname, name));
 
 it("lists every test file that sets the addon up", () => {
-  // Matched by the import itself, which this file, importing no setup, lacks.
+  // Matched by the import itself, not by this pattern's text.
   const importsSetup = /from "\.\/setup-addon\.mts";$/mu;
   assertEqual(
     readdirSync(import.meta.dirname)
@@ -44,8 +45,14 @@ it(
   "passes each addon test file's tests with AddressSanitizer and UndefinedBehaviorSanitizer",
   // The first sanitized build compiles SQLite again.
   { timeout: 2_400_000 },
-  (t) => {
+  async (t) => {
+    // First, so a host without the shared runtime fails before any compile.
     const preload = sanitizerPreload();
+    // Built here, so the children find the sanitized addon's objects compiled
+    // and only link it. Compiling SQLite with the sanitizers takes clang about
+    // 1.1 GB, which with a child's sanitized Node.js processes overfilled a
+    // 2 GiB Linux VM.
+    await setupAddonPath({ sanitize: true });
     const directory = mkdtempSync(
       join(tmpdir(), "evolu-sqlite-core-sanitized-"),
     );

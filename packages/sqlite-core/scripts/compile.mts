@@ -295,15 +295,26 @@ export const cSources = (directory: string): ReadonlyArray<string> =>
 
 /**
  * Runs a command, in `cwd` and with `env` when given, and returns its standard
- * output, or throws with its output on failure.
+ * output, or throws with its output on failure. The command runs without
+ * LD_PRELOAD and DYLD_INSERT_LIBRARIES, so a library preloaded into a test
+ * process, such as the sanitizer runtime, stays out of the compiler.
  */
 export const run = (
   command: string,
   args: ReadonlyArray<string>,
   cwd?: string,
-  env?: NodeJS.ProcessEnv,
+  env: NodeJS.ProcessEnv = process.env,
 ): string => {
-  const result = spawnSync(command, args, { cwd, env, encoding: "utf8" });
+  // On Linux, clang with the AddressSanitizer runtime that
+  // addon-sanitized.test.mts preloads passed 1.7 GB compiling SQLite, against
+  // 1.1 GB without it. macOS drops DYLD_INSERT_LIBRARIES only for protected
+  // binaries, such as /usr/bin/clang.
+  const { LD_PRELOAD: _, DYLD_INSERT_LIBRARIES: __, ...commandEnv } = env;
+  const result = spawnSync(command, args, {
+    cwd,
+    env: commandEnv,
+    encoding: "utf8",
+  });
   if (result.error) throw result.error;
   if (result.status !== 0)
     throw new Error(
