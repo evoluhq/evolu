@@ -119,9 +119,10 @@ jobs:
 
   # Builds Evolu's SQLite core in C with sanitizers on the host and runs its C
   # and TypeScript tests, whose C tests must cover every line, function and
-  # branch of the core's C compiled for the runner's CPU and OS: x86-64 Linux,
-  # arm64 Linux, the hardware paths and CPU detection Android shares, and
-  # arm64 macOS. The amalgamation comes from the pinned SQLite source.
+  # branch of the core's C and its native binding layer compiled for the
+  # runner's CPU and OS: x86-64 Linux, arm64 Linux, the hardware paths and CPU
+  # detection Android shares, and arm64 macOS. The amalgamation comes from the
+  # pinned SQLite source.
   sqlite-core:
     name: SQLite core (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -163,6 +164,26 @@ jobs:
         run: pnpm test:sqlite-core
         env:
           EVOLU_TEST_EXPECTED_CPU: ${{ matrix.cpu }}
+
+      # Android's armeabi-v7a and x86 ABIs build the core for 32-bit CPUs,
+      # without hardware crypto, so the C tests also run built with -m32 and
+      # must cover all of what that build compiles.
+      - name: Install 32-bit libraries
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+
+      - name: Test 32-bit
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm test:node --no-experimental-test-coverage packages/sqlite-core/test/core.test.mts
+        env:
+          EVOLU_TEST_M32: "1"
+          EVOLU_TEST_EXPECTED_CPU: "0"
+
+      # The registry's thread tests under ThreadSanitizer, which can't
+      # combine with AddressSanitizer.
+      - name: Test threads
+        if: matrix.os == 'ubuntu-latest'
+        run: node packages/sqlite-core/scripts/test.mts binding_threads_ --thread-sanitizer
 
   type-benchmarks:
     name: Type benchmarks

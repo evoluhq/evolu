@@ -3,15 +3,27 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { after, before, it } from "node:test";
-import { cSources, sourceDirectory } from "../scripts/compile.mts";
+import {
+  bindingDirectory,
+  cSources,
+  sourceDirectory,
+} from "../scripts/compile.mts";
 import {
   formatCoverageGap,
   isFullCoverageExpected,
   measureCoverage,
 } from "../scripts/coverage.mts";
+import { defaultSanitizerFlags } from "../scripts/build.mts";
 import { runCoreTests } from "../scripts/test.mts";
 
 type Run = Awaited<ReturnType<typeof runCoreTests>>;
+
+// A 32-bit x86 build with EVOLU_TEST_M32=1, as Android's armeabi-v7a and x86
+// ABIs compile the core: without hardware paths, which only 64-bit CPUs get.
+const isM32 = process.env.EVOLU_TEST_M32 === "1";
+const flags = isM32
+  ? { sanitizerFlags: [...defaultSanitizerFlags, "-m32"] }
+  : {};
 
 // Both runs write into one directory, so the coverage is theirs together.
 const profileDirectory = mkdtempSync(join(tmpdir(), "evolu-sqlite-core-"));
@@ -21,10 +33,11 @@ let software: Run;
 before(
   async () => {
     const { EVOLU_TEST_SOFTWARE_CRYPTO: _, ...env } = process.env;
-    hardware = await runCoreTests({ env, profileDirectory });
+    hardware = await runCoreTests({ env, profileDirectory, ...flags });
     software = await runCoreTests({
       env: { ...env, EVOLU_TEST_SOFTWARE_CRYPTO: "1" },
       profileDirectory,
+      ...flags,
     });
   },
   // The first run compiles SQLite and can generate its amalgamation.
@@ -48,11 +61,11 @@ it("passes the C test suite on the software crypto path", () => {
   assertTrue(software.output.includes("# crypto: software\n"));
 });
 
-it("covers every line, function and branch of the core's C", (t) => {
+it("covers every line, function and branch of the core's C and the binding's", (t) => {
   const { files, lines, functions, branches, gaps } = measureCoverage({
     binary: hardware.runner,
     profileDirectory,
-    sourceDirectory,
+    sourceDirectories: [sourceDirectory, bindingDirectory],
   });
   const uncovered = gaps.map((gap) => formatCoverageGap(gap, process.cwd()));
   // The CPU's features, which the hardware run prints.
@@ -64,11 +77,14 @@ it("covers every line, function and branch of the core's C", (t) => {
   // A source the build didn't instrument would be missing, not uncovered.
   assertEqual(
     files.filter((file) => file.endsWith(".c")).toSorted(),
-    cSources(sourceDirectory),
+    [...cSources(sourceDirectory), ...cSources(bindingDirectory)].toSorted(),
   );
   if (
     cpu != null &&
-    !isFullCoverageExpected({ arch: process.arch, cpuFeatures: Number(cpu[1]) })
+    !isFullCoverageExpected({
+      arch: isM32 ? "ia32" : process.arch,
+      cpuFeatures: Number(cpu[1]),
+    })
   ) {
     // Only the crypto layer's dispatch and hardware paths depend on the CPU.
     const cpuDependent = new Set([

@@ -13,9 +13,19 @@
 #include "evolu_xchacha.h"
 #include "monocypher.h"
 
-#include <sanitizer/asan_interface.h>
 #include <stdint.h>
 #include <string.h>
+
+// The runner for the thread tests has ThreadSanitizer instead.
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#include <sanitizer/asan_interface.h>
+#define HAS_FAKE_STACK() (__asan_get_current_fake_stack() != NULL)
+#endif
+#endif
+#ifndef HAS_FAKE_STACK
+#define HAS_FAKE_STACK() 0
+#endif
 
 /*
  * AEAD_XChaCha20_Poly1305 of draft-irtf-cfrg-xchacha-03, appendix A.3.1
@@ -323,7 +333,7 @@ STACK_PROBE static size_t count_stack_left(void) {
  * check runs only without them, as on macOS.
  */
 static void xchacha_wipes_the_stack_below_it(void) {
-  if (__asan_get_current_fake_stack() != NULL) return;
+  if (HAS_FAKE_STACK()) return;
   fill_stack();
   CHECK_EQ_INT(count_stack_left(), 0);
   fill_stack();

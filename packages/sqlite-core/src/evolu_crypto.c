@@ -27,8 +27,9 @@
  * key schedule, so the functions that run on keys end with evolu_wipe_stack.
  */
 
-// memset_s is declared only on request (C11 Annex K), and glibc declares
-// explicit_bzero only outside strict ISO C. Both must precede every include.
+// memset_s is declared only on request (C11 Annex K), and the wasm's libc
+// declares getentropy only outside strict ISO C. Both must precede every
+// include.
 #define __STDC_WANT_LIB_EXT1__ 1
 #define _DEFAULT_SOURCE 1
 
@@ -57,7 +58,7 @@ ssize_t (*evolu_test_getrandom)(void *buffer, size_t size,
 #elif defined(__wasm__)
 #include <unistd.h>
 #elif defined(_WIN32)
-#error "evolu_random_bytes on Windows (BCryptGenRandom) comes in Phase 2"
+#error "evolu_random_bytes on Windows (BCryptGenRandom) comes with the Node.js binding"
 #else
 #error "evolu_random_bytes has no CSPRNG for this platform"
 #endif
@@ -66,13 +67,19 @@ void evolu_wipe(void *p, size_t size) {
   if (size == 0) return;
 #if defined(__APPLE__)
   memset_s(p, size, 0, size);
-#elif defined(__GLIBC__) || defined(__FreeBSD__) || defined(__OpenBSD__)
-  explicit_bzero(p, size);
-#else
+#elif defined(__wasm__)
   // Stores through a volatile pointer are observable behavior, so the
   // compiler keeps them.
   volatile uint8_t *bytes = p;
   while (size-- > 0) *bytes++ = 0;
+#else
+  // An empty asm that may read the memory, so the compiler can't drop the
+  // zeroing as a dead store, as BoringSSL's OPENSSL_cleanse does. Android's
+  // bionic declares no explicit_bzero and memset_explicit needs API 34, so
+  // every other native target, glibc included, wipes the same way and the
+  // Linux hosts test Android's wipe.
+  memset(p, 0, size);
+  __asm__ __volatile__("" : : "r"(p) : "memory");
 #endif
 }
 
@@ -265,11 +272,15 @@ void *evolu_calloc(size_t count, size_t size) {
 
 void evolu_aes256_init(evolu_aes256 *aes,
                        const uint8_t key[EVOLU_AES256_KEY_SIZE]) {
+  // Only builds with a hardware path can get one, so 32-bit builds compile no
+  // check that can't be true.
+#ifdef EVOLU_HW_AES_PATH
   const evolu_aes256_impl *hardware = evolu_aes256_hardware();
   if (hardware != NULL) {
     evolu_aes256_init_with(aes, hardware, key);
     return;
   }
+#endif
   // BearSSL advises aes_ct64 wherever 64-bit arithmetic is native, which
   // includes wasm32, and aes_ct on 32-bit CPUs.
 #if UINTPTR_MAX > UINT32_MAX || defined(__wasm__)
@@ -534,9 +545,13 @@ evolu_crypto_result evolu_pbkdf2_sha512(const uint8_t *password,
                                         size_t output_size) {
   // RFC 8018 section 5.2: output block i (counted from 1 in 32 bits) is
   // U_1 ^ ... ^ U_c, where U_1 = HMAC(P, S || INT(i)), U_j = HMAC(P, U_j-1).
-  if (iterations == 0 ||
-      (uint64_t)output_size > (uint64_t)UINT32_MAX * EVOLU_SHA512_SIZE)
+  if (iterations == 0) return EVOLU_CRYPTO_MISUSE;
+  // A 32-bit size_t never exceeds it, so 32-bit builds compile no check that
+  // can't be true.
+#if SIZE_MAX > UINT32_MAX
+  if ((uint64_t)output_size > (uint64_t)UINT32_MAX * EVOLU_SHA512_SIZE)
     return EVOLU_CRYPTO_MISUSE;
+#endif
 
   evolu_hmac_sha512_key key;
   evolu_hmac_sha512 mac;

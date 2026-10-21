@@ -5,6 +5,9 @@
 #include <stddef.h>
 
 int test_sqlite_allocations_left = -1;
+void (*test_sqlite_malloc_hook)(void *p, int size);
+void (*test_sqlite_realloc_hook)(void *p, int size);
+void (*test_sqlite_free_hook)(void *p, int size);
 
 static sqlite3_mem_methods default_methods;
 
@@ -19,11 +22,21 @@ static int allocation_fails(void) {
 }
 
 static void *test_malloc(int size) {
-  return allocation_fails() ? NULL : default_methods.xMalloc(size);
+  void *p = allocation_fails() ? NULL : default_methods.xMalloc(size);
+  if (p != NULL && test_sqlite_malloc_hook != NULL)
+    test_sqlite_malloc_hook(p, size);
+  return p;
 }
 
 static void *test_realloc(void *p, int size) {
+  if (test_sqlite_realloc_hook != NULL) test_sqlite_realloc_hook(p, size);
   return allocation_fails() ? NULL : default_methods.xRealloc(p, size);
+}
+
+static void test_free(void *p) {
+  if (test_sqlite_free_hook != NULL)
+    test_sqlite_free_hook(p, default_methods.xSize(p));
+  default_methods.xFree(p);
 }
 
 int test_install_sqlite_allocator(void) {
@@ -32,5 +45,6 @@ int test_install_sqlite_allocator(void) {
   sqlite3_mem_methods methods = default_methods;
   methods.xMalloc = test_malloc;
   methods.xRealloc = test_realloc;
+  methods.xFree = test_free;
   return sqlite3_config(SQLITE_CONFIG_MALLOC, &methods);
 }

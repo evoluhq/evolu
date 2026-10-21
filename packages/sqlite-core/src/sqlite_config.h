@@ -11,6 +11,17 @@
 #define EVOLU_SQLITE_CONFIG_H
 
 /*
+ * The builds of Evolu's native package define EVOLU_NATIVE_PACKAGE and compile
+ * each C source through a wrapper that includes evolu_names.h first, which
+ * renames every global symbol, so another SQLite in the app never binds to
+ * this one. SQLite compiled without its wrapper stops here, and every core and
+ * binding unit at the same guard in evolu_crypto.h and evolu_database.h.
+ */
+#if defined(EVOLU_NATIVE_PACKAGE) && !defined(EVOLU_NAMES_H)
+#error "Compile Evolu's native C through its units, which include evolu_names.h first."
+#endif
+
+/*
  * Multi-thread mode: SQLite's global state is protected, and each connection
  * is opened with SQLITE_OPEN_NOMUTEX, because one thread owns it.
  */
@@ -39,6 +50,17 @@
 #endif
 #define SQLITE_OMIT_LOAD_EXTENSION 1
 #define SQLITE_DQS 0
+
+/*
+ * POSIX advisory locks only, on every platform. SQLite turns its other locking
+ * styles on for Apple platforms by default, which expo-sqlite turned off, so
+ * the macOS host tests run the locking iOS ships. Unconditional, because the
+ * build check requires it among the compile options, which list it only when
+ * it is defined. Without HAVE_GETHOSTUUID, which only those styles read,
+ * SQLite's gethostuuid block warns on every iOS compile.
+ */
+#define SQLITE_ENABLE_LOCKING_STYLE 0
+#define HAVE_GETHOSTUUID 0
 
 /*
  * SQLite carves small allocations, such as a statement or a value's text, out

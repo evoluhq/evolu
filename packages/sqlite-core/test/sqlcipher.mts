@@ -124,8 +124,10 @@ export const buildSqlcipherFixture = async ({
     // HAVE_STDINT_H, as SQLCipher's configure defines it. Apple's and Android's
     // headers include stdint.h anyway; glibc's don't. Including stdint.h before
     // the source instead would hide mremap, as glibc would then set its
-    // features before SQLite defines _GNU_SOURCE.
-    flags: [...flags, "-DHAVE_STDINT_H=1", "-w"],
+    // features before SQLite defines _GNU_SOURCE. SQLCipher logs to stderr off
+    // Apple's platforms but to os_log on iOS, where apps run it, and the tests
+    // compare the fixture's stderr.
+    flags: [...flags, "-DHAVE_STDINT_H=1", "-DSQLCIPHER_OMIT_LOG", "-w"],
     source: sqlite3c,
     objectsDirectory: outputDirectory,
   });

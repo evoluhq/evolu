@@ -1,7 +1,8 @@
 /**
  * What the host test build (build.mts), the Node-API addon build
  * (build-addon.mts) and `@evolu/sqlite-wasm`'s wasm build share: the C sources
- * of the core and its vendored libraries with the flags each compiles with, and
+ * of the core and its vendored libraries with the flags each compiles with,
+ * those of the native binding layer, which only the native builds compile, and
  * for the host builds, a compile cache keyed by inputs, which test processes
  * running in parallel share, compiling each object once, and atomic writes, so
  * they never see a partial file. Every source is compiled into a cached object
@@ -33,6 +34,9 @@ export const sourceDirectory = /*#__PURE__*/ fileURLToPath(
 );
 export const testDirectory = /*#__PURE__*/ fileURLToPath(
   /*#__PURE__*/ new URL("../test/", import.meta.url),
+);
+export const bindingDirectory = /*#__PURE__*/ fileURLToPath(
+  /*#__PURE__*/ new URL("../binding/", import.meta.url),
 );
 const vendorDirectory = /*#__PURE__*/ fileURLToPath(
   /*#__PURE__*/ new URL("../vendor/", import.meta.url),
@@ -142,6 +146,22 @@ export const compileUnits = (
       .map((source) => ({ source, flags, headers }));
   }),
 ];
+
+/**
+ * The native binding layer's compile units, binding/, which the host test build
+ * and the addon compile and the wasm never does, since the layer calls POSIX
+ * file functions: its sources with the build's `sqliteFlags`, then
+ * {@link coreFlags} and its own include directory. Its objects may depend on the
+ * core's headers and its own.
+ */
+export const nativeBindingUnits = (
+  sqliteFlags: ReadonlyArray<string>,
+): ReadonlyArray<CompileUnit> =>
+  cSources(bindingDirectory).map((source) => ({
+    source,
+    flags: [...sqliteFlags, ...coreFlags(), `-I${bindingDirectory}`],
+    headers: () => [coreHeaders(), headerContents(bindingDirectory)].join("\n"),
+  }));
 
 /** What {@link compileCached} compiles and where it keeps the object. */
 export interface CompileCachedOptions {

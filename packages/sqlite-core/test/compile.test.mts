@@ -24,10 +24,12 @@ import { basename, join, relative } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
+  bindingDirectory,
   compileCached,
   type CompileCachedOptions,
   compileUnits,
   cSources,
+  nativeBindingUnits,
   run,
   sourceDirectory,
   writeAtomically,
@@ -359,6 +361,31 @@ describe("compileUnits", () => {
       // Its internal headers, such as inner.h.
       assertTrue(headers().includes("br_aes_ct64_bitslice_Sbox"));
     }
+  });
+});
+
+describe("nativeBindingUnits", () => {
+  it("compiles the binding's sources, which the core's units leave out, with the given SQLite flags first, the core's flags and the binding's include directory", () => {
+    const units = nativeBindingUnits(["-DSQLITE_THREADSAFE=0", "-Isqlite"]);
+
+    assertEqual(
+      units.map(({ source }) => source),
+      cSources(bindingDirectory),
+    );
+    assertTrue(units.length > 0);
+    for (const { flags, headers } of units) {
+      assertEqual(flags.slice(0, 2), ["-DSQLITE_THREADSAFE=0", "-Isqlite"]);
+      assertTrue(flags.includes("-Werror"));
+      assertTrue(flags.includes(`-I${sourceDirectory}`));
+      assertTrue(flags.includes(`-I${bindingDirectory}`));
+      for (const declaration of ["evolu_codec_open", "evolu_database_export"])
+        assertTrue(headers().includes(declaration));
+    }
+    assertFalse(
+      compileUnits([]).some(({ source }) =>
+        source.startsWith(bindingDirectory),
+      ),
+    );
   });
 });
 

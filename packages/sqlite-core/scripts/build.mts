@@ -1,28 +1,34 @@
 /**
- * Host builds of the C core for its tests: SQLite, the vendored libraries and
- * the core compiled with AddressSanitizer and UndefinedBehaviorSanitizer, the
- * core's own C and tests with warnings as errors, each into a cached object.
+ * Host builds of the C core for its tests: SQLite, the vendored libraries, the
+ * core and the native binding layer compiled with {@link defaultSanitizerFlags},
+ * AddressSanitizer and UndefinedBehaviorSanitizer, unless a caller passes a set
+ * that replaces them, such as ThreadSanitizer or the defaults plus `-m32`, and
+ * the core's own C, the binding's and the tests with warnings as errors, each
+ * into a cached object.
  *
  * Each test file `test/<name>_test.c` defines `void <name>_suite(void)`; the
  * build generates the runner's list of suites from the file names, so adding a
  * test file needs no other change.
  *
- * The core's own C, src/, is also instrumented for source-based coverage
- * (coverage.mts), so each run of the runner writes a profile where
- * `LLVM_PROFILE_FILE` names. SQLite, the vendored libraries and the tests
- * aren't, since nothing measures them.
+ * The core's own C, src/, and the native binding layer, binding/, are also
+ * instrumented for source-based coverage (coverage.mts), so each run of the
+ * runner writes a profile where `LLVM_PROFILE_FILE` names. SQLite, the vendored
+ * libraries and the tests aren't, since nothing measures them.
  *
  * @module
  */
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
+  bindingDirectory,
   compileCached,
   compileUnits,
   coreFlags,
   coreHeaders,
   cSources,
   headerContents,
+  nativeBindingUnits,
   run,
   sourceDirectory,
   testDirectory,
@@ -32,29 +38,42 @@ import { coverageFlags } from "./coverage.mts";
 import type { PinnedSqliteSource, PreparedSqlite } from "./sqlite-source.mts";
 
 /**
- * Builds the C test runner and returns its path. Objects of SQLite and the
- * vendored libraries are kept in `outputDirectory` under names derived from
- * their inputs, so only the core and the tests compile again while those stay
- * the same.
+ * The sanitizers every compile and the link of the C test runner use, unless a
+ * build passes a flag set that replaces them, such as these plus `-m32` for a
+ * 32-bit run, or `-fsanitize=thread` for the thread tests, since
+ * ThreadSanitizer can't combine with AddressSanitizer.
+ */
+export const defaultSanitizerFlags: ReadonlyArray<string> = [
+  "-fsanitize=address,undefined",
+  "-fno-sanitize-recover=all",
+];
+
+/**
+ * Builds the C test runner with `sanitizerFlags` and returns its path, which is
+ * the flag set's own, so runners of several sets can run at once. Objects of
+ * SQLite and the vendored libraries are kept in `outputDirectory` under names
+ * derived from their inputs, so only the core and the tests compile again while
+ * those stay the same.
  */
 export const buildTestRunner = ({
   sqlite,
   source,
   outputDirectory,
   cc = "clang",
+  sanitizerFlags = defaultSanitizerFlags,
 }: {
   sqlite: PreparedSqlite;
   source: PinnedSqliteSource;
   outputDirectory: string;
   cc?: string;
+  sanitizerFlags?: ReadonlyArray<string>;
 }): string => {
   const sanitized = [
     "-std=c11",
     "-g",
     "-O1",
     "-fno-omit-frame-pointer",
-    "-fsanitize=address,undefined",
-    "-fno-sanitize-recover=all",
+    ...sanitizerFlags,
   ];
   const sqliteFlags = [
     `-I${sqlite.directory}`,
@@ -80,30 +99,35 @@ export const buildTestRunner = ({
     // random source that fails and the core's allocations that fail.
     "-DEVOLU_TEST_HOOKS",
   ];
-  const unitObjects = compileUnits(testFlags).map(
-    ({ source, flags, headers }) =>
-      compileCached({
-        cc,
-        flags: [
-          ...sanitized,
-          ...flags,
-          // The crypto test probes inactive CBC lanes before orthogonalizing
-          // them. Pattern initialization makes a missing explicit initializer
-          // deterministic; only these test-runner objects use the probe.
-          ...(["aes_ct64_cbcenc.c", "aes_ct64_cbcdec.c"].includes(
-            basename(source),
-          )
-            ? [
-                "-ftrivial-auto-var-init=pattern",
-                "-Dbr_aes_ct64_ortho=evolu_test_aes_ct64_ortho",
-              ]
-            : []),
-          ...(source.startsWith(sourceDirectory) ? coverageFlags : []),
-        ],
-        source,
-        extraKey: headers,
-        objectsDirectory,
-      }),
+  const unitObjects = [
+    ...compileUnits(testFlags),
+    ...nativeBindingUnits(testFlags),
+  ].map(({ source, flags, headers }) =>
+    compileCached({
+      cc,
+      flags: [
+        ...sanitized,
+        ...flags,
+        // The crypto test probes inactive CBC lanes before orthogonalizing
+        // them. Pattern initialization makes a missing explicit initializer
+        // deterministic; only these test-runner objects use the probe.
+        ...(["aes_ct64_cbcenc.c", "aes_ct64_cbcdec.c"].includes(
+          basename(source),
+        )
+          ? [
+              "-ftrivial-auto-var-init=pattern",
+              "-Dbr_aes_ct64_ortho=evolu_test_aes_ct64_ortho",
+            ]
+          : []),
+        ...(source.startsWith(sourceDirectory) ||
+        source.startsWith(bindingDirectory)
+          ? coverageFlags
+          : []),
+      ],
+      source,
+      extraKey: headers,
+      objectsDirectory,
+    }),
   );
 
   const testFiles = cSources(testDirectory);
@@ -127,20 +151,33 @@ export const buildTestRunner = ({
     );
   });
 
-  // A test object depends on every header of the tests and of the core.
+  // A test object depends on every header of the tests, the core and the
+  // binding.
   const testHeaders = (): string =>
-    [coreHeaders(), headerContents(testDirectory)].join("\n");
+    [
+      coreHeaders(),
+      headerContents(bindingDirectory),
+      headerContents(testDirectory),
+    ].join("\n");
   const testObjects = [...testFiles, suitesFile].map((file) =>
     compileCached({
       cc,
-      flags: [...sanitized, ...testFlags, ...coreFlags()],
+      flags: [
+        ...sanitized,
+        ...testFlags,
+        ...coreFlags(),
+        `-I${bindingDirectory}`,
+      ],
       source: file,
       extraKey: testHeaders,
       objectsDirectory,
     }),
   );
 
-  const runner = join(outputDirectory, "core-tests");
+  const runner = join(
+    outputDirectory,
+    `core-tests-${createHash("sha256").update(JSON.stringify(sanitizerFlags)).digest("hex").slice(0, 8)}`,
+  );
   writeAtomically(runner, (output) => {
     run(cc, [
       ...sanitized,

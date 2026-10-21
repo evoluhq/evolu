@@ -88,7 +88,8 @@ for a post, run `node scripts/code-image.mts --help`.
   affected TypeScript test files with `pnpm test:node`, then
   `pnpm test:sqlite-core` once, which fails below 100% line, branch, or
   function coverage of the package's TypeScript, or when the C tests cover
-  less than every line, branch, or function of `src` that the host compiles.
+  less than every line, branch, or function of `src` and `binding` that the
+  host compiles.
   On a CPU that lacks a hardware crypto feature its architecture's paths use,
   such as an arm64 one without SHA-512 or DIT, it allows C gaps only in the
   crypto layer's files, and on CI, the CPU must report the features its runner

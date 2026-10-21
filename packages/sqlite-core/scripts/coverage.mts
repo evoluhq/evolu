@@ -4,15 +4,16 @@
  * directory's sources, read with the llvm-profdata and llvm-cov of the clang
  * that compiled it.
  *
- * The C test runner compiles the core's src/ with {@link coverageFlags}, each
- * run writes a profile, and core.test.mts requires the runs on both crypto
- * paths to cover every line, function and branch of src/ on the host's
- * platform. A branch counts each of its outcomes, as llvm-cov does: the true
- * and the false of each condition of an `if`, a loop, `&&`, `||` or `?:`. The
- * gaps list every uncovered line, function and outcome. Two outcomes no test
- * can take stay out of the core: a `switch` without `default` counts its
- * implicit default, which a switch over every case never takes, and a condition
- * clang folded, such as `while (0)`, which the gaps list as never true.
+ * The C test runner compiles the core's src/ and the native binding layer's
+ * binding/ with {@link coverageFlags}, each run writes a profile, and
+ * core.test.mts requires the runs on both crypto paths to cover every line,
+ * function and branch of both on the host's platform. A branch counts each of
+ * its outcomes, as llvm-cov does: the true and the false of each condition of
+ * an `if`, a loop, `&&`, `||` or `?:`. The gaps list every uncovered line,
+ * function and outcome. Two outcomes no test can take stay out of the core: a
+ * `switch` without `default` counts its implicit default, which a switch over
+ * every case never takes, and a condition clang folded, such as `while (0)`,
+ * which the gaps list as never true.
  *
  * @module
  */
@@ -74,18 +75,18 @@ export interface UncoveredBranch extends Typed<"UncoveredBranch"> {
 
 /**
  * Merges the profiles that the runs of `binary` wrote into `profileDirectory`
- * and reports the coverage of the sources under `sourceDirectory`. Throws when
- * the directory has no profile or clang has no llvm-profdata or llvm-cov.
+ * and reports the coverage of the sources under `sourceDirectories`. Throws
+ * when the directory has no profile or clang has no llvm-profdata or llvm-cov.
  */
 export const measureCoverage = ({
   binary,
   profileDirectory,
-  sourceDirectory,
+  sourceDirectories,
   cc = "clang",
 }: {
   binary: string;
   profileDirectory: string;
-  sourceDirectory: string;
+  sourceDirectories: ReadonlyArray<string>;
   cc?: string;
 }): CoverageReport => {
   const profiles = readdirSync(profileDirectory)
@@ -107,13 +108,15 @@ export const measureCoverage = ({
     `-format=${format}`,
     `-instr-profile=${merged}`,
     binary,
-    sourceDirectory,
+    ...sourceDirectories,
   ];
   const [data] = (
     JSON.parse(llvmTool(cc, "llvm-cov", exportArgs("text"))) as LlvmCovExport
   ).data;
   const isSource = (file: string) =>
-    !relative(sourceDirectory, file).startsWith("..");
+    sourceDirectories.some(
+      (directory) => !relative(directory, file).startsWith(".."),
+    );
 
   const lines: Array<UncoveredLine> = [];
   let file = "";

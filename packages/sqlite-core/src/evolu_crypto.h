@@ -37,6 +37,11 @@
 #ifndef EVOLU_CRYPTO_H
 #define EVOLU_CRYPTO_H
 
+/* Every core unit includes this header, so it holds sqlite_config.h's guard. */
+#if defined(EVOLU_NATIVE_PACKAGE) && !defined(EVOLU_NAMES_H)
+#error "Compile Evolu's native C through its units, which include evolu_names.h first."
+#endif
+
 #include <stddef.h>
 #include <stdint.h>
 

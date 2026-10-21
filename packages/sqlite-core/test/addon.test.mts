@@ -11,13 +11,14 @@ import {
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { before, describe, it, type TestContext } from "node:test";
 import { setImmediate as nextMacrotask } from "node:timers/promises";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 import { Worker } from "node:worker_threads";
 import { buildAddon, sanitizerPreload } from "../scripts/build-addon.mts";
+import { bindingDirectory, cSources } from "../scripts/compile.mts";
 import { sqliteSource } from "../scripts/sqlite-source.mts";
 import {
   loadAddon,
@@ -86,6 +87,24 @@ describe("buildAddon", () => {
       "dynamic_lookup",
     ]);
     assertEqual(linkFlags("linux"), ["-shared", "-shared-libasan"]);
+  });
+
+  it("links the binding's units into the addon", (t) => {
+    const build = setupFakeBuild(t);
+
+    buildAddon({
+      sqlite: build.sqlite,
+      outputDirectory: build.env.SQLITE_CORE_BUILD,
+      cc: build.cc,
+    });
+
+    const link = build.commands().at(-1) ?? [];
+    for (const source of cSources(bindingDirectory))
+      assertTrue(
+        link.some((arg) =>
+          basename(arg).startsWith(`${basename(source, ".c")}-`),
+        ),
+      );
   });
 });
 
@@ -930,6 +949,42 @@ describe("addon", () => {
           },
           sqliteErrorIs("column index out of range", 25, 25),
         );
+  });
+
+  it("fails the write of a crash copy that can't be copied, and refuses a crash copy whose write or copy isn't one", (t) => {
+    const directory = setupDirectory(t);
+    const path = join(directory, "crash-copy.db");
+    const copy = join(directory, "missing", "copy.db");
+
+    const db = addon.openCodec(path, null, 0, { write: 1, copy });
+    assertThrows(
+      () => {
+        addon.exec(db, "create table t (x)");
+      },
+      sqliteErrorIs("disk I/O error", 10, 778),
+    );
+    addon.close(db);
+
+    const { openCodec } = addon;
+    assertEqual(
+      [
+        () => openCodec(path, null, 0, { write: "1", copy } as never),
+        () => openCodec(path, null, 0, { write: 1, copy: 1 } as never),
+        () => openCodec(path, null, 0, { write: 1, copy: `${copy}\0` }),
+      ].map((use) => thrownMessage(use, TypeError)),
+      [
+        "expected an integer",
+        "expected a string",
+        "expected a well-formed string without NUL characters",
+      ],
+    );
+    assertEqual(
+      thrownMessage(
+        () => openCodec(path, null, 0, { write: 1.5, copy }),
+        RangeError,
+      ),
+      "expected an integer from -2147483648 to 2147483647",
+    );
   });
 
   it("refuses a handle of the other kind and any other value", (t) => {

@@ -17,13 +17,17 @@
 #include <string.h>
 
 // The tests rely on AddressSanitizer and UndefinedBehaviorSanitizer to fail
-// on memory errors and undefined behavior.
+// on memory errors and undefined behavior, or, in the build for the thread
+// tests, on ThreadSanitizer to fail on data races, since it can't combine with
+// AddressSanitizer.
 #if defined(__has_feature)
+#if !__has_feature(thread_sanitizer)
 #if !__has_feature(address_sanitizer)
 #error "The C runner must be built with AddressSanitizer."
 #endif
 #if !__has_feature(undefined_behavior_sanitizer)
 #error "The C runner must be built with UndefinedBehaviorSanitizer."
+#endif
 #endif
 #endif
 

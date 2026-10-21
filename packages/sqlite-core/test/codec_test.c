@@ -113,12 +113,15 @@ static int same_files(const char *path, const char *other) {
   return same;
 }
 
-/* Removes the database at path and its journal. */
+/* Removes the database at path, its journal and any WAL file. */
 static void remove_database(const char *path) {
   char journal[600];
+  char wal[600];
   snprintf(journal, sizeof journal, "%s-journal", path);
+  snprintf(wal, sizeof wal, "%s-wal", path);
   unlink(path);
   unlink(journal);
+  unlink(wal);
 }
 
 /* Returns the integer the query's first row starts with, or -1. */
@@ -3646,6 +3649,48 @@ static void codec_database_never_switches_to_wal(void) {
 }
 
 /*
+ * A characterization of what React Native's binding relies on: a WAL file
+ * next to a rollback database, which no codec connection writes, fails the
+ * open with SQLITE_CANTOPEN, encrypted or not, since the codec's files lack
+ * the shared memory SQLite reads a WAL with, and both files stay as they were.
+ */
+static void stray_wal_fails_the_open_unchanged(const uint8_t *key) {
+  char path[512];
+  char wal[600];
+  char copy[512];
+  char wal_copy[512];
+  path_of(path, "stray-wal.db");
+  path_of(copy, "stray-wal-copy.db");
+  path_of(wal_copy, "stray-wal-copy.db-wal");
+  snprintf(wal, sizeof wal, "%s-wal", path);
+  remove_database(path);
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(
+      evolu_codec_open(path, &db, vfs_name, key, EVOLU_CODEC_SQLCIPHER_FILES),
+      SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 3), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  // SQLite counts an empty WAL file as none.
+  static const uint8_t stray[32] = "a WAL file another library left";
+  CHECK(write_file(wal, stray, sizeof stray));
+  CHECK(copy_file(path, copy) && copy_file(wal, wal_copy));
+
+  CHECK_EQ_INT(
+      evolu_codec_open(path, &db, vfs_name, key, EVOLU_CODEC_SQLCIPHER_FILES),
+      SQLITE_CANTOPEN);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+
+  CHECK(same_files(path, copy));
+  CHECK(same_files(wal, wal_copy));
+}
+
+static void codec_characterization_stray_wal_fails_the_open_unchanged(void) {
+  CHECK(set_up());
+  stray_wal_fails_the_open_unchanged(test_key);
+  stray_wal_fails_the_open_unchanged(NULL);
+}
+
+/*
  * Nor does a backup from a WAL database give one a header that says WAL: the
  * page 1 it copies fails to be written, and the database stays as it was.
  */
@@ -5010,7 +5055,8 @@ static void remove_databases(void) {
       "refused-sector.db",
       "cut-checksum.db",
       "super-journal", "outer.db", "empty-kept-journal.db",
-      "short-header.db", "empty-open-faults.db"};
+      "short-header.db", "empty-open-faults.db", "stray-wal.db",
+      "stray-wal-copy.db"};
   char path[512];
   for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
     path_of(path, names[i]);
@@ -5054,6 +5100,7 @@ void codec_suite(void) {
   RUN(codec_journal_or_database_shorter_than_their_headers);
   RUN(codec_inner_vfs_may_lack_optional_methods);
   RUN(codec_database_never_switches_to_wal);
+  RUN(codec_characterization_stray_wal_fails_the_open_unchanged);
   RUN(codec_database_refuses_a_backup_from_a_wal_database);
   RUN(codec_encrypted_database_stores_no_plaintext_and_reads_back);
   RUN(codec_database_with_another_key_fails_with_notadb_unchanged);

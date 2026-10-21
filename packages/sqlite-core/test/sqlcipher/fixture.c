@@ -11,9 +11,14 @@
  *                                with status 3, as a power loss would leave
  *                                them; with fewer writes, it commits, prints
  *                                their count and exits with status 0
+ *   fixture crash-create DB KEY ROWS N COPY
+ *                                creates DB, which must not exist, in one
+ *                                transaction, as create does in two, through
+ *                                the same VFS
  *
  * The update transaction spills updated pages into the database before it
- * commits, so a crash leaves a hot journal SQLite must roll back.
+ * commits, so a crash leaves a hot journal SQLite must roll back, and so does
+ * crash-create's.
  */
 #include "sqlite3.h"
 
@@ -42,6 +47,16 @@
 
 static const char update_sql[] =
     "pragma cache_size = 5; begin; update t set v = 'updated' || id; commit";
+
+/* Writes the SQL that creates table t with rows rows into sql. */
+static void create_sql(char sql[400], int rows) {
+  snprintf(sql, 400,
+           "create table t (id integer primary key, v text);"
+           "with recursive n(i) as (select 1 union all select i + 1 from n "
+           "where i < %d) insert into t select i, 'evolu-secret-row' || i "
+           "|| printf('%%.3000c', 'x') from n",
+           rows);
+}
 
 static void fail(sqlite3 *db, const char *step) {
   fprintf(stderr, "%s: %s\n", step, db == NULL ? "no connection"
@@ -197,7 +212,8 @@ static void print_count(sqlite3 *db) {
 
 int main(int argc, char **argv) {
   if (argc < 4) {
-    fprintf(stderr, "usage: fixture create|count|crash DB KEY ...\n");
+    fprintf(stderr,
+            "usage: fixture create|count|crash|crash-create DB KEY ...\n");
     return 2;
   }
   const char *command = argv[1];
@@ -206,12 +222,7 @@ int main(int argc, char **argv) {
   if (strcmp(command, "create") == 0 && argc == 5) {
     sqlite3 *db = open_keyed(path, hex_key, NULL);
     char sql[400];
-    snprintf(sql, sizeof sql,
-             "create table t (id integer primary key, v text);"
-             "with recursive n(i) as (select 1 union all select i + 1 from n "
-             "where i < %d) insert into t select i, 'evolu-secret-row' || i "
-             "|| printf('%%.3000c', 'x') from n",
-             atoi(argv[4]));
+    create_sql(sql, atoi(argv[4]));
     if (sqlite3_exec(db, sql, NULL, NULL, NULL) != SQLITE_OK)
       fail(db, "create");
     return sqlite3_close(db) == SQLITE_OK ? 0 : 1;
@@ -231,6 +242,23 @@ int main(int argc, char **argv) {
     writes = 0;
     if (sqlite3_exec(db, update_sql, NULL, NULL, NULL) != SQLITE_OK)
       fail(db, "update");
+    printf("%d\n", writes);
+    return sqlite3_close(db) == SQLITE_OK ? 0 : 1;
+  }
+  if (strcmp(command, "crash-create") == 0 && argc == 7) {
+    if (register_crash_vfs() != SQLITE_OK) fail(NULL, "register");
+    crash_at = atoi(argv[5]);
+    crash_database = path;
+    crash_copy = argv[6];
+    sqlite3 *db = open_keyed(path, hex_key, "crash");
+    char create[400];
+    create_sql(create, atoi(argv[4]));
+    char sql[500];
+    snprintf(sql, sizeof sql, "pragma cache_size = 5; begin; %s; commit",
+             create);
+    writes = 0;
+    if (sqlite3_exec(db, sql, NULL, NULL, NULL) != SQLITE_OK)
+      fail(db, "create");
     printf("%d\n", writes);
     return sqlite3_close(db) == SQLITE_OK ? 0 : 1;
   }

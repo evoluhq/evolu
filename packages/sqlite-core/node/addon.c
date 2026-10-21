@@ -61,19 +61,40 @@
  *   was recorded, as `codecFailure`.
  *   takeCodecFailure returns and clears the failure the codec recorded, as
  *   `{ type, pageNumber }`, or null.
+ * - openCodec's test-only crash copy, `{ write, copy }`, opens the database on
+ *   another codec VFS, "evolu-codec-crash-copy", over a VFS that copies the
+ *   database and its journal, when it has one, to `copy` and `copy-journal`
+ *   before the connection's write numbered `write`, counted from 1 at the
+ *   open, as a power loss would leave them, as test/sqlcipher/fixture.c's
+ *   crash does, and then writes on. A copy that fails fails that write.
  *
- * The addon keeps no mutable global state, so every Node.js environment that
- * loads it, such as a worker thread, has its own handles.
+ * The addon keeps no mutable global state, apart from the crash copy's VFS,
+ * registered once under a mutex, and the crash copy an open hands its database
+ * file through a thread-local during the call, so every Node.js environment
+ * that loads it, such as a worker thread, has its own handles.
  */
 #include <node_api.h>
 
 #include "evolu_codec.h"
 #include "sqlite3.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 typedef struct Statement Statement;
+
+// What openCodec's crash copy copies, and before which write.
+typedef struct {
+  int write;
+  int writes;
+  // The database's name, which SQLite keeps while the file is open, and its
+  // file under the codec, through which the copy reads it, since opening and
+  // closing it again would drop the process's POSIX locks on it.
+  const char *database;
+  sqlite3_file *database_file;
+  char *copy;
+} CrashCopy;
 
 typedef struct {
   sqlite3 *db; // NULL once closed.
@@ -81,6 +102,8 @@ typedef struct {
   Statement *statements;
   // The handle and every unfinalized statement, which keep this struct.
   size_t references;
+  // The crash copy its files count writes for, or NULL.
+  CrashCopy *crash_copy;
 } Database;
 
 struct Statement {
@@ -105,6 +128,11 @@ static const napi_type_tag statement_tag = {0x2d4b6f8a1c3e5072ULL,
 static void release_database(Database *database) {
   if (--database->references > 0) return;
   sqlite3_close_v2(database->db);
+  // After the connection's files, which point to it, closed.
+  if (database->crash_copy != NULL) {
+    sqlite3_free(database->crash_copy->copy);
+    free(database->crash_copy);
+  }
   free(database);
 }
 
@@ -454,6 +482,154 @@ static napi_value js_open(napi_env env, napi_callback_info info) {
 // The codec VFS openCodec opens databases on.
 static const char codec_vfs_name[] = "evolu-codec";
 
+// The crash copy's VFS, whose pAppData is the default VFS, and the codec VFS
+// over it.
+static const char crash_copy_vfs_name[] = "evolu-crash-copy";
+static const char crash_copy_codec_vfs_name[] = "evolu-codec-crash-copy";
+
+// The crash copy an open on this thread passes to its database file.
+static _Thread_local CrashCopy *pending_crash_copy;
+
+// The file control through which a journal gets its database's crash copy,
+// which the codec passes to the file under it.
+#define CRASH_COPY_FCNTL 0x45766f6c
+
+typedef struct {
+  sqlite3_file base;
+  // The inner VFS's file, which follows this struct.
+  sqlite3_file *inner;
+  CrashCopy *crash_copy;
+} CrashCopyFile;
+
+#define CRASH_COPY_FILE_SIZE ((sizeof(CrashCopyFile) + 7) & ~(size_t)7)
+
+static int crash_copy_write(sqlite3_file *base, const void *buffer, int amount,
+                            sqlite3_int64 offset) {
+  CrashCopyFile *file = (CrashCopyFile *)base;
+  CrashCopy *crash_copy = file->crash_copy;
+  if (crash_copy == NULL || ++crash_copy->writes != crash_copy->write)
+    return file->inner->pMethods->xWrite(file->inner, buffer, amount, offset);
+  // The database and its journal, when it has one, as they are now: the
+  // database through its file and the journal, which SQLite never locks, with
+  // stdio. A step that fails fails the write.
+  sqlite3_file *database = crash_copy->database_file;
+  char *journal = sqlite3_mprintf("%s-journal", crash_copy->database);
+  char *copy_journal = sqlite3_mprintf("%s-journal", crash_copy->copy);
+  sqlite3_int64 size = 0;
+  FILE *output =
+      journal != NULL && copy_journal != NULL &&
+              database->pMethods->xFileSize(database, &size) == SQLITE_OK
+          ? fopen(crash_copy->copy, "wb")
+          : NULL;
+  bool ok = output != NULL;
+  char bytes[65536];
+  const sqlite3_int64 chunk = (sqlite3_int64)sizeof bytes;
+  for (sqlite3_int64 at = 0; ok && at < size; at += chunk) {
+    int read = (int)(size - at < chunk ? size - at : chunk);
+    ok = database->pMethods->xRead(database, bytes, read, at) == SQLITE_OK &&
+         fwrite(bytes, 1, (size_t)read, output) == (size_t)read;
+  }
+  if (output != NULL) ok = fclose(output) == 0 && ok;
+  if (ok) {
+    remove(copy_journal);
+    FILE *input = fopen(journal, "rb");
+    if (input != NULL) {
+      output = fopen(copy_journal, "wb");
+      ok = output != NULL;
+      size_t read;
+      while (ok && (read = fread(bytes, 1, sizeof bytes, input)) > 0)
+        ok = fwrite(bytes, 1, read, output) == read;
+      ok = ok && !ferror(input);
+      fclose(input);
+      if (output != NULL) ok = fclose(output) == 0 && ok;
+    }
+  }
+  sqlite3_free(journal);
+  sqlite3_free(copy_journal);
+  if (!ok) return SQLITE_IOERR_WRITE;
+  return file->inner->pMethods->xWrite(file->inner, buffer, amount, offset);
+}
+
+static int crash_copy_file_control(sqlite3_file *base, int op, void *arg) {
+  CrashCopyFile *file = (CrashCopyFile *)base;
+  if (op != CRASH_COPY_FCNTL)
+    return file->inner->pMethods->xFileControl(file->inner, op, arg);
+  *(CrashCopy **)arg = file->crash_copy;
+  return SQLITE_OK;
+}
+
+#define CRASH_COPY_FORWARD(name, parameters, arguments)                        \
+  static int crash_copy_##name parameters {                                    \
+    sqlite3_file *inner = ((CrashCopyFile *)base)->inner;                      \
+    return inner->pMethods->x##name arguments;                                 \
+  }
+
+CRASH_COPY_FORWARD(Close, (sqlite3_file * base), (inner))
+CRASH_COPY_FORWARD(Read,
+                   (sqlite3_file * base, void *buffer, int amount,
+                    sqlite3_int64 offset),
+                   (inner, buffer, amount, offset))
+CRASH_COPY_FORWARD(Truncate, (sqlite3_file * base, sqlite3_int64 size),
+                   (inner, size))
+CRASH_COPY_FORWARD(Sync, (sqlite3_file * base, int flags), (inner, flags))
+CRASH_COPY_FORWARD(FileSize, (sqlite3_file * base, sqlite3_int64 *size),
+                   (inner, size))
+CRASH_COPY_FORWARD(Lock, (sqlite3_file * base, int level), (inner, level))
+CRASH_COPY_FORWARD(Unlock, (sqlite3_file * base, int level), (inner, level))
+CRASH_COPY_FORWARD(CheckReservedLock, (sqlite3_file * base, int *result),
+                   (inner, result))
+CRASH_COPY_FORWARD(SectorSize, (sqlite3_file * base), (inner))
+CRASH_COPY_FORWARD(DeviceCharacteristics, (sqlite3_file * base), (inner))
+
+static const sqlite3_io_methods crash_copy_io_methods = {
+    1,
+    crash_copy_Close,
+    crash_copy_Read,
+    crash_copy_write,
+    crash_copy_Truncate,
+    crash_copy_Sync,
+    crash_copy_FileSize,
+    crash_copy_Lock,
+    crash_copy_Unlock,
+    crash_copy_CheckReservedLock,
+    crash_copy_file_control,
+    crash_copy_SectorSize,
+    crash_copy_DeviceCharacteristics,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+};
+
+static int crash_copy_open(sqlite3_vfs *vfs, sqlite3_filename name,
+                           sqlite3_file *base, int flags, int *out_flags) {
+  sqlite3_vfs *inner_vfs = vfs->pAppData;
+  CrashCopyFile *file = (CrashCopyFile *)base;
+  file->inner = (sqlite3_file *)((char *)file + CRASH_COPY_FILE_SIZE);
+  file->crash_copy = NULL;
+  if (flags & SQLITE_OPEN_MAIN_DB) {
+    file->crash_copy = pending_crash_copy;
+    if (file->crash_copy != NULL) file->crash_copy->database = name;
+  } else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
+    sqlite3_file *database = sqlite3_database_file_object(name);
+    database->pMethods->xFileControl(database, CRASH_COPY_FCNTL,
+                                     &file->crash_copy);
+  }
+  int rc = inner_vfs->xOpen(inner_vfs, name, file->inner, flags, out_flags);
+  if (rc != SQLITE_OK) {
+    if (file->inner->pMethods != NULL)
+      file->inner->pMethods->xClose(file->inner);
+    base->pMethods = NULL;
+    return rc;
+  }
+  if ((flags & SQLITE_OPEN_MAIN_DB) && file->crash_copy != NULL)
+    file->crash_copy->database_file = file->inner;
+  base->pMethods = &crash_copy_io_methods;
+  return SQLITE_OK;
+}
+
 // Creates `{ type, pageNumber }` for a recorded failure, or null for none.
 static bool create_codec_failure(napi_env env,
                                  const evolu_codec_failure *failure,
@@ -485,8 +661,8 @@ static bool create_codec_failure(napi_env env,
 }
 
 static napi_value js_open_codec(napi_env env, napi_callback_info info) {
-  napi_value argv[3];
-  if (!get_args(env, info, 3, argv)) return NULL;
+  napi_value argv[4];
+  if (!get_args(env, info, 4, argv)) return NULL;
   napi_valuetype flags_type;
   if (napi_typeof(env, argv[2], &flags_type) != napi_ok) return fail(env);
   int flags = 0;
@@ -514,18 +690,73 @@ static napi_value js_open_codec(napi_env env, napi_callback_info info) {
       return NULL;
     }
   }
+  napi_valuetype crash_copy_type;
+  if (napi_typeof(env, argv[3], &crash_copy_type) != napi_ok) return fail(env);
+  CrashCopy *crash_copy = NULL;
+  if (crash_copy_type != napi_undefined) {
+    napi_value write, copy;
+    size_t copy_length;
+    crash_copy = calloc(1, sizeof *crash_copy);
+    if (crash_copy == NULL) return throw_nomem(env);
+    if (napi_get_named_property(env, argv[3], "write", &write) != napi_ok ||
+        napi_get_named_property(env, argv[3], "copy", &copy) != napi_ok) {
+      free(crash_copy);
+      return fail(env);
+    }
+    if (!get_int(env, write, &crash_copy->write) ||
+        (crash_copy->copy = get_c_string(env, copy, &copy_length)) == NULL) {
+      free(crash_copy);
+      return NULL;
+    }
+  }
   size_t length;
   char *path = get_c_string(env, argv[0], &length);
-  if (path == NULL) return NULL;
-  int rc = evolu_codec_register(codec_vfs_name, NULL);
+  if (path == NULL) {
+    if (crash_copy != NULL) {
+      sqlite3_free(crash_copy->copy);
+      free(crash_copy);
+    }
+    return NULL;
+  }
+  const char *vfs =
+      crash_copy == NULL ? codec_vfs_name : crash_copy_codec_vfs_name;
+  int rc = SQLITE_OK;
+  if (crash_copy == NULL) {
+    rc = evolu_codec_register(codec_vfs_name, NULL);
+  } else {
+    // The crash copy's VFS and the codec VFS over it, registered once.
+    static sqlite3_vfs crash_copy_vfs;
+    sqlite3_mutex *mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_STATIC_APP3);
+    sqlite3_mutex_enter(mutex);
+    if (sqlite3_vfs_find(crash_copy_vfs_name) == NULL) {
+      sqlite3_vfs *inner = sqlite3_vfs_find(NULL);
+      crash_copy_vfs = *inner;
+      crash_copy_vfs.zName = crash_copy_vfs_name;
+      crash_copy_vfs.pNext = NULL;
+      crash_copy_vfs.pAppData = inner;
+      crash_copy_vfs.szOsFile = (int)CRASH_COPY_FILE_SIZE + inner->szOsFile;
+      crash_copy_vfs.xOpen = crash_copy_open;
+      rc = sqlite3_vfs_register(&crash_copy_vfs, 0);
+    }
+    if (rc == SQLITE_OK)
+      rc = evolu_codec_register(crash_copy_codec_vfs_name, crash_copy_vfs_name);
+    sqlite3_mutex_leave(mutex);
+  }
   Database *database = rc == SQLITE_OK ? calloc(1, sizeof *database) : NULL;
   if (database == NULL) {
     sqlite3_free(path);
+    if (crash_copy != NULL) {
+      sqlite3_free(crash_copy->copy);
+      free(crash_copy);
+    }
     return rc == SQLITE_OK ? throw_nomem(env)
                            : throw_code(env, sqlite3_errstr(rc), rc);
   }
   database->references = 1;
-  rc = evolu_codec_open(path, &database->db, codec_vfs_name, key, flags);
+  database->crash_copy = crash_copy;
+  pending_crash_copy = crash_copy;
+  rc = evolu_codec_open(path, &database->db, vfs, key, flags);
+  pending_crash_copy = NULL;
   sqlite3_free(path);
   if (rc == SQLITE_OK)
     return create_handle(env, database, &database_tag, collect_database);

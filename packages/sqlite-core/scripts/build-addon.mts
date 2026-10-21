@@ -6,11 +6,12 @@
  * an official Node.js build installs in `include/node` next to its `bin`
  * directory, and the addon declares Node-API version 10. Node.js resolves the
  * addon's Node-API symbols when it loads it, so macOS links a bundle with
- * `-undefined dynamic_lookup`. SQLite, the vendored libraries and the core's
- * src/*.c are compiled at -O2, each object kept under a name derived from its
- * inputs, so only what changed compiles again. Every symbol except the module's
- * entry points is hidden, so another SQLite in the process, such as
- * node:sqlite's, never binds to the addon's calls.
+ * `-undefined dynamic_lookup`. SQLite, the vendored libraries, the core's
+ * `src/*.c` and the native binding layer's `binding/*.c` are compiled at -O2,
+ * each object kept under a name derived from its inputs, so only what changed
+ * compiles again. Every symbol except the module's entry points is hidden, so
+ * another SQLite in the process, such as node:sqlite's, never binds to the
+ * addon's calls.
  *
  * With `sanitize`, everything is compiled with AddressSanitizer and
  * UndefinedBehaviorSanitizer into `evolu-sanitized.node`, which a stock Node.js
@@ -28,6 +29,7 @@ import {
   compileUnits,
   coreFlags,
   coreHeaders,
+  nativeBindingUnits,
   run,
   sourceDirectory,
   writeAtomically,
@@ -103,15 +105,17 @@ export const buildAddon = ({
       readFileSync(join(sourceDirectory, "sqlite_config.h"), "utf8"),
     objectsDirectory,
   });
-  const unitObjects = compileUnits(sqliteFlags).map(
-    ({ source, flags, headers }) =>
-      compileCached({
-        cc,
-        flags: [...optimized, ...flags],
-        source,
-        extraKey: headers,
-        objectsDirectory,
-      }),
+  const unitObjects = [
+    ...compileUnits(sqliteFlags),
+    ...nativeBindingUnits(sqliteFlags),
+  ].map(({ source, flags, headers }) =>
+    compileCached({
+      cc,
+      flags: [...optimized, ...flags],
+      source,
+      extraKey: headers,
+      objectsDirectory,
+    }),
   );
 
   const addonObject = compileCached({

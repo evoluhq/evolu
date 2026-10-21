@@ -41,6 +41,16 @@ export interface SqliteCoreCodecError extends SqliteCoreError {
   readonly codecFailure?: SqliteCoreCodecFailure;
 }
 
+/**
+ * Copies the database and its journal, when it has one, to `copy` and
+ * `copy-journal` before the connection's write numbered `write`, counted from 1
+ * at the open, as a power loss would leave them, and then writes on.
+ */
+export interface SqliteCoreCrashCopy {
+  readonly write: number;
+  readonly copy: string;
+}
+
 /** A failure the codec recorded, as src/evolu_codec.h describes them. */
 export interface SqliteCoreCodecFailure {
   readonly type: "PageAuthentication" | "EncryptionUnsupported" | "Random";
@@ -67,12 +77,14 @@ export interface SqliteCoreAddon {
   /**
    * Opens a connection with `evolu_codec_open` on the codec VFS, keyed with a
    * 32-byte key or plaintext with null, and its flags, such as
-   * {@link CODEC_SQLCIPHER_FILES}. It throws a {@link SqliteCoreCodecError}.
+   * {@link CODEC_SQLCIPHER_FILES}, and with a {@link SqliteCoreCrashCopy} when
+   * given. It throws a {@link SqliteCoreCodecError}.
    */
   readonly openCodec: (
     path: string,
     key: Uint8Array | null,
     flags?: number,
+    crashCopy?: SqliteCoreCrashCopy,
   ) => SqliteCoreDatabase;
   /** Returns and clears the failure the codec recorded, or null. */
   readonly takeCodecFailure: (

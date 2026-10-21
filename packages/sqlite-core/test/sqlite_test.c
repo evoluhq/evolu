@@ -8,8 +8,13 @@
 #include "test.h"
 
 #include "sqlite3.h"
+#include "sqlite_config.h"
 
 #include <string.h>
+
+// SQLite reads it only for the locking styles sqlite_config.h turns off, and
+// without it warns on every iOS compile. No compile option lists it.
+_Static_assert(HAVE_GETHOSTUUID == 0, "HAVE_GETHOSTUUID is 0");
 
 static void sqlite_runs_the_pinned_release(void) {
   const char *source = sqlite3_sourceid();
@@ -33,6 +38,9 @@ static void sqlite_uses_the_core_compile_options(void) {
       "OMIT_INCRBLOB",
       "OMIT_INTROSPECTION_PRAGMAS",
       "OMIT_PROGRESS_CALLBACK",
+      // Unlike SQLite's default on Apple platforms, so the macOS host runs
+      // the locking iOS ships.
+      "ENABLE_LOCKING_STYLE=0",
   };
   for (size_t i = 0; i < sizeof used / sizeof used[0]; i++)
     CHECK(sqlite3_compileoption_used(used[i]));

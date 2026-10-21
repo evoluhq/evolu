@@ -10,6 +10,7 @@ import {
   assertEqual,
   assertFalse,
   assertThrows,
+  assertTrue,
   bytesToHex,
 } from "@evolu/common";
 import { createHash } from "node:crypto";
@@ -33,6 +34,7 @@ import {
 import {
   CODEC_SQLCIPHER_FILES,
   type SqliteCoreAddon,
+  type SqliteCoreCodecError,
   type SqliteCoreDatabase,
 } from "./addon.mts";
 import { setupFakeBuild } from "./fake-build.mts";
@@ -253,7 +255,264 @@ for (const expoSqlite of expoSqliteReleases)
         assertEqual(existsSync(`${crashed}-journal`), false);
       }
     });
+
+    // Contract tests, which passed on their first run: React Native's binding
+    // opens every file with SQLCipher files allowed, keyed or not.
+    describe("characterization: what React Native's binding relies on", () => {
+      /**
+       * Crashes SQLCipher's update of a copy of `base` before its `write`th
+       * write, leaving the files at `crashed`, and returns them, or null once
+       * the transaction has fewer writes and commits.
+       */
+      const crashUpdate = (base: string, write: number, crashed: string) => {
+        const work = `${crashed}-work`;
+        copyFileSync(base, work);
+        rmSync(`${work}-journal`, { force: true });
+        const result = runSqlcipherFixture(fixture, [
+          "crash",
+          work,
+          hexKey,
+          String(write),
+          crashed,
+        ]);
+        if (result.status === 0) return null;
+        assertEqual(
+          { status: result.status, stderr: result.stderr },
+          { status: 3, stderr: "" },
+        );
+        return {
+          database: readFileSync(crashed),
+          journal: readJournal(crashed),
+        };
+      };
+
+      it("fails a wrong key with the failing page's authentication and keeps SQLCipher's hot journal for the right key", () => {
+        const base = createDatabase("wrong-key-base.db");
+        const crashed = join(directory, "wrong-key.db");
+        const wrongKey = key.map((byte) => byte ^ 0xff);
+        const failure = (path: string) => {
+          let caught: unknown;
+          assertThrows(
+            () => addon.openCodec(path, wrongKey, CODEC_SQLCIPHER_FILES),
+            (error) => {
+              caught = error;
+            },
+          );
+          const { resultCode, codecFailure } = caught as SqliteCoreCodecError;
+          return { resultCode, codecFailure };
+        };
+        const restores = (path: string) => {
+          const db = addon.openCodec(path, key, CODEC_SQLCIPHER_FILES);
+          assertEqual(countRows(db), `${rows} 0 ok`);
+          addon.close(db);
+        };
+
+        copyFileSync(base, crashed);
+        assertEqual(failure(crashed), {
+          resultCode: 26,
+          codecFailure: { type: "PageAuthentication", pageNumber: 1 },
+        });
+        assertTrue(readFileSync(crashed).equals(readFileSync(base)));
+        restores(crashed);
+
+        let hot = 0;
+        for (let write = 1; ; write++) {
+          const files = crashUpdate(base, write, crashed);
+          if (files == null) break;
+          const { journal } = files;
+          if (!isHot(journal)) continue;
+          // The rollback fails at the journal's first record, which follows
+          // its header, padded to the sector size the header stores at byte
+          // 20, and which page 1's failure makes NOTADB and any other page's
+          // CORRUPT.
+          const page = journal.readUInt32BE(journal.readUInt32BE(20));
+          assertEqual(failure(crashed), {
+            resultCode: page === 1 ? 26 : 11,
+            codecFailure: { type: "PageAuthentication", pageNumber: page },
+          });
+          assertTrue(readFileSync(`${crashed}-journal`).equals(journal));
+          restores(crashed);
+          assertFalse(existsSync(`${crashed}-journal`));
+          hot++;
+        }
+        assert(hot > 50, `Only ${hot} hot journals.`);
+      });
+
+      it("refuses a keyless open of a SQLCipher file that has a hot journal, keeping both files", () => {
+        const base = createDatabase("keyless-base.db");
+        const crashed = join(directory, "keyless.db");
+        const { openCodec } = addon;
+        let hot = 0;
+        for (let write = 1; ; write++) {
+          const files = crashUpdate(base, write, crashed);
+          if (files == null) break;
+          const { database, journal } = files;
+          if (!isHot(journal)) continue;
+
+          assertThrows(
+            () => openCodec(crashed, null, CODEC_SQLCIPHER_FILES),
+            (error) => {
+              const { resultCode, codecFailure } =
+                error as SqliteCoreCodecError;
+              assertEqual(
+                { resultCode, codecFailure },
+                {
+                  resultCode: 14,
+                  codecFailure: {
+                    type: "EncryptionUnsupported",
+                    pageNumber: 0,
+                  },
+                },
+              );
+            },
+          );
+          assertTrue(readFileSync(crashed).equals(database));
+          assertTrue(readFileSync(`${crashed}-journal`).equals(journal));
+          hot++;
+        }
+        assert(hot > 50, `Only ${hot} hot journals.`);
+      });
+
+      it("rolls back the core's hot journals of both page-1 layouts at every write, then fails a file in the default layout as not a database", () => {
+        const coreBase = join(directory, "core-crash-default-base.db");
+        const created = addon.openCodec(coreBase, key, CODEC_SQLCIPHER_FILES);
+        addon.exec(created, createSql);
+        addon.close(created);
+        // A new file gets the default layout, whose page 1 stores the page size,
+        // file format 1 and 80 reserved bytes in plaintext.
+        assertEqual(
+          bytesToHex(readFileSync(coreBase).subarray(16, 21)),
+          "1000010150",
+        );
+
+        for (const [layout, base] of [
+          ["SQLCipher", createDatabase("core-crash-sqlcipher-base.db")],
+          ["default", coreBase],
+        ] as const) {
+          const work = join(directory, "core-crash-work.db");
+          const crashed = join(directory, "core-crash.db");
+          let crashes = 0;
+          for (let write = 1; ; write++) {
+            copyFileSync(base, work);
+            rmSync(`${work}-journal`, { force: true });
+            rmSync(crashed, { force: true });
+            rmSync(`${crashed}-journal`, { force: true });
+            const db = addon.openCodec(work, key, CODEC_SQLCIPHER_FILES, {
+              write,
+              copy: crashed,
+            });
+            addon.exec(db, updateSql);
+            addon.close(db);
+            // Fewer writes than that: the transaction committed uncopied.
+            if (!existsSync(crashed)) break;
+            const wasHot = isHot(readJournal(crashed));
+
+            const result = runSqlcipherFixture(fixture, [
+              "count",
+              crashed,
+              hexKey,
+            ]);
+            assertEqual(
+              result,
+              layout === "SQLCipher"
+                ? { status: 0, stdout: `${rows} 0 ok\n`, stderr: "" }
+                : {
+                    status: 1,
+                    stdout: "",
+                    stderr: "count: file is not a database\n",
+                  },
+            );
+            // SQLCipher's rollback deletes a hot journal, and leaves one that
+            // wasn't hot as it was.
+            assert(
+              wasHot
+                ? !existsSync(`${crashed}-journal`)
+                : !isHot(readJournal(crashed)),
+              `Write ${write} of the ${layout} layout left a journal.`,
+            );
+            const rolledBack = addon.openCodec(
+              crashed,
+              key,
+              CODEC_SQLCIPHER_FILES,
+            );
+            const counted = countRows(rolledBack);
+            addon.close(rolledBack);
+            assert(
+              counted === `${rows} 0 ok`,
+              `Write ${write} of the ${layout} layout left ${counted}.`,
+            );
+            crashes++;
+          }
+          assert(crashes > 100, `Only ${crashes} writes.`);
+        }
+      });
+
+      it("rolls back a database's first transaction that SQLCipher crashed at every write", () => {
+        const work = join(directory, "first-crash-work.db");
+        const crashed = join(directory, "first-crash.db");
+        let crashes = 0;
+        for (let write = 1; ; write++) {
+          rmSync(work, { force: true });
+          rmSync(`${work}-journal`, { force: true });
+          const result = runSqlcipherFixture(fixture, [
+            "crash-create",
+            work,
+            hexKey,
+            String(rows),
+            String(write),
+            crashed,
+          ]);
+          if (result.status === 0) break;
+          assertEqual(
+            { status: result.status, stderr: result.stderr },
+            { status: 3, stderr: "" },
+          );
+
+          const db = addon.openCodec(crashed, key, CODEC_SQLCIPHER_FILES);
+          const statement = addon.prepare(
+            db,
+            "select count(*) from sqlite_schema",
+          );
+          addon.step(statement);
+          const tables = addon.column(statement, 0);
+          addon.finalize(statement);
+          addon.close(db);
+          assert(tables === 0, `Write ${write} left ${String(tables)} tables.`);
+          assert(
+            !isHot(readJournal(crashed)),
+            `Write ${write} left a hot journal.`,
+          );
+          assertEqual(readFileSync(crashed).length, 0);
+          crashes++;
+        }
+        assert(crashes > 20, `Only ${crashes} writes.`);
+      });
+    });
   });
+
+/** The fixture's create SQL, which the core runs to create the same table. */
+const createSql =
+  "create table t (id integer primary key, v text);" +
+  "with recursive n(i) as (select 1 union all select i + 1 from n " +
+  `where i < ${rows}) insert into t select i, 'evolu-secret-row' || i ` +
+  "|| printf('%.3000c', 'x') from n";
+
+/** The fixture's update transaction, which spills pages before it commits. */
+const updateSql =
+  "pragma cache_size = 5; begin; update t set v = 'updated' || id; commit";
+
+/** The journal next to a database, or null. */
+const readJournal = (database: string): Buffer | null =>
+  existsSync(`${database}-journal`)
+    ? readFileSync(`${database}-journal`)
+    : null;
+
+/**
+ * Whether a journal is hot: not empty and without zeros in place of its magic,
+ * as a crash before SQLite first synced it leaves it.
+ */
+const isHot = (journal: Buffer | null): journal is Buffer =>
+  journal != null && journal.length > 0 && journal[0] !== 0;
 
 describe("buildSqlcipherFixture", () => {
   it("extracts a release's amalgamation from its tarball and builds with each platform's crypto provider", async (t) => {

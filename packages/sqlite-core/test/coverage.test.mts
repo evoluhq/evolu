@@ -23,7 +23,7 @@ it("reports each uncovered line, function and branch outcome", (t) => {
   const report = measureCoverage({
     binary,
     profileDirectory: profiles,
-    sourceDirectory: sources,
+    sourceDirectories: [sources],
   });
 
   assertEqual(
@@ -67,7 +67,7 @@ it("lists a macro's outcome once for each file that expands it", (t) => {
   const report = measureCoverage({
     binary,
     profileDirectory: profiles,
-    sourceDirectory: sources,
+    sourceDirectories: [sources],
   });
 
   assertEqual(
@@ -77,6 +77,51 @@ it("lists a macro's outcome once for each file that expands it", (t) => {
       "src/positive.h:1:22: condition never false, expanded at src/main.c:2",
     ],
   );
+});
+
+it("reports the sources under each directory it's given and no others", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "evolu-sqlite-core-coverage-"));
+  t.after(() => {
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const sources = join(directory, "src");
+  const other = join(directory, "other");
+  const profiles = join(directory, "profiles");
+  for (const path of [sources, other, profiles]) mkdirSync(path);
+  writeFileSync(
+    join(sources, "main.c"),
+    "int other(int x);\nint main(int argc, char **argv) { (void)argv; return other(argc) - 1; }\n",
+  );
+  writeFileSync(
+    join(other, "other.c"),
+    "int other(int x) {\n  return x > 5 ? 2 : 1;\n}\n",
+  );
+  const binary = join(directory, "program");
+  run("clang", [
+    ...coverageFlags,
+    join(sources, "main.c"),
+    join(other, "other.c"),
+    "-o",
+    binary,
+  ]);
+  const result = spawnSync(binary, {
+    env: { ...process.env, LLVM_PROFILE_FILE: join(profiles, "%p.profraw") },
+  });
+  assertEqual(result.status, 0);
+
+  const measure = (sourceDirectories: ReadonlyArray<string>) =>
+    measureCoverage({ binary, profileDirectory: profiles, sourceDirectories });
+
+  const both = measure([sources, other]);
+  assertEqual(both.files.toSorted(), [
+    join(other, "other.c"),
+    join(sources, "main.c"),
+  ]);
+  assertEqual(
+    both.gaps.map((gap) => formatCoverageGap(gap, directory)),
+    ["other/other.c:2:10: condition never true"],
+  );
+  assertEqual(measure([sources]).gaps, []);
 });
 
 it("expects full coverage where the CPU has every feature its architecture's hardware paths use", () => {
@@ -101,7 +146,7 @@ it("throws when no run wrote a profile", (t) => {
       measureCoverage({
         binary,
         profileDirectory: profiles,
-        sourceDirectory: sources,
+        sourceDirectories: [sources],
       }),
     Error,
   );
@@ -119,7 +164,7 @@ it("throws when clang has no llvm-profdata and when llvm-profdata fails", (t) =>
     measureCoverage({
       binary: join(directory, "program"),
       profileDirectory: profiles,
-      sourceDirectory: directory,
+      sourceDirectories: [directory],
       cc,
     });
 
