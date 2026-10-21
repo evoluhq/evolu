@@ -156,13 +156,16 @@
  *   journal: SQLite only truncates the database to the original size its
  *   header stores, dropping pages the transaction appended, before the
  *   rollback fails at the first record, and the journal stays for the right
- *   key. Once a page 1 has proven the key, read or written, as by the
- *   connection that creates the database, and the database's page 1 or the
- *   journal's page-1 record authenticates, a record's page that fails to
- *   authenticate ends the journal, as a checksum that differs ends it in
- *   SQLite, and so does a page-1 record that stores another salt, which a
- *   journal kept by journal_mode = PERSIST or locking_mode = EXCLUSIVE, or
- *   left before its first sync, can hold past the transaction's own records.
+ *   key. A journal that a crash in the database's first transaction left is the
+ *   exception, with a key or without: its header stores an original size of 0
+ *   and it holds no record, so the rollback succeeds, emptying the database,
+ *   and loses nothing committed. Once a page 1 has proven the key, read or
+ *   written, as by the connection that creates the database, and the database's
+ *   page 1 or the journal's page-1 record authenticates, a record's page that
+ *   fails to authenticate ends the journal, as a checksum that differs ends it
+ *   in SQLite, and so does a page-1 record that stores another salt, which a
+ *   journal kept by journal_mode = PERSIST or locking_mode = EXCLUSIVE, or left
+ *   before its first sync, can hold past the transaction's own records.
  * - Nor does a connection without a key: SQLite would take the first record,
  *   whose checksum then differs, as the end of the journal and delete it,
  *   leaving the transaction half-applied. So opening a hot journal of an
