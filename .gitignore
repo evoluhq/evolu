@@ -51,3 +51,6 @@ packages/svelte/.svelte-kit
 # packages/sqlite-core
 packages/sqlite-core/build*/
 packages/sqlite-core/sqlite-cache/
+
+# packages/react-native, written by scripts/vendor-native.mts
+packages/react-native/native/

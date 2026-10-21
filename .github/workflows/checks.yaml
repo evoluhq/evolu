@@ -185,6 +185,90 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: node packages/sqlite-core/scripts/test.mts binding_threads_ --thread-sanitizer
 
+  # Checks the C that @evolu/react-native vendors from the SQLite core into
+  # native/: that it matches native.json, the vendor script's tests, and that
+  # every unit compiles for Android's four ABIs at API 24, React Native's
+  # minSdk, with the NDK React Native pins and with the runner's newest, the
+  # core and the binding layer with warnings as errors, so a libc function
+  # newer than API 24 fails here, and leaves no global without the prefix
+  # evolu_.
+  react-native-native:
+    name: React Native native
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      # Only SQLite's archive, which every use verifies against its pin.
+      - name: Cache source archive
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/sqlite-core/sqlite-cache/*.zip
+          key: react-native-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts') }}
+
+      - name: Check vendored C
+        run: node packages/react-native/scripts/vendor-native.mts --check
+
+      - name: Test
+        run: pnpm test:react-native-sqlite
+
+      # The runner lacks the NDK React Native 0.88 pins. It isn't cached,
+      # because jobs on main that run dependency code can write the Actions
+      # cache, and nothing would verify a restored toolchain.
+      - name: Install React Native's NDK
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.1.12297006"
+
+      - name: Vendor
+        run: node packages/react-native/scripts/vendor-native.mts
+
+      - name: Cross-compile with React Native's NDK
+        run: node packages/react-native/scripts/vendor-native.mts --cross-compile=android --ndk="$ANDROID_HOME/ndk/27.1.12297006"
+
+      - name: Cross-compile with the newest NDK
+        run: node packages/react-native/scripts/vendor-native.mts --cross-compile=android --ndk="$ANDROID_NDK_LATEST_HOME"
+
+  # The same cross-compile for the iOS device and both simulators, with Clang
+  # modules and the podspec's C standard, as Xcode compiles. The vendor step
+  # fails unless native/ matches native.json, so it checks that on macOS too.
+  # The image and Xcode are pinned, so an update of either can't break
+  # unrelated pull requests under -Werror.
+  react-native-apple:
+    name: React Native Apple
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_26.6.app
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      # Only SQLite's archive, which every use verifies against its pin.
+      - name: Cache source archive
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/sqlite-core/sqlite-cache/*.zip
+          key: react-native-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts') }}
+
+      - name: Vendor
+        run: node packages/react-native/scripts/vendor-native.mts
+
+      - name: Cross-compile
+        run: node packages/react-native/scripts/vendor-native.mts --cross-compile=ios
+
   type-benchmarks:
     name: Type benchmarks
     runs-on: ubuntu-latest

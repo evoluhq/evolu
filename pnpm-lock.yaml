@@ -852,6 +852,9 @@ importers:
       '@evolu/react':
         specifier: workspace:*
         version: link:../react
+      '@evolu/sqlite-core':
+        specifier: workspace:*
+        version: link:../sqlite-core
       '@evolu/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config

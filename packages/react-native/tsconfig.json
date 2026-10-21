@@ -5,5 +5,10 @@
     "moduleResolution": "bundler",
     "types": ["node"]
   },
-  "references": [{ "path": "../common" }, { "path": "../react" }]
+  "include": ["src", "scripts/*.mts", "test/**/*.mts"],
+  "references": [
+    { "path": "../common" },
+    { "path": "../react" },
+    { "path": "../sqlite-core" }
+  ]
 }

@@ -98,13 +98,21 @@ for a post, run `node scripts/code-image.mts --help`.
   A change to what the wasm compiles from the core, its `src`, vendored files,
   `scripts/compile.mts` or `scripts/sqlite-source.mts`, also needs the wasm
   rebuilt and re-pinned, as `packages/sqlite-wasm/scripts/build-wasm.mts`
-  describes, and `pnpm test:sqlite-wasm`.
+  describes, and `pnpm test:sqlite-wasm`. A change to what
+  `@evolu/react-native` vendors from the core, such as its `src`, `binding`,
+  vendored files, `scripts/compile.mts` or `scripts/sqlite-source.mts`, also
+  needs `node packages/react-native/scripts/vendor-native.mts --update`, which
+  rewrites `packages/react-native/native.json`, then
+  `pnpm test:react-native-sqlite`.
   The tests need clang with `llvm-profdata` and `llvm-cov`, which Xcode
   installs, and on Ubuntu the llvm package (installed with clang unless
   Recommends are skipped), make, unzip and zip, on Linux also OpenSSL's
   development headers and clang's shared AddressSanitizer runtime, and network
   access the first time, to fetch the pinned SQLite source and expo-sqlite
   releases.
+- After changing `packages/react-native/scripts`, run
+  `pnpm test:react-native-sqlite`, which fails below 100% line, branch, or
+  function coverage of those scripts and needs what the core's tests need.
 - After changing browser APIs, platform-sensitive behavior, polyfills, workers,
   or browser test configuration, run the affected browser projects with
   `pnpm exec vitest run --project=<project> <test-files>`, which runs them in
