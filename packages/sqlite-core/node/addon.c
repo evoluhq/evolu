@@ -67,6 +67,12 @@
  *   before the connection's write numbered `write`, counted from 1 at the
  *   open, as a power loss would leave them, as test/sqlcipher/fixture.c's
  *   crash does, and then writes on. A copy that fails fails that write.
+ * - createBinding returns the N-API mirror of React Native's binding, which
+ *   node/binding.c describes. autoRegisterWriteLog(true) gives every
+ *   connection opened after it a SQL function, write_log(), which inserts two
+ *   rows into the connection's table log, with an auto extension, so a test
+ *   sees what the mirror reports for a read-only statement that writes, and
+ *   autoRegisterWriteLog(false) resets the auto extensions.
  *
  * The addon keeps no mutable global state, apart from the crash copy's VFS,
  * registered once under a mutex, and the crash copy an open hands its database
@@ -1116,6 +1122,46 @@ static napi_value js_close(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
+// node/binding.c's createBinding.
+napi_value evolu_node_create_binding(napi_env env, napi_callback_info info);
+
+static void write_log(sqlite3_context *context, int argc,
+                      sqlite3_value **argv) {
+  (void)argc;
+  (void)argv;
+  int rc = sqlite3_exec(sqlite3_context_db_handle(context),
+                        "insert into log values (1), (2)", NULL, NULL, NULL);
+  if (rc != SQLITE_OK)
+    sqlite3_result_error_code(context, rc);
+  else
+    sqlite3_result_null(context);
+}
+
+static int register_write_log(sqlite3 *db, char **error,
+                              const struct sqlite3_api_routines *api) {
+  (void)error;
+  (void)api;
+  return sqlite3_create_function_v2(db, "write_log", 0, SQLITE_UTF8, NULL,
+                                    write_log, NULL, NULL, NULL);
+}
+
+static napi_value js_auto_register_write_log(napi_env env,
+                                             napi_callback_info info) {
+  napi_value argv[1];
+  if (!get_args(env, info, 1, argv)) return NULL;
+  bool is_registered;
+  if (napi_get_value_bool(env, argv[0], &is_registered) != napi_ok)
+    return fail(env);
+  if (!is_registered) {
+    sqlite3_reset_auto_extension();
+    return undefined(env);
+  }
+  // SQLite calls an entry point with the connection, as a loaded extension's.
+  int rc = sqlite3_auto_extension((void (*)(void))register_write_log);
+  if (rc != SQLITE_OK) return throw_code(env, sqlite3_errstr(rc), rc);
+  return undefined(env);
+}
+
 // Whether this build has AddressSanitizer and UndefinedBehaviorSanitizer,
 // which the tests check against the build they asked for.
 #if defined(__has_feature)
@@ -1135,10 +1181,14 @@ NAPI_MODULE_INIT() {
   napi_property_descriptor properties[] = {
       {"isSanitized", NULL, NULL, NULL, NULL, is_sanitized, napi_enumerable,
        NULL},
+      {"autoRegisterWriteLog", NULL, js_auto_register_write_log, NULL, NULL,
+       NULL, napi_enumerable, NULL},
       {"libversion", NULL, js_libversion, NULL, NULL, NULL, napi_enumerable,
        NULL},
       {"sourceid", NULL, js_sourceid, NULL, NULL, NULL, napi_enumerable, NULL},
       {"compileOptionUsed", NULL, js_compile_option_used, NULL, NULL, NULL,
+       napi_enumerable, NULL},
+      {"createBinding", NULL, evolu_node_create_binding, NULL, NULL, NULL,
        napi_enumerable, NULL},
       {"open", NULL, js_open, NULL, NULL, NULL, napi_enumerable, NULL},
       {"openCodec", NULL, js_open_codec, NULL, NULL, NULL, napi_enumerable,

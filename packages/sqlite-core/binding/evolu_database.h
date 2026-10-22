@@ -93,6 +93,22 @@
  *   copy's cache may have spilled pages into it, and
  *   evolu_database_free_export wipes an export before it frees it.
  *
+ * ## Statements
+ *
+ * evolu_database_prepare prepares exactly one statement, as
+ * @evolu/sqlite-wasm's prepare does, so nothing after it is silently ignored:
+ *
+ * - SQL with a NUL character, which SQLite reads SQL only up to, fails with
+ *   EVOLU_DATABASE_ERROR_INVALID_SQL_TEXT before SQLite sees it. An adapter
+ *   refuses a lone surrogate itself, since UTF-8 can't encode one.
+ * - SQL without a statement, only whitespace or comments, fails with
+ *   EVOLU_DATABASE_ERROR_EMPTY_SQL.
+ * - Only semicolons, whitespace, UTF-8 byte order marks and comments may
+ *   follow the statement, or the prepare fails with
+ *   EVOLU_DATABASE_ERROR_MULTIPLE_STATEMENTS. The rest is scanned as SQLite
+ *   3.54.1's tokenizer reads it, not prepared, since SQLite applies some
+ *   pragmas, such as foreign_keys, when it prepares them.
+ *
  * ## Errors
  *
  * Every function that takes an error record sets it, to
@@ -172,13 +188,19 @@ typedef enum {
   EVOLU_DATABASE_ERROR_FILE_HELD = 2,
   /* A path names no file a database can be. */
   EVOLU_DATABASE_ERROR_INVALID_PATH = 3,
+  /* The SQL contains no statement, only whitespace or comments. */
+  EVOLU_DATABASE_ERROR_EMPTY_SQL = 4,
+  /* The SQL contains more than one statement. */
+  EVOLU_DATABASE_ERROR_MULTIPLE_STATEMENTS = 5,
+  /* The SQL contains a NUL character. */
+  EVOLU_DATABASE_ERROR_INVALID_SQL_TEXT = 6,
 } evolu_database_error_type;
 
 typedef struct {
   evolu_database_error_type type;
   /*
-   * SQLite's extended result code; SQLITE_BUSY for a held file and
-   * SQLITE_MISUSE for an invalid path.
+   * SQLite's extended result code; SQLITE_BUSY for a held file, and
+   * SQLITE_MISUSE for an invalid path and SQL that prepare refuses itself.
    */
   int code;
   /* Valid until evolu_database_clear_error. */
@@ -256,6 +278,14 @@ int evolu_database_export(evolu_database *database, uint8_t **bytes,
 void evolu_database_free_export(uint8_t *bytes, size_t size);
 
 /*
+ * Prepares the one statement of the sql_size bytes of sql, which a NUL
+ * follows, so SQLite reads them in place, with *statement NULL when it fails.
+ */
+int evolu_database_prepare(evolu_database *database, const char *sql,
+                           size_t sql_size, sqlite3_stmt **statement,
+                           evolu_database_error *error);
+
+/*
  * Discards the failure the codec recorded for db's main database, which a call
  * into SQLite does first.
  */
@@ -277,6 +307,12 @@ void evolu_database_clear_error(evolu_database_error *error);
  * random source fails, which arc4random_buf never does.
  */
 int evolu_database_random_bytes(uint8_t *output, size_t size);
+
+/*
+ * Zeroes size bytes at bytes in a way the compiler can't drop, as an adapter
+ * wipes its copy of a key after the open.
+ */
+void evolu_database_wipe(void *bytes, size_t size);
 
 #ifdef EVOLU_TEST_HOOKS
 /*

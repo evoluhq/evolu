@@ -1,0 +1,14 @@
+{
+  // The tests that need the toolchain, which reach the repository's shared
+  // test helpers, outside the package's rootDir, so they're a project of
+  // their own that emits nothing.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "rootDir": "../../../.."
+  },
+  "include": ["**/*.ts", "**/*.mts"]
+}

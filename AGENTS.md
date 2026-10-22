@@ -103,16 +103,18 @@ for a post, run `node scripts/code-image.mts --help`.
   vendored files, `scripts/compile.mts` or `scripts/sqlite-source.mts`, also
   needs `node packages/react-native/scripts/vendor-native.mts --update`, which
   rewrites `packages/react-native/native.json`, then
-  `pnpm test:react-native-sqlite`.
+  `pnpm test:react-native-sqlite`, which also runs React Native's binding
+  conformance suite on `node/binding.c`, the core's N-API mirror of that
+  binding, so a change to it needs that script too.
   The tests need clang with `llvm-profdata` and `llvm-cov`, which Xcode
   installs, and on Ubuntu the llvm package (installed with clang unless
   Recommends are skipped), make, unzip and zip, on Linux also OpenSSL's
   development headers and clang's shared AddressSanitizer runtime, and network
   access the first time, to fetch the pinned SQLite source and expo-sqlite
   releases.
-- After changing `packages/react-native/scripts`, run
+- After changing `packages/react-native/scripts` or `src/sqlite`, run
   `pnpm test:react-native-sqlite`, which fails below 100% line, branch, or
-  function coverage of those scripts and needs what the core's tests need.
+  function coverage of those and needs what the core's tests need.
 - After changing browser APIs, platform-sensitive behavior, polyfills, workers,
   or browser test configuration, run the affected browser projects with
   `pnpm exec vitest run --project=<project> <test-files>`, which runs them in

@@ -1,6 +1,7 @@
 /**
  * Builds the test-only Node-API addon of the C core (node/addon.c), so Evolu's
- * TypeScript tests can drive it.
+ * TypeScript tests can drive it, with the N-API mirror of React Native's
+ * binding (node/binding.c) in it.
  *
  * It needs no node-gyp and no npm package: clang compiles against the headers
  * an official Node.js build installs in `include/node` next to its `bin`
@@ -25,10 +26,12 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  bindingDirectory,
   compileCached,
   compileUnits,
   coreFlags,
   coreHeaders,
+  headerContents,
   nativeBindingUnits,
   run,
   sourceDirectory,
@@ -38,6 +41,9 @@ import type { PreparedSqlite } from "./sqlite-source.mts";
 
 const addonSource = /*#__PURE__*/ fileURLToPath(
   /*#__PURE__*/ new URL("../node/addon.c", import.meta.url),
+);
+const bindingSource = /*#__PURE__*/ fileURLToPath(
+  /*#__PURE__*/ new URL("../node/binding.c", import.meta.url),
 );
 
 /** The Node-API version the addon declares; Node.js 24 supports it. */
@@ -118,27 +124,42 @@ export const buildAddon = ({
     }),
   );
 
+  // The Node-API headers the addon's units include, which vary by Node.js
+  // version.
+  const nodeApiHeaders = (): string =>
+    [
+      "js_native_api.h",
+      "js_native_api_types.h",
+      "node_api.h",
+      "node_api_types.h",
+    ]
+      .map((name) => readFileSync(join(nodeIncludeDirectory, name), "utf8"))
+      .join("\n");
+  const nodeApiFlags = [
+    `-isystem${nodeIncludeDirectory}`,
+    `-DNAPI_VERSION=${napiVersion}`,
+  ];
   const addonObject = compileCached({
+    cc,
+    flags: [...optimized, ...sqliteFlags, ...coreFlags(), ...nodeApiFlags],
+    source: addonSource,
+    extraKey: () => [coreHeaders(), nodeApiHeaders()].join("\n"),
+    objectsDirectory,
+  });
+  const bindingObject = compileCached({
     cc,
     flags: [
       ...optimized,
       ...sqliteFlags,
       ...coreFlags(),
-      `-isystem${nodeIncludeDirectory}`,
-      `-DNAPI_VERSION=${napiVersion}`,
+      `-I${bindingDirectory}`,
+      ...nodeApiFlags,
     ],
-    source: addonSource,
-    // The Node-API headers it includes, which vary by Node.js version.
+    source: bindingSource,
     extraKey: () =>
-      [
-        coreHeaders(),
-        ...[
-          "js_native_api.h",
-          "js_native_api_types.h",
-          "node_api.h",
-          "node_api_types.h",
-        ].map((name) => readFileSync(join(nodeIncludeDirectory, name), "utf8")),
-      ].join("\n"),
+      [coreHeaders(), headerContents(bindingDirectory), nodeApiHeaders()].join(
+        "\n",
+      ),
     objectsDirectory,
   });
 
@@ -157,6 +178,7 @@ export const buildAddon = ({
       // Against the runtime's shared library, which the process preloads.
       ...(sanitize && platform !== "darwin" ? ["-shared-libasan"] : []),
       addonObject,
+      bindingObject,
       sqliteObject,
       ...unitObjects,
       "-o",

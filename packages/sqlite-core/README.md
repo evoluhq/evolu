@@ -38,8 +38,8 @@ A plain database, such as the relay's, whose data is already encrypted, needs no
 
 - `src/`: the codec, the page format, the storage functions, the crypto layer and its hardware paths, and the SQLite compile options every native build shares, `sqlite_config.h`.
 - `vendor/`: the BearSSL and Monocypher files the crypto layer uses, each directory with a README of its origin.
-- `binding/`: what every native binding shares and the wasm doesn't compile: the build check, how databases open, the registry that keeps one connection per file in the process, deleting and exporting a database, and the error record, which `binding/evolu_database.h` describes.
-- `node/addon.c`: a minimal Node-API addon over the core, used only by tests for now, so TypeScript tests can drive the C.
+- `binding/`: what every native binding shares and the wasm doesn't compile: the build check, how databases open, the registry that keeps one connection per file in the process, deleting and exporting a database, prepare's SQL-text rules, and the error record, which `binding/evolu_database.h` describes.
+- `node/`: a minimal Node-API addon over the core, `addon.c`, used only by tests, and `binding.c`, the N-API mirror of React Native's binding, which the addon exports as `createBinding` and `@evolu/react-native`'s conformance suite tests.
 - `scripts/`: fetching the pinned SQLite source, compiling with a cache, and building and running the tests.
 - `test/`: the C tests, `*_test.c`, and the TypeScript tests, `*.test.mts`.
 

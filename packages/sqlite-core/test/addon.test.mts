@@ -89,6 +89,25 @@ describe("buildAddon", () => {
     assertEqual(linkFlags("linux"), ["-shared", "-shared-libasan"]);
   });
 
+  it("compiles the N-API mirror of React Native's binding, node/binding.c, with the binding's header, into the addon", (t) => {
+    const build = setupFakeBuild(t);
+
+    buildAddon({
+      sqlite: build.sqlite,
+      outputDirectory: build.env.SQLITE_CORE_BUILD,
+      cc: build.cc,
+    });
+
+    const commands = build.commands();
+    const compile = commands.find((command) =>
+      command.includes(join(import.meta.dirname, "../node/binding.c")),
+    );
+    assert(compile != null, "node/binding.c was compiled.");
+    assertTrue(compile.includes(`-I${bindingDirectory}`));
+    const link = commands.at(-1) ?? [];
+    assertTrue(link.some((arg) => basename(arg).startsWith("binding-")));
+  });
+
   it("links the binding's units into the addon", (t) => {
     const build = setupFakeBuild(t);
 
@@ -172,6 +191,7 @@ describe("addon", () => {
 
   it("exports exactly what its loader types", () => {
     const functions: ReadonlyArray<keyof SqliteCoreAddon> = [
+      "autoRegisterWriteLog",
       "bind",
       "changes",
       "close",
@@ -179,6 +199,7 @@ describe("addon", () => {
       "columnCount",
       "columnName",
       "compileOptionUsed",
+      "createBinding",
       "exec",
       "finalize",
       "libversion",

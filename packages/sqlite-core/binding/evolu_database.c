@@ -9,6 +9,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stddef.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -537,7 +538,90 @@ void evolu_database_free_export(uint8_t *bytes, size_t size) {
   sqlite3_free(bytes);
 }
 
+/*
+ * Whether the bytes from at to end hold no statement, only what SQLite
+ * 3.54.1's tokenizer skips: a semicolon; a space, which starts with a space,
+ * \t, \n, \f or \r and continues over sqlite3Isspace, which adds \v, while a
+ * \v that starts a token is illegal; a UTF-8 byte order mark, a space of its
+ * own; a comment from "--" to a newline or the end; and a comment from "/" "*"
+ * that a byte follows, to the first "*" "/" after it or the end, so "/" "*" "/"
+ * stays open.
+ */
+static int is_empty_sql(const unsigned char *at, const unsigned char *end) {
+  while (at < end) {
+    switch (*at) {
+    case ';':
+      at++;
+      break;
+    case ' ':
+    case '\t':
+    case '\n':
+    case '\f':
+    case '\r':
+      at++;
+      while (at < end && (*at == ' ' || (*at >= '\t' && *at <= '\r'))) at++;
+      break;
+    // The first byte of a UTF-8 byte order mark.
+    case 0xef:
+      if (end - at < 3 || at[1] != 0xbb || at[2] != 0xbf) return 0;
+      at += 3;
+      break;
+    case '-':
+      if (end - at < 2 || at[1] != '-') return 0;
+      at += 2;
+      while (at < end && *at != '\n') at++;
+      break;
+    case '/': {
+      if (end - at < 3 || at[1] != '*') return 0;
+      const unsigned char *close = at + 2;
+      while (close + 1 < end && !(close[0] == '*' && close[1] == '/')) close++;
+      at = close + 1 < end ? close + 2 : end;
+      break;
+    }
+    default:
+      return 0;
+    }
+  }
+  return 1;
+}
+
+int evolu_database_prepare(evolu_database *database, const char *sql,
+                           size_t sql_size, sqlite3_stmt **statement,
+                           evolu_database_error *error) {
+  set_none(error);
+  *statement = NULL;
+  // SQLite takes the size, with the NUL that follows it, as an int.
+  if (sql_size >= INT_MAX)
+    return fail(error, EVOLU_DATABASE_ERROR_SQLITE, SQLITE_TOOBIG, NULL, 0);
+  if (memchr(sql, '\0', sql_size) != NULL)
+    return fail(error, EVOLU_DATABASE_ERROR_INVALID_SQL_TEXT, SQLITE_MISUSE,
+                "The SQL contains a NUL character.", 0);
+  sqlite3 *db = database->db;
+  evolu_database_discard_failure(db);
+  sqlite3_stmt *prepared = NULL;
+  const char *tail = NULL;
+  int rc =
+      sqlite3_prepare_v3(db, sql, (int)sql_size + 1, 0, &prepared, &tail);
+  if (rc != SQLITE_OK) {
+    evolu_database_set_error(error, db, rc);
+    return rc;
+  }
+  if (prepared == NULL)
+    return fail(error, EVOLU_DATABASE_ERROR_EMPTY_SQL, SQLITE_MISUSE,
+                "The SQL contains no statement.", 0);
+  if (!is_empty_sql((const unsigned char *)tail,
+                    (const unsigned char *)sql + sql_size)) {
+    sqlite3_finalize(prepared);
+    return fail(error, EVOLU_DATABASE_ERROR_MULTIPLE_STATEMENTS, SQLITE_MISUSE,
+                "The SQL contains more than one statement.", 0);
+  }
+  *statement = prepared;
+  return SQLITE_OK;
+}
+
 int evolu_database_random_bytes(uint8_t *output, size_t size) {
   return evolu_random_bytes(output, size) == EVOLU_CRYPTO_OK ? SQLITE_OK
                                                              : SQLITE_ERROR;
 }
+
+void evolu_database_wipe(void *bytes, size_t size) { evolu_wipe(bytes, size); }

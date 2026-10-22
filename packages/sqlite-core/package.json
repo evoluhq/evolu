@@ -8,7 +8,9 @@
   "exports": {
     "./scripts/compile.mts": "./scripts/compile.mts",
     "./scripts/paths.mts": "./scripts/paths.mts",
-    "./scripts/sqlite-source.mts": "./scripts/sqlite-source.mts"
+    "./scripts/sqlite-source.mts": "./scripts/sqlite-source.mts",
+    "./test/setup-addon.mts": "./test/setup-addon.mts",
+    "./test/sqlcipher.mts": "./test/sqlcipher.mts"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",

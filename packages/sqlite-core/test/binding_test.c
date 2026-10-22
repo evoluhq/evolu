@@ -1228,6 +1228,203 @@ static void binding_close_keeps_the_entry_while_sqlite_cant_close(void) {
   CHECK_EQ_INT(sqlite3_close(copy), SQLITE_OK);
 }
 
+/*
+ * Prepares the NUL-terminated sql, and returns the record's type, finalizing
+ * the statement a prepare that succeeded returns.
+ */
+static int prepare_type(evolu_database *database, const char *sql) {
+  sqlite3_stmt *statement = NULL;
+  evolu_database_error error;
+  int rc = evolu_database_prepare(database, sql, strlen(sql), &statement,
+                                  &error);
+  int type = error.type;
+  // A failed prepare returns no statement and the record's code.
+  if (rc != SQLITE_OK && (statement != NULL || rc != error.code)) type = -1;
+  evolu_database_clear_error(&error);
+  sqlite3_finalize(statement);
+  return type;
+}
+
+static void binding_prepare_takes_one_statement_and_what_sqlite_skips_after_it(
+    void) {
+  CHECK(set_up());
+  evolu_database *database = NULL;
+  evolu_database_error error;
+  CHECK_EQ_INT(evolu_database_open_memory(&database, &error), SQLITE_OK);
+  // What SQLite 3.54.1's tokenizer skips: semicolons; whitespace, which a \v
+  // continues but can't start; byte order marks; comments to a newline or the
+  // end; and block comments to their end, or the end of the SQL, when a byte
+  // follows the "/*", so "/*/" stays open.
+  static const char *const accepted[] = {
+      "select 1",
+      "select 1;",
+      ";; select 1",
+      "select 1;;",
+      "select 1; \t\n\f\r",
+      "select 1;\t \v",
+      "select 1;\n",
+      "select 1;\f",
+      "select 1;\r",
+      "select 1; \v",
+      "select 1;\xef\xbb\xbf",
+      "select 1;\xef\xbb\xbf;\xef\xbb\xbf",
+      "select 1 -- one",
+      "select 1; --",
+      "select 1; -- one\n; -- two",
+      "select 1; /* one */",
+      "select 1; /**/;",
+      "select 1; /* open",
+      "select 1; /*/",
+      "select 1;/* * / */ -- /*\n\t;",
+  };
+  for (size_t i = 0; i < sizeof accepted / sizeof accepted[0]; i++)
+    CHECK_EQ_INT(prepare_type(database, accepted[i]),
+                 EVOLU_DATABASE_ERROR_NONE);
+  static const char *const refused[] = {
+      "select 1; select 2",
+      "select 1;\vselect 2",
+      "select 1;\v",
+      "select 1;\xef",
+      "select 1;\xef\xbb",
+      "select 1;\xef\xbb\xbe",
+      "select 1;\xef\xbc\xbf",
+      "select 1; -",
+      "select 1; -x",
+      "select 1; -- one\nselect 2",
+      "select 1; \x01",
+      "select 1; /",
+      "select 1; /*",
+      "select 1; /x",
+      "select 1; /xx",
+      "select 1; /* one */ x",
+      "select 1; x",
+  };
+  for (size_t i = 0; i < sizeof refused / sizeof refused[0]; i++)
+    CHECK_EQ_INT(prepare_type(database, refused[i]),
+                 EVOLU_DATABASE_ERROR_MULTIPLE_STATEMENTS);
+  CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+}
+
+static void binding_prepare_refuses_sql_without_a_statement(void) {
+  CHECK(set_up());
+  evolu_database *database = NULL;
+  evolu_database_error error;
+  CHECK_EQ_INT(evolu_database_open_memory(&database, &error), SQLITE_OK);
+  static const char *const empty[] = {"", " \n", ";", "; ;", "-- one",
+                                      "/* one */", "\xef\xbb\xbf"};
+  for (size_t i = 0; i < sizeof empty / sizeof empty[0]; i++) {
+    sqlite3_stmt *statement = NULL;
+    int rc = evolu_database_prepare(database, empty[i], strlen(empty[i]),
+                                    &statement, &error);
+    CHECK_EQ_INT(rc, SQLITE_MISUSE);
+    CHECK(statement == NULL);
+    CHECK_ERROR(error, EVOLU_DATABASE_ERROR_EMPTY_SQL, SQLITE_MISUSE);
+    CHECK_EQ_STR(error.message, "The SQL contains no statement.");
+    evolu_database_clear_error(&error);
+  }
+  CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+}
+
+static void binding_prepare_never_runs_what_it_refuses(void) {
+  CHECK(set_up());
+  evolu_database *database = NULL;
+  evolu_database_error error;
+  CHECK_EQ_INT(evolu_database_open_memory(&database, &error), SQLITE_OK);
+  sqlite3 *db = evolu_database_connection(database);
+  sqlite3_stmt *statement = NULL;
+  static const char second[] = "select 1; pragma foreign_keys = 1";
+
+  // SQLite applies the pragma when it prepares it, so a second statement is
+  // scanned, not prepared.
+  int rc = evolu_database_prepare(database, second, strlen(second), &statement,
+                                  &error);
+  CHECK_EQ_INT(rc, SQLITE_MISUSE);
+  CHECK(statement == NULL);
+  CHECK_ERROR(error, EVOLU_DATABASE_ERROR_MULTIPLE_STATEMENTS, SQLITE_MISUSE);
+  CHECK_EQ_STR(error.message, "The SQL contains more than one statement.");
+  evolu_database_clear_error(&error);
+  // SQLite would read SQL only up to a NUL character.
+  static const char with_nul[] = "pragma foreign_keys = 1\0; select 1";
+  rc = evolu_database_prepare(database, with_nul, sizeof with_nul - 1,
+                              &statement, &error);
+  CHECK_EQ_INT(rc, SQLITE_MISUSE);
+  CHECK(statement == NULL);
+  CHECK_ERROR(error, EVOLU_DATABASE_ERROR_INVALID_SQL_TEXT, SQLITE_MISUSE);
+  CHECK_EQ_STR(error.message, "The SQL contains a NUL character.");
+  evolu_database_clear_error(&error);
+
+  CHECK_EQ_INT(query_int(db, "pragma foreign_keys"), 0);
+  CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+}
+
+static void binding_prepare_fails_with_sqlites_error_and_offset(void) {
+  CHECK(set_up());
+  evolu_database *database = NULL;
+  evolu_database_error error;
+  CHECK_EQ_INT(evolu_database_open_memory(&database, &error), SQLITE_OK);
+  sqlite3_stmt *statement = NULL;
+  // "kůň" takes 5 bytes, so nope is at byte 16.
+  static const char missing[] = "select 'k\xc5\xaf\xc5\x88', nope";
+
+  int rc = evolu_database_prepare(database, missing, strlen(missing),
+                                  &statement, &error);
+
+  CHECK_EQ_INT(rc, SQLITE_ERROR);
+  CHECK(statement == NULL);
+  CHECK_ERROR(error, EVOLU_DATABASE_ERROR_SQLITE, SQLITE_ERROR);
+  CHECK_EQ_STR(error.message, "no such column: nope");
+  CHECK_EQ_INT(error.sql_offset, 16);
+  evolu_database_clear_error(&error);
+
+  // SQLite takes the size, with the NUL that follows it, as an int.
+  rc = evolu_database_prepare(database, missing, INT_MAX, &statement, &error);
+  CHECK_EQ_INT(rc, SQLITE_TOOBIG);
+  CHECK(statement == NULL);
+  CHECK_ERROR(error, EVOLU_DATABASE_ERROR_SQLITE, SQLITE_TOOBIG);
+  CHECK_EQ_STR(error.message, sqlite3_errstr(SQLITE_TOOBIG));
+  evolu_database_clear_error(&error);
+
+  // A statement that prepares runs as SQLite prepared it.
+  static const char select[] = "select 41 + 1; -- the answer";
+  CHECK_EQ_INT(evolu_database_prepare(database, select, strlen(select),
+                                      &statement, &error),
+               SQLITE_OK);
+  CHECK_EQ_INT(error.type, EVOLU_DATABASE_ERROR_NONE);
+  CHECK_EQ_INT(sqlite3_step(statement), SQLITE_ROW);
+  CHECK_EQ_INT(sqlite3_column_int(statement, 0), 42);
+  CHECK_EQ_INT(sqlite3_finalize(statement), SQLITE_OK);
+  CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+}
+
+static void binding_prepare_fails_cleanly_when_allocations_fail(void) {
+  CHECK(set_up());
+  evolu_database *database = NULL;
+  evolu_database_error error;
+  CHECK_EQ_INT(evolu_database_open_memory(&database, &error), SQLITE_OK);
+  static const char sql[] = "select 1 as a, 'x' as b union all select 2, 'y'";
+  int failures = 0;
+  for (int allowed = 0;; allowed++) {
+    sqlite3_stmt *statement = NULL;
+    test_sqlite_allocations_left = allowed;
+    int rc = evolu_database_prepare(database, sql, strlen(sql), &statement,
+                                    &error);
+    int is_exhausted = test_sqlite_allocations_left == -2;
+    test_sqlite_allocations_left = -1;
+    if (!is_exhausted) {
+      CHECK_EQ_INT(rc, SQLITE_OK);
+      CHECK_EQ_INT(sqlite3_finalize(statement), SQLITE_OK);
+      break;
+    }
+    CHECK_EQ_INT(rc & 0xff, SQLITE_NOMEM);
+    CHECK(statement == NULL);
+    CHECK_EQ_INT(error.type, EVOLU_DATABASE_ERROR_SQLITE);
+    evolu_database_clear_error(&error);
+    failures++;
+  }
+  CHECK(failures > 1);
+  CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+}
+
 /* Writes path with suffix into file, which holds 600 bytes. */
 static void sidecar_of(char file[600], const char *path, const char *suffix) {
   snprintf(file, 600, "%s%s", path, suffix);
@@ -2002,6 +2199,19 @@ static void binding_failure_an_earlier_call_left_never_becomes_a_cause(void) {
   CHECK_EQ_INT(error.codec_failure.type, EVOLU_DATABASE_CODEC_FAILURE_NONE);
   evolu_database_clear_error(&error);
 
+  // Nor in a prepare, which discards it first.
+  CHECK_EQ_INT(sqlite3_exec(db, "select sum(length(v)) from t", NULL, NULL,
+                            NULL),
+               SQLITE_CORRUPT);
+  sqlite3_stmt *statement = NULL;
+  static const char misspelled[] = "select * frm t";
+  rc = evolu_database_prepare(database, misspelled, strlen(misspelled),
+                              &statement, &error);
+  CHECK_EQ_INT(rc, SQLITE_ERROR);
+  CHECK_ERROR(error, EVOLU_DATABASE_ERROR_SQLITE, SQLITE_ERROR);
+  CHECK_EQ_INT(error.codec_failure.type, EVOLU_DATABASE_CODEC_FAILURE_NONE);
+  evolu_database_clear_error(&error);
+
   // Nor in an export, which discards it first, whose pragma then fails.
   CHECK_EQ_INT(sqlite3_exec(db, "select sum(length(v)) from t", NULL, NULL,
                             NULL),
@@ -2086,6 +2296,18 @@ static void binding_random_bytes_fill_or_fail(void) {
   evolu_test_random_fails = 1;
   CHECK_EQ_INT(evolu_database_random_bytes(bytes, sizeof bytes), SQLITE_ERROR);
   evolu_test_random_fails = 0;
+}
+
+static void binding_wipe_zeroes_exactly_the_bytes_it_gets(void) {
+  uint8_t bytes[40];
+  memset(bytes, 0xa5, sizeof bytes);
+
+  evolu_database_wipe(bytes + 4, 32);
+
+  CHECK_EQ_INT(bytes[3], 0xa5);
+  CHECK_EQ_INT(bytes[36], 0xa5);
+  static const uint8_t zeros[32] = {0};
+  CHECK_EQ_BYTES(bytes + 4, zeros, sizeof zeros);
 }
 
 /* The path the thread tests open, and what their threads saw. */
@@ -2274,6 +2496,11 @@ void binding_suite(void) {
   RUN(binding_memory_open_fails_cleanly_when_allocations_fail);
   RUN(binding_close_finalizes_the_statements_sqlite_holds);
   RUN(binding_close_keeps_the_entry_while_sqlite_cant_close);
+  RUN(binding_prepare_takes_one_statement_and_what_sqlite_skips_after_it);
+  RUN(binding_prepare_refuses_sql_without_a_statement);
+  RUN(binding_prepare_never_runs_what_it_refuses);
+  RUN(binding_prepare_fails_with_sqlites_error_and_offset);
+  RUN(binding_prepare_fails_cleanly_when_allocations_fail);
   RUN(binding_delete_removes_the_database_then_its_sidecars);
   RUN(binding_delete_refuses_a_held_file);
   RUN(binding_delete_stops_at_a_file_it_cant_remove_with_errno);
@@ -2295,6 +2522,7 @@ void binding_suite(void) {
   RUN(binding_error_message_is_sqlites_for_its_code_or_errstr);
   RUN(binding_error_offset_is_only_a_parser_errors);
   RUN(binding_random_bytes_fill_or_fail);
+  RUN(binding_wipe_zeroes_exactly_the_bytes_it_gets);
   RUN(binding_threads_never_both_hold_one_path);
   RUN(binding_threads_open_another_file_while_an_open_is_in_flight);
   // Also when a test failed or a filter skipped every test that created files.

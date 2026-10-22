@@ -191,7 +191,9 @@ jobs:
   # minSdk, with the NDK React Native pins and with the runner's newest, the
   # core and the binding layer with warnings as errors, so a libc function
   # newer than API 24 fails here, and leaves no global without the prefix
-  # evolu_.
+  # evolu_. It also runs React Native's binding conformance suite on the
+  # core's N-API mirror (node/binding.c), the TypeScript driver and the
+  # expo-sqlite migration tests, with 100% coverage of scripts and src/sqlite.
   react-native-native:
     name: React Native native
     runs-on: ubuntu-latest
@@ -206,12 +208,15 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup-node-pnpm-install
 
-      # Only SQLite's archive, which every use verifies against its pin.
-      - name: Cache source archive
+      # The archives, SQLite's and expo-sqlite's, as the sqlite-core job caches
+      # them, which every use verifies against their pins.
+      - name: Cache source archives
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: packages/sqlite-core/sqlite-cache/*.zip
-          key: react-native-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts') }}
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
 
       - name: Check vendored C
         run: node packages/react-native/scripts/vendor-native.mts --check

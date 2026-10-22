@@ -69,6 +69,18 @@ export interface SqliteCoreAddon {
   readonly sourceid: () => string;
   readonly compileOptionUsed: (name: string) => boolean;
   /**
+   * Registers, with true, an auto extension that gives every connection opened
+   * after it `write_log()`, a SQL function that inserts two rows into the
+   * connection's table `log` and returns NULL, and resets SQLite's auto
+   * extensions with false.
+   */
+  readonly autoRegisterWriteLog: (isRegistered: boolean) => void;
+  /**
+   * Returns the N-API mirror of React Native's binding, node/binding.c, which
+   * `@evolu/react-native`'s `src/sqlite/Binding.ts` types as `NativeSqlite`.
+   */
+  readonly createBinding: () => unknown;
+  /**
    * Opens a connection with `sqlite3_open_v2` and SQLite's open flags,
    * SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE by default, always adding
    * SQLITE_OPEN_NOMUTEX.
