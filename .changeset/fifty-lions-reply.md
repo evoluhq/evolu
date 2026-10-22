@@ -28,7 +28,7 @@ What this brings:
   13,357 with `gzip -9`, instead of 194,844 and 67,501. The package has no
   runtime dependencies now that `@awasm/noble` is gone, and a worker that
   encrypts no longer allocates its 30 MiB of WebAssembly memory. The wasm grew
-  from 677,479 to 719,248 bytes, from 305,733 to 322,464 with `gzip -9`.
+  from 677,479 to 719,360 bytes, from 305,733 to 322,492 with `gzip -9`.
 - SQLite 3.54.1 fixes a regression of 3.54.0 that made a statement with a
   `column = ?` term and an ORDER BY, GROUP BY, `min`, `max`, DISTINCT or a join
   prepare again on every run, as eleven of Evolu's storage queries did. It also

@@ -47,7 +47,8 @@ br_aes_ct64_cbcenc_run(const br_aes_ct64_cbcenc_keys *ctx,
 	buf = data;
 	while (len > 0) {
 		uint32_t w[4];
-		uint64_t q[8];
+		/* Evolu: initialize inactive lanes; see vendor/bearssl/README.md. */
+		uint64_t q[8] = { 0 };
 
 		w[0] = ivw[0] ^ br_dec32le(buf);
 		w[1] = ivw[1] ^ br_dec32le(buf + 4);

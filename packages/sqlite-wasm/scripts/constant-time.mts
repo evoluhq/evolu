@@ -879,15 +879,15 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   {
     name: "br_aes_ct64_cbcenc_run",
     index: 144,
-    sha256: "e8f65de5eca0149ca28aae54f2f97c6f1626cc75ca0be538d96ec768780fe8d6",
+    sha256: "37a10c510094250bc80997453dea4bf6a7b37f916d0e8fcd16a485f33d5f4b36",
     summary:
-      "BearSSL's CBC encryption, `br_aes_ct64_cbcenc_run` (`aes_ct64_cbcenc.c`), one block at a time.",
+      "BearSSL's CBC encryption, `br_aes_ct64_cbcenc_run` (`aes_ct64_cbcenc.c`), one block at a time, with Evolu's zero initialization of the state before each block.",
     sources: {
       "22": {
         type: "Public",
         reason: "`ctx->num_rounds`, 14 for every 256-bit key",
       },
-      "78": {
+      "102": {
         type: "Public",
         reason: "`ctx->num_rounds`, 14 for every 256-bit key",
       },
@@ -896,15 +896,15 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   {
     name: "br_aes_ct64_cbcdec_run",
     index: 142,
-    sha256: "5edf10086062692f81ab999eaa8e3de4e7c4cee3d3aca3688e79ec1843b3c9b5",
+    sha256: "d117c14035a8179243eaec8fb6ed254a6010488b9a6e39852172797594c87a07",
     summary:
-      "BearSSL's CBC decryption, `br_aes_ct64_cbcdec_run` (`aes_ct64_cbcdec.c`), four blocks at a time.",
+      "BearSSL's CBC decryption, `br_aes_ct64_cbcdec_run` (`aes_ct64_cbcdec.c`), four blocks at a time, with Evolu's zero initialization of the input words before each batch.",
     sources: {
       "22": {
         type: "Public",
         reason: "`ctx->num_rounds`, 14 for every 256-bit key",
       },
-      "130": {
+      "154": {
         type: "Public",
         reason: "`ctx->num_rounds`, 14 for every 256-bit key",
       },

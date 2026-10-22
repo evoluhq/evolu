@@ -87,6 +87,17 @@ export const buildTestRunner = ({
         flags: [
           ...sanitized,
           ...flags,
+          // The crypto test probes inactive CBC lanes before orthogonalizing
+          // them. Pattern initialization makes a missing explicit initializer
+          // deterministic; only these test-runner objects use the probe.
+          ...(["aes_ct64_cbcenc.c", "aes_ct64_cbcdec.c"].includes(
+            basename(source),
+          )
+            ? [
+                "-ftrivial-auto-var-init=pattern",
+                "-Dbr_aes_ct64_ortho=evolu_test_aes_ct64_ortho",
+              ]
+            : []),
           ...(source.startsWith(sourceDirectory) ? coverageFlags : []),
         ],
         source,

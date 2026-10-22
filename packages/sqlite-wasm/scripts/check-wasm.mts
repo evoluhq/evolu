@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
  * and CI check the wasm they load or ship against.
  */
 export const wasmSha256 =
-  "2ea7488b9b2b7990826759c0ec532ec1e8ac11fff38c07fe6a46e0f9acb973de";
+  "428d48b2c078bf96dd389dc19df54f81710edc11faf5ec8d126f1125501e1a0f";
 
 /** Where the build writes the wasm and the download puts it. */
 export const wasmPath = /*#__PURE__*/ fileURLToPath(

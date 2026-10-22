@@ -619,6 +619,80 @@ static void crypto_aes256_ct64_chains_across_calls(void) {
   check_cbc_chaining(&evolu_aes256_ct64);
 }
 
+/*
+ * The test runner routes only the ct64 CBC files' ortho calls through this
+ * probe. Their otherwise-uninitialized automatic arrays have a compiler
+ * pattern, so removing either explicit initializer reliably fails the test.
+ * The real transform always runs, also after the probe detects a failure.
+ */
+void br_aes_ct64_ortho(uint64_t q[8]);
+static int lane_probe_active;
+static int lane_probe_encrypt;
+static int lane_probe_nonzero;
+static size_t lane_probe_remaining;
+static size_t lane_probe_calls;
+
+void evolu_test_aes_ct64_ortho(uint64_t q[8]) {
+  if (lane_probe_active) {
+    if (lane_probe_calls % 2 == 0) {
+      size_t blocks = lane_probe_encrypt ? 1 : lane_probe_remaining / 16;
+      if (blocks > 4) blocks = 4;
+      for (size_t i = blocks; i < 4; i++)
+        lane_probe_nonzero |= q[i] != 0 || q[i + 4] != 0;
+    } else {
+      size_t batch = lane_probe_encrypt ? 16 : 64;
+      if (batch > lane_probe_remaining) batch = lane_probe_remaining;
+      lane_probe_remaining -= batch;
+    }
+    lane_probe_calls++;
+  }
+  br_aes_ct64_ortho(q);
+}
+
+static void crypto_aes256_ct64_initializes_inactive_lanes(void) {
+  uint8_t key[EVOLU_AES256_KEY_SIZE];
+  uint8_t plaintext[80] = {0};
+  uint8_t ciphertext[80];
+  from_hex(key, sp800_38a_key);
+  from_hex(plaintext, sp800_38a_plaintext);
+  // SP 800-38A's four blocks followed by a zero block, computed independently
+  // with node:crypto createCipheriv("aes-256-cbc") with padding disabled.
+  from_hex(ciphertext,
+           "f58c4c04d6e5f1ba779eabfb5f7bfbd6"
+           "9cfc4e967edb808d679f777bc6702c7d"
+           "39f23369a9d9bacfa530e26304231461"
+           "b2eb05e2c39be9fcda6c19078c6a9d1b"
+           "f9c5310dd415884b28613592b74eeb22");
+  evolu_aes256 aes;
+  evolu_aes256_init_with(&aes, &evolu_aes256_ct64, key);
+
+  for (size_t size = 0; size <= sizeof plaintext; size += 16) {
+    for (int encrypt = 0; encrypt <= 1; encrypt++) {
+      uint8_t iv[EVOLU_AES_BLOCK_SIZE];
+      uint8_t data[80];
+      from_hex(iv, sp800_38a_iv);
+      memcpy(data, encrypt ? plaintext : ciphertext, sizeof data);
+      lane_probe_encrypt = encrypt;
+      lane_probe_nonzero = 0;
+      lane_probe_remaining = size;
+      lane_probe_calls = 0;
+      lane_probe_active = 1;
+      evolu_crypto_result result =
+          encrypt ? evolu_aes256_cbc_encrypt(&aes, iv, data, size)
+                  : evolu_aes256_cbc_decrypt(&aes, iv, data, size);
+      lane_probe_active = 0;
+      CHECK_EQ_INT(result, EVOLU_CRYPTO_OK);
+      CHECK_EQ_INT(lane_probe_nonzero, 0);
+      CHECK_EQ_INT(lane_probe_remaining, 0);
+      CHECK_EQ_INT(lane_probe_calls,
+                   encrypt ? size / 16 * 2 : (size + 63) / 64 * 2);
+      CHECK_EQ_BYTES(data, encrypt ? ciphertext : plaintext, size);
+      if (size > 0) CHECK_EQ_BYTES(iv, ciphertext + size - 16, sizeof iv);
+    }
+  }
+  evolu_aes256_wipe(&aes);
+}
+
 static void crypto_aes256_ct_chains_across_calls(void) {
   check_cbc_chaining(&evolu_aes256_ct);
 }
@@ -987,6 +1061,7 @@ void crypto_suite(void) {
   RUN(crypto_aes256_ct64_matches_sp800_38a);
   RUN(crypto_aes256_ct_matches_sp800_38a);
   RUN(crypto_aes256_ct64_chains_across_calls);
+  RUN(crypto_aes256_ct64_initializes_inactive_lanes);
   RUN(crypto_aes256_ct_chains_across_calls);
   RUN(crypto_aes256_rejects_partial_blocks);
   RUN(crypto_runs_as_on_a_cpu_with_each_subset_of_its_features);

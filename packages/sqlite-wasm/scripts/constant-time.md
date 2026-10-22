@@ -110,46 +110,46 @@ Code sha256 `873ff91f9e4e151594093a0c7008bbe767bd29dee363805377cdcc3dcb08a195`, 
 
 ## `br_aes_ct64_cbcenc_run`, function 144
 
-BearSSL's CBC encryption, `br_aes_ct64_cbcenc_run` (`aes_ct64_cbcenc.c`), one block at a time.
+BearSSL's CBC encryption, `br_aes_ct64_cbcenc_run` (`aes_ct64_cbcenc.c`), one block at a time, with Evolu's zero initialization of the state before each block.
 
-Code sha256 `e8f65de5eca0149ca28aae54f2f97c6f1626cc75ca0be538d96ec768780fe8d6`, 148 instructions.
+Code sha256 `37a10c510094250bc80997453dea4bf6a7b37f916d0e8fcd16a485f33d5f4b36`, 172 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.sub(global 0, 1056), global 3), i32.lt_…`: secret-independent, only parameters, constants and globals
 - #26 `call 140` with argument 1 `#22`: secret-independent, #22 is public
 - #34 `if` with condition `local 3`: secret-independent, only parameters, constants and globals
-- #83 `call 147` with argument 0 `#78`: secret-independent, #78 is public
-- #124 `br_if 0` with condition `i32.sub(local 3, 16)`: secret-independent, only parameters, constants and globals
-- #143 `if` with condition `i32.or(i32.gt_u(i32.add(local 4, 1056), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
+- #107 `call 147` with argument 0 `#102`: secret-independent, #102 is public
+- #148 `br_if 0` with condition `i32.sub(local 3, 16)`: secret-independent, only parameters, constants and globals
+- #167 `if` with condition `i32.or(i32.gt_u(i32.add(local 4, 1056), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 
 Loaded values and call results:
 
 - #22 `i32.load offset=248` at `local 0`: public, `ctx->num_rounds`, 14 for every 256-bit key
-- #78 `i32.load offset=248` at `local 0`: public, `ctx->num_rounds`, 14 for every 256-bit key
+- #102 `i32.load offset=248` at `local 0`: public, `ctx->num_rounds`, 14 for every 256-bit key
 
 ## `br_aes_ct64_cbcdec_run`, function 142
 
-BearSSL's CBC decryption, `br_aes_ct64_cbcdec_run` (`aes_ct64_cbcdec.c`), four blocks at a time.
+BearSSL's CBC decryption, `br_aes_ct64_cbcdec_run` (`aes_ct64_cbcdec.c`), four blocks at a time, with Evolu's zero initialization of the input words before each batch.
 
-Code sha256 `5edf10086062692f81ab999eaa8e3de4e7c4cee3d3aca3688e79ec1843b3c9b5`, 441 instructions.
+Code sha256 `d117c14035a8179243eaec8fb6ed254a6010488b9a6e39852172797594c87a07`, 465 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.sub(global 0, 1168), global 3), i32.lt_…`: secret-independent, only parameters, constants and globals
 - #26 `call 140` with argument 1 `#22`: secret-independent, #22 is public
 - #36 `br_if 0` with condition `i32.eqz(local 3)`: secret-independent, only parameters, constants and globals
-- #103 `select` with condition `i32.lt_u(local 3, 64)`: secret-independent, only parameters, constants and globals
-- #135 `call 145` with argument 0 `#130`: secret-independent, #130 is public
-- #191 `br_if 0` with condition `local 6`: secret-independent, only parameters, constants and globals
-- #296 `br_if 1` with condition `i32.add(local 3, -64)`: secret-independent, only parameters, constants and globals
-- #308 `br_if 0` with condition `i32.lt_u(local 3, 20)`: secret-independent, only parameters, constants and globals
-- #314 `if` with condition `i32.ge_u(local 3, 24)`: secret-independent, only parameters, constants and globals
-- #320 `select` with condition `i32.le_u(local 7, 5)`: secret-independent, only parameters, constants and globals
-- #377 `br_if 0` with condition `local 6`: secret-independent, only parameters, constants and globals
-- #381 `br_if 1` with condition `i32.eqz(local 10)`: secret-independent, only parameters, constants and globals
-- #436 `if` with condition `i32.or(i32.gt_u(i32.add(local 4, 1168), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
+- #127 `select` with condition `i32.lt_u(local 3, 64)`: secret-independent, only parameters, constants and globals
+- #159 `call 145` with argument 0 `#154`: secret-independent, #154 is public
+- #215 `br_if 0` with condition `local 6`: secret-independent, only parameters, constants and globals
+- #320 `br_if 1` with condition `i32.add(local 3, -64)`: secret-independent, only parameters, constants and globals
+- #332 `br_if 0` with condition `i32.lt_u(local 3, 20)`: secret-independent, only parameters, constants and globals
+- #338 `if` with condition `i32.ge_u(local 3, 24)`: secret-independent, only parameters, constants and globals
+- #344 `select` with condition `i32.le_u(local 7, 5)`: secret-independent, only parameters, constants and globals
+- #401 `br_if 0` with condition `local 6`: secret-independent, only parameters, constants and globals
+- #405 `br_if 1` with condition `i32.eqz(local 10)`: secret-independent, only parameters, constants and globals
+- #460 `if` with condition `i32.or(i32.gt_u(i32.add(local 4, 1168), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 
 Loaded values and call results:
 
 - #22 `i32.load offset=248` at `local 0`: public, `ctx->num_rounds`, 14 for every 256-bit key
-- #130 `i32.load offset=248` at `local 0`: public, `ctx->num_rounds`, 14 for every 256-bit key
+- #154 `i32.load offset=248` at `local 0`: public, `ctx->num_rounds`, 14 for every 256-bit key
 
 ## `br_aes_ct64_bitslice_encrypt`, function 147
 

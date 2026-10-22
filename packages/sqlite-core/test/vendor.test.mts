@@ -6,7 +6,7 @@ import { it } from "node:test";
 
 const vendorDirectory = join(import.meta.dirname, "../vendor");
 
-it("vendors exactly the files its READMEs list, byte for byte", () => {
+it("matches the vendored files and digests its READMEs list", () => {
   for (const library of ["bearssl", "monocypher"]) {
     const directory = join(vendorDirectory, library);
     const readme = readFileSync(join(directory, "README.md"), "utf8");

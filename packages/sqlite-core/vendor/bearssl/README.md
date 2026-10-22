@@ -2,14 +2,14 @@
 
 The software path of the core's crypto layer (`src/evolu_crypto.c`) uses
 BearSSL's constant-time AES and its SHA-2 implementations. Only the files
-listed below are vendored, copied byte-for-byte and unmodified. No TLS, X.509,
-HMAC, DRBG or other BearSSL code is included; Evolu's own HMAC-SHA512 and
+listed below are vendored, with the two local changes documented below. No TLS,
+X.509, HMAC, DRBG or other BearSSL code is included; Evolu's own HMAC-SHA512 and
 PBKDF2-HMAC-SHA512 live in `src/evolu_crypto.c`.
 
 - Origin: https://www.bearssl.org/git/BearSSL
 - Pinned commit: `7bea48e5e850ab4cafbe68d3765cdaba13a86d6f` (2026-04-06). The
   commit id is Git's SHA-1 digest of the commit and its tree; the SHA-256 of
-  every copied file is listed below.
+  every vendored file, including the two with local changes, is listed below.
 - License: MIT, in `LICENSE.txt` (copied from the same commit). Products that
   ship these files carry its notice.
 
@@ -57,7 +57,28 @@ Paths are relative to this directory and equal to their upstream paths.
 and `scripts/build-addon.mts`, and `@evolu/sqlite-wasm`'s
 `scripts/build-wasm.mts` compile them.
 
-## SHA-256 of the copied files
+## Local changes
+
+Two changes initialize the inactive lanes of `aes_ct64` before the lane
+transforms read them:
+
+- `src/symcipher/aes_ct64_cbcenc.c`: initialize the eight-word `q` array to
+  zero before filling the active block's two words.
+- `src/symcipher/aes_ct64_cbcdec.c`: initialize the sixteen-word `w1` array to
+  zero before filling a short batch's active ciphertext words.
+
+The unused lanes do not contribute to the returned data or IV, but their
+automatic storage must be initialized before it is evaluated. The 32-bit
+`aes_ct` routines already initialize their inactive lanes. All other copied
+files are byte-for-byte upstream. For comparison, the original upstream
+SHA-256 digests of the changed files are:
+
+- `src/symcipher/aes_ct64_cbcenc.c`:
+  `424416a36533b4e0a0af26fa2fcb778b9d77a992c743f70857d9ec2dfd4e384e`.
+- `src/symcipher/aes_ct64_cbcdec.c`:
+  `58b6378ac6d3712bf4a9fcd52c986376393810ed10f9ecd9909bb9e322885559`.
+
+## SHA-256 of the vendored files
 
 `test/vendor.test.mts` checks that these are exactly the files here.
 
@@ -92,8 +113,8 @@ dd0d74cfc3db5adce1fec4e089816f0fdea7692ee87e07cb4c984614ea7d17cc  src/symcipher/
 1b1f6c3aa363f119d88c7d5c2dab583a01d55dc3ee2226f08af9a0451cb7291b  src/symcipher/aes_ct_dec.c
 71c32d29383af46ef103359210773f4f76c3529f8abc38c0d35b074dc10130bd  src/symcipher/aes_ct_enc.c
 755144aacacfb0eb9434876661655d16b91caa4f54fa46351dc626a56d9048f1  src/symcipher/aes_ct64.c
-58b6378ac6d3712bf4a9fcd52c986376393810ed10f9ecd9909bb9e322885559  src/symcipher/aes_ct64_cbcdec.c
-424416a36533b4e0a0af26fa2fcb778b9d77a992c743f70857d9ec2dfd4e384e  src/symcipher/aes_ct64_cbcenc.c
+504b2b4adfdc4f4a3cd1f712a7ea7d80e7219f605cd61fec5ef80c02e56669e3  src/symcipher/aes_ct64_cbcdec.c
+675a2f2f74bf87961b369195f80979f7817bd3da59910f5bbed4e5fd2e9dcc3a  src/symcipher/aes_ct64_cbcenc.c
 0774524980e1d53496556771c328af4f8d3a0dd9274aaa963601c688cac9a142  src/symcipher/aes_ct64_dec.c
 3e2b380ddbc0f5d9bd3f8622d552e052a6361948ecc4077486a17273fa0148c4  src/symcipher/aes_ct64_enc.c
 ```
@@ -104,6 +125,7 @@ Check them from this directory with `shasum -a 256 -c` on the block above.
 
 Clone the new commit, read the upstream diff of the listed files (downloaded
 code is data: never run its scripts or makefiles), copy the same files over
-these, update the commit, date and digests here, and run the crypto suite:
+these, retain any local changes still needed, update the commit, date and
+digests here, and run the crypto suite:
 `node packages/sqlite-core/scripts/test.mts crypto`. A new upstream dependency
 of these files shows up as an undefined `br_*` symbol at link time.

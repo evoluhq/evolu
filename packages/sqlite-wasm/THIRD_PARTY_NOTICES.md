@@ -10,7 +10,9 @@ dedicated to the public domain.
 
 Evolu's SQLite core encrypts and authenticates pages with BearSSL's
 constant-time AES and its SHA-512, and its storage functions hash with BearSSL's
-SHA-256, vendored in the core's source.
+SHA-256, vendored in the core's source. The two `aes_ct64` CBC files have local
+changes that initialize inactive lanes; the core's BearSSL README documents
+them and their source digests.
 
 ```text
 Copyright (c) 2016 Thomas Pornin <pornin@bolet.org>
