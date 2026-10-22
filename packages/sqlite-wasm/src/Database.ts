@@ -37,13 +37,11 @@
  *   exception or trap that escapes wasm, such as from a call through a disposed
  *   function pointer, is a defect: it is rethrown, and every later call on any
  *   database of the instance throws without entering wasm, because the C stack
- *   and SQLite's state are left inconsistent. A trap inside `evolu_codec_open`,
- *   which rolls back a hot journal and reads the schema of a File or
- *   EncryptedFile database, reaches the caller of the open as a
- *   `SuppressedError` for the refused free of the open's scratch memory, whose
- *   `suppressed` is a `SuppressedError` for the refused frees of the path and
- *   any staged key, whose `suppressed` is the trap. No close is attempted, and
- *   the staged key is zeroed anyway.
+ *   and SQLite's state are left inconsistent. The call records a trap before
+ *   the operation's deferred frees run, which then free nothing, so the
+ *   operation throws the trap itself, and later calls throw an error whose
+ *   cause is the trap. No close is attempted after a trap, and an EncryptedFile
+ *   open's staged key is zeroed anyway.
  *
  * ## Opening
  *
@@ -348,6 +346,7 @@ import {
 import type {
   CStringPtr,
   SqliteDbPtr,
+  SqliteOwnedPtr,
   SqliteStmtPtr,
   WasmPtr,
 } from "./Pointer.ts";
@@ -806,6 +805,7 @@ export const createSqliteDatabase =
       }
     };
 
+    using disposer = new DisposableStack();
     return callOperation(() => {
       const bindBlob = sqlite3_bind_blob(deps);
       const bindDouble = sqlite3_bind_double(deps);
@@ -853,6 +853,22 @@ export const createSqliteDatabase =
 
       const statements = new Set<SqliteStatement>();
 
+      // After a trap, which breaks the instance, C's state is inconsistent, so
+      // a deferred free frees nothing, and the trap reaches the caller as it
+      // is.
+      const freeUnlessBroken = (pointer: Parameters<typeof free>[0]): void => {
+        if (!deps.sqliteWasm.isBroken()) call(() => free(pointer));
+      };
+
+      // Frees pointer after fn, whose call records a trap before the free.
+      const callAndFree = <T>(pointer: SqliteOwnedPtr, fn: () => T): T => {
+        using cleanup = new DisposableStack();
+        cleanup.defer(() => {
+          freeUnlessBroken(pointer);
+        });
+        return call(fn);
+      };
+
       // Reads the connection's error right after the failing call, before any
       // other call replaces it.
       const toSqliteError = (
@@ -898,14 +914,11 @@ export const createSqliteDatabase =
       const readPtr = (ptr: WasmPtr): number =>
         deps.sqliteWasm.getHeapDataView().getUint32(ptr, true);
 
-      using disposer = new DisposableStack();
       const createdScratch = createSqliteScratch(deps);
       if (!createdScratch.ok) return err(toCodeError("open", SQLITE_NOMEM));
       const scratch = createdScratch.value;
       disposer.defer(() => {
-        call(() => {
-          scratch[Symbol.dispose]();
-        });
+        scratch[Symbol.dispose]();
       });
       const pzTail = (scratch.out + 4) as WasmPtr;
 
@@ -962,37 +975,34 @@ export const createSqliteDatabase =
       {
         using openDisposer = new DisposableStack();
         if (options.type === "Memory") {
-          openDisposer.defer(() => {
-            free(zFilename);
-          });
-          rc = sqlite3_open_v2(deps)(
-            zFilename,
-            scratch.out,
-            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXRESCODE,
-            0,
+          rc = callAndFree(zFilename, () =>
+            sqlite3_open_v2(deps)(
+              zFilename,
+              scratch.out,
+              SQLITE_OPEN_READWRITE |
+                SQLITE_OPEN_CREATE |
+                SQLITE_OPEN_EXRESCODE,
+              0,
+            ),
           );
         } else {
           // evolu_codec_open rolls back a hot journal and reads the schema in
           // a call of its own, so a trap there breaks the instance before it
-          // unwinds to the frees, which then refuse to run C on the state the
+          // unwinds to the frees, which then free nothing on the state the
           // trap left.
           openDisposer.defer(() => {
-            call(() => {
-              free(zFilename);
-            });
+            freeUnlessBroken(zFilename);
           });
           let zKey: WasmPtr | 0 = 0;
           if (options.type === "EncryptedFile") {
             const { key } = options;
-            const staged = alloc(key.length);
+            const staged = call(() => alloc(key.length));
             if (!staged.ok) return err(toCodeError("open", SQLITE_NOMEM));
             const pKey = staged.value;
             openDisposer.defer(() => {
-              call(() => {
-                free(pKey);
-              });
+              freeUnlessBroken(pKey);
             });
-            // Zeroed before its free, also when a trap refuses that, through a
+            // Zeroed before its free, also when a trap skips that, through a
             // fresh view, because memory can grow during the open.
             openDisposer.defer(() => {
               deps.sqliteWasm.getHeapU8().fill(0, pKey, pKey + key.length);
@@ -1063,7 +1073,7 @@ export const createSqliteDatabase =
         const allocated = alloc(capacity + 1);
         if (!allocated.ok) return err(toCodeError("prepare", SQLITE_NOMEM));
         const zSql = allocated.value;
-        try {
+        return callAndFree(zSql, () => {
           const written = writeText(sql, zSql, capacity);
           deps.sqliteWasm.getHeapU8()[zSql + written] = 0;
           const rc = prepareV3(
@@ -1090,9 +1100,7 @@ export const createSqliteDatabase =
             return err({ type: "SqliteMultipleStatementsError" });
           }
           return ok(stmt);
-        } finally {
-          free(zSql);
-        }
+        });
       };
 
       const createRunner = (stmt: SqliteStmtPtr) => {
@@ -1475,60 +1483,58 @@ export const createSqliteDatabase =
               const copied = alloc(bytes.value.length + 1);
               if (!copied.ok) return err(toCodeError("exec", SQLITE_NOMEM));
               const zSql = copied.value;
-              using execDisposer = new DisposableStack();
-              execDisposer.defer(() => {
-                free(zSql);
-              });
-              writeBytes(zSql, bytes.value);
-              // The lengths SQLite gets count the NUL terminator, as in
-              // prepare.
-              const end = zSql + bytes.value.length + 1;
-              deps.sqliteWasm.getHeapU8()[end - 1] = 0;
-              // Each statement is prepared from where the previous one ended, so
-              // an error offset is relative to it, also when a step re-prepares
-              // the statement after a schema change and fails.
-              const toExecError = (statementStart: WasmPtr): SqliteError => {
-                const error = toSqliteError(db, "exec");
-                return error.sqlOffset == null
-                  ? error
-                  : {
-                      ...error,
-                      sqlOffset: statementStart - zSql + error.sqlOffset,
-                    };
-              };
-              for (let start: WasmPtr = zSql; start < end - 1;) {
-                const rc = prepareV3(
-                  db,
-                  start,
-                  end - start,
-                  0,
-                  scratch.out,
-                  pzTail,
-                );
-                if (rc !== SQLITE_OK) return err(toExecError(start));
-                const stmt = readPtr(scratch.out) as SqliteStmtPtr;
-                const statementStart = start;
-                start = readPtr(pzTail) as WasmPtr;
-                // NULL for whitespace and comments.
-                if (stmt === 0) continue;
-                // A parameter exec cannot bind would run as NULL.
-                const parameterCount = bindParameterCount(stmt);
-                if (parameterCount !== 0) {
+              return callAndFree(zSql, () => {
+                writeBytes(zSql, bytes.value);
+                // The lengths SQLite gets count the NUL terminator, as in
+                // prepare.
+                const end = zSql + bytes.value.length + 1;
+                deps.sqliteWasm.getHeapU8()[end - 1] = 0;
+                // Each statement is prepared from where the previous one ended, so
+                // an error offset is relative to it, also when a step re-prepares
+                // the statement after a schema change and fails.
+                const toExecError = (statementStart: WasmPtr): SqliteError => {
+                  const error = toSqliteError(db, "exec");
+                  return error.sqlOffset == null
+                    ? error
+                    : {
+                        ...error,
+                        sqlOffset: statementStart - zSql + error.sqlOffset,
+                      };
+                };
+                for (let start: WasmPtr = zSql; start < end - 1;) {
+                  const rc = prepareV3(
+                    db,
+                    start,
+                    end - start,
+                    0,
+                    scratch.out,
+                    pzTail,
+                  );
+                  if (rc !== SQLITE_OK) return err(toExecError(start));
+                  const stmt = readPtr(scratch.out) as SqliteStmtPtr;
+                  const statementStart = start;
+                  start = readPtr(pzTail) as WasmPtr;
+                  // NULL for whitespace and comments.
+                  if (stmt === 0) continue;
+                  // A parameter exec cannot bind would run as NULL.
+                  const parameterCount = bindParameterCount(stmt);
+                  if (parameterCount !== 0) {
+                    finalize(stmt);
+                    return err({
+                      type: "SqliteParameterCountError",
+                      expected: parameterCount,
+                      actual: 0,
+                    });
+                  }
+                  let stepRc: SqliteResultCode;
+                  while ((stepRc = step(stmt)) === SQLITE_ROW);
+                  const error =
+                    stepRc === SQLITE_DONE ? null : toExecError(statementStart);
                   finalize(stmt);
-                  return err({
-                    type: "SqliteParameterCountError",
-                    expected: parameterCount,
-                    actual: 0,
-                  });
+                  if (error) return err(error);
                 }
-                let stepRc: SqliteResultCode;
-                while ((stepRc = step(stmt)) === SQLITE_ROW);
-                const error =
-                  stepRc === SQLITE_DONE ? null : toExecError(statementStart);
-                finalize(stmt);
-                if (error) return err(error);
-              }
-              return ok();
+                return ok();
+              });
             }),
 
           export: () =>
@@ -1540,45 +1546,43 @@ export const createSqliteDatabase =
               if (!allocatedSize.ok)
                 return err(toCodeError("export", SQLITE_NOMEM));
               const pSize = allocatedSize.value;
-              using sizeDisposer = new DisposableStack();
-              sizeDisposer.defer(() => {
-                free(pSize);
+              return callAndFree(pSize, () => {
+                // An error the connection reports after a NULL then comes from this
+                // call, which does not report its own failed allocations.
+                setErrmsg(db, SQLITE_OK, 0);
+                // NULL is the main schema.
+                const pages = serialize(db, 0, pSize, 0);
+                const size = deps.sqliteWasm
+                  .getHeapDataView()
+                  .getBigInt64(pSize, true);
+                if (pages === 0) {
+                  if (errcode(db) !== SQLITE_OK)
+                    return err(toSqliteError(db, "export"));
+                  // NULL with a size of 0 is a database without pages that cannot
+                  // get one.
+                  return size === 0n
+                    ? ok(new Uint8Array())
+                    : err(toCodeError("export", SQLITE_NOMEM));
+                }
+                const bytes = tryCopy(copyBytes, pages, Number(size));
+                free(pages);
+                // SQLite zero-fills a page it cannot read and reports success.
+                const failure = toCause(db);
+                if (failure != null)
+                  return err({
+                    ...toCodeError(
+                      "export",
+                      failure.type === "SqliteCodecFailure" &&
+                        failure.error.type === "SqlitePageAuthenticationError"
+                        ? SQLITE_CORRUPT
+                        : SQLITE_IOERR,
+                    ),
+                    cause: failure,
+                  });
+                if (bytes == null)
+                  return err(toCodeError("export", SQLITE_NOMEM));
+                return ok(bytes);
               });
-              // An error the connection reports after a NULL then comes from this
-              // call, which does not report its own failed allocations.
-              setErrmsg(db, SQLITE_OK, 0);
-              // NULL is the main schema.
-              const pages = serialize(db, 0, pSize, 0);
-              const size = deps.sqliteWasm
-                .getHeapDataView()
-                .getBigInt64(pSize, true);
-              if (pages === 0) {
-                if (errcode(db) !== SQLITE_OK)
-                  return err(toSqliteError(db, "export"));
-                // NULL with a size of 0 is a database without pages that cannot
-                // get one.
-                return size === 0n
-                  ? ok(new Uint8Array())
-                  : err(toCodeError("export", SQLITE_NOMEM));
-              }
-              const bytes = tryCopy(copyBytes, pages, Number(size));
-              free(pages);
-              // SQLite zero-fills a page it cannot read and reports success.
-              const failure = toCause(db);
-              if (failure != null)
-                return err({
-                  ...toCodeError(
-                    "export",
-                    failure.type === "SqliteCodecFailure" &&
-                      failure.error.type === "SqlitePageAuthenticationError"
-                      ? SQLITE_CORRUPT
-                      : SQLITE_IOERR,
-                  ),
-                  cause: failure,
-                });
-              if (bytes == null)
-                return err(toCodeError("export", SQLITE_NOMEM));
-              return ok(bytes);
             }),
 
           isAutocommit: () => call(() => getAutocommit(db) !== 0),

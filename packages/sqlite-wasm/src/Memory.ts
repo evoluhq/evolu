@@ -170,12 +170,21 @@ export const createSqliteScratch = (
   let buffer: SqliteOwnedPtr | null = null;
   let capacity = 0;
 
+  // After a trap, which breaks the instance, C's state is inconsistent, so
+  // disposal frees nothing, and the trap reaches the caller as it is.
   using disposer = new DisposableStack();
   disposer.defer(() => {
-    deps.sqliteWasm.exports.sqlite3_free(out.value);
+    if (!deps.sqliteWasm.isBroken())
+      deps.sqliteWasm.call(() => {
+        deps.sqliteWasm.exports.sqlite3_free(out.value);
+      });
   });
   disposer.defer(() => {
-    if (buffer != null) deps.sqliteWasm.exports.sqlite3_free(buffer);
+    const allocatedBuffer = buffer;
+    if (allocatedBuffer != null && !deps.sqliteWasm.isBroken())
+      deps.sqliteWasm.call(() => {
+        deps.sqliteWasm.exports.sqlite3_free(allocatedBuffer);
+      });
   });
 
   return ok(

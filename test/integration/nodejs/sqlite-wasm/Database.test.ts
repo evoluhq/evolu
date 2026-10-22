@@ -10,6 +10,7 @@ import {
   assertType,
   EncryptionKey,
   err,
+  exhaustiveCheck,
   FiniteNumber,
   getOrThrow,
   ok,
@@ -88,6 +89,7 @@ import type {
   SqliteContextPtr,
   SqliteDbPtr,
   SqliteDestructor,
+  SqliteOwnedPtr,
   SqliteStmtPtr,
   WasmPtr,
 } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
@@ -3245,7 +3247,269 @@ test("a compound SELECT of 500 terms runs, and 501 terms fail with SQLite's limi
   );
 });
 
-test("disposing a database on a broken instance frees none of its memory, because the scratch memory is freed through call too", async () => {
+for (const { operation, target } of [
+  { operation: "open", target: "sqlite3_open_v2" },
+  { operation: "open", target: "sqlite3_malloc" },
+  { operation: "prepare", target: "sqlite3_prepare_v3" },
+  { operation: "exec", target: "sqlite3_prepare_v3" },
+  { operation: "exec", target: "sqlite3_step" },
+  { operation: "export", target: "sqlite3_set_errmsg" },
+  { operation: "export", target: "sqlite3_serialize" },
+] as const)
+  test(`${operation} latches a direct ${target} trap before cleanup enters C`, async () => {
+    const trap = new WebAssembly.RuntimeError("unreachable");
+    let armed = false;
+    let trapped = false;
+    let allocations = 0;
+    const callsAfterTrap: Array<string> = [];
+    const deps = await setupSqliteWasmWith(({ exports }) =>
+      Object.fromEntries(
+        Object.entries(exports).map(([name, fn]) => [
+          name,
+          (...args: ReadonlyArray<number | bigint>) => {
+            if (trapped) {
+              callsAfterTrap.push(name);
+              return 0;
+            }
+            if (
+              armed &&
+              name === target &&
+              // The filename allocation follows the owned scratch allocation.
+              (target !== "sqlite3_malloc" || ++allocations === 2)
+            ) {
+              trapped = true;
+              throw trap;
+            }
+            return Reflect.apply(
+              fn as (...args: ReadonlyArray<number | bigint>) => unknown,
+              undefined,
+              args,
+            );
+          },
+        ]),
+      ),
+    );
+    const database = getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }));
+    const statement = getOrThrow(database.prepare("SELECT 1"));
+    armed = true;
+
+    assertThrows(
+      () => {
+        switch (operation) {
+          case "open":
+            createSqliteDatabase(deps)({ type: "Memory" });
+            break;
+          case "prepare":
+            database.prepare("SELECT 1");
+            break;
+          case "exec":
+            database.exec("SELECT 1");
+            break;
+          case "export":
+            database.export();
+            break;
+          default:
+            exhaustiveCheck(operation);
+        }
+      },
+      (thrown) => {
+        assertSame(thrown, trap);
+      },
+    );
+
+    assertTrue(deps.sqliteWasm.isBroken());
+    assertEqual(callsAfterTrap, []);
+    for (const invoke of [
+      () => database.exec("SELECT 1"),
+      () => statement[Symbol.dispose](),
+      () => database[Symbol.dispose](),
+    ])
+      assertThrows(invoke, (thrown) => {
+        assertInstanceOf(thrown, Error);
+      });
+    assertEqual(callsAfterTrap, []);
+  });
+
+for (const operation of ["open", "exec"] as const)
+  test(`${operation} frees nothing after a nested call broke the instance`, async () => {
+    const trap = new WebAssembly.RuntimeError("unreachable");
+    let armed = false;
+    let trapped = false;
+    const callsAfterTrap: Array<string> = [];
+    const deps = await setupSqliteWasmWith(({ exports }) =>
+      Object.fromEntries(
+        Object.entries(exports).map(([name, fn]) => [
+          name,
+          (...args: ReadonlyArray<number | bigint>) => {
+            if (trapped) {
+              callsAfterTrap.push(name);
+              return 0;
+            }
+            if (armed && name === "sqlite3_prepare_v3") {
+              trapped = true;
+              throw trap;
+            }
+            return Reflect.apply(
+              fn as (...args: ReadonlyArray<number | bigint>) => unknown,
+              undefined,
+              args,
+            );
+          },
+        ]),
+      ),
+    );
+    const other = getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }));
+    const runNested = () => {
+      armed = true;
+      other.run("select 1", []);
+    };
+    const name = getOrThrow(allocCString(deps)("nested"));
+    const {
+      pointers: [xFunc, xEntryPoint],
+    } = installWasmFunctions(deps)([
+      { signature: "v(pip)", fn: runNested },
+      {
+        signature: "i(ppp)",
+        fn: (db: SqliteDbPtr) => {
+          if (operation === "open") runNested();
+          return sqlite3_create_function_v2(deps)(
+            db,
+            name,
+            0,
+            SQLITE_UTF8,
+            0,
+            xFunc,
+            0,
+            0,
+            0,
+          );
+        },
+      },
+    ]);
+    assertEqual(sqlite3_auto_extension(deps)(xEntryPoint), SQLITE_OK);
+    let invoke: () => unknown;
+    if (operation === "open")
+      invoke = () => createSqliteDatabase(deps)({ type: "Memory" });
+    else {
+      const database = getOrThrow(
+        createSqliteDatabase(deps)({ type: "Memory" }),
+      );
+      sqlite3_reset_auto_extension(deps)();
+      invoke = () => database.exec("select nested()");
+    }
+
+    assertThrows(invoke, (thrown) => {
+      assertSame(thrown, trap);
+    });
+
+    assertTrue(deps.sqliteWasm.isBroken());
+    assertEqual(callsAfterTrap, []);
+  });
+
+test("an encrypted open latches a key-allocation trap before freeing its filename and scratch memory", async () => {
+  const t = await setupSahPool();
+  const trap = new WebAssembly.RuntimeError("unreachable");
+  const { exports } = t.sqliteWasm;
+  let allocations = 0;
+  let trapped = false;
+  let freesAfterTrap = 0;
+  const deps = {
+    ...t,
+    sqliteWasm: {
+      ...t.sqliteWasm,
+      exports: {
+        ...exports,
+        sqlite3_malloc: (size: number) => {
+          // The scratch and filename allocations precede the staged key.
+          if (++allocations === 3) {
+            trapped = true;
+            throw trap;
+          }
+          return exports.sqlite3_malloc(size);
+        },
+        sqlite3_free: (pointer: SqliteOwnedPtr | 0) => {
+          if (trapped) {
+            freesAfterTrap++;
+            return;
+          }
+          exports.sqlite3_free(pointer);
+        },
+      },
+    },
+  };
+
+  assertThrows(
+    () =>
+      createSqliteDatabase(deps)({
+        type: "EncryptedFile",
+        vfs: t.pool,
+        path: SqliteVfsPath.orThrow("/key-allocation.db"),
+        key: EncryptionKey.orThrow(new Uint8Array(32).fill(7)),
+      }),
+    (thrown) => {
+      assertSame(thrown, trap);
+    },
+  );
+
+  assertEqual(allocations, 3);
+  assertTrue(t.sqliteWasm.isBroken());
+  assertEqual(freesAfterTrap, 0);
+});
+
+test("exec frees nothing after SQL overflows SQLite's C stack and throws the trap itself", async () => {
+  let trapped = false;
+  let freesAfterTrap = 0;
+  const deps = await setupSqliteWasmWith(({ exports }) => ({
+    sqlite3_prepare_v3: (db, zSql, nByte, prepFlags, ppStmt, pzTail) => {
+      try {
+        return exports.sqlite3_prepare_v3(
+          db,
+          zSql,
+          nByte,
+          prepFlags,
+          ppStmt,
+          pzTail,
+        );
+      } catch (error) {
+        trapped = true;
+        throw error;
+      }
+    },
+    sqlite3_free: (pointer) => {
+      if (trapped) {
+        freesAfterTrap++;
+        return;
+      }
+      exports.sqlite3_free(pointer);
+    },
+  }));
+  const database = getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }));
+  assertOk(
+    database.exec(
+      Array.from({ length: 601 }, (_, i) =>
+        i === 0
+          ? "CREATE TABLE t0(x);"
+          : `CREATE TABLE t${i}(x);
+             CREATE TRIGGER g${i} AFTER INSERT ON t${i - 1}
+             BEGIN INSERT INTO t${i} VALUES (new.x); END;`,
+      ).join("\n"),
+    ),
+  );
+
+  assertThrows(
+    () => database.exec("INSERT INTO t0 VALUES (1)"),
+    (thrown) => {
+      assertInstanceOf(thrown, WebAssembly.RuntimeError);
+      assertEqual(thrown.message, "SQLite's C stack overflowed.");
+    },
+  );
+
+  assertTrue(deps.sqliteWasm.isBroken());
+  assertTrue(trapped);
+  assertEqual(freesAfterTrap, 0);
+});
+
+test("disposing a database on a broken instance frees none of its memory, because the scratch memory's frees skip a broken instance", async () => {
   let frees = 0;
   const deps = await setupSqliteWasmWith(({ exports }) => ({
     sqlite3_free: (pointer) => {
@@ -3283,7 +3547,8 @@ test("a trap escaping a database call breaks the instance: it is rethrown, and e
   const trapped = trySync(() => createSqliteDatabase(deps)({ type: "Memory" }));
 
   assertErr(trapped);
-  assertInstanceOf(trapped.error, WebAssembly.RuntimeError);
+  const trap = trapped.error;
+  assertInstanceOf(trap, WebAssembly.RuntimeError);
   for (const call of [
     () => createSqliteDatabase(deps)({ type: "Memory" }),
     () => database.prepare("SELECT 1"),
@@ -3298,19 +3563,16 @@ test("a trap escaping a database call breaks the instance: it is rethrown, and e
   ])
     assertThrows(call, (thrown) => {
       assertInstanceOf(thrown, Error);
-      assertSame(thrown.cause, trapped.error);
+      assertSame(thrown.cause, trap);
     });
-  // Its close and the free of its scratch memory are both refused.
+  // Its close is refused, and its scratch memory isn't freed.
   assertThrows(
     () => {
       database[Symbol.dispose]();
     },
     (thrown) => {
-      assertInstanceOf(thrown, SuppressedError);
-      for (const error of [thrown.error, thrown.suppressed]) {
-        assertInstanceOf(error, Error);
-        assertSame(error.cause, trapped.error);
-      }
+      assertInstanceOf(thrown, Error);
+      assertSame(thrown.cause, trap);
     },
   );
 });
@@ -3413,11 +3675,7 @@ test("a trap inside evolu_codec_open breaks the instance before the open's defer
     assertThrows(
       () => createSqliteDatabase(deps)(options),
       (thrown) => {
-        // The scratch memory's refused free, over the open's refused frees,
-        // over the trap.
-        assertInstanceOf(thrown, SuppressedError);
-        assertInstanceOf(thrown.suppressed, SuppressedError);
-        assertSame(thrown.suppressed.suppressed, trap);
+        assertSame(thrown, trap);
       },
     );
 

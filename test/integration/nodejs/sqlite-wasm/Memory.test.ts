@@ -1,4 +1,11 @@
-import { assertEqual, assertErr, assertOk, assertTrue } from "@evolu/common";
+import {
+  assertEqual,
+  assertErr,
+  assertOk,
+  assertSame,
+  assertThrows,
+  assertTrue,
+} from "@evolu/common";
 import { test } from "node:test";
 import {
   sqlite3_free,
@@ -66,6 +73,36 @@ test("SqliteScratch.reserve falls back to the requested length when twice its ca
   assertOk(scratch.reserve(1200 * mebibyte));
   assertOk(scratch.reserve(16));
   scratch[Symbol.dispose]();
+});
+
+test("SqliteScratch disposal frees nothing more once a free traps, and throws the trap itself", async () => {
+  const deps = await setupSqliteWasm();
+  const trap = new WebAssembly.RuntimeError("unreachable");
+  let frees = 0;
+  const scratch = createSqliteScratch({
+    sqliteWasm: {
+      ...deps.sqliteWasm,
+      exports: {
+        ...deps.sqliteWasm.exports,
+        sqlite3_free: () => {
+          frees++;
+          throw trap;
+        },
+      },
+    },
+  });
+  assertOk(scratch);
+  assertOk(scratch.value.reserve(16));
+
+  assertThrows(
+    () => scratch.value[Symbol.dispose](),
+    (thrown) => {
+      assertSame(thrown, trap);
+    },
+  );
+
+  assertTrue(deps.sqliteWasm.isBroken());
+  assertEqual(frees, 1);
 });
 
 test("copyWasmBytes returns bytes that survive memory growth", async () => {
