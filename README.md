@@ -138,10 +138,24 @@ and replay commands.
 See the [testing convention](https://www.evolu.dev/docs/testing) for test
 placement, runner, and assertion guidance.
 
-Release
-
-- `pnpm changeset` - Describe changes for release log
-
 Verify
 
 - `pnpm verify` - Run all checks (build, lint, test) locally; CI runs them on pull requests and pushes to main
+
+## Deployment and releases
+
+`main` must always be ready to run publicly on evolu.dev. After checks pass,
+the [Release workflow](.github/workflows/release.yaml) automatically deploys the
+website built from current `main`, using workspace packages and the pinned
+SQLite wasm built by CI. The web build does not install Evolu packages from npm.
+
+- Small, ready website fixes can go directly to `main`: commit, push, CI, deploy.
+- Keep unfinished changes in feature branches. Open a PR and merge when the
+  whole change is ready to run publicly, including any affected playgrounds.
+- Published package changes need a changeset (`pnpm changeset`). Complete the
+  npm release separately after merging; it may follow the web deployment.
+
+Web deployment and npm publication are independent. The playgrounds and API
+reference can therefore include changes before those changes are available on
+npm. This delay is intentional and keeps website fixes independent of package
+releases.
