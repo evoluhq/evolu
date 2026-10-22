@@ -6,6 +6,20 @@ This package provides Evolu for [Node.js](https://nodejs.org) 24.20+.
 
 For detailed information and usage examples, please visit [evolu.dev](https://www.evolu.dev).
 
+### Source, examples, and tests
+
+The npm package includes source and tests matching the installed version in
+`node_modules/@evolu/nodejs/`. The links below open GitHub's `main`
+branch; use the installed files when checking version-specific behavior.
+
+- [`src/`](https://github.com/evoluhq/evolu/tree/main/packages/nodejs/src/) contains the implementation and JSDoc API documentation,
+  including usage examples such as those in [`Fs.ts`](https://github.com/evoluhq/evolu/blob/main/packages/nodejs/src/Fs.ts).
+- `*.test.ts` files alongside the source show tested behavior and edge cases.
+  See [`Fs.test.ts`](https://github.com/evoluhq/evolu/blob/main/packages/nodejs/src/Fs.test.ts), for example.
+
+For application imports, use the `exports` in the installed package's
+`package.json`. Relative imports in tests may access internal helpers.
+
 ## Test overview reporter
 
 `@evolu/nodejs/TestOverviewReporter` lists Node.js test files slowest-first while
