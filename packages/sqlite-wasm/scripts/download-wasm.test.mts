@@ -6,6 +6,7 @@ import {
   assertRejects,
   assertThrows,
 } from "@evolu/common";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -17,6 +18,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, type TestContext } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
   downloadWasm,
@@ -25,6 +27,26 @@ import {
 } from "./download-wasm.mts";
 
 describe("downloadWasm", () => {
+  it("downloads the version from package.json by default", async (t) => {
+    const download = setupDownload(t, {
+      status: 404,
+      body: encode("Not Found"),
+    });
+    const { version: _version, ...options } = download.options;
+    const { version } = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { readonly version: string };
+    const url = `https://registry.npmjs.org/@evolu/sqlite-wasm/-/sqlite-wasm-${version}.tgz`;
+
+    await assertRejectsWithMessage(
+      downloadWasm(options),
+      `${url}: HTTP 404. @evolu/sqlite-wasm ${version} is not published yet. ${buildFromSource}`,
+    );
+
+    assertEqual(download.requests, [url]);
+    assertFalse(existsSync(download.options.path));
+  });
+
   it("writes the wasm from the tarball of the published package, creating its directory", async (t) => {
     const download = setupDownload(t, {
       status: 200,
@@ -56,7 +78,7 @@ describe("downloadWasm", () => {
     assertEqualBytes(readFileSync(download.options.path), wasm);
   });
 
-  it("downloads nothing when the file is already the pinned wasm", async (t) => {
+  it("downloads nothing when the file is already the pinned wasm, even if the version is not published yet", async (t) => {
     const download = setupDownload(t, null);
     writeFileSync(download.options.path, wasm);
 
@@ -66,39 +88,6 @@ describe("downloadWasm", () => {
     assertEqual(download.logged(), [
       `${download.options.path} is already the pinned wasm.`,
     ]);
-  });
-
-  it("downloads nothing when the file is already the pinned wasm, even one not published yet", async (t) => {
-    const download = setupDownload(t, null);
-    writeFileSync(download.options.path, wasm);
-
-    await downloadWasm({
-      ...download.options,
-      published: {
-        version: "3.53.4-build1",
-        sha256: sha256(encode("outdated wasm")),
-      },
-    });
-
-    assertEqual(download.requests, []);
-    assertEqual(download.logged(), [
-      `${download.options.path} is already the pinned wasm.`,
-    ]);
-  });
-
-  it("refuses when the published package does not hold the pinned wasm, and says to build it", async (t) => {
-    const download = setupDownload(t, null);
-    const outdated = sha256(encode("outdated wasm"));
-
-    await assertRejectsWithMessage(
-      downloadWasm({
-        ...download.options,
-        published: { version: "3.53.4-build1", sha256: outdated },
-      }),
-      `The pinned wasm is not published yet: @evolu/sqlite-wasm 3.53.4-build1 has sha256 ${outdated}, not ${sha256(wasm)}. ${buildFromSource}`,
-    );
-    assertEqual(download.requests, []);
-    assertFalse(existsSync(download.options.path));
   });
 
   it("refuses a version that is not published yet, and says to build the wasm", async (t) => {
@@ -140,7 +129,7 @@ describe("downloadWasm", () => {
     assertFalse(existsSync(download.options.path));
   });
 
-  it("refuses a wasm that differs from the pin and writes nothing", async (t) => {
+  it("refuses a wasm that differs from the pin, says to build it, and preserves the local file", async (t) => {
     const tampered = encode("tampered wasm");
     const download = setupDownload(t, {
       status: 200,
@@ -151,7 +140,7 @@ describe("downloadWasm", () => {
 
     await assertRejectsWithMessage(
       downloadWasm(download.options),
-      `${tarballUrl}: ${wasmEntry} has sha256 ${sha256(tampered)}, not the pinned ${sha256(wasm)}.`,
+      `${tarballUrl}: ${wasmEntry} has sha256 ${sha256(tampered)}, not the pinned ${sha256(wasm)}. ${buildFromSource}`,
     );
     assertEqualBytes(readFileSync(download.options.path), outdated);
   });
@@ -274,6 +263,62 @@ describe("readTarEntry", () => {
 });
 
 describe("download-wasm.mts CLI", () => {
+  it("downloads the package.json version and verifies the wasm before writing it", (t) => {
+    const directory = setupDirectory(t);
+    const path = join(directory, "sqlite3.wasm");
+    const checkPath = join(directory, "check-wasm.mts");
+    const preloadPath = join(directory, "preload.mts");
+    const { version } = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { readonly version: string };
+    const url = `https://registry.npmjs.org/@evolu/sqlite-wasm/-/sqlite-wasm-${version}.tgz`;
+    writeFileSync(
+      checkPath,
+      `export const checkWasmFile = () => ({ type: "Missing" });
+export const wasmPath = ${JSON.stringify(path)};
+export const wasmSha256 = ${JSON.stringify(sha256(wasm))};
+`,
+    );
+    writeFileSync(
+      preloadPath,
+      `import { registerHooks } from "node:module";
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === "./check-wasm.mts" && context.parentURL === ${JSON.stringify(new URL("./download-wasm.mts", import.meta.url).href)}) {
+      return { url: ${JSON.stringify(pathToFileURL(checkPath).href)}, shortCircuit: true };
+    }
+    return nextResolve(specifier, context);
+  },
+});
+globalThis.fetch = async (url) => {
+  if (url !== ${JSON.stringify(url)}) throw new Error("Unexpected download: " + url);
+  return new Response(new Uint8Array(${JSON.stringify([...tarball([{ name: wasmEntry, content: wasm }])])}));
+};
+`,
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--disable-warning=ExperimentalWarning",
+        "--import",
+        preloadPath,
+        fileURLToPath(new URL("./download-wasm.mts", import.meta.url)),
+      ],
+      { cwd: directory, encoding: "utf8" },
+    );
+
+    assertEqual(
+      { status: result.status, stderr: result.stderr },
+      { status: 0, stderr: "" },
+    );
+    assertEqualBytes(readFileSync(path), wasm);
+    assertEqual(
+      result.stdout,
+      `Wrote ${path} from @evolu/sqlite-wasm ${version}.\n`,
+    );
+  });
+
   it("runs as the sqlite-wasm:download script of the repository", () => {
     const { scripts } = JSON.parse(
       readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
@@ -359,7 +404,7 @@ const setupDownload = (
   const requests: Array<string> = [];
   const log = t.mock.method(console, "log", () => undefined);
   const options: DownloadWasmOptions = {
-    published: { version: "3.53.4-build1", sha256: sha256(wasm) },
+    version: "3.53.4-build1",
     pinnedSha256: sha256(wasm),
     path: join(setupDirectory(t), "sqlite3.wasm"),
     fetch: (url) => {

@@ -2,59 +2,50 @@
  * Downloads `wasm/sqlite3.wasm` from the published `@evolu/sqlite-wasm`, so
  * contributors don't have to build it.
  *
- * It fetches the tarball of the package {@link publishedWasm} names from the npm
- * registry, reads `package/dist/wasm/sqlite3.wasm` from it, and writes the file
- * only when its sha256 is the one `scripts/check-wasm.mts` pins. When the file
- * already has that sha256, it downloads nothing. When no published package
- * holds the pinned wasm yet, it fails and says to build the wasm from source.
+ * It reads the version from the package's `package.json`, fetches its tarball
+ * from the npm registry, and reads `package/dist/wasm/sqlite3.wasm` from it. It
+ * writes the file only when its sha256 is the one `scripts/check-wasm.mts`
+ * pins. When the file already has that sha256, it downloads nothing. When the
+ * version is not published or its wasm differs from the pin, it fails and says
+ * to build the wasm from source.
  *
  * Usage: `pnpm sqlite-wasm:download` in the repository root.
  *
  * @module
  */
 
+import { getOrThrow, object, record, String, Unknown } from "@evolu/common";
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { checkWasmFile, wasmPath, wasmSha256 } from "./check-wasm.mts";
 
-/** A published `@evolu/sqlite-wasm` and the sha256 of the wasm it holds. */
-export interface PublishedWasm {
-  readonly version: string;
-  readonly sha256: string;
-}
-
-/**
- * The published package that holds the pinned wasm. It may name the next
- * release ahead of time, with the sha256 its wasm will have, and the download
- * then fails with HTTP 404 until that release is published. Otherwise, set the
- * version and sha256 here after a release publishes a new wasm. Until then,
- * this sha256 differs from the pin in `scripts/check-wasm.mts`, and the
- * download says to build the wasm from source.
- */
-export const publishedWasm: PublishedWasm = {
-  version: "3.54.1-build1",
-  sha256: "2ea7488b9b2b7990826759c0ec532ec1e8ac11fff38c07fe6a46e0f9acb973de",
-};
-
 /** The published package, the pin, and where {@link downloadWasm} writes. */
 export interface DownloadWasmOptions {
-  readonly published: PublishedWasm;
+  /** Defaults to the version in the package's `package.json`. */
+  readonly version?: string;
   /** The sha256 `scripts/check-wasm.mts` pins. */
   readonly pinnedSha256: string;
   readonly path: string;
   readonly fetch: (url: string) => Promise<Response>;
 }
 
+const { version: packageVersion } = getOrThrow(
+  object({ version: String }, record(String, Unknown)).fromUnknown(
+    JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ),
+  ),
+);
+
 /**
  * Writes the wasm of the published package to `path`, unless the file there
- * already is the pinned wasm. It throws, and writes nothing, when the published
- * package does not hold the pinned wasm, the download fails, or the tarball's
- * wasm is missing or differs from the pin.
+ * already is the pinned wasm. It throws, and writes nothing, when the download
+ * fails or the tarball's wasm is missing or differs from the pin.
  */
 export const downloadWasm = async ({
-  published,
+  version = packageVersion,
   pinnedSha256,
   path,
   fetch,
@@ -65,16 +56,11 @@ export const downloadWasm = async ({
   }
   const buildFromSource =
     "Build it from source as packages/sqlite-wasm/README.md#the-webassembly describes.";
-  if (published.sha256 !== pinnedSha256)
-    throw new Error(
-      `The pinned wasm is not published yet: @evolu/sqlite-wasm ${published.version} has sha256 ${published.sha256}, not ${pinnedSha256}. ${buildFromSource}`,
-    );
-
-  const url = `https://registry.npmjs.org/@evolu/sqlite-wasm/-/sqlite-wasm-${published.version}.tgz`;
+  const url = `https://registry.npmjs.org/@evolu/sqlite-wasm/-/sqlite-wasm-${version}.tgz`;
   const response = await fetch(url);
   if (response.status === 404)
     throw new Error(
-      `${url}: HTTP 404. @evolu/sqlite-wasm ${published.version} is not published yet. ${buildFromSource}`,
+      `${url}: HTTP 404. @evolu/sqlite-wasm ${version} is not published yet. ${buildFromSource}`,
     );
   if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
 
@@ -87,12 +73,12 @@ export const downloadWasm = async ({
   const sha256 = createHash("sha256").update(wasm).digest("hex");
   if (sha256 !== pinnedSha256)
     throw new Error(
-      `${url}: ${entry} has sha256 ${sha256}, not the pinned ${pinnedSha256}.`,
+      `${url}: ${entry} has sha256 ${sha256}, not the pinned ${pinnedSha256}. ${buildFromSource}`,
     );
 
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, wasm);
-  log(`Wrote ${path} from @evolu/sqlite-wasm ${published.version}.`);
+  log(`Wrote ${path} from @evolu/sqlite-wasm ${version}.`);
 };
 
 /**
@@ -147,7 +133,6 @@ const log = (message: string): void => {
 
 if (import.meta.main)
   await downloadWasm({
-    published: publishedWasm,
     pinnedSha256: wasmSha256,
     path: wasmPath,
     fetch,

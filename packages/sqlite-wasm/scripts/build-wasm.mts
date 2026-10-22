@@ -97,9 +97,8 @@
  * the image tag and the digest of its multi-arch index in
  * `.github/workflows/checks.yaml` and in the README's Docker command, which a
  * Node.js upgrade changes too, and a wabt upgrade the exact version of the
- * `wabt` devDependency, and with it the lockfile. After a release publishes the
- * new wasm, set its version and sha256 in `publishedWasm` of
- * `scripts/download-wasm.mts`.
+ * `wabt` devDependency, and with it the lockfile. `scripts/download-wasm.mts`
+ * reads the package version from `package.json` and checks the same wasm pin.
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
