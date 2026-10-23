@@ -651,10 +651,10 @@ static void skiplist_fingerprints_refuse_a_result_past_the_length_limit(void) {
                                   "1')",
                                   -1, &statement, NULL),
                SQLITE_OK);
-  // After preparing, whose SQL is longer. Four records take 112 bytes, refused
-  // before any bucket is read, so also before these, past the empty owner's
-  // size, are.
-  sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 100);
+  // After preparing, whose SQL is longer. Four records take 112 bytes, a byte
+  // more than this, refused before any bucket is read, so also before these,
+  // past the empty owner's size, are.
+  sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 111);
   int rc = sqlite3_step(statement);
   sqlite3_finalize(statement);
   CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
@@ -915,7 +915,7 @@ static void skiplist_functions_fail_with_corrupt_on_broken_metadata(void) {
   uint8_t owner[16] = {0};
   CHECK_EQ_INT(query_owner_int(broken,
                                "select evolu_skiplist_timestamp_at(?, ?)",
-                               owner, 562949953421311LL),
+                               owner, 281474976710656LL),
                -1);
   // Nor is any bucket past 2^48 walked.
   char *message = error_of(broken, "select evolu_skiplist_fingerprints("
@@ -938,6 +938,68 @@ static void skiplist_functions_fail_with_corrupt_on_broken_metadata(void) {
       return;
     }
   }
+}
+
+/*
+ * Counts exactly at the limit pass every check: a node, a sum, a bucket and
+ * an index below 2^48, and a result of exactly SQLite's length limit.
+ */
+static void skiplist_functions_accept_counts_at_the_limit(void) {
+  uint8_t owner[16] = {0};
+  // {3} alone, counting 2^48.
+  sqlite3 *db = open_broken_storage(
+      1, 1,
+      "delete from evolu_timestamp where t = "
+      "x'01000000000000000000000000000000'; update evolu_timestamp set c = "
+      "281474976710656");
+  CHECK(db != NULL);
+  CHECK_EQ_INT(query_owner_int(db, "select evolu_skiplist_size(?)", owner, 0),
+               281474976710656LL);
+  CHECK_EQ_INT(query_owner_int(db,
+                               "select length(evolu_skiplist_fingerprints(?, "
+                               "x'0001000000000000'))",
+                               owner, 0),
+               28);
+  CHECK_EQ_INT(query_owner_int(db,
+                               "select length(evolu_skiplist_timestamp_at(?, "
+                               "?))",
+                               owner, 281474976710655LL),
+               16);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+
+  // {2} at level 2 sums {1}, counting 2^48 - 1, and itself.
+  db = open_broken_storage(1, 1,
+                           "update evolu_timestamp set c = 281474976710655 "
+                           "where t = x'01000000000000000000000000000000'");
+  CHECK(db != NULL);
+  CHECK_EQ_INT(run_for_owner(db, "select evolu_skiplist_insert(?, "
+                                 "x'02000000000000000000000000000000', 2)"),
+               SQLITE_ROW);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+
+  // {3} at level 2, counting 2^48 - 1, gains {2}.
+  db = open_broken_storage(
+      1, 2, "update evolu_timestamp set c = 281474976710655 where l = 2");
+  CHECK(db != NULL);
+  CHECK_EQ_INT(run_for_owner(db, "select evolu_skiplist_insert(?, "
+                                 "x'02000000000000000000000000000000', 1)"),
+               SQLITE_ROW);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+
+  // Four records take 112 bytes, as many as the limit.
+  db = open_storage();
+  CHECK(db != NULL);
+  sqlite3_stmt *statement = NULL;
+  CHECK_EQ_INT(sqlite3_prepare_v2(db,
+                                  "select evolu_skiplist_fingerprints("
+                                  "zeroblob(16), zeroblob(32))",
+                                  -1, &statement, NULL),
+               SQLITE_OK);
+  sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 112);
+  int rc = sqlite3_step(statement);
+  sqlite3_finalize(statement);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(rc, SQLITE_ROW);
 }
 
 /*
@@ -1091,6 +1153,7 @@ void skiplist_suite(void) {
   RUN(skiplist_fingerprints_refuse_a_result_past_the_length_limit);
   RUN(skiplist_functions_run_only_from_top_level_sql);
   RUN(skiplist_functions_fail_with_corrupt_on_broken_metadata);
+  RUN(skiplist_functions_accept_counts_at_the_limit);
   RUN(skiplist_reads_outside_a_transaction_read_one_snapshot);
   RUN(skiplist_functions_fail_with_nomem_when_sqlite_cant_allocate);
   RUN(skiplist_register_fails_with_nomem_when_sqlite_cant_allocate);
