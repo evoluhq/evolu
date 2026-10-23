@@ -67,6 +67,9 @@ typedef struct {
 
 struct Database {
   evolu_database *database; // NULL once closed.
+  // How many closes it took, each finalizing every statement, also when
+  // SQLite then refused to close it.
+  int closes;
   Environment *environment;
   // Its neighbors in the environment's list, which holds it while it's open.
   Database *previous;
@@ -84,6 +87,8 @@ typedef struct {
   // NULL once finalized, and finalized by the close of its database.
   sqlite3_stmt *stmt;
   Database *database;
+  // Its database's closes when it was prepared; a later close finalized it.
+  int closes;
   int parameter_count;
   // Whether the last step returned a row.
   bool has_row;
@@ -404,7 +409,8 @@ static Database *get_open_database(napi_env env, napi_value this_value) {
 }
 
 static bool is_live(const Statement *statement) {
-  return statement->stmt != NULL && statement->database->database != NULL;
+  return statement->stmt != NULL && statement->database->database != NULL &&
+         statement->closes == statement->database->closes;
 }
 
 static Statement *get_live_statement(napi_env env, napi_value this_value) {
@@ -430,6 +436,8 @@ static void unlink_database(Database *database) {
 // Closes an open database, which releases its file, and returns SQLite's
 // result, keeping it open when SQLite can't close it.
 static int close_database(Database *database) {
+  // The close finalizes every statement, also when SQLite then refuses it.
+  database->closes++;
   int rc = evolu_database_close(database->database);
   if (rc != SQLITE_OK) return rc;
   database->database = NULL;
@@ -882,6 +890,7 @@ static napi_value js_prepare(napi_env env, napi_callback_info info) {
   }
   statement->stmt = stmt;
   statement->database = database;
+  statement->closes = database->closes;
   statement->parameter_count = sqlite3_bind_parameter_count(stmt);
   statement->column_count = -1;
   database->references++;

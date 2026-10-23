@@ -380,6 +380,44 @@ export const describeBindingConformance = ({
     }
   });
 
+  test("the binding's functions work called without the binding", () => {
+    const {
+      openMemory,
+      openFile,
+      openEncryptedFile,
+      isFileOpen,
+      deleteFile,
+      fillRandom,
+      encryptXChaCha20Poly1305,
+      decryptXChaCha20Poly1305,
+    } = binding;
+    const plain = pathOf("unbound-plain.db");
+    const encrypted = pathOf("unbound-encrypted.db");
+
+    for (const database of [
+      openMemory(),
+      openFile(plain),
+      openEncryptedFile(encrypted, key),
+    ]) {
+      assertEqual(rowsOf(database, "select 1 as a"), [{ a: 1 }]);
+      database.close();
+    }
+    assertEqual(isFileOpen(plain), false);
+    deleteFile(plain);
+    fillRandom(new Uint8Array(1));
+    const { nonce, plaintext } = xchachaVectorInputs(2, 15);
+    assertEqual(
+      bytesToHex(
+        decryptXChaCha20Poly1305(
+          key,
+          nonce,
+          encryptXChaCha20Poly1305(key, nonce, plaintext),
+        ),
+      ),
+      bytesToHex(plaintext),
+    );
+  });
+
   test("openFile creates a missing directory's last level and the file, which reopens with its rows", () => {
     const path = pathOf("created/plain.db");
     const created = binding.openFile(path);
@@ -642,7 +680,14 @@ export const describeBindingConformance = ({
           type: "SqliteInvalidSqlText",
         }),
       );
-      for (const sql of ["select '\uD800'", 'select 1 as "\uDC00"'])
+      for (const sql of [
+        "select '\uD800'",
+        'select 1 as "\uDC00"',
+        "select '\uD800'",
+        "select 1 -- \uD800",
+        "select '\uDBFF'",
+        'select 1 as "\uDFFF"',
+      ])
         assertEqual(
           thrownBy(() => database.prepare(sql)),
           errorWith("The SQL contains a lone surrogate.", {
@@ -655,12 +700,45 @@ export const describeBindingConformance = ({
       ]);
       assertEqual(rowsOf(database, "select '😀' as a"), [{ a: "😀" }]);
       assertEqual(
+        rowsOf(database, "select '\u{10000}' as a, '\u{10FFFF}' as b"),
+        [{ a: "\u{10000}", b: "\u{10FFFF}" }],
+      );
+      assertEqual(
         thrownBy(() => database.prepare(1 as never)),
         typeError("The SQL must be a string."),
       );
     } finally {
       database.close();
     }
+  });
+
+  test("prepare refuses a keying pragma with the codec's failure, on a plain file as on an encrypted one, so no file is keyed through SQL", () => {
+    for (const database of [
+      binding.openFile(pathOf("keying-plain.db")),
+      binding.openEncryptedFile(pathOf("keying-encrypted.db"), key),
+    ])
+      try {
+        for (const sql of [
+          "pragma key = 'x'",
+          "pragma rekey = 'x'",
+          "pragma hexkey = '00'",
+        ])
+          assertEqual(
+            thrownBy(() => database.prepare(sql)),
+            sqliteError({
+              operation: "prepare",
+              extendedCode: 1,
+              message:
+                "Databases are keyed only through evolu_codec_open, never through SQL.",
+              cause: {
+                type: "SqliteCodecFailure",
+                error: { type: "SqliteEncryptionUnsupported" },
+              },
+            }),
+          );
+      } finally {
+        database.close();
+      }
   });
 
   test("prepare throws SQLite's error with the byte offset in the UTF-8 SQL of a parser error", () => {
@@ -731,6 +809,91 @@ export const describeBindingConformance = ({
     }
   });
 
+  test("TEXT that isn't UTF-8 reads with U+FFFD in place of each ill-formed sequence, as the WHATWG decoder reads it", () => {
+    const database = binding.openMemory();
+    try {
+      const textOf = database.prepare("select cast(? as text) as text");
+      // The bytes, and what they read as.
+      for (const [hex, text] of [
+        ["61", "a"],
+        ["7f", "\u007F"],
+        ["c280", "\u0080"],
+        ["dfbf", "߿"],
+        ["c3a9", "é"],
+        ["e282ac", "€"],
+        ["e0a080", "ࠀ"],
+        ["ed9fbf", "퟿"],
+        ["f0908080", "\u{10000}"],
+        ["f1808080", "\u{40000}"],
+        ["f48fbfbf", "\u{10FFFF}"],
+        // A continuation byte, and leads no UTF-8 sequence starts with.
+        ["80", "�"],
+        ["c0af", "��"],
+        ["c1bf", "��"],
+        ["f5808080", "����"],
+        ["ff61", "�a"],
+        // Overlong, surrogate and out-of-range sequences, which fail at their
+        // second byte.
+        ["e08080", "���"],
+        ["eda080", "���"],
+        ["f0808080", "����"],
+        ["e09f80", "���"],
+        ["f08f8080", "����"],
+        ["f4908080", "����"],
+        // A byte just outside a continuation byte's range, first and later.
+        ["c37f", "�\u007F"],
+        ["c3c0", "��"],
+        ["e2827f", "�\u007F"],
+        ["e282c0", "��"],
+        // A sequence cut short by another byte, or by the end.
+        ["c328", "�("],
+        ["e28228", "�("],
+        ["f09f9828", "�("],
+        ["61e282", "a�"],
+        ["f09f98", "�"],
+      ]) {
+        const blob = Uint8Array.from(hex.match(/../gu) ?? [], (byte) =>
+          Number.parseInt(byte, 16),
+        );
+        assertEqual([hex, textOf.run([blob]).rows], [hex, [{ text }]]);
+      }
+      textOf.finalize();
+    } finally {
+      database.close();
+    }
+  });
+
+  test("column names and error messages that aren't UTF-8 read with U+FFFD in place of each ill-formed sequence", () => {
+    const path = pathOf("ill-formed-names.db");
+    const created = binding.openFile(path);
+    run(created, "create table t (a, b, constraint c check (a > 0))");
+    run(created, "insert into t values (1, 2)");
+    // Names with a byte 0xff, which no UTF-8 sequence has.
+    run(created, "pragma writable_schema = 1");
+    run(
+      created,
+      `update sqlite_schema set sql = 'create table t ("a' || cast(x'ff' as text) || 'b", "a' || cast(x'ff' as text) || 'c", constraint "c' || cast(x'ff' as text) || 'd" check ("a' || cast(x'ff' as text) || 'b" > 0))' where name = 't'`,
+    );
+    created.close();
+
+    const reopened = binding.openFile(path);
+    try {
+      assertEqual(rowsOf(reopened, "select * from t"), [
+        { "a\uFFFDb": 1, "a\uFFFDc": 2 },
+      ]);
+      assertEqual(
+        thrownBy(() => run(reopened, "insert into t values (-1, 0)")),
+        sqliteError({
+          operation: "step",
+          extendedCode: 275,
+          message: "CHECK constraint failed: c\uFFFDd",
+        }),
+      );
+    } finally {
+      reopened.close();
+    }
+  });
+
   test("bind and run throw a TypeError for any other value", () => {
     const database = binding.openMemory();
     try {
@@ -761,7 +924,7 @@ export const describeBindingConformance = ({
           valueError,
         );
       }
-      for (const parameters of [undefined, "x", 1])
+      for (const parameters of [undefined, "x", 1, {}, { length: 1, 0: 1 }])
         assertEqual(
           thrownBy(() => statement.run(parameters as never)),
           typeError("The parameters must be an array."),
@@ -770,6 +933,139 @@ export const describeBindingConformance = ({
         rows: [{ value: 1 }],
         changes: 0,
       });
+
+      // An array whose getter shrinks it while it's read reads undefined.
+      const two = database.prepare("select ? as a, ? as b");
+      const shrunk = () => {
+        const parameters = [...values(0, 0)];
+        Object.defineProperty(parameters, 0, {
+          get: () => {
+            parameters.length = 1;
+            return 0;
+          },
+        });
+        return parameters;
+      };
+      const valueError = typeError(
+        "A parameter must be null, a finite number, a string or a Uint8Array.",
+      );
+      assertEqual(
+        thrownBy(() => two.run(shrunk())),
+        valueError,
+      );
+      assertEqual(
+        thrownBy(() => {
+          two.bind(shrunk());
+        }),
+        valueError,
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  // Ordinary [[Set]] semantics for the setters below, which define the element
+  // they intercept.
+  const defineElement = (
+    array: Array<unknown>,
+    index: string,
+    value: unknown,
+  ) => {
+    Object.defineProperty(array, index, {
+      value,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+  };
+
+  test("run and bind read each parameter as an ordinary get, so an index getter of Array.prototype answers for an element a getter removed", () => {
+    const database = binding.openMemory();
+    const statement = database.prepare("select ? as a, ? as b");
+    const shrunk = () => {
+      const parameters = [...values(0, 0)];
+      Object.defineProperty(parameters, 0, {
+        get: () => {
+          parameters.length = 1;
+          return 0;
+        },
+      });
+      return parameters;
+    };
+    let ran: unknown = null;
+    let stepped: unknown = null;
+    // oxlint-disable-next-line eslint/no-extend-native -- A removed element must read through the prototype.
+    Object.defineProperty(Array.prototype, "1", {
+      configurable: true,
+      get: () => 5,
+      set(this: Array<unknown>, value: unknown) {
+        defineElement(this, "1", value);
+      },
+    });
+    try {
+      ran = statement.run(shrunk()).rows;
+      statement.bind(shrunk());
+      stepped = statement.step();
+    } finally {
+      delete (Array.prototype as unknown as Record<string, unknown>)["1"];
+      database.close();
+    }
+
+    assertEqual([ran, stepped], [[{ a: 0, b: 5 }], { a: 0, b: 5 }]);
+  });
+
+  test("run appends each row as an ordinary set, so an index setter of Array.prototype that shrinks the rows leaves every row", () => {
+    const database = binding.openMemory();
+    const statement = database.prepare(
+      "select 1 as a union all select 2 union all select 3",
+    );
+    let rows: unknown = null;
+    // oxlint-disable-next-line eslint/no-extend-native -- Appending a row must run JavaScript.
+    Object.defineProperty(Array.prototype, "0", {
+      configurable: true,
+      // oxlint-disable-next-line eslint/accessor-pairs -- Only setting runs the hook.
+      set(this: Array<unknown>, value: unknown) {
+        defineElement(this, "0", value);
+        this.length = 1;
+      },
+    });
+    try {
+      rows = statement.run([]).rows;
+    } finally {
+      delete (Array.prototype as unknown as Record<string, unknown>)["0"];
+      database.close();
+    }
+
+    assertEqual(rows, [{ a: 1 }, { a: 2 }, { a: 3 }]);
+  });
+
+  test("a run whose rows array's index setter steps the same statement leaves it reset, so the next run returns every row", () => {
+    const database = binding.openMemory();
+    try {
+      const statement = database.prepare(
+        "select 1 as a union all select 2 union all select 3",
+      );
+      let hook: (() => void) | null = () => {
+        statement.step();
+      };
+      // oxlint-disable-next-line eslint/no-extend-native -- Appending a row must run JavaScript.
+      Object.defineProperty(Array.prototype, "0", {
+        configurable: true,
+        // oxlint-disable-next-line eslint/accessor-pairs -- Only setting runs the hook.
+        set(this: Array<unknown>, value: unknown) {
+          const run = hook;
+          hook = null;
+          run?.();
+          defineElement(this, "0", value);
+        },
+      });
+      try {
+        statement.run([]);
+      } finally {
+        delete (Array.prototype as unknown as Record<string, unknown>)["0"];
+      }
+
+      assertEqual(statement.run([]).rows, [{ a: 1 }, { a: 2 }, { a: 3 }]);
     } finally {
       database.close();
     }

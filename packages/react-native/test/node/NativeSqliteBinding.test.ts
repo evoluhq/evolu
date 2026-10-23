@@ -275,6 +275,50 @@ test("changes is 0 for a read-only statement whose function writes, and a write'
   }
 });
 
+test("close keeps a connection that SQLite can't close open, holding its file, finalizes its statements, and closes it once SQLite can", () => {
+  const path = join(directory, "unfinished-backup.db");
+  // The hook and the backups are the process's, so they never outlive the test.
+  const database = (() => {
+    addon.startBackupOnOpen(true);
+    try {
+      return binding.openFile(path);
+    } finally {
+      addon.startBackupOnOpen(false);
+    }
+  })();
+  try {
+    const prepared = database.prepare("select 1 as a");
+
+    database.close();
+    assertTrue(binding.isFileOpen(path));
+    // The close finalized the statements before SQLite refused it.
+    assertEqual(
+      thrownBy(() => prepared.step()),
+      finalized,
+    );
+    assertEqual(
+      thrownBy(() => {
+        prepared.finalize();
+      }),
+      finalized,
+    );
+    const between = database.prepare("select 1 as a");
+    assertEqual(between.run([]).rows, [{ a: 1 }]);
+    // A second refused close finalizes the statements prepared since.
+    database.close();
+    assertTrue(binding.isFileOpen(path));
+    assertEqual(
+      thrownBy(() => between.step()),
+      finalized,
+    );
+  } finally {
+    addon.finishBackups();
+    database.close();
+  }
+
+  assertFalse(binding.isFileOpen(path));
+});
+
 test("openEncryptedFile refuses a key that isn't 32 bytes before it creates the file or its directory", () => {
   const path = join(directory, "refused/key.db");
 

@@ -191,9 +191,12 @@ jobs:
   # minSdk, with the NDK React Native pins and with the runner's newest, the
   # core and the binding layer with warnings as errors, so a libc function
   # newer than API 24 fails here, and leaves no global without the prefix
-  # evolu_. It also runs React Native's binding conformance suite on the
-  # core's N-API mirror (node/binding.c), the TypeScript driver and the
-  # expo-sqlite migration tests, with 100% coverage of scripts and src/sqlite.
+  # evolu_. The JSI adapter, cpp/EvoluSqliteBinding.cpp, compiles as C++20
+  # with warnings as errors too, and its object may define only C++ of the
+  # namespaces evolu, std and facebook and clang's helpers. It also runs React
+  # Native's binding conformance suite on the core's N-API mirror
+  # (node/binding.c), the TypeScript driver and the expo-sqlite migration
+  # tests, with 100% coverage of scripts and src/sqlite.
   react-native-native:
     name: React Native native
     runs-on: ubuntu-latest
@@ -242,8 +245,10 @@ jobs:
   # The same cross-compile for the iOS device and both simulators, with Clang
   # modules and the podspec's C standard, as Xcode compiles. The vendor step
   # fails unless native/ matches native.json, so it checks that on macOS too.
-  # The image and Xcode are pinned, so an update of either can't break
-  # unrelated pull requests under -Werror.
+  # Then the JSI adapter's Hermes tests run under AddressSanitizer and
+  # UndefinedBehaviorSanitizer, then ThreadSanitizer, and gate their coverage
+  # of the adapter. The image and Xcode are pinned, so an update of either
+  # can't break unrelated pull requests under -Werror.
   react-native-apple:
     name: React Native Apple
     runs-on: macos-26
@@ -268,11 +273,24 @@ jobs:
           path: packages/sqlite-core/sqlite-cache/*.zip
           key: react-native-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts') }}
 
+      # The Hermes tarball, keyed by hermes.mts, which holds the pin every use
+      # verifies.
+      - name: Cache Hermes
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/sqlite-core/sqlite-cache/hermes-ios-*.tar.gz
+          key: react-native-hermes-${{ hashFiles('packages/react-native/scripts/hermes.mts') }}
+
       - name: Vendor
         run: node packages/react-native/scripts/vendor-native.mts
 
       - name: Cross-compile
         run: node packages/react-native/scripts/vendor-native.mts --cross-compile=ios
+
+      # The JSI adapter under Hermes with AddressSanitizer and
+      # UndefinedBehaviorSanitizer, then ThreadSanitizer, and its coverage.
+      - name: Hermes tests
+        run: pnpm test:react-native-hermes
 
   type-benchmarks:
     name: Type benchmarks

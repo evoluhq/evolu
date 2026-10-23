@@ -112,9 +112,23 @@ for a post, run `node scripts/code-image.mts --help`.
   development headers and clang's shared AddressSanitizer runtime, and network
   access the first time, to fetch the pinned SQLite source and expo-sqlite
   releases.
-- After changing `packages/react-native/scripts` or `src/sqlite`, run
-  `pnpm test:react-native-sqlite`, which fails below 100% line, branch, or
-  function coverage of those and needs what the core's tests need.
+- After changing `packages/react-native/scripts`, `src/sqlite` or
+  `test/bindingConformance.ts`, run `pnpm test:react-native-sqlite`, which
+  fails below 100% line, branch, or function coverage of `scripts` and
+  `src/sqlite` and needs what the core's tests need.
+- After changing `packages/react-native/cpp`, `test/hermes`,
+  `test/bindingConformance.ts`, `scripts/hermes.mts` or what the package
+  vendors, run `pnpm test:react-native-hermes` on macOS. It runs the
+  conformance suite and the Hermes tests on the JSI adapter under the Hermes
+  that React Native pins, with AddressSanitizer and UndefinedBehaviorSanitizer
+  and then ThreadSanitizer, and fails below 100% line, branch, or function
+  coverage of `cpp/EvoluSqliteBinding.cpp`. It needs `native/`, which
+  `node packages/react-native/scripts/vendor-native.mts` writes, Xcode's clang,
+  and network access the first time, to fetch the pinned Hermes tarball.
+  After changing `cpp`, also run `vendor-native.mts --cross-compile=ios` on
+  macOS, and `--cross-compile=android --ndk=<the NDK's directory>` where an NDK
+  is installed, which compile the adapter for every target with warnings as
+  errors and check the names its object defines.
 - After changing browser APIs, platform-sensitive behavior, polyfills, workers,
   or browser test configuration, run the affected browser projects with
   `pnpm exec vitest run --project=<project> <test-files>`, which runs them in

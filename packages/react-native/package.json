@@ -83,6 +83,7 @@
     "@types/node": "^24.19.2",
     "@types/react": "catalog:react19",
     "@typescript/native": "npm:typescript@^7.0.2",
+    "esbuild": "0.28.2",
     "expo": "58.0.16",
     "expo-sqlite": "58.0.13",
     "react": "catalog:react19",

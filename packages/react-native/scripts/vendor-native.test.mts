@@ -284,13 +284,14 @@ describe("compareManifests", () => {
 });
 
 describe("crossCompile", () => {
-  it("compiles every unit for Android's four ABIs at API 24 with the shipped flags, the core and the binding with -Werror, and checks their names", async (t) => {
+  it("compiles every unit for Android's four ABIs at API 24 with the shipped flags, the core and the binding with -Werror, and the JSI adapter as C++20 with exceptions, RTTI and hidden symbols, and checks their names", async (t) => {
     const toolchain = setupFakeToolchain(t);
     const native = setupNative(t);
     setNamedSymbols(toolchain);
 
     const results = await crossCompile({
       packageDirectory: native.packageDirectory,
+      jsiDirectory: native.jsiDirectory,
       platform: { name: "android", ndk: toolchain.ndk },
       outputDirectory: native.outputDirectory,
       jobs: 3,
@@ -305,13 +306,18 @@ describe("crossCompile", () => {
     ];
     assertEqual(
       results,
-      targets.map(([target]) => ({ target, objects: 4, definedGlobals: 5 })),
+      targets.map(([target]) => ({
+        target,
+        objects: 5,
+        definedGlobals: 5,
+        adapterSymbols: 11,
+      })),
     );
     assertEqual(
       toolchain.commands().toSorted(byArguments),
       targets
-        .flatMap(([target, triple]) =>
-          native.units.map(([unit, extra]) => [
+        .flatMap(([target, triple]) => [
+          ...native.units.map(([unit, extra]) => [
             `--target=${triple}`,
             "-O2",
             "-std=c11",
@@ -325,18 +331,37 @@ describe("crossCompile", () => {
             "-o",
             `${native.outputDirectory}/${target}/${unit}.o`,
           ]),
-        )
+          [
+            `--target=${triple}`,
+            "-std=c++20",
+            "-fexceptions",
+            "-frtti",
+            "-fvisibility=hidden",
+            "-DEVOLU_NATIVE_PACKAGE",
+            "-DSQLITE_CUSTOM_INCLUDE=sqlite_config.h",
+            `-I${native.packageDirectory}/native/include`,
+            `-isystem${native.jsiDirectory}`,
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-c",
+            `${native.packageDirectory}/cpp/EvoluSqliteBinding.cpp`,
+            "-o",
+            `${native.outputDirectory}/${target}/EvoluSqliteBinding.o`,
+          ],
+        ])
         .toSorted(byArguments),
     );
   });
 
-  it("compiles for the iOS device and both simulators through xcrun, with Clang modules and gnu11, as Xcode does", async (t) => {
+  it("compiles for the iOS device and both simulators through xcrun, with Clang modules, gnu11 and C++20, as Xcode does", async (t) => {
     const toolchain = setupFakeToolchain(t);
     const native = setupNative(t);
     setNamedSymbols(toolchain);
 
     const results = await crossCompile({
       packageDirectory: native.packageDirectory,
+      jsiDirectory: native.jsiDirectory,
       platform: { name: "ios" },
       outputDirectory: native.outputDirectory,
       jobs: 2,
@@ -358,13 +383,18 @@ describe("crossCompile", () => {
     ];
     assertEqual(
       results,
-      targets.map(([target]) => ({ target, objects: 4, definedGlobals: 5 })),
+      targets.map(([target]) => ({
+        target,
+        objects: 5,
+        definedGlobals: 5,
+        adapterSymbols: 11,
+      })),
     );
     assertEqual(
       toolchain.commands().toSorted(byArguments),
       targets
-        .flatMap(([target, triple, sdk]) =>
-          native.units.map(([unit, extra]) => [
+        .flatMap(([target, triple, sdk]) => [
+          ...native.units.map(([unit, extra]) => [
             "-target",
             triple,
             "-O2",
@@ -381,8 +411,70 @@ describe("crossCompile", () => {
             `${native.outputDirectory}/${target}/${unit}.o`,
             `--sdk=${sdk}`,
           ]),
-        )
+          [
+            "-target",
+            triple,
+            "-std=c++20",
+            "-DEVOLU_NATIVE_PACKAGE",
+            "-DSQLITE_CUSTOM_INCLUDE=sqlite_config.h",
+            `-I${native.packageDirectory}/native/include`,
+            `-isystem${native.jsiDirectory}`,
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-fmodules",
+            `-fmodules-cache-path=${native.outputDirectory}/modules`,
+            "-c",
+            `${native.packageDirectory}/cpp/EvoluSqliteBinding.cpp`,
+            "-o",
+            `${native.outputDirectory}/${target}/EvoluSqliteBinding.o`,
+            `--sdk=${sdk}`,
+          ],
+        ])
         .toSorted(byArguments),
+    );
+  });
+
+  it("fails on a global the adapter defines that is neither evolu_, C++ of the namespaces evolu, std or facebook, nor the compiler's own, and on a SQLite name it references without evolu_", async (t) => {
+    const toolchain = setupFakeToolchain(t);
+    const native = setupNative(t);
+    setNamedSymbols(toolchain);
+    toolchain.setSymbols("EvoluSqliteBinding.cpp", [
+      "_ZN5evolu13createBindingEv T 0 0",
+      "_Z6helperv T 0 0",
+      "_ZN4wtf13globalHelperEv W 0 0",
+      "_ZTVN4wtf1AE S 0 0",
+      // Namespaces that only start with an allowed one.
+      "_ZN6evoluxE B 0 0",
+      "_ZN9facebookx1fEv T 0 0",
+      "helper T 0 0",
+      "evolu_test_hook D 0 0",
+      "sqlite3_step U",
+    ]);
+
+    await assertRejects(
+      crossCompile({
+        packageDirectory: native.packageDirectory,
+        jsiDirectory: native.jsiDirectory,
+        platform: { name: "ios" },
+        outputDirectory: native.outputDirectory,
+        jobs: 1,
+        env: toolchain.env,
+      }),
+      (error) => {
+        const lines = (error as Error).message.split("\n");
+        assertEqual(lines.slice(0, 8), [
+          "ios-arm64 cpp/EvoluSqliteBinding.cpp defines _Z6helperv, which isn't evolu_, C++ of evolu, std or facebook, or the compiler's.",
+          "ios-arm64 cpp/EvoluSqliteBinding.cpp defines _ZN4wtf13globalHelperEv, which isn't evolu_, C++ of evolu, std or facebook, or the compiler's.",
+          "ios-arm64 cpp/EvoluSqliteBinding.cpp defines _ZTVN4wtf1AE, which isn't evolu_, C++ of evolu, std or facebook, or the compiler's.",
+          "ios-arm64 cpp/EvoluSqliteBinding.cpp defines _ZN6evoluxE, which isn't evolu_, C++ of evolu, std or facebook, or the compiler's.",
+          "ios-arm64 cpp/EvoluSqliteBinding.cpp defines _ZN9facebookx1fEv, which isn't evolu_, C++ of evolu, std or facebook, or the compiler's.",
+          "ios-arm64 cpp/EvoluSqliteBinding.cpp defines helper, which isn't evolu_, C++ of evolu, std or facebook, or the compiler's.",
+          "ios-arm64 cpp/EvoluSqliteBinding.cpp defines evolu_test_hook, a test hook.",
+          "ios-arm64 cpp/EvoluSqliteBinding.cpp references sqlite3_step without evolu_.",
+        ]);
+        assertEqual(lines.length, 24);
+      },
     );
   });
 
@@ -404,6 +496,7 @@ describe("crossCompile", () => {
     await assertRejects(
       crossCompile({
         packageDirectory: native.packageDirectory,
+        jsiDirectory: native.jsiDirectory,
         platform: { name: "ios" },
         outputDirectory: native.outputDirectory,
         jobs: 1,
@@ -434,6 +527,7 @@ describe("crossCompile", () => {
     await assertRejects(
       crossCompile({
         packageDirectory: native.packageDirectory,
+        jsiDirectory: native.jsiDirectory,
         platform: { name: "android", ndk: toolchain.ndk },
         outputDirectory: native.outputDirectory,
         jobs: 4,
@@ -451,7 +545,7 @@ describe("crossCompile", () => {
         );
       },
     );
-    assertEqual(toolchain.commands().length, 16);
+    assertEqual(toolchain.commands().length, 20);
   });
 
   it("refuses native/ that is missing its digest or was written for another native.json", async (t) => {
@@ -462,6 +556,7 @@ describe("crossCompile", () => {
       assertRejects(
         crossCompile({
           packageDirectory: native.packageDirectory,
+          jsiDirectory: native.jsiDirectory,
           platform: { name: "ios" },
           outputDirectory: native.outputDirectory,
           jobs: 1,
@@ -491,6 +586,7 @@ describe("crossCompile", () => {
     await assertRejects(
       crossCompile({
         packageDirectory: native.packageDirectory,
+        jsiDirectory: native.jsiDirectory,
         platform: { name: "android", ndk: toolchain.ndk },
         outputDirectory: native.outputDirectory,
         jobs: 1,
@@ -526,16 +622,18 @@ describe("runVendorNativeCli", () => {
     });
     log.mock.restore();
 
+    const line = (target: string) =>
+      `${target}: 5 objects; the C's 5 defined globals, each evolu_, and the adapter's 11.`;
     assertEqual(logged, [
-      "android-arm64-v8a: 4 objects, 5 defined globals, each evolu_.",
-      "android-armeabi-v7a: 4 objects, 5 defined globals, each evolu_.",
-      "android-x86: 4 objects, 5 defined globals, each evolu_.",
-      "android-x86_64: 4 objects, 5 defined globals, each evolu_.",
-      "ios-arm64: 4 objects, 5 defined globals, each evolu_.",
-      "ios-simulator-arm64: 4 objects, 5 defined globals, each evolu_.",
-      "ios-simulator-x86_64: 4 objects, 5 defined globals, each evolu_.",
+      line("android-arm64-v8a"),
+      line("android-armeabi-v7a"),
+      line("android-x86"),
+      line("android-x86_64"),
+      line("ios-arm64"),
+      line("ios-simulator-arm64"),
+      line("ios-simulator-x86_64"),
     ]);
-    assertEqual(toolchain.commands().length, 28);
+    assertEqual(toolchain.commands().length, 35);
     // The objects went into a temporary directory, which is gone.
     for (const command of toolchain.commands())
       assertFalse(existsSync(dirname(command[command.indexOf("-o") + 1])));
@@ -816,9 +914,13 @@ const setupNative = (t: TestContext) => {
     join(packageDirectory, "native/native.json.sha256"),
     `${sha256(text)}\n`,
   );
+  mkdirSync(join(packageDirectory, "cpp"));
+  writeFileSync(join(packageDirectory, "cpp/EvoluSqliteBinding.cpp"), "");
   const errors = ["-Wall", "-Wextra", "-Werror"];
   return {
     packageDirectory,
+    /** Where React Native's JSI headers would be. */
+    jsiDirectory: join(packageDirectory, "jsi"),
     outputDirectory: join(packageDirectory, "objects"),
     /** Each unit and the flags the cross-compile adds to it. */
     units: [
@@ -830,8 +932,29 @@ const setupNative = (t: TestContext) => {
   };
 };
 
-/** Symbols that pass the check: five defined globals, each evolu_. */
+/**
+ * Symbols that pass the check: five defined globals of the C, each evolu_, and
+ * five of the adapter: its own, the instantiations of std's and JSI's
+ * templates, and the compiler's helpers.
+ */
 const setNamedSymbols = (toolchain: FakeToolchain): void => {
+  toolchain.setSymbols("EvoluSqliteBinding.cpp", [
+    "_ZN5evolu13createBindingERN8facebook3jsi7RuntimeE T 0 0",
+    "_ZNSt3__16vectorIiNS_9allocatorIiEEE9push_backEOi W 0 0",
+    "_ZNR8facebook3jsi6Object8getArrayERNS0_8IRuntimeE W 0 0",
+    "__clang_call_terminate W 0 0",
+    "DW.ref.__gxx_personality_v0 V 0 0",
+    // A vtable, typeinfo, a guard variable, a local name and two thunks.
+    "_ZTVN5evolu12ExportBufferE D 0 0",
+    "_ZTINSt3__120__shared_ptr_emplaceIN5evolu18RuntimeConnectionsENS_9allocatorIS2_EEEE V 0 0",
+    "_ZGVZN5evolu1fEvE1x V 0 0",
+    "_ZZN5evolu1fEvE1x V 0 0",
+    "_ZThn8_N5evolu1A1fEv T 0 0",
+    "_ZTv0_n24_N5evolu1A1fEv T 0 0",
+    "_ZN8facebook3jsi5ValueD1Ev U",
+    "evolu_database_open U",
+    "evolu_sqlite3_step U",
+  ]);
   toolchain.setSymbols("aes_ct.c", ["evolu_br_aes_ct_init T 0 0", "memcpy U"]);
   toolchain.setSymbols("evolu_codec.c", [
     "evolu_codec_open T 0 0",

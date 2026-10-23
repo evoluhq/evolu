@@ -73,11 +73,15 @@
  *   rows into the connection's table log, with an auto extension, so a test
  *   sees what the mirror reports for a read-only statement that writes, and
  *   autoRegisterWriteLog(false) resets the auto extensions.
+ *   startBackupOnOpen(true) starts a backup from every connection opened after
+ *   it, which SQLite then can't close, until startBackupOnOpen(false), and
+ *   finishBackups() finishes them, so a test sees the mirror's close refused.
  *
  * The addon keeps no mutable global state, apart from the crash copy's VFS,
- * registered once under a mutex, and the crash copy an open hands its database
- * file through a thread-local during the call, so every Node.js environment
- * that loads it, such as a worker thread, has its own handles.
+ * registered once under a mutex, the crash copy an open hands its database
+ * file through a thread-local during the call, and the backups
+ * startBackupOnOpen started, under a mutex, so every Node.js environment that
+ * loads it, such as a worker thread, has its own handles.
  */
 #include <node_api.h>
 
@@ -1162,6 +1166,75 @@ static napi_value js_auto_register_write_log(napi_env env,
   return undefined(env);
 }
 
+// A backup from a connection as it opened into a memory database of its own,
+// which SQLite then can't close until finishBackups finishes it.
+typedef struct Backup {
+  sqlite3 *copy;
+  sqlite3_backup *backup;
+  struct Backup *next;
+} Backup;
+
+// The backups started so far, under SQLITE_MUTEX_STATIC_APP3.
+static Backup *backups;
+
+// The copy's own open runs the auto extensions too.
+static _Thread_local bool is_opening_copy;
+
+static int start_backup(sqlite3 *db, char **error,
+                        const struct sqlite3_api_routines *api) {
+  (void)error;
+  (void)api;
+  if (is_opening_copy) return SQLITE_OK;
+  is_opening_copy = true;
+  sqlite3 *copy = NULL;
+  int rc = sqlite3_open(":memory:", &copy);
+  is_opening_copy = false;
+  Backup *backup = rc == SQLITE_OK ? malloc(sizeof *backup) : NULL;
+  if (backup == NULL) {
+    sqlite3_close(copy);
+    return rc == SQLITE_OK ? SQLITE_NOMEM : rc;
+  }
+  backup->copy = copy;
+  backup->backup = sqlite3_backup_init(copy, "main", db, "main");
+  sqlite3_mutex *mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_STATIC_APP3);
+  sqlite3_mutex_enter(mutex);
+  backup->next = backups;
+  backups = backup;
+  sqlite3_mutex_leave(mutex);
+  return SQLITE_OK;
+}
+
+static napi_value js_start_backup_on_open(napi_env env,
+                                          napi_callback_info info) {
+  napi_value argv[1];
+  if (!get_args(env, info, 1, argv)) return NULL;
+  bool is_started;
+  if (napi_get_value_bool(env, argv[0], &is_started) != napi_ok)
+    return fail(env);
+  if (!is_started) {
+    sqlite3_cancel_auto_extension((void (*)(void))start_backup);
+    return undefined(env);
+  }
+  int rc = sqlite3_auto_extension((void (*)(void))start_backup);
+  if (rc != SQLITE_OK) return throw_code(env, sqlite3_errstr(rc), rc);
+  return undefined(env);
+}
+
+static napi_value js_finish_backups(napi_env env, napi_callback_info info) {
+  (void)info;
+  sqlite3_mutex *mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_STATIC_APP3);
+  sqlite3_mutex_enter(mutex);
+  while (backups != NULL) {
+    Backup *backup = backups;
+    backups = backup->next;
+    sqlite3_backup_finish(backup->backup);
+    sqlite3_close(backup->copy);
+    free(backup);
+  }
+  sqlite3_mutex_leave(mutex);
+  return undefined(env);
+}
+
 // Whether this build has AddressSanitizer and UndefinedBehaviorSanitizer,
 // which the tests check against the build they asked for.
 #if defined(__has_feature)
@@ -1183,6 +1256,10 @@ NAPI_MODULE_INIT() {
        NULL},
       {"autoRegisterWriteLog", NULL, js_auto_register_write_log, NULL, NULL,
        NULL, napi_enumerable, NULL},
+      {"startBackupOnOpen", NULL, js_start_backup_on_open, NULL, NULL, NULL,
+       napi_enumerable, NULL},
+      {"finishBackups", NULL, js_finish_backups, NULL, NULL, NULL,
+       napi_enumerable, NULL},
       {"libversion", NULL, js_libversion, NULL, NULL, NULL, napi_enumerable,
        NULL},
       {"sourceid", NULL, js_sourceid, NULL, NULL, NULL, napi_enumerable, NULL},

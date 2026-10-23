@@ -76,6 +76,14 @@ export interface SqliteCoreAddon {
    */
   readonly autoRegisterWriteLog: (isRegistered: boolean) => void;
   /**
+   * Starts, with true, a backup from every connection opened after it into a
+   * memory database of its own, which SQLite then can't close, and stops
+   * starting them with false.
+   */
+  readonly startBackupOnOpen: (isStarted: boolean) => void;
+  /** Finishes the backups started so far. */
+  readonly finishBackups: () => void;
+  /**
    * Returns the N-API mirror of React Native's binding, node/binding.c, which
    * `@evolu/react-native`'s `src/sqlite/Binding.ts` types as `NativeSqlite`.
    */

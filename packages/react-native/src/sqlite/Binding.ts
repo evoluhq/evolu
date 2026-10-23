@@ -13,7 +13,10 @@
  *   and a number of parameters other than the SQL's, throws a TypeError.
  * - INTEGER and REAL read as numbers, so an integer beyond 2^53 rounds, as in
  *   `@evolu/sqlite-wasm` and better-sqlite3. TEXT reads with its exact length,
- *   so NUL characters survive, and a blob is a copy with a buffer of its own.
+ *   so NUL characters survive, and TEXT that isn't UTF-8 with U+FFFD in place
+ *   of each ill-formed sequence, as the WHATWG decoder reads it, and so do
+ *   column names and error messages. A blob is a copy with a buffer of its
+ *   own.
  * - Rows are null-prototype objects, and of columns with the same name, the last
  *   wins. A statement reads its column names again after a schema change
  *   prepared it again.
@@ -37,9 +40,11 @@
  *   `reset` keeps the bindings.
  * - {@link NativeSqliteDatabase.close} finalizes every statement, closes the
  *   connection and releases its file, never throws for an error SQLite reports,
- *   and does nothing the second time. A handle used after its database closed,
- *   or a statement after its finalize, throws, and so does a method called on
- *   another kind of object.
+ *   and does nothing the second time. When SQLite can't close it, as with a
+ *   backup unfinished, the connection stays open, holding its file, and a later
+ *   close tries again, but the statements stay finalized. A handle used after
+ *   its database closed, or a statement after its finalize or its database's
+ *   close, throws, and so does a method called on another kind of object.
  *
  * ## Files
  *

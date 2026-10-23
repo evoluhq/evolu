@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "types": ["node"]
   },
-  "include": ["src", "scripts/*.mts", "test/*.ts"],
+  "include": ["src", "scripts/*.mts", "test/*.ts", "test/hermes/*.ts"],
   "references": [
     { "path": "../common" },
     { "path": "../react" },

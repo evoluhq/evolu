@@ -2057,6 +2057,9 @@ static void binding_open_fails_cleanly_whichever_call_or_allocation_fails(
           continue;
         }
         CHECK(is_reached);
+        // An allocation that fails, SQLite's or the core's, fails the open
+        // with SQLITE_NOMEM.
+        if (kind != 0) CHECK_EQ_INT(rc & 0xff, SQLITE_NOMEM);
         CHECK(database == NULL);
         CHECK_EQ_INT(error.type, EVOLU_DATABASE_ERROR_SQLITE);
         CHECK(error.message != NULL);

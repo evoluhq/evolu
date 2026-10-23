@@ -37,10 +37,14 @@
  * - `--cross-compile=android --ndk=<the NDK's directory>` and
  *   `--cross-compile=ios` compile `native/units` with the shipped flags, for
  *   Android's four ABIs at API 24 or for the iOS device and both simulators,
- *   the core and the binding layer with warnings as errors, and fail on a
- *   defined global that isn't `evolu_` or is a test hook, and on a `sqlite3`,
- *   `br_` or `crypto_` name without `evolu_`, defined or referenced.
- *   `--jobs=<n>` runs n compiles at once, by default one per CPU.
+ *   the core and the binding layer with warnings as errors, and the JSI
+ *   adapter, `cpp/EvoluSqliteBinding.cpp`, with React Native's JSI headers and
+ *   warnings as errors. They fail on a defined global that isn't `evolu_` or is
+ *   a test hook, and on a `sqlite3`, `br_` or `crypto_` name without `evolu_`,
+ *   defined or referenced. Besides `evolu_` names, the adapter may define C++
+ *   of the namespaces `evolu`, `std` and `facebook`, the last two the inline
+ *   functions and templates of the C++ and JSI headers, and the compiler's own
+ *   helpers. `--jobs=<n>` runs n compiles at once, by default one per CPU.
  *
  * Writing `native/` needs what `@evolu/sqlite-core`'s tests need: a macOS or
  * Linux host (WSL on Windows), clang with llvm-nm, make and unzip, and network
@@ -79,7 +83,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 /** What `native.json` records. */
@@ -148,8 +153,10 @@ export type CrossCompilePlatform =
 export interface CrossCompileResult {
   readonly target: string;
   readonly objects: number;
-  /** The defined globals of its objects, each `evolu_`. */
+  /** The defined globals of the C's objects, each `evolu_`. */
   readonly definedGlobals: number;
+  /** The defined globals of the adapter's object. */
+  readonly adapterSymbols: number;
 }
 
 /**
@@ -202,14 +209,20 @@ export const runVendorNativeCli = async (
     try {
       const results = await crossCompile({
         packageDirectory,
+        jsiDirectory: join(
+          dirname(
+            fileURLToPath(import.meta.resolve("react-native/package.json")),
+          ),
+          "ReactCommon/jsi",
+        ),
         platform,
         outputDirectory,
         jobs,
         env,
       });
-      for (const { target, objects, definedGlobals } of results)
+      for (const { target, objects, definedGlobals, adapterSymbols } of results)
         log(
-          `${target}: ${objects} objects, ${definedGlobals} defined globals, each evolu_.`,
+          `${target}: ${objects} objects; the C's ${definedGlobals} defined globals, each evolu_, and the adapter's ${adapterSymbols}.`,
         );
     } finally {
       rmSync(outputDirectory, { recursive: true, force: true });
@@ -560,21 +573,30 @@ const serializeManifest = (manifest: NativeManifest): string =>
 
 /**
  * Compiles every unit of the package's `native/`, which must be written for its
- * `native.json`, for each target of `platform` into `outputDirectory`, at most
- * `jobs` at once, with the shipped flags. The core's and the binding layer's
- * units also get warnings as errors, and SQLite's a rename macro it redefines
- * as an error, since SQLite isn't Evolu's to change. It then fails on a defined
- * global that isn't `evolu_` or is a test hook, and on a `sqlite3`, `br_` or
- * `crypto_` name without `evolu_`, defined or referenced.
+ * `native.json`, and the JSI adapter, `cpp/EvoluSqliteBinding.cpp`, for each
+ * target of `platform` into `outputDirectory`, at most `jobs` at once. The
+ * units compile with the shipped flags, the core's and the binding layer's also
+ * with warnings as errors, and SQLite's with a rename macro it redefines as an
+ * error, since SQLite isn't Evolu's to change. The adapter compiles as the
+ * shipped build files compile it, with the JSI headers in `jsiDirectory`, and
+ * with warnings as errors. It then fails on a defined global that isn't
+ * `evolu_` or is a test hook, but for the adapter's C++ of the namespaces
+ * `evolu`, `std` and `facebook` and the compiler's helpers, and on a `sqlite3`,
+ * `br_` or `crypto_` name without `evolu_`, defined or referenced.
+ * `cpp/EvoluSqlite.cpp`, the TurboModule, needs React Native's generated spec,
+ * so only app builds compile it.
  */
 export const crossCompile = async ({
   packageDirectory,
+  jsiDirectory,
   platform,
   outputDirectory,
   jobs,
   env,
 }: {
   packageDirectory: string;
+  /** React Native's `ReactCommon/jsi`. */
+  jsiDirectory: string;
   platform: CrossCompilePlatform;
   outputDirectory: string;
   jobs: number;
@@ -635,20 +657,65 @@ export const crossCompile = async ({
       flags,
     }));
   }
-  const units = Object.keys(files)
-    .filter((path) => path.startsWith("units/"))
-    .map((path) => basename(path, ".c"));
-  const shipped = [
-    ...flags.c,
-    ...flags[platform.name].c,
-    ...flags.defines.map((define) => `-D${define}`),
-    `-I${join(packageDirectory, flags.headerSearchPath)}`,
+  const defines = flags.defines.map((define) => `-D${define}`);
+  const include = `-I${join(packageDirectory, flags.headerSearchPath)}`;
+  const errors = ["-Wall", "-Wextra", "-Werror"];
+  // What each compile reads, and the arguments it adds before the target's
+  // flags.
+  const sources: ReadonlyArray<{
+    readonly path: string;
+    readonly name: string;
+    readonly isAdapter: boolean;
+    readonly args: ReadonlyArray<string>;
+  }> = [
+    ...Object.keys(files)
+      .filter((path) => path.startsWith("units/"))
+      .map((path) => {
+        const unit = basename(path, ".c");
+        return {
+          path,
+          name: unit,
+          isAdapter: false,
+          args: [
+            ...flags.c,
+            ...flags[platform.name].c,
+            ...defines,
+            include,
+            // The core's and the binding layer's own C gets warnings as
+            // errors, and SQLite only a rename macro it redefines as one.
+            ...(unit === "sqlite3"
+              ? ["-Werror=macro-redefined"]
+              : /^@evolu\/sqlite-core\/(src|binding)\//u.test(
+                    files[`c/${unit}.c`].origin,
+                  )
+                ? errors
+                : []),
+          ],
+        };
+      }),
+    {
+      path: "cpp/EvoluSqliteBinding.cpp",
+      name: "EvoluSqliteBinding",
+      isAdapter: true,
+      args: [
+        "-std=c++20",
+        // The app's CMake gives exceptions and RTTI only to its own target,
+        // and hidden symbols keep the adapter's inside libappmodules.so.
+        ...(platform.name === "android"
+          ? ["-fexceptions", "-frtti", "-fvisibility=hidden"]
+          : []),
+        ...defines,
+        include,
+        `-isystem${jsiDirectory}`,
+        ...errors,
+      ],
+    },
   ];
-  const object = (target: CrossCompileTarget, unit: string): string =>
-    join(outputDirectory, target.name, `${unit}.o`);
+  const object = (target: CrossCompileTarget, name: string): string =>
+    join(outputDirectory, target.name, `${name}.o`);
 
   const compiles = targets.flatMap((target) =>
-    units.map((unit) => ({ target, unit })),
+    sources.map((source) => ({ target, source })),
   );
   for (const target of targets)
     mkdirSync(join(outputDirectory, target.name), { recursive: true });
@@ -663,27 +730,22 @@ export const crossCompile = async ({
     Array.from({ length: jobs }, async () => {
       while (next < compiles.length) {
         const index = next++;
-        const { target, unit } = compiles[index];
+        const { target, source } = compiles[index];
         results[index] = await new Promise((resolve, reject) => {
           const child = spawn(
             target.compiler[0],
             [
               ...target.compiler.slice(1),
-              ...shipped,
-              // The core's and the binding layer's own C gets warnings as
-              // errors, and SQLite only a rename macro it redefines as one.
-              ...(unit === "sqlite3"
-                ? ["-Werror=macro-redefined"]
-                : /^@evolu\/sqlite-core\/(src|binding)\//u.test(
-                      files[`c/${unit}.c`].origin,
-                    )
-                  ? ["-Wall", "-Wextra", "-Werror"]
-                  : []),
+              ...source.args,
               ...target.flags,
               "-c",
-              join(packageDirectory, "native/units", `${unit}.c`),
+              join(
+                packageDirectory,
+                source.isAdapter ? "" : "native",
+                source.path,
+              ),
               "-o",
-              object(target, unit),
+              object(target, source.name),
             ],
             { env },
           );
@@ -701,11 +763,11 @@ export const crossCompile = async ({
       }
     }),
   );
-  const failures = compiles.flatMap(({ target, unit }, index) =>
+  const failures = compiles.flatMap(({ target, source }, index) =>
     results[index].status === 0
       ? []
       : [
-          `${target.name} units/${unit}.c failed to compile:\n${results[index].output.trimEnd()}`,
+          `${target.name} ${source.path} failed to compile:\n${results[index].output.trimEnd()}`,
         ],
   );
   if (failures.length > 0) throw new Error(failures.join("\n"));
@@ -722,11 +784,12 @@ export const crossCompile = async ({
     const nm = tool(["-print-prog-name=llvm-nm"]).trim();
     const prefix = labelPrefix(tool(["-dM", "-E", "-x", "c", "/dev/null"]));
     let definedGlobals = 0;
-    for (const unit of units) {
-      const where = `${target.name} units/${unit}.c`;
+    let adapterSymbols = 0;
+    for (const { path, name: objectName, isAdapter } of sources) {
+      const where = `${target.name} ${path}`;
       for (const line of run(
         nm,
-        ["-g", "-P", object(target, unit)],
+        ["-g", "-P", object(target, objectName)],
         undefined,
         env,
       )
@@ -739,12 +802,27 @@ export const crossCompile = async ({
             problems.push(`${where} references ${name} without evolu_.`);
         } else if (name.startsWith("evolu_test_"))
           problems.push(`${where} defines ${name}, a test hook.`);
-        else if (!name.startsWith("evolu_"))
-          problems.push(`${where} defines ${name}, which isn't evolu_.`);
-        else definedGlobals++;
+        else if (!isAdapter)
+          if (name.startsWith("evolu_")) definedGlobals++;
+          else problems.push(`${where} defines ${name}, which isn't evolu_.`);
+        else if (
+          name.startsWith("evolu_") ||
+          compilerHelpers.has(name) ||
+          adapterNamespaces.has(cxxNamespace(name) ?? "")
+        )
+          adapterSymbols++;
+        else
+          problems.push(
+            `${where} defines ${name}, which isn't evolu_, C++ of evolu, std or facebook, or the compiler's.`,
+          );
       }
     }
-    return { target: target.name, objects: units.length, definedGlobals };
+    return {
+      target: target.name,
+      objects: sources.length,
+      definedGlobals,
+      adapterSymbols,
+    };
   });
   if (problems.length > 0) throw new Error(problems.join("\n"));
   return checked;
@@ -761,6 +839,44 @@ interface CrossCompileTarget {
 
 /** The llvm-nm -P types of undefined symbols, weak ones included. */
 const undefinedTypes: ReadonlySet<string> = new Set(["U", "w", "v"]);
+
+/**
+ * The C++ namespaces whose names the adapter's object defines: its own, and
+ * those of the C++ and JSI headers' inline functions and templates, which every
+ * object that uses them defines, weak, for the linker to merge.
+ */
+const adapterNamespaces: ReadonlySet<string> = new Set([
+  "evolu",
+  "std",
+  "facebook",
+]);
+
+/**
+ * What clang defines in a C++ object with exceptions: the function a noexcept
+ * one calls to terminate, and on ELF targets the reference to the personality
+ * routine.
+ */
+const compilerHelpers: ReadonlySet<string> = new Set([
+  "__clang_call_terminate",
+  "DW.ref.__gxx_personality_v0",
+]);
+
+/**
+ * The namespace of an Itanium-mangled C++ name's outermost scope, `std` for its
+ * abbreviation, or null for a name that isn't mangled: after the prefix of a
+ * vtable, typeinfo, guard variable or thunk, of a local name's function, and a
+ * nested name's qualifiers.
+ */
+const cxxNamespace = (name: string): string | null => {
+  const match =
+    /^_Z(?:T[VTIS]|G[VR]|Thn?\d+_|Tvn?\d+_n?\d+_)?Z?(?:N[rVKRO]*)?(?:(St)|(\d+))/u.exec(
+      name,
+    );
+  if (match == null) return null;
+  return match[1] != null
+    ? "std"
+    : name.slice(match[0].length, match[0].length + Number(match[2]));
+};
 
 /**
  * The prefix of C names in symbols, from what `-dM -E` prints: `_` on Apple

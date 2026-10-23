@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     "./scripts/compile.mts": "./scripts/compile.mts",
+    "./scripts/coverage.mts": "./scripts/coverage.mts",
     "./scripts/paths.mts": "./scripts/paths.mts",
     "./scripts/sqlite-source.mts": "./scripts/sqlite-source.mts",
     "./test/setup-addon.mts": "./test/setup-addon.mts",
