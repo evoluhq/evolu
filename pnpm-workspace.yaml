@@ -25,10 +25,6 @@ allowBuilds:
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@evolu/*"
-  # Its only change is the fix that lets Android build on React Native 0.88,
-  # checked by hand. Delete it once the version is a day old, after
-  # 2026-10-21 18:35 UTC.
-  - "@blazejkustra/react-native-alert@1.1.1"
 trustPolicy: no-downgrade
 # Versions published with weaker evidence than an earlier version of the same
 # package, each checked by hand. Each entry covers one version only.
