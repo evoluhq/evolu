@@ -78,9 +78,10 @@ for a post, run `node scripts/code-image.mts --help`.
   coverage. Tests that run SQLite Wasm need the uncommitted
   `packages/sqlite-wasm/wasm/sqlite3.wasm` and fail when it is missing or stale
   after a pin change. Get the pinned one with `pnpm sqlite-wasm:download`, which
-  needs network access and fails until a published release holds the pinned
-  wasm, with HTTP 404 while `scripts/download-wasm.mts` names one not yet
-  published; until then, build it as `packages/sqlite-wasm/README.md`
+  needs network access and downloads the version in
+  `packages/sqlite-wasm/package.json`. It fails with HTTP 404 until that version
+  is published, and with a checksum mismatch after a pin change until the next
+  release; in either case, build it as `packages/sqlite-wasm/README.md`
   describes.
 - After changing `packages/sqlite-core`, run the affected C tests with
   `node packages/sqlite-core/scripts/test.mts <test-name-prefix>` and the
