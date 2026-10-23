@@ -211,6 +211,25 @@ static void page_new_codecs_get_random_salts_and_every_page_a_fresh_iv(void) {
   evolu_page_codec_destroy(codec);
 }
 
+/*
+ * Only encrypting a page 1 proves the key, not another page, as a spill of a
+ * new database's first transaction encrypts before page 1.
+ */
+static void page_only_encrypting_page_1_proves_the_key(void) {
+  size_t size = 1024;
+  evolu_page_codec *codec = evolu_page_codec_create(test_key, 0);
+  CHECK(codec != NULL);
+  fill_page(plaintext, size, 2);
+  CHECK_EQ_INT(evolu_page_encrypt(codec, 2, plaintext, size, ciphertext),
+               EVOLU_PAGE_OK);
+  CHECK(!evolu_page_is_key_proven(codec));
+  fill_page(plaintext, size, 1);
+  CHECK_EQ_INT(evolu_page_encrypt(codec, 1, plaintext, size, ciphertext),
+               EVOLU_PAGE_OK);
+  CHECK(evolu_page_is_key_proven(codec));
+  evolu_page_codec_destroy(codec);
+}
+
 static void page_salt_comes_only_from_a_page_1_that_authenticates(void) {
   size_t size = 1024;
   CHECK(encrypt_two_pages(size, page1, page2));
@@ -300,6 +319,12 @@ static void page_decrypt_with_a_salt_leaves_the_codec_as_it_was(void) {
   memcpy(altered, old_page1, size);
   CHECK(!evolu_page_decrypt_with_salt(codec, page1, 1, altered, size));
   CHECK_EQ_BYTES(altered, old_page1, size);
+  // Also where only the stored salt differs, which the HMAC doesn't cover.
+  memcpy(altered, page1, size);
+  altered[0] ^= 1;
+  memcpy(plaintext, altered, size);
+  CHECK(!evolu_page_decrypt_with_salt(codec, page1, 1, altered, size));
+  CHECK_EQ_BYTES(altered, plaintext, size);
 
   // A codec with a salt and a proven key keeps them.
   memcpy(altered, old_page1, size);
@@ -481,6 +506,7 @@ void page_suite(void) {
   RUN(page_1_reserving_other_than_80_bytes_fails_both_ways);
   RUN(page_1_storing_another_page_size_than_its_length_fails);
   RUN(page_new_codecs_get_random_salts_and_every_page_a_fresh_iv);
+  RUN(page_only_encrypting_page_1_proves_the_key);
   RUN(page_salt_comes_only_from_a_page_1_that_authenticates);
   RUN(page_1_with_another_salt_replaces_the_salt);
   RUN(page_decrypt_with_a_salt_leaves_the_codec_as_it_was);

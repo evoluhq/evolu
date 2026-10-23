@@ -1343,13 +1343,12 @@ static void codec_crashes_and_rollbacks_restore_every_layout_and_journal_mode(
 
 /*
  * Crashes a plain UPDATE of a database of kind with pages of page_size at
- * every write over files with 4096-byte sectors, and checks each crash leaves
- * the database wholly before or after it. Returns 0 with a message on the
- * first that doesn't.
+ * every write over files with sectors of crash_sector_size bytes, and checks
+ * each crash leaves the database wholly before or after it. Returns 0 with a
+ * message on the first that doesn't.
  */
-static int crashes_roll_back_over_large_sectors(const Kind *kind,
-                                                int page_size,
-                                                char message[200]) {
+static int crashes_roll_back_over_sectors(const Kind *kind, int page_size,
+                                          char message[200]) {
   char base[512];
   char path[512];
   char copy[512];
@@ -1406,8 +1405,30 @@ static void codec_crashes_roll_back_over_4096_byte_sectors(void) {
     for (size_t p = 0; p < sizeof page_sizes / sizeof page_sizes[0]; p++) {
       char message[200] = "";
       crash_sector_size = 4096;
-      int ok = crashes_roll_back_over_large_sectors(&kinds[k], page_sizes[p],
-                                                    message);
+      int ok =
+          crashes_roll_back_over_sectors(&kinds[k], page_sizes[p], message);
+      crash_sector_size = 0;
+      if (!ok) {
+        test_fail(__FILE__, __LINE__, message);
+        return;
+      }
+    }
+}
+
+/*
+ * Crashes roll back over the smallest and largest sectors SQLite takes, 32 and
+ * 65536 bytes, as over 4096-byte ones.
+ */
+static void codec_crashes_roll_back_over_the_smallest_and_largest_sectors(
+    void) {
+  CHECK(set_up());
+  CHECK(register_crash_vfs());
+  static const int sector_sizes[] = {32, 65536};
+  for (size_t k = 0; k < 2; k++)
+    for (size_t s = 0; s < sizeof sector_sizes / sizeof sector_sizes[0]; s++) {
+      char message[200] = "";
+      crash_sector_size = sector_sizes[s];
+      int ok = crashes_roll_back_over_sectors(&kinds[k], 4096, message);
       crash_sector_size = 0;
       if (!ok) {
         test_fail(__FILE__, __LINE__, message);
@@ -3323,6 +3344,14 @@ static int write_be32_at(const char *path, size_t offset, uint32_t value) {
   return ok;
 }
 
+/* Writes value big-endian over the 4 bytes at at. */
+static void put_be32(uint8_t *at, uint32_t value) {
+  at[0] = (uint8_t)(value >> 24);
+  at[1] = (uint8_t)(value >> 16);
+  at[2] = (uint8_t)(value >> 8);
+  at[3] = (uint8_t)value;
+}
+
 /* The big-endian u32 at offset in the file at path, or 0. */
 static uint32_t read_be32_at(const char *path, size_t offset) {
   size_t size;
@@ -4474,7 +4503,8 @@ static void codec_journal_checksum_cut_short_reads_zeros_past_the_cut(void) {
  * whole record. Each ends as without a page-1 record: a plaintext database's
  * first bytes are refused, and an encrypted database's are no salt, so
  * SQLite's rollback of its records fails to authenticate them, and without a
- * rollback, page 1 fails.
+ * rollback, page 1 fails. Without a page-1 record, a walk that read on would
+ * end the same, so the next test checks the refused sector sizes with one.
  */
 static void codec_hot_journal_check_of_malformed_journals_ends_as_without_a_page_1_record(
     void) {
@@ -4531,6 +4561,85 @@ static void codec_hot_journal_check_of_malformed_journals_ends_as_without_a_page
 }
 
 /*
+ * SQLite reads a journal whose header gives sectors under 32 or over 65536
+ * bytes as no journal and plays none of it, so the check takes no page-1
+ * record from one either. The hot journal of a plaintext database whose first
+ * bytes a crash tore, with page 1 in its first record, is rewritten for
+ * 131072-byte sectors, its records moved to where they start, and for 16-byte
+ * sectors, whose first record overlaps the header: page 2 there, which the
+ * original size of 2 makes SQLite check, with the checksum that makes it
+ * pass, and then the page-1 record. Either open stays refused, keeping the
+ * journal as it was.
+ */
+static void codec_hot_journal_check_reads_no_journal_of_a_sector_size_sqlite_refuses(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  char journal[600];
+  char journal_copy[600];
+  path_of(path, "refused-sector.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  snprintf(journal_copy, sizeof journal_copy, "%s-copy", journal);
+  static const uint32_t refused_sizes[] = {131072, 16};
+  for (size_t s = 0; s < sizeof refused_sizes / sizeof refused_sizes[0];
+       s++) {
+    CHECK_EQ_INT(create_crashed_database_with(
+                     path, NULL,
+                     "pragma user_version = 7; update t set v = 'updated' || "
+                     "id"),
+                 SQLITE_OK);
+    CHECK(fill_bytes(path, 0, 16, 0));
+    uint32_t sector_size = read_be32_at(journal, 20);
+    uint32_t page_size = read_be32_at(journal, 24);
+    uint32_t records = read_be32_at(journal, 8);
+    uint32_t checksum_init = read_be32_at(journal, 12);
+    size_t record_size = (size_t)page_size + 8;
+    CHECK_EQ_INT(read_be32_at(journal, sector_size), 1);
+    size_t size;
+    uint8_t *bytes = read_file(journal, &size);
+    CHECK(bytes != NULL);
+    CHECK(records > 0 && sector_size + records * record_size <= size);
+    uint32_t refused = refused_sizes[s];
+    size_t out_size = refused == 16 ? 16 + 2 * record_size
+                                    : refused + records * record_size;
+    uint8_t *out = calloc(out_size, 1);
+    CHECK(out != NULL);
+    if (refused == 16) {
+      // The first record's page number is the original size, and its page
+      // starts with the sector and page sizes, then zeros.
+      memcpy(out, bytes, 28);
+      put_be32(out + 8, 0xffffffff);
+      put_be32(out + 16, 2);
+      put_be32(out + 20, refused);
+      // As pager_cksum computes it.
+      uint32_t checksum = checksum_init;
+      for (int i = (int)page_size - 200; i > 0; i -= 200)
+        checksum += out[20 + i];
+      put_be32(out + 20 + page_size, checksum);
+      memcpy(out + 16 + record_size, bytes + sector_size, record_size);
+    } else {
+      memcpy(out, bytes, sector_size);
+      put_be32(out + 20, refused);
+      memcpy(out + refused, bytes + sector_size, records * record_size);
+    }
+    free(bytes);
+    int written = write_file(journal, out, out_size);
+    free(out);
+    CHECK(written);
+    CHECK(copy_file(journal, journal_copy));
+    sqlite3 *db = NULL;
+    CHECK_EQ_INT(open_db(path, NULL, &db), SQLITE_CANTOPEN);
+    evolu_codec_failure failure;
+    CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+    CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED);
+    sqlite3_close(db);
+    CHECK(same_files(journal, journal_copy));
+    remove_database(path);
+    unlink(journal_copy);
+  }
+}
+
+/*
  * SQLite compares no checksum of a record whose page is past the database's
  * original size, which the journal's first header gives, nor does the check
  * of a hot journal, so such a record before the page-1 record that restores a
@@ -4565,6 +4674,142 @@ static void codec_hot_journal_check_skips_checksums_past_the_original_size(
   CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_NONE);
   sqlite3_close(db);
   remove_database(path);
+}
+
+/*
+ * The check compares the checksum of a record of the last page within the
+ * original size, as SQLite's rollback does, so a stale one there ends the
+ * check before the page-1 record that would give the torn salt, and the open
+ * keeps the journal.
+ */
+static void codec_hot_journal_check_compares_the_checksum_at_the_original_size(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  char journal[600];
+  char journal_copy[600];
+  path_of(path, "at-original.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  snprintf(journal_copy, sizeof journal_copy, "%s-copy", journal);
+  CHECK_EQ_INT(create_crashed_database_with(
+                   path, test_key,
+                   "update t set v = 'early' || id where id <= 3; pragma "
+                   "user_version = 7; update t set v = 'updated' || id"),
+               SQLITE_OK);
+  CHECK(fill_bytes(path, 0, 16, 0));
+  uint32_t sector_size = read_be32_at(journal, 20);
+  uint32_t page_size = read_be32_at(journal, 24);
+  uint32_t first_page = read_be32_at(journal, sector_size);
+  CHECK(first_page > 1 && first_page < read_be32_at(journal, 16));
+  CHECK(write_be32_at(journal, 16, first_page));
+  CHECK(flip_bit(journal, sector_size + 4 + page_size));
+  CHECK(copy_file(journal, journal_copy));
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_CORRUPT);
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+  CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION);
+  sqlite3_close(db);
+  CHECK(same_files(journal, journal_copy));
+  remove_database(path);
+  unlink(journal_copy);
+}
+
+/*
+ * A record before the page-1 record must authenticate with that record's
+ * salt also past the original size, where no checksum is compared, because
+ * the rollback's read of the record decrypts it before SQLite skips it. So a
+ * record that fails ends the check, and the open keeps the journal.
+ */
+static void codec_hot_journal_check_takes_no_salt_past_a_record_that_fails(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  char journal[600];
+  char journal_copy[600];
+  path_of(path, "past-failing.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  snprintf(journal_copy, sizeof journal_copy, "%s-copy", journal);
+  CHECK_EQ_INT(create_crashed_database_with(
+                   path, test_key,
+                   "update t set v = 'early' || id where id <= 3; pragma "
+                   "user_version = 7; update t set v = 'updated' || id"),
+               SQLITE_OK);
+  CHECK(fill_bytes(path, 0, 16, 0));
+  uint32_t sector_size = read_be32_at(journal, 20);
+  CHECK(read_be32_at(journal, sector_size) > 2);
+  CHECK(write_be32_at(journal, 16, 2));
+  CHECK(flip_bit(journal, sector_size + 4 + 100));
+  CHECK(copy_file(journal, journal_copy));
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_CORRUPT);
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+  CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION);
+  sqlite3_close(db);
+  CHECK(same_files(journal, journal_copy));
+  remove_database(path);
+  unlink(journal_copy);
+}
+
+/*
+ * SQLite's rollback stops at a segment header whose magic differs, as a kept
+ * journal's stale next header is after syncJournal zeroes its first byte, so
+ * the check stops there too: a page-1 record past it gives no salt, and the
+ * open keeps the journal.
+ */
+static void codec_hot_journal_check_stops_at_a_header_whose_magic_differs(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  char journal[600];
+  char journal_copy[600];
+  path_of(path, "magic-differs.db");
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  snprintf(journal_copy, sizeof journal_copy, "%s-copy", journal);
+  CHECK_EQ_INT(create_crashed_database_with(
+                   path, test_key,
+                   "update t set v = 'updated' || id where id <= 100;"
+                   "pragma user_version = 7; update t set v = 'updated' || id"),
+               SQLITE_OK);
+  CHECK(fill_bytes(path, 0, 16, 0));
+  size_t size;
+  uint8_t *bytes = read_file(journal, &size);
+  CHECK(bytes != NULL);
+  uint32_t sector_size = read_be32_at(journal, 20);
+  size_t record_size = (size_t)read_be32_at(journal, 24) + 8;
+  // The header of the segment that holds the page-1 record.
+  size_t page1_header = 0;
+  int found = 0;
+  for (size_t at = 0; !found && at + sector_size <= size;) {
+    uint32_t records = (uint32_t)bytes[at + 8] << 24 |
+                       (uint32_t)bytes[at + 9] << 16 |
+                       (uint32_t)bytes[at + 10] << 8 | bytes[at + 11];
+    size_t record = at + sector_size;
+    for (uint32_t r = 0; r < records && record + record_size <= size; r++) {
+      if (bytes[record] == 0 && bytes[record + 1] == 0 &&
+          bytes[record + 2] == 0 && bytes[record + 3] == 1) {
+        page1_header = at;
+        found = 1;
+        break;
+      }
+      record += record_size;
+    }
+    at = (record + sector_size - 1) / sector_size * sector_size;
+  }
+  free(bytes);
+  CHECK(found && page1_header > 0);
+  CHECK(fill_bytes(journal, page1_header, 1, 0));
+  CHECK(copy_file(journal, journal_copy));
+  sqlite3 *db = NULL;
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_CORRUPT);
+  evolu_codec_failure failure;
+  CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+  CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION);
+  sqlite3_close(db);
+  CHECK(same_files(journal, journal_copy));
+  remove_database(path);
+  unlink(journal_copy);
 }
 
 /*
@@ -4761,6 +5006,8 @@ static void remove_databases(void) {
       "no-page-copy.db",
       "write-version.db", "write-version-copy.db", "vfs-methods.db",
       "cut-page-1.db", "cut-record.db", "walked.db", "past-original.db",
+      "at-original.db", "past-failing.db", "magic-differs.db",
+      "refused-sector.db",
       "cut-checksum.db",
       "super-journal", "outer.db", "empty-kept-journal.db",
       "short-header.db", "empty-open-faults.db"};
@@ -4796,7 +5043,11 @@ void codec_suite(void) {
   RUN(codec_journal_page_cut_short_reads_zeros_short);
   RUN(codec_journal_checksum_cut_short_reads_zeros_past_the_cut);
   RUN(codec_hot_journal_check_of_malformed_journals_ends_as_without_a_page_1_record);
+  RUN(codec_hot_journal_check_reads_no_journal_of_a_sector_size_sqlite_refuses);
   RUN(codec_hot_journal_check_skips_checksums_past_the_original_size);
+  RUN(codec_hot_journal_check_compares_the_checksum_at_the_original_size);
+  RUN(codec_hot_journal_check_takes_no_salt_past_a_record_that_fails);
+  RUN(codec_hot_journal_check_stops_at_a_header_whose_magic_differs);
   RUN(codec_vfs_opens_a_super_journal_as_its_inner_vfs_does);
   RUN(codec_vfs_under_another_vfs_opens_no_journal);
   RUN(codec_kept_journal_of_an_empty_database_holds_nothing_to_check);
@@ -4827,6 +5078,7 @@ void codec_suite(void) {
   RUN(codec_opens_sqlcipher_files_only_when_allowed_whatever_their_page_size_bytes);
   RUN(codec_crashes_and_rollbacks_restore_every_layout_and_journal_mode);
   RUN(codec_crashes_roll_back_over_4096_byte_sectors);
+  RUN(codec_crashes_roll_back_over_the_smallest_and_largest_sectors);
   RUN(codec_crashes_roll_back_over_stale_tails_of_kept_journals);
   RUN(codec_open_registers_the_core_functions);
   RUN(codec_journal_stores_writes_of_another_size_than_its_pages);
