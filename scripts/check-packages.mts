@@ -1,8 +1,16 @@
 import { deepStrictEqual, match, ok } from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
@@ -137,6 +145,9 @@ for (const packageDirectory of [...packageDirectories, "apps/relay"]) {
 // Packed with its prepack, which checks that the wasm is the pinned one, builds
 // the package and copies the wasm into dist.
 const sqliteWasmDirectory = "packages/sqlite-wasm";
+// Packed with its prepack, which builds the package and writes native/, the C
+// apps compile, from the pinned SQLite and the core.
+const reactNativeDirectory = "packages/react-native";
 
 // Node.js imports a module from its real path, which macOS's temporary
 // directory is not.
@@ -220,12 +231,22 @@ try {
             force: true,
           },
         );
+      // Nor must a native/ an earlier vendor step wrote.
+      if (packageDirectory === reactNativeDirectory)
+        await rm(
+          new URL(`${reactNativeDirectory}/native/`, repositoryDirectory),
+          {
+            recursive: true,
+            force: true,
+          },
+        );
       await execFileAsync(
         "pnpm",
         [
           "--dir",
           packageDirectory,
-          ...(packageDirectory === sqliteWasmDirectory
+          ...(packageDirectory === sqliteWasmDirectory ||
+          packageDirectory === reactNativeDirectory
             ? []
             : ["--config.ignore-scripts=true"]),
           "pack",
@@ -305,6 +326,98 @@ try {
           join(extracted, packedWasm),
           `${packageJson.name} packed sqliteWasmUrl must point to ${packedWasm}`,
         );
+      }
+      if (packageDirectory === reactNativeDirectory) {
+        const extracted = join(temporaryDirectory, "react-native");
+        await mkdir(extracted);
+        await execFileAsync("tar", ["-xf", tarball, "-C", extracted]);
+        const packed = join(extracted, "package");
+        const packedManifest = await readFile(join(packed, "native.json"));
+        const { files } = JSON.parse(packedManifest.toString("utf8")) as {
+          readonly files: Readonly<Record<string, { readonly sha256: string }>>;
+        };
+        const sha256 = (bytes: Buffer) =>
+          createHash("sha256").update(bytes).digest("hex");
+        const packedUnder = (directory: string) =>
+          [...packedFiles]
+            .filter((file) => file.startsWith(`package/${directory}/`))
+            .map((file) => file.slice("package/".length))
+            .toSorted();
+
+        // native/ is the C apps compile, so it must be the tree the packed
+        // native.json lists, with the digest the podspec and
+        // cpp/CMakeLists.txt require.
+        const digest = "native/native.json.sha256";
+        deepStrictEqual(
+          packedUnder("native"),
+          [
+            ...Object.keys(files).map((path) => `native/${path}`),
+            digest,
+          ].toSorted(),
+          `${packageJson.name} packed native/ must hold the files its native.json lists and the digest`,
+        );
+        for (const [path, file] of Object.entries(files))
+          deepStrictEqual(
+            sha256(await readFile(join(packed, "native", path))),
+            file.sha256,
+            `${packageJson.name} packed native/${path} must match its native.json`,
+          );
+        deepStrictEqual(
+          await readFile(join(packed, digest), "utf8"),
+          `${sha256(packedManifest)}\n`,
+          `${packageJson.name} packed ${digest} must hold its native.json's SHA-256`,
+        );
+
+        // Every file apps build with, codegen's specs included, and nothing
+        // Gradle or the NDK leave in android/.
+        for (const file of [
+          "THIRD_PARTY_NOTICES.md",
+          "EvoluReactNative.podspec",
+          "react-native.config.js",
+        ])
+          ok(
+            packedFiles.has(`package/${file}`),
+            `${packageJson.name} packed files must include ${file}`,
+          );
+        const { codegenConfig } = packageJson as unknown as {
+          readonly codegenConfig: { readonly jsSrcsDir: string };
+        };
+        for (const directory of [
+          "cpp",
+          "ios",
+          "android",
+          codegenConfig.jsSrcsDir,
+        ]) {
+          const sources = (
+            await readdir(
+              new URL(`${packageDirectory}/${directory}/`, repositoryDirectory),
+              {
+                recursive: true,
+                withFileTypes: true,
+              },
+            )
+          )
+            .filter((entry) => entry.isFile())
+            .map((entry) =>
+              relative(
+                fileURLToPath(
+                  new URL(`${packageDirectory}/`, repositoryDirectory),
+                ),
+                join(entry.parentPath, entry.name),
+              ),
+            )
+            .filter(
+              (file) =>
+                !file.startsWith("android/build/") &&
+                !file.startsWith("android/.cxx/"),
+            )
+            .toSorted();
+          deepStrictEqual(
+            packedUnder(directory),
+            sources,
+            `${packageJson.name} packed ${directory}/ must hold its sources, without android/build or android/.cxx`,
+          );
+        }
       }
     }),
   );

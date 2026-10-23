@@ -30,7 +30,12 @@ import { installPolyfills } from "@evolu/common/polyfills";
 installPolyfills();
 ```
 
-For React Native apps, use `@evolu/react-native/polyfills` instead.
+For React Native apps, use `@evolu/react-native/polyfills` instead, in a
+module of its own that the entry file imports first, as
+[Installation](/docs/local-first#installation) explains with React Native or
+Expo selected. When the runtime lacks `crypto.getRandomValues`, it installs one
+from Evolu's native module, so it needs a native build with
+`@evolu/react-native`, as Evolu itself does.
 
 ## Learning path
 

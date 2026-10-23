@@ -967,13 +967,15 @@ export type DevicePersistence = "Persisted" | "NotPersisted" | "Unknown";
  *   version of it. Ask the user to update the app or close all its tabs.
  * - {@link DatabaseHeldError} blocks the app: another context keeps holding the
  *   local data, as a browser can until it restarts. Ask the user to close the
- *   app's other tabs or to restart the browser, then to reload the app.
+ *   app's other tabs or to restart the browser, then to reload the app, or on
+ *   React Native to restart the app.
  * - {@link OtherBuildRunningError} blocks the app while it lasts: another version
  *   of the app holds the local data. Ask the user to close the app's other
  *   tabs. It clears when the wait ends.
  * - {@link UnknownError} blocks the app: Evolu is in an unknown state after an
  *   unexpected failure, such as a mutation that could not be stored or a
- *   database whose worker failed. Ask the user to close all its tabs.
+ *   database whose worker failed. Ask the user to close all its tabs, or on
+ *   React Native to restart the app.
  *
  * A problem syncing an owner through a relay belongs to that relay and often
  * repeats in every round, so sync state shows it on the relay's route, as its

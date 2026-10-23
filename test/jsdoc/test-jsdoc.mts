@@ -70,9 +70,9 @@ export const testEvoluJSDocExamples = async (
         repositoryDirectory,
         "test/jsdoc/test-jsdoc-react-native.mts",
       ),
-      "@evolu/react-native/expo-sqlite": join(
+      "@evolu/react-native/identicon": join(
         repositoryDirectory,
-        "test/jsdoc/test-jsdoc-react-native-expo-sqlite.mts",
+        "packages/react-native/src/identicon.ts",
       ),
       "@evolu/react-web": join(
         repositoryDirectory,

@@ -29,13 +29,11 @@ npm install @evolu/common @evolu/react @evolu/react-web @evolu/web
 ```
 
 ```bash {{ title: 'React Native' }}
-npm install @evolu/common @evolu/react @evolu/react-native \
-  expo expo-sqlite react-native-quick-crypto
+npm install @evolu/common @evolu/react @evolu/react-native
 ```
 
 ```bash {{ title: 'Expo' }}
-npm install @evolu/common @evolu/react @evolu/react-native \
-  expo-sqlite react-native-quick-crypto
+npm install @evolu/common @evolu/react @evolu/react-native
 ```
 
 ```bash {{ title: 'Svelte' }}
@@ -53,28 +51,36 @@ npm install @evolu/common @evolu/web
 </SinglePlatformCodeGroup>
 
 <ConditionalPlatformAlert platform={["Expo"]} type="warning">
-  **Expo Go is not supported** as it requires native dependencies
-  (`react-native-quick-crypto`). **Expo web is not supported** either, because
-  Metro can't bundle Evolu's web workers. For the web, use `@evolu/react-web`
-  with a web bundler such as Vite or Next.js, and share the schema and queries.
+  **Expo Go is not supported**, because it can't load Evolu's native code. Use a
+  [development
+  build](https://docs.expo.dev/develop/development-builds/introduction/)
+  instead, with `npx expo run:ios`, `npx expo run:android` or EAS Build. **Expo
+  web is not supported** either, because Metro can't bundle Evolu's web workers.
+  For the web, use `@evolu/react-web` with a web bundler such as Vite or
+  Next.js, and share the schema and queries.
 </ConditionalPlatformAlert>
 
 <ConditionalPlatformAlert platform={["React Native"]} type="info">
-  Evolu uses `expo-sqlite` in React Native. Expo SDK packages work in existing
-  React Native apps after [installing Expo
-  modules](https://docs.expo.dev/bare/installing-expo-modules/); adopting Expo
-  modules does not require removing your native projects.
+  Evolu runs SQLite in its own native code, which React Native's autolinking
+  adds to your app, without Expo. Build it with `npx react-native run-ios` or
+  `npx react-native run-android`.
 </ConditionalPlatformAlert>
 
 <ConditionalPlatformAlert platform={["Expo", "React Native"]} type="info">
-  Make sure to follow the [react-native-quick-crypto setup
-  instructions](https://github.com/margelo/react-native-quick-crypto#installation)
-  for proper native dependency configuration. See the [react-expo
-  example](https://github.com/evoluhq/evolu/tree/main/examples/react-expo) for
-  required polyfills. Enable SQLCipher with
-  `["expo-sqlite", { "useSQLCipher": true }]` in your app config's plugins.
-  Without SQLCipher, Evolu fails at startup with an error that says how to
-  enable it, instead of storing the database unencrypted.
+  Install Evolu's polyfills in a module of their own that your app's entry file
+  imports first, because a file's imports all run before its own code and Evolu
+  reads randomness when it's imported. Add a `polyfills.ts` that calls
+  `installPolyfills` from `@evolu/react-native/polyfills`, and import it first:
+  in an Expo app with Expo Router, from an `index.ts` at the app's root that
+  then imports `expo-router/entry`, with `"main": "index.ts"` in `package.json`,
+  as the [react-expo
+  example](https://github.com/evoluhq/evolu/tree/main/examples/react-expo) does;
+  in any other app, on the first line of its entry file, such as `index.js`, as
+  the [react-native
+  example](https://github.com/evoluhq/evolu/tree/main/examples/react-native)
+  does. Evolu needs React Native 0.88 or later, in Expo SDK 58 or later, on
+  Hermes, React Native's default engine. iOS builds with CocoaPods; SwiftPM
+  support comes later.
 </ConditionalPlatformAlert>
 
 ## Define schema
@@ -230,8 +236,7 @@ assertEqual(await new Response(prelude).text(), "<!--$--><p>0</p><!--/$-->");
 ```tsx {{ title: 'React Native' }}
 import { AppName, createEvolu } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
-import { createRun } from "@evolu/react-native";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import { Suspense, use, type FC, type ReactNode } from "react";
 // ---cut-start---
 import {
@@ -302,8 +307,7 @@ assertEqual(await new Response(prelude).text(), "<!--$--><p>0</p><!--/$-->");
 ```tsx {{ title: 'Expo' }}
 import { AppName, createEvolu } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
-import { createRun } from "@evolu/react-native";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import { Suspense, use, type FC, type ReactNode } from "react";
 // ---cut-start---
 import {
@@ -553,8 +557,7 @@ Evolu.assertEqual(await evolu.loadQuery(allTodos), [
 // ---cut-start---
 import * as Evolu from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createRun } from "@evolu/react-native";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import type { FC } from "react";
 import { renderToString } from "react-dom/server";
 
@@ -606,8 +609,7 @@ Evolu.assertEqual(await evolu.loadQuery(allTodos), [
 // ---cut-start---
 import * as Evolu from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createRun } from "@evolu/react-native";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import type { FC } from "react";
 import { renderToString } from "react-dom/server";
 
@@ -864,8 +866,7 @@ renderToString(
 // ---cut-start---
 import * as Evolu from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createRun } from "@evolu/react-native";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import type { FC } from "react";
 import { renderToString } from "react-dom/server";
 
@@ -908,8 +909,7 @@ renderToString(
 // ---cut-start---
 import * as Evolu from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createRun } from "@evolu/react-native";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import type { FC } from "react";
 import { renderToString } from "react-dom/server";
 
@@ -1120,8 +1120,7 @@ Evolu.assertEqual(await evolu.loadQuery(todoById), [
 // ---cut-start---
 import * as Evolu from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createRun } from "@evolu/react-native";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import type { FC } from "react";
 import { renderToString } from "react-dom/server";
 
@@ -1172,8 +1171,7 @@ Evolu.assertEqual(await evolu.loadQuery(todoById), [
 // ---cut-start---
 import * as Evolu from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createRun } from "@evolu/react-native";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import type { FC } from "react";
 import { renderToString } from "react-dom/server";
 
@@ -1387,7 +1385,7 @@ Evolu.assertEqual(
 
 ## Protect data
 
-**Privacy is essential for Evolu**, so all synced data are **encrypted end-to-end** with an encryption key derived from a cryptographically strong secret (which can be represented as a [mnemonic](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)) or provided by an external hardware device. The database on the device is encrypted too: on the web and in Electron always, in React Native and Expo with SQLCipher, which Evolu requires, as [Privacy](/docs/privacy#encryption-on-the-device) describes.
+**Privacy is essential for Evolu**, so all synced data are **encrypted end-to-end** with an encryption key derived from a cryptographically strong secret (which can be represented as a [mnemonic](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)) or provided by an external hardware device. The database on the device is encrypted too, on every platform, as [Privacy](/docs/privacy#encryption-on-the-device) describes.
 
 `evolu.appOwner` is the owner passed to `createEvolu`; it is available synchronously. For the owner created from a secret in this guide, `mnemonic` can be shown in your recovery UI.
 
@@ -1450,8 +1448,7 @@ import {
   testAppOwner,
 } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createRun } from "@evolu/react-native";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import type { FC } from "react";
 import { renderToString } from "react-dom/server";
 
@@ -1496,8 +1493,7 @@ import {
   testAppOwner,
 } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createRun } from "@evolu/react-native";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import type { FC } from "react";
 import { renderToString } from "react-dom/server";
 

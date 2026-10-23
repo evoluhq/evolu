@@ -69,7 +69,10 @@ for a post, run `node scripts/code-image.mts --help`.
   `optionalDependencies`, `exports`, `publishConfig`, `types`, or `files`, or
   its build configuration, run `pnpm build`, then
   `pnpm check:packages`, which packs all packages and needs their built `dist`
-  and the pinned SQLite wasm.
+  and the pinned SQLite wasm. Packing `@evolu/react-native` runs its prepack,
+  which writes `native/` and needs what the core's tests need to write it:
+  clang with `llvm-nm`, make, unzip, and the pinned SQLite source or network
+  access.
 - After changing dependencies in any `package.json`, run `pnpm lint:sherif`.
 - After changing `packages/sqlite-wasm/scripts/generate.mts`, `bindings.mts`, or
   `upstream/`, regenerate with `node packages/sqlite-wasm/scripts/generate.mts`.
@@ -105,17 +108,36 @@ for a post, run `node scripts/code-image.mts --help`.
   rewrites `packages/react-native/native.json`, then
   `pnpm test:react-native-sqlite`, which also runs React Native's binding
   conformance suite on `node/binding.c`, the core's N-API mirror of that
-  binding, so a change to it needs that script too.
+  binding, so a change to it needs that script too. `@evolu/react-native`
+  ships the vendored core, so a change to what it vendors also needs a patch
+  changeset for it, unless an unreleased changeset already covers the change.
   The tests need clang with `llvm-profdata` and `llvm-cov`, which Xcode
   installs, and on Ubuntu the llvm package (installed with clang unless
   Recommends are skipped), make, unzip and zip, on Linux also OpenSSL's
   development headers and clang's shared AddressSanitizer runtime, and network
   access the first time, to fetch the pinned SQLite source and expo-sqlite
   releases.
-- After changing `packages/react-native/scripts`, `src/sqlite` or
-  `test/bindingConformance.ts`, run `pnpm test:react-native-sqlite`, which
-  fails below 100% line, branch, or function coverage of `scripts` and
-  `src/sqlite` and needs what the core's tests need.
+- After changing `packages/react-native/scripts`, `src`, `test/device`,
+  `test/bindingConformance.ts`, the podspec, `cpp/CMakeLists.txt` or
+  `react-native.config.js`, run `pnpm test:react-native-sqlite`, which runs
+  the package's tests and fails below 100% line, branch, or function coverage
+  of `scripts` and `src/sqlite`. It needs what the core's tests need, and Ruby
+  and CMake, for the podspec's and CMake's tests, which take CMake from the
+  PATH or the Android SDK.
+- After changing how `@evolu/react-native` builds into apps, its podspec,
+  `cpp/CMakeLists.txt`, `ios/`, `android/`, `react-native.config.js`,
+  `codegenConfig`, the device suites or either example's native setup, run
+  the device route on a simulator and an emulator in the example it affects,
+  as `.github/workflows/react-native-app.yaml` does: build and install the
+  example in Release, on iOS run
+  `node packages/react-native/scripts/vendor-native.mts --check-objects=<derived data>/Build/Intermediates.noindex/Pods.build/Release-iphonesimulator/EvoluReactNative.build/Objects-normal/arm64`,
+  write the fixtures with
+  `node packages/react-native/scripts/device-tests.mts --write-fixtures=<dir>`,
+  which needs what the core's SQLCipher tests need, then run that script with
+  `--platform`, `--device`, `--app`, `--url` and `--fixtures`. Android needs a `google_apis` image, which allows `adb root`.
+  Pull requests run those jobs only when they change a path
+  `scripts/select-react-native-app.mts` lists, so a new path only the app
+  jobs check goes there.
 - After changing `packages/react-native/cpp`, `test/hermes`,
   `test/bindingConformance.ts`, `scripts/hermes.mts` or what the package
   vendors, run `pnpm test:react-native-hermes` on macOS. It runs the
@@ -339,8 +361,8 @@ for a post, run `node scripts/code-image.mts --help`.
   `scripts/version-sqlite-wasm.mts` replaces the version its changeset bump
   computes, so the bump type only selects its release-notes heading.
 - `@evolu/sqlite-core` is private. Its code ships inside `@evolu/sqlite-wasm`
-  and will ship inside `@evolu/nodejs` and `@evolu/react-native` as their
-  bindings land. Changesets skips private packages, so a change to it needs a
+  and `@evolu/react-native`, and will ship inside `@evolu/nodejs` as its binding
+  lands. Changesets skips private packages, so a change to it needs a
   changeset for each published package that already ships the change, and none
   while none does. Never name it in a changeset: Changesets never consumes such
   a file, which keeps the release workflow from publishing.

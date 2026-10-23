@@ -5,9 +5,9 @@
   "keywords": [
     "evolu",
     "expo",
-    "expo-sqlite",
     "react-native",
-    "react-hooks"
+    "react-hooks",
+    "sqlite"
   ],
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
@@ -23,17 +23,20 @@
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
+      "react-native": "./src/index.ts",
+      "browser": "./src/web.ts",
       "default": "./src/index.ts"
+    },
+    "./identicon": {
+      "types": "./dist/src/identicon.d.ts",
+      "react-native": "./src/identicon.ts",
+      "default": "./src/identicon.ts"
     },
     "./polyfills": {
       "types": "./dist/src/Polyfills.d.ts",
-      "default": "./src/Polyfills.ts"
-    },
-    "./expo-sqlite": {
-      "types": "./dist/src/exports/expo-sqlite.d.ts",
-      "react-native": "./src/exports/expo-sqlite.ts",
+      "react-native": "./src/Polyfills.ts",
       "browser": "./src/web.ts",
-      "default": "./src/exports/expo-sqlite.ts"
+      "default": "./src/Polyfills.ts"
     }
   },
   "typesVersions": {
@@ -41,11 +44,11 @@
       ".": [
         "./dist/src/index.d.ts"
       ],
+      "identicon": [
+        "./dist/src/identicon.d.ts"
+      ],
       "polyfills": [
         "./dist/src/Polyfills.d.ts"
-      ],
-      "expo-sqlite": [
-        "./dist/src/exports/expo-sqlite.d.ts"
       ]
     }
   },
@@ -53,11 +56,21 @@
     "dist/src/**",
     "!dist/**/*.test.*",
     "src/**",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES.md",
+    "EvoluReactNative.podspec",
+    "react-native.config.js",
+    "native.json",
+    "native/**",
+    "cpp/**",
+    "ios/**",
+    "android/**",
+    "!android/build",
+    "!android/.cxx"
   ],
   "scripts": {
     "build": "tsc --build tsconfig.build.json",
-    "prepack": "npm run build",
+    "prepack": "npm run build && node scripts/vendor-native.mts",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
@@ -78,17 +91,13 @@
     "@evolu/react": "workspace:*",
     "@evolu/sqlite-core": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
-    "@expo/dom-webview": "58.0.2",
     "@react-native/metro-config": "0.88.0",
     "@types/node": "^24.19.2",
     "@types/react": "catalog:react19",
     "@typescript/native": "npm:typescript@^7.0.2",
     "esbuild": "0.28.2",
-    "expo": "58.0.16",
-    "expo-sqlite": "58.0.13",
     "react": "catalog:react19",
     "react-native": "0.88.0",
-    "react-native-nitro-modules": "0.37.1",
     "react-native-reanimated": "4.7.1",
     "react-native-svg": "15.16.0",
     "react-native-worklets": "0.13.0",
@@ -97,23 +106,11 @@
   "peerDependencies": {
     "@evolu/common": "^8.23.2",
     "@evolu/react": "^11.2.1",
-    "expo": ">=55",
-    "expo-sqlite": ">=55",
     "react": ">=19",
-    "react-native": ">=0.83",
-    "react-native-nitro-modules": ">=0.34",
+    "react-native": ">=0.88",
     "react-native-svg": ">=15.15"
   },
   "peerDependenciesMeta": {
-    "expo": {
-      "optional": true
-    },
-    "expo-sqlite": {
-      "optional": true
-    },
-    "react-native-nitro-modules": {
-      "optional": true
-    },
     "react-native-svg": {
       "optional": true
     }
@@ -124,23 +121,42 @@
       ".": {
         "types": "./dist/src/index.d.ts",
         "react-native": "./dist/src/index.js",
+        "browser": "./dist/src/web.js",
         "default": "./dist/src/index.js"
+      },
+      "./identicon": {
+        "types": "./dist/src/identicon.d.ts",
+        "react-native": "./dist/src/identicon.js",
+        "default": "./dist/src/identicon.js"
       },
       "./polyfills": {
         "types": "./dist/src/Polyfills.d.ts",
         "react-native": "./dist/src/Polyfills.js",
-        "default": "./dist/src/Polyfills.js"
-      },
-      "./expo-sqlite": {
-        "types": "./dist/src/exports/expo-sqlite.d.ts",
-        "react-native": "./dist/src/exports/expo-sqlite.js",
         "browser": "./dist/src/web.js",
-        "default": "./dist/src/exports/expo-sqlite.js"
+        "default": "./dist/src/Polyfills.js"
       }
     }
   },
   "engines": {
     "node": ">=24.20.0"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "codegenConfig": {
+    "name": "EvoluReactNativeSpec",
+    "type": "modules",
+    "jsSrcsDir": "src/specs",
+    "android": {
+      "javaPackageName": "dev.evolu.reactnative"
+    },
+    "ios": {
+      "modules": {
+        "EvoluSqlite": {
+          "className": "EvoluSqliteProvider"
+        },
+        "EvoluApp": {
+          "className": "EvoluApp"
+        }
+      }
+    }
+  }
 }

@@ -23,6 +23,7 @@ import isSupersetOf from "set.prototype.issupersetof";
 import symmetricDifference from "set.prototype.symmetricdifference";
 // @ts-expect-error Runtime polyfill package has no TypeScript declarations.
 import union from "set.prototype.union";
+import { loadNativeSqlite } from "./sqlite/Loader.ts";
 
 difference.shim();
 intersection.shim();
@@ -32,12 +33,23 @@ isSupersetOf.shim();
 symmetricDifference.shim();
 union.shim();
 
-/** Installs polyfills required by Evolu in React Native runtimes. */
+/**
+ * Installs polyfills required by Evolu in React Native runtimes.
+ *
+ * It installs `crypto.getRandomValues` from the platform's CSPRNG through
+ * Evolu's native module when the runtime lacks it, as React Native does, and
+ * keeps one that another library installed.
+ *
+ * Call it in a module of its own that the app's entry file imports first, since
+ * a file's imports run before its own code and `@evolu/common` reads randomness
+ * when it's imported.
+ */
 export const installPolyfills = (): void => {
   installCommonPolyfills();
   installArrayPolyfills();
   installPromisePolyfills();
   installAbortControllerPolyfills();
+  installGetRandomValuesPolyfill();
 };
 
 const installArrayPolyfills = (): void => {
@@ -56,6 +68,59 @@ const installArrayPolyfills = (): void => {
 const installPromisePolyfills = () => {
   withResolvers.shim();
   promiseTry.shim();
+};
+
+interface GetRandomValues {
+  readonly getRandomValues?: <T extends ArrayBufferView | null>(array: T) => T;
+}
+
+/** The typed arrays of integers, which Web Crypto's getRandomValues fills. */
+const integerTypedArrays = [
+  Int8Array,
+  Uint8Array,
+  Uint8ClampedArray,
+  Int16Array,
+  Uint16Array,
+  Int32Array,
+  Uint32Array,
+  BigInt64Array,
+  BigUint64Array,
+];
+
+const installGetRandomValuesPolyfill = (): void => {
+  const crypto = (globalThis.crypto as GetRandomValues | undefined) ?? {};
+  if (typeof crypto.getRandomValues === "function") return;
+
+  const nativeSqlite = loadNativeSqlite();
+  Object.defineProperty(crypto, "getRandomValues", {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    // With Web Crypto's checks.
+    value: <T extends ArrayBufferView | null>(array: T): T => {
+      if (!integerTypedArrays.some((type) => array instanceof type))
+        throw createNamedError(
+          "TypeMismatchError",
+          "The array must be an integer typed array.",
+        );
+      // An integer typed array is an ArrayBufferView.
+      const { buffer, byteOffset, byteLength } = array as ArrayBufferView;
+      if (byteLength > 65_536)
+        throw createNamedError(
+          "QuotaExceededError",
+          "The array must have at most 65,536 bytes.",
+        );
+      nativeSqlite.fillRandom(new Uint8Array(buffer, byteOffset, byteLength));
+      return array;
+    },
+  });
+  if (globalThis.crypto !== crypto)
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: crypto,
+    });
 };
 
 interface AbortControllerConstructor {

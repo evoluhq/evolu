@@ -73,7 +73,10 @@ The tests of `packages/sqlite-core`, which `pnpm test` runs, need
 [clang](https://clang.llvm.org) with its llvm-profdata and llvm-cov, make,
 unzip and zip, on Linux also OpenSSL's development headers and clang's shared
 AddressSanitizer runtime, and network access the first time, to fetch the
-pinned SQLite source and expo-sqlite releases.
+pinned SQLite source and expo-sqlite releases. Those of `packages/react-native`
+also need Ruby and CMake, and `pnpm check:packages`, which packs that package
+with the C it vendors, needs what
+`packages/react-native/scripts/vendor-native.mts` lists for vendoring.
 
 Build scripts
 

@@ -1,10 +1,10 @@
 # Evolu SQLite Core
 
-This private package is Evolu's SQLite core in C: unmodified SQLite from sqlite.org, Evolu's encryption codec as a VFS shim under it, Evolu's storage functions as SQL functions, and the cryptography they need. It isn't published. Its C is compiled into the WebAssembly of `@evolu/sqlite-wasm`, and will be into `@evolu/nodejs` and `@evolu/react-native` as their bindings land, so every platform runs the same SQLite with the same encryption.
+This private package is Evolu's SQLite core in C: unmodified SQLite from sqlite.org, Evolu's encryption codec as a VFS shim under it, Evolu's storage functions as SQL functions, and the cryptography they need. It isn't published. Its C is compiled into the WebAssembly of `@evolu/sqlite-wasm` and, from the sources `@evolu/react-native` ships, into React Native apps, and will be into `@evolu/nodejs` as its binding lands, so every platform runs the same SQLite with the same encryption.
 
 ## Why
 
-Evolu encrypts its databases, but each platform did it differently. On the web, `@evolu/sqlite-wasm` encrypted pages in TypeScript with `@awasm/noble` until this core replaced it. On React Native, Evolu relies on the SQLCipher that expo-sqlite vendors, in whatever version an Expo release brings. On Node.js, the driver ignores the key and doesn't encrypt at all.
+Evolu encrypts its databases, but each platform did it differently. On the web, `@evolu/sqlite-wasm` encrypted pages in TypeScript with `@awasm/noble` until this core replaced it. On React Native, Evolu relied on the SQLCipher that expo-sqlite vendors, in whatever version an Expo release brought, until `@evolu/react-native` shipped this core. On Node.js, the driver ignores the key and doesn't encrypt at all.
 
 We want one implementation that every platform compiles: one file format, one behavior after a crash, one set of tests. That code has to be C. Hermes, React Native's JavaScript engine, has no WebAssembly, while C compiles to WebAssembly for the web and natively for React Native and Node.js.
 
@@ -59,7 +59,7 @@ The tests must also cover every line, branch and function of the package's TypeS
 
 ## Status
 
-The core, its tests and its WebAssembly binding in `@evolu/sqlite-wasm` are done. The Node.js and React Native bindings come next, each in the package it ships in, and the measurements that decide their details come with them. The Checks workflow runs the tests on x86-64 Linux, with AES-NI and LeakSanitizer, on arm64 Linux, whose CPU reports no data independent timing, and on arm64 macOS, with AES, SHA-512 and data independent timing. Nothing has run on Windows yet.
+The core, its tests, its WebAssembly binding in `@evolu/sqlite-wasm` and its native binding in `@evolu/react-native`, a JSI module tested under Hermes and on a simulator and an emulator, are done. The Node.js binding comes next, in `@evolu/nodejs`. The Checks workflow runs the tests on x86-64 Linux, with AES-NI and LeakSanitizer, on arm64 Linux, whose CPU reports no data independent timing, and on arm64 macOS, with AES, SHA-512 and data independent timing. Nothing has run on Windows yet.
 
 An architecture decision record will document the decisions once the work is done.
 

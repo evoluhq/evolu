@@ -1,0 +1,32 @@
+// The Java TurboModule EvoluApp. The C and C++ build into the app's
+// libappmodules.so through cpp/CMakeLists.txt, which react-native.config.js
+// names, so this library has no externalNativeBuild. It starts no process at
+// configuration time, so builds can use Gradle's configuration cache.
+apply plugin: "com.android.library"
+apply plugin: "com.facebook.react"
+
+def safeExtGet(prop, fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+android {
+  namespace "dev.evolu.reactnative"
+  compileSdkVersion safeExtGet("compileSdkVersion", 36)
+  defaultConfig {
+    minSdkVersion safeExtGet("minSdkVersion", 24)
+    targetSdkVersion safeExtGet("targetSdkVersion", 36)
+  }
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+}
+
+repositories {
+  google()
+  mavenCentral()
+}
+
+dependencies {
+  implementation "com.facebook.react:react-android"
+}

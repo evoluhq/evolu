@@ -240,8 +240,10 @@ export type DbWorkerDeps = WorkerDeps &
  * holds the database's leader lock and before it opens the database. Only a
  * context that ended without closing the database can then hold its files, and
  * such a context can only release them, so the files stay free until the
- * database opens. Platforms whose databases cannot be held this way, such as
- * Node.js and React Native, omit it.
+ * database opens. On React Native, whose lock manager is per runtime, a runtime
+ * that a reload is replacing can still open the files after the wait, so its
+ * driver also retries an open that finds them held. Platforms whose databases
+ * cannot be held this way, such as Node.js, omit it.
  */
 export type WaitForDatabaseRelease = (
   name: Name,
@@ -277,7 +279,9 @@ export interface UnsupportedDbVersionError extends Typed<"UnsupportedDbVersionEr
  *
  * A browser can keep the files of a worker that ended without closing them
  * until the browser restarts. Ask the user to close the app's other tabs or to
- * restart the browser, then to reload the app.
+ * restart the browser, then to reload the app. On React Native, a runtime that
+ * a reload replaced can keep holding them until the app restarts, so ask the
+ * user to restart the app.
  */
 export interface DatabaseHeldError extends Typed<"DatabaseHeldError"> {
   readonly name: Name;

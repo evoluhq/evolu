@@ -172,8 +172,9 @@ const Page: FC = async () => {
         </Lead>
         <Facts>
           <Fact title="SQLite everywhere">
-            Browsers, React Native (Expo), and Electron, with React, Vue, and
-            Svelte bindings. On the web, Evolu compiles{" "}
+            Browsers, React Native, with or without Expo, and Electron, with
+            React, Vue, and Svelte bindings. On the web and React Native, Evolu
+            compiles{" "}
             <Link
               href="/blog/evolu-builds-its-own-sqlite"
               className={linkClassName}

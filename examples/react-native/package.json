@@ -1,0 +1,30 @@
+{
+  "name": "@example/react-native",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "android": "node ../../packages/react-native/scripts/vendor-native.mts && react-native run-android",
+    "ios": "node ../../packages/react-native/scripts/vendor-native.mts && react-native run-ios",
+    "_start": "react-native start"
+  },
+  "dependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/react-native": "workspace:*",
+    "react": "19.3.0",
+    "react-native": "0.88.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/plugin-transform-explicit-resource-management": "^7.29.7",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/runtime": "^7.25.0",
+    "@react-native-community/cli": "20.2.0",
+    "@react-native-community/cli-platform-android": "20.2.0",
+    "@react-native-community/cli-platform-ios": "20.2.0",
+    "@react-native/babel-preset": "0.88.0",
+    "@react-native/metro-config": "0.88.0",
+    "@react-native/typescript-config": "0.88.0",
+    "@types/react": "catalog:react19",
+    "typescript": "~6.0.3"
+  }
+}

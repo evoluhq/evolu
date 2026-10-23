@@ -27,6 +27,7 @@ import type {
   SharedWorker,
   SharedWorkerInput,
   SharedWorkerOutput,
+  WaitForDatabaseReleaseDep,
 } from "@evolu/common/local-first";
 import {
   consoleEntryOrErrorBroadcastChannelName,
@@ -48,9 +49,16 @@ let sharedWorkerSelf: SharedWorkerSelf<
   SharedWorkerOutput
 > | null = null;
 
-/** Creates Evolu dependencies for React Native. */
+/**
+ * Creates Evolu dependencies for React Native from the platform's, which
+ * `createEvoluDeps.ts` passes. It imports nothing native, so Node.js runs it
+ * too.
+ */
 export const createEvoluDeps = (
-  deps: ReloadAppDep & CreateSqliteDriverDep & Partial<ConsoleDep>,
+  deps: CreateSqliteDriverDep &
+    ReloadAppDep &
+    Partial<ConsoleDep> &
+    Partial<WaitForDatabaseReleaseDep>,
 ): EvoluDeps => {
   // Worker-side Run lives as long as the app. When RN supports real workers,
   // this moves to the worker entry point (like web's Worker.worker.ts).
@@ -73,6 +81,9 @@ export const createEvoluDeps = (
       getDevicePersistence: () => Promise.resolve("Persisted" as const),
       lockManager,
       randomBytes: createRandomBytes(),
+      ...(deps.waitForDatabaseRelease && {
+        waitForDatabaseRelease: deps.waitForDatabaseRelease,
+      }),
     });
   };
 

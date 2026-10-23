@@ -2,6 +2,8 @@
 
 This package provides Evolu for [React Native](https://reactnative.dev) and [Expo](https://expo.dev).
 
+It ships Evolu's SQLite as native code, so apps need a native build with React Native 0.88 or later on Hermes (in Expo, a development build; Expo Go is unsupported). iOS builds with CocoaPods; SwiftPM support comes later.
+
 ## Documentation
 
 For detailed information and usage examples, please visit [evolu.dev](https://www.evolu.dev).

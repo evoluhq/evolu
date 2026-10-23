@@ -1,8 +1,7 @@
 import Alert from "@blazejkustra/react-native-alert";
 import * as Evolu from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { createRun } from "@evolu/react-native";
-import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+import { createEvoluDeps, createRun } from "@evolu/react-native";
 import { Suspense, use, useEffect, useState, type FC } from "react";
 import {
   AccessibilityInfo,

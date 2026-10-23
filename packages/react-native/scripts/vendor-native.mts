@@ -45,6 +45,12 @@
  *   of the namespaces `evolu`, `std` and `facebook`, the last two the inline
  *   functions and templates of the C++ and JSI headers, and the compiler's own
  *   helpers. `--jobs=<n>` runs n compiles at once, by default one per CPU.
+ * - `--check-objects=<directory>` checks by the same rule the objects an app's
+ *   Xcode build compiled for Evolu's pod, which the iOS app jobs run, since no
+ *   cross-compile builds `ios/*.mm` or `cpp/EvoluSqlite.cpp`: those also define
+ *   their ObjC classes, and the TurboModule its global class `EvoluSqlite`. A
+ *   static-framework build adds a version object that defines the pod's version
+ *   symbols.
  *
  * Writing `native/` needs what `@evolu/sqlite-core`'s tests need: a macOS or
  * Linux host (WSL on Windows), clang with llvm-nm, make and unzip, and network
@@ -176,18 +182,36 @@ export const runVendorNativeCli = async (
       check: { type: "boolean", default: false },
       update: { type: "boolean", default: false },
       "cross-compile": { type: "string" },
+      "check-objects": { type: "string" },
       ndk: { type: "string" },
       jobs: { type: "string" },
     },
   });
   const crossCompileName = values["cross-compile"];
+  const objectsDirectory = values["check-objects"];
   if (
-    [values.check, values.update, crossCompileName != null].filter(Boolean)
-      .length > 1
+    [
+      values.check,
+      values.update,
+      crossCompileName != null,
+      objectsDirectory != null,
+    ].filter(Boolean).length > 1
   )
     throw new Error(
-      "Pass at most one of --check, --update and --cross-compile.",
+      "Pass at most one of --check, --update, --cross-compile and --check-objects.",
     );
+
+  if (objectsDirectory != null) {
+    const { objects, definedGlobals, adapterSymbols } = checkObjects({
+      packageDirectory,
+      objectsDirectory,
+      env,
+    });
+    log(
+      `${objectsDirectory}: ${objects} objects; the C's ${definedGlobals} defined globals, each evolu_, and the adapters' ${adapterSymbols}.`,
+    );
+    return;
+  }
 
   if (crossCompileName != null) {
     let platform: CrossCompilePlatform;
@@ -826,6 +850,170 @@ export const crossCompile = async ({
   });
   if (problems.length > 0) throw new Error(problems.join("\n"));
   return checked;
+};
+
+/**
+ * Checks the objects an app's Xcode build compiled for Evolu's pod in
+ * `objectsDirectory`, `ios/*.mm` and `cpp/EvoluSqlite.cpp` included, which no
+ * cross-compile builds, by {@link crossCompile}'s rule: the C's units may define
+ * only `evolu_` globals, and no object may reference a `sqlite3`, `br_` or
+ * `crypto_` name without `evolu_`. Besides `evolu_` names, the JSI adapter may
+ * define C++ of the namespaces `evolu`, `std` and `facebook` and the compiler's
+ * helpers, and the TurboModule also the names of its global class
+ * `EvoluSqlite`. The ObjC++ objects may define their own ObjC class and
+ * metaclass, the metadata of any ObjC protocol, which clang emits for each
+ * protocol a class adopts or inherits, clang's block descriptors, the
+ * compiler's helpers, and C++ of `std` and `facebook`. CocoaPods' dummy object
+ * follows the same rule with the pod's dummy class. The version object Xcode
+ * compiles for a framework pod, as with static frameworks, may define only the
+ * pod's version symbols, `EvoluReactNativeVersionNumber` and
+ * `EvoluReactNativeVersionString`. The dummy and the version object are
+ * optional; every other object fails the check, and so does a missing one.
+ */
+export const checkObjects = ({
+  packageDirectory,
+  objectsDirectory,
+  env,
+}: {
+  packageDirectory: string;
+  objectsDirectory: string;
+  /** The environment of the tools, whose PATH finds xcrun. */
+  env: NodeJS.ProcessEnv;
+}): {
+  readonly objects: number;
+  readonly definedGlobals: number;
+  readonly adapterSymbols: number;
+} => {
+  const { files } = JSON.parse(
+    readFileSync(join(packageDirectory, "native.json"), "utf8"),
+  ) as NativeManifest;
+  const units = Object.keys(files)
+    .filter((path) => path.startsWith("units/"))
+    .map((path) => `${basename(path, ".c")}.o`);
+  const cxx = (name: string, extra: ReadonlyArray<string> = []) =>
+    name.startsWith("evolu_") ||
+    compilerHelpers.has(name) ||
+    [...adapterNamespaces, ...extra].includes(cxxNamespace(name) ?? "");
+  const objc = (className: string) => (name: string) =>
+    name === `OBJC_CLASS_$_${className}` ||
+    name === `OBJC_METACLASS_$_${className}` ||
+    /^_OBJC_(?:LABEL_)?PROTOCOL_\$_/u.test(name) ||
+    name.startsWith("__block_descriptor_") ||
+    compilerHelpers.has(name) ||
+    ["std", "facebook"].includes(cxxNamespace(name) ?? "");
+  const objcWhat =
+    "ObjC protocol metadata, a block descriptor, C++ of std or facebook, or the compiler's";
+  // What each object of the pod besides the units may define, what that is,
+  // and whether every build has it: a static library has no version object.
+  const pod: ReadonlyMap<
+    string,
+    {
+      readonly allows: (name: string) => boolean;
+      readonly what: string;
+      readonly isRequired: boolean;
+    }
+  > = new Map([
+    [
+      "EvoluSqliteBinding.o",
+      {
+        allows: (name: string) => cxx(name),
+        what: "evolu_, C++ of evolu, std or facebook, or the compiler's",
+        isRequired: true,
+      },
+    ],
+    [
+      "EvoluSqlite.o",
+      {
+        allows: (name: string) => cxx(name, ["EvoluSqlite"]),
+        what: "evolu_, C++ of evolu, std, facebook or the class EvoluSqlite, or the compiler's",
+        isRequired: true,
+      },
+    ],
+    ...["EvoluApp", "EvoluSqliteProvider"].map(
+      (className) =>
+        [
+          `${className}.o`,
+          {
+            allows: objc(className),
+            what: `its ObjC class, ${objcWhat}`,
+            isRequired: true,
+          },
+        ] as const,
+    ),
+    [
+      "EvoluReactNative-dummy.o",
+      {
+        allows: objc("PodsDummy_EvoluReactNative"),
+        what: `the pod's dummy class, ${objcWhat}`,
+        isRequired: false,
+      },
+    ],
+    [
+      "EvoluReactNative_vers.o",
+      {
+        allows: (name: string) =>
+          name === "EvoluReactNativeVersionNumber" ||
+          name === "EvoluReactNativeVersionString",
+        what: "the pod's version symbols that Xcode writes",
+        isRequired: false,
+      },
+    ],
+  ]);
+
+  const sdk = ["--sdk", "iphoneos", "clang", "-target", "arm64-apple-ios15.1"];
+  const nm = run(
+    "xcrun",
+    [...sdk, "-print-prog-name=llvm-nm"],
+    undefined,
+    env,
+  ).trim();
+  const prefix = labelPrefix(
+    run("xcrun", [...sdk, "-dM", "-E", "-x", "c", "/dev/null"], undefined, env),
+  );
+  const objects = readdirSync(objectsDirectory)
+    .filter((file) => file.endsWith(".o"))
+    .toSorted();
+  const problems: Array<string> = [];
+  let definedGlobals = 0;
+  let adapterSymbols = 0;
+  for (const object of objects) {
+    // Of the pod's other objects, or null for a unit.
+    const source = pod.get(object);
+    if (source == null && !units.includes(object)) {
+      problems.push(`${object} isn't an object of Evolu's pod.`);
+      continue;
+    }
+    for (const line of run(
+      nm,
+      ["-g", "-P", join(objectsDirectory, object)],
+      undefined,
+      env,
+    )
+      .split("\n")
+      .filter((line) => line !== "")) {
+      const [symbol, type] = line.split(" ");
+      const name = symbol.slice(prefix.length);
+      if (undefinedTypes.has(type)) {
+        if (/^(sqlite3|br_|crypto_)/u.test(name))
+          problems.push(`${object} references ${name} without evolu_.`);
+      } else if (name.startsWith("evolu_test_"))
+        problems.push(`${object} defines ${name}, a test hook.`);
+      else if (source == null)
+        if (name.startsWith("evolu_")) definedGlobals++;
+        else problems.push(`${object} defines ${name}, which isn't evolu_.`);
+      else if (source.allows(name)) adapterSymbols++;
+      else
+        problems.push(`${object} defines ${name}, which isn't ${source.what}.`);
+    }
+  }
+  for (const object of [
+    ...units,
+    ...[...pod].flatMap(([name, { isRequired }]) => (isRequired ? [name] : [])),
+  ])
+    if (!objects.includes(object))
+      problems.push(`${object}, an object of Evolu's pod, is missing.`);
+  if (problems.length > 0) throw new Error(problems.join("\n"));
+  return { objects: objects.length, definedGlobals, adapterSymbols };
 };
 
 /** A target {@link crossCompile} compiles for. */

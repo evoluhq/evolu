@@ -1,0 +1,81 @@
+name: React Native nightly
+
+# Every app job, which pull requests run only when they change what those jobs
+# alone check, and the macOS jobs again on macos-latest with its newest Xcode,
+# which the other jobs pin, so a new image or Xcode shows up here first.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  FORCE_COLOR: 3
+
+# The jobs run only in evoluhq/evolu, as release.yaml's release and deploy jobs
+# do, so a fork's schedule runs no macOS or emulator jobs.
+jobs:
+  react-native-app:
+    if: github.repository == 'evoluhq/evolu'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/react-native-app.yaml
+    with:
+      without-expo: true
+      static-frameworks: true
+
+  react-native-app-latest:
+    if: github.repository == 'evoluhq/evolu'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/react-native-app.yaml
+    with:
+      without-expo: true
+      macos-latest: true
+
+  # The react-native-apple job of the Checks workflow, on the newest image and
+  # Xcode.
+  react-native-apple-latest:
+    if: github.repository == 'evoluhq/evolu'
+    name: React Native Apple (latest)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the newest Xcode
+        run: |
+          sudo xcode-select --switch "$(ls -d /Applications/Xcode_*.app | sort -V | tail -n 1)"
+          xcodebuild -version
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      # Only SQLite's archive, which every use verifies against its pin.
+      - name: Cache source archive
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/sqlite-core/sqlite-cache/*.zip
+          key: react-native-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts') }}
+
+      # The Hermes tarball, keyed by hermes.mts, which holds the pin every use
+      # verifies.
+      - name: Cache Hermes
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/sqlite-core/sqlite-cache/hermes-ios-*.tar.gz
+          key: react-native-hermes-${{ hashFiles('packages/react-native/scripts/hermes.mts') }}
+
+      - name: Vendor
+        run: node packages/react-native/scripts/vendor-native.mts
+
+      - name: Cross-compile
+        run: node packages/react-native/scripts/vendor-native.mts --cross-compile=ios
+
+      - name: Hermes tests
+        run: pnpm test:react-native-hermes

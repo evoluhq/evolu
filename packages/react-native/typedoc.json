@@ -2,7 +2,8 @@
   "extends": ["../../typedoc.base.json"],
   "tsconfig": "tsconfig.build.json",
   "entryPoints": [
-    "src/web.ts",
-    "src/exports/expo-sqlite.ts"
+    "src/index.ts",
+    "src/identicon.ts",
+    "src/web.ts"
   ]
 }

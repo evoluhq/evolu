@@ -54,3 +54,6 @@ packages/sqlite-core/sqlite-cache/
 
 # packages/react-native, written by scripts/vendor-native.mts
 packages/react-native/native/
+# packages/react-native, written by Gradle and the NDK in the apps' builds
+packages/react-native/android/build/
+packages/react-native/android/.cxx/

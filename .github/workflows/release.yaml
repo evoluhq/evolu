@@ -67,9 +67,21 @@ jobs:
         with:
           script: pnpm run version
 
-  pack:
+  # Nothing is packed before every React Native app job passes on the commit
+  # being released.
+  react-native-app:
     if: needs.select-mode.outputs.mode == 'publish'
     needs: select-mode
+    permissions:
+      contents: read
+    uses: ./.github/workflows/react-native-app.yaml
+    with:
+      without-expo: true
+      static-frameworks: true
+
+  pack:
+    if: needs.select-mode.outputs.mode == 'publish'
+    needs: [select-mode, react-native-app]
     runs-on: ubuntu-latest
     outputs:
       pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
@@ -92,6 +104,16 @@ jobs:
 
       - name: Build packages
         run: pnpm build
+
+      # The prepack of @evolu/react-native writes native/ from the pinned
+      # SQLite zip, which every use verifies, and the core.
+      - name: Restore source archives
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
 
       # The prepack of @evolu/sqlite-wasm, which pnpm pack runs, checks that
       # the wasm the Checks workflow built in this run is the pinned one and

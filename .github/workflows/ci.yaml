@@ -18,13 +18,57 @@ jobs:
       contents: read
     uses: ./.github/workflows/checks.yaml
 
+  # The React Native app jobs run on a pull request or merge-queue run only
+  # when it changes the native code, the examples or the lockfile, which
+  # scripts/select-react-native-app.mts decides.
+  select-react-native-app:
+    name: Select React Native app jobs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      app-jobs: ${{ steps.select.outputs.app-jobs }}
+      without-expo: ${{ steps.select.outputs.without-expo }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ".nvmrc"
+          package-manager-cache: false
+
+      - name: Select
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: node scripts/select-react-native-app.mts --event="$EVENT" --base="$BASE"
+
+  react-native-app:
+    needs: select-react-native-app
+    if: needs.select-react-native-app.outputs.app-jobs == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/react-native-app.yaml
+    with:
+      without-expo: ${{ needs.select-react-native-app.outputs.without-expo == 'true' }}
+
   ci:
     name: ci
     if: always()
-    needs: checks
+    needs: [checks, select-react-native-app, react-native-app]
     runs-on: ubuntu-latest
     steps:
+      # The app jobs may be skipped only when the selection needs none.
       - name: Require successful checks
         env:
           CHECKS_RESULT: ${{ needs.checks.result }}
-        run: test "$CHECKS_RESULT" = success
+          SELECT_RESULT: ${{ needs.select-react-native-app.result }}
+          APP_JOBS: ${{ needs.select-react-native-app.outputs.app-jobs }}
+          APP_RESULT: ${{ needs.react-native-app.result }}
+        run: |
+          test "$CHECKS_RESULT" = success
+          test "$SELECT_RESULT" = success
+          test "$APP_RESULT" = success || { test "$APP_RESULT" = skipped && test "$APP_JOBS" = false; }

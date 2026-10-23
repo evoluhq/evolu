@@ -4,10 +4,194 @@ import {
   assertInstanceOf,
   assertRejectsSame,
   assertSame,
+  assertThrows,
   assertTrue,
 } from "@evolu/common";
-import { afterEach, beforeEach, describe, it } from "node:test";
-import { installPolyfills } from "./Polyfills.ts";
+import { spawnSync } from "node:child_process";
+import { afterEach, beforeEach, describe, it, mock } from "node:test";
+
+/** The views the fake binding's fillRandom filled, as their byte lengths. */
+const filledLengths: Array<number> = [];
+let createdBindings = 0;
+
+// The specs import React Native, which Node.js can't load. The fake binding
+// fills each byte with its index, plus one.
+mock.module(new URL("./specs/NativeEvoluSqlite.ts", import.meta.url).href, {
+  exports: {
+    default: {
+      createBinding: () => {
+        createdBindings++;
+        return {
+          abiVersion: 1,
+          fillRandom: (bytes: Uint8Array) => {
+            filledLengths.push(bytes.length);
+            for (let index = 0; index < bytes.length; index++)
+              bytes[index] = index + 1;
+          },
+        };
+      },
+    },
+  },
+});
+mock.module(new URL("./specs/NativeEvoluApp.ts", import.meta.url).href, {
+  exports: { default: null },
+});
+
+const { installPolyfills } = await import("./Polyfills.ts");
+
+interface CryptoWithGetRandomValues {
+  readonly getRandomValues: <T extends ArrayBufferView | null>(array: T) => T;
+}
+
+const cryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+
+const setCrypto = (crypto: object | undefined): void => {
+  Object.defineProperty(globalThis, "crypto", {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: crypto,
+  });
+};
+
+/** The `crypto.getRandomValues` installPolyfills installed. */
+const getRandomValues = <T extends ArrayBufferView | null>(array: T): T =>
+  (crypto as CryptoWithGetRandomValues).getRandomValues(array);
+
+describe("installPolyfills getRandomValues", () => {
+  afterEach(() => {
+    if (cryptoDescriptor)
+      Object.defineProperty(globalThis, "crypto", cryptoDescriptor);
+  });
+
+  it("installs crypto.getRandomValues from the binding's fillRandom when crypto is missing, loading the binding once", () => {
+    setCrypto(undefined);
+    const created = createdBindings;
+
+    installPolyfills();
+    const array = new Uint8Array(3);
+
+    assertSame(getRandomValues(array), array);
+    assertEqual([...array], [1, 2, 3]);
+    assertSame(createdBindings, created + 1);
+  });
+
+  it("installs getRandomValues on a crypto without it and keeps what it has", () => {
+    const randomUUID = () => "uuid";
+    const crypto = { randomUUID };
+    setCrypto(crypto);
+
+    installPolyfills();
+
+    assertSame(globalThis.crypto, crypto);
+    assertSame(crypto.randomUUID, randomUUID);
+    assertEqual([...getRandomValues(new Uint8Array(2))], [1, 2]);
+  });
+
+  it("keeps an existing getRandomValues and loads no binding, also when it runs again", () => {
+    const existing = <T>(array: T): T => array;
+    setCrypto({ getRandomValues: existing });
+    const created = createdBindings;
+
+    installPolyfills();
+    installPolyfills();
+
+    assertSame((crypto as CryptoWithGetRandomValues).getRandomValues, existing);
+    assertSame(createdBindings, created);
+  });
+
+  it("fills only the bytes of an integer typed array's view, up to 65,536 of them", () => {
+    setCrypto(undefined);
+    installPolyfills();
+
+    const buffer = new ArrayBuffer(16);
+    const view = new Uint32Array(buffer, 4, 2);
+    assertSame(getRandomValues(view), view);
+    assertEqual(
+      [...new Uint8Array(buffer)],
+      [0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0],
+    );
+
+    filledLengths.length = 0;
+    const arrays = [
+      new Int8Array(1),
+      new Uint8ClampedArray(1),
+      new Int16Array(1),
+      new Uint16Array(32_768),
+      new Int32Array(1),
+      new BigInt64Array(1),
+      new BigUint64Array(1),
+      new Uint8Array(65_536),
+    ];
+    for (const array of arrays) assertSame(getRandomValues(array), array);
+    assertEqual(
+      filledLengths,
+      arrays.map((array) => array.byteLength),
+    );
+    for (const array of arrays) assertSame(new Uint8Array(array.buffer)[0], 1);
+  });
+
+  it("refuses what Web Crypto refuses, filling nothing", () => {
+    setCrypto(undefined);
+    installPolyfills();
+    filledLengths.length = 0;
+
+    for (const value of [
+      new Float32Array(1),
+      new Float64Array(1),
+      new DataView(new ArrayBuffer(1)),
+      null,
+      [1],
+    ])
+      assertThrows(
+        () => getRandomValues(value as ArrayBufferView | null),
+        (error: unknown) => {
+          assertEqual((error as Error).name, "TypeMismatchError");
+        },
+      );
+    // The quota counts bytes, not elements.
+    for (const array of [
+      new Uint8Array(65_537),
+      new Uint16Array(32_769),
+      new BigUint64Array(8_193),
+    ])
+      assertThrows(
+        () => getRandomValues(array),
+        (error: unknown) => {
+          assertEqual((error as Error).name, "QuotaExceededError");
+        },
+      );
+    assertEqual(filledLengths, []);
+  });
+});
+
+it("importing @evolu/react-native/polyfills reads no randomness and creates no binding, so it runs before anything that imports Evolu", () => {
+  // A fresh process whose native build lacks Evolu's modules and whose crypto
+  // has no getRandomValues.
+  const mocks = ["NativeEvoluSqlite", "NativeEvoluApp"]
+    .map(
+      (spec) =>
+        `mock.module(${JSON.stringify(new URL(`./specs/${spec}.ts`, import.meta.url).href)}, { exports: { default: null } });`,
+    )
+    .join("");
+  const imported = spawnSync(
+    process.execPath,
+    [
+      "--disable-warning=ExperimentalWarning",
+      "--experimental-test-module-mocks",
+      `--import=data:text/javascript,${encodeURIComponent(`import { mock } from "node:test";${mocks}`)}`,
+      "--input-type=module",
+      "-e",
+      `Object.defineProperty(globalThis, "crypto", { value: {} }); await import("@evolu/react-native/polyfills"); console.log(typeof crypto.getRandomValues);`,
+    ],
+    { cwd: new URL("..", import.meta.url), encoding: "utf8" },
+  );
+
+  assertEqual(
+    [imported.status, imported.stdout, imported.stderr],
+    [0, "undefined\n", ""],
+  );
+});
 
 interface GlobalAbort {
   readonly AbortController: typeof AbortController | undefined;

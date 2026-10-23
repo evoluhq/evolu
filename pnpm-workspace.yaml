@@ -13,7 +13,6 @@ allowBuilds:
   esbuild: true
   lmdb: true
   msgpackr-extract: true
-  react-native-nitro-modules: true
   sharp: true
 
 # Installs take only versions published at least a day ago, when most malicious

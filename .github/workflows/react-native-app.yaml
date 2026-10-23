@@ -1,0 +1,437 @@
+name: React Native apps
+
+# Builds the example apps in Release, installs each on an iOS simulator or an
+# Android x86_64 emulator, seeds the databases expo-sqlite's SQLCipher wrote
+# into expo-sqlite's directory, and runs the device suites of
+# packages/react-native/test/device through the app's native-tests URL with
+# scripts/device-tests.mts, which requires every test Node.js counts to pass
+# and the app to reload. The Expo example's jobs always run; the example
+# without Expo's when the caller asks, since the native code is the same in
+# both, which differ only in autolinking, entry files and the Android build's
+# configuration cache.
+on:
+  workflow_call:
+    inputs:
+      without-expo:
+        description: Also run the jobs of examples/react-native, without Expo.
+        type: boolean
+        default: false
+      static-frameworks:
+        description: Also build examples/react-native for iOS with static frameworks.
+        type: boolean
+        default: false
+      macos-latest:
+        description: Run only the iOS jobs, on macos-latest with its newest Xcode instead of the pinned image and Xcode.
+        type: boolean
+        default: false
+
+permissions: {}
+
+env:
+  FORCE_COLOR: 3
+
+jobs:
+  react-native-ios-app:
+    name: React Native iOS app (Expo)
+    # Pinned with Xcode, so an image update can't break unrelated pull
+    # requests; the nightly run checks the newest.
+    runs-on: ${{ inputs.macos-latest && 'macos-latest' || 'macos-26' }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        env:
+          MACOS_LATEST: ${{ inputs.macos-latest }}
+        run: |
+          if [ "$MACOS_LATEST" = true ]; then
+            xcode=$(ls -d /Applications/Xcode_*.app | sort -V | tail -n 1)
+          else
+            xcode=/Applications/Xcode_26.6.app
+          fi
+          sudo xcode-select --switch "$xcode"
+          xcodebuild -version
+
+      # First, so the simulator boots while the app builds. Its runtime is the
+      # SDK's, which the app is built with, of the image's several, and its
+      # device a numbered iPhone: Xcode 27.1's runtime also has the iPhone Duo,
+      # whose display stayed black and which never started the app.
+      - name: Boot a simulator
+        id: simulator
+        run: |
+          version=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          runtime="com.apple.CoreSimulator.SimRuntime.iOS-$(echo "$version" | tr . -)"
+          udid=$(xcrun simctl list devices available --json | jq -r --arg runtime "$runtime" '[.devices[$runtime] // [] | .[] | select(.name | test("^iPhone [0-9]+$"))] | last | .udid // empty')
+          if [ -z "$udid" ]; then
+            echo "No numbered iPhone simulator of the SDK's iOS $version."
+            xcrun simctl list runtimes
+            exit 1
+          fi
+          xcrun simctl boot "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      # The archives, SQLite's and expo-sqlite's, as the sqlite-core job caches
+      # them, which every use verifies against their pins. Besides pnpm's store,
+      # which the repository's setup action restores for every job, nothing
+      # else is cached, as for the NDK in checks.yaml: jobs on main that run
+      # dependency code can write the Actions cache, and nothing would verify
+      # restored Pods, Gradle caches or compiler caches.
+      - name: Cache source archives
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
+
+      - name: Vendor
+        run: node packages/react-native/scripts/vendor-native.mts
+
+      - name: Write the fixtures
+        run: node packages/react-native/scripts/device-tests.mts --write-fixtures="$RUNNER_TEMP/fixtures"
+
+      - name: Prebuild
+        working-directory: examples/react-expo
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install pods
+        working-directory: examples/react-expo/ios
+        run: pod install
+
+      - name: Build
+        working-directory: examples/react-expo/ios
+        run: xcodebuild -workspace expoapp.xcworkspace -scheme expoapp -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+
+      # Every object of Evolu's pod, ios/*.mm and the TurboModule included,
+      # which no cross-compile builds.
+      - name: Check the names Evolu's pod defines
+        run: node packages/react-native/scripts/vendor-native.mts --check-objects=examples/react-expo/ios/build/Build/Intermediates.noindex/Pods.build/Release-iphonesimulator/EvoluReactNative.build/Objects-normal/arm64
+
+      - name: Install the app
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: xcrun simctl install "$UDID" examples/react-expo/ios/build/Build/Products/Release-iphonesimulator/expoapp.app
+
+      - name: Device tests
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: node packages/react-native/scripts/device-tests.mts --platform=ios --device="$UDID" --app=com.evolu.expo --url=myapp://native-tests --fixtures="$RUNNER_TEMP/fixtures"
+
+      # Only when a step failed, each command tolerating its own failure.
+      - name: Diagnostics
+        if: failure()
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/simulator.png" || true
+          xcrun simctl appinfo "$UDID" com.evolu.expo || true
+          xcrun simctl spawn "$UDID" launchctl list | grep UIKitApplication || true
+          xcrun simctl spawn "$UDID" log show --last 15m --style compact --predicate 'process == "expoapp" OR subsystem == "com.facebook.react.log"' | tail -n 300 || true
+          # What opening the URL and launching the app went through.
+          xcrun simctl spawn "$UDID" log show --last 15m --style compact --predicate '(process == "SpringBoard" OR process == "runningboardd" OR process == "lsd" OR process == "launchd") AND (eventMessage CONTAINS[c] "myapp" OR eventMessage CONTAINS[c] "com.evolu.expo")' | tail -n 200 || true
+          xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate 'process == "SpringBoard"' | tail -n 100 || true
+          ls -lt ~/Library/Logs/DiagnosticReports | head -20 || true
+          # The job's own, since a job takes at most 90 minutes.
+          find ~/Library/Logs/DiagnosticReports -name '*.ips' -mmin -90 -exec sh -c 'echo "## $1"; head -n 1 "$1"' _ {} \; || true
+
+      # The screenshot shows, for example, a dialog that kept the app from
+      # starting.
+      - name: Upload the simulator's screenshot
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-simulator-${{ github.job }}
+          path: ${{ runner.temp }}/simulator.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+  react-native-android-app:
+    name: React Native Android app (Expo)
+    if: ${{ !inputs.macos-latest }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Cache source archives
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # A google_apis image allows adb root, which seeding the fixtures into a
+      # release build's files needs. Neither it nor the NDK is cached, since
+      # nothing would verify a restored toolchain.
+      # adb and the emulator go on the PATH, for the later steps and the
+      # driver. avdmanager and the emulator look for AVDs in different places
+      # unless ANDROID_AVD_HOME names one.
+      - name: Install React Native's NDK, the platform tools and the emulator
+        run: |
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.1.12297006" platform-tools emulator "system-images;android-36;google_apis;x86_64"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/avd"
+          echo "ANDROID_AVD_HOME=$RUNNER_TEMP/avd" >> "$GITHUB_ENV"
+
+      - name: Start the emulator
+        run: |
+          echo no | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd --name evolu --package "system-images;android-36;google_apis;x86_64" --device pixel_6
+          avds=$(emulator -list-avds)
+          if [ "$avds" != evolu ]; then
+            echo "The emulator lists these AVDs, not just evolu: $avds"
+            exit 1
+          fi
+          nohup emulator -avd evolu -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+
+      - name: Vendor
+        run: node packages/react-native/scripts/vendor-native.mts
+
+      - name: Write the fixtures
+        run: node packages/react-native/scripts/device-tests.mts --write-fixtures="$RUNNER_TEMP/fixtures"
+
+      - name: Prebuild
+        working-directory: examples/react-expo
+        run: npx expo prebuild --platform android --no-install
+
+      # Expo 58's generated app/build.gradle starts node at configuration time,
+      # which the configuration cache refuses, so this build runs without it.
+      - name: Build
+        working-directory: examples/react-expo/android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 --console=plain
+
+      - name: Wait for the emulator
+        run: |
+          if ! timeout 600 sh -c 'adb wait-for-device && until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 2; done'; then
+            cat "$RUNNER_TEMP/emulator.log"
+            exit 1
+          fi
+
+      - name: Install the app
+        run: adb install examples/react-expo/android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Device tests
+        run: node packages/react-native/scripts/device-tests.mts --platform=android --device=emulator-5554 --app=com.evolu.expo --url=myapp://native-tests --fixtures="$RUNNER_TEMP/fixtures"
+
+      # Only when a step failed, each command tolerating its own failure.
+      - name: Diagnostics
+        if: failure()
+        run: |
+          adb logcat -d | tail -n 500 || true
+          cat "$RUNNER_TEMP/emulator.log" || true
+
+  react-native-cli-ios-app:
+    name: React Native iOS app (without Expo${{ matrix.linkage && ', static frameworks' || '' }})
+    if: inputs.without-expo
+    runs-on: ${{ inputs.macos-latest && 'macos-latest' || 'macos-26' }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        linkage: ${{ fromJSON(inputs.static-frameworks && '["", "static"]' || '[""]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        env:
+          MACOS_LATEST: ${{ inputs.macos-latest }}
+        run: |
+          if [ "$MACOS_LATEST" = true ]; then
+            xcode=$(ls -d /Applications/Xcode_*.app | sort -V | tail -n 1)
+          else
+            xcode=/Applications/Xcode_26.6.app
+          fi
+          sudo xcode-select --switch "$xcode"
+          xcodebuild -version
+
+      - name: Boot a simulator
+        id: simulator
+        run: |
+          version=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          runtime="com.apple.CoreSimulator.SimRuntime.iOS-$(echo "$version" | tr . -)"
+          udid=$(xcrun simctl list devices available --json | jq -r --arg runtime "$runtime" '[.devices[$runtime] // [] | .[] | select(.name | test("^iPhone [0-9]+$"))] | last | .udid // empty')
+          if [ -z "$udid" ]; then
+            echo "No numbered iPhone simulator of the SDK's iOS $version."
+            xcrun simctl list runtimes
+            exit 1
+          fi
+          xcrun simctl boot "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Cache source archives
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
+
+      - name: Vendor
+        run: node packages/react-native/scripts/vendor-native.mts
+
+      - name: Write the fixtures
+        run: node packages/react-native/scripts/device-tests.mts --write-fixtures="$RUNNER_TEMP/fixtures"
+
+      # React Native's Podfile reads USE_FRAMEWORKS.
+      - name: Install pods
+        working-directory: examples/react-native/ios
+        env:
+          LINKAGE: ${{ matrix.linkage }}
+        run: |
+          if [ -n "$LINKAGE" ]; then export USE_FRAMEWORKS=$LINKAGE; fi
+          pod install
+
+      - name: Build
+        working-directory: examples/react-native/ios
+        run: xcodebuild -workspace EvoluRN.xcworkspace -scheme EvoluRN -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+
+      - name: Check the names Evolu's pod defines
+        run: node packages/react-native/scripts/vendor-native.mts --check-objects=examples/react-native/ios/build/Build/Intermediates.noindex/Pods.build/Release-iphonesimulator/EvoluReactNative.build/Objects-normal/arm64
+
+      - name: Install the app
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: xcrun simctl install "$UDID" examples/react-native/ios/build/Build/Products/Release-iphonesimulator/EvoluRN.app
+
+      - name: Device tests
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: node packages/react-native/scripts/device-tests.mts --platform=ios --device="$UDID" --app=org.reactjs.native.example.EvoluRN --url=evolurn://native-tests --fixtures="$RUNNER_TEMP/fixtures"
+
+      # Only when a step failed, each command tolerating its own failure.
+      - name: Diagnostics
+        if: failure()
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/simulator.png" || true
+          xcrun simctl appinfo "$UDID" org.reactjs.native.example.EvoluRN || true
+          xcrun simctl spawn "$UDID" launchctl list | grep UIKitApplication || true
+          xcrun simctl spawn "$UDID" log show --last 15m --style compact --predicate 'process == "EvoluRN" OR subsystem == "com.facebook.react.log"' | tail -n 300 || true
+          # What opening the URL and launching the app went through.
+          xcrun simctl spawn "$UDID" log show --last 15m --style compact --predicate '(process == "SpringBoard" OR process == "runningboardd" OR process == "lsd" OR process == "launchd") AND (eventMessage CONTAINS[c] "evolurn" OR eventMessage CONTAINS[c] "org.reactjs.native.example.EvoluRN")' | tail -n 200 || true
+          xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate 'process == "SpringBoard"' | tail -n 100 || true
+          ls -lt ~/Library/Logs/DiagnosticReports | head -20 || true
+          # The job's own, since a job takes at most 90 minutes.
+          find ~/Library/Logs/DiagnosticReports -name '*.ips' -mmin -90 -exec sh -c 'echo "## $1"; head -n 1 "$1"' _ {} \; || true
+
+      # The screenshot shows, for example, a dialog that kept the app from
+      # starting.
+      - name: Upload the simulator's screenshot
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-simulator-${{ github.job }}${{ matrix.linkage && format('-{0}', matrix.linkage) || '' }}
+          path: ${{ runner.temp }}/simulator.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+  react-native-cli-android-app:
+    name: React Native Android app (without Expo)
+    if: inputs.without-expo && !inputs.macos-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Cache source archives
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # adb and the emulator go on the PATH, for the later steps and the
+      # driver. avdmanager and the emulator look for AVDs in different places
+      # unless ANDROID_AVD_HOME names one.
+      - name: Install React Native's NDK, the platform tools and the emulator
+        run: |
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.1.12297006" platform-tools emulator "system-images;android-36;google_apis;x86_64"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/avd"
+          echo "ANDROID_AVD_HOME=$RUNNER_TEMP/avd" >> "$GITHUB_ENV"
+
+      - name: Start the emulator
+        run: |
+          echo no | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd --name evolu --package "system-images;android-36;google_apis;x86_64" --device pixel_6
+          avds=$(emulator -list-avds)
+          if [ "$avds" != evolu ]; then
+            echo "The emulator lists these AVDs, not just evolu: $avds"
+            exit 1
+          fi
+          nohup emulator -avd evolu -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+
+      - name: Vendor
+        run: node packages/react-native/scripts/vendor-native.mts
+
+      - name: Write the fixtures
+        run: node packages/react-native/scripts/device-tests.mts --write-fixtures="$RUNNER_TEMP/fixtures"
+
+      # React Native's Gradle plugins, the template and Evolu's library allow
+      # the configuration cache.
+      - name: Build
+        working-directory: examples/react-native/android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 --configuration-cache --console=plain
+
+      - name: Wait for the emulator
+        run: |
+          if ! timeout 600 sh -c 'adb wait-for-device && until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 2; done'; then
+            cat "$RUNNER_TEMP/emulator.log"
+            exit 1
+          fi
+
+      - name: Install the app
+        run: adb install examples/react-native/android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Device tests
+        run: node packages/react-native/scripts/device-tests.mts --platform=android --device=emulator-5554 --app=com.evolurn --url=evolurn://native-tests --fixtures="$RUNNER_TEMP/fixtures"
+
+      # Only when a step failed, each command tolerating its own failure.
+      - name: Diagnostics
+        if: failure()
+        run: |
+          adb logcat -d | tail -n 500 || true
+          cat "$RUNNER_TEMP/emulator.log" || true

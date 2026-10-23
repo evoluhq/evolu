@@ -31,6 +31,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import {
+  checkObjects,
   compareManifests,
   crossCompile,
   generateNative,
@@ -602,7 +603,130 @@ describe("crossCompile", () => {
   });
 });
 
+describe("checkObjects", () => {
+  it("passes the objects of an app's Evolu pod: the C's evolu_ globals, the adapter's C++, the TurboModule's class, and the ObjC++ classes with their protocols and C++ of std and facebook", (t) => {
+    const toolchain = setupFakeToolchain(t);
+    const native = setupNative(t);
+    const objects = setupPodObjects(t);
+
+    assertEqual(
+      checkObjects({
+        packageDirectory: native.packageDirectory,
+        objectsDirectory: objects.directory,
+        env: toolchain.env,
+      }),
+      { objects: 9, definedGlobals: 4, adapterSymbols: 22 },
+    );
+  });
+
+  it("passes the version object Xcode compiles for a framework pod, defining the pod's version symbols", (t) => {
+    const toolchain = setupFakeToolchain(t);
+    const native = setupNative(t);
+    const objects = setupPodObjects(t, {
+      "EvoluReactNative_vers.o": [
+        "EvoluReactNativeVersionNumber S 0 0",
+        "EvoluReactNativeVersionString S 0 0",
+      ],
+    });
+
+    assertEqual(
+      checkObjects({
+        packageDirectory: native.packageDirectory,
+        objectsDirectory: objects.directory,
+        env: toolchain.env,
+      }),
+      { objects: 10, definedGlobals: 4, adapterSymbols: 24 },
+    );
+  });
+
+  it("allows the EvoluSqlite class only in the TurboModule's object, and an ObjC class only in its own, refusing what else isn't Evolu's", (t) => {
+    const toolchain = setupFakeToolchain(t);
+    const native = setupNative(t);
+    const objects = setupPodObjects(t, {
+      "EvoluSqliteBinding.o": [
+        "_ZN5evolu13createBindingEv T 0 0",
+        "_ZN11EvoluSqlite13createBindingERN8facebook3jsi7RuntimeE T 0 0",
+      ],
+      "EvoluApp.o": [
+        "OBJC_CLASS_$_EvoluApp S 0 0",
+        "OBJC_CLASS_$_EvoluSqliteProvider S 0 0",
+        "_ZTV11EvoluSqlite S 0 0",
+        "OBJC_CLASS_$_Other S 0 0",
+        "sqlite3_open U",
+      ],
+      "EvoluSqlite.o": [
+        "_ZN11EvoluSqliteD2Ev T 0 0",
+        "_ZN12EvoluSqlitex1fEv T 0 0",
+        "OBJC_CLASS_$_EvoluSqlite S 0 0",
+        "evolu_test_hook D 0 0",
+      ],
+      "evolu_codec.o": [
+        "evolu_codec_open T 0 0",
+        "helper T 0 0",
+        "evolu_test_hook D 0 0",
+      ],
+      "EvoluReactNative-dummy.o": [
+        "OBJC_CLASS_$_PodsDummy_EvoluReactNative S 0 0",
+        "OBJC_CLASS_$_PodsDummy_Other S 0 0",
+      ],
+      "EvoluReactNative_vers.o": [
+        "EvoluReactNativeVersionNumber S 0 0",
+        "sqlite3_open T 0 0",
+      ],
+      "Other.o": ["evolu_other T 0 0"],
+    });
+    rmSync(join(objects.directory, "EvoluSqliteProvider.o"));
+
+    assertThrows(
+      () =>
+        checkObjects({
+          packageDirectory: native.packageDirectory,
+          objectsDirectory: objects.directory,
+          env: toolchain.env,
+        }),
+      (error) => {
+        assertEqual((error as Error).message.split("\n"), [
+          "EvoluApp.o defines OBJC_CLASS_$_EvoluSqliteProvider, which isn't its ObjC class, ObjC protocol metadata, a block descriptor, C++ of std or facebook, or the compiler's.",
+          "EvoluApp.o defines _ZTV11EvoluSqlite, which isn't its ObjC class, ObjC protocol metadata, a block descriptor, C++ of std or facebook, or the compiler's.",
+          "EvoluApp.o defines OBJC_CLASS_$_Other, which isn't its ObjC class, ObjC protocol metadata, a block descriptor, C++ of std or facebook, or the compiler's.",
+          "EvoluApp.o references sqlite3_open without evolu_.",
+          "EvoluReactNative-dummy.o defines OBJC_CLASS_$_PodsDummy_Other, which isn't the pod's dummy class, ObjC protocol metadata, a block descriptor, C++ of std or facebook, or the compiler's.",
+          "EvoluReactNative_vers.o defines sqlite3_open, which isn't the pod's version symbols that Xcode writes.",
+          "EvoluSqlite.o defines _ZN12EvoluSqlitex1fEv, which isn't evolu_, C++ of evolu, std, facebook or the class EvoluSqlite, or the compiler's.",
+          "EvoluSqlite.o defines OBJC_CLASS_$_EvoluSqlite, which isn't evolu_, C++ of evolu, std, facebook or the class EvoluSqlite, or the compiler's.",
+          "EvoluSqlite.o defines evolu_test_hook, a test hook.",
+          "EvoluSqliteBinding.o defines _ZN11EvoluSqlite13createBindingERN8facebook3jsi7RuntimeE, which isn't evolu_, C++ of evolu, std or facebook, or the compiler's.",
+          "Other.o isn't an object of Evolu's pod.",
+          "evolu_codec.o defines helper, which isn't evolu_.",
+          "evolu_codec.o defines evolu_test_hook, a test hook.",
+          "EvoluSqliteProvider.o, an object of Evolu's pod, is missing.",
+        ]);
+      },
+    );
+  });
+});
+
 describe("runVendorNativeCli", () => {
+  it("checks the objects of an app's Evolu pod, printing what it found", async (t) => {
+    const toolchain = setupFakeToolchain(t);
+    const native = setupNative(t);
+    const objects = setupPodObjects(t);
+    const logged: Array<string> = [];
+    const log = t.mock.method(console, "log", (line: string) => {
+      logged.push(line);
+    });
+
+    await runVendorNativeCli([`--check-objects=${objects.directory}`], {
+      packageDirectory: native.packageDirectory,
+      env: toolchain.env,
+    });
+    log.mock.restore();
+
+    assertEqual(logged, [
+      `${objects.directory}: 9 objects; the C's 4 defined globals, each evolu_, and the adapters' 22.`,
+    ]);
+  });
+
   it("cross-compiles for Android with the NDK it names and for iOS, printing each target", async (t) => {
     const toolchain = setupFakeToolchain(t);
     const native = setupNative(t);
@@ -643,11 +767,15 @@ describe("runVendorNativeCli", () => {
     for (const [args, message] of [
       [
         ["--check", "--update"],
-        "Pass at most one of --check, --update and --cross-compile.",
+        "Pass at most one of --check, --update, --cross-compile and --check-objects.",
       ],
       [
         ["--update", "--cross-compile=ios"],
-        "Pass at most one of --check, --update and --cross-compile.",
+        "Pass at most one of --check, --update, --cross-compile and --check-objects.",
+      ],
+      [
+        ["--check", "--check-objects=objects"],
+        "Pass at most one of --check, --update, --cross-compile and --check-objects.",
       ],
       [["--cross-compile=windows"], "--cross-compile takes android or ios."],
       [
@@ -968,6 +1096,72 @@ const setNamedSymbols = (toolchain: FakeToolchain): void => {
     "fstat U",
     "__emutls_get_address U",
   ]);
+};
+
+/**
+ * The objects Xcode compiles for Evolu's pod in a new directory, holding the
+ * llvm-nm -P lines of each, which the fake llvm-nm prints, with `overrides` in
+ * place of an object's lines or as an object of their own: the units of
+ * {@link setupNative}'s native.json, the adapter, the TurboModule, the two
+ * ObjC++ classes and the pod's dummy class, which CocoaPods generates.
+ */
+const setupPodObjects = (
+  t: TestContext,
+  overrides: Readonly<Record<string, ReadonlyArray<string>>> = {},
+) => {
+  const directory = mkdtempSync(join(tmpdir(), "evolu-react-native-pod-"));
+  t.after(() => {
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const objects: Readonly<Record<string, ReadonlyArray<string>>> = {
+    "aes_ct.o": ["evolu_br_aes_ct_init T 0 0", "memcpy U"],
+    "evolu_codec.o": ["evolu_codec_open T 0 0", "evolu_sqlite3_open U"],
+    "evolu_database.o": ["evolu_database_open T 0 0"],
+    "sqlite3.o": ["evolu_sqlite3_open T 0 0", "fstat U"],
+    "EvoluSqliteBinding.o": [
+      "_ZN5evolu13createBindingERN8facebook3jsi7RuntimeE T 0 0",
+      "_ZNSt3__16vectorIiNS_9allocatorIiEEE9push_backEOi T 0 0",
+      "_ZNR8facebook3jsi6Object8getArrayERNS0_8IRuntimeE T 0 0",
+      "evolu_database_open U",
+    ],
+    // The TurboModule's own class, global, as the generated provider needs.
+    "EvoluSqlite.o": [
+      "_ZN11EvoluSqliteC2ENSt3__110shared_ptrIN8facebook5react12CallInvokerEEE T 0 0",
+      "_ZN11EvoluSqliteD2Ev T 0 0",
+      "_ZTV11EvoluSqlite S 0 0",
+      "_ZTI11EvoluSqlite S 0 0",
+      "_ZTS11EvoluSqlite S 0 0",
+      "_ZN8facebook5react24NativeEvoluSqliteCxxSpecI11EvoluSqliteE11kModuleNameE S 0 0",
+      "__clang_call_terminate T 0 0",
+      "_ZN5evolu13createBindingERN8facebook3jsi7RuntimeERKNSt3__110shared_ptrINS_18RuntimeConnectionsEEE U",
+    ],
+    "EvoluApp.o": [
+      "OBJC_CLASS_$_EvoluApp S 0 0",
+      "OBJC_METACLASS_$_EvoluApp S 0 0",
+      "_OBJC_PROTOCOL_$_NativeEvoluAppSpec S 0 0",
+      "_OBJC_LABEL_PROTOCOL_$_NativeEvoluAppSpec S 0 0",
+      "_ZNSt3__110shared_ptrIN8facebook5react11TurboModuleEED2Ev T 0 0",
+      // The descriptor of a block, which clang emits for dispatch_async's.
+      "__block_descriptor_32_e5_v8?0l S 0 0",
+      "RCTTriggerReloadCommandListeners U",
+    ],
+    "EvoluSqliteProvider.o": [
+      "OBJC_CLASS_$_EvoluSqliteProvider S 0 0",
+      "OBJC_METACLASS_$_EvoluSqliteProvider S 0 0",
+      "_OBJC_PROTOCOL_$_RCTModuleProvider S 0 0",
+      "_ZNSt3__120__shared_ptr_emplaceI11EvoluSqliteNS_9allocatorIS1_EEED1Ev T 0 0",
+    ],
+    "EvoluReactNative-dummy.o": [
+      "OBJC_CLASS_$_PodsDummy_EvoluReactNative S 0 0",
+      "OBJC_METACLASS_$_PodsDummy_EvoluReactNative S 0 0",
+    ],
+  };
+  for (const [object, lines] of Object.entries({ ...objects, ...overrides }))
+    writeFileSync(
+      join(directory, object),
+      lines.map((line) => `_${line}\n`).join(""),
+    );
+  return { directory };
 };
 
 const byArguments = (

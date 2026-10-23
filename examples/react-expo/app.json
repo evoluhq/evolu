@@ -29,12 +29,6 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      [
-        "expo-sqlite",
-        {
-          "useSQLCipher": true
-        }
-      ],
       "expo-font"
     ],
     "experiments": {

@@ -208,6 +208,51 @@ describe("createEvoluDeps", () => {
     );
   });
 
+  it("gives the DbWorker waitForDatabaseRelease, which it waits with before it opens a persistent database", async () => {
+    const events: Array<string> = [];
+    const opened = Promise.withResolvers<void>();
+    const createSqliteDriver = setupNodeSqliteDriver();
+    using deps = createEvoluDeps({
+      reloadApp: constVoid,
+      createSqliteDriver: (name, options) => {
+        events.push(`open ${name}`);
+        opened.resolve();
+        return createSqliteDriver(name, options);
+      },
+      waitForDatabaseRelease: (name) => () => {
+        events.push(`wait ${name}`);
+        return ok();
+      },
+    });
+    await using run = createRun(deps);
+    let tenantDisposed = Promise.resolve();
+    {
+      await using evolu = await run.ok(
+        createEvolu(
+          { todo: { id: id("Todo") } },
+          {
+            appName: AppName.orThrow("release"),
+            appOwner: testAppOwner,
+            transports: [],
+          },
+        ),
+      );
+      await opened.promise;
+
+      assertEqual(events, [`wait ${evolu.name}`, `open ${evolu.name}`]);
+
+      tenantDisposed = new Promise<void>((resolve) => {
+        const unsubscribe = deps.syncState.subscribe(() => {
+          if (deps.syncState.get()?.tenants.some((t) => t.name === evolu.name))
+            return;
+          unsubscribe();
+          resolve();
+        });
+      });
+    }
+    await tenantDisposed;
+  });
+
   it("rejects a query SQLite fails and keeps the database available", async () => {
     const reportError =
       mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>();

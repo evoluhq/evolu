@@ -83,6 +83,9 @@ export interface Sqlite extends AsyncDisposable {
    *
    * Exported databases are forwarded through worker `postMessage` transfer
    * lists, which require transferable `ArrayBuffer` backing.
+   *
+   * Exporting inside a write transaction is unsupported: React Native fails,
+   * and the web would export uncommitted pages.
    */
   readonly export: () => Uint8Array<ArrayBuffer>;
 }
@@ -139,8 +142,10 @@ export type SafeSql = string & Brand<"SafeSql">;
  * serialization converts all non-finite numbers to `null`. Restricting numbers
  * to finite values preserves them across storage and query serialization.
  *
- * Note that Evolu can't support Int64 because expo-sqlite (and some others) do
- * not support it.
+ * SQLite INTEGERs beyond 2^53, which only SQL itself can produce, read as the
+ * nearest number: every Evolu driver reads INTEGER as a number, as
+ * better-sqlite3 does, and an exact Int64 would need a bigint in `SqliteValue`
+ * and in every driver at once.
  *
  * @group Values
  */
@@ -316,6 +321,9 @@ export interface SqliteDriver extends Disposable {
    *
    * Exported databases are forwarded through worker `postMessage` transfer
    * lists, which require transferable `ArrayBuffer` backing.
+   *
+   * Exporting inside a write transaction is unsupported: React Native fails,
+   * and the web would export uncommitted pages.
    */
   readonly export: () => Uint8Array<ArrayBuffer>;
 }

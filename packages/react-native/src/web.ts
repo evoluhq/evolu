@@ -1,7 +1,7 @@
 /**
  * Expo web is not supported, because Metro can't bundle Evolu's web workers.
- * Importing `@evolu/react-native/expo-sqlite` in a web build throws. For the
- * web, use `@evolu/react-web` with a web bundler such as Vite or Next.js.
+ * Importing `@evolu/react-native` in a web build throws. For the web, use
+ * `@evolu/react-web` with a web bundler such as Vite or Next.js.
  *
  * @module
  */

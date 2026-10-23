@@ -20,5 +20,10 @@
     },
     "types": ["node"]
   },
-  "include": ["**/*.ts", "**/*.mts", "../vitest.config.mts"]
+  "include": ["**/*.ts", "**/*.mts", "../vitest.config.mts"],
+  // It re-exports the types of @evolu/react-native's main entry, whose specs
+  // bring React Native's globals, such as a setTimeout that returns a number,
+  // into the whole project. test:jsdoc type-checks it with the examples that
+  // import it.
+  "exclude": ["jsdoc/test-jsdoc-react-native.mts"]
 }
