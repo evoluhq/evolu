@@ -82,6 +82,11 @@ Behavior changes:
   keys, where with the TypeScript codec it could reach plaintext but not the
   key. After a trap, no C can run to wipe them, so they stay until the instance
   ends.
+- A trap reaches the caller as the trap itself, also from a `File` or
+  `EncryptedFile` open, which threw a `SuppressedError` whose `suppressed` was
+  the trap. Disposing a database afterwards throws only the refusal of its
+  close, whose `cause` is the trap, also with statements open, and disposing
+  its `SahPool` closes the pool's handles instead of throwing.
 - A database shorter than 16 bytes fails with the raw key's error without
   deriving a legacy key.
 - The package ships `THIRD_PARTY_NOTICES.md`, with the notices that the

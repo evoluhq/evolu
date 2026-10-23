@@ -242,6 +242,8 @@
  *   with SQLITE_IOERR otherwise.
  * - Disposing a database finalizes its statements that are still open and then
  *   calls `sqlite3_close_v2`, so no deferred close keeps the VFS's files open.
+ *   On a broken instance, it throws only the close's refusal, and the open
+ *   statements refuse their own disposal.
  *
  * @module
  */
@@ -1054,8 +1056,10 @@ export const createSqliteDatabase =
           slots.delete(slot);
         });
       }
-      // Finalized before the close, so no deferred close keeps files open.
+      // Finalized before the close, so no deferred close keeps files open. On a
+      // broken instance, each finalize would throw its refusal over the close's.
       disposer.defer(() => {
+        if (deps.sqliteWasm.isBroken()) return;
         for (const statement of statements) statement[Symbol.dispose]();
       });
 

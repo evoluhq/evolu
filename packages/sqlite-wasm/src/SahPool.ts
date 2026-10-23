@@ -470,7 +470,8 @@ export interface SahPoolOptions {
  *
  * Dispose every database on the pool before the pool; disposing a pool with an
  * open file throws, because closing a handle under SQLite would corrupt its
- * state.
+ * state, unless a trap broke the instance, after which SQLite never runs
+ * again.
  */
 export const openSahPool =
   ({
@@ -1081,7 +1082,9 @@ export const openSahPool =
       ...pool,
       [Symbol.dispose]: () => {
         // A Disposable that throws is still disposed, so this checks first.
-        if (openFiles.size > 0)
+        // After a trap, SQLite never runs again, so its open files no longer
+        // keep the pool.
+        if (openFiles.size > 0 && !sqliteWasm.isBroken())
           throw new Error(
             "Cannot dispose a SahPool with an open file, because closing its handle would corrupt SQLite's state.",
           );

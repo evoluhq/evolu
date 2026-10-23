@@ -80,7 +80,10 @@ import {
   copyWasmBytes,
   writeWasmBytes,
 } from "../../../../packages/sqlite-wasm/src/Memory.ts";
-import type { SqliteShortWriteError } from "../../../../packages/sqlite-wasm/src/Database.ts";
+import {
+  createSqliteDatabase,
+  type SqliteShortWriteError,
+} from "../../../../packages/sqlite-wasm/src/Database.ts";
 import { evolu_codec_open } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import type {
   CStringPtr,
@@ -108,7 +111,11 @@ import {
   type FakeOpfsFaultHook,
 } from "./_fakeOpfs.ts";
 import type { SqliteWasm } from "../../../../packages/sqlite-wasm/src/Wasm.ts";
-import { setupDatabase, setupMemoryUsed } from "./_sqliteWasm.ts";
+import {
+  setupDatabase,
+  setupMemoryUsed,
+  trapEveryOpen,
+} from "./_sqliteWasm.ts";
 import { openSahPool } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
 
 // tester1 OPFS SyncAccessHandle Pool VFS / SAH sanity checks: the VFS is
@@ -430,6 +437,22 @@ test("disposing a pool with an open file throws and changes nothing, and disposi
   assertEqual(t.callIo(pFile, "xClose"), SQLITE_OK);
   t.pool[Symbol.dispose]();
   assertEqual(t.openFile("test", SQLITE_OPEN_READWRITE).rc, SQLITE_CANTOPEN);
+});
+
+test("disposing a pool with an open file on a broken instance closes its handles, because SQLite never runs again", async () => {
+  const t = await setupSahPool();
+  t.openFile("test", SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE);
+  trapEveryOpen(t);
+  assertThrows(
+    () => createSqliteDatabase(t)({ type: "Memory" }),
+    (thrown) => {
+      assertInstanceOf(thrown, WebAssembly.RuntimeError);
+    },
+  );
+
+  t.pool[Symbol.dispose]();
+
+  t.fake.hold(t.findSlotPath("/test"))();
 });
 
 // digest-worker.js (digest.html): legacy [0, 0] digests stay valid and a bad

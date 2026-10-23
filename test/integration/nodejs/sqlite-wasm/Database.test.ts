@@ -3577,6 +3577,29 @@ test("a trap escaping a database call breaks the instance: it is rethrown, and e
   );
 });
 
+test("disposing a database on a broken instance throws only its close refusal also with statements open, which then refuse their own disposal", async () => {
+  const { database, ...deps } = await setupSqliteDatabase();
+  const statements = [
+    getOrThrow(database.prepare("SELECT 1")),
+    getOrThrow(database.prepare("SELECT 2")),
+  ];
+  trapEveryOpen(deps);
+  const trapped = trySync(() => createSqliteDatabase(deps)({ type: "Memory" }));
+  assertErr(trapped);
+  const trap = trapped.error;
+
+  for (const disposable of [database, ...statements])
+    assertThrows(
+      () => {
+        disposable[Symbol.dispose]();
+      },
+      (thrown) => {
+        assertInstanceOf(thrown, Error);
+        assertSame(thrown.cause, trap);
+      },
+    );
+});
+
 // evolu_codec_open rolls back a hot journal and reads the schema, so a trap
 // there breaks the instance, and only an installed function lets a trap
 // through, where a pool read that throws fails with SQLITE_IOERR_READ. So the
