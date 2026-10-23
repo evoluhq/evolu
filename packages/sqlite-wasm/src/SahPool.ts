@@ -120,9 +120,11 @@
  *
  * ## I/O errors
  *
- * - Every method catches everything and returns a result code, and records the
- *   first failure since {@link SahPool.clearFailure} as a
- *   {@link SqliteVfsFailure}. `xGetLastError` never clears it.
+ * - Every method catches everything and returns a result code. Those
+ *   {@link SqliteVfsMethod} lists record the first failure since
+ *   {@link SahPool.clearFailure} as a {@link SqliteVfsFailure}, and the others,
+ *   such as `xLock` returning SQLITE_BUSY, record none. `xGetLastError` never
+ *   clears it.
  * - Every write's returned byte count is checked, header writes included. When
  *   storage is full, Chromium off the record returns 0xFFFFFFF8 and Firefox a
  *   short count instead of throwing.

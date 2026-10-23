@@ -574,16 +574,11 @@ export interface SqliteRandomSourceError extends Typed<"SqliteRandomSourceError"
 export type SqliteVfsMethod =
   | "xOpen"
   | "xDelete"
-  | "xAccess"
-  | "xClose"
   | "xRead"
   | "xWrite"
   | "xTruncate"
   | "xSync"
-  | "xFileSize"
-  | "xLock"
-  | "xUnlock"
-  | "xCheckReservedLock";
+  | "xFileSize";
 
 /**
  * A write that stored fewer or more bytes than requested.

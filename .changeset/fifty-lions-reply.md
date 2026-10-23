@@ -107,8 +107,10 @@ API changes in `@evolu/sqlite-wasm`:
   `SqliteVfsFailure`, so a cause has a `method` only once narrowed.
   `SqliteEncryptionUnsupportedError`, whose `type` is
   `SqliteEncryptionUnsupported`, replaces `SahPoolEncryptionUnsupportedError`,
-  whose `type` was `SahPoolEncryptionUnsupported`. The pool's `xFileControl`
-  no longer records failures, so `SqliteVfsMethod` no longer includes it.
+  whose `type` was `SahPoolEncryptionUnsupported`. `SqliteVfsMethod` lists
+  only the methods whose failures the pool records: no longer `xFileControl`,
+  which records none now, nor `xAccess`, `xClose`, `xLock`, `xUnlock` and
+  `xCheckReservedLock`, which never recorded any.
 
 ```ts
 import { assertType, type EncryptionKey } from "@evolu/common";
@@ -155,6 +157,11 @@ const _failedMethod = (error: SqliteError): SqliteVfsMethod | null => {
 
 // @ts-expect-error The pool no longer records xFileControl failures.
 const _fileControl: SqliteVfsMethod = "xFileControl";
+// The methods whose failures the pool records.
+assertType<
+  SqliteVfsMethod,
+  "xOpen" | "xDelete" | "xRead" | "xWrite" | "xTruncate" | "xSync" | "xFileSize"
+>();
 
 assertType<SqliteError["cause"], SqliteFailure | null>();
 assertType<SqliteFailure, SqliteVfsFailure | SqliteCodecFailure>();
