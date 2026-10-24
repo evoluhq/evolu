@@ -4,7 +4,7 @@
  * @module
  */
 
-import { appendToArray, type NonEmptyReadonlyArray } from "./Array.ts";
+import type { NonEmptyArray, NonEmptyReadonlyArray } from "./Array.ts";
 import { disposable } from "./Function.ts";
 
 /**
@@ -26,7 +26,9 @@ export const createMicrotaskBatch = <T>(
   onFlush: (items: NonEmptyReadonlyArray<T>) => void,
 ): MicrotaskBatch<T> => {
   using disposer = new DisposableStack();
-  let queue: NonEmptyReadonlyArray<T> | null = null;
+  // Appended in place, so a batch costs O(n). The queue is private until
+  // flushQueuedItems hands it over, after which it's never mutated again.
+  let queue: NonEmptyArray<T> | null = null;
 
   disposer.defer(() => {
     queue = null;
@@ -48,7 +50,7 @@ export const createMicrotaskBatch = <T>(
           return;
         }
 
-        queue = appendToArray(queue, item);
+        queue.push(item);
       },
 
       flushNow: () => {
