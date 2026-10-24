@@ -14,12 +14,20 @@ constant time with the CPU's AES and SHA-512 instructions where it has them.
 The package no longer needs Expo, so React Native apps without Expo are
 supported, with the same `createEvoluDeps`.
 
+Sync now encrypts and decrypts changes in the same native code, which
+`createEvoluDeps` passes to Evolu's workers as `@evolu/common`'s new
+`XChaCha20Poly1305`, instead of in JavaScript with noble-ciphers. A fresh
+database receiving 10,000 changes took 20% less time on the iOS simulator and
+24% to 29% less on an arm64 Android emulator than with noble-ciphers.
+
 What changes for an app:
 
 - It needs a native rebuild with React Native 0.88 or later, in Expo SDK 58 or
   later, on Hermes, React Native's default engine. Expo Go can't load Evolu's
   native code, so Expo apps use a development build. iOS builds with CocoaPods;
   SwiftPM support comes later.
+- It needs `@evolu/common` 8.24 or later, whose workers take that native
+  encryption. An older one would keep decrypting with noble-ciphers.
 - Bump the version that over-the-air updates target, such as Expo's runtime
   version, and don't ship this release as an over-the-air update to older
   native builds. On a build without Evolu's module it fails at startup, and an
