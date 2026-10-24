@@ -1,5 +1,15 @@
 # @evolu/oxlint-config
 
+## 0.3.4
+
+### Patch Changes
+
+- 7cc5d91: Added links to bundled source, API documentation, and tests
+
+  Package READMEs now point to the source, JSDoc documentation, usage examples,
+  and tests included in the installed version. They also clarify that application
+  imports use public package exports, since tests may import internal helpers.
+
 ## 0.3.3
 
 ### Patch Changes

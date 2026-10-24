@@ -1,5 +1,20 @@
 # @evolu/vitest
 
+## 2.0.4
+
+### Patch Changes
+
+- 7cc5d91: Added links to bundled source, API documentation, and tests
+
+  Package READMEs now point to the source, JSDoc documentation, usage examples,
+  and tests included in the installed version. They also clarify that application
+  imports use public package exports, since tests may import internal helpers.
+
+- Updated dependencies [bc4578a]
+- Updated dependencies [7cc5d91]
+- Updated dependencies [be5afcb]
+  - @evolu/common@8.23.3
+
 ## 2.0.3
 
 ### Patch Changes
