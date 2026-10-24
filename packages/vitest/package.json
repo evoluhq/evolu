@@ -43,7 +43,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "@evolu/common": "^8.23.2",
