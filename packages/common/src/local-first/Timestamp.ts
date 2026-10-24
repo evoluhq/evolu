@@ -613,6 +613,14 @@ export interface TimestampBytesError extends TypeError<"TimestampBytes"> {
 
 export const timestampBytesLength = /*#__PURE__*/ NonNegativeInt.orThrow(16);
 
+// Consecutive timestamps mostly share a NodeId, so both conversions reuse the
+// last NodeId and its bytes, which are never handed out. Zero bytes are the
+// minimum NodeId.
+let lastNodeId = minNodeId;
+let lastNodeIdBytes = /*#__PURE__*/ new globalThis.Uint8Array(
+  nodeIdBytesLength,
+) as NodeIdBytes;
+
 export const timestampToTimestampBytes = (
   timestamp: Timestamp,
 ): TimestampBytes => {
@@ -621,21 +629,26 @@ export const timestampToTimestampBytes = (
   // 6 bytes for millis, 2 bytes for counter, 8 bytes for nodeId.
   const value = new globalThis.Uint8Array(16);
 
-  // Encode `millis` into the first 6 bytes.
-  const millisBigInt = BigInt(millis);
-  value[0] = Number((millisBigInt >> 40n) & 0xffn);
-  value[1] = Number((millisBigInt >> 32n) & 0xffn);
-  value[2] = Number((millisBigInt >> 24n) & 0xffn);
-  value[3] = Number((millisBigInt >> 16n) & 0xffn);
-  value[4] = Number((millisBigInt >> 8n) & 0xffn);
-  value[5] = Number(millisBigInt & 0xffn);
+  // Encode `millis` into the first 6 bytes. Bitwise operators keep only the
+  // low 32 bits, so the high 16 bits come from a division.
+  const millisHigh = Math.floor(millis / 2 ** 32);
+  value[0] = (millisHigh >> 8) & 0xff;
+  value[1] = millisHigh & 0xff;
+  value[2] = (millis >>> 24) & 0xff;
+  value[3] = (millis >>> 16) & 0xff;
+  value[4] = (millis >>> 8) & 0xff;
+  value[5] = millis & 0xff;
 
   // Encode `counter` into the next 2 bytes.
   value[6] = (counter >> 8) & 0xff;
   value[7] = counter & 0xff;
 
   // Encode `nodeId` into the next 8 bytes.
-  value.set(nodeIdToNodeIdBytes(nodeId), 8);
+  if (nodeId !== lastNodeId) {
+    lastNodeIdBytes = nodeIdToNodeIdBytes(nodeId);
+    lastNodeId = nodeId;
+  }
+  value.set(lastNodeIdBytes, 8);
 
   return value as TimestampBytes;
 };
@@ -643,24 +656,34 @@ export const timestampToTimestampBytes = (
 export const timestampBytesToTimestamp = (
   timestamp: TimestampBytes,
 ): Timestamp => {
-  // Decode `millis` from the first 6 bytes.
+  // Decode `millis` from the first 6 bytes. A shift makes a signed 32-bit
+  // integer, so `>>> 0` reads the low 32 bits as unsigned.
   const millis =
-    (BigInt(timestamp[0]) << 40n) |
-    (BigInt(timestamp[1]) << 32n) |
-    (BigInt(timestamp[2]) << 24n) |
-    (BigInt(timestamp[3]) << 16n) |
-    (BigInt(timestamp[4]) << 8n) |
-    BigInt(timestamp[5]);
+    ((timestamp[0] << 8) | timestamp[1]) * 2 ** 32 +
+    (((timestamp[2] << 24) |
+      (timestamp[3] << 16) |
+      (timestamp[4] << 8) |
+      timestamp[5]) >>>
+      0);
 
   // Decode `counter` from the next 2 bytes.
   const counter = (timestamp[6] << 8) | timestamp[7];
 
   // Decode `nodeId` from the last 8 bytes.
-  const nodeId = nodeIdBytesToNodeId(timestamp.subarray(8) as NodeIdBytes);
+  let i = 0;
+  while (i < nodeIdBytesLength && timestamp[8 + i] === lastNodeIdBytes[i]) i++;
+  if (i < nodeIdBytesLength) {
+    // A copy, because the caller can change its bytes. The slice of a Node.js
+    // Buffer, which SQLite drivers return, shares them.
+    lastNodeIdBytes = new globalThis.Uint8Array(
+      timestamp.subarray(8, 16),
+    ) as NodeIdBytes;
+    lastNodeId = nodeIdBytesToNodeId(lastNodeIdBytes);
+  }
 
   // TimestampBytes excludes the millis reserved for infinity, and any 2 counter
   // bytes and 8 NodeId bytes are valid.
-  return { millis: Number(millis), counter, nodeId } as Timestamp;
+  return { millis, counter, nodeId: lastNodeId } as Timestamp;
 };
 
 /**

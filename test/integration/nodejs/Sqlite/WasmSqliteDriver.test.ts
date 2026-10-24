@@ -46,6 +46,10 @@ import {
 } from "../sqlite-wasm/_sqliteJs.ts";
 import { setupSqliteWasm } from "../sqlite-wasm/_sqliteWasm.ts";
 import { describeSqliteDriverIterate } from "./_iterate.ts";
+import {
+  describeSqliteDriverPrepare,
+  setupSqliteAndDriver,
+} from "./_prepare.ts";
 
 const testName = Name.orThrow("Test");
 // The pool directory of testName.
@@ -70,6 +74,7 @@ const setupDriver = async (fake: FakeOpfs) => {
   const createSqliteDriver = createWasmSqliteDriver(deps);
   return {
     run,
+    createSqliteDriver,
     open: (options?: SqliteDriverOptions) =>
       run.ok(createSqliteDriver(testName, options)),
     openAbortable: (options?: SqliteDriverOptions) =>
@@ -269,6 +274,26 @@ test("the wait ends once another context releases its pool file, and the databas
   using _driver = await setup.open();
 });
 
+test("deleteDatabase finalizes the statements a Sqlite keeps, which the Sqlite then disposes", async () => {
+  const fake = setupFakeOpfs();
+  const { createSqliteDriver } = await setupDriver(fake);
+  const { run, sqlite, driver } = await setupSqliteAndDriver(
+    createSqliteDriver,
+    testName,
+  );
+  await using _run = run;
+  sqlite.prepared`select 1;`;
+
+  driver.deleteDatabase();
+  await sqlite[Symbol.asyncDispose]();
+
+  assertEqual(await getPoolPaths(fake, testDirectory), []);
+});
+
 describeSqliteDriverIterate(async () =>
+  (await setupDriver(setupFakeOpfs())).open({ mode: "memory" }),
+);
+
+describeSqliteDriverPrepare(async () =>
   (await setupDriver(setupFakeOpfs())).open({ mode: "memory" }),
 );

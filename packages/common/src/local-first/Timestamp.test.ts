@@ -1,4 +1,5 @@
-import { describe, it, test } from "node:test";
+import { Buffer } from "node:buffer";
+import { describe, it, mock, test } from "node:test";
 import {
   assertEqual,
   assertErr,
@@ -8,6 +9,7 @@ import {
   assertThrowsInstanceOf,
   assertTrue,
 } from "../Assert.ts";
+import { bytesToHex } from "../Bytes.ts";
 import { increment } from "../Number.ts";
 import { orderNumber } from "../Order.ts";
 import type { Result } from "../Result.ts";
@@ -657,6 +659,126 @@ describe("TimestampBytes", () => {
       counter: maxCounter,
       nodeId: maxNodeId,
     });
+  });
+
+  it("writes millis, counter, and NodeId as big-endian bytes", () => {
+    const nodeId = NodeId.orThrow("0123456789abcdef");
+
+    for (const millis of [
+      0,
+      0xff,
+      0x100,
+      2 ** 31 - 1,
+      2 ** 31,
+      2 ** 32 - 1,
+      2 ** 32,
+      2 ** 40 + 1,
+      maxMillis,
+    ]) {
+      const timestamp = createTimestamp({
+        millis: Millis.orThrow(millis),
+        counter: Counter.orThrow(0x1234),
+        nodeId,
+      });
+      const bytes = timestampToTimestampBytes(timestamp);
+
+      assertEqual(
+        bytesToHex(bytes),
+        `${millis.toString(16).padStart(12, "0")}1234${nodeId}`,
+      );
+      assertEqual(timestampBytesToTimestamp(bytes), timestamp);
+    }
+  });
+
+  it("converts without BigInt", () => {
+    const bigInt = mock.method(globalThis, "BigInt", () => {
+      throw new Error("BigInt must not be called.");
+    });
+
+    try {
+      const timestamp = createTimestamp({
+        millis: maxMillis,
+        counter: maxCounter,
+        nodeId: maxNodeId,
+      });
+      assertEqual(
+        timestampBytesToTimestamp(timestampToTimestampBytes(timestamp)),
+        timestamp,
+      );
+      assertEqual(bigInt.mock.callCount(), 0);
+    } finally {
+      bigInt.mock.restore();
+    }
+  });
+
+  it("converts the NodeId of each timestamp", () => {
+    const a = NodeId.orThrow("0123456789abcdef");
+    const b = NodeId.orThrow("fedcba9876543210");
+
+    for (const nodeId of [a, a, b, a, b, b]) {
+      const bytes = timestampToTimestampBytes(createTimestamp({ nodeId }));
+      assertEqual(bytesToHex(bytes.subarray(8)), nodeId);
+      assertEqual(timestampBytesToTimestamp(bytes).nodeId, nodeId);
+    }
+
+    for (const bytes of [new Uint8Array(16), Buffer.alloc(16)]) {
+      // The last conversion is of another NodeId, so decoding stores this one.
+      timestampToTimestampBytes(createTimestamp({ nodeId: b }));
+      bytes.set(nodeIdToNodeIdBytes(a), 8);
+      assertEqual(
+        timestampBytesToTimestamp(TimestampBytes.orThrow(bytes)).nodeId,
+        a,
+      );
+
+      // Bytes changed after a conversion convert to their new NodeId, also
+      // those of a Node.js Buffer, whose slice shares them.
+      bytes.set(nodeIdToNodeIdBytes(b), 8);
+      assertEqual(
+        timestampBytesToTimestamp(TimestampBytes.orThrow(bytes)).nodeId,
+        b,
+      );
+      assertEqual(
+        bytesToHex(
+          timestampToTimestampBytes(createTimestamp({ nodeId: a })).subarray(8),
+        ),
+        a,
+      );
+    }
+  });
+
+  it("decodes a NodeId that differs from the last one in a single byte", () => {
+    const nodeIdBytes = nodeIdToNodeIdBytes(NodeId.orThrow("0123456789abcdef"));
+    for (let i = 0; i < nodeIdBytes.length; i++) {
+      const changed = new Uint8Array(nodeIdBytes);
+      changed[i] ^= 0xff;
+      for (const expected of [nodeIdBytes, changed, nodeIdBytes]) {
+        const bytes = new Uint8Array(16);
+        bytes.set(expected, 8);
+        assertEqual(
+          timestampBytesToTimestamp(TimestampBytes.orThrow(bytes)).nodeId,
+          bytesToHex(expected),
+        );
+      }
+    }
+  });
+
+  it("decodes the NodeId from the 8 bytes after the counter only", () => {
+    const a = NodeId.orThrow("0123456789abcdef");
+    // The last conversion is of another NodeId, so decoding stores this one.
+    timestampToTimestampBytes(
+      createTimestamp({ nodeId: NodeId.orThrow("fedcba9876543210") }),
+    );
+
+    // A wrongly typed value, longer than TimestampBytes.
+    const longer = new Uint8Array(17);
+    longer.set(nodeIdToNodeIdBytes(a), 8);
+    assertEqual(timestampBytesToTimestamp(longer as TimestampBytes).nodeId, a);
+
+    const bytes = new Uint8Array(16);
+    bytes.set(nodeIdToNodeIdBytes(a), 8);
+    const timestamp = timestampBytesToTimestamp(TimestampBytes.orThrow(bytes));
+    assertEqual(timestamp.nodeId, a);
+    assertEqual(timestampToTimestampBytes(timestamp), bytes);
   });
 });
 

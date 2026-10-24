@@ -26,9 +26,14 @@ import {
 import type { RandomLibDep } from "../../../packages/common/src/Random.ts";
 import type {
   CreateSqliteDriverDep,
+  Sqlite,
   SqliteDep,
+  SqliteExecResult,
+  SqliteQuery,
+  SqliteRow,
+  SqlTemplateParam,
 } from "../../../packages/common/src/Sqlite.ts";
-import { testSetupSqlite } from "../../../packages/common/src/Sqlite.ts";
+import { sql, testSetupSqlite } from "../../../packages/common/src/Sqlite.ts";
 import type { DisposableRun } from "../../../packages/common/src/Task.ts";
 import { maxMillis, type Millis } from "../../../packages/common/src/Time.ts";
 
@@ -130,6 +135,30 @@ export const testCreateSqliteDep: CreateSqliteDriverDep = {
 
 export const setupSqlite: () => ReturnType<typeof testSetupSqlite> = () =>
   testSetupSqlite(testCreateSqliteDep);
+
+/**
+ * Wraps a {@link Sqlite} so that `intercept` gets each query that `exec` or
+ * `prepared` runs, with `run` that runs it, and returns what `intercept`
+ * returns.
+ */
+export const setupInterceptedSqlite = (
+  sqlite: Sqlite,
+  intercept: (
+    query: SqliteQuery,
+    run: () => SqliteExecResult,
+  ) => SqliteExecResult,
+): Sqlite => ({
+  ...sqlite,
+  exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) =>
+    intercept(query, () => sqlite.exec(query)) as SqliteExecResult<R>,
+  prepared: <R extends SqliteRow = SqliteRow>(
+    strings: TemplateStringsArray,
+    ...parameters: Array<SqlTemplateParam>
+  ) =>
+    intercept(sql(strings, ...parameters), () =>
+      sqlite.prepared(strings, ...parameters),
+    ) as SqliteExecResult<R>,
+});
 
 export interface TestSqliteAndRelayStorageSetup extends AsyncDisposable {
   readonly run: DisposableRun<StorageDep>;

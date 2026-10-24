@@ -41,10 +41,7 @@ import { computeBalancedBuckets } from "../../../../../packages/common/src/Numbe
 import type { RandomNumber } from "../../../../../packages/common/src/Random.ts";
 import { createRandom } from "../../../../../packages/common/src/Random.ts";
 import { getOrThrow, ok } from "../../../../../packages/common/src/Result.ts";
-import type {
-  Sqlite,
-  SqliteQuery,
-} from "../../../../../packages/common/src/Sqlite.ts";
+import type { SqliteQuery } from "../../../../../packages/common/src/Sqlite.ts";
 import { sql } from "../../../../../packages/common/src/Sqlite.ts";
 import { testCreateDeps } from "../../../../../packages/common/src/Task.ts";
 import type { Millis } from "../../../../../packages/common/src/Time.ts";
@@ -54,7 +51,11 @@ import {
   PositiveInt,
   zeroNonNegativeInt,
 } from "../../../../../packages/common/src/Type.ts";
-import { setupSqlite, testCreateTimestampBytesFixtures } from "../../_deps.ts";
+import {
+  setupInterceptedSqlite,
+  setupSqlite,
+  testCreateTimestampBytesFixtures,
+} from "../../_deps.ts";
 
 const testAppOwner2 = createAppOwner(
   createOwnerSecret(testCreateDeps({ seed: "testAppOwner2" })),
@@ -258,15 +259,12 @@ test("insertTimestamp updates use primary-key query plans", async () => {
   const randomValues = [0.9, 0.9, 0.9, 0.9, 0.1, 0.9] as Array<RandomNumber>;
   const storage = createBaseSqliteStorage({
     random: { next: () => randomValues.shift() ?? (0.9 as RandomNumber) },
-    sqlite: {
-      ...sqlite,
-      exec: (query) => {
-        if (query.sql.includes("update evolu_timestamp")) {
-          updateQueries.push(query);
-        }
-        return sqlite.exec(query);
-      },
-    },
+    sqlite: setupInterceptedSqlite(sqlite, (query, run) => {
+      if (query.sql.includes("update evolu_timestamp")) {
+        updateQueries.push(query);
+      }
+      return run();
+    }),
   });
   const timestamp = (millis: number) =>
     timestampToTimestampBytes(createTimestamp({ millis: millis as Millis }));
@@ -329,15 +327,12 @@ test("insertTimestamp append uses primary-key query plans", async () => {
   const randomValues = [0.9, 0.1, 0.9] as Array<RandomNumber>;
   const storage = createBaseSqliteStorage({
     random: { next: () => randomValues.shift() ?? (0.9 as RandomNumber) },
-    sqlite: {
-      ...sqlite,
-      exec: (query) => {
-        if (query.sql.includes("fc(b, cl, pt, nt, ih1, ih2, ic)")) {
-          appendQueries.push(query);
-        }
-        return sqlite.exec(query);
-      },
-    },
+    sqlite: setupInterceptedSqlite(sqlite, (query, run) => {
+      if (query.sql.includes("fc(b, cl, pt, nt, ih1, ih2, ic)")) {
+        appendQueries.push(query);
+      }
+      return run();
+    }),
   });
   const timestamp = (millis: number) =>
     timestampToTimestampBytes(createTimestamp({ millis: millis as Millis }));
@@ -511,13 +506,10 @@ test("getExistingTimestamps looks up each timestamp by primary key", async () =>
   const queries: Array<SqliteQuery> = [];
   const storage = createBaseSqliteStorage({
     random: createRandom(),
-    sqlite: {
-      ...sqlite,
-      exec: (query) => {
-        if (query.sql.includes("split_timestamps")) queries.push(query);
-        return sqlite.exec(query);
-      },
-    },
+    sqlite: setupInterceptedSqlite(sqlite, (query, run) => {
+      if (query.sql.includes("split_timestamps")) queries.push(query);
+      return run();
+    }),
   });
   storage.getExistingTimestamps(testAppOwnerIdBytes, [testTimestampsAsc[0]]);
 
@@ -613,12 +605,11 @@ test("iterate reads no timestamp past the one the callback stops at", async () =
   let rowsRead = 0;
   const storage = createBaseSqliteStorage({
     sqlite: {
-      ...sqlite,
-      exec: ((query: SqliteQuery) => {
-        const result = sqlite.exec(query);
+      ...setupInterceptedSqlite(sqlite, (_query, run) => {
+        const result = run();
         rowsRead += result.rows.length;
         return result;
-      }) as Sqlite["exec"],
+      }),
       iterate: (query, onRow) => {
         sqlite.iterate(query, (row) => {
           rowsRead++;

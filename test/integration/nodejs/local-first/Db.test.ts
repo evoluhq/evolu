@@ -293,12 +293,25 @@ const setupDb = async ({
 
   const driver = disposer.use(await run.ok(suppliedDriver(name)));
 
-  // Tests need a stable handle to the lazily created SQLite driver.
+  // Tests need a stable handle to the lazily created SQLite driver. A query
+  // that a prepared statement runs reaches onExec with the prepare option.
   const createSqliteDriver: CreateSqliteDriver = (_name, _options) => () =>
     ok({
       exec: (query) => {
         onExec?.(query);
         return driver.exec(query);
+      },
+      prepare: (sql) => {
+        const statement = driver.prepare(sql);
+        return {
+          exec: (parameters) => {
+            onExec?.({ sql, parameters, options: { prepare: true } });
+            return statement.exec(parameters);
+          },
+          [Symbol.dispose]: () => {
+            statement[Symbol.dispose]();
+          },
+        };
       },
       iterate: (query, onRow) => {
         onExec?.(query);
@@ -1403,8 +1416,15 @@ describe("query and mutation flow", () => {
     });
   });
 
-  it("local-only delete only removes the matching owner row", async () => {
-    await using setup = await setupDbWorker();
+  it("local-only delete only removes the matching owner row, on a prepared statement", async () => {
+    const deletes: Array<SqliteQuery> = [];
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        if (query.sql.startsWith('delete from "_localTable"'))
+          deletes.push(query);
+      },
+    });
+    await using setup = await setupDbWorker({ dbSetup });
 
     const rowId = setup.createId();
 
@@ -1485,6 +1505,10 @@ describe("query and mutation flow", () => {
         order by "ownerId";
       `).rows,
       [{ id: rowId, ownerId: testDbAppOwner2.id, value: "second owner" }],
+    );
+    assertEqual(
+      deletes.map((query) => query.options),
+      [{ prepare: true }],
     );
   });
 
@@ -1797,11 +1821,13 @@ describe("query and mutation flow", () => {
     );
   });
 
-  it("query runs the queries of a request in one read transaction", async () => {
+  it("query runs the queries of a request in one read transaction, on prepared begin and commit statements", async () => {
     const statements: Array<string> = [];
     await using dbSetup = await setupDb({
       onExec: (query) => {
-        statements.push(query.sql);
+        statements.push(
+          query.options?.prepare === true ? `prepared ${query.sql}` : query.sql,
+        );
       },
     });
     await using setup = await setupDbWorker({ dbSetup });
@@ -1817,10 +1843,10 @@ describe("query and mutation flow", () => {
     });
 
     assertEqual(statements, [
-      "begin;",
+      "prepared begin;",
       sqliteQueryStringToSqliteQuery(testTableQuery).sql,
       sqliteQueryStringToSqliteQuery(localTableQuery).sql,
-      "commit;",
+      "prepared commit;",
     ]);
     assertLength(outputs, 1);
     assertSame(outputs[0].type, "OnQueuedResponse");
@@ -1831,6 +1857,48 @@ describe("query and mutation flow", () => {
         [localTableQuery, ok([])],
       ]),
     });
+  });
+
+  it("a mutation runs every statement on a kept statement", async () => {
+    let isRecording = false;
+    const unprepared: Array<string> = [];
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        if (isRecording && query.options?.prepare !== true)
+          unprepared.push(query.sql);
+      },
+    });
+    await using setup = await setupDbWorker({ dbSetup });
+
+    isRecording = true;
+    await postRequest(setup, {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: {
+        type: "Mutate",
+        changes: [
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: "synced" },
+            isInsert: true,
+            isDelete: null,
+          }),
+          createMutationChange({
+            table: "_localTable",
+            id: setup.createId(),
+            values: { value: "local" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ],
+        onCompleteIds: [],
+        subscribedQueries: emptySet,
+      },
+    });
+    isRecording = false;
+
+    assertEqual(unprepared, []);
   });
 
   it("export returns current state", async () => {
@@ -3067,6 +3135,86 @@ describe("sync message flow", () => {
       didWriteMessages: false,
       type: "Response",
     });
+  });
+
+  it("ApplySyncMessage reads changes to send and reads and updates owner usage with prepared statements", async () => {
+    const queries: Array<SqliteQuery> = [];
+    let captureQueries = false;
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        if (captureQueries) queries.push(query);
+      },
+    });
+    await using setup = await setupDbWorker({ dbSetup });
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        createMutationChange({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "local" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      ]),
+    );
+    await using relay = await setupSqliteAndRelayStorage();
+    await relay.run.orThrow(
+      applyProtocolMessageAsRelay(
+        createProtocolMessageFromCrdtMessages(testCreateDeps())(testAppOwner, [
+          {
+            timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+            change: DbChange.orThrow({
+              table: "testTable",
+              id: setup.createId(),
+              values: { name: "remote" },
+              isInsert: true,
+              isDelete: null,
+            }),
+          },
+        ]),
+      ),
+    );
+    const request = getQueuedSharedWorkerMessage(
+      await postRequest(setup, {
+        type: "ForSharedWorker",
+        message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+      }),
+      "CreateSyncMessages",
+    ).protocolMessagesByOwnerId.get(testAppOwner.id);
+    assertNotUndefined(request);
+    const relayResponse = await relay.run.orThrow(
+      applyProtocolMessageAsRelay(request),
+    );
+
+    captureQueries = true;
+    const { result } = getQueuedSharedWorkerMessage(
+      await postRequest(setup, {
+        type: "ForSharedWorker",
+        message: {
+          type: "ApplySyncMessage",
+          owner: testAppOwner,
+          inputMessage: relayResponse.message,
+          continues: true,
+        },
+      }),
+      "ApplySyncMessage",
+    );
+    captureQueries = false;
+    assertOk(result);
+    assertSame(result.value.type, "Response");
+
+    const changeReads = queries.filter((query) =>
+      query.sql.startsWith('select "table", "id", "column", "value"'),
+    );
+    const usageQueries = queries.filter((query) =>
+      query.sql.includes("evolu_usage"),
+    );
+    assertLength(changeReads, 1);
+    assertLength(usageQueries, 2);
+    for (const query of [...changeReads, ...usageQueries]) {
+      assertEqual(query.options, { prepare: true });
+    }
   });
 
   it("ApplySyncMessage reports a write SQLite fails and keeps serving", async () => {
@@ -6667,7 +6815,7 @@ describe("clock drift quarantine", () => {
           const timestamp = timestampToTimestampBytes(
             createTimestamp({ millis: Millis.orThrow(600000 + index) }),
           );
-          setup.sqlite.exec(sql.prepared`
+          setup.sqlite.prepared`
             insert into evolu_message_quarantine
               (
                 "ownerId",
@@ -6688,7 +6836,7 @@ describe("clock drift quarantine", () => {
                 'future',
                 ${QuarantineReason.TimestampDrift}
               );
-          `);
+          `;
         }
       });
     }

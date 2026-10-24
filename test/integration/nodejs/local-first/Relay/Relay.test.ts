@@ -3,8 +3,6 @@ import type {
   NonNegativeInt,
   OwnerIdBytes,
   SqliteDep,
-  SqliteQuery,
-  SqliteRow,
 } from "../../../../../packages/common/src/index.ts";
 import {
   assertEqual,
@@ -18,7 +16,9 @@ import {
   err,
   constFalse,
   constTrue,
+  ok,
   sql,
+  testSetupSqlite,
   timestampToTimestampBytes,
   UnknownError,
 } from "../../../../../packages/common/src/index.ts";
@@ -53,8 +53,10 @@ import {
   testCreateRun,
 } from "../../../../../packages/common/src/Task.ts";
 import {
+  setupInterceptedSqlite,
   setupSqlite,
   setupSqliteAndRelayStorage,
+  testCreateSqliteDep,
   testTimingSafeEqual,
 } from "../../_deps.ts";
 
@@ -218,6 +220,54 @@ describe("writeMessages", () => {
     assertEqual(getStoredBytes({ sqlite })(testAppOwnerIdBytes), 3);
   });
 
+  it("runs every statement of a write and a read on a kept statement", async () => {
+    let execs = 0;
+    await using setup = await testSetupSqlite({
+      createSqliteDriver: (name, options) => async (run) => {
+        const driver = await run.ok(
+          testCreateSqliteDep.createSqliteDriver(name, options),
+        );
+        return ok({
+          ...driver,
+          exec: (query) => {
+            execs++;
+            return driver.exec(query);
+          },
+        });
+      },
+    });
+    const { sqlite } = setup;
+    createBaseSqliteStorageTables({ sqlite });
+    createRelayStorageTables({ sqlite });
+    const storage = createRelaySqliteStorage({
+      ...setup.run.deps,
+      sqlite,
+      timingSafeEqual: testTimingSafeEqual,
+    })({ isOwnerWithinQuota: constTrue });
+    await using run = testCreateRun();
+    const writeAndRead = async (count: number) => {
+      const messages = [
+        createTestMessage(),
+        ...Array.from({ length: count - 1 }, () => createTestMessage()),
+      ] as const;
+      execs = 0;
+      assertTrue(
+        storage.validateWriteKey(testAppOwnerIdBytes, testAppOwner.writeKey),
+      );
+      await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, messages));
+      for (const { timestamp } of messages) {
+        storage.readDbChange(
+          testAppOwnerIdBytes,
+          timestampToTimestampBytes(timestamp),
+        );
+      }
+      return execs;
+    };
+
+    assertEqual(await writeAndRead(10), 0);
+    assertEqual(await writeAndRead(1), 0);
+  });
+
   it("deduplicates duplicate timestamps within the same write batch", async () => {
     await using setup = await setupSqliteAndRelayStorage();
     const { run, storage, sqlite } = setup;
@@ -373,16 +423,13 @@ describe("writeMessages", () => {
       let isFailing = true;
       const storage = createRelaySqliteStorage({
         ...setup.run.deps,
-        sqlite: {
-          ...sqlite,
-          exec: <R extends SqliteRow>(query: SqliteQuery) => {
-            if (isFailing && query.sql.includes(failingQuery)) {
-              isFailing = false;
-              throw new Error("disk I/O error");
-            }
-            return sqlite.exec<R>(query);
-          },
-        },
+        sqlite: setupInterceptedSqlite(sqlite, (query, run) => {
+          if (isFailing && query.sql.includes(failingQuery)) {
+            isFailing = false;
+            throw new Error("disk I/O error");
+          }
+          return run();
+        }),
         timingSafeEqual: testTimingSafeEqual,
       })({ isOwnerWithinQuota: constTrue });
       await using run = testCreateRun({ storage });
@@ -426,16 +473,13 @@ describe("writeMessages", () => {
     let isFailing = true;
     const storage = createRelaySqliteStorage({
       ...setup.run.deps,
-      sqlite: {
-        ...sqlite,
-        exec: <R extends SqliteRow>(query: SqliteQuery) => {
-          if (isFailing && query.sql.includes("insert into evolu_writeKey")) {
-            isFailing = false;
-            throw failure;
-          }
-          return sqlite.exec<R>(query);
-        },
-      },
+      sqlite: setupInterceptedSqlite(sqlite, (query, run) => {
+        if (isFailing && query.sql.includes("insert into evolu_writeKey")) {
+          isFailing = false;
+          throw failure;
+        }
+        return run();
+      }),
       timingSafeEqual: testTimingSafeEqual,
     })({ isOwnerWithinQuota: constTrue });
     await using run = testCreateRun({ storage });

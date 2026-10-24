@@ -1,8 +1,8 @@
 /**
  * React Native's SQLite driver on the N-API mirror of the binding, with real
- * files: the shared iterate contract, cached statements, export, delete, memory
- * and encrypted databases, wrong keys, and the waits for a file another
- * connection holds, on a test Run's time.
+ * files: the shared iterate contract, exec's one-shot statements and prepare's
+ * statements, export, delete, memory and encrypted databases, wrong keys, and
+ * the waits for a file another connection holds, on a test Run's time.
  */
 import {
   assert,
@@ -44,6 +44,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test, type TestContext } from "node:test";
 import { describeSqliteDriverIterate } from "../../../../test/integration/nodejs/Sqlite/_iterate.ts";
+import {
+  describeSqliteDriverPrepare,
+  setupSqliteAndDriver,
+} from "../../../../test/integration/nodejs/Sqlite/_prepare.ts";
 import type {
   NativeSqlite,
   NativeSqliteDatabase,
@@ -118,6 +122,10 @@ describeSqliteDriverIterate(() =>
   setupDriver(memoryDirectory).open({ mode: "memory" }),
 );
 
+describeSqliteDriverPrepare(() =>
+  setupDriver(memoryDirectory).open({ mode: "memory" }),
+);
+
 test("a plain database is evolu1-<name>.db in the directory and reopens", async (t) => {
   const setup = setupDriver(setupDirectory(t));
   await using _run = setup.run;
@@ -168,7 +176,7 @@ test("memory databases are each their own and write no file", async (t) => {
   assertFalse(existsSync(setup.path));
 });
 
-test("exec runs a query that asks to be prepared on its cached statement, and another on a statement it finalizes at once", async (t) => {
+test("exec runs every query on a statement it finalizes at once, and prepare returns one that runs until it is disposed", async (t) => {
   const prepared: Array<string> = [];
   let finalized = 0;
   // The binding, with each prepare and finalize of a memory database counted.
@@ -207,22 +215,41 @@ test("exec runs a query that asks to be prepared on its cached statement, and an
   await using _run = setup.run;
   const driver = await setup.open({ mode: "memory" });
   driver.exec(sql`create table t (a);`);
-  const insert = {
-    ...sql`insert into t (a) values (${1}) returning a;`,
-    options: { prepare: true },
-  };
+  driver.exec(sql`create table u (a not null);`);
+  const insert = sql`insert into t (a) values (${1}) returning a;`;
   const select = sql`select count(*) as n from t;`;
 
-  assertEqual(driver.exec(insert), { rows: [{ a: 1 }], changes: 1 });
-  assertEqual(driver.exec(insert), { rows: [{ a: 1 }], changes: 1 });
-  assertEqual(driver.exec(select), { rows: [{ n: 2 }], changes: 0 });
+  {
+    using statement = driver.prepare(insert.sql);
+    assertEqual(statement.exec(insert.parameters), {
+      rows: [{ a: 1 }],
+      changes: 1,
+    });
+    assertEqual(statement.exec(insert.parameters), {
+      rows: [{ a: 1 }],
+      changes: 1,
+    });
+    assertEqual(finalized, prepared.length - 1);
+  }
+  // The prepare option is for a Sqlite, which keeps the statement.
+  assertEqual(driver.exec({ ...select, options: { prepare: true } }), {
+    rows: [{ n: 2 }],
+    changes: 0,
+  });
   assertEqual(driver.exec(select), { rows: [{ n: 2 }], changes: 0 });
 
   assertEqual(prepared.filter((text) => text === insert.sql).length, 1);
   assertEqual(prepared.filter((text) => text === select.sql).length, 2);
-  assertEqual(finalized, prepared.length - 1);
-  driver[Symbol.dispose]();
+  // A statement that fails is finalized too.
+  assertThrows(
+    () => driver.exec(sql`insert into u (a) values (${null});`),
+    (error) => {
+      assertInstanceOf(error, Error);
+      assertTrue(error.message.includes("NOT NULL constraint failed"));
+    },
+  );
   assertEqual(finalized, prepared.length);
+  driver[Symbol.dispose]();
 });
 
 test("iterate rethrows what onRow throws on a row of a write with RETURNING whose commit then fails", async (t) => {
@@ -308,6 +335,24 @@ test("deleteDatabase disposes the driver, then deletes its file, which a new dri
     reopened.exec(sql`select count(*) as n from sqlite_schema;`).rows,
     [{ n: 0 }],
   );
+});
+
+test("deleteDatabase finalizes the statements a Sqlite keeps, which the Sqlite then disposes", async (t) => {
+  const directory = setupDirectory(t);
+  const { run, sqlite, driver } = await setupSqliteAndDriver(
+    createNativeSqliteDriver({
+      nativeSqlite: binding,
+      databaseDirectory: directory,
+    }),
+    testName,
+  );
+  await using _run = run;
+  sqlite.prepared`select 1;`;
+
+  driver.deleteDatabase();
+  await sqlite[Symbol.asyncDispose]();
+
+  assertFalse(existsSync(join(directory, `evolu1-${testName}.db`)));
 });
 
 test("deleteDatabase of a memory database closes it and deletes no file", async (t) => {

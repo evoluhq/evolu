@@ -65,6 +65,10 @@
     "eslint/no-shadow": "off",
     // Non-Error throws are allowed only at an exact intentional test site.
     "eslint/no-throw-literal": "error",
+    // A tagged template can run what it builds, as Sqlite.prepared runs SQL, so
+    // its result may go unused, as a function call's may.
+    "eslint/no-unused-expressions": ["error", { "allowTaggedTemplates": true }],
+    "evolu/no-unused-sql-query": "error",
     // A leading underscore marks intentionally ignored bindings.
     "eslint/no-underscore-dangle": "off",
     // Preserve meaningful validation guards while removing genuinely empty

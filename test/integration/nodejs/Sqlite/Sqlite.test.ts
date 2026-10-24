@@ -15,7 +15,6 @@ import { constVoid } from "../../../../packages/common/src/Function.ts";
 import { err, ok } from "../../../../packages/common/src/Result.ts";
 import {
   booleanToSqliteBoolean,
-  createPreparedStatementsCache,
   createSqlite,
   eqSqliteIndex,
   eqSqliteValue,
@@ -34,6 +33,7 @@ import {
   type Sqlite,
   type SqliteDriver,
   type SqliteQuery,
+  type SqlTemplateParam,
   SqliteQueryParameters,
   type SqliteRow,
   type SqliteQueryString,
@@ -52,6 +52,14 @@ import {
 } from "../../../../packages/common/src/Type.ts";
 import { testCreateTime } from "../../../../packages/common/src/Time.ts";
 import { setupSqlite, testCreateSqliteDep } from "../_deps.ts";
+
+/** A prepare for a fake driver that runs each statement with its exec. */
+const prepareWithExec =
+  (exec: SqliteDriver["exec"]): SqliteDriver["prepare"] =>
+  (sql) => ({
+    exec: (parameters) => exec({ sql, parameters }),
+    [Symbol.dispose]: constVoid,
+  });
 
 describe("eqSqliteValue", () => {
   it("equal Uint8Arrays return true", () => {
@@ -243,6 +251,7 @@ describe("transactions", () => {
 
     const createFailingDriver: CreateSqliteDriver = () => () => {
       const driver: SqliteDriver = {
+        prepare: prepareWithExec((query) => driver.exec(query)),
         exec: (query) => {
           if (query.sql === "begin;") {
             beginCalled = true;
@@ -300,6 +309,7 @@ describe("transactions", () => {
 
     const createFailingDriver: CreateSqliteDriver = () => () => {
       const driver: SqliteDriver = {
+        prepare: prepareWithExec((query) => driver.exec(query)),
         exec: (query) => {
           if (query.sql === "begin;") {
             return { rows: [], changes: 0 };
@@ -339,6 +349,7 @@ describe("transactions", () => {
 
     const createFailingDriver: CreateSqliteDriver = () => () => {
       const driver: SqliteDriver = {
+        prepare: prepareWithExec((query) => driver.exec(query)),
         exec: (query) => {
           if (query.sql === "begin;") {
             return { rows: [], changes: 0 };
@@ -388,6 +399,7 @@ describe("export", () => {
   it("export failure throws", async () => {
     const createFailingDriver: CreateSqliteDriver = () => () => {
       const driver: SqliteDriver = {
+        prepare: prepareWithExec((query) => driver.exec(query)),
         exec: () => ({ rows: [], changes: 0 }),
         export: () => {
           throw new Error("Export failed");
@@ -536,6 +548,7 @@ test("async dispose is idempotent", async () => {
   await using setup = await testSetupSqlite({
     createSqliteDriver: () => () => {
       const driver: SqliteDriver = {
+        prepare: prepareWithExec((query) => driver.exec(query)),
         exec: () => ({ rows: [], changes: 0 }),
         export: () => new Uint8Array(),
         iterate: constVoid,
@@ -562,6 +575,7 @@ test("sync methods throw after sqlite is disposed", async () => {
   await using setup = await testSetupSqlite({
     createSqliteDriver: () => () => {
       const driver: SqliteDriver = {
+        prepare: prepareWithExec((query) => driver.exec(query)),
         exec: () => {
           execCalls++;
           return { rows: [], changes: 0 };
@@ -588,6 +602,11 @@ test("sync methods throw after sqlite is disposed", async () => {
     Error,
   );
   assertEqual(execError.message, "Cannot use a disposed object.");
+  const preparedError = assertThrowsInstanceOf(
+    () => sqlite.prepared`select 1;`,
+    Error,
+  );
+  assertEqual(preparedError.message, "Cannot use a disposed object.");
   const iterateError = assertThrowsInstanceOf(() => {
     sqlite.iterate(sql`select 1;`, () => true);
   }, Error);
@@ -613,6 +632,7 @@ test("createSqlite returns error when driver creation is aborted", async () => {
     await run(sleep("10ms"));
     return ok({
       exec: () => ({ rows: [], changes: 0 }),
+      prepare: prepareWithExec(() => ({ rows: [], changes: 0 })),
       export: () => new Uint8Array(),
       iterate: constVoid,
       deleteDatabase: constVoid,
@@ -640,137 +660,279 @@ test("createSqlite and a CreateSqliteDriver cannot fail", () => {
   assertType<ReturnType<CreateSqliteDriver>, Task<SqliteDriver>>();
 });
 
-describe("createPreparedStatementsCache", () => {
-  it("returns null when prepare option is not set", () => {
-    const cache = createPreparedStatementsCache(
-      (s) => ({ prepared: s }),
-      constVoid,
-    );
-    const query = { sql: "select 1;" as SafeSql, parameters: [] };
-    assertEqual(cache.get(query), null);
-  });
-
-  it("creates and caches statement with prepare option", () => {
-    let factoryCalls = 0;
-    const cache = createPreparedStatementsCache((s) => {
-      factoryCalls++;
-      return { prepared: s };
-    }, constVoid);
-    const query = {
-      sql: "select 1;" as SafeSql,
-      parameters: [],
-      options: { prepare: true },
-    };
-
-    const first = cache.get(query);
-    const second = cache.get(query);
-
-    assertEqual(first, { prepared: "select 1;" });
-    assertSame(first, second);
-    assertEqual(factoryCalls, 1);
-  });
-
-  it("creates statement when alwaysPrepare is true", () => {
-    const cache = createPreparedStatementsCache(
-      (s) => ({ prepared: s }),
-      constVoid,
-    );
-    const query = { sql: "select 1;" as SafeSql, parameters: [] };
-
-    const result = cache.get(query, true);
-    assertEqual(result, { prepared: "select 1;" });
-  });
-
-  it("dispose calls disposeFn for each cached statement", () => {
-    const disposed: Array<string> = [];
-    const cache = createPreparedStatementsCache(
-      (s) => s,
-      (s) => {
-        disposed.push(s);
-      },
-    );
-
-    cache.get({
-      sql: "a;" as SafeSql,
-      parameters: [],
-      options: { prepare: true },
-    });
-    cache.get({
-      sql: "b;" as SafeSql,
-      parameters: [],
-      options: { prepare: true },
-    });
-
-    cache[Symbol.dispose]();
-    assertEqual(disposed, ["b;", "a;"]);
-  });
-
-  it("dispose is idempotent", () => {
-    let disposeCount = 0;
-    const cache = createPreparedStatementsCache(
-      (s) => s,
-      () => {
-        disposeCount++;
-      },
-    );
-    cache.get({
-      sql: "a;" as SafeSql,
-      parameters: [],
-      options: { prepare: true },
-    });
-
-    cache[Symbol.dispose]();
-    cache[Symbol.dispose]();
-    assertEqual(disposeCount, 1);
-  });
-
-  it("get throws after dispose", () => {
-    const cache = createPreparedStatementsCache(
-      (s) => ({ prepared: s }),
-      constVoid,
-    );
-
-    cache[Symbol.dispose]();
-
-    const error = assertThrowsInstanceOf(() => {
-      cache.get({
-        sql: "select 1;" as SafeSql,
-        parameters: [],
-        options: { prepare: true },
+/**
+ * Creates a {@link Sqlite} on an in-memory better-sqlite3 driver that records in
+ * `events` what the database asks the driver to do.
+ */
+const setupRecordingSqlite = async () => {
+  const events: Array<string> = [];
+  const setup = await testSetupSqlite({
+    createSqliteDriver: (name, options) => async (run) => {
+      const driver = await run.ok(
+        testCreateSqliteDep.createSqliteDriver(name, options),
+      );
+      return ok({
+        exec: (query) => {
+          events.push(`exec ${query.sql}`);
+          return driver.exec(query);
+        },
+        prepare: (sql) => {
+          events.push(`prepare ${sql}`);
+          const statement = driver.prepare(sql);
+          return {
+            exec: (parameters) => statement.exec(parameters),
+            [Symbol.dispose]: () => {
+              events.push(`finalize ${sql}`);
+              statement[Symbol.dispose]();
+            },
+          };
+        },
+        iterate: (query, onRow) => {
+          driver.iterate(query, onRow);
+        },
+        export: () => driver.export(),
+        deleteDatabase: () => {
+          driver.deleteDatabase();
+        },
+        [Symbol.dispose]: () => {
+          events.push("close");
+          driver[Symbol.dispose]();
+        },
       });
-    }, Error);
-    assertEqual(error.message, "Cannot use a disposed object.");
+    },
+  });
+  return { ...setup, events };
+};
+
+describe("Sqlite.prepared", () => {
+  it("prepares a template once and runs its statement with each call's values", async () => {
+    await using setup = await setupRecordingSqlite();
+    const { sqlite, events } = setup;
+    sqlite.exec(sql`create table t (a integer);`);
+    events.length = 0;
+    const insert = (a: number) => sqlite.prepared`
+      insert into t (a) values (${a});
+    `;
+
+    assertEqual(insert(1), { rows: [], changes: 1 });
+    insert(2);
+
+    assertEqual(sqlite.prepared<{ a: number }>`select a from t order by a;`, {
+      rows: [{ a: 1 }, { a: 2 }],
+      changes: 0,
+    });
+    assertEqual(events, [
+      "prepare insert into t (a) values (?);",
+      "prepare select a from t order by a;",
+    ]);
   });
 
-  it("dispose still attempts later statements when one disposeFn throws", () => {
-    const disposed: Array<string> = [];
-    const cache = createPreparedStatementsCache(
-      (s) => s,
-      (s) => {
-        disposed.push(s);
-        if (s === ("b;" as SafeSql)) {
-          throw new Error("dispose failed");
-        }
+  it("builds no SQL text when it finds the statement of a template", async () => {
+    await using setup = await setupRecordingSqlite();
+    const { sqlite } = setup;
+    sqlite.exec(sql`create table users (id integer, name text, age integer);`);
+    let reads = 0;
+    const parts = ["select ", " from users where id = ", ";"];
+    const strings = new Proxy(Object.assign([...parts], { raw: parts }), {
+      get: (target, key, receiver) => {
+        if (key === "0") reads++;
+        return Reflect.get(target, key, receiver) as unknown;
       },
+    }) as unknown as TemplateStringsArray;
+    const readsAfterCalls: Array<number> = [];
+
+    for (const [column, id] of [
+      ["name", 1],
+      ["name", 2],
+      ["age", 3],
+      ["name", 4],
+    ] as const) {
+      sqlite.prepared(strings, sql.identifier(column), id);
+      readsAfterCalls.push(reads);
+    }
+
+    assertEqual(readsAfterCalls, [1, 1, 2, 2]);
+  });
+
+  it("prepares a statement for each position and text of the fragments of a template", async () => {
+    const prepares: Array<string> = [];
+    await using setup = await testSetupSqlite({
+      createSqliteDriver: () => () => {
+        const driver: SqliteDriver = {
+          exec: () => ({ rows: [], changes: 0 }),
+          prepare: (sql) => {
+            prepares.push(sql);
+            return prepareWithExec(driver.exec)(sql);
+          },
+          export: () => new Uint8Array(),
+          iterate: constVoid,
+          deleteDatabase: constVoid,
+          [Symbol.dispose]: constVoid,
+        };
+        return ok(driver);
+      },
+    });
+    const query = (a: SqlTemplateParam, b: SqlTemplateParam) => setup.sqlite
+      .prepared`select ${a}, ${b};`;
+
+    query(sql.raw("a"), 1);
+    query(1, sql.raw("a"));
+    query(sql.raw("a1:b"), 1);
+    query(sql.raw("a"), sql.raw("b"));
+    query(sql.raw("a"), 2);
+    query(sql.identifier("a"), 1);
+
+    assertEqual(prepares, [
+      "select a, ?;",
+      "select ?, a;",
+      "select a1:b, ?;",
+      "select a, b;",
+      'select "a", ?;',
+    ]);
+  });
+
+  it("keeps nothing for SQL that SQLite rejects", async () => {
+    await using setup = await setupRecordingSqlite();
+    const { sqlite, events } = setup;
+    sqlite.exec(sql`create table t (a integer);`);
+    events.length = 0;
+    const select = (column: string) => sqlite.prepared`
+      select ${sql.identifier(column)} from t;
+    `;
+
+    assertThrowsInstanceOf(() => select("b"), Error);
+    assertThrowsInstanceOf(() => select("b"), Error);
+    assertEqual(select("a").rows, []);
+
+    assertEqual(events, [
+      'prepare select "b" from t;',
+      'prepare select "b" from t;',
+      'prepare select "a" from t;',
+    ]);
+  });
+
+  it("rejects a number that is not finite, also once it has the statement", async () => {
+    const parameters: Array<SqliteQueryParameters> = [];
+    await using setup = await testSetupSqlite({
+      createSqliteDriver: () => () => {
+        const driver: SqliteDriver = {
+          exec: (query) => {
+            parameters.push(query.parameters);
+            return { rows: [], changes: 0 };
+          },
+          prepare: prepareWithExec((query) => driver.exec(query)),
+          export: () => new Uint8Array(),
+          iterate: constVoid,
+          deleteDatabase: constVoid,
+          [Symbol.dispose]: constVoid,
+        };
+        return ok(driver);
+      },
+    });
+    const select = (value: number) => setup.sqlite.prepared`
+      select ${value} as v;
+    `;
+
+    select(1);
+    assertThrowsInstanceOf(() => select(Number.NaN), Error);
+    assertEqual(parameters, [[1]]);
+  });
+
+  it("finalizes its statements when the database is disposed, before the driver", async () => {
+    let events: Array<string> = [];
+    {
+      await using setup = await setupRecordingSqlite();
+      events = setup.events;
+      setup.sqlite.prepared`select 1;`;
+      setup.sqlite.exec({ ...sql`select 2;`, options: { prepare: true } });
+      events.length = 0;
+    }
+
+    assertEqual(events, ["finalize select 1;", "finalize select 2;", "close"]);
+  });
+
+  it("finalizes the other statements and closes the driver when finalizing one throws", async () => {
+    const events: Array<string> = [];
+    const failure = new Error("finalize failed");
+    const setup = await testSetupSqlite({
+      createSqliteDriver: () => () => {
+        const driver: SqliteDriver = {
+          exec: () => ({ rows: [], changes: 0 }),
+          prepare: (sql) => ({
+            exec: () => ({ rows: [], changes: 0 }),
+            [Symbol.dispose]: () => {
+              events.push(`finalize ${sql}`);
+              if (sql === "select 1;") throw failure;
+            },
+          }),
+          export: () => new Uint8Array(),
+          iterate: constVoid,
+          deleteDatabase: constVoid,
+          [Symbol.dispose]: () => {
+            events.push("close");
+          },
+        };
+        return ok(driver);
+      },
+    });
+    setup.sqlite.prepared`select 1;`;
+    setup.sqlite.prepared`select 2;`;
+
+    const thrown = await setup[Symbol.asyncDispose]().then(
+      () => null,
+      (error: unknown) => error,
     );
 
-    cache.get({
-      sql: "a;" as SafeSql,
-      parameters: [],
-      options: { prepare: true },
-    });
-    cache.get({
-      sql: "b;" as SafeSql,
-      parameters: [],
-      options: { prepare: true },
-    });
+    assertSame(thrown, failure);
+    assertEqual(events, ["finalize select 2;", "finalize select 1;", "close"]);
+  });
 
-    const error = assertThrowsInstanceOf(() => {
-      cache[Symbol.dispose]();
-    }, Error);
-    assertEqual(error.message, "dispose failed");
+  it("shares no statements between databases", async () => {
+    await using first = await setupRecordingSqlite();
+    await using second = await setupRecordingSqlite();
+    const selectOne = (sqlite: Sqlite) => sqlite.prepared`select 1 as one;`;
 
-    assertEqual(disposed, ["b;", "a;"]);
+    selectOne(first.sqlite);
+    selectOne(second.sqlite);
+    selectOne(first.sqlite);
+
+    assertEqual(first.events, ["prepare select 1 as one;"]);
+    assertEqual(second.events, ["prepare select 1 as one;"]);
+  });
+});
+
+describe("Sqlite.exec", () => {
+  it("runs a query with the prepare option on a statement prepared once for its SQL, and other queries on statements of their own", async () => {
+    await using setup = await setupRecordingSqlite();
+    const { sqlite, events } = setup;
+    const query = sql`select ${1} as a;`;
+    const preparedQuery = { ...query, options: { prepare: true } };
+
+    assertEqual(sqlite.exec(preparedQuery).rows, [{ a: 1 }]);
+    sqlite.exec(preparedQuery);
+    sqlite.exec(query);
+    sqlite.exec(query);
+
+    assertEqual(events, [
+      "prepare select ? as a;",
+      "exec select ? as a;",
+      "exec select ? as a;",
+    ]);
+  });
+
+  it("runs the statements of transactions on statements prepared once", async () => {
+    await using setup = await setupRecordingSqlite();
+    const { sqlite, events } = setup;
+
+    sqlite.transaction(constVoid);
+    sqlite.transaction(() => err({ type: "Rollback" }));
+    sqlite.transaction(constVoid);
+
+    assertEqual(events, [
+      "prepare begin;",
+      "prepare commit;",
+      "prepare rollback;",
+    ]);
   });
 });
 
@@ -838,25 +1000,6 @@ describe("sql", () => {
     assertEqual(query, {
       sql: "select * from users order by created_at desc;",
       parameters: [],
-    });
-  });
-
-  it("sql.prepared marks query for preparation", () => {
-    assertEqual(sql.prepared`select * from users where id = ${2};`, {
-      sql: "select * from users where id = ?;",
-      parameters: [2],
-      options: { prepare: true },
-    });
-  });
-
-  it("sql.prepared with identifier", () => {
-    const query = sql.prepared`
-      select ${sql.identifier("name")} from users where id = ${1};
-    `;
-    assertEqual(query, {
-      sql: 'select "name" from users where id = ?;',
-      parameters: [1],
-      options: { prepare: true },
     });
   });
 

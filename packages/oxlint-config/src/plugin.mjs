@@ -453,6 +453,101 @@ const noUnnecessaryGlobalThis = {
   },
 };
 
+/**
+ * Reports a statement that only builds a query with Evolu's `sql` tagged
+ * template: a tag named `sql`, `sql` imported from `@evolu/common` under
+ * another name, or the `sql` of a namespace imported from it. `sql` builds a
+ * query without running it, so such a statement does nothing, unlike a tagged
+ * template that runs what it builds, such as `sqlite.prepared`, which
+ * `eslint/no-unused-expressions` allows.
+ *
+ * @type {import("eslint").Rule.RuleModule}
+ */
+const noUnusedSqlQuery = {
+  meta: {
+    type: "problem",
+    docs: {
+      description:
+        "Disallow a statement that builds a query with Evolu's sql and drops it",
+      recommended: true,
+    },
+    messages: {
+      unusedSqlQuery:
+        "This sql query is built but never run. Run it with sqlite.exec, or use sqlite.prepared.",
+    },
+    schema: [],
+  },
+  create(context) {
+    /**
+     * The import from `@evolu/common` that binds the identifier, or null when a
+     * nearer binding or another module binds it.
+     *
+     * @param {import("estree").Identifier} identifier
+     * @returns {import("estree").ImportDeclaration["specifiers"][number] | null}
+     */
+    const findEvoluCommonImport = (identifier) => {
+      for (
+        let scope = context.sourceCode.getScope(identifier);
+        scope != null;
+        scope = scope.upper
+      ) {
+        const variable = scope.set.get(identifier.name);
+        if (variable == null) continue;
+
+        for (const def of variable.defs) {
+          if (
+            def.type === "ImportBinding" &&
+            def.parent.source.value === "@evolu/common"
+          )
+            return def.node;
+        }
+        return null;
+      }
+
+      return null;
+    };
+
+    /**
+     * @param {import("estree").Expression} tag
+     * @returns {boolean}
+     */
+    const isSqlTag = (tag) => {
+      if (tag.type === "Identifier") {
+        if (tag.name === "sql") return true;
+        const specifier = findEvoluCommonImport(tag);
+        return (
+          specifier?.type === "ImportSpecifier" &&
+          (specifier.imported.type === "Identifier"
+            ? specifier.imported.name
+            : specifier.imported.value) === "sql"
+        );
+      }
+
+      return (
+        tag.type === "MemberExpression" &&
+        tag.object.type === "Identifier" &&
+        (tag.computed
+          ? tag.property.type === "Literal" && tag.property.value === "sql"
+          : tag.property.type === "Identifier" &&
+            tag.property.name === "sql") &&
+        findEvoluCommonImport(tag.object)?.type === "ImportNamespaceSpecifier"
+      );
+    };
+
+    return {
+      ExpressionStatement(node) {
+        const { expression } = node;
+        if (
+          expression.type === "TaggedTemplateExpression" &&
+          isSqlTag(expression.tag)
+        ) {
+          context.report({ node, messageId: "unusedSqlQuery" });
+        }
+      },
+    };
+  },
+};
+
 /** @type {import("eslint").Rule.RuleModule} */
 const requirePureAnnotation = {
   meta: {
@@ -613,6 +708,7 @@ const plugin = {
   },
   rules: {
     "no-unnecessary-global-this": noUnnecessaryGlobalThis,
+    "no-unused-sql-query": noUnusedSqlQuery,
     "require-pure-annotation": requirePureAnnotation,
   },
 };

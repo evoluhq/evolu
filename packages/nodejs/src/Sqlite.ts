@@ -1,8 +1,10 @@
 import {
-  constVoid,
-  createPreparedStatementsCache,
+  disposable,
   ok,
   type CreateSqliteDriver,
+  type SqliteDriverStatement,
+  type SqliteExecResult,
+  type SqliteQueryParameters,
   type SqliteRow,
 } from "@evolu/common";
 import BetterSQLite, { type Statement } from "better-sqlite3";
@@ -31,42 +33,55 @@ export const createBetterSqliteDriver: CreateSqliteDriver =
       db.close();
     });
 
-    const cache = disposer.use(
-      createPreparedStatementsCache<Statement>(
-        (sql) => db.prepare(sql),
-        // Not needed.
-        // https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md#class-statement
-        constVoid,
-      ),
-    );
-
     const selectChanges = db.prepare("select changes()").pluck();
+
+    const execStatement = (
+      statement: Statement,
+      parameters: SqliteQueryParameters,
+    ): SqliteExecResult => {
+      if (statement.reader) {
+        const rows = statement.all(parameters) as Array<SqliteRow>;
+        // A write with a returning clause returns rows too. A read keeps the
+        // count of the previous write, so it reports zero instead.
+        const changes = statement.readonly
+          ? 0
+          : (selectChanges.get() as number);
+        return { rows, changes };
+      }
+
+      const changes = statement.run(parameters).changes;
+      return { rows: [], changes };
+    };
 
     const disposables = disposer.move();
 
     return ok({
-      exec: (query) => {
-        // Always prepare is recommended for better-sqlite3
-        const prepared = cache.get(query, true);
+      exec: (query) => execStatement(db.prepare(query.sql), query.parameters),
 
-        if (prepared.reader) {
-          const rows = prepared.all(query.parameters) as Array<SqliteRow>;
-          // A write with a returning clause returns rows too. A read keeps the
-          // count of the previous write, so it reports zero instead.
-          const changes = prepared.readonly
-            ? 0
-            : (selectChanges.get() as number);
-          return { rows, changes };
-        }
-
-        const changes = prepared.run(query.parameters).changes;
-        return { rows: [], changes };
+      prepare: (sql) => {
+        // better-sqlite3 has no finalize: it finalizes a statement once it's
+        // garbage-collected, so disposing drops the reference, which a held
+        // disposed statement would otherwise keep.
+        // https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md#class-statement
+        let statement: Statement | null = db.prepare(sql);
+        using statementDisposer = new DisposableStack();
+        statementDisposer.defer(() => {
+          statement = null;
+        });
+        return disposable<SqliteDriverStatement>(
+          {
+            // A disposed statement throws before it runs.
+            exec: (parameters) =>
+              execStatement(statement as Statement, parameters),
+          },
+          statementDisposer,
+        );
       },
 
       iterate: (query, onRow) => {
-        // A statement of its own, because onRow can run queries, which could
-        // otherwise reuse the cached one while it is busy. Leaving the loop,
-        // also by a throw, resets it.
+        // A statement of its own, because onRow can run other statements, the
+        // prepared ones among them. Leaving the loop, also by a throw, resets
+        // it.
         for (const row of db.prepare(query.sql).iterate(query.parameters)) {
           if (!onRow(row as SqliteRow)) break;
         }

@@ -1,7 +1,10 @@
 import {
+  assert,
   assertEqual,
   assertEqualBytes,
   assertInstanceOf,
+  assertSame,
+  assertThrows,
   assertTrue,
   createSqlite,
   Name,
@@ -11,8 +14,14 @@ import {
 import BetterSQLite from "better-sqlite3";
 import { existsSync, rmSync } from "fs";
 import { afterEach, describe, it } from "node:test";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import { createBetterSqliteDriver } from "../../../../packages/nodejs/src/Sqlite.ts";
 import { describeSqliteDriverIterate } from "./_iterate.ts";
+import {
+  describeSqliteDriverPrepare,
+  setupSqliteAndDriver,
+} from "./_prepare.ts";
 
 const testName = Name.orThrow("Test");
 
@@ -132,20 +141,63 @@ describe("createBetterSqliteDriver", () => {
     await sqlite[Symbol.asyncDispose]();
   });
 
-  it("prepared statements are cached and reused", async () => {
-    await using setup = await setupBetterSqlite();
-    const { sqlite } = setup;
+  it("runs a statement that prepare returns many times, also one that returns rows", async (t) => {
+    const prepare = t.mock.method(BetterSQLite.prototype, "prepare");
+    await using run = testCreateRun();
+    using driver = await run.ok(
+      createBetterSqliteDriver(testName, { mode: "memory" }),
+    );
+    driver.exec(sql`create table t (id integer primary key, name text);`);
+    const insert = sql`insert into t (name) values (${"A"}) returning id;`;
 
-    sqlite.exec(sql`create table t (id integer primary key, name text);`);
+    {
+      using statement = driver.prepare(insert.sql);
+      const prepares = prepare.mock.callCount();
+      assertEqual(statement.exec(["A"]), { rows: [{ id: 1 }], changes: 1 });
+      assertEqual(statement.exec(["B"]), { rows: [{ id: 2 }], changes: 1 });
+      assertEqual(prepare.mock.callCount(), prepares);
+    }
 
-    // Execute the same query twice — both should succeed via cached statement
-    const insert1 = sqlite.exec(sql`insert into t (name) values (${"A"});`);
-    const insert2 = sqlite.exec(sql`insert into t (name) values (${"B"});`);
-    assertEqual(insert1.changes, 1);
-    assertEqual(insert2.changes, 1);
+    assertEqual(driver.exec(sql`select name from t order by id;`), {
+      rows: [{ name: "A" }, { name: "B" }],
+      changes: 0,
+    });
+  });
 
-    const rows = sqlite.exec(sql`select name from t order by id;`);
-    assertEqual(rows.rows, [{ name: "A" }, { name: "B" }]);
+  it("a disposed statement that prepare returned keeps no native statement, also while it is held", async (t) => {
+    // node:test runs each file in its own process, so the flag affects only this file.
+    setFlagsFromString("--expose-gc");
+    const gc = runInNewContext("gc") as () => void;
+    const prepare = t.mock.method(BetterSQLite.prototype, "prepare");
+    await using run = testCreateRun();
+    using driver = await run.ok(
+      createBetterSqliteDriver(testName, { mode: "memory" }),
+    );
+    const select = sql`select 1 as a;`;
+    const statement = driver.prepare(select.sql);
+    const nativeStatement = (() => {
+      const nativeStatement = prepare.mock.calls.at(-1)?.result;
+      assert(nativeStatement, "Expected the statement prepare returned.");
+      return new WeakRef(nativeStatement);
+    })();
+    // The spy keeps what prepare returned.
+    prepare.mock.resetCalls();
+
+    statement[Symbol.dispose]();
+    // A WeakRef keeps its target until the current job ends.
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+    gc();
+
+    assertSame(nativeStatement.deref(), undefined);
+    assertThrows(
+      () => statement.exec(select.parameters),
+      (error) => {
+        assertInstanceOf(error, Error);
+        assertEqual(error.message, "Cannot use a disposed object.");
+      },
+    );
   });
 
   it("driver dispose is idempotent", async () => {
@@ -202,6 +254,20 @@ describe("createBetterSqliteDriver", () => {
       assertTrue(existsSync(dbPath));
     });
 
+    it("deleteDatabase finalizes the statements a Sqlite keeps, which the Sqlite then disposes", async () => {
+      const { run, sqlite, driver } = await setupSqliteAndDriver(
+        createBetterSqliteDriver,
+        testName,
+      );
+      await using _run = run;
+      sqlite.prepared`select 1;`;
+
+      driver.deleteDatabase();
+      await sqlite[Symbol.asyncDispose]();
+
+      assertTrue(dbPaths.every((path) => !existsSync(path)));
+    });
+
     it("deleteDatabase removes database file from disk", async () => {
       await using run = testCreateRun();
       const driver = await run.ok(createBetterSqliteDriver(testName));
@@ -225,5 +291,9 @@ describe("createBetterSqliteDriver", () => {
 });
 
 describeSqliteDriverIterate(() =>
+  testCreateRun().ok(createBetterSqliteDriver(testName, { mode: "memory" })),
+);
+
+describeSqliteDriverPrepare(() =>
   testCreateRun().ok(createBetterSqliteDriver(testName, { mode: "memory" })),
 );

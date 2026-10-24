@@ -559,11 +559,11 @@ export const startDbWorker =
                 // and the commit fails. A trap that broke SQLite's wasm
                 // instance fails both statements too. Neither changes the
                 // answers.
-                trySync(() => sqlite.exec(sql`begin;`));
+                trySync(() => sqlite.prepared`begin;`);
                 const rowsByQuery = loadQueries(dbDeps)(
                   request.message.queries,
                 );
-                trySync(() => sqlite.exec(sql`commit;`));
+                trySync(() => sqlite.prepared`commit;`);
                 postQueuedResponse({
                   type: "ForEvolu",
                   id: request.id,
@@ -653,11 +653,11 @@ const saveClock =
   (deps: SqliteDep) =>
   (timestamp: Timestamp): void => {
     const bytes = timestampToTimestampBytes(timestamp);
-    deps.sqlite.exec(sql.prepared`
+    deps.sqlite.prepared`
       update evolu_config
       set "clock" = ${bytes}
       where "clock" < ${bytes};
-    `);
+    `;
   };
 
 /**
@@ -879,7 +879,7 @@ const tryApplyQuarantinedMessages = (
       row.timestamp,
     );
 
-    deps.sqlite.exec(sql.prepared`
+    deps.sqlite.prepared`
       delete from evolu_message_quarantine
       where
         "ownerId" = ${row.ownerId}
@@ -887,7 +887,7 @@ const tryApplyQuarantinedMessages = (
         and "table" = ${row.table}
         and "id" = ${row.id}
         and "column" = ${row.column};
-    `);
+    `;
   }
 };
 
@@ -996,7 +996,7 @@ const applyColumnChange =
     const isTimeColumn = column === "createdAt" || column === "updatedAt";
 
     if (!isTimeColumn) {
-      deps.sqlite.exec(sql.prepared`
+      deps.sqlite.prepared`
         with
           existingTimestamp as (
             select 1
@@ -1016,10 +1016,10 @@ const applyColumnChange =
         on conflict ("ownerId", "id") do update
           set ${sql.identifier(column)} = ${value}
           where not exists (select 1 from existingTimestamp);
-      `);
+      `;
     }
 
-    deps.sqlite.exec(sql.prepared`
+    deps.sqlite.prepared`
       insert into evolu_history
         ("ownerId", "table", "id", "column", "value", "timestamp")
       values
@@ -1032,14 +1032,14 @@ const applyColumnChange =
           ${timestampBytes}
         )
       on conflict do nothing;
-    `);
+    `;
 
     if (isTimeColumn) {
       // Two seeks per time column, for its earliest and latest row, on the
       // unique index. A single query with "column" in (...) ordered by
       // "timestamp" makes SQLite use evolu_history_ownerId_timestamp and read
       // the owner's whole history.
-      deps.sqlite.exec(sql.prepared`
+      deps.sqlite.prepared`
         with
           firstChange as (
             select *
@@ -1123,7 +1123,7 @@ const applyColumnChange =
           set
             "createdAt" = excluded."createdAt",
             "updatedAt" = excluded."updatedAt";
-      `);
+      `;
     }
   };
 
@@ -1270,12 +1270,12 @@ const createClientStorage = (
     },
 
     readDbChange: (ownerId, timestamp) => {
-      const result = deps.sqlite.exec<{
+      const result = deps.sqlite.prepared<{
         readonly table: string;
         readonly id: IdBytes;
         readonly column: string;
         readonly value: SqliteValue;
-      }>(sql`
+      }>`
         select "table", "id", "column", "value"
         from evolu_history
         where "ownerId" = ${ownerId} and "timestamp" = ${timestamp}
@@ -1283,7 +1283,7 @@ const createClientStorage = (
         select "table", "id", "column", "value"
         from evolu_message_quarantine
         where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
-      `);
+      `;
 
       const { rows } = result;
       assertNonEmptyReadonlyArray(rows, "Every timestamp must have rows");
@@ -1424,15 +1424,15 @@ const applyLocalOnlyChange =
     const { ownerId, id } = change;
 
     if (change.isDelete) {
-      deps.sqlite.exec(sql`
+      deps.sqlite.prepared`
         delete from ${table}
         where "ownerId" = ${ownerId} and "id" = ${id};
-      `);
+      `;
     } else {
       const date = millisToDateIso(now);
       // Earlier releases left createdAt null on a row an update created, and
       // updatedAt holds the time of its latest update, the earliest time left.
-      deps.sqlite.exec(sql.prepared`
+      deps.sqlite.prepared`
         insert into ${table} ("ownerId", "id", "createdAt")
         values (${ownerId}, ${id}, ${date})
         on conflict ("ownerId", "id") do update
@@ -1442,14 +1442,14 @@ const applyLocalOnlyChange =
               when "createdAt" = ${date} then "updatedAt"
               else ${date}
             end;
-      `);
+      `;
 
       for (const [column, value] of dbChangeToColumns(change)) {
-        deps.sqlite.exec(sql.prepared`
+        deps.sqlite.prepared`
           update ${table}
           set ${sql.identifier(column)} = ${value}
           where "ownerId" = ${ownerId} and "id" = ${id};
-        `);
+        `;
       }
     }
   };
@@ -1529,7 +1529,7 @@ const applyMessages =
             timestampBytes,
           );
         } else {
-          deps.sqlite.exec(sql.prepared`
+          deps.sqlite.prepared`
             insert into evolu_message_quarantine
               (
                 "ownerId",
@@ -1557,7 +1557,7 @@ const applyMessages =
                 ${now}
               )
             on conflict do nothing;
-          `);
+          `;
         }
       }
     }

@@ -2652,12 +2652,29 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
-      const json = Json.from.parent(value);
+      // JSON.stringify writes null, true, false, a number, which starts with a
+      // minus or a digit and ends with a digit, or text enclosed in "", [], or
+      // {}. Other strings skip the JSON.parse of Json, which throws on them
+      // slowly.
+      const first = value[0];
+      const last = value[value.length - 1];
+      const json =
+        (first === '"' && last === '"') ||
+        (first === "[" && last === "]") ||
+        (first === "{" && last === "}") ||
+        ((first === "-" || (first >= "0" && first <= "9")) &&
+          last >= "0" &&
+          last <= "9") ||
+        value === "true" ||
+        value === "false" ||
+        value === "null"
+          ? Json.from.parent(value)
+          : null;
       // Text that survives the JSON.stringify round trip below writes a lone
       // surrogate as a lowercase \udXXX escape. As Json it would be sent as
       // WTF-8, which @evolu/common 8.6 and earlier decode with U+FFFD, so such
       // text is sent as a string, which every decoder reads exactly.
-      if (json.ok && !value.includes("\\ud")) {
+      if (json?.ok && !value.includes("\\ud")) {
         const jsonValue = jsonToJsonValue(json.value);
         const jsonBuffer = createBuffer();
         try {

@@ -76,24 +76,22 @@ export const describeSqliteDriverIterate = (
 
   test("onRow can read with other queries, the iterated one among them, while the iteration continues", async () => {
     using driver = await setupDriver();
-    // Prepared, so exec caches its statement, which an iteration that stepped
-    // that statement would find busy.
-    const query = {
-      ...sql`select a from t order by a;`,
-      options: { prepare: true },
-    };
+    const query = sql`select a from t order by a;`;
+    // A prepared statement of the same SQL, which an iteration that stepped it
+    // would find busy.
+    using statement = driver.prepare(query.sql);
     const rows: Array<SqliteRow> = [];
     const reads: Array<SqliteRow> = [];
 
     driver.iterate(query, (row) => {
       rows.push(row);
-      reads.push(...driver.exec(query).rows);
+      reads.push(...driver.exec(query).rows, ...statement.exec([]).rows);
       return true;
     });
 
     const all = [{ a: 1 }, { a: 2 }, { a: 3 }, { a: 4 }];
     assertEqual(rows, all);
-    assertEqual(reads, [...all, ...all, ...all, ...all]);
+    assertEqual(reads, Array.from({ length: 8 }, () => all).flat());
   });
 
   test("iterate rethrows what onRow throws, after which the query runs again", async () => {

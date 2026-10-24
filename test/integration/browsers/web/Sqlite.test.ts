@@ -98,11 +98,8 @@ const createWorkerDriver = () => {
       lockName: string,
       encryptionKey?: Uint8Array,
     ) => send({ type: "create", name, encryptionKey, lockName }),
-    exec: (
-      sqlStr: string,
-      parameters: ReadonlyArray<unknown> = [],
-      prepare = false,
-    ) => send({ type: "exec", sql: sqlStr, parameters, prepare }),
+    exec: (sqlStr: string, parameters: ReadonlyArray<unknown> = []) =>
+      send({ type: "exec", sql: sqlStr, parameters }),
     export: () => send({ type: "export" }),
     dispose: () => send({ type: "dispose" }),
     deleteDatabase: () => send({ type: "deleteDatabase" }),
@@ -189,18 +186,29 @@ describe("createWasmSqliteDriver", () => {
 
       sqlite.exec(sql`create table t (id integer primary key, name text);`);
 
-      // Both statement paths distinguish inserted rows from conflicts.
-      const preparedInsert = sql.prepared`
+      // Every statement path distinguishes inserted rows from conflicts.
+      const preparedInsert = () => sqlite.prepared`
         insert into t (id, name)
         values (${1}, ${"Alice"})
         on conflict do nothing;
       `;
-      expect(sqlite.exec(preparedInsert).changes).toBe(1);
-      expect(sqlite.exec(preparedInsert).changes).toBe(0);
+      expect(preparedInsert().changes).toBe(1);
+      expect(preparedInsert().changes).toBe(0);
+
+      const optionInsert = {
+        ...sql`
+          insert into t (id, name)
+          values (${2}, ${"Bob"})
+          on conflict do nothing;
+        `,
+        options: { prepare: true },
+      };
+      expect(sqlite.exec(optionInsert).changes).toBe(1);
+      expect(sqlite.exec(optionInsert).changes).toBe(0);
 
       const plainInsert = sql`
         insert into t (id, name)
-        values (${2}, ${"Bob"})
+        values (${3}, ${"Carol"})
         on conflict do nothing;
       `;
       expect(sqlite.exec(plainInsert).changes).toBe(1);
@@ -213,10 +221,13 @@ describe("createWasmSqliteDriver", () => {
 
       sqlite.exec(sql`create table t (id integer primary key, name text);`);
 
-      sqlite.exec(sql.prepared`insert into t (name) values (${"A"});`);
-      sqlite.exec(sql.prepared`insert into t (name) values (${"B"});`);
+      const insert = (name: string) => sqlite.prepared`
+        insert into t (name) values (${name});
+      `;
+      insert("A");
+      insert("B");
 
-      const rows = sqlite.exec(sql.prepared`select name from t order by id;`);
+      const rows = sqlite.prepared`select name from t order by id;`;
       expect(rows.rows).toEqual([{ name: "A" }, { name: "B" }]);
     });
 
@@ -225,8 +236,9 @@ describe("createWasmSqliteDriver", () => {
       const { sqlite } = setup;
 
       sqlite.exec(sql`create table t (name text not null);`);
-      const insert = (name: string | null) =>
-        sqlite.exec(sql.prepared`insert into t (name) values (${name});`);
+      const insert = (name: string | null) => sqlite.prepared`
+        insert into t (name) values (${name});
+      `;
 
       expect(() => insert(null)).toThrow(/NOT NULL/u);
       insert("Alice");

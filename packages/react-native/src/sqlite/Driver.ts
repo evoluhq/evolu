@@ -24,7 +24,7 @@
  * @module
  */
 import {
-  createPreparedStatementsCache,
+  disposable,
   err,
   ok,
   performanceDurationBetween,
@@ -37,13 +37,10 @@ import {
   type PositiveMillis,
   type Result,
   type SqliteDriver,
+  type SqliteDriverStatement,
   type Task,
 } from "@evolu/common";
-import type {
-  NativeSqliteDep,
-  NativeSqliteError,
-  NativeSqliteStatement,
-} from "./Binding.ts";
+import type { NativeSqliteDep, NativeSqliteError } from "./Binding.ts";
 import type { createWaitForDatabaseRelease } from "./WaitForDatabaseRelease.ts";
 
 /** Dependency wrapper for the directory of the database files. */
@@ -104,21 +101,20 @@ export const createNativeSqliteDriver =
       database.close();
     });
 
-    const cache = disposer.use(
-      createPreparedStatementsCache<NativeSqliteStatement>(
-        (sql) => database.prepare(sql),
-        (statement) => {
-          statement.finalize();
-        },
-      ),
-    );
+    // The statements prepare returned that are still open. Disposing the
+    // driver finalizes them before it closes the database, which would
+    // finalize them too, so their owner can dispose them afterward, as a Sqlite
+    // does after deleteDatabase.
+    const statements = new Set<SqliteDriverStatement>();
+    disposer.defer(() => {
+      using stack = new DisposableStack();
+      for (const statement of statements) stack.use(statement);
+    });
 
     const disposables = disposer.move();
 
     return ok({
       exec: (query) => {
-        const cached = cache.get(query);
-        if (cached) return cached.run(query.parameters);
         const statement = database.prepare(query.sql);
         try {
           return statement.run(query.parameters);
@@ -127,9 +123,24 @@ export const createNativeSqliteDriver =
         }
       },
 
+      prepare: (sql) => {
+        const nativeStatement = database.prepare(sql);
+        using statementDisposer = new DisposableStack();
+        statementDisposer.defer(() => {
+          statements.delete(statement);
+          nativeStatement.finalize();
+        });
+        const statement = disposable<SqliteDriverStatement>(
+          { exec: (parameters) => nativeStatement.run(parameters) },
+          statementDisposer,
+        );
+        statements.add(statement);
+        return statement;
+      },
+
       iterate: (query, onRow) => {
-        // A statement of its own, because onRow can run queries, which could
-        // otherwise run the cached one while it is stepped.
+        // A statement of its own, because onRow can run other statements, the
+        // prepared ones among them.
         const statement = database.prepare(query.sql);
         try {
           statement.bind(query.parameters);

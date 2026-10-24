@@ -1,5 +1,5 @@
 import * as fc from "fast-check";
-import { describe, it, test } from "node:test";
+import { describe, it, mock, test } from "node:test";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 import type { NonEmptyReadonlyArray } from "../Array.ts";
@@ -287,6 +287,66 @@ test("encodeSqliteValue encodes JSON text with an escaped lone surrogate as a st
 
     assertSame(buffer.unwrap()[0], type);
     assertSame(decodeSqliteValue(buffer), value);
+  }
+});
+
+test("encodeSqliteValue encodes as Json only text that JSON.stringify writes", () => {
+  for (const [value, type] of [
+    ["null", ProtocolValueType.Json],
+    ["true", ProtocolValueType.Json],
+    ["false", ProtocolValueType.Json],
+    ["0", ProtocolValueType.Json],
+    ["0.5", ProtocolValueType.Json],
+    ["7", ProtocolValueType.Json],
+    ["9", ProtocolValueType.Json],
+    ["-9", ProtocolValueType.Json],
+    ["-1.5", ProtocolValueType.Json],
+    ["1e+21", ProtocolValueType.Json],
+    ['"a"', ProtocolValueType.Json],
+    ["[1]", ProtocolValueType.Json],
+    ['{"a":1}', ProtocolValueType.Json],
+    [" 1", ProtocolValueType.String],
+    ["1 ", ProtocolValueType.String],
+    ["1.50", ProtocolValueType.String],
+    ["-", ProtocolValueType.String],
+    ["1a", ProtocolValueType.String],
+    ["nul", ProtocolValueType.String],
+    ["trueish", ProtocolValueType.String],
+    ["todo", ProtocolValueType.Base64Url],
+    ['"', ProtocolValueType.String],
+    ["[1", ProtocolValueType.String],
+    ['{"a":1', ProtocolValueType.String],
+  ] as const) {
+    const buffer = createBuffer();
+
+    encodeSqliteValue(buffer, value);
+
+    assertSame(buffer.unwrap()[0], type);
+    assertSame(decodeSqliteValue(buffer), value);
+  }
+});
+
+test("encodeSqliteValue does not parse a string whose ends JSON.stringify cannot write", () => {
+  const parse = mock.method(JSON, "parse");
+
+  try {
+    for (const value of [
+      "Buy milk",
+      "todo",
+      "2024 plans",
+      " [1]",
+      "{a",
+      '"quoted',
+      "[draft",
+    ]) {
+      encodeSqliteValue(createBuffer(), value);
+    }
+    assertSame(parse.mock.callCount(), 0);
+
+    encodeSqliteValue(createBuffer(), "[1]");
+    assertTrue(parse.mock.callCount() > 0);
+  } finally {
+    parse.mock.restore();
   }
 });
 

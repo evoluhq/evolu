@@ -8,6 +8,7 @@ import {
   assertType,
   EncryptionKey,
   err,
+  FiniteNumber,
   Name,
   ok,
   sql,
@@ -232,7 +233,7 @@ describe("createWasmSqliteDriver", () => {
     assertEqual(fake.state.events, ["open Memory "]);
   });
 
-  it("runs a query without the prepare option once", async () => {
+  it("runs a query on a statement of its own", async () => {
     await using setup = await setupDriver();
     fake.state.events.length = 0;
 
@@ -242,19 +243,24 @@ describe("createWasmSqliteDriver", () => {
     assertEqual(fake.state.events, ["run select ?; [1]"]);
   });
 
-  it("prepares a query with the prepare option once and runs the statement each time", async () => {
+  it("prepares a statement that runs each time and disposes it", async () => {
     await using setup = await setupDriver();
     fake.state.events.length = 0;
-    const query = sql.prepared`select ${1};`;
 
-    const result = setup.driver.exec(query);
-    setup.driver.exec(query);
+    {
+      using statement = setup.driver.prepare(sql`select ${1};`.sql);
+      assertEqual(statement.exec([FiniteNumber.orThrow(1)]), {
+        rows: [{ value: "statement" }],
+        changes: 2,
+      });
+      statement.exec([FiniteNumber.orThrow(2)]);
+    }
 
-    assertEqual(result, { rows: [{ value: "statement" }], changes: 2 });
     assertEqual(fake.state.events, [
       "prepare select ?;",
       "run statement [1]",
-      "run statement [1]",
+      "run statement [2]",
+      "dispose statement select ?;",
     ]);
   });
 
@@ -267,13 +273,14 @@ describe("createWasmSqliteDriver", () => {
     fake.state.runResult = err(sqliteError);
     fake.state.statementRunResult = err(sqliteError);
 
-    for (const query of [
-      sql`insert into t (name) values (null);`,
-      sql.prepared`insert into t (name) values (null);`,
+    const query = sql`insert into t (name) values (null);`;
+    for (const exec of [
+      () => setup.driver.exec(query),
+      () => setup.driver.prepare(query.sql).exec(query.parameters),
     ]) {
       const thrown = (() => {
         try {
-          setup.driver.exec(query);
+          exec();
         } catch (error) {
           return error;
         }
@@ -314,18 +321,13 @@ describe("createWasmSqliteDriver", () => {
     assertEqualBytes(setup.driver.export(), [1, 2, 3]);
   });
 
-  it("disposes the statements, then the database, then the pool", async () => {
+  it("disposes the database, then the pool", async () => {
     {
-      await using setup = await setupDriver();
-      setup.driver.exec(sql.prepared`select 1;`);
+      await using _setup = await setupDriver();
       fake.state.events.length = 0;
     }
 
-    assertEqual(fake.state.events, [
-      "dispose statement select 1;",
-      "close File",
-      "dispose pool",
-    ]);
+    assertEqual(fake.state.events, ["close File", "dispose pool"]);
   });
 
   it("deletes /evolu1.db after closing the database and before disposing the pool", async () => {

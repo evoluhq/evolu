@@ -198,6 +198,7 @@ describe("Evolu integration", () => {
       assertNotUndefined(driver);
       return ok({
         exec: (query) => driver.exec(query),
+        prepare: (sql) => driver.prepare(sql),
         iterate: (query, onRow) => {
           driver.iterate(query, onRow);
         },

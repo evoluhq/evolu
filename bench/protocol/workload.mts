@@ -18,7 +18,12 @@ import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { setTimeout } from "node:timers/promises";
 import { inspect } from "node:util";
-import type { RandomNumber, SqliteQuery, SqliteRow } from "@evolu/common";
+import type {
+  RandomNumber,
+  SqliteQuery,
+  SqliteRow,
+  SqlTemplateParam,
+} from "@evolu/common";
 import type {
   EncryptedCrdtMessage,
   EncryptedDbChange,
@@ -651,6 +656,15 @@ const createSide = async (
         if (counting) sqlRows += result.rows.length;
         return result;
       },
+      // Versions before Sqlite.prepared run these statements with exec.
+      prepared: <R extends SqliteRow = SqliteRow>(
+        strings: TemplateStringsArray,
+        ...parameters: Array<SqlTemplateParam>
+      ) => {
+        const result = sqlite.prepared<R>(strings, ...parameters);
+        if (counting) sqlRows += result.rows.length;
+        return result;
+      },
       // A streamed row counts as one exec returns does.
       iterate: (query: SqliteQuery, onRow: (row: SqliteRow) => boolean) => {
         sqlite.iterate(query, (row) => {
@@ -661,7 +675,8 @@ const createSide = async (
     },
     (method) => {
       if (!counting) return;
-      if (method === "exec" || method === "iterate") sqlStatements++;
+      if (method === "exec" || method === "prepared" || method === "iterate")
+        sqlStatements++;
       else if (method === "transaction") sqlTransactions++;
     },
   );

@@ -5,7 +5,7 @@
  */
 
 import {
-  createPreparedStatementsCache,
+  disposable,
   err,
   exhaustiveCheck,
   ok,
@@ -14,6 +14,7 @@ import {
   type Name,
   type Result,
   type SqliteDriver,
+  type SqliteDriverStatement,
   type Task,
   type Typed,
   type TypeName,
@@ -34,7 +35,6 @@ import {
   type SahPoolOptions,
   type SqliteDatabase,
   type SqliteError,
-  type SqliteStatement,
   type SqliteWasm,
   type SqliteWasmDep,
   type SqliteWasmError,
@@ -145,30 +145,29 @@ export const createWasmSqliteDriver =
         exhaustiveCheck(options);
     }
 
-    const cache = disposer.use(
-      createPreparedStatementsCache<SqliteStatement>(
-        (sql) => getOrThrowWithMessage(database.prepare(sql)),
-        (statement) => {
-          statement[Symbol.dispose]();
-        },
-      ),
-    );
-
     const disposables = disposer.move();
 
     return ok({
-      exec: (query) => {
-        const statement = cache.get(query);
-        return getOrThrowWithMessage(
-          statement
-            ? statement.run(query.parameters)
-            : database.run(query.sql, query.parameters),
+      exec: (query) =>
+        getOrThrowWithMessage(database.run(query.sql, query.parameters)),
+
+      prepare: (sql) => {
+        using disposer = new DisposableStack();
+        const statement = disposer.use(
+          getOrThrowWithMessage(database.prepare(sql)),
+        );
+        return disposable<SqliteDriverStatement>(
+          {
+            exec: (parameters) =>
+              getOrThrowWithMessage(statement.run(parameters)),
+          },
+          disposer,
         );
       },
 
       iterate: (query, onRow) => {
-        // A statement of its own, because onRow can run queries, which could
-        // otherwise run the cached one while it is iterated.
+        // A statement of its own, because onRow can run other statements, the
+        // prepared ones among them.
         getOrThrowWithMessage(
           database.iterate(query.sql, query.parameters, onRow),
         );

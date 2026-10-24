@@ -15,6 +15,7 @@ import {
   type CreateSqliteDriver,
   type EvoluDeps,
   type EvoluError,
+  type SqliteQueryParameters,
   type SqliteRow,
 } from "@evolu/common";
 import {
@@ -26,7 +27,7 @@ import {
   testAppOwner,
 } from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { describe, it, mock } from "node:test";
 import { createEvoluDeps } from "./shared.ts";
 
@@ -35,15 +36,25 @@ installPolyfills();
 /** Creates a SQLite driver for an in-memory node:sqlite database. */
 const setupNodeSqliteDriver = (): CreateSqliteDriver => () => () => {
   const db = new DatabaseSync(":memory:");
+  const execStatement = (
+    statement: StatementSync,
+    parameters: SqliteQueryParameters,
+  ) => {
+    if (statement.columns().length === 0) {
+      const { changes } = statement.run(...parameters);
+      return { rows: [], changes: Number(changes) };
+    }
+    const rows = statement.all(...parameters) as Array<SqliteRow>;
+    return { rows, changes: 0 };
+  };
   return ok({
-    exec: ({ sql, parameters }) => {
+    exec: ({ sql, parameters }) => execStatement(db.prepare(sql), parameters),
+    prepare: (sql) => {
       const statement = db.prepare(sql);
-      if (statement.columns().length === 0) {
-        const { changes } = statement.run(...parameters);
-        return { rows: [], changes: Number(changes) };
-      }
-      const rows = statement.all(...parameters) as Array<SqliteRow>;
-      return { rows, changes: 0 };
+      return {
+        exec: (parameters) => execStatement(statement, parameters),
+        [Symbol.dispose]: constVoid,
+      };
     },
     iterate: ({ sql, parameters }, onRow) => {
       for (const row of db.prepare(sql).iterate(...parameters))

@@ -45,8 +45,56 @@ import {
  * @group Core
  */
 export interface Sqlite extends AsyncDisposable {
+  /**
+   * Runs a query on a statement of its own, unless the query has the `prepare`
+   * option of {@link SqliteQueryOptions}.
+   */
   readonly exec: <R extends SqliteRow = SqliteRow>(
     query: SqliteQuery,
+  ) => SqliteExecResult<R>;
+
+  /**
+   * Tagged template that runs SQL as {@link sql} builds it, on a statement this
+   * database prepares on the first call and finalizes when it is disposed.
+   *
+   * The statement belongs to the template and the SQL of its
+   * {@link SqlIdentifier} and {@link RawSql} fragments. A template's strings are
+   * the same array on every call from one place in the code, so later calls
+   * find the statement without building the SQL text. Pass fragments from a
+   * bounded set, such as the tables and columns of a schema, because each
+   * combination keeps a statement until the database is disposed, and run SQL
+   * whose fragments vary without bound with {@link Sqlite.exec}. The strings
+   * must be the template's own array, which a tagged template passes.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { assertEqual, sql, testSetupSqlite } from "@evolu/common";
+   * import { createBetterSqliteDriver } from "@evolu/nodejs";
+   *
+   * await using setup = await testSetupSqlite({
+   *   createSqliteDriver: createBetterSqliteDriver,
+   * });
+   * const { sqlite } = setup;
+   * sqlite.exec(sql`create table todo (id text, title text);`);
+   *
+   * const insertTodo = (id: string, title: string) => sqlite.prepared`
+   *   insert into todo (id, title) values (${id}, ${title});
+   * `;
+   * insertTodo("1", "Buy milk");
+   * insertTodo("2", "Walk the dog");
+   *
+   * assertEqual(
+   *   sqlite.prepared<{
+   *     title: string;
+   *   }>`select title from todo order by id;`.rows,
+   *   [{ title: "Buy milk" }, { title: "Walk the dog" }],
+   * );
+   * ```
+   */
+  readonly prepared: <R extends SqliteRow = SqliteRow>(
+    strings: TemplateStringsArray,
+    ...parameters: Array<SqlTemplateParam>
   ) => SqliteExecResult<R>;
 
   /**
@@ -207,9 +255,14 @@ export interface SqliteQueryOptions {
   readonly logExplainQueryPlan?: boolean;
 
   /**
-   * If set to `true`, explicitly prepares the query before execution. Prepared
-   * statements can improve performance for repeated queries by reusing the
-   * compiled query.
+   * If set to `true`, {@link Sqlite.exec} runs the query on a statement the
+   * database prepares for its SQL text on the first run and finalizes when it
+   * is disposed. Set it on a query that runs often and whose text comes from a
+   * bounded set, because each text keeps a statement.
+   *
+   * The option is data, so it travels with a query to the worker that runs it.
+   * For SQL that runs where it is written, {@link Sqlite.prepared} finds its
+   * statement without building the text.
    *
    * See: {@link https://sqlite.org/c3ref/prepare.html}.
    */
@@ -295,25 +348,43 @@ export type SqliteRow = Record<string, SqliteValueInput>;
  * @group Core
  */
 export interface SqliteDriver extends Disposable {
+  /**
+   * Runs a query on a statement of its own. A driver may keep that statement
+   * until its garbage is collected, as better-sqlite3 does, so run a query that
+   * runs often on a statement from {@link SqliteDriver.prepare}.
+   */
   readonly exec: (query: SqliteQuery) => SqliteExecResult;
+
+  // A driver prepares, and the database keeps what it prepared: see
+  // docs/adr/database-caches-prepared-statements.md.
+  /**
+   * Prepares a statement to run many times, until its owner disposes it.
+   * Disposing or deleting the driver finalizes the statements still open, after
+   * which disposing one does nothing.
+   */
+  readonly prepare: (sql: SafeSql) => SqliteDriverStatement;
 
   /**
    * Runs a query that reads and returns rows, as {@link Sqlite.iterate}
-   * describes, and passes its rows to `onRow` one at a time until it returns
-   * `false` or the rows end, stepping no row past the one it stops at. Then it
-   * resets or finalizes the statement, also when `onRow` throws, which it
-   * rethrows. It may throw for a query without result columns.
+   * describes, on a statement of its own, and passes its rows to `onRow` one at
+   * a time until it returns `false` or the rows end, stepping no row past the
+   * one it stops at. Then it resets or finalizes the statement, also when
+   * `onRow` throws, which it rethrows. It may throw for a query without result
+   * columns.
    *
-   * `onRow` can read with {@link SqliteDriver.exec}, so an iteration must not
-   * step a statement that `exec` can reuse, such as a cached prepared
-   * statement.
+   * `onRow` can run other statements, prepared ones among them, so iterating
+   * must not step a statement that {@link SqliteDriver.prepare} returned.
    */
   readonly iterate: (
     query: SqliteQuery,
     onRow: (row: SqliteRow) => boolean,
   ) => void;
 
-  /** Disposes this driver, then deletes its persistent database file. */
+  /**
+   * Disposes this driver, which finalizes the statements
+   * {@link SqliteDriver.prepare} returned that are still open, then deletes its
+   * persistent database file. A {@link Sqlite} on it can be disposed afterward.
+   */
   readonly deleteDatabase: () => void;
 
   /**
@@ -326,6 +397,20 @@ export interface SqliteDriver extends Disposable {
    * and the web would export uncommitted pages.
    */
   readonly export: () => Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * A statement that {@link SqliteDriver.prepare} prepared. Disposing it finalizes
+ * it.
+ *
+ * @group Core
+ */
+export interface SqliteDriverStatement extends Disposable {
+  /**
+   * Binds the parameters, runs the statement to completion and leaves it ready
+   * to run again, also when running fails.
+   */
+  readonly exec: (parameters: SqliteQueryParameters) => SqliteExecResult;
 }
 
 /**
@@ -382,6 +467,44 @@ export const createSqlite =
     );
     console.debug("SQLite driver created");
 
+    // Prepared statements, kept until the database is disposed: those of
+    // queries with the `prepare` option by their SQL, and those of `prepared`
+    // by their template and fragments. Why the database keeps them, not the
+    // driver: see docs/adr/database-caches-prepared-statements.md.
+    const statementsBySql = new Map<SafeSql, SqliteDriverStatement>();
+    const preparedByFragmentsByTemplate = new Map<
+      TemplateStringsArray,
+      Map<string, PreparedTemplate>
+    >();
+
+    // Registered after the driver, so the statements are finalized before it
+    // closes.
+    disposer.defer(() => {
+      using statements = new DisposableStack();
+      statements.defer(() => {
+        statementsBySql.clear();
+        preparedByFragmentsByTemplate.clear();
+      });
+      for (const statement of statementsBySql.values())
+        statements.use(statement);
+      for (const preparedByFragments of preparedByFragmentsByTemplate.values())
+        for (const { statement } of preparedByFragments.values())
+          statements.use(statement);
+    });
+
+    const execStatement = (
+      sql: SafeSql,
+      parameters: SqliteQueryParameters,
+    ): SqliteExecResult => {
+      let statement = statementsBySql.get(sql);
+      if (statement === undefined) {
+        // Stored only once prepared, so SQL that SQLite rejects keeps nothing.
+        statement = driver.prepare(sql);
+        statementsBySql.set(sql, statement);
+      }
+      return statement.exec(parameters);
+    };
+
     // Runs a query with the logging its options ask for.
     const runQuery = <T>(query: SqliteQuery, execute: () => T): T => {
       console.trace({ query });
@@ -422,7 +545,53 @@ export const createSqlite =
       disposable<Sqlite>(
         {
           exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
-            const result = runQuery(query, () => driver.exec(query));
+            const result = runQuery(query, () =>
+              query.options?.prepare === true
+                ? execStatement(query.sql, query.parameters)
+                : driver.exec(query),
+            );
+            console.trace({ result });
+            return result as SqliteExecResult<R>;
+          },
+
+          prepared: <R extends SqliteRow = SqliteRow>(
+            strings: TemplateStringsArray,
+            ...parameters: Array<SqlTemplateParam>
+          ) => {
+            const values: Array<SqliteValue> = [];
+            // Each fragment adds its index, length, and SQL, so different
+            // fragments never make the same key.
+            let fragments = "";
+
+            for (let i = 0; i < parameters.length; i++) {
+              const param = parameters[i];
+              if (typeof param === "object" && param != null && "type" in param)
+                fragments += `${i}:${param.sql.length}:${param.sql}`;
+              else
+                values.push(
+                  typeof param === "number"
+                    ? FiniteNumber.orThrow(param)
+                    : param,
+                );
+            }
+
+            let preparedByFragments =
+              preparedByFragmentsByTemplate.get(strings);
+            let prepared = preparedByFragments?.get(fragments);
+            if (prepared === undefined) {
+              const text = sql(strings, ...parameters).sql;
+              // Stored only once prepared, so SQL that SQLite rejects, such as
+              // a fragment naming an unknown column, keeps nothing.
+              prepared = { sql: text, statement: driver.prepare(text) };
+              if (preparedByFragments === undefined) {
+                preparedByFragments = new Map();
+                preparedByFragmentsByTemplate.set(strings, preparedByFragments);
+              }
+              preparedByFragments.set(fragments, prepared);
+            }
+
+            console.trace({ query: { sql: prepared.sql, parameters: values } });
+            const result = prepared.statement.exec(values);
             console.trace({ result });
             return result as SqliteExecResult<R>;
           },
@@ -435,7 +604,7 @@ export const createSqlite =
 
           transaction: ((callback: () => Result<unknown, unknown> | void) => {
             console.trace("begin");
-            driver.exec(sql`begin;`);
+            execStatement("begin;" as SafeSql, []);
 
             // After errors such as SQLITE_FULL or SQLITE_IOERR, SQLite may roll
             // back the transaction itself, and this rollback then fails with
@@ -449,14 +618,14 @@ export const createSqlite =
             rollback.defer(() => {
               if (!shouldRollback) return;
               console.trace("rollback");
-              driver.exec(sql`rollback;`);
+              execStatement("rollback;" as SafeSql, []);
             });
 
             const result = callback();
             if (result != null && !result.ok) return result;
 
             console.trace("commit");
-            driver.exec(sql`commit;`);
+            execStatement("commit;" as SafeSql, []);
             shouldRollback = false;
 
             return result;
@@ -519,61 +688,10 @@ const drawSqliteQueryPlan = (rows: Array<SqliteQueryPlanRow>): string =>
     })
     .join("\n");
 
-/**
- * Cache for compiled prepared statements.
- *
- * Statements are created on first access and reused for subsequent calls with
- * the same SQL. Disposing the cache finalizes all cached statements.
- *
- * @group Core
- */
-export interface PreparedStatements<P> extends Disposable {
-  readonly get: <T extends boolean>(
-    query: SqliteQuery,
-    alwaysPrepare?: T,
-  ) => T extends true ? P : P | null;
+interface PreparedTemplate {
+  readonly sql: SafeSql;
+  readonly statement: SqliteDriverStatement;
 }
-
-/**
- * Creates a {@link PreparedStatements} cache backed by the given factory and
- * dispose function.
- *
- * @group Core
- */
-export const createPreparedStatementsCache = <P>(
-  factory: (sql: SafeSql) => P,
-  disposeFn: (statement: P) => void,
-): PreparedStatements<P> => {
-  using disposer = new DisposableStack();
-  const statementsBySql = new Map<SafeSql, P>();
-
-  disposer.defer(() => {
-    using disposer = new DisposableStack();
-    disposer.defer(() => {
-      statementsBySql.clear();
-    });
-
-    for (const statement of statementsBySql.values()) {
-      disposer.adopt(statement, disposeFn);
-    }
-  });
-
-  return disposable<PreparedStatements<P>>(
-    {
-      get: (query, alwaysPrepare) => {
-        if (alwaysPrepare !== true && !query.options?.prepare)
-          return null as never;
-        let statement = statementsBySql.get(query.sql);
-        if (statement === undefined) {
-          statement = factory(query.sql);
-          statementsBySql.set(query.sql, statement);
-        }
-        return statement;
-      },
-    },
-    disposer,
-  );
-};
 
 /**
  * A double-quoted SQL identifier for safe column or table name interpolation.
@@ -606,7 +724,8 @@ export type SqlTemplateParam = SqliteValueInput | SqlIdentifier | RawSql;
  * Creates a safe SQL query using a tagged template literal.
  *
  * Parameters are automatically escaped and bound as SQLite values. Use
- * `sql.identifier` for column/table names and `sql.raw` for unescaped SQL.
+ * `sql.identifier` for column/table names and `sql.raw` for unescaped SQL. To
+ * run SQL often, use {@link Sqlite.prepared}, which takes the same template.
  *
  * ### Example
  *
@@ -686,15 +805,6 @@ sql.identifier = (identifier: string): SqlIdentifier => ({
  * fragments to avoid SQL injection.
  */
 sql.raw = (raw: string): RawSql => ({ type: "RawSql", sql: raw });
-
-/** Tagged template that creates a {@link SqliteQuery} with `prepare: true`. */
-sql.prepared = (
-  strings: TemplateStringsArray,
-  ...parameters: Array<SqlTemplateParam>
-): SqliteQuery => {
-  const query = sql(strings, ...parameters);
-  return { ...query, options: { prepare: true } };
-};
 
 /**
  * Index metadata stored in `sqlite_master` for a {@link Sqlite} database.

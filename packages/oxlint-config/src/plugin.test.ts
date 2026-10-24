@@ -302,6 +302,90 @@ ruleTester.run(
   },
 );
 
+ruleTester.run("no-unused-sql-query", plugin.rules["no-unused-sql-query"], {
+  valid: [
+    {
+      name: "allows a sql query that is used",
+      code: "const query = sql`select 1;`;\nvoid query;",
+    },
+    {
+      name: "allows a sql query passed to a function",
+      code: "run(sql`select 1;`);",
+    },
+    {
+      name: "allows a tagged template that runs what it builds",
+      code: "sqlite.prepared`insert into t values (1);`;",
+    },
+    {
+      name: "allows another tagged template that is not sql",
+      code: "q`delete from t;`;",
+    },
+    {
+      name: "allows a tagged template imported as sql from another package",
+      code: 'import { sql as q } from "other";\nq`delete from t;`;',
+    },
+    {
+      name: "allows a tagged template imported from @evolu/common that is not sql",
+      code: 'import { identity as q } from "@evolu/common";\nq`delete from t;`;',
+    },
+    {
+      name: "allows sql of a namespace imported from another package",
+      code: 'import * as other from "other";\nother.sql`delete from t;`;',
+    },
+    {
+      name: "allows another member of a namespace imported from @evolu/common",
+      code: 'import * as Evolu from "@evolu/common";\nEvolu.identity`delete from t;`;',
+    },
+    {
+      name: "allows sql of a binding that shadows a namespace import",
+      code: [
+        'import * as Evolu from "@evolu/common";',
+        "const run = (Evolu) => {",
+        "  Evolu.sql`delete from t;`;",
+        "};",
+        "void run;",
+      ].join("\n"),
+    },
+    {
+      name: "allows a tagged template that shadows an import of sql",
+      code: [
+        'import { sql as q } from "@evolu/common";',
+        "const run = (q) => {",
+        "  q`delete from t;`;",
+        "};",
+        "void run;",
+      ].join("\n"),
+    },
+  ],
+  invalid: [
+    {
+      name: "reports a statement that builds a sql query and drops it",
+      code: "sql`delete from t;`;",
+      errors: [{ messageId: "unusedSqlQuery" }],
+    },
+    {
+      name: "reports a query built with sql imported under another name",
+      code: 'import { sql as q } from "@evolu/common";\nq`delete from t;`;',
+      errors: [{ messageId: "unusedSqlQuery" }],
+    },
+    {
+      name: "reports a query built with sql of a namespace import",
+      code: 'import * as Evolu from "@evolu/common";\nEvolu.sql`delete from t;`;',
+      errors: [{ messageId: "unusedSqlQuery" }],
+    },
+    {
+      name: "reports a query built with sql of a namespace import by a string key",
+      code: 'import * as Evolu from "@evolu/common";\nEvolu["sql"]`delete from t;`;',
+      errors: [{ messageId: "unusedSqlQuery" }],
+    },
+    {
+      name: "reports a query built with sql imported by a string name",
+      code: 'import { "sql" as q } from "@evolu/common";\nq`delete from t;`;',
+      errors: [{ messageId: "unusedSqlQuery" }],
+    },
+  ],
+});
+
 ruleTester.run(
   "require-pure-annotation",
   plugin.rules["require-pure-annotation"],

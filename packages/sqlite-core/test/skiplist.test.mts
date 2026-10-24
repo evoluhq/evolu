@@ -12,9 +12,11 @@ import {
   NonNegativeInt,
   type Random,
   type RandomNumber,
+  sql,
   type Sqlite,
   type SqliteQuery,
   type SqliteRow,
+  type SqlTemplateParam,
 } from "@evolu/common";
 import {
   createBaseSqliteStorage,
@@ -69,15 +71,20 @@ describe("skiplist functions", () => {
     const unused = (): never => {
       throw new Error("Storage.ts's skiplist doesn't use it.");
     };
+    const exec = (query: SqliteQuery) => {
+      const rows: Array<SqliteRow> = [];
+      run(query, (row) => {
+        rows.push(row);
+        return true;
+      });
+      return { rows, changes: addon.changes(db) };
+    };
     return {
-      exec: (query: SqliteQuery) => {
-        const rows: Array<SqliteRow> = [];
-        run(query, (row) => {
-          rows.push(row);
-          return true;
-        });
-        return { rows, changes: addon.changes(db) };
-      },
+      exec,
+      prepared: (
+        strings: TemplateStringsArray,
+        ...parameters: Array<SqlTemplateParam>
+      ) => exec(sql(strings, ...parameters)),
       iterate: run,
       transaction: unused,
       export: unused,

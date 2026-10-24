@@ -77,7 +77,6 @@ workerScope.onmessage = (e: MessageEvent) => {
       readonly lockName?: string;
       readonly sql?: string;
       readonly parameters?: ReadonlyArray<SqliteValue>;
-      readonly prepare?: boolean;
     };
 
     try {
@@ -113,11 +112,9 @@ workerScope.onmessage = (e: MessageEvent) => {
           const query: {
             readonly sql: SafeSql;
             readonly parameters: Array<SqliteValue>;
-            readonly options?: { readonly prepare: boolean };
           } = {
             sql: cmd.sql as SafeSql,
             parameters: [...(cmd.parameters ?? [])],
-            ...(cmd.prepare ? { options: { prepare: true } } : {}),
           };
           const result = driver.exec(query);
           workerScope.postMessage({

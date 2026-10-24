@@ -14,7 +14,7 @@ import type { UnknownError } from "../Error.ts";
 import { decrement } from "../Number.ts";
 import type { RandomDep } from "../Random.ts";
 import { err, ok } from "../Result.ts";
-import type { Sqlite, SqliteDep } from "../Sqlite.ts";
+import type { Sqlite, SqliteDep, SqliteExecResult } from "../Sqlite.ts";
 import { sql, SqliteValue } from "../Sqlite.ts";
 import type { Task } from "../Task.ts";
 import { Millis } from "../Time.ts";
@@ -654,9 +654,9 @@ export const createBaseSqliteStorage = (
     // sql-parser-cst, which formats this SQL, rejects cross join ... on and
     // Prettier then leaves the query unformatted
     // (https://github.com/nene/sql-parser-cst/issues/140).
-    const result = deps.sqlite.exec<{
+    const result = deps.sqlite.prepared<{
       timestampBytes: TimestampBytes;
-    }>(sql`
+    }>`
       with recursive
         split_timestamps(timestampBytes, pos) as (
           select
@@ -673,7 +673,7 @@ export const createBaseSqliteStorage = (
       from split_timestamps s
       cross join evolu_timestamp t
       where t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
-    `);
+    `;
 
     return result.rows.map((row) => row.timestampBytes);
   },
@@ -871,22 +871,22 @@ const insertTimestamp =
     );
 
     let queries: [
-      insert: ReturnType<typeof sql.prepared>,
-      ...updates: Array<ReturnType<typeof sql.prepared>>,
+      insert: () => SqliteExecResult,
+      ...updates: Array<() => SqliteExecResult>,
     ];
 
     switch (strategy) {
       case "append":
         queries = [
           level === 1
-            ? sql.prepared`
+            ? () => deps.sqlite.prepared`
                 insert into evolu_timestamp
                   (ownerId, l, t, h1, h2, c)
                 values
                   (${ownerId}, 1, ${timestamp}, ${h1}, ${h2}, 1)
                 on conflict do nothing;
               `
-            : sql.prepared`
+            : () => deps.sqlite.prepared`
                 with
                   fc(b, cl, pt, nt, ih1, ih2, ic) as (
                     select
@@ -963,14 +963,14 @@ const insertTimestamp =
 
       case "prepend":
         queries = [
-          sql.prepared`
+          () => deps.sqlite.prepared`
             insert into evolu_timestamp
               (ownerId, l, t, h1, h2, c)
             values
               (${ownerId}, ${level}, ${timestamp}, ${h1}, ${h2}, 1)
             on conflict do nothing;
           `,
-          sql.prepared`
+          () => deps.sqlite.prepared`
             with
               ml(ml) as (
                 select max(l)
@@ -1056,7 +1056,7 @@ const insertTimestamp =
         queries =
           level === 1
             ? [
-                sql.prepared`
+                () => deps.sqlite.prepared`
                   insert into evolu_timestamp
                     (ownerId, l, t, h1, h2, c)
                   values
@@ -1064,7 +1064,7 @@ const insertTimestamp =
                   on conflict do nothing;
                 `,
 
-                sql.prepared`
+                () => deps.sqlite.prepared`
                   with
                     p(l, t, pt) as (
                       select
@@ -1117,13 +1117,13 @@ const insertTimestamp =
                 `,
               ]
             : [
-                sql.prepared`
+                () => deps.sqlite.prepared`
                   insert into evolu_timestamp (ownerId, t, l)
                   values (${ownerId}, ${timestamp}, ${level})
                   on conflict do nothing;
                 `,
 
-                sql.prepared`
+                () => deps.sqlite.prepared`
                   with
                     c0(b, cl, pt, nt, h1, h2, c) as (
                       select
@@ -1302,8 +1302,8 @@ const insertTimestamp =
     // The insert uses "on conflict do nothing". An existing timestamp changes
     // nothing, and the metadata updates are skipped.
     const [insert, ...updates] = queries;
-    if (deps.sqlite.exec(insert).changes === 0) return false;
-    for (const update of updates) deps.sqlite.exec(update);
+    if (insert().changes === 0) return false;
+    for (const update of updates) update();
     return true;
   };
 
@@ -1439,7 +1439,7 @@ const sqliteFingerprintToFingerprint = ([
 const getSize =
   (deps: SqliteDep) =>
   (ownerId: OwnerIdBytes): NonNegativeInt => {
-    const result = deps.sqlite.exec<{ size: NonNegativeInt }>(sql.prepared`
+    const result = deps.sqlite.prepared<{ size: NonNegativeInt }>`
       with
         ml(ml) as (
           select max(l)
@@ -1472,7 +1472,7 @@ const getSize =
         )
       select sum(c) as size
       from sc;
-    `);
+    `;
 
     return result.rows[0].size;
   };
@@ -1491,15 +1491,15 @@ const findLowerBound =
       return end;
     }
 
-    const result = deps.sqlite.exec<{
+    const result = deps.sqlite.prepared<{
       t: TimestampBytes;
-    }>(sql.prepared`
+    }>`
       select t
       from evolu_timestamp
       where ownerId = ${ownerId} and t >= ${upperBound}
       order by t
       limit 1;
-    `);
+    `;
 
     if (result.rows.length === 0) {
       return end;
@@ -1513,9 +1513,9 @@ const findLowerBound =
 const getTimestampCount =
   (deps: SqliteDep) =>
   (ownerId: OwnerIdBytes, timestamp: TimestampBytes): PositiveInt => {
-    const result = deps.sqlite.exec<{
+    const result = deps.sqlite.prepared<{
       count: number;
-    }>(sql.prepared`
+    }>`
       with
         ml(ml) as (
           select max(l) from evolu_timestamp where ownerId = ${ownerId}
@@ -1555,7 +1555,7 @@ const getTimestampCount =
         )
       select sum(tc) as count
       from sc;
-    `);
+    `;
 
     // A found timestamp's count includes itself, so a count below 1 means
     // damaged skiplist counts, which would become a negative index.
@@ -1608,11 +1608,11 @@ const fingerprintRanges =
 
     // A bucket past the owner's timestamps would descend below level 1
     // forever, so the walk stops there and the bucket has no row.
-    const result = deps.sqlite.exec<{
+    const result = deps.sqlite.prepared<{
       b: TimestampBytes | null;
       h1: Int64String;
       h2: Int64String;
-    }>(sql.prepared`
+    }>`
       with
         ml(ml) as (
           select max(l) from evolu_timestamp where ownerId = ${ownerId}
@@ -1706,7 +1706,7 @@ const fingerprintRanges =
         )
       select b, cast(h1 as text) as h1, cast(h2 as text) as h2
       from c3;
-    `);
+    `;
     assert(result.rows.length === buckets.length, "bucket out of range");
 
     const fingerprintRanges = result.rows.map(
@@ -1738,9 +1738,9 @@ export const getTimestampByIndex =
   (ownerId: OwnerIdBytes, index: NonNegativeInt): TimestampBytes => {
     // An index past the owner's timestamps would descend below level 1
     // forever, so the walk stops there and finds no row.
-    const result = deps.sqlite.exec<{
+    const result = deps.sqlite.prepared<{
       readonly pt: TimestampBytes;
-    }>(sql.prepared`
+    }>`
       with
         fi(b, cl, ic, pt, mt, nt, nc) as (
           select
@@ -1810,7 +1810,7 @@ export const getTimestampByIndex =
       select pt
       from fi
       where ic == ${index + 1};
-    `);
+    `;
 
     const row = result.rows.at(0);
     assert(row, "index out of range");
@@ -1832,15 +1832,15 @@ export const readOwnerUsageOrDefault =
     readonly firstTimestamp: TimestampBytes;
     readonly lastTimestamp: TimestampBytes;
   } => {
-    const result = deps.sqlite.exec<{
+    const result = deps.sqlite.prepared<{
       storedBytes: NonNegativeInt;
       firstTimestamp: TimestampBytes | null;
       lastTimestamp: TimestampBytes | null;
-    }>(sql`
+    }>`
       select storedBytes, firstTimestamp, lastTimestamp
       from evolu_usage
       where ownerId = ${ownerIdBytes};
-    `);
+    `;
 
     if (!isNonEmptyArray(result.rows)) {
       return {
@@ -1877,7 +1877,7 @@ export const updateOwnerUsage =
     firstTimestamp: TimestampBytes,
     lastTimestamp: TimestampBytes,
   ): void => {
-    deps.sqlite.exec(sql`
+    deps.sqlite.prepared`
       insert into evolu_usage
         ("ownerId", "storedBytes", "firstTimestamp", "lastTimestamp")
       values
@@ -1887,5 +1887,5 @@ export const updateOwnerUsage =
           storedBytes = ${storedBytes},
           firstTimestamp = ${firstTimestamp},
           lastTimestamp = ${lastTimestamp};
-    `);
+    `;
   };

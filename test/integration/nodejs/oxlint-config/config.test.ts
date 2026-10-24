@@ -129,3 +129,48 @@ test("rejects unnecessary globalThis qualification", () => {
   nodeAssert.equal(result.status, 1);
   nodeAssert.match(result.stdout, /evolu\(no-unnecessary-global-this\)/u);
 });
+
+test("allows a tagged template whose result is unused", () => {
+  const result = lintFiles({
+    "example.ts": [
+      "const run = (strings: TemplateStringsArray): number => strings.length;",
+      "run`insert into t values (1);`;",
+    ].join("\n"),
+  });
+
+  nodeAssert.equal(result.status, 0, result.stdout || result.stderr);
+});
+
+test("rejects other unused expressions", () => {
+  const result = lintFiles({
+    "example.ts": ["const value = 1;", "value;"].join("\n"),
+  });
+
+  nodeAssert.equal(result.status, 1);
+  nodeAssert.match(result.stdout, /eslint\(no-unused-expressions\)/u);
+});
+
+test("rejects a statement that builds a sql query and drops it", () => {
+  const result = lintFiles({
+    "example.ts": [
+      "const sql = (strings: TemplateStringsArray): string => strings.join('');",
+      "sql`delete from t;`;",
+    ].join("\n"),
+  });
+
+  nodeAssert.equal(result.status, 1);
+  nodeAssert.match(result.stdout, /evolu\(no-unused-sql-query\)/u);
+});
+
+test("rejects a statement that builds a sql query and drops it in JavaScript", () => {
+  const result = lintFiles({
+    "example.mjs": [
+      "/** @param {TemplateStringsArray} strings */",
+      "const sql = (strings) => strings.join('');",
+      "sql`delete from t;`;",
+    ].join("\n"),
+  });
+
+  nodeAssert.equal(result.status, 1);
+  nodeAssert.match(result.stdout, /evolu\(no-unused-sql-query\)/u);
+});

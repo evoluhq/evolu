@@ -192,13 +192,13 @@ export const createRelaySqliteStorage =
        *   stored key.
        */
       validateWriteKey: (ownerId, writeKey) => {
-        const selectWriteKey = deps.sqlite.exec<{ writeKey: OwnerWriteKey }>(
-          sql`
-            select writeKey
-            from evolu_writeKey
-            where ownerId = ${ownerId};
-          `,
-        );
+        const selectWriteKey = deps.sqlite.prepared<{
+          writeKey: OwnerWriteKey;
+        }>`
+          select writeKey
+          from evolu_writeKey
+          where ownerId = ${ownerId};
+        `;
         const { rows } = selectWriteKey;
 
         if (isNonEmptyArray(rows)) {
@@ -208,10 +208,10 @@ export const createRelaySqliteStorage =
         // When SQLite fails this insert, for example on a full disk, the throw
         // reaches the protocol, which logs it and answers with WriteError,
         // because a boolean has no room for the error.
-        deps.sqlite.exec(sql`
+        deps.sqlite.prepared`
           insert into evolu_writeKey (ownerId, writeKey)
           values (${ownerId}, ${writeKey});
-        `);
+        `;
 
         return true;
       },
@@ -310,12 +310,12 @@ export const createRelaySqliteStorage =
                     strategy,
                   );
 
-                  deps.sqlite.exec(sql`
+                  deps.sqlite.prepared`
                     insert into evolu_message
                       ("ownerId", "timestamp", "change")
                     values (${ownerIdBytes}, ${timestamp}, ${change})
                     on conflict do nothing;
-                  `);
+                  `;
                 }
 
                 updateOwnerUsage(deps)(
@@ -331,13 +331,13 @@ export const createRelaySqliteStorage =
       },
 
       readDbChange: (ownerId, timestamp) => {
-        const result = deps.sqlite.exec<{
+        const result = deps.sqlite.prepared<{
           change: EncryptedDbChange;
-        }>(sql`
+        }>`
           select "change"
           from evolu_message
           where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
-        `);
+        `;
 
         const row = result.rows.at(0);
         assert(row, "Every timestamp must have a change");
