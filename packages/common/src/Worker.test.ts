@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 
 import {
+  assert,
   assertEqual,
   assertFalse,
   assertNonNullable,
@@ -749,6 +750,252 @@ describe("testWaitForWorkerMessage", () => {
     };
     channel.port1.postMessage("delivered");
 
+    await idle;
+    assertEqual(received, ["delivered"]);
+  });
+});
+
+describe("React Native's runtime scheduler", () => {
+  interface SchedulerTask {
+    readonly priority: number;
+    readonly callback: () => unknown;
+    cancelled: boolean;
+  }
+
+  // An unusual value, so delivery must use the scheduler's own.
+  const normalPriority = 37;
+
+  /** Installs a `nativeRuntimeScheduler` whose tasks the test runs. */
+  const setupNativeRuntimeScheduler = () => {
+    const global = globalThis as { nativeRuntimeScheduler?: unknown };
+    assert(global.nativeRuntimeScheduler === undefined, "Already installed.");
+    const tasks: Array<SchedulerTask> = [];
+    const cancelled: Array<SchedulerTask> = [];
+
+    global.nativeRuntimeScheduler = {
+      unstable_NormalPriority: normalPriority,
+      unstable_scheduleCallback: (
+        priority: number,
+        callback: () => unknown,
+      ): SchedulerTask => {
+        const task = { priority, callback, cancelled: false };
+        tasks.push(task);
+        return task;
+      },
+      unstable_cancelCallback: (task: SchedulerTask) => {
+        task.cancelled = true;
+        cancelled.push(task);
+      },
+    };
+
+    const errors: Array<unknown> = [];
+
+    /**
+     * Runs the scheduled tasks until none is left, and returns what each
+     * returned. It runs the newest first, as a priority queue may run tasks of
+     * equal priority. Like the scheduler's event loop, it reports what a task
+     * throws and drops every queued task.
+     */
+    const runTasks = (): ReadonlyArray<unknown> => {
+      const results: Array<unknown> = [];
+      for (let task = tasks.pop(); task; task = tasks.pop()) {
+        if (task.cancelled) continue;
+        try {
+          results.push(task.callback());
+        } catch (error) {
+          errors.push(error);
+          // RuntimeScheduler_Modern::handleTaskError clears its whole queue.
+          tasks.length = 0;
+        }
+      }
+      return results;
+    };
+
+    return {
+      tasks,
+      cancelled,
+      errors,
+      runTasks,
+      [Symbol.dispose]: () => {
+        // Runs what a failed test left, so no hop stays pending after it.
+        const leftTasks = tasks.length;
+        runTasks();
+        delete global.nativeRuntimeScheduler;
+        assertEqual(leftTasks, 0);
+      },
+    };
+  };
+
+  const timerTurn = (): Promise<void> =>
+    new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+  it("delivers port messages in its tasks at normal priority, not with timers", async () => {
+    using scheduler = setupNativeRuntimeScheduler();
+    const channel = testCreateMessageChannel<string>();
+    const received: Array<string> = [];
+
+    channel.port2.onMessage = (message) => {
+      received.push(message);
+    };
+    channel.port1.postMessage("hello");
+    await timerTurn();
+
+    assertEqual(received, []);
+    assertEqual(
+      scheduler.tasks.map(({ priority }) => priority),
+      [normalPriority],
+    );
+    // A returned function would be the task's continuation.
+    assertEqual(scheduler.runTasks(), [undefined]);
+    assertEqual(received, ["hello"]);
+  });
+
+  it("delivers a reply and messages posted during delivery in later tasks, in order", () => {
+    using scheduler = setupNativeRuntimeScheduler();
+    const channel = testCreateMessageChannel<string, string>();
+    const received: Array<string> = [];
+
+    channel.port2.onMessage = (message) => {
+      received.push(message);
+      if (message === "a") {
+        channel.port1.postMessage("c");
+        channel.port2.postMessage("reply");
+      }
+    };
+    channel.port1.onMessage = (reply) => {
+      received.push(reply);
+    };
+    channel.port1.postMessage("a");
+    channel.port1.postMessage("b");
+
+    assertEqual(scheduler.runTasks(), [undefined, undefined, undefined]);
+    assertEqual(received, ["a", "b", "reply", "c"]);
+  });
+
+  it("runs one hop per task, in the order the hops were scheduled", () => {
+    using scheduler = setupNativeRuntimeScheduler();
+    using channel1 = createBroadcastChannel<string>("test-native-order");
+    using channel2 = createBroadcastChannel<string>("test-native-order");
+    const received: Array<string> = [];
+
+    channel2.onMessage = (message) => {
+      received.push(message);
+    };
+    channel1.postMessage("1");
+    channel1.postMessage("2");
+    channel1.postMessage("3");
+
+    assertEqual(scheduler.tasks.length, 1);
+    assertEqual(scheduler.runTasks(), [undefined, undefined, undefined]);
+    assertEqual(received, ["1", "2", "3"]);
+  });
+
+  it("goes on with the next hop after one throws", async () => {
+    using scheduler = setupNativeRuntimeScheduler();
+    using channel1 = createBroadcastChannel<string>("test-native-throw");
+    using channel2 = createBroadcastChannel<string>("test-native-throw");
+    const error = new Error("Handler failed.");
+    const received: Array<string> = [];
+
+    channel2.onMessage = (message) => {
+      if (message === "throws") throw error;
+      received.push(message);
+    };
+    channel1.postMessage("throws");
+    channel1.postMessage("next");
+    scheduler.runTasks();
+    // The scheduler's microtask checkpoint after the task.
+    await Promise.resolve();
+    scheduler.runTasks();
+    // As the last hop.
+    channel1.postMessage("throws");
+    scheduler.runTasks();
+    await Promise.resolve();
+    channel1.postMessage("later");
+    scheduler.runTasks();
+
+    assertEqual(scheduler.errors.length, 2);
+    assertSame(scheduler.errors[0], error);
+    assertSame(scheduler.errors[1], error);
+    assertEqual(received, ["next", "later"]);
+  });
+
+  it("delivers broadcast messages in its tasks", () => {
+    using scheduler = setupNativeRuntimeScheduler();
+    using channel1 = createBroadcastChannel<string>("test-native-scheduler");
+    using channel2 = createBroadcastChannel<string>("test-native-scheduler");
+    const received: Array<string> = [];
+
+    channel2.onMessage = (message) => {
+      received.push(message);
+    };
+    channel1.postMessage("hello");
+
+    assertEqual(received, []);
+    assertEqual(scheduler.runTasks(), [undefined]);
+    assertEqual(received, ["hello"]);
+  });
+
+  it("cancels the task of a delivery a disposed port drops", async () => {
+    using scheduler = setupNativeRuntimeScheduler();
+    const channel = testCreateMessageChannel<string>();
+    const received: Array<string> = [];
+
+    channel.port2.onMessage = (message) => {
+      received.push(message);
+    };
+    channel.port1.postMessage("dropped");
+    const [task] = scheduler.tasks;
+    channel.port2[Symbol.dispose]();
+
+    assertEqual(scheduler.cancelled.length, 1);
+    assertSame(scheduler.cancelled[0], task);
+    assertEqual(scheduler.runTasks(), []);
+    await testWaitForWorkerMessage();
+    assertEqual(received, []);
+  });
+
+  it("keeps its task for the other hops when one of them is cancelled", () => {
+    using scheduler = setupNativeRuntimeScheduler();
+    const channel1 = testCreateMessageChannel<string>();
+    const channel2 = testCreateMessageChannel<string>();
+    const received: Array<string> = [];
+
+    channel1.port2.onMessage = (message) => {
+      received.push(message);
+    };
+    channel2.port2.onMessage = (message) => {
+      received.push(message);
+    };
+    channel1.port1.postMessage("dropped");
+    channel2.port1.postMessage("delivered");
+    channel1.port2[Symbol.dispose]();
+
+    assertEqual(scheduler.cancelled, []);
+    assertEqual(scheduler.runTasks(), [undefined]);
+    assertEqual(received, ["delivered"]);
+  });
+
+  it("testWaitForWorkerMessage waits for its pending tasks", async () => {
+    using scheduler = setupNativeRuntimeScheduler();
+    const channel = testCreateMessageChannel<string>();
+    const received: Array<string> = [];
+    let isIdle = false;
+
+    channel.port2.onMessage = (message) => {
+      received.push(message);
+    };
+    channel.port1.postMessage("delivered");
+    const idle = testWaitForWorkerMessage().then(() => {
+      isIdle = true;
+    });
+    await timerTurn();
+    await timerTurn();
+
+    assertFalse(isIdle);
+    scheduler.runTasks();
     await idle;
     assertEqual(received, ["delivered"]);
   });

@@ -388,7 +388,7 @@ export const createMessageChannel: CreateMessageChannel = <
     handler: null,
     queue: [],
     flushScheduled: false,
-    flushTimeoutId: null,
+    flushTask: null,
     ownerCount: 0,
     pendingTransferCount: 0,
   };
@@ -396,7 +396,7 @@ export const createMessageChannel: CreateMessageChannel = <
     handler: null,
     queue: [],
     flushScheduled: false,
-    flushTimeoutId: null,
+    flushTask: null,
     ownerCount: 0,
     pendingTransferCount: 0,
   };
@@ -772,7 +772,7 @@ interface PortState<T> {
   handler: ((message: T) => void) | null;
   readonly queue: Array<T>;
   flushScheduled: boolean;
-  flushTimeoutId: ReturnType<typeof setTimeout> | null;
+  flushTask: WorkerTask | null;
   ownerCount: number;
   pendingTransferCount: number;
 }
@@ -799,9 +799,9 @@ const createPort = <Input, Output>({
 
     nativePortRegistry.delete(native);
 
-    if (receive.flushTimeoutId != null) {
-      cancelWorkerTask(receive.flushTimeoutId);
-      receive.flushTimeoutId = null;
+    if (receive.flushTask != null) {
+      cancelWorkerTask(receive.flushTask);
+      receive.flushTask = null;
     }
 
     receive.handler = null;
@@ -815,8 +815,8 @@ const createPort = <Input, Output>({
     if (state.flushScheduled || state.ownerCount === 0) return;
     state.flushScheduled = true;
 
-    state.flushTimeoutId = scheduleWorkerTask(() => {
-      state.flushTimeoutId = null;
+    state.flushTask = scheduleWorkerTask(() => {
+      state.flushTask = null;
       state.flushScheduled = false;
       if (state.ownerCount === 0) return;
 
@@ -867,39 +867,134 @@ const createPort = <Input, Output>({
   };
 };
 
-const pendingWorkerTaskIds = new Set<ReturnType<typeof setTimeout>>();
+// React Native fires a setTimeout(0) only at the next frame or a later one, so a
+// timer per hop made every hop wait for a frame, 16.7 ms at 60 Hz:
+// https://github.com/facebook/react-native/blob/v0.88.0/packages/react-native/React/CoreModules/RCTTiming.mm
+// https://github.com/facebook/react-native/blob/v0.88.0/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/core/JavaTimerManager.kt
+// Its RuntimeScheduler, which React schedules its work with, runs a task
+// without waiting for a frame, and still as a task, so input and rendering can
+// come between hops, as between a browser's message events:
+// https://github.com/facebook/react-native/blob/v0.88.0/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeSchedulerBinding.cpp
+interface NativeRuntimeScheduler {
+  /** A callback that returns a function makes it the task's continuation. */
+  readonly unstable_scheduleCallback: (
+    priority: number,
+    callback: () => undefined,
+  ) => NativeRuntimeSchedulerTask;
+  readonly unstable_cancelCallback: (task: NativeRuntimeSchedulerTask) => void;
+  readonly unstable_NormalPriority: number;
+}
+
+type NativeRuntimeSchedulerTask = Brand<"NativeRuntimeSchedulerTask">;
+
+interface WorkerTask {
+  readonly callback: () => void;
+}
+
+const globalWithNativeRuntimeScheduler = globalThis as {
+  readonly nativeRuntimeScheduler?: NativeRuntimeScheduler;
+};
+
+// The scheduler orders its tasks by expiration time alone, so it may run two of
+// equal priority in either order. Hops therefore wait here in the order they
+// were scheduled, and the scheduler holds at most one task, which runs the
+// first of them.
+const queuedWorkerTasks = new Set<WorkerTask>();
+let nativeWorkerTask: {
+  readonly scheduler: NativeRuntimeScheduler;
+  readonly task: NativeRuntimeSchedulerTask;
+} | null = null;
+// Elsewhere, each hop has a timer of its own.
+const timeoutIdByWorkerTask = new Map<
+  WorkerTask,
+  ReturnType<typeof setTimeout>
+>();
 const workerTaskIdleWaiters = new Set<() => void>();
 let workerTaskIdleCheckTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
-const scheduleWorkerTask = (
-  callback: () => void,
-): ReturnType<typeof setTimeout> => {
+const scheduleWorkerTask = (callback: () => void): WorkerTask => {
   if (workerTaskIdleCheckTimeoutId != null) {
     clearTimeout(workerTaskIdleCheckTimeoutId);
     workerTaskIdleCheckTimeoutId = undefined;
   }
 
-  const timeoutId = setTimeout(() => {
-    pendingWorkerTaskIds.delete(timeoutId);
-    try {
-      callback();
-    } finally {
-      queueMicrotask(notifyWorkerTaskIdle);
-    }
-  }, 0);
-  pendingWorkerTaskIds.add(timeoutId);
-  return timeoutId;
+  const task: WorkerTask = { callback };
+  const scheduler = globalWithNativeRuntimeScheduler.nativeRuntimeScheduler;
+  if (scheduler) {
+    queuedWorkerTasks.add(task);
+    if (!nativeWorkerTask) scheduleNativeWorkerTask(scheduler);
+  } else {
+    const timeoutId = setTimeout(() => {
+      timeoutIdByWorkerTask.delete(task);
+      runWorkerTask(task);
+    }, 0);
+    timeoutIdByWorkerTask.set(task, timeoutId);
+  }
+  return task;
 };
 
-const cancelWorkerTask = (timeoutId: ReturnType<typeof setTimeout>): void => {
-  clearTimeout(timeoutId);
-  pendingWorkerTaskIds.delete(timeoutId);
+const scheduleNativeWorkerTask = (scheduler: NativeRuntimeScheduler): void => {
+  nativeWorkerTask = {
+    scheduler,
+    task: scheduler.unstable_scheduleCallback(
+      scheduler.unstable_NormalPriority,
+      () => {
+        nativeWorkerTask = null;
+        const task = queuedWorkerTasks.values().next().value;
+        assertNotUndefined(task);
+        queuedWorkerTasks.delete(task);
+        // Before the hop, so a scheduler that keeps its queue when a task
+        // throws still runs the hops after it.
+        if (queuedWorkerTasks.size > 0) scheduleNativeWorkerTask(scheduler);
+        try {
+          runWorkerTask(task);
+        } catch (error) {
+          // The scheduler drops every queued task when one throws, the next
+          // hop's included, and then performs a microtask checkpoint:
+          // https://github.com/facebook/react-native/blob/v0.88.0/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp
+          queueMicrotask(rescheduleNativeWorkerTask);
+          throw error;
+        }
+      },
+    ),
+  };
+};
+
+const rescheduleNativeWorkerTask = (): void => {
+  if (!nativeWorkerTask) return;
+  const { scheduler, task } = nativeWorkerTask;
+  scheduler.unstable_cancelCallback(task);
+  scheduleNativeWorkerTask(scheduler);
+};
+
+const runWorkerTask = (task: WorkerTask): void => {
+  try {
+    task.callback();
+  } finally {
+    queueMicrotask(notifyWorkerTaskIdle);
+  }
+};
+
+const cancelWorkerTask = (task: WorkerTask): void => {
+  const timeoutId = timeoutIdByWorkerTask.get(task);
+  if (timeoutId === undefined) {
+    queuedWorkerTasks.delete(task);
+    if (queuedWorkerTasks.size === 0) {
+      assert(nativeWorkerTask, "A queued hop has a scheduled task.");
+      nativeWorkerTask.scheduler.unstable_cancelCallback(nativeWorkerTask.task);
+      nativeWorkerTask = null;
+    }
+  } else {
+    clearTimeout(timeoutId);
+    timeoutIdByWorkerTask.delete(task);
+  }
   queueMicrotask(notifyWorkerTaskIdle);
 };
 
 const notifyWorkerTaskIdle = (): void => {
   if (
-    pendingWorkerTaskIds.size > 0 ||
+    queuedWorkerTasks.size > 0 ||
+    timeoutIdByWorkerTask.size > 0 ||
     workerTaskIdleWaiters.size === 0 ||
     workerTaskIdleCheckTimeoutId != null
   )
