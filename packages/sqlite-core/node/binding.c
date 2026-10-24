@@ -52,6 +52,10 @@
 // The largest integer a JS number holds exactly, Number.MAX_SAFE_INTEGER.
 #define MAX_SAFE_INTEGER 9007199254740991.0
 
+// The largest text or blob, in bytes, whose copy a statement keeps after a
+// run, as in @evolu/sqlite-wasm.
+#define MAX_KEPT_VALUE 65536
+
 typedef struct Database Database;
 
 // What an environment keeps: the connections it opened, the classes of the
@@ -639,8 +643,9 @@ static napi_value create_row(napi_env env, Statement *statement) {
 }
 
 // Binds a value and returns SQLite's result, or -1 with an exception pending.
+// It sets *is_large for a text or blob over MAX_KEPT_VALUE.
 static int bind_value(napi_env env, sqlite3_stmt *stmt, int index,
-                      napi_value value) {
+                      napi_value value, bool *is_large) {
   napi_valuetype type;
   if (napi_typeof(env, value, &type) != napi_ok) return fail_code(env);
   switch (type) {
@@ -662,6 +667,7 @@ static int bind_value(napi_env env, sqlite3_stmt *stmt, int index,
     size_t size;
     char *text = get_utf8(env, value, "", "bind", &size);
     if (text == NULL) return -1;
+    if (size > MAX_KEPT_VALUE) *is_large = true;
     // SQLite frees the text with sqlite3_free, also when binding fails.
     return sqlite3_bind_text64(stmt, index, text, size, sqlite3_free,
                                SQLITE_UTF8);
@@ -672,6 +678,7 @@ static int bind_value(napi_env env, sqlite3_stmt *stmt, int index,
     int is_bytes = get_bytes(env, value, &data, &size);
     if (is_bytes < 0) return -1;
     if (!is_bytes) break;
+    if (size > MAX_KEPT_VALUE) *is_large = true;
     // An empty array can have no data, and a NULL pointer would bind NULL.
     static const uint8_t empty = 0;
     return sqlite3_bind_blob64(stmt, index, data != NULL ? data : &empty, size,
@@ -687,9 +694,10 @@ static int bind_value(napi_env env, sqlite3_stmt *stmt, int index,
 }
 
 // Binds an array of exactly the statement's number of parameters, or returns
-// false with an exception pending.
+// false with an exception pending. It sets *has_large when it bound a text or
+// blob over MAX_KEPT_VALUE, also when a later one failed.
 static bool bind_parameters(napi_env env, Statement *statement,
-                            napi_value parameters) {
+                            napi_value parameters, bool *has_large) {
   bool is_array = false;
   if (napi_is_array(env, parameters, &is_array) != napi_ok) {
     fail(env);
@@ -734,7 +742,7 @@ static bool bind_parameters(napi_env env, Statement *statement,
   sqlite3_stmt *stmt = statement->stmt;
   evolu_database_discard_failure(sqlite3_db_handle(stmt));
   for (uint32_t i = 0; ok && i < count; i++) {
-    int rc = bind_value(env, stmt, (int)i + 1, values[i]);
+    int rc = bind_value(env, stmt, (int)i + 1, values[i], has_large);
     if (rc > 0) throw_sqlite(env, "bind", sqlite3_db_handle(stmt), rc);
     ok = rc == SQLITE_OK;
   }
@@ -747,9 +755,14 @@ static napi_value js_run(napi_env env, napi_callback_info info) {
   if (!get_args(env, info, 1, argv, &this_value)) return NULL;
   Statement *statement = get_live_statement(env, this_value);
   if (statement == NULL) return NULL;
-  if (!bind_parameters(env, statement, argv[0])) {
+  // SQLite keeps a copy of each bound value until its parameter is bound
+  // again, so a run that bound a large one clears the bindings after its
+  // reset, also when it fails.
+  bool has_large = false;
+  if (!bind_parameters(env, statement, argv[0], &has_large)) {
     if (is_live(statement)) {
       sqlite3_reset(statement->stmt);
+      if (has_large) sqlite3_clear_bindings(statement->stmt);
       statement->has_row = false;
     }
     return NULL;
@@ -783,6 +796,7 @@ static napi_value js_run(napi_env env, napi_callback_info info) {
   evolu_database_error record;
   if (ok && rc != SQLITE_DONE) evolu_database_set_error(&record, db, rc);
   sqlite3_reset(stmt);
+  if (has_large) sqlite3_clear_bindings(stmt);
   statement->has_row = false;
   if (!ok) return NULL;
   if (rc != SQLITE_DONE) return throw_record(env, "step", &record);
@@ -805,7 +819,10 @@ static napi_value js_bind(napi_env env, napi_callback_info info) {
   napi_value argv[1], this_value;
   if (!get_args(env, info, 1, argv, &this_value)) return NULL;
   Statement *statement = get_live_statement(env, this_value);
-  if (statement == NULL || !bind_parameters(env, statement, argv[0]))
+  // The steps that follow need the values, however large.
+  bool has_large = false;
+  if (statement == NULL ||
+      !bind_parameters(env, statement, argv[0], &has_large))
     return NULL;
   return undefined(env);
 }

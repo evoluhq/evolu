@@ -31,7 +31,11 @@
  *   prepared, since SQLite applies some pragmas when it prepares them.
  * - {@link NativeSqliteStatement.run} binds, steps to the end and resets, also
  *   when it fails. Its `changes` is 0 when the run changed no rows or the
- *   statement is read-only, and otherwise `sqlite3_changes64`.
+ *   statement is read-only, and otherwise `sqlite3_changes64`. SQLite keeps a
+ *   copy of each bound value until its parameter is bound again, so a run that
+ *   bound a text or blob over 64 KiB, as UTF-8 for text, clears its bindings
+ *   after it resets, also when it fails, as `@evolu/sqlite-wasm` does, and a
+ *   kept statement holds no large value between runs.
  * - {@link NativeSqliteStatement.step} returns a row or null and never resets.
  *   {@link NativeSqliteStatement.reset} and
  *   {@link NativeSqliteStatement.finalize} throw SQLite's error only when the

@@ -51,6 +51,10 @@ constexpr int abiVersion = 1;
 // Number.MAX_SAFE_INTEGER.
 constexpr double maxSafeInteger = 9007199254740991.0;
 
+// The largest text or blob, in bytes, whose copy a statement keeps after a
+// run, as in @evolu/sqlite-wasm.
+constexpr size_t maxKeptValue = 65536;
+
 // An open database: a database handle's state, and while it's open, an entry
 // of its runtime's connections.
 struct Connection final : jsi::NativeState {
@@ -452,9 +456,10 @@ std::vector<jsi::Value> readParameters(jsi::Runtime &rt, Statement &statement,
 }
 
 // Binds a value, returning SQLite's result, or throws a TypeError for a value
-// that isn't a parameter.
+// that isn't a parameter. It sets isLarge for a text or blob over
+// maxKeptValue.
 int bindValue(jsi::Runtime &rt, sqlite3_stmt *stmt, int index,
-              const jsi::Value &value) {
+              const jsi::Value &value, bool &isLarge) {
   if (value.isNull()) return sqlite3_bind_null(stmt, index);
   if (value.isNumber() && std::isfinite(value.getNumber())) {
     const double number = value.getNumber();
@@ -468,11 +473,13 @@ int bindValue(jsi::Runtime &rt, sqlite3_stmt *stmt, int index,
   }
   if (value.isString()) {
     const std::string text = value.getString(rt).utf8(rt);
+    if (text.size() > maxKeptValue) isLarge = true;
     return sqlite3_bind_text64(stmt, index, text.data(), text.size(),
                                SQLITE_TRANSIENT, SQLITE_UTF8);
   }
   if (isUint8Array(rt, value)) {
     const Bytes bytes = getBytes(rt, value);
+    if (bytes.size > maxKeptValue) isLarge = true;
     // A NULL pointer would bind NULL, not an empty blob.
     static const uint8_t empty = 0;
     return sqlite3_bind_blob64(stmt, index,
@@ -483,12 +490,15 @@ int bindValue(jsi::Runtime &rt, sqlite3_stmt *stmt, int index,
                      "a Uint8Array.");
 }
 
+// Binds the values, setting hasLarge when it bound a text or blob over
+// maxKeptValue, also when a later one throws.
 void bindValues(jsi::Runtime &rt, Statement &statement,
-                const std::vector<jsi::Value> &values) {
+                const std::vector<jsi::Value> &values, bool &hasLarge) {
   sqlite3_stmt *stmt = statement.stmt;
   evolu_database_discard_failure(sqlite3_db_handle(stmt));
   for (size_t i = 0; i < values.size(); i++) {
-    const int rc = bindValue(rt, stmt, static_cast<int>(i) + 1, values[i]);
+    const int rc =
+        bindValue(rt, stmt, static_cast<int>(i) + 1, values[i], hasLarge);
     if (rc != SQLITE_OK) throwSqlite(rt, "bind", sqlite3_db_handle(stmt), rc);
   }
 }
@@ -501,7 +511,9 @@ void resetStatement(Statement &statement) {
 // Binds, steps to the end and resets, also when it fails, and only then
 // appends the rows, each with an ordinary set, as Node-API does. A set can run
 // JavaScript, so the statement is checked after each and reset again after
-// the last, in case a setter stepped it.
+// the last, in case a setter stepped it. SQLite keeps a copy of each bound
+// value until its parameter is bound again, so a run that bound a large one
+// clears the bindings after its first reset, also when it fails.
 jsi::Value run(jsi::Runtime &rt, Statement &statement,
                const jsi::Value &parameters) {
   sqlite3_stmt *stmt = statement.stmt;
@@ -509,8 +521,10 @@ jsi::Value run(jsi::Runtime &rt, Statement &statement,
   std::vector<jsi::Value> rowValues;
   sqlite3_int64 totalChanges = 0;
   int rc = SQLITE_OK;
+  bool hasLarge = false;
   try {
-    bindValues(rt, statement, readParameters(rt, statement, parameters));
+    bindValues(rt, statement, readParameters(rt, statement, parameters),
+               hasLarge);
     totalChanges = sqlite3_total_changes64(db);
     std::vector<jsi::PropNameID> keys;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
@@ -519,13 +533,17 @@ jsi::Value run(jsi::Runtime &rt, Statement &statement,
       rowValues.emplace_back(createRow(rt, statement, keys));
     }
   } catch (...) {
-    if (isLive(statement)) resetStatement(statement);
+    if (isLive(statement)) {
+      resetStatement(statement);
+      if (hasLarge) sqlite3_clear_bindings(statement.stmt);
+    }
     throw;
   }
   // A failed step's error, read before the reset repeats it.
   evolu_database_error record;
   if (rc != SQLITE_DONE) evolu_database_set_error(&record, db, rc);
   resetStatement(statement);
+  if (hasLarge) sqlite3_clear_bindings(stmt);
   if (rc != SQLITE_DONE) throwRecord(rt, "step", record);
   // SQLite keeps the count of the last INSERT, UPDATE or DELETE across other
   // statements, and a statement that can't write changes no rows itself.
@@ -745,7 +763,10 @@ createBinding(jsi::Runtime &rt,
   defineStatementMethod(
       statementPrototype, "bind", 1,
       [](jsi::Runtime &rt, Statement &statement, const jsi::Value &parameters) {
-        bindValues(rt, statement, readParameters(rt, statement, parameters));
+        // The steps that follow need the values, however large.
+        bool hasLarge = false;
+        bindValues(rt, statement, readParameters(rt, statement, parameters),
+                   hasLarge);
         return jsi::Value::undefined();
       });
   defineStatementMethod(

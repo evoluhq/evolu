@@ -1231,6 +1231,50 @@ export const describeBindingConformance = ({
     }
   });
 
+  test("run clears its bindings after a text or blob over 64 KiB, also when it fails, so a kept statement holds no copy of it", () => {
+    const database = binding.openMemory();
+    try {
+      const select = database.prepare("select length(?) as n");
+      const runThenStep = (value: TestValue) => {
+        select.run(values(value));
+        const row = select.step();
+        select.reset();
+        return row;
+      };
+      assertEqual(runThenStep(new Uint8Array(8 * 1024 * 1024)), { n: null });
+      assertEqual(runThenStep("a".repeat(8 * 1024 * 1024)), { n: null });
+      // Up to 64 KiB, of UTF-8 for text, the bindings stay.
+      assertEqual(runThenStep(new Uint8Array(65_536)), { n: 65_536 });
+      assertEqual(runThenStep(new Uint8Array(65_537)), { n: null });
+      assertEqual(runThenStep("é".repeat(32_768)), { n: 32_768 });
+      assertEqual(runThenStep(`${"é".repeat(32_768)}a`), { n: null });
+      select.finalize();
+
+      const failing = database.prepare("select length(?) as n, json(?) as j");
+      const large = new Uint8Array(8 * 1024 * 1024);
+      assertEqual(
+        thrownBy(() => failing.run([large, undefined as never])),
+        typeError(
+          "A parameter must be null, a finite number, a string or a Uint8Array.",
+        ),
+      );
+      assertEqual(failing.step(), { n: null, j: null });
+      failing.reset();
+      assertEqual(
+        thrownBy(() => failing.run(values(large, "{"))),
+        sqliteError({
+          operation: "step",
+          extendedCode: 1,
+          message: "malformed JSON",
+        }),
+      );
+      assertEqual(failing.step(), { n: null, j: null });
+      failing.finalize();
+    } finally {
+      database.close();
+    }
+  });
+
   test("step returns each row and then null, never resets, and reset keeps the bindings", () => {
     const database = binding.openMemory();
     try {
