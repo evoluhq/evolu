@@ -19,8 +19,10 @@ import {
 import { createBuffer, encodeNonNegativeInt } from "../Bytes.ts";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
 import {
+  createXChaCha20Poly1305,
   xChaCha20Poly1305NonceLength,
   type DecryptWithXChaCha20Poly1305Error,
+  type XChaCha20Poly1305,
 } from "../Crypto.ts";
 import { createUnknownError, UnknownError } from "../Error.ts";
 import { isPlainObject } from "../Object.ts";
@@ -187,6 +189,7 @@ const setupSharedWorker = async ({
   time,
   seed,
   getDevicePersistence = () => Promise.resolve("Unknown"),
+  xChaCha20Poly1305,
 }: {
   createWebSocket?: CreateWebSocket;
   time?: TestTime;
@@ -196,6 +199,7 @@ const setupSharedWorker = async ({
    * worker.
    */
   seed?: string;
+  xChaCha20Poly1305?: XChaCha20Poly1305;
 } = {}) => {
   await using disposer = new AsyncDisposableStack();
   // Instance IDs name leader locks, as the worker's ID does, so they come from
@@ -231,6 +235,7 @@ const setupSharedWorker = async ({
       ...(time && { time }),
       ...(seed && { randomBytes: testCreateDeps({ seed }).randomBytes }),
       getDevicePersistence,
+      ...(xChaCha20Poly1305 && { xChaCha20Poly1305 }),
     }),
   );
 
@@ -9657,6 +9662,110 @@ describe("with one evolu instance", () => {
       assertEqual(
         createWebSocket.sentMessages.map(({ url }) => url),
         [transports[1].url],
+      );
+    });
+
+    it("encrypts a write's upload and its copy for another database with the given XChaCha20Poly1305", async (t) => {
+      const xChaCha20Poly1305 = createXChaCha20Poly1305();
+      const encrypt = t.mock.method(xChaCha20Poly1305, "encrypt");
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({
+        createWebSocket,
+        xChaCha20Poly1305,
+      });
+      const first = await setup.createEvolu();
+      const transportA = createOwnerWebSocketTransport({
+        url: "wss://xchacha-a.example",
+        ownerId: testAppOwner.id,
+      });
+      const transportB = createOwnerWebSocketTransport({
+        url: "wss://xchacha-b.example",
+        ownerId: testAppOwner.id,
+      });
+      first.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transportA] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(first, createWebSocket), [
+        transportA.url,
+      ]);
+      // Another database applies the owner's sync messages, so a write is
+      // copied to it.
+      const second = await setup.createEvolu({
+        tenantName: Name.orThrow("xchacha-copy"),
+      });
+      second.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            action: "add",
+            owner: { owner: testAppOwner, transports: [transportB] },
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(await respondToSyncRound(first, createWebSocket), [
+        transportB.url,
+      ]);
+      await respondToSyncRound(second, createWebSocket);
+      await respondToSyncRound(second, createWebSocket);
+      const urls = [transportA.url, transportB.url];
+      for (const url of urls)
+        await answerRequest(createWebSocket, url, [first, second]);
+      createWebSocket.sentMessages.length = 0;
+      for (const url of urls)
+        await answerRequest(createWebSocket, url, [first, second]);
+      first.dbInputs.length = 0;
+      second.dbInputs.length = 0;
+
+      const crdtMessage = testCreateCrdtMessage(
+        createId(setup.run.deps),
+        1,
+        "upload",
+      );
+      first.evoluChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [{ ...crdtMessage.change, ownerId: testAppOwner.id }],
+        onCompleteIds: [],
+        subscribedQueries: new Set(),
+      });
+      setup.run.deps.time.advance("10s");
+      await testWaitForWorkerMessage();
+      const mutation = first.dbInputs.at(0);
+      assertNotUndefined(mutation);
+      assertSame(mutation.request.type, "ForEvolu");
+      assertSame(encrypt.mock.callCount(), 0);
+      first.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: mutation.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: first.id,
+          message: {
+            type: "Mutate",
+            clock: createTimestamp(),
+            messagesByOwnerId: new Map([[testAppOwner.id, [crdtMessage]]]),
+            rowsByQuery: new Map(),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+
+      // One upload to both transports, and one copy for the other database.
+      assertSame(encrypt.mock.callCount(), 2);
+      assertEqual(
+        createWebSocket.sentMessages.map(({ url }) => url),
+        urls,
+      );
+      assertEqual(
+        second.dbInputs.map(({ request }) => request.message.type),
+        ["ApplySyncMessage"],
       );
     });
 

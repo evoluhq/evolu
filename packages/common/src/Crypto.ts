@@ -350,6 +350,104 @@ export const decryptWithXChaCha20Poly1305 = (
   );
 
 /**
+ * XChaCha20-Poly1305 with a nonce the caller creates, in the byte layout of
+ * {@link encryptWithXChaCha20Poly1305} and {@link decryptWithXChaCha20Poly1305}:
+ * the ciphertext ends with its 16-byte Poly1305 tag.
+ *
+ * Every `encrypt` with a key needs a nonce never used with that key before,
+ * such as 24 bytes from {@link RandomBytes}, as
+ * {@link encryptWithXChaCha20Poly1305} draws. A reused nonce reveals the XOR of
+ * the two plaintexts and the one-time Poly1305 key, which lets anyone who sees
+ * both ciphertexts forge ciphertexts that decrypt under that key and nonce.
+ *
+ * Evolu's DbWorker and SharedWorker encrypt and decrypt changes with it, which
+ * lets a platform pass a faster native implementation. Without one, they use
+ * {@link createXChaCha20Poly1305}.
+ *
+ * @group Encryption
+ */
+export interface XChaCha20Poly1305 {
+  /** Encrypts with a nonce never used before with this key. */
+  readonly encrypt: (
+    plaintext: Uint8Array,
+    nonce: Entropy24,
+    encryptionKey: EncryptionKey,
+  ) => XChaCha20Poly1305Ciphertext;
+
+  /**
+   * Fails only when the tag doesn't authenticate the ciphertext, as for another
+   * key or nonce, a changed byte, or a ciphertext shorter than a tag.
+   */
+  readonly decrypt: (
+    ciphertext: XChaCha20Poly1305Ciphertext,
+    nonce: Entropy24,
+    encryptionKey: EncryptionKey,
+  ) => Result<Uint8Array, DecryptWithXChaCha20Poly1305Error>;
+}
+
+/**
+ * Dependency wrapper for {@link XChaCha20Poly1305}.
+ *
+ * @group Encryption
+ */
+export interface XChaCha20Poly1305Dep {
+  readonly xChaCha20Poly1305: XChaCha20Poly1305;
+}
+
+/**
+ * Creates {@link XChaCha20Poly1305} with noble-ciphers, as
+ * {@link encryptWithXChaCha20Poly1305} and {@link decryptWithXChaCha20Poly1305}
+ * encrypt and decrypt.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertOk,
+ *   bytesToUtf8,
+ *   createRandomBytes,
+ *   createXChaCha20Poly1305,
+ *   decryptWithXChaCha20Poly1305,
+ *   EncryptionKey,
+ *   ok,
+ *   utf8ToBytes,
+ *   xChaCha20Poly1305NonceLength,
+ * } from "@evolu/common";
+ *
+ * const xChaCha20Poly1305 = createXChaCha20Poly1305();
+ * const encryptionKey = EncryptionKey.orThrow(new Uint8Array(32).fill(7));
+ * const nonce = createRandomBytes().create(xChaCha20Poly1305NonceLength);
+ * const ciphertext = xChaCha20Poly1305.encrypt(
+ *   utf8ToBytes("secret message"),
+ *   nonce,
+ *   encryptionKey,
+ * );
+ *
+ * const decryptMessage = () => {
+ *   const result = decryptWithXChaCha20Poly1305(
+ *     ciphertext,
+ *     nonce,
+ *     encryptionKey,
+ *   );
+ *   if (!result.ok) return result;
+ *   return ok(bytesToUtf8(result.value));
+ * };
+ *
+ * assertOk(decryptMessage(), "secret message");
+ * ```
+ *
+ * @group Encryption
+ * @see https://github.com/paulmillr/noble-ciphers
+ */
+export const createXChaCha20Poly1305 = (): XChaCha20Poly1305 => ({
+  encrypt: (plaintext, nonce, encryptionKey) =>
+    xchacha20poly1305(encryptionKey, nonce).encrypt(
+      plaintext,
+    ) as XChaCha20Poly1305Ciphertext,
+  decrypt: decryptWithXChaCha20Poly1305,
+});
+
+/**
  * Returns the PADMÉ padded length for a given input length.
  *
  * PADMÉ limits information leakage about the length of the plain-text for a

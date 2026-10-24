@@ -195,6 +195,7 @@ export const measureReconcile = async (
             )
           : localFirst.createProtocolMessageFromCrdtMessages({
               randomBytes: pushRandomBytes.randomBytes,
+              ...modules.xChaCha20Poly1305Dep,
             })(owner, push.crdtMessages);
       client = addTiming(client, end());
       frames.push(message);

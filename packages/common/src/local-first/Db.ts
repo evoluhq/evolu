@@ -73,9 +73,11 @@ import {
 } from "../Assert.ts";
 import type { ConsoleLevel } from "../Console.ts";
 import {
+  createXChaCha20Poly1305,
   EncryptionKey,
   type DecryptWithXChaCha20Poly1305Error,
   type RandomBytesDep,
+  type XChaCha20Poly1305Dep,
 } from "../Crypto.ts";
 import {
   createUnknownError,
@@ -230,7 +232,8 @@ export type DbWorkerDeps = WorkerDeps &
   CreateBroadcastChannelDep &
   LockManagerDep &
   CreateSqliteDriverDep &
-  Partial<WaitForDatabaseReleaseDep>;
+  Partial<WaitForDatabaseReleaseDep> &
+  Partial<XChaCha20Poly1305Dep>;
 
 /**
  * Waits until no other context holds the files of the persistent database
@@ -413,7 +416,10 @@ export const startDbWorker =
       }
       const initialClock = startup.value;
 
-      const storage = createClientStorage(dbDeps);
+      const storage = createClientStorage({
+        ...dbDeps,
+        xChaCha20Poly1305: deps.xChaCha20Poly1305 ?? createXChaCha20Poly1305(),
+      });
       const dbWorkerRun = disposer.use(run.create({ storage }));
 
       port.postMessage({
@@ -1158,7 +1164,8 @@ const createClientStorage = (
     RandomBytesDep &
     SqliteDep &
     SqliteSchemaDep &
-    TimestampConfigDep,
+    TimestampConfigDep &
+    XChaCha20Poly1305Dep,
 ): ClientStorage => {
   let encryptionKey: EncryptionKey | null = null;
   let didWriteMessages = false;
@@ -1220,7 +1227,10 @@ const createClientStorage = (
       // relay's ranges would go unanswered, so changes it lacks might never be
       // uploaded to it, and every round would end the same way.
       for (const message of encryptedMessages) {
-        const change = decryptAndDecodeDbChange(message, currentEncryptionKey);
+        const change = decryptAndDecodeDbChange(deps)(
+          message,
+          currentEncryptionKey,
+        );
         if (!change.ok) {
           skippedError ??= change.error;
           continue;

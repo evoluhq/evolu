@@ -310,9 +310,11 @@ import {
 } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
-import type {
-  DecryptWithXChaCha20Poly1305Error,
-  EncryptionKey,
+import {
+  createXChaCha20Poly1305,
+  type DecryptWithXChaCha20Poly1305Error,
+  type EncryptionKey,
+  type XChaCha20Poly1305Dep,
 } from "../Crypto.ts";
 import { createUnknownError, type UnknownError } from "../Error.ts";
 import { disposable, exhaustiveCheck } from "../Function.ts";
@@ -1495,7 +1497,8 @@ export type SharedWorkerDeps = WorkerDeps &
   CreateMessageChannelDep &
   CreateWebSocketDep &
   DevicePersistenceDep &
-  LockManagerDep;
+  LockManagerDep &
+  Partial<XChaCha20Poly1305Dep>;
 
 /**
  * Coordinates all instances of one named local database within a SharedWorker.
@@ -1723,7 +1726,8 @@ type EvoluTenantDeps = CreateMessageChannelDep &
   RefreshAllSyncRoutesDep &
   SyncRequestsDep &
   TabLeaderPortStoreDep &
-  TransportsDep;
+  TransportsDep &
+  XChaCha20Poly1305Dep;
 
 interface GetSyncTransportIdDep {
   /** Returns the ID of a claimed transport, which always exists. */
@@ -2361,6 +2365,7 @@ export const initSharedWorker =
         syncRequests,
         tabLeaderPortStore,
         transports,
+        xChaCha20Poly1305: deps.xChaCha20Poly1305 ?? createXChaCha20Poly1305(),
       }),
     );
 

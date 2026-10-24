@@ -12,7 +12,11 @@ import { spawn } from "node:child_process";
 import { registerHooks } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { CreateSqliteDriver, TimingSafeEqual } from "@evolu/common";
+import type {
+  CreateSqliteDriver,
+  TimingSafeEqual,
+  XChaCha20Poly1305Dep,
+} from "@evolu/common";
 
 export type CommonModule = typeof import("@evolu/common");
 export type LocalFirstModule = typeof import("@evolu/common/local-first");
@@ -28,6 +32,15 @@ export interface Modules {
   readonly timingSafeEqual: TimingSafeEqual;
   /** Whether `applyProtocolMessageAsClient` takes `onChangeTooLarge`. */
   readonly supportsOnChangeTooLarge: boolean;
+  /**
+   * What `encodeAndEncryptDbChange` and the CRDT message builders encrypt with,
+   * empty for older versions, which encrypt with noble-ciphers themselves.
+   */
+  readonly xChaCha20Poly1305Dep: XChaCha20Poly1305Dep;
+  /** `decryptAndDecodeDbChange`, given its dependency where it takes one. */
+  readonly decryptAndDecodeDbChange: ReturnType<
+    LocalFirstModule["decryptAndDecodeDbChange"]
+  >;
 }
 
 /** Exports a benchmark needs, checked when the modules load. */
@@ -99,6 +112,13 @@ export const loadModules = async (
     throw new Error(`${root} lacks ${missing.join(", ")}.`);
   }
 
+  // Older versions ignore the dependency, and their decryptAndDecodeDbChange
+  // takes the message and key directly.
+  const hasXChaCha20Poly1305Dep = "createXChaCha20Poly1305" in common;
+  const xChaCha20Poly1305Dep = hasXChaCha20Poly1305Dep
+    ? { xChaCha20Poly1305: common.createXChaCha20Poly1305() }
+    : ({} as XChaCha20Poly1305Dep);
+
   return {
     common,
     localFirst,
@@ -109,6 +129,10 @@ export const loadModules = async (
     supportsOnChangeTooLarge: localFirst.applyProtocolMessageAsClient
       .toString()
       .includes("onChangeTooLarge"),
+    xChaCha20Poly1305Dep,
+    decryptAndDecodeDbChange: hasXChaCha20Poly1305Dep
+      ? localFirst.decryptAndDecodeDbChange(xChaCha20Poly1305Dep)
+      : (localFirst.decryptAndDecodeDbChange as unknown as Modules["decryptAndDecodeDbChange"]),
   };
 };
 

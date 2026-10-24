@@ -18,6 +18,7 @@ import {
   assertTrue,
 } from "../Assert.ts";
 import {
+  bytesToHex,
   createBuffer,
   decodeLength,
   decodeNonNegativeInt,
@@ -25,12 +26,14 @@ import {
   encodeNonNegativeInt,
 } from "../Bytes.ts";
 import {
+  createXChaCha20Poly1305,
   decryptWithXChaCha20Poly1305,
   EncryptionKey,
   encryptWithXChaCha20Poly1305,
   Entropy24,
   XChaCha20Poly1305Ciphertext,
   xChaCha20Poly1305NonceLength,
+  type XChaCha20Poly1305Dep,
 } from "../Crypto.ts";
 import { createUnknownError } from "../Error.ts";
 import { constFalse, constTrue } from "../Function.ts";
@@ -599,19 +602,25 @@ const createDbChange = (deps: RunDefaultDeps) =>
     isDelete: null,
   });
 
+/** {@link testCreateDeps} with the XChaCha20-Poly1305 changes encrypt with. */
+const setupCryptoDeps = (): TestDeps & XChaCha20Poly1305Dep => ({
+  ...testCreateDeps(),
+  xChaCha20Poly1305: createXChaCha20Poly1305(),
+});
+
 const createTestCrdtMessage = (deps: TestDeps): CrdtMessage => ({
   timestamp: createInitialTimestamp(deps),
   change: createDbChange(deps),
 });
 
 const createEncryptedDbChange = (
-  deps: RunDefaultDeps,
+  deps: RunDefaultDeps & XChaCha20Poly1305Dep,
   message: CrdtMessage,
 ): EncryptedDbChange =>
   encodeAndEncryptDbChange(deps)(message, testAppOwner.encryptionKey);
 
 const createEncryptedCrdtMessage = (
-  deps: RunDefaultDeps,
+  deps: RunDefaultDeps & XChaCha20Poly1305Dep,
   message: CrdtMessage,
 ): EncryptedCrdtMessage => ({
   timestamp: message.timestamp,
@@ -619,7 +628,7 @@ const createEncryptedCrdtMessage = (
 });
 
 test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const crdtMessage = createTestCrdtMessage(deps);
   const encryptedMessage = createEncryptedCrdtMessage(deps, crdtMessage);
   assertEqualBytes(
@@ -637,12 +646,15 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
     ],
   );
   const decrypted = getOrThrow(
-    decryptAndDecodeDbChange(encryptedMessage, testAppOwner.encryptionKey),
+    decryptAndDecodeDbChange(deps)(
+      encryptedMessage,
+      testAppOwner.encryptionKey,
+    ),
   );
   assertEqual(decrypted, crdtMessage.change);
 
   const wrongKey = EncryptionKey.orThrow(new Uint8Array(32).fill(42));
-  const decryptedWithWrongKey = decryptAndDecodeDbChange(
+  const decryptedWithWrongKey = decryptAndDecodeDbChange(deps)(
     encryptedMessage,
     wrongKey,
   );
@@ -663,7 +675,7 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
     timestamp: encryptedMessage.timestamp,
     change: corruptedCiphertext,
   };
-  const decryptedCorrupted = decryptAndDecodeDbChange(
+  const decryptedCorrupted = decryptAndDecodeDbChange(deps)(
     corruptedMessage,
     testAppOwner.encryptionKey,
   );
@@ -674,8 +686,54 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   );
 });
 
-test("encodeAndEncryptDbChange preserves null values", () => {
+test("encodeAndEncryptDbChange, decryptAndDecodeDbChange and the CRDT message builders use the passed XChaCha20Poly1305", (t) => {
   const deps = testCreateDeps();
+  const xChaCha20Poly1305 = createXChaCha20Poly1305();
+  const encrypt = t.mock.method(xChaCha20Poly1305, "encrypt");
+  const decrypt = t.mock.method(xChaCha20Poly1305, "decrypt");
+  const crdtMessage = createTestCrdtMessage(deps);
+  const key = testAppOwner.encryptionKey;
+
+  const change = encodeAndEncryptDbChange({ ...deps, xChaCha20Poly1305 })(
+    crdtMessage,
+    key,
+  );
+  assertSame(encrypt.mock.callCount(), 1);
+  assertSame(encrypt.mock.calls[0].arguments[2], key);
+
+  assertOk(
+    decryptAndDecodeDbChange({ xChaCha20Poly1305 })(
+      { timestamp: crdtMessage.timestamp, change },
+      key,
+    ),
+    crdtMessage.change,
+  );
+  assertSame(decrypt.mock.callCount(), 1);
+  assertSame(decrypt.mock.calls[0].arguments[2], key);
+
+  createProtocolMessageFromCrdtMessages({ ...deps, xChaCha20Poly1305 })(
+    testAppOwner,
+    [crdtMessage],
+  );
+  createProtocolBroadcastMessagesFromCrdtMessages({
+    ...deps,
+    xChaCha20Poly1305,
+  })(testAppOwner, [crdtMessage]);
+  assertSame(encrypt.mock.callCount(), 3);
+
+  // Every encryption draws a fresh nonce, which starts the encrypted change.
+  const nonces = encrypt.mock.calls.map((call) =>
+    bytesToHex(call.arguments[1]),
+  );
+  assertSame(new Set(nonces).size, 3);
+  assertSame(
+    nonces[0],
+    bytesToHex(change.subarray(0, xChaCha20Poly1305NonceLength)),
+  );
+});
+
+test("encodeAndEncryptDbChange preserves null values", () => {
+  const deps = setupCryptoDeps();
   const message: CrdtMessage = {
     timestamp: createInitialTimestamp(deps),
     change: DbChange.orThrow({
@@ -690,14 +748,17 @@ test("encodeAndEncryptDbChange preserves null values", () => {
 
   assertEqual(
     getOrThrow(
-      decryptAndDecodeDbChange(encryptedMessage, testAppOwner.encryptionKey),
+      decryptAndDecodeDbChange(deps)(
+        encryptedMessage,
+        testAppOwner.encryptionKey,
+      ),
     ),
     message.change,
   );
 });
 
 test("encodeAndEncryptDbChange preserves negative zero", () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const message: CrdtMessage = {
     timestamp: createInitialTimestamp(deps),
     change: DbChange.orThrow({
@@ -710,14 +771,17 @@ test("encodeAndEncryptDbChange preserves negative zero", () => {
   };
   const encryptedMessage = createEncryptedCrdtMessage(deps, message);
   const decrypted = getOrThrow(
-    decryptAndDecodeDbChange(encryptedMessage, testAppOwner.encryptionKey),
+    decryptAndDecodeDbChange(deps)(
+      encryptedMessage,
+      testAppOwner.encryptionKey,
+    ),
   );
 
   assertSame(decrypted.values.score, -0);
 });
 
 test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const crdtMessage = createTestCrdtMessage(deps);
   const encryptedMessage = createEncryptedCrdtMessage(deps, crdtMessage);
 
@@ -731,7 +795,7 @@ test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
   };
 
   // Attempt to decrypt with wrong timestamp should fail with ProtocolTimestampMismatchError
-  const decryptedWithWrongTimestamp = decryptAndDecodeDbChange(
+  const decryptedWithWrongTimestamp = decryptAndDecodeDbChange(deps)(
     tamperedMessage,
     testAppOwner.encryptionKey,
   );
@@ -751,7 +815,7 @@ test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
  * keeping the message's timestamp.
  */
 const setupForgedEncryptedCrdtMessage = (
-  deps: TestDeps,
+  deps: TestDeps & XChaCha20Poly1305Dep,
   crdtMessage: CrdtMessage,
   forge: (plaintext: Uint8Array) => void,
 ): EncryptedCrdtMessage => {
@@ -788,7 +852,7 @@ const setupForgedEncryptedCrdtMessage = (
 };
 
 test("decryptAndDecodeDbChange rejects a newer EncryptedDbChange version", () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const crdtMessage = createTestCrdtMessage(deps);
   const reencryptWithVersion = (version: number): EncryptedCrdtMessage =>
     setupForgedEncryptedCrdtMessage(deps, crdtMessage, (plaintext) => {
@@ -798,7 +862,7 @@ test("decryptAndDecodeDbChange rejects a newer EncryptedDbChange version", () =>
 
   // 6.0.1-preview.35 wrote version 0 with the same layout.
   assertOk(
-    decryptAndDecodeDbChange(
+    decryptAndDecodeDbChange(deps)(
       reencryptWithVersion(0),
       testAppOwner.encryptionKey,
     ),
@@ -806,7 +870,7 @@ test("decryptAndDecodeDbChange rejects a newer EncryptedDbChange version", () =>
   );
 
   const newerVersion = reencryptWithVersion(2);
-  const newer = decryptAndDecodeDbChange(
+  const newer = decryptAndDecodeDbChange(deps)(
     newerVersion,
     testAppOwner.encryptionKey,
   );
@@ -822,7 +886,7 @@ test("decryptAndDecodeDbChange rejects a newer EncryptedDbChange version", () =>
 });
 
 test("decryptAndDecodeDbChange rejects a timestamp with reserved millis", () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const forged = setupForgedEncryptedCrdtMessage(
     deps,
     createTestCrdtMessage(deps),
@@ -833,7 +897,10 @@ test("decryptAndDecodeDbChange rejects a timestamp with reserved millis", () => 
     },
   );
 
-  const result = decryptAndDecodeDbChange(forged, testAppOwner.encryptionKey);
+  const result = decryptAndDecodeDbChange(deps)(
+    forged,
+    testAppOwner.encryptionKey,
+  );
   assertErr(result);
   assertEqual(result.error.type, "ProtocolInvalidDataError");
   if (result.error.type === "ProtocolInvalidDataError") {
@@ -843,7 +910,7 @@ test("decryptAndDecodeDbChange rejects a timestamp with reserved millis", () => 
 });
 
 test("decryptAndDecodeDbChange keeps the values of an invalid change out of its error", () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const crdtMessage = createTestCrdtMessage(deps);
   const invalid = createEncryptedCrdtMessage(deps, {
     ...crdtMessage,
@@ -854,7 +921,10 @@ test("decryptAndDecodeDbChange keeps the values of an invalid change out of its 
     } as unknown as DbChange,
   });
 
-  const result = decryptAndDecodeDbChange(invalid, testAppOwner.encryptionKey);
+  const result = decryptAndDecodeDbChange(deps)(
+    invalid,
+    testAppOwner.encryptionKey,
+  );
   assertErr(result);
   assertSame(result.error.type, "ProtocolInvalidDataError");
   if (result.error.type === "ProtocolInvalidDataError") {
@@ -1337,7 +1407,7 @@ describe("ProtocolMessageBuffer tryWrite", () => {
 
 describe("createProtocolMessageBuffer", () => {
   it("unwraps repeatedly without changing the builder", () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const setupBuffer = () =>
       createProtocolMessageBuffer(testAppOwner.id, {
         messageType: MessageType.Request,
@@ -1901,7 +1971,7 @@ describe("E2E errors", () => {
   });
 
   it("ProtocolWriteKeyError", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const timestamp = timestampBytesToTimestamp(testTimestampsAsc[0]);
     const dbChange = createDbChange(deps);
 
@@ -1946,7 +2016,7 @@ describe("E2E errors", () => {
   });
 
   it("reports a rejected relay write as a quota and a failed one as a write failure", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const initiatorMessage = createProtocolMessageFromCrdtMessages(deps)(
       testAppOwner,
       [
@@ -2021,7 +2091,7 @@ describe("E2E errors", () => {
   });
 
   it("relay rejects messages without a write key before storing or broadcasting them", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const request = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       subscriptionFlag: SubscriptionFlags.Subscribe,
@@ -2062,7 +2132,7 @@ describe("E2E errors", () => {
   });
 
   it("relay propagates an abort from writeMessages without logging it", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const abort = createAbortError({ type: "Stop" });
     await using run = testCreateRun({
       storage: {
@@ -2290,7 +2360,7 @@ describe("E2E relay options", () => {
   });
 
   it("broadcast message", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const timestamp = timestampBytesToTimestamp(testTimestampsAsc[0]);
     const dbChange = createDbChange(deps);
     const messages: NonEmptyReadonlyArray<CrdtMessage> = [
@@ -2434,7 +2504,7 @@ describe("applyProtocolMessageAsClient results", () => {
   });
 
   it("preserves a storage write rejection", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const input = createResponse();
     input.addMessage(
       createEncryptedCrdtMessage(deps, {
@@ -2467,7 +2537,7 @@ describe("applyProtocolMessageAsClient results", () => {
   });
 
   it("reports a thrown write as failed", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const input = createResponse();
     input.addMessage(
       createEncryptedCrdtMessage(deps, {
@@ -2530,7 +2600,7 @@ describe("applyProtocolMessageAsClient results", () => {
 
 describe("decoding before applying", () => {
   it("relay rejects a request with descending range bounds before any side effect", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const request = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       writeKey: testAppOwner.writeKey,
@@ -2653,7 +2723,7 @@ describe("decoding before applying", () => {
 
   for (const hasWriteKey of [true, false]) {
     it(`client rejects a response with malformed ranges before storing its messages ${hasWriteKey ? "with" : "without"} a write key`, async () => {
-      const deps = testCreateDeps();
+      const deps = setupCryptoDeps();
       const response = createProtocolMessageBuffer(testAppOwner.id, {
         messageType: MessageType.Response,
         errorCode: ProtocolErrorCode.NoError,
@@ -2694,7 +2764,7 @@ describe("decoding before applying", () => {
   }
 
   it("relay answers a write key its storage fails to validate with WriteError", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const request = createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
       createTestCrdtMessage(deps),
     ]);
@@ -2731,7 +2801,7 @@ describe("decoding before applying", () => {
   });
 
   it("relay propagates a throw from its broadcast callback as a defect", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const request = createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
       createTestCrdtMessage(deps),
     ]);
@@ -2839,7 +2909,7 @@ describe("decoding before applying", () => {
   });
 
   it("client rejects a Request before storing its changes", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const request = createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
       createTestCrdtMessage(deps),
     ]);
@@ -2859,7 +2929,7 @@ describe("decoding before applying", () => {
   });
 
   it("relay rejects a Response or a Broadcast before any side effect", async () => {
-    const deps = testCreateDeps();
+    const deps = setupCryptoDeps();
     const message = createEncryptedCrdtMessage(
       deps,
       createTestCrdtMessage(deps),
@@ -3069,7 +3139,7 @@ describe("sync defects", () => {
 });
 
 test("local mutation broadcasts contain every message in nonempty size-limited frames", async () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const messages: NonEmptyReadonlyArray<CrdtMessage> = [
     {
       timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
@@ -3115,7 +3185,10 @@ test("local mutation broadcasts contain every message in nonempty size-limited f
             received.push({
               timestamp: message.timestamp,
               change: getOrThrow(
-                decryptAndDecodeDbChange(message, testAppOwner.encryptionKey),
+                decryptAndDecodeDbChange(deps)(
+                  message,
+                  testAppOwner.encryptionKey,
+                ),
               ),
             });
           }
@@ -3146,7 +3219,7 @@ test("local mutation broadcasts contain every message in nonempty size-limited f
 });
 
 test("local mutation broadcasts reject a message that cannot fit in an empty frame", () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const smallMessage: CrdtMessage = {
     timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
     change: createDbChange(deps),
@@ -3175,7 +3248,7 @@ test("local mutation broadcasts reject a message that cannot fit in an empty fra
   }
 });
 
-const setupFrameFillingMessages = (deps: TestDeps) => {
+const setupFrameFillingMessages = (deps: TestDeps & XChaCha20Poly1305Dep) => {
   const large: CrdtMessage = {
     timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
     change: DbChange.orThrow({
@@ -3202,7 +3275,7 @@ const setupFrameFillingMessages = (deps: TestDeps) => {
 };
 
 test("upload requests fill a frame exactly before their continuation range", async () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const { large, small, measureFrame } = setupFrameFillingMessages(deps);
   // The continuation range is the first range, which takes 14 bytes.
   const exactSize =
@@ -3238,7 +3311,10 @@ test("upload requests fill a frame exactly before their continuation range", asy
             uploaded.push({
               timestamp: message.timestamp,
               change: getOrThrow(
-                decryptAndDecodeDbChange(message, testAppOwner.encryptionKey),
+                decryptAndDecodeDbChange(deps)(
+                  message,
+                  testAppOwner.encryptionKey,
+                ),
               ),
             });
           }
@@ -3260,7 +3336,7 @@ test("upload requests fill a frame exactly before their continuation range", asy
 });
 
 test("local mutation broadcasts fill a frame exactly", () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const { large, small, measureFrame } = setupFrameFillingMessages(deps);
   // Broadcasts hold no ranges, so nothing is reserved to close them.
   const exactSize = measureFrame(
@@ -3291,7 +3367,7 @@ test("local mutation broadcasts fill a frame exactly", () => {
 });
 
 test("client continuation broadcasts exactly the uploaded messages within the frame limit", async () => {
-  const deps = testCreateDeps();
+  const deps = setupCryptoDeps();
   const messages = [1, 2].map((millis) => {
     const message: CrdtMessage = {
       timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),

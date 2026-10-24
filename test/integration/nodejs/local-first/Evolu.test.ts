@@ -9,6 +9,7 @@ import {
   assertNonEmptyArray,
   assertSame,
 } from "../../../../packages/common/src/Assert.ts";
+import { createXChaCha20Poly1305 } from "../../../../packages/common/src/Crypto.ts";
 import { describe, it } from "node:test";
 import { createConsoleStoreOutput } from "../../../../packages/common/src/Console.ts";
 import { UnknownError } from "../../../../packages/common/src/Error.ts";
@@ -507,31 +508,31 @@ describe("Evolu integration", () => {
     evolu.useOwner(testAppOwner, [transport]);
     assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
     await testWaitForWorkerMessage();
-    const messages = createProtocolBroadcastMessagesFromCrdtMessages(run.deps)(
-      testAppOwner,
-      [
-        {
-          timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
-          change: DbChange.orThrow({
-            table: "todo",
-            id: createIdFromString("valid-before-corruption"),
-            values: { title: "Valid before corruption" },
-            isInsert: true,
-            isDelete: null,
-          }),
-        },
-        {
-          timestamp: createTimestamp({ millis: Millis.orThrow(2) }),
-          change: DbChange.orThrow({
-            table: "todo",
-            id: createIdFromString("corrupted"),
-            values: { title: "Corrupted" },
-            isInsert: true,
-            isDelete: null,
-          }),
-        },
-      ],
-    );
+    const messages = createProtocolBroadcastMessagesFromCrdtMessages({
+      ...run.deps,
+      xChaCha20Poly1305: createXChaCha20Poly1305(),
+    })(testAppOwner, [
+      {
+        timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+        change: DbChange.orThrow({
+          table: "todo",
+          id: createIdFromString("valid-before-corruption"),
+          values: { title: "Valid before corruption" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      },
+      {
+        timestamp: createTimestamp({ millis: Millis.orThrow(2) }),
+        change: DbChange.orThrow({
+          table: "todo",
+          id: createIdFromString("corrupted"),
+          values: { title: "Corrupted" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      },
+    ]);
     assertLength(messages, 1);
     const corrupted = Uint8Array.from(messages[0]);
     corrupted[corrupted.length - 1] ^= 0xff;
@@ -1094,7 +1095,10 @@ describe("Evolu integration", () => {
 
     // More changes than one frame holds, so a database needs two replies.
     const changeCount = 6_000;
-    const deps = testCreateDeps();
+    const deps = {
+      ...testCreateDeps(),
+      xChaCha20Poly1305: createXChaCha20Poly1305(),
+    };
     const messages = Array.from({ length: changeCount }, (_, i) => ({
       timestamp: createTimestamp({ millis: Millis.orThrow(1_000 + i) }),
       change: DbChange.orThrow({

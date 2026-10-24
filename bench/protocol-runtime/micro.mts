@@ -177,6 +177,7 @@ const createMicro = (modules: Modules, name: MicroName): Micro => {
       );
       const encrypt = localFirst.encodeAndEncryptDbChange({
         randomBytes: nonces.randomBytes,
+        ...modules.xChaCha20Poly1305Dep,
       });
       const encryptAll = () =>
         messages.map((message): EncryptedCrdtMessage => ({
@@ -193,7 +194,7 @@ const createMicro = (modules: Modules, name: MicroName): Micro => {
       /** Every change decrypts to its input. */
       const verifyDecrypted = (
         decrypted: ReadonlyArray<
-          ReturnType<typeof localFirst.decryptAndDecodeDbChange>
+          ReturnType<typeof modules.decryptAndDecodeDbChange>
         >,
       ) => {
         decrypted.forEach((result, index) => {
@@ -228,7 +229,7 @@ const createMicro = (modules: Modules, name: MicroName): Micro => {
             }
             verifyDecrypted(
               outputs.map((message) =>
-                localFirst.decryptAndDecodeDbChange(message, key),
+                modules.decryptAndDecodeDbChange(message, key),
               ),
             );
             return {
@@ -242,14 +243,14 @@ const createMicro = (modules: Modules, name: MicroName): Micro => {
       }
 
       let outputs: ReadonlyArray<
-        ReturnType<typeof localFirst.decryptAndDecodeDbChange>
+        ReturnType<typeof modules.decryptAndDecodeDbChange>
       > = [];
       return {
         workloadSha256,
         prepare: () => undefined,
         call: () => {
           outputs = encrypted.map((message) =>
-            localFirst.decryptAndDecodeDbChange(message, key),
+            modules.decryptAndDecodeDbChange(message, key),
           );
         },
         verify: () => {
@@ -304,6 +305,7 @@ const createMicro = (modules: Modules, name: MicroName): Micro => {
       if (name === "upload-builder-5000") {
         const build = localFirst.createProtocolMessageFromCrdtMessages({
           randomBytes: randomBytes.randomBytes,
+          ...modules.xChaCha20Poly1305Dep,
         });
         let output: Uint8Array | null = null;
         return {
@@ -350,6 +352,7 @@ const createMicro = (modules: Modules, name: MicroName): Micro => {
 
       const build = localFirst.createProtocolBroadcastMessagesFromCrdtMessages({
         randomBytes: randomBytes.randomBytes,
+        ...modules.xChaCha20Poly1305Dep,
       });
       let output: ReadonlyArray<Uint8Array> = [];
       return {

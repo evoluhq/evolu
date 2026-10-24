@@ -12,6 +12,7 @@ import {
   constFalse,
   constTrue,
   createPanicAbortReason,
+  createXChaCha20Poly1305,
   isPlainObject,
   Port,
   sql,
@@ -25,6 +26,7 @@ import {
   type ConsoleEntry,
   type CreateSqliteDriver,
   type SqliteDriver,
+  type XChaCha20Poly1305Dep,
 } from "@evolu/common";
 import {
   createAppOwner,
@@ -57,6 +59,14 @@ import {
 } from "../../../../../../packages/nodejs/src/index.ts";
 
 installPolyfills();
+
+/** Adds the XChaCha20-Poly1305 that changes are encrypted with to `deps`. */
+const setupCryptoDeps = <D extends object>(
+  deps: D,
+): D & XChaCha20Poly1305Dep => ({
+  ...deps,
+  xChaCha20Poly1305: createXChaCha20Poly1305(),
+});
 
 const testRelayAppOwner2 = createAppOwner(
   createOwnerSecret(testCreateDeps({ seed: "nodejs-relay-owner-2" })),
@@ -286,7 +296,7 @@ const setupSubscriber = async (
       assertNonEmptyArray(messages);
       const response = writer.waitForMessage();
       writer.send(
-        createProtocolMessageFromCrdtMessages(setup.run.deps)(
+        createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
           testAppOwner,
           messages,
         ),
@@ -333,7 +343,7 @@ const setupStoredHistory = async (
     assertNonEmptyArray(messages);
     const response = writer.waitForMessage();
     writer.send(
-      createProtocolMessageFromCrdtMessages(setup.run.deps)(
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
         testAppOwner,
         messages,
       ),
@@ -372,9 +382,10 @@ describe("createRelay", () => {
     const responsePromise = ws.waitForMessage();
 
     ws.send(
-      createProtocolMessageFromCrdtMessages(run.deps)(testAppOwner, [
-        testCreateCrdtMessage(createId(), 1, "Victoria"),
-      ]),
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(createId(), 1, "Victoria")],
+      ),
     );
 
     const response = await responsePromise;
@@ -540,9 +551,10 @@ describe("createRelay", () => {
     // no answer to a ping could arrive.
     ws.emit(
       "message",
-      createProtocolMessageFromCrdtMessages(run.deps)(testAppOwner, [
-        testCreateCrdtMessage(testCreateId()(), 1, "Victoria"),
-      ]),
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(testCreateId()(), 1, "Victoria")],
+      ),
     );
     await assertEventually(() => isOwnerWithinQuota.mock.callCount() === 1);
     run.deps.time.advance("1s");
@@ -671,7 +683,7 @@ describe("createRelay", () => {
       );
       assertNonEmptyArray(messages);
       client.send(
-        createProtocolMessageFromCrdtMessages(setup.run.deps)(
+        createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
           testAppOwner,
           messages,
         ),
@@ -727,9 +739,10 @@ describe("createRelay", () => {
     wss.emit("connection", writer, { socket: new EventEmitter() });
     writer.emit(
       "message",
-      createProtocolMessageFromCrdtMessages(run.deps)(testAppOwner, [
-        testCreateCrdtMessage(testCreateId()(), 1, "Victoria"),
-      ]),
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(testCreateId()(), 1, "Victoria")],
+      ),
     );
     await assertEventually(() => writer.send.mock.callCount() === 1);
     assertSame(client.send.mock.callCount(), 0);
@@ -1096,9 +1109,10 @@ describe("createRelay", () => {
     });
 
     ws.send(
-      createProtocolMessageFromCrdtMessages(testCreateDeps())(testAppOwner, [
-        testCreateCrdtMessage(testCreateId()(), 1, "Victoria"),
-      ]),
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(testCreateDeps()))(
+        testAppOwner,
+        [testCreateCrdtMessage(testCreateId()(), 1, "Victoria")],
+      ),
     );
 
     // A defect leaves shared state unproven, so the relay closes every
@@ -1188,9 +1202,10 @@ describe("createRelay", () => {
     const writerResponse = writer.waitForMessage();
 
     writer.send(
-      createProtocolMessageFromCrdtMessages(setup.run.deps)(testAppOwner, [
-        testCreateCrdtMessage(createId(), 1, "Victoria"),
-      ]),
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(createId(), 1, "Victoria")],
+      ),
     );
 
     await writerResponse;
@@ -1247,9 +1262,10 @@ describe("createRelay", () => {
     const writerResponse = writer.waitForMessage();
 
     writer.send(
-      createProtocolMessageFromCrdtMessages(setup.run.deps)(testAppOwner, [
-        testCreateCrdtMessage(createId(), 1, "Victoria"),
-      ]),
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(createId(), 1, "Victoria")],
+      ),
     );
 
     await writerResponse;
@@ -1294,9 +1310,10 @@ describe("createRelay", () => {
     const subscriberBroadcast1 = subscriber.waitForMessage();
 
     writer.send(
-      createProtocolMessageFromCrdtMessages(setup.run.deps)(testAppOwner, [
-        testCreateCrdtMessage(createId(), 1, "Victoria"),
-      ]),
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(createId(), 1, "Victoria")],
+      ),
     );
 
     const writerMessage1 = await writerResponse1;
@@ -1311,9 +1328,10 @@ describe("createRelay", () => {
     const writerResponse2 = writer.waitForMessage();
 
     writer.send(
-      createProtocolMessageFromCrdtMessages(setup.run.deps)(testAppOwner, [
-        testCreateCrdtMessage(createId(), 2, "Alice"),
-      ]),
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(createId(), 2, "Alice")],
+      ),
     );
 
     await writerResponse2;
@@ -1363,9 +1381,10 @@ describe("createRelay", () => {
     const subscriberBroadcast1 = subscriber.waitForMessage();
 
     writer.send(
-      createProtocolMessageFromCrdtMessages(setup.run.deps)(testAppOwner, [
-        testCreateCrdtMessage(createId(), 1, "Victoria"),
-      ]),
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(createId(), 1, "Victoria")],
+      ),
     );
 
     assertInstanceOf(await writerResponse1, Uint8Array);
@@ -1375,7 +1394,7 @@ describe("createRelay", () => {
     const subscriberBroadcast2 = subscriber.waitForMessage();
 
     writer.send(
-      createProtocolMessageFromCrdtMessages(setup.run.deps)(
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
         testRelayAppOwner2,
         [testCreateCrdtMessage(createId(), 2, "Alice")],
       ),
@@ -1433,15 +1452,16 @@ describe("createRelay", () => {
 
     const writerResponse1 = writer.waitForMessage();
     writer.send(
-      createProtocolMessageFromCrdtMessages(setup.run.deps)(testAppOwner, [
-        testCreateCrdtMessage(createId(), 1, "Victoria"),
-      ]),
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(createId(), 1, "Victoria")],
+      ),
     );
     await writerResponse1;
 
     const writerResponse2 = writer.waitForMessage();
     writer.send(
-      createProtocolMessageFromCrdtMessages(setup.run.deps)(
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
         testRelayAppOwner2,
         [testCreateCrdtMessage(createId(), 2, "Alice")],
       ),
@@ -1480,9 +1500,10 @@ describe("createRelay", () => {
 
       const responsePromise = ws.waitForMessage();
       ws.send(
-        createProtocolMessageFromCrdtMessages(run.deps)(testAppOwner, [
-          testCreateCrdtMessage(createId(), 1, "Victoria"),
-        ]),
+        createProtocolMessageFromCrdtMessages(setupCryptoDeps(run.deps))(
+          testAppOwner,
+          [testCreateCrdtMessage(createId(), 1, "Victoria")],
+        ),
       );
       await responsePromise;
     }
@@ -1677,9 +1698,10 @@ describe("createRelay", () => {
 
     wss.emit("connection", ws, { socket: new EventEmitter() });
     const createMessage = () =>
-      createProtocolMessageFromCrdtMessages(run.deps)(testAppOwner, [
-        testCreateCrdtMessage(createId(), 1, "Victoria"),
-      ]);
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(createId(), 1, "Victoria")],
+      );
 
     ws.emit("message", createMessage());
     await assertEventually(() => isOwnerWithinQuota.mock.callCount() === 1);

@@ -24,6 +24,11 @@ import {
   type TestConsole,
 } from "../../../../packages/common/src/Console.ts";
 import {
+  createXChaCha20Poly1305,
+  type XChaCha20Poly1305,
+  type XChaCha20Poly1305Dep,
+} from "../../../../packages/common/src/Crypto.ts";
+import {
   createUnknownError,
   defectToError,
   type UnknownError,
@@ -156,6 +161,14 @@ import {
 
 installPolyfills();
 
+/** Adds the XChaCha20-Poly1305 that changes are encrypted with to `deps`. */
+const setupCryptoDeps = <D extends object>(
+  deps: D,
+): D & XChaCha20Poly1305Dep => ({
+  ...deps,
+  xChaCha20Poly1305: createXChaCha20Poly1305(),
+});
+
 const testDbAppOwner2 = createAppOwner(
   createOwnerSecret(testCreateDeps({ seed: "nodejs-db-owner-2" })),
 );
@@ -237,7 +250,7 @@ const createBroadcastProtocolMessage = async (
   owner = testAppOwner,
 ): Promise<Uint8Array> => {
   const requestMessage = createProtocolMessageFromCrdtMessages(
-    testCreateDeps(),
+    setupCryptoDeps(testCreateDeps()),
   )(owner, messages);
 
   await using relay = await setupSqliteAndRelayStorage();
@@ -373,6 +386,7 @@ const setupDbWorker = async ({
   expectRefused = false,
   lockManager = testCreateLockManager(),
   waitForDatabaseRelease,
+  xChaCha20Poly1305,
 }: {
   dbSetup?: DbSetup;
   memoryOnly?: boolean;
@@ -386,6 +400,7 @@ const setupDbWorker = async ({
   expectRefused?: boolean;
   lockManager?: LockManagerDep["lockManager"];
   waitForDatabaseRelease?: WaitForDatabaseRelease;
+  xChaCha20Poly1305?: XChaCha20Poly1305;
 } = {}): Promise<DbWorkerSetup> => {
   await using disposer = new AsyncDisposableStack();
 
@@ -410,6 +425,7 @@ const setupDbWorker = async ({
       createSqliteDriver: dbSetup.createSqliteDriver,
       time: dbSetup.time,
       ...(waitForDatabaseRelease && { waitForDatabaseRelease }),
+      ...(xChaCha20Poly1305 && { xChaCha20Poly1305 }),
     }),
   );
   const worker = disposer.use(
@@ -3074,7 +3090,9 @@ describe("sync message flow", () => {
     await using relay = await setupSqliteAndRelayStorage();
     await relay.run.orThrow(
       applyProtocolMessageAsRelay(
-        createProtocolMessageFromCrdtMessages(testCreateDeps())(testAppOwner, [
+        createProtocolMessageFromCrdtMessages(
+          setupCryptoDeps(testCreateDeps()),
+        )(testAppOwner, [
           {
             timestamp: createTimestamp({
               millis: Millis.orThrow(1),
@@ -3137,6 +3155,74 @@ describe("sync message flow", () => {
     });
   });
 
+  it("ApplySyncMessage decrypts received changes and encrypts the changes it sends with the given XChaCha20Poly1305", async (t) => {
+    const xChaCha20Poly1305 = createXChaCha20Poly1305();
+    const encrypt = t.mock.method(xChaCha20Poly1305, "encrypt");
+    const decrypt = t.mock.method(xChaCha20Poly1305, "decrypt");
+    await using setup = await setupDbWorker({ xChaCha20Poly1305 });
+    // The database and the relay each have a change the other lacks.
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        createMutationChange({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "local" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      ]),
+    );
+    await using relay = await setupSqliteAndRelayStorage();
+    await relay.run.orThrow(
+      applyProtocolMessageAsRelay(
+        createProtocolMessageFromCrdtMessages(
+          setupCryptoDeps(testCreateDeps()),
+        )(testAppOwner, [
+          {
+            timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+            change: DbChange.orThrow({
+              table: "testTable",
+              id: setup.createId(),
+              values: { name: "remote" },
+              isInsert: true,
+              isDelete: null,
+            }),
+          },
+        ]),
+      ),
+    );
+    const request = getQueuedSharedWorkerMessage(
+      await postRequest(setup, {
+        type: "ForSharedWorker",
+        message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+      }),
+      "CreateSyncMessages",
+    ).protocolMessagesByOwnerId.get(testAppOwner.id);
+    assertNotUndefined(request);
+    const relayResponse = await relay.run.orThrow(
+      applyProtocolMessageAsRelay(request),
+    );
+
+    const { didWriteMessages, result } = getQueuedSharedWorkerMessage(
+      await postRequest(setup, {
+        type: "ForSharedWorker",
+        message: {
+          type: "ApplySyncMessage",
+          owner: testAppOwner,
+          inputMessage: relayResponse.message,
+          continues: true,
+        },
+      }),
+      "ApplySyncMessage",
+    );
+    assertOk(result);
+    assertTrue(didWriteMessages);
+    assertSame(result.value.type, "Response");
+    assertSame(decrypt.mock.callCount(), 1);
+    assertSame(encrypt.mock.callCount(), 1);
+  });
+
   it("ApplySyncMessage reads changes to send and reads and updates owner usage with prepared statements", async () => {
     const queries: Array<SqliteQuery> = [];
     let captureQueries = false;
@@ -3161,7 +3247,9 @@ describe("sync message flow", () => {
     await using relay = await setupSqliteAndRelayStorage();
     await relay.run.orThrow(
       applyProtocolMessageAsRelay(
-        createProtocolMessageFromCrdtMessages(testCreateDeps())(testAppOwner, [
+        createProtocolMessageFromCrdtMessages(
+          setupCryptoDeps(testCreateDeps()),
+        )(testAppOwner, [
           {
             timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
             change: DbChange.orThrow({
@@ -3302,7 +3390,7 @@ describe("sync message flow", () => {
         const [message, key, timestamp = message.timestamp] = entry;
         buffer.addMessage({
           timestamp,
-          change: encodeAndEncryptDbChange(deps)(message, key),
+          change: encodeAndEncryptDbChange(setupCryptoDeps(deps))(message, key),
         });
       }
       const outputs = await postRequest(
@@ -3440,7 +3528,7 @@ describe("sync message flow", () => {
       for (const [message, encryptionKey] of messages) {
         await relay.run.orThrow(
           applyProtocolMessageAsRelay(
-            createProtocolMessageFromCrdtMessages(deps)(
+            createProtocolMessageFromCrdtMessages(setupCryptoDeps(deps))(
               { ...testAppOwner, encryptionKey },
               [message],
             ),
@@ -3497,7 +3585,9 @@ describe("sync message flow", () => {
       message: CrdtMessage,
     ) => {
       assertOk(
-        decryptAndDecodeDbChange(
+        decryptAndDecodeDbChange({
+          xChaCha20Poly1305: createXChaCha20Poly1305(),
+        })(
           {
             timestamp: message.timestamp,
             change: relay.storage.readDbChange(
@@ -4469,7 +4559,9 @@ describe("sync message flow", () => {
     const decodedRelayChanges = relayRows.map(({ timestamp }) => {
       const timestampBytes = TimestampBytes.orThrow(timestamp);
 
-      return decryptAndDecodeDbChange(
+      return decryptAndDecodeDbChange({
+        xChaCha20Poly1305: createXChaCha20Poly1305(),
+      })(
         {
           timestamp: timestampBytesToTimestamp(timestampBytes),
           change: relay.storage.readDbChange(
@@ -5729,7 +5821,7 @@ const createReplayRequest = (
   };
   buffer.addMessage({
     timestamp: message.timestamp,
-    change: encodeAndEncryptDbChange(testCreateDeps())(
+    change: encodeAndEncryptDbChange(setupCryptoDeps(testCreateDeps()))(
       message,
       testAppOwner.encryptionKey,
     ),
@@ -6272,7 +6364,9 @@ describe("clock drift quarantine", () => {
         assertTrue(completed);
         const timestampBytes = timestampToTimestampBytes(quarantinedTimestamp);
         assertOk(
-          decryptAndDecodeDbChange(
+          decryptAndDecodeDbChange({
+            xChaCha20Poly1305: createXChaCha20Poly1305(),
+          })(
             {
               timestamp: quarantinedTimestamp,
               change: relay.storage.readDbChange(

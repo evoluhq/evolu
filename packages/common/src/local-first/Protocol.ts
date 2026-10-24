@@ -246,13 +246,12 @@ import {
 import type { ConsoleDep } from "../Console.ts";
 import {
   createPadmePadding,
-  decryptWithXChaCha20Poly1305,
   type DecryptWithXChaCha20Poly1305Error,
   EncryptionKey,
-  encryptWithXChaCha20Poly1305,
   type Entropy24,
   type RandomBytesDep,
   type XChaCha20Poly1305Ciphertext,
+  type XChaCha20Poly1305Dep,
   xChaCha20Poly1305NonceLength,
 } from "../Crypto.ts";
 import { eqArrayNumber } from "../Eq.ts";
@@ -608,7 +607,7 @@ export interface ProtocolChangeTooLargeError extends Typed<"ProtocolChangeTooLar
  * change within {@link maxMutationSize} fits an empty message.
  */
 export const createProtocolMessageFromCrdtMessages =
-  (deps: RandomBytesDep) =>
+  (deps: RandomBytesDep & XChaCha20Poly1305Dep) =>
   (
     owner: Owner,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
@@ -679,6 +678,7 @@ export const createProtocolMessageFromCrdtMessages =
  * import {
  *   assertSame,
  *   createId,
+ *   createXChaCha20Poly1305,
  *   getOrThrow,
  *   testCreateDeps,
  * } from "@evolu/common";
@@ -690,7 +690,10 @@ export const createProtocolMessageFromCrdtMessages =
  *   testCreateCrdtMessage,
  * } from "@evolu/common/local-first";
  *
- * const deps = testCreateDeps();
+ * const deps = {
+ *   ...testCreateDeps(),
+ *   xChaCha20Poly1305: createXChaCha20Poly1305(),
+ * };
  * const broadcasts = createProtocolBroadcastMessagesFromCrdtMessages(deps)(
  *   testAppOwner,
  *   [testCreateCrdtMessage(createId(deps), 1, "Ada")],
@@ -703,7 +706,7 @@ export const createProtocolMessageFromCrdtMessages =
  * ```
  */
 export const createProtocolBroadcastMessagesFromCrdtMessages =
-  (deps: RandomBytesDep) =>
+  (deps: RandomBytesDep & XChaCha20Poly1305Dep) =>
   (
     owner: Owner,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
@@ -2421,7 +2424,7 @@ const encryptedDbChangeVersion = onePositiveInt;
  * older ones.
  */
 export const encodeAndEncryptDbChange =
-  (deps: RandomBytesDep) =>
+  (deps: RandomBytesDep & XChaCha20Poly1305Dep) =>
   (message: CrdtMessage, key: EncryptionKey): EncryptedDbChange => {
     const buffer = createBuffer();
 
@@ -2430,8 +2433,10 @@ export const encodeAndEncryptDbChange =
     // Add PADMÉ padding (ignored during decoding)
     buffer.extend(createPadmePadding(buffer.getLength()));
 
-    const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(deps)(
+    const nonce = deps.randomBytes.create(xChaCha20Poly1305NonceLength);
+    const ciphertext = deps.xChaCha20Poly1305.encrypt(
       buffer.unwrap(),
+      nonce,
       key,
     );
 
@@ -2488,80 +2493,84 @@ export const encodeDbChange = (buffer: Buffer, message: CrdtMessage): void => {
  * writes, or whose embedded timestamp is not a valid {@link Timestamp}, is a
  * {@link ProtocolInvalidDataError}.
  */
-export const decryptAndDecodeDbChange = (
-  message: EncryptedCrdtMessage,
-  key: EncryptionKey,
-): Result<
-  DbChange,
-  | DecryptWithXChaCha20Poly1305Error
-  | ProtocolInvalidDataError
-  | ProtocolTimestampMismatchError
-> => {
-  try {
-    const buffer = createBuffer(message.change);
+export const decryptAndDecodeDbChange =
+  (deps: XChaCha20Poly1305Dep) =>
+  (
+    message: EncryptedCrdtMessage,
+    key: EncryptionKey,
+  ): Result<
+    DbChange,
+    | DecryptWithXChaCha20Poly1305Error
+    | ProtocolInvalidDataError
+    | ProtocolTimestampMismatchError
+  > => {
+    try {
+      const buffer = createBuffer(message.change);
 
-    const nonce = buffer.shiftN(xChaCha20Poly1305NonceLength as NonNegativeInt);
-    const ciphertext = buffer.shiftN(decodeLength(buffer));
+      const nonce = buffer.shiftN(
+        xChaCha20Poly1305NonceLength as NonNegativeInt,
+      );
+      const ciphertext = buffer.shiftN(decodeLength(buffer));
 
-    const plaintextBytes = decryptWithXChaCha20Poly1305(
-      ciphertext as XChaCha20Poly1305Ciphertext,
-      nonce as Entropy24,
-      key,
-    );
-    if (!plaintextBytes.ok) return plaintextBytes;
+      const plaintextBytes = deps.xChaCha20Poly1305.decrypt(
+        ciphertext as XChaCha20Poly1305Ciphertext,
+        nonce as Entropy24,
+        key,
+      );
+      if (!plaintextBytes.ok) return plaintextBytes;
 
-    buffer.reset();
-    buffer.extend(plaintextBytes.value);
+      buffer.reset();
+      buffer.extend(plaintextBytes.value);
 
-    if (decodeNonNegativeInt(buffer) > encryptedDbChangeVersion)
-      throw new ProtocolDecodeError("Unsupported EncryptedDbChange version");
+      if (decodeNonNegativeInt(buffer) > encryptedDbChangeVersion)
+        throw new ProtocolDecodeError("Unsupported EncryptedDbChange version");
 
-    const timestampBytes = TimestampBytes.fromUnknown(
-      buffer.shiftN(timestampBytesLength),
-    );
-    if (!timestampBytes.ok)
-      throw new ProtocolDecodeError(timestampBytes.error.type);
-    const timestamp = timestampBytesToTimestamp(timestampBytes.value);
+      const timestampBytes = TimestampBytes.fromUnknown(
+        buffer.shiftN(timestampBytesLength),
+      );
+      if (!timestampBytes.ok)
+        throw new ProtocolDecodeError(timestampBytes.error.type);
+      const timestamp = timestampBytesToTimestamp(timestampBytes.value);
 
-    if (!eqTimestamp(timestamp, message.timestamp)) {
-      return err<ProtocolTimestampMismatchError>({
-        type: "ProtocolTimestampMismatchError",
-        expected: message.timestamp,
-        timestamp,
+      if (!eqTimestamp(timestamp, message.timestamp)) {
+        return err<ProtocolTimestampMismatchError>({
+          type: "ProtocolTimestampMismatchError",
+          expected: message.timestamp,
+          timestamp,
+        });
+      }
+
+      const flags = decodeFlags(buffer, 3 as PositiveInt);
+      const table = decodeString(buffer);
+      const id = decodeId(buffer);
+
+      const length = decodeLength(buffer);
+      const values = createMutableRecord<string, SqliteValue>();
+
+      for (let i = 0; i < length; i++) {
+        const column = decodeString(buffer);
+        const value = decodeSqliteValue(buffer);
+        values[column] = value;
+      }
+
+      const dbChange = DbChange.fromUnknown({
+        table,
+        id,
+        values,
+        isInsert: flags[0],
+        isDelete: flags[1] ? flags[2] : null,
+      });
+      // The validation error holds the decrypted values, so it is not kept.
+      if (!dbChange.ok) throw new ProtocolDecodeError("Invalid DbChange");
+
+      return ok(dbChange.value);
+    } catch (error) {
+      return err<ProtocolInvalidDataError>({
+        type: "ProtocolInvalidDataError",
+        error,
       });
     }
-
-    const flags = decodeFlags(buffer, 3 as PositiveInt);
-    const table = decodeString(buffer);
-    const id = decodeId(buffer);
-
-    const length = decodeLength(buffer);
-    const values = createMutableRecord<string, SqliteValue>();
-
-    for (let i = 0; i < length; i++) {
-      const column = decodeString(buffer);
-      const value = decodeSqliteValue(buffer);
-      values[column] = value;
-    }
-
-    const dbChange = DbChange.fromUnknown({
-      table,
-      id,
-      values,
-      isInsert: flags[0],
-      isDelete: flags[1] ? flags[2] : null,
-    });
-    // The validation error holds the decrypted values, so it is not kept.
-    if (!dbChange.ok) throw new ProtocolDecodeError("Invalid DbChange");
-
-    return ok(dbChange.value);
-  } catch (error) {
-    return err<ProtocolInvalidDataError>({
-      type: "ProtocolInvalidDataError",
-      error,
-    });
-  }
-};
+  };
 
 /**
  * Type codes of a {@link SqliteValue} in an {@link EncryptedDbChange}. A

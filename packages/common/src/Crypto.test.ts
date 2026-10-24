@@ -12,6 +12,7 @@ import {
   createPadmePadding,
   createRandomBytes,
   createSlip21,
+  createXChaCha20Poly1305,
   decryptWithXChaCha20Poly1305,
   encryptWithXChaCha20Poly1305,
   XChaCha20Poly1305Ciphertext,
@@ -38,6 +39,41 @@ test("encryptWithXChaCha20Poly1305 / decryptWithXChaCha20Poly1305", () => {
   );
 
   const result = decryptWithXChaCha20Poly1305(
+    XChaCha20Poly1305Ciphertext.orThrow(new Uint8Array([1, 2, 3])),
+    nonce,
+    encryptionKey,
+  );
+  assertErr(result);
+  assertEqual(result.error.type, "DecryptWithXChaCha20Poly1305Error");
+});
+
+test("createXChaCha20Poly1305 round-trips with encryptWithXChaCha20Poly1305 and decryptWithXChaCha20Poly1305", () => {
+  const xChaCha20Poly1305 = createXChaCha20Poly1305();
+  const plaintext = utf8ToBytes("Hello, world!");
+  const encryptionKey = testAppOwner.encryptionKey;
+  const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(testCreateDeps())(
+    plaintext,
+    encryptionKey,
+  );
+
+  assertEqual(
+    xChaCha20Poly1305.encrypt(plaintext, nonce, encryptionKey),
+    ciphertext,
+  );
+  assertEqual(
+    xChaCha20Poly1305.decrypt(ciphertext, nonce, encryptionKey),
+    ok(plaintext),
+  );
+  assertEqual(
+    decryptWithXChaCha20Poly1305(
+      xChaCha20Poly1305.encrypt(plaintext, nonce, encryptionKey),
+      nonce,
+      encryptionKey,
+    ),
+    ok(plaintext),
+  );
+
+  const result = xChaCha20Poly1305.decrypt(
     XChaCha20Poly1305Ciphertext.orThrow(new Uint8Array([1, 2, 3])),
     nonce,
     encryptionKey,

@@ -10,6 +10,7 @@ import {
   createQueryBuilder,
   createRandomBytes,
   createRun,
+  createXChaCha20Poly1305,
   id,
   isPlainObject,
   Millis,
@@ -291,6 +292,7 @@ test("a skipped encrypted change shows on its route across browser worker ports 
   });
   const broadcasts = createProtocolBroadcastMessagesFromCrdtMessages({
     randomBytes: createRandomBytes(),
+    xChaCha20Poly1305: createXChaCha20Poly1305(),
   })(testAppOwner, [
     createMessage("browser-valid-change", 1),
     createMessage("browser-skipped-change", 2),

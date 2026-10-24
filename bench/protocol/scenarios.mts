@@ -17,7 +17,10 @@ import type {
 import type { Modules } from "./child.mts";
 
 /** The Evolu modules scenarios are created with. */
-export type ScenarioModules = Pick<Modules, "common" | "localFirst">;
+export type ScenarioModules = Pick<
+  Modules,
+  "common" | "localFirst" | "xChaCha20Poly1305Dep"
+>;
 
 export interface SyncScenario {
   /** `<shape>-<size>[-<rangesMaxSize>]`. */
@@ -111,6 +114,7 @@ export const createScenarios = (
     const encryptionSeed = seed + 2;
     const encrypt = localFirst.encodeAndEncryptDbChange({
       randomBytes: createSeededRandomBytes(encryptionSeed),
+      ...modules.xChaCha20Poly1305Dep,
     });
     const crdtMessages: Array<CrdtMessage> = [];
     const rows: Array<Row> = [];

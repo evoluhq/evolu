@@ -8,6 +8,7 @@ import {
   assertOk,
   assertSame,
 } from "../../../../../packages/common/src/Assert.ts";
+import { createXChaCha20Poly1305 } from "../../../../../packages/common/src/Crypto.ts";
 import { eqArrayNumber } from "../../../../../packages/common/src/Eq.ts";
 import { exhaustiveCheck } from "../../../../../packages/common/src/Function.ts";
 import { computeBalancedBuckets } from "../../../../../packages/common/src/Number.ts";
@@ -109,7 +110,10 @@ const createEncryptedDbChange = (
   deps: RunDefaultDeps,
   message: CrdtMessage,
 ): EncryptedDbChange =>
-  encodeAndEncryptDbChange(deps)(message, testAppOwner.encryptionKey);
+  encodeAndEncryptDbChange({
+    ...deps,
+    xChaCha20Poly1305: createXChaCha20Poly1305(),
+  })(message, testAppOwner.encryptionKey);
 
 /**
  * Returns the index-th of ascending timestamps with nearly the widest encoding
@@ -1717,7 +1721,10 @@ describe("E2E sync", { timeout: 15_000 }, () => {
     }));
     assertNonEmptyArray(crdtMessages);
 
-    const protocolMessage = createProtocolMessageFromCrdtMessages(deps)(
+    const protocolMessage = createProtocolMessageFromCrdtMessages({
+      ...deps,
+      xChaCha20Poly1305: createXChaCha20Poly1305(),
+    })(
       owner,
       crdtMessages,
       // This is technically invalid, we use it to enforce a sync.

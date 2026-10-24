@@ -104,7 +104,7 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.23.2",
+    "@evolu/common": "^8.24.0",
     "@evolu/react": "^11.2.1",
     "react": ">=19",
     "react-native": ">=0.88",

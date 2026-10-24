@@ -19,6 +19,7 @@ import type { Brand } from "../Brand.ts";
 import { createBuffer } from "../Bytes.ts";
 import type { ConsoleEntry, TestConsole } from "../Console.ts";
 import { testCreateConsole } from "../Console.ts";
+import { createXChaCha20Poly1305 } from "../Crypto.ts";
 import { createUnknownError, type UnknownError } from "../Error.ts";
 import { constVoid } from "../Function.ts";
 import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
@@ -3300,7 +3301,10 @@ describe("Evolu", () => {
     it("fits a change at the limit into one message next to the largest ranges section", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const evolu = await setup.run.ok(createSizeEvolu);
-      const deps = testCreateDeps();
+      const deps = {
+        ...testCreateDeps(),
+        xChaCha20Poly1305: createXChaCha20Poly1305(),
+      };
       const values = { data: new Uint8Array(getDataAtLimitLength(evolu)) };
       assertEqual(evolu.getMutationSize("note", values), maxMutationSize);
 

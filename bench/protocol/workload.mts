@@ -378,6 +378,7 @@ const runScenario = async (
           )
         : localFirst.createProtocolMessageFromCrdtMessages({
             randomBytes: createSeededRandomBytes(scenario.push.encryptionSeed),
+            ...modules.xChaCha20Poly1305Dep,
           })(owner, scenario.push.crdtMessages);
     firstRequestMessages = addFrame("request", message, defaultRangesMaxSize);
 

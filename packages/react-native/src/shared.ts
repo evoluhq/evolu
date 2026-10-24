@@ -17,6 +17,7 @@ import {
   type MessagePort,
   type ReloadAppDep,
   type SharedWorkerSelf,
+  type XChaCha20Poly1305Dep,
 } from "@evolu/common";
 import type {
   ConsoleEntryOrError,
@@ -58,7 +59,8 @@ export const createEvoluDeps = (
   deps: CreateSqliteDriverDep &
     ReloadAppDep &
     Partial<ConsoleDep> &
-    Partial<WaitForDatabaseReleaseDep>,
+    Partial<WaitForDatabaseReleaseDep> &
+    Partial<XChaCha20Poly1305Dep>,
 ): EvoluDeps => {
   // Worker-side Run lives as long as the app. When RN supports real workers,
   // this moves to the worker entry point (like web's Worker.worker.ts).
@@ -83,6 +85,9 @@ export const createEvoluDeps = (
       randomBytes: createRandomBytes(),
       ...(deps.waitForDatabaseRelease && {
         waitForDatabaseRelease: deps.waitForDatabaseRelease,
+      }),
+      ...(deps.xChaCha20Poly1305 && {
+        xChaCha20Poly1305: deps.xChaCha20Poly1305,
       }),
     });
   };

@@ -1,4 +1,9 @@
-import type { ConsoleDep } from "@evolu/common";
+import {
+  trySync,
+  type ConsoleDep,
+  type DecryptWithXChaCha20Poly1305Error,
+  type XChaCha20Poly1305Ciphertext,
+} from "@evolu/common";
 import type { EvoluDeps } from "@evolu/common/local-first";
 import { createEvoluDeps as createSharedEvoluDeps } from "./shared.ts";
 import { createNativeSqliteDriver } from "./sqlite/Driver.ts";
@@ -18,8 +23,9 @@ import { createWaitForDatabaseRelease } from "./sqlite/WaitForDatabaseRelease.ts
  */
 export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => {
   const evoluApp = loadEvoluApp();
+  const nativeSqlite = loadNativeSqlite();
   const sqliteDeps = {
-    nativeSqlite: loadNativeSqlite(),
+    nativeSqlite,
     // The iOS container moves across app updates, so it's read at every start.
     databaseDirectory: evoluApp.getDatabaseDirectory(),
   };
@@ -29,6 +35,30 @@ export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => {
     waitForDatabaseRelease: createWaitForDatabaseRelease(sqliteDeps),
     reloadApp: () => {
       evoluApp.reloadApp();
+    },
+    // The binding's C, which decrypts a change far faster than noble-ciphers
+    // in JavaScript. Its decrypt throws only when the tag doesn't
+    // authenticate.
+    xChaCha20Poly1305: {
+      encrypt: (plaintext, nonce, encryptionKey) =>
+        nativeSqlite.encryptXChaCha20Poly1305(
+          encryptionKey,
+          nonce,
+          plaintext,
+        ) as XChaCha20Poly1305Ciphertext,
+      decrypt: (ciphertext, nonce, encryptionKey) =>
+        trySync(
+          () =>
+            nativeSqlite.decryptXChaCha20Poly1305(
+              encryptionKey,
+              nonce,
+              ciphertext,
+            ),
+          (error): DecryptWithXChaCha20Poly1305Error => ({
+            type: "DecryptWithXChaCha20Poly1305Error",
+            error,
+          }),
+        ),
     },
   });
 };
