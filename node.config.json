@@ -10,7 +10,8 @@
     "test-coverage-exclude": [
       "**/*.test.{ts,mts}",
       "packages/*/src/**/index.ts",
-      "packages/common/src/intl/[a-z]*.ts"
+      "packages/common/src/intl/[a-z]*.ts",
+      "packages/react-native/test/**"
     ],
     "test-isolation": "process",
     "test-randomize": true,
