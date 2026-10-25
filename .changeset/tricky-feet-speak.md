@@ -78,6 +78,14 @@ SQLite and Evolu's SQLite core as C sources, but apps no longer install
 expo-sqlite, 31 MB unpacked, react-native-quick-crypto, 6 MB, or
 react-native-nitro-modules.
 
+Apps get smaller too. Built for Release with each version, Evolu's Expo example
+shrank: its iOS executable from 24.4 MB to 12.8 MB, its `.app` from 56.6 MB to
+44.1 MB, and its Android APK, with all four ABIs, from 163 MB to 103 MB.
+Evolu's SQLite adds 0.7 to 1.2 MB per architecture, while the app drops the
+native code of expo-sqlite, react-native-quick-crypto and
+react-native-nitro-modules, and on Android also the OpenSSL that expo-sqlite
+packages.
+
 ```ts
 import { createEvoluDeps, createRun } from "@evolu/react-native";
 // @ts-expect-error @evolu/react-native/expo-sqlite no longer exists.
