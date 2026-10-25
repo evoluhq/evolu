@@ -1,6 +1,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { test } from "node:test";
 import {
+  assert,
   assertEqual,
   assertEqualBytes,
   assertFalse,
@@ -14,6 +15,7 @@ import {
 import {
   createAppOwner,
   createOwnerSecret,
+  type OwnerIdBytes,
   ownerIdToOwnerIdBytes,
   testAppOwner,
 } from "../../../../../packages/common/src/local-first/Owner.ts";
@@ -25,6 +27,7 @@ import {
   getTimestampByIndex,
   getTimestampInsertStrategy,
   InfiniteUpperBound,
+  RangeType,
   testFingerprintTimestamps,
   timestampBytesToFingerprint,
   updateOwnerUsage,
@@ -41,7 +44,10 @@ import { computeBalancedBuckets } from "../../../../../packages/common/src/Numbe
 import type { RandomNumber } from "../../../../../packages/common/src/Random.ts";
 import { createRandom } from "../../../../../packages/common/src/Random.ts";
 import { getOrThrow, ok } from "../../../../../packages/common/src/Result.ts";
-import type { SqliteQuery } from "../../../../../packages/common/src/Sqlite.ts";
+import type {
+  SafeSql,
+  SqliteQuery,
+} from "../../../../../packages/common/src/Sqlite.ts";
 import { sql } from "../../../../../packages/common/src/Sqlite.ts";
 import { testCreateDeps } from "../../../../../packages/common/src/Task.ts";
 import type { Millis } from "../../../../../packages/common/src/Time.ts";
@@ -51,6 +57,10 @@ import {
   PositiveInt,
   zeroNonNegativeInt,
 } from "../../../../../packages/common/src/Type.ts";
+import {
+  readSkiplistFixture,
+  skiplistFixtureRowsSql,
+} from "../../../../../packages/sqlite-core/test/skiplist-fixture.mts";
 import {
   setupInterceptedSqlite,
   setupSqlite,
@@ -367,6 +377,89 @@ test("insertTimestamp append uses primary-key query plans", async () => {
       ),
     ),
   );
+});
+
+test("Storage leaves the skiplist fixture's rows and returns its answers", async () => {
+  const fixture = readSkiplistFixture();
+  await using setup = await setupSqlite();
+  const { sqlite } = setup;
+  createBaseSqliteStorageTables({ sqlite });
+  // Storage draws a level from these; each insert queues its own.
+  const randomNumbers: Array<number> = [];
+  const storage = createBaseSqliteStorage({
+    sqlite,
+    random: {
+      next: () => {
+        const value = randomNumbers.shift();
+        assert(value != null, "No queued random number.");
+        return value as RandomNumber;
+      },
+    },
+  });
+
+  const boundsByOwnerId = new Map<
+    OwnerIdBytes,
+    [TimestampBytes, TimestampBytes]
+  >();
+  sqlite.transaction(() => {
+    for (const { ownerId, timestamp, level, inserted } of fixture.inserts) {
+      // Storage draws once more after the last level, also at level 10.
+      randomNumbers.push(...Array.from({ length: level - 1 }, () => 0.1), 0.9);
+      const [strategy, first, last] = getTimestampInsertStrategy(
+        timestamp,
+        ...(boundsByOwnerId.get(ownerId) ?? [timestamp, timestamp]),
+      );
+      boundsByOwnerId.set(ownerId, [first, last]);
+      assertSame(
+        storage.insertTimestamp(ownerId, timestamp, strategy),
+        inserted,
+      );
+      assertLength(randomNumbers, 0);
+    }
+  });
+
+  assertEqual(
+    sqlite
+      .exec<{ row: string }>({
+        sql: skiplistFixtureRowsSql as SafeSql,
+        parameters: [],
+      })
+      .rows.map(({ row }) => row),
+    fixture.rows,
+  );
+
+  for (const owner of fixture.owners) {
+    const { ownerId, size } = owner;
+    assertEqual(storage.getSize(ownerId), size);
+
+    for (const [index, timestamp] of owner.timestamps.entries())
+      assertEqualBytes(
+        getTimestampByIndex({ sqlite })(ownerId, NonNegativeInt.orThrow(index)),
+        timestamp,
+      );
+
+    for (const { buckets, ranges } of owner.fingerprints) {
+      // Sync ends only the last range at the size, so Storage doesn't define
+      // the upper bound of an earlier one there.
+      if (buckets.slice(0, -1).includes(size)) continue;
+      // The last range takes its upper bound from the caller.
+      const upperBound = ranges.at(-1)?.upperBound ?? InfiniteUpperBound;
+      assertEqual(
+        storage.fingerprintRanges(ownerId, buckets, upperBound),
+        ranges.map((range, i) => ({
+          type: RangeType.Fingerprint,
+          upperBound: i < ranges.length - 1 ? range.upperBound : upperBound,
+          fingerprint: range.fingerprint,
+        })),
+      );
+    }
+
+    for (const { timestamp, index } of owner.lowerBounds)
+      assertEqual(
+        storage.findLowerBound(ownerId, zeroNonNegativeInt, size, timestamp),
+        index ?? size,
+      );
+  }
 });
 
 test("empty db", async () => {

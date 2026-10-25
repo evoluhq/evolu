@@ -3,7 +3,8 @@
  * random timestamps inserted in ascending, descending and random order with
  * random levels, for two owners at once, after which every node's summary is
  * recomputed from the sorted timestamps and every query is compared with the
- * model. test/skiplist.test.mts compares the functions with Storage.ts's SQL.
+ * model. test/skiplist.test.mts compares them with a fixture recorded from
+ * Storage.ts's SQL.
  * Test names start with skiplist_, so the suite runs alone with
  * `node packages/sqlite-core/scripts/test.mts skiplist_`.
  */
