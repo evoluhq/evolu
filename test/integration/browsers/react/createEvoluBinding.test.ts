@@ -147,7 +147,10 @@ test("useQueries throws a query SQLite failed to the error boundary without an u
     useQueries([...queries]);
     return null;
   };
-  const root = createRoot(document.createElement("div"));
+  // React would log the error the boundary catches on purpose.
+  const root = createRoot(document.createElement("div"), {
+    onCaughtError: constVoid,
+  });
   const error = createUnknownError(new Error("incomplete input"));
 
   // oxlint-disable-next-line typescript/require-await -- An async act waits for the render that suspends.
