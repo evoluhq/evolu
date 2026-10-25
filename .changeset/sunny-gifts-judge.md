@@ -1,5 +1,6 @@
 ---
 "@evolu/common": patch
+"@evolu/react-native": patch
 ---
 
 Stopped Evolu's in-memory workers from waiting for frames on React Native
