@@ -922,6 +922,9 @@ const scheduleWorkerTask = (callback: () => void): WorkerTask => {
   const scheduler = globalWithNativeRuntimeScheduler.nativeRuntimeScheduler;
   if (scheduler) {
     queuedWorkerTasks.add(task);
+    // A task of someone else that throws drops ours too, and nothing tells us.
+    // React Native reports that as fatal, and React's own scheduled work stalls
+    // the same way, so Evolu doesn't recover from it either.
     if (!nativeWorkerTask) scheduleNativeWorkerTask(scheduler);
   } else {
     const timeoutId = setTimeout(() => {
