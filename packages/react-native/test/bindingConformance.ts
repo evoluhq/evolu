@@ -442,6 +442,28 @@ export const describeBindingConformance = ({
     }
   });
 
+  test("openFile opens plain SQLite on the default VFS, which can use WAL, unlike openEncryptedFile on the codec", () => {
+    const plain = binding.openFile(pathOf("plain-wal.db"));
+    const encrypted = binding.openEncryptedFile(
+      pathOf("encrypted-wal.db"),
+      key,
+    );
+    try {
+      assertEqual(rowsOf(plain, "pragma journal_mode = wal"), [
+        { journal_mode: "wal" },
+      ]);
+      run(plain, "create table t (a)");
+      run(plain, "insert into t values (?)", ["wal"]);
+      assertEqual(rowsOf(plain, "select a from t"), [{ a: "wal" }]);
+      assertEqual(rowsOf(encrypted, "pragma journal_mode = wal"), [
+        { journal_mode: "delete" },
+      ]);
+    } finally {
+      plain.close();
+      encrypted.close();
+    }
+  });
+
   test("openEncryptedFile reopens with its key, and another key fails with NOTADB and page 1's authentication failure and changes nothing (G10)", () => {
     const path = pathOf("encrypted.db");
     const created = binding.openEncryptedFile(path, key);
@@ -721,33 +743,45 @@ export const describeBindingConformance = ({
     }
   });
 
-  test("prepare refuses a keying pragma with the codec's failure, on a plain file as on an encrypted one, so no file is keyed through SQL", () => {
-    for (const database of [
-      binding.openFile(pathOf("keying-plain.db")),
-      binding.openEncryptedFile(pathOf("keying-encrypted.db"), key),
-    ])
-      try {
-        for (const sql of [
-          "pragma key = 'x'",
-          "pragma rekey = 'x'",
-          "pragma hexkey = '00'",
-        ])
-          assertEqual(
-            thrownBy(() => database.prepare(sql)),
-            sqliteError({
-              operation: "prepare",
-              extendedCode: 1,
-              message:
-                "Databases are keyed only through evolu_codec_open, never through SQL.",
-              cause: {
-                type: "SqliteCodecFailure",
-                error: { type: "SqliteEncryptionUnsupported" },
-              },
-            }),
-          );
-      } finally {
-        database.close();
+  test("prepare refuses a keying pragma on every file, plain SQLite's with SQLITE_AUTH and the codec's with its failure, so no file is keyed through SQL", () => {
+    const keyingSql = [
+      "pragma key = 'x'",
+      "pragma rekey = 'x'",
+      "pragma hexkey = '00'",
+    ];
+    const plain = binding.openFile(pathOf("keying-plain.db"));
+    const encrypted = binding.openEncryptedFile(
+      pathOf("keying-encrypted.db"),
+      key,
+    );
+    try {
+      for (const sql of keyingSql) {
+        assertEqual(
+          thrownBy(() => plain.prepare(sql)),
+          sqliteError({
+            operation: "prepare",
+            extendedCode: 23,
+            message: "not authorized",
+          }),
+        );
+        assertEqual(
+          thrownBy(() => encrypted.prepare(sql)),
+          sqliteError({
+            operation: "prepare",
+            extendedCode: 1,
+            message:
+              "Databases are keyed only through evolu_codec_open, never through SQL.",
+            cause: {
+              type: "SqliteCodecFailure",
+              error: { type: "SqliteEncryptionUnsupported" },
+            },
+          }),
+        );
       }
+    } finally {
+      plain.close();
+      encrypted.close();
+    }
   });
 
   test("prepare throws SQLite's error with the byte offset in the UTF-8 SQL of a parser error", () => {

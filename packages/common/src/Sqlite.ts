@@ -38,9 +38,7 @@ import {
 /**
  * Platform-agnostic SQLite wrapping a {@link SqliteDriver}.
  *
- * API is synchronous because it provides
- * {@link https://github.com/WiseLibs/better-sqlite3/issues/262 | better concurrency}
- * for SQLite.
+ * API is synchronous because it provides better concurrency for SQLite.
  *
  * @group Core
  */
@@ -70,10 +68,10 @@ export interface Sqlite extends AsyncDisposable {
    *
    * ```ts
    * import { assertEqual, sql, testSetupSqlite } from "@evolu/common";
-   * import { createBetterSqliteDriver } from "@evolu/nodejs";
+   * import { createNodeJsSqliteDriver } from "@evolu/nodejs";
    *
    * await using setup = await testSetupSqlite({
-   *   createSqliteDriver: createBetterSqliteDriver,
+   *   createSqliteDriver: createNodeJsSqliteDriver,
    * });
    * const { sqlite } = setup;
    * sqlite.exec(sql`create table todo (id text, title text);`);
@@ -106,8 +104,7 @@ export interface Sqlite extends AsyncDisposable {
    * columns.
    *
    * The callback can read this database with other queries, but must not write
-   * it: better-sqlite3 refuses writes while a query iterates, and SQLite may or
-   * may not return rows changed meanwhile.
+   * it: SQLite may or may not return rows changed meanwhile.
    */
   readonly iterate: (
     query: SqliteQuery,
@@ -191,9 +188,8 @@ export type SafeSql = string & Brand<"SafeSql">;
  * to finite values preserves them across storage and query serialization.
  *
  * SQLite INTEGERs beyond 2^53, which only SQL itself can produce, read as the
- * nearest number: every Evolu driver reads INTEGER as a number, as
- * better-sqlite3 does, and an exact Int64 would need a bigint in `SqliteValue`
- * and in every driver at once.
+ * nearest number: every Evolu driver reads INTEGER as a number, and an exact
+ * Int64 would need a bigint in `SqliteValue` and in every driver at once.
  *
  * @group Values
  */
@@ -349,9 +345,9 @@ export type SqliteRow = Record<string, SqliteValueInput>;
  */
 export interface SqliteDriver extends Disposable {
   /**
-   * Runs a query on a statement of its own. A driver may keep that statement
-   * until its garbage is collected, as better-sqlite3 does, so run a query that
-   * runs often on a statement from {@link SqliteDriver.prepare}.
+   * Runs a query on a statement of its own, which it prepares for the query, so
+   * run a query that runs often on a statement from
+   * {@link SqliteDriver.prepare}.
    */
   readonly exec: (query: SqliteQuery) => SqliteExecResult;
 

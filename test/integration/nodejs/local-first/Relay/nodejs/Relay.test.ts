@@ -46,6 +46,7 @@ import {
 } from "@evolu/common/local-first";
 import { EventEmitter, once } from "events";
 import { closeSync, existsSync, openSync, unlinkSync, writeSync } from "fs";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, type TestContext } from "node:test";
 import { WebSocket as WsWebSocket } from "ws";
 import { installPolyfills } from "../../../../../../packages/common/src/Polyfills.ts";
@@ -57,8 +58,12 @@ import {
   testSetupWebSocketUpgradeRequest,
   type NodeJsRelayConfig,
 } from "../../../../../../packages/nodejs/src/index.ts";
+import { buildNativeSqlite } from "../../../../../../packages/nodejs/scripts/build-native.mts";
 
 installPolyfills();
+
+// The relay's SQLite, which createRelayDeps loads.
+await buildNativeSqlite();
 
 /** Adds the XChaCha20-Poly1305 that changes are encrypted with to `deps`. */
 const setupCryptoDeps = <D extends object>(
@@ -368,7 +373,7 @@ const createFullRound = (): Uint8Array => {
 
 describe("createRelay", () => {
   afterEach(() => {
-    for (const suffix of [".db", ".db-shm", ".db-wal"]) {
+    for (const suffix of [".db", ".db-journal", ".db-shm", ".db-wal"]) {
       const filePath = `${testName}${suffix}`;
       if (existsSync(filePath)) unlinkSync(filePath);
     }
@@ -834,6 +839,30 @@ describe("createRelay", () => {
 
     assertEqual(response.status, 200);
     assertEqual(await response.text(), "");
+  });
+
+  it("stores its database unencrypted in <name>.db, which another SQLite opens, and opens a database another SQLite wrote", async () => {
+    {
+      await using _setup = await startTestRelay();
+    }
+    const other = new DatabaseSync(`${testName}.db`);
+    assertTrue(
+      other
+        .prepare("select name from sqlite_schema where type = 'table'")
+        .all()
+        .some(({ name }) => name === "evolu_timestamp"),
+    );
+    // As another SQLite, such as an earlier relay's, rewrites a file.
+    other.exec("pragma user_version = 7; vacuum;");
+    other.close();
+
+    await using setup = await startTestRelay();
+
+    assertEqual(setup.driver.exec(sql`pragma user_version;`).rows, [
+      { user_version: 7 },
+    ]);
+    const response = await fetch(`http://127.0.0.1:${setup.relay.port}/health`);
+    assertEqual(response.status, 200);
   });
 
   it("answers health checks with 503 when its database file is corrupted", async () => {

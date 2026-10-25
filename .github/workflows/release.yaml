@@ -124,6 +124,16 @@ jobs:
           name: sqlite-wasm
           path: packages/sqlite-wasm/wasm
 
+      # The prepack of @evolu/nodejs checks the SQLite addon the Checks
+      # workflow built in this run for each target and copies them into the
+      # package, and fails when one is missing.
+      - name: Download Node.js SQLite addons
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: nodejs-native-*
+          merge-multiple: true
+          path: packages/nodejs/native
+
       - name: Pack packages
         id: pack
         uses: changesets/action/pack@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2

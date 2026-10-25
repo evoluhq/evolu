@@ -1,6 +1,7 @@
 import { testJSDocExamples } from "@evolu/nodejs/TestJSDoc";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
+import { buildNativeSqlite } from "../../packages/nodejs/scripts/build-native.mts";
 
 const repositoryDirectory = resolve(import.meta.dirname, "../..");
 
@@ -35,6 +36,8 @@ export const selectJSDocIncludes = (
 export const testEvoluJSDocExamples = async (
   include: string | ReadonlyArray<string> = documentationSourcePatterns,
 ): Promise<void> => {
+  // Examples that open SQLite on Node.js load @evolu/nodejs's addon.
+  await buildNativeSqlite();
   await testJSDocExamples({
     aliases: {
       "@evolu/common": join(

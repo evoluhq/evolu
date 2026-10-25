@@ -285,7 +285,7 @@ describe("relay Docker release recovery", () => {
                 "view dependencies")
                   printf 'view\\n' >> "$VIEW_LOG"
                   [ "$(( $(wc -l < "$VIEW_LOG") ))" -gt "$VIEW_FAILURES" ] || return 1
-                  printf '{"@evolu/common":"8.22.1","@evolu/nodejs":"4.3.2","better-sqlite3":"12.4.1"}\\n'
+                  printf '{"@evolu/common":"8.22.1","@evolu/nodejs":"4.3.2","ws":"8.22.0"}\\n'
                   ;;
                 "pack --dry-run")
                   [ "$4" = --prefer-online ] || return 1

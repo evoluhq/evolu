@@ -23,7 +23,7 @@
     "evolu-relay": "./dist/src/index.js"
   },
   "scripts": {
-    "dev": "node --watch --watch-preserve-output src/index.ts",
+    "dev": "node ../../packages/nodejs/scripts/build-native.mts && node --watch --watch-preserve-output src/index.ts",
     "build": "tsc --build tsconfig.json",
     "start": "node dist/src/index.js"
   },

@@ -48,23 +48,23 @@
   "files": [
     "dist/src/**",
     "!dist/**/*.test.*",
+    "dist/native/**",
     "src/**",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "build": "tsc --build tsconfig.build.json",
-    "prepack": "npm run build",
+    "prepack": "npm run build && node scripts/check-native.mts --pack",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "better-sqlite3": "13.0.3",
     "ws": "8.22.0"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/oxlint-config": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
-    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.19.2",
     "@types/ws": "^8.18.2",
     "@typescript/native": "npm:typescript@^7.0.2",

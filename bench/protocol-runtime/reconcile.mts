@@ -446,7 +446,7 @@ interface SyncRecord {
 
 /** Real in-memory SQLite relay storage, loaded outside any measured region. */
 const createSqliteSide = async (
-  { common, localFirst, createBetterSqliteDriver, timingSafeEqual }: Modules,
+  { common, localFirst, createSqliteDriver, timingSafeEqual }: Modules,
   {
     name,
     levelSeed,
@@ -468,9 +468,7 @@ const createSqliteSide = async (
     localFirst.testAppOwner.id,
   );
   await using stack = new AsyncDisposableStack();
-  const run = stack.use(
-    common.createRun({ createSqliteDriver: createBetterSqliteDriver }),
-  );
+  const run = stack.use(common.createRun({ createSqliteDriver }));
   const sqlite = stack.use(
     await run.ok(
       common.createSqlite(common.Name.orThrow(name), { mode: "memory" }),

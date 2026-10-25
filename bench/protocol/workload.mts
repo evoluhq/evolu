@@ -617,7 +617,7 @@ interface StoredRow extends SqliteRow {
 }
 
 const createSide = async (
-  { common, localFirst, createBetterSqliteDriver, timingSafeEqual }: Modules,
+  { common, localFirst, createSqliteDriver, timingSafeEqual }: Modules,
   name: string,
   levelSeed: number,
 ): Promise<Side> => {
@@ -626,9 +626,7 @@ const createSide = async (
   );
 
   await using stack = new AsyncDisposableStack();
-  const run = stack.use(
-    common.createRun({ createSqliteDriver: createBetterSqliteDriver }),
-  );
+  const run = stack.use(common.createRun({ createSqliteDriver }));
   const sqlite = stack.use(
     await run.ok(
       common.createSqlite(common.Name.orThrow(name), { mode: "memory" }),

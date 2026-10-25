@@ -173,18 +173,18 @@
  *   it returns, also when it fails, and a prepared statement keeps no large
  *   value between runs, while smaller ones keep the buffers SQLite reuses for
  *   them. A {@link SqliteValue} string may contain a lone surrogate, which UTF-8
- *   cannot encode, so text binds it as U+FFFD, as better-sqlite3 does.
+ *   cannot encode, so text binds it as U+FFFD, as Evolu's native binding does.
  * - Reading: `sqlite3_column_type` first. INTEGER and FLOAT read with
  *   `sqlite3_column_double`, so no BigInt is created; integers beyond 2^53 lose
- *   precision, as in better-sqlite3. TEXT reads the pointer, then the byte
- *   length, and decodes keeping a leading byte order mark. A BLOB is one copy
- *   into its own `ArrayBuffer`, so it can be transferred. With the type read
- *   first, a NULL pointer is never SQL NULL: for TEXT it is SQLITE_NOMEM, and
- *   for a BLOB it is an empty value unless `sqlite3_errcode`, read right after,
- *   returns SQLITE_NOMEM. A NULL column name is SQLITE_NOMEM too, and so is a
- *   TEXT or BLOB that JavaScript cannot allocate a copy of, whatever error the
- *   engine throws then, because the copy runs no wasm, so the instance keeps
- *   working. Each fails the run with the operation `step`. Rows are
+ *   precision, as in Evolu's native binding. TEXT reads the pointer, then the
+ *   byte length, and decodes keeping a leading byte order mark. A BLOB is one
+ *   copy into its own `ArrayBuffer`, so it can be transferred. With the type
+ *   read first, a NULL pointer is never SQL NULL: for TEXT it is SQLITE_NOMEM,
+ *   and for a BLOB it is an empty value unless `sqlite3_errcode`, read right
+ *   after, returns SQLITE_NOMEM. A NULL column name is SQLITE_NOMEM too, and so
+ *   is a TEXT or BLOB that JavaScript cannot allocate a copy of, whatever error
+ *   the engine throws then, because the copy runs no wasm, so the instance
+ *   keeps working. Each fails the run with the operation `step`. Rows are
  *   null-prototype objects, so a column named `__proto__` is an ordinary
  *   property, and of columns with the same name, the last one wins.
  * - Column names are read after the first row and cached with the statement's
@@ -209,12 +209,12 @@
  *   instance ends the iteration with the instance's refusal at once, also when
  *   the callback caught what that call threw.
  * - `changes` compares `sqlite3_total_changes64` before and after the run: 0 when
- *   it did not move, `sqlite3_changes64` otherwise, as in better-sqlite3, and
- *   unlike it also 0 when `sqlite3_stmt_readonly` is true, as for a SELECT
- *   whose function writes. SQLite keeps one count per connection, of the last
- *   INSERT, UPDATE or DELETE that finished, so reading it alone would report a
- *   stale count after a SELECT or DDL. {@link SqliteRunResult.changes} says
- *   which writes the count can come from.
+ *   it did not move, `sqlite3_changes64` otherwise, and 0 also when
+ *   `sqlite3_stmt_readonly` is true, as for a SELECT whose function writes, as
+ *   Evolu's native binding counts. SQLite keeps one count per connection, of
+ *   the last INSERT, UPDATE or DELETE that finished, so reading it alone would
+ *   report a stale count after a SELECT or DDL. {@link SqliteRunResult.changes}
+ *   says which writes the count can come from.
  * - A callback may run queries on the database, but SQLite forbids resetting or
  *   finalizing a statement that is stepping and closing a connection while it
  *   runs. So running or disposing a statement during its own run, and disposing

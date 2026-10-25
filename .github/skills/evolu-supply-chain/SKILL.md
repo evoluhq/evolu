@@ -41,8 +41,8 @@ recommended:
 - **Install scripts.** pnpm 10+ runs them only for the packages allowed in
   `allowBuilds`, or in `onlyBuiltDependencies` before 10.26. pnpm 11 silently
   ignores `onlyBuiltDependencies` and `neverBuiltDependencies`, so report them
-  as leftovers there. `@evolu/nodejs` and `@evolu/relay` need
-  `better-sqlite3: false`, because its prebuilt binaries need no build. npm:
+  as leftovers there. `@evolu/nodejs` and `@evolu/relay` need no entry:
+  `@evolu/nodejs` ships its SQLite addon prebuilt, with no build files. npm:
   `ignore-scripts=true` turns all of them off, the project's own included, so
   mention that before suggesting it.
 - **Weakening settings.** Report each of these with its stated reason, or as

@@ -205,6 +205,7 @@ static const char fault_codec_vfs_name[] = "evolu-binding-test-codec";
 
 static void reset_hooks(void) {
   evolu_test_database_vfs = binding_vfs;
+  evolu_test_plain_vfs = NULL;
   evolu_test_threadsafe = sqlite3_threadsafe;
   evolu_test_compileoption_used = sqlite3_compileoption_used;
   evolu_test_random_fails = 0;
@@ -394,6 +395,19 @@ static long long count_rows(sqlite3 *db) {
 static int open_plain(const char *path, evolu_database **database,
                       evolu_database_error *error) {
   return evolu_database_open_file(path, strlen(path), database, error);
+}
+
+/* Whether PRAGMA journal_mode = mode sets mode, which it reports. */
+static int sets_journal_mode(sqlite3 *db, const char *mode) {
+  char sql[64];
+  snprintf(sql, sizeof sql, "pragma journal_mode = %s", mode);
+  sqlite3_stmt *statement = NULL;
+  int is_set = sqlite3_prepare_v2(db, sql, -1, &statement, NULL) == SQLITE_OK &&
+               sqlite3_step(statement) == SQLITE_ROW &&
+               strcmp((const char *)sqlite3_column_text(statement, 0), mode) ==
+                   0;
+  sqlite3_finalize(statement);
+  return is_set;
 }
 
 static int open_encrypted(const char *path, const uint8_t *key,
@@ -661,6 +675,208 @@ static void binding_databases_are_defensive(void) {
     CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
     CHECK(is_refused);
   }
+}
+
+static void binding_opens_a_plain_file_with_plain_sqlite_on_the_default_vfs(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "plain-sqlite.db");
+  remove_database(path);
+  evolu_database *database = NULL;
+  evolu_database_error error;
+
+  CHECK_EQ_INT(open_plain(path, &database, &error), SQLITE_OK);
+
+  CHECK_EQ_INT(error.type, EVOLU_DATABASE_ERROR_NONE);
+  sqlite3 *db = evolu_database_connection(database);
+  char *vfs = NULL;
+  CHECK_EQ_INT(sqlite3_file_control(db, "main", SQLITE_FCNTL_VFSNAME, &vfs),
+               SQLITE_OK);
+  int is_default_vfs =
+      vfs != NULL && strcmp(vfs, sqlite3_vfs_find(NULL)->zName) == 0;
+  sqlite3_free(vfs);
+  CHECK(is_default_vfs);
+  // The core's functions, and WAL, which the codec VFS opens no file for.
+  CHECK(query_int(db, "select evolu_core_version()") > 0);
+  CHECK(sets_journal_mode(db, "wal"));
+  CHECK(sets_journal_mode(db, "delete"));
+  CHECK_EQ_INT(create_rows(db, 4), SQLITE_OK);
+  CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+  CHECK_EQ_INT(is_open(path), 0);
+  size_t size;
+  uint8_t *bytes = read_file(path, &size);
+  int is_plain = bytes != NULL && memcmp(bytes, "SQLite format 3", 16) == 0;
+  free(bytes);
+  CHECK(is_plain);
+  CHECK_EQ_INT(open_plain(path, &database, &error), SQLITE_OK);
+  CHECK_EQ_INT(count_rows(evolu_database_connection(database)), 4);
+  CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+}
+
+static void binding_plain_open_refuses_keying_pragmas_with_sqlite_auth(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "plain-keying.db");
+  remove_database(path);
+  evolu_database *database = NULL;
+  evolu_database_error error;
+  CHECK_EQ_INT(open_plain(path, &database, &error), SQLITE_OK);
+  static const char *const refused[] = {
+      "pragma key = 'x'",           "PRAGMA KEY = 'x'",
+      "pragma main.key = 'x'",      "pragma \"key\" = 'x'",
+      "pragma [rekey] = 'x'",       "pragma hexkey = '00'",
+      "pragma textkey = 'x'",       "pragma hexrekey = '00'",
+      "pragma textrekey = 'x'",     "pragma cipher_page_size = 4096",
+      "explain pragma key = 'x'",
+  };
+  sqlite3_stmt *statement = NULL;
+
+  for (size_t i = 0; i < sizeof refused / sizeof refused[0]; i++) {
+    CHECK_EQ_INT(evolu_database_prepare(database, refused[i],
+                                        strlen(refused[i]), &statement,
+                                        &error),
+                 SQLITE_AUTH);
+    CHECK(statement == NULL);
+    CHECK_ERROR(error, EVOLU_DATABASE_ERROR_SQLITE, SQLITE_AUTH);
+    evolu_database_clear_error(&error);
+  }
+
+  // Other pragmas and statements prepare as before.
+  const char *allowed = "pragma user_version = 7";
+  CHECK_EQ_INT(evolu_database_prepare(database, allowed, strlen(allowed),
+                                      &statement, &error),
+               SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_step(statement), SQLITE_DONE);
+  sqlite3_finalize(statement);
+  CHECK_EQ_INT(
+      query_int(evolu_database_connection(database), "pragma user_version"), 7);
+  CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+  size_t size;
+  uint8_t *bytes = read_file(path, &size);
+  int is_plain = bytes != NULL && memcmp(bytes, "SQLite format 3", 16) == 0;
+  free(bytes);
+  CHECK(is_plain);
+}
+
+static void binding_plain_open_attaches_databases_read_only(void) {
+  CHECK(set_up());
+  char path[512], attached[512], sql[1200];
+  path_of(path, "plain-attach.db");
+  path_of(attached, "plain-attached.db");
+  remove_database(path);
+  remove_database(attached);
+  evolu_database *database = NULL;
+  evolu_database_error error;
+  CHECK_EQ_INT(open_plain(path, &database, &error), SQLITE_OK);
+  sqlite3 *db = evolu_database_connection(database);
+
+  // SQLite ignores ATTACH's KEY clause, so ATTACH creates no file, and an
+  // existing one opens read-only.
+  snprintf(sql, sizeof sql, "attach '%s' as s key 'x'", attached);
+  CHECK_EQ_INT(sqlite3_exec(db, sql, NULL, NULL, NULL), SQLITE_CANTOPEN);
+  CHECK_EQ_INT(sqlite3_exec(db, "create table s.t (x)", NULL, NULL, NULL),
+               SQLITE_ERROR);
+  CHECK(!file_exists(attached));
+  CHECK_EQ_INT(sqlite3_exec(db, "create table t (x)", NULL, NULL, NULL),
+               SQLITE_OK);
+  snprintf(sql, sizeof sql, "vacuum into '%s'", attached);
+  CHECK_EQ_INT(sqlite3_exec(db, sql, NULL, NULL, NULL), SQLITE_OK);
+  snprintf(sql, sizeof sql, "attach '%s' as s key 'x'", attached);
+  CHECK_EQ_INT(sqlite3_exec(db, sql, NULL, NULL, NULL), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_exec(db, "insert into s.t values (1)", NULL, NULL,
+                            NULL),
+               SQLITE_READONLY);
+  CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+}
+
+static void binding_plain_and_encrypted_opens_share_the_registry(void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "plain-held.db");
+  remove_database(path);
+  evolu_database *holder = NULL;
+  evolu_database *other = NULL;
+  evolu_database_error error;
+
+  CHECK_EQ_INT(open_plain(path, &holder, &error), SQLITE_OK);
+  CHECK_EQ_INT(is_open(path), 1);
+  CHECK_EQ_INT(open_plain(path, &other, &error), SQLITE_BUSY);
+  CHECK_ERROR(error, EVOLU_DATABASE_ERROR_FILE_HELD, SQLITE_BUSY);
+  evolu_database_clear_error(&error);
+  CHECK(other == NULL);
+  CHECK_EQ_INT(open_encrypted(path, test_key, &other, &error), SQLITE_BUSY);
+  CHECK_ERROR(error, EVOLU_DATABASE_ERROR_FILE_HELD, SQLITE_BUSY);
+  evolu_database_clear_error(&error);
+  CHECK_EQ_INT(evolu_database_close(holder), SQLITE_OK);
+
+  char encrypted[512];
+  path_of(encrypted, "encrypted-held.db");
+  remove_database(encrypted);
+  CHECK_EQ_INT(open_encrypted(encrypted, test_key, &holder, &error),
+               SQLITE_OK);
+  CHECK_EQ_INT(open_plain(encrypted, &other, &error), SQLITE_BUSY);
+  CHECK_ERROR(error, EVOLU_DATABASE_ERROR_FILE_HELD, SQLITE_BUSY);
+  evolu_database_clear_error(&error);
+  CHECK_EQ_INT(evolu_database_close(holder), SQLITE_OK);
+  CHECK_EQ_INT(is_open(path), 0);
+  CHECK_EQ_INT(is_open(encrypted), 0);
+}
+
+static void binding_plain_open_of_an_encrypted_file_fails_with_notadb(void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "plain-of-encrypted.db");
+  CHECK(create_database(path, test_key, 3));
+  size_t size_before;
+  uint8_t *before = read_file(path, &size_before);
+  CHECK(before != NULL);
+  evolu_database *database = NULL;
+  evolu_database_error error;
+
+  int rc = open_plain(path, &database, &error);
+
+  size_t size_after;
+  uint8_t *after = read_file(path, &size_after);
+  int is_unchanged = after != NULL && size_after == size_before &&
+                     memcmp(after, before, size_before) == 0;
+  free(before);
+  free(after);
+  CHECK_EQ_INT(rc, SQLITE_NOTADB);
+  CHECK(database == NULL);
+  CHECK_ERROR(error, EVOLU_DATABASE_ERROR_SQLITE, SQLITE_NOTADB);
+  evolu_database_clear_error(&error);
+  CHECK(is_unchanged);
+  CHECK_EQ_INT(is_open(path), 0);
+}
+
+static void binding_plain_open_fails_cleanly_when_allocations_fail(void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "plain-allocations.db");
+  remove_database(path);
+  int failures = 0;
+  for (int allowed = 0;; allowed++) {
+    evolu_database *database = NULL;
+    evolu_database_error error;
+    test_sqlite_allocations_left = allowed;
+    int rc = open_plain(path, &database, &error);
+    int is_exhausted = test_sqlite_allocations_left == -2;
+    test_sqlite_allocations_left = -1;
+    if (!is_exhausted) {
+      CHECK_EQ_INT(rc, SQLITE_OK);
+      CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+      break;
+    }
+    CHECK_EQ_INT(rc & 0xff, SQLITE_NOMEM);
+    CHECK(database == NULL);
+    CHECK_EQ_INT(error.type, EVOLU_DATABASE_ERROR_SQLITE);
+    evolu_database_clear_error(&error);
+    CHECK_EQ_INT(is_open(path), 0);
+    failures++;
+  }
+  CHECK(failures > 1);
 }
 
 static void binding_encrypted_open_refuses_a_null_key(void) {
@@ -1221,7 +1437,8 @@ static void binding_open_on_a_vfs_that_isnt_a_codec_vfs_fails_with_misuse(
   CHECK_EQ_INT(evolu_database_open_memory(&database, &error), SQLITE_MISUSE);
   CHECK_ERROR(error, EVOLU_DATABASE_ERROR_SQLITE, SQLITE_MISUSE);
   CHECK_EQ_STR(error.message, sqlite3_errstr(SQLITE_MISUSE));
-  CHECK_EQ_INT(open_plain(path, &database, &error), SQLITE_MISUSE);
+  CHECK_EQ_INT(open_encrypted(path, test_key, &database, &error),
+               SQLITE_MISUSE);
   CHECK(database == NULL);
   CHECK_EQ_INT(is_open(path), 0);
   // The open created the file empty, which opens as a new database.
@@ -1803,6 +2020,7 @@ static void binding_export_of_a_read_that_fails_has_its_files_errno(void) {
   path_of(path, "export-faults.db");
   CHECK(create_database(path, test_key, 20));
   evolu_test_database_vfs = fault_codec_vfs_name;
+  evolu_test_plain_vfs = fault_vfs_name;
   evolu_database *database = NULL;
   evolu_database_error error;
   CHECK_EQ_INT(open_encrypted(path, test_key, &database, &error), SQLITE_OK);
@@ -2050,6 +2268,7 @@ static void binding_export_fails_cleanly_whichever_inner_call_fails(void) {
   path_of(path, "export-inner-faults.db");
   CHECK(create_database(path, test_key, 20));
   evolu_test_database_vfs = fault_codec_vfs_name;
+  evolu_test_plain_vfs = fault_vfs_name;
   evolu_database *database = NULL;
   evolu_database_error error;
   CHECK_EQ_INT(open_encrypted(path, test_key, &database, &error), SQLITE_OK);
@@ -2111,6 +2330,8 @@ static void binding_open_fails_cleanly_whichever_call_or_allocation_fails(
         remove_database(path);
         CHECK(copy_file(base, path) && copy_file(base_journal, journal));
         evolu_test_database_vfs = fault_codec_vfs_name;
+        evolu_test_plain_vfs = fault_vfs_name;
+  evolu_test_plain_vfs = fault_vfs_name;
         if (kind == 0) arm_fault(at, 0, 0);
         else if (kind == 1) test_sqlite_allocations_left = at;
         else evolu_test_allocations_left = at;
@@ -2191,6 +2412,7 @@ static void binding_error_carries_errno_only_from_the_error_itself(void) {
   CHECK(write_file(path, bytes, size));
   free(bytes);
   evolu_test_database_vfs = fault_codec_vfs_name;
+  evolu_test_plain_vfs = fault_vfs_name;
   evolu_database *database = NULL;
   evolu_database_error error;
   CHECK_EQ_INT(open_plain(path, &database, &error), SQLITE_OK);
@@ -2225,30 +2447,6 @@ static void binding_error_carries_errno_only_from_the_error_itself(void) {
   evolu_database_clear_error(&error);
   CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
 
-  // Nor from a CANTOPEN the codec recorded: a keyless open refuses an
-  // encrypted database's hot journal and keeps it, and SQLite records
-  // whatever errno the thread had.
-  char crashed[512];
-  char journal[600];
-  char journal_copy[512];
-  path_of(crashed, "errno-crashed.db");
-  path_of(journal_copy, "errno-crashed-copy.db-journal");
-  snprintf(journal, sizeof journal, "%s-journal", crashed);
-  CHECK(create_crashed_database(crashed, test_key, 20));
-  CHECK(copy_file(journal, journal_copy));
-  CHECK_EQ_INT(open_plain(crashed, &database, &error), SQLITE_CANTOPEN);
-  CHECK_ERROR(error, EVOLU_DATABASE_ERROR_SQLITE, SQLITE_CANTOPEN);
-  CHECK_EQ_INT(error.codec_failure.type,
-               EVOLU_DATABASE_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED);
-  CHECK_EQ_INT(error.system_errno, 0);
-  evolu_database_clear_error(&error);
-  CHECK(same_files(journal, journal_copy));
-  CHECK_EQ_INT(open_encrypted(crashed, test_key, &database, &error),
-               SQLITE_OK);
-  CHECK_EQ_INT(count_rows(evolu_database_connection(database)), 20);
-  CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
-  remove_database(crashed);
-  remove_database(journal_copy);
 }
 
 static void binding_failure_an_earlier_call_left_never_becomes_a_cause(void) {
@@ -2258,6 +2456,7 @@ static void binding_failure_an_earlier_call_left_never_becomes_a_cause(void) {
   CHECK(create_database(path, test_key, 20));
   CHECK(flip_bit(path, 4 * 4096 + 200));
   evolu_test_database_vfs = fault_codec_vfs_name;
+  evolu_test_plain_vfs = fault_vfs_name;
   evolu_database *database = NULL;
   evolu_database_error error;
   CHECK_EQ_INT(open_encrypted(path, test_key, &database, &error), SQLITE_OK);
@@ -2503,6 +2702,7 @@ static void binding_threads_open_another_file_while_an_open_is_in_flight(
   CHECK(create_database(path, NULL, 1));
   CHECK(create_database(other_path, NULL, 1));
   evolu_test_database_vfs = fault_codec_vfs_name;
+  evolu_test_plain_vfs = fault_vfs_name;
   in_flight_path = path;
   other_file_path = other_path;
   is_read_held = 1;
@@ -2554,6 +2754,12 @@ void binding_suite(void) {
   RUN(binding_opens_plain_and_encrypted_files);
   RUN(binding_closes_a_database_whose_skiplist_functions_ran);
   RUN(binding_databases_are_defensive);
+  RUN(binding_opens_a_plain_file_with_plain_sqlite_on_the_default_vfs);
+  RUN(binding_plain_open_refuses_keying_pragmas_with_sqlite_auth);
+  RUN(binding_plain_open_attaches_databases_read_only);
+  RUN(binding_plain_and_encrypted_opens_share_the_registry);
+  RUN(binding_plain_open_of_an_encrypted_file_fails_with_notadb);
+  RUN(binding_plain_open_fails_cleanly_when_allocations_fail);
   RUN(binding_encrypted_open_refuses_a_null_key);
   RUN(binding_wrong_key_and_wrong_mode_fail_as_not_a_database);
   RUN(binding_opens_a_file_in_sqlciphers_layout);

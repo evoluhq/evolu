@@ -68,11 +68,16 @@ for a post, run `node scripts/code-image.mts --help`.
 - After changing a published package's `dependencies`,
   `optionalDependencies`, `exports`, `publishConfig`, `types`, or `files`, or
   its build configuration, run `pnpm build`, then
-  `pnpm check:packages`, which packs all packages and needs their built `dist`
-  and the pinned SQLite wasm. Packing `@evolu/react-native` runs its prepack,
-  which writes `native/` and needs what the core's tests need to write it:
-  clang with `llvm-nm`, make, unzip, and the pinned SQLite source or network
-  access.
+  `pnpm check:packages`, which packs all packages and needs their built `dist`,
+  the pinned SQLite wasm, and the six SQLite addons of `@evolu/nodejs` in
+  `packages/nodejs/native`, which only CI builds for every target. Download
+  them from a Checks run with
+  `gh run download <run> -p 'nodejs-native-*' -D <dir>`, which puts each in a
+  directory of its own, then
+  `cp -R <dir>/nodejs-native-*/. packages/nodejs/native/`. Packing
+  `@evolu/react-native` runs its prepack, which writes `native/` and needs
+  what the core's tests need to write it: clang with `llvm-nm`, make, unzip,
+  and the pinned SQLite source or network access.
 - After changing dependencies in any `package.json`, run `pnpm lint:sherif`.
 - After changing `packages/sqlite-wasm/scripts/generate.mts`, `bindings.mts`, or
   `upstream/`, regenerate with `node packages/sqlite-wasm/scripts/generate.mts`.
@@ -111,6 +116,8 @@ for a post, run `node scripts/code-image.mts --help`.
   binding, so a change to it needs that script too. `@evolu/react-native`
   ships the vendored core, so a change to what it vendors also needs a patch
   changeset for it, unless an unreleased changeset already covers the change.
+  `@evolu/nodejs` ships the core compiled inside its addons, so a change to
+  `packages/sqlite-core` also needs an `@evolu/nodejs` changeset.
   The tests need clang with `llvm-profdata` and `llvm-cov`, which Xcode
   installs, and on Ubuntu the llvm package (installed with clang unless
   Recommends are skipped), make, unzip and zip, on Linux also OpenSSL's
@@ -361,9 +368,9 @@ for a post, run `node scripts/code-image.mts --help`.
   `<SQLite version>-build<n>`, any build may change its API, and
   `scripts/version-sqlite-wasm.mts` replaces the version its changeset bump
   computes, so the bump type only selects its release-notes heading.
-- `@evolu/sqlite-core` is private. Its code ships inside `@evolu/sqlite-wasm`
-  and `@evolu/react-native`, and will ship inside `@evolu/nodejs` as its binding
-  lands. Changesets skips private packages, so a change to it needs a
-  changeset for each published package that already ships the change, and none
-  while none does. Never name it in a changeset: Changesets never consumes such
-  a file, which keeps the release workflow from publishing.
+- `@evolu/sqlite-core` is private. Its code ships inside `@evolu/sqlite-wasm`,
+  `@evolu/react-native` and `@evolu/nodejs`. Changesets skips private
+  packages, so a change to it needs a changeset for each published package that
+  already ships the change, and none while none does. Never name it in a
+  changeset: Changesets never consumes such a file, which keeps the release
+  workflow from publishing.

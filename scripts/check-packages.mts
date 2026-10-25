@@ -9,6 +9,7 @@ import {
   realpath,
   rm,
 } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -148,6 +149,17 @@ const sqliteWasmDirectory = "packages/sqlite-wasm";
 // Packed with its prepack, which builds the package and writes native/, the C
 // apps compile, from the pinned SQLite and the core.
 const reactNativeDirectory = "packages/react-native";
+// Packed with its prepack, which builds the package, checks every target's
+// SQLite addon in native/, which CI builds, and copies them into dist.
+const nodejsDirectory = "packages/nodejs";
+const nodejsTargets = [
+  "darwin-arm64",
+  "darwin-x64",
+  "linux-arm64-gnu",
+  "linux-arm64-musl",
+  "linux-x64-gnu",
+  "linux-x64-musl",
+] as const;
 
 // Node.js imports a module from its real path, which macOS's temporary
 // directory is not.
@@ -231,6 +243,14 @@ try {
             force: true,
           },
         );
+      if (packageDirectory === nodejsDirectory)
+        await rm(
+          new URL(`${nodejsDirectory}/dist/native/`, repositoryDirectory),
+          {
+            recursive: true,
+            force: true,
+          },
+        );
       // Nor must a native/ an earlier vendor step wrote.
       if (packageDirectory === reactNativeDirectory)
         await rm(
@@ -246,7 +266,8 @@ try {
           "--dir",
           packageDirectory,
           ...(packageDirectory === sqliteWasmDirectory ||
-          packageDirectory === reactNativeDirectory
+          packageDirectory === reactNativeDirectory ||
+          packageDirectory === nodejsDirectory
             ? []
             : ["--config.ignore-scripts=true"]),
           "pack",
@@ -325,6 +346,58 @@ try {
           fileURLToPath(sqliteWasmUrl),
           join(extracted, packedWasm),
           `${packageJson.name} packed sqliteWasmUrl must point to ${packedWasm}`,
+        );
+      }
+      if (packageDirectory === nodejsDirectory) {
+        // The licenses of the code the addons contain ask for their notices.
+        ok(
+          packedFiles.has("package/THIRD_PARTY_NOTICES.md"),
+          `${packageJson.name} packed files must include THIRD_PARTY_NOTICES.md`,
+        );
+        deepStrictEqual(
+          [...packedFiles]
+            .filter((file) => file.startsWith("package/dist/native/"))
+            .toSorted(),
+          nodejsTargets.map(
+            (target) => `package/dist/native/${target}/evolu.node`,
+          ),
+          `${packageJson.name} packed dist/native/ must hold the SQLite addon of each target and nothing else`,
+        );
+        const extracted = join(temporaryDirectory, "nodejs");
+        await mkdir(extracted);
+        await execFileAsync("tar", ["-xf", tarball, "-C", extracted]);
+        for (const target of nodejsTargets)
+          ok(
+            (
+              await readFile(
+                join(extracted, `package/dist/native/${target}/evolu.node`),
+              )
+            ).equals(
+              await readFile(
+                new URL(
+                  `${nodejsDirectory}/native/${target}/evolu.node`,
+                  repositoryDirectory,
+                ),
+              ),
+            ),
+            `${packageJson.name} packed dist/native/${target}/evolu.node must be the built addon`,
+          );
+        // The loader has no runtime imports but Node.js's own, so it loads the
+        // running platform's addon from the extracted package.
+        const { loadNativeSqlite } = (await import(
+          pathToFileURL(join(extracted, "package/dist/src/NativeSqlite.js"))
+            .href
+        )) as {
+          readonly loadNativeSqlite: () => {
+            readonly openMemory: () => { readonly close: () => void };
+          };
+        };
+        loadNativeSqlite().openMemory().close();
+        ok(
+          Object.keys(createRequire(import.meta.url).cache).some((path) =>
+            path.startsWith(join(extracted, "package/dist/native/")),
+          ),
+          `${packageJson.name} packed loader must load its addon from dist/native`,
         );
       }
       if (packageDirectory === reactNativeDirectory) {

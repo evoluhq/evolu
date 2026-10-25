@@ -8,10 +8,11 @@ Moved database encryption into Evolu's SQLite core and updated SQLite to 3.54.1
 `@evolu/sqlite-wasm` 3.54.1-build1, which `@evolu/web` now uses, encrypts
 databases with Evolu's SQLite core, Evolu's own C code inside the WebAssembly.
 It's the start of one SQLite for every Evolu platform. The same C compiles
-natively for React Native in `@evolu/react-native` and will for Node.js, so
-every platform gets one file format, one behavior after a crash and one set of
-tests. Until now, the web encrypted in TypeScript, React Native relied on the
-SQLCipher that expo-sqlite vendors, and Node.js didn't encrypt at all.
+natively for React Native in `@evolu/react-native` and for Node.js in
+`@evolu/nodejs`, so every platform gets one file format, one behavior after a
+crash and one set of tests. Until now, the web encrypted in TypeScript, React
+Native relied on the SQLCipher that expo-sqlite vendors, and Node.js didn't
+encrypt at all.
 
 What this brings:
 

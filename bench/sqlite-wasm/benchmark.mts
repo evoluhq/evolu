@@ -1,9 +1,9 @@
-import BetterSqlite from "better-sqlite3";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { cpus, loadavg, release, totalmem, type } from "node:os";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
@@ -308,12 +308,12 @@ const stackDefinitions = createStackDefinitions({
 });
 
 /**
- * What every stack must produce, from the same workload run by better-sqlite3
- * in memory: `total_changes()` after each workload, and the tables' checksum
+ * What every stack must produce, from the same workload run by node:sqlite in
+ * memory: `total_changes()` after each workload, and the tables' checksum
  * before the last one drops them.
  */
 const reference = (() => {
-  const database = new BetterSqlite(":memory:");
+  const database = new DatabaseSync(":memory:");
   try {
     database.exec(preamble);
     const totalChanges: Array<number> = [];
@@ -321,12 +321,14 @@ const reference = (() => {
     for (const [index, sql] of workloadSql.entries()) {
       if (index === workloadSql.length - 1)
         contentChecksum = globalThis.String(
-          database.prepare(contentChecksumSql).pluck().get(),
+          Object.values(database.prepare(contentChecksumSql).get() ?? {})[0],
         );
       database.exec(sql);
       totalChanges.push(
         globalThis.Number(
-          database.prepare("SELECT total_changes()").pluck().get(),
+          Object.values(
+            database.prepare("SELECT total_changes()").get() ?? {},
+          )[0],
         ),
       );
     }

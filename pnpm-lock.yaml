@@ -769,9 +769,6 @@ importers:
 
   packages/nodejs:
     dependencies:
-      better-sqlite3:
-        specifier: 13.0.3
-        version: 13.0.3
       typescript:
         specifier: '>=7.0.0'
         version: 7.0.2
@@ -788,9 +785,6 @@ importers:
       '@evolu/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
-      '@types/better-sqlite3':
-        specifier: ^9.6.0
-        version: 9.6.0
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2

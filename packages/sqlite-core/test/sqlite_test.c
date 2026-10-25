@@ -34,7 +34,6 @@ static void sqlite_uses_the_core_compile_options(void) {
       "OMIT_LOAD_EXTENSION",
       "DQS=0",
       "ENABLE_MATH_FUNCTIONS",
-      "OMIT_AUTHORIZATION",
       "OMIT_INCRBLOB",
       "OMIT_INTROSPECTION_PRAGMAS",
       "OMIT_PROGRESS_CALLBACK",
@@ -44,6 +43,9 @@ static void sqlite_uses_the_core_compile_options(void) {
   };
   for (size_t i = 0; i < sizeof used / sizeof used[0]; i++)
     CHECK(sqlite3_compileoption_used(used[i]));
+  // The authorizer, with which the binding refuses keying pragmas on plain
+  // connections.
+  CHECK(!sqlite3_compileoption_used("OMIT_AUTHORIZATION"));
 
   // SQLite's defaults, for plain databases: direct overflow reads, and
   // memory-mapped I/O up to SQLite's limit once PRAGMA mmap_size asks for it.

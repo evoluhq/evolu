@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { defaultCacheDirectory } from "../../packages/sqlite-core/scripts/paths.mts";
 
 const repoRoot = realpathSync(fileURLToPath(new URL("../..", import.meta.url)));
 
@@ -47,11 +48,13 @@ export const parseBaseArgs = (
  * Extracts `ref` into the gitignored `tmp/bench-base/<sha>` and returns it.
  *
  * The snapshot holds the sources and package.json files of `@evolu/common` and
- * `@evolu/nodejs` without tests. Its own `node_modules/@evolu/common` links to
- * its `packages/common`, so its `@evolu/nodejs` sources do not resolve to the
- * working tree. Third-party packages resolve to the current install, which is
- * why a ref with another `pnpm-lock.yaml` is refused. An existing snapshot is
- * reused, and `created` tells whether this call extracted it.
+ * `@evolu/nodejs` without tests, and `@evolu/nodejs`'s SQLite addon, which its
+ * own `scripts/build-native.mts` builds from its `@evolu/sqlite-core`, with the
+ * SQLite source the working tree caches. Its own `node_modules/@evolu/common`
+ * links to its `packages/common`, so its `@evolu/nodejs` sources do not resolve
+ * to the working tree. Third-party packages resolve to the current install,
+ * which is why a ref with another `pnpm-lock.yaml` is refused. An existing
+ * snapshot is reused, and `created` tells whether this call extracted it.
  */
 export const materializeBase = (
   ref: string,
@@ -106,8 +109,15 @@ export const materializeBase = (
     "packages/common/package.json",
     "packages/common/src",
     "packages/nodejs/package.json",
+    "packages/nodejs/scripts",
     "packages/nodejs/src",
+    "packages/sqlite-core/binding",
+    "packages/sqlite-core/node",
+    "packages/sqlite-core/scripts",
+    "packages/sqlite-core/src",
+    "packages/sqlite-core/vendor",
     ":(exclude)*.test.ts",
+    ":(exclude)*.test.mts",
   ]);
   if (archive.status !== 0) {
     throw new Error(`git archive failed: ${archive.stderr.toString()}`);
@@ -122,6 +132,23 @@ export const materializeBase = (
     join("..", "..", "packages", "common"),
     join(staging, "node_modules", "@evolu", "common"),
   );
+  const build = spawnSync(
+    process.execPath,
+    [join(staging, "packages", "nodejs", "scripts", "build-native.mts")],
+    {
+      env: {
+        ...process.env,
+        SQLITE_CORE_CACHE: defaultCacheDirectory(process.env),
+        SQLITE_CORE_BUILD: join(staging, "packages", "sqlite-core", "build"),
+      },
+    },
+  );
+  if (build.status !== 0) {
+    rmSync(staging, { recursive: true, force: true });
+    throw new Error(
+      `The base's SQLite addon failed to build: ${build.stderr.toString()}`,
+    );
+  }
   try {
     renameSync(staging, root);
   } catch (error) {

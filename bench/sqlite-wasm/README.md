@@ -161,7 +161,7 @@ before a run you compare or record. The results include the machine's load
 averages before and after each engine.
 
 After each workload, outside the timed region, the worker reads
-`total_changes()`. It must equal what better-sqlite3 reports for the same
+`total_changes()`. It must equal what node:sqlite reports for the same
 workload in Node.js. In the warm-up run, the worker also checksums the three
 tables before the last workload drops them. After each run, no table may
 remain.

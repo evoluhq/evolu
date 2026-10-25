@@ -998,8 +998,8 @@ test("run binds and reads text by byte length, keeping embedded NUL characters a
   );
 });
 
-// SqliteValue's String allows a lone surrogate, which better-sqlite3 binds as
-// U+FFFD too.
+// SqliteValue's String allows a lone surrogate, which Evolu's native binding
+// binds as U+FFFD too.
 test("run binds a string parameter's lone surrogate, which UTF-8 cannot encode, as U+FFFD", async () => {
   const { database } = await setupSqliteDatabase();
   const echo = getOrThrow(database.prepare("select ? as text, hex(?) as hex"));
@@ -1176,8 +1176,7 @@ test("run returns 0 changes for a query whose function changes rows, a write's o
 
 // SQLite keeps one count per connection, which a write the profile trace
 // callback runs replaces after the statement finished, still within its step.
-// better-sqlite3 reads the count the same way but has no sqlite3_stmt_readonly
-// check.
+// Evolu's native binding reads the count the same way.
 test("run returns the count of a write that its statement's profile trace callback runs on the same database, which replaces the statement's own, and 0 for a statement that cannot write", async () => {
   const deps = await setupSqliteWasm();
   let nestedSql: string | null = null;

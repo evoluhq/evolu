@@ -1,116 +1,41 @@
 import {
-  disposable,
-  ok,
+  createNativeSqliteDriver,
   type CreateSqliteDriver,
-  type SqliteDriverStatement,
-  type SqliteExecResult,
-  type SqliteQueryParameters,
-  type SqliteRow,
+  type NativeSqlite,
 } from "@evolu/common";
-import BetterSQLite, { type Statement } from "better-sqlite3";
-import { rmSync } from "fs";
+import { resolve } from "node:path";
+import { loadNativeSqlite } from "./NativeSqlite.ts";
 
 /**
- * A {@link CreateSqliteDriver} on better-sqlite3, which the Evolu Relay uses. It
- * stores a database in the file `<name>.db`, relative to the working directory,
- * and doesn't encrypt it: in the `encrypted` mode, it ignores the key and
- * stores the same plain file. In the `memory` mode, it stores no file.
+ * The {@link CreateSqliteDriver} of Evolu for Node.js, on Evolu's SQLite core,
+ * which `@evolu/nodejs` ships prebuilt for macOS 13.5 or later and for Linux
+ * with glibc 2.28 or later or with musl, each on arm64 and x64. An open on
+ * another platform, such as Windows, throws.
+ *
+ * It stores a database in the file `<name>.db`, relative to the working
+ * directory at the open. The `encrypted` mode encrypts it with the encryption
+ * key, in the codec the web and React Native encrypt with, and its open of a
+ * file another key wrote or a plaintext file, such as one an earlier
+ * `@evolu/nodejs` wrote, fails with `SQLITE_NOTADB`, or, when a crash left a
+ * hot journal, `SQLITE_NOTADB` or `SQLITE_CORRUPT`, and `SQLITE_CANTOPEN` when
+ * it left a WAL log. The file keeps every committed row and its journal or log,
+ * though the open drops the pages a crashed transaction appended, as its
+ * rollback would. The mode without options stores it in plaintext, as the Evolu
+ * Relay does. The `memory` mode stores no file.
+ *
+ * A file connection waits up to 5 seconds for a lock another process holds, and
+ * one connection of the process holds a file at a time, so an open of a file
+ * another connection holds tries again for up to 10 seconds. Bundle
+ * `@evolu/nodejs` as an external, so its SQLite addon loads from the package.
  */
-export const createBetterSqliteDriver: CreateSqliteDriver =
-  (name, options) => () => {
-    const filename = options?.mode === "memory" ? ":memory:" : `${name}.db`;
-    const filenamesToDelete =
-      options?.mode === "memory"
-        ? []
-        : [
-            filename,
-            `${filename}-shm`,
-            `${filename}-wal`,
-            `${filename}-journal`,
-          ];
-    using disposer = new DisposableStack();
-    const db = disposer.adopt(new BetterSQLite(filename), (db) => {
-      db.close();
-    });
+export const createNodeJsSqliteDriver: CreateSqliteDriver =
+  (name, options) => (run) =>
+    run(
+      createNativeSqliteDriver({
+        nativeSqlite: (nativeSqlite ??= loadNativeSqlite()),
+        databasePath: (databaseName) => resolve(`${databaseName}.db`),
+      })(name, options),
+    );
 
-    const selectChanges = db.prepare("select changes()").pluck();
-
-    const execStatement = (
-      statement: Statement,
-      parameters: SqliteQueryParameters,
-    ): SqliteExecResult => {
-      if (statement.reader) {
-        const rows = statement.all(parameters) as Array<SqliteRow>;
-        // A write with a returning clause returns rows too. A read keeps the
-        // count of the previous write, so it reports zero instead.
-        const changes = statement.readonly
-          ? 0
-          : (selectChanges.get() as number);
-        return { rows, changes };
-      }
-
-      const changes = statement.run(parameters).changes;
-      return { rows: [], changes };
-    };
-
-    const disposables = disposer.move();
-
-    return ok({
-      exec: (query) => execStatement(db.prepare(query.sql), query.parameters),
-
-      prepare: (sql) => {
-        // better-sqlite3 has no finalize: it finalizes a statement once it's
-        // garbage-collected, so disposing drops the reference, which a held
-        // disposed statement would otherwise keep.
-        // https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md#class-statement
-        let statement: Statement | null = db.prepare(sql);
-        using statementDisposer = new DisposableStack();
-        statementDisposer.defer(() => {
-          statement = null;
-        });
-        return disposable<SqliteDriverStatement>(
-          {
-            // A disposed statement throws before it runs.
-            exec: (parameters) =>
-              execStatement(statement as Statement, parameters),
-          },
-          statementDisposer,
-        );
-      },
-
-      iterate: (query, onRow) => {
-        // A statement of its own, because onRow can run other statements, the
-        // prepared ones among them. Leaving the loop, also by a throw, resets
-        // it.
-        for (const row of db.prepare(query.sql).iterate(query.parameters)) {
-          if (!onRow(row as SqliteRow)) break;
-        }
-      },
-
-      export: () => {
-        const file = db.serialize();
-        const { buffer } = file;
-
-        if (buffer instanceof ArrayBuffer) {
-          return new Uint8Array(buffer, file.byteOffset, file.byteLength);
-        }
-
-        // Ensure export uses transferable ArrayBuffer backing.
-        return new Uint8Array(file);
-      },
-
-      deleteDatabase: () => {
-        using deleteDisposer = new DisposableStack();
-        for (const filename of filenamesToDelete) {
-          deleteDisposer.defer(() => {
-            rmSync(filename, { force: true });
-          });
-        }
-        deleteDisposer.use(disposables);
-      },
-
-      [Symbol.dispose]: () => {
-        disposables.dispose();
-      },
-    });
-  };
+// Loaded at the first open, once per thread, which also reads the C library.
+let nativeSqlite: NativeSqlite | null = null;

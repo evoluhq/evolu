@@ -43,12 +43,15 @@ import {
   timestampToTimestampBytes,
 } from "@evolu/common/local-first";
 import {
-  createBetterSqliteDriver,
+  createNodeJsSqliteDriver,
   type HrDuration,
   hrDurationToMillis,
   millisToHrDuration,
 } from "@evolu/nodejs";
+import { buildNativeSqlite } from "../../packages/nodejs/scripts/build-native.mts";
 import { parseBenchmarkMode } from "../index.mts";
+
+await buildNativeSqlite();
 
 const timestampCount = 50_000;
 const checkpointSize = 10_000;
@@ -153,7 +156,7 @@ let sqliteVersion: string | undefined;
 const setupStorage = async () => {
   await using disposer = new AsyncDisposableStack();
   const run = disposer.use(
-    createRun({ createSqliteDriver: createBetterSqliteDriver }),
+    createRun({ createSqliteDriver: createNodeJsSqliteDriver }),
   );
   const sqlite = disposer.use(
     await run.ok(

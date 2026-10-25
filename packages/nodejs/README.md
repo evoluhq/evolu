@@ -2,6 +2,11 @@
 
 This package provides Evolu for [Node.js](https://nodejs.org) 24.20+.
 
+Its SQLite is Evolu's own, compiled into a Node-API addon that the package ships
+for macOS 13.5+ and for Linux with glibc 2.28+ or musl, each on arm64 and x64.
+Windows isn't supported yet. A bundler must keep `@evolu/nodejs` external, so
+the addon loads from the package.
+
 ## Documentation
 
 For detailed information and usage examples, please visit [evolu.dev](https://www.evolu.dev).

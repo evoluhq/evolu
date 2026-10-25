@@ -308,7 +308,8 @@ jobs:
   # glibc symbol newer than 2.28, that it exports only Node-API's entry points,
   # that it loads as the package loads it and opens an encrypted, a plaintext
   # and a memory database, and that a second build from a copy of its sources
-  # at another path, into another build directory, gives the same bytes.
+  # at another path, into another build directory, gives the same bytes. The
+  # release packs these addons.
   nodejs-native-linux:
     name: Node.js SQLite (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
@@ -464,13 +465,24 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup-node-pnpm-install
 
+      # The benchmark builds @evolu/nodejs's SQLite addon with the runner's
+      # clang, from the pinned SQLite zip, which every use verifies.
+      - name: Restore source archives
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
+
       - name: Check protocol work
         run: pnpm bench:protocol
 
   packages:
     name: Packages
-    # The packed @evolu/sqlite-wasm includes the SQLite wasm.
-    needs: sqlite-wasm
+    # The packed @evolu/sqlite-wasm includes the SQLite wasm, and the packed
+    # @evolu/nodejs every target's SQLite addon.
+    needs: [sqlite-wasm, nodejs-native-linux, nodejs-native-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -487,6 +499,15 @@ jobs:
         with:
           name: sqlite-wasm
           path: packages/sqlite-wasm/wasm
+
+      # The prepack of @evolu/nodejs, which check:packages runs, checks every
+      # target's addon and copies them into the package.
+      - name: Download Node.js SQLite addons
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: nodejs-native-*
+          merge-multiple: true
+          path: packages/nodejs/native
 
       # The prepack of @evolu/react-native, which check:packages runs, writes
       # native/ from the pinned SQLite zip, which every use verifies.
@@ -550,15 +571,15 @@ jobs:
         if: matrix.suite == 'unit'
         run: apt-get update && apt-get install -y --no-install-recommends jq
 
-      # The Node.js integration tests run on Evolu's SQLite core, whose test
-      # addon they build with clang from the amalgamation that make generates
-      # from the pinned SQLite zip, which every use verifies.
+      # The unit and Node.js integration tests run on Evolu's SQLite core,
+      # whose addons they build with clang from the amalgamation that make
+      # generates from the pinned SQLite zip, which every use verifies.
       - name: Install the SQLite core's build tools
-        if: matrix.suite == 'Node.js integration'
+        if: matrix.suite != 'browser integration and bundle'
         run: apt-get update && apt-get install -y --no-install-recommends clang make unzip
 
       - name: Restore source archives
-        if: matrix.suite == 'Node.js integration'
+        if: matrix.suite != 'browser integration and bundle'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -574,8 +595,9 @@ jobs:
 
   e2e:
     name: Browser E2E (${{ matrix.browser }})
-    # The playground's database worker loads the SQLite wasm.
-    needs: sqlite-wasm
+    # The playground's database worker loads the SQLite wasm, and the relay the
+    # tests start from source loads @evolu/nodejs's SQLite addon.
+    needs: [sqlite-wasm, nodejs-native-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -604,6 +626,18 @@ jobs:
         with:
           name: sqlite-wasm
           path: packages/sqlite-wasm/wasm
+
+      # The Playwright image has no C compiler, so the job takes the addon the
+      # linux-x64-gnu job built and checks that it loads before any test
+      # starts a relay.
+      - name: Download Node.js SQLite addon
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nodejs-native-linux-x64-gnu
+          path: packages/nodejs/native
+
+      - name: Check Node.js SQLite addon
+        run: node packages/nodejs/scripts/check-native.mts --target=linux-x64-gnu --load
 
       - name: Test production playground
         run: pnpm test:e2e --project=${{ matrix.browser }}

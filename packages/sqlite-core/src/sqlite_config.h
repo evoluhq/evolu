@@ -75,9 +75,12 @@
 #define SQLITE_DEFAULT_LOOKASIDE 0, 0
 #endif
 
-/* The same features as the wasm build's options. */
+/*
+ * The same features as the wasm build's options, but for the authorizer, with
+ * which the native binding refuses the pragmas that key a database on a plain
+ * connection, which no codec refuses.
+ */
 #define SQLITE_ENABLE_MATH_FUNCTIONS 1
-#define SQLITE_OMIT_AUTHORIZATION 1
 #define SQLITE_OMIT_INCRBLOB 1
 #define SQLITE_OMIT_INTROSPECTION_PRAGMAS 1
 #define SQLITE_OMIT_PROGRESS_CALLBACK 1

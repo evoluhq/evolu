@@ -1,13 +1,12 @@
 /**
- * Evolu's native SQLite binding and the {@link SqliteDriver} over it, on which
- * `@evolu/react-native` runs.
+ * Evolu's native SQLite binding and the {@link SqliteDriver} over it, which
+ * `@evolu/react-native` and `@evolu/nodejs` share.
  *
  * The binding is the JavaScript interface that `@evolu/react-native`'s JSI
- * adapter implements on React Native, and the N-API mirror of
- * `@evolu/sqlite-core`'s `node/binding.c` in Node.js, both over the binding
- * layer of Evolu's SQLite core, `binding/evolu_database.h`.
- * `@evolu/react-native`'s `test/bindingConformance.ts` pins that both behave
- * alike.
+ * adapter implements on React Native and `@evolu/nodejs`'s Node-API addon in
+ * Node.js, both over the binding layer of Evolu's SQLite core,
+ * `binding/evolu_database.h`. `@evolu/react-native`'s
+ * `test/bindingConformance.ts` pins that both behave alike.
  *
  * ## Values
  *
@@ -16,11 +15,10 @@
  *   as U+FFFD, and a `Uint8Array` as a blob, an empty one too. Any other value,
  *   and a number of parameters other than the SQL's, throws a TypeError.
  * - INTEGER and REAL read as numbers, so an integer beyond 2^53 rounds, as in
- *   `@evolu/sqlite-wasm` and better-sqlite3. TEXT reads with its exact length,
- *   so NUL characters survive, and TEXT that isn't UTF-8 with U+FFFD in place
- *   of each ill-formed sequence, as the WHATWG decoder reads it, and so do
- *   column names and error messages. A blob is a copy with a buffer of its
- *   own.
+ *   `@evolu/sqlite-wasm`. TEXT reads with its exact length, so NUL characters
+ *   survive, and TEXT that isn't UTF-8 with U+FFFD in place of each ill-formed
+ *   sequence, as the WHATWG decoder reads it, and so do column names and error
+ *   messages. A blob is a copy with a buffer of its own.
  * - Rows are null-prototype objects, and of columns with the same name, the last
  *   wins. A statement reads its column names again after a schema change
  *   prepared it again.
@@ -63,9 +61,12 @@
  * - A path that contains a NUL character, isn't absolute, or whose last component
  *   is empty, `.` or `..` throws a TypeError, and so does a key that isn't a
  *   `Uint8Array` of 32 bytes.
- * - Every file opens through Evolu's codec, also the databases expo-sqlite's
- *   SQLCipher wrote; `binding/evolu_database.h` describes what an open, a
- *   delete and an export do.
+ * - An encrypted file opens through Evolu's codec, also the databases
+ *   expo-sqlite's SQLCipher wrote, and a plain file with plain SQLite;
+ *   `binding/evolu_database.h` describes what an open, a delete and an export
+ *   do. A pragma that keys a database, such as `pragma key`, fails on every
+ *   file rather than leave it in plaintext, and an attached database is
+ *   read-only, because SQLite ignores the `KEY` clause of `ATTACH`.
  *
  * ## Errors
  *

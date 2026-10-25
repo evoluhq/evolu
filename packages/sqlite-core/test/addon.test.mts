@@ -245,7 +245,6 @@ describe("addon", () => {
       "OMIT_LOAD_EXTENSION",
       "DQS=0",
       "ENABLE_MATH_FUNCTIONS",
-      "OMIT_AUTHORIZATION",
       "OMIT_INCRBLOB",
       "OMIT_INTROSPECTION_PRAGMAS",
       "OMIT_PROGRESS_CALLBACK",
@@ -257,6 +256,9 @@ describe("addon", () => {
     );
     // SQLite's default, for plain databases.
     assertTrue(addon.compileOptionUsed("DIRECT_OVERFLOW_READ"));
+    // The authorizer, with which the binding refuses keying pragmas on plain
+    // connections.
+    assertFalse(addon.compileOptionUsed("OMIT_AUTHORIZATION"));
     // Memory statistics, off in the core, are on for the tests' sake, as by
     // SQLite's default, which it doesn't list.
     assertFalse(addon.compileOptionUsed("DEFAULT_MEMSTATUS=0"));

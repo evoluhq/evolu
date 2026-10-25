@@ -26,6 +26,7 @@ import { once } from "node:events";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { after, test } from "node:test";
 import { setImmediate as nextMacrotask } from "node:timers/promises";
 import { setFlagsFromString } from "node:v8";
@@ -202,6 +203,28 @@ test("a step or run whose row creation closes the database or finalizes the stat
       ),
     ),
   );
+});
+
+test("openFile writes a plain SQLite file, which another SQLite reads and writes and openFile then reads", () => {
+  const path = join(directory, "other-sqlite.db");
+  const database = binding.openFile(path);
+  const insert = database.prepare("create table t (a)");
+  insert.run([]);
+  insert.finalize();
+  database.close();
+
+  const other = new DatabaseSync(path);
+  other.exec("insert into t values ('other')");
+  other.close();
+
+  const reopened = binding.openFile(path);
+  try {
+    const select = reopened.prepare("select a from t");
+    assertEqual(select.run([]).rows, [{ a: "other" }]);
+    select.finalize();
+  } finally {
+    reopened.close();
+  }
 });
 
 test("importing Binding.ts reads no randomness, as the loader must not before the polyfills install it", () => {

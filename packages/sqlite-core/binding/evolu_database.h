@@ -20,16 +20,25 @@
  *   and POSIX locking, which a build system that dropped SQLITE_CUSTOM_INCLUDE
  *   would lose, and registers the codec VFS "evolu-codec" over the default VFS
  *   unless it is registered already.
- * - Every database opens with evolu_codec_open on that VFS, which opens it
- *   read-write, created when missing, without SQLite's connection mutex: a
- *   memory database, a plain file, or an encrypted file with a 32-byte key,
- *   which the codec copies. A plain file opens through the codec too, so an
- *   open without a key refuses an encrypted database's hot journal rather
- *   than delete it, leaving a transaction half-applied. Every file opens with
- *   EVOLU_CODEC_SQLCIPHER_FILES, keyed or not, because no open can tell the
- *   files that expo-sqlite's SQLCipher wrote from new ones, and a journal of
- *   either needs it to roll back. No pragma is set, so files keep DELETE
- *   journals and SQLite's 4096-byte pages, as expo-sqlite kept them.
+ * - A memory database and an encrypted file with a 32-byte key, which the
+ *   codec copies, open with evolu_codec_open on that VFS, which opens them
+ *   read-write, created when missing, without SQLite's connection mutex.
+ *   Every encrypted file opens with EVOLU_CODEC_SQLCIPHER_FILES, because no
+ *   open can tell the files that expo-sqlite's SQLCipher wrote from new ones,
+ *   and a journal of either needs it to roll back.
+ * - A plain file opens with plain SQLite on the default VFS, with the same
+ *   flags, set up by evolu_core_register, and reads its schema, as
+ *   evolu_codec_open does, so WAL, memory-mapped I/O and direct overflow reads
+ *   work as SQLite has them. Its authorizer refuses the pragmas that key a
+ *   database, which plain SQLite would ignore, with SQLITE_AUTH, as the codec
+ *   refuses them, and attached databases open read-only, as on the codec's
+ *   connections, because SQLite ignores ATTACH's KEY clause. Evolu opens every
+ *   file of its own with a key, so a plain file is one that holds no secret,
+ *   such as the relay's. An encrypted file opened without its key fails with
+ *   SQLITE_NOTADB, and plain SQLite would roll back its hot journal as
+ *   plaintext, which Evolu doesn't support.
+ * - No pragma is set, so files keep DELETE journals and SQLite's 4096-byte
+ *   pages, as expo-sqlite kept them.
  * - A wrong key, or a plaintext file opened with a key, fails with a page's
  *   authentication failure: page 1's, with SQLITE_NOTADB, or with a hot
  *   journal, that of its first record's page, with SQLITE_NOTADB for page 1
@@ -232,8 +241,8 @@ int evolu_database_open_memory(evolu_database **database,
                                evolu_database_error *error);
 
 /*
- * Opens the plain database file at the path_size bytes of path, with
- * *database NULL when it fails.
+ * Opens the plain database file at the path_size bytes of path with plain
+ * SQLite on the default VFS, with *database NULL when it fails.
  */
 int evolu_database_open_file(const char *path, size_t path_size,
                              evolu_database **database,
@@ -317,12 +326,14 @@ void evolu_database_wipe(void *bytes, size_t size);
 
 #ifdef EVOLU_TEST_HOOKS
 /*
- * What the build check reads, and the codec VFS name opens use, which a test
- * can replace, as with a codec VFS over a VFS that fails its calls.
+ * What the build check reads, the codec VFS name keyed and memory opens use,
+ * and the VFS name plain file opens use, NULL for the default, which a test
+ * can replace, as with a VFS that fails its calls.
  */
 extern int (*evolu_test_threadsafe)(void);
 extern int (*evolu_test_compileoption_used)(const char *name);
 extern const char *evolu_test_database_vfs;
+extern const char *evolu_test_plain_vfs;
 #endif
 
 #ifdef __cplusplus

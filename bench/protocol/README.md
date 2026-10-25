@@ -13,8 +13,11 @@ scenarios.
 ## Prerequisites
 
 Use the Node.js version in [`.nvmrc`](../../.nvmrc) with the installed
-dependencies. The benchmark loads Evolu from source, so it needs no build. It
-needs about 1.4 GB of free memory.
+dependencies. The benchmark loads Evolu from source, so it needs no build, but
+first builds `@evolu/nodejs`'s SQLite addon for this machine with
+`packages/nodejs/scripts/build-native.mts`, which needs clang, make and unzip,
+and network access the first time, to fetch the pinned SQLite source. It needs
+about 1.4 GB of free memory.
 
 ## Workload
 
@@ -204,9 +207,12 @@ The benchmark resolves `<ref>` to a commit and refuses to run when
 `pnpm-lock.yaml` differs between it and the working tree, because the base
 reuses the current install. The lockfile records the dependencies of every
 workspace package, so a release, which changes only package versions, is
-accepted. It extracts the `package.json` files and
-`src` directories of `@evolu/common` and `@evolu/nodejs`, without tests, with
-`git archive` into the gitignored `tmp/bench-base/<sha>/`. A
+accepted, while a base from before `@evolu/nodejs` moved to Evolu's SQLite is
+refused. It extracts the `package.json` files and
+`src` directories of `@evolu/common` and `@evolu/nodejs`, without tests, and
+`@evolu/nodejs`'s scripts and `@evolu/sqlite-core`'s C and scripts, with
+`git archive` into the gitignored `tmp/bench-base/<sha>/`, and builds the
+base's own SQLite addon there with the SQLite source the working tree caches. A
 `node_modules/@evolu/common` link in it points to its own `packages/common`, so
 its `@evolu/nodejs` sources do not import the working tree. An existing snapshot
 is reused, and `pnpm clean` removes them. Git is only read; the index and the

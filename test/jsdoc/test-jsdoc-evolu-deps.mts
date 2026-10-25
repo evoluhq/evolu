@@ -2,7 +2,7 @@
 import type {} from "../../packages/react-native/src/ErrorUtils.d.ts";
 import { constVoid, type ConsoleDep } from "../../packages/common/src/index.ts";
 import type { EvoluDeps } from "../../packages/common/src/local-first/index.ts";
-import { createBetterSqliteDriver } from "../../packages/nodejs/src/Sqlite.ts";
+import { createNodeJsSqliteDriver } from "../../packages/nodejs/src/Sqlite.ts";
 import { createEvoluDeps as createInProcessEvoluDeps } from "../../packages/react-native/src/shared.ts";
 
 /**
@@ -26,7 +26,8 @@ globalThis.WebSocket = UnreachableWebSocket as unknown as typeof WebSocket;
 /**
  * Creates Evolu dependencies for documentation examples, which Node.js runs in
  * one process. The shared worker and database workers run in-process, as on
- * React Native, over in-memory SQLite.
+ * React Native, over in-memory SQLite, which needs the addon that
+ * `testEvoluJSDocExamples` builds.
  */
 export const createDocsEvoluDeps = (
   deps: Partial<ConsoleDep> = {},
@@ -34,6 +35,6 @@ export const createDocsEvoluDeps = (
   createInProcessEvoluDeps({
     ...(deps.console && { console: deps.console }),
     createSqliteDriver: (name) =>
-      createBetterSqliteDriver(name, { mode: "memory" }),
+      createNodeJsSqliteDriver(name, { mode: "memory" }),
     reloadApp: constVoid,
   });

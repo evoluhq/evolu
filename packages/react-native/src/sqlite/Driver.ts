@@ -4,8 +4,8 @@
  * directory.
  *
  * A database is the file `evolu1-<name>.db` in the directory the driver gets,
- * so the databases Evolu's expo-sqlite driver created open in place. Every open
- * of a file goes through Evolu's codec, which also opens the files
+ * so the databases Evolu's expo-sqlite driver created open in place. Evolu
+ * opens them with their key, through Evolu's codec, which also opens the files
  * expo-sqlite's SQLCipher wrote and rolls back their hot journals. The DbWorker
  * waits for another runtime's connection to close the file with
  * {@link createWaitForDatabaseRelease} first.

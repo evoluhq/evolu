@@ -38,8 +38,9 @@ import {
   zeroFingerprint,
 } from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
-import { createBetterSqliteDriver, createTimingSafeEqual } from "@evolu/nodejs";
+import { createNodeJsSqliteDriver, createTimingSafeEqual } from "@evolu/nodejs";
 import { describe, it } from "node:test";
+import { buildNativeSqlite } from "../../packages/nodejs/scripts/build-native.mts";
 import {
   countCalls,
   createMemoryStorage,
@@ -49,6 +50,9 @@ import {
 } from "./memoryStorage.mts";
 
 installPolyfills();
+
+// The SQLite storage the memory storage is compared with.
+await buildNativeSqlite();
 
 const modules: MemoryStorageModules = {
   common: { ok },
@@ -107,7 +111,7 @@ const setupSqliteStorage = async (
 ) => {
   await using stack = new AsyncDisposableStack();
   const run = stack.use(
-    createRun({ createSqliteDriver: createBetterSqliteDriver }),
+    createRun({ createSqliteDriver: createNodeJsSqliteDriver }),
   );
   const sqlite = stack.use(
     await run.ok(

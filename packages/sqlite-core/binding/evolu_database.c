@@ -45,13 +45,16 @@ int (*evolu_test_threadsafe)(void) = sqlite3_threadsafe;
 int (*evolu_test_compileoption_used)(const char *name) =
     sqlite3_compileoption_used;
 const char *evolu_test_database_vfs = "evolu-codec";
+const char *evolu_test_plain_vfs = NULL;
 #define BUILD_THREADSAFE evolu_test_threadsafe
 #define BUILD_OPTION_USED evolu_test_compileoption_used
 #define DATABASE_VFS evolu_test_database_vfs
+#define PLAIN_VFS evolu_test_plain_vfs
 #else
 #define BUILD_THREADSAFE sqlite3_threadsafe
 #define BUILD_OPTION_USED sqlite3_compileoption_used
 #define DATABASE_VFS "evolu-codec"
+#define PLAIN_VFS NULL
 #endif
 
 struct evolu_database {
@@ -235,14 +238,70 @@ static int resolve(const char *path, size_t path_size,
 }
 
 /*
- * Opens filename with evolu_codec_open into a database, which is freed and
- * released when the open fails.
+ * Whether a pragma keys or rekeys a database, or configures a cipher, as
+ * SQLCipher and SQLite3 Multiple Ciphers do, which plain SQLite ignores: the
+ * pragmas evolu_codec.c's is_keying_pragma refuses.
+ */
+static int is_keying_pragma(const char *name) {
+  static const char *const names[] = {"key",   "hexkey",   "textkey",
+                                      "rekey", "hexrekey", "textrekey"};
+  for (size_t i = 0; i < sizeof names / sizeof names[0]; i++)
+    if (sqlite3_stricmp(name, names[i]) == 0) return 1;
+  return sqlite3_strnicmp(name, "cipher", 6) == 0;
+}
+
+/*
+ * The authorizer of a plain connection, which denies a keying pragma, so a
+ * database someone keys through SQL fails rather than stays in plaintext, as
+ * the codec refuses one on its connections.
+ */
+static int refuse_keying_pragmas(void *data, int action, const char *name,
+                                 const char *value, const char *database,
+                                 const char *trigger) {
+  (void)data;
+  (void)value;
+  (void)database;
+  (void)trigger;
+  return action == SQLITE_PRAGMA && is_keying_pragma(name) ? SQLITE_DENY
+                                                           : SQLITE_OK;
+}
+
+/*
+ * Opens filename with plain SQLite on the default VFS, as evolu_codec_open
+ * opens a file on the codec VFS: read-write, created when missing, with
+ * extended result codes, without the connection mutex, set up by
+ * evolu_core_register, and with attached databases read-only. Reading the
+ * schema rolls back a hot journal and fails the open for a file that isn't a
+ * database, rather than its first statement.
+ */
+static int open_plain(const char *filename, sqlite3 **db) {
+  int rc = sqlite3_open_v2(filename, db,
+                           SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
+                               SQLITE_OPEN_EXRESCODE | SQLITE_OPEN_NOMUTEX,
+                           PLAIN_VFS);
+  if (rc != SQLITE_OK) return rc;
+  rc = evolu_core_register(*db);
+  if (rc != SQLITE_OK) return rc;
+  // SQLite ignores ATTACH's KEY clause, so a database someone attaches with a
+  // key to write would be stored in plaintext. It fails only for an option
+  // the SQLite doesn't know.
+  sqlite3_db_config(*db, SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE, 0, NULL);
+  // It fails only for a NULL connection.
+  sqlite3_set_authorizer(*db, refuse_keying_pragmas, NULL);
+  return sqlite3_exec(*db, "SELECT 1 FROM sqlite_schema", NULL, NULL, NULL);
+}
+
+/*
+ * Opens filename with evolu_codec_open, or with plain SQLite when is_plain,
+ * into a database, which is freed and released when the open fails.
  */
 static int open_database(evolu_database *database, const char *filename,
-                         const uint8_t *key, int flags,
+                         const uint8_t *key, int flags, int is_plain,
                          evolu_database **opened,
                          evolu_database_error *error) {
-  int rc = evolu_codec_open(filename, &database->db, DATABASE_VFS, key, flags);
+  int rc = is_plain ? open_plain(filename, &database->db)
+                    : evolu_codec_open(filename, &database->db, DATABASE_VFS,
+                                       key, flags);
   if (rc == SQLITE_OK) {
     *opened = database;
     return SQLITE_OK;
@@ -266,7 +325,7 @@ int evolu_database_open_memory(evolu_database **database,
   evolu_database *opening = allocate(0);
   if (opening == NULL)
     return fail(error, EVOLU_DATABASE_ERROR_SQLITE, SQLITE_NOMEM, NULL, 0);
-  return open_database(opening, ":memory:", NULL, 0, database, error);
+  return open_database(opening, ":memory:", NULL, 0, 0, database, error);
 }
 
 static int open_file(const char *path, size_t path_size, const uint8_t *key,
@@ -330,9 +389,11 @@ static int open_file(const char *path, size_t path_size, const uint8_t *key,
                : fail(error, EVOLU_DATABASE_ERROR_SQLITE, SQLITE_CANTOPEN,
                       NULL, refused_errno);
   }
-  // Every file allows SQLCipher's, which no open can tell from new ones.
+  // A file without a key opens with plain SQLite. Every encrypted file allows
+  // SQLCipher's, which no open can tell from new ones.
   return open_database(opening, opening->path, key,
-                       EVOLU_CODEC_SQLCIPHER_FILES, database, error);
+                       EVOLU_CODEC_SQLCIPHER_FILES, key == NULL, database,
+                       error);
 }
 
 int evolu_database_open_file(const char *path, size_t path_size,

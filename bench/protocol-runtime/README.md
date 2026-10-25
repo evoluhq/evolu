@@ -12,8 +12,11 @@ are reported beside them.
 ## Prerequisites
 
 Use the Node.js version in [`.nvmrc`](../../.nvmrc) with the installed
-dependencies. The benchmark loads Evolu from source, so it needs no build. It
-needs about 1.3 GB of free memory.
+dependencies. The benchmark loads Evolu from source, so it needs no build, but
+first builds `@evolu/nodejs`'s SQLite addon for this machine with
+`packages/nodejs/scripts/build-native.mts`, which needs clang, make and unzip,
+and network access the first time, to fetch the pinned SQLite source. It needs
+about 1.3 GB of free memory.
 
 Run the gated modes on an idle machine. Other work makes threads wait or run on
 slower efficiency cores, which raises times by far more than the 10% threshold.

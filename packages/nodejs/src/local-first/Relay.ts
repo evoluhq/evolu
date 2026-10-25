@@ -38,7 +38,7 @@ import { existsSync } from "fs";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
 import { createTimingSafeEqual } from "../Crypto.ts";
-import { createBetterSqliteDriver } from "../Sqlite.ts";
+import { createNodeJsSqliteDriver } from "../Sqlite.ts";
 
 export interface NodeJsRelayConfig extends RelayConfig {
   /**
@@ -73,9 +73,12 @@ export interface NodeJsRelayConfig extends RelayConfig {
 
 export type RelayDeps = CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep;
 
-/** Dependencies for {@link createRelay} using better-sqlite3. */
+/**
+ * Dependencies for {@link createRelay} on Evolu's SQLite, which stores the
+ * relay's database in plaintext with {@link createNodeJsSqliteDriver}.
+ */
 export const createRelayDeps = (): RelayDeps => ({
-  createSqliteDriver: createBetterSqliteDriver,
+  createSqliteDriver: createNodeJsSqliteDriver,
   random: createRandom(),
   timingSafeEqual: createTimingSafeEqual(),
 });
@@ -83,8 +86,9 @@ export const createRelayDeps = (): RelayDeps => ({
 /**
  * Creates an Evolu Relay server resource using Node.js.
  *
- * Use {@link createRelayDeps} to create dependencies for better-sqlite3, or
- * provide a custom SQLite driver implementation.
+ * Use {@link createRelayDeps} to create dependencies on Evolu's SQLite, which
+ * store the database in the file `<name>.db` in the working directory,
+ * unencrypted, or provide a custom SQLite driver implementation.
  *
  * The relay serves each connection's requests one at a time, in order, and
  * serves other connections between them. It does not read a connection while

@@ -11,10 +11,10 @@ Replaced sql.prepared with Sqlite.prepared, which keeps statements per database
 
 ```ts
 import { assertEqual, sql, testSetupSqlite } from "@evolu/common";
-import { createBetterSqliteDriver } from "@evolu/nodejs";
+import { createNodeJsSqliteDriver } from "@evolu/nodejs";
 
 await using setup = await testSetupSqlite({
-  createSqliteDriver: createBetterSqliteDriver,
+  createSqliteDriver: createNodeJsSqliteDriver,
 });
 const { sqlite } = setup;
 sqlite.exec(sql`create table todo (title text);`);
@@ -30,7 +30,7 @@ assertEqual(sqlite.prepared<{ title: string }>`select title from todo;`.rows, [
 
 A query passed as data, such as one made with `createQuery(…, { prepare: true })` and run in the database worker, keeps the `prepare` option. `sqlite.exec` now keeps the statement of such a query per database, by its SQL text, on every driver.
 
-Drivers no longer cache statements. `SqliteDriver` gained `prepare`, which returns a `SqliteDriverStatement` that runs many times until its owner disposes it, and `exec` runs every query on a statement of its own, also on better-sqlite3, which used to keep every query. `createPreparedStatementsCache` and `PreparedStatements` are removed. Update `@evolu/web`, `@evolu/react-native` and `@evolu/nodejs` together with `@evolu/common`, because older drivers import the removed `createPreparedStatementsCache` and have no `prepare`. A custom `SqliteDriver` drops its cache and implements `prepare`:
+Drivers no longer cache statements. `SqliteDriver` gained `prepare`, which returns a `SqliteDriverStatement` that runs many times until its owner disposes it, and `exec` runs every query on a statement of its own, also on Node.js, whose driver used to keep every query. `createPreparedStatementsCache` and `PreparedStatements` are removed. Update `@evolu/web`, `@evolu/react-native` and `@evolu/nodejs` together with `@evolu/common`, because older drivers import the removed `createPreparedStatementsCache` and have no `prepare`. A custom `SqliteDriver` drops its cache and implements `prepare`:
 
 ```ts
 import {
@@ -75,7 +75,7 @@ To migrate:
 - `sql.prepared` is removed. Run SQL where it is written with `sqlite.prepared`, and give a query passed as data, such as one made with `createQuery`, the `prepare` option.
 - A custom `Sqlite`, such as a test fake or a wrapper, implements `prepared`. A wrapper that spreads a `Sqlite` and replaces only `exec` still compiles, but it no longer sees Evolu's hot statements, which run on `prepared`.
 - Statements run with `sqlite.prepared` take no `logQueryExecutionTime` or `logExplainQueryPlan` option.
-- On Node.js, a query keeps its statement only with the `prepare` option, because better-sqlite3 no longer keeps every query.
+- On Node.js, a query keeps its statement only with the `prepare` option, because its driver no longer keeps every query.
 
 ```ts
 import {
@@ -87,10 +87,10 @@ import {
   type SqliteRow,
   type SqlTemplateParam,
 } from "@evolu/common";
-import { createBetterSqliteDriver } from "@evolu/nodejs";
+import { createNodeJsSqliteDriver } from "@evolu/nodejs";
 
 await using setup = await testSetupSqlite({
-  createSqliteDriver: createBetterSqliteDriver,
+  createSqliteDriver: createNodeJsSqliteDriver,
 });
 const { sqlite } = setup;
 const executed: Array<string> = [];

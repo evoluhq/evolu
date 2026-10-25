@@ -179,39 +179,64 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # Both images the push publishes, since each installs the SQLite addon of
+      # its CPU from @evolu/nodejs. The arm64 one runs under QEMU.
       - name: Build amd64 image for the smoke test
         if: steps.image.outputs.published == 'false'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/relay
           build-args: RELAY_PACKAGE=@evolu/relay@${{ env.VERSION }}
+          platforms: linux/amd64
           load: true
-          tags: evolu/relay:smoke
+          tags: evolu/relay:smoke-amd64
 
+      - name: Build arm64 image for the smoke test
+        if: steps.image.outputs.published == 'false'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/relay
+          build-args: RELAY_PACKAGE=@evolu/relay@${{ env.VERSION }}
+          platforms: linux/arm64
+          load: true
+          tags: evolu/relay:smoke-arm64
+
+      # Emulated, the arm64 relay takes longer to start, so each image gets 90
+      # seconds to become healthy.
       - name: Smoke test on a custom port
         if: steps.image.outputs.published == 'false'
         run: |
-          container=$(docker run --detach \
-            --env PORT=4001 \
-            --health-interval=1s --health-start-period=1s --health-retries=20 \
-            evolu/relay:smoke)
-          trap 'docker rm --force --volumes "$container" >/dev/null' EXIT
-          for _ in $(seq 1 30); do
-            case "$(docker inspect --format '{{.State.Status}} {{.State.Health.Status}}' "$container")" in
-              "running healthy")
-                docker exec "$container" test -s /app/data/evolu-relay.db
-                exit 0
-                ;;
-              "running starting")
-                sleep 1
-                ;;
-              *)
-                break
-                ;;
-            esac
-          done
-          docker logs "$container"
-          exit 1
+          smoke() {
+            local platform=$1
+            local container
+            container=$(docker run --detach --platform "linux/$platform" \
+              --env PORT=4001 \
+              --health-interval=1s --health-start-period=1s --health-retries=90 \
+              "evolu/relay:smoke-$platform")
+            local result=1
+            for _ in $(seq 1 90); do
+              case "$(docker inspect --format '{{.State.Status}} {{.State.Health.Status}}' "$container")" in
+                "running healthy")
+                  docker exec "$container" test -s /app/data/evolu-relay.db && result=0
+                  break
+                  ;;
+                "running starting")
+                  sleep 1
+                  ;;
+                *)
+                  break
+                  ;;
+              esac
+            done
+            if [ "$result" -ne 0 ]; then
+              echo "::error::The $platform relay image didn't become healthy."
+              docker logs "$container"
+            fi
+            docker rm --force --volumes "$container" >/dev/null
+            return "$result"
+          }
+          smoke amd64
+          smoke arm64
 
       - name: Image tags
         id: meta

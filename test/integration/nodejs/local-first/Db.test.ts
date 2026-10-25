@@ -152,7 +152,8 @@ import {
   type MessagePort,
   type WorkerSelf,
 } from "../../../../packages/common/src/Worker.ts";
-import { createBetterSqliteDriver } from "../../../../packages/nodejs/src/Sqlite.ts";
+import { buildNativeSqlite } from "../../../../packages/nodejs/scripts/build-native.mts";
+import { createNodeJsSqliteDriver } from "../../../../packages/nodejs/src/Sqlite.ts";
 import {
   setupSqliteAndRelayStorage,
   testCreateSqliteDep,
@@ -160,6 +161,9 @@ import {
 } from "../_deps.ts";
 
 installPolyfills();
+
+// The replay tests' file databases, on @evolu/nodejs's SQLite.
+await buildNativeSqlite();
 
 /** Adds the XChaCha20-Poly1305 that changes are encrypted with to `deps`. */
 const setupCryptoDeps = <D extends object>(
@@ -5729,7 +5733,7 @@ const setupReplayDatabase = () => {
   using disposer = new DisposableStack();
   disposer.defer(() => deleteDatabase());
   const createSqliteDriver: CreateSqliteDriver = () => async (run) => {
-    const driver = await run.ok(createBetterSqliteDriver(name));
+    const driver = await run.ok(createNodeJsSqliteDriver(name));
     const connection = { disposed: false };
     connections.push(connection);
     deleteDatabase = driver.deleteDatabase;

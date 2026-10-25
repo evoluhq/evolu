@@ -17,6 +17,7 @@ import {
   union,
   Unknown,
 } from "@evolu/common";
+import { buildNativeSqlite } from "../../packages/nodejs/scripts/build-native.mts";
 import { type BenchmarkMode, parseBenchmarkMode } from "../index.mts";
 import { materializeBase, parseBaseArgs } from "../protocol/base.mts";
 import { spawnChild } from "../protocol/child.mts";
@@ -54,6 +55,8 @@ const main = async (): Promise<void> => {
     process.argv.slice(2),
     "Protocol runtime",
   );
+  // The working tree's children open SQLite with @evolu/nodejs's addon.
+  await buildNativeSqlite();
   // parseBenchmarkMode is strict, so --base is removed first.
   const benchmarkMode = parseBenchmarkMode({
     args: otherArgs,

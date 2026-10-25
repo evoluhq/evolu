@@ -28,7 +28,7 @@ type NodeCryptoModule = typeof import("../../packages/nodejs/src/Crypto.ts");
 export interface Modules {
   readonly common: CommonModule;
   readonly localFirst: LocalFirstModule;
-  readonly createBetterSqliteDriver: CreateSqliteDriver;
+  readonly createSqliteDriver: CreateSqliteDriver;
   readonly timingSafeEqual: TimingSafeEqual;
   /** Whether `applyProtocolMessageAsClient` takes `onChangeTooLarge`. */
   readonly supportsOnChangeTooLarge: boolean;
@@ -101,7 +101,7 @@ export const loadModules = async (
   const missing = [
     ...required.common.filter((name) => !(name in common)),
     ...required.localFirst.filter((name) => !(name in localFirst)),
-    ...(["createBetterSqliteDriver"] as const).filter(
+    ...(["createNodeJsSqliteDriver"] as const).filter(
       (name) => !(name in nodeSqlite),
     ),
     ...(["createTimingSafeEqual"] as const).filter(
@@ -122,7 +122,7 @@ export const loadModules = async (
   return {
     common,
     localFirst,
-    createBetterSqliteDriver: nodeSqlite.createBetterSqliteDriver,
+    createSqliteDriver: nodeSqlite.createNodeJsSqliteDriver,
     timingSafeEqual: nodeCrypto.createTimingSafeEqual(),
     // No export tells whether the option exists, but the client reads it in
     // its own source text. Older versions neither read it nor skip changes.
