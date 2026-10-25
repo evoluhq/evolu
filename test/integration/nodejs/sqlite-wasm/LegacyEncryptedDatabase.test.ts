@@ -31,11 +31,14 @@ import {
 import { pbkdf2Sync } from "node:crypto";
 import { test } from "node:test";
 import {
+  type SqliteCExports,
   sqlite3_close_v2,
+  sqlite3_db_config,
   sqlite3_free,
 } from "../../../../packages/sqlite-wasm/src/CApi.ts";
 import {
   SQLITE_CORRUPT,
+  SQLITE_DBCONFIG_DEFENSIVE,
   SQLITE_IOERR_READ,
   SQLITE_NOTADB,
   SQLITE_OK,
@@ -46,7 +49,10 @@ import {
   deriveLegacySqliteKey,
   SqliteVfsPath,
 } from "../../../../packages/sqlite-wasm/src/Database.ts";
-import { evolu_codec_open } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
+import {
+  type EvoluCExports,
+  evolu_codec_open,
+} from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import { allocWasm } from "../../../../packages/sqlite-wasm/src/Memory.ts";
 import type { SqliteDbPtr } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
 import {
@@ -1067,7 +1073,26 @@ test("a database 2.2.4 keyed whose schema page after page 1 fails to authenticat
 
 test("a database whose pages authenticate with the raw key but whose schema is malformed fails with the raw attempt's SQLITE_CORRUPT, without a cause, and derives no legacy key", async () => {
   const t = await setupSahPool();
-  const database = getOrThrow(openEncryptedDatabase(t, testKey));
+  // Evolu's connections are defensive, which ignores writable_schema, so the
+  // connection that writes the malformed schema turns that off.
+  const exports = t.sqliteWasm.exports as SqliteCExports & EvoluCExports;
+  const nonDefensiveExports: SqliteCExports & EvoluCExports = {
+    ...exports,
+    evolu_codec_open: (filename, db, vfs, key, flags) => {
+      const rc = exports.evolu_codec_open(filename, db, vfs, key, flags);
+      sqlite3_db_config(t)(
+        t.readPtr(db) as SqliteDbPtr,
+        SQLITE_DBCONFIG_DEFENSIVE,
+        0,
+      );
+      return rc;
+    },
+  };
+  const nonDefensive: TestSahPool = {
+    ...t,
+    sqliteWasm: { ...t.sqliteWasm, exports: nonDefensiveExports },
+  };
+  const database = getOrThrow(openEncryptedDatabase(nonDefensive, testKey));
   getOrThrow(
     database.exec(
       "CREATE TABLE t(a); PRAGMA writable_schema = ON; UPDATE sqlite_schema SET sql = 'CREATE TABLE t(' WHERE name = 't'; PRAGMA writable_schema = OFF",

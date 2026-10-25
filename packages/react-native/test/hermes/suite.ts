@@ -45,7 +45,8 @@ export interface HermesHost {
 
 /**
  * Registers the suites against `binding`, with their files under `directory`,
- * which holds two empty directories, `conformance` and `hermes`.
+ * which holds two empty directories, `conformance` and `hermes`, and the
+ * database of the conformance suite's ill-formed names, `ill-formed-names.db`.
  */
 export const registerSuites = ({
   binding,
@@ -66,6 +67,7 @@ export const registerSuites = ({
     binding,
     abiVersion: nativeSqliteAbiVersion,
     directory: `${directory}/conformance`,
+    illFormedNames: `${directory}/ill-formed-names.db`,
     test,
     assertEqual,
   });

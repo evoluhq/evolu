@@ -10,7 +10,7 @@ This shows that the wasm keeps the C's constant time, not that a machine runs it
 
 The core's `evolu_aes256_init`, with `evolu_aes256_init_with` and `aes256_ct64_init` inlined: wasm has no AES instructions, so it records the `aes_ct64` table and calls `br_aes_ct64_cbcenc_init` and `br_aes_ct64_cbcdec_init`, then wipes the stack.
 
-Code sha256 `c5dc3157c6195a7ae5653c585c8d997591b5296c82b4b6a960fcfe9b58537a66`, 16 instructions.
+Code sha256 `43bd79750e3b0d808608f05d6d34b014233af9a91f533494208a31fe78ffd848`, 16 instructions.
 
 No findings.
 
@@ -48,7 +48,7 @@ Loaded values and call results:
 
 The core's `aes256_ct64_init`, the `aes_ct64` table's key setup, which calls `br_aes_ct64_cbcenc_init` and `br_aes_ct64_cbcdec_init`.
 
-Code sha256 `7702a3d6be87f1f052e4af1f3a60739875649399adaec5d9a9f7bd028171f599`, 12 instructions.
+Code sha256 `23a4642a6fb08bcc111da1e5215ad0999413e8c03ba3b504afd78fdf111d2814`, 12 instructions.
 
 No findings.
 
@@ -56,7 +56,7 @@ No findings.
 
 The core's `aes256_ct64_cbc_encrypt`, which calls `br_aes_ct64_cbcenc_run`.
 
-Code sha256 `73ea35850e709cfc7cffc0ec2f29fb57f23337d0de15f2cffe3cd473129b845b`, 7 instructions.
+Code sha256 `69636387bb4cbbd65b92d4f3ab01315ba4e318438b4dec087419af36882cbabc`, 7 instructions.
 
 No findings.
 
@@ -64,31 +64,31 @@ No findings.
 
 The core's `aes256_ct64_cbc_decrypt`, which calls `br_aes_ct64_cbcdec_run`.
 
-Code sha256 `e08b36d48ff10bc154f6ed05afc511f855a8a714e4f79de20af8fb7605b22556`, 7 instructions.
+Code sha256 `67cc96dd2fd435b75fd40908c49093182323c6a222c407b3a7b6cbcfa9a1375d`, 7 instructions.
 
 No findings.
 
-## `br_aes_ct64_cbcenc_init`, function 143
+## `br_aes_ct64_cbcenc_init`, function 145
 
 BearSSL's `br_aes_ct64_cbcenc_init` (`aes_ct64_cbcenc.c`), which calls `br_aes_ct64_keysched`.
 
-Code sha256 `d441af837ce725cb1bf4de1322a798f80910ff6f6f35bcc7fe051daef48aafc6`, 11 instructions.
+Code sha256 `38dae2d93ccf58ba9f442e3e5a088341a5c56955d223df24a83817ac21715ef6`, 11 instructions.
 
 No findings.
 
-## `br_aes_ct64_cbcdec_init`, function 141
+## `br_aes_ct64_cbcdec_init`, function 143
 
 BearSSL's `br_aes_ct64_cbcdec_init` (`aes_ct64_cbcdec.c`), which calls `br_aes_ct64_keysched`.
 
-Code sha256 `0e1a0bdeb69fd9ebeda644db44399a535f962dd49afb125ae9a8759441b5f1f2`, 11 instructions.
+Code sha256 `f04b24c4f55a6f58bb2f5cc5cede143d9fd77216572f7e173878688b38bc9de4`, 11 instructions.
 
 No findings.
 
-## `br_aes_ct64_keysched`, function 139
+## `br_aes_ct64_keysched`, function 141
 
 BearSSL's AES key schedule, `br_aes_ct64_keysched` (`aes_ct64.c`), with `sub_word` inlined.
 
-Code sha256 `7cdff8beb16430d5e4a8ecc221f56d20289b82d07239f6f6e4dd003800723042`, 390 instructions.
+Code sha256 `15c0d9daa92fe9fdf5971b551276942f002eb91aafdfed1304cd98e1a19a6af7`, 390 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.sub(global 0, 304), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 - #27 `br_table 2 3 3 3 3 3 3 3 0 3 3 3 3 3 3 3 1 3` with index `i32.sub(local 2, 16)`: secret-independent, only parameters, constants and globals
@@ -99,7 +99,7 @@ Code sha256 `7cdff8beb16430d5e4a8ecc221f56d20289b82d07239f6f6e4dd003800723042`, 
 - #369 `br_if 0` with condition `local 4`: secret-independent, only parameters, constants and globals
 - #384 `if` with condition `i32.or(i32.gt_u(i32.add(local 3, 304), global 3), i32.lt_u(…`: secret-independent, only parameters, constants and globals
 
-## `br_aes_ct64_skey_expand`, function 140
+## `br_aes_ct64_skey_expand`, function 142
 
 BearSSL's `br_aes_ct64_skey_expand` (`aes_ct64.c`), which expands the stored round keys before each CBC run.
 
@@ -108,16 +108,16 @@ Code sha256 `873ff91f9e4e151594093a0c7008bbe767bd29dee363805377cdcc3dcb08a195`, 
 - #7 `if` with condition `i32.add(i32.shl(local 1, 1), 2)`: secret-independent, only parameters, constants and globals
 - #64 `br_if 0` with condition `i32.ne(i32.add(local 3, 1), local 5)`: secret-independent, only parameters, constants and globals
 
-## `br_aes_ct64_cbcenc_run`, function 144
+## `br_aes_ct64_cbcenc_run`, function 146
 
 BearSSL's CBC encryption, `br_aes_ct64_cbcenc_run` (`aes_ct64_cbcenc.c`), one block at a time, with Evolu's zero initialization of the state before each block.
 
-Code sha256 `37a10c510094250bc80997453dea4bf6a7b37f916d0e8fcd16a485f33d5f4b36`, 172 instructions.
+Code sha256 `752a778e4fc7a582b5e7834d6218aa1034dd05eafb9ce4545cdf17af3df2aae3`, 172 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.sub(global 0, 1056), global 3), i32.lt_…`: secret-independent, only parameters, constants and globals
-- #26 `call 140` with argument 1 `#22`: secret-independent, #22 is public
+- #26 `call 142` with argument 1 `#22`: secret-independent, #22 is public
 - #34 `if` with condition `local 3`: secret-independent, only parameters, constants and globals
-- #107 `call 147` with argument 0 `#102`: secret-independent, #102 is public
+- #107 `call 149` with argument 0 `#102`: secret-independent, #102 is public
 - #148 `br_if 0` with condition `i32.sub(local 3, 16)`: secret-independent, only parameters, constants and globals
 - #167 `if` with condition `i32.or(i32.gt_u(i32.add(local 4, 1056), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 
@@ -126,17 +126,17 @@ Loaded values and call results:
 - #22 `i32.load offset=248` at `local 0`: public, `ctx->num_rounds`, 14 for every 256-bit key
 - #102 `i32.load offset=248` at `local 0`: public, `ctx->num_rounds`, 14 for every 256-bit key
 
-## `br_aes_ct64_cbcdec_run`, function 142
+## `br_aes_ct64_cbcdec_run`, function 144
 
 BearSSL's CBC decryption, `br_aes_ct64_cbcdec_run` (`aes_ct64_cbcdec.c`), four blocks at a time, with Evolu's zero initialization of the input words before each batch.
 
-Code sha256 `d117c14035a8179243eaec8fb6ed254a6010488b9a6e39852172797594c87a07`, 465 instructions.
+Code sha256 `f7ec3e3d6d35f7bda5fc9259ff3df7622db7123adbce5ce1fbbe4ace0069407b`, 465 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.sub(global 0, 1168), global 3), i32.lt_…`: secret-independent, only parameters, constants and globals
-- #26 `call 140` with argument 1 `#22`: secret-independent, #22 is public
+- #26 `call 142` with argument 1 `#22`: secret-independent, #22 is public
 - #36 `br_if 0` with condition `i32.eqz(local 3)`: secret-independent, only parameters, constants and globals
 - #127 `select` with condition `i32.lt_u(local 3, 64)`: secret-independent, only parameters, constants and globals
-- #159 `call 145` with argument 0 `#154`: secret-independent, #154 is public
+- #159 `call 147` with argument 0 `#154`: secret-independent, #154 is public
 - #215 `br_if 0` with condition `local 6`: secret-independent, only parameters, constants and globals
 - #320 `br_if 1` with condition `i32.add(local 3, -64)`: secret-independent, only parameters, constants and globals
 - #332 `br_if 0` with condition `i32.lt_u(local 3, 20)`: secret-independent, only parameters, constants and globals
@@ -151,25 +151,25 @@ Loaded values and call results:
 - #22 `i32.load offset=248` at `local 0`: public, `ctx->num_rounds`, 14 for every 256-bit key
 - #154 `i32.load offset=248` at `local 0`: public, `ctx->num_rounds`, 14 for every 256-bit key
 
-## `br_aes_ct64_bitslice_encrypt`, function 147
+## `br_aes_ct64_bitslice_encrypt`, function 149
 
 BearSSL's `br_aes_ct64_bitslice_encrypt` (`aes_ct64_enc.c`), with `add_round_key` and `mix_columns` inlined.
 
-Code sha256 `363f5d3f222b41e55845dc09fcaa6135c527d69568fbbb1198ace32ee178ffcb`, 350 instructions.
+Code sha256 `37692815d6e39f553098c33138f4fb54543c149ca47c98fa912d3c23e75ae8d1`, 350 instructions.
 
 - #60 `if` with condition `i32.ge_u(local 0, 2)`: secret-independent, only parameters, constants and globals
 - #283 `br_if 0` with condition `i32.ne(i32.add(local 18, 1), local 0)`: secret-independent, only parameters, constants and globals
 
-## `br_aes_ct64_bitslice_decrypt`, function 145
+## `br_aes_ct64_bitslice_decrypt`, function 147
 
 BearSSL's `br_aes_ct64_bitslice_decrypt` (`aes_ct64_dec.c`), with `br_aes_ct64_bitslice_invSbox`, `add_round_key` and `inv_mix_columns` inlined.
 
-Code sha256 `b54b8782e4aa43980fb99cd44639478f40cf2e96ff6b699c7acaba31b92be312`, 763 instructions.
+Code sha256 `04cfc7b3f087fc0f5493fc40b897f7e0417980454c54d788f4e52965613aa241`, 763 instructions.
 
 - #66 `if` with condition `i32.sub(local 0, 1)`: secret-independent, only parameters, constants and globals
 - #553 `br_if 0` with condition `i32.sub(local 0, 1)`: secret-independent, only parameters, constants and globals
 
-## `br_aes_ct64_bitslice_Sbox`, function 135
+## `br_aes_ct64_bitslice_Sbox`, function 137
 
 BearSSL's bitsliced S-box, `br_aes_ct64_bitslice_Sbox` (`aes_ct64.c`).
 
@@ -177,7 +177,7 @@ Code sha256 `306af368c4311f85951e77b29fcc46c663510b541051c51208c0132342d4f551`, 
 
 No findings.
 
-## `br_aes_ct64_ortho`, function 136
+## `br_aes_ct64_ortho`, function 138
 
 BearSSL's `br_aes_ct64_ortho` (`aes_ct64.c`), which transposes the bitsliced state.
 
@@ -185,7 +185,7 @@ Code sha256 `0d42a7f6a4970117f53916f6722cef59045579ce3e74810b96c79dee55344aae`, 
 
 No findings.
 
-## `br_aes_ct64_interleave_in`, function 137
+## `br_aes_ct64_interleave_in`, function 139
 
 BearSSL's `br_aes_ct64_interleave_in` (`aes_ct64.c`), which spreads four words into two state words.
 
@@ -193,7 +193,7 @@ Code sha256 `5c609ea722263dd1ad61fc84278de09482589f459a4c901d6c5feca2759a50eb`, 
 
 No findings.
 
-## `br_aes_ct64_interleave_out`, function 138
+## `br_aes_ct64_interleave_out`, function 140
 
 BearSSL's `br_aes_ct64_interleave_out` (`aes_ct64.c`), which gathers two state words into four words.
 
@@ -201,7 +201,7 @@ Code sha256 `7cfb18b3c408d41adaf56aaa21b2669e3aef721950bda56cb7b5968ecae65a4b`, 
 
 No findings.
 
-## `shift_rows`, function 148
+## `shift_rows`, function 150
 
 `shift_rows` of BearSSL's `aes_ct64_enc.c`.
 
@@ -209,7 +209,7 @@ Code sha256 `8bb923078a197d9f66061f8cb4f1badc01f7498bba528ac3f4acf8d9397a8fed`, 
 
 No findings.
 
-## `inv_shift_rows`, function 146
+## `inv_shift_rows`, function 148
 
 `inv_shift_rows` of BearSSL's `aes_ct64_dec.c`.
 
@@ -217,7 +217,7 @@ Code sha256 `9e3bf1eaf0610c3310443346eb9c7f05c88c8d54c01a755cb360b92eaa007755`, 
 
 No findings.
 
-## `br_range_dec32le`, function 119
+## `br_range_dec32le`, function 121
 
 BearSSL's `br_range_dec32le` (`dec32le.c`), which reads blocks, IVs and keys as little-endian words.
 
@@ -229,7 +229,7 @@ Code sha256 `ed91ed29d8e7cd96ba3ba862668f8ea6c2048201d5aa56003613d28c4dcc1509`, 
 - #47 `br_if 0` with condition `i32.lt_u(local 1, 8)`: secret-independent, only parameters, constants and globals
 - #93 `br_if 0` with condition `i32.sub(local 3, 8)`: secret-independent, only parameters, constants and globals
 
-## `br_range_enc32le`, function 122
+## `br_range_enc32le`, function 124
 
 BearSSL's `br_range_enc32le` (`enc32le.c`), which writes blocks and IVs as little-endian words.
 
@@ -245,7 +245,7 @@ Code sha256 `2db812acc4d29e59a3cd24cd7be782372b7a8071d2ef93fbfe2edf5672163fae`, 
 
 The core's `sha512_blocks`, with `sha512_blocks_bearssl`, `load64_be`, `store64_be` and `evolu_wipe` inlined: wasm has no SHA-512 instructions, so it runs BearSSL's compression through `br_sha512_set_state`, `br_sha512_update` and `br_sha512_state`, and wipes BearSSL's context.
 
-Code sha256 `c166e6ed906d87c6c4e92c83dc518e386b0fe116e551a43421588dd1d2612201`, 671 instructions.
+Code sha256 `edabe1d4cd35b4d6bea51cbdf2c6a548f22652c4e2993726be23d1a37d14dfb1`, 671 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.sub(global 0, 272), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 - #79 `br_if 0` with condition `i32.ne(i32.add(local 4, 1), 8)`: secret-independent, only parameters, constants and globals
@@ -270,11 +270,11 @@ Loaded values and call results:
 
 - #6 `i64.load offset=64` at `local 0`: public, `sha->size`, the number of bytes hashed, a public length
 
-## `br_sha384_update`, function 124
+## `br_sha384_update`, function 126
 
 BearSSL's `br_sha512_update`, an alias of `br_sha384_update` (`sha2big.c`), with `sha2big_update` inlined.
 
-Code sha256 `690b136398d87aeb415c35e65ab86b82a66424dd3ad7069badae71fb7eda51f6`, 67 instructions.
+Code sha256 `25a25f06c41c837bfe894737c7bc977aa3a564a524d139703acaca1dbd67b225`, 67 instructions.
 
 - #10 `if` with condition `local 2`: secret-independent, only parameters, constants and globals
 - #33 `select` with condition `i32.lt_u(local 0, local 2)`: secret-independent, #3 is public
@@ -287,34 +287,34 @@ Loaded values and call results:
 
 - #3 `i64.load offset=136` at `local 0`: public, `cc->count`, the number of bytes hashed, 0 when `sha512_blocks` calls it
 
-## `sha2big_round`, function 125
+## `sha2big_round`, function 127
 
 BearSSL's SHA-512 compression function, `sha2big_round` (`sha2big.c`).
 
-Code sha256 `c309fb21b5f910e761134090017877118c44c402ebf0c9c536c0448b952e4699`, 626 instructions.
+Code sha256 `d8ca0181bfb0d1a752f72c786ddb416337867a1c68686fb55077a513d6b950f0`, 626 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.sub(global 0, 640), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 - #79 `br_if 0` with condition `i32.ne(i32.add(local 19, 1), 80)`: secret-independent, only parameters, constants and globals
 - #569 `br_if 0` with condition `local 0`: secret-independent, only parameters, constants and globals
 - #621 `if` with condition `i32.or(i32.gt_u(i32.add(local 20, 640), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 
-## `br_sha384_state`, function 126
+## `br_sha384_state`, function 128
 
 BearSSL's `br_sha512_state`, an alias of `br_sha384_state` (`sha2big.c`).
 
-Code sha256 `dbd5d4f3a961182e0b31fa0f43a8de56fb10e5b301357ef94cbb93773c4b8b4e`, 8 instructions.
+Code sha256 `b5460a9e8bfe968eff14fbfa8b5a0f38d6a7cc8514957b18f426e92f50e7239a`, 8 instructions.
 
 No findings.
 
-## `br_sha384_set_state`, function 127
+## `br_sha384_set_state`, function 129
 
 BearSSL's `br_sha512_set_state`, an alias of `br_sha384_set_state` (`sha2big.c`).
 
-Code sha256 `f8a8b8b6898377feb022d3ee7daaa52c30c5cc7a5a53b668307536d81bdd8e7e`, 9 instructions.
+Code sha256 `7edecca5f4650aa13bf78bd417567564b92870506f9e661fda544dbee26380ba`, 9 instructions.
 
 No findings.
 
-## `br_range_dec64be`, function 120
+## `br_range_dec64be`, function 122
 
 BearSSL's `br_range_dec64be` (`dec64be.c`), which reads message blocks and states as big-endian words.
 
@@ -323,7 +323,7 @@ Code sha256 `d6948c4ce76534d1fd5b53db50a53ec01968b69e6ee34793e78c818acd3b2e6a`, 
 - #2 `if` with condition `local 1`: secret-independent, only parameters, constants and globals
 - #63 `br_if 0` with condition `i32.sub(local 1, 1)`: secret-independent, only parameters, constants and globals
 
-## `br_range_enc64be`, function 123
+## `br_range_enc64be`, function 125
 
 BearSSL's `br_range_enc64be` (`enc64be.c`), which writes states as big-endian words.
 
@@ -336,7 +336,7 @@ Code sha256 `02037cc681db8b2ea6f6794dfb3ff5cafc3c23f558b23511123230c682cd3ee5`, 
 
 The core's `evolu_hmac_sha512_key_init`, with `evolu_sha512_digest` inlined for a key longer than a block.
 
-Code sha256 `560e022109733020cd25ec61bcac937e547b837b6455c842592c11626793c44b`, 358 instructions.
+Code sha256 `acf48823f4b7fa54f3621547ff05c7bf6528c9a5c4faeeb40eacb37a4547c5e6`, 358 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.sub(global 0, 336), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 - #26 `if` with condition `i32.ge_u(local 2, 129)`: secret-independent, only parameters, constants and globals
@@ -550,7 +550,7 @@ Loaded values and call results:
 
 `decrypt_authentic` of `evolu_page.c`, with `decrypt_cbc_cs3` and `encrypted_start` inlined.
 
-Code sha256 `a35f3930108e8a5925855bd693f5d39479e65770d3c539ce4ca5a22fd4a709ed`, 254 instructions.
+Code sha256 `2f3d98c9dcc17fa0b6518d1f32c65b5fac995e097cc49179f00450254d6759c6`, 254 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.add(global 0, -64), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 - #38 `select` with condition `i32.eq(local 1, 2)`: secret-independent, only parameters, constants and globals

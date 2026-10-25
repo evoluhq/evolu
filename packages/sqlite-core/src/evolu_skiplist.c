@@ -7,10 +7,9 @@
 
 #define TIMESTAMP_SIZE 16
 /*
- * The highest level, as in Storage.ts, whose recursive CTEs need a limit of 10
- * for SQLite's planner and cap the skiplist at it. These functions run no such
- * CTE, but they write the same rows, so the cap stays: the caller picks a level
- * from 1 to 10, and a node of any other level breaks the invariant.
+ * The highest level. Storage.ts in @evolu/common draws levels from 1 to 10, so
+ * its databases have no higher one, and a node of any other level breaks the
+ * invariant.
  */
 #define MAX_LEVEL 10
 #define FINGERPRINT_SIZE 12
@@ -63,34 +62,111 @@ typedef struct {
   uint8_t t[TIMESTAMP_SIZE];
 } Position;
 
+/* The statements the functions run, each binding the owner as ?1. */
+typedef enum {
+  STATEMENT_LEVEL_NODES,
+  STATEMENT_NEXT,
+  STATEMENT_LEVELS,
+  STATEMENT_EXISTS,
+  STATEMENT_EXISTS_FROM,
+  STATEMENT_INSERT,
+  STATEMENT_UPDATE,
+  STATEMENT_COUNT
+} StatementId;
+
+static const char *const statement_sql[STATEMENT_COUNT] = {
+    // A level's nodes after ?3 and before ?4, in order. The level is ?2 + 0,
+    // because SQLite's planner reads a bare ?2 = l as a likely 0 or 1 and
+    // prepares the statement again whenever a walk reaches level 1 or leaves
+    // it.
+    "select t, h1, h2, c from evolu_timestamp where ownerId = ?1 and l = ?2 + "
+    "0 and t > ?3 and t < ?4 order by t",
+    "select t from evolu_timestamp where ownerId = ?1 and t > ?2 order by t "
+    "limit 1",
+    "select (select max(l) from evolu_timestamp where ownerId = ?1), (select "
+    "min(l) from evolu_timestamp where ownerId = ?1)",
+    // Whether ?2 exists, the owner's highest level, whether ?2 comes after
+    // every timestamp, and the lowest level.
+    "select exists (select 1 from evolu_timestamp where ownerId = ?1 and t = "
+    "?2), (select max(l) from evolu_timestamp where ownerId = ?1), "
+    "ifnull((select max(t) from evolu_timestamp where ownerId = ?1) < ?2, 1), "
+    "(select min(l) from evolu_timestamp where ownerId = ?1)",
+    "select 1 from evolu_timestamp where ownerId = ?1 and t >= ?2 limit 1",
+    "insert into evolu_timestamp (ownerId, t, h1, h2, c, l) values (?1, ?2, "
+    "?3, ?4, ?5, ?6)",
+    "update evolu_timestamp set h1 = ?3, h2 = ?4, c = ?5 where ownerId = ?1 "
+    "and t = ?2",
+};
+
 /*
- * The statements a call runs, prepared when it first needs them and
- * finalized when it returns, so a connection closes with none left.
+ * The statements of a connection, which its functions share, or of a call
+ * that runs while another uses them. Each is prepared when a call first needs
+ * it. The connection's client data and each registration of a function hold a
+ * reference to the connection's cache, and the last one frees it: the
+ * functions stay registered on the zombie that sqlite3_close_v2 leaves while
+ * the caller's statements are open, which can still call them.
  */
+typedef struct {
+  sqlite3_stmt *statements[STATEMENT_COUNT];
+  int is_in_use;
+  int references;
+} Cache;
+
+/* The name of a connection's cache in its client data. */
+static const char cache_name[] = "evolu_skiplist";
+
+/* Finalizes a cache's statements, which a later call prepares again. */
+static void finalize_statements(Cache *cache) {
+  for (int i = 0; i < STATEMENT_COUNT; i++) {
+    sqlite3_finalize(cache->statements[i]);
+    cache->statements[i] = NULL;
+  }
+}
+
+/* Releases a reference to a cache, freeing it with the last. */
+static void release_cache(void *cache) {
+  if (--((Cache *)cache)->references == 0) sqlite3_free(cache);
+}
+
+/*
+ * The destructor of the connection's client data, which its close runs. It
+ * finalizes the statements, which would keep a closing connection open, and
+ * leaves the cache in use, so a later call on the zombie prepares statements
+ * of its own, which SQLite refuses on a closed connection.
+ */
+static void close_cache(void *cache) {
+  finalize_statements(cache);
+  ((Cache *)cache)->is_in_use = 1;
+  release_cache(cache);
+}
+
 typedef struct {
   sqlite3_context *context;
   sqlite3 *db;
   const void *owner;
   int owner_size;
-  sqlite3_stmt *next_at_level;
-  sqlite3_stmt *next;
-  sqlite3_stmt *max_level;
-  sqlite3_stmt *exists;
-  sqlite3_stmt *exists_from;
-  sqlite3_stmt *insert;
-  sqlite3_stmt *update;
+  // The connection's statements, or own while another call uses those.
+  Cache *cache;
+  Cache own;
+  int has_statements;
 } Call;
 
 typedef enum { CALL_OK, CALL_FAILED } CallResult;
 
+/*
+ * Resets the connection's statements, so none keeps a read transaction, and
+ * releases them, or finalizes the call's own. Their bindings stay, copies the
+ * next use binds again: clearing them would make SQLite prepare a statement
+ * whose plan read a bound value again.
+ */
 static void finish_call(Call *call) {
-  sqlite3_finalize(call->next_at_level);
-  sqlite3_finalize(call->next);
-  sqlite3_finalize(call->max_level);
-  sqlite3_finalize(call->exists);
-  sqlite3_finalize(call->exists_from);
-  sqlite3_finalize(call->insert);
-  sqlite3_finalize(call->update);
+  if (call->cache == &call->own) {
+    finalize_statements(&call->own);
+    return;
+  }
+  for (int i = 0; i < STATEMENT_COUNT; i++)
+    sqlite3_reset(call->cache->statements[i]);
+  call->cache->is_in_use = 0;
 }
 
 /* Fails the call with SQLite's error of the connection. */
@@ -107,16 +183,34 @@ static CallResult fail_corrupt(Call *call) {
   return CALL_FAILED;
 }
 
-/* Prepares sql into *statement once and binds the owner as ?1. */
-static CallResult prepare(Call *call, sqlite3_stmt **statement,
-                          const char *sql) {
-  if (*statement == NULL) {
-    int rc = sqlite3_prepare_v3(call->db, sql, -1, 0, statement, NULL);
-    if (rc != SQLITE_OK) return fail_with_sqlite(call, rc);
-    sqlite3_bind_blob(*statement, 1, call->owner, call->owner_size,
-                      SQLITE_STATIC);
+/*
+ * Returns a statement with the owner bound as ?1, which every use binds its
+ * other parameters on, or NULL, failing the call, when it can't be prepared.
+ * The call's first statement takes the connection's statements unless another
+ * call uses them. Their parameters are bound as copies, SQLITE_TRANSIENT, so a
+ * kept statement never points to a call's memory.
+ */
+static sqlite3_stmt *use_statement(Call *call, StatementId id) {
+  if (!call->has_statements) {
+    call->has_statements = 1;
+    Cache *shared = sqlite3_user_data(call->context);
+    if (!shared->is_in_use) {
+      shared->is_in_use = 1;
+      call->cache = shared;
+    }
   }
-  return CALL_OK;
+  sqlite3_stmt **statement = &call->cache->statements[id];
+  if (*statement == NULL) {
+    int rc = sqlite3_prepare_v3(call->db, statement_sql[id], -1,
+                                SQLITE_PREPARE_PERSISTENT, statement, NULL);
+    if (rc != SQLITE_OK) {
+      fail_with_sqlite(call, rc);
+      return NULL;
+    }
+  }
+  sqlite3_bind_blob(*statement, 1, call->owner, call->owner_size,
+                    SQLITE_TRANSIENT);
+  return *statement;
 }
 
 static void bind_position(sqlite3_stmt *statement, int index,
@@ -125,7 +219,7 @@ static void bind_position(sqlite3_stmt *statement, int index,
     sqlite3_bind_zeroblob(statement, index, 0);
   else
     sqlite3_bind_blob(statement, index, position->t, TIMESTAMP_SIZE,
-                      SQLITE_STATIC);
+                      SQLITE_TRANSIENT);
 }
 
 /*
@@ -150,29 +244,28 @@ static CallResult read_node(Call *call, sqlite3_stmt *statement, int level,
 }
 
 /*
- * Finds the first node at exactly level after position and before bound,
- * setting *found.
+ * Starts a walk of the nodes at exactly level after start and before bound,
+ * which next_node steps through, returning its statement, or NULL, failing the
+ * call.
  */
-static CallResult next_at_level(Call *call, int level,
-                                const Position *position,
-                                const uint8_t *bound, int bound_size,
-                                Node *node, int *found) {
-  if (prepare(call, &call->next_at_level,
-              "select t, h1, h2, c from evolu_timestamp where ownerId = ?1 "
-              "and l = ?2 and t > ?3 and t < ?4 order by t limit 1") !=
-      CALL_OK)
-    return CALL_FAILED;
-  sqlite3_stmt *statement = call->next_at_level;
+static sqlite3_stmt *start_level(Call *call, int level, const Position *start,
+                                 const uint8_t *bound, int bound_size) {
+  sqlite3_stmt *statement = use_statement(call, STATEMENT_LEVEL_NODES);
+  if (statement == NULL) return NULL;
   sqlite3_bind_int(statement, 2, level);
-  bind_position(statement, 3, position);
-  sqlite3_bind_blob(statement, 4, bound, bound_size, SQLITE_STATIC);
+  bind_position(statement, 3, start);
+  sqlite3_bind_blob(statement, 4, bound, bound_size, SQLITE_TRANSIENT);
+  return statement;
+}
+
+/* Steps a level's walk to its next node, setting *found. */
+static CallResult next_node(Call *call, sqlite3_stmt *statement, int level,
+                            Node *node, int *found) {
   int rc = sqlite3_step(statement);
-  CallResult result = CALL_OK;
   *found = rc == SQLITE_ROW;
-  if (rc == SQLITE_ROW) result = read_node(call, statement, level, node);
-  else if (rc != SQLITE_DONE) result = fail_with_sqlite(call, rc);
-  sqlite3_reset(statement);
-  return result;
+  if (rc == SQLITE_ROW) return read_node(call, statement, level, node);
+  if (rc != SQLITE_DONE) return fail_with_sqlite(call, rc);
+  return CALL_OK;
 }
 
 /*
@@ -201,13 +294,10 @@ static CallResult read_levels(Call *call, sqlite3_stmt *statement,
  * call's statements read one snapshot.
  */
 static CallResult max_level_of(Call *call, int *level) {
-  if (prepare(call, &call->max_level,
-              "select (select max(l) from evolu_timestamp where ownerId = ?1), "
-              "(select min(l) from evolu_timestamp where ownerId = ?1)") !=
-      CALL_OK)
-    return CALL_FAILED;
-  int rc = sqlite3_step(call->max_level);
-  return rc == SQLITE_ROW ? read_levels(call, call->max_level, 0, 1, level)
+  sqlite3_stmt *statement = use_statement(call, STATEMENT_LEVELS);
+  if (statement == NULL) return CALL_FAILED;
+  int rc = sqlite3_step(statement);
+  return rc == SQLITE_ROW ? read_levels(call, statement, 0, 1, level)
                           : fail_with_sqlite(call, rc);
 }
 
@@ -225,11 +315,13 @@ static CallResult walk_before(Call *call, int top, const uint8_t *bound,
   Position position = {1, {0}};
   Summary sum = {0, 0, 0};
   for (int level = top; level >= 1; level--) {
+    sqlite3_stmt *statement =
+        start_level(call, level, &position, bound, bound_size);
+    if (statement == NULL) return CALL_FAILED;
     for (;;) {
       Node node;
       int found;
-      if (next_at_level(call, level, &position, bound, bound_size, &node,
-                        &found) != CALL_OK)
+      if (next_node(call, statement, level, &node, &found) != CALL_OK)
         return CALL_FAILED;
       if (!found) break;
       add_summary(&sum, &node.summary);
@@ -237,6 +329,7 @@ static CallResult walk_before(Call *call, int top, const uint8_t *bound,
       position.is_start = 0;
       memcpy(position.t, node.t, TIMESTAMP_SIZE);
     }
+    sqlite3_reset(statement);
     if (prefixes != NULL) prefixes[level] = sum;
   }
   *total = sum;
@@ -259,11 +352,13 @@ static CallResult walk_count(Call *call, int top, sqlite3_int64 limit,
   position->is_start = 1;
   memset(sum, 0, sizeof *sum);
   for (int level = top; level >= 1 && sum->c < limit; level--) {
+    sqlite3_stmt *statement =
+        start_level(call, level, position, bound, bound_size);
+    if (statement == NULL) return CALL_FAILED;
     for (;;) {
       Node node;
       int found;
-      if (next_at_level(call, level, position, bound, bound_size, &node,
-                        &found) != CALL_OK)
+      if (next_node(call, statement, level, &node, &found) != CALL_OK)
         return CALL_FAILED;
       if (!found) break;
       if (sum->c + node.summary.c > limit) {
@@ -276,6 +371,7 @@ static CallResult walk_count(Call *call, int top, sqlite3_int64 limit,
       memcpy(position->t, node.t, TIMESTAMP_SIZE);
       if (sum->c == limit) break;
     }
+    sqlite3_reset(statement);
   }
   if (bound_size == TIMESTAMP_SIZE && sum->c < limit) return fail_corrupt(call);
   return CALL_OK;
@@ -284,23 +380,21 @@ static CallResult walk_count(Call *call, int top, sqlite3_int64 limit,
 /* Finds the owner's first timestamp after position, setting *found. */
 static CallResult next_timestamp(Call *call, const Position *position,
                                  uint8_t t[TIMESTAMP_SIZE], int *found) {
-  if (prepare(call, &call->next,
-              "select t from evolu_timestamp where ownerId = ?1 and t > ?2 "
-              "order by t limit 1") != CALL_OK)
-    return CALL_FAILED;
-  bind_position(call->next, 2, position);
-  int rc = sqlite3_step(call->next);
+  sqlite3_stmt *statement = use_statement(call, STATEMENT_NEXT);
+  if (statement == NULL) return CALL_FAILED;
+  bind_position(statement, 2, position);
+  int rc = sqlite3_step(statement);
   CallResult result = CALL_OK;
   *found = rc == SQLITE_ROW;
   if (rc == SQLITE_ROW) {
-    if (sqlite3_column_bytes(call->next, 0) != TIMESTAMP_SIZE)
+    if (sqlite3_column_bytes(statement, 0) != TIMESTAMP_SIZE)
       result = fail_corrupt(call);
     else
-      memcpy(t, sqlite3_column_blob(call->next, 0), TIMESTAMP_SIZE);
+      memcpy(t, sqlite3_column_blob(statement, 0), TIMESTAMP_SIZE);
   } else if (rc != SQLITE_DONE) {
     result = fail_with_sqlite(call, rc);
   }
-  sqlite3_reset(call->next);
+  sqlite3_reset(statement);
   return result;
 }
 
@@ -340,6 +434,7 @@ static int fail_argument(sqlite3_context *context, const char *message) {
 static int start_call(sqlite3_context *context, sqlite3_value *owner,
                       Call *call) {
   memset(call, 0, sizeof *call);
+  call->cache = &call->own;
   if (sqlite3_value_type(owner) != SQLITE_BLOB ||
       sqlite3_value_bytes(owner) != TIMESTAMP_SIZE)
     return fail_argument(context, "the owner must be a 16-byte blob");
@@ -379,24 +474,20 @@ static CallResult insert(Call *call, const uint8_t t[TIMESTAMP_SIZE],
   *inserted = 0;
   // Whether t exists, the owner's highest level, and whether t comes after
   // every timestamp, when it has nothing after it to update.
-  if (prepare(call, &call->exists,
-              "select exists (select 1 from evolu_timestamp where ownerId = "
-              "?1 and t = ?2), (select max(l) from evolu_timestamp where "
-              "ownerId = ?1), ifnull((select max(t) from evolu_timestamp "
-              "where ownerId = ?1) < ?2, 1), (select min(l) from "
-              "evolu_timestamp where ownerId = ?1)") != CALL_OK)
-    return CALL_FAILED;
-  sqlite3_bind_blob(call->exists, 2, t, TIMESTAMP_SIZE, SQLITE_STATIC);
-  int rc = sqlite3_step(call->exists);
+  sqlite3_stmt *exists_statement = use_statement(call, STATEMENT_EXISTS);
+  if (exists_statement == NULL) return CALL_FAILED;
+  sqlite3_bind_blob(exists_statement, 2, t, TIMESTAMP_SIZE, SQLITE_TRANSIENT);
+  int rc = sqlite3_step(exists_statement);
   if (rc != SQLITE_ROW) {
-    sqlite3_reset(call->exists);
+    sqlite3_reset(exists_statement);
     return fail_with_sqlite(call, rc);
   }
-  int exists = sqlite3_column_int(call->exists, 0);
+  int exists = sqlite3_column_int(exists_statement, 0);
   int max_level;
-  CallResult max_result = read_levels(call, call->exists, 1, 3, &max_level);
-  int is_last = sqlite3_column_int(call->exists, 2);
-  sqlite3_reset(call->exists);
+  CallResult max_result =
+      read_levels(call, exists_statement, 1, 3, &max_level);
+  int is_last = sqlite3_column_int(exists_statement, 2);
+  sqlite3_reset(exists_statement);
   if (max_result != CALL_OK) return CALL_FAILED;
   if (exists) return CALL_OK;
 
@@ -423,10 +514,15 @@ static CallResult insert(Call *call, const uint8_t t[TIMESTAMP_SIZE],
   int has_first[MAX_LEVEL + 2] = {0};
   Position after_t = {0, {0}};
   memcpy(after_t.t, t, TIMESTAMP_SIZE);
-  for (int m = 1; !is_last && m <= max_level; m++)
-    if (next_at_level(call, m, &after_t, no_bound, (int)sizeof no_bound,
-                      &firsts[m], &has_first[m]) != CALL_OK)
-      return CALL_FAILED;
+  for (int m = 1; !is_last && m <= max_level; m++) {
+    sqlite3_stmt *statement =
+        start_level(call, m, &after_t, no_bound, (int)sizeof no_bound);
+    if (statement == NULL) return CALL_FAILED;
+    CallResult result =
+        next_node(call, statement, m, &firsts[m], &has_first[m]);
+    sqlite3_reset(statement);
+    if (result != CALL_OK) return CALL_FAILED;
+  }
   for (int m = max_level - 1; m >= 1; m--)
     if (has_first[m + 1] &&
         (!has_first[m] || memcmp(firsts[m + 1].t, firsts[m].t,
@@ -435,16 +531,14 @@ static CallResult insert(Call *call, const uint8_t t[TIMESTAMP_SIZE],
       has_first[m] = 1;
     }
 
-  if (prepare(call, &call->insert,
-              "insert into evolu_timestamp (ownerId, t, h1, h2, c, l) values "
-              "(?1, ?2, ?3, ?4, ?5, ?6)") != CALL_OK)
-    return CALL_FAILED;
-  sqlite3_bind_blob(call->insert, 2, t, TIMESTAMP_SIZE, SQLITE_STATIC);
-  sqlite3_bind_int64(call->insert, 3, node.h1);
-  sqlite3_bind_int64(call->insert, 4, node.h2);
-  sqlite3_bind_int64(call->insert, 5, node.c);
-  sqlite3_bind_int(call->insert, 6, level);
-  if (run_change(call, call->insert) != CALL_OK) return CALL_FAILED;
+  sqlite3_stmt *insert_statement = use_statement(call, STATEMENT_INSERT);
+  if (insert_statement == NULL) return CALL_FAILED;
+  sqlite3_bind_blob(insert_statement, 2, t, TIMESTAMP_SIZE, SQLITE_TRANSIENT);
+  sqlite3_bind_int64(insert_statement, 3, node.h1);
+  sqlite3_bind_int64(insert_statement, 4, node.h2);
+  sqlite3_bind_int64(insert_statement, 5, node.c);
+  sqlite3_bind_int(insert_statement, 6, level);
+  if (run_change(call, insert_statement) != CALL_OK) return CALL_FAILED;
 
   for (int m = 1; m <= max_level; m++) {
     // The same node is first at consecutive levels. A level with a first node
@@ -463,16 +557,14 @@ static CallResult insert(Call *call, const uint8_t t[TIMESTAMP_SIZE],
       updated = subtract_summary(&updated, &lost);
     }
     if (updated.c < 1 || updated.c > MAX_COUNT) return fail_corrupt(call);
-    if (prepare(call, &call->update,
-                "update evolu_timestamp set h1 = ?3, h2 = ?4, c = ?5 where "
-                "ownerId = ?1 and t = ?2") != CALL_OK)
-      return CALL_FAILED;
-    sqlite3_bind_blob(call->update, 2, first->t, TIMESTAMP_SIZE,
-                      SQLITE_STATIC);
-    sqlite3_bind_int64(call->update, 3, updated.h1);
-    sqlite3_bind_int64(call->update, 4, updated.h2);
-    sqlite3_bind_int64(call->update, 5, updated.c);
-    if (run_change(call, call->update) != CALL_OK) return CALL_FAILED;
+    sqlite3_stmt *update_statement = use_statement(call, STATEMENT_UPDATE);
+    if (update_statement == NULL) return CALL_FAILED;
+    sqlite3_bind_blob(update_statement, 2, first->t, TIMESTAMP_SIZE,
+                      SQLITE_TRANSIENT);
+    sqlite3_bind_int64(update_statement, 3, updated.h1);
+    sqlite3_bind_int64(update_statement, 4, updated.h2);
+    sqlite3_bind_int64(update_statement, 5, updated.c);
+    if (run_change(call, update_statement) != CALL_OK) return CALL_FAILED;
   }
   *inserted = 1;
   return CALL_OK;
@@ -600,15 +692,13 @@ static void lower_bound_function(sqlite3_context *context, int argc,
       !read_timestamp(context, argv[1], t))
     return;
   int top;
-  CallResult result = max_level_of(&call, &top);
-  if (result == CALL_OK)
-    result = prepare(&call, &call.exists_from,
-                     "select 1 from evolu_timestamp where ownerId = ?1 and t "
-                     ">= ?2 limit 1");
-  if (result == CALL_OK) {
-    sqlite3_bind_blob(call.exists_from, 2, t, TIMESTAMP_SIZE, SQLITE_STATIC);
-    int rc = sqlite3_step(call.exists_from);
-    sqlite3_reset(call.exists_from);
+  sqlite3_stmt *exists_from = NULL;
+  if (max_level_of(&call, &top) == CALL_OK)
+    exists_from = use_statement(&call, STATEMENT_EXISTS_FROM);
+  if (exists_from != NULL) {
+    sqlite3_bind_blob(exists_from, 2, t, TIMESTAMP_SIZE, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(exists_from);
+    sqlite3_reset(exists_from);
     if (rc == SQLITE_DONE) {
       sqlite3_result_null(context);
     } else if (rc != SQLITE_ROW) {
@@ -661,7 +751,23 @@ static void version_function(sqlite3_context *context, int argc,
   sqlite3_result_int(context, EVOLU_CORE_VERSION);
 }
 
-int evolu_skiplist_register(sqlite3 *db) {
+int evolu_core_register(sqlite3 *db) {
+  // It fails only for an option the SQLite doesn't know, and the core compiles
+  // against the sqlite3.h that defines it.
+  sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1, (int *)NULL);
+  // The functions point to the cache, so a connection registered again keeps
+  // its own.
+  Cache *cache = sqlite3_get_clientdata(db, cache_name);
+  if (cache == NULL) {
+    cache = sqlite3_malloc(sizeof *cache);
+    if (cache == NULL) return SQLITE_NOMEM;
+    memset(cache, 0, sizeof *cache);
+    // The client data's reference, which SQLite releases when it can't keep
+    // it.
+    cache->references = 1;
+    int rc = sqlite3_set_clientdata(db, cache_name, cache, close_cache);
+    if (rc != SQLITE_OK) return rc;
+  }
   static const struct {
     const char *name;
     int argc;
@@ -674,14 +780,22 @@ int evolu_skiplist_register(sqlite3 *db) {
       {"evolu_skiplist_timestamp_at", 2, timestamp_at_function},
   };
   for (size_t i = 0; i < sizeof functions / sizeof functions[0]; i++) {
+    // The registration's reference, which SQLite releases when the
+    // registration fails, a function replaces it or the connection closes.
+    cache->references++;
     int rc = sqlite3_create_function_v2(
         db, functions[i].name, functions[i].argc,
-        SQLITE_UTF8 | SQLITE_DIRECTONLY, NULL, functions[i].function, NULL,
-        NULL, NULL);
+        SQLITE_UTF8 | SQLITE_DIRECTONLY, cache, functions[i].function, NULL,
+        NULL, release_cache);
     if (rc != SQLITE_OK) return rc;
   }
   return sqlite3_create_function_v2(
       db, "evolu_core_version", 0,
       SQLITE_UTF8 | SQLITE_DETERMINISTIC | SQLITE_INNOCUOUS, NULL,
       version_function, NULL, NULL, NULL);
+}
+
+void evolu_skiplist_finalize(sqlite3 *db) {
+  Cache *cache = sqlite3_get_clientdata(db, cache_name);
+  if (cache != NULL) finalize_statements(cache);
 }

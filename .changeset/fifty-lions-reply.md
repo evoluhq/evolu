@@ -24,11 +24,11 @@ What this brings:
   secret-dependent branch or memory access of their own. A check of the
   compiled WebAssembly finds none in Evolu's build.
 - Less to load and less to trust. What `@evolu/web` imports from
-  `@evolu/sqlite-wasm` is 39,614 bytes of JavaScript minified by esbuild,
-  13,357 with `gzip -9`, instead of 194,844 and 67,501. The package has no
+  `@evolu/sqlite-wasm` is 39,781 bytes of JavaScript minified by esbuild,
+  13,418 with `gzip -9`, instead of 194,844 and 67,501. The package has no
   runtime dependencies now that `@awasm/noble` is gone, and a worker that
   encrypts no longer allocates its 30 MiB of WebAssembly memory. The wasm grew
-  from 677,479 to 719,360 bytes, from 305,733 to 322,492 with `gzip -9`.
+  from 677,479 to 720,542 bytes, from 305,733 to 323,059 with `gzip -9`.
 - SQLite 3.54.1 fixes a regression of 3.54.0 that made a statement with a
   `column = ?` term and an ORDER BY, GROUP BY, `min`, `max`, DISTINCT or a join
   prepare again on every run, as eleven of Evolu's storage queries did. It also
@@ -76,6 +76,9 @@ Behavior changes:
 - Every connection has Evolu's SQL functions: the `evolu_skiplist_*`
   functions, Evolu's timestamp storage in C, for Evolu's sync to switch to in a
   later release, and `evolu_core_version()`.
+- Every connection is defensive (`SQLITE_DBCONFIG_DEFENSIVE`), so SQL can't
+  corrupt its database: it ignores `PRAGMA writable_schema = ON`,
+  `journal_mode = OFF` and `schema_version = N`.
 - The key is staged in wasm memory for the open and zeroed right after, and the
   core keeps its keys in wasm memory until the database is disposed. SQLite's
   heap shares that memory, so a memory-disclosure bug in SQLite could reach the

@@ -40,9 +40,9 @@ describe("runHermesTests", () => {
     assertTrue(result.passed);
     assertEqual(result.output, [
       "## AddressSanitizer and UndefinedBehaviorSanitizer",
-      "ok 1 - suite.js in an empty directory, filter ''",
+      "ok 1 - suite.js in a directory of only ill-formed-names.db, filter ''",
       "## ThreadSanitizer",
-      "ok 1 - suite.js in an empty directory, filter ''",
+      "ok 1 - suite.js in a directory of only ill-formed-names.db, filter ''",
       "## Coverage of cpp/EvoluSqliteBinding.cpp: 10 of 10 lines, 2 of 2 functions, 4 of 4 branches",
       "",
     ]);
@@ -324,9 +324,9 @@ describe("runHermesTests", () => {
     assertTrue(result.passed);
     assertEqual(result.output, [
       "## AddressSanitizer and UndefinedBehaviorSanitizer",
-      "ok 1 - suite.js in an empty directory, filter 'teardown_'",
+      "ok 1 - suite.js in a directory of only ill-formed-names.db, filter 'teardown_'",
       "## ThreadSanitizer",
-      "ok 1 - suite.js in an empty directory, filter 'teardown_'",
+      "ok 1 - suite.js in a directory of only ill-formed-names.db, filter 'teardown_'",
       "## Coverage of cpp/EvoluSqliteBinding.cpp: 9 of 10 lines, 2 of 2 functions, 4 of 4 branches",
       "cpp/EvoluSqliteBinding.cpp:7: line never ran",
       "A filtered run leaves gaps, which fail only a full one.",
@@ -452,8 +452,9 @@ const writeProfile =
  * compile and copies the program for a link, and prints the fake tools' paths
  * for -print-prog-name. The program writes a coverage profile where
  * LLVM_PROFILE_FILE names, and prints the basename of its first argument,
- * whether its second is an empty directory, and its third, the filter. The fake
- * llvm-cov reports the coverage set by setCoverage.
+ * whether its second is a directory of only the database of ill-formed names,
+ * and its third, the filter. The fake llvm-cov reports the coverage set by
+ * setCoverage.
  */
 const setupFakeHermes = (t: TestContext) => {
   const directory = mkdtempSync(join(tmpdir(), "evolu-react-native-hermes-"));
@@ -506,7 +507,7 @@ const setupFakeHermes = (t: TestContext) => {
     [
       "#!/bin/sh",
       writeProfile,
-      'if [ -d "$2" ] && [ -z "$(ls -A "$2")" ]; then empty="an empty directory"; else empty="$2"; fi',
+      'if [ -d "$2" ] && [ "$(ls -A "$2")" = ill-formed-names.db ]; then empty="a directory of only ill-formed-names.db"; else empty="$2"; fi',
       'echo "ok 1 - $(basename "$1") in $empty, filter \'$3\'"',
     ].join("\n"),
   );

@@ -3,7 +3,8 @@
  * recorded from Storage.ts's SQL, which they replace: the same inserts, at the
  * same levels, leave the same evolu_timestamp rows, and every query returns
  * what that SQL returned. skiplist_test.c checks them against a brute-force
- * model.
+ * model. And the addon's close releases a connection whose functions ran, whose
+ * statements they keep.
  */
 import {
   assert,
@@ -13,6 +14,9 @@ import {
   type SqliteQuery,
 } from "@evolu/common";
 import { createBaseSqliteStorageTables } from "@evolu/common/local-first";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { before, describe, it } from "node:test";
 import type {
   SqliteCoreAddon,
@@ -51,10 +55,8 @@ describe("skiplist functions", () => {
     }
   };
 
-  it("leaves the fixture's rows and returns its answers", () => {
-    const fixture = readSkiplistFixture();
-    const db = addon.openCodec(":memory:", null);
-    // Storage.ts's tables, which run no parameters.
+  /** Creates Storage.ts's tables, whose SQL has no parameters. */
+  const setupTables = (db: SqliteCoreDatabase): void => {
     createBaseSqliteStorageTables({
       sqlite: {
         exec: (query: SqliteQuery) => {
@@ -63,6 +65,12 @@ describe("skiplist functions", () => {
         },
       } as unknown as Sqlite,
     });
+  };
+
+  it("leaves the fixture's rows and returns its answers", () => {
+    const fixture = readSkiplistFixture();
+    const db = addon.openCodec(":memory:", null);
+    setupTables(db);
 
     // In a transaction, as evolu_skiplist_insert requires.
     addon.exec(db, "begin");
@@ -141,5 +149,34 @@ describe("skiplist functions", () => {
         );
     }
     addon.close(db);
+  });
+
+  // The addon closes with sqlite3_close_v2, which finalizes the statements the
+  // functions keep. Kept ones would leave the connection open as a zombie,
+  // which keeps its exclusive lock.
+  it("closes a connection whose functions ran, releasing its file", (t) => {
+    const directory = mkdtempSync(join(tmpdir(), "evolu-skiplist-"));
+    t.after(() => {
+      rmSync(directory, { recursive: true, force: true });
+    });
+    const path = join(directory, "skiplist.db");
+    const db = addon.openCodec(path, null);
+    addon.exec(db, "pragma locking_mode = exclusive");
+    setupTables(db);
+    addon.exec(
+      db,
+      "begin; select evolu_skiplist_insert(zeroblob(16), zeroblob(16), 2); commit",
+    );
+    assertEqual(selectValue(db, "select evolu_skiplist_size(zeroblob(16))"), 1);
+
+    addon.close(db);
+
+    // Its open reads the schema, which an exclusive lock would refuse.
+    const other = addon.openCodec(path, null);
+    assertEqual(
+      selectValue(other, "select evolu_skiplist_size(zeroblob(16))"),
+      1,
+    );
+    addon.close(other);
   });
 });

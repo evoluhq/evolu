@@ -33,11 +33,20 @@ static sqlite3 *open_storage(void) {
                       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL) !=
           SQLITE_OK ||
       sqlite3_exec(db, create_table_sql, NULL, NULL, NULL) != SQLITE_OK ||
-      evolu_skiplist_register(db) != SQLITE_OK) {
+      evolu_core_register(db) != SQLITE_OK) {
     sqlite3_close(db);
     return NULL;
   }
   return db;
+}
+
+/*
+ * Finalizes the statements the functions keep, as a binding does before it
+ * closes a connection, and closes it.
+ */
+static int close_storage(sqlite3 *db) {
+  evolu_skiplist_finalize(db);
+  return sqlite3_close(db);
 }
 
 /* xorshift64*, so every run inserts the same timestamps. */
@@ -346,7 +355,7 @@ static void skiplist_inserts_keep_every_summary_and_queries_match_brute_force(
     }
     free(models[0].entries);
     free(models[1].entries);
-    ok &= sqlite3_close(db) == SQLITE_OK;
+    ok &= close_storage(db) == SQLITE_OK;
     if (!ok) {
       char message[64];
       snprintf(message, sizeof message, "order %d", order);
@@ -390,7 +399,7 @@ static void skiplist_small_random_skiplists_match_brute_force_after_every_insert
            lower_bounds_match_model(db, &model, 6);
     }
     free(model.entries);
-    ok &= sqlite3_close(db) == SQLITE_OK;
+    ok &= close_storage(db) == SQLITE_OK;
     if (!ok) {
       char message[64];
       snprintf(message, sizeof message, "seed %llu", (unsigned long long)seed);
@@ -437,7 +446,7 @@ static void skiplist_insert_of_an_existing_timestamp_changes_nothing(void) {
   int same = strcmp(before, (const char *)sqlite3_column_text(statement, 0));
   sqlite3_free(before);
   sqlite3_finalize(statement);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
   CHECK_EQ_INT(same, 0);
 }
 
@@ -467,7 +476,7 @@ static void skiplist_empty_owner_has_no_timestamps(void) {
   CHECK_EQ_INT(query_owner_int(db, "select evolu_skiplist_timestamp_at(?, ?)",
                                owner, INT64_MAX),
                -1);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
 }
 
 /*
@@ -509,7 +518,7 @@ static void skiplist_insert_leaves_successors_that_lose_nothing_unwritten(
     insert_into(&model, t, levels[i]);
   }
   CHECK(nodes_match_model(db, &model));
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
 }
 
 /* Returns the error message running sql gives, or NULL when it succeeds. */
@@ -585,11 +594,11 @@ static void skiplist_functions_refuse_malformed_arguments(void) {
     sqlite3_free(message);
     if (!is_refused) {
       test_fail(__FILE__, __LINE__, refused[i].sql);
-      sqlite3_close(db);
+      close_storage(db);
       return;
     }
   }
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
 }
 
 static void skiplist_insert_runs_only_in_a_transaction(void) {
@@ -608,7 +617,7 @@ static void skiplist_insert_runs_only_in_a_transaction(void) {
   CHECK_EQ_INT(sqlite3_exec(db, sql, NULL, NULL, NULL), SQLITE_OK);
   CHECK_EQ_INT(sqlite3_exec(db, "commit", NULL, NULL, NULL), SQLITE_OK);
   CHECK_EQ_INT(query_owner_int(db, count_sql, owner, 0), 1);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
 }
 
 static void skiplist_insert_fails_with_the_error_of_its_statements(void) {
@@ -638,7 +647,7 @@ static void skiplist_insert_fails_with_the_error_of_its_statements(void) {
                SQLITE_OK);
   CHECK_EQ_INT(insert_timestamp(db, owner, t, 1, &inserted), SQLITE_READONLY);
   CHECK_EQ_INT(query_owner_int(db, count_sql, owner, 0), 1);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
 }
 
 static void skiplist_fingerprints_refuse_a_result_past_the_length_limit(void) {
@@ -658,7 +667,7 @@ static void skiplist_fingerprints_refuse_a_result_past_the_length_limit(void) {
   sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 111);
   int rc = sqlite3_step(statement);
   sqlite3_finalize(statement);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
   CHECK_EQ_INT(rc, SQLITE_TOOBIG);
 }
 
@@ -687,7 +696,7 @@ static void skiplist_functions_run_only_from_top_level_sql(void) {
   CHECK_EQ_INT(query_owner_int(db, "select v + 0 * length(?) from version",
                                (const uint8_t *)"0123456789abcdef", 0),
                EVOLU_CORE_VERSION);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
 }
 
 /* Counts the commits another connection gets in between a read's statements. */
@@ -729,7 +738,7 @@ static void skiplist_reads_outside_a_transaction_read_one_snapshot(void) {
   CHECK_EQ_INT(sqlite3_open_v2(path, &writer.other, flags, NULL), SQLITE_OK);
   CHECK_EQ_INT(sqlite3_exec(db, create_table_sql, NULL, NULL, NULL),
                SQLITE_OK);
-  CHECK_EQ_INT(evolu_skiplist_register(db), SQLITE_OK);
+  CHECK_EQ_INT(evolu_core_register(db), SQLITE_OK);
   uint8_t owner[16] = {0};
   for (int i = 0; i < 100; i++) {
     uint8_t t[16] = {0};
@@ -757,8 +766,8 @@ static void skiplist_reads_outside_a_transaction_read_one_snapshot(void) {
         writer.statements > 1;
   }
   sqlite3_trace_v2(db, 0, NULL, NULL);
-  int closed = sqlite3_close(writer.other) == SQLITE_OK &&
-               sqlite3_close(db) == SQLITE_OK;
+  int closed = close_storage(writer.other) == SQLITE_OK &&
+               close_storage(db) == SQLITE_OK;
   CHECK(closed);
   CHECK(each_ran_more);
   // No commit got in between the statements of a read.
@@ -830,7 +839,7 @@ static void skiplist_functions_fail_with_corrupt_on_broken_metadata(void) {
       sqlite3 *db = open_broken_storage(1, 1, breaks[i]);
       CHECK(db != NULL);
       int rc = run_for_owner(db, reads[j]);
-      int closed = sqlite3_close(db);
+      int closed = close_storage(db);
       if (rc != SQLITE_CORRUPT || closed != SQLITE_OK) {
         char message[256];
         snprintf(message, sizeof message, "%s, then %s: %d, closed %d",
@@ -906,7 +915,7 @@ static void skiplist_functions_fail_with_corrupt_on_broken_metadata(void) {
                                "ownerId = ?",
                                corrupt_owner, 0),
                2);
-  CHECK_EQ_INT(sqlite3_close(corrupt), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(corrupt), SQLITE_OK);
 
   // No index from 2^48 on is walked, so counts each within the limit, whose
   // sum isn't, never give a timestamp there.
@@ -924,7 +933,7 @@ static void skiplist_functions_fail_with_corrupt_on_broken_metadata(void) {
   int is_past = message != NULL &&
                 strcmp(message, "a bucket is past the owner's timestamps") == 0;
   sqlite3_free(message);
-  CHECK_EQ_INT(sqlite3_close(broken), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(broken), SQLITE_OK);
   CHECK(is_past);
 
   for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
@@ -933,7 +942,7 @@ static void skiplist_functions_fail_with_corrupt_on_broken_metadata(void) {
                             cases[i].break_sql);
     CHECK(db != NULL);
     int rc = run_for_owner(db, cases[i].sql);
-    int closed = sqlite3_close(db);
+    int closed = close_storage(db);
     if (rc != SQLITE_CORRUPT || closed != SQLITE_OK) {
       test_fail(__FILE__, __LINE__, cases[i].sql);
       return;
@@ -966,7 +975,7 @@ static void skiplist_functions_accept_counts_at_the_limit(void) {
                                "?))",
                                owner, 281474976710655LL),
                16);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
 
   // {2} at level 2 sums {1}, counting 2^48 - 1, and itself.
   db = open_broken_storage(1, 1,
@@ -976,7 +985,7 @@ static void skiplist_functions_accept_counts_at_the_limit(void) {
   CHECK_EQ_INT(run_for_owner(db, "select evolu_skiplist_insert(?, "
                                  "x'02000000000000000000000000000000', 2)"),
                SQLITE_ROW);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
 
   // {3} at level 2, counting 2^48 - 1, gains {2}.
   db = open_broken_storage(
@@ -985,7 +994,7 @@ static void skiplist_functions_accept_counts_at_the_limit(void) {
   CHECK_EQ_INT(run_for_owner(db, "select evolu_skiplist_insert(?, "
                                  "x'02000000000000000000000000000000', 1)"),
                SQLITE_ROW);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
 
   // Four records take 112 bytes, as many as the limit.
   db = open_storage();
@@ -999,7 +1008,7 @@ static void skiplist_functions_accept_counts_at_the_limit(void) {
   sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 112);
   int rc = sqlite3_step(statement);
   sqlite3_finalize(statement);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
   CHECK_EQ_INT(rc, SQLITE_ROW);
 }
 
@@ -1010,6 +1019,8 @@ static void skiplist_functions_accept_counts_at_the_limit(void) {
  */
 static int run_allowing(sqlite3 *db, const char *sql, int allowed,
                         int *is_exhausted) {
+  // So the call prepares its statements, which can fail too.
+  evolu_skiplist_finalize(db);
   int rc = sqlite3_exec(db, "begin", NULL, NULL, NULL);
   if (rc != SQLITE_OK) return rc;
   static const uint8_t owner[16] = {0};
@@ -1029,6 +1040,42 @@ static int run_allowing(sqlite3 *db, const char *sql, int allowed,
   return rc;
 }
 
+/* Owner 0's timestamps for the tests of failing allocations. */
+static const struct {
+  uint8_t first;
+  int level;
+} nomem_timestamps[] = {{1, 1}, {3, 3}, {5, 1}, {7, 2}, {9, 1}};
+
+/* Each function's call for owner 0, which those tests run. */
+static const char *const nomem_calls[] = {
+    "evolu_skiplist_size(?1)",
+    "evolu_skiplist_timestamp_at(?1, 3)",
+    "evolu_skiplist_fingerprints(?1, x'00000000000000020000000000000004')",
+    "evolu_skiplist_lower_bound(?1, x'06000000000000000000000000000000')",
+    "evolu_skiplist_insert(?1, x'06000000000000000000000000000000', 3)",
+    // Without a walk, so its first statement after exists finds the nodes
+    // after it.
+    "evolu_skiplist_insert(?1, x'06000000000000000000000000000000', 1)",
+};
+
+/* Opens a storage with owner 0's nomem_timestamps. */
+static sqlite3 *open_nomem_storage(void) {
+  sqlite3 *db = open_storage();
+  uint8_t owner[16] = {0};
+  for (size_t i = 0;
+       db != NULL && i < sizeof nomem_timestamps / sizeof nomem_timestamps[0];
+       i++) {
+    uint8_t t[16] = {nomem_timestamps[i].first};
+    long long inserted;
+    if (insert_timestamp(db, owner, t, nomem_timestamps[i].level, &inserted) !=
+        SQLITE_OK) {
+      close_storage(db);
+      return NULL;
+    }
+  }
+  return db;
+}
+
 /*
  * Each function, run with SQLite's allocations failing from the n-th on for
  * every n until one runs whole, fails with SQLITE_NOMEM wherever it can't
@@ -1036,32 +1083,12 @@ static int run_allowing(sqlite3 *db, const char *sql, int allowed,
  * what it gives with memory.
  */
 static void skiplist_functions_fail_with_nomem_when_sqlite_cant_allocate(void) {
-  // Owner 0's timestamps.
-  static const struct {
-    uint8_t first;
-    int level;
-  } timestamps[] = {{1, 1}, {3, 3}, {5, 1}, {7, 2}, {9, 1}};
-  static const char *const calls[] = {
-      "select evolu_skiplist_size(?1)",
-      "select evolu_skiplist_timestamp_at(?1, 3)",
-      "select evolu_skiplist_fingerprints(?1, "
-      "x'00000000000000020000000000000004')",
-      "select evolu_skiplist_lower_bound(?1, "
-      "x'06000000000000000000000000000000')",
-      "select evolu_skiplist_insert(?1, x'06000000000000000000000000000000', "
-      "3)",
-  };
-  sqlite3 *db = open_storage();
+  sqlite3 *db = open_nomem_storage();
   CHECK(db != NULL);
   uint8_t owner[16] = {0};
-  for (size_t i = 0; i < sizeof timestamps / sizeof timestamps[0]; i++) {
-    uint8_t t[16] = {timestamps[i].first};
-    long long inserted;
-    CHECK_EQ_INT(insert_timestamp(db, owner, t, timestamps[i].level, &inserted),
-                 SQLITE_OK);
-  }
-  for (size_t i = 0; i < sizeof calls / sizeof calls[0]; i++) {
-    const char *sql = calls[i];
+  for (size_t i = 0; i < sizeof nomem_calls / sizeof nomem_calls[0]; i++) {
+    char sql[128];
+    snprintf(sql, sizeof sql, "select %s", nomem_calls[i]);
     int is_exhausted;
     int expected = run_allowing(db, sql, -1, &is_exhausted);
     int failed = 0;
@@ -1083,20 +1110,124 @@ static void skiplist_functions_fail_with_nomem_when_sqlite_cant_allocate(void) {
                                "ownerId = ?",
                                owner, 0),
                5);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
 }
 
-static void skiplist_register_fails_with_nomem_when_sqlite_cant_allocate(void) {
+/* Owner 0's rows of evolu_timestamp as text, freed with sqlite3_free. */
+static char *timestamp_rows(sqlite3 *db) {
+  sqlite3_stmt *statement = NULL;
+  char *rows = NULL;
+  if (sqlite3_prepare_v2(db,
+                         "select group_concat(hex(t) || ' ' || h1 || ' ' || h2 "
+                         "|| ' ' || c || ' ' || l, ',' order by t) from "
+                         "evolu_timestamp",
+                         -1, &statement, NULL) == SQLITE_OK &&
+      sqlite3_step(statement) == SQLITE_ROW)
+    rows = sqlite3_mprintf("%s", sqlite3_column_text(statement, 0));
+  sqlite3_finalize(statement);
+  return rows;
+}
+
+/*
+ * Runs sql with ?1 bound to owner 0 in a transaction, committed when it
+ * succeeds and rolled back when it fails, as Storage.ts's callers do, with
+ * only the n-th of SQLite's allocations failing, or none at -1. Returns the
+ * step's result, sets *result to its first column as text and *rows to the
+ * rows after it, each freed with sqlite3_free, and sets *has_failed when an
+ * allocation failed.
+ */
+static int run_failing_one(sqlite3 *db, const char *sql, int n, char **result,
+                           char **rows, int *has_failed) {
+  static const uint8_t owner[16] = {0};
+  *result = NULL;
+  *has_failed = 0;
+  int rc = sqlite3_exec(db, "begin", NULL, NULL, NULL);
+  if (rc == SQLITE_OK) {
+    sqlite3_stmt *statement = NULL;
+    test_sqlite_allocations_until_one_fails = n;
+    rc = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
+    if (rc == SQLITE_OK) {
+      sqlite3_bind_blob(statement, 1, owner, sizeof owner, SQLITE_STATIC);
+      rc = sqlite3_step(statement);
+    }
+    *has_failed = test_sqlite_allocations_until_one_fails == -2;
+    test_sqlite_allocations_until_one_fails = -1;
+    if (rc == SQLITE_ROW)
+      *result = sqlite3_mprintf("%s", sqlite3_column_text(statement, 0));
+    sqlite3_finalize(statement);
+    // SQLite can roll a transaction back itself when it runs out of memory.
+    if (!sqlite3_get_autocommit(db))
+      sqlite3_exec(db, rc == SQLITE_ROW ? "commit" : "rollback", NULL, NULL,
+                   NULL);
+  }
+  *rows = timestamp_rows(db);
+  return rc;
+}
+
+/*
+ * Each function, run on a new connection with only the n-th of SQLite's
+ * allocations failing, for every n until one runs whole, fails with
+ * SQLITE_NOMEM and leaves every row as it was, or gives what it gives with
+ * memory, where SQLite recovers. That's why the functions don't check what
+ * sqlite3_bind_* returns: a copy of a bound value that SQLite can't allocate
+ * sets db->mallocFailed, which sqlite3OomClear keeps while the caller's
+ * statement runs, so the next sqlite3_step fails with SQLITE_NOMEM before a
+ * statement runs with that value NULL.
+ */
+static void skiplist_functions_fail_with_nomem_when_one_allocation_fails(void) {
+  for (size_t i = 0; i < sizeof nomem_calls / sizeof nomem_calls[0]; i++) {
+    char sql[128];
+    snprintf(sql, sizeof sql, "select quote(%s)", nomem_calls[i]);
+    sqlite3 *db = open_nomem_storage();
+    CHECK(db != NULL);
+    char *before = timestamp_rows(db);
+    char *expected;
+    char *expected_rows;
+    int has_failed;
+    int expected_rc =
+        run_failing_one(db, sql, -1, &expected, &expected_rows, &has_failed);
+    CHECK_EQ_INT(close_storage(db), SQLITE_OK);
+    int wrong = expected_rc != SQLITE_ROW;
+    int nomem = 0;
+    for (int n = 0; !wrong; n++) {
+      db = open_nomem_storage();
+      CHECK(db != NULL);
+      char *result;
+      char *rows;
+      int rc = run_failing_one(db, sql, n, &result, &rows, &has_failed);
+      CHECK_EQ_INT(close_storage(db), SQLITE_OK);
+      if (rc == SQLITE_NOMEM) {
+        nomem++;
+        wrong = strcmp(rows, before) != 0;
+      } else
+        wrong = rc != SQLITE_ROW || strcmp(result, expected) != 0 ||
+                strcmp(rows, expected_rows) != 0;
+      sqlite3_free(result);
+      sqlite3_free(rows);
+      if (!has_failed) break;
+    }
+    sqlite3_free(before);
+    sqlite3_free(expected);
+    sqlite3_free(expected_rows);
+    if (wrong || nomem == 0) {
+      test_fail(__FILE__, __LINE__, sql);
+      return;
+    }
+  }
+}
+
+static void
+skiplist_core_register_fails_with_nomem_when_sqlite_cant_allocate(void) {
   int failed = 0;
   for (int allowed = 0;; allowed++) {
     sqlite3 *db = NULL;
     CHECK_EQ_INT(sqlite3_open_v2(":memory:", &db, SQLITE_OPEN_READWRITE, NULL),
                  SQLITE_OK);
     test_sqlite_allocations_left = allowed;
-    int rc = evolu_skiplist_register(db);
+    int rc = evolu_core_register(db);
     int is_exhausted = test_sqlite_allocations_left == -2;
     test_sqlite_allocations_left = -1;
-    CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+    CHECK_EQ_INT(close_storage(db), SQLITE_OK);
     if (!is_exhausted) {
       CHECK_EQ_INT(rc, SQLITE_OK);
       break;
@@ -1134,12 +1265,349 @@ static void skiplist_functions_fail_with_corrupt_on_levels_other_than_integers(
              "%s",
              rows[i]);
     int rc = sqlite3_exec(db, sql, NULL, NULL, NULL);
-    if (rc == SQLITE_OK) rc = evolu_skiplist_register(db);
+    if (rc == SQLITE_OK) rc = evolu_core_register(db);
     if (rc == SQLITE_OK)
       rc = run_for_owner(db, "select evolu_skiplist_size(?)");
-    CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+    CHECK_EQ_INT(close_storage(db), SQLITE_OK);
     CHECK_EQ_INT(rc, SQLITE_CORRUPT);
   }
+}
+
+/* The connection's statements, at most 16, and their count. */
+static int statements_of(sqlite3 *db, sqlite3_stmt *statements[16]) {
+  int count = 0;
+  for (sqlite3_stmt *statement = sqlite3_next_stmt(db, NULL);
+       statement != NULL && count < 16;
+       statement = sqlite3_next_stmt(db, statement))
+    statements[count++] = statement;
+  return count;
+}
+
+/* Every read function's call, for owner 0, and an insert. */
+static const char *const kept_calls[] = {
+    "select evolu_skiplist_size(?)",
+    "select evolu_skiplist_timestamp_at(?, 1)",
+    "select evolu_skiplist_fingerprints(?, x'0000000000000001')",
+    "select evolu_skiplist_lower_bound(?, x'02000000000000000000000000000000')",
+    "select evolu_skiplist_insert(?, x'02000000000000000000000000000000', 2)",
+};
+
+/* Runs kept_calls on owner 0's {1} at level 2 and {3} at level 1. */
+static int run_kept_calls(sqlite3 *db) {
+  int ok = 1;
+  for (size_t i = 0; i < sizeof kept_calls / sizeof kept_calls[0]; i++)
+    ok &= run_for_owner(db, kept_calls[i]) == SQLITE_ROW;
+  return ok;
+}
+
+static void skiplist_connection_keeps_its_statements_until_finalized(void) {
+  sqlite3 *db = open_broken_storage(2, 1, "select 1");
+  CHECK(db != NULL);
+  CHECK(run_kept_calls(db));
+  sqlite3_stmt *kept[16];
+  int count = statements_of(db, kept);
+  CHECK(count > 0);
+  // Reset, so none keeps a read transaction or reads a call's bindings.
+  for (int i = 0; i < count; i++) CHECK(!sqlite3_stmt_busy(kept[i]));
+  // The calls run on the same statements again, which SQLite never prepares
+  // again, as it would after a rebinding of a value its plan depends on.
+  CHECK(run_kept_calls(db));
+  sqlite3_stmt *again[16];
+  CHECK_EQ_INT(statements_of(db, again), count);
+  CHECK(memcmp(again, kept, sizeof *kept * (size_t)count) == 0);
+  for (int i = 0; i < count; i++)
+    CHECK_EQ_INT(
+        sqlite3_stmt_status(again[i], SQLITE_STMTSTATUS_REPREPARE, 0), 0);
+  // sqlite3_close refuses a connection with them.
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_BUSY);
+  evolu_skiplist_finalize(db);
+  CHECK(sqlite3_next_stmt(db, NULL) == NULL);
+  // Again, it finds nothing to finalize.
+  evolu_skiplist_finalize(db);
+  // A later call prepares them again.
+  CHECK(run_kept_calls(db));
+  CHECK(sqlite3_next_stmt(db, NULL) != NULL);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
+  // A connection without the functions has none to finalize.
+  CHECK_EQ_INT(sqlite3_open_v2(":memory:", &db, SQLITE_OPEN_READWRITE, NULL),
+               SQLITE_OK);
+  evolu_skiplist_finalize(db);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+}
+
+/* SQLite's allocations not yet freed, which the hooks count. */
+static long allocations_live;
+
+static void count_malloc(void *p, int size) {
+  (void)p;
+  (void)size;
+  allocations_live++;
+}
+
+static void count_free(void *p, int size) {
+  (void)p;
+  (void)size;
+  allocations_live--;
+}
+
+/*
+ * sqlite3_close_v2 finalizes the statements the functions keep, through the
+ * destructor of the connection's client data, which it runs while a
+ * statement of the caller's still keeps the connection open as a zombie, so
+ * finalizing that statement then closes it, freeing all its memory.
+ */
+static void skiplist_close_v2_finalizes_the_kept_statements(void) {
+  allocations_live = 0;
+  test_sqlite_malloc_hook = count_malloc;
+  test_sqlite_free_hook = count_free;
+  sqlite3 *db = open_broken_storage(2, 1, "select 1");
+  sqlite3_stmt *callers = NULL;
+  int ran = db != NULL && run_kept_calls(db) &&
+            sqlite3_next_stmt(db, NULL) != NULL &&
+            sqlite3_prepare_v2(db, "select t from evolu_timestamp", -1,
+                               &callers, NULL) == SQLITE_OK &&
+            sqlite3_step(callers) == SQLITE_ROW;
+  int closed = sqlite3_close_v2(db);
+  int finalized = sqlite3_finalize(callers);
+  test_sqlite_malloc_hook = NULL;
+  test_sqlite_free_hook = NULL;
+  CHECK(ran);
+  CHECK_EQ_INT(closed, SQLITE_OK);
+  CHECK_EQ_INT(finalized, SQLITE_OK);
+  CHECK_EQ_INT(allocations_live, 0);
+}
+
+/*
+ * Opens owner 0's {1} at level 2 and {3} at level 1, runs kept_calls, and
+ * prepares the caller's statement sql, with ?1 bound to owner 0, counting
+ * SQLite's allocations from before the open.
+ */
+static sqlite3 *open_counted_storage(const char *sql, sqlite3_stmt **callers) {
+  allocations_live = 0;
+  test_sqlite_malloc_hook = count_malloc;
+  test_sqlite_free_hook = count_free;
+  static const uint8_t owner[16] = {0};
+  *callers = NULL;
+  sqlite3 *db = open_broken_storage(2, 1, "select 1");
+  if (db != NULL && run_kept_calls(db) &&
+      sqlite3_prepare_v2(db, sql, -1, callers, NULL) == SQLITE_OK)
+    sqlite3_bind_blob(*callers, 1, owner, sizeof owner, SQLITE_STATIC);
+  return db;
+}
+
+/*
+ * The functions stay registered on the zombie that sqlite3_close_v2 leaves
+ * while a statement of the caller's is open, so stepping that statement calls
+ * one after the close finalized the kept statements. The call uses no memory
+ * the close freed, SQLite refuses its statements on a closed connection, and
+ * finalizing the statement closes the zombie, freeing all its memory.
+ */
+static void skiplist_a_call_after_close_v2_uses_no_freed_memory(void) {
+  sqlite3_stmt *callers;
+  sqlite3 *db =
+      open_counted_storage("select evolu_skiplist_size(?1)", &callers);
+  int closed = sqlite3_close_v2(db);
+  int stepped = sqlite3_step(callers);
+  int finalized = sqlite3_finalize(callers);
+  test_sqlite_malloc_hook = NULL;
+  test_sqlite_free_hook = NULL;
+  CHECK(callers != NULL);
+  CHECK_EQ_INT(closed, SQLITE_OK);
+  CHECK_EQ_INT(stepped, SQLITE_MISUSE);
+  CHECK_EQ_INT(finalized, SQLITE_MISUSE);
+  CHECK_EQ_INT(allocations_live, 0);
+}
+
+/* An application's function, which replaces a skiplist function. */
+static void return_null(sqlite3_context *context, int argc,
+                        sqlite3_value **argv) {
+  (void)argc;
+  (void)argv;
+  sqlite3_result_null(context);
+}
+
+/*
+ * The cache lives while the connection or a registration of a function can
+ * reach it: registering again, and an application's functions that replace
+ * all five, release the registrations they replace, and the cache goes with
+ * the last of them or the connection, whichever goes last.
+ */
+static void skiplist_the_cache_goes_with_its_last_reference(void) {
+  static const struct {
+    const char *name;
+    int argc;
+  } functions[] = {
+      {"evolu_skiplist_insert", 3},       {"evolu_skiplist_size", 1},
+      {"evolu_skiplist_fingerprints", 2}, {"evolu_skiplist_lower_bound", 2},
+      {"evolu_skiplist_timestamp_at", 2},
+  };
+  for (int replaces = 0; replaces < 2; replaces++) {
+    allocations_live = 0;
+    test_sqlite_malloc_hook = count_malloc;
+    test_sqlite_free_hook = count_free;
+    sqlite3 *db = open_broken_storage(2, 1, "select 1");
+    int ran = db != NULL && run_kept_calls(db) &&
+              evolu_core_register(db) == SQLITE_OK && run_kept_calls(db);
+    for (size_t i = 0;
+         replaces && ran && i < sizeof functions / sizeof functions[0]; i++)
+      ran = sqlite3_create_function_v2(db, functions[i].name, functions[i].argc,
+                                       SQLITE_UTF8, NULL, return_null, NULL,
+                                       NULL, NULL) == SQLITE_OK;
+    evolu_skiplist_finalize(db);
+    int closed = sqlite3_close(db);
+    test_sqlite_malloc_hook = NULL;
+    test_sqlite_free_hook = NULL;
+    CHECK(ran);
+    CHECK_EQ_INT(closed, SQLITE_OK);
+    CHECK_EQ_INT(allocations_live, 0);
+  }
+}
+
+static void skiplist_registering_again_keeps_the_statements(void) {
+  sqlite3 *db = open_broken_storage(2, 1, "select 1");
+  CHECK(db != NULL);
+  CHECK(run_kept_calls(db));
+  sqlite3_stmt *kept[16];
+  int count = statements_of(db, kept);
+  CHECK_EQ_INT(evolu_core_register(db), SQLITE_OK);
+  CHECK(run_kept_calls(db));
+  sqlite3_stmt *again[16];
+  CHECK_EQ_INT(statements_of(db, again), count);
+  CHECK(memcmp(again, kept, sizeof *kept * (size_t)count) == 0);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
+}
+
+/* The size of owner 0, which the application's function reads, or -2. */
+static long long nested_size;
+
+/* An application's function that calls a skiplist function. */
+static void read_size(sqlite3_context *context, int argc,
+                      sqlite3_value **argv) {
+  (void)argc;
+  (void)argv;
+  static const uint8_t owner[16] = {0};
+  nested_size = query_owner_int(sqlite3_context_db_handle(context),
+                                "select evolu_skiplist_size(?)", owner, 0);
+  sqlite3_result_null(context);
+}
+
+/*
+ * An insert updates {3} after it, which fires a trigger that calls an
+ * application's function, which reads the size while the insert's statements
+ * are in use, so it reads with statements of its own.
+ */
+static void skiplist_a_call_inside_another_gets_statements_of_its_own(void) {
+  sqlite3 *db = open_broken_storage(1, 2, "select 1");
+  CHECK(db != NULL);
+  CHECK_EQ_INT(sqlite3_create_function_v2(db, "read_size", 0, SQLITE_UTF8,
+                                          NULL, read_size, NULL, NULL, NULL),
+               SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_exec(db,
+                            "create trigger read before update on "
+                            "evolu_timestamp begin select read_size(); end",
+                            NULL, NULL, NULL),
+               SQLITE_OK);
+  sqlite3_stmt *kept[16];
+  CHECK(run_kept_calls(db));
+  int count = statements_of(db, kept);
+  nested_size = -2;
+  uint8_t owner[16] = {0};
+  uint8_t t[16] = {2};
+  long long inserted;
+  CHECK_EQ_INT(insert_timestamp(db, owner, t, 1, &inserted), SQLITE_OK);
+  CHECK_EQ_INT(inserted, 1);
+  // Before {3} counts {2}.
+  CHECK_EQ_INT(nested_size, 2);
+  CHECK_EQ_INT(query_owner_int(db, "select evolu_skiplist_size(?)", owner, 0),
+               3);
+  // The nested call's statements are gone.
+  sqlite3_stmt *after[16];
+  CHECK_EQ_INT(statements_of(db, after), count);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
+}
+
+/* Counts the starts of statements that walk a level. */
+static int count_level_walks(unsigned type, void *context, void *statement,
+                             void *sql) {
+  (void)type;
+  (void)sql;
+  const char *text = sqlite3_sql(statement);
+  if (text != NULL && strstr(text, "l = ?2") != NULL) (*(int *)context)++;
+  return 0;
+}
+
+/* A level is walked by stepping one statement across its nodes. */
+static void skiplist_walks_a_level_with_one_statement(void) {
+  sqlite3 *db = open_storage();
+  CHECK(db != NULL);
+  uint8_t owner[16] = {0};
+  for (int i = 0; i < 100; i++) {
+    uint8_t t[16] = {0};
+    t[15] = (uint8_t)(i + 1);
+    long long inserted;
+    CHECK_EQ_INT(insert_timestamp(db, owner, t, 1, &inserted), SQLITE_OK);
+  }
+  int walks = 0;
+  CHECK_EQ_INT(
+      sqlite3_trace_v2(db, SQLITE_TRACE_STMT, count_level_walks, &walks),
+      SQLITE_OK);
+  CHECK_EQ_INT(query_owner_int(db, "select evolu_skiplist_size(?)", owner, 0),
+               100);
+  sqlite3_trace_v2(db, 0, NULL, NULL);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
+  CHECK_EQ_INT(walks, 1);
+}
+
+/*
+ * The functions' statements read the index or the primary key, never a whole
+ * table, on an owner with timestamps at many levels and another owner's beside
+ * them.
+ */
+static void skiplist_functions_scan_no_table(void) {
+  sqlite3 *db = open_storage();
+  CHECK(db != NULL);
+  random_state = 7;
+  for (int o = 0; o < 2; o++)
+    for (int i = 0; i < 200; i++) {
+      uint8_t owner[16] = {(uint8_t)o};
+      // Around kept_calls' {2}, which they insert between them.
+      uint8_t t[16] = {(uint8_t)(i / 50), (uint8_t)(i % 50 + 1)};
+      long long inserted;
+      CHECK_EQ_INT(
+          insert_timestamp(db, owner, t, random_level(), &inserted),
+          SQLITE_OK);
+    }
+  CHECK(run_kept_calls(db));
+  sqlite3_stmt *kept[16];
+  int count = statements_of(db, kept);
+  CHECK(count > 0);
+  for (int i = 0; i < count; i++)
+    CHECK_EQ_INT(
+        sqlite3_stmt_status(kept[i], SQLITE_STMTSTATUS_FULLSCAN_STEP, 0), 0);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
+}
+
+/*
+ * A plain connection that evolu_core_register sets up, as open_storage opens
+ * it with sqlite3_open_v2, is defensive, so its SQL can't write the schema,
+ * even with PRAGMA writable_schema on, which it ignores.
+ */
+static void skiplist_core_register_makes_a_plain_connection_defensive(void) {
+  sqlite3 *db = open_storage();
+  CHECK(db != NULL);
+  int is_defensive = -1;
+  CHECK_EQ_INT(
+      sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, -1, &is_defensive),
+      SQLITE_OK);
+  CHECK_EQ_INT(is_defensive, 1);
+  char *message = error_of(db,
+                           "pragma writable_schema = on; update sqlite_schema "
+                           "set sql = sql where name = 'evolu_timestamp'");
+  int is_refused =
+      message != NULL && strstr(message, "may not be modified") != NULL;
+  sqlite3_free(message);
+  CHECK_EQ_INT(close_storage(db), SQLITE_OK);
+  CHECK(is_refused);
 }
 
 void skiplist_suite(void) {
@@ -1157,6 +1625,16 @@ void skiplist_suite(void) {
   RUN(skiplist_functions_accept_counts_at_the_limit);
   RUN(skiplist_reads_outside_a_transaction_read_one_snapshot);
   RUN(skiplist_functions_fail_with_nomem_when_sqlite_cant_allocate);
-  RUN(skiplist_register_fails_with_nomem_when_sqlite_cant_allocate);
+  RUN(skiplist_functions_fail_with_nomem_when_one_allocation_fails);
+  RUN(skiplist_core_register_fails_with_nomem_when_sqlite_cant_allocate);
   RUN(skiplist_functions_fail_with_corrupt_on_levels_other_than_integers);
+  RUN(skiplist_connection_keeps_its_statements_until_finalized);
+  RUN(skiplist_close_v2_finalizes_the_kept_statements);
+  RUN(skiplist_a_call_after_close_v2_uses_no_freed_memory);
+  RUN(skiplist_the_cache_goes_with_its_last_reference);
+  RUN(skiplist_registering_again_keeps_the_statements);
+  RUN(skiplist_a_call_inside_another_gets_statements_of_its_own);
+  RUN(skiplist_walks_a_level_with_one_statement);
+  RUN(skiplist_functions_scan_no_table);
+  RUN(skiplist_core_register_makes_a_plain_connection_defensive);
 }

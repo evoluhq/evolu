@@ -1083,7 +1083,7 @@ int evolu_codec_open(const char *filename, sqlite3 **db, const char *vfs,
                            vfs);
   pending = previous;
   if (rc != SQLITE_OK) return rc;
-  rc = evolu_skiplist_register(*db);
+  rc = evolu_core_register(*db);
   if (rc != SQLITE_OK) return rc;
   // SQLite ignores ATTACH's KEY clause, so a database written through ATTACH
   // would be stored in plaintext. VACUUM and VACUUM INTO still write. It

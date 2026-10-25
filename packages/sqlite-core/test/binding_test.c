@@ -588,6 +588,81 @@ static void binding_opens_plain_and_encrypted_files(void) {
   CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
 }
 
+/*
+ * A memory database and a file whose skiplist functions ran, so the functions
+ * keep statements, and the adapter left one of its own running: the close
+ * finalizes each once and releases the file.
+ */
+static void binding_closes_a_database_whose_skiplist_functions_ran(void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "skiplist.db");
+  for (int is_file = 0; is_file <= 1; is_file++) {
+    evolu_database *database = NULL;
+    evolu_database_error error;
+    CHECK_EQ_INT(is_file ? open_plain(path, &database, &error)
+                         : evolu_database_open_memory(&database, &error),
+                 SQLITE_OK);
+    sqlite3 *db = evolu_database_connection(database);
+    CHECK_EQ_INT(
+        sqlite3_exec(db,
+                     "create table evolu_timestamp (ownerId blob not null, t "
+                     "blob not null, h1 integer, h2 integer, c integer, l "
+                     "integer not null, primary key (ownerId, t)) strict;"
+                     "create index evolu_timestamp_index on evolu_timestamp "
+                     "(ownerId, l, t, h1, h2, c); begin; select "
+                     "evolu_skiplist_insert(zeroblob(16), zeroblob(16), 1); "
+                     "commit",
+                     NULL, NULL, NULL),
+        SQLITE_OK);
+    CHECK_EQ_INT(query_int(db, "select evolu_skiplist_size(zeroblob(16))"), 1);
+    sqlite3_stmt *running = NULL;
+    CHECK_EQ_INT(sqlite3_prepare_v2(db, "select 1", -1, &running, NULL),
+                 SQLITE_OK);
+    CHECK_EQ_INT(sqlite3_step(running), SQLITE_ROW);
+    CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+  }
+  int is_open = 1;
+  evolu_database_error error;
+  CHECK_EQ_INT(evolu_database_is_file_open(path, strlen(path), &is_open,
+                                           &error),
+               SQLITE_OK);
+  CHECK(!is_open);
+}
+
+/*
+ * Memory, plain and encrypted databases are defensive, so SQL can't write their
+ * schema, even with PRAGMA writable_schema on, which they ignore.
+ */
+static void binding_databases_are_defensive(void) {
+  CHECK(set_up());
+  char plain[512];
+  char encrypted[512];
+  path_of(plain, "defensive-plain.db");
+  path_of(encrypted, "defensive-encrypted.db");
+  for (int kind = 0; kind < 3; kind++) {
+    evolu_database *database = NULL;
+    evolu_database_error error;
+    CHECK_EQ_INT(kind == 0   ? evolu_database_open_memory(&database, &error)
+                 : kind == 1 ? open_plain(plain, &database, &error)
+                             : open_encrypted(encrypted, test_key, &database,
+                                              &error),
+                 SQLITE_OK);
+    sqlite3 *db = evolu_database_connection(database);
+    char *message = NULL;
+    int rc = sqlite3_exec(db,
+                          "create table t (a); pragma writable_schema = on; "
+                          "update sqlite_schema set sql = 'create table t (b)' "
+                          "where name = 't'",
+                          NULL, NULL, &message);
+    int is_refused = rc == SQLITE_ERROR && message != NULL &&
+                     strstr(message, "may not be modified") != NULL;
+    sqlite3_free(message);
+    CHECK_EQ_INT(evolu_database_close(database), SQLITE_OK);
+    CHECK(is_refused);
+  }
+}
+
 static void binding_encrypted_open_refuses_a_null_key(void) {
   CHECK(set_up());
   char path[512];
@@ -2477,6 +2552,8 @@ void binding_suite(void) {
   RUN(binding_check_build_fails_when_another_vfs_has_the_name);
   RUN(binding_opens_memory_databases_each_its_own_with_core_functions);
   RUN(binding_opens_plain_and_encrypted_files);
+  RUN(binding_closes_a_database_whose_skiplist_functions_ran);
+  RUN(binding_databases_are_defensive);
   RUN(binding_encrypted_open_refuses_a_null_key);
   RUN(binding_wrong_key_and_wrong_mode_fail_as_not_a_database);
   RUN(binding_opens_a_file_in_sqlciphers_layout);

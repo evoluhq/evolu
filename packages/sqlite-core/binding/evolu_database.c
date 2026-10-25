@@ -6,6 +6,7 @@
 
 #include "evolu_codec.h"
 #include "evolu_crypto.h"
+#include "evolu_skiplist.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -357,6 +358,9 @@ sqlite3 *evolu_database_connection(const evolu_database *database) {
 }
 
 int evolu_database_close(evolu_database *database) {
+  // Before the others, which would finalize the statements the skiplist
+  // functions keep behind their back.
+  evolu_skiplist_finalize(database->db);
   sqlite3_stmt *statement;
   while ((statement = sqlite3_next_stmt(database->db, NULL)) != NULL)
     sqlite3_finalize(statement);

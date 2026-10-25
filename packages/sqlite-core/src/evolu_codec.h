@@ -20,8 +20,8 @@
  *   end of each page, which takes effect for a new database, and turns
  *   secure_delete on. Every open then reads sqlite_schema, so a hot journal is
  *   rolled back and a wrong key or a file that isn't a database fails the open.
- * - Every connection evolu_codec_open opens has the SQL functions of
- *   evolu_skiplist.h.
+ * - Every connection evolu_codec_open opens is set up by evolu_core_register
+ *   of evolu_skiplist.h, so it's defensive and has Evolu's SQL functions.
  * - Only a main database opened by evolu_codec_open is keyed. Its connection
  *   attaches a database read-only and creates none, since SQLite ignores the
  *   KEY clause of ATTACH. The output of VACUUM INTO is a plaintext file of its

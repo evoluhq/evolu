@@ -43,8 +43,23 @@
  * until it returns, so its statements read one snapshot. evolu_core_version is
  * innocuous.
  *
+ * A connection keeps the statements the functions run, each prepared by the
+ * first call that needs it and reset when a call returns, until
+ * evolu_skiplist_finalize finalizes them. A level is walked by stepping one
+ * statement across its nodes. sqlite3_close refuses a connection that still
+ * keeps them with SQLITE_BUSY, and sqlite3_close_v2 finalizes them through the
+ * connection's client data, whose destructor it runs before it waits for the
+ * caller's statements. A function that one of those statements calls on the
+ * closed connection then fails with SQLITE_MISUSE, since SQLite refuses to
+ * prepare statements there. A binding that can no longer run C, as
+ * @evolu/sqlite-wasm after a trap, leaves them with the connection, which it
+ * discards. A call that another call runs, as an application's function that a
+ * trigger on evolu_timestamp calls can, prepares statements of its own and
+ * finalizes them when it returns.
+ *
  * A published function never changes meaning: a change gets a new name, such
- * as a _v2 suffix, and a new EVOLU_CORE_VERSION, which a caller checks.
+ * as a _v2 suffix, so a caller of the old name fails with "no such function"
+ * rather than getting another meaning, and a new EVOLU_CORE_VERSION.
  */
 #ifndef EVOLU_SKIPLIST_H
 #define EVOLU_SKIPLIST_H
@@ -58,8 +73,27 @@ extern "C" {
 /* The version of the functions this core registers. */
 #define EVOLU_CORE_VERSION 1
 
-/* Registers the functions on a connection. */
-int evolu_skiplist_register(sqlite3 *db);
+/*
+ * Sets a connection up for Evolu, which every Evolu connection goes through:
+ * evolu_codec_open calls it, and a binding calls it on a connection it opens
+ * otherwise, as with sqlite3_open_v2 on a plain file or ":memory:". It makes
+ * the connection defensive (SQLITE_DBCONFIG_DEFENSIVE), so its SQL can't
+ * corrupt the database: it ignores PRAGMA writable_schema = ON, journal_mode =
+ * OFF and schema_version = N. And it registers the skiplist functions and
+ * evolu_core_version. Calling it again keeps the connection's statements.
+ */
+int evolu_core_register(sqlite3 *db);
+
+/*
+ * Finalizes the statements the functions keep on a connection, which a later
+ * call prepares again, leaving none, so calling it again, or the close that
+ * follows, finds nothing to finalize. It does nothing on a connection without
+ * the functions. A binding calls it before sqlite3_close. Code that finalizes
+ * every statement of a connection through sqlite3_next_stmt calls it first,
+ * since that would finalize these behind the functions' back, and the close
+ * would then finalize them again.
+ */
+void evolu_skiplist_finalize(sqlite3 *db);
 
 #ifdef __cplusplus
 }

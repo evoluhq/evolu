@@ -448,7 +448,7 @@ export const SQLITE_TRANSIENT = -1;
  * The function-table index of `sqlite3_free` in this build. Passed as a
  * destructor of text or a blob, it hands the buffer to SQLite, which frees it.
  */
-export const SQLITE_WASM_DEALLOC = 31 as SqliteFunctionPtr;
+export const SQLITE_WASM_DEALLOC = 33 as SqliteFunctionPtr;
 
 /** The SQLite version of this build. */
 export const SQLITE_VERSION = "3.54.1";
@@ -800,4 +800,4 @@ export const sqlite3_index_constraint_usage_layout = {
  * binding's and shim's wasm type against the pinned build, and
  * `scripts/generate.mts --verify-build` checks a binary against the pins.
  */
-export const sqliteWasmBuildHash = 0xfda5b150;
+export const sqliteWasmBuildHash = 0x3832febc;

@@ -170,7 +170,8 @@ const coreExports = [
   "evolu_codec_register",
   "evolu_codec_open",
   "evolu_codec_take_failure",
-  "evolu_skiplist_register",
+  "evolu_core_register",
+  "evolu_skiplist_finalize",
 ];
 
 /** Where in ext/wasm the core's objects are compiled. */

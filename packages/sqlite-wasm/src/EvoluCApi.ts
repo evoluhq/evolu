@@ -35,7 +35,8 @@ export interface EvoluCExports {
     db: SqliteDbPtr | NullPtr,
     failure: WasmPtr,
   ) => SqliteResultCode;
-  readonly evolu_skiplist_register: (db: SqliteDbPtr) => SqliteResultCode;
+  readonly evolu_core_register: (db: SqliteDbPtr) => SqliteResultCode;
+  readonly evolu_skiplist_finalize: (db: SqliteDbPtr) => void;
 }
 
 /**
@@ -64,8 +65,8 @@ export const evolu_codec_register = (
  * runs out, also when the open fails, and the caller closes it. Returns
  * SQLITE_MISUSE when a key was given but SQLite opened no database file through
  * a codec VFS, as for an in-memory database. Every connection it opens attaches
- * databases read-only and has the SQL functions that
- * {@link evolu_skiplist_register} registers.
+ * databases read-only and is set up by {@link evolu_core_register}, so it's
+ * defensive and has Evolu's SQL functions.
  *
  * Wasm type `i(iiiii)`, signature `["evolu_codec_open", "int", "string", "**",
  * "string", "*", "int"]` from Evolu's metadata.
@@ -92,14 +93,35 @@ export const evolu_codec_take_failure = (
     .evolu_codec_take_failure;
 
 /**
- * Registers the SQL functions of Evolu's timestamp skiplist, and
- * evolu_core_version, which returns the core's version, on a connection.
+ * Sets a connection up for Evolu, as {@link evolu_codec_open} does for every
+ * connection it opens: makes it defensive (SQLITE_DBCONFIG_DEFENSIVE), so it
+ * ignores PRAGMA writable_schema = ON, journal_mode = OFF and schema_version =
+ * N, and registers the SQL functions of Evolu's timestamp skiplist and
+ * evolu_core_version, which returns the core's version. Calling it again keeps
+ * the statements the functions keep.
  *
- * Wasm type `i(i)`, signature `["evolu_skiplist_register", "int", "sqlite3*"]`
- * from Evolu's metadata.
+ * Wasm type `i(i)`, signature `["evolu_core_register", "int", "sqlite3*"]` from
+ * Evolu's metadata.
  */
-export const evolu_skiplist_register = (
+export const evolu_core_register = (
   deps: SqliteWasmDep,
-): EvoluCExports["evolu_skiplist_register"] =>
+): EvoluCExports["evolu_core_register"] =>
   (deps.sqliteWasm.exports as SqliteCExports & EvoluCExports)
-    .evolu_skiplist_register;
+    .evolu_core_register;
+
+/**
+ * Finalizes the statements the skiplist functions keep on a connection, which a
+ * later call prepares again, and does nothing on a connection without them.
+ * sqlite3_close_v2 finalizes them too, but code that finalizes every statement
+ * of a connection through sqlite3_next_stmt calls it first, since that would
+ * finalize them behind the functions' back, and the close would then finalize
+ * them again.
+ *
+ * Wasm type `v(i)`, signature `["evolu_skiplist_finalize", undefined,
+ * "sqlite3*"]` from Evolu's metadata.
+ */
+export const evolu_skiplist_finalize = (
+  deps: SqliteWasmDep,
+): EvoluCExports["evolu_skiplist_finalize"] =>
+  (deps.sqliteWasm.exports as SqliteCExports & EvoluCExports)
+    .evolu_skiplist_finalize;

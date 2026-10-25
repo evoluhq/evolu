@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 int test_sqlite_allocations_left = -1;
+int test_sqlite_allocations_until_one_fails = -1;
 void (*test_sqlite_malloc_hook)(void *p, int size);
 void (*test_sqlite_realloc_hook)(void *p, int size);
 void (*test_sqlite_free_hook)(void *p, int size);
@@ -12,6 +13,11 @@ void (*test_sqlite_free_hook)(void *p, int size);
 static sqlite3_mem_methods default_methods;
 
 static int allocation_fails(void) {
+  if (test_sqlite_allocations_until_one_fails >= 0 &&
+      test_sqlite_allocations_until_one_fails-- == 0) {
+    test_sqlite_allocations_until_one_fails = -2;
+    return 1;
+  }
   if (test_sqlite_allocations_left > 0) {
     test_sqlite_allocations_left--;
     return 0;

@@ -2117,8 +2117,11 @@ static void codec_skiplist_reads_one_snapshot_while_another_connection_writes(
   long long size =
       query_int(reader, "select evolu_skiplist_size(zeroblob(16))");
   walk_writer = NULL;
-  sqlite3_close(writer);
-  sqlite3_close(reader);
+  evolu_skiplist_finalize(writer);
+  evolu_skiplist_finalize(reader);
+  int closed = sqlite3_close(writer) == SQLITE_OK &&
+               sqlite3_close(reader) == SQLITE_OK;
+  CHECK(closed);
   CHECK_EQ_INT(walk_writer_rc, SQLITE_BUSY);
   CHECK_EQ_INT(size, 3);
 }

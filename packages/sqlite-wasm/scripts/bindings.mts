@@ -1553,7 +1553,7 @@ export const evoluBindings: Readonly<Record<string, EvoluBinding>> = {
     result: "SqliteResultCode",
   },
   evolu_codec_open: {
-    doc: "Opens the database filename on the codec VFS named vfs, read-write, created when missing, with extended result codes. With a 32-byte key, the database is encrypted; with NULL, it's plaintext. Flags are 0, 1 to open SQLCipher 4's files too, or 2 to keep the journal checksums over the plaintext; both, any other bit, or a vfs that names no codec VFS return SQLITE_MISUSE with *db NULL. As with sqlite3_open_v2, *db is set to the connection, unless memory runs out, also when the open fails, and the caller closes it. Returns SQLITE_MISUSE when a key was given but SQLite opened no database file through a codec VFS, as for an in-memory database. Every connection it opens attaches databases read-only and has the SQL functions that evolu_skiplist_register registers.",
+    doc: "Opens the database filename on the codec VFS named vfs, read-write, created when missing, with extended result codes. With a 32-byte key, the database is encrypted; with NULL, it's plaintext. Flags are 0, 1 to open SQLCipher 4's files too, or 2 to keep the journal checksums over the plaintext; both, any other bit, or a vfs that names no codec VFS return SQLITE_MISUSE with *db NULL. As with sqlite3_open_v2, *db is set to the connection, unless memory runs out, also when the open fails, and the caller closes it. Returns SQLITE_MISUSE when a key was given but SQLite opened no database file through a codec VFS, as for an in-memory database. Every connection it opens attaches databases read-only and is set up by evolu_core_register, so it's defensive and has Evolu's SQL functions.",
     signature: ["int", "string", "**", "string", "*", "int"],
     params: ["filename", "db", "vfs", "key: WasmPtr | NullPtr", "flags"],
     result: "SqliteResultCode",
@@ -1564,10 +1564,15 @@ export const evoluBindings: Readonly<Record<string, EvoluBinding>> = {
     params: ["db: SqliteDbPtr | NullPtr", "failure"],
     result: "SqliteResultCode",
   },
-  evolu_skiplist_register: {
-    doc: "Registers the SQL functions of Evolu's timestamp skiplist, and evolu_core_version, which returns the core's version, on a connection.",
+  evolu_core_register: {
+    doc: "Sets a connection up for Evolu, as evolu_codec_open does for every connection it opens: makes it defensive (SQLITE_DBCONFIG_DEFENSIVE), so it ignores PRAGMA writable_schema = ON, journal_mode = OFF and schema_version = N, and registers the SQL functions of Evolu's timestamp skiplist and evolu_core_version, which returns the core's version. Calling it again keeps the statements the functions keep.",
     signature: ["int", "sqlite3*"],
     params: ["db"],
     result: "SqliteResultCode",
+  },
+  evolu_skiplist_finalize: {
+    doc: "Finalizes the statements the skiplist functions keep on a connection, which a later call prepares again, and does nothing on a connection without them. sqlite3_close_v2 finalizes them too, but code that finalizes every statement of a connection through sqlite3_next_stmt calls it first, since that would finalize them behind the functions' back, and the close would then finalize them again.",
+    signature: ["void", "sqlite3*"],
+    params: ["db"],
   },
 };

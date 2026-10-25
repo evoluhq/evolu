@@ -275,6 +275,31 @@ describe("addon", () => {
     assertEqual(selectRows(db, "select v from t"), [[1]]);
   });
 
+  it("opens a defensive connection with openCodec, which ignores PRAGMA writable_schema", (t) => {
+    const writeSchema = (path: string) => {
+      const db = addon.openCodec(path, null);
+      try {
+        addon.exec(db, "create table t (a); pragma writable_schema = on");
+        return assertThrowsInstanceOf(() => {
+          addon.exec(
+            db,
+            "update sqlite_schema set sql = 'create table t (b)' where name = 't'",
+          );
+        }, Error).message;
+      } finally {
+        addon.close(db);
+      }
+    };
+
+    assertEqual(
+      [":memory:", join(setupDirectory(t), "db.sqlite")].map(writeSchema),
+      [
+        "table sqlite_master may not be modified",
+        "table sqlite_master may not be modified",
+      ],
+    );
+  });
+
   it("maps a plain database once PRAGMA mmap_size asks for it", (t) => {
     const path = join(setupDirectory(t), "db.sqlite");
     const db = addon.open(path);

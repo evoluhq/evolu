@@ -252,10 +252,11 @@ int evolu_database_open_encrypted_file(
 sqlite3 *evolu_database_connection(const evolu_database *database);
 
 /*
- * Finalizes every statement SQLite holds for the connection and closes it,
- * which frees the database and releases its file's entry. When SQLite can't
- * close it, as with a backup unfinished, it returns that result, keeping the
- * connection and the entry, so the file stays held, and may be called again.
+ * Finalizes the statements the skiplist functions keep, then every other
+ * statement SQLite holds for the connection, and closes it, which frees the
+ * database and releases its file's entry. When SQLite can't close it, as with
+ * a backup unfinished, it returns that result, keeping the connection and the
+ * entry, so the file stays held, and may be called again.
  */
 int evolu_database_close(evolu_database *database);
 

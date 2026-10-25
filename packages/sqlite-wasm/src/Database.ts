@@ -46,8 +46,10 @@
  * ## Opening
  *
  * - A Memory database opens `:memory:` on the default VFS with READWRITE, CREATE
- *   and EXRESCODE, and gets Evolu's SQL functions from
- *   `evolu_skiplist_register`.
+ *   and EXRESCODE, and `evolu_core_register` sets it up, as `evolu_codec_open`
+ *   sets up a File or EncryptedFile database: it's defensive, ignoring `PRAGMA
+ *   writable_schema = ON`, `journal_mode = OFF` and `schema_version = N`, and
+ *   has Evolu's SQL functions.
  * - A File or EncryptedFile database's path is a {@link SqliteVfsPath}, a
  *   canonical path, which SQLite passes to the VFS as it is, never as a URI or
  *   an in-memory database.
@@ -240,9 +242,10 @@
  *   a failure during it, caused by that record: with SQLITE_CORRUPT for a page
  *   that failed to authenticate, a {@link SqlitePageAuthenticationError}, and
  *   with SQLITE_IOERR otherwise.
- * - Disposing a database finalizes its statements that are still open and then
- *   calls `sqlite3_close_v2`, so no deferred close keeps the VFS's files open.
- *   On a broken instance, it throws only the close's refusal, and the open
+ * - Disposing a database finalizes its statements that are still open, then those
+ *   Evolu's SQL functions keep, with `evolu_skiplist_finalize`, and calls
+ *   `sqlite3_close_v2`, so no deferred close keeps the VFS's files open. On a
+ *   broken instance, it throws only the refusal of the first, and the open
  *   statements refuse their own disposal.
  *
  * @module
@@ -331,7 +334,8 @@ import {
 import {
   evolu_codec_open,
   evolu_codec_take_failure,
-  evolu_skiplist_register,
+  evolu_core_register,
+  evolu_skiplist_finalize,
 } from "./EvoluCApi.ts";
 import {
   allocCString,
@@ -839,7 +843,8 @@ export const createSqliteDatabase =
       const totalChanges64 = sqlite3_total_changes64(deps);
       const codecOpen = evolu_codec_open(deps);
       const takeFailure = evolu_codec_take_failure(deps);
-      const skiplistRegister = evolu_skiplist_register(deps);
+      const coreRegister = evolu_core_register(deps);
+      const skiplistFinalize = evolu_skiplist_finalize(deps);
       const alloc = allocWasm(deps);
       const allocString = allocCString(deps);
       const copyBytes = copyWasmBytes(deps);
@@ -1015,9 +1020,8 @@ export const createSqliteDatabase =
         }
       }
       const db = readPtr(scratch.out) as SqliteDbPtr;
-      // evolu_codec_open registers them on a File or EncryptedFile connection.
-      if (rc === SQLITE_OK && options.type === "Memory")
-        rc = skiplistRegister(db);
+      // evolu_codec_open sets up a File or EncryptedFile connection.
+      if (rc === SQLITE_OK && options.type === "Memory") rc = coreRegister(db);
       if (rc !== SQLITE_OK) {
         // The connection's message only when it reports the returned code,
         // because evolu_codec_open can fail with SQLITE_MISUSE while the
@@ -1034,6 +1038,10 @@ export const createSqliteDatabase =
         return err(error);
       }
       disposer.defer(() => {
+        // In the native close's order.
+        call(() => {
+          skiplistFinalize(db);
+        });
         call(() => closeV2(db));
       });
       if (vfs != null) {

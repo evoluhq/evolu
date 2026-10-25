@@ -18,8 +18,9 @@
  *   errors. Only the first instruments the adapter for coverage. LeakSanitizer
  *   doesn't run on Apple's arm64, so the host counts SQLite's allocations
  *   itself and fails when one outlives the tests.
- * - It runs each host with the script, an empty directory and the filter, and
- *   when both pass, reports the first's coverage of `cpp/`.
+ * - It runs each host with the script, a directory that holds only the database
+ *   of the conformance suite's ill-formed names, and the filter, and when both
+ *   pass, reports the first's coverage of `cpp/`.
  *
  * Usage: `node packages/react-native/scripts/hermes.mts [filter]` runs the
  * tests whose names include the filter, or all of them, prints both runs and
@@ -68,6 +69,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
+import { writeIllFormedNamesDatabase } from "../test/illFormedNames.ts";
 import type { NativeManifest } from "./vendor-native.mts";
 
 /**
@@ -252,8 +254,10 @@ export const runHermesTests = async ({
           output,
         ]);
       });
-      // Each run gets an empty directory for the suite's files.
+      // Each run gets an empty directory for the suite's files, and the
+      // database of the conformance suite's ill-formed names.
       const directory = mkdtempSync(join(tmpdir(), "evolu-hermes-"));
+      writeIllFormedNamesDatabase(join(directory, "ill-formed-names.db"));
       let result: SpawnSyncReturns<string>;
       try {
         // A hung test fails the run, since spawnSync blocks until the timeout.

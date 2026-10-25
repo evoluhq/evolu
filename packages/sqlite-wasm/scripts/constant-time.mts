@@ -787,7 +787,7 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   {
     name: "evolu_aes256_init",
     index: 74,
-    sha256: "c5dc3157c6195a7ae5653c585c8d997591b5296c82b4b6a960fcfe9b58537a66",
+    sha256: "43bd79750e3b0d808608f05d6d34b014233af9a91f533494208a31fe78ffd848",
     summary:
       "The core's `evolu_aes256_init`, with `evolu_aes256_init_with` and `aes256_ct64_init` inlined: wasm has no AES instructions, so it records the `aes_ct64` table and calls `br_aes_ct64_cbcenc_init` and `br_aes_ct64_cbcdec_init`, then wipes the stack.",
   },
@@ -830,56 +830,56 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   {
     name: "aes256_ct64_init",
     index: 70,
-    sha256: "7702a3d6be87f1f052e4af1f3a60739875649399adaec5d9a9f7bd028171f599",
+    sha256: "23a4642a6fb08bcc111da1e5215ad0999413e8c03ba3b504afd78fdf111d2814",
     summary:
       "The core's `aes256_ct64_init`, the `aes_ct64` table's key setup, which calls `br_aes_ct64_cbcenc_init` and `br_aes_ct64_cbcdec_init`.",
   },
   {
     name: "aes256_ct64_cbc_encrypt",
     index: 71,
-    sha256: "73ea35850e709cfc7cffc0ec2f29fb57f23337d0de15f2cffe3cd473129b845b",
+    sha256: "69636387bb4cbbd65b92d4f3ab01315ba4e318438b4dec087419af36882cbabc",
     summary:
       "The core's `aes256_ct64_cbc_encrypt`, which calls `br_aes_ct64_cbcenc_run`.",
   },
   {
     name: "aes256_ct64_cbc_decrypt",
     index: 72,
-    sha256: "e08b36d48ff10bc154f6ed05afc511f855a8a714e4f79de20af8fb7605b22556",
+    sha256: "67cc96dd2fd435b75fd40908c49093182323c6a222c407b3a7b6cbcfa9a1375d",
     summary:
       "The core's `aes256_ct64_cbc_decrypt`, which calls `br_aes_ct64_cbcdec_run`.",
   },
   {
     name: "br_aes_ct64_cbcenc_init",
-    index: 143,
-    sha256: "d441af837ce725cb1bf4de1322a798f80910ff6f6f35bcc7fe051daef48aafc6",
+    index: 145,
+    sha256: "38dae2d93ccf58ba9f442e3e5a088341a5c56955d223df24a83817ac21715ef6",
     summary:
       "BearSSL's `br_aes_ct64_cbcenc_init` (`aes_ct64_cbcenc.c`), which calls `br_aes_ct64_keysched`.",
   },
   {
     name: "br_aes_ct64_cbcdec_init",
-    index: 141,
-    sha256: "0e1a0bdeb69fd9ebeda644db44399a535f962dd49afb125ae9a8759441b5f1f2",
+    index: 143,
+    sha256: "f04b24c4f55a6f58bb2f5cc5cede143d9fd77216572f7e173878688b38bc9de4",
     summary:
       "BearSSL's `br_aes_ct64_cbcdec_init` (`aes_ct64_cbcdec.c`), which calls `br_aes_ct64_keysched`.",
   },
   {
     name: "br_aes_ct64_keysched",
-    index: 139,
-    sha256: "7cdff8beb16430d5e4a8ecc221f56d20289b82d07239f6f6e4dd003800723042",
+    index: 141,
+    sha256: "15c0d9daa92fe9fdf5971b551276942f002eb91aafdfed1304cd98e1a19a6af7",
     summary:
       "BearSSL's AES key schedule, `br_aes_ct64_keysched` (`aes_ct64.c`), with `sub_word` inlined.",
   },
   {
     name: "br_aes_ct64_skey_expand",
-    index: 140,
+    index: 142,
     sha256: "873ff91f9e4e151594093a0c7008bbe767bd29dee363805377cdcc3dcb08a195",
     summary:
       "BearSSL's `br_aes_ct64_skey_expand` (`aes_ct64.c`), which expands the stored round keys before each CBC run.",
   },
   {
     name: "br_aes_ct64_cbcenc_run",
-    index: 144,
-    sha256: "37a10c510094250bc80997453dea4bf6a7b37f916d0e8fcd16a485f33d5f4b36",
+    index: 146,
+    sha256: "752a778e4fc7a582b5e7834d6218aa1034dd05eafb9ce4545cdf17af3df2aae3",
     summary:
       "BearSSL's CBC encryption, `br_aes_ct64_cbcenc_run` (`aes_ct64_cbcenc.c`), one block at a time, with Evolu's zero initialization of the state before each block.",
     sources: {
@@ -895,8 +895,8 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   },
   {
     name: "br_aes_ct64_cbcdec_run",
-    index: 142,
-    sha256: "d117c14035a8179243eaec8fb6ed254a6010488b9a6e39852172797594c87a07",
+    index: 144,
+    sha256: "f7ec3e3d6d35f7bda5fc9259ff3df7622db7123adbce5ce1fbbe4ace0069407b",
     summary:
       "BearSSL's CBC decryption, `br_aes_ct64_cbcdec_run` (`aes_ct64_cbcdec.c`), four blocks at a time, with Evolu's zero initialization of the input words before each batch.",
     sources: {
@@ -912,42 +912,42 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   },
   {
     name: "br_aes_ct64_bitslice_encrypt",
-    index: 147,
-    sha256: "363f5d3f222b41e55845dc09fcaa6135c527d69568fbbb1198ace32ee178ffcb",
+    index: 149,
+    sha256: "37692815d6e39f553098c33138f4fb54543c149ca47c98fa912d3c23e75ae8d1",
     summary:
       "BearSSL's `br_aes_ct64_bitslice_encrypt` (`aes_ct64_enc.c`), with `add_round_key` and `mix_columns` inlined.",
   },
   {
     name: "br_aes_ct64_bitslice_decrypt",
-    index: 145,
-    sha256: "b54b8782e4aa43980fb99cd44639478f40cf2e96ff6b699c7acaba31b92be312",
+    index: 147,
+    sha256: "04cfc7b3f087fc0f5493fc40b897f7e0417980454c54d788f4e52965613aa241",
     summary:
       "BearSSL's `br_aes_ct64_bitslice_decrypt` (`aes_ct64_dec.c`), with `br_aes_ct64_bitslice_invSbox`, `add_round_key` and `inv_mix_columns` inlined.",
   },
   {
     name: "br_aes_ct64_bitslice_Sbox",
-    index: 135,
+    index: 137,
     sha256: "306af368c4311f85951e77b29fcc46c663510b541051c51208c0132342d4f551",
     summary:
       "BearSSL's bitsliced S-box, `br_aes_ct64_bitslice_Sbox` (`aes_ct64.c`).",
   },
   {
     name: "br_aes_ct64_ortho",
-    index: 136,
+    index: 138,
     sha256: "0d42a7f6a4970117f53916f6722cef59045579ce3e74810b96c79dee55344aae",
     summary:
       "BearSSL's `br_aes_ct64_ortho` (`aes_ct64.c`), which transposes the bitsliced state.",
   },
   {
     name: "br_aes_ct64_interleave_in",
-    index: 137,
+    index: 139,
     sha256: "5c609ea722263dd1ad61fc84278de09482589f459a4c901d6c5feca2759a50eb",
     summary:
       "BearSSL's `br_aes_ct64_interleave_in` (`aes_ct64.c`), which spreads four words into two state words.",
   },
   {
     name: "br_aes_ct64_interleave_out",
-    index: 138,
+    index: 140,
     sha256: "7cfb18b3c408d41adaf56aaa21b2669e3aef721950bda56cb7b5968ecae65a4b",
     summary:
       "BearSSL's `br_aes_ct64_interleave_out` (`aes_ct64.c`), which gathers two state words into four words.",
@@ -958,26 +958,26 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   },
   {
     name: "shift_rows",
-    index: 148,
+    index: 150,
     sha256: "8bb923078a197d9f66061f8cb4f1badc01f7498bba528ac3f4acf8d9397a8fed",
     summary: "`shift_rows` of BearSSL's `aes_ct64_enc.c`.",
   },
   {
     name: "inv_shift_rows",
-    index: 146,
+    index: 148,
     sha256: "9e3bf1eaf0610c3310443346eb9c7f05c88c8d54c01a755cb360b92eaa007755",
     summary: "`inv_shift_rows` of BearSSL's `aes_ct64_dec.c`.",
   },
   {
     name: "br_range_dec32le",
-    index: 119,
+    index: 121,
     sha256: "ed91ed29d8e7cd96ba3ba862668f8ea6c2048201d5aa56003613d28c4dcc1509",
     summary:
       "BearSSL's `br_range_dec32le` (`dec32le.c`), which reads blocks, IVs and keys as little-endian words.",
   },
   {
     name: "br_range_enc32le",
-    index: 122,
+    index: 124,
     sha256: "2db812acc4d29e59a3cd24cd7be782372b7a8071d2ef93fbfe2edf5672163fae",
     summary:
       "BearSSL's `br_range_enc32le` (`enc32le.c`), which writes blocks and IVs as little-endian words.",
@@ -985,7 +985,7 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   {
     name: "sha512_blocks",
     index: 80,
-    sha256: "c166e6ed906d87c6c4e92c83dc518e386b0fe116e551a43421588dd1d2612201",
+    sha256: "edabe1d4cd35b4d6bea51cbdf2c6a548f22652c4e2993726be23d1a37d14dfb1",
     summary:
       "The core's `sha512_blocks`, with `sha512_blocks_bearssl`, `load64_be`, `store64_be` and `evolu_wipe` inlined: wasm has no SHA-512 instructions, so it runs BearSSL's compression through `br_sha512_set_state`, `br_sha512_update` and `br_sha512_state`, and wipes BearSSL's context.",
   },
@@ -1004,8 +1004,8 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   },
   {
     name: "br_sha384_update",
-    index: 124,
-    sha256: "690b136398d87aeb415c35e65ab86b82a66424dd3ad7069badae71fb7eda51f6",
+    index: 126,
+    sha256: "25a25f06c41c837bfe894737c7bc977aa3a564a524d139703acaca1dbd67b225",
     summary:
       "BearSSL's `br_sha512_update`, an alias of `br_sha384_update` (`sha2big.c`), with `sha2big_update` inlined.",
     sources: {
@@ -1018,35 +1018,35 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   },
   {
     name: "sha2big_round",
-    index: 125,
-    sha256: "c309fb21b5f910e761134090017877118c44c402ebf0c9c536c0448b952e4699",
+    index: 127,
+    sha256: "d8ca0181bfb0d1a752f72c786ddb416337867a1c68686fb55077a513d6b950f0",
     summary:
       "BearSSL's SHA-512 compression function, `sha2big_round` (`sha2big.c`).",
   },
   {
     name: "br_sha384_state",
-    index: 126,
-    sha256: "dbd5d4f3a961182e0b31fa0f43a8de56fb10e5b301357ef94cbb93773c4b8b4e",
+    index: 128,
+    sha256: "b5460a9e8bfe968eff14fbfa8b5a0f38d6a7cc8514957b18f426e92f50e7239a",
     summary:
       "BearSSL's `br_sha512_state`, an alias of `br_sha384_state` (`sha2big.c`).",
   },
   {
     name: "br_sha384_set_state",
-    index: 127,
-    sha256: "f8a8b8b6898377feb022d3ee7daaa52c30c5cc7a5a53b668307536d81bdd8e7e",
+    index: 129,
+    sha256: "7edecca5f4650aa13bf78bd417567564b92870506f9e661fda544dbee26380ba",
     summary:
       "BearSSL's `br_sha512_set_state`, an alias of `br_sha384_set_state` (`sha2big.c`).",
   },
   {
     name: "br_range_dec64be",
-    index: 120,
+    index: 122,
     sha256: "d6948c4ce76534d1fd5b53db50a53ec01968b69e6ee34793e78c818acd3b2e6a",
     summary:
       "BearSSL's `br_range_dec64be` (`dec64be.c`), which reads message blocks and states as big-endian words.",
   },
   {
     name: "br_range_enc64be",
-    index: 123,
+    index: 125,
     sha256: "02037cc681db8b2ea6f6794dfb3ff5cafc3c23f558b23511123230c682cd3ee5",
     summary:
       "BearSSL's `br_range_enc64be` (`enc64be.c`), which writes states as big-endian words.",
@@ -1054,7 +1054,7 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   {
     name: "evolu_hmac_sha512_key_init",
     index: 82,
-    sha256: "560e022109733020cd25ec61bcac937e547b837b6455c842592c11626793c44b",
+    sha256: "acf48823f4b7fa54f3621547ff05c7bf6528c9a5c4faeeb40eacb37a4547c5e6",
     summary:
       "The core's `evolu_hmac_sha512_key_init`, with `evolu_sha512_digest` inlined for a key longer than a block.",
   },
@@ -1263,7 +1263,7 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   {
     name: "decrypt_authentic",
     index: 95,
-    sha256: "a35f3930108e8a5925855bd693f5d39479e65770d3c539ce4ca5a22fd4a709ed",
+    sha256: "2f3d98c9dcc17fa0b6518d1f32c65b5fac995e097cc49179f00450254d6759c6",
     summary:
       "`decrypt_authentic` of `evolu_page.c`, with `decrypt_cbc_cs3` and `encrypted_start` inlined.",
   },

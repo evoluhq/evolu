@@ -21,31 +21,141 @@ import { test } from "node:test";
 import {
   SQLITE_CANTOPEN,
   SQLITE_CORRUPT,
+  SQLITE_ERROR,
   SQLITE_IOERR_WRITE,
   SQLITE_MISUSE,
   SQLITE_OK,
+  SQLITE_OPEN_CREATE,
+  SQLITE_OPEN_READWRITE,
+  SQLITE_ROW,
 } from "../../../../packages/sqlite-wasm/src/Constants.ts";
-import { sqlite3_close_v2 } from "../../../../packages/sqlite-wasm/src/CApi.ts";
+import {
+  sqlite3_close_v2,
+  sqlite3_exec,
+  sqlite3_finalize,
+  sqlite3_next_stmt,
+  sqlite3_open_v2,
+  sqlite3_prepare_v2,
+  sqlite3_step,
+} from "../../../../packages/sqlite-wasm/src/CApi.ts";
 import {
   evolu_codec_open,
   evolu_codec_take_failure,
-  evolu_skiplist_register,
+  evolu_core_register,
+  evolu_skiplist_finalize,
 } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import { allocWasm } from "../../../../packages/sqlite-wasm/src/Memory.ts";
 import type {
   NullPtr,
   SqliteDbPtr,
+  SqliteStmtPtr,
   WasmPtr,
 } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
 import { sahPoolHeaderSize } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
 import { setupSahPool, type TestSahPool } from "./_sahPool.ts";
-import { setupDatabase, trapEveryOpen } from "./_sqliteWasm.ts";
+import {
+  setupDatabase,
+  setupMemoryUsed,
+  trapEveryOpen,
+} from "./_sqliteWasm.ts";
 
-test("evolu_skiplist_register registers the core's SQL functions on a connection", async () => {
+test("evolu_core_register sets up a connection sqlite3_open_v2 opened: it's defensive and has the core's SQL functions", async () => {
   const t = await setupDatabase();
 
-  assertEqual(evolu_skiplist_register(t)(t.db), SQLITE_OK);
+  assertEqual(evolu_core_register(t)(t.db), SQLITE_OK);
+
   assertEqual(t.selectText("SELECT evolu_core_version()"), "1");
+  assertEqual(
+    t.exec("CREATE TABLE t(a); PRAGMA writable_schema = ON"),
+    SQLITE_OK,
+  );
+  assertEqual(
+    t.exec(
+      "UPDATE sqlite_schema SET sql = 'CREATE TABLE t(b)' WHERE name = 't'",
+    ),
+    SQLITE_ERROR,
+  );
+  assertEqual(t.errmsg(), "table sqlite_master may not be modified");
+});
+
+test("evolu_skiplist_finalize finalizes the statements the skiplist functions keep, so code that then finalizes every statement through sqlite3_next_stmt and closes the connection frees all its memory", async () => {
+  const t = await setupDatabase();
+  const memoryUsed = setupMemoryUsed(t);
+  // Allocated first, since the helpers never free their strings.
+  const memory = t.cString(":memory:");
+  const sql = t.cString(
+    'CREATE TABLE evolu_timestamp ("ownerId" BLOB NOT NULL, "t" BLOB NOT NULL, "h1" INTEGER, "h2" INTEGER, "c" INTEGER, "l" INTEGER NOT NULL, PRIMARY KEY ("ownerId", "t")) STRICT; BEGIN; SELECT evolu_skiplist_insert(zeroblob(16), zeroblob(16), 2); COMMIT; SELECT evolu_skiplist_size(zeroblob(16))',
+  );
+  const select = t.cString("SELECT 1");
+  const baseline = memoryUsed();
+  assertEqual(
+    sqlite3_open_v2(t)(
+      memory,
+      t.scratch.out,
+      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+      0,
+    ),
+    SQLITE_OK,
+  );
+  const db = t.readPtr(t.scratch.out) as SqliteDbPtr;
+  assertEqual(evolu_core_register(t)(db), SQLITE_OK);
+  assertEqual(sqlite3_exec(t)(db, sql, 0, 0, 0), SQLITE_OK);
+  // A statement of the code's own, still running.
+  assertEqual(
+    sqlite3_prepare_v2(t)(db, select, -1, t.scratch.out, 0),
+    SQLITE_OK,
+  );
+  assertEqual(
+    sqlite3_step(t)(t.readPtr(t.scratch.out) as SqliteStmtPtr),
+    SQLITE_ROW,
+  );
+
+  evolu_skiplist_finalize(t)(db);
+  // Calling it again finds nothing to finalize.
+  evolu_skiplist_finalize(t)(db);
+  for (
+    let statement = sqlite3_next_stmt(t)(db, 0);
+    statement !== 0;
+    statement = sqlite3_next_stmt(t)(db, 0)
+  )
+    sqlite3_finalize(t)(statement);
+
+  assertEqual(sqlite3_close_v2(t)(db), SQLITE_OK);
+  assertEqual(memoryUsed(), baseline);
+});
+
+test("a skiplist function a statement calls after sqlite3_close_v2 closed its connection fails with SQLITE_MISUSE, and finalizing the statement closes the connection, freeing all its memory", async () => {
+  const t = await setupDatabase();
+  const memoryUsed = setupMemoryUsed(t);
+  // Allocated first, since the helpers never free their strings.
+  const memory = t.cString(":memory:");
+  const sql = t.cString(
+    'CREATE TABLE evolu_timestamp ("ownerId" BLOB NOT NULL, "t" BLOB NOT NULL, "h1" INTEGER, "h2" INTEGER, "c" INTEGER, "l" INTEGER NOT NULL, PRIMARY KEY ("ownerId", "t")) STRICT; BEGIN; SELECT evolu_skiplist_insert(zeroblob(16), zeroblob(16), 2); COMMIT',
+  );
+  const size = t.cString("SELECT evolu_skiplist_size(zeroblob(16))");
+  const baseline = memoryUsed();
+  assertEqual(
+    sqlite3_open_v2(t)(
+      memory,
+      t.scratch.out,
+      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+      0,
+    ),
+    SQLITE_OK,
+  );
+  const db = t.readPtr(t.scratch.out) as SqliteDbPtr;
+  assertEqual(evolu_core_register(t)(db), SQLITE_OK);
+  // The insert leaves statements the functions keep.
+  assertEqual(sqlite3_exec(t)(db, sql, 0, 0, 0), SQLITE_OK);
+  assertEqual(sqlite3_prepare_v2(t)(db, size, -1, t.scratch.out, 0), SQLITE_OK);
+  const statement = t.readPtr(t.scratch.out) as SqliteStmtPtr;
+
+  // The statement keeps the connection open as a zombie.
+  assertEqual(sqlite3_close_v2(t)(db), SQLITE_OK);
+
+  assertEqual(sqlite3_step(t)(statement), SQLITE_MISUSE);
+  assertEqual(sqlite3_finalize(t)(statement), SQLITE_MISUSE);
+  assertEqual(memoryUsed(), baseline);
 });
 
 test("evolu_codec_take_failure fails with SQLITE_MISUSE for a NULL connection", async () => {

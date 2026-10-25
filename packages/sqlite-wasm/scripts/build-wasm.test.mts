@@ -829,8 +829,8 @@ const makeWasmWithCore = (): ReadonlyArray<string> => [
       .map(({ source }) => `evolu-core/${basename(source, ".c")}.o`)
       .join(" "),
     " -Wl,--export=evolu_codec_register -Wl,--export=evolu_codec_open",
-    " -Wl,--export=evolu_codec_take_failure -Wl,--export=evolu_skiplist_register",
-    " --emit-symbol-map",
+    " -Wl,--export=evolu_codec_take_failure -Wl,--export=evolu_core_register",
+    " -Wl,--export=evolu_skiplist_finalize --emit-symbol-map",
   ].join(""),
   "jswasm/sqlite3.wasm",
 ];

@@ -27,8 +27,8 @@
  *   --write-fixtures=<directory>` writes the fixtures: for each expo-sqlite
  *   release whose SQLCipher Evolu supported, a database that SQLCipher, built
  *   on the host as `@evolu/sqlite-core`'s tests build it, created, and one that
- *   crashed with its hot journal at its fullest. It needs what those tests
- *   need.
+ *   crashed with its hot journal at its fullest, and the database of the
+ *   conformance suite's ill-formed names. It needs what those tests need.
  * - `node packages/react-native/scripts/device-tests.mts --platform=<ios or
  *   android> --device=<UDID or serial> --app=<bundle ID or package> --url=<URL>
  *   --fixtures=<directory>` runs the app, by default for at most 600 seconds,
@@ -74,11 +74,13 @@ import {
   deviceFixtureKey,
   deviceFixtureRows,
   deviceFixtures,
+  deviceIllFormedNames,
   deviceTestsMarker,
   deviceTestsTag,
   registerDeviceSuites,
   type DevicePlatform,
 } from "../test/device/suites.ts";
+import { writeIllFormedNamesDatabase } from "../test/illFormedNames.ts";
 
 /** A line the app's runner logs, as {@link parseDeviceTestsLine} reads it. */
 export type DeviceTestsLine =
@@ -136,7 +138,7 @@ export const countDeviceTests = (platform: DevicePlatform): number => {
 /**
  * Writes the fixtures into `directory`, each `evolu1-<name>.db` of
  * `test/device/suites.ts`'s `deviceFixtures`, with its `-journal` for one that
- * crashed.
+ * crashed, and `deviceIllFormedNames`'s.
  */
 export const writeDeviceFixtures = async ({
   directory,
@@ -152,6 +154,9 @@ export const writeDeviceFixtures = async ({
   mkdirSync(buildDirectory, { recursive: true });
   const work = mkdtempSync(join(buildDirectory, "device-fixtures-"));
   try {
+    const illFormedNames = join(directory, `evolu1-${deviceIllFormedNames}.db`);
+    rmSync(illFormedNames, { force: true });
+    writeIllFormedNamesDatabase(illFormedNames);
     for (const { name, expoSqlite: version, crashed } of deviceFixtures) {
       const expoSqlite = expoSqliteReleases.find(
         (release) => release.version === version,

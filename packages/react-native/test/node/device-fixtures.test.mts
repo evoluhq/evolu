@@ -29,6 +29,7 @@ import {
   deviceFixtureKey,
   deviceFixtureRows,
   deviceFixtures,
+  deviceIllFormedNames,
 } from "../device/suites.ts";
 
 const binding = (await setupAddon()).createBinding() as NativeSqlite;
@@ -51,12 +52,13 @@ test(
 
     assertEqual(
       readdirSync(directory).toSorted(),
-      deviceFixtures
-        .flatMap(({ name, crashed }) => [
+      [
+        ...deviceFixtures.flatMap(({ name, crashed }) => [
           `evolu1-${name}.db`,
           ...(crashed ? [`evolu1-${name}.db-journal`] : []),
-        ])
-        .toSorted(),
+        ]),
+        `evolu1-${deviceIllFormedNames}.db`,
+      ].toSorted(),
     );
     for (const { name, crashed } of deviceFixtures) {
       const journal = join(directory, `evolu1-${name}.db-journal`);

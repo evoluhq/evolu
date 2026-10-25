@@ -34,6 +34,14 @@ export interface BindingConformanceDeps {
    * suite's files.
    */
   readonly directory: string;
+  /**
+   * The path of the database `illFormedNames.ts` writes, whose table `t` has
+   * columns named `a\xffb` and `a\xffc` and the check constraint `c\xffd`, with
+   * a byte 0xff, which no UTF-8 sequence has. The host writes it with another
+   * SQLite, since the binding's connections are defensive and ignore
+   * `writable_schema`.
+   */
+  readonly illFormedNames: string;
   /** Registers a test, which fails when its function throws. */
   readonly test: (name: string, fn: () => void) => unknown;
   /** Throws unless the values are equal as data. */
@@ -121,6 +129,7 @@ export const describeBindingConformance = ({
   binding,
   abiVersion,
   directory,
+  illFormedNames,
   test,
   assertEqual,
 }: BindingConformanceDeps): void => {
@@ -864,25 +873,13 @@ export const describeBindingConformance = ({
   });
 
   test("column names and error messages that aren't UTF-8 read with U+FFFD in place of each ill-formed sequence", () => {
-    const path = pathOf("ill-formed-names.db");
-    const created = binding.openFile(path);
-    run(created, "create table t (a, b, constraint c check (a > 0))");
-    run(created, "insert into t values (1, 2)");
-    // Names with a byte 0xff, which no UTF-8 sequence has.
-    run(created, "pragma writable_schema = 1");
-    run(
-      created,
-      `update sqlite_schema set sql = 'create table t ("a' || cast(x'ff' as text) || 'b", "a' || cast(x'ff' as text) || 'c", constraint "c' || cast(x'ff' as text) || 'd" check ("a' || cast(x'ff' as text) || 'b" > 0))' where name = 't'`,
-    );
-    created.close();
-
-    const reopened = binding.openFile(path);
+    const database = binding.openFile(illFormedNames);
     try {
-      assertEqual(rowsOf(reopened, "select * from t"), [
+      assertEqual(rowsOf(database, "select * from t"), [
         { "a\uFFFDb": 1, "a\uFFFDc": 2 },
       ]);
       assertEqual(
-        thrownBy(() => run(reopened, "insert into t values (-1, 0)")),
+        thrownBy(() => run(database, "insert into t values (-1, 0)")),
         sqliteError({
           operation: "step",
           extendedCode: 275,
@@ -890,8 +887,35 @@ export const describeBindingConformance = ({
         }),
       );
     } finally {
-      reopened.close();
+      database.close();
     }
+  });
+
+  test("memory, plain and encrypted databases are defensive, so SQL can't write their schema, even with writable_schema on, which they ignore", () => {
+    for (const database of [
+      binding.openMemory(),
+      binding.openFile(pathOf("defensive-plain.db")),
+      binding.openEncryptedFile(pathOf("defensive-encrypted.db"), key),
+    ])
+      try {
+        run(database, "create table t (a)");
+        run(database, "pragma writable_schema = on");
+        assertEqual(
+          thrownBy(() =>
+            run(
+              database,
+              "update sqlite_schema set sql = 'create table t (b)' where name = 't'",
+            ),
+          ),
+          sqliteError({
+            operation: "prepare",
+            extendedCode: 1,
+            message: "table sqlite_master may not be modified",
+          }),
+        );
+      } finally {
+        database.close();
+      }
   });
 
   test("bind and run throw a TypeError for any other value", () => {
@@ -1547,6 +1571,30 @@ export const describeBindingConformance = ({
         notLive,
       );
     }
+  });
+
+  test("close releases a file whose skiplist functions ran, which keep statements of their own until it closes", () => {
+    const path = pathOf("skiplist.db");
+    const database = binding.openFile(path);
+    run(
+      database,
+      'create table evolu_timestamp ("ownerId" blob not null, "t" blob not null, "h1" integer, "h2" integer, "c" integer, "l" integer not null, primary key ("ownerId", "t")) strict',
+    );
+    run(database, "begin");
+    run(
+      database,
+      "select evolu_skiplist_insert(zeroblob(16), zeroblob(16), 2)",
+    );
+    run(database, "commit");
+    const size = "select evolu_skiplist_size(zeroblob(16)) as size";
+    assertEqual(rowsOf(database, size), [{ size: 1 }]);
+
+    database.close();
+
+    assertEqual(binding.isFileOpen(path), false);
+    const reopened = binding.openFile(path);
+    assertEqual(rowsOf(reopened, size), [{ size: 1 }]);
+    reopened.close();
   });
 
   test("a method called on another kind of object throws a TypeError", () => {

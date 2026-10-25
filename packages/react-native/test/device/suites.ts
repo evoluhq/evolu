@@ -87,6 +87,13 @@ export const deviceFixtures: ReadonlyArray<{
   ];
 });
 
+/**
+ * The name of the database of the conformance suite's ill-formed names, so its
+ * file is `evolu1-ill-formed-names.db`, which `scripts/device-tests.mts` writes
+ * with the other fixtures.
+ */
+export const deviceIllFormedNames = "ill-formed-names";
+
 /** The key the fixtures were keyed with, as SQLCipher's raw key. */
 export const deviceFixtureKey = /*#__PURE__*/ Uint8Array.from(
   { length: 32 },
@@ -150,6 +157,7 @@ export const registerDeviceSuites = (deps: DeviceSuitesDeps): void => {
     binding: nativeSqlite,
     abiVersion: nativeSqliteAbiVersion,
     directory: deps.directory,
+    illFormedNames: `${databaseDirectory}/evolu1-${deviceIllFormedNames}.db`,
     test,
     assertEqual,
   });

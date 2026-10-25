@@ -4,7 +4,7 @@
  * gives them, so it needs no toolchain, and test:unit runs it too.
  * `test/node/device-fixtures.test.mts` runs the real one.
  */
-import { assertEqual, assertRejects } from "@evolu/common";
+import { assertEqual, assertRejects, assertTrue } from "@evolu/common";
 import {
   existsSync,
   mkdirSync,
@@ -106,7 +106,14 @@ test("writes each release's created database and the crash whose hot journal is 
     "evolu1-expo-sqlite-58-0-13-crashed.db",
     "evolu1-expo-sqlite-58-0-13-crashed.db-journal",
     "evolu1-expo-sqlite-58-0-13.db",
+    "evolu1-ill-formed-names.db",
   ]);
+  // Its schema names a column a, 0xff, b.
+  assertTrue(
+    readFileSync(join(fixtures, "evolu1-ill-formed-names.db")).includes(
+      Buffer.from([0x61, 0xff, 0x62]),
+    ),
+  );
   assertEqual(
     readFileSync(join(fixtures, "evolu1-expo-sqlite-58-0-13.db"), "utf8"),
     "fixture-58.0.13 created",
@@ -176,7 +183,7 @@ test("writes over the fixtures an earlier write left", async (t) => {
 
   await write();
 
-  assertEqual(readdirSync(fixtures).length, 6);
+  assertEqual(readdirSync(fixtures).length, 7);
 });
 
 test("fails when @evolu/sqlite-core builds no SQLCipher of a fixture's release", async (t) => {
@@ -218,5 +225,5 @@ test("writes the fixtures when --write-fixtures takes its directory as the next 
   log.mock.restore();
 
   assertEqual(code, 0);
-  assertEqual(readdirSync(fixtures).length, 6);
+  assertEqual(readdirSync(fixtures).length, 7);
 });

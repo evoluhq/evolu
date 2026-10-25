@@ -228,7 +228,7 @@ test("createSqliteDatabase opens :memory: on the default VFS with READWRITE, CRE
   ]);
 });
 
-test("a Memory database has Evolu's SQL functions, which evolu_skiplist_register registers", async () => {
+test("a Memory database has Evolu's SQL functions, which evolu_core_register registers", async () => {
   const { database } = await setupSqliteDatabase();
 
   assertEqual(
@@ -289,16 +289,90 @@ test("evolu_skiplist_fingerprints fingerprints each timestamp with the first 12 
   ]);
 });
 
-test("a Memory database whose evolu_skiplist_register fails, as sqlite3_create_function_v2 can, fails to open with the returned code and closes the connection, leaking nothing", async () => {
+test("Memory, File and EncryptedFile databases are defensive, so SQL can't write their schema, even with PRAGMA writable_schema on, which they ignore", async () => {
+  const t = await setupSahPool();
+
+  const databases: ReadonlyArray<SqliteDatabaseOptions> = [
+    { type: "Memory" },
+    { type: "File", vfs: t.pool, path: SqliteVfsPath.orThrow("/plain.db") },
+    {
+      type: "EncryptedFile",
+      vfs: t.pool,
+      path: SqliteVfsPath.orThrow("/encrypted.db"),
+      key: EncryptionKey.orThrow(new Uint8Array(32).fill(7)),
+    },
+  ];
+  const results = databases.map((options) => {
+    const database = getOrThrow(createSqliteDatabase(t)(options));
+    assertOk(database.exec("CREATE TABLE t(a); PRAGMA writable_schema = ON"));
+    const updated = database.exec(
+      "UPDATE sqlite_schema SET sql = 'CREATE TABLE t(b)' WHERE name = 't'",
+    );
+    database[Symbol.dispose]();
+    return !updated.ok && updated.error.type === "SqliteError"
+      ? updated.error.message
+      : updated;
+  });
+
+  assertEqual(results, [
+    "table sqlite_master may not be modified",
+    "table sqlite_master may not be modified",
+    "table sqlite_master may not be modified",
+  ]);
+});
+
+/**
+ * Creates Storage.ts's skiplist table and runs a function that keeps
+ * statements.
+ */
+const skiplistInsertSql =
+  'CREATE TABLE evolu_timestamp ("ownerId" BLOB NOT NULL, "t" BLOB NOT NULL, "h1" INTEGER, "h2" INTEGER, "c" INTEGER, "l" INTEGER NOT NULL, PRIMARY KEY ("ownerId", "t")) STRICT; CREATE INDEX evolu_timestamp_index ON evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c"); BEGIN; SELECT evolu_skiplist_insert(zeroblob(16), zeroblob(16), 2); COMMIT';
+
+test("disposing a database whose skiplist functions ran finalizes the statements they keep with evolu_skiplist_finalize before sqlite3_close_v2, as the native close does, and frees its memory", async () => {
+  const calls: Array<string> = [];
+  const deps = await setupSqliteWasmWith((sqliteWasm) => {
+    const exports = sqliteWasm.exports as SqliteCExports & EvoluCExports;
+    return {
+      evolu_skiplist_finalize: (db) => {
+        calls.push("evolu_skiplist_finalize");
+        exports.evolu_skiplist_finalize(db);
+      },
+      sqlite3_close_v2: (db) => {
+        calls.push("sqlite3_close_v2");
+        return exports.sqlite3_close_v2(db);
+      },
+    };
+  });
+  const memoryUsed = setupMemoryUsed(deps);
+  // The first open allocates SQLite's global state, which stays.
+  getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }))[Symbol.dispose]();
+  calls.length = 0;
+  const baseline = memoryUsed();
+  const database = getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }));
+  assertOk(database.exec(skiplistInsertSql));
+  assertEqual(
+    getOrThrow(
+      database.run("SELECT evolu_skiplist_size(zeroblob(16)) AS size", []),
+    ).rows,
+    [{ size: 1 }],
+  );
+
+  database[Symbol.dispose]();
+
+  assertEqual(calls, ["evolu_skiplist_finalize", "sqlite3_close_v2"]);
+  assertEqual(memoryUsed(), baseline);
+});
+
+test("a Memory database whose evolu_core_register fails, as sqlite3_create_function_v2 can, fails to open with the returned code and closes the connection, leaking nothing", async () => {
   let isFailing = false;
   let closeCount = 0;
   const deps = await setupSqliteWasmWith((sqliteWasm) => ({
-    evolu_skiplist_register: (db) =>
+    evolu_core_register: (db) =>
       isFailing
         ? SQLITE_NOMEM
         : (
             sqliteWasm.exports as SqliteCExports & EvoluCExports
-          ).evolu_skiplist_register(db),
+          ).evolu_core_register(db),
     sqlite3_close_v2: (db) => {
       closeCount++;
       return sqliteWasm.exports.sqlite3_close_v2(db);
@@ -3509,15 +3583,27 @@ test("exec frees nothing after SQL overflows SQLite's C stack and throws the tra
   assertEqual(freesAfterTrap, 0);
 });
 
-test("disposing a database on a broken instance frees none of its memory, because the scratch memory's frees skip a broken instance", async () => {
-  let frees = 0;
-  const deps = await setupSqliteWasmWith(({ exports }) => ({
-    sqlite3_free: (pointer) => {
-      frees++;
-      exports.sqlite3_free(pointer);
-    },
-  }));
+test("disposing a database on a broken instance frees none of its memory and finalizes none of the statements its skiplist functions keep, because no C runs on a broken instance", async () => {
+  const calls: Array<string> = [];
+  const deps = await setupSqliteWasmWith((sqliteWasm) => {
+    const exports = sqliteWasm.exports as SqliteCExports & EvoluCExports;
+    return {
+      sqlite3_free: (pointer) => {
+        calls.push("sqlite3_free");
+        exports.sqlite3_free(pointer);
+      },
+      sqlite3_finalize: (pStmt) => {
+        calls.push("sqlite3_finalize");
+        return exports.sqlite3_finalize(pStmt);
+      },
+      evolu_skiplist_finalize: (db) => {
+        calls.push("evolu_skiplist_finalize");
+        exports.evolu_skiplist_finalize(db);
+      },
+    };
+  });
   const database = getOrThrow(createSqliteDatabase(deps)({ type: "Memory" }));
+  assertOk(database.exec(skiplistInsertSql));
   trapEveryOpen(deps);
   assertThrows(
     () => createSqliteDatabase(deps)({ type: "Memory" }),
@@ -3525,7 +3611,7 @@ test("disposing a database on a broken instance frees none of its memory, becaus
       assertInstanceOf(thrown, WebAssembly.RuntimeError);
     },
   );
-  frees = 0;
+  calls.length = 0;
 
   assertThrows(
     () => {
@@ -3536,7 +3622,7 @@ test("disposing a database on a broken instance frees none of its memory, becaus
     },
   );
 
-  assertEqual(frees, 0);
+  assertEqual(calls, []);
 });
 
 test("a trap escaping a database call breaks the instance: it is rethrown, and every later call on any database of the instance throws without entering wasm", async () => {

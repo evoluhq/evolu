@@ -37,6 +37,7 @@ import {
   xchachaVectorInputs,
   xchachaVectors,
 } from "../bindingConformance.ts";
+import { writeIllFormedNamesDatabase } from "../illFormedNames.ts";
 
 // V8 exposes gc to contexts created after this flag is set.
 setFlagsFromString("--expose-gc");
@@ -46,15 +47,19 @@ const addonPath = await setupAddonPath();
 const addon = await setupAddon();
 const binding = addon.createBinding() as NativeSqlite;
 const directory = mkdtempSync(join(tmpdir(), "evolu-react-native-binding-"));
+const illFormedNames = `${directory}-ill-formed-names.db`;
+writeIllFormedNamesDatabase(illFormedNames);
 
 after(() => {
   rmSync(directory, { recursive: true, force: true });
+  rmSync(illFormedNames, { force: true });
 });
 
 describeBindingConformance({
   binding,
   abiVersion: nativeSqliteAbiVersion,
   directory,
+  illFormedNames,
   test,
   assertEqual,
 });

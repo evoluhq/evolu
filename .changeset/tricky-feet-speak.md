@@ -62,6 +62,9 @@ What changes for an app:
   double-quoted string as a column name, so `where title = "a"`, which
   expo-sqlite's SQLCipher accepted, fails with no such column. The schemas
   existing databases store still load.
+- Every connection is defensive (`SQLITE_DBCONFIG_DEFENSIVE`), so SQL can't
+  corrupt its database: it ignores `PRAGMA writable_schema = ON`,
+  `journal_mode = OFF` and `schema_version = N`.
 - A wrong key now sets `evoluError` to an `UnknownError` whose `error.cause`
   names the failure. A database that another JavaScript runtime of the app, such
   as one a reload replaced, still holds 10 seconds after Evolu began waiting for
