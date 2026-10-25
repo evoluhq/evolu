@@ -121,9 +121,10 @@ for a post, run `node scripts/code-image.mts --help`.
   `test/bindingConformance.ts`, the podspec, `cpp/CMakeLists.txt` or
   `react-native.config.js`, run `pnpm test:react-native-sqlite`, which runs
   the package's tests and fails below 100% line, branch, or function coverage
-  of `scripts` and `src/sqlite`. It needs what the core's tests need, and Ruby
-  and CMake, for the podspec's and CMake's tests, which take CMake from the
-  PATH or the Android SDK.
+  of `scripts` and `src/sqlite`, and of `@evolu/common`'s
+  `src/NativeSqlite.ts`, the driver they share. It needs what the core's tests
+  need, and Ruby and CMake, for the podspec's and CMake's tests, which take
+  CMake from the PATH or the Android SDK.
 - After changing how `@evolu/react-native` builds into apps, its podspec,
   `cpp/CMakeLists.txt`, `ios/`, `android/`, `react-native.config.js`,
   `codegenConfig`, the device suites or either example's native setup, run

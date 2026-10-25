@@ -85,7 +85,7 @@ export interface SqliteCoreAddon {
   readonly finishBackups: () => void;
   /**
    * Returns the N-API mirror of React Native's binding, node/binding.c, which
-   * `@evolu/react-native`'s `src/sqlite/Binding.ts` types as `NativeSqlite`.
+   * `@evolu/common` types as `NativeSqlite`.
    */
   readonly createBinding: () => unknown;
   /**

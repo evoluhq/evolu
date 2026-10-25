@@ -58,7 +58,7 @@ import {
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
 } from "../../../../../packages/common/src/local-first/Timestamp.ts";
-import { getOrThrow } from "../../../../../packages/common/src/Result.ts";
+import { getOrThrow, ok } from "../../../../../packages/common/src/Result.ts";
 import { installPolyfills } from "../../../../../packages/common/src/Polyfills.ts";
 import { sql } from "../../../../../packages/common/src/Sqlite.ts";
 import {
@@ -75,6 +75,7 @@ import {
 } from "../../../../../packages/common/src/Type.ts";
 import {
   setupSqliteAndRelayStorage,
+  testCreateSqliteDep,
   testCreateTimestampBytesFixtures,
   type TestSqliteAndRelayStorageSetup,
 } from "../../_deps.ts";
@@ -1121,13 +1122,33 @@ describe("sync near the size limit", () => {
     });
 
     it("is reported to a client's onChangeTooLarge after its storage iterates, so the callback can write the database", async () => {
-      await using client = await setupSqliteAndRelayStorage();
+      // A write while a query iterates breaks the Sqlite contract, which no
+      // driver enforces, so the client's driver records whether one iterates.
+      let isIterating = false;
+      await using client = await setupSqliteAndRelayStorage(undefined, {
+        createSqliteDriver: (name, options) => async (run) => {
+          const driver = await run.ok(
+            testCreateSqliteDep.createSqliteDriver(name, options),
+          );
+          return ok({
+            ...driver,
+            iterate: (query, onRow) => {
+              isIterating = true;
+              try {
+                driver.iterate(query, onRow);
+              } finally {
+                isIterating = false;
+              }
+            },
+          });
+        },
+      });
       await using relay = await setupSqliteAndRelayStorage();
       const timestamps = testTimestampsAsc
         .slice(0, 3)
         .map(timestampBytesToTimestamp);
-      // better-sqlite3 refuses a write while a query iterates, which an oversized
-      // change after the first in its range would hit.
+      // An oversized change after the first in its range is found while the
+      // storage iterates.
       await storeChanges(
         client,
         timestamps.map((timestamp, index) => [
@@ -1136,12 +1157,15 @@ describe("sync near the size limit", () => {
         ]),
       );
       client.sqlite.exec(sql`create table skipped (size integer);`);
+      const isIteratingAtCallbacks: Array<boolean> = [];
 
       await syncClientWithRelay(client.run, relay.run, (error) => {
+        isIteratingAtCallbacks.push(isIterating);
         client.sqlite.exec(sql`insert into skipped values (${error.size});`);
       });
 
       assertSame(relay.storage.getSize(testAppOwnerIdBytes), 2);
+      assertEqual(isIteratingAtCallbacks, [false]);
       assertEqual(client.sqlite.exec(sql`select size from skipped;`).rows, [
         { size: 1_015_851 },
       ]);

@@ -1,6 +1,7 @@
 /**
  * The loader of Evolu's two TurboModules: `EvoluSqlite`, whose binding
- * `Binding.ts` describes, and `EvoluApp`, the platform code.
+ * `@evolu/common`'s `NativeSqlite.ts` describes, and `EvoluApp`, the platform
+ * code.
  *
  * Importing it evaluates the specs, whose `TurboModuleRegistry.get` creates the
  * C++ module, but no binding: `installPolyfills` and `createEvoluDeps` load one
@@ -13,7 +14,9 @@ import NativeEvoluApp, {
   type Spec as EvoluApp,
 } from "../specs/NativeEvoluApp.ts";
 import NativeEvoluSqlite from "../specs/NativeEvoluSqlite.ts";
-import { nativeSqliteAbiVersion, type NativeSqlite } from "./Binding.ts";
+// Types only, since @evolu/common's main entry reads randomness at import.
+import type { NativeSqlite } from "@evolu/common";
+import { nativeSqliteAbiVersion } from "./Binding.ts";
 
 /**
  * Creates the binding for this runtime, and throws when the native build lacks

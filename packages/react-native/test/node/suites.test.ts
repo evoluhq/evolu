@@ -16,6 +16,7 @@ import {
   assertSame,
   createStore,
   createUnknownError,
+  type NativeSqlite,
 } from "@evolu/common";
 import { installPolyfills } from "@evolu/common/polyfills";
 import type { EvoluDeps, EvoluError } from "@evolu/common/local-first";
@@ -25,7 +26,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, mock, test } from "node:test";
 import { setTimeout } from "node:timers/promises";
-import type { NativeSqlite } from "../../src/sqlite/Binding.ts";
 
 installPolyfills();
 

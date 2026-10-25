@@ -8004,16 +8004,17 @@ describe("worker failure", () => {
     const jsonRows = rowsByQuery.get(jsonQuery);
     assertNotUndefined(jsonRows);
     assertErr(jsonRows);
-    const { message, code } = jsonRows.error.error as {
+    const { message, cause } = jsonRows.error.error as {
       readonly message: unknown;
-      readonly code: unknown;
+      readonly cause: {
+        readonly operation: unknown;
+        readonly extendedCode: unknown;
+      };
     };
     assertEqual(
-      { message, code },
-      {
-        message: "malformed JSON",
-        code: "SQLITE_ERROR",
-      },
+      { message, operation: cause.operation, extendedCode: cause.extendedCode },
+      // SQLITE_ERROR, which the step of its statement reports.
+      { message: "malformed JSON", operation: "step", extendedCode: 1 },
     );
     assertEqual(
       rowsByQuery.get(testTableQuery),

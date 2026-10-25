@@ -23,6 +23,7 @@ import {
   NonEmptyTrimmedString100,
   ok,
   type CreateSqliteDriver,
+  type NativeSqlite,
   type SqliteDriver,
 } from "@evolu/common";
 import {
@@ -43,7 +44,6 @@ import { join } from "node:path";
 import { after, mock, test } from "node:test";
 import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import type { NativeSqlite } from "../../src/sqlite/Binding.ts";
 
 installPolyfills();
 
@@ -76,7 +76,8 @@ const { createEvoluDeps: createMainEvoluDeps } =
   await import("../../src/createEvoluDeps.ts");
 const { createEvoluDeps: createSharedEvoluDeps } =
   await import("../../src/shared.ts");
-const { createNativeSqliteDriver } = await import("../../src/sqlite/Driver.ts");
+const { createReactNativeSqliteDriver } =
+  await import("../../src/sqlite/Driver.ts");
 const {
   createBenchRelay,
   createStallMeter,
@@ -104,7 +105,7 @@ const setupDirectory = (name: string): string => {
 
 /** The driver the route passes, on the N-API mirror. */
 const createDriver = (databaseDirectory: string): CreateSqliteDriver =>
-  createNativeSqliteDriver({ nativeSqlite: binding, databaseDirectory });
+  createReactNativeSqliteDriver({ nativeSqlite: binding, databaseDirectory });
 
 /**
  * A driver that throws, instead of retrying, when it opens a file another

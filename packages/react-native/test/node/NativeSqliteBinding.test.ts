@@ -14,6 +14,7 @@ import {
   bytesToHex,
   EncryptionKey,
   encryptWithXChaCha20Poly1305,
+  type NativeSqlite,
   type RandomBytes,
 } from "@evolu/common";
 import {
@@ -30,10 +31,7 @@ import { setImmediate as nextMacrotask } from "node:timers/promises";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 import { Worker } from "node:worker_threads";
-import {
-  nativeSqliteAbiVersion,
-  type NativeSqlite,
-} from "../../src/sqlite/Binding.ts";
+import { nativeSqliteAbiVersion } from "../../src/sqlite/Binding.ts";
 import {
   describeBindingConformance,
   xchachaVectorInputs,

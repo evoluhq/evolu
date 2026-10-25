@@ -36,7 +36,12 @@
  *
  * @module
  */
-import { assertEqual, exhaustiveCheck, trySync } from "@evolu/common";
+import {
+  assertEqual,
+  exhaustiveCheck,
+  trySync,
+  type NativeSqlite,
+} from "@evolu/common";
 import type { EvoluDeps } from "@evolu/common/local-first";
 import {
   defaultBuildDirectory,
@@ -65,7 +70,6 @@ import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
-import type { NativeSqlite } from "../src/sqlite/Binding.ts";
 import {
   deviceFixtureKey,
   deviceFixtureRows,

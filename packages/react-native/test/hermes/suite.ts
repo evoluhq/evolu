@@ -7,14 +7,16 @@
  *
  * @module
  */
-import { assert, assertEqual, assertTrue } from "@evolu/common";
-// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
-import toSorted from "array.prototype.tosorted";
 import {
-  nativeSqliteAbiVersion,
+  assert,
+  assertEqual,
+  assertTrue,
   type NativeSqlite,
   type NativeSqliteDatabase,
-} from "../../src/sqlite/Binding.ts";
+} from "@evolu/common";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
+import toSorted from "array.prototype.tosorted";
+import { nativeSqliteAbiVersion } from "../../src/sqlite/Binding.ts";
 import { describeBindingConformance } from "../bindingConformance.ts";
 
 /** The hooks only the host's build has, which the tests set and reset. */

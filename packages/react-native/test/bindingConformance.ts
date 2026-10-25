@@ -11,12 +11,12 @@
  *
  * @module
  */
-import type { SqliteValue } from "@evolu/common";
 import type {
   NativeSqlite,
   NativeSqliteDatabase,
   NativeSqliteStatement,
-} from "../src/sqlite/Binding.ts";
+  SqliteValue,
+} from "@evolu/common";
 
 /** A value the suite binds, whose numbers are finite without the brand. */
 type TestValue = null | number | string | Uint8Array;

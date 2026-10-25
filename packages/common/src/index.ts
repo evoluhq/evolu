@@ -26,6 +26,7 @@ export * from "./Leancase.ts";
 export * from "./LockManager.ts";
 export * from "./Lookup.ts";
 export * from "./Microtask.ts";
+export * from "./NativeSqlite.ts";
 export * from "./Number.ts";
 export * from "./Object.ts";
 export * from "./Option.ts";

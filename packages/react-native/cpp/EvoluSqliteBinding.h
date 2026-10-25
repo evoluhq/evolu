@@ -1,6 +1,6 @@
 /*
  * Evolu's SQLite binding over JSI: the JavaScript interface that
- * src/sqlite/Binding.ts types, over the SQLite core's binding layer,
+ * @evolu/common's NativeSqlite types, over the SQLite core's binding layer,
  * evolu_database.h, as @evolu/sqlite-core's node/binding.c implements it over
  * Node-API. test/bindingConformance.ts pins that both behave alike.
  *

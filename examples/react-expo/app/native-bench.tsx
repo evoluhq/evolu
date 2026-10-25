@@ -8,7 +8,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useEffect, type FC } from "react";
 import { Platform, Text, View } from "react-native";
 import { runDeviceBench } from "../../../packages/react-native/test/device/bench.ts";
-import { createNativeSqliteDriver } from "../../../packages/react-native/src/sqlite/Driver.ts";
+import { createReactNativeSqliteDriver } from "../../../packages/react-native/src/sqlite/Driver.ts";
 import {
   loadEvoluApp,
   loadNativeSqlite,
@@ -32,7 +32,7 @@ const NativeBench: FC = () => {
       nodeEnv: process.env.NODE_ENV,
       createEvoluDeps: () =>
         createEvoluDeps({ console: createConsole({ level: "warn" }) }),
-      createSqliteDriver: createNativeSqliteDriver({
+      createSqliteDriver: createReactNativeSqliteDriver({
         nativeSqlite: loadNativeSqlite(),
         databaseDirectory: loadEvoluApp().getDatabaseDirectory(),
       }),

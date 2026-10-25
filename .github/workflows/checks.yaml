@@ -413,6 +413,22 @@ jobs:
         if: matrix.suite == 'unit'
         run: apt-get update && apt-get install -y --no-install-recommends jq
 
+      # The Node.js integration tests run on Evolu's SQLite core, whose test
+      # addon they build with clang from the amalgamation that make generates
+      # from the pinned SQLite zip, which every use verifies.
+      - name: Install the SQLite core's build tools
+        if: matrix.suite == 'Node.js integration'
+        run: apt-get update && apt-get install -y --no-install-recommends clang make unzip
+
+      - name: Restore source archives
+        if: matrix.suite == 'Node.js integration'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
+
       - name: Build
         run: pnpm build
 

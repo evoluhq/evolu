@@ -3,17 +3,12 @@
  *
  * @module
  */
-import { err, ok } from "@evolu/common";
+import { err, ok, retryWhileHeld, type NativeSqliteDep } from "@evolu/common";
 import type {
   DatabaseHeldError,
   WaitForDatabaseRelease,
 } from "@evolu/common/local-first";
-import type { NativeSqliteDep } from "./Binding.ts";
-import {
-  databasePath,
-  retryWhileHeld,
-  type DatabaseDirectoryDep,
-} from "./Driver.ts";
+import { databasePath, type DatabaseDirectoryDep } from "./Driver.ts";
 
 /**
  * Creates the {@link WaitForDatabaseRelease} of Evolu for React Native, which

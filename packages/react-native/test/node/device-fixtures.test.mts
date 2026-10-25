@@ -10,6 +10,7 @@ import {
   Name,
   sql,
   testCreateRun,
+  type NativeSqlite,
 } from "@evolu/common";
 import { setupAddon } from "@evolu/sqlite-core/test/setup-addon.mts";
 import {
@@ -23,8 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { runDeviceTestsCli } from "../../scripts/device-tests.mts";
-import type { NativeSqlite } from "../../src/sqlite/Binding.ts";
-import { createNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
+import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
 import {
   deviceFixtureKey,
   deviceFixtureRows,
@@ -64,7 +64,7 @@ test(
 
       await using run = testCreateRun();
       using driver = await run.ok(
-        createNativeSqliteDriver({
+        createReactNativeSqliteDriver({
           nativeSqlite: binding,
           databaseDirectory: directory,
         })(Name.orThrow(name), {

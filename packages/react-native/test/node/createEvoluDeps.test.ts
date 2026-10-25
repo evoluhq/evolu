@@ -17,6 +17,7 @@ import {
   createRun,
   id,
   NonEmptyTrimmedString100,
+  type NativeSqlite,
 } from "@evolu/common";
 import {
   AppName,
@@ -32,7 +33,6 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, mock, test } from "node:test";
-import type { NativeSqlite } from "../../src/sqlite/Binding.ts";
 
 installPolyfills();
 
@@ -73,7 +73,8 @@ mock.module(
 );
 
 const { createEvoluDeps } = await import("../../src/createEvoluDeps.ts");
-const { createNativeSqliteDriver } = await import("../../src/sqlite/Driver.ts");
+const { createReactNativeSqliteDriver } =
+  await import("../../src/sqlite/Driver.ts");
 const { createBenchRelay } = await import("../device/bench.ts");
 
 test("Evolu stores and queries rows in an encrypted database in EvoluApp's directory", async () => {
@@ -121,7 +122,7 @@ test("Evolu's DbWorker and SharedWorker encrypt and decrypt changes with the bin
     createOwnerSecret({ randomBytes: createRandomBytes() }),
   );
   await using relayRun = createRun({
-    createSqliteDriver: createNativeSqliteDriver({
+    createSqliteDriver: createReactNativeSqliteDriver({
       nativeSqlite: binding,
       databaseDirectory: directory,
     }),

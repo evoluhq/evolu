@@ -4,11 +4,14 @@
  * runs the device runner on the N-API mirror of the binding, with both specs
  * mocked and no suites, and posts each line the runner logs, and its reload.
  */
-import { assertEqual, assertNonNullable } from "@evolu/common";
+import {
+  assertEqual,
+  assertNonNullable,
+  type NativeSqlite,
+} from "@evolu/common";
 import { createRequire } from "node:module";
 import { mock } from "node:test";
 import { parentPort, workerData } from "node:worker_threads";
-import type { NativeSqlite } from "../../src/sqlite/Binding.ts";
 
 const { addonPath, directory } = workerData as {
   readonly addonPath: string;

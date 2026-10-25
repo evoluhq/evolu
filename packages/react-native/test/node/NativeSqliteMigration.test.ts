@@ -15,6 +15,7 @@ import {
   Name,
   sql,
   testCreateRun,
+  type NativeSqlite,
 } from "@evolu/common";
 import {
   defaultBuildDirectory,
@@ -36,8 +37,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import type { NativeSqlite } from "../../src/sqlite/Binding.ts";
-import { createNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
+import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
 
 const binding = (await setupAddon()).createBinding() as NativeSqlite;
 
@@ -62,7 +62,7 @@ const openDatabase = (databaseDirectory: string) => {
   return {
     run,
     driver: run.ok(
-      createNativeSqliteDriver({
+      createReactNativeSqliteDriver({
         nativeSqlite: binding,
         databaseDirectory,
       })(testName, { mode: "encrypted", encryptionKey: testKey }),

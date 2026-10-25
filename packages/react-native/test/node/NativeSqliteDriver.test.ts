@@ -20,6 +20,8 @@ import {
   ok,
   sql,
   testCreateRun,
+  type NativeSqlite,
+  type NativeSqliteDatabase,
   type SqliteDriverOptions,
 } from "@evolu/common";
 import {
@@ -48,11 +50,7 @@ import {
   describeSqliteDriverPrepare,
   setupSqliteAndDriver,
 } from "../../../../test/integration/nodejs/Sqlite/_prepare.ts";
-import type {
-  NativeSqlite,
-  NativeSqliteDatabase,
-} from "../../src/sqlite/Binding.ts";
-import { createNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
+import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
 import { createWaitForDatabaseRelease } from "../../src/sqlite/WaitForDatabaseRelease.ts";
 
 const binding = (await setupAddon()).createBinding() as NativeSqlite;
@@ -80,7 +78,7 @@ const setupDirectory = (t: TestContext): string => {
 const setupDriver = (directory: string, nativeSqlite = binding) => {
   const run = testCreateRun();
   const deps = { nativeSqlite, databaseDirectory: directory };
-  const createSqliteDriver = createNativeSqliteDriver(deps);
+  const createSqliteDriver = createReactNativeSqliteDriver(deps);
   return {
     run,
     path: join(directory, `evolu1-${testName}.db`),
@@ -340,7 +338,7 @@ test("deleteDatabase disposes the driver, then deletes its file, which a new dri
 test("deleteDatabase finalizes the statements a Sqlite keeps, which the Sqlite then disposes", async (t) => {
   const directory = setupDirectory(t);
   const { run, sqlite, driver } = await setupSqliteAndDriver(
-    createNativeSqliteDriver({
+    createReactNativeSqliteDriver({
       nativeSqlite: binding,
       databaseDirectory: directory,
     }),

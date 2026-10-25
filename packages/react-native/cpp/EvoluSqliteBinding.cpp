@@ -43,8 +43,8 @@ namespace jsi = facebook::jsi;
 namespace evolu {
 namespace {
 
-// The version of the interface src/sqlite/Binding.ts types, which its loader
-// checks.
+// The version of @evolu/common's NativeSqlite interface, which the loader
+// checks against src/sqlite/Binding.ts.
 constexpr int abiVersion = 1;
 
 // The largest integer a JavaScript number holds exactly,
@@ -135,7 +135,7 @@ jsi::Object createTyped(jsi::Runtime &rt, const char *type) {
   return object;
 }
 
-// Binding.ts's NativeSqliteCodecFailure, or null for none.
+// @evolu/common's NativeSqliteCodecFailure, or null for none.
 jsi::Value createCodecFailure(jsi::Runtime &rt,
                               const evolu_database_codec_failure &failure) {
   const char *type;

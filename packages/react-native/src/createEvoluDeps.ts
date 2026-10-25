@@ -6,7 +6,7 @@ import {
 } from "@evolu/common";
 import type { EvoluDeps } from "@evolu/common/local-first";
 import { createEvoluDeps as createSharedEvoluDeps } from "./shared.ts";
-import { createNativeSqliteDriver } from "./sqlite/Driver.ts";
+import { createReactNativeSqliteDriver } from "./sqlite/Driver.ts";
 import { loadEvoluApp, loadNativeSqlite } from "./sqlite/Loader.ts";
 import { createWaitForDatabaseRelease } from "./sqlite/WaitForDatabaseRelease.ts";
 
@@ -31,7 +31,7 @@ export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => {
   };
   return createSharedEvoluDeps({
     ...deps,
-    createSqliteDriver: createNativeSqliteDriver(sqliteDeps),
+    createSqliteDriver: createReactNativeSqliteDriver(sqliteDeps),
     waitForDatabaseRelease: createWaitForDatabaseRelease(sqliteDeps),
     reloadApp: () => {
       evoluApp.reloadApp();

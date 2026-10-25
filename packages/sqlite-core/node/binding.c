@@ -1,7 +1,7 @@
 /*
  * The N-API mirror of React Native's SQLite binding: the JavaScript interface
- * that @evolu/react-native's src/sqlite/Binding.ts types and describes, which
- * its JSI adapter implements under Hermes, here over Node-API and the same
+ * that @evolu/common's NativeSqlite.ts types and describes, which React
+ * Native's JSI adapter implements under Hermes, here over Node-API and the same
  * binding layer, binding/evolu_database.h, whose public headers are all it
  * includes. So the TypeScript driver runs in Node.js against the real C, and
  * the Node.js binding starts from it. node/addon.c exports it as
@@ -46,7 +46,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// The version of the interface Binding.ts types, which its loader checks.
+// The version of the interface NativeSqlite.ts types, which a loader checks.
 #define ABI_VERSION 1
 
 // The largest integer a JS number holds exactly, Number.MAX_SAFE_INTEGER.
@@ -160,7 +160,7 @@ static bool create_typed(napi_env env, const char *type, napi_value *result) {
          define(env, *result, "type", type_value);
 }
 
-// Creates Binding.ts's NativeSqliteCodecFailure, or null for none.
+// Creates NativeSqlite.ts's NativeSqliteCodecFailure, or null for none.
 static bool create_codec_failure(napi_env env,
                                  const evolu_database_codec_failure *failure,
                                  napi_value *result) {
@@ -189,7 +189,7 @@ static bool create_codec_failure(napi_env env,
          define(env, *result, "error", error);
 }
 
-// Creates Binding.ts's NativeSqliteError of a record from SQLite.
+// Creates NativeSqlite.ts's NativeSqliteError of a record from SQLite.
 static bool create_sqlite_error(napi_env env, const char *operation,
                                 const evolu_database_error *record,
                                 napi_value message, napi_value *result) {
@@ -215,7 +215,7 @@ static bool create_sqlite_error(napi_env env, const char *operation,
          define(env, *result, "cause", cause);
 }
 
-// Creates the error a record describes, as Binding.ts describes it: a
+// Creates the error a record describes, as NativeSqlite.ts describes it: a
 // TypeError for an invalid path, and otherwise an Error with the record's
 // message and a cause, which, as the constructor's option does, it defines
 // unenumerable.

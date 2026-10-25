@@ -25,6 +25,7 @@ import {
   sql,
   trySync,
   type DisposableRun,
+  type NativeSqlite,
   type SqliteDriver,
 } from "@evolu/common";
 import {
@@ -35,11 +36,8 @@ import {
   type Evolu,
   type EvoluDeps,
 } from "@evolu/common/local-first";
-import {
-  nativeSqliteAbiVersion,
-  type NativeSqlite,
-} from "../../src/sqlite/Binding.ts";
-import { createNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
+import { nativeSqliteAbiVersion } from "../../src/sqlite/Binding.ts";
+import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
 import { createWaitForDatabaseRelease } from "../../src/sqlite/WaitForDatabaseRelease.ts";
 import { describeBindingConformance } from "../bindingConformance.ts";
 
@@ -115,7 +113,7 @@ export const deviceTestsMarker = "native-tests-reload";
 export const registerDeviceSuites = (deps: DeviceSuitesDeps): void => {
   const { platform, nativeSqlite, databaseDirectory, test, assertEqual } = deps;
   const sqliteDeps = { nativeSqlite, databaseDirectory };
-  const createSqliteDriver = createNativeSqliteDriver(sqliteDeps);
+  const createSqliteDriver = createReactNativeSqliteDriver(sqliteDeps);
   const key = EncryptionKey.orThrow(new Uint8Array(32).fill(7));
 
   /**

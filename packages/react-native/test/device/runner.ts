@@ -20,7 +20,7 @@
  */
 import { createRun, Name, sql } from "@evolu/common";
 import type { EvoluDeps } from "@evolu/common/local-first";
-import { createNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
+import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
 import { loadEvoluApp, loadNativeSqlite } from "../../src/sqlite/Loader.ts";
 import { createWaitForDatabaseRelease } from "../../src/sqlite/WaitForDatabaseRelease.ts";
 import {
@@ -59,7 +59,9 @@ export const runDeviceTests = async ({
     const run = createRun({ reportDefect: () => undefined });
 
     await run.orThrow(createWaitForDatabaseRelease(sqliteDeps)(marker));
-    const found = await run.ok(createNativeSqliteDriver(sqliteDeps)(marker));
+    const found = await run.ok(
+      createReactNativeSqliteDriver(sqliteDeps)(marker),
+    );
     const [{ reloads }] = found.exec(sql`
       select count(*) as reloads from sqlite_schema where name = 'reload';
     `).rows;
@@ -99,7 +101,9 @@ export const runDeviceTests = async ({
     );
 
     // Kept open, so the reloaded runtime waits for the old one's teardown.
-    const next = await run.ok(createNativeSqliteDriver(sqliteDeps)(marker));
+    const next = await run.ok(
+      createReactNativeSqliteDriver(sqliteDeps)(marker),
+    );
     next.exec(sql`create table reload (a);`);
     setTimeout(() => {
       evoluApp.reloadApp();

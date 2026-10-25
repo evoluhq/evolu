@@ -1,7 +1,4 @@
-import {
-  createBetterSqliteDriver,
-  createTimingSafeEqual,
-} from "../../../packages/nodejs/src/index.ts";
+import { resolve } from "node:path";
 import type { TimingSafeEqual } from "../../../packages/common/src/Crypto.ts";
 import { constTrue } from "../../../packages/common/src/Function.ts";
 import {
@@ -23,6 +20,10 @@ import {
   type NodeId,
   type TimestampBytes,
 } from "../../../packages/common/src/local-first/Timestamp.ts";
+import {
+  createNativeSqliteDriver,
+  type NativeSqlite,
+} from "../../../packages/common/src/NativeSqlite.ts";
 import type { RandomLibDep } from "../../../packages/common/src/Random.ts";
 import type {
   CreateSqliteDriverDep,
@@ -36,6 +37,8 @@ import type {
 import { sql, testSetupSqlite } from "../../../packages/common/src/Sqlite.ts";
 import type { DisposableRun } from "../../../packages/common/src/Task.ts";
 import { maxMillis, type Millis } from "../../../packages/common/src/Time.ts";
+import { createTimingSafeEqual } from "../../../packages/nodejs/src/Crypto.ts";
+import { setupAddon } from "../../../packages/sqlite-core/test/setup-addon.mts";
 
 export interface TestTimestampBytesFixtures {
   readonly testAnotherTimestampsAsc: ReadonlyArray<TimestampBytes>;
@@ -128,9 +131,17 @@ export const testCreateTimestampBytesFixtures = (
 export const testTimingSafeEqual: TimingSafeEqual =
   /*#__PURE__*/ createTimingSafeEqual();
 
+/** Evolu's SQLite core, through the test addon that `setupAddon` builds. */
+const testNativeSqlite = (await setupAddon()).createBinding() as NativeSqlite;
+
+/** Opens every database in memory, on Evolu's SQLite core. */
 export const testCreateSqliteDep: CreateSqliteDriverDep = {
   createSqliteDriver: (name) =>
-    createBetterSqliteDriver(name, { mode: "memory" }),
+    createNativeSqliteDriver({
+      nativeSqlite: testNativeSqlite,
+      // As @evolu/nodejs names a database's file, which no test opens.
+      databasePath: (databaseName) => resolve(`${databaseName}.db`),
+    })(name, { mode: "memory" }),
 };
 
 export const setupSqlite: () => ReturnType<typeof testSetupSqlite> = () =>
@@ -166,12 +177,16 @@ export interface TestSqliteAndRelayStorageSetup extends AsyncDisposable {
   readonly storage: StorageDep["storage"];
 }
 
-/** Creates a disposable test setup with relay storage and SQLite deps. */
+/**
+ * Creates a disposable test setup with relay storage and SQLite deps, on the
+ * driver of {@link testCreateSqliteDep} unless `deps` passes another.
+ */
 export const setupSqliteAndRelayStorage = async (
   config?: Partial<StorageConfig>,
+  deps: CreateSqliteDriverDep = testCreateSqliteDep,
 ): Promise<TestSqliteAndRelayStorageSetup> => {
   await using disposer = new AsyncDisposableStack();
-  const sqliteSetup = disposer.use(await setupSqlite());
+  const sqliteSetup = disposer.use(await testSetupSqlite(deps));
   const { run, sqlite } = sqliteSetup;
 
   createBaseSqliteStorageTables({ sqlite });

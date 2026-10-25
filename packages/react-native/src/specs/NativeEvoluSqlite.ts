@@ -10,7 +10,7 @@ import { TurboModuleRegistry } from "react-native";
 export interface Spec extends TurboModule {
   /**
    * Returns the binding for the calling runtime, the object that
-   * `src/sqlite/Binding.ts` types, which codegen can't.
+   * `@evolu/common`'s `NativeSqlite` types, which codegen can't.
    */
   readonly createBinding: () => CodegenTypes.UnsafeObject;
 }
