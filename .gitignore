@@ -41,6 +41,9 @@ examples/react-expo/android
 # bench/sqlite-wasm
 bench/sqlite-wasm/results/
 
+# packages/nodejs
+packages/nodejs/native/
+
 # packages/sqlite-wasm
 packages/sqlite-wasm/wasm/
 packages/sqlite-wasm/wasm-cache/

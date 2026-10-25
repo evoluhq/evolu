@@ -297,4 +297,20 @@ describe("GitHub workflows", () => {
       [],
     );
   });
+
+  // The musl addons @evolu/nodejs ships are built and checked in the image the
+  // relay runs on, so a Dependabot update of one must update the other.
+  it("build the musl SQLite addons in the relay image's base image, by its digest", () => {
+    const base = /^FROM (\S+)$/mu.exec(
+      readFileSync(new URL("apps/relay/Dockerfile", root), "utf8"),
+    )?.[1];
+    const images = [
+      ...job(workflow("checks.yaml"), "nodejs-native-linux").matchAll(
+        /image=(\S*alpine\S*)$/gmu,
+      ),
+    ].map((match) => match[1]);
+
+    assertTrue(base?.includes("@sha256:") === true);
+    assertEqual(images, [base]);
+  });
 });

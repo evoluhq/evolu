@@ -1,0 +1,15 @@
+{
+  // The scripts that build and check the SQLite addon, which import
+  // @evolu/sqlite-core's scripts by their paths, outside the package's
+  // rootDir, so CI runs them without installing any package. They're a
+  // project of their own that emits nothing.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "rootDir": "../../.."
+  },
+  "include": ["*.mts"]
+}

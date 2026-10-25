@@ -295,6 +295,143 @@ jobs:
       - name: Hermes tests
         run: pnpm test:react-native-hermes
 
+  # Builds the SQLite addon @evolu/nodejs ships for each Linux target, in the
+  # oldest system the target runs on, on a runner of its CPU: AlmaLinux 8,
+  # whose glibc 2.28 is Node.js 24's oldest, and the relay image's Alpine for
+  # musl. Both are pinned by the digest of their multi-arch index, but the
+  # compiler is installed from the system's repository, so the log records its
+  # packages. The build and check scripts import only Node.js's own modules, so
+  # nothing is installed from npm, and no dependency's code runs where the
+  # shipped addon is built. No cache is restored either, which another job
+  # could have written: the build downloads the pinned SQLite source and
+  # verifies it. The job then checks the addon's header, which fails for a
+  # glibc symbol newer than 2.28, that it exports only Node-API's entry points,
+  # that it loads as the package loads it and opens an encrypted, a plaintext
+  # and a memory database, and that a second build from a copy of its sources
+  # at another path, into another build directory, gives the same bytes.
+  nodejs-native-linux:
+    name: Node.js SQLite (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64-gnu
+            runner: ubuntu-24.04
+          - target: linux-arm64-gnu
+            runner: ubuntu-24.04-arm
+          - target: linux-x64-musl
+            runner: ubuntu-24.04
+          - target: linux-arm64-musl
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The glibc build runs the Node.js of .nvmrc, an official build, which
+      # runs on glibc 2.28 and installs the Node-API headers the build needs.
+      # Alpine's image has its own, of the same version.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ".nvmrc"
+          package-manager-cache: false
+
+      # JavaScript actions can't run in Alpine containers on arm64 runners, so
+      # each build runs in its system with docker run.
+      - name: Build and check
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          volumes=(--volume="$PWD:/repo")
+          case "$TARGET" in
+            *-gnu)
+              image=almalinux:8@sha256:8b469a3a78515e8a18ea8fc727e6a3679e1d0c5ba6f58d5b30be3d0d9b86cffe
+              install="dnf install -y clang make unzip"
+              volumes+=(--volume="$(dirname "$(dirname "$(command -v node)")"):/opt/node:ro")
+              ;;
+            *-musl)
+              image=node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+              install="apk add --no-cache build-base clang unzip"
+              ;;
+          esac
+          docker run --rm "${volumes[@]}" --workdir=/repo \
+            --env=TARGET --env=INSTALL="$install" "$image" sh -euc '
+              $INSTALL
+              if [ -d /opt/node ]; then PATH=/opt/node/bin:$PATH; fi
+              node --version
+              clang --version
+              if command -v rpm >/dev/null; then rpm -qa; else apk info -v; fi |
+                grep -E "^(binutils|clang|glibc|llvm|musl)" | sort
+              node packages/nodejs/scripts/build-native.mts --target="$TARGET"
+              addon="packages/nodejs/native/$TARGET/evolu.node"
+              nm -D --defined-only "$addon"
+              # Alpine also defines the ELF init and fini functions.
+              test "$(nm -D --defined-only "$addon" | awk "{ print \$3 }" |
+                grep -vx -e _init -e _fini | sort | tr "\n" " ")" = \
+                "napi_register_module_v1 node_api_module_get_api_version_v1 "
+              node packages/nodejs/scripts/check-native.mts --target="$TARGET" --load --reproduce
+            '
+
+      - name: Upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nodejs-native-${{ matrix.target }}
+          path: packages/nodejs/native/
+          if-no-files-found: error
+
+  # The same for both macOS targets, each on a runner of its CPU, with the
+  # runner's Xcode, which the log records, for macOS 13.5 and later, which the
+  # check reads from the addon's header, and with the same second build. No
+  # runner with a macOS older than 15 remains, so the oldest macOS isn't
+  # tested.
+  nodejs-native-macos:
+    name: Node.js SQLite (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+          - target: darwin-x64
+            runner: macos-15-intel
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ".nvmrc"
+          package-manager-cache: false
+
+      - name: Build and check
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          xcodebuild -version
+          clang --version
+          node packages/nodejs/scripts/build-native.mts --target="$TARGET"
+          addon="packages/nodejs/native/$TARGET/evolu.node"
+          nm -gU "$addon"
+          test "$(nm -gU "$addon" | awk '{ print $3 }' | sort | tr '\n' ' ')" = \
+            "_napi_register_module_v1 _node_api_module_get_api_version_v1 "
+          node packages/nodejs/scripts/check-native.mts --target="$TARGET" --load --reproduce
+
+      - name: Upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nodejs-native-${{ matrix.target }}
+          path: packages/nodejs/native/
+          if-no-files-found: error
+
   type-benchmarks:
     name: Type benchmarks
     runs-on: ubuntu-latest
