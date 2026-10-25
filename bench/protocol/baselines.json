@@ -24,9 +24,9 @@
             "bytes": 456,
             "redundantMessages": 0,
             "clientSqlStatements": 2,
-            "clientSqlRows": 17,
-            "relaySqlStatements": 47,
-            "relaySqlRows": 62
+            "clientSqlRows": 2,
+            "relaySqlStatements": 32,
+            "relaySqlRows": 32
           },
           "diagnostics": {
             "request": {
@@ -111,10 +111,10 @@
             "rounds": 3,
             "bytes": 2091,
             "redundantMessages": 0,
-            "clientSqlStatements": 67,
-            "clientSqlRows": 131,
-            "relaySqlStatements": 112,
-            "relaySqlRows": 203
+            "clientSqlStatements": 47,
+            "clientSqlRows": 66,
+            "relaySqlStatements": 78,
+            "relaySqlRows": 122
           },
           "diagnostics": {
             "request": {
@@ -199,10 +199,10 @@
             "rounds": 3,
             "bytes": 20039,
             "redundantMessages": 0,
-            "clientSqlStatements": 267,
-            "clientSqlRows": 229,
-            "relaySqlStatements": 322,
-            "relaySqlRows": 397
+            "clientSqlStatements": 199,
+            "clientSqlRows": 213,
+            "relaySqlStatements": 238,
+            "relaySqlRows": 366
           },
           "diagnostics": {
             "request": {
@@ -287,10 +287,10 @@
             "rounds": 33,
             "bytes": 266148,
             "redundantMessages": 0,
-            "clientSqlStatements": 7093,
-            "clientSqlRows": 14036,
-            "relaySqlStatements": 7228,
-            "relaySqlRows": 14293
+            "clientSqlStatements": 4902,
+            "clientSqlRows": 7593,
+            "relaySqlStatements": 5001,
+            "relaySqlRows": 7735
           },
           "diagnostics": {
             "request": {
@@ -375,10 +375,10 @@
             "rounds": 5,
             "bytes": 227013,
             "redundantMessages": 0,
-            "clientSqlStatements": 5761,
-            "clientSqlRows": 12081,
-            "relaySqlStatements": 6218,
-            "relaySqlRows": 13509
+            "clientSqlStatements": 3951,
+            "clientSqlRows": 7584,
+            "relaySqlStatements": 4276,
+            "relaySqlRows": 8777
           },
           "diagnostics": {
             "request": {
@@ -463,10 +463,10 @@
             "rounds": 3,
             "bytes": 224808,
             "redundantMessages": 0,
-            "clientSqlStatements": 2464,
-            "clientSqlRows": 9060,
-            "relaySqlStatements": 8361,
-            "relaySqlRows": 17290
+            "clientSqlStatements": 1729,
+            "clientSqlRows": 6000,
+            "relaySqlStatements": 5724,
+            "relaySqlRows": 12328
           },
           "diagnostics": {
             "request": {
@@ -551,10 +551,10 @@
             "rounds": 11,
             "bytes": 10827629,
             "redundantMessages": 0,
-            "clientSqlStatements": 40093,
-            "clientSqlRows": 18401,
-            "relaySqlStatements": 20084,
-            "relaySqlRows": 40080
+            "clientSqlStatements": 40083,
+            "clientSqlRows": 38402,
+            "relaySqlStatements": 20074,
+            "relaySqlRows": 40060
           },
           "diagnostics": {
             "request": {
@@ -639,10 +639,10 @@
             "rounds": 12,
             "bytes": 10823629,
             "redundantMessages": 0,
-            "clientSqlStatements": 20081,
-            "clientSqlRows": 40092,
-            "relaySqlStatements": 40107,
-            "relaySqlRows": 17163
+            "clientSqlStatements": 20069,
+            "clientSqlRows": 40055,
+            "relaySqlStatements": 40096,
+            "relaySqlRows": 37163
           },
           "diagnostics": {
             "request": {
@@ -727,10 +727,10 @@
             "rounds": 56,
             "bytes": 11040424,
             "redundantMessages": 0,
-            "clientSqlStatements": 50868,
-            "clientSqlRows": 35222,
-            "relaySqlStatements": 52315,
-            "relaySqlRows": 46296
+            "clientSqlStatements": 38103,
+            "clientSqlRows": 37881,
+            "relaySqlStatements": 39408,
+            "relaySqlRows": 50571
           },
           "diagnostics": {
             "request": {
@@ -815,10 +815,10 @@
             "rounds": 14,
             "bytes": 11077773,
             "redundantMessages": 0,
-            "clientSqlStatements": 54941,
-            "clientSqlRows": 52204,
-            "relaySqlStatements": 53355,
-            "relaySqlRows": 39831
+            "clientSqlStatements": 41360,
+            "clientSqlRows": 54704,
+            "relaySqlStatements": 40026,
+            "relaySqlRows": 43091
           },
           "diagnostics": {
             "request": {
@@ -903,10 +903,10 @@
             "rounds": 12,
             "bytes": 11208456,
             "redundantMessages": 0,
-            "clientSqlStatements": 54473,
-            "clientSqlRows": 47607,
-            "relaySqlStatements": 64347,
-            "relaySqlRows": 63473
+            "clientSqlStatements": 40900,
+            "clientSqlRows": 47497,
+            "relaySqlStatements": 48445,
+            "relaySqlRows": 61489
           },
           "diagnostics": {
             "request": {
@@ -991,10 +991,10 @@
             "rounds": 39,
             "bytes": 1021286,
             "redundantMessages": 0,
-            "clientSqlStatements": 13298,
-            "clientSqlRows": 11526,
-            "relaySqlStatements": 13116,
-            "relaySqlRows": 10218
+            "clientSqlStatements": 10049,
+            "clientSqlRows": 12261,
+            "relaySqlStatements": 9880,
+            "relaySqlRows": 10317
           },
           "diagnostics": {
             "request": {
@@ -1079,10 +1079,10 @@
             "rounds": 5,
             "bytes": 980636,
             "redundantMessages": 0,
-            "clientSqlStatements": 13538,
-            "clientSqlRows": 12413,
-            "relaySqlStatements": 11737,
-            "relaySqlRows": 6479
+            "clientSqlStatements": 10238,
+            "clientSqlRows": 13691,
+            "relaySqlStatements": 8809,
+            "relaySqlRows": 8006
           },
           "diagnostics": {
             "request": {
@@ -1167,10 +1167,10 @@
             "rounds": 3,
             "bytes": 965860,
             "redundantMessages": 0,
-            "clientSqlStatements": 12307,
-            "clientSqlRows": 11551,
-            "relaySqlStatements": 11090,
-            "relaySqlRows": 5846
+            "clientSqlStatements": 9297,
+            "clientSqlRows": 13271,
+            "relaySqlStatements": 8322,
+            "relaySqlRows": 7806
           },
           "diagnostics": {
             "request": {
@@ -1255,10 +1255,10 @@
             "rounds": 9,
             "bytes": 6330796,
             "redundantMessages": 0,
-            "clientSqlStatements": 4074,
-            "clientSqlRows": 1747,
-            "relaySqlStatements": 2068,
-            "relaySqlRows": 4064
+            "clientSqlStatements": 4066,
+            "clientSqlRows": 3748,
+            "relaySqlStatements": 2060,
+            "relaySqlRows": 4048
           },
           "diagnostics": {
             "request": {
@@ -1343,10 +1343,10 @@
             "rounds": 10,
             "bytes": 6329537,
             "redundantMessages": 0,
-            "clientSqlStatements": 2079,
-            "clientSqlRows": 4084,
-            "relaySqlStatements": 4086,
-            "relaySqlRows": 1257
+            "clientSqlStatements": 2066,
+            "clientSqlRows": 4048,
+            "relaySqlStatements": 4077,
+            "relaySqlRows": 3257
           },
           "diagnostics": {
             "request": {
@@ -1431,10 +1431,10 @@
             "rounds": 3,
             "bytes": 1049676,
             "redundantMessages": 0,
-            "clientSqlStatements": 2072,
-            "clientSqlRows": 4055,
-            "relaySqlStatements": 4015,
-            "relaySqlRows": 37
+            "clientSqlStatements": 2056,
+            "clientSqlRows": 4023,
+            "relaySqlStatements": 4013,
+            "relaySqlRows": 2036
           },
           "diagnostics": {
             "request": {
@@ -1522,7 +1522,7 @@
             "clientSqlStatements": 0,
             "clientSqlRows": 0,
             "relaySqlStatements": 205,
-            "relaySqlRows": 1
+            "relaySqlRows": 101
           },
           "diagnostics": {
             "request": {
@@ -1607,10 +1607,10 @@
             "rounds": 4,
             "bytes": 1061789,
             "redundantMessages": 0,
-            "clientSqlStatements": 457,
-            "clientSqlRows": 771,
-            "relaySqlStatements": 10156,
-            "relaySqlRows": 138
+            "clientSqlStatements": 407,
+            "clientSqlRows": 658,
+            "relaySqlStatements": 10069,
+            "relaySqlRows": 5062
           },
           "diagnostics": {
             "request": {

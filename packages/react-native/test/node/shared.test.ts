@@ -1,3 +1,7 @@
+// Declares React Native's ErrorUtils global as src/Task.ts reads it.
+// oxlint-disable-next-line import/no-empty-named-blocks, unicorn/require-module-specifiers -- Includes global declarations during type-checking without emitting a runtime import.
+import type {} from "../../src/ErrorUtils.d.ts";
+
 import {
   assert,
   assertEqual,
@@ -15,8 +19,7 @@ import {
   type CreateSqliteDriver,
   type EvoluDeps,
   type EvoluError,
-  type SqliteQueryParameters,
-  type SqliteRow,
+  type NativeSqlite,
 } from "@evolu/common";
 import {
   AppName,
@@ -27,46 +30,22 @@ import {
   testAppOwner,
 } from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
-import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { setupAddon } from "@evolu/sqlite-core/test/setup-addon.mts";
+import { tmpdir } from "node:os";
 import { describe, it, mock } from "node:test";
-import { createEvoluDeps } from "./shared.ts";
+import { createEvoluDeps } from "../../src/shared.ts";
+import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
 
 installPolyfills();
 
-/** Creates a SQLite driver for an in-memory node:sqlite database. */
-const setupNodeSqliteDriver = (): CreateSqliteDriver => () => () => {
-  const db = new DatabaseSync(":memory:");
-  const execStatement = (
-    statement: StatementSync,
-    parameters: SqliteQueryParameters,
-  ) => {
-    if (statement.columns().length === 0) {
-      const { changes } = statement.run(...parameters);
-      return { rows: [], changes: Number(changes) };
-    }
-    const rows = statement.all(...parameters) as Array<SqliteRow>;
-    return { rows, changes: 0 };
-  };
-  return ok({
-    exec: ({ sql, parameters }) => execStatement(db.prepare(sql), parameters),
-    prepare: (sql) => {
-      const statement = db.prepare(sql);
-      return {
-        exec: (parameters) => execStatement(statement, parameters),
-        [Symbol.dispose]: constVoid,
-      };
-    },
-    iterate: ({ sql, parameters }, onRow) => {
-      for (const row of db.prepare(sql).iterate(...parameters))
-        if (!onRow(row as SqliteRow)) break;
-    },
-    export: () => new Uint8Array(),
-    deleteDatabase: constVoid,
-    [Symbol.dispose]: () => {
-      db.close();
-    },
-  });
-};
+const binding = (await setupAddon()).createBinding() as NativeSqlite;
+
+/** Creates a SQLite driver for memory databases of the N-API binding. */
+const setupMemorySqliteDriver = (): CreateSqliteDriver => (name) =>
+  createReactNativeSqliteDriver({
+    nativeSqlite: binding,
+    databaseDirectory: tmpdir(),
+  })(name, { mode: "memory" });
 
 /** Resolves with the deps' first EvoluError. */
 const waitForEvoluError = (deps: EvoluDeps): Promise<EvoluError | null> =>
@@ -121,7 +100,7 @@ describe("createEvoluDeps", () => {
     const createDeps = () =>
       createEvoluDeps({
         reloadApp: constVoid,
-        createSqliteDriver: setupNodeSqliteDriver(),
+        createSqliteDriver: setupMemorySqliteDriver(),
       });
 
     using first = createDeps();
@@ -222,7 +201,7 @@ describe("createEvoluDeps", () => {
   it("gives the DbWorker waitForDatabaseRelease, which it waits with before it opens a persistent database", async () => {
     const events: Array<string> = [];
     const opened = Promise.withResolvers<void>();
-    const createSqliteDriver = setupNodeSqliteDriver();
+    const createSqliteDriver = setupMemorySqliteDriver();
     using deps = createEvoluDeps({
       reloadApp: constVoid,
       createSqliteDriver: (name, options) => {
@@ -275,7 +254,7 @@ describe("createEvoluDeps", () => {
     });
     using deps = createEvoluDeps({
       reloadApp: constVoid,
-      createSqliteDriver: setupNodeSqliteDriver(),
+      createSqliteDriver: setupMemorySqliteDriver(),
     });
     const schema = {
       todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },

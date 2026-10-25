@@ -681,7 +681,7 @@ const createSide = async (
   );
 
   // Skiplist levels come from the harness PRNG. They do not change any
-  // metric, because statements per insert depend on the insert strategy.
+  // metric, because an insert is one statement at any level.
   const nextLevel = createPrng(levelSeed);
   const storage = localFirst.createRelaySqliteStorage({
     sqlite: countedSqlite,

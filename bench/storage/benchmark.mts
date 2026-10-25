@@ -38,7 +38,6 @@ import {
   createTimestamp,
   getTimestampByIndex,
   OwnerIdBytes,
-  type StorageInsertTimestampStrategy,
   type TimestampBytes,
   timestampToTimestampBytes,
 } from "@evolu/common/local-first";
@@ -68,11 +67,8 @@ const benchmarkMode = parseBenchmarkMode({
 const updateBaseline =
   benchmarkMode === "update-baseline" ||
   benchmarkMode === "force-update-baseline";
-const strategies = [
-  "append",
-  "prepend",
-  "insert",
-] as const satisfies ReadonlyArray<StorageInsertTimestampStrategy>;
+// Ascending, descending and shuffled timestamps.
+const strategies = ["append", "prepend", "insert"] as const;
 const benchmarkMethods = [
   ...strategies,
   "getTimestampByIndex",
@@ -144,7 +140,7 @@ for (let index = timestampIndexesRandom.length - 1; index > 0; index--) {
   ];
 }
 const timestampsByStrategy: Record<
-  StorageInsertTimestampStrategy,
+  (typeof strategies)[number],
   ReadonlyArray<TimestampBytes>
 > = {
   append: timestampsAsc,
@@ -186,13 +182,12 @@ const insertTimestamps = (
   sqlite: Sqlite,
   storage: ReturnType<typeof createBaseSqliteStorage>,
   timestamps: ReadonlyArray<TimestampBytes>,
-  strategy: StorageInsertTimestampStrategy,
   begin: number,
   end: number,
 ) =>
   sqlite.transaction(() => {
     for (let index = begin; index < end; index++) {
-      storage.insertTimestamp(ownerId, timestamps[index], strategy);
+      storage.insertTimestamp(ownerId, timestamps[index]);
     }
     return ok();
   });
@@ -285,7 +280,6 @@ for (const strategy of strategies) {
           sqlite,
           storage,
           timestamps,
-          strategy,
           checkpoint - checkpointSize,
           checkpoint,
         ),
@@ -326,14 +320,7 @@ for (let run = 1; run <= repeatCount; run++) {
 
   await using setup = await setupStorage();
   const { sqlite, storage } = setup;
-  insertTimestamps(
-    sqlite,
-    storage,
-    timestampsAsc,
-    "append",
-    0,
-    timestampsAsc.length,
-  );
+  insertTimestamps(sqlite, storage, timestampsAsc, 0, timestampsAsc.length);
   const getTimestamp = getTimestampByIndex({ sqlite });
   let timestamp = getTimestamp(ownerId, getTimestampByIndexIndexes[0]);
   getTimestampByIndexMeasurements.push(
@@ -369,14 +356,7 @@ for (let run = 1; run <= fingerprintRangesRepeatCount; run++) {
 
   await using setup = await setupStorage();
   const { sqlite, storage } = setup;
-  insertTimestamps(
-    sqlite,
-    storage,
-    timestampsAsc,
-    "append",
-    0,
-    timestampsAsc.length,
-  );
+  insertTimestamps(sqlite, storage, timestampsAsc, 0, timestampsAsc.length);
   const buckets = getOrThrow(
     computeBalancedBuckets(NonNegativeInt.orThrow(timestampCount)),
   );

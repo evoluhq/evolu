@@ -173,7 +173,7 @@ import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
   DbChange,
-  getTimestampInsertStrategy,
+  extendTimestampBounds,
   readOwnerUsageOrDefault,
   updateOwnerUsage,
   type BaseSqliteStorage,
@@ -1487,18 +1487,17 @@ const applyMessages =
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
     let wroteNewMessages = false;
 
-    const usage = readOwnerUsageOrDefault(deps)(
+    // Earlier releases choose how to insert a timestamp from these bounds, so
+    // they stay true until the next schema migration drops them.
+    let { firstTimestamp, lastTimestamp } = readOwnerUsageOrDefault(deps)(
       ownerIdBytes,
       timestampToTimestampBytes(firstInArray(messages).timestamp),
     );
 
-    let { firstTimestamp, lastTimestamp } = usage;
-
     for (const { timestamp, change } of messages) {
       const timestampBytes = timestampToTimestampBytes(timestamp);
 
-      let strategy;
-      [strategy, firstTimestamp, lastTimestamp] = getTimestampInsertStrategy(
+      [firstTimestamp, lastTimestamp] = extendTimestampBounds(
         timestampBytes,
         firstTimestamp,
         lastTimestamp,
@@ -1510,7 +1509,6 @@ const applyMessages =
       const isNew = deps.baseSqliteStorage.insertTimestamp(
         ownerIdBytes,
         timestampBytes,
-        strategy,
       );
       if (!isNew) continue;
       wroteNewMessages = true;
@@ -1573,13 +1571,12 @@ const applyMessages =
     }
 
     if (wroteNewMessages) {
-      /**
-       * TODO: Implement proper storedBytes tracking for client using received
-       * and sent encrypted message sizes.
-       */
+      // A client will store shared owners that others write to, partly as a
+      // relay, and needs per-owner storedBytes for quotas that protect its
+      // disk. TODO: Track the bytes of received and sent encrypted messages,
+      // which replace this placeholder.
       updateOwnerUsage(deps)(
         ownerIdBytes,
-        // Placeholder until proper tracking implemented
         onePositiveInt,
         firstTimestamp,
         lastTimestamp,

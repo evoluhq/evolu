@@ -15,17 +15,15 @@ import {
 import {
   createAppOwner,
   createOwnerSecret,
-  type OwnerIdBytes,
   ownerIdToOwnerIdBytes,
   testAppOwner,
 } from "../../../../../packages/common/src/local-first/Owner.ts";
-import type { StorageInsertTimestampStrategy } from "../../../../../packages/common/src/local-first/Storage.ts";
 import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
   DbChange,
+  extendTimestampBounds,
   getTimestampByIndex,
-  getTimestampInsertStrategy,
   InfiniteUpperBound,
   RangeType,
   testFingerprintTimestamps,
@@ -87,18 +85,23 @@ const setupSqliteAndStorage = async () => {
   const random = createRandom();
 
   createBaseSqliteStorageTables({ sqlite });
+  const storage = createBaseSqliteStorage({ sqlite, random });
 
   return {
     sqlite,
-    storage: createBaseSqliteStorage({ sqlite, random }),
+    storage,
+    /** Inserts the owner's timestamps in a transaction, as Storage requires. */
+    insertTimestamps: (timestamps: ReadonlyArray<TimestampBytes>) => {
+      sqlite.transaction(() => {
+        for (const timestamp of timestamps)
+          storage.insertTimestamp(testAppOwnerIdBytes, timestamp);
+      });
+    },
     [Symbol.asyncDispose]: () => setup[Symbol.asyncDispose](),
   };
 };
 
-const testTimestamps = async (
-  timestamps: ReadonlyArray<TimestampBytes>,
-  strategy: StorageInsertTimestampStrategy,
-) => {
+const testTimestamps = async (timestamps: ReadonlyArray<TimestampBytes>) => {
   await using setup = await setupSqliteAndStorage();
   const { sqlite, storage } = setup;
   const sortedTimestamps = timestamps.toSorted(orderTimestampBytes);
@@ -108,17 +111,13 @@ const testTimestamps = async (
 
   const txResult = sqlite.transaction(() => {
     for (const timestamp of timestamps) {
-      assertTrue(
-        storage.insertTimestamp(testAppOwnerIdBytes, timestamp, strategy),
-      );
+      assertTrue(storage.insertTimestamp(testAppOwnerIdBytes, timestamp));
     }
 
     // Add the same timestamps again to test idempotency. An existing
     // timestamp is reported as not new.
     for (const timestamp of timestamps) {
-      assertFalse(
-        storage.insertTimestamp(testAppOwnerIdBytes, timestamp, strategy),
-      );
+      assertFalse(storage.insertTimestamp(testAppOwnerIdBytes, timestamp));
     }
 
     // Add similar timestamps of another owner.
@@ -126,7 +125,6 @@ const testTimestamps = async (
       storage.insertTimestamp(
         ownerIdToOwnerIdBytes(testAppOwner2.id),
         timestamp,
-        "append",
       );
     }
     return ok();
@@ -251,133 +249,14 @@ test(
       () => Math.random() - 0.5,
     );
 
-    await testTimestamps(testTimestampsAsc, "append");
-    await testTimestamps(sequentialTimestampsAsc, "append");
-    await testTimestamps(testTimestampsDesc, "prepend");
-    await testTimestamps(sequentialTimestampsDesc, "prepend");
-    await testTimestamps(testTimestampsRandom, "insert");
-    await testTimestamps(sequentialTimestampsRandom, "insert");
+    await testTimestamps(testTimestampsAsc);
+    await testTimestamps(sequentialTimestampsAsc);
+    await testTimestamps(testTimestampsDesc);
+    await testTimestamps(sequentialTimestampsDesc);
+    await testTimestamps(testTimestampsRandom);
+    await testTimestamps(sequentialTimestampsRandom);
   },
 );
-
-test("insertTimestamp updates use primary-key query plans", async () => {
-  await using setup = await setupSqlite();
-  const { sqlite } = setup;
-  createBaseSqliteStorageTables({ sqlite });
-
-  const updateQueries: Array<SqliteQuery> = [];
-  const randomValues = [0.9, 0.9, 0.9, 0.9, 0.1, 0.9] as Array<RandomNumber>;
-  const storage = createBaseSqliteStorage({
-    random: { next: () => randomValues.shift() ?? (0.9 as RandomNumber) },
-    sqlite: setupInterceptedSqlite(sqlite, (query, run) => {
-      if (query.sql.includes("update evolu_timestamp")) {
-        updateQueries.push(query);
-      }
-      return run();
-    }),
-  });
-  const timestamp = (millis: number) =>
-    timestampToTimestampBytes(createTimestamp({ millis: millis as Millis }));
-
-  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(100), "append");
-  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(200), "append");
-  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(0), "prepend");
-  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(150), "insert");
-  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(175), "insert");
-
-  assertLength(updateQueries, 3);
-
-  for (const [index, query] of updateQueries.entries()) {
-    const plan = sqlite.exec<{
-      id: number;
-      parent: number;
-      detail: string;
-    }>({
-      // prettier-ignore
-      ...sql`explain query plan ${sql.raw(query.sql)}`,
-      parameters: query.parameters,
-    });
-    const topLevelDetails = plan.rows
-      .filter((row) => row.parent === 0)
-      .map((row) => row.detail);
-
-    const scanIndex = topLevelDetails.indexOf(
-      `SCAN ${index === 1 ? "p" : "u"}`,
-    );
-    const targetSearchIndex = topLevelDetails.findIndex(
-      (detail, index) =>
-        index > scanIndex &&
-        /^SEARCH evolu_timestamp USING (?:COVERING )?INDEX .* \(ownerId=\? AND t=\?\)$/u.test(
-          detail,
-        ),
-    );
-
-    assertTrue(scanIndex >= 0);
-    assertTrue(targetSearchIndex > scanIndex);
-
-    if (index >= 1) {
-      assertLength(
-        plan.rows.filter((row) =>
-          /^SEARCH evolu_timestamp USING COVERING INDEX .* \(ownerId=\? AND l=\? AND t>\? AND t<\?\)$/u.test(
-            row.detail,
-          ),
-        ),
-        index,
-      );
-    }
-  }
-});
-
-test("insertTimestamp append uses primary-key query plans", async () => {
-  await using setup = await setupSqlite();
-  const { sqlite } = setup;
-  createBaseSqliteStorageTables({ sqlite });
-
-  const appendQueries: Array<SqliteQuery> = [];
-  const randomValues = [0.9, 0.1, 0.9] as Array<RandomNumber>;
-  const storage = createBaseSqliteStorage({
-    random: { next: () => randomValues.shift() ?? (0.9 as RandomNumber) },
-    sqlite: setupInterceptedSqlite(sqlite, (query, run) => {
-      if (query.sql.includes("fc(b, cl, pt, nt, ih1, ih2, ic)")) {
-        appendQueries.push(query);
-      }
-      return run();
-    }),
-  });
-  const timestamp = (millis: number) =>
-    timestampToTimestampBytes(createTimestamp({ millis: millis as Millis }));
-
-  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(100), "append");
-  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(200), "append");
-
-  assertLength(appendQueries, 1);
-  const query = appendQueries[0];
-  const plan = sqlite.exec<{
-    id: number;
-    parent: number;
-    detail: string;
-  }>({
-    // prettier-ignore
-    ...sql`explain query plan ${sql.raw(query.sql)}`,
-    parameters: query.parameters,
-  });
-  const details = plan.rows.map((row) => row.detail);
-
-  assertTrue(
-    details.some((detail) =>
-      /^SEARCH evolu_timestamp USING INDEX .* \(ownerId=\? AND t<\?\)$/u.test(
-        detail,
-      ),
-    ),
-  );
-  assertTrue(
-    details.some((detail) =>
-      /^SEARCH node USING (?:COVERING )?INDEX .* \(ownerId=\? AND t=\?\) LEFT-JOIN$/u.test(
-        detail,
-      ),
-    ),
-  );
-});
 
 test("Storage leaves the skiplist fixture's rows and returns its answers", async () => {
   const fixture = readSkiplistFixture();
@@ -397,23 +276,11 @@ test("Storage leaves the skiplist fixture's rows and returns its answers", async
     },
   });
 
-  const boundsByOwnerId = new Map<
-    OwnerIdBytes,
-    [TimestampBytes, TimestampBytes]
-  >();
   sqlite.transaction(() => {
     for (const { ownerId, timestamp, level, inserted } of fixture.inserts) {
       // Storage draws once more after the last level, also at level 10.
       randomNumbers.push(...Array.from({ length: level - 1 }, () => 0.1), 0.9);
-      const [strategy, first, last] = getTimestampInsertStrategy(
-        timestamp,
-        ...(boundsByOwnerId.get(ownerId) ?? [timestamp, timestamp]),
-      );
-      boundsByOwnerId.set(ownerId, [first, last]);
-      assertSame(
-        storage.insertTimestamp(ownerId, timestamp, strategy),
-        inserted,
-      );
+      assertSame(storage.insertTimestamp(ownerId, timestamp), inserted);
       assertLength(randomNumbers, 0);
     }
   });
@@ -462,6 +329,56 @@ test("Storage leaves the skiplist fixture's rows and returns its answers", async
   }
 });
 
+test("a failed insertTimestamp can leave part of its changes, which a rollback undoes", async () => {
+  await using setup = await setupSqlite();
+  const { sqlite } = setup;
+  createBaseSqliteStorageTables({ sqlite });
+  // The first timestamp at level 2, then each at level 1.
+  const randomNumbers = [0.1, 0.9];
+  const storage = createBaseSqliteStorage({
+    sqlite,
+    random: { next: () => (randomNumbers.shift() ?? 0.9) as RandomNumber },
+  });
+  const [earlier, later] = testTimestampsAsc;
+  sqlite.transaction(() => {
+    storage.insertTimestamp(testAppOwnerIdBytes, later);
+  });
+  const readRows = () =>
+    sqlite.exec({ sql: skiplistFixtureRowsSql as SafeSql, parameters: [] })
+      .rows;
+  const rows = readRows();
+
+  // The earlier timestamp's insert adds its row and then fails to update the
+  // level 2 node after it.
+  sqlite.exec(sql`
+    create temp trigger evolu_timestamp_update_fails
+    before update on evolu_timestamp
+    begin
+      select raise(abort, 'injected');
+    end;
+  `);
+  sqlite.exec(sql`begin;`);
+  assertThrowsInstanceOf(
+    () => storage.insertTimestamp(testAppOwnerIdBytes, earlier),
+    Error,
+  );
+  assertLength(readRows(), 2);
+  sqlite.exec(sql`rollback;`);
+
+  assertThrowsInstanceOf(() => {
+    sqlite.transaction(() => {
+      storage.insertTimestamp(testAppOwnerIdBytes, earlier);
+    });
+  }, Error);
+  assertEqual(readRows(), rows);
+
+  sqlite.exec(sql`drop trigger evolu_timestamp_update_fails;`);
+  sqlite.transaction(() => {
+    assertTrue(storage.insertTimestamp(testAppOwnerIdBytes, earlier));
+  });
+  assertEqual(storage.getSize(testAppOwnerIdBytes), 2);
+});
+
 test("empty db", async () => {
   await using setup = await setupSqliteAndStorage();
   const { storage } = setup;
@@ -491,9 +408,7 @@ test("findLowerBound", async () => {
   const timestamps = Array.from({ length: 10 }, (_, i) =>
     timestampToTimestampBytes(createTimestamp({ millis: (i + 1) as Millis })),
   );
-  for (const t of timestamps) {
-    storage.insertTimestamp(testAppOwnerIdBytes, t, "append");
-  }
+  setup.insertTimestamps(timestamps);
 
   const ownerId = testAppOwnerIdBytes;
   const begin = zeroNonNegativeInt;
@@ -548,9 +463,7 @@ test("findLowerBound throws for damaged skiplist counts", async () => {
   const timestamps = Array.from({ length: 10 }, (_, i) =>
     timestampToTimestampBytes(createTimestamp({ millis: (i + 1) as Millis })),
   );
-  for (const t of timestamps) {
-    storage.insertTimestamp(testAppOwnerIdBytes, t, "append");
-  }
+  setup.insertTimestamps(timestamps);
   // A damaged database can count a found timestamp zero times.
   sqlite.exec(sql`update evolu_timestamp set c = 0;`);
 
@@ -564,14 +477,16 @@ test("findLowerBound throws for damaged skiplist counts", async () => {
       ),
     Error,
   );
-  assertEqual(error.cause, { type: "Positive", value: 0 });
+  assertTrue(
+    error.message.includes("evolu_timestamp breaks the skiplist invariant"),
+  );
 });
 
 test("deleteOwner deletes the owner's timestamps and usage", async () => {
   await using setup = await setupSqliteAndStorage();
   const { sqlite, storage } = setup;
   const timestamp = testTimestampsAsc[0];
-  storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
+  setup.insertTimestamps([timestamp]);
   updateOwnerUsage({ sqlite })(
     testAppOwnerIdBytes,
     zeroNonNegativeInt,
@@ -589,6 +504,21 @@ test("deleteOwner deletes the owner's timestamps and usage", async () => {
     `);
     assertEqual(rows[0].count, 0);
   }
+});
+
+// Earlier releases choose their insert path from the timestamp bounds.
+test("createBaseSqliteStorageTables creates evolu_usage with timestamp bounds", async () => {
+  await using setup = await setupSqlite();
+  const { sqlite } = setup;
+  createBaseSqliteStorageTables({ sqlite });
+
+  const { rows } = sqlite.exec<{ name: string }>(sql`
+    select name from pragma_table_info('evolu_usage');
+  `);
+  assertEqual(
+    rows.map(({ name }) => name),
+    ["ownerId", "storedBytes", "firstTimestamp", "lastTimestamp"],
+  );
 });
 
 test("getExistingTimestamps looks up each timestamp by primary key", async () => {
@@ -636,7 +566,7 @@ test("getExistingTimestamps takes more timestamps than a call can spread", async
   );
   assertNonEmptyReadonlyArray(timestamps);
   const existing = timestamps[123_456];
-  storage.insertTimestamp(testAppOwnerIdBytes, existing, "append");
+  setup.insertTimestamps([existing]);
 
   assertEqual(storage.getExistingTimestamps(testAppOwnerIdBytes, timestamps), [
     existing,
@@ -647,9 +577,7 @@ test("iterate", async () => {
   await using setup = await setupSqliteAndStorage();
   const { storage } = setup;
 
-  for (const timestamp of testTimestampsAsc) {
-    storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
-  }
+  setup.insertTimestamps(testTimestampsAsc);
 
   const collected: Array<TimestampBytes> = [];
   storage.iterate(
@@ -690,9 +618,7 @@ test("iterate", async () => {
 test("iterate reads no timestamp past the one the callback stops at", async () => {
   await using setup = await setupSqliteAndStorage();
   const { sqlite } = setup;
-  for (const timestamp of testTimestampsAsc) {
-    setup.storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
-  }
+  setup.insertTimestamps(testTimestampsAsc);
 
   // The rows SQLite returns to the storage's queries.
   let rowsRead = 0;
@@ -731,11 +657,9 @@ test("iterate reads no timestamp past the one the callback stops at", async () =
 
 test("getTimestampByIndex", async () => {
   await using setup = await setupSqliteAndStorage();
-  const { sqlite, storage } = setup;
+  const { sqlite } = setup;
 
-  for (const timestamp of testTimestampsAsc) {
-    storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
-  }
+  setup.insertTimestamps(testTimestampsAsc);
 
   for (let i = 0; i < testTimestampsAsc.length; i++) {
     const timestamp = getTimestampByIndex({ sqlite })(
@@ -746,14 +670,11 @@ test("getTimestampByIndex", async () => {
   }
 });
 
-// Before the level floors, these calls never returned, and a node:test timeout
-// cannot interrupt synchronous SQLite.
 test("positions past the owner's timestamps throw", async () => {
   await using setup = await setupSqliteAndStorage();
   const { sqlite, storage } = setup;
   const timestamps = testTimestampsAsc.slice(0, 10);
-  for (const timestamp of timestamps)
-    storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
+  setup.insertTimestamps(timestamps);
   const size = storage.getSize(testAppOwnerIdBytes);
   const emptyOwnerIdBytes = ownerIdToOwnerIdBytes(testAppOwner2.id);
   const position = (value: number) => NonNegativeInt.orThrow(value);
@@ -775,9 +696,10 @@ test("positions past the owner's timestamps throw", async () => {
   });
 
   const bucketIsOutOfRange = (run: () => unknown) => {
-    assertSame(
-      assertThrowsInstanceOf(run, Error).message,
-      "bucket out of range",
+    assertTrue(
+      assertThrowsInstanceOf(run, Error).message.includes(
+        "a bucket is past the owner's timestamps",
+      ),
     );
   };
   bucketIsOutOfRange(() =>
@@ -805,46 +727,22 @@ test("positions past the owner's timestamps throw", async () => {
   ]);
 });
 
-test("getTimestampInsertStrategy", () => {
-  const t100 = timestampToTimestampBytes(
-    createTimestamp({ millis: 100 as Millis }),
-  );
-  const t200 = timestampToTimestampBytes(
-    createTimestamp({ millis: 200 as Millis }),
-  );
+test("extendTimestampBounds", () => {
+  const timestamp = (millis: number) =>
+    timestampToTimestampBytes(createTimestamp({ millis: millis as Millis }));
+  const t100 = timestamp(100);
+  const t200 = timestamp(200);
 
-  // Append: after last
-  assertEqual(
-    getTimestampInsertStrategy(
-      timestampToTimestampBytes(createTimestamp({ millis: 300 as Millis })),
-      t100,
-      t200,
-    )[0],
-    "append",
-  );
-
-  // Prepend: before first
-  assertEqual(
-    getTimestampInsertStrategy(
-      timestampToTimestampBytes(createTimestamp({ millis: 50 as Millis })),
-      t100,
-      t200,
-    )[0],
-    "prepend",
-  );
-
-  // Insert: between first and last, or equal
-  assertEqual(
-    getTimestampInsertStrategy(
-      timestampToTimestampBytes(createTimestamp({ millis: 150 as Millis })),
-      t100,
-      t200,
-    )[0],
-    "insert",
-  );
-
-  assertEqual(getTimestampInsertStrategy(t100, t100, t200)[0], "insert");
-  assertEqual(getTimestampInsertStrategy(t200, t100, t200)[0], "insert");
+  assertEqual(extendTimestampBounds(timestamp(300), t100, t200), [
+    t100,
+    timestamp(300),
+  ]);
+  assertEqual(extendTimestampBounds(timestamp(50), t100, t200), [
+    timestamp(50),
+    t200,
+  ]);
+  for (const between of [t100, timestamp(150), t200])
+    assertEqual(extendTimestampBounds(between, t100, t200), [t100, t200]);
 });
 
 /**

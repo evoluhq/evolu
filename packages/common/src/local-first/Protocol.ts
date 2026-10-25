@@ -2246,7 +2246,7 @@ const readSplitRanges =
     }
 
     // Check Storage.ts `fingerprint` and `fingerprintRanges` docs.
-    const fingerprintRangesBuckets =
+    const fingerprintRangesBuckets: NonEmptyReadonlyArray<NonNegativeInt> =
       lower === 0
         ? buckets.value
         : [lower, ...buckets.value.map((b) => (b + lower) as NonNegativeInt)];

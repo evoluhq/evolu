@@ -324,7 +324,7 @@ describe("createMemoryStorage", () => {
   it("rejects buckets the protocol never asks for", () => {
     const memory = createMemoryStorage(modules, snapshot, 0);
     const size = memory.getSize(ownerId);
-    for (const buckets of [[index(size + 1)], [size, size]]) {
+    for (const buckets of [[index(size + 1)], [size, size]] as const) {
       assertThrowsInstanceOf(
         () => memory.fingerprintRanges(ownerId, buckets),
         Error,

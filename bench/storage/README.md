@@ -1,6 +1,6 @@
 # Storage benchmark
 
-[`benchmark.mts`](./benchmark.mts) measures the SQLite timestamp Skiplist implemented in [`Storage.ts`](../../packages/common/src/local-first/Storage.ts).
+[`benchmark.mts`](./benchmark.mts) measures the SQLite timestamp Skiplist that [`Storage.ts`](../../packages/common/src/local-first/Storage.ts) runs in Evolu's SQLite core.
 
 ## Workload
 
@@ -17,7 +17,7 @@ Timed regions contain only the measured operations. Setup, warmup, validation, a
 
 ## SQLite planner statistics
 
-The benchmark runs without SQLite's `ANALYZE` command or `PRAGMA optimize`, matching current production behavior. Collected statistics can change planner-sensitive access paths. Treat enabling them as a storage performance change: rerun every workload and verify `EXPLAIN QUERY PLAN` output on representative populated databases. See the rationale in [`Storage.ts`](../../packages/common/src/local-first/Storage.ts).
+The benchmark runs without SQLite's `ANALYZE` command or `PRAGMA optimize`, matching current production behavior. Collected statistics can change planner-sensitive access paths. Treat enabling them as a storage performance change: rerun every workload and verify `EXPLAIN QUERY PLAN` output on representative populated databases.
 
 ## Running
 

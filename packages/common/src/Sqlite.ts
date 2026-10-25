@@ -339,7 +339,10 @@ export type SqliteRow = Record<string, SqliteValueInput>;
 /**
  * SQLite driver interface.
  *
- * Platform-specific drivers must implement this interface.
+ * Platform-specific drivers must implement this interface. Evolu's storage
+ * calls the SQL functions of Evolu's SQLite core, such as
+ * `evolu_skiplist_insert`, so a driver's connections must have them, as those
+ * of Evolu's drivers do.
  *
  * @group Core
  */

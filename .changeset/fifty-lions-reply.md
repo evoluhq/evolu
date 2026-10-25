@@ -75,8 +75,8 @@ Behavior changes:
   creates no file, so a transaction no longer spans two databases, and
   `VACUUM INTO` writes a plaintext file.
 - Every connection has Evolu's SQL functions: the `evolu_skiplist_*`
-  functions, Evolu's timestamp storage in C, for Evolu's sync to switch to in a
-  later release, and `evolu_core_version()`.
+  functions, Evolu's timestamp storage in C, which Evolu's sync now calls (see
+  `@evolu/common`), and `evolu_core_version()`.
 - Every connection is defensive (`SQLITE_DBCONFIG_DEFENSIVE`), so SQL can't
   corrupt its database: it ignores `PRAGMA writable_schema = ON`,
   `journal_mode = OFF` and `schema_version = N`.

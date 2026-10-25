@@ -40,7 +40,7 @@ import type {
 } from "./Storage.ts";
 import {
   createBaseSqliteStorage,
-  getTimestampInsertStrategy,
+  extendTimestampBounds,
   readOwnerUsageOrDefault,
   updateOwnerUsage,
 } from "./Storage.ts";
@@ -288,6 +288,9 @@ export const createRelaySqliteStorage =
               });
             }
 
+            // Earlier releases choose how to insert a timestamp from these
+            // bounds, so they stay true until the next schema migration drops
+            // them.
             let { firstTimestamp, lastTimestamp } = usage;
 
             // SQLite can fail the write, for example on a full disk. The
@@ -296,19 +299,13 @@ export const createRelaySqliteStorage =
             return trySync(() => {
               deps.sqlite.transaction(() => {
                 for (const { timestamp, change } of newMessages) {
-                  let strategy;
-                  [strategy, firstTimestamp, lastTimestamp] =
-                    getTimestampInsertStrategy(
-                      timestamp,
-                      firstTimestamp,
-                      lastTimestamp,
-                    );
-
-                  sqliteStorageBase.insertTimestamp(
-                    ownerIdBytes,
+                  [firstTimestamp, lastTimestamp] = extendTimestampBounds(
                     timestamp,
-                    strategy,
+                    firstTimestamp,
+                    lastTimestamp,
                   );
+
+                  sqliteStorageBase.insertTimestamp(ownerIdBytes, timestamp);
 
                   deps.sqlite.prepared`
                     insert into evolu_message

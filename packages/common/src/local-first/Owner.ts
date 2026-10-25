@@ -70,7 +70,6 @@ import {
   union,
 } from "../Type.ts";
 import type { EncryptedDbChange, Storage } from "./Storage.ts";
-import { TimestampBytes } from "./Timestamp.ts";
 
 /**
  * {@link Owner} without a {@link OwnerWriteKey}.
@@ -564,10 +563,9 @@ export interface OwnerError {
 }
 
 /**
- * Storage usage and timestamp bounds for an {@link Owner}.
+ * Storage usage of an {@link Owner}.
  *
- * Storage and relay implementations use this metadata for quota enforcement and
- * timestamp insertion strategies.
+ * Storage and relay implementations use this metadata for quota enforcement.
  *
  * @group Core
  */
@@ -589,16 +587,6 @@ export interface OwnerUsage {
    * - **Overhead tracking** - comparison with actual storage size
    */
   readonly storedBytes: NonNegativeInt;
-
-  /** Tracks the earliest timestamp for timestamp insertion strategies. */
-  readonly firstTimestamp: TimestampBytes | null;
-
-  /**
-   * Tracks the latest timestamp for timestamp insertion strategies.
-   *
-   * Free relays can use it to identify inactive accounts for cleanup.
-   */
-  readonly lastTimestamp: TimestampBytes | null;
 }
 
 /**

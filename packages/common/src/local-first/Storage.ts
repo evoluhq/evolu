@@ -11,10 +11,9 @@ import { assert, assertNonNullable } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import { concatByteArrays } from "../Bytes.ts";
 import type { UnknownError } from "../Error.ts";
-import { decrement } from "../Number.ts";
 import type { RandomDep } from "../Random.ts";
 import { err, ok } from "../Result.ts";
-import type { Sqlite, SqliteDep, SqliteExecResult } from "../Sqlite.ts";
+import type { Sqlite, SqliteDep, SqliteDriver } from "../Sqlite.ts";
 import { sql, SqliteValue } from "../Sqlite.ts";
 import type { Task } from "../Task.ts";
 import { Millis } from "../Time.ts";
@@ -23,7 +22,6 @@ import {
   brand,
   Id,
   type InferType,
-  type Int64String,
   NonNegativeInt,
   Null,
   nullOr,
@@ -130,9 +128,9 @@ export interface StorageConfig {
  * errors unchanged, while the relay protocol maps them to wire error codes.
  *
  * The Storage API is synchronous because SQLite's synchronous API is the
- * fastest way to use SQLite. Synchronous bindings (like better-sqlite3) call
- * SQLite's C API directly with no context switching between the event loop and
- * native code, and no promise microtasks or await overhead.
+ * fastest way to use SQLite. Synchronous bindings, as Evolu's SQLite drivers
+ * are, call SQLite's C API directly with no context switching between the event
+ * loop and native code, and no promise microtasks or await overhead.
  *
  * The only exception is {@link Storage.writeMessages}, which is async to allow
  * for async validation logic before writing to storage. The write operation
@@ -162,7 +160,10 @@ export interface Storage {
    * Computes fingerprints with their upper bounds in one call.
    *
    * Each bucket is the end index of a range that starts at the previous bucket,
-   * or at 0 for the first, so the buckets must be ascending.
+   * or at 0 for the first. There is at least one, they never decrease, and none
+   * exceeds the owner's size, which only the last may equal: a range's upper
+   * bound is the timestamp at its bucket, and the last range's is
+   * `upperBound`.
    *
    * This function can be replaced with many fingerprint/findLowerBound calls,
    * but implementations can leverage it for batching and more efficient
@@ -170,7 +171,7 @@ export interface Storage {
    */
   readonly fingerprintRanges: (
     ownerId: OwnerIdBytes,
-    buckets: ReadonlyArray<NonNegativeInt>,
+    buckets: NonEmptyReadonlyArray<NonNegativeInt>,
     upperBound?: RangeUpperBound,
   ) => ReadonlyArray<FingerprintRange>;
 
@@ -544,12 +545,13 @@ export interface DbChange extends InferType<typeof DbChange> {}
 /**
  * Common interface for both client and relay SQLite storages.
  *
- * Evolu uses a Skiplist, which leverages SQLite indexes. The core logic is
- * implemented in SQL, so it doesn't have to make roundtrips to the DB.
+ * Evolu uses a Skiplist, which leverages SQLite indexes. It runs in Evolu's
+ * SQLite core as SQL functions, such as `evolu_skiplist_insert`, which Evolu's
+ * SQLite drivers register on every connection, so a query walks the Skiplist
+ * without a roundtrip per node. A {@link SqliteDriver} without them fails with
+ * "no such function".
  *
- * While the SQL implementation may look sophisticated, it's conceptually simple
- * and LLMs can explain how it works. The Skiplist data structure is well
- * explained in [this Stack Overflow
+ * The Skiplist data structure is well explained in [this Stack Overflow
  * answer](https://stackoverflow.com/questions/61944198/what-is-a-zip-tree-and-how-does-it-work).
  * The logic resembles [Negentropy's C++
  * storage](https://github.com/hoytech/negentropy), except we use a Skiplist to
@@ -559,10 +561,6 @@ export interface DbChange extends InferType<typeof DbChange> {}
  * [strfry](https://github.com/hoytech/strfry) (a KV storage), but with Skiplist
  * to ensure that insertion order doesn't matter (local-first apps can often
  * write in the past.)
- *
- * The ideal client implementation should probably use the SQLite extension
- * instead of SQL or even a KV storage, when such a thing for browsers/native
- * will exist and will be faster than SQLite.
  *
  * # Scaling
  *
@@ -582,11 +580,13 @@ export interface BaseSqliteStorage extends Omit<
    *
    * Returns whether the timestamp was new. An existing timestamp is left
    * unchanged.
+   *
+   * It must run in a transaction, which the caller rolls back when it throws,
+   * because a failed insert can leave part of its changes.
    */
   readonly insertTimestamp: (
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
-    strategy: StorageInsertTimestampStrategy,
   ) => boolean;
 
   /**
@@ -621,25 +621,27 @@ export type SqliteStorageDeps = RandomDep & SqliteDep;
  * # Stateless Design
  *
  * This implementation is fully stateless - it requires no in-memory state
- * between invocations. All necessary metadata (timestamp bounds for insertion
- * strategy optimization) is persisted in the evolu_usage table. This makes
- * Evolu Relay suitable for stateless serverless environments like AWS Lambda,
- * Cloudflare Workers with Durable Objects, and other platforms where memory
- * doesn't persist between requests. While not extensively tested in all these
- * environments yet, the stateless design should work well across them.
+ * between invocations. Everything it needs is persisted in SQLite, which must
+ * have the SQL functions of Evolu's SQLite core, such as
+ * `evolu_skiplist_insert`. This makes Evolu Relay suitable for stateless
+ * serverless environments, where memory doesn't persist between requests,
+ * wherever Evolu's SQLite core runs.
  *
  * @group SQLite
  */
 export const createBaseSqliteStorage = (
   deps: SqliteStorageDeps,
 ): BaseSqliteStorage => ({
-  insertTimestamp: (
-    ownerId: OwnerIdBytes,
-    timestamp: TimestampBytes,
-    strategy: StorageInsertTimestampStrategy,
-  ) => {
+  insertTimestamp: (ownerId, timestamp) => {
     const level = randomSkiplistLevel(deps);
-    return insertTimestamp(deps)(ownerId, timestamp, level, strategy);
+    const { rows } = deps.sqlite.prepared<{ inserted: 0 | 1 }>`
+      select evolu_skiplist_insert(
+        ${ownerId},
+        ${timestamp},
+        ${level}
+      ) as inserted;
+    `;
+    return rows[0].inserted === 1;
   },
 
   getExistingTimestamps: (ownerIdBytes, timestampsBytes) => {
@@ -647,12 +649,11 @@ export const createBaseSqliteStorage = (
     // into concatBytes.
     const concatenatedTimestamps = concatByteArrays(timestampsBytes);
 
-    // A batch has no known size, so unlike the CTEs bounded by
-    // skiplistMaxLevel, the planner would make the owner's timestamps the outer
-    // loop. A cross join keeps the order as written, so each timestamp is
-    // looked up by primary key. The condition is in where, not on, because
-    // sql-parser-cst, which formats this SQL, rejects cross join ... on and
-    // Prettier then leaves the query unformatted
+    // A batch has no known size, so the planner would make the owner's
+    // timestamps the outer loop. A cross join keeps the order as written, so
+    // each timestamp is looked up by primary key. The condition is in where,
+    // not on, because sql-parser-cst, which formats this SQL, rejects cross
+    // join ... on and Prettier then leaves the query unformatted
     // (https://github.com/nene/sql-parser-cst/issues/140).
     const result = deps.sqlite.prepared<{
       timestampBytes: TimestampBytes;
@@ -678,7 +679,12 @@ export const createBaseSqliteStorage = (
     return result.rows.map((row) => row.timestampBytes);
   },
 
-  getSize: getSize(deps),
+  getSize: (ownerId) => {
+    const { rows } = deps.sqlite.prepared<{ size: NonNegativeInt }>`
+      select evolu_skiplist_size(${ownerId}) as size;
+    `;
+    return rows[0].size;
+  },
 
   fingerprint: (ownerId, begin, end) => {
     assertBeginEnd(begin, end);
@@ -687,8 +693,20 @@ export const createBaseSqliteStorage = (
 
   fingerprintRanges: fingerprintRanges(deps),
 
-  findLowerBound: (ownerId, begin, end, upperBound) =>
-    findLowerBound(deps)(ownerId, begin, end, upperBound),
+  findLowerBound: (ownerId, begin, end, upperBound) => {
+    assertBeginEnd(begin, end);
+    if (end === 0 || begin === end || upperBound === InfiniteUpperBound)
+      return end;
+    const { rows } = deps.sqlite.prepared<{
+      lowerBound: NonNegativeInt | null;
+    }>`
+      select evolu_skiplist_lower_bound(
+        ${ownerId},
+        ${upperBound}
+      ) as lowerBound;
+    `;
+    return rows[0].lowerBound ?? end;
+  },
 
   iterate: (ownerId, begin, end, callback) => {
     assertBeginEnd(begin, end);
@@ -781,8 +799,8 @@ export const createBaseSqliteStorageTables = (deps: SqliteDep): void => {
      *
      * - `ownerId` – OwnerIdBytes (primary key)
      * - `storedBytes` – total bytes stored in database
-     * - `firstTimestamp` – for timestamp insertion strategies
-     * - `lastTimestamp` – for timestamp insertion strategies
+     * - `firstTimestamp` – the owner's first timestamp
+     * - `lastTimestamp` – the owner's last timestamp
      */
     sql`
       create table evolu_usage (
@@ -799,513 +817,27 @@ export const createBaseSqliteStorageTables = (deps: SqliteDep): void => {
 };
 
 /**
- * Position at which a timestamp is inserted relative to existing timestamps.
+ * Returns an owner's first and last timestamps with `timestamp` among them, as
+ * {@link updateOwnerUsage} stores them.
+ *
+ * Nothing in this release reads them, but earlier releases choose how to insert
+ * a timestamp from them, and a database this release wrote can be opened by an
+ * earlier release, such as an old tab after a deploy. Drop them with the next
+ * schema migration.
  *
  * @group SQLite
  */
-export type StorageInsertTimestampStrategy = "append" | "prepend" | "insert";
-
-/**
- * Determines the insertion strategy for a timestamp based on its position
- * relative to the current first and last timestamps.
- *
- * Returns a tuple with the strategy and updated timestamp bounds.
- *
- * @group SQLite
- */
-export const getTimestampInsertStrategy = (
+export const extendTimestampBounds = (
   timestamp: TimestampBytes,
   firstTimestamp: TimestampBytes,
   lastTimestamp: TimestampBytes,
-): [
-  strategy: StorageInsertTimestampStrategy,
-  firstTimestamp: TimestampBytes,
-  lastTimestamp: TimestampBytes,
-] => {
-  if (orderTimestampBytes(timestamp, lastTimestamp) === 1) {
-    return ["append", firstTimestamp, timestamp];
-  }
-  if (orderTimestampBytes(timestamp, firstTimestamp) === -1) {
-    return ["prepend", timestamp, lastTimestamp];
-  }
-  return ["insert", firstTimestamp, lastTimestamp];
+): [firstTimestamp: TimestampBytes, lastTimestamp: TimestampBytes] => {
+  if (orderTimestampBytes(timestamp, lastTimestamp) === 1)
+    return [firstTimestamp, timestamp];
+  if (orderTimestampBytes(timestamp, firstTimestamp) === -1)
+    return [timestamp, lastTimestamp];
+  return [firstTimestamp, lastTimestamp];
 };
-
-/**
- * Append derives the new node's metadata in its insertion statement. Prepend
- * and insert require a second statement to update existing Skiplist ancestors.
- *
- * A non-level-1 append summarizes the suffix after the nearest preceding node
- * at the same or a higher level. A reverse primary-key scan finds that boundary
- * directly, so metadata traversal starts one level below the new node instead
- * of descending from the maximum level.
- *
- * Append is the fastest strategy because level 1, which occurs 75% of the time,
- * needs only the insertion, and promoted nodes derive their metadata without
- * updating existing nodes. Prepend inserts first, then updates one successor at
- * each relevant higher level through predictable edge searches. Insert is the
- * slowest because an arbitrary interior position requires predecessor metadata
- * for the new node and successor discovery to update existing ancestors. All
- * traversals use bounded index ranges, but insert necessarily performs the most
- * Skiplist work.
- *
- * SQLite does not support `LATERAL` subqueries. Recursive traversals therefore
- * alternate between finding the next timestamp and loading that row by primary
- * key instead of repeating the same correlated range lookup for every column.
- *
- * Inserts are idempotent to support direct calls and message replay. `on
- * conflict do nothing` makes a duplicate insertion a no-op that reports the
- * timestamp as not new, so the follow-up statements update metadata only for a
- * new timestamp.
- */
-const insertTimestamp =
-  (deps: SqliteDep) =>
-  (
-    ownerId: OwnerIdBytes,
-    timestamp: TimestampBytes,
-    level: PositiveInt,
-    strategy: StorageInsertTimestampStrategy,
-  ): boolean => {
-    const [h1, h2] = fingerprintToSqliteFingerprint(
-      timestampBytesToFingerprint(timestamp),
-    );
-
-    let queries: [
-      insert: () => SqliteExecResult,
-      ...updates: Array<() => SqliteExecResult>,
-    ];
-
-    switch (strategy) {
-      case "append":
-        queries = [
-          level === 1
-            ? () => deps.sqlite.prepared`
-                insert into evolu_timestamp
-                  (ownerId, l, t, h1, h2, c)
-                values
-                  (${ownerId}, 1, ${timestamp}, ${h1}, ${h2}, 1)
-                on conflict do nothing;
-              `
-            : () => deps.sqlite.prepared`
-                with
-                  fc(b, cl, pt, nt, ih1, ih2, ic) as (
-                    select
-                      0,
-                      ${level} - 1,
-                      ifnull(
-                        (
-                          select t
-                          from evolu_timestamp
-                          where
-                            ownerId = ${ownerId}
-                            and l >= ${level}
-                            and t < ${timestamp}
-                          order by t desc
-                          limit 1
-                        ),
-                        zeroblob(0)
-                      ),
-                      null,
-                      0,
-                      0,
-                      0
-                    union all
-                    select
-                      not b,
-                      iif(b, iif(nt is null, cl - 1, cl), cl),
-                      iif(b, ifnull(nt, pt), pt),
-                      iif(
-                        b,
-                        null,
-                        (
-                          select t
-                          from evolu_timestamp
-                          where
-                            ownerId = ${ownerId}
-                            and l = cl
-                            and t > pt
-                            and t < ${timestamp}
-                          order by t
-                          limit 1
-                        )
-                      ),
-                      iif(
-                        node.t is not null,
-                        (ih1 | node.h1) - (ih1 & node.h1),
-                        ih1
-                      ),
-                      iif(
-                        node.t is not null,
-                        (ih2 | node.h2) - (ih2 & node.h2),
-                        ih2
-                      ),
-                      iif(node.t is not null, ic + node.c, ic)
-                    from fc
-                    left join evolu_timestamp as node
-                      on b and node.ownerId = ${ownerId} and node.t = nt
-                    where cl > 0
-                  )
-                insert into evolu_timestamp (ownerId, t, l, h1, h2, c)
-                select
-                  ${ownerId},
-                  ${timestamp},
-                  ${level},
-                  (${h1} | ih1) - (${h1} & ih1),
-                  (${h2} | ih2) - (${h2} & ih2),
-                  ic + 1
-                from fc
-                order by cl asc
-                limit 1
-                on conflict do nothing;
-              `,
-        ];
-        break;
-
-      case "prepend":
-        queries = [
-          () => deps.sqlite.prepared`
-            insert into evolu_timestamp
-              (ownerId, l, t, h1, h2, c)
-            values
-              (${ownerId}, ${level}, ${timestamp}, ${h1}, ${h2}, 1)
-            on conflict do nothing;
-          `,
-          () => deps.sqlite.prepared`
-            with
-              ml(ml) as (
-                select max(l)
-                from evolu_timestamp
-                where ownerId = ${ownerId}
-              ),
-              fp(b, cl, pt, nt, h1, h2) as (
-                select
-                  0,
-                  (select ml from ml),
-                  null,
-                  null,
-                  null,
-                  null
-                union all
-                select
-                  not fp.b,
-                  iif(fp.b, fp.cl - 1, fp.cl),
-                  iif(
-                    fp.b,
-                    iif(
-                      fp.nt is not null and (fp.pt is null or fp.nt < fp.pt),
-                      fp.nt,
-                      fp.pt
-                    ),
-                    fp.pt
-                  ),
-                  iif(
-                    fp.b,
-                    null,
-                    (
-                      select t
-                      from evolu_timestamp
-                      where
-                        ownerId = ${ownerId}
-                        and l = fp.cl
-                        and t > ${timestamp}
-                      order by t
-                      limit 1
-                    )
-                  ),
-                  iif(
-                    fp.b
-                    and fp.nt is not null
-                    and (fp.pt is null or fp.nt < fp.pt),
-                    node.h1,
-                    null
-                  ),
-                  iif(
-                    fp.b
-                    and fp.nt is not null
-                    and (fp.pt is null or fp.nt < fp.pt),
-                    node.h2,
-                    null
-                  )
-                from fp
-                left join evolu_timestamp as node
-                  on fp.b and node.ownerId = ${ownerId} and node.t = fp.nt
-                where fp.cl > ${level}
-              ),
-              u(t, h1, h2) as (
-                select
-                  pt,
-                  (${h1} | h1) - (${h1} & h1),
-                  (${h2} | h2) - (${h2} & h2)
-                from fp
-                where h1 is not null and pt is not null
-                order by pt
-                limit ${sql.raw(skiplistMaxLevel.toString())}
-              )
-            update evolu_timestamp
-            set
-              h1 = u.h1,
-              h2 = u.h2,
-              c = c + 1
-            from u
-            where ownerId = ${ownerId} and evolu_timestamp.t = u.t;
-          `,
-        ];
-        break;
-
-      case "insert":
-        queries =
-          level === 1
-            ? [
-                () => deps.sqlite.prepared`
-                  insert into evolu_timestamp
-                    (ownerId, l, t, h1, h2, c)
-                  values
-                    (${ownerId}, 1, ${timestamp}, ${h1}, ${h2}, 1)
-                  on conflict do nothing;
-                `,
-
-                () => deps.sqlite.prepared`
-                  with
-                    p(l, t, pt) as (
-                      select
-                        (
-                          select max(l) + 1
-                          from evolu_timestamp
-                          where ownerId = ${ownerId}
-                        ),
-                        X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
-                        X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
-                      union all
-                      select
-                        p.l - 1,
-                        ifnull(
-                          (
-                            select t
-                            from evolu_timestamp
-                            where
-                              ownerId = ${ownerId}
-                              and l = p.l - 1
-                              and t > ${timestamp}
-                              and t < p.t
-                            order by t
-                            limit 1
-                          ),
-                          p.t
-                        ),
-                        p.t
-                      from p
-                      where p.l > 2
-                      limit ${sql.raw(skiplistMaxLevel.toString())}
-                    ),
-                    u(t, h1, h2) as (
-                      select
-                        p.t,
-                        (${h1} | node.h1) - (${h1} & node.h1),
-                        (${h2} | node.h2) - (${h2} & node.h2)
-                      from p
-                      join evolu_timestamp as node
-                        on node.ownerId = ${ownerId} and node.t = p.t
-                      where p.t is not p.pt
-                    )
-                  update evolu_timestamp
-                  set
-                    h1 = u.h1,
-                    h2 = u.h2,
-                    c = c + 1
-                  from u
-                  where ownerId = ${ownerId} and evolu_timestamp.t = u.t;
-                `,
-              ]
-            : [
-                () => deps.sqlite.prepared`
-                  insert into evolu_timestamp (ownerId, t, l)
-                  values (${ownerId}, ${timestamp}, ${level})
-                  on conflict do nothing;
-                `,
-
-                () => deps.sqlite.prepared`
-                  with
-                    c0(b, cl, pt, nt, h1, h2, c) as (
-                      select
-                        0,
-                        (
-                          select max(l)
-                          from evolu_timestamp
-                          where ownerId = ${ownerId}
-                        ),
-                        0,
-                        null,
-                        null,
-                        null,
-                        null
-                      union all
-                      select
-                        not b,
-                        iif(b, iif(nt is null, cl - 1, cl), cl),
-                        iif(b, ifnull(nt, pt), pt),
-                        iif(
-                          b,
-                          null,
-                          (
-                            select t
-                            from evolu_timestamp
-                            where
-                              ownerId = ${ownerId}
-                              and l = cl
-                              and t > pt
-                              and t < ${timestamp}
-                            order by t
-                            limit 1
-                          )
-                        ),
-                        node.h1,
-                        node.h2,
-                        node.c
-                      from c0
-                      left join evolu_timestamp as node
-                        on c0.b
-                        and c0.cl < ${level}
-                        and node.ownerId = ${ownerId}
-                        and node.t = c0.nt
-                      where cl > 0
-                    ),
-                    c1(l, t, h1, h2, c) as (
-                      select
-                        ${level},
-                        ${timestamp},
-                        ${h1},
-                        ${h2},
-                        1
-                      union all
-                      select cl, pt, h1, h2, c
-                      from c0
-                      where h1 is not null
-                    ),
-                    c2(rn, l, t, h1, h2, c) as (
-                      select row_number() over (order by l), l, t, h1, h2, c
-                      from c1
-                    ),
-                    c3(rn, l, t, h1, h2, c) as (
-                      select rn, l, t, h1, h2, c from c2 where rn = 1
-                      union all
-                      select
-                        c3.rn + 1,
-                        c2.l,
-                        c2.t,
-                        (c2.h1 | c3.h1) - (c2.h1 & c3.h1),
-                        (c2.h2 | c3.h2) - (c2.h2 & c3.h2),
-                        c2.c + c3.c
-                      from c3
-                      join c2 on c2.rn = c3.rn + 1
-                    ),
-                    c4(l, t, h1, h2, c, rn) as (
-                      select l, t, h1, h2, c, max(rn)
-                      from c3
-                      group by l
-                    ),
-                    -- Alternate range discovery and primary-key loading.
-                    n(b, l, t, nt, h1, h2, c) as (
-                      select
-                        1,
-                        (
-                          select max(l) + 1
-                          from evolu_timestamp
-                          where ownerId = ${ownerId}
-                        ),
-                        X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
-                        null,
-                        null,
-                        null,
-                        null
-                      union all
-                      select
-                        not n.b,
-                        iif(n.b, n.l - 1, n.l),
-                        iif(n.b, n.t, ifnull(n.nt, n.t)),
-                        iif(
-                          n.b,
-                          (
-                            select t
-                            from evolu_timestamp
-                            where
-                              ownerId = ${ownerId}
-                              and l = n.l - 1
-                              and t > ${timestamp}
-                              and t < n.t
-                            order by t
-                            limit 1
-                          ),
-                          null
-                        ),
-                        iif(not n.b and n.nt is not null, node.h1, null),
-                        iif(not n.b and n.nt is not null, node.h2, null),
-                        iif(not n.b and n.nt is not null, node.c, null)
-                      from n
-                      left join evolu_timestamp as node
-                        on not n.b
-                        and node.ownerId = ${ownerId}
-                        and node.t = n.nt
-                      where iif(n.b, n.l - 1 > (select min(l) from c4), 1)
-                    ),
-                    u(ut, uh1, uh2, uc) as (
-                      select t, h1, h2, c from c4 where t = ${timestamp}
-                      union all
-                      select
-                        max(t),
-                        iif(
-                          l > ${level},
-                          (${h1} | h1) - (${h1} & h1),
-                          (
-                            select (c4.h1 | n.h1) - (c4.h1 & n.h1)
-                            from c4
-                            where
-                              c4.l = (select max(l) from c4 where c4.l < n.l)
-                          )
-                        ),
-                        iif(
-                          l > ${level},
-                          (${h2} | h2) - (${h2} & h2),
-                          (
-                            select (c4.h2 | n.h2) - (c4.h2 & n.h2)
-                            from c4
-                            where
-                              c4.l = (select max(l) from c4 where c4.l < n.l)
-                          )
-                        ),
-                        iif(
-                          l > ${level},
-                          c + 1,
-                          (
-                            select n.c - c4.c
-                            from c4
-                            where
-                              c4.l = (select max(l) from c4 where c4.l < n.l)
-                          )
-                        )
-                      from n
-                      where b
-                      group by t
-                      limit ${sql.raw(skiplistMaxLevel.toString())}
-                    )
-                  update evolu_timestamp
-                  set
-                    h1 = uh1,
-                    h2 = uh2,
-                    c = uc
-                  from u
-                  where ownerId = ${ownerId} and t = ut;
-                `,
-              ];
-        break;
-    }
-
-    // The insert uses "on conflict do nothing". An existing timestamp changes
-    // nothing, and the metadata updates are skipped.
-    const [insert, ...updates] = queries;
-    if (insert().changes === 0) return false;
-    for (const update of updates) update();
-    return true;
-  };
 
 /**
  * Computes the {@link Fingerprint} of a single timestamp.
@@ -1362,205 +894,11 @@ const randomSkiplistLevel = (deps: RandomDep): PositiveInt => {
 const skiplistProbability = 0.25;
 
 /**
- * Maximum Skiplist level and exact upper bound for planner-sensitive CTEs.
- *
- * The three CTEs bounded by this value feed `update ... from` statements in the
- * prepend and insert paths. Each emits at most one row per Skiplist level.
- * Without a known integer `limit`, SQLite estimates a recursive CTE at about
- * 2^32 rows and scans every timestamp for the owner instead of scanning the CTE
- * and looking up each timestamp by primary key.
- *
- * Evolu does not run SQLite's `ANALYZE` command or `PRAGMA optimize`. `ANALYZE`
- * samples database contents and stores statistics in tables such as
- * `sqlite_stat1`; without those statistics, the query planner uses default
- * estimates. With those default estimates, 10 is the planner crossover.
- * Collected statistics or a planner change can move it because this is
- * undocumented cost model behavior. Do not enable planner statistics without
- * benchmarking every storage workload and verifying its query plans on a
- * representative populated database.
- *
- * The queries inject this value with `sql.raw`. SQLite versions before 3.47
- * cannot derive the estimate from a bound parameter. Newer versions require
- * QPSG to be disabled and invalidate the query plan whenever that parameter is
- * bound, which would recompile these hot cached statements on every execution.
- *
- * Because the limit can emit at most one row per Skiplist level, the Skiplist
- * is capped at the same value to prevent updates from being truncated. With
+ * The highest Skiplist level, which `evolu_skiplist_insert` takes at most. With
  * {@link skiplistProbability} 0.25, level 10 occurs once per 4^9 rows on
  * average, keeping the highest-level scan small for millions of rows.
  */
 const skiplistMaxLevel = 10;
-
-/**
- * {@link Fingerprint} encoded for efficient use in SQLite.
- *
- * Fingerprints are 12-byte binary values. While SQLite can XOR binary blobs or
- * strings, it's not efficient. The fastest approach is to split the 12 bytes
- * into two 6-byte integers, which can be XORed quickly in SQL. We use strings
- * to represent these integers because not all SQLite drivers support native
- * bigint types.
- */
-type SqliteFingerprint = [Int64String, Int64String] &
-  Brand<"SqliteFingerprint">;
-
-const fingerprintToSqliteFingerprint = (
-  fingerprint: Fingerprint,
-): SqliteFingerprint => {
-  let part1 = BigInt(0);
-  let part2 = BigInt(0);
-  for (let i = 0; i < 6; i++) {
-    part1 = (part1 << BigInt(8)) | BigInt(fingerprint[i]);
-  }
-  for (let i = 6; i < 12; i++) {
-    part2 = (part2 << BigInt(8)) | BigInt(fingerprint[i]);
-  }
-  return [part1.toString(), part2.toString()] as SqliteFingerprint;
-};
-
-const sqliteFingerprintToFingerprint = ([
-  part1String,
-  part2String,
-]: SqliteFingerprint): Fingerprint => {
-  let part1 = BigInt(part1String);
-  let part2 = BigInt(part2String);
-
-  const hash = new Uint8Array(12);
-  for (let i = 5; i >= 0; i--) {
-    hash[i] = Number(part1 & BigInt(0xff));
-    part1 >>= BigInt(8);
-  }
-  for (let i = 11; i >= 6; i--) {
-    hash[i] = Number(part2 & BigInt(0xff));
-    part2 >>= BigInt(8);
-  }
-  return hash as Fingerprint;
-};
-
-const getSize =
-  (deps: SqliteDep) =>
-  (ownerId: OwnerIdBytes): NonNegativeInt => {
-    const result = deps.sqlite.prepared<{ size: NonNegativeInt }>`
-      with
-        ml(ml) as (
-          select max(l)
-          from evolu_timestamp
-          where ownerId = ${ownerId}
-        ),
-        sc(l, pt, c) as (
-          select (select ml + 1 from ml), zeroblob(0), 0
-          union all
-          select
-            sc.l - 1,
-            ifnull(
-              (
-                select max(t)
-                from evolu_timestamp as m
-                where ownerId = ${ownerId} and m.l = sc.l - 1 and m.t > sc.pt
-              ),
-              sc.pt
-            ),
-            ifnull(
-              (
-                select sum(m.c)
-                from evolu_timestamp as m
-                where ownerId = ${ownerId} and m.l = sc.l - 1 and m.t > sc.pt
-              ),
-              0
-            )
-          from sc
-          where sc.l > 1
-        )
-      select sum(c) as size
-      from sc;
-    `;
-
-    return result.rows[0].size;
-  };
-
-const findLowerBound =
-  (deps: SqliteDep) =>
-  (
-    ownerId: OwnerIdBytes,
-    begin: NonNegativeInt,
-    end: NonNegativeInt,
-    upperBound: RangeUpperBound,
-  ): NonNegativeInt => {
-    assertBeginEnd(begin, end);
-
-    if (end === 0 || begin === end || upperBound === InfiniteUpperBound) {
-      return end;
-    }
-
-    const result = deps.sqlite.prepared<{
-      t: TimestampBytes;
-    }>`
-      select t
-      from evolu_timestamp
-      where ownerId = ${ownerId} and t >= ${upperBound}
-      order by t
-      limit 1;
-    `;
-
-    if (result.rows.length === 0) {
-      return end;
-    }
-
-    const count = getTimestampCount(deps)(ownerId, result.rows[0].t);
-    // `decrement` converts a count to an index.
-    return decrement(count) as NonNegativeInt;
-  };
-
-const getTimestampCount =
-  (deps: SqliteDep) =>
-  (ownerId: OwnerIdBytes, timestamp: TimestampBytes): PositiveInt => {
-    const result = deps.sqlite.prepared<{
-      count: number;
-    }>`
-      with
-        ml(ml) as (
-          select max(l) from evolu_timestamp where ownerId = ${ownerId}
-        ),
-        sc(l, pt, tc) as (
-          select ml + 1, zeroblob(0), 0 from ml
-          union all
-          select
-            sc.l - 1,
-            ifnull(
-              (
-                select max(t)
-                from evolu_timestamp
-                where
-                  ownerId = ${ownerId}
-                  and l = sc.l - 1
-                  and t <= ${timestamp}
-                  and t > sc.pt
-                order by t
-              ),
-              sc.pt
-            ),
-            ifnull(
-              (
-                select sum(c)
-                from evolu_timestamp
-                where
-                  ownerId = ${ownerId}
-                  and l = sc.l - 1
-                  and t <= ${timestamp}
-                  and t > sc.pt
-              ),
-              0
-            )
-          from sc
-          where sc.l > 1 and sc.pt != ${timestamp}
-        )
-      select sum(tc) as count
-      from sc;
-    `;
-
-    // A found timestamp's count includes itself, so a count below 1 means
-    // damaged skiplist counts, which would become a negative index.
-    return PositiveInt.orThrow(result.rows[0].count);
-  };
 
 /**
  * TODO: We reuse {@link fingerprintRanges}, which returns upper bound, which we
@@ -1587,13 +925,8 @@ const fingerprint =
   };
 
 /**
- * Computes all RBSR fingerprint buckets in one SQL statement.
- *
- * Continuous ranges reduce the required traversals from 32 to 16. Each
- * recursive step first finds the next timestamp, then loads its count and
- * fingerprint by primary key in the following step. This two-phase traversal
- * avoids repeated correlated range lookups because SQLite does not support
- * `LATERAL` subqueries.
+ * Computes all RBSR fingerprint buckets in one SQL function call, which returns
+ * a 12-byte fingerprint and a 16-byte upper bound for each bucket.
  *
  * See https://logperiodic.com/rbsr.html#tree-friendly-functions.
  */
@@ -1601,130 +934,33 @@ const fingerprintRanges =
   (deps: SqliteDep) =>
   (
     ownerId: OwnerIdBytes,
-    buckets: ReadonlyArray<NonNegativeInt>,
+    buckets: NonEmptyReadonlyArray<NonNegativeInt>,
     upperBound: RangeUpperBound = InfiniteUpperBound,
   ): ReadonlyArray<FingerprintRange> => {
-    const bucketsJson = JSON.stringify(buckets);
+    // Big-endian 8-byte counts, which no driver has to bind as a bigint.
+    const encodedBuckets = new Uint8Array(buckets.length * 8);
+    const view = new DataView(encodedBuckets.buffer);
+    for (const [i, bucket] of buckets.entries())
+      view.setBigUint64(i * 8, BigInt(bucket));
 
-    // A bucket past the owner's timestamps would descend below level 1
-    // forever, so the walk stops there and the bucket has no row.
-    const result = deps.sqlite.prepared<{
-      b: TimestampBytes | null;
-      h1: Int64String;
-      h2: Int64String;
-    }>`
-      with
-        ml(ml) as (
-          select max(l) from evolu_timestamp where ownerId = ${ownerId}
-        ),
-        c0(c) as (select value as c from json_each(${bucketsJson})),
-        c1(c, b, nt, ft, tt, dl, ic, h1, h2) as (
-          select
-            c,
-            1,
-            null,
-            zeroblob(0),
-            X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
-            ml,
-            0,
-            0,
-            0
-          from
-            c0,
-            ml
-          union all
-          select
-            c1.c,
-            not c1.b,
-            iif(
-              c1.b,
-              (
-                select t
-                from evolu_timestamp
-                where
-                  l = c1.dl
-                  and t > c1.ft
-                  and t < c1.tt
-                  and ownerId = ${ownerId}
-                order by t
-                limit 1
-              ),
-              null
-            ),
-            iif(c1.b, c1.ft, iif(c1.ic + node.c <= c1.c, c1.nt, c1.ft)),
-            iif(
-              c1.b,
-              c1.tt,
-              iif(c1.ic + node.c <= c1.c, c1.tt, ifnull(c1.nt, c1.tt))
-            ),
-            iif(c1.b, c1.dl, iif(c1.ic + node.c <= c1.c, c1.dl, c1.dl - 1)),
-            iif(
-              c1.b,
-              c1.ic,
-              iif(c1.ic + node.c <= c1.c, c1.ic + node.c, c1.ic)
-            ),
-            iif(
-              c1.b,
-              c1.h1,
-              iif(c1.ic + node.c <= c1.c, ${x("c1.h1", "node.h1")}, c1.h1)
-            ),
-            iif(
-              c1.b,
-              c1.h2,
-              iif(c1.ic + node.c <= c1.c, ${x("c1.h2", "node.h2")}, c1.h2)
-            )
-          from c1
-          left join evolu_timestamp as node
-            on not c1.b and node.ownerId = ${ownerId} and node.t = c1.nt
-          where iif(c1.b, 1, c1.ic != c1.c) and c1.dl >= 1
-        ),
-        c2(h1, h2, t, rn) as (
-          select
-            h1,
-            h2,
-            (
-              select min(t)
-              from evolu_timestamp
-              where t > ft and ownerId = ${ownerId}
-            ),
-            row_number() over (order by c)
-          from c1
-          where c = ic and b = 1
-        ),
-        c3(oh1, oh2, b, rn, h1, h2) as (
-          select h1, h2, t, rn, h1, h2 from c2 where rn = 1
-          union all
-          select
-            c2.h1,
-            c2.h2,
-            t,
-            c2.rn,
-            ${x("c3.oh1", "c2.h1")},
-            ${x("c3.oh2", "c2.h2")}
-          from c2
-          join c3 on c2.rn = c3.rn + 1
-        )
-      select b, cast(h1 as text) as h1, cast(h2 as text) as h2
-      from c3;
+    // A bucket past the owner's timestamps fails the call.
+    const { rows } = deps.sqlite.prepared<{ ranges: Uint8Array }>`
+      select evolu_skiplist_fingerprints(
+        ${ownerId},
+        ${encodedBuckets}
+      ) as ranges;
     `;
-    assert(result.rows.length === buckets.length, "bucket out of range");
+    const { ranges } = rows[0];
 
-    const fingerprintRanges = result.rows.map(
-      (row, i, arr): FingerprintRange => ({
-        type: RangeType.Fingerprint,
-        upperBound: i === arr.length - 1 ? upperBound : row.b!,
-        fingerprint: sqliteFingerprintToFingerprint([
-          row.h1,
-          row.h2,
-        ] as SqliteFingerprint),
-      }),
-    );
-
-    return fingerprintRanges;
+    return buckets.map((_, i): FingerprintRange => ({
+      type: RangeType.Fingerprint,
+      upperBound:
+        i === buckets.length - 1
+          ? upperBound
+          : (ranges.slice(i * 28 + 12, i * 28 + 28) as TimestampBytes),
+      fingerprint: ranges.slice(i * 28, i * 28 + 12) as Fingerprint,
+    }));
   };
-
-// XOR in SQLite
-const x = (a: string, b: string) => sql.raw(`(${a} | ${b}) - (${a} & ${b})`);
 
 /**
  * Reads the timestamp at a position within an owner's ordered timestamps.
@@ -1736,89 +972,17 @@ const x = (a: string, b: string) => sql.raw(`(${a} | ${b}) - (${a} & ${b})`);
 export const getTimestampByIndex =
   (deps: SqliteDep) =>
   (ownerId: OwnerIdBytes, index: NonNegativeInt): TimestampBytes => {
-    // An index past the owner's timestamps would descend below level 1
-    // forever, so the walk stops there and finds no row.
-    const result = deps.sqlite.prepared<{
-      readonly pt: TimestampBytes;
-    }>`
-      with
-        fi(b, cl, ic, pt, mt, nt, nc) as (
-          select
-            0,
-            (
-              select max(l)
-              from evolu_timestamp
-              where ownerId = ${ownerId}
-            ),
-            0,
-            zeroblob(0),
-            X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
-            null,
-            0
-          union all
-          select
-            not b,
-            iif(
-              b,
-              iif(nt is null or nt > mt or ic + nc > ${index + 1}, cl - 1, cl),
-              cl
-            ),
-            iif(
-              b,
-              iif(nt is null or nt > mt or ic + nc > ${index + 1}, ic, ic + nc),
-              ic
-            ),
-            iif(
-              b,
-              iif(nt is null or nt > mt or ic + nc > ${index + 1}, pt, nt),
-              pt
-            ),
-            iif(
-              b,
-              iif(
-                nt is null or nt > mt or ic + nc > ${index + 1},
-                iif(nt is not null and nt < mt, nt, mt),
-                mt
-              ),
-              mt
-            ),
-            iif(
-              b,
-              null,
-              (
-                select t
-                from evolu_timestamp
-                where ownerId = ${ownerId} and l = cl and t > pt
-                order by t
-                limit 1
-              )
-            ),
-            iif(
-              b,
-              null,
-              (
-                select c
-                from evolu_timestamp
-                where ownerId = ${ownerId} and l = cl and t > pt
-                order by t
-                limit 1
-              )
-            )
-          from fi
-          where ic != ${index + 1} and cl >= 1
-        )
-      select pt
-      from fi
-      where ic == ${index + 1};
+    const { rows } = deps.sqlite.prepared<{ t: TimestampBytes | null }>`
+      select evolu_skiplist_timestamp_at(${ownerId}, ${index}) as t;
     `;
-
-    const row = result.rows.at(0);
-    assert(row, "index out of range");
-    return row.pt;
+    const { t } = rows[0];
+    assert(t, "index out of range");
+    return t;
   };
 
 /**
- * Reads owner usage from SQLite and returns default bounds when absent.
+ * Reads an owner's usage from SQLite. An owner without usage has null
+ * `storedBytes` and `initialTimestamp` as its first and last timestamps.
  *
  * @group SQLite
  */
@@ -1862,10 +1026,10 @@ export const readOwnerUsageOrDefault =
   };
 
 /**
- * Updates timestamp bounds in evolu_usage table.
+ * Writes an owner's usage to the evolu_usage table, with the first and last
+ * timestamps of {@link extendTimestampBounds}.
  *
- * Used by both relay and client to maintain firstTimestamp/lastTimestamp after
- * processing messages.
+ * Used by both relay and client after processing messages.
  *
  * @group SQLite
  */

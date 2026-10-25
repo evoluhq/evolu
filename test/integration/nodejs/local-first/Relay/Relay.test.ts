@@ -1,7 +1,10 @@
 import { describe, it, test } from "node:test";
 import type {
+  Millis,
+  NonEmptyReadonlyArray,
   NonNegativeInt,
   OwnerIdBytes,
+  RandomNumber,
   SqliteDep,
 } from "../../../../../packages/common/src/index.ts";
 import {
@@ -14,6 +17,7 @@ import {
   assertThrowsInstanceOf,
   assertTrue,
   err,
+  mapArray,
   constFalse,
   constTrue,
   ok,
@@ -202,6 +206,52 @@ describe("writeMessages", () => {
     assertEqual(getStoredBytes({ sqlite })(testAppOwnerIdBytes), 3);
   });
 
+  // Earlier releases choose their insert path from the stored bounds.
+  it("keeps an owner's first and last timestamps in its usage", async () => {
+    await using setup = await setupSqliteAndRelayStorage();
+    const { run, storage, sqlite } = setup;
+    const timestampAt = (millis: number) =>
+      createTimestamp({ millis: millis as Millis });
+
+    const cases: ReadonlyArray<{
+      written: NonEmptyReadonlyArray<number>;
+      first: number;
+      last: number;
+    }> = [
+      // A new owner.
+      { written: [20], first: 20, last: 20 },
+      // Appended, prepended, and between.
+      { written: [30], first: 20, last: 30 },
+      { written: [10], first: 10, last: 30 },
+      { written: [25], first: 10, last: 30 },
+      { written: [40, 5, 15], first: 5, last: 40 },
+    ];
+    for (const { written, first, last } of cases) {
+      await run.orThrow(
+        storage.writeMessages(
+          testAppOwnerIdBytes,
+          mapArray(written, (millis) => ({
+            timestamp: timestampAt(millis),
+            change: new Uint8Array(1) as EncryptedDbChange,
+          })),
+        ),
+      );
+      assertEqual(
+        sqlite.exec(sql`
+          select "firstTimestamp", "lastTimestamp"
+          from evolu_usage
+          where "ownerId" = ${testAppOwnerIdBytes};
+        `).rows,
+        [
+          {
+            firstTimestamp: timestampToTimestampBytes(timestampAt(first)),
+            lastTimestamp: timestampToTimestampBytes(timestampAt(last)),
+          },
+        ],
+      );
+    }
+  });
+
   it("prevents duplicate timestamp writes", async () => {
     await using setup = await setupSqliteAndRelayStorage();
     const { run, storage, sqlite } = setup;
@@ -370,6 +420,51 @@ describe("writeMessages", () => {
     `);
 
     assertEqual(usageResult.rows[0].count, 0);
+  });
+
+  it("rolls back a write whose skiplist insert fails after writing part of it", async () => {
+    await using setup = await setupSqlite();
+    const { sqlite } = setup;
+    createBaseSqliteStorageTables({ sqlite });
+    createRelayStorageTables({ sqlite });
+    // The first timestamp at level 2, then each at level 1.
+    const randomNumbers = [0.1, 0.9];
+    const storage = createRelaySqliteStorage({
+      ...setup.run.deps,
+      random: { next: () => (randomNumbers.shift() ?? 0.9) as RandomNumber },
+      sqlite,
+      timingSafeEqual: testTimingSafeEqual,
+    })({ isOwnerWithinQuota: constTrue });
+    await using run = testCreateRun();
+    const [earlier, later] = [100, 200].map((millis): EncryptedCrdtMessage => ({
+      timestamp: createTimestamp({ millis: millis as Millis }),
+      change: new Uint8Array(3) as EncryptedDbChange,
+    }));
+    await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [later]));
+    const readTables = () =>
+      ["evolu_timestamp", "evolu_message", "evolu_usage"].map(
+        (table) => sqlite.exec(sql`select * from ${sql.raw(table)};`).rows,
+      );
+    const tables = readTables();
+
+    // The earlier timestamp's insert adds its row and then fails to update the
+    // level 2 node after it.
+    sqlite.exec(sql`
+      create temp trigger evolu_timestamp_update_fails
+      before update on evolu_timestamp
+      begin
+        select raise(abort, 'injected');
+      end;
+    `);
+    const result = await run(
+      storage.writeMessages(testAppOwnerIdBytes, [earlier]),
+    );
+    assertTrue(!result.ok && UnknownError.is(result.error));
+    assertEqual(readTables(), tables);
+
+    sqlite.exec(sql`drop trigger evolu_timestamp_update_fails;`);
+    await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [earlier]));
+    assertEqual(storage.getSize(testAppOwnerIdBytes), 2);
   });
 
   it("answers a write SQLite fails with WriteError and keeps serving", async () => {
