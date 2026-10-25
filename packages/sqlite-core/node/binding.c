@@ -52,8 +52,10 @@
 // The largest integer a JS number holds exactly, Number.MAX_SAFE_INTEGER.
 #define MAX_SAFE_INTEGER 9007199254740991.0
 
-// The largest text or blob, in bytes, whose copy a statement keeps after a
-// run, as in @evolu/sqlite-wasm.
+// The largest text or blob, in bytes, of UTF-8 for text, whose copy a
+// statement keeps after a run. @evolu/sqlite-wasm uses the same 64 KiB but
+// counts 3 bytes per UTF-16 code unit of text, so it also clears some shorter
+// texts.
 #define MAX_KEPT_VALUE 65536
 
 typedef struct Database Database;

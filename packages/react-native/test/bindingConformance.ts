@@ -1269,6 +1269,23 @@ export const describeBindingConformance = ({
         }),
       );
       assertEqual(failing.step(), { n: null, j: null });
+      failing.reset();
+      // oxlint-disable-next-line eslint/no-extend-native -- Appending a row must run JavaScript.
+      Object.defineProperty(Array.prototype, "0", {
+        configurable: true,
+        // oxlint-disable-next-line eslint/accessor-pairs -- Only setting runs the hook.
+        set() {
+          throw new Error("append");
+        },
+      });
+      let appendError: unknown = null;
+      try {
+        appendError = thrownBy(() => failing.run(values(large, "1")));
+      } finally {
+        delete (Array.prototype as unknown as Record<string, unknown>)["0"];
+      }
+      assertEqual(appendError, errorWith("append", undefined));
+      assertEqual(failing.step(), { n: null, j: null });
       failing.finalize();
     } finally {
       database.close();
@@ -1291,6 +1308,14 @@ export const describeBindingConformance = ({
       select.reset();
       assertEqual(select.step(), { a: 2 });
       select.finalize();
+
+      // Also over 64 KiB, which only run clears.
+      const large = database.prepare("select length(?) as n");
+      large.bind(values(new Uint8Array(8 * 1024 * 1024)));
+      assertEqual(large.step(), { n: 8_388_608 });
+      large.reset();
+      assertEqual(large.step(), { n: 8_388_608 });
+      large.finalize();
     } finally {
       database.close();
     }

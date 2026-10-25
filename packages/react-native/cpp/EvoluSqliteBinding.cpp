@@ -51,8 +51,10 @@ constexpr int abiVersion = 1;
 // Number.MAX_SAFE_INTEGER.
 constexpr double maxSafeInteger = 9007199254740991.0;
 
-// The largest text or blob, in bytes, whose copy a statement keeps after a
-// run, as in @evolu/sqlite-wasm.
+// The largest text or blob, in bytes, of UTF-8 for text, whose copy a
+// statement keeps after a run. @evolu/sqlite-wasm uses the same 64 KiB but
+// counts 3 bytes per UTF-16 code unit of text, so it also clears some shorter
+// texts.
 constexpr size_t maxKeptValue = 65536;
 
 // An open database: a database handle's state, and while it's open, an entry
