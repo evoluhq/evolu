@@ -187,6 +187,7 @@ describe("parseDeviceBenchLine", () => {
         compact("run", run),
         brief("run", run),
         consoleApp("run", run),
+        `${consoleApp("run", run)}\tcom.facebook.react.log`,
         brief("run", { ...run, heapBytes: null }),
         compact("meta", metaOf("evolu", 1)),
         brief("option", { option: "THREADSAFE=2" }),
@@ -213,6 +214,7 @@ describe("parseDeviceBenchLine", () => {
         `${brief("done", { runs: 90, failed: 0 })}\r`,
       ].map(parseDeviceBenchLine),
       [
+        { type: "Run", run },
         { type: "Run", run },
         { type: "Run", run },
         { type: "Run", run },
@@ -556,6 +558,22 @@ describe("summarizeDeviceBench", () => {
       );
     });
 
+  it("fails on a log without any session", () => {
+    assertThrows(
+      () =>
+        summarizeDeviceBench([
+          ...setupLogs(),
+          { device: "iPhone", lines: ["Running expoapp"] },
+        ]),
+      (error) => {
+        assertEqual(
+          (error as Error).message,
+          "iPhone: a log has no session's meta line.",
+        );
+      },
+    );
+  });
+
   it("reads logcat's lines too", () => {
     const summary = summarizeDeviceBench([
       {
@@ -590,13 +608,13 @@ describe("formatDeviceBenchSummary", () => {
       "| Encrypt | 10 | 5.97 | 5.5 |",
       "| Decrypt | 5 | 2.99 | 3.5 |",
       "Timer floor, each session's timer-hop median: expo-sqlite 13 ms, evolu 8 ms, expo-sqlite 23 ms, evolu 10 ms.",
-      "> Warning: the sessions' timer floors differ by more than 10%, 8 to 23 ms, so compare the Evolu-level cases only between sessions with the same floor, or as multiples of the hop.",
+      "> Warning: the sessions' timer floors differ by more than 10%, 8 to 23 ms, so compare the cases that wait on timers only between sessions with the same floor, or as multiples of the hop: timer-hop, the sync cases, and in a build whose worker hops use setTimeout(0), every Evolu-level case.",
     ])
       assert(text.includes(`${expected}\n`), `${expected}\n\n${text}`);
     assertFalse(text.includes("alternate"));
   });
 
-  it("doesn't warn when the sessions' timer floors are within 10%", () => {
+  it("doesn't warn when the sessions' timer floors are 10% apart", () => {
     const text = formatDeviceBenchSummary(
       summarizeDeviceBench([
         {
@@ -611,7 +629,7 @@ describe("formatDeviceBenchSummary", () => {
               build: "evolu",
               startedAt: 2000,
               base: 5,
-              offsets: { "timer-hop": 6 },
+              offsets: { "timer-hop": 6.3 },
             }),
           ],
         },
@@ -620,11 +638,39 @@ describe("formatDeviceBenchSummary", () => {
 
     assert(
       text.includes(
-        "Timer floor, each session's timer-hop median: expo-sqlite 13 ms, evolu 14 ms.\n",
+        "Timer floor, each session's timer-hop median: expo-sqlite 13 ms, evolu 14.3 ms.\n",
       ),
       text,
     );
     assertFalse(text.includes("timer floors differ"));
+  });
+
+  it("warns when the sessions' timer floors are more than 10% apart", () => {
+    const text = formatDeviceBenchSummary(
+      summarizeDeviceBench([
+        {
+          device: "iPhone",
+          lines: [
+            ...setupSession({
+              build: "expo-sqlite",
+              startedAt: 1000,
+              base: 10,
+            }),
+            ...setupSession({
+              build: "evolu",
+              startedAt: 2000,
+              base: 5,
+              offsets: { "timer-hop": 6.4 },
+            }),
+          ],
+        },
+      ]),
+    );
+
+    assert(
+      text.includes("timer floors differ by more than 10%, 13 to 14.4 ms"),
+      text,
+    );
   });
 
   it("warns when the sessions don't alternate, and shows a missing build as a dash", () => {

@@ -328,6 +328,8 @@ export const summarizeDeviceBench = (
           break;
       }
     }
+    if (session == null)
+      throw new Error(`${device}: a log has no session's meta line.`);
   }
 
   const summary: Record<string, DeviceBenchDeviceSummary> = {};
@@ -498,7 +500,9 @@ export const formatDeviceBenchSummary = (
     const b = builds.evolu;
     out.push(`## ${device}`, "", `Sessions: ${order.join(", ")}.`, "");
     // A frame clock can change between sessions, as the arm64 emulator's did
-    // between about 30 and 60 Hz, and every Evolu-level case waits on it.
+    // between about 30 and 60 Hz. timer-hop and the sync cases, whose bench
+    // relay answers after a setTimeout(0), wait on it, and so does every
+    // Evolu-level case in a build whose worker hops use setTimeout(0).
     const timerHops = { evolu: 0, "expo-sqlite": 0 };
     const floors = order.map((build) => {
       // Each build in the order has its sessions' summary.
@@ -513,7 +517,7 @@ export const formatDeviceBenchSummary = (
     const [lowest, highest] = [Math.min(...floors), Math.max(...floors)];
     if (highest > lowest * 1.1)
       out.push(
-        `> Warning: the sessions' timer floors differ by more than 10%, ${format(lowest)} to ${format(highest)} ms, so compare the Evolu-level cases only between sessions with the same floor, or as multiples of the hop.`,
+        `> Warning: the sessions' timer floors differ by more than 10%, ${format(lowest)} to ${format(highest)} ms, so compare the cases that wait on timers only between sessions with the same floor, or as multiples of the hop: timer-hop, the sync cases, and in a build whose worker hops use setTimeout(0), every Evolu-level case.`,
         "",
       );
     if (order.some((build, index) => index > 0 && build === order[index - 1]))
