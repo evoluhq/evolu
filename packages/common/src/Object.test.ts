@@ -21,6 +21,7 @@ import {
   getOwnProp,
   isFunction,
   isIterable,
+  emptyPrototype,
   isPlainObject,
   mapObject,
   objectFrom,
@@ -111,6 +112,32 @@ test("isPlainObject", () => {
     { value: () => false },
   );
   assertFalse(isPlainObject(Object.create(partialObjectPrototype)));
+});
+
+test("isPlainObject accepts an object whose prototype is emptyPrototype, or another copy's, any frozen, empty prototype without one, and rejects one with a key, not frozen or with a prototype", () => {
+  const row = Object.assign(Object.create(emptyPrototype) as object, { a: 1 });
+  // As another copy of @evolu/common, or another realm, creates it.
+  const otherCopys = Object.freeze(Object.create(null) as object);
+  const withKey = Object.freeze(
+    Object.create(null, { a: { value: 1 } }) as object,
+  );
+  const notFrozen = Object.create(null) as object;
+  const inheriting = Object.freeze(Object.create(otherCopys) as object);
+
+  assertTrue(Object.isFrozen(emptyPrototype));
+  assertEqual(Reflect.ownKeys(emptyPrototype), []);
+  assertEqual(Object.getPrototypeOf(emptyPrototype), null);
+  assertTrue(isPlainObject(row));
+  assertEqual(getObjectKind(row), "Object");
+  assertEqual(row, { a: 1 });
+  assertTrue(isPlainObject(Object.create(otherCopys)));
+  assertEqual(Object.assign(Object.create(otherCopys) as object, { a: 1 }), {
+    a: 1,
+  });
+  assertFalse(isPlainObject(Object.create(withKey)));
+  assertFalse(isPlainObject(Object.create(notFrozen)));
+  // Frozen and empty, but with a prototype of its own.
+  assertFalse(isPlainObject(Object.create(inheriting)));
 });
 
 test("isPlainObject checks the root markers of Object.prototype", () => {

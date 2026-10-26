@@ -397,19 +397,20 @@
  * unknown values, {@link object} defines a closed plain-object representation,
  * and {@link record} defines a plain-dictionary representation whose complete
  * set of own properties are its entries. Their realm-neutral plain-object rule
- * uses {@link isPlainObject}: it accepts a `null` prototype or an immediate root
- * prototype with own `hasOwnProperty` and `isPrototypeOf` properties. A custom
- * root prototype with the same shape can therefore be classified as plain;
- * other custom prototypes and class instances are rejected. This heuristic
- * assumes trusted JavaScript and is not a security boundary. Every property
- * must be an enumerable data property; inherited members are not entries, while
- * accessors and hidden properties are invalid instead of being invoked or
- * ignored. {@link array} similarly defines a dense sequence whose only own
- * properties are `length` and its indexed data properties; {@link tuple} applies
- * the same representation rules with a fixed length and a distinct Type for
- * each position. Only an explicit {@link transform} changes the representation.
- * Consequently, `is` tests exact Output membership and `to` stays total for
- * valid Outputs.
+ * uses {@link isPlainObject}: it accepts a `null` prototype, a frozen, empty
+ * prototype without a prototype, such as `emptyPrototype` or another copy's,
+ * and an immediate root prototype with own `hasOwnProperty` and `isPrototypeOf`
+ * properties. A custom root prototype of either shape can therefore be
+ * classified as plain; other custom prototypes and class instances are
+ * rejected. This heuristic assumes trusted JavaScript and is not a security
+ * boundary. Every property must be an enumerable data property; inherited
+ * members are not entries, while accessors and hidden properties are invalid
+ * instead of being invoked or ignored. {@link array} similarly defines a dense
+ * sequence whose only own properties are `length` and its indexed data
+ * properties; {@link tuple} applies the same representation rules with a fixed
+ * length and a distinct Type for each position. Only an explicit
+ * {@link transform} changes the representation. Consequently, `is` tests exact
+ * Output membership and `to` stays total for valid Outputs.
  *
  * ### Why is JsonValue stricter than JSON.stringify?
  *

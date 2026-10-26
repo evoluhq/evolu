@@ -49,12 +49,44 @@ export const getObjectKind = (value: object): ObjectKind => {
 };
 
 /**
+ * A frozen, empty object without a prototype, the prototype of objects that
+ * inherit nothing, as an object without a prototype does, but whose properties
+ * V8 keeps as fast as an ordinary object's, which it doesn't for one without a
+ * prototype. Rows of Evolu's SQLite on Node.js and the web have it, and
+ * {@link isPlainObject} accepts objects that have it.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertTrue,
+ *   emptyPrototype,
+ *   isPlainObject,
+ * } from "@evolu/common";
+ *
+ * const row = Object.create(emptyPrototype) as Record<string, unknown>;
+ * row["__proto__"] = 1;
+ *
+ * assertTrue(isPlainObject(row));
+ * assertTrue(Object.hasOwn(row, "__proto__"));
+ * ```
+ *
+ * @group Constants
+ */
+export const emptyPrototype: object = /*#__PURE__*/ Object.freeze(
+  /*#__PURE__*/ Object.create(null) as object,
+);
+
+/**
  * Checks if a value is a plain object (e.g., created with `{}` or `Object`).
  *
- * Accepts objects with a `null` prototype. Otherwise, it uses a realm-neutral
- * structural heuristic: the immediate prototype must be a root object with own
- * `hasOwnProperty` and `isPrototypeOf` properties. This recognizes ordinary
- * Objects from another JavaScript realm without relying on prototype identity.
+ * Accepts objects with a `null` prototype or {@link emptyPrototype}, which
+ * inherit nothing, and so does any other frozen, empty prototype without a
+ * prototype, such as another copy's `emptyPrototype`. Otherwise, it uses a
+ * realm-neutral structural heuristic: the immediate prototype must be a root
+ * object with own `hasOwnProperty` and `isPrototypeOf` properties. This
+ * recognizes ordinary Objects from another JavaScript realm without relying on
+ * prototype identity.
  *
  * A custom root prototype with the same shape can therefore be classified as
  * plain. This function assumes trusted JavaScript and is not a prototype
@@ -64,7 +96,12 @@ export const getObjectKind = (value: object): ObjectKind => {
  * ### Example
  *
  * ```ts
- * import { assertFalse, assertTrue, isPlainObject } from "@evolu/common";
+ * import {
+ *   assertFalse,
+ *   assertTrue,
+ *   emptyPrototype,
+ *   isPlainObject,
+ * } from "@evolu/common";
  *
  * class Example {
  *   readonly value = "example";
@@ -72,6 +109,7 @@ export const getObjectKind = (value: object): ObjectKind => {
  *
  * assertTrue(isPlainObject({}));
  * assertTrue(isPlainObject(Object.create(null)));
+ * assertTrue(isPlainObject(Object.create(emptyPrototype)));
  * assertFalse(isPlainObject(new Date()));
  * assertFalse(isPlainObject(new Example()));
  * assertFalse(isPlainObject([]));
@@ -86,7 +124,7 @@ export const isPlainObject = (
   }
 
   const prototype = Object.getPrototypeOf(value) as object | null;
-  if (prototype === null) return true;
+  if (prototype === null || prototype === emptyPrototype) return true;
   // This realm's Object.prototype has an immutable null prototype, so `in`
   // checks the same own properties as the structural test below, faster.
   if (prototype === Object.prototype) {
@@ -94,8 +132,10 @@ export const isPlainObject = (
   }
   return (
     Object.getPrototypeOf(prototype) === null &&
-    Object.hasOwn(prototype, "hasOwnProperty") &&
-    Object.hasOwn(prototype, "isPrototypeOf")
+    ((Object.hasOwn(prototype, "hasOwnProperty") &&
+      Object.hasOwn(prototype, "isPrototypeOf")) ||
+      // Another copy's or realm's emptyPrototype, which inherits nothing.
+      (Object.isFrozen(prototype) && Reflect.ownKeys(prototype).length === 0))
   );
 };
 
