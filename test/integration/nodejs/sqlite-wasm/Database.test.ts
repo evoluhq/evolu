@@ -8,6 +8,7 @@ import {
   assertThrows,
   assertTrue,
   assertType,
+  emptyPrototype,
   EncryptionKey,
   err,
   exhaustiveCheck,
@@ -554,7 +555,12 @@ test("createSqliteDatabase fails with SQLITE_NOMEM when it cannot allocate its m
 });
 
 // tester1.c-pp.js 'sqlite3.oo1' 'DB.Stmt'.
-test("a prepared statement runs, returning its rows as null-prototype objects", async () => {
+/** Asserts that a row's prototype is emptyPrototype, so it inherits nothing. */
+const assertInheritsNothing = (row: object | undefined) => {
+  assertSame(Object.getPrototypeOf(row), emptyPrototype);
+};
+
+test("a prepared statement runs, returning its rows, which inherit nothing", async () => {
   const { database } = await setupSqliteDatabase();
 
   const statement = getOrThrow(database.prepare("select 3 as a"));
@@ -563,7 +569,7 @@ test("a prepared statement runs, returning its rows as null-prototype objects", 
   assertEqual(statement.parameterCount, 0);
   assertOk(result);
   assertEqual(result.value, { rows: [{ a: 3 }], changes: 0 });
-  assertSame(Object.getPrototypeOf(result.value.rows[0]), null);
+  assertInheritsNothing(result.value.rows[0]);
 });
 
 test("prepare passes SQLITE_PREPARE_PERSISTENT and the SQL's byte length, counting its NUL terminator", async () => {
@@ -1958,6 +1964,25 @@ test("run fails with the parser's error and its sqlOffset when a schema change l
   });
 });
 
+test("the rows of runs share one frozen, empty prototype without one of its own, so they inherit nothing", async () => {
+  const { database } = await setupSqliteDatabase();
+
+  const rowsOf = (sql: string) => {
+    const result = getOrThrow(database.prepare(sql)).run([]);
+    assertOk(result);
+    return result.value.rows;
+  };
+  const [first, second] = rowsOf("select 1 as a union all select 2");
+  const [other] = rowsOf("select 'b' as b");
+  const prototype = Object.getPrototypeOf(first) as object;
+
+  assertInheritsNothing(first);
+  assertEqual(
+    [second, other].map((row) => Object.getPrototypeOf(row) === prototype),
+    [true, true],
+  );
+});
+
 test("a column named __proto__ is an ordinary property of its row", async () => {
   const { database } = await setupSqliteDatabase();
 
@@ -2651,7 +2676,7 @@ test("run on the database prepares one statement without SQLITE_PREPARE_PERSISTE
   });
 });
 
-test("a prepared statement iterates its rows as null-prototype objects, steps no row past the one onRow stops at, and runs again", async () => {
+test("a prepared statement iterates its rows, which inherit nothing, steps no row past the one onRow stops at, and runs again", async () => {
   const t = await setupCallbackDatabase();
   const select = getOrThrow(t.database.prepare("select a, cb() as c from t"));
   let steps = 0;
@@ -2671,7 +2696,7 @@ test("a prepared statement iterates its rows as null-prototype objects, steps no
     { a: 1, c: 1 },
     { a: 2, c: 1 },
   ]);
-  assertSame(Object.getPrototypeOf(rows[0]), null);
+  assertInheritsNothing(rows[0]);
   assertSame(steps, 2);
   // The iteration reset the statement, so it runs again from the first row.
   assertEqual(

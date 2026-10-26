@@ -184,9 +184,11 @@
  *   after, returns SQLITE_NOMEM. A NULL column name is SQLITE_NOMEM too, and so
  *   is a TEXT or BLOB that JavaScript cannot allocate a copy of, whatever error
  *   the engine throws then, because the copy runs no wasm, so the instance
- *   keeps working. Each fails the run with the operation `step`. Rows are
- *   null-prototype objects, so a column named `__proto__` is an ordinary
- *   property, and of columns with the same name, the last one wins.
+ *   keeps working. Each fails the run with the operation `step`. A row's
+ *   prototype is {@link emptyPrototype}, so a row inherits nothing, as a
+ *   null-prototype object does, and a column named `__proto__` is an ordinary
+ *   property, while V8 keeps a row's properties as fast as an ordinary
+ *   object's. Of columns with the same name, the last one wins.
  * - Column names are read after the first row and cached with the statement's
  *   SQLITE_STMTSTATUS_REPREPARE counter. A schema change re-prepares the
  *   statement, and `SELECT *` then returns other columns, so the names are read
@@ -271,6 +273,7 @@ import {
   type Task,
   type Typed,
   type TypeError,
+  emptyPrototype,
 } from "@evolu/common";
 import {
   sqlite3_bind_blob,
@@ -1248,7 +1251,7 @@ export const createSqliteDatabase =
               names = columnNames;
               namesReprepares = reprepares;
             }
-            const row = Object.create(null) as SqliteRow;
+            const row = Object.create(emptyPrototype) as SqliteRow;
             for (const [index, name] of names.entries()) {
               // With the type read first, a NULL pointer is never SQL NULL.
               const type = columnType(stmt, index);
