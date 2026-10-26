@@ -6,8 +6,9 @@
  * In the repository, the sources load `native/<target>/evolu.node`, which
  * `scripts/build-native.mts` builds.
  *
- * It imports only Node.js's own modules at run time, so CI checks each prebuilt
- * addon with it in its target's environment, where nothing else is installed.
+ * It imports only Node.js's own modules and the row builder beside it at run
+ * time, so CI checks each prebuilt addon with it in its target's environment,
+ * where nothing else is installed.
  *
  * @module
  */
@@ -15,6 +16,10 @@ import type { NativeSqlite, NativeSqliteDatabase } from "@evolu/common";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import {
+  createNativeSqliteRowBuilder,
+  type NativeSqliteRowBuilder,
+} from "./NativeSqliteRows.ts";
 
 /**
  * The targets `@evolu/nodejs` ships Evolu's SQLite for, Node.js 24's own
@@ -125,7 +130,7 @@ export const nativeSqliteUrl = (target: NativeSqliteTarget): URL =>
   new URL(`../native/${target}/evolu.node`, import.meta.url);
 
 /** The {@link NativeSqlite.abiVersion} the loader checks. */
-const nativeSqliteAbiVersion = 1;
+const nativeSqliteAbiVersion = 2;
 
 /**
  * The pages a connection caches, in KiB, as SQLite's negative `cache_size`
@@ -136,17 +141,26 @@ const cacheSizeKibibytes = 16_000;
 /**
  * Loads the addon for the platform, the running one unless given, with
  * `requireAddon`, Node.js's `require` unless given, and returns its binding,
- * configured by {@link configureNativeSqlite}. It throws for a platform
- * `@evolu/nodejs` ships no SQLite for, an addon it can't load, and an addon of
- * another version of the binding.
+ * configured by {@link configureNativeSqlite}, whose rows have rowPrototype:
+ * `@evolu/nodejs` passes `@evolu/common`'s `emptyPrototype`, which this module
+ * doesn't import, so it imports only Node.js's own modules and the row builder
+ * beside it at run time. A Node.js environment keeps the row builder of its
+ * first load, so a later load there, such as one of a test runner's fresh
+ * module registry or vm context, builds its rows with the first load's
+ * rowPrototype and keeps the first load's realm alive, which is safe, since
+ * `isPlainObject` accepts another copy's `emptyPrototype` too. It throws for a
+ * platform `@evolu/nodejs` ships no SQLite for, an addon it can't load, and an
+ * addon of another version of the binding.
  */
 export const loadNativeSqlite = ({
+  rowPrototype,
   platform = runningPlatform,
   requireAddon = createRequire(import.meta.url),
 }: {
+  rowPrototype: object;
   platform?: NativeSqlitePlatform;
   requireAddon?: (path: string) => unknown;
-} = {}): NativeSqlite => {
+}): NativeSqlite => {
   const target = nativeSqliteTarget(platform);
   if (target === null) {
     const name =
@@ -158,7 +172,11 @@ export const loadNativeSqlite = ({
     );
   }
   const path = fileURLToPath(nativeSqliteUrl(target));
-  let addon: { readonly createBinding: () => NativeSqlite };
+  let addon: {
+    readonly createBinding: (
+      rowBuilder: NativeSqliteRowBuilder,
+    ) => NativeSqlite;
+  };
   try {
     addon = requireAddon(path) as typeof addon;
   } catch (cause) {
@@ -167,7 +185,9 @@ export const loadNativeSqlite = ({
       { cause },
     );
   }
-  const binding = addon.createBinding();
+  const binding = addon.createBinding(
+    createNativeSqliteRowBuilder(rowPrototype),
+  );
   if (binding.abiVersion !== nativeSqliteAbiVersion)
     throw new Error(
       `@evolu/nodejs's SQLite at ${path} implements version ${binding.abiVersion} of its binding, but this JavaScript needs version ${nativeSqliteAbiVersion}.`,
@@ -192,14 +212,7 @@ const configureFile = (
   database: NativeSqliteDatabase,
 ): NativeSqliteDatabase => {
   try {
-    const statement = database.prepare(
-      `pragma cache_size = -${cacheSizeKibibytes}`,
-    );
-    try {
-      statement.run([]);
-    } finally {
-      statement.finalize();
-    }
+    database.run(`pragma cache_size = -${cacheSizeKibibytes}`, []);
   } catch (error) {
     database.close();
     throw error;

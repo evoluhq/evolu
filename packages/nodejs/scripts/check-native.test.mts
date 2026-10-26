@@ -4,6 +4,7 @@ import {
   assertInstanceOf,
   assertThrows,
 } from "@evolu/common";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -60,6 +61,47 @@ const assertFails = (check: () => void, message: string): void => {
     assertEqual(error.message, message);
   });
 };
+
+test("the scripts that build and check the addon import, at run time, only Node.js's own modules and the repository's files, which CI runs them with alone", () => {
+  // A child process imports both, with a hook that refuses any other
+  // specifier, as an import of a package would fail where nothing is
+  // installed, and prints the files they imported.
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        import { registerHooks } from "node:module";
+        const imported = [];
+        registerHooks({
+          resolve: (specifier, context, nextResolve) => {
+            if (!/^(?:node:|\\.|file:)/u.test(specifier))
+              throw new Error(context.parentURL + " imports " + specifier);
+            const resolved = nextResolve(specifier, context);
+            imported.push(resolved.url);
+            return resolved;
+          },
+        });
+        for (const script of process.argv.slice(1)) await import(script);
+        console.log(JSON.stringify(imported));
+      `,
+      new URL("build-native.mts", import.meta.url).href,
+      new URL("check-native.mts", import.meta.url).href,
+    ],
+    { encoding: "utf8" },
+  );
+
+  assertEqual([child.status, child.stderr], [0, ""]);
+  // The loader and its row builder among them.
+  const imported = JSON.parse(child.stdout) as ReadonlyArray<string>;
+  assertEqual(
+    ["NativeSqlite.ts", "NativeSqliteRows.ts"].map((name) =>
+      imported.includes(new URL(`../src/${name}`, import.meta.url).href),
+    ),
+    [true, true],
+  );
+});
 
 test("a macOS addon must be a 64-bit Mach-O bundle for its CPU that runs on macOS 13.5", () => {
   checkNativeSqlite("darwin-arm64", machO());

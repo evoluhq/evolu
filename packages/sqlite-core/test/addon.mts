@@ -5,8 +5,26 @@
  *
  * @module
  */
-import type { Brand } from "@evolu/common";
+import { emptyPrototype, type Brand } from "@evolu/common";
 import { createRequire } from "node:module";
+
+// `@evolu/nodejs`'s `NativeSqliteRows.ts`, loaded by its URL, since TypeScript
+// can't import another project's source.
+const nativeSqliteRows = (await import(
+  new URL("../../nodejs/src/NativeSqliteRows.ts", import.meta.url).href
+)) as {
+  readonly createNativeSqliteRowBuilder: (
+    rowPrototype: object,
+  ) => Readonly<Record<string, unknown>>;
+};
+
+/**
+ * Creates the row builder the addon's `createBinding` takes, whose rows have
+ * `@evolu/common`'s `emptyPrototype`, as `@evolu/nodejs`'s do.
+ */
+export const createNativeSqliteRowBuilder = (): Readonly<
+  Record<string, unknown>
+> => nativeSqliteRows.createNativeSqliteRowBuilder(emptyPrototype);
 
 /** An open, or closed, database connection. */
 export type SqliteCoreDatabase = Brand<"SqliteCoreDatabase">;
@@ -85,7 +103,8 @@ export interface SqliteCoreAddon {
   readonly finishBackups: () => void;
   /**
    * Returns the N-API mirror of React Native's binding, node/binding.c, which
-   * `@evolu/common` types as `NativeSqlite`.
+   * `@evolu/common` types as `NativeSqlite`, with `@evolu/nodejs`'s row
+   * builder, which {@link loadAddon} passes it.
    */
   readonly createBinding: () => unknown;
   /**
@@ -164,5 +183,13 @@ export const CODEC_SQLCIPHER_FILES = 1;
 export const CODEC_PLAINTEXT_CHECKSUMS = 2;
 
 /** Loads the addon built at `path`. */
-export const loadAddon = (path: string): SqliteCoreAddon =>
-  createRequire(import.meta.url)(path) as SqliteCoreAddon;
+export const loadAddon = (path: string): SqliteCoreAddon => {
+  const addon = createRequire(import.meta.url)(path) as Omit<
+    SqliteCoreAddon,
+    "createBinding"
+  > & { readonly createBinding: (rowBuilder: unknown) => unknown };
+  return {
+    ...addon,
+    createBinding: () => addon.createBinding(createNativeSqliteRowBuilder()),
+  };
+};

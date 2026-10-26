@@ -1,5 +1,6 @@
 import {
   createNativeSqliteDriver,
+  emptyPrototype,
   type CreateSqliteDriver,
   type NativeSqlite,
 } from "@evolu/common";
@@ -32,7 +33,9 @@ export const createNodeJsSqliteDriver: CreateSqliteDriver =
   (name, options) => (run) =>
     run(
       createNativeSqliteDriver({
-        nativeSqlite: (nativeSqlite ??= loadNativeSqlite()),
+        nativeSqlite: (nativeSqlite ??= loadNativeSqlite({
+          rowPrototype: emptyPrototype,
+        })),
         databasePath: (databaseName) => resolve(`${databaseName}.db`),
       })(name, options),
     );

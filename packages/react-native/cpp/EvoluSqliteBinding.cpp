@@ -12,7 +12,13 @@
  *   a row to a run's rows, through a setter of Array.prototype. A run or a
  *   bind reads every parameter before it binds one, and both check the
  *   statement again after reading them, as a run does after appending each
- *   row, throwing that it's finalized before SQLite could use it again.
+ *   row, throwing that it's finalized before SQLite could use it again. A
+ *   database's run reads them before it prepares its statement and checks
+ *   the database again, refusing more than SQLite's limit of a statement's
+ *   parameters without reading one, and appends the rows after it finalizes
+ *   it. A run whose setter threw resets a statement the setter stepped.
+ * - The keys of a row's columns are created once per call, as PropNameIDs,
+ *   not cached by the statement, since its native state holds no JSI value.
  * - Strings convert to UTF-8 with JSI, which replaces a lone surrogate with
  *   U+FFFD, as text binds it; prepare refuses SQL with one first. Hermes
  *   creates a string from UTF-8 only up to an ill-formed sequence, so TEXT,
@@ -45,7 +51,7 @@ namespace {
 
 // The version of @evolu/common's NativeSqlite interface, which the loader
 // checks against src/sqlite/Binding.ts.
-constexpr int abiVersion = 1;
+constexpr int abiVersion = 2;
 
 // The largest integer a JavaScript number holds exactly,
 // Number.MAX_SAFE_INTEGER.
@@ -437,22 +443,42 @@ jsi::Object createRow(jsi::Runtime &rt, Statement &statement,
   return row;
 }
 
-// Reads the parameters, an array of exactly the statement's number of them,
-// each with an ordinary get, as Node-API does, checking the statement again,
-// since reading them can run JavaScript.
-std::vector<jsi::Value> readParameters(jsi::Runtime &rt, Statement &statement,
-                                       const jsi::Value &parameters) {
+[[noreturn]] void throwParameterCount(jsi::Runtime &rt, int expected,
+                                      size_t count) {
+  throwTypeError(rt, "Expected " + std::to_string(expected) +
+                         " parameters, got " + std::to_string(count) + ".");
+}
+
+// Reads the parameters, an array of count, each with an ordinary get, as
+// Node-API does. With expected at 0 or more, an array of another length throws
+// a TypeError before an element is read. An array longer than limit, more
+// parameters than any statement has, returns no value, for the caller's check
+// of the count to refuse, so a huge sparse array costs nothing.
+std::vector<jsi::Value> readValues(jsi::Runtime &rt,
+                                   const jsi::Value &parameters, int expected,
+                                   size_t limit, size_t &count) {
   if (!parameters.isObject() || !parameters.getObject(rt).isArray(rt))
     throwTypeError(rt, "The parameters must be an array.");
   jsi::Array array = parameters.getObject(rt).getArray(rt);
-  const size_t count = array.size(rt);
-  if (count != static_cast<size_t>(statement.parameterCount))
-    throwTypeError(rt, "Expected " + std::to_string(statement.parameterCount) +
-                           " parameters, got " + std::to_string(count) + ".");
+  count = array.size(rt);
+  if (expected >= 0 && count != static_cast<size_t>(expected))
+    throwParameterCount(rt, expected, count);
   std::vector<jsi::Value> values;
+  if (count > limit) return values;
   values.reserve(count);
   for (size_t i = 0; i < count; i++)
     values.push_back(array.getProperty(rt, jsi::Value(static_cast<double>(i))));
+  return values;
+}
+
+// Reads the parameters, an array of exactly the statement's number of them,
+// checking the statement again, since reading them can run JavaScript.
+std::vector<jsi::Value> readParameters(jsi::Runtime &rt, Statement &statement,
+                                       const jsi::Value &parameters) {
+  size_t count = 0;
+  std::vector<jsi::Value> values =
+      readValues(rt, parameters, statement.parameterCount,
+                 static_cast<size_t>(statement.parameterCount), count);
   requireLive(rt, statement);
   return values;
 }
@@ -510,12 +536,43 @@ void resetStatement(Statement &statement) {
   statement.hasRow = false;
 }
 
+// The rows a run of stmt changed, from the total changes before it. SQLite
+// keeps the count of the last INSERT, UPDATE or DELETE across other
+// statements, and a statement that can't write changes no rows itself.
+sqlite3_int64 changesOf(sqlite3_stmt *stmt, sqlite3_int64 totalChanges) {
+  sqlite3 *db = sqlite3_db_handle(stmt);
+  return sqlite3_total_changes64(db) == totalChanges ||
+                 sqlite3_stmt_readonly(stmt)
+             ? 0
+             : sqlite3_changes64(db);
+}
+
+// What a run returns: its changes when it returned no row, its rows when it
+// changed none, and { rows, changes } otherwise. Appending a row is an
+// ordinary set, which can run a setter of Array.prototype, so with a
+// statement, it checks the statement after each.
+jsi::Value createResult(jsi::Runtime &rt, std::vector<jsi::Value> &rowValues,
+                        sqlite3_int64 changes, const Statement *statement) {
+  if (rowValues.empty()) return static_cast<double>(changes);
+  jsi::Array rows(rt, 0);
+  for (size_t i = 0; i < rowValues.size(); i++) {
+    rows.setProperty(rt, jsi::Value(static_cast<double>(i)),
+                     std::move(rowValues[i]));
+    if (statement != nullptr) requireLive(rt, *statement);
+  }
+  if (changes == 0) return rows;
+  jsi::Object result(rt);
+  result.setProperty(rt, "rows", rows);
+  result.setProperty(rt, "changes", static_cast<double>(changes));
+  return result;
+}
+
 // Binds, steps to the end and resets, also when it fails, and only then
 // appends the rows, each with an ordinary set, as Node-API does. A set can run
 // JavaScript, so the statement is checked after each and reset again after
-// the last, in case a setter stepped it. SQLite keeps a copy of each bound
-// value until its parameter is bound again, so a run that bound a large one
-// clears the bindings after its first reset, also when it fails.
+// the last, in case a setter stepped it, unless a setter closed it. SQLite
+// keeps a copy of each bound value until it's bound again, so a run that bound
+// a large one clears the bindings after its first reset, also when it fails.
 jsi::Value run(jsi::Runtime &rt, Statement &statement,
                const jsi::Value &parameters) {
   sqlite3_stmt *stmt = statement.stmt;
@@ -547,22 +604,18 @@ jsi::Value run(jsi::Runtime &rt, Statement &statement,
   resetStatement(statement);
   if (hasLarge) sqlite3_clear_bindings(stmt);
   if (rc != SQLITE_DONE) throwRecord(rt, "step", record);
-  // SQLite keeps the count of the last INSERT, UPDATE or DELETE across other
-  // statements, and a statement that can't write changes no rows itself.
-  const sqlite3_int64 changes =
-      sqlite3_total_changes64(db) == totalChanges || sqlite3_stmt_readonly(stmt)
-          ? 0
-          : sqlite3_changes64(db);
-  jsi::Array rows(rt, 0);
-  for (size_t i = 0; i < rowValues.size(); i++) {
-    rows.setProperty(rt, jsi::Value(static_cast<double>(i)),
-                     std::move(rowValues[i]));
-    requireLive(rt, statement);
+  jsi::Value result;
+  try {
+    result =
+        createResult(rt, rowValues, changesOf(stmt, totalChanges), &statement);
+  } catch (...) {
+    // A setter that threw could have stepped it, and its error propagates.
+    if (isLive(statement)) resetStatement(statement);
+    throw;
   }
-  resetStatement(statement);
-  jsi::Object result(rt);
-  result.setProperty(rt, "rows", rows);
-  result.setProperty(rt, "changes", static_cast<double>(changes));
+  // A setter of the result's rows or changes, which a run that both returned
+  // rows and changed some sets after its rows, can close the database.
+  if (isLive(statement)) resetStatement(statement);
   return result;
 }
 
@@ -607,6 +660,16 @@ bool hasLoneSurrogate(const std::u16string &text) {
   return false;
 }
 
+// The SQL as UTF-8, or a TypeError for a value that isn't a string, or an
+// error for a lone surrogate.
+std::string getSql(jsi::Runtime &rt, const jsi::Value &sql) {
+  std::string text = getUtf8(rt, sql, "The SQL must be a string.");
+  if (hasLoneSurrogate(sql.getString(rt).utf16(rt)))
+    throwOwn(rt, "prepare", EVOLU_DATABASE_ERROR_INVALID_SQL_TEXT,
+             SQLITE_MISUSE, "The SQL contains a lone surrogate.");
+  return text;
+}
+
 jsi::Value prepare(jsi::Runtime &rt, const jsi::Value &thisValue,
                    const jsi::Value &sql) {
   std::shared_ptr<Connection> connection =
@@ -616,10 +679,7 @@ jsi::Value prepare(jsi::Runtime &rt, const jsi::Value &thisValue,
       rt, thisValue.getObject(rt).getProperty(rt, "statementPrototype"));
   std::lock_guard lock(connection->mutex);
   requireOpen(rt, *connection);
-  const std::string text = getUtf8(rt, sql, "The SQL must be a string.");
-  if (hasLoneSurrogate(sql.getString(rt).utf16(rt)))
-    throwOwn(rt, "prepare", EVOLU_DATABASE_ERROR_INVALID_SQL_TEXT,
-             SQLITE_MISUSE, "The SQL contains a lone surrogate.");
+  const std::string text = getSql(rt, sql);
   auto statement = std::make_shared<Statement>(connection);
   evolu_database_error record;
   if (evolu_database_prepare(connection->database, text.data(), text.size(),
@@ -628,6 +688,62 @@ jsi::Value prepare(jsi::Runtime &rt, const jsi::Value &thisValue,
   statement->parameterCount = sqlite3_bind_parameter_count(statement->stmt);
   handle.setNativeState(rt, std::move(statement));
   return handle;
+}
+
+// Prepares, binds, steps and finalizes one statement, with no handle of its
+// own. It reads the parameters before it prepares, since reading them can run
+// JavaScript that closes the database, and appends the rows after the
+// finalize.
+jsi::Value runOnce(jsi::Runtime &rt, const jsi::Value &thisValue,
+                   const jsi::Value &sql, const jsi::Value &parameters) {
+  std::shared_ptr<Connection> connection =
+      getThis<Connection>(rt, thisValue, "Expected a database.");
+  std::lock_guard lock(connection->mutex);
+  requireOpen(rt, *connection);
+  const std::string text = getSql(rt, sql);
+  size_t count = 0;
+  // No JavaScript has run, so the database is open.
+  const std::vector<jsi::Value> values = readValues(
+      rt, parameters, -1,
+      static_cast<size_t>(
+          sqlite3_limit(evolu_database_connection(connection->database),
+                        SQLITE_LIMIT_VARIABLE_NUMBER, -1)),
+      count);
+  requireOpen(rt, *connection);
+  Statement statement(connection);
+  evolu_database_error record;
+  if (evolu_database_prepare(connection->database, text.data(), text.size(),
+                             &statement.stmt, &record) != SQLITE_OK)
+    throwRecord(rt, "prepare", record);
+  sqlite3_stmt *stmt = statement.stmt;
+  sqlite3 *db = sqlite3_db_handle(stmt);
+  const sqlite3_int64 totalChanges = sqlite3_total_changes64(db);
+  std::vector<jsi::Value> rowValues;
+  int rc = SQLITE_OK;
+  try {
+    const int parameterCount = sqlite3_bind_parameter_count(stmt);
+    if (count != static_cast<size_t>(parameterCount))
+      throwParameterCount(rt, parameterCount, count);
+    bool hasLarge = false;
+    bindValues(rt, statement, values, hasLarge);
+    std::vector<jsi::PropNameID> keys;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+      if (rowValues.empty()) keys = createKeys(rt, statement);
+      rowValues.emplace_back(createRow(rt, statement, keys));
+    }
+  } catch (...) {
+    // Creating the error can run JavaScript, such as a getter of its stack or
+    // a setter of Object.prototype, which can close the database, finalizing
+    // the statement.
+    if (isLive(statement)) sqlite3_finalize(stmt);
+    throw;
+  }
+  // A failed step's error, read before the finalize repeats it.
+  if (rc != SQLITE_DONE) evolu_database_set_error(&record, db, rc);
+  const sqlite3_int64 changes = changesOf(stmt, totalChanges);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) throwRecord(rt, "step", record);
+  return createResult(rt, rowValues, changes, nullptr);
 }
 
 // The bytes of an export, which its external ArrayBuffer holds: they came from
@@ -796,6 +912,14 @@ createBinding(jsi::Runtime &rt,
                            const jsi::Value *args, size_t count) {
                           return prepare(rt, thisValue,
                                          argument(args, count, 0));
+                        }));
+  define(databasePrototype, "run",
+         createFunction(rt, "run", 2,
+                        [](jsi::Runtime &rt, const jsi::Value &thisValue,
+                           const jsi::Value *args, size_t count) {
+                          return runOnce(rt, thisValue,
+                                         argument(args, count, 0),
+                                         argument(args, count, 1));
                         }));
   define(databasePrototype, "export",
          createFunction(rt, "export", 0,

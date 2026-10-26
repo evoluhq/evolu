@@ -19,9 +19,13 @@
  *   survive, and TEXT that isn't UTF-8 with U+FFFD in place of each ill-formed
  *   sequence, as the WHATWG decoder reads it, and so do column names and error
  *   messages. A blob is a copy with a buffer of its own.
- * - Rows are null-prototype objects, and of columns with the same name, the last
- *   wins. A statement reads its column names again after a schema change
- *   prepared it again.
+ * - Rows inherit nothing: their prototype is null, as Hermes creates them, or
+ *   {@link emptyPrototype}, as Node.js's binding creates them, since V8 keeps
+ *   such a row's properties as fast as an ordinary object's, which it doesn't
+ *   for a row without a prototype. Either way a column named `__proto__` is an
+ *   ordinary property, and of columns with the same name, the last wins. A
+ *   statement reads its column names again after a schema change prepared it
+ *   again.
  *
  * ## Statements
  *
@@ -32,12 +36,17 @@
  *   order marks and comments may follow the statement. The rest is scanned, not
  *   prepared, since SQLite applies some pragmas when it prepares them.
  * - {@link NativeSqliteStatement.run} binds, steps to the end and resets, also
- *   when it fails. Its `changes` is 0 when the run changed no rows or the
- *   statement is read-only, and otherwise `sqlite3_changes64`. SQLite keeps a
- *   copy of each bound value until its parameter is bound again, so a run that
- *   bound a text or blob over 64 KiB, as UTF-8 for text, clears its bindings
- *   after it resets, also when it fails, as `@evolu/sqlite-wasm` does, and a
- *   kept statement holds no large value between runs.
+ *   when it fails, and returns a {@link NativeSqliteRunResult}, whose changes
+ *   are 0 when the run changed no rows or the statement is read-only, and
+ *   otherwise `sqlite3_changes64`. SQLite keeps a copy of each bound value
+ *   until its parameter is bound again, so a run that bound a text or blob over
+ *   64 KiB, as UTF-8 for text, clears its bindings after it resets, also when
+ *   it fails, as `@evolu/sqlite-wasm` does, and a kept statement holds no large
+ *   value between runs.
+ * - {@link NativeSqliteDatabase.run} prepares one statement as `prepare` does,
+ *   runs it as a statement's `run` does and finalizes it, creating no statement
+ *   handle, as `@evolu/sqlite-wasm`'s `SqliteDatabase.run` does. It reads its
+ *   parameters before it prepares the statement.
  * - {@link NativeSqliteStatement.step} returns a row or null and never resets.
  *   {@link NativeSqliteStatement.reset} and
  *   {@link NativeSqliteStatement.finalize} throw SQLite's error only when the
@@ -79,6 +88,7 @@
  */
 import type { encryptWithXChaCha20Poly1305 } from "./Crypto.ts";
 import { disposable } from "./Function.ts";
+import type { emptyPrototype } from "./Object.ts";
 import { err, ok, trySync, type Result } from "./Result.ts";
 import type {
   CreateSqliteDriver,
@@ -136,6 +146,10 @@ export interface NativeSqlite {
 
 export interface NativeSqliteDatabase {
   readonly prepare: (sql: string) => NativeSqliteStatement;
+  readonly run: (
+    sql: string,
+    parameters: ReadonlyArray<SqliteValue>,
+  ) => NativeSqliteRunResult;
   /**
    * Returns the database as the plaintext file of its pages. It fails inside a
    * write transaction.
@@ -145,12 +159,22 @@ export interface NativeSqliteDatabase {
 }
 
 export interface NativeSqliteStatement {
-  readonly run: (parameters: ReadonlyArray<SqliteValue>) => SqliteExecResult;
+  readonly run: (
+    parameters: ReadonlyArray<SqliteValue>,
+  ) => NativeSqliteRunResult;
   readonly bind: (parameters: ReadonlyArray<SqliteValue>) => void;
   readonly step: () => SqliteRow | null;
   readonly reset: () => void;
   readonly finalize: () => void;
 }
+
+/**
+ * What a run returns: its changes when it returned no row, its rows when it
+ * changed none, and a {@link SqliteExecResult} when it returned and changed
+ * rows, so a query or a write without RETURNING creates no result object.
+ */
+export type NativeSqliteRunResult =
+  number | ReadonlyArray<SqliteRow> | SqliteExecResult;
 
 /** Dependency wrapper for {@link NativeSqlite}. */
 export interface NativeSqliteDep {
@@ -296,14 +320,7 @@ export const createNativeSqliteDriver =
     const disposables = disposer.move();
 
     return ok({
-      exec: (query) => {
-        const statement = database.prepare(query.sql);
-        try {
-          return statement.run(query.parameters);
-        } finally {
-          statement.finalize();
-        }
-      },
+      exec: (query) => execResultOf(database.run(query.sql, query.parameters)),
 
       prepare: (sql) => {
         const nativeStatement = database.prepare(sql);
@@ -313,7 +330,9 @@ export const createNativeSqliteDriver =
           nativeStatement.finalize();
         });
         const statement = disposable<SqliteDriverStatement>(
-          { exec: (parameters) => nativeStatement.run(parameters) },
+          {
+            exec: (parameters) => execResultOf(nativeStatement.run(parameters)),
+          },
           statementDisposer,
         );
         statements.add(statement);
@@ -355,6 +374,14 @@ export const createNativeSqliteDriver =
       },
     });
   };
+
+const execResultOf = (result: NativeSqliteRunResult): SqliteExecResult => {
+  if (typeof result === "number") return { rows: [], changes: result };
+  // Array.isArray narrows neither branch of a ReadonlyArray.
+  if (Array.isArray(result))
+    return { rows: result as ReadonlyArray<SqliteRow>, changes: 0 };
+  return result as SqliteExecResult;
+};
 
 /**
  * Runs `attempt` at once and, until one returns ok, again 50 ms after an

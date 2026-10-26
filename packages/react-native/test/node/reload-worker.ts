@@ -9,7 +9,7 @@ import {
   assertNonNullable,
   type NativeSqlite,
 } from "@evolu/common";
-import { createRequire } from "node:module";
+import { loadAddon } from "@evolu/sqlite-core/test/setup-addon.mts";
 import { mock } from "node:test";
 import { parentPort, workerData } from "node:worker_threads";
 
@@ -19,11 +19,7 @@ const { addonPath, directory } = workerData as {
 };
 const port = parentPort;
 assertNonNullable(port);
-const binding = (
-  createRequire(import.meta.url)(addonPath) as {
-    readonly createBinding: () => NativeSqlite;
-  }
-).createBinding();
+const binding = loadAddon(addonPath).createBinding() as NativeSqlite;
 
 mock.module(
   new URL("../../src/specs/NativeEvoluSqlite.ts", import.meta.url).href,

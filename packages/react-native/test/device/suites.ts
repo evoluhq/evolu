@@ -158,6 +158,8 @@ export const registerDeviceSuites = (deps: DeviceSuitesDeps): void => {
     abiVersion: nativeSqliteAbiVersion,
     directory: deps.directory,
     illFormedNames: `${databaseDirectory}/evolu1-${deviceIllFormedNames}.db`,
+    // JSI's isArray sees the array a Proxy wraps.
+    acceptsProxyArrays: true,
     test,
     assertEqual,
   });

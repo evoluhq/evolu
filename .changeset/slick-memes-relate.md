@@ -25,24 +25,20 @@ import {
   type NativeSqliteDatabase,
 } from "@evolu/common";
 
-// A binding whose file another connection holds at the first open.
-const opens: Array<string> = [];
-const database: NativeSqliteDatabase = {
-  prepare: () => ({
-    run: () => ({ rows: [{ answer: 42 }], changes: 0 }),
-    bind: () => undefined,
-    step: () => null,
-    reset: () => undefined,
-    finalize: () => undefined,
-  }),
-  export: () => new ArrayBuffer(0),
-  close: () => undefined,
-};
+// A binding whose file another connection holds at the first open, and whose
+// run of a query returns its rows.
 const unused = (): never => {
   throw new Error("The driver doesn't call it here.");
 };
+const opens: Array<string> = [];
+const database: NativeSqliteDatabase = {
+  prepare: unused,
+  run: () => [{ answer: 42 }],
+  export: () => new ArrayBuffer(0),
+  close: () => undefined,
+};
 const nativeSqlite: NativeSqlite = {
-  abiVersion: 1,
+  abiVersion: 2,
   openMemory: unused,
   openFile: (path) => {
     opens.push(path);

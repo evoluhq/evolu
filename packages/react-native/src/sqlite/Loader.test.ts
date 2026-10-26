@@ -2,7 +2,7 @@ import { assertEqual, assertSame, assertThrowsInstanceOf } from "@evolu/common";
 import { mock, test } from "node:test";
 
 /** What the fake EvoluSqlite module's createBinding returns, per test. */
-let binding: unknown = { abiVersion: 1 };
+let binding: unknown = { abiVersion: 2 };
 let createdBindings = 0;
 
 const evoluApp = {
@@ -31,7 +31,7 @@ const createdBindingsAtImport = createdBindings;
 test("creates no binding at import, and one each time it loads", () => {
   assertSame(createdBindingsAtImport, 0);
   const created = createdBindings;
-  binding = { abiVersion: 1 };
+  binding = { abiVersion: 2 };
 
   assertSame(loadNativeSqlite(), binding);
   assertSame(loadNativeSqlite(), binding);
@@ -39,13 +39,13 @@ test("creates no binding at import, and one each time it loads", () => {
 });
 
 test("refuses a binding of another version with a message that says to rebuild the native app", () => {
-  binding = { abiVersion: 2 };
+  binding = { abiVersion: 1 };
 
   const error = assertThrowsInstanceOf(() => loadNativeSqlite(), Error);
 
   assertEqual(
     error.message,
-    "Evolu's native module implements version 2 of its binding, but this JavaScript needs version 1. Rebuild the native app and bump the version that over-the-air updates target, such as Expo's runtime version, so no update runs on an older native build.",
+    "Evolu's native module implements version 1 of its binding, but this JavaScript needs version 2. Rebuild the native app and bump the version that over-the-air updates target, such as Expo's runtime version, so no update runs on an older native build.",
   );
 });
 

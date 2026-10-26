@@ -43,6 +43,8 @@ options, which the Evolu Relay uses, still stores plaintext. What changes:
   - `pragma function_list`, `pragma module_list` and `pragma pragma_list`
     return no rows.
   - `LIKE` matches blobs, which better-sqlite3 built SQLite not to.
+  - A row inherits nothing, so `row.hasOwnProperty` is undefined. Use
+    `Object.hasOwn`.
 - Evolu's SQLite has the features the web's has: SQLite's defaults, JSON
   among them, and the math functions. Compared with better-sqlite3, it lacks
   FTS, R\*Tree, Geopoly, the `dbstat` table, `percentile`, `soundex`,

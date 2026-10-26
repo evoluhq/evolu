@@ -473,7 +473,7 @@ const std::vector<Test> hostTests = {
                            literal(plain) +
                            ");"
                            "const rows = database.prepare('select a from t')"
-                           "  .run([]).rows;"
+                           "  .run([]);"
                            "database.close();"
                            "JSON.stringify(rows)") == R"([{"a":1},{"a":1}])",
              "the plain database's rows");
@@ -504,7 +504,7 @@ const std::vector<Test> hostTests = {
        check(next.text("const database = " + open +
                        ";"
                        "const rows = database.prepare('select a from t')"
-                       "  .run([]).rows;"
+                       "  .run([]);"
                        "database.close();"
                        "JSON.stringify(rows)") == R"([{"a":1}])",
              "the old rows");
@@ -526,7 +526,7 @@ const std::vector<Test> hostTests = {
 
        check(isHeld(directory + "/shared.db"), "B to hold the file");
        check(b.text("JSON.stringify(database.prepare('select 1 as a')"
-                    "  .run([]).rows)") == R"([{"a":1}])",
+                    "  .run([]))") == R"([{"a":1}])",
              "B's connection to work");
        b.eval("database.close()");
        check(!isHeld(directory + "/shared.db"), "the file released");
@@ -749,7 +749,7 @@ const std::vector<Test> hostTests = {
      [](const std::string &directory) {
        raceTeardown(directory + "/blocked.db", registerBlock,
                     "JSON.stringify(database.prepare("
-                    "  'select block() as b').run([]).rows)",
+                    "  'select block() as b').run([]))",
                     R"([{"b":1}])", "step");
      }},
 
@@ -830,6 +830,14 @@ const std::vector<Test> hostTests = {
        check(!wasHeld, "the file released");
        check(thrown == R"({"message":"The database is closed."})",
              "the handle to throw that it's closed, not " + thrown);
+     }},
+
+    {"a teardown on another thread waits while a SQL function holds a "
+     "database run's step",
+     [](const std::string &directory) {
+       raceTeardown(directory + "/blocked-run.db", registerBlock,
+                    "JSON.stringify(database.run('select block() as b', []))",
+                    R"([{"b":1}])", "database run");
      }},
 
     {"a teardown on another thread waits for a close in progress",

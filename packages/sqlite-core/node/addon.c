@@ -1248,6 +1248,13 @@ static napi_value js_finish_backups(napi_env env, napi_callback_info info) {
 #endif
 
 NAPI_MODULE_INIT() {
+  // Before any worker's createBinding, whose first codec registration would
+  // race another's to initialize SQLite's mutexes, as the production entry's
+  // sqlite3_auto_extension initializes SQLite.
+  if (sqlite3_initialize() != SQLITE_OK) {
+    napi_throw_error(env, NULL, "SQLite failed to initialize.");
+    return NULL;
+  }
   napi_value is_sanitized;
   if (napi_get_boolean(env, IS_SANITIZED, &is_sanitized) != napi_ok)
     return fail(env);

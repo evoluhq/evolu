@@ -6,6 +6,7 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./scripts/build-addon.mts": "./scripts/build-addon.mts",
     "./scripts/compile.mts": "./scripts/compile.mts",
     "./scripts/coverage.mts": "./scripts/coverage.mts",
     "./scripts/paths.mts": "./scripts/paths.mts",

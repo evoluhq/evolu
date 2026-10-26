@@ -113,7 +113,9 @@ for a post, run `node scripts/code-image.mts --help`.
   rewrites `packages/react-native/native.json`, then
   `pnpm test:react-native-sqlite`, which also runs React Native's binding
   conformance suite on `node/binding.c`, the core's N-API mirror of that
-  binding, so a change to it needs that script too. `@evolu/react-native`
+  binding, and runs it again, with the mirror's other tests and the driver's,
+  under AddressSanitizer and UndefinedBehaviorSanitizer, so a change to it
+  needs that script too. `@evolu/react-native`
   ships the vendored core, so a change to what it vendors also needs a patch
   changeset for it, unless an unreleased changeset already covers the change.
   `@evolu/nodejs` ships the core compiled inside its addons, so a change to

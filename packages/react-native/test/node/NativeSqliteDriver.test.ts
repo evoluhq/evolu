@@ -174,10 +174,12 @@ test("memory databases are each their own and write no file", async (t) => {
   assertFalse(existsSync(setup.path));
 });
 
-test("exec runs every query on a statement it finalizes at once, and prepare returns one that runs until it is disposed", async (t) => {
+test("exec runs every query with the database's run, creating no statement, and prepare returns one that runs until it is disposed", async (t) => {
+  const runs: Array<string> = [];
   const prepared: Array<string> = [];
   let finalized = 0;
-  // The binding, with each prepare and finalize of a memory database counted.
+  // The binding, with each run, prepare and finalize of a memory database
+  // counted.
   const countingBinding: NativeSqlite = {
     ...binding,
     openMemory: () => {
@@ -201,6 +203,10 @@ test("exec runs every query on a statement it finalizes at once, and prepare ret
             },
           };
         },
+        run: (sqlText, parameters) => {
+          runs.push(sqlText);
+          return database.run(sqlText, parameters);
+        },
         export: () => database.export(),
         close: () => {
           database.close();
@@ -212,11 +218,18 @@ test("exec runs every query on a statement it finalizes at once, and prepare ret
   const setup = setupDriver(setupDirectory(t), countingBinding);
   await using _run = setup.run;
   const driver = await setup.open({ mode: "memory" });
-  driver.exec(sql`create table t (a);`);
-  driver.exec(sql`create table u (a not null);`);
+  const create = sql`create table t (a);`;
   const insert = sql`insert into t (a) values (${1}) returning a;`;
   const select = sql`select count(*) as n from t;`;
+  const failing = sql`
+    insert into t (a)
+    values
+      (${1}),
+      (${2})
+    returning nope;
+  `;
 
+  assertEqual(driver.exec(create), { rows: [], changes: 0 });
   {
     using statement = driver.prepare(insert.sql);
     assertEqual(statement.exec(insert.parameters), {
@@ -227,7 +240,7 @@ test("exec runs every query on a statement it finalizes at once, and prepare ret
       rows: [{ a: 1 }],
       changes: 1,
     });
-    assertEqual(finalized, prepared.length - 1);
+    assertEqual(finalized, 0);
   }
   // The prepare option is for a Sqlite, which keeps the statement.
   assertEqual(driver.exec({ ...select, options: { prepare: true } }), {
@@ -235,18 +248,17 @@ test("exec runs every query on a statement it finalizes at once, and prepare ret
     changes: 0,
   });
   assertEqual(driver.exec(select), { rows: [{ n: 2 }], changes: 0 });
-
-  assertEqual(prepared.filter((text) => text === insert.sql).length, 1);
-  assertEqual(prepared.filter((text) => text === select.sql).length, 2);
-  // A statement that fails is finalized too.
   assertThrows(
-    () => driver.exec(sql`insert into u (a) values (${null});`),
+    () => driver.exec(failing),
     (error) => {
       assertInstanceOf(error, Error);
-      assertTrue(error.message.includes("NOT NULL constraint failed"));
+      assertTrue(error.message.includes("no such column: nope"));
     },
   );
-  assertEqual(finalized, prepared.length);
+
+  assertEqual(prepared, [insert.sql]);
+  assertEqual(finalized, 1);
+  assertEqual(runs, [create.sql, select.sql, select.sql, failing.sql]);
   driver[Symbol.dispose]();
 });
 
@@ -308,9 +320,7 @@ test("export returns the plaintext database as a Uint8Array over an ArrayBuffer 
   writeFileSync(copy, bytes);
   const database = binding.openFile(copy);
   try {
-    const statement = database.prepare("select data from t");
-    assertEqual(statement.run([]).rows, [{ data: "exported" }]);
-    statement.finalize();
+    assertEqual(database.run("select data from t", []), [{ data: "exported" }]);
   } finally {
     database.close();
   }
@@ -362,6 +372,7 @@ test("deleteDatabase of a memory database closes it and deletes no file", async 
       const database = binding.openMemory();
       const counted: NativeSqliteDatabase = {
         prepare: (sqlText) => database.prepare(sqlText),
+        run: (sqlText, parameters) => database.run(sqlText, parameters),
         export: () => database.export(),
         close: () => {
           closed++;

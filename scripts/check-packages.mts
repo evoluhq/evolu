@@ -382,17 +382,18 @@ try {
             ),
             `${packageJson.name} packed dist/native/${target}/evolu.node must be the built addon`,
           );
-        // The loader has no runtime imports but Node.js's own, so it loads the
-        // running platform's addon from the extracted package.
+        // The loader imports, at run time, only Node.js's own modules and the
+        // row builder beside it, so it loads the running platform's addon from
+        // the extracted package.
         const { loadNativeSqlite } = (await import(
           pathToFileURL(join(extracted, "package/dist/src/NativeSqlite.js"))
             .href
-        )) as {
-          readonly loadNativeSqlite: () => {
-            readonly openMemory: () => { readonly close: () => void };
-          };
-        };
-        loadNativeSqlite().openMemory().close();
+        )) as typeof import("../packages/nodejs/src/NativeSqlite.ts");
+        loadNativeSqlite({
+          rowPrototype: Object.freeze(Object.create(null) as object),
+        })
+          .openMemory()
+          .close();
         ok(
           Object.keys(createRequire(import.meta.url).cache).some((path) =>
             path.startsWith(join(extracted, "package/dist/native/")),

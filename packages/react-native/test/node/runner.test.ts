@@ -57,7 +57,7 @@ const setupRun = async (
 };
 
 test("logs a failure outside any test as the runner's", async () => {
-  const lines = await setupRun({ abiVersion: 1 }, () => {
+  const lines = await setupRun({ abiVersion: 2 }, () => {
     throw new Error("No directory.");
   });
 
@@ -67,7 +67,7 @@ test("logs a failure outside any test as the runner's", async () => {
 test("logs a throw inside its Run as the runner's failure, and reports no defect", async () => {
   const lines = await setupRun(
     {
-      abiVersion: 1,
+      abiVersion: 2,
       isFileOpen: () => false,
       openFile: () => {
         throw new Error("No file.");

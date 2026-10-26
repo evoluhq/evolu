@@ -11,4 +11,4 @@
 import type { NativeSqlite } from "@evolu/common";
 
 /** The {@link NativeSqlite.abiVersion} the loader checks. */
-export const nativeSqliteAbiVersion = 1;
+export const nativeSqliteAbiVersion = 2;

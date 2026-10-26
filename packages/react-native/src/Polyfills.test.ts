@@ -22,7 +22,7 @@ mock.module(new URL("./specs/NativeEvoluSqlite.ts", import.meta.url).href, {
       createBinding: () => {
         createdBindings++;
         return {
-          abiVersion: 1,
+          abiVersion: 2,
           fillRandom: (bytes: Uint8Array) => {
             filledLengths.push(bytes.length);
             for (let index = 0; index < bytes.length; index++)

@@ -36,7 +36,7 @@ mock.module(new URL("./specs/NativeEvoluSqlite.ts", import.meta.url).href, {
       createBinding: () => {
         calls.push("createBinding");
         return {
-          abiVersion: 1,
+          abiVersion: 2,
           openEncryptedFile: (path: string) => {
             calls.push(`openEncryptedFile ${path}`);
             return {

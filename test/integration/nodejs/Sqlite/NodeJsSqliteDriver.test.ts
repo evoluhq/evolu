@@ -12,13 +12,14 @@ import {
   assertInstanceOf,
   assertThrows,
   assertTrue,
+  emptyPrototype,
   EncryptionKey,
   Name,
   sql,
   testCreateRun,
   type SqliteDriverOptions,
 } from "@evolu/common";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import {
   existsSync,
@@ -89,6 +90,47 @@ test("the built addon passes the load check CI runs on every target's", () => {
   assert(target !== null, "Expected a target.");
 
   checkLoadedNativeSqlite(target);
+});
+
+test("the load check imports, at run time, only Node.js's own modules and the repository's files, which CI runs it with alone", () => {
+  const target = nativeSqliteTarget({
+    platform: process.platform,
+    arch: process.arch,
+    isMusl,
+  });
+  assert(target !== null, "Expected a target.");
+  // A child process imports check-native.mts and runs the check of its --load,
+  // with a hook that refuses any specifier but Node.js's, a relative one and
+  // a path, such as the addon's, as an import of a package would fail where
+  // nothing is installed. Not the script itself, whose
+  // header check fails for an addon built where glibc is newer than 2.28.
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        import { registerHooks } from "node:module";
+        registerHooks({
+          resolve: (specifier, context, nextResolve) => {
+            if (!/^(?:node:|\\.|\\/|file:)/u.test(specifier))
+              throw new Error(context.parentURL + " imports " + specifier);
+            return nextResolve(specifier, context);
+          },
+        });
+        const { checkLoadedNativeSqlite } = await import(process.argv[1]);
+        checkLoadedNativeSqlite(process.argv[2]);
+      `,
+      new URL(
+        "../../../../packages/nodejs/scripts/check-native.mts",
+        import.meta.url,
+      ).href,
+      target,
+    ],
+    { encoding: "utf8" },
+  );
+
+  assertEqual([child.status, child.stderr], [0, ""]);
 });
 
 describeSqliteDriverIterate(() => open({ mode: "memory" }));
@@ -258,7 +300,7 @@ test("a plaintext database opens with plain SQLite, not through the codec, so it
 
 test("a file a plaintext connection holds refuses another connection of the process, plaintext or encrypted", (t) => {
   setupFile(t);
-  const nativeSqlite = loadNativeSqlite();
+  const nativeSqlite = loadNativeSqlite({ rowPrototype: emptyPrototype });
   const file = join(directory, path);
   const holder = nativeSqlite.openFile(file);
   try {
@@ -296,7 +338,7 @@ const holdWriteLock = async (key: Uint8Array | null) => {
       `
         const { loadNativeSqlite } = await import(${JSON.stringify(loader)});
         const [path, hex] = process.argv.slice(1);
-        const sqlite = loadNativeSqlite();
+        const sqlite = loadNativeSqlite({ rowPrototype: Object.freeze(Object.create(null)) });
         const database = hex === ""
           ? sqlite.openFile(path)
           : sqlite.openEncryptedFile(path, Uint8Array.from(Buffer.from(hex, "hex")));
@@ -391,15 +433,13 @@ test("a file connection a worker thread opens also waits 5 seconds for a lock, a
       const { parentPort, workerData } = require("node:worker_threads");
       (async () => {
         const { loadNativeSqlite } = await import(workerData.loader);
-        const sqlite = loadNativeSqlite();
+        const sqlite = loadNativeSqlite({ rowPrototype: Object.freeze(Object.create(null)) });
         const timeouts = [];
         for (const database of [
           sqlite.openFile(workerData.path),
           sqlite.openMemory(),
         ]) {
-          const statement = database.prepare("pragma busy_timeout");
-          timeouts.push(statement.run([]).rows[0].timeout);
-          statement.finalize();
+          timeouts.push(database.run("pragma busy_timeout", [])[0].timeout);
           database.close();
         }
         parentPort.postMessage(timeouts);

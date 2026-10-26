@@ -224,6 +224,22 @@ describe("addon", () => {
     );
   });
 
+  it("creates the N-API mirror of React Native's binding with @evolu/nodejs's row builder", () => {
+    const binding = addon.createBinding() as {
+      readonly openMemory: () => {
+        readonly run: (
+          sql: string,
+          parameters: ReadonlyArray<never>,
+        ) => unknown;
+        readonly close: () => void;
+      };
+    };
+    const database = binding.openMemory();
+
+    assertEqual(database.run("select 1 as a", []), [{ a: 1 }]);
+    database.close();
+  });
+
   it("is the sanitized build exactly when the run asks for one", () => {
     assertEqual(addon.isSanitized, process.env.SQLITE_CORE_SANITIZE === "1");
   });

@@ -13,7 +13,13 @@ import {
   defaultCacheDirectory,
 } from "../scripts/paths.mts";
 import { prepareSqlite, sqliteSource } from "../scripts/sqlite-source.mts";
-import { loadAddon, type SqliteCoreAddon } from "./addon.mts";
+import {
+  createNativeSqliteRowBuilder,
+  loadAddon,
+  type SqliteCoreAddon,
+} from "./addon.mts";
+
+export { createNativeSqliteRowBuilder, loadAddon };
 
 /**
  * The timeout of a hook that sets up the addon: the first build compiles SQLite

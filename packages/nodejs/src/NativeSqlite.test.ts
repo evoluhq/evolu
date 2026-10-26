@@ -4,6 +4,7 @@ import {
   assertInstanceOf,
   assertThrows,
   assertTrue,
+  emptyPrototype,
   type NativeSqlite,
   type NativeSqliteDatabase,
 } from "@evolu/common";
@@ -83,7 +84,7 @@ test("loading on a platform without a target throws an error naming it and the t
     [{ platform: "linux", arch: "arm", isMusl: musl }, "linux-arm-musl"],
   ] as const)
     assertThrows(
-      () => loadNativeSqlite({ platform }),
+      () => loadNativeSqlite({ rowPrototype: emptyPrototype, platform }),
       (error) => {
         assertInstanceOf(error, Error);
         assertEqual(
@@ -110,7 +111,7 @@ test("loading requires the addon of its target, and throws naming it when that c
   assertTrue(path.endsWith(`/native/${target}/evolu.node`));
 
   assertThrows(
-    () => loadNativeSqlite({ platform }),
+    () => loadNativeSqlite({ rowPrototype: emptyPrototype, platform }),
     (error) => {
       assertInstanceOf(error, Error);
       assertEqual(
@@ -130,17 +131,18 @@ test("loading throws for an addon of another version of the binding", () => {
   assertThrows(
     () =>
       loadNativeSqlite({
+        rowPrototype: emptyPrototype,
         platform,
         requireAddon: (addon) => {
           required.push(addon);
-          return { createBinding: () => ({ abiVersion: 2 }) };
+          return { createBinding: () => ({ abiVersion: 1 }) };
         },
       }),
     (error) => {
       assertInstanceOf(error, Error);
       assertEqual(
         error.message,
-        `@evolu/nodejs's SQLite at ${path} implements version 2 of its binding, but this JavaScript needs version 1.`,
+        `@evolu/nodejs's SQLite at ${path} implements version 1 of its binding, but this JavaScript needs version 2.`,
       );
     },
   );
@@ -239,24 +241,17 @@ test("isMusl of the running process reads /proc on Linux, without the diagnostic
   assertEqual(reports, process.platform === "linux" ? 0 : 1);
 });
 
-/** A binding whose file opens record their statements and closes. */
+/** A binding whose file opens record their runs and closes. */
 const setupBinding = (failingSql?: string) => {
   const events: Array<string> = [];
   const database: NativeSqliteDatabase = {
-    prepare: (sql) => {
+    prepare: () => {
+      throw new Error("Not prepared in this test.");
+    },
+    run: (sql) => {
       if (sql === failingSql) throw new Error(`${sql} failed`);
-      return {
-        run: () => {
-          events.push(`run ${sql}`);
-          return { rows: [], changes: 0 };
-        },
-        bind: () => undefined,
-        step: () => null,
-        reset: () => undefined,
-        finalize: () => {
-          events.push("finalize");
-        },
-      };
+      events.push(`run ${sql}`);
+      return 0;
     },
     export: () => new ArrayBuffer(0),
     close: () => {
@@ -289,12 +284,11 @@ test("a configured binding sets a file connection's cache size and leaves memory
   configured.openEncryptedFile("/b.db", new Uint8Array(32));
   configured.openMemory();
 
-  const pragmas = ["run pragma cache_size = -16000", "finalize"];
   assertEqual(events, [
     "openFile /a.db",
-    ...pragmas,
+    "run pragma cache_size = -16000",
     "openEncryptedFile /b.db 32",
-    ...pragmas,
+    "run pragma cache_size = -16000",
     "openMemory",
   ]);
 });

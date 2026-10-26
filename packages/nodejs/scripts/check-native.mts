@@ -7,7 +7,8 @@
  *   for glibc, no symbol newer than glibc 2.28.
  * - {@link checkLoadedNativeSqlite} loads the running platform's addon as
  *   `@evolu/nodejs` loads it and opens an encrypted, a plaintext and a memory
- *   database with it.
+ *   database with it, reading a large result and stepping a statement from the
+ *   memory one.
  *
  * It imports only Node.js's own modules at run time, as `build-native.mts`
  * does, so CI checks each addon in its target's environment before installing
@@ -113,26 +114,28 @@ export const checkNativeSqlite = (
  * it's `target`'s, and checks that it opens databases: an encrypted one that
  * stores no plaintext and reopens with its key, which fails another key and an
  * encrypted open of a plaintext file with SQLITE_NOTADB, a plaintext one, and a
- * memory one.
+ * memory one, which reads a result of more values than a call passes as
+ * arguments and steps a statement to its end.
  */
 export const checkLoadedNativeSqlite = (target: NativeSqliteTarget): void => {
-  const nativeSqlite = loadNativeSqlite();
+  // Not @evolu/common's emptyPrototype, since this script imports only
+  // Node.js's own modules, so CI runs it where nothing is installed.
+  const nativeSqlite = loadNativeSqlite({
+    rowPrototype: Object.freeze(Object.create(null) as object),
+  });
   // Node.js keeps the addons it loaded in the cache of required modules.
   const { cache } = createRequire(import.meta.url);
   if (cache[fileURLToPath(nativeSqliteUrl(target))] === undefined)
     throw new Error(`The loader didn't load the addon for ${target}.`);
   const directory = mkdtempSync(join(tmpdir(), "evolu-check-native-"));
   try {
+    // The rows of a query, and nothing of a write.
     const query = (
       database: ReturnType<typeof nativeSqlite.openMemory>,
       sql: string,
     ) => {
-      const statement = database.prepare(sql);
-      try {
-        return statement.run([]).rows;
-      } finally {
-        statement.finalize();
-      }
+      const result = database.run(sql, []);
+      return typeof result === "number" ? [] : result;
     };
     const key = new Uint8Array(32).fill(7);
     const encrypted = join(directory, "encrypted.db");
@@ -182,6 +185,32 @@ export const checkLoadedNativeSqlite = (target: NativeSqliteTarget): void => {
     const version = JSON.stringify(
       query(memory, "select sqlite_version() as v"),
     );
+    // More values than a call passes as arguments, which the binding passes
+    // in a buffer, and a statement's steps to its end.
+    const large = JSON.stringify(
+      query(
+        memory,
+        "with recursive c(x) as (select 1 union all select x + 1 from c where x < 1025) select 't' || x as t, x from c",
+      ),
+    );
+    if (
+      large !==
+      JSON.stringify(
+        Array.from({ length: 1025 }, (_, i) => ({ t: `t${i + 1}`, x: i + 1 })),
+      )
+    )
+      throw new Error("A memory database read a large result wrongly.");
+    const statement = memory.prepare(
+      "select 1 as a, 'b' as b union all select 2, null",
+    );
+    const steps = JSON.stringify([
+      statement.step(),
+      statement.step(),
+      statement.step(),
+    ]);
+    statement.finalize();
+    if (steps !== '[{"a":1,"b":"b"},{"a":2,"b":null},null]')
+      throw new Error(`A statement stepped ${steps}.`);
     memory.close();
     if (!/^\[\{"v":"3\.\d+\.\d+"\}\]$/u.test(version))
       throw new Error(`A memory database read ${version}.`);

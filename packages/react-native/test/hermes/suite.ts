@@ -68,6 +68,8 @@ export const registerSuites = ({
     abiVersion: nativeSqliteAbiVersion,
     directory: `${directory}/conformance`,
     illFormedNames: `${directory}/ill-formed-names.db`,
+    // JSI's isArray sees the array a Proxy wraps.
+    acceptsProxyArrays: true,
     test,
     assertEqual,
   });
@@ -153,7 +155,7 @@ export const registerSuites = ({
     };
     try {
       const statement = database.prepare("select 1 as a");
-      const rows = statement.run([]).rows;
+      const rows = statement.run([]);
       statement.bind([]);
       const row = statement.step();
 
@@ -181,18 +183,9 @@ export const registerSuites = ({
       run("create table t (a)");
       run("create table log (a)");
 
-      assertEqual(run("select write_log() as a"), {
-        rows: [{ a: null }],
-        changes: 0,
-      });
-      assertEqual(run("insert into t values (write_log())"), {
-        rows: [],
-        changes: 1,
-      });
-      assertEqual(run("select count(*) as n from log"), {
-        rows: [{ n: 4 }],
-        changes: 0,
-      });
+      assertEqual(run("select write_log() as a"), [{ a: null }]);
+      assertEqual(run("insert into t values (write_log())"), 1);
+      assertEqual(run("select count(*) as n from log"), [{ n: 4 }]);
     } finally {
       database.close();
     }
@@ -227,7 +220,7 @@ export const registerSuites = ({
         finalized,
       );
       const between = database.prepare("select 1 as a");
-      assertEqual(between.run([]).rows, [{ a: 1 }]);
+      assertEqual(between.run([]), [{ a: 1 }]);
       // A second refused close finalizes the statements prepared since.
       database.close();
       assertTrue(binding.isFileOpen(path));
@@ -297,7 +290,7 @@ export const registerSuites = ({
           },
         },
       });
-      assertEqual(insert.run([]).changes, 1);
+      assertEqual(insert.run([]), 1);
     } finally {
       database.close();
     }
@@ -336,7 +329,7 @@ export const registerSuites = ({
             const statement = database.prepare(
               "select a, b from t where b is not ?",
             );
-            assertEqual(statement.run([null]).rows, [
+            assertEqual(statement.run([null]), [
               { a: "kůň", b: new Uint8Array([1, 2]) },
               { a: new Uint8Array(3), b: 2.5 },
             ]);
@@ -348,7 +341,7 @@ export const registerSuites = ({
             statement.reset();
             // Reading the cast's text allocates the NUL its bound bytes lack.
             const cast = database.prepare("select cast(? as text) as t");
-            assertEqual(cast.run([Uint8Array.of(0x6b, 0xc5, 0xaf)]).rows, [
+            assertEqual(cast.run([Uint8Array.of(0x6b, 0xc5, 0xaf)]), [
               { t: "ků" },
             ]);
             assertTrue(database.export().byteLength > 0);

@@ -195,7 +195,9 @@ jobs:
   # with warnings as errors too, and its object may define only C++ of the
   # namespaces evolu, std and facebook and clang's helpers. It also runs React
   # Native's binding conformance suite on the core's N-API mirror
-  # (node/binding.c), the TypeScript driver, the expo-sqlite migration tests
+  # (node/binding.c), again built with AddressSanitizer and
+  # UndefinedBehaviorSanitizer with the mirror's other tests and the driver's,
+  # the TypeScript driver, the expo-sqlite migration tests
   # and the fixtures the device route seeds, the podspec under Ruby,
   # cpp/CMakeLists.txt under CMake, the device driver with a fake adb and
   # xcrun, and the package's src tests, with 100% coverage of scripts and

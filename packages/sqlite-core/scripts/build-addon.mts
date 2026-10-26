@@ -154,6 +154,8 @@ export const buildAddon = ({
       ...coreFlags(),
       `-I${bindingDirectory}`,
       ...nodeApiFlags,
+      // So a test retires a handle's slot after a few collections.
+      "-DEVOLU_NODE_LAST_GENERATION=3",
     ],
     source: bindingSource,
     extraKey: () =>
