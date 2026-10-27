@@ -55,9 +55,10 @@ flushes: Chromium flushes OPFS with `F_BARRIERFSYNC`, which on macOS slows down
 after pauses in storage activity of about 100 to 200 µs, and encryption makes
 such pauses. Reads pay less: decrypting a page takes 60 to 70 µs instead of 40
 to 60, and a page SQLite has cached costs nothing extra. We chose constant time
-because protecting the key matters more than raw speed. The README of
-`@evolu/sqlite-wasm` explains how writes could be faster and why we keep the
-codec simple instead.
+because protecting the key matters more than raw speed, and the price is
+temporary: once SQLCipher 5.0 is released, Evolu's core switches to its
+AES-256-GCM page format ([#757](https://github.com/evoluhq/evolu/issues/757)),
+whose encryption should cost about what decryption costs now.
 
 Tabs of earlier versions sharing the pool:
 
