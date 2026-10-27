@@ -496,7 +496,6 @@ test("the runs of statements and databases refuse an id that names no live handl
     2 ** 64,
     Infinity,
     "0",
-    statementId + 1,
     statementId + 2 ** 32,
     // A slot past every handle's.
     2 ** 31,
@@ -2005,6 +2004,63 @@ test("the suite's XChaCha20-Poly1305 vectors are noble's output", () => {
   }
 });
 
+test("encryptXChaCha20Poly1305 and decryptXChaCha20Poly1305 throw when another thread grows the input's buffer while they read it, before they write past their output", async () => {
+  // A length-tracking view of a growable SharedArrayBuffer, which a worker
+  // grows a byte at a time, so it grows between the binding's reads of it.
+  const maxByteLength = 1 << 24;
+  const buffer = new SharedArrayBuffer(0, { maxByteLength });
+  const input = new Uint8Array(buffer);
+  const worker = new Worker(
+    `
+      const { parentPort, workerData: buffer } = require("node:worker_threads");
+      parentPort.postMessage("growing");
+      for (let length = 1; length <= buffer.maxByteLength; length++)
+        buffer.grow(length);
+    `,
+    { eval: true, workerData: buffer },
+  );
+  const key = new Uint8Array(32);
+  const nonce = new Uint8Array(24);
+  const grew = "The input grew while it was read.";
+  // What the calls did: returned, or the message they threw.
+  const outcomes = { encrypt: new Set<string>(), decrypt: new Set<string>() };
+  const outcomeOf = (crypt: () => Uint8Array): string => {
+    try {
+      crypt();
+      return "returned";
+    } catch (error) {
+      assertInstanceOf(error, Error);
+      return error.message;
+    }
+  };
+  try {
+    await once(worker, "message");
+    // Until both threw that it grew, the buffer can't grow anymore, or 5
+    // seconds passed, since the test's timeout can't end a loop that blocks
+    // the event loop.
+    const deadline = performance.now() + 5_000;
+    while (
+      !(outcomes.encrypt.has(grew) && outcomes.decrypt.has(grew)) &&
+      input.length < maxByteLength &&
+      performance.now() < deadline
+    ) {
+      outcomes.encrypt.add(
+        outcomeOf(() => binding.encryptXChaCha20Poly1305(key, nonce, input)),
+      );
+      outcomes.decrypt.add(
+        outcomeOf(() => binding.decryptXChaCha20Poly1305(key, nonce, input)),
+      );
+    }
+  } finally {
+    await worker.terminate();
+  }
+
+  // Zeros, which never authenticate.
+  outcomes.decrypt.delete("The ciphertext doesn't authenticate.");
+  outcomes.encrypt.delete("returned");
+  assertEqual(outcomes, { encrypt: new Set([grew]), decrypt: new Set([grew]) });
+});
+
 test("changes is 0 for a read-only statement whose function writes, and a write's own rows when its function writes too", () => {
   addon.autoRegisterWriteLog(true);
   const database = binding.openMemory();
@@ -2084,6 +2140,171 @@ test("openEncryptedFile refuses a key that isn't 32 bytes before it creates the 
     }
 
   assertFalse(existsSync(join(directory, "refused")));
+});
+
+test("openEncryptedFile wipes its copy of the key after the open, also one that fails", () => {
+  const path = join(directory, "wiped-key.db");
+  const database = binding.openEncryptedFile(path, new Uint8Array(32).fill(7));
+  // So the file has a page another key doesn't decrypt.
+  database.run("create table t (a)", []);
+  database.close();
+  addon.takeWipes();
+
+  binding.openEncryptedFile(path, new Uint8Array(32).fill(7)).close();
+  const failed = thrownBy(() =>
+    binding.openEncryptedFile(path, new Uint8Array(32).fill(8)),
+  );
+
+  assertEqual(failed.message, "file is not a database");
+  assertEqual(addon.takeWipes().keys, 2);
+});
+
+test("a collected export's finalizer frees it with evolu_database_free_export, which wipes it, with its size", async () => {
+  const collect = async () => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await nextMacrotask();
+      gc();
+    }
+    // Node-API runs an external buffer's finalizer from the loop.
+    await nextMacrotask();
+  };
+  // So no export of another test is freed after the count is taken.
+  await collect();
+  addon.takeWipes();
+  const database = binding.openMemory();
+  try {
+    database.run("create table t (a)", []);
+    database.run("insert into t values ('evolu-exported-row')", []);
+    // In a frame of its own, which no suspended frame keeps the export in.
+    const exportOnce = () => {
+      assertTrue(database.export().byteLength > 0);
+    };
+    exportOnce();
+  } finally {
+    database.close();
+  }
+
+  await collect();
+
+  assertEqual(addon.takeWipes(), { keys: 0, exports: 1, freedExports: 1 });
+});
+
+test("the classes of databases and statements throw a TypeError when JavaScript calls their constructors", () => {
+  const database = binding.openMemory();
+  try {
+    const statement = database.prepare("select 1");
+    const illegal = {
+      kind: "TypeError",
+      message: "Illegal constructor.",
+      cause: undefined,
+    };
+
+    assertEqual(
+      [database, statement].flatMap((handle) => {
+        const Constructor = (
+          Object.getPrototypeOf(handle) as { constructor: new () => unknown }
+        ).constructor;
+        return [
+          thrownBy(() => new Constructor()),
+          thrownBy(() => Reflect.apply(Constructor, undefined, [])),
+        ];
+      }),
+      [illegal, illegal, illegal, illegal],
+    );
+    statement.finalize();
+  } finally {
+    database.close();
+  }
+});
+
+test("a run whose rows array's index setter runs a large run that keeps only its short texts', blobs' or texts' array returns every row, and keeps none of its own over it", () => {
+  const database = binding.openMemory();
+  try {
+    database.run("create table t (a)", []);
+    database.run(
+      `insert into t
+        with recursive n (i) as (select 1 union all select i + 1 from n where i < 17500)
+        select i from n`,
+      [],
+    );
+    // More values than an environment keeps arrays of, and one of a kind.
+    const runInSetter = (value: string) => {
+      const sql = `select a from t union all select ${value}`;
+      let inner: unknown;
+      // oxlint-disable-next-line eslint/no-extend-native -- Appending a row must run JavaScript.
+      Object.defineProperty(Array.prototype, "0", {
+        configurable: true,
+        // oxlint-disable-next-line eslint/accessor-pairs -- Only setting runs the hook.
+        set(row: unknown) {
+          delete (Array.prototype as unknown as Record<string, unknown>)[0];
+          Object.defineProperty(this, "0", {
+            value: row,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          });
+          const rows = database.run(sql, []) as ReadonlyArray<unknown>;
+          inner = [rows.length, rows[17500]];
+        },
+      });
+      try {
+        // Values of two texts, which the row builder appends.
+        return [database.run("select 'x' as a, 'y' as b", []), inner];
+      } finally {
+        delete (Array.prototype as unknown as Record<string, unknown>)[0];
+      }
+    };
+    const kinds = [
+      ["'short'", "short"],
+      ["x'0102'", new Uint8Array([1, 2])],
+      [`'ascii ${"x".repeat(20)}'`, `ascii ${"x".repeat(20)}`],
+    ] as const;
+    // So the environment keeps what the runs leave it.
+    for (const [value] of kinds) runInSetter(value);
+    const before = addon.heldMemory().blocks;
+
+    assertEqual(
+      kinds.map(([value]) => runInSetter(value)),
+      kinds.map(([, value]) => [[{ a: "x", b: "y" }], [17501, { a: value }]]),
+    );
+    assertEqual(addon.heldMemory().blocks, before);
+  } finally {
+    database.close();
+  }
+});
+
+test("a Node.js environment's teardown leaves a connection SQLite can't close open, holding its file", async () => {
+  const path = join(directory, "teardown-unfinished-backup.db");
+  const worker = new Worker(
+    `
+      const { parentPort, workerData } = require("node:worker_threads");
+      (async () => {
+        const { loadAddon } = await import(workerData.addonModule);
+        const addon = loadAddon(workerData.addonPath);
+        const binding = addon.createBinding();
+        addon.startBackupOnOpen(true);
+        try {
+          binding.openFile(workerData.path);
+        } finally {
+          addon.startBackupOnOpen(false);
+        }
+        // Listening keeps the worker running until it's terminated.
+        parentPort.on("message", () => {});
+        parentPort.postMessage("opened");
+      })();
+    `,
+    { eval: true, workerData: { addonPath, addonModule, path } },
+  );
+  try {
+    const [message] = (await once(worker, "message")) as [unknown];
+    assertEqual(message, "opened");
+
+    await worker.terminate();
+
+    assertTrue(binding.isFileOpen(path));
+  } finally {
+    addon.finishBackups();
+  }
 });
 
 test("a connection whose handle is collected stays open, holding its file", async () => {

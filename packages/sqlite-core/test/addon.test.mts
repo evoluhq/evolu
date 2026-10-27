@@ -18,7 +18,12 @@ import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 import { Worker } from "node:worker_threads";
 import { buildAddon, sanitizerPreload } from "../scripts/build-addon.mts";
-import { bindingDirectory, cSources } from "../scripts/compile.mts";
+import {
+  bindingDirectory,
+  cSources,
+  nodeDirectory,
+} from "../scripts/compile.mts";
+import { coverageFlags } from "../scripts/coverage.mts";
 import { sqliteSource } from "../scripts/sqlite-source.mts";
 import {
   loadAddon,
@@ -108,6 +113,74 @@ describe("buildAddon", () => {
     assertTrue(link.some((arg) => basename(arg).startsWith("binding-")));
   });
 
+  it("compiles node/binding.c and node/module.c, as @evolu/nodejs's addon does, with the hooks of node/test_hooks.h, and module.c's entry points renamed", (t) => {
+    const build = setupFakeBuild(t);
+
+    buildAddon({
+      sqlite: build.sqlite,
+      outputDirectory: build.env.SQLITE_CORE_BUILD,
+      cc: build.cc,
+    });
+
+    const compileOf = (name: string) =>
+      build
+        .commands()
+        .find((command) => command.includes(join(nodeDirectory, name))) ?? [];
+    const hooks = `-include${join(nodeDirectory, "test_hooks.h")}`;
+    assertEqual(
+      ["binding.c", "module.c", "addon.c"].map((name) => [
+        compileOf(name).includes(hooks),
+        compileOf(name).includes(
+          "-Dnapi_register_module_v1=evolu_test_node_module_initialize",
+        ),
+      ]),
+      [
+        [true, true],
+        [true, true],
+        [false, false],
+      ],
+    );
+    const link = build.commands().at(-1) ?? [];
+    assertTrue(link.some((arg) => basename(arg).startsWith("module-")));
+  });
+
+  it("instruments only node/binding.c and node/module.c for coverage, and links the profile runtime into an addon of its own", (t) => {
+    const build = setupFakeBuild(t);
+    const instrumented = (coverage: boolean) => {
+      const addon = buildAddon({
+        sqlite: build.sqlite,
+        outputDirectory: build.env.SQLITE_CORE_BUILD,
+        cc: build.cc,
+        coverage,
+      });
+      const commands = build.commands();
+      return {
+        addon: basename(addon),
+        compiled: commands
+          .filter(
+            (command) =>
+              command.includes("-c") &&
+              coverageFlags.every((flag) => command.includes(flag)),
+          )
+          .map((command) => basename(command[command.indexOf("-c") + 1])),
+        linked: coverageFlags.every((flag) =>
+          (commands.at(-1) ?? []).includes(flag),
+        ),
+      };
+    };
+
+    assertEqual(instrumented(false), {
+      addon: "evolu.node",
+      compiled: [],
+      linked: false,
+    });
+    assertEqual(instrumented(true), {
+      addon: "evolu-coverage.node",
+      compiled: ["binding.c", "module.c"],
+      linked: true,
+    });
+  });
+
   it("links the binding's units into the addon", (t) => {
     const build = setupFakeBuild(t);
 
@@ -193,6 +266,7 @@ describe("addon", () => {
     const functions: ReadonlyArray<keyof SqliteCoreAddon> = [
       "autoRegisterWriteLog",
       "bind",
+      "callsLeft",
       "changes",
       "close",
       "column",
@@ -201,9 +275,16 @@ describe("addon", () => {
       "compileOptionUsed",
       "createBinding",
       "exec",
+      "failBuildCheck",
+      "failCall",
+      "failRandom",
       "finalize",
       "finishBackups",
+      "heldMemory",
+      "initializeModule",
       "libversion",
+      "limitSlots",
+      "moduleNapiVersion",
       "open",
       "openCodec",
       "prepare",
@@ -212,6 +293,7 @@ describe("addon", () => {
       "startBackupOnOpen",
       "step",
       "takeCodecFailure",
+      "takeWipes",
     ];
 
     assertEqual(

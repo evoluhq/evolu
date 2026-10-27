@@ -1,7 +1,11 @@
 /**
  * Builds the test-only Node-API addon of the C core (node/addon.c), so Evolu's
  * TypeScript tests can drive it, with the N-API mirror of React Native's
- * binding (node/binding.c) in it.
+ * binding (node/binding.c) in it, and node/module.c, the entry of
+ * `@evolu/nodejs`'s addon, under other names, since addon.c is the entry.
+ * node/test_hooks.h's hooks are included before both, and the core is compiled
+ * with its test hooks, so a test can make their calls, the core's random source
+ * and the build check fail.
  *
  * It needs no node-gyp and no npm package: clang compiles against the headers
  * an official Node.js build installs in `include/node` next to its `bin`
@@ -17,14 +21,15 @@
  * With `sanitize`, everything is compiled with AddressSanitizer and
  * UndefinedBehaviorSanitizer into `evolu-sanitized.node`, which a stock Node.js
  * loads only with the sanitizer runtime preloaded, as {@link sanitizerPreload}
- * names it, since the runtime must be in the process before anything
- * allocates.
+ * names it, since the runtime must be in the process before anything allocates.
+ * With `coverage`, node/binding.c and node/module.c are instrumented for
+ * source-based coverage into `evolu-coverage.node`, whose runs write profiles
+ * where `LLVM_PROFILE_FILE` names.
  *
  * @module
  */
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   bindingDirectory,
   compileCached,
@@ -32,22 +37,15 @@ import {
   coreFlags,
   coreHeaders,
   headerContents,
+  napiVersion,
   nativeBindingUnits,
+  nodeDirectory,
   run,
   sourceDirectory,
   writeAtomically,
 } from "./compile.mts";
+import { coverageFlags } from "./coverage.mts";
 import type { PreparedSqlite } from "./sqlite-source.mts";
-
-const addonSource = /*#__PURE__*/ fileURLToPath(
-  /*#__PURE__*/ new URL("../node/addon.c", import.meta.url),
-);
-const bindingSource = /*#__PURE__*/ fileURLToPath(
-  /*#__PURE__*/ new URL("../node/binding.c", import.meta.url),
-);
-
-/** The Node-API version the addon declares; Node.js 24 supports it. */
-const napiVersion = 10;
 
 /**
  * Builds the addon into `outputDirectory` and returns its path. `cc` is the C
@@ -60,6 +58,7 @@ export const buildAddon = ({
   cc = "clang",
   nodeExecutable = process.execPath,
   sanitize = false,
+  coverage = false,
   platform = process.platform,
 }: {
   sqlite: PreparedSqlite;
@@ -67,6 +66,7 @@ export const buildAddon = ({
   cc?: string;
   nodeExecutable?: string;
   sanitize?: boolean;
+  coverage?: boolean;
   platform?: NodeJS.Platform;
 }): string => {
   const nodeIncludeDirectory = join(
@@ -111,9 +111,12 @@ export const buildAddon = ({
       readFileSync(join(sourceDirectory, "sqlite_config.h"), "utf8"),
     objectsDirectory,
   });
+  // The core's test hooks, so a test can make its random source or the build
+  // check fail.
+  const unitFlags = [...sqliteFlags, "-DEVOLU_TEST_HOOKS"];
   const unitObjects = [
-    ...compileUnits(sqliteFlags),
-    ...nativeBindingUnits(sqliteFlags),
+    ...compileUnits(unitFlags),
+    ...nativeBindingUnits(unitFlags),
   ].map(({ source, flags, headers }) =>
     compileCached({
       cc,
@@ -139,35 +142,51 @@ export const buildAddon = ({
     `-isystem${nodeIncludeDirectory}`,
     `-DNAPI_VERSION=${napiVersion}`,
   ];
+  const nodeFlags = [
+    ...optimized,
+    ...unitFlags,
+    ...coreFlags(),
+    `-I${bindingDirectory}`,
+    ...nodeApiFlags,
+  ];
+  const nodeHeaders = (): string =>
+    [
+      coreHeaders(),
+      headerContents(bindingDirectory),
+      headerContents(nodeDirectory),
+      nodeApiHeaders(),
+    ].join("\n");
   const addonObject = compileCached({
     cc,
-    flags: [...optimized, ...sqliteFlags, ...coreFlags(), ...nodeApiFlags],
-    source: addonSource,
-    extraKey: () => [coreHeaders(), nodeApiHeaders()].join("\n"),
+    flags: nodeFlags,
+    source: join(nodeDirectory, "addon.c"),
+    extraKey: nodeHeaders,
     objectsDirectory,
   });
-  const bindingObject = compileCached({
-    cc,
-    flags: [
-      ...optimized,
-      ...sqliteFlags,
-      ...coreFlags(),
-      `-I${bindingDirectory}`,
-      ...nodeApiFlags,
-      // So a test retires a handle's slot after a few collections.
-      "-DEVOLU_NODE_LAST_GENERATION=3",
-    ],
-    source: bindingSource,
-    extraKey: () =>
-      [coreHeaders(), headerContents(bindingDirectory), nodeApiHeaders()].join(
-        "\n",
-      ),
-    objectsDirectory,
-  });
+  // The files @evolu/nodejs's addon compiles, with node/test_hooks.h's hooks
+  // included before each and module.c's entry points renamed, since addon.c's
+  // are the module's.
+  const nodeObjects = ["binding.c", "module.c"].map((name) =>
+    compileCached({
+      cc,
+      flags: [
+        ...nodeFlags,
+        `-include${join(nodeDirectory, "test_hooks.h")}`,
+        "-Dnapi_register_module_v1=evolu_test_node_module_initialize",
+        "-Dnode_api_module_get_api_version_v1=evolu_test_node_module_napi_version",
+        // So a test retires a handle's slot after a few collections.
+        "-DEVOLU_NODE_LAST_GENERATION=3",
+        ...(coverage ? coverageFlags : []),
+      ],
+      source: join(nodeDirectory, name),
+      extraKey: nodeHeaders,
+      objectsDirectory,
+    }),
+  );
 
   const addon = join(
     outputDirectory,
-    sanitize ? "evolu-sanitized.node" : "evolu.node",
+    `evolu${sanitize ? "-sanitized" : ""}${coverage ? "-coverage" : ""}.node`,
   );
   writeAtomically(addon, (output) => {
     run(cc, [
@@ -179,8 +198,9 @@ export const buildAddon = ({
         : ["-shared"]),
       // Against the runtime's shared library, which the process preloads.
       ...(sanitize && platform !== "darwin" ? ["-shared-libasan"] : []),
+      ...(coverage ? coverageFlags : []),
       addonObject,
-      bindingObject,
+      ...nodeObjects,
       sqliteObject,
       ...unitObjects,
       "-o",

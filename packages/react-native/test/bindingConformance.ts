@@ -1473,6 +1473,55 @@ export const describeBindingConformance = ({
     }
   });
 
+  test("a run, bind or database run whose parameter's getter throws rethrows its error, with fewer parameters than Node-API reads into memory of its own, as many or more, and leaves the statement and database usable", () => {
+    const database = binding.openMemory();
+    try {
+      const thrown = new Error("The getter threw.");
+      const outcomesOf = (count: number) => {
+        const sql = `select ${Array.from({ length: count }, (_, i) => `?${i + 1}`).join(" + ")} as n`;
+        const parameters = values(
+          ...Array.from({ length: count }, (_, i) => i + 1),
+        );
+        // The last one's, after the others were read.
+        const throwing = [...parameters];
+        Object.defineProperty(throwing, count - 1, {
+          get: () => {
+            throw thrown;
+          },
+        });
+        const statement = database.prepare(sql);
+        try {
+          return [
+            thrownBy(() => statement.run(throwing)),
+            thrownBy(() => {
+              statement.bind(throwing);
+            }),
+            thrownBy(() => database.run(sql, throwing)),
+            statement.run(parameters),
+            database.run(sql, parameters),
+          ];
+        } finally {
+          statement.finalize();
+        }
+      };
+      const threw = {
+        kind: "Error",
+        message: thrown.message,
+        cause: undefined,
+      };
+
+      assertEqual(
+        [1, 16, 17].map(outcomesOf),
+        [1, 16, 17].map((count) => {
+          const rows = [{ n: (count * (count + 1)) / 2 }];
+          return [threw, threw, threw, rows, rows];
+        }),
+      );
+    } finally {
+      database.close();
+    }
+  });
+
   test("run, bind and database run take a Proxy of an array as their parameters where the adapter sees an array, and refuse it with a TypeError where it doesn't", () => {
     const database = binding.openMemory();
     try {
@@ -1695,6 +1744,38 @@ export const describeBindingConformance = ({
       large.reset();
       assertEqual(large.step(), { n: 8_388_608 });
       large.finalize();
+    } finally {
+      database.close();
+    }
+  });
+
+  test("a bind or run while the statement's last step returned a row throws SQLite's misuse error of the bind, after which a bind leaves it stepping and a run resets it", () => {
+    const database = binding.openMemory();
+    try {
+      run(database, "create table t (a)");
+      run(database, "insert into t values (1), (2), (3)");
+      const statement = database.prepare("select a from t where a > ?");
+      statement.bind(values(0));
+      const misuse = sqliteError({
+        operation: "bind",
+        extendedCode: 21,
+        message: "bad parameter or other API misuse",
+      });
+
+      assertEqual(statement.step(), { a: 1 });
+      assertEqual(
+        thrownBy(() => {
+          statement.bind(values(1));
+        }),
+        misuse,
+      );
+      assertEqual(statement.step(), { a: 2 });
+      assertEqual(
+        thrownBy(() => statement.run(values(1))),
+        misuse,
+      );
+      assertEqual(statement.step(), { a: 1 });
+      statement.finalize();
     } finally {
       database.close();
     }
@@ -2588,13 +2669,13 @@ export const describeBindingConformance = ({
       ]);
 
       for (const [, method] of databaseMethods)
-        for (const other of [statement, {}, null])
+        for (const other of [statement, {}, null, () => undefined])
           assertEqual(
             thrownBy(() => method.call(other, "select 1")),
             typeError("Expected a database."),
           );
       for (const [, method] of statementMethods)
-        for (const other of [database, {}, undefined])
+        for (const other of [database, {}, undefined, () => undefined])
           assertEqual(
             thrownBy(() => method.call(other, [])),
             typeError("Expected a statement."),

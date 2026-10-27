@@ -102,6 +102,58 @@ export interface SqliteCoreAddon {
   /** Finishes the backups started so far. */
   readonly finishBackups: () => void;
   /**
+   * Makes the call of node/binding.c and node/module.c numbered `index`,
+   * counted from 0 from now, fail before it runs, and none with -1, as
+   * node/test_hooks.h describes the calls that count and how they fail, with
+   * `onlyAllocations` counting only their allocations.
+   */
+  readonly failCall: (index: number, onlyAllocations?: boolean) => void;
+  /**
+   * How many calls run before the one {@link SqliteCoreAddon.failCall} fails, or
+   * -1 once it failed, and without one.
+   */
+  readonly callsLeft: () => number;
+  /**
+   * The blocks node/binding.c's and node/module.c's own allocations hold, the
+   * statements node/binding.c prepared and didn't finalize, which a close
+   * finalizes behind its back, and the bytes SQLite's allocations hold.
+   */
+  readonly heldMemory: () => {
+    readonly blocks: number;
+    readonly statements: number;
+    readonly sqlite: number;
+  };
+  /**
+   * Returns how many copies of a key node/binding.c's encrypted opens wiped,
+   * how many exports it handed over, and how many it freed with
+   * `evolu_database_free_export` while each was the last one handed over, as
+   * node/test_hooks.h counts them, and counts from 0 again.
+   */
+  readonly takeWipes: () => {
+    readonly keys: number;
+    readonly exports: number;
+    readonly freedExports: number;
+  };
+  /**
+   * Limits the slots of the handles of the calling thread's environment, which
+   * it fills from the first, to `count`, from 2^32 - 1.
+   */
+  readonly limitSlots: (count: number) => void;
+  /** Makes the core's random source fail with true, until false. */
+  readonly failRandom: (isFailing: boolean) => void;
+  /**
+   * Makes the binding layer's build check fail with true, as for a SQLite that
+   * isn't multi-thread, until false.
+   */
+  readonly failBuildCheck: (isFailing: boolean) => void;
+  /** The Node-API version node/module.c declares. */
+  readonly moduleNapiVersion: () => number;
+  /**
+   * Calls node/module.c's initializer with `exports`, as Node.js calls it when
+   * it loads the module, and returns what it returns.
+   */
+  readonly initializeModule: (exports: object) => unknown;
+  /**
    * Returns the N-API mirror of React Native's binding, node/binding.c, which
    * `@evolu/common` types as `NativeSqlite`, with `@evolu/nodejs`'s row
    * builder, which {@link loadAddon} passes it.

@@ -114,8 +114,11 @@ for a post, run `node scripts/code-image.mts --help`.
   `pnpm test:react-native-sqlite`, which also runs React Native's binding
   conformance suite on `node/binding.c`, the core's N-API mirror of that
   binding, and runs it again, with the mirror's other tests and the driver's,
-  under AddressSanitizer and UndefinedBehaviorSanitizer, so a change to it
-  needs that script too. `@evolu/react-native`
+  under AddressSanitizer and UndefinedBehaviorSanitizer, and, with the
+  mirror's other tests, instrumented for coverage, which fails below 100%
+  line, branch, or function coverage of `node/binding.c` and `node/module.c`,
+  the C of `@evolu/nodejs`'s addon, so a change to either needs that script
+  too. `@evolu/react-native`
   ships the vendored core, so a change to what it vendors also needs a patch
   changeset for it, unless an unreleased changeset already covers the change.
   `@evolu/nodejs` ships the core compiled inside its addons, so a change to
@@ -130,10 +133,11 @@ for a post, run `node scripts/code-image.mts --help`.
   `test/bindingConformance.ts`, the podspec, `cpp/CMakeLists.txt` or
   `react-native.config.js`, run `pnpm test:react-native-sqlite`, which runs
   the package's tests and fails below 100% line, branch, or function coverage
-  of `scripts` and `src/sqlite`, and of `@evolu/common`'s
-  `src/NativeSqlite.ts`, the driver they share. It needs what the core's tests
-  need, and Ruby and CMake, for the podspec's and CMake's tests, which take
-  CMake from the PATH or the Android SDK.
+  of `scripts` and `src/sqlite`, of `@evolu/common`'s `src/NativeSqlite.ts`,
+  the driver they share, and of `@evolu/sqlite-core`'s `node/binding.c` and
+  `node/module.c`. It needs what the core's tests need, and Ruby and CMake,
+  for the podspec's and CMake's tests, which take CMake from the PATH or the
+  Android SDK.
 - After changing how `@evolu/react-native` builds into apps, its podspec,
   `cpp/CMakeLists.txt`, `ios/`, `android/`, `react-native.config.js`,
   `codegenConfig`, the device suites or either example's native setup, run

@@ -1,7 +1,8 @@
 /**
  * The binding's and driver's tests against the core's N-API mirror built with
  * AddressSanitizer and UndefinedBehaviorSanitizer, since a binding that uses
- * memory it freed or reads past an array can pass them unsanitized.
+ * memory it freed or reads past an array can pass them unsanitized, also on a
+ * path that only a failed call takes.
  */
 import { assertEqual } from "@evolu/common";
 import { sanitizerPreload } from "@evolu/sqlite-core/scripts/build-addon.mts";
@@ -17,6 +18,8 @@ import { test } from "node:test";
 const bindingTestFiles = [
   "NativeSqliteBinding.test.ts",
   "NativeSqliteDriver.test.ts",
+  "NativeSqliteFaults.test.ts",
+  "NativeSqliteModule.test.ts",
 ].map((name) => join(import.meta.dirname, name));
 
 test(

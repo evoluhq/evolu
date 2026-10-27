@@ -47,6 +47,7 @@ import {
   coreFlags,
   coreHeaders,
   headerContents,
+  napiVersion,
   nativeBindingUnits,
   run,
   sourceDirectory,
@@ -66,9 +67,6 @@ import {
   nativeSqliteUrl,
   type NativeSqliteTarget,
 } from "../src/NativeSqlite.ts";
-
-/** The Node-API version the addon declares; Node.js 24 supports it. */
-const napiVersion = 10;
 
 /** The oldest macOS the addon runs on, Node.js 24's. */
 const macosVersionMin = "13.5";

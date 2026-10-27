@@ -76,17 +76,35 @@
  *   startBackupOnOpen(true) starts a backup from every connection opened after
  *   it, which SQLite then can't close, until startBackupOnOpen(false), and
  *   finishBackups() finishes them, so a test sees the mirror's close refused.
+ * - The hooks of test_hooks.h, which this file defines: failCall(index,
+ *   onlyAllocations) makes the call of node/binding.c and node/module.c
+ *   numbered index fail, counting only their allocations with
+ *   onlyAllocations, and failCall(-1) none, and callsLeft() returns how many
+ *   calls run before it, or -1 once it failed; heldMemory() returns the
+ *   blocks their own allocations hold, the statements they prepared and
+ *   didn't finalize, and the bytes SQLite's allocations hold; takeWipes()
+ *   returns and resets the counts of key copies wiped, exports handed over
+ *   and exports freed with evolu_database_free_export; and limitSlots(count)
+ *   limits the slots of the environment's handles. failRandom(true) makes the
+ *   core's random source fail and failBuildCheck(true) the build check, until
+ *   false. moduleNapiVersion() and initializeModule(exports) call
+ *   node/module.c's entry points, which the build renames, as Node.js calls
+ *   them when it loads the module.
  *
  * The addon keeps no mutable global state, apart from the crash copy's VFS,
  * registered once under a mutex, the crash copy an open hands its database
- * file through a thread-local during the call, and the backups
- * startBackupOnOpen started, under a mutex, so every Node.js environment that
- * loads it, such as a worker thread, has its own handles.
+ * file through a thread-local during the call, the backups startBackupOnOpen
+ * started, under a mutex, the hooks' counts, which are each thread's, and the
+ * core's hooks, so every Node.js environment that loads it, such as a worker
+ * thread, has its own handles.
  */
 #include <node_api.h>
 
 #include "evolu_codec.h"
+#include "evolu_crypto.h"
 #include "sqlite3.h"
+#define EVOLU_NODE_TEST_HOOKS_DECLARE_ONLY
+#include "test_hooks.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1235,6 +1253,260 @@ static napi_value js_finish_backups(napi_env env, napi_callback_info info) {
   return undefined(env);
 }
 
+// test_hooks.h's hooks in node/binding.c and node/module.c.
+_Thread_local int evolu_test_node_calls_left = -1;
+_Thread_local bool evolu_test_node_only_allocations;
+_Thread_local int64_t evolu_test_node_blocks;
+_Thread_local int64_t evolu_test_node_statements;
+_Thread_local int evolu_test_node_key_wipes;
+_Thread_local int evolu_test_node_exports;
+_Thread_local int evolu_test_node_freed_exports;
+_Thread_local uint32_t evolu_test_node_slots = UINT32_MAX;
+
+// The key the last encrypted open got, until it's wiped, and the last export
+// handed over, until it's freed.
+static _Thread_local const uint8_t *opened_key;
+static _Thread_local uint8_t *exported;
+static _Thread_local size_t exported_size;
+
+static bool allocation_fails(void) {
+  if (evolu_test_node_calls_left < 0) return false;
+  return evolu_test_node_calls_left-- == 0;
+}
+
+bool evolu_test_node_call_fails(void) {
+  return !evolu_test_node_only_allocations && allocation_fails();
+}
+
+void *evolu_test_node_malloc(size_t size) {
+  void *items = allocation_fails() ? NULL : malloc(size);
+  if (items != NULL) evolu_test_node_blocks++;
+  return items;
+}
+
+void *evolu_test_node_calloc(size_t count, size_t size) {
+  void *items = allocation_fails() ? NULL : calloc(count, size);
+  if (items != NULL) evolu_test_node_blocks++;
+  return items;
+}
+
+void *evolu_test_node_realloc(void *items, size_t size) {
+  if (allocation_fails()) return NULL;
+  void *grown = realloc(items, size);
+  if (grown != NULL && items == NULL) evolu_test_node_blocks++;
+  return grown;
+}
+
+void evolu_test_node_free(void *items) {
+  if (items != NULL) evolu_test_node_blocks--;
+  free(items);
+}
+
+void *evolu_test_node_sqlite3_malloc64(sqlite3_uint64 size) {
+  return allocation_fails() ? NULL : sqlite3_malloc64(size);
+}
+
+int evolu_test_node_fail_open(evolu_database **database,
+                              evolu_database_error *error) {
+  *database = NULL;
+  *error = (evolu_database_error){EVOLU_DATABASE_ERROR_SQLITE,
+                                  SQLITE_NOMEM,
+                                  sqlite3_errstr(SQLITE_NOMEM),
+                                  -1,
+                                  0,
+                                  {EVOLU_DATABASE_CODEC_FAILURE_NONE, 0},
+                                  NULL};
+  return SQLITE_NOMEM;
+}
+
+int evolu_test_node_prepare(evolu_database *database, const char *sql,
+                            size_t sql_size, sqlite3_stmt **statement,
+                            evolu_database_error *error) {
+  int rc = evolu_database_prepare(database, sql, sql_size, statement, error);
+  if (rc == SQLITE_OK) evolu_test_node_statements++;
+  return rc;
+}
+
+int evolu_test_node_finalize(sqlite3_stmt *statement) {
+  if (statement != NULL) evolu_test_node_statements--;
+  return sqlite3_finalize(statement);
+}
+
+int evolu_test_node_open_encrypted_file(
+    const char *path, size_t path_size,
+    const uint8_t key[EVOLU_DATABASE_KEY_SIZE], evolu_database **database,
+    evolu_database_error *error) {
+  opened_key = key;
+  return evolu_database_open_encrypted_file(path, path_size, key, database,
+                                            error);
+}
+
+void evolu_test_node_wipe(void *bytes, size_t size) {
+  evolu_database_wipe(bytes, size);
+  if (bytes != opened_key || size != EVOLU_DATABASE_KEY_SIZE) return;
+  opened_key = NULL;
+  const uint8_t *key = bytes;
+  for (size_t i = 0; i < size; i++)
+    if (key[i] != 0) return;
+  evolu_test_node_key_wipes++;
+}
+
+int evolu_test_node_export(evolu_database *database, uint8_t **bytes,
+                           size_t *size, evolu_database_error *error) {
+  int rc = evolu_database_export(database, bytes, size, error);
+  if (rc == SQLITE_OK) {
+    exported = *bytes;
+    exported_size = *size;
+    evolu_test_node_exports++;
+  }
+  return rc;
+}
+
+void evolu_test_node_free_export(uint8_t *bytes, size_t size) {
+  if (bytes == exported && size == exported_size) {
+    exported = NULL;
+    evolu_test_node_freed_exports++;
+  }
+  evolu_database_free_export(bytes, size);
+}
+
+// node/binding.c's switches over the type of an error and of a codec failure
+// end in default:, since its coverage gate counts a case no record reaches as
+// a branch never taken, as the JSI adapter's do. These, with no default, fail
+// this build instead when a type is added that they don't handle.
+static __attribute__((unused)) void
+handle_every_type(evolu_database_error_type error,
+                  evolu_database_codec_failure_type failure) {
+  switch (error) {
+  case EVOLU_DATABASE_ERROR_NONE:
+  case EVOLU_DATABASE_ERROR_SQLITE:
+  case EVOLU_DATABASE_ERROR_FILE_HELD:
+  case EVOLU_DATABASE_ERROR_INVALID_PATH:
+  case EVOLU_DATABASE_ERROR_EMPTY_SQL:
+  case EVOLU_DATABASE_ERROR_MULTIPLE_STATEMENTS:
+  case EVOLU_DATABASE_ERROR_INVALID_SQL_TEXT:
+    break;
+  }
+  switch (failure) {
+  case EVOLU_DATABASE_CODEC_FAILURE_NONE:
+  case EVOLU_DATABASE_CODEC_FAILURE_PAGE_AUTHENTICATION:
+  case EVOLU_DATABASE_CODEC_FAILURE_ENCRYPTION_UNSUPPORTED:
+  case EVOLU_DATABASE_CODEC_FAILURE_RANDOM:
+    break;
+  }
+}
+
+static napi_value js_fail_call(napi_env env, napi_callback_info info) {
+  napi_value argv[2];
+  if (!get_args(env, info, 2, argv)) return NULL;
+  int32_t index;
+  bool only_allocations = false;
+  if (napi_get_value_int32(env, argv[0], &index) != napi_ok) return fail(env);
+  napi_valuetype type;
+  if (napi_typeof(env, argv[1], &type) != napi_ok ||
+      (type != napi_undefined &&
+       napi_get_value_bool(env, argv[1], &only_allocations) != napi_ok))
+    return fail(env);
+  evolu_test_node_calls_left = index < 0 ? -1 : index;
+  evolu_test_node_only_allocations = only_allocations;
+  return undefined(env);
+}
+
+static napi_value js_calls_left(napi_env env, napi_callback_info info) {
+  (void)info;
+  napi_value result;
+  if (napi_create_int32(env, evolu_test_node_calls_left, &result) != napi_ok)
+    return fail(env);
+  return result;
+}
+
+static napi_value js_held_memory(napi_env env, napi_callback_info info) {
+  (void)info;
+  napi_value result, blocks, statements, sqlite;
+  if (napi_create_object(env, &result) != napi_ok ||
+      napi_create_int64(env, evolu_test_node_blocks, &blocks) != napi_ok ||
+      napi_create_int64(env, evolu_test_node_statements, &statements) !=
+          napi_ok ||
+      napi_create_int64(env, sqlite3_memory_used(), &sqlite) != napi_ok ||
+      napi_set_named_property(env, result, "blocks", blocks) != napi_ok ||
+      napi_set_named_property(env, result, "statements", statements) !=
+          napi_ok ||
+      napi_set_named_property(env, result, "sqlite", sqlite) != napi_ok)
+    return fail(env);
+  return result;
+}
+
+static napi_value js_take_wipes(napi_env env, napi_callback_info info) {
+  (void)info;
+  napi_value result, keys, exports, freed_exports;
+  if (napi_create_object(env, &result) != napi_ok ||
+      napi_create_int32(env, evolu_test_node_key_wipes, &keys) != napi_ok ||
+      napi_create_int32(env, evolu_test_node_exports, &exports) != napi_ok ||
+      napi_create_int32(env, evolu_test_node_freed_exports, &freed_exports) !=
+          napi_ok ||
+      napi_set_named_property(env, result, "keys", keys) != napi_ok ||
+      napi_set_named_property(env, result, "exports", exports) != napi_ok ||
+      napi_set_named_property(env, result, "freedExports", freed_exports) !=
+          napi_ok)
+    return fail(env);
+  evolu_test_node_key_wipes = 0;
+  evolu_test_node_exports = 0;
+  evolu_test_node_freed_exports = 0;
+  return result;
+}
+
+static napi_value js_limit_slots(napi_env env, napi_callback_info info) {
+  napi_value argv[1];
+  if (!get_args(env, info, 1, argv)) return NULL;
+  if (napi_get_value_uint32(env, argv[0], &evolu_test_node_slots) != napi_ok)
+    return fail(env);
+  return undefined(env);
+}
+
+static napi_value js_fail_random(napi_env env, napi_callback_info info) {
+  napi_value argv[1];
+  if (!get_args(env, info, 1, argv)) return NULL;
+  bool is_failing;
+  if (napi_get_value_bool(env, argv[0], &is_failing) != napi_ok)
+    return fail(env);
+  evolu_test_random_fails = is_failing;
+  return undefined(env);
+}
+
+// What the build check reads for a SQLite that isn't multi-thread.
+static int single_thread(void) { return 0; }
+
+static napi_value js_fail_build_check(napi_env env, napi_callback_info info) {
+  napi_value argv[1];
+  if (!get_args(env, info, 1, argv)) return NULL;
+  bool is_failing;
+  if (napi_get_value_bool(env, argv[0], &is_failing) != napi_ok)
+    return fail(env);
+  evolu_test_threadsafe = is_failing ? single_thread : sqlite3_threadsafe;
+  return undefined(env);
+}
+
+// node/module.c's entry points, which the build renames from those of
+// NAPI_MODULE_INIT, since this module's are its own.
+int32_t evolu_test_node_module_napi_version(void);
+napi_value evolu_test_node_module_initialize(napi_env env, napi_value exports);
+
+static napi_value js_module_napi_version(napi_env env,
+                                         napi_callback_info info) {
+  (void)info;
+  napi_value result;
+  if (napi_create_int32(env, evolu_test_node_module_napi_version(), &result) !=
+      napi_ok)
+    return fail(env);
+  return result;
+}
+
+static napi_value js_initialize_module(napi_env env, napi_callback_info info) {
+  napi_value argv[1];
+  if (!get_args(env, info, 1, argv)) return NULL;
+  return evolu_test_node_module_initialize(env, argv[0]);
+}
+
 // Whether this build has AddressSanitizer and UndefinedBehaviorSanitizer,
 // which the tests check against the build they asked for.
 #if defined(__has_feature)
@@ -1266,6 +1538,24 @@ NAPI_MODULE_INIT() {
       {"startBackupOnOpen", NULL, js_start_backup_on_open, NULL, NULL, NULL,
        napi_enumerable, NULL},
       {"finishBackups", NULL, js_finish_backups, NULL, NULL, NULL,
+       napi_enumerable, NULL},
+      {"failCall", NULL, js_fail_call, NULL, NULL, NULL, napi_enumerable,
+       NULL},
+      {"callsLeft", NULL, js_calls_left, NULL, NULL, NULL, napi_enumerable,
+       NULL},
+      {"heldMemory", NULL, js_held_memory, NULL, NULL, NULL, napi_enumerable,
+       NULL},
+      {"takeWipes", NULL, js_take_wipes, NULL, NULL, NULL, napi_enumerable,
+       NULL},
+      {"limitSlots", NULL, js_limit_slots, NULL, NULL, NULL, napi_enumerable,
+       NULL},
+      {"failRandom", NULL, js_fail_random, NULL, NULL, NULL, napi_enumerable,
+       NULL},
+      {"failBuildCheck", NULL, js_fail_build_check, NULL, NULL, NULL,
+       napi_enumerable, NULL},
+      {"moduleNapiVersion", NULL, js_module_napi_version, NULL, NULL, NULL,
+       napi_enumerable, NULL},
+      {"initializeModule", NULL, js_initialize_module, NULL, NULL, NULL,
        napi_enumerable, NULL},
       {"libversion", NULL, js_libversion, NULL, NULL, NULL, napi_enumerable,
        NULL},

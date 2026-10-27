@@ -86,7 +86,6 @@
 
 #include <math.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
@@ -125,6 +124,12 @@ typedef struct {
 #endif
 _Static_assert(EVOLU_NODE_LAST_GENERATION < 0x200000,
                "An id must stay an integer that a double holds exactly.");
+
+// The most slots an environment's handles take, which the test addon can
+// lower. UINT32_MAX marks that no slot is free, so no slot is numbered so.
+#ifndef EVOLU_NODE_SLOTS
+#define EVOLU_NODE_SLOTS UINT32_MAX
+#endif
 
 // The kinds of handle an id names.
 enum { HANDLE_FREE, HANDLE_DATABASE, HANDLE_STATEMENT };
@@ -236,7 +241,7 @@ static void *fail(napi_env env) {
   const napi_extended_error_info *info = NULL;
   const char *message = "Node-API call failed";
   // Read before any other call, which would replace it.
-  if (napi_get_last_error_info(env, &info) == napi_ok && info != NULL &&
+  if (napi_get_last_error_info(env, &info) == napi_ok &&
       info->error_message != NULL)
     message = info->error_message;
   bool pending = false;
@@ -283,10 +288,8 @@ static bool create_typed(napi_env env, const char *type, napi_value *result) {
 static bool create_codec_failure(napi_env env,
                                  const evolu_database_codec_failure *failure,
                                  napi_value *result) {
-  const char *type = NULL;
+  const char *type;
   switch (failure->type) {
-  case EVOLU_DATABASE_CODEC_FAILURE_NONE:
-    return napi_get_null(env, result) == napi_ok;
   case EVOLU_DATABASE_CODEC_FAILURE_PAGE_AUTHENTICATION:
     type = "SqlitePageAuthenticationError";
     break;
@@ -296,9 +299,11 @@ static bool create_codec_failure(napi_env env,
   case EVOLU_DATABASE_CODEC_FAILURE_RANDOM:
     type = "SqliteRandomSourceError";
     break;
+  default: // EVOLU_DATABASE_CODEC_FAILURE_NONE, as the JSI adapter maps it.
+    return napi_get_null(env, result) == napi_ok;
   }
   napi_value error, page_number;
-  if (type == NULL || !create_typed(env, type, &error)) return false;
+  if (!create_typed(env, type, &error)) return false;
   if (failure->type == EVOLU_DATABASE_CODEC_FAILURE_PAGE_AUTHENTICATION &&
       (napi_create_uint32(env, failure->page_number, &page_number) !=
            napi_ok ||
@@ -361,8 +366,7 @@ static bool create_record_error(napi_env env, const char *operation,
   case EVOLU_DATABASE_ERROR_INVALID_SQL_TEXT:
     created = create_typed(env, "SqliteInvalidSqlText", &cause);
     break;
-  case EVOLU_DATABASE_ERROR_NONE:
-  case EVOLU_DATABASE_ERROR_SQLITE:
+  default: // EVOLU_DATABASE_ERROR_SQLITE, since a record of none never throws.
     created = create_sqlite_error(env, operation, record, message, &cause);
     break;
   }
@@ -591,7 +595,7 @@ static double handle_id(const Environment *environment, uint32_t slot) {
 static bool take_handle(Environment *environment, uint8_t kind, void *data,
                         uint32_t *slot) {
   if (environment->free_handle == UINT32_MAX) {
-    if (environment->handle_count == UINT32_MAX ||
+    if (environment->handle_count == EVOLU_NODE_SLOTS ||
         !reserve((void **)&environment->handles,
                  &environment->handle_capacity,
                  (size_t)environment->handle_count + 1,
@@ -969,9 +973,9 @@ static void start_values(Values *values, Environment *environment) {
 // than KEPT_VALUES or KEPT_BUFFER.
 static void free_values(Values *values, Environment *environment) {
   ValueArrays *arrays = &environment->arrays;
-  bool is_kept = arrays->kinds == NULL && arrays->numbers == NULL &&
-                 arrays->text == NULL && arrays->bytes == NULL &&
-                 arrays->texts == NULL;
+  // A call has numbers only once it has kinds, which grow first.
+  bool is_kept = arrays->kinds == NULL && arrays->text == NULL &&
+                 arrays->bytes == NULL && arrays->texts == NULL;
   if (is_kept && values->capacity <= KEPT_VALUES) {
     arrays->kinds = values->kinds;
     arrays->numbers = values->numbers;
@@ -1574,7 +1578,9 @@ static int bind_value(napi_env env, sqlite3_stmt *stmt, int index,
     double number;
     if (napi_get_value_double(env, value, &number) != napi_ok)
       return fail_code(env);
-    if (!isfinite(number)) break;
+    // Clang's, since macOS defines isfinite as a macro whose folded checks of
+    // its argument's size coverage counts as branches never taken.
+    if (!__builtin_isfinite(number)) break;
     // Number.isSafeInteger: the range check comes first, so the cast is
     // defined.
     if (number >= -MAX_SAFE_INTEGER && number <= MAX_SAFE_INTEGER &&
@@ -1616,8 +1622,10 @@ static int bind_value(napi_env env, sqlite3_stmt *stmt, int index,
 static void *throw_parameter_count(napi_env env, int expected,
                                    uint32_t count) {
   char message[64];
-  snprintf(message, sizeof message, "Expected %d parameters, got %u.",
-           expected, count);
+  // SQLite's, since macOS defines snprintf as a fortified macro, whose folded
+  // check coverage counts as a branch never taken.
+  sqlite3_snprintf(sizeof message, message, "Expected %d parameters, got %u.",
+                   expected, count);
   return throw_type_error(env, message);
 }
 
@@ -1846,9 +1854,8 @@ static napi_value native_step(napi_env env, napi_callback_info info) {
     return row;
   }
   if (rc != SQLITE_DONE) return throw_sqlite(env, "step", db, rc);
-  double *numbers = get_shared(env, environment, &shared);
-  if (numbers == NULL) return NULL;
-  numbers[SHARED_COUNT] = 0;
+  // No JavaScript ran since count_call fetched the shared memory.
+  shared.numbers[SHARED_COUNT] = 0;
   napi_value result;
   if (napi_get_null(env, &result) != napi_ok) return fail(env);
   return result;
@@ -2066,9 +2073,10 @@ static napi_value js_export(napi_env env, napi_callback_info info) {
     evolu_database_free_export(bytes, size);
     return fail(env);
   }
+  // Node-API refuses only a NULL result, so the status is ignored, as the
+  // finalizer ignores it when it takes the size back.
   int64_t adjusted;
-  if (napi_adjust_external_memory(env, (int64_t)size, &adjusted) != napi_ok)
-    return fail(env);
+  napi_adjust_external_memory(env, (int64_t)size, &adjusted);
   return buffer;
 }
 
@@ -2214,19 +2222,23 @@ static napi_value create_output(napi_env env, size_t size, uint8_t **data) {
 }
 
 // The output first, then the arguments' data, which no call moves before C
-// reads it.
+// reads it. A length-tracking view of a growable SharedArrayBuffer grows when
+// another thread grows the buffer meanwhile, so an input longer than the one
+// the output was sized for throws.
 static napi_value js_encrypt_xchacha(napi_env env, napi_callback_info info) {
   napi_value argv[3];
   if (!get_args(env, info, 3, argv, NULL)) return NULL;
   uint8_t *key, *nonce, *plaintext, *output_bytes;
-  size_t size;
+  size_t size, reread;
   if (!get_xchacha_arguments(env, argv, &key, &nonce, &plaintext, &size))
     return NULL;
   napi_value output =
       create_output(env, size + EVOLU_XCHACHA_TAG_SIZE, &output_bytes);
   if (output == NULL ||
-      !get_xchacha_arguments(env, argv, &key, &nonce, &plaintext, &size))
+      !get_xchacha_arguments(env, argv, &key, &nonce, &plaintext, &reread))
     return NULL;
+  if (reread != size)
+    return throw_plain_error(env, "The input grew while it was read.");
   evolu_xchacha_encrypt(output_bytes, key, nonce, plaintext, size);
   return output;
 }
@@ -2235,7 +2247,7 @@ static napi_value js_decrypt_xchacha(napi_env env, napi_callback_info info) {
   napi_value argv[3];
   if (!get_args(env, info, 3, argv, NULL)) return NULL;
   uint8_t *key, *nonce, *ciphertext, *output_bytes;
-  size_t size;
+  size_t size, reread;
   if (!get_xchacha_arguments(env, argv, &key, &nonce, &ciphertext, &size))
     return NULL;
   if (size < EVOLU_XCHACHA_TAG_SIZE)
@@ -2243,8 +2255,10 @@ static napi_value js_decrypt_xchacha(napi_env env, napi_callback_info info) {
   napi_value output =
       create_output(env, size - EVOLU_XCHACHA_TAG_SIZE, &output_bytes);
   if (output == NULL ||
-      !get_xchacha_arguments(env, argv, &key, &nonce, &ciphertext, &size))
+      !get_xchacha_arguments(env, argv, &key, &nonce, &ciphertext, &reread))
     return NULL;
+  if (reread != size)
+    return throw_plain_error(env, "The input grew while it was read.");
   if (evolu_xchacha_decrypt(output_bytes, key, nonce, ciphertext, size) !=
       EVOLU_XCHACHA_OK)
     return throw_plain_error(env, "The ciphertext doesn't authenticate.");
@@ -2444,12 +2458,12 @@ napi_value evolu_node_create_binding(napi_env env, napi_callback_info info) {
     evolu_database_clear_error(&record);
     return NULL;
   }
-  bool pending = false;
   Environment *environment = get_environment(env);
-  if (environment == NULL &&
-      (napi_is_exception_pending(env, &pending) != napi_ok || pending ||
-       create_environment(env, members) == NULL))
-    return NULL;
+  if (environment == NULL) {
+    bool pending = false;
+    if (napi_is_exception_pending(env, &pending) != napi_ok) return fail(env);
+    if (pending || create_environment(env, members) == NULL) return NULL;
+  }
   napi_value binding, abi_version;
   if (napi_create_object(env, &binding) != napi_ok ||
       napi_create_int32(env, ABI_VERSION, &abi_version) != napi_ok)

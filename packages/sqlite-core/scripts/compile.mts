@@ -38,6 +38,9 @@ export const testDirectory = /*#__PURE__*/ fileURLToPath(
 export const bindingDirectory = /*#__PURE__*/ fileURLToPath(
   /*#__PURE__*/ new URL("../binding/", import.meta.url),
 );
+export const nodeDirectory = /*#__PURE__*/ fileURLToPath(
+  /*#__PURE__*/ new URL("../node/", import.meta.url),
+);
 const vendorDirectory = /*#__PURE__*/ fileURLToPath(
   /*#__PURE__*/ new URL("../vendor/", import.meta.url),
 );
@@ -75,6 +78,12 @@ export interface CompileUnit {
   /** Reads the headers its object may depend on, each time it's called. */
   readonly headers: () => string;
 }
+
+/**
+ * The Node-API version node/module.c declares, in `@evolu/nodejs`'s addon and
+ * in the test addon; Node.js 24 supports it.
+ */
+export const napiVersion = 10;
 
 /**
  * The flags the core's own C compiles with: C11, warnings as errors, and the
