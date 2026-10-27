@@ -536,8 +536,9 @@ export interface SqliteVfsFailure extends Typed<"SqliteVfsFailure"> {
   readonly path: string | null;
   /**
    * What the browser threw, such as a `DOMException`, or what the pool found
-   * wrong, such as a {@link SqliteShortWriteError}, a {@link SahPoolFullError} or
-   * a {@link SahPoolInvalidPathError}.
+   * wrong, such as a {@link SqliteShortWriteError}, a
+   * {@link SqliteShortReadError}, a {@link SahPoolFullError} or a
+   * {@link SahPoolInvalidPathError}.
    */
   readonly error: unknown;
 }
@@ -597,6 +598,21 @@ export type SqliteVfsMethod =
 export interface SqliteShortWriteError extends Typed<"SqliteShortWrite"> {
   readonly requested: number;
   readonly written: number;
+}
+
+/**
+ * A read that returned fewer bytes than the file holds at its offset, which a
+ * pool's `xRead` records as it returns SQLITE_IOERR_READ, and
+ * {@link SahPool.read} returns as the cause of a {@link SqliteVfsIoError}.
+ *
+ * The File System Standard reports a failed read as a short count, not an
+ * exception, so only a read that the end of the file cuts returns
+ * SQLITE_IOERR_SHORT_READ, whose zeros SQLite takes for data.
+ */
+export interface SqliteShortReadError extends Typed<"SqliteShortRead"> {
+  /** The bytes the file holds at the offset, at most the length requested. */
+  readonly requested: number;
+  readonly read: number;
 }
 
 /** Why {@link SqliteDatabase.prepare} failed. */
@@ -738,9 +754,10 @@ export type SqliteVfsPath = typeof SqliteVfsPath.Output;
  */
 export interface SqliteVfsIoError extends Typed<"SqliteVfsIoError"> {
   /**
-   * What the storage threw, such as a `DOMException`, or a
+   * What the storage threw, such as a `DOMException`, a
    * {@link SqliteShortWriteError} for a write that stored a different number of
-   * bytes.
+   * bytes, or a {@link SqliteShortReadError} for a read that returned fewer
+   * bytes than the file holds.
    */
   readonly cause: unknown;
 }

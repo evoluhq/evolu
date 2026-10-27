@@ -46,6 +46,7 @@ import {
 import {
   createSqliteDatabase,
   SqliteVfsPath,
+  type SqliteShortReadError,
 } from "../../../../packages/sqlite-wasm/src/Database.ts";
 import type { EvoluCExports } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import { allocWasm } from "../../../../packages/sqlite-wasm/src/Memory.ts";
@@ -550,56 +551,70 @@ test("the operations onRow runs are top-level when the iteration is, so neither 
 // The build's default page size.
 const pageSize = 8192;
 
-test("export fails with SQLITE_IOERR and the pool's record as the cause when a page fails to read during it, which SQLite zero-fills, and succeeds after a failure recorded before it", async () => {
-  const t = await setupSahPool();
-  const database = getOrThrow(openPoolDatabase(t));
-  assertOk(
-    database.exec(
-      "CREATE TABLE t(a); INSERT INTO t VALUES (randomblob(20000))",
-    ),
-  );
-  database[Symbol.dispose]();
-  // A new connection, whose cache holds only the first page.
-  const reopened = getOrThrow(openPoolDatabase(t));
-  const databaseSlot = t.findSlotPath("/evolu1.db");
+// A read that returns fewer bytes than the file holds failed too, as the File
+// System Standard reports it, so its zeros are not exported either.
+test("export fails with SQLITE_IOERR and the pool's record as the cause when a page fails to read during it, by throwing or reading short, which SQLite zero-fills, and succeeds after a failure recorded before it", async () => {
   const error = new DOMException("Failed.", "InvalidStateError");
-  t.fake.inject((call) =>
-    call.method === "read" &&
-    call.path === databaseSlot &&
-    call.at >= sahPoolHeaderSize + pageSize
-      ? { type: "Throw", error }
-      : null,
-  );
-
-  const exported = reopened.export();
-
-  assertErr(exported);
-  assertEqual(exported.error, {
-    type: "SqliteError",
-    operation: "export",
-    extendedCode: SQLITE_IOERR,
-    message: "disk I/O error",
-    sqlOffset: null,
-    cause: {
-      type: "SqliteVfsFailure",
-      method: "xRead",
-      path: "/evolu1.db",
-      error,
-    },
-  });
-  t.fake.inject(null);
-  recordStaleFailure(t);
-  assertEqual(
-    getOrThrow(reopened.export()),
-    getOrThrow(
-      t.pool.read(
-        "/evolu1.db",
-        0 as NonNegativeInt,
-        (1 << 20) as NonNegativeInt,
+  for (const [fault, cause] of [
+    [{ type: "Throw", error }, error],
+    [
+      { type: "Count", count: 0 },
+      {
+        type: "SqliteShortRead",
+        requested: pageSize,
+        read: 0,
+      } satisfies SqliteShortReadError,
+    ],
+  ] as const) {
+    const t = await setupSahPool();
+    const database = getOrThrow(openPoolDatabase(t));
+    assertOk(
+      database.exec(
+        "CREATE TABLE t(a); INSERT INTO t VALUES (randomblob(20000))",
       ),
-    ),
-  );
-  reopened[Symbol.dispose]();
+    );
+    database[Symbol.dispose]();
+    // A new connection, whose cache holds only the first page.
+    const reopened = getOrThrow(openPoolDatabase(t));
+    const databaseSlot = t.findSlotPath("/evolu1.db");
+    t.fake.inject((call) =>
+      call.method === "read" &&
+      call.path === databaseSlot &&
+      call.at >= sahPoolHeaderSize + pageSize
+        ? fault
+        : null,
+    );
+
+    const exported = reopened.export();
+
+    assertErr(exported);
+    assertEqual(exported.error, {
+      type: "SqliteError",
+      operation: "export",
+      extendedCode: SQLITE_IOERR,
+      message: "disk I/O error",
+      sqlOffset: null,
+      cause: {
+        type: "SqliteVfsFailure",
+        method: "xRead",
+        path: "/evolu1.db",
+        error: cause,
+      },
+    });
+    t.fake.inject(null);
+    recordStaleFailure(t);
+    assertEqual(
+      getOrThrow(reopened.export()),
+      getOrThrow(
+        t.pool.read(
+          "/evolu1.db",
+          0 as NonNegativeInt,
+          (1 << 20) as NonNegativeInt,
+        ),
+      ),
+    );
+    reopened[Symbol.dispose]();
+  }
 });
 
 test("export fails with the pool's record as the cause also when a callback during it runs a query or an iteration on the same database or another one on the pool, which leaves the record as it is", async () => {

@@ -36,6 +36,7 @@ import {
   SQLITE_IOERR,
   SQLITE_IOERR_DELETE,
   SQLITE_IOERR_DIR_FSYNC,
+  SQLITE_IOERR_READ,
   SQLITE_IOERR_TRUNCATE,
   SQLITE_OK,
   SQLITE_OPEN_READONLY,
@@ -44,7 +45,9 @@ import {
 } from "../../../../packages/sqlite-wasm/src/Constants.ts";
 import {
   createSqliteDatabase,
+  sqliteResultCodeToPrimary,
   SqliteVfsPath,
+  type SqliteShortReadError,
 } from "../../../../packages/sqlite-wasm/src/Database.ts";
 import type { SqliteDbPtr } from "../../../../packages/sqlite-wasm/src/Pointer.ts";
 import { sahPoolHeaderSize } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
@@ -119,6 +122,50 @@ test("a transaction that spilled when its worker died is rolled back by the next
 
     assertEqual(t.selectText(rowsSql, db), "300:300");
 
+    assertEqual(t.selectText("PRAGMA integrity_check", db), "ok");
+    assertEqual(t.pool.getPaths(), ["/test.db"]);
+    close(t, db);
+  }
+});
+
+// The File System Standard reports a failed read as a short count, and Safari
+// on iOS was reported to return 0 for a slot header that is there (forum
+// thread d1c20a0b1a). Taken as the end of the journal, a short first byte made
+// SQLite find no hot journal, so the next instance read 16 of 300 rows
+// unchanged and its next write kept them, and a short record ended the
+// rollback early and deleted the journal.
+test("a hot journal whose first byte or a record reads short fails the read with SQLITE_IOERR_READ, recording a SqliteShortReadError and keeping the journal, and the next read rolls it back", async () => {
+  for (const shortRead of ["first byte", "record"] as const) {
+    const t = await setupCrashedSpill();
+    const journalSlot = t.findSlotPath("/test.db-journal");
+    let recordReads = 0;
+    t.fake.inject((call) =>
+      call.method === "read" &&
+      call.path === journalSlot &&
+      (shortRead === "first byte"
+        ? call.at === sahPoolHeaderSize && call.length === 1
+        : call.length >= 512 && ++recordReads === 3)
+        ? { type: "Count", count: 0 }
+        : null,
+    );
+    const db = openOk(t, "/test.db");
+
+    assertEqual(sqliteResultCodeToPrimary(t.exec(rowsSql, db)), SQLITE_IOERR);
+    assertEqual(sqlite3_extended_errcode(t)(db), SQLITE_IOERR_READ);
+    assertEqual(t.pool.getFailure(), {
+      type: "SqliteVfsFailure",
+      method: "xRead",
+      path: "/test.db-journal",
+      error: {
+        type: "SqliteShortRead",
+        requested: shortRead === "first byte" ? 1 : pageSize,
+        read: 0,
+      } satisfies SqliteShortReadError,
+    });
+    assertEqual(t.pool.getPaths(), ["/test.db", "/test.db-journal"]);
+    t.fake.inject(null);
+
+    assertEqual(t.selectText(rowsSql, db), "300:300");
     assertEqual(t.selectText("PRAGMA integrity_check", db), "ok");
     assertEqual(t.pool.getPaths(), ["/test.db"]);
     close(t, db);

@@ -144,8 +144,15 @@
  *   a handle ahead of its writes and releases what the file does not use only
  *   when the handle closes, so a file the pool deletes frees no quota for the
  *   pool's other files until the pool is opened again.
- * - `xRead` zero-fills the rest of a short read and returns
- *   SQLITE_IOERR_SHORT_READ, as SQLite requires.
+ * - `xRead` zero-fills the rest of a short read, as SQLite requires, and returns
+ *   SQLITE_IOERR_SHORT_READ only when the end of the file cut it. The File
+ *   System Standard reports a failed read as a short count, and Safari on iOS
+ *   was reported to return 0 for a slot header that is there (SQLite forum
+ *   thread d1c20a0b1a), so a read that returns fewer bytes than the file holds
+ *   returns SQLITE_IOERR_READ, recording a {@link SqliteShortReadError}.
+ *   Otherwise SQLite would take the zeros for data and for a hot journal's end:
+ *   a first byte read short would make it no hot journal, and a record read
+ *   short would end its rollback and delete it.
  * - Other methods return their specific code, such as SQLITE_IOERR_TRUNCATE,
  *   SQLITE_IOERR_FSYNC or SQLITE_IOERR_FSTAT, so the extended code says which
  *   operation failed.
@@ -360,6 +367,7 @@ import {
 } from "./Constants.ts";
 import type {
   SqliteError,
+  SqliteShortReadError,
   SqliteShortWriteError,
   SqliteVfsFailure,
   SqliteVfsIoError,
@@ -433,8 +441,10 @@ export interface SahPool extends Disposable {
    * Reads bytes of a file without SQLite, such as the first 16 bytes of an
    * encrypted database, which are its cipher salt. The path is one
    * {@link SahPool.getPaths} returns, and the offset counts from the start of
-   * the file's data, after the header. Fewer bytes come back at the end of the
-   * file.
+   * the file's data, after the header. Fewer bytes come back only at the end of
+   * the file; a read that returns fewer bytes than the file holds fails with a
+   * {@link SqliteVfsIoError} caused by a {@link SqliteShortReadError}, as `xRead`
+   * fails.
    */
   readonly read: (
     path: string,
@@ -948,16 +958,25 @@ export const openSahPool =
         pBuf: WasmPtr,
         amount: number,
         offset: bigint,
-      ) =>
-        runIo("xRead", getOpenFile(pFile), SQLITE_IOERR_READ, (handle) => {
+      ) => {
+        const file = getOpenFile(pFile);
+        return runIo("xRead", file, SQLITE_IOERR_READ, (handle) => {
           const buffer = sqliteWasm.getHeapU8().subarray(pBuf, pBuf + amount);
-          const read = handle.read(buffer, {
-            at: sahPoolHeaderSize + Number(offset),
-          });
+          const at = sahPoolHeaderSize + Number(offset);
+          const read = handle.read(buffer, { at });
+          if (read === amount) return SQLITE_OK;
           // SQLite requires the rest to be zeros.
           buffer.fill(0, read);
-          return read === amount ? SQLITE_OK : SQLITE_IOERR_SHORT_READ;
-        }),
+          const size = handle.getSize();
+          if (at + read >= size) return SQLITE_IOERR_SHORT_READ;
+          recordFailure("xRead", file.path, {
+            type: "SqliteShortRead",
+            requested: Math.min(amount, size - at),
+            read,
+          } satisfies SqliteShortReadError);
+          return SQLITE_IOERR_READ;
+        });
+      },
       xWrite: (
         pFile: SqliteFilePtr,
         pBuf: WasmPtr,
@@ -1068,14 +1087,28 @@ export const openSahPool =
           const slot = slotByPath.get(path);
           if (slot == null) return err({ type: "SahPoolFileNotFound", path });
           const bytes = new Uint8Array(byteLength);
+          const at = sahPoolHeaderSize + offset;
+          const toIoError = (cause: unknown): SqliteVfsIoError => ({
+            type: "SqliteVfsIoError",
+            cause,
+          });
           const read = trySync(
-            () => slot.handle.read(bytes, { at: sahPoolHeaderSize + offset }),
-            (cause): SqliteVfsIoError => ({ type: "SqliteVfsIoError", cause }),
+            () => slot.handle.read(bytes, { at }),
+            toIoError,
           );
           if (!read.ok) return read;
-          // Fewer at the end of the file.
-          return ok(
-            read.value === byteLength ? bytes : bytes.slice(0, read.value),
+          if (read.value === byteLength) return ok(bytes);
+          // Fewer only at the end of the file, as in xRead.
+          const size = trySync(() => slot.handle.getSize(), toIoError);
+          if (!size.ok) return size;
+          if (at + read.value >= size.value)
+            return ok(bytes.slice(0, read.value));
+          return err(
+            toIoError({
+              type: "SqliteShortRead",
+              requested: Math.min(byteLength, size.value - at),
+              read: read.value,
+            } satisfies SqliteShortReadError),
           );
         },
         unlink: (path) => {

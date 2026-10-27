@@ -600,19 +600,24 @@ test("createEncryptedSqliteDatabase opens a database 2.2.4 keyed whose first 16 
 
 // An empty salt would key the emptied database with a junk key, whose writes
 // the next start could not open. A wrong key's rollback first restores the
-// database to the size its journal records, so the read of its first 16 bytes
-// comes back short only when the file is cut meanwhile.
-test("createEncryptedSqliteDatabase returns the raw attempt's error, deriving no key, when fewer than 16 bytes of the database read, as for a database shorter than 16 bytes", async () => {
+// database to the size its journal records, so its first 16 bytes are cut
+// short only when the file is cut meanwhile, as the read here does first.
+test("createEncryptedSqliteDatabase returns the raw attempt's error, deriving no key, for a database shorter than 16 bytes", async () => {
   const t = await setupLegacyHotJournal();
   const databaseSlot = t.findSlotPath("/evolu1.db");
-  t.fake.inject((call) =>
-    call.method === "read" &&
-    call.path === databaseSlot &&
-    call.at === sahPoolHeaderSize &&
-    call.length === 16
-      ? { type: "Count", count: 10 }
-      : null,
-  );
+  t.fake.inject((call) => {
+    if (
+      call.method === "read" &&
+      call.path === databaseSlot &&
+      call.at === sahPoolHeaderSize &&
+      call.length === 16
+    ) {
+      const file = t.fake.readFile(databaseSlot);
+      assert(file != null, "The database's slot exists.");
+      t.fake.writeFile(databaseSlot, file.subarray(0, sahPoolHeaderSize + 10));
+    }
+    return null;
+  });
   const raw = openEncryptedDatabase(t, testKey);
   assertErr(raw);
   // A wrong key, which fails the journal's first record, page 1.
@@ -626,6 +631,49 @@ test("createEncryptedSqliteDatabase returns the raw attempt's error, deriving no
 
   assertEqual(opened, err(raw.error));
   assertEqual(spy.getImports(), 0);
+});
+
+// A failed read returns a short count, which, taken as the end of the file,
+// gave the raw attempt's SQLITE_NOTADB for a database the derived key opens.
+// The raw attempt's codec reads the database's first 16 bytes twice when it
+// has a hot journal, and the fallback reads them again for the salt.
+test("createEncryptedSqliteDatabase fails with the short read as its cause, deriving no key and keeping the journal, when any read of the database's first 16 bytes returns fewer than the file holds", async () => {
+  const shortRead = { type: "SqliteShortRead", requested: 16, read: 10 };
+  for (const failedRead of [1, 2, 3]) {
+    const t = await setupLegacyHotJournal();
+    const databaseSlot = t.findSlotPath("/evolu1.db");
+    let reads = 0;
+    t.fake.inject((call) =>
+      call.method === "read" &&
+      call.path === databaseSlot &&
+      call.at === sahPoolHeaderSize &&
+      call.length === 16 &&
+      ++reads === failedRead
+        ? { type: "Count", count: 10 }
+        : null,
+    );
+    const spy = spySubtleCrypto();
+
+    const opened = await openWithFallback(t, spy.subtleCrypto);
+
+    assertErr(opened);
+    if (opened.error.type === "SqliteError")
+      assertEqual(opened.error.cause, {
+        type: "SqliteVfsFailure",
+        method: "xRead",
+        path: "/evolu1.db",
+        error: shortRead,
+      });
+    else
+      assertEqual(opened.error, {
+        type: "SqliteVfsIoError",
+        cause: shortRead,
+      });
+    // The pool's own read is the third.
+    assertEqual(opened.error.type === "SqliteVfsIoError", failedRead === 3);
+    assertEqual(spy.getImports(), 0);
+    assertEqual(t.pool.getPaths(), ["/evolu1.db", "/evolu1.db-journal"]);
+  }
 });
 
 /**

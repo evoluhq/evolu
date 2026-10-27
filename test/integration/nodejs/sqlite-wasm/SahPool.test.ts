@@ -315,6 +315,7 @@ test("xRead past the end returns SQLITE_IOERR_SHORT_READ and zero-fills the rest
     copyWasmBytes(t)(pRead, data.length * 2),
     Uint8Array.of(...data, ...new Uint8Array(data.length)),
   );
+  assertEqual(t.pool.getFailure(), null);
 });
 
 /**
@@ -1814,7 +1815,10 @@ test("xTruncate returns SQLITE_IOERR_TRUNCATE for QuotaExceededError too, not SQ
   });
 });
 
-test("xRead zero-fills the rest of a short read in the middle of a file too", async () => {
+// The File System Standard reports a failed read as a short count, so a read
+// that stops before the end of the file failed, and SQLite must not take the
+// zeros for data, as SQLITE_IOERR_SHORT_READ would make it.
+test("xRead returns SQLITE_IOERR_READ, recording a SqliteShortReadError, when it reads fewer bytes than the file holds, also near the end", async () => {
   const t = await setupSahPool();
   const { pFile } = t.openFile(
     "test",
@@ -1827,12 +1831,53 @@ test("xRead zero-fills the rest of a short read in the middle of a file too", as
     call.method === "read" ? { type: "Count", count: 3 } : null,
   );
 
-  assertEqual(t.callIo(pFile, "xRead", pRead, 8, 4n), SQLITE_IOERR_SHORT_READ);
+  assertEqual(t.callIo(pFile, "xRead", pRead, 8, 4n), SQLITE_IOERR_READ);
 
   assertEqual(
     copyWasmBytes(t)(pRead, 8),
     Uint8Array.of(1, 1, 1, 0, 0, 0, 0, 0),
   );
+  assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
+    method: "xRead",
+    path: "/test",
+    error: { type: "SqliteShortRead", requested: 8, read: 3 },
+  });
+
+  // The file holds 4 of the 8 bytes at 12, so 2 is short as well.
+  t.pool.clearFailure();
+  t.fake.inject((call) =>
+    call.method === "read" ? { type: "Count", count: 2 } : null,
+  );
+
+  assertEqual(t.callIo(pFile, "xRead", pRead, 8, 12n), SQLITE_IOERR_READ);
+
+  assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
+    method: "xRead",
+    path: "/test",
+    error: { type: "SqliteShortRead", requested: 4, read: 2 },
+  });
+
+  // A short read whose size can't be read is not taken for the end either.
+  t.pool.clearFailure();
+  const error = new DOMException("Failed.", "InvalidStateError");
+  t.fake.inject((call) =>
+    call.method === "read"
+      ? { type: "Count", count: 3 }
+      : call.method === "getSize"
+        ? { type: "Throw", error }
+        : null,
+  );
+
+  assertEqual(t.callIo(pFile, "xRead", pRead, 8, 4n), SQLITE_IOERR_READ);
+
+  assertEqual(t.pool.getFailure(), {
+    type: "SqliteVfsFailure",
+    method: "xRead",
+    path: "/test",
+    error,
+  });
 });
 
 test("xOpen with CREATE fails with SQLITE_CANTOPEN when no slot is free, recording SahPoolFull, and works again once a file is deleted", async () => {
@@ -2323,7 +2368,7 @@ test("setup fails with SahPoolSetupError when writing the free header of a slot 
 
 // tester1 OPFS SyncAccessHandle Pool VFS / SAH sanity checks, exportFile, which
 // SahPool.read replaces.
-test("SahPool.read returns the bytes at an offset of the file's data, fewer at its end, and fails with SahPoolFileNotFound or SqliteVfsIoError", async () => {
+test("SahPool.read returns the bytes at an offset of the file's data, fewer at its end, and fails with SahPoolFileNotFound, or with SqliteVfsIoError when the read throws or returns fewer bytes than the file holds", async () => {
   const t = await setupSahPool();
   const { pFile } = t.openFile(
     "/test.db",
@@ -2349,6 +2394,31 @@ test("SahPool.read returns the bytes at an offset of the file's data, fewer at i
   );
   t.fake.inject((call) =>
     call.method === "read" ? { type: "Throw", error } : null,
+  );
+  assertErr(
+    t.pool.read("/test.db", 0 as NonNegativeInt, 16 as NonNegativeInt),
+    {
+      type: "SqliteVfsIoError",
+      cause: error,
+    },
+  );
+  // Fewer bytes than the file holds at the offset failed, as in xRead.
+  t.fake.inject((call) =>
+    call.method === "read" ? { type: "Count", count: 1 } : null,
+  );
+  assertErr(
+    t.pool.read("/test.db", 1 as NonNegativeInt, 16 as NonNegativeInt),
+    {
+      type: "SqliteVfsIoError",
+      cause: { type: "SqliteShortRead", requested: 4, read: 1 },
+    },
+  );
+  t.fake.inject((call) =>
+    call.method === "read"
+      ? { type: "Count", count: 0 }
+      : call.method === "getSize"
+        ? { type: "Throw", error }
+        : null,
   );
   assertErr(
     t.pool.read("/test.db", 0 as NonNegativeInt, 16 as NonNegativeInt),

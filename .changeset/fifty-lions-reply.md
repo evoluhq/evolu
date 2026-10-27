@@ -43,6 +43,15 @@ What this brings:
   header that is there, now fails the open with `SahPoolSetupError` and
   changes nothing, where 3.53.4-build1 to 3.54.0-build2 read it as a free
   slot and truncated the database.
+- Any other read that returns fewer bytes than the file holds, which is how
+  the File System Standard reports a failed read, now fails as an I/O error:
+  the failed statement, open or export has the pool's `SqliteVfsFailure` with
+  a `SqliteShortReadError` as its cause, and `SahPool.read` fails with a
+  `SqliteVfsIoError`. Earlier builds, like SQLite's own pool, took it for the
+  end of the file, so SQLite read and exported zeros as data, and since
+  3.53.4-build1, which rolls hot journals back, a hot journal read short was
+  taken for none, keeping a half-applied transaction, or rolled back only in
+  part and deleted.
 
 Constant time has a price, paid on writes. On an Apple M5, writing an 8 KiB page
 with its journal record takes about 300 µs instead of about 100 with
