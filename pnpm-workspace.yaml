@@ -40,6 +40,8 @@ packages:
   - apps/*
   - packages/*
   - examples/*
+  - bench/sqlite-comparison
+  - bench/sqlite-comparison/react-native/app
 
 tasks:
   dev:

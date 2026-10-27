@@ -1,0 +1,761 @@
+{
+  "formatVersion": 1,
+  "createdAt": "2026-10-27T11:01:52.827Z",
+  "configuration": {
+    "warmupRounds": 1,
+    "measuredRounds": 5,
+    "waSqliteCommit": "7a4b4241ba7c61ee19121aacd6c93892234ce1a1",
+    "workloadSha256": "15026435147eda20acc58472a0df3432d7d67d8f134bd945ee1225a2b65c9ed5",
+    "pragmas": [
+      "PRAGMA page_size = 4096",
+      "PRAGMA journal_mode = DELETE",
+      "PRAGMA synchronous = FULL",
+      "PRAGMA cache_size = -16000",
+      "PRAGMA temp_store = MEMORY",
+      "PRAGMA secure_delete = OFF"
+    ]
+  },
+  "targets": [
+    {
+      "id": "node-linux-arm64-musl",
+      "label": "Node.js 24.22.0, node:24.22.0-alpine (musl) on arm64",
+      "createdAt": "2026-10-27T11:01:13.100Z",
+      "environment": {
+        "CPU": "unknown, 4 cores, 6 GiB",
+        "OS": "Linux 6.8.0-100-generic arm64",
+        "Node.js": "24.22.0",
+        "C library": "musl",
+        "Checkout": "0a9a95ebc with uncommitted changes",
+        "Host": "Apple M5, 10 cores, 16 GiB; macOS 26.6.2 arm64",
+        "Container": "node:24.22.0-alpine (musl)"
+      },
+      "loadAverages": {
+        "start": [0.26, 0.16, 0.06],
+        "end": [0.89, 0.34, 0.13]
+      },
+      "notes": [],
+      "evoluStackId": "evolu",
+      "evoluEncryptedStackId": "evoluEncrypted",
+      "referenceStackId": "betterSqlite3",
+      "stacks": [
+        {
+          "type": "Measured",
+          "id": "evolu",
+          "label": "Evolu",
+          "library": "Evolu's SQLite",
+          "binding": "Node-API (@evolu/nodejs), unix VFS",
+          "encrypted": false,
+          "sqliteVersion": "3.54.1",
+          "sqliteSourceId": "2026-10-16 14:45:20 555e07ef33f69a0957d24d8e555b702464a131d6f1607f4c3c1e4551e8e6ca76",
+          "compileOptions": [
+            "ATOMIC_INTRINSICS=1",
+            "COMPILER=clang-22.1.3",
+            "DEFAULT_AUTOVACUUM",
+            "DEFAULT_CACHE_SIZE=-2000",
+            "DEFAULT_FILE_FORMAT=4",
+            "DEFAULT_JOURNAL_SIZE_LIMIT=-1",
+            "DEFAULT_MEMSTATUS=0",
+            "DEFAULT_MMAP_SIZE=0",
+            "DEFAULT_PAGE_SIZE=4096",
+            "DEFAULT_PCACHE_INITSZ=20",
+            "DEFAULT_RECURSIVE_TRIGGERS",
+            "DEFAULT_SECTOR_SIZE=4096",
+            "DEFAULT_SYNCHRONOUS=2",
+            "DEFAULT_WAL_AUTOCHECKPOINT=1000",
+            "DEFAULT_WAL_SYNCHRONOUS=2",
+            "DEFAULT_WORKER_THREADS=0",
+            "DIRECT_OVERFLOW_READ",
+            "DQS=0",
+            "ENABLE_LOCKING_STYLE=0",
+            "ENABLE_MATH_FUNCTIONS",
+            "MALLOC_SOFT_LIMIT=1024",
+            "MAX_ATTACHED=10",
+            "MAX_COLUMN=2000",
+            "MAX_COMPOUND_SELECT=500",
+            "MAX_DEFAULT_PAGE_SIZE=8192",
+            "MAX_EXPR_DEPTH=1000",
+            "MAX_FUNCTION_ARG=1000",
+            "MAX_LENGTH=1000000000",
+            "MAX_LIKE_PATTERN_LENGTH=50000",
+            "MAX_MMAP_SIZE=0x7fff0000",
+            "MAX_PAGE_COUNT=0xfffffffe",
+            "MAX_PAGE_SIZE=65536",
+            "MAX_SCHEMA=10000000",
+            "MAX_SQL_LENGTH=1000000000",
+            "MAX_TRIGGER_DEPTH=1000",
+            "MAX_VARIABLE_NUMBER=32766",
+            "MAX_VDBE_OP=250000000",
+            "MAX_WORKER_THREADS=0",
+            "MUTEX_PTHREADS",
+            "OMIT_INCRBLOB",
+            "OMIT_INTROSPECTION_PRAGMAS",
+            "OMIT_LOAD_EXTENSION",
+            "OMIT_PROGRESS_CALLBACK",
+            "SYSTEM_MALLOC",
+            "TEMP_STORE=3",
+            "THREADSAFE=2"
+          ],
+          "pragmas": {
+            "page_size": "4096",
+            "journal_mode": "delete",
+            "synchronous": "2",
+            "cache_size": "-16000",
+            "temp_store": "2",
+            "secure_delete": "0",
+            "locking_mode": "normal",
+            "auto_vacuum": "0",
+            "mmap_size": "0"
+          },
+          "warmupRuns": [
+            {
+              "round": 0,
+              "position": 0,
+              "workloadMs": [
+                743.124276, 18.666524999999865, 32.72129499999983,
+                52.71353199999999, 187.14121699999987, 8.911137000000053,
+                11.28409899999997, 13.138058999999885, 48.53919300000007,
+                96.60480000000007, 41.9379329999997, 17.54473300000018,
+                22.891406000000188, 21.08057000000008, 9.665055000000393,
+                3.8732970000000932
+              ],
+              "driverMs": {
+                "insert": 8.041593999999805,
+                "selectByKey": 4.486755999999787,
+                "selectAll": 13.998810999999932
+              }
+            }
+          ],
+          "runs": [
+            {
+              "round": 0,
+              "position": 0,
+              "workloadMs": [
+                740.1412819999987, 25.85120199999983, 38.24026199999935,
+                54.30103400000007, 195.46560599999975, 10.419431999998778,
+                10.50134799999978, 13.454476999999315, 51.563154999999824,
+                34.8192569999992, 27.426747000001342, 16.994482000000062,
+                22.567322999999305, 20.93036299999949, 10.446264000000156,
+                3.5185460000011517
+              ],
+              "driverMs": {
+                "insert": 4.35967299999902,
+                "selectByKey": 6.7443010000006325,
+                "selectAll": 26.602077999999892
+              }
+            },
+            {
+              "round": 1,
+              "position": 3,
+              "workloadMs": [
+                743.6349660000014, 17.590941999998904, 32.917004999999335,
+                53.841701000001194, 190.99506100000144, 8.886263000000326,
+                8.149553999999625, 13.13389399999869, 48.25356800000009,
+                32.493420999999216, 25.84332799999902, 16.38289799999984,
+                22.579531999999745, 20.878279999997176, 9.157429999999295,
+                3.701337999998941
+              ],
+              "driverMs": {
+                "insert": 3.794921999997314,
+                "selectByKey": 4.028631000001042,
+                "selectAll": 9.502014000001509
+              }
+            },
+            {
+              "round": 2,
+              "position": 2,
+              "workloadMs": [
+                747.4582269999992, 16.592273999998724, 30.99441900000238,
+                53.17107499999838, 190.8233540000001, 8.639803999998549,
+                8.107178000002023, 13.224935999998706, 48.293651999996655,
+                32.349255000000994, 25.75770399999965, 15.535938000000897,
+                23.63549200000125, 20.814487999999983, 9.387179999997898,
+                3.6548389999989013
+              ],
+              "driverMs": {
+                "insert": 4.14671399999861,
+                "selectByKey": 3.92258899999797,
+                "selectAll": 8.570637000000715
+              }
+            },
+            {
+              "round": 3,
+              "position": 1,
+              "workloadMs": [
+                996.0549619999983, 16.931024999998044, 30.91358599999876,
+                52.90965900000083, 190.65102200000183, 9.40576399999918,
+                7.932303000001411, 13.427144000001135, 47.32210900000064,
+                31.10396100000071, 26.7026220000007, 93.47321699999884,
+                26.655413000000408, 21.00911300000007, 9.876306000001932,
+                3.5861709999990126
+              ],
+              "driverMs": {
+                "insert": 3.354921000001923,
+                "selectByKey": 3.7899629999992612,
+                "selectAll": 8.907638000000588
+              }
+            },
+            {
+              "round": 4,
+              "position": 0,
+              "workloadMs": [
+                918.4741510000022, 17.572483000003558, 31.15246200000547,
+                52.67186699999729, 189.46156399999745, 8.863262999999279,
+                7.990595000002941, 13.36735200000112, 47.91569399999571,
+                32.31237899999542, 25.9247880000039, 15.944523000005574,
+                22.42132400000264, 20.503112999998848, 9.2486379999973,
+                2.7228789999935543
+              ],
+              "driverMs": {
+                "insert": 3.8777140000020154,
+                "selectByKey": 4.2366320000001,
+                "selectAll": 10.44568199999776
+              }
+            }
+          ]
+        },
+        {
+          "type": "Measured",
+          "id": "evoluEncrypted",
+          "label": "Evolu, encrypted",
+          "library": "Evolu's SQLite",
+          "binding": "Node-API (@evolu/nodejs), Evolu's codec",
+          "encrypted": true,
+          "sqliteVersion": "3.54.1",
+          "sqliteSourceId": "2026-10-16 14:45:20 555e07ef33f69a0957d24d8e555b702464a131d6f1607f4c3c1e4551e8e6ca76",
+          "compileOptions": [
+            "ATOMIC_INTRINSICS=1",
+            "COMPILER=clang-22.1.3",
+            "DEFAULT_AUTOVACUUM",
+            "DEFAULT_CACHE_SIZE=-2000",
+            "DEFAULT_FILE_FORMAT=4",
+            "DEFAULT_JOURNAL_SIZE_LIMIT=-1",
+            "DEFAULT_MEMSTATUS=0",
+            "DEFAULT_MMAP_SIZE=0",
+            "DEFAULT_PAGE_SIZE=4096",
+            "DEFAULT_PCACHE_INITSZ=20",
+            "DEFAULT_RECURSIVE_TRIGGERS",
+            "DEFAULT_SECTOR_SIZE=4096",
+            "DEFAULT_SYNCHRONOUS=2",
+            "DEFAULT_WAL_AUTOCHECKPOINT=1000",
+            "DEFAULT_WAL_SYNCHRONOUS=2",
+            "DEFAULT_WORKER_THREADS=0",
+            "DIRECT_OVERFLOW_READ",
+            "DQS=0",
+            "ENABLE_LOCKING_STYLE=0",
+            "ENABLE_MATH_FUNCTIONS",
+            "MALLOC_SOFT_LIMIT=1024",
+            "MAX_ATTACHED=10",
+            "MAX_COLUMN=2000",
+            "MAX_COMPOUND_SELECT=500",
+            "MAX_DEFAULT_PAGE_SIZE=8192",
+            "MAX_EXPR_DEPTH=1000",
+            "MAX_FUNCTION_ARG=1000",
+            "MAX_LENGTH=1000000000",
+            "MAX_LIKE_PATTERN_LENGTH=50000",
+            "MAX_MMAP_SIZE=0x7fff0000",
+            "MAX_PAGE_COUNT=0xfffffffe",
+            "MAX_PAGE_SIZE=65536",
+            "MAX_SCHEMA=10000000",
+            "MAX_SQL_LENGTH=1000000000",
+            "MAX_TRIGGER_DEPTH=1000",
+            "MAX_VARIABLE_NUMBER=32766",
+            "MAX_VDBE_OP=250000000",
+            "MAX_WORKER_THREADS=0",
+            "MUTEX_PTHREADS",
+            "OMIT_INCRBLOB",
+            "OMIT_INTROSPECTION_PRAGMAS",
+            "OMIT_LOAD_EXTENSION",
+            "OMIT_PROGRESS_CALLBACK",
+            "SYSTEM_MALLOC",
+            "TEMP_STORE=3",
+            "THREADSAFE=2"
+          ],
+          "pragmas": {
+            "page_size": "4096",
+            "journal_mode": "delete",
+            "synchronous": "2",
+            "cache_size": "-16000",
+            "temp_store": "2",
+            "secure_delete": "1",
+            "locking_mode": "normal",
+            "auto_vacuum": "0",
+            "mmap_size": "0"
+          },
+          "warmupRuns": [
+            {
+              "round": 0,
+              "position": 1,
+              "workloadMs": [
+                804.4203219999999, 19.998610999999983, 36.008008000000245,
+                52.363446999999724, 188.6964280000002, 9.67592999999988,
+                12.353726000000279, 13.948603000000276, 52.026906000000054,
+                36.109715999999935, 31.56300199999987, 27.323413000000073,
+                34.36592299999984, 23.803825000000415, 13.92656100000022,
+                27.777913999999782
+              ],
+              "driverMs": {
+                "insert": 8.005844000000252,
+                "selectByKey": 4.481757000000016,
+                "selectAll": 12.59110099999998
+              }
+            }
+          ],
+          "runs": [
+            {
+              "round": 0,
+              "position": 1,
+              "workloadMs": [
+                753.5891769999998, 23.43657499999972, 41.447431999999026,
+                52.96890799999892, 189.9330570000002, 10.161431000000448,
+                9.581389000000854, 13.135850999999093, 54.14365900000121,
+                37.58205199999975, 31.164961000000403, 28.345789999999397,
+                35.681008999999904, 24.28265900000042, 15.412355000000389,
+                29.30870700000014
+              ],
+              "driverMs": {
+                "insert": 7.519051999999647,
+                "selectByKey": 5.162965999999869,
+                "selectAll": 12.234433000001445
+              }
+            },
+            {
+              "round": 1,
+              "position": 0,
+              "workloadMs": [
+                811.560598, 23.723449999999502, 35.15675700000065,
+                53.057824999999866, 190.26747500000056, 9.72693099999924,
+                7.946927999999389, 13.071601999999984, 51.960197999998854,
+                35.890841999998884, 31.655628000000434, 27.19162100000176,
+                35.58380000000034, 24.07390899999882, 14.565395999999964,
+                28.984207999999853
+              ],
+              "driverMs": {
+                "insert": 4.061588999999003,
+                "selectByKey": 4.2770479999999225,
+                "selectAll": 8.958470999999918
+              }
+            },
+            {
+              "round": 2,
+              "position": 3,
+              "workloadMs": [
+                781.0858179999996, 19.19865199999913, 34.49679899999683,
+                52.50207399999999, 190.12676999999894, 9.821764000000258,
+                7.874345000000176, 13.123852000000625, 52.55936700000166,
+                35.897258999997575, 31.518835999999283, 27.192622000002302,
+                35.06696700000248, 24.92932700000165, 14.75360400000136,
+                28.990958000002138
+              ],
+              "driverMs": {
+                "insert": 4.123089000000618,
+                "selectByKey": 4.131755999998859,
+                "selectAll": 10.199431000000914
+              }
+            },
+            {
+              "round": 3,
+              "position": 2,
+              "workloadMs": [
+                999.3451359999999, 20.73848799999905, 34.946132999997644,
+                52.679409000000305, 194.34006900000168, 10.013597999997728,
+                8.123803000002226, 13.397435999999288, 52.289074999996956,
+                35.62688399999752, 39.78626500000246, 27.608330999999453,
+                36.222342999997636, 26.38962100000208, 14.85168799999883,
+                30.17562700000053
+              ],
+              "driverMs": {
+                "insert": 4.015422000000399,
+                "selectByKey": 4.51629800000228,
+                "selectAll": 10.644056999997701
+              }
+            },
+            {
+              "round": 4,
+              "position": 1,
+              "workloadMs": [
+                965.0893450000003, 19.09806899999967, 34.902507999999216,
+                52.74065999999584, 190.420981999996, 9.640929999994114,
+                7.848845000000438, 13.373477000001003, 52.003866999999445,
+                36.170427000004565, 31.25754500000039, 26.864830999998958,
+                35.64905100000033, 24.51832700000523, 14.556938000001537,
+                30.26729399999749
+              ],
+              "driverMs": {
+                "insert": 3.864713999995729,
+                "selectByKey": 3.8615890000000945,
+                "selectAll": 10.056556000003184
+              }
+            }
+          ]
+        },
+        {
+          "type": "Measured",
+          "id": "betterSqlite3",
+          "label": "better-sqlite3",
+          "library": "better-sqlite3 13.0.3",
+          "binding": "Node-API (node-addon-api), unix VFS",
+          "encrypted": false,
+          "sqliteVersion": "3.53.4",
+          "sqliteSourceId": "2026-07-24 19:02:57 bf7c7f30031888f4e796e429ab3978879485813aaca6f641c7b33e4e09459bcc",
+          "compileOptions": [
+            "ATOMIC_INTRINSICS=1",
+            "COMPILER=gcc-15.2.0",
+            "DEFAULT_AUTOVACUUM",
+            "DEFAULT_CACHE_SIZE=-16000",
+            "DEFAULT_FILE_FORMAT=4",
+            "DEFAULT_FOREIGN_KEYS",
+            "DEFAULT_JOURNAL_SIZE_LIMIT=-1",
+            "DEFAULT_MEMSTATUS=0",
+            "DEFAULT_MMAP_SIZE=0",
+            "DEFAULT_PAGE_SIZE=4096",
+            "DEFAULT_PCACHE_INITSZ=20",
+            "DEFAULT_RECURSIVE_TRIGGERS",
+            "DEFAULT_SECTOR_SIZE=4096",
+            "DEFAULT_SYNCHRONOUS=2",
+            "DEFAULT_WAL_AUTOCHECKPOINT=1000",
+            "DEFAULT_WAL_SYNCHRONOUS=1",
+            "DEFAULT_WORKER_THREADS=0",
+            "DIRECT_OVERFLOW_READ",
+            "DQS=0",
+            "ENABLE_COLUMN_METADATA",
+            "ENABLE_DBSTAT_VTAB",
+            "ENABLE_FTS3",
+            "ENABLE_FTS3_PARENTHESIS",
+            "ENABLE_FTS4",
+            "ENABLE_FTS5",
+            "ENABLE_GEOPOLY",
+            "ENABLE_MATH_FUNCTIONS",
+            "ENABLE_PERCENTILE",
+            "ENABLE_RTREE",
+            "ENABLE_STAT4",
+            "ENABLE_UPDATE_DELETE_LIMIT",
+            "LIKE_DOESNT_MATCH_BLOBS",
+            "MALLOC_SOFT_LIMIT=1024",
+            "MAX_ATTACHED=10",
+            "MAX_COLUMN=2000",
+            "MAX_COMPOUND_SELECT=500",
+            "MAX_DEFAULT_PAGE_SIZE=8192",
+            "MAX_EXPR_DEPTH=1000",
+            "MAX_FUNCTION_ARG=1000",
+            "MAX_LENGTH=1000000000",
+            "MAX_LIKE_PATTERN_LENGTH=50000",
+            "MAX_MMAP_SIZE=0x7fff0000",
+            "MAX_PAGE_COUNT=0xfffffffe",
+            "MAX_PAGE_SIZE=65536",
+            "MAX_SQL_LENGTH=1000000000",
+            "MAX_TRIGGER_DEPTH=1000",
+            "MAX_VARIABLE_NUMBER=32766",
+            "MAX_VDBE_OP=250000000",
+            "MAX_WORKER_THREADS=8",
+            "MUTEX_PTHREADS",
+            "OMIT_DEPRECATED",
+            "OMIT_PROGRESS_CALLBACK",
+            "OMIT_SHARED_CACHE",
+            "OMIT_TCL_VARIABLE",
+            "SOUNDEX",
+            "SYSTEM_MALLOC",
+            "TEMP_STORE=1",
+            "THREADSAFE=2",
+            "USE_URI"
+          ],
+          "pragmas": {
+            "page_size": "4096",
+            "journal_mode": "delete",
+            "synchronous": "2",
+            "cache_size": "-16000",
+            "temp_store": "2",
+            "secure_delete": "0",
+            "locking_mode": "normal",
+            "auto_vacuum": "0",
+            "mmap_size": "0"
+          },
+          "warmupRuns": [
+            {
+              "round": 0,
+              "position": 2,
+              "workloadMs": [
+                727.6071340000003, 18.357108999999582, 34.978548000000046,
+                43.21601799999917, 243.1521700000003, 12.545100000000275,
+                8.522844999999506, 12.777226000000155, 82.39265599999999,
+                43.42351899999994, 34.62196500000027, 27.634162999999717,
+                25.350618000000395, 22.671739999999772, 10.565389999999752,
+                3.438379999999597
+              ],
+              "driverMs": {
+                "insert": 15.349438000000191,
+                "selectByKey": 4.611464999999953,
+                "selectAll": 16.103814000000057
+              }
+            }
+          ],
+          "runs": [
+            {
+              "round": 0,
+              "position": 2,
+              "workloadMs": [
+                708.225574, 20.56152900000052, 35.05663199999981,
+                43.50372799999968, 173.50386799999978, 9.863805000000866,
+                7.9592609999999695, 12.194600000000719, 49.65669499999967,
+                34.537757000000056, 25.988327999999456, 16.020064000000275,
+                21.91544800000156, 19.631319000000076, 10.595639999999548,
+                3.6892559999996593
+              ],
+              "driverMs": {
+                "insert": 5.282424000000901,
+                "selectByKey": 4.529340000000957,
+                "selectAll": 15.218145999999251
+              }
+            },
+            {
+              "round": 1,
+              "position": 1,
+              "workloadMs": [
+                706.4125350000013, 19.287734999999884, 33.79154800000106,
+                43.5842700000012, 172.79615999999987, 8.700261999998474,
+                7.6360529999983555, 11.86172500000248, 48.363652,
+                32.9216720000004, 24.75340899999719, 15.028062999997928,
+                21.474322000001848, 19.330236000001605, 9.862639000002673,
+                3.510296999997081
+              ],
+              "driverMs": {
+                "insert": 4.971882000001642,
+                "selectByKey": 3.9096299999982875,
+                "selectAll": 11.861100000001898
+              }
+            },
+            {
+              "round": 2,
+              "position": 0,
+              "workloadMs": [
+                813.2712749999992, 19.36656899999798, 33.090963000002375,
+                43.78068699999858, 173.81362100000115, 8.857803999999305,
+                7.664594000001671, 12.317143000000215, 48.56198500000028,
+                32.819462999999814, 25.779953000001115, 16.10127300000022,
+                21.855030999999144, 19.892610999999306, 9.474930000000313,
+                3.7863799999977346
+              ],
+              "driverMs": {
+                "insert": 4.84233999999924,
+                "selectByKey": 3.9531719999977213,
+                "selectAll": 10.870557000002009
+              }
+            },
+            {
+              "round": 3,
+              "position": 3,
+              "workloadMs": [
+                910.5152620000008, 19.56206999999995, 33.472797999998875,
+                43.547145999997156, 171.91587099999742, 8.63426199999958,
+                7.695760999999038, 12.52664299999742, 48.46848599999794,
+                32.754838999997446, 24.663786000000982, 15.49756399999751,
+                22.106990000000224, 19.87873699999909, 9.839389000000665,
+                4.0736309999992955
+              ],
+              "driverMs": {
+                "insert": 5.078216000001703,
+                "selectByKey": 4.0004640000006475,
+                "selectAll": 13.635060999997222
+              }
+            },
+            {
+              "round": 4,
+              "position": 2,
+              "workloadMs": [
+                768.0710639999961, 17.719733999998425, 31.99825399999827,
+                43.506562000002305, 171.66878800000268, 8.790095999996993,
+                7.660135999998602, 12.095476000002236, 48.064902999998594,
+                32.37213000000338, 24.056743000001006, 14.610271000005014,
+                22.017448999999033, 19.982528000000457, 9.528055999995559,
+                3.7444220000033965
+              ],
+              "driverMs": {
+                "insert": 4.649755999998888,
+                "selectByKey": 3.573421999994025,
+                "selectAll": 10.621848999995564
+              }
+            }
+          ]
+        },
+        {
+          "type": "Measured",
+          "id": "nodeSqlite",
+          "label": "node:sqlite",
+          "library": "node:sqlite, Node.js 24.22.0",
+          "binding": "built into Node.js, unix VFS",
+          "encrypted": false,
+          "sqliteVersion": "3.53.4",
+          "sqliteSourceId": "2026-07-24 19:02:57 bf7c7f30031888f4e796e429ab3978879485813aaca6f641c7b33e4e09459bcc",
+          "compileOptions": [
+            "ATOMIC_INTRINSICS=1",
+            "COMPILER=gcc-15.2.0",
+            "DEFAULT_AUTOVACUUM",
+            "DEFAULT_CACHE_SIZE=-2000",
+            "DEFAULT_FILE_FORMAT=4",
+            "DEFAULT_JOURNAL_SIZE_LIMIT=-1",
+            "DEFAULT_MEMSTATUS=0",
+            "DEFAULT_MMAP_SIZE=0",
+            "DEFAULT_PAGE_SIZE=4096",
+            "DEFAULT_PCACHE_INITSZ=20",
+            "DEFAULT_RECURSIVE_TRIGGERS",
+            "DEFAULT_SECTOR_SIZE=4096",
+            "DEFAULT_SYNCHRONOUS=2",
+            "DEFAULT_WAL_AUTOCHECKPOINT=1000",
+            "DEFAULT_WAL_SYNCHRONOUS=2",
+            "DEFAULT_WORKER_THREADS=0",
+            "DIRECT_OVERFLOW_READ",
+            "ENABLE_COLUMN_METADATA",
+            "ENABLE_DBSTAT_VTAB",
+            "ENABLE_FTS3",
+            "ENABLE_FTS3_PARENTHESIS",
+            "ENABLE_FTS5",
+            "ENABLE_GEOPOLY",
+            "ENABLE_MATH_FUNCTIONS",
+            "ENABLE_PERCENTILE",
+            "ENABLE_PREUPDATE_HOOK",
+            "ENABLE_RBU",
+            "ENABLE_RTREE",
+            "ENABLE_SESSION",
+            "MALLOC_SOFT_LIMIT=1024",
+            "MAX_ATTACHED=10",
+            "MAX_COLUMN=2000",
+            "MAX_COMPOUND_SELECT=500",
+            "MAX_DEFAULT_PAGE_SIZE=8192",
+            "MAX_EXPR_DEPTH=1000",
+            "MAX_FUNCTION_ARG=1000",
+            "MAX_LENGTH=1000000000",
+            "MAX_LIKE_PATTERN_LENGTH=50000",
+            "MAX_MMAP_SIZE=0x7fff0000",
+            "MAX_PAGE_COUNT=0xfffffffe",
+            "MAX_PAGE_SIZE=65536",
+            "MAX_SQL_LENGTH=1000000000",
+            "MAX_TRIGGER_DEPTH=1000",
+            "MAX_VARIABLE_NUMBER=32766",
+            "MAX_VDBE_OP=250000000",
+            "MAX_WORKER_THREADS=8",
+            "MUTEX_PTHREADS",
+            "SYSTEM_MALLOC",
+            "TEMP_STORE=1",
+            "THREADSAFE=1"
+          ],
+          "pragmas": {
+            "page_size": "4096",
+            "journal_mode": "delete",
+            "synchronous": "2",
+            "cache_size": "-16000",
+            "temp_store": "2",
+            "secure_delete": "0",
+            "locking_mode": "normal",
+            "auto_vacuum": "0",
+            "mmap_size": "0"
+          },
+          "warmupRuns": [
+            {
+              "round": 0,
+              "position": 3,
+              "workloadMs": [
+                1294.8443420000003, 22.870531000000483, 34.216089000000466,
+                44.50952099999995, 177.46182999999928, 9.811931000000186,
+                8.151468999999452, 15.765064000000166, 57.648997000000236,
+                47.414066000000275, 26.7979949999999, 17.16306600000007,
+                23.061823000000004, 19.608194000000367, 8.805429000000004,
+                3.595629999999801
+              ],
+              "driverMs": {
+                "insert": 9.353763000000072,
+                "selectByKey": 5.0013400000007096,
+                "selectAll": 26.716537000000244
+              }
+            }
+          ],
+          "runs": [
+            {
+              "round": 0,
+              "position": 3,
+              "workloadMs": [
+                731.7986500000006, 17.084940000000643, 30.9585019999995,
+                44.54414599999836, 176.73387299999922, 8.416428000000451,
+                20.440112000000227, 13.792977999999493, 47.64814999999908,
+                32.70725400000083, 24.13928400000077, 15.079311999999845,
+                21.59315500000048, 19.704153000000588, 9.121428999998898,
+                3.362087999999858
+              ],
+              "driverMs": {
+                "insert": 3.139837999999145,
+                "selectByKey": 4.647547999999006,
+                "selectAll": 24.298533999999563
+              }
+            },
+            {
+              "round": 1,
+              "position": 2,
+              "workloadMs": [
+                711.3278769999997, 16.791857000000164, 30.972626999999193,
+                44.82647999999972, 177.2039999999979, 8.740594999999303,
+                8.161345000000438, 12.962102000001323, 49.75548700000218,
+                32.84633799999938, 24.39061800000127, 14.83764599999995,
+                21.671156000000337, 19.487194000001182, 8.983095999999932,
+                4.548047999996925
+              ],
+              "driverMs": {
+                "insert": 2.8681700000015553,
+                "selectByKey": 4.473047000003135,
+                "selectAll": 17.820692000001145
+              }
+            },
+            {
+              "round": 2,
+              "position": 1,
+              "workloadMs": [
+                723.6596910000007, 15.6283549999971, 30.017501000002085,
+                44.24752100000114, 177.49975099999938, 8.465428999999858,
+                8.146136999999726, 12.75614300000234, 48.43369299999904,
+                32.948755000001256, 24.854159999998956, 15.144938999997976,
+                21.575572000001557, 19.713943999999174, 8.917970999998943,
+                3.603879999998753
+              ],
+              "driverMs": {
+                "insert": 2.9789209999980812,
+                "selectByKey": 5.233674999999494,
+                "selectAll": 18.51336000000083
+              }
+            },
+            {
+              "round": 3,
+              "position": 0,
+              "workloadMs": [
+                1003.3885530000007, 16.4579819999999, 30.7247520000019,
+                44.72131299999819, 178.77592100000038, 9.093596000002435,
+                8.237261999998736, 13.183102000002691, 48.7320690000015,
+                33.146254999999655, 24.610452000000805, 15.430438999999751,
+                21.744198000000324, 20.243986999998015, 8.846388000001753,
+                3.308670999998867
+              ],
+              "driverMs": {
+                "insert": 2.6717119999993884,
+                "selectByKey": 4.595798999998806,
+                "selectAll": 16.113730999997642
+              }
+            },
+            {
+              "round": 4,
+              "position": 3,
+              "workloadMs": [
+                846.8857629999984, 17.192440999999235, 31.967212999996264,
+                44.227646999999706, 177.93383999999787, 8.562554000003729,
+                8.407304000000295, 13.629187000005913, 49.198278999996546,
+                34.03454999999667, 24.03132700000424, 14.823897000002034,
+                21.551031000002695, 19.588694999998552, 9.24259699999675,
+                4.369548000002396
+              ],
+              "driverMs": {
+                "insert": 3.0880879999967874,
+                "selectByKey": 5.314173999999184,
+                "selectAll": 19.890528000003542
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@bench/sqlite-comparison",
+  "private": true,
+  "devDependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/nodejs": "workspace:*",
+    "@sqlite.org/sqlite-wasm": "3.54.1-build1",
+    "@types/better-sqlite3": "^9.6.0",
+    "better-sqlite3": "13.0.3",
+    "playwright": "^1.64.1",
+    "vitest": "^5.0.5"
+  }
+}

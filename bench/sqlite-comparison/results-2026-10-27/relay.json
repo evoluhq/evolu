@@ -1,0 +1,175 @@
+{
+  "formatVersion": 1,
+  "createdAt": "2026-10-27T10:42:08.736Z",
+  "environment": {
+    "CPU": "Apple M5, 10 cores, 16 GiB",
+    "OS": "macOS 26.6.2 arm64",
+    "Node.js": "24.22.0",
+    "Checkout": "0a9a95ebc with uncommitted changes"
+  },
+  "loadAverages": {
+    "start": [1.849609375, 2.26806640625, 2.474609375],
+    "end": [1.94580078125, 2.27490234375, 2.474609375]
+  },
+  "digests": {
+    "fingerprints": "f7f5db8d919eacf95d5a00d63fbdb3120a47c983377e0da740f460b626073dbf",
+    "iterated": "250000:51faabba8f8e16416a847554ce33d4375a0f530283ed176b62d20eceeaa1c58a",
+    "read": "e60eead950e881d021a3d9c8c63cc3443a7512bdb01a861717a74e2d107543ed"
+  },
+  "sizeAfterWrites": 50000,
+  "base": {
+    "commit": "abde2972c87f29af0e65550f69e74c16636d3231",
+    "subject": "Note why @evolu/common's worker hops don't recover from another task's throw on React Native",
+    "isDirty": false,
+    "driver": "better-sqlite3 13.0.3",
+    "storage": "Storage on recursive CTEs",
+    "warmupRuns": [
+      {
+        "round": 0,
+        "position": 0,
+        "phasesMs": {
+          "write": 480.081292,
+          "fingerprint": 150.7824999999999,
+          "iterate": 87.80762500000003,
+          "read": 54.543249999999944
+        },
+        "databaseBytes": 43839488
+      }
+    ],
+    "runs": [
+      {
+        "round": 0,
+        "position": 0,
+        "phasesMs": {
+          "write": 477.85775,
+          "fingerprint": 134.61345799999992,
+          "iterate": 88.026791,
+          "read": 52.388124999999945
+        },
+        "databaseBytes": 43700224
+      },
+      {
+        "round": 1,
+        "position": 1,
+        "phasesMs": {
+          "write": 479.03749999999997,
+          "fingerprint": 150.35733300000004,
+          "iterate": 88.56225000000006,
+          "read": 52.74604099999999
+        },
+        "databaseBytes": 43851776
+      },
+      {
+        "round": 2,
+        "position": 0,
+        "phasesMs": {
+          "write": 471.631125,
+          "fingerprint": 167.259416,
+          "iterate": 88.13141700000006,
+          "read": 55.31812500000001
+        },
+        "databaseBytes": 43692032
+      },
+      {
+        "round": 3,
+        "position": 1,
+        "phasesMs": {
+          "write": 462.86408400000005,
+          "fingerprint": 134.86762499999998,
+          "iterate": 89.02266599999996,
+          "read": 54.040291000000025
+        },
+        "databaseBytes": 43802624
+      },
+      {
+        "round": 4,
+        "position": 0,
+        "phasesMs": {
+          "write": 455.46679200000005,
+          "fingerprint": 135.91208300000005,
+          "iterate": 89.52616699999999,
+          "read": 54.28250000000003
+        },
+        "databaseBytes": 43704320
+      }
+    ]
+  },
+  "head": {
+    "commit": "0a9a95ebc010f79344d170f6c50ad9e6ac7beb6c",
+    "subject": "Speed up @evolu/nodejs's SQLite binding by building its rows in JavaScript",
+    "isDirty": true,
+    "driver": "Evolu's SQLite (@evolu/nodejs's addon)",
+    "storage": "Storage on the C skiplist functions",
+    "warmupRuns": [
+      {
+        "round": 0,
+        "position": 1,
+        "phasesMs": {
+          "write": 357.09691699999996,
+          "fingerprint": 14.467083000000002,
+          "iterate": 59.666833999999994,
+          "read": 51.72508400000004
+        },
+        "databaseBytes": 43737088
+      }
+    ],
+    "runs": [
+      {
+        "round": 0,
+        "position": 1,
+        "phasesMs": {
+          "write": 354.93274999999994,
+          "fingerprint": 14.80966699999999,
+          "iterate": 62.693874999999935,
+          "read": 52.348208
+        },
+        "databaseBytes": 43839488
+      },
+      {
+        "round": 1,
+        "position": 0,
+        "phasesMs": {
+          "write": 345.24483399999997,
+          "fingerprint": 14.27916700000003,
+          "iterate": 61.661040999999955,
+          "read": 52.311000000000035
+        },
+        "databaseBytes": 43732992
+      },
+      {
+        "round": 2,
+        "position": 1,
+        "phasesMs": {
+          "write": 349.69849999999997,
+          "fingerprint": 15.784084000000007,
+          "iterate": 59.885374999999954,
+          "read": 52.02504099999999
+        },
+        "databaseBytes": 43855872
+      },
+      {
+        "round": 3,
+        "position": 0,
+        "phasesMs": {
+          "write": 355.547625,
+          "fingerprint": 14.365709000000038,
+          "iterate": 61.08354100000008,
+          "read": 51.76795800000002
+        },
+        "databaseBytes": 43753472
+      },
+      {
+        "round": 4,
+        "position": 1,
+        "phasesMs": {
+          "write": 341.871542,
+          "fingerprint": 15.005292000000054,
+          "iterate": 59.99800000000005,
+          "read": 51.54312500000003
+        },
+        "databaseBytes": 43692032
+      }
+    ]
+  },
+  "error": null
+}

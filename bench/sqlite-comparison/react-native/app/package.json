@@ -1,0 +1,20 @@
+{
+  "name": "@bench/sqlite-comparison-app",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "dependencies": {
+    "@evolu/react-native": "workspace:*",
+    "@op-engineering/op-sqlite": "18.2.5",
+    "expo": "58.0.16",
+    "expo-file-system": "58.0.10",
+    "expo-sqlite": "58.0.14",
+    "react": "19.3.0",
+    "react-native": "0.88.0"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:react19",
+    "babel-preset-expo": "58.0.17",
+    "typescript": "~6.0.3"
+  }
+}

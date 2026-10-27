@@ -38,6 +38,13 @@ examples/react-expo/expo-env.d.ts
 examples/react-expo/ios
 examples/react-expo/android
 
+# bench/sqlite-comparison
+bench/sqlite-comparison/results/
+bench/sqlite-comparison/react-native/app/.expo/
+bench/sqlite-comparison/react-native/app/expo-env.d.ts
+bench/sqlite-comparison/react-native/app/ios
+bench/sqlite-comparison/react-native/app/android
+
 # bench/sqlite-wasm
 bench/sqlite-wasm/results/
 

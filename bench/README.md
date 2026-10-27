@@ -10,6 +10,9 @@ Benchmarks measure performance characteristics that ordinary correctness tests d
   rounds, bytes, and SQL statements and rows.
 - [Protocol runtime](./protocol-runtime/README.md) times sync protocol code
   without SQLite, and reports the same syncs with SQLite relay storage.
+- [SQLite comparison](./sqlite-comparison/README.md) compares Evolu's SQLite
+  with the alternatives on Node.js, the web and React Native, and gates the
+  relay's move to it.
 - [SQLite Wasm](./sqlite-wasm/README.md) measures SQLite stacks on OPFS in
   Chromium, Firefox, and WebKit with wa-sqlite's benchmark workloads.
 - [Storage](./storage/README.md) measures SQLite timestamp Skiplist operations.
