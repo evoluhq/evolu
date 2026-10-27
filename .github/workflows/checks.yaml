@@ -165,25 +165,48 @@ jobs:
         env:
           EVOLU_TEST_EXPECTED_CPU: ${{ matrix.cpu }}
 
-      # Android's armeabi-v7a and x86 ABIs build the core for 32-bit CPUs,
-      # without hardware crypto, so the C tests also run built with -m32 and
-      # must cover all of what that build compiles.
-      - name: Install 32-bit libraries
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y gcc-multilib
-
-      - name: Test 32-bit
-        if: matrix.os == 'ubuntu-latest'
-        run: pnpm test:node --no-experimental-test-coverage packages/sqlite-core/test/core.test.mts
-        env:
-          EVOLU_TEST_M32: "1"
-          EVOLU_TEST_EXPECTED_CPU: "0"
-
       # The registry's thread tests under ThreadSanitizer, which can't
       # combine with AddressSanitizer.
       - name: Test threads
         if: matrix.os == 'ubuntu-latest'
         run: node packages/sqlite-core/scripts/test.mts binding_threads_ --thread-sanitizer
+
+  # Android's armeabi-v7a and x86 ABIs build the core for 32-bit CPUs, without
+  # hardware crypto, so the C tests also run built with -m32 and must cover all
+  # of what that build compiles. It's a job of its own so it runs beside the
+  # sqlite-core job's, not after them.
+  sqlite-core-32-bit:
+    name: SQLite core (32-bit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      # The archives, SQLite's and expo-sqlite's, as the sqlite-core job caches
+      # them, which every use verifies against their pins.
+      - name: Cache source archives
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
+
+      - name: Install 32-bit libraries
+        run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+
+      - name: Test
+        run: pnpm test:node --no-experimental-test-coverage packages/sqlite-core/test/core.test.mts
+        env:
+          EVOLU_TEST_M32: "1"
+          EVOLU_TEST_EXPECTED_CPU: "0"
 
   # Checks the C that @evolu/react-native vendors from the SQLite core into
   # native/: that it matches native.json, the vendor script's tests, and that
