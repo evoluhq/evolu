@@ -147,12 +147,12 @@
  * - `xRead` zero-fills the rest of a short read, as SQLite requires, and returns
  *   SQLITE_IOERR_SHORT_READ only when the end of the file cut it. The File
  *   System Standard reports a failed read as a short count, and Safari on iOS
- *   was reported to return 0 for a slot header that is there (SQLite forum
- *   thread d1c20a0b1a), so a read that returns fewer bytes than the file holds
- *   returns SQLITE_IOERR_READ, recording a {@link SqliteShortReadError}.
- *   Otherwise SQLite would take the zeros for data and for a hot journal's end:
- *   a first byte read short would make it no hot journal, and a record read
- *   short would end its rollback and delete it.
+ *   was reported to return 0 for a slot header that is there
+ *   (https://sqlite.org/bugs/forumpost/d1c20a0b1a), so a read that returns
+ *   fewer bytes than the file holds returns SQLITE_IOERR_READ, recording a
+ *   {@link SqliteShortReadError}. Otherwise SQLite would take the zeros for data
+ *   and for a hot journal's end: a first byte read short would make it no hot
+ *   journal, and a record read short would end its rollback and delete it.
  * - Other methods return their specific code, such as SQLITE_IOERR_TRUNCATE,
  *   SQLITE_IOERR_FSYNC or SQLITE_IOERR_FSTAT, so the extended code says which
  *   operation failed.
@@ -634,7 +634,8 @@ export const openSahPool =
           const pathLength = header.indexOf(0);
           // A tab killed between the two header writes of opfs-sahpool leaves
           // a stale digest, and torn flags look transient, so a file with
-          // data keeps its path, as in opfs-sahpool since bugs:7418667df7.
+          // data keeps its path, as in opfs-sahpool since its fix of
+          // https://sqlite.org/bugs/forumpost/d1c20a0b1a.
           const holdsData =
             pathLength > 0 &&
             size > sahPoolHeaderSize &&

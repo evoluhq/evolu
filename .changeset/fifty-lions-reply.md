@@ -38,7 +38,8 @@ What this brings:
   tore, opens with the salt its hot journal stores.
 - Opening the pool no longer empties a database whose slot header is torn, as
   a tab killed between the two header writes of SQLite's own pool leaves it.
-  Such a file keeps its path, as in SQLite's fix of the same bug. A header
+  Such a file keeps its path, as in SQLite's fix of the same bug
+  ([forum report](https://sqlite.org/bugs/forumpost/d1c20a0b1a)). A header
   read that returns fewer bytes than the slot holds, as Safari's has for a
   header that is there, now fails the open with `SahPoolSetupError` and
   changes nothing, where 3.53.4-build1 to 3.54.0-build2 read it as a free
@@ -51,7 +52,8 @@ What this brings:
   end of the file, so SQLite read and exported zeros as data, and since
   3.53.4-build1, which rolls hot journals back, a hot journal read short was
   taken for none, keeping a half-applied transaction, or rolled back only in
-  part and deleted.
+  part and deleted. SQLite declined this change for its own pool in the same
+  thread.
 
 Constant time has a price, paid on writes. On an Apple M5, writing an 8 KiB page
 with its journal record takes about 300 µs instead of about 100 with

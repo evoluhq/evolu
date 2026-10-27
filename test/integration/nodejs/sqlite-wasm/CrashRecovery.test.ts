@@ -129,8 +129,9 @@ test("a transaction that spilled when its worker died is rolled back by the next
 });
 
 // The File System Standard reports a failed read as a short count, and Safari
-// on iOS was reported to return 0 for a slot header that is there (forum
-// thread d1c20a0b1a). Taken as the end of the journal, a short first byte made
+// on iOS was reported to return 0 for a slot header that is there
+// (https://sqlite.org/bugs/forumpost/d1c20a0b1a). Taken as the end of the
+// journal, a short first byte made
 // SQLite find no hot journal, so the next instance read 16 of 300 rows
 // unchanged and its next write kept them, and a short record ended the
 // rollback early and deleted the journal.

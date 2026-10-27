@@ -523,7 +523,8 @@ test("setup keeps valid slots with a V2 or legacy digest, frees DELETEONCLOSE sl
   );
 });
 
-// bugs:7418667df7, which opfs-sahpool fixed in 341525ecfd: a tab killed
+// https://sqlite.org/bugs/forumpost/d1c20a0b1a, which opfs-sahpool fixed in
+// 341525ecfd: a tab killed
 // between the header's two writes, of the path and flags and then of the
 // digest, leaves the digest stale, and a slot whose flags are torn looks
 // transient. Freeing either emptied a database that still held data.
@@ -613,7 +614,8 @@ test("setup keeps the path of a slot that holds data past its header, unless it 
   );
 });
 
-// bugs:7418667df7: WebKit's SyncAccessHandle.read() has returned 0 for a
+// https://sqlite.org/bugs/forumpost/d1c20a0b1a: WebKit's
+// SyncAccessHandle.read() has returned 0 for a
 // header that is there. Read as zeros, the header would be a free slot's, and
 // the slot would be truncated with the database in it.
 test("setup fails with SahPoolSetupError caused by a SahPoolShortHeaderReadError, changing no slot, when reading a header returns fewer bytes than the slot holds, and a retry that reads it opens the database", async () => {
