@@ -50,11 +50,11 @@ table-based AES, in Chromium, Firefox and WebKit alike. Right after the
 storage idled, as in an app, encryption adds 2.5 to 2.7 ms to a small commit
 instead of 1.4 to 1.9, and
 large write transactions take about twice as long in Chromium. Back-to-back
-small commits in Chromium on macOS cost about 4 ms more each: Chromium flushes
-OPFS with `F_BARRIERFSYNC`, which slows down after about 100 to 200 µs without
-storage activity, and encrypting a page with constant-time AES takes longer
-than that, so each of a commit's five flushes is slow. Reads barely change:
-decrypting a page takes 60 to 70 µs instead of 40 to 60. We chose constant time
+small commits in Chromium on macOS cost 2 to 4 ms more each, mostly in slower
+flushes: Chromium flushes OPFS with `F_BARRIERFSYNC`, which on macOS slows down
+after pauses in storage activity of about 100 to 200 µs, and encryption makes
+such pauses. Reads pay less: decrypting a page takes 60 to 70 µs instead of 40
+to 60, and a page SQLite has cached costs nothing extra. We chose constant time
 because protecting the key matters more than raw speed. The README of
 `@evolu/sqlite-wasm` explains how writes could be faster and why we keep the
 codec simple instead.
