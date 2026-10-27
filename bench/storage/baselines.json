@@ -15,6 +15,22 @@
         "getTimestampByIndex": 30,
         "fingerprintRanges": 154
       }
+    },
+    {
+      "environment": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M5",
+        "nodeVersion": "24.22.0",
+        "sqliteVersion": "3.54.1"
+      },
+      "measurementsMs": {
+        "append": 159,
+        "prepend": 467,
+        "insert": 578,
+        "getTimestampByIndex": 5,
+        "fingerprintRanges": 16
+      }
     }
   ]
 }
