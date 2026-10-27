@@ -451,6 +451,7 @@ describe("crossCompile", () => {
       "helper T 0 0",
       "evolu_test_hook D 0 0",
       "sqlite3_step U",
+      "evolu_database_wipe U",
     ]);
 
     await assertRejects(
@@ -475,6 +476,40 @@ describe("crossCompile", () => {
           "ios-arm64 cpp/EvoluSqliteBinding.cpp references sqlite3_step without evolu_.",
         ]);
         assertEqual(lines.length, 24);
+      },
+    );
+  });
+
+  it("fails on an adapter that doesn't call evolu_database_wipe, even when a unit does", async (t) => {
+    const toolchain = setupFakeToolchain(t);
+    const native = setupNative(t);
+    setNamedSymbols(toolchain);
+    toolchain.setSymbols("EvoluSqliteBinding.cpp", [
+      "_ZN5evolu13createBindingERN8facebook3jsi7RuntimeE T 0 0",
+      "evolu_database_open U",
+    ]);
+    toolchain.setSymbols("evolu_codec.c", [
+      "evolu_codec_open T 0 0",
+      "evolu_database_wipe U",
+    ]);
+
+    await assertRejects(
+      crossCompile({
+        packageDirectory: native.packageDirectory,
+        jsiDirectory: native.jsiDirectory,
+        platform: { name: "ios" },
+        outputDirectory: native.outputDirectory,
+        jobs: 1,
+        env: toolchain.env,
+      }),
+      (error) => {
+        assertEqual(
+          (error as Error).message.split("\n"),
+          ["ios-arm64", "ios-simulator-arm64", "ios-simulator-x86_64"].map(
+            (target) =>
+              `${target} cpp/EvoluSqliteBinding.cpp doesn't call evolu_database_wipe to wipe its copy of a key.`,
+          ),
+        );
       },
     );
   });
@@ -1063,7 +1098,7 @@ const setupNative = (t: TestContext) => {
 /**
  * Symbols that pass the check: five defined globals of the C, each evolu_, and
  * five of the adapter: its own, the instantiations of std's and JSI's
- * templates, and the compiler's helpers.
+ * templates, and the compiler's helpers, with its call of evolu_database_wipe.
  */
 const setNamedSymbols = (toolchain: FakeToolchain): void => {
   toolchain.setSymbols("EvoluSqliteBinding.cpp", [
@@ -1081,6 +1116,7 @@ const setNamedSymbols = (toolchain: FakeToolchain): void => {
     "_ZTv0_n24_N5evolu1A1fEv T 0 0",
     "_ZN8facebook3jsi5ValueD1Ev U",
     "evolu_database_open U",
+    "evolu_database_wipe U",
     "evolu_sqlite3_step U",
   ]);
   toolchain.setSymbols("aes_ct.c", ["evolu_br_aes_ct_init T 0 0", "memcpy U"]);

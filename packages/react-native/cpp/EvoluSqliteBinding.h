@@ -59,3 +59,18 @@ createBinding(facebook::jsi::Runtime &runtime,
               const std::shared_ptr<RuntimeConnections> &connections);
 
 } // namespace evolu
+
+#ifdef EVOLU_TEST_HOOKS
+#include <cstddef>
+#include <cstdint>
+
+/*
+ * A hook of the Hermes host's build, which alone defines EVOLU_TEST_HOOKS for
+ * the adapter: when set, an encrypted open calls it with its copy of the key
+ * once it wiped the copy, so a test can check that the wipe zeroes every byte.
+ * Since the hook reads the copy, it also keeps a plain store to the copy that a
+ * build without the hook drops, which only the cross-compile notices, as it
+ * requires the adapter to call evolu_database_wipe.
+ */
+extern void (*evolu_test_key_copy_end)(const uint8_t *copy, size_t size);
+#endif

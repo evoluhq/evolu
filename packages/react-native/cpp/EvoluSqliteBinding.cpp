@@ -44,6 +44,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef EVOLU_TEST_HOOKS
+void (*evolu_test_key_copy_end)(const uint8_t *copy, size_t size) = nullptr;
+#endif
+
 namespace jsi = facebook::jsi;
 
 namespace evolu {
@@ -992,7 +996,8 @@ createBinding(jsi::Runtime &rt,
                                 });
           })));
   // The path converts first, then the key is copied, with no JSI call in
-  // between, and the copy is wiped once the codec has its own.
+  // between, and the copy is wiped once the codec has its own, by
+  // evolu_database_wipe, since a compiler drops a plain store to the copy.
   binding.setProperty(
       rt, "openEncryptedFile",
       bound(createFunction(
@@ -1013,6 +1018,10 @@ createBinding(jsi::Runtime &rt,
                   const int rc = evolu_database_open_encrypted_file(
                       path.data(), path.size(), copy, database, record);
                   evolu_database_wipe(copy, sizeof copy);
+#ifdef EVOLU_TEST_HOOKS
+                  if (evolu_test_key_copy_end != nullptr)
+                    evolu_test_key_copy_end(copy, sizeof copy);
+#endif
                   return rc;
                 });
           })));

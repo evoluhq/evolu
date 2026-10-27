@@ -169,7 +169,8 @@ export const runHermesTests = async ({
     "-O1",
     "-fno-omit-frame-pointer",
     ...flags.defines.map((define) => `-D${define}`),
-    // The hooks a test needs to fail the build check or the random source.
+    // The hooks a test needs to fail the build check or the random source, or
+    // to see the adapter's copy of a key.
     "-DEVOLU_TEST_HOOKS",
     `-I${join(packageDirectory, flags.headerSearchPath)}`,
   ];

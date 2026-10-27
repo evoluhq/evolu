@@ -44,13 +44,15 @@
  *   defined or referenced. Besides `evolu_` names, the adapter may define C++
  *   of the namespaces `evolu`, `std` and `facebook`, the last two the inline
  *   functions and templates of the C++ and JSI headers, and the compiler's own
- *   helpers. `--jobs=<n>` runs n compiles at once, by default one per CPU.
- * - `--check-objects=<directory>` checks by the same rule the objects an app's
- *   Xcode build compiled for Evolu's pod, which the iOS app jobs run, since no
- *   cross-compile builds `ios/*.mm` or `cpp/EvoluSqlite.cpp`: those also define
- *   their ObjC classes, and the TurboModule its global class `EvoluSqlite`. A
- *   static-framework build adds a version object that defines the pod's version
- *   symbols.
+ *   helpers. They also fail on an adapter that doesn't call
+ *   `evolu_database_wipe`, which wipes its copy of a key. `--jobs=<n>` runs n
+ *   compiles at once, by default one per CPU.
+ * - `--check-objects=<directory>` checks by the same rule of names the objects an
+ *   app's Xcode build compiled for Evolu's pod, which the iOS app jobs run,
+ *   since no cross-compile builds `ios/*.mm` or `cpp/EvoluSqlite.cpp`: those
+ *   also define their ObjC classes, and the TurboModule its global class
+ *   `EvoluSqlite`. A static-framework build adds a version object that defines
+ *   the pod's version symbols.
  *
  * Writing `native/` needs what `@evolu/sqlite-core`'s tests need: a macOS or
  * Linux host (WSL on Windows), clang with llvm-nm, make and unzip, and network
@@ -605,10 +607,11 @@ const serializeManifest = (manifest: NativeManifest): string =>
  * shipped build files compile it, with the JSI headers in `jsiDirectory`, and
  * with warnings as errors. It then fails on a defined global that isn't
  * `evolu_` or is a test hook, but for the adapter's C++ of the namespaces
- * `evolu`, `std` and `facebook` and the compiler's helpers, and on a `sqlite3`,
- * `br_` or `crypto_` name without `evolu_`, defined or referenced.
- * `cpp/EvoluSqlite.cpp`, the TurboModule, needs React Native's generated spec,
- * so only app builds compile it.
+ * `evolu`, `std` and `facebook` and the compiler's helpers, on a `sqlite3`,
+ * `br_` or `crypto_` name without `evolu_`, defined or referenced, and on an
+ * adapter that doesn't call `evolu_database_wipe`. `cpp/EvoluSqlite.cpp`, the
+ * TurboModule, needs React Native's generated spec, so only app builds compile
+ * it.
  */
 export const crossCompile = async ({
   packageDirectory,
@@ -811,6 +814,7 @@ export const crossCompile = async ({
     let adapterSymbols = 0;
     for (const { path, name: objectName, isAdapter } of sources) {
       const where = `${target.name} ${path}`;
+      let callsWipe = false;
       for (const line of run(
         nm,
         ["-g", "-P", object(target, objectName)],
@@ -824,6 +828,7 @@ export const crossCompile = async ({
         if (undefinedTypes.has(type)) {
           if (/^(sqlite3|br_|crypto_)/u.test(name))
             problems.push(`${where} references ${name} without evolu_.`);
+          else if (name === "evolu_database_wipe") callsWipe = true;
         } else if (name.startsWith("evolu_test_"))
           problems.push(`${where} defines ${name}, a test hook.`);
         else if (!isAdapter)
@@ -840,6 +845,13 @@ export const crossCompile = async ({
             `${where} defines ${name}, which isn't evolu_, C++ of evolu, std or facebook, or the compiler's.`,
           );
       }
+      // Without the call, the copy of a key may stay on the stack: a compiler
+      // drops a plain store to a copy that is no longer read. The Hermes host
+      // test can't notice, since its hook reads the copy and keeps the store.
+      if (isAdapter && !callsWipe)
+        problems.push(
+          `${where} doesn't call evolu_database_wipe to wipe its copy of a key.`,
+        );
     }
     return {
       target: target.name,

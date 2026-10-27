@@ -6,10 +6,10 @@
  *
  * suite.js is test/hermes/suite.ts compiled to one script. The host evaluates
  * it in a runtime with a binding and the hooks of suite.ts's HermesHost, runs
- * the tests it registers, then its own tests of runtimes, threads and the
- * export's buffer, each test whose name includes the filter, with its files
- * under directory. It prints a line per test and the failures, and exits with
- * 1 when a test failed.
+ * the tests it registers, then its own tests of runtimes, threads, the export's
+ * buffer and the copy of a key, each test whose name includes the filter, with
+ * its files under directory. It prints a line per test and the failures, and
+ * exits with 1 when a test failed.
  *
  * Its SQLite allocator, installed before SQLite initializes, is SQLite's own,
  * except that a test can make allocations fail or watch what's freed, and that
@@ -687,6 +687,36 @@ const std::vector<Test> hostTests = {
        runtime.runtime.reset();
        freeHook = nullptr;
        check(isWiped, "the export's bytes wiped before the free");
+       runtime.teardown();
+     }},
+
+    {"an encrypted open wipes its copy of the key after the open, also when "
+     "the open fails",
+     [](const std::string &directory) {
+       static std::atomic<int> copies{0};
+       static std::atomic<int> wipedCopies{0};
+       copies = 0;
+       wipedCopies = 0;
+       evolu_test_key_copy_end = [](const uint8_t *copy, size_t size) {
+         bool isZero = size == EVOLU_DATABASE_KEY_SIZE;
+         for (size_t i = 0; i < size; i++) isZero = isZero && copy[i] == 0;
+         copies++;
+         if (isZero) wipedCopies++;
+       };
+       const std::string open = "binding.openEncryptedFile(" +
+                                literal(directory + "/key.db") + ", ";
+       TestRuntime runtime;
+       const std::string message = runtime.text(
+           "const database = " + open + keyJs +
+           ");"
+           "database.prepare('create table t (a)').run([]);"
+           "database.close();"
+           "JSON.parse(" +
+           thrownBy(open + "new Uint8Array(32).fill(1))") + ").message");
+       evolu_test_key_copy_end = nullptr;
+       check(message == "file is not a database",
+             "the open with another key to fail, not " + message);
+       check(copies == 2 && wipedCopies == 2, "both copies of the key wiped");
        runtime.teardown();
      }},
 
