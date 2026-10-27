@@ -25,8 +25,8 @@ What this brings:
   secret-dependent branch or memory access of their own. A check of the
   compiled WebAssembly finds none in Evolu's build.
 - Less to load and less to trust. What `@evolu/web` imports from
-  `@evolu/sqlite-wasm` is 39,800 bytes of JavaScript minified by esbuild,
-  13,431 with `gzip -9`, instead of 194,844 and 67,501. The package has no
+  `@evolu/sqlite-wasm` is 39,956 bytes of JavaScript minified by esbuild,
+  13,493 with `gzip -9`, instead of 194,844 and 67,501. The package has no
   runtime dependencies now that `@awasm/noble` is gone, and a worker that
   encrypts no longer allocates its 30 MiB of WebAssembly memory. The wasm grew
   from 677,479 to 720,542 bytes, from 305,733 to 323,059 with `gzip -9`.

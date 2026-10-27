@@ -20,6 +20,7 @@ All data Evolu syncs is encrypted end-to-end. This means:
 
 - **Web and Electron** (React, Svelte, Vue, and vanilla JS with `@evolu/web`): encrypted. `@evolu/sqlite-wasm` encrypts every page of the database and its rollback journal in SQLCipher 4's format as the `sqlcipher` scheme of SQLite3 Multiple Ciphers writes it, with AES-256-CBC and HMAC-SHA512.
 - **React Native and Expo**: encrypted. `@evolu/react-native` runs the same SQLite core as the web, natively, in the same format and with the same algorithms, with the CPU's AES instructions where it has them. The databases that expo-sqlite's SQLCipher encrypted for earlier releases open in place.
+- **Node.js**: encrypted. `@evolu/nodejs` runs the same SQLite core in a Node-API addon, in the same format and with the same algorithms, with the CPU's AES instructions where it has them. A database an earlier release wrote is plaintext and fails to open, and the release notes say how to keep its data. The Evolu Relay's database isn't encrypted, because the changes it stores already are.
 
 The database key is derived from the app owner's secret, which Evolu doesn't store, so the database is only as safe as the place the app keeps that secret. The examples use `testAppOwner`, whose secret is public, so use it only for testing.
 
