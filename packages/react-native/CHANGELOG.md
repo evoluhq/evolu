@@ -1,5 +1,259 @@
 # @evolu/react-native
 
+## 16.2.0
+
+### Minor Changes
+
+- 72ebabb: Replaced expo-sqlite with Evolu's own SQLite and supported apps without Expo
+
+  React Native now runs Evolu's own SQLite, the core the web compiles to
+  WebAssembly, compiled natively into the app through a JSI module that ships in
+  `@evolu/react-native`. Until now, Evolu relied on the SQLCipher that expo-sqlite
+  vendors, in whatever version an Expo release brought, and on the app enabling
+  it with `useSQLCipher`. Now the web and React Native share one codec, one
+  behavior after a crash and one set of tests, and native builds encrypt in
+  constant time with the CPU's AES and SHA-512 instructions where it has them.
+  The package no longer needs Expo, so React Native apps without Expo are
+  supported, with the same `createEvoluDeps`.
+
+  Sync now encrypts and decrypts changes in the same native code, which
+  `createEvoluDeps` passes to Evolu's workers as `@evolu/common`'s new
+  `XChaCha20Poly1305`, instead of in JavaScript with noble-ciphers. A fresh
+  database receiving 10,000 changes took 20% less time on the iOS simulator and
+  24% to 29% less on an arm64 Android emulator than with noble-ciphers.
+
+  What changes for an app:
+
+  - It needs a native rebuild with React Native 0.88 or later on Hermes, React
+    Native's default engine, and in an Expo app, Expo SDK 58 or later. Expo Go can't load Evolu's
+    native code, so Expo apps use a development build. iOS builds with CocoaPods;
+    SwiftPM support comes later.
+  - It needs `@evolu/common` 8.24 or later, which has the SQLite driver this
+    package now runs on and workers that take its native encryption. With an
+    older one, `createEvoluDeps` throws at startup.
+  - Bump the version that over-the-air updates target, such as Expo's runtime
+    version, and don't ship this release as an over-the-air update to older
+    native builds. On a build without Evolu's module it fails at startup, and an
+    old bundle on a new build, which still links expo-sqlite, could open the
+    database through two SQLites at once, which can corrupt it. Expo's
+    `fingerprint` runtime version policy changes with native code.
+  - `createEvoluDeps` moved to `@evolu/react-native`, and
+    `@evolu/react-native/expo-sqlite` no longer exists. `EvoluIdenticon` moved to
+    `@evolu/react-native/identicon`, so bundling `createEvoluDeps` needs no
+    `react-native-svg`.
+  - `installPolyfills` installs `crypto.getRandomValues` from Evolu's native
+    module when the runtime lacks it, so `react-native-quick-crypto` is no longer
+    needed. Call it in a module of its own, such as `polyfills.ts`, and import
+    that module first in the app's entry file, because a file's imports all run
+    before its own code. In an Expo app with Expo Router, that's an `index.ts`
+    with `import "./polyfills";` then `import "expo-router/entry";`, and
+    `"main": "index.ts"` in `package.json`. In any other app, it's
+    `import "./polyfills";` on the first line of its entry file.
+  - Unless the app uses them itself, remove `useSQLCipher` and the expo-sqlite
+    config plugin, and expo-sqlite, `react-native-quick-crypto` and
+    `react-native-nitro-modules`. The package dropped its `expo`, `expo-sqlite` and
+    `react-native-nitro-modules` peers.
+  - Existing databases open in place, from the same directory and with the same
+    file names, and so do the hot journals that a crash or a killed app left. A
+    database this release creates gets the format the web's have, which a release
+    with expo-sqlite can't open. An app that goes back to such a release, by a
+    downgrade or by shipping its code again as a newer version, fails on that
+    database with NOTADB and loses nothing, and a later version with Evolu's
+    SQLite opens it again. The databases that existed before keep SQLCipher's
+    format, so an older release still opens them.
+  - SQL strings take single quotes, as on the web: Evolu's SQLite reads a
+    double-quoted string as a column name, so `where title = "a"`, which
+    expo-sqlite's SQLCipher accepted, fails with no such column. The schemas
+    existing databases store still load.
+  - Every connection is defensive (`SQLITE_DBCONFIG_DEFENSIVE`), so SQL can't
+    deliberately corrupt its database: it ignores `PRAGMA writable_schema = ON`,
+    `journal_mode = OFF` and `schema_version = N`.
+  - A wrong key now sets `evoluError` to an `UnknownError` whose `error.cause`
+    names the failure. A database that another JavaScript runtime of the app, such
+    as one a reload replaced, still holds 10 seconds after Evolu began waiting for
+    it fails with `DatabaseHeldError`, as on the web. A runtime still starting, as
+    during an early reload, can open it between that wait and Evolu's open, which
+    then tries again for 10 seconds and fails with an `UnknownError`. After
+    either, the app must be restarted.
+
+  Installs get smaller. The package is now 11.6 MB unpacked, because it ships
+  SQLite and Evolu's SQLite core as C sources, but apps no longer install
+  expo-sqlite, 31 MB unpacked, react-native-quick-crypto, 6 MB, or
+  react-native-nitro-modules.
+
+  Apps get smaller too. Built for Release with each version, Evolu's Expo example
+  shrank: its iOS executable from 24.4 MB to 12.8 MB, its `.app` from 56.6 MB to
+  44.1 MB, and its Android APK, with all four ABIs, from 163 MB to 103 MB.
+  Evolu's SQLite adds 0.7 to 1.2 MB per architecture, while the app drops the
+  native code of expo-sqlite, react-native-quick-crypto and
+  react-native-nitro-modules, and on Android also the OpenSSL that expo-sqlite
+  packages.
+
+  ```ts
+  import { createEvoluDeps, createRun } from "@evolu/react-native";
+  // @ts-expect-error @evolu/react-native/expo-sqlite no longer exists.
+  import type { createEvoluDeps as _createEvoluDeps } from "@evolu/react-native/expo-sqlite";
+  // @ts-expect-error EvoluIdenticon moved to @evolu/react-native/identicon.
+  import type { EvoluIdenticon as _MovedIdenticon } from "@evolu/react-native";
+  import type { EvoluIdenticon as _EvoluIdenticon } from "@evolu/react-native/identicon";
+
+  await using _run = createRun(createEvoluDeps());
+  ```
+
+### Patch Changes
+
+- 1c89914: Replaced sql.prepared with Sqlite.prepared, which keeps statements per database
+
+  `sqlite.prepared` is a tagged template that runs SQL as `sql` builds it, on a statement the database prepares on the first call and finalizes when it is disposed. The statement belongs to the template and the SQL of its `sql.identifier` and `sql.raw` fragments, so later calls build no SQL text. Pass fragments from a bounded set, such as the tables and columns of a schema, because each combination keeps a statement. Evolu's hot statements, except the one that streams timestamps during sync, use it and no longer build and hash their text. Measured with better-sqlite3, which this release replaces in `@evolu/nodejs`, a fresh client in Node receiving 20,000 todos from a relay used about 14% less CPU and 20,000 local inserts about 13% less, and with the web's SQLite in Node on an in-memory database, inserting and uploading 20,000 todos used about 12% less.
+
+  ```ts
+  import { assertEqual, sql, testSetupSqlite } from "@evolu/common";
+  import { createNodeJsSqliteDriver } from "@evolu/nodejs";
+
+  await using setup = await testSetupSqlite({
+    createSqliteDriver: createNodeJsSqliteDriver,
+  });
+  const { sqlite } = setup;
+  sqlite.exec(sql`create table todo (title text);`);
+
+  // @ts-expect-error sql.prepared was removed; use sqlite.prepared.
+  type _SqlPrepared = typeof sql.prepared;
+  sqlite.prepared`insert into todo (title) values (${"Buy milk"});`;
+
+  assertEqual(
+    sqlite.prepared<{ title: string }>`select title from todo;`.rows,
+    [{ title: "Buy milk" }],
+  );
+  ```
+
+  A query passed as data, such as one made with `createQuery(…, { prepare: true })` and run in the database worker, keeps the `prepare` option. `sqlite.exec` now keeps the statement of such a query per database, by its SQL text, on every driver.
+
+  Drivers no longer cache statements. `SqliteDriver` gained `prepare`, which returns a `SqliteDriverStatement` that runs many times until its owner disposes it, and `exec` runs every query on a statement of its own, also on Node.js, whose driver used to keep every query. `createPreparedStatementsCache` and `PreparedStatements` are removed. Update `@evolu/web`, `@evolu/react-native` and `@evolu/nodejs` together with `@evolu/common`, because older drivers import the removed `createPreparedStatementsCache` and have no `prepare`. A custom `SqliteDriver` drops its cache and implements `prepare`:
+
+  ```ts
+  import {
+    assertEqual,
+    constVoid,
+    sql,
+    type SqliteDriver,
+    type SqliteRow,
+  } from "@evolu/common";
+
+  const rows: ReadonlyArray<SqliteRow> = [{ a: 1 }];
+
+  // @ts-expect-error A SqliteDriver must implement prepare.
+  const _driverBefore: SqliteDriver = {
+    exec: () => ({ rows, changes: 0 }),
+    iterate: constVoid,
+    export: () => new Uint8Array(),
+    deleteDatabase: constVoid,
+    [Symbol.dispose]: constVoid,
+  };
+
+  const driver: SqliteDriver = {
+    exec: () => ({ rows, changes: 0 }),
+    prepare: () => ({
+      exec: () => ({ rows, changes: 0 }),
+      [Symbol.dispose]: constVoid,
+    }),
+    iterate: constVoid,
+    export: () => new Uint8Array(),
+    deleteDatabase: constVoid,
+    [Symbol.dispose]: constVoid,
+  };
+
+  using statement = driver.prepare(sql`select a from t;`.sql);
+  assertEqual(statement.exec([]).rows, [{ a: 1 }]);
+  ```
+
+  Transactions run `begin`, `commit`, and `rollback` on prepared statements.
+
+  To migrate:
+
+  - `sql.prepared` is removed. Run SQL where it is written with `sqlite.prepared`, and give a query passed as data, such as one made with `createQuery`, the `prepare` option.
+  - A custom `Sqlite`, such as a test fake or a wrapper, implements `prepared`. A wrapper that spreads a `Sqlite` and replaces only `exec` still compiles, but it no longer sees Evolu's hot statements, which run on `prepared`.
+  - Statements run with `sqlite.prepared` take no `logQueryExecutionTime` or `logExplainQueryPlan` option.
+  - On Node.js, a query keeps its statement only with the `prepare` option, because its driver no longer keeps every query.
+
+  ```ts
+  import {
+    assertEqual,
+    sql,
+    testSetupSqlite,
+    type Sqlite,
+    type SqliteQuery,
+    type SqliteRow,
+    type SqlTemplateParam,
+  } from "@evolu/common";
+  import { createNodeJsSqliteDriver } from "@evolu/nodejs";
+
+  await using setup = await testSetupSqlite({
+    createSqliteDriver: createNodeJsSqliteDriver,
+  });
+  const { sqlite } = setup;
+  const executed: Array<string> = [];
+  const exec = <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
+    executed.push(query.sql);
+    return sqlite.exec<R>(query);
+  };
+
+  // @ts-expect-error A Sqlite must implement prepared.
+  const _loggingBefore: Sqlite = {
+    exec,
+    iterate: sqlite.iterate,
+    transaction: sqlite.transaction,
+    export: sqlite.export,
+    [Symbol.asyncDispose]: () => sqlite[Symbol.asyncDispose](),
+  };
+
+  const logging: Sqlite = {
+    ...sqlite,
+    exec,
+    prepared: <R extends SqliteRow = SqliteRow>(
+      strings: TemplateStringsArray,
+      ...parameters: Array<SqlTemplateParam>
+    ) => {
+      executed.push(sql(strings, ...parameters).sql);
+      return sqlite.prepared<R>(strings, ...parameters);
+    },
+  };
+
+  logging.exec(sql`create table todo (title text);`);
+  logging.prepared`insert into todo (title) values (${"Buy milk"});`;
+
+  assertEqual(executed, [
+    "create table todo (title text);",
+    "insert into todo (title) values (?);",
+  ]);
+  ```
+
+- 7cc5d91: Added links to bundled source, API documentation, and tests
+
+  Package READMEs now point to the source, JSDoc documentation, usage examples,
+  and tests included in the installed version. They also clarify that application
+  imports use public package exports, since tests may import internal helpers.
+
+- f3a8831: Stopped Evolu's in-memory workers from waiting for frames on React Native
+
+  On React Native, Evolu runs its database worker and shared worker in memory on the JavaScript thread, and the in-memory workers delivered messages with `setTimeout(0)`. React Native fires such a timer only at the next frame or a later one, and every Evolu operation passes several messages between the app and the workers, so it took whole frames however fast SQLite was: at 60 Hz, about 67 ms for a mutation and over 100 ms to start Evolu.
+
+  Where React Native's runtime scheduler exists, which the New Architecture installs, the in-memory workers now deliver messages in tasks of that scheduler, which React also schedules its work with. Each delivery is still a task of its own, so input and rendering can still come between deliveries, but none waits for a frame. Elsewhere, the in-memory workers still use `setTimeout(0)`.
+
+  In the iOS simulator, a mutation took 1.5 ms instead of 66.7 ms, 100 mutations 10.7 ms instead of 66.3 ms, exporting the database 8.2 ms instead of 66.2 ms, and starting Evolu on a new database 2.3 ms instead of 120 ms. On an Android phone, the Payky app, which patched Evolu the same way, measured a query taking 1–2 ms instead of about 55 ms, and its first screen 352–368 ms instead of 574–711 ms.
+
+- Updated dependencies [1c89914]
+- Updated dependencies [bc4578a]
+- Updated dependencies [7cc5d91]
+- Updated dependencies [72177aa]
+- Updated dependencies [1c89914]
+- Updated dependencies [5c97752]
+- Updated dependencies [be5afcb]
+- Updated dependencies [fd3565e]
+- Updated dependencies [f3a8831]
+- Updated dependencies [f43e20e]
+  - @evolu/common@8.24.0
+  - @evolu/react@11.2.2
+
 ## 16.1.6
 
 ### Patch Changes

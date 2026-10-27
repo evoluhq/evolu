@@ -1,5 +1,29 @@
 # @evolu/react-web
 
+## 3.2.1
+
+### Patch Changes
+
+- 7cc5d91: Added links to bundled source, API documentation, and tests
+
+  Package READMEs now point to the source, JSDoc documentation, usage examples,
+  and tests included in the installed version. They also clarify that application
+  imports use public package exports, since tests may import internal helpers.
+
+- Updated dependencies [1c89914]
+- Updated dependencies [bc4578a]
+- Updated dependencies [7cc5d91]
+- Updated dependencies [89b626c]
+- Updated dependencies [72177aa]
+- Updated dependencies [1c89914]
+- Updated dependencies [5c97752]
+- Updated dependencies [be5afcb]
+- Updated dependencies [fd3565e]
+- Updated dependencies [f3a8831]
+- Updated dependencies [f43e20e]
+  - @evolu/common@8.24.0
+  - @evolu/web@3.6.3
+
 ## 3.2.0
 
 ### Minor Changes
