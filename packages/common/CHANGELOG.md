@@ -1,5 +1,430 @@
 # @evolu/common
 
+## 8.24.0
+
+### Minor Changes
+
+- 1c89914: Replaced sql.prepared with Sqlite.prepared, which keeps statements per database
+
+  `sqlite.prepared` is a tagged template that runs SQL as `sql` builds it, on a statement the database prepares on the first call and finalizes when it is disposed. The statement belongs to the template and the SQL of its `sql.identifier` and `sql.raw` fragments, so later calls build no SQL text. Pass fragments from a bounded set, such as the tables and columns of a schema, because each combination keeps a statement. Evolu's hot statements, except the one that streams timestamps during sync, use it and no longer build and hash their text. Measured with better-sqlite3, which this release replaces in `@evolu/nodejs`, a fresh client in Node receiving 20,000 todos from a relay used about 14% less CPU and 20,000 local inserts about 13% less, and with the web's SQLite in Node on an in-memory database, inserting and uploading 20,000 todos used about 12% less.
+
+  ```ts
+  import { assertEqual, sql, testSetupSqlite } from "@evolu/common";
+  import { createNodeJsSqliteDriver } from "@evolu/nodejs";
+
+  await using setup = await testSetupSqlite({
+    createSqliteDriver: createNodeJsSqliteDriver,
+  });
+  const { sqlite } = setup;
+  sqlite.exec(sql`create table todo (title text);`);
+
+  // @ts-expect-error sql.prepared was removed; use sqlite.prepared.
+  type _SqlPrepared = typeof sql.prepared;
+  sqlite.prepared`insert into todo (title) values (${"Buy milk"});`;
+
+  assertEqual(
+    sqlite.prepared<{ title: string }>`select title from todo;`.rows,
+    [{ title: "Buy milk" }],
+  );
+  ```
+
+  A query passed as data, such as one made with `createQuery(…, { prepare: true })` and run in the database worker, keeps the `prepare` option. `sqlite.exec` now keeps the statement of such a query per database, by its SQL text, on every driver.
+
+  Drivers no longer cache statements. `SqliteDriver` gained `prepare`, which returns a `SqliteDriverStatement` that runs many times until its owner disposes it, and `exec` runs every query on a statement of its own, also on Node.js, whose driver used to keep every query. `createPreparedStatementsCache` and `PreparedStatements` are removed. Update `@evolu/web`, `@evolu/react-native` and `@evolu/nodejs` together with `@evolu/common`, because older drivers import the removed `createPreparedStatementsCache` and have no `prepare`. A custom `SqliteDriver` drops its cache and implements `prepare`:
+
+  ```ts
+  import {
+    assertEqual,
+    constVoid,
+    sql,
+    type SqliteDriver,
+    type SqliteRow,
+  } from "@evolu/common";
+
+  const rows: ReadonlyArray<SqliteRow> = [{ a: 1 }];
+
+  // @ts-expect-error A SqliteDriver must implement prepare.
+  const _driverBefore: SqliteDriver = {
+    exec: () => ({ rows, changes: 0 }),
+    iterate: constVoid,
+    export: () => new Uint8Array(),
+    deleteDatabase: constVoid,
+    [Symbol.dispose]: constVoid,
+  };
+
+  const driver: SqliteDriver = {
+    exec: () => ({ rows, changes: 0 }),
+    prepare: () => ({
+      exec: () => ({ rows, changes: 0 }),
+      [Symbol.dispose]: constVoid,
+    }),
+    iterate: constVoid,
+    export: () => new Uint8Array(),
+    deleteDatabase: constVoid,
+    [Symbol.dispose]: constVoid,
+  };
+
+  using statement = driver.prepare(sql`select a from t;`.sql);
+  assertEqual(statement.exec([]).rows, [{ a: 1 }]);
+  ```
+
+  Transactions run `begin`, `commit`, and `rollback` on prepared statements.
+
+  To migrate:
+
+  - `sql.prepared` is removed. Run SQL where it is written with `sqlite.prepared`, and give a query passed as data, such as one made with `createQuery`, the `prepare` option.
+  - A custom `Sqlite`, such as a test fake or a wrapper, implements `prepared`. A wrapper that spreads a `Sqlite` and replaces only `exec` still compiles, but it no longer sees Evolu's hot statements, which run on `prepared`.
+  - Statements run with `sqlite.prepared` take no `logQueryExecutionTime` or `logExplainQueryPlan` option.
+  - On Node.js, a query keeps its statement only with the `prepare` option, because its driver no longer keeps every query.
+
+  ```ts
+  import {
+    assertEqual,
+    sql,
+    testSetupSqlite,
+    type Sqlite,
+    type SqliteQuery,
+    type SqliteRow,
+    type SqlTemplateParam,
+  } from "@evolu/common";
+  import { createNodeJsSqliteDriver } from "@evolu/nodejs";
+
+  await using setup = await testSetupSqlite({
+    createSqliteDriver: createNodeJsSqliteDriver,
+  });
+  const { sqlite } = setup;
+  const executed: Array<string> = [];
+  const exec = <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
+    executed.push(query.sql);
+    return sqlite.exec<R>(query);
+  };
+
+  // @ts-expect-error A Sqlite must implement prepared.
+  const _loggingBefore: Sqlite = {
+    exec,
+    iterate: sqlite.iterate,
+    transaction: sqlite.transaction,
+    export: sqlite.export,
+    [Symbol.asyncDispose]: () => sqlite[Symbol.asyncDispose](),
+  };
+
+  const logging: Sqlite = {
+    ...sqlite,
+    exec,
+    prepared: <R extends SqliteRow = SqliteRow>(
+      strings: TemplateStringsArray,
+      ...parameters: Array<SqlTemplateParam>
+    ) => {
+      executed.push(sql(strings, ...parameters).sql);
+      return sqlite.prepared<R>(strings, ...parameters);
+    },
+  };
+
+  logging.exec(sql`create table todo (title text);`);
+  logging.prepared`insert into todo (title) values (${"Buy milk"});`;
+
+  assertEqual(executed, [
+    "create table todo (title text);",
+    "insert into todo (title) values (?);",
+  ]);
+  ```
+
+- 5c97752: Added emptyPrototype, which isPlainObject accepts as it accepts a null prototype
+
+  `emptyPrototype` is a frozen, empty object without a prototype. An object
+  whose prototype it is inherits nothing, as an object without a prototype does,
+  but V8 reads and writes its properties as fast as an ordinary object's, which
+  it doesn't for an object without a prototype. Evolu's SQLite on Node.js and
+  `@evolu/sqlite-wasm` now create their rows with it, so `isPlainObject` accepts
+  such an object, and so do every Type that validates objects, records and JSON
+  values, Data's equality and `assertEqual`. So does any other frozen, empty
+  prototype without a prototype, such as another copy's `emptyPrototype`, which
+  a duplicate install or a test runner's module registry can load. Other
+  prototypes are rejected as before, except another realm's `Object.prototype`,
+  recognized by its own `hasOwnProperty` and `isPrototypeOf`.
+
+  ```ts
+  import {
+    assertFalse,
+    assertTrue,
+    emptyPrototype,
+    isPlainObject,
+  } from "@evolu/common";
+
+  assertTrue(isPlainObject(Object.create(emptyPrototype)));
+  // As another copy of @evolu/common creates its emptyPrototype.
+  const anotherCopys = Object.freeze(Object.create(null) as object);
+  assertTrue(isPlainObject(Object.create(anotherCopys)));
+  const notFrozen = Object.create(null) as object;
+  assertFalse(isPlainObject(Object.create(notFrozen)));
+  ```
+
+- fd3565e: Added createNativeSqliteDriver, the SQLite driver React Native and Node.js share
+
+  `createNativeSqliteDriver` is the `CreateSqliteDriver` over `NativeSqlite`, the
+  JavaScript interface of Evolu's native SQLite binding, which
+  `@evolu/react-native` implements with JSI and `@evolu/nodejs` with Node-API, so
+  both platforms run one driver. A platform passes its binding and
+  `DatabasePathDep`, where its database files are. `NativeSqlite` is exported
+  with it, and so are the causes of the `Error`s its binding throws, such as
+  `DatabaseFileHeldError` for a file another connection of the process holds, and
+  `retryWhileHeld`, with which an open of a held file tries again for up to 10
+  seconds.
+
+  ```ts
+  import {
+    assertEqual,
+    createNativeSqliteDriver,
+    Name,
+    sql,
+    testCreateRun,
+    type NativeSqlite,
+    type NativeSqliteDatabase,
+  } from "@evolu/common";
+
+  // A binding whose file another connection holds at the first open, and whose
+  // run of a query returns its rows.
+  const unused = (): never => {
+    throw new Error("The driver doesn't call it here.");
+  };
+  const opens: Array<string> = [];
+  const database: NativeSqliteDatabase = {
+    prepare: unused,
+    run: () => [{ answer: 42 }],
+    export: () => new ArrayBuffer(0),
+    close: () => undefined,
+  };
+  const nativeSqlite: NativeSqlite = {
+    abiVersion: 2,
+    openMemory: unused,
+    openFile: (path) => {
+      opens.push(path);
+      if (opens.length === 1)
+        throw new Error("The database is held.", {
+          cause: { type: "DatabaseFileHeldError" },
+        });
+      return database;
+    },
+    openEncryptedFile: unused,
+    isFileOpen: unused,
+    deleteFile: unused,
+    fillRandom: unused,
+    encryptXChaCha20Poly1305: unused,
+    decryptXChaCha20Poly1305: unused,
+  };
+
+  const createSqliteDriver = createNativeSqliteDriver({
+    nativeSqlite,
+    databasePath: (name) => `/data/evolu1-${name}.db`,
+  });
+
+  await using run = testCreateRun();
+  const opening = run.ok(createSqliteDriver(Name.orThrow("App")));
+  // The open of the held file tries again 50 ms later.
+  run.deps.time.advance("50ms");
+  using driver = await opening;
+
+  assertEqual(driver.exec(sql`select 42 as answer;`).rows, [{ answer: 42 }]);
+  assertEqual(opens, ["/data/evolu1-App.db", "/data/evolu1-App.db"]);
+  ```
+
+- f43e20e: Added XChaCha20Poly1305, which lets a platform encrypt and decrypt changes natively
+
+  Evolu's DbWorker and SharedWorker now encrypt and decrypt changes with an
+  `XChaCha20Poly1305` that a platform can pass, and `@evolu/react-native` passes
+  Evolu's C. Until now, React Native's sync decrypted every change it received
+  with noble-ciphers in JavaScript. On an iPhone 16e, XChaCha20-Poly1305 alone
+  took about 185 µs to decrypt a 256-byte message with noble-ciphers on Hermes,
+  and 0.64 µs in Evolu's C, timed without the call into it. With Evolu's C, a
+  fresh database receiving 10,000 changes took 20% less time on the iOS simulator
+  and 24% to 29% less on an arm64 Android emulator. `createXChaCha20Poly1305`
+  implements `XChaCha20Poly1305` with noble-ciphers, in the byte layout of
+  `encryptWithXChaCha20Poly1305` and `decryptWithXChaCha20Poly1305`, which keep
+  their signatures: its ciphertext ends with the 16-byte tag, as theirs does.
+  Unlike `encryptWithXChaCha20Poly1305`, its `encrypt` takes the nonce instead of
+  drawing one, so a caller must never reuse a nonce with the same key.
+
+  `DbWorkerDeps` and `SharedWorkerDeps` take an optional `XChaCha20Poly1305Dep`
+  and use `createXChaCha20Poly1305` without one, so the web and Node.js work as
+  before. The local-first functions that encrypt or decrypt a change take the
+  dependency: `encodeAndEncryptDbChange`,
+  `createProtocolMessageFromCrdtMessages` and
+  `createProtocolBroadcastMessagesFromCrdtMessages` need it beside
+  `RandomBytesDep`, and `decryptAndDecodeDbChange` takes it first.
+
+  ```ts
+  import {
+    assertEqual,
+    createId,
+    createRandomBytes,
+    createXChaCha20Poly1305,
+    getOrThrow,
+  } from "@evolu/common";
+  import {
+    decryptAndDecodeDbChange,
+    encodeAndEncryptDbChange,
+    testAppOwner,
+    testCreateCrdtMessage,
+  } from "@evolu/common/local-first";
+
+  const randomBytes = createRandomBytes();
+  const deps = { randomBytes, xChaCha20Poly1305: createXChaCha20Poly1305() };
+  const key = testAppOwner.encryptionKey;
+  const message = testCreateCrdtMessage(createId(deps), 1, "Ada");
+  const encrypted = {
+    timestamp: message.timestamp,
+    change: encodeAndEncryptDbChange(deps)(message, key),
+  };
+
+  // @ts-expect-error encodeAndEncryptDbChange needs XChaCha20Poly1305Dep beside RandomBytesDep.
+  const _encryptWithoutDep = () => encodeAndEncryptDbChange({ randomBytes });
+  // @ts-expect-error decryptAndDecodeDbChange takes XChaCha20Poly1305Dep first.
+  const _decryptWithoutDeps = () => decryptAndDecodeDbChange(encrypted, key);
+
+  assertEqual(
+    getOrThrow(decryptAndDecodeDbChange(deps)(encrypted, key)),
+    message.change,
+  );
+  ```
+
+### Patch Changes
+
+- bc4578a: Fixed large mutations in one tick blocking the main thread
+
+  Each `insert`, `update` and `upsert` copied every change already queued in the
+  same tick, so a bulk edit or an import of n changes cost O(n²) on the main
+  thread before anything reached the database worker. `createMicrotaskBatch`,
+  which queues them, now appends in place. On an Apple M5, queuing 60,000
+  changes takes about 3 ms instead of 3 s.
+
+- 7cc5d91: Added links to bundled source, API documentation, and tests
+
+  Package READMEs now point to the source, JSDoc documentation, usage examples,
+  and tests included in the installed version. They also clarify that application
+  imports use public package exports, since tests may import internal helpers.
+
+- 72177aa: Moved Evolu's timestamp storage into Evolu's SQLite core
+
+  Sync reconciles an owner's timestamps through a skiplist in the
+  `evolu_timestamp` table, which `Storage.ts` read and wrote with recursive
+  common table expressions. It now calls the SQL functions of Evolu's SQLite core,
+  such as `evolu_skiplist_insert`, the same skiplist in C, which `@evolu/web`,
+  `@evolu/react-native` and `@evolu/nodejs` register on every connection. They
+  write the same rows, so existing databases need no migration.
+
+  Sync reads and writes timestamps faster. Measured in Node.js on one owner's
+  50,000 timestamps, with the same SQLite driver before and after, the table shows
+  the median of 7 rounds of each operation's mean time per call:
+
+  | Operation                  | Before (CTEs) | After (C) | Faster |
+  | -------------------------- | ------------: | --------: | -----: |
+  | Fingerprints of 16 ranges  |       1.12 ms |  0.091 ms |  12.3× |
+  | Timestamp at an index      |       35.8 µs |    6.1 µs |   5.9× |
+  | Append a timestamp         |        7.1 µs |    4.0 µs |   1.8× |
+  | Prepend a timestamp        |       23.6 µs |   11.8 µs |   2.0× |
+  | Insert in shuffled order   |       35.5 µs |   14.0 µs |   2.5× |
+  | Owner's size               |        9.7 µs |    6.0 µs |   1.6× |
+  | Lower bound of a timestamp |       14.9 µs |    6.9 µs |   2.2× |
+
+  The web's database worker is about 26 KB smaller minified, 4 KB with Brotli.
+
+  A custom `SqliteDriver` whose SQLite lacks these functions no longer works:
+  syncing fails with "no such function: evolu_skiplist_size", and every local
+  write with "no such function: evolu_skiplist_insert". Evolu's SQLite core
+  isn't published as a loadable extension. A custom driver can build on
+  `@evolu/sqlite-wasm` 3.54.1-build1 or later, where every connection has these
+  functions, or wrap the driver of `@evolu/web`, `@evolu/react-native` or
+  `@evolu/nodejs`. A relay needs these functions too, so it can't run on a
+  platform's own SQLite, such as that of Cloudflare Durable Objects.
+
+  `BaseSqliteStorage.insertTimestamp` no longer takes an insertion strategy and
+  must run in a transaction, which its caller rolls back when it throws.
+  `getTimestampInsertStrategy` and `StorageInsertTimestampStrategy` are removed,
+  and the new `extendTimestampBounds` returns the first and last timestamps that
+  `getTimestampInsertStrategy` returned. `Storage.fingerprintRanges` takes at
+  least one bucket, and `OwnerUsage` no longer has `firstTimestamp` or
+  `lastTimestamp`.
+
+  ```ts
+  import {
+    assertEqual,
+    assertType,
+    Millis,
+    NonNegativeInt,
+  } from "@evolu/common";
+  import {
+    type BaseSqliteStorage,
+    createTimestamp,
+    extendTimestampBounds,
+    type FingerprintRange,
+    type OwnerIdBytes,
+    type OwnerUsage,
+    type Storage,
+    type TimestampBytes,
+    timestampToTimestampBytes,
+  } from "@evolu/common/local-first";
+  // @ts-expect-error getTimestampInsertStrategy is removed.
+  import type { getTimestampInsertStrategy as _getTimestampInsertStrategy } from "@evolu/common/local-first";
+  // @ts-expect-error StorageInsertTimestampStrategy is removed.
+  import type { StorageInsertTimestampStrategy as _StorageInsertTimestampStrategy } from "@evolu/common/local-first";
+
+  const _insertTimestamp = (
+    storage: BaseSqliteStorage,
+    ownerId: OwnerIdBytes,
+    timestamp: TimestampBytes,
+  ): boolean => {
+    // @ts-expect-error insertTimestamp no longer takes an insertion strategy.
+    storage.insertTimestamp(ownerId, timestamp, "append");
+    return storage.insertTimestamp(ownerId, timestamp);
+  };
+
+  const _fingerprintRanges = (
+    storage: Storage,
+    ownerId: OwnerIdBytes,
+  ): ReadonlyArray<FingerprintRange> => {
+    // @ts-expect-error fingerprintRanges takes at least one bucket.
+    storage.fingerprintRanges(ownerId, []);
+    return storage.fingerprintRanges(ownerId, [NonNegativeInt.orThrow(0)]);
+  };
+
+  const [first, middle, last] = [1, 2, 3].map((millis) =>
+    timestampToTimestampBytes(
+      createTimestamp({ millis: Millis.orThrow(millis) }),
+    ),
+  );
+  assertEqual(extendTimestampBounds(last, first, middle), [first, last]);
+  assertEqual(extendTimestampBounds(middle, first, last), [first, last]);
+
+  assertType<keyof OwnerUsage, "ownerId" | "storedBytes">();
+  ```
+
+- 1c89914: Made local changes faster
+
+  Evolu now spends less CPU encoding changes:
+
+  - Encoding a string value calls `JSON.parse` only on text that starts and ends
+    like `JSON.stringify` output, so most plain text no longer throws inside it.
+  - Timestamps convert to and from bytes without `BigInt` and reuse the bytes of
+    the last NodeId.
+
+  In Node with better-sqlite3, 20,000 local inserts used about 12% less CPU,
+  and with the web's SQLite in Node on an in-memory database, inserting and
+  uploading 20,000 todos used about 20% less. Synced bytes are unchanged.
+
+- be5afcb: Sped up loading several queries at once on encrypted databases
+
+  The database worker ran each query of a request in a read transaction of its own. Whenever one starts, SQLite rereads the database's change counter, which Evolu's encryption, on the web and now on React Native, serves by reading and decrypting the database's first page, so every query decrypted that page again. The queries Evolu loads together now share one read transaction: those an app loads at once, and the subscribed queries Evolu reloads after sync or another tab changes data.
+
+  In Chromium, Firefox and WebKit, a request of 20 small queries on an encrypted web database took 0.2–0.3 ms instead of 1.5–2.5 ms, and 1.6–2.2 ms instead of 6.0–8.5 ms after 50 ms of idle. A request of one query, which gains nothing, takes up to 0.08 ms longer after idle, for beginning and ending the transaction. Unencrypted databases save less. A query that fails still fails only itself.
+
+- f3a8831: Stopped Evolu's in-memory workers from waiting for frames on React Native
+
+  On React Native, Evolu runs its database worker and shared worker in memory on the JavaScript thread, and the in-memory workers delivered messages with `setTimeout(0)`. React Native fires such a timer only at the next frame or a later one, and every Evolu operation passes several messages between the app and the workers, so it took whole frames however fast SQLite was: at 60 Hz, about 67 ms for a mutation and over 100 ms to start Evolu.
+
+  Where React Native's runtime scheduler exists, which the New Architecture installs, the in-memory workers now deliver messages in tasks of that scheduler, which React also schedules its work with. Each delivery is still a task of its own, so input and rendering can still come between deliveries, but none waits for a frame. Elsewhere, the in-memory workers still use `setTimeout(0)`.
+
+  In the iOS simulator, a mutation took 1.5 ms instead of 66.7 ms, 100 mutations 10.7 ms instead of 66.3 ms, exporting the database 8.2 ms instead of 66.2 ms, and starting Evolu on a new database 2.3 ms instead of 120 ms. On an Android phone, the Payky app, which patched Evolu the same way, measured a query taking 1–2 ms instead of about 55 ms, and its first screen 352–368 ms instead of 574–711 ms.
+
 ## 8.23.2
 
 ### Patch Changes

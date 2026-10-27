@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react-native",
-  "version": "16.1.6",
+  "version": "16.2.0",
   "description": "Evolu for React Native and Expo",
   "keywords": [
     "evolu",
@@ -105,7 +105,7 @@
   },
   "peerDependencies": {
     "@evolu/common": "^8.24.0",
-    "@evolu/react": "^11.2.1",
+    "@evolu/react": "^11.2.2",
     "react": ">=19",
     "react-native": ">=0.88",
     "react-native-svg": ">=15.15"
