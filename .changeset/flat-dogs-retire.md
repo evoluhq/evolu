@@ -29,12 +29,17 @@ The web's database worker is about 26 KB smaller minified, 4 KB with Brotli.
 
 A custom `SqliteDriver` whose SQLite lacks these functions no longer works:
 syncing fails with "no such function: evolu_skiplist_size", and every local
-write with "no such function: evolu_skiplist_insert".
+write with "no such function: evolu_skiplist_insert". Evolu's SQLite core
+isn't published as a loadable extension. A custom driver can build on
+`@evolu/sqlite-wasm` 3.54.1-build1 or later, where every connection has these
+functions, or wrap the driver of `@evolu/web`, `@evolu/react-native` or
+`@evolu/nodejs`. A relay needs these functions too, so it can't run on a
+platform's own SQLite, such as that of Cloudflare Durable Objects.
 
 `BaseSqliteStorage.insertTimestamp` no longer takes an insertion strategy and
 must run in a transaction, which its caller rolls back when it throws.
 `getTimestampInsertStrategy` and `StorageInsertTimestampStrategy` are removed,
-and `extendTimestampBounds` returns the first and last timestamps that
+and the new `extendTimestampBounds` returns the first and last timestamps that
 `getTimestampInsertStrategy` returned. `Storage.fingerprintRanges` takes at
 least one bucket, and `OwnerUsage` no longer has `firstTimestamp` or
 `lastTimestamp`.

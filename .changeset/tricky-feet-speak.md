@@ -26,8 +26,9 @@ What changes for an app:
   later, on Hermes, React Native's default engine. Expo Go can't load Evolu's
   native code, so Expo apps use a development build. iOS builds with CocoaPods;
   SwiftPM support comes later.
-- It needs `@evolu/common` 8.24 or later, whose workers take that native
-  encryption. An older one would keep decrypting with noble-ciphers.
+- It needs `@evolu/common` 8.24 or later, which has the SQLite driver this
+  package now runs on and workers that take its native encryption. With an
+  older one, `createEvoluDeps` throws at startup.
 - Bump the version that over-the-air updates target, such as Expo's runtime
   version, and don't ship this release as an over-the-air update to older
   native builds. On a build without Evolu's module it fails at startup, and an
@@ -63,7 +64,7 @@ What changes for an app:
   expo-sqlite's SQLCipher accepted, fails with no such column. The schemas
   existing databases store still load.
 - Every connection is defensive (`SQLITE_DBCONFIG_DEFENSIVE`), so SQL can't
-  corrupt its database: it ignores `PRAGMA writable_schema = ON`,
+  deliberately corrupt its database: it ignores `PRAGMA writable_schema = ON`,
   `journal_mode = OFF` and `schema_version = N`.
 - A wrong key now sets `evoluError` to an `UnknownError` whose `error.cause`
   names the failure. A database that another JavaScript runtime of the app, such

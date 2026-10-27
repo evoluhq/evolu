@@ -7,10 +7,10 @@ Moved database encryption into Evolu's SQLite core and updated SQLite to 3.54.1
 
 `@evolu/sqlite-wasm` 3.54.1-build1, which `@evolu/web` now uses, encrypts
 databases with Evolu's SQLite core, Evolu's own C code inside the WebAssembly.
-It's the start of one SQLite for every Evolu platform. The same C compiles
-natively for React Native in `@evolu/react-native` and for Node.js in
-`@evolu/nodejs`, so every platform gets one file format, one behavior after a
-crash and one set of tests. Until now, the web encrypted in TypeScript, React
+It's one SQLite for every Evolu platform: the same C compiles natively for
+React Native in `@evolu/react-native` and for Node.js in `@evolu/nodejs`, so
+every platform gets one codec, one behavior after a crash and one set of
+tests. Until now, the web encrypted in TypeScript, React
 Native relied on the SQLCipher that expo-sqlite vendors, and Node.js didn't
 encrypt at all.
 
@@ -25,8 +25,8 @@ What this brings:
   secret-dependent branch or memory access of their own. A check of the
   compiled WebAssembly finds none in Evolu's build.
 - Less to load and less to trust. What `@evolu/web` imports from
-  `@evolu/sqlite-wasm` is 39,781 bytes of JavaScript minified by esbuild,
-  13,418 with `gzip -9`, instead of 194,844 and 67,501. The package has no
+  `@evolu/sqlite-wasm` is 39,800 bytes of JavaScript minified by esbuild,
+  13,431 with `gzip -9`, instead of 194,844 and 67,501. The package has no
   runtime dependencies now that `@awasm/noble` is gone, and a worker that
   encrypts no longer allocates its 30 MiB of WebAssembly memory. The wasm grew
   from 677,479 to 720,542 bytes, from 305,733 to 323,059 with `gzip -9`.
@@ -39,8 +39,9 @@ What this brings:
 
 Constant time has a price, paid on writes. On an Apple M5, writing an 8 KiB page
 with its journal record takes about 300 µs instead of about 100 with
-table-based AES, in Chromium, Firefox and WebKit alike. A small commit after the
-storage idled, as in an app, gains 2.5 to 2.7 ms instead of 1.4 to 1.9, and
+table-based AES, in Chromium, Firefox and WebKit alike. Right after the
+storage idled, as in an app, encryption adds 2.5 to 2.7 ms to a small commit
+instead of 1.4 to 1.9, and
 large write transactions take about twice as long in Chromium. Back-to-back
 small commits in Chromium on macOS cost about 4 ms more each: Chromium flushes
 OPFS with `F_BARRIERFSYNC`, which slows down after about 100 to 200 µs without

@@ -8,9 +8,9 @@ Added createNativeSqliteDriver, the SQLite driver React Native and Node.js share
 JavaScript interface of Evolu's native SQLite binding, which
 `@evolu/react-native` implements with JSI and `@evolu/nodejs` with Node-API, so
 both platforms run one driver. A platform passes its binding and
-`DatabasePathDep`, where its database files are. `NativeSqlite` and the errors
-its binding throws, such as `DatabaseFileHeldError` for a file another
-connection of the process holds, are exported with it, and so is
+`DatabasePathDep`, where its database files are. `NativeSqlite` is exported
+with it, and so are the causes of the `Error`s its binding throws, such as
+`DatabaseFileHeldError` for a file another connection of the process holds, and
 `retryWhileHeld`, with which an open of a held file tries again for up to 10
 seconds.
 

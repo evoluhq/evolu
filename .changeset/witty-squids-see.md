@@ -2,7 +2,7 @@
 "@evolu/sqlite-wasm": patch
 ---
 
-Gave rows @evolu/common's emptyPrototype, which V8 reads faster than none
+Gave rows @evolu/common's emptyPrototype instead of a null prototype, so V8 reads them faster
 
 A row's prototype is now `emptyPrototype` from `@evolu/common`, a frozen, empty
 object without a prototype of its own, instead of `null`. A row still inherits

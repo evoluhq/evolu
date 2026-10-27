@@ -45,6 +45,9 @@ options, which the Evolu Relay uses, still stores plaintext. What changes:
   - `LIKE` matches blobs, which better-sqlite3 built SQLite not to.
   - A row inherits nothing, so `row.hasOwnProperty` is undefined. Use
     `Object.hasOwn`.
+  - A blob reads as a `Uint8Array`, where better-sqlite3 returned a `Buffer`,
+    so it has no `Buffer` methods such as `toString("hex")` or `equals`. Use
+    `Buffer.from(value)` where code needs one.
 - Evolu's SQLite has the features the web's has: SQLite's defaults, JSON
   among them, and the math functions. Compared with better-sqlite3, it lacks
   FTS, R\*Tree, Geopoly, the `dbstat` table, `percentile`, `soundex`,
@@ -54,8 +57,8 @@ options, which the Evolu Relay uses, still stores plaintext. What changes:
   such as `pragma key`, fails rather than leave it in plaintext, which
   better-sqlite3 did silently, and an attached database is read-only, because
   SQLite ignores the `KEY` clause of `ATTACH`. As with better-sqlite3, every
-  connection is in SQLite's defensive mode, so ordinary SQL can't corrupt its
-  database, and a file connection waits up to 5 seconds for a lock another
+  connection is in SQLite's defensive mode, so ordinary SQL can't deliberately
+  corrupt its database, and a file connection waits up to 5 seconds for a lock another
   process holds, also while it opens, and caches up to about 16 MB of pages.
 
 ```ts
