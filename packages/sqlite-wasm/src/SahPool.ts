@@ -76,8 +76,14 @@
  *   restarts. Chromium also lets a worker that `Worker.terminate()` ended
  *   finish the task it runs, holding its handles, for up to two seconds.
  * - Each header is read into a zeroed buffer, so a short slot is not parsed with
- *   the previous slot's bytes, then classified as opfs-sahpool does: a
- *   transient or DELETEONCLOSE file, or a bad digest, is freed; a valid free
+ *   the previous slot's bytes. A read that returns fewer bytes than the slot
+ *   holds fails setup with {@link SahPoolSetupError}, caused by a
+ *   {@link SahPoolShortHeaderReadError}, rather than parse the header as a free
+ *   slot's and truncate the slot. The header is then classified as opfs-sahpool
+ *   does: a slot that names a path and holds data past the header, and is not
+ *   DELETEONCLOSE, keeps its path even when its flags or digest are torn, as a
+ *   tab killed between opfs-sahpool's two header writes leaves them; otherwise
+ *   a transient or DELETEONCLOSE file, or a bad digest, is freed; a valid free
  *   slot is truncated to the header. Of slots whose headers map the same path,
  *   which two openers of a new or empty directory can leave, the one listed
  *   last maps the path, and the others stay unused, as in opfs-sahpool: no
@@ -594,7 +600,15 @@ export const openSahPool =
         // zeroed buffer, so a short slot is not parsed with the previous one's.
         for (const slot of slots) {
           const header = new Uint8Array(sahPoolHeaderDigestOffset + 8);
-          slot.handle.read(header, { at: 0 });
+          const size = slot.handle.getSize();
+          const read = slot.handle.read(header, { at: 0 });
+          const requested = Math.min(header.length, size);
+          if (read < requested)
+            return err({
+              type: "SahPoolShortHeaderRead",
+              requested,
+              read,
+            } satisfies SahPoolShortHeaderReadError);
           const flags = new DataView(header.buffer).getUint32(
             sahPoolHeaderFlagsOffset,
           );
@@ -608,12 +622,20 @@ export const openSahPool =
             2,
           );
           const pathLength = header.indexOf(0);
+          // A tab killed between the two header writes of opfs-sahpool leaves
+          // a stale digest, and torn flags look transient, so a file with
+          // data keeps its path, as in opfs-sahpool since bugs:7418667df7.
+          const holdsData =
+            pathLength > 0 &&
+            size > sahPoolHeaderSize &&
+            (flags & SQLITE_OPEN_DELETEONCLOSE) === 0;
           if (
-            (pathLength !== 0 &&
+            !holdsData &&
+            ((pathLength !== 0 &&
               ((flags & SQLITE_OPEN_DELETEONCLOSE) !== 0 ||
                 (flags & sahPoolPersistentFileTypes) === 0)) ||
-            stored[0] !== digest[0] ||
-            stored[1] !== digest[1]
+              stored[0] !== digest[0] ||
+              stored[1] !== digest[1])
           ) {
             const freed = writeHeader(slot.handle, "", 0);
             if (!freed.ok) return freed;
@@ -1132,11 +1154,22 @@ export interface SahPoolHeldError extends Typed<"SahPoolHeldError"> {
  */
 export interface SahPoolSetupError extends Typed<"SahPoolSetupError"> {
   /**
-   * What OPFS threw, a {@link SqliteShortWriteError}, or a
-   * {@link SqliteNoMemError} or {@link SqliteWasmInitializeError} from
-   * registering the VFS.
+   * What OPFS threw, a {@link SqliteShortWriteError}, a
+   * {@link SahPoolShortHeaderReadError}, or a {@link SqliteNoMemError} or
+   * {@link SqliteWasmInitializeError} from registering the VFS.
    */
   readonly cause: unknown;
+}
+
+/**
+ * Reading a slot's header returned fewer bytes than the slot holds, as WebKit's
+ * `read` has for a header that is there. Read as zeros, the header would be a
+ * free slot's, and setup would truncate the slot with its data.
+ */
+export interface SahPoolShortHeaderReadError extends Typed<"SahPoolShortHeaderRead"> {
+  /** The header's length, or the slot's size when it is shorter. */
+  readonly requested: number;
+  readonly read: number;
 }
 
 /** The pool has no file with the path. */

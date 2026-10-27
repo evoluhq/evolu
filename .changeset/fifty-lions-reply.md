@@ -36,6 +36,13 @@ What this brings:
   fixes a possible heap-buffer overflow on 32-bit builds.
 - A database that `@evolu/web` 3.0.0 to 3.4.1 encrypted, whose salt a crash
   tore, opens with the salt its hot journal stores.
+- Opening the pool no longer empties a database whose slot header is torn, as
+  a tab killed between the two header writes of SQLite's own pool leaves it.
+  Such a file keeps its path, as in SQLite's fix of the same bug. A header
+  read that returns fewer bytes than the slot holds, as Safari's has for a
+  header that is there, now fails the open with `SahPoolSetupError` and
+  changes nothing, where 3.53.4-build1 to 3.54.0-build2 read it as a free
+  slot and truncated the database.
 
 Constant time has a price, paid on writes. On an Apple M5, writing an 8 KiB page
 with its journal record takes about 300 µs instead of about 100 with

@@ -457,7 +457,9 @@ test("disposing a pool with an open file on a broken instance closes its handles
 
 // digest-worker.js (digest.html): legacy [0, 0] digests stay valid and a bad
 // digest frees the slot, and opfs-sahpool's getAssociatedPath for the rest.
-test("setup keeps valid slots with a V2 or legacy digest, frees transient, DELETEONCLOSE and bad-digest slots, truncates free slots without rewriting them, and parses a short slot as zeros", async () => {
+// Transient and bad-digest slots hold no data past the header, which a slot
+// of a path keeps, as the next test shows.
+test("setup keeps valid slots with a V2 or legacy digest, frees DELETEONCLOSE slots and transient and bad-digest slots without data, truncates free slots without rewriting them, and parses an empty slot as zeros", async () => {
   const fake = setupFakeOpfs();
   const v2 = sahPoolDigestV2Flag;
   const rw = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
@@ -476,15 +478,15 @@ test("setup keeps valid slots with a V2 or legacy digest, frees transient, DELET
     ),
     // Empty, so a buffer reused from the previous slot would parse as it.
     short: new Uint8Array(),
-    temp: withData(createSlotBytes("/temp", SQLITE_OPEN_TEMP_DB | rw | v2)),
+    temp: createSlotBytes("/temp", SQLITE_OPEN_TEMP_DB | rw | v2),
     deleteOnClose: withData(
       createSlotBytes(
         "/doc.db",
         SQLITE_OPEN_MAIN_DB | SQLITE_OPEN_DELETEONCLOSE | rw | v2,
       ),
     ),
-    badDigest: withData(badDigest),
-    badDigest2: withData(badDigest2),
+    badDigest,
+    badDigest2,
     longFree: withData(freeSlotBytes()),
   };
   for (const [fileName, bytes] of Object.entries(slots))
@@ -518,6 +520,136 @@ test("setup keeps valid slots with a V2 or legacy digest, frees transient, DELET
     ),
     [],
   );
+});
+
+// bugs:7418667df7, which opfs-sahpool fixed in 341525ecfd: a tab killed
+// between the header's two writes, of the path and flags and then of the
+// digest, leaves the digest stale, and a slot whose flags are torn looks
+// transient. Freeing either emptied a database that still held data.
+test("setup keeps the path of a slot that holds data past its header, unless it is DELETEONCLOSE, when its flags or digest are torn, changing nothing in it", async () => {
+  const fake = setupFakeOpfs();
+  const v2 = sahPoolDigestV2Flag;
+  const rw = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+  const data = Uint8Array.of(1, 2, 3, 4);
+  const withData = (bytes: Uint8Array) => Uint8Array.of(...bytes, ...data);
+  const zeroedFlags = createSlotBytes("/a.db", SQLITE_OPEN_MAIN_DB | rw | v2);
+  zeroedFlags.fill(0, 512, 516);
+  // The digest of the free header the path and flags were written over.
+  const staleDigest = createSlotBytes("/b.db", SQLITE_OPEN_MAIN_DB | rw | v2);
+  staleDigest.fill(0, sahPoolHeaderCorpusSize, sahPoolHeaderCorpusSize + 8);
+  const badJournal = createSlotBytes(
+    "/a.db-journal",
+    SQLITE_OPEN_MAIN_JOURNAL | rw | v2,
+  );
+  badJournal[sahPoolHeaderCorpusSize] ^= 1;
+  const badDeleteOnClose = createSlotBytes(
+    "/doc.db",
+    SQLITE_OPEN_MAIN_DB | SQLITE_OPEN_DELETEONCLOSE | rw | v2,
+  );
+  badDeleteOnClose[sahPoolHeaderCorpusSize] ^= 1;
+  // A delete killed after it wrote the free path and flags: the digest is
+  // still the deleted file's.
+  const interruptedDelete = createSlotBytes(
+    "/c.db",
+    SQLITE_OPEN_MAIN_DB | rw | v2,
+  );
+  interruptedDelete.fill(0, 0, sahPoolHeaderCorpusSize);
+  const headerOnly = createSlotBytes("/d.db", SQLITE_OPEN_MAIN_DB | rw | v2);
+  headerOnly[sahPoolHeaderCorpusSize] ^= 1;
+  const kept = {
+    zeroedFlags: withData(zeroedFlags),
+    staleDigest: withData(staleDigest),
+    badJournal: withData(badJournal),
+    // A transient file without DELETEONCLOSE is kept, as in opfs-sahpool.
+    transient: withData(
+      createSlotBytes("/temp", SQLITE_OPEN_TEMP_DB | rw | v2),
+    ),
+  };
+  const freed = {
+    badDeleteOnClose: withData(badDeleteOnClose),
+    interruptedDelete: withData(interruptedDelete),
+    headerOnly,
+  };
+  for (const [fileName, bytes] of Object.entries({ ...kept, ...freed }))
+    fake.writeFile(`.evolu/.opaque/${fileName}`, bytes);
+
+  const t = await setupSahPool({ fake });
+
+  assertEqual(t.pool.getPaths().toSorted(), [
+    "/a.db",
+    "/a.db-journal",
+    "/b.db",
+    "/temp",
+  ]);
+  assertEqual(
+    Object.fromEntries(
+      Object.keys({ ...kept, ...freed }).map((name) => [
+        name,
+        t.readSlot(name),
+      ]),
+    ),
+    {
+      ...kept,
+      badDeleteOnClose: freeSlotBytes(),
+      interruptedDelete: freeSlotBytes(),
+      headerOnly: freeSlotBytes(),
+    },
+  );
+  for (const path of ["/a.db", "/a.db-journal", "/b.db", "/temp"])
+    assertOk(
+      t.pool.read(path, 0 as NonNegativeInt, data.length as NonNegativeInt),
+      data,
+    );
+  assertEqual(
+    fake.calls.filter(
+      ({ method, path }) =>
+        method !== "read" &&
+        method !== "getSize" &&
+        method !== "createSyncAccessHandle" &&
+        Object.keys(kept).some((name) => path.endsWith(`/${name}`)),
+    ),
+    [],
+  );
+});
+
+// bugs:7418667df7: WebKit's SyncAccessHandle.read() has returned 0 for a
+// header that is there. Read as zeros, the header would be a free slot's, and
+// the slot would be truncated with the database in it.
+test("setup fails with SahPoolSetupError caused by a SahPoolShortHeaderReadError, changing no slot, when reading a header returns fewer bytes than the slot holds, and a retry that reads it opens the database", async () => {
+  const t = await setupPausedPool();
+  const fake = setupFakeOpfs();
+  for (const fileName of t.slotNames())
+    fake.writeFile(t.slotPath(fileName), t.readSlot(fileName));
+  const u = await setupSahPool({
+    fake,
+    directory: [OpfsName.orThrow(".other")],
+  });
+  const database = t.findSlotPath("/test.db");
+  for (const count of [0, 100]) {
+    fake.inject((call) =>
+      call.method === "read" && call.path === database && call.at === 0
+        ? { type: "Count", count }
+        : null,
+    );
+
+    const result = await u.openPool([OpfsName.orThrow(".evolu")]);
+
+    assertErr(result, {
+      type: "SahPoolSetupError",
+      cause: {
+        type: "SahPoolShortHeaderRead",
+        requested: sahPoolHeaderCorpusSize + 8,
+        read: count,
+      },
+    });
+    fake.inject(null);
+    for (const fileName of t.slotNames())
+      assertEqual(fake.readFile(t.slotPath(fileName)), t.readSlot(fileName));
+  }
+
+  using reopened = getOrThrow(await u.openPool([OpfsName.orThrow(".evolu")]));
+
+  assertTrue(reopened.getPaths().includes("/test.db"));
 });
 
 // The default TextDecoder strips a leading byte order mark, which would map the
