@@ -35,7 +35,6 @@ import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { buildNativeSqlite } from "../../../../packages/nodejs/scripts/build-native.mts";
-import { checkLoadedNativeSqlite } from "../../../../packages/nodejs/scripts/check-native.mts";
 import {
   isMusl,
   loadNativeSqlite,
@@ -77,20 +76,6 @@ const setupFile = (t: { after: (fn: () => void) => void }): void => {
       rmSync(`${path}${suffix}`, { force: true });
   });
 };
-
-// Not the header's check, whose glibc floor only the native jobs' AlmaLinux 8
-// build meets, since an addon built on a newer glibc may need it.
-// check-native.test.mts tests that check.
-test("the built addon passes the load check CI runs on every target's", () => {
-  const target = nativeSqliteTarget({
-    platform: process.platform,
-    arch: process.arch,
-    isMusl,
-  });
-  assert(target !== null, "Expected a target.");
-
-  checkLoadedNativeSqlite(target);
-});
 
 test("the load check imports, at run time, only Node.js's own modules and the repository's files, which CI runs it with alone", () => {
   const target = nativeSqliteTarget({

@@ -324,17 +324,21 @@ jobs:
   # oldest system the target runs on, on a runner of its CPU: AlmaLinux 8,
   # whose glibc 2.28 is Node.js 24's oldest, and the relay image's Alpine for
   # musl. Both are pinned by the digest of their multi-arch index, but the
-  # compiler is installed from the system's repository, so the log records its
-  # packages. The build and check scripts import only Node.js's own modules, so
-  # nothing is installed from npm, and no dependency's code runs where the
-  # shipped addon is built. No cache is restored either, which another job
-  # could have written: the build downloads the pinned SQLite source and
-  # verifies it. The job then checks the addon's header, which fails for a
-  # glibc symbol newer than 2.28, that it exports only Node-API's entry points,
-  # that it loads as the package loads it and opens an encrypted, a plaintext
-  # and a memory database, and that a second build from a copy of its sources
-  # at another path, into another build directory, gives the same bytes. The
-  # release packs these addons.
+  # compiler is installed from the system's repository, which drops old builds,
+  # so it isn't pinned, and the log records its packages. The build and check
+  # scripts import only Node.js's own modules, so nothing is installed from
+  # npm, and no dependency's code runs where the shipped addon is built. No
+  # cache is restored either, which another job could have written: the build
+  # downloads the pinned SQLite source and verifies it. The job then checks the
+  # addon's header, which fails for a glibc symbol newer than 2.28, that it
+  # exports only Node-API's entry points, that it loads as the package loads
+  # it, opens an encrypted, a plaintext and a memory database and reads one
+  # another implementation encrypted, and that a second build from a copy of
+  # its sources at another path, into another build directory, gives the same
+  # bytes. Reading another implementation's database catches a codec the
+  # compiler broke in the crypto paths the runner's CPU takes, but not software
+  # AES or arm64's software SHA-512, which only CPUs without those instructions
+  # take. The release packs these addons.
   nodejs-native-linux:
     name: Node.js SQLite (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
@@ -409,11 +413,11 @@ jobs:
           path: packages/nodejs/native/
           if-no-files-found: error
 
-  # The same for both macOS targets, each on a runner of its CPU, with the
-  # runner's Xcode, which the log records, for macOS 13.5 and later, which the
-  # check reads from the addon's header, and with the same second build. No
-  # runner with a macOS older than 15 remains, so the oldest macOS isn't
-  # tested.
+  # The same for both macOS targets, each on a runner of its CPU, for macOS
+  # 13.5 and later, which the check reads from the addon's header, and with the
+  # same second build. Xcode is pinned, to the version both images had as their
+  # default, so an image update can't change the compiler. No runner with a
+  # macOS older than 15 remains, so the oldest macOS isn't tested.
   nodejs-native-macos:
     name: Node.js SQLite (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
@@ -432,6 +436,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Select Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_16.4.app
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

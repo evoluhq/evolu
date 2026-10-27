@@ -1,8 +1,11 @@
 import {
+  assert,
   assertEqual,
   assertFalse,
   assertInstanceOf,
   assertThrows,
+  assertTrue,
+  emptyPrototype,
 } from "@evolu/common";
 import { spawnSync } from "node:child_process";
 import {
@@ -17,7 +20,21 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { checkNativeSqlite, packNativeSqlite } from "./check-native.mts";
+import {
+  isMusl,
+  loadNativeSqlite,
+  nativeSqliteTarget,
+} from "../src/NativeSqlite.ts";
+import { buildNativeSqlite } from "./build-native.mts";
+import {
+  checkLoadedNativeSqlite,
+  checkNativeSqlite,
+  knownAnswer,
+  packNativeSqlite,
+} from "./check-native.mts";
+
+// The addon the load check loads.
+await buildNativeSqlite();
 
 /** A Mach-O header with one LC_BUILD_VERSION whose minos is `minos`. */
 const machO = ({
@@ -171,6 +188,55 @@ test("a glibc addon must need no symbol newer than glibc 2.28", () => {
         ),
       `The addon for linux-x64-gnu needs glibc ${version.split(".").slice(0, 2).join(".")}, newer than 2.28.`,
     );
+});
+
+// Not the header's check, whose glibc floor only the native jobs' AlmaLinux 8
+// build meets, since an addon built on a newer glibc may need it.
+test("the built addon passes the load check, whose known answer fails for a corrupted copy, another key or other rows", (t) => {
+  const target = nativeSqliteTarget({
+    platform: process.platform,
+    arch: process.arch,
+    isMusl,
+  });
+  assert(target !== null, "Expected a target.");
+  const directory = mkdtempSync(join(tmpdir(), "evolu-known-answer-"));
+  t.after(() => {
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const fixture = readFileSync(knownAnswer.path);
+  // A bit of the last page's ciphertext, which only the query reads.
+  const corrupted = join(directory, "corrupted.db");
+  const corruptedBytes = Uint8Array.from(fixture);
+  corruptedBytes[corruptedBytes.length - 100] ^= 1;
+  writeFileSync(corrupted, corruptedBytes);
+  // A database the addon encrypted with the key, whose row differs.
+  const other = join(directory, "other.db");
+  const writing = loadNativeSqlite({
+    rowPrototype: emptyPrototype,
+  }).openEncryptedFile(other, knownAnswer.key);
+  writing.run("create table t (a text)", []);
+  writing.run("insert into t values ('other')", []);
+  writing.close();
+
+  checkLoadedNativeSqlite(target);
+
+  for (const [known, message] of [
+    [
+      { path: corrupted, key: knownAnswer.key },
+      `The addon can't read ${corrupted}, a database another implementation encrypted.`,
+    ],
+    [
+      { path: knownAnswer.path, key: new Uint8Array(32).fill(9) },
+      `The addon can't read ${knownAnswer.path}, a database another implementation encrypted.`,
+    ],
+    [
+      { path: other, key: knownAnswer.key },
+      `The addon read [{"a":"other"}] from ${other}, a database another implementation encrypted.`,
+    ],
+  ] as const)
+    assertFails(() => checkLoadedNativeSqlite(target, known), message);
+  // Reading it left the fixture as it was.
+  assertTrue(readFileSync(knownAnswer.path).equals(fixture));
 });
 
 /** The header of an addon each target's check passes. */

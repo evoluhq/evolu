@@ -313,4 +313,22 @@ describe("GitHub workflows", () => {
     assertTrue(base?.includes("@sha256:") === true);
     assertEqual(images, [base]);
   });
+
+  // Otherwise the macOS addons @evolu/nodejs ships are built with whatever
+  // Xcode a runner image update makes its default.
+  it("build the macOS SQLite addons with a pinned Xcode", () => {
+    const steps = splitSteps(
+      job(workflow("checks.yaml"), "nodejs-native-macos"),
+    );
+    const select = steps.findIndex((step) =>
+      /\n {8}run: sudo xcode-select --switch \/Applications\/Xcode_\d+(?:\.\d+)*\.app\n/u.test(
+        step,
+      ),
+    );
+    const build = steps.findIndex((step) =>
+      step.includes("- name: Build and check\n"),
+    );
+
+    assertTrue(select >= 0 && select < build);
+  });
 });

@@ -8,7 +8,11 @@
  * - {@link checkLoadedNativeSqlite} loads the running platform's addon as
  *   `@evolu/nodejs` loads it and opens an encrypted, a plaintext and a memory
  *   database with it, reading a large result and stepping a statement from the
- *   memory one.
+ *   memory one. It also reads {@link knownAnswer}, which another implementation
+ *   encrypted, so a codec a compiler broke fails even when it reads what it
+ *   writes, though only in the crypto paths the CPU running it takes: every CI
+ *   runner has AES instructions and every arm64 one SHA-512 instructions, so CI
+ *   never checks software AES, or arm64's software SHA-512.
  *
  * It imports only Node.js's own modules at run time, as `build-native.mts`
  * does, so CI checks each addon in its target's environment before installing
@@ -110,14 +114,32 @@ export const checkNativeSqlite = (
 };
 
 /**
+ * An encrypted database another implementation wrote, and its key. Apple's
+ * sqlite3 3.51.0 wrote its table t, of a text column a and one row,
+ * 'evolu-known-answer', after `.filectrl reserve_bytes 80`, and node:crypto
+ * encrypted it as `encryptDatabase` in `@evolu/sqlite-core`'s
+ * `test/codec.test.mts` does.
+ */
+export const knownAnswer = {
+  path: /*#__PURE__*/ fileURLToPath(
+    /*#__PURE__*/ new URL("known-answer.db", import.meta.url),
+  ),
+  key: /*#__PURE__*/ Uint8Array.from({ length: 32 }, (_, i) => i * 7 + 1),
+};
+
+/**
  * Loads the running platform's addon as `@evolu/nodejs` does, throwing unless
  * it's `target`'s, and checks that it opens databases: an encrypted one that
- * stores no plaintext and reopens with its key, which fails another key and an
- * encrypted open of a plaintext file with SQLITE_NOTADB, a plaintext one, and a
- * memory one, which reads a result of more values than a call passes as
- * arguments and steps a statement to its end.
+ * stores no plaintext, shares no salt or IV with one written alike and reopens
+ * with its key, which fails another key and an encrypted open of a plaintext
+ * file with SQLITE_NOTADB, `known`, {@link knownAnswer} unless given, whose row
+ * it reads, a plaintext one, and a memory one, which reads a result of more
+ * values than a call passes as arguments and steps a statement to its end.
  */
-export const checkLoadedNativeSqlite = (target: NativeSqliteTarget): void => {
+export const checkLoadedNativeSqlite = (
+  target: NativeSqliteTarget,
+  known = knownAnswer,
+): void => {
   // Not @evolu/common's emptyPrototype, since this script imports only
   // Node.js's own modules, so CI runs it where nothing is installed.
   const nativeSqlite = loadNativeSqlite({
@@ -139,12 +161,15 @@ export const checkLoadedNativeSqlite = (target: NativeSqliteTarget): void => {
     };
     const key = new Uint8Array(32).fill(7);
     const encrypted = join(directory, "encrypted.db");
+    const again = join(directory, "again.db");
     const plain = join(directory, "plain.db");
 
-    const writing = nativeSqlite.openEncryptedFile(encrypted, key);
-    query(writing, "create table t (a text)");
-    query(writing, "insert into t values ('evolu-secret')");
-    writing.close();
+    for (const path of [encrypted, again]) {
+      const writing = nativeSqlite.openEncryptedFile(path, key);
+      query(writing, "create table t (a text)");
+      query(writing, "insert into t values ('evolu-secret')");
+      writing.close();
+    }
     const file = readFileSync(encrypted);
     if (file.includes("evolu-secret") || file.includes("SQLite format 3"))
       throw new Error("An encrypted database stored plaintext.");
@@ -153,6 +178,39 @@ export const checkLoadedNativeSqlite = (target: NativeSqliteTarget): void => {
     reading.close();
     if (rows !== '[{"a":"evolu-secret"}]')
       throw new Error(`An encrypted database read ${rows}.`);
+    // Reading can't tell a codec that reuses a salt or an IV, so the same rows
+    // written again with the same key must have another salt, page 1's first
+    // 16 bytes, and new IVs, the first 16 of each page's last 80. The read
+    // above proved the page size page 1 stores, which the loop steps by.
+    const fileAgain = readFileSync(again);
+    const pageSize = file.readUInt16BE(16);
+    const ivs = new Set<string>();
+    for (const bytes of [file, fileAgain])
+      for (let at = pageSize - 80; at < bytes.length; at += pageSize)
+        ivs.add(bytes.toString("hex", at, at + 16));
+    if (
+      file.subarray(0, 16).equals(fileAgain.subarray(0, 16)) ||
+      ivs.size * pageSize !== file.length + fileAgain.length
+    )
+      throw new Error("Two encrypted databases shared a salt or an IV.");
+
+    // A codec a compiler broke can still read what it wrote, but not what
+    // another implementation wrote, in the crypto paths this CPU takes.
+    let knownRows: string;
+    try {
+      const database = nativeSqlite.openEncryptedFile(known.path, known.key);
+      knownRows = JSON.stringify(query(database, "select a from t"));
+      database.close();
+    } catch (cause) {
+      throw new Error(
+        `The addon can't read ${known.path}, a database another implementation encrypted.`,
+        { cause },
+      );
+    }
+    if (knownRows !== '[{"a":"evolu-known-answer"}]')
+      throw new Error(
+        `The addon read ${knownRows} from ${known.path}, a database another implementation encrypted.`,
+      );
 
     const writingPlain = nativeSqlite.openFile(plain);
     query(writingPlain, "create table t (a)");
