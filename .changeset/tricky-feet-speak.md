@@ -22,8 +22,8 @@ database receiving 10,000 changes took 20% less time on the iOS simulator and
 
 What changes for an app:
 
-- It needs a native rebuild with React Native 0.88 or later, in Expo SDK 58 or
-  later, on Hermes, React Native's default engine. Expo Go can't load Evolu's
+- It needs a native rebuild with React Native 0.88 or later on Hermes, React
+  Native's default engine, and in an Expo app, Expo SDK 58 or later. Expo Go can't load Evolu's
   native code, so Expo apps use a development build. iOS builds with CocoaPods;
   SwiftPM support comes later.
 - It needs `@evolu/common` 8.24 or later, which has the SQLite driver this
