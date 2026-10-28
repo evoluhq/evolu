@@ -1,5 +1,17 @@
 # @evolu/oxlint-config
 
+## 0.4.1
+
+### Patch Changes
+
+- 8c8e86c: Updated eslint-plugin-jsdoc to 65.4.2
+
+  `no-undefined-types`, the only eslint-plugin-jsdoc rule the shared config runs, no longer reports a function type's own type parameter used inside a nested type, such as `T` in `<T>(x: Array<T>) => T`.
+
+- 8c8e86c: Required oxlint-tsgolint 7.0.2005
+
+  oxlint 1.90 and later require oxlint-tsgolint 7.0.2005 or later, so the previous pin to 7.0.2004 conflicted with current oxlint. `@evolu/oxlint-config` and `@evolu/nodejs` now require oxlint-tsgolint 7.0.2005 and still accept oxlint `^1.87.0`.
+
 ## 0.4.0
 
 ### Minor Changes
