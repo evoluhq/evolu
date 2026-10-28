@@ -1,0 +1,478 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2026-10-28",
+  title: "Evolu runs its own SQLite everywhere",
+  description:
+    "One SQLite core in C now runs Evolu on the web, in React Native without expo-sqlite, and in Node.js without better-sqlite3. It encrypts in constant time, on the CPU's own AES and SHA-512 instructions where it has them, and runs Evolu's sync storage in C.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+**TL;DR**
+
+- One SQLite core in C, around unpatched SQLite 3.54.1, now runs Evolu on the
+  web as WebAssembly, in React Native as a JSI module without expo-sqlite, and
+  in Node.js as a Node-API addon without better-sqlite3.
+- Every platform encrypts the same way, in SQLCipher 4's page format, and the
+  core reads both page-1 layouts earlier releases wrote, so existing databases
+  open in place.
+- Encryption runs in constant time, so it leaves no trace of the key in the
+  CPU's caches, where other code on the same CPU, such as another tab or app,
+  could look for it. It uses the CPU's AES and SHA-512 instructions where it
+  has them. On the web, which has none, writes cost more until the core
+  switches to SQLCipher 5's AES-256-GCM.
+- Less to trust. Apps no longer depend on expo-sqlite,
+  react-native-quick-crypto, react-native-nitro-modules or better-sqlite3, nor
+  on the OpenSSL expo-sqlite packaged on Android. We build SQLite from
+  sqlite.org's pinned source with our own configuration: its temporary files
+  stay in memory, so they never reach the disk as plaintext, and SQL can't
+  deliberately corrupt a database.
+- Evolu's sync storage moved into the core, in C. In Node.js, its operations
+  got 1.5× to 11× faster.
+- On Node.js, Evolu now encrypts, each call costs what it costs with
+  better-sqlite3 or less, and the relay does the same work in under two-thirds
+  of the time.
+- Against the libraries apps use, each call into SQLite costs about half of
+  what it costs with SQLite's official WebAssembly build, a tenth to a sixth of
+  expo-sqlite's and 35% to 40% of op-sqlite's.
+- React Native apps get smaller: Evolu's Expo example lost 11.6 MB of iOS
+  executable and 60 MB of Android APK.
+
+On October 6, I wrote that
+[Evolu builds its own SQLite](/blog/evolu-builds-its-own-sqlite) for the web:
+plain SQLite compiled by us, run through our own TypeScript layer, with
+encryption in TypeScript.
+
+Now one SQLite core, in C, runs Evolu on every platform. The web compiles it to
+WebAssembly. React Native compiles it into the app through a JSI module,
+without expo-sqlite. Node.js loads it as a Node-API addon, without
+better-sqlite3. Every platform runs SQLite 3.54.1 with the same encryption, and
+Evolu's sync storage now runs inside that core too.
+
+It ships in `@evolu/web` 3.6.3, `@evolu/react-native` 16.2.0, `@evolu/nodejs`
+4.4.0 and `@evolu/relay` 4.2.18, with `@evolu/common` 8.24.0 and
+`@evolu/sqlite-wasm` 3.54.1-build1.
+
+## Why one core in C
+
+Evolu encrypts its databases, but until now every platform did it differently.
+The web encrypted pages in TypeScript. React Native relied on the SQLCipher
+that expo-sqlite vendors, in whatever version an Expo SDK brought, and only
+when the app turned it on. Node.js didn't encrypt at all: its driver on
+better-sqlite3 ignored the key Evolu passed it.
+
+We wanted one implementation that every platform compiles: one file format,
+one behavior after a crash, one set of tests. That code has to be C. Hermes,
+React Native's JavaScript engine, has no WebAssembly, while C compiles to
+WebAssembly for the web and natively for phones and servers.
+
+We didn't take an existing encrypted SQLite. SQLCipher is a fork of SQLite that
+trails its releases and needs a crypto provider of its own for WebAssembly.
+SQLite3 Multiple Ciphers failed our crash tests. A crash during a key change
+could leave a database that opened with neither key
+([#291](https://github.com/utelle/SQLite3MultipleCiphers/issues/291)), and a
+key change that failed did the same
+([#294](https://github.com/utelle/SQLite3MultipleCiphers/issues/294)). Opening
+a database without its key deleted its hot journal and left a transaction
+half-applied ([#292](https://github.com/utelle/SQLite3MultipleCiphers/issues/292)),
+and with 4096-byte sectors and no powersafe overwrite, as the web's storage
+reports, even a `ROLLBACK` could leave a transaction that had spilled pages
+half-applied in a database whose pages were no larger than the sectors
+([#293](https://github.com/utelle/SQLite3MultipleCiphers/issues/293)). We
+reported all four with small reproductions, and Ulrich Telle fixed them on its
+trunk four days later.
+
+So the core is SQLite as sqlite.org publishes it, unpatched and pinned by its
+hash, with Evolu's encryption as a VFS under it. SQLite never sees ciphertext.
+Beside SQLite are Evolu's storage functions and the cryptography they need,
+from [BearSSL](https://www.bearssl.org) and
+[Monocypher](https://monocypher.org), vendored, pinned and checked by their
+digests.
+
+The core takes a key only from Evolu, as 32 raw bytes, never a password.
+Encrypting pages is the easy part of encrypting a database. A database is only
+as safe as its key: where it comes from, where it's kept, how it changes, and
+what's lost when it's lost. Evolu answers all of that for its owners and
+devices, so the core doesn't try to be a general-purpose encrypted SQLite. Its
+bindings expose what Evolu needs. We also choose what SQLite is compiled with
+and how every connection starts: its temporary files, such as sorts and
+temporary tables, stay in memory, so they never reach the disk as plaintext,
+and every connection runs in SQLite's defensive mode, so SQL can't deliberately
+corrupt its database.
+
+The key never appears in SQL, a URI or an error message, and the codec keeps
+its copy outside SQLite's memory allocator. That copy and the keys the codec
+derives still share the process's memory with SQLite's heap, on the web one
+WebAssembly memory, so a memory-disclosure bug in SQLite could reach them. With
+the web's TypeScript codec, such a bug could reach plaintext but not the key. A
+wrong key restores no page, so it
+can't leave a transaction half-applied. The pragmas that key a database in
+SQLCipher fail instead of being ignored, so no database stays in plaintext
+because a pragma silently did nothing.
+
+## The format stays
+
+The codec writes SQLCipher 4's page format, so existing databases open
+unchanged, on the web and on React Native, and so do the hot journals a crash
+left behind. A new database gets page 1 as SQLite3 Multiple Ciphers writes
+it, as the web's do, so on React Native one created now can't be opened by a
+release with expo-sqlite or by SQLCipher's own tools: they fail with
+`SQLITE_NOTADB` and lose nothing. The databases that existed before keep
+SQLCipher's layout. Each page is encrypted with AES-256-CBC and a random IV,
+and authenticated with HMAC-SHA512 before it's decrypted.
+
+## Constant time, on the CPU's own crypto
+
+Encryption protects a file someone copies. The key also has to stay safe while
+the app runs, beside other code on the same CPU.
+
+Table-based AES, which the web's TypeScript codec used, reads lookup tables at
+positions that depend on the key. Those reads leave traces in the CPU's caches,
+where code running beside it, such as another tab or another app, can look for
+them. Constant-time code leaves none: it runs the same instructions and touches
+the same memory whatever the key and the data.
+
+Everything in Evolu's core that handles a key, and everything that encrypts,
+decrypts or authenticates a page, runs in constant time.
+
+On phones, computers and servers, the core uses the CPU's own crypto
+instructions: ARMv8's AES instructions or x86's AES-NI, and ARMv8.2's SHA-512
+instructions where the CPU has them, detected once. They're constant time by
+design. On arm64 CPUs that support it, the core also turns on data independent
+timing around its work, the CPU mode in which instructions take the same time
+whatever data they process. And hardware crypto is fast. On an iPhone 16e,
+encrypting a 4 KiB page takes about 6 µs and decrypting one about 4 µs. With
+the CPU's instructions, constant time isn't a trade-off.
+
+It's also the same code everywhere. expo-sqlite's SQLCipher encrypted with
+CommonCrypto on iOS and with an OpenSSL build it packaged on Android. Evolu's
+core needs neither, so there's one implementation to test, and it's in our
+repository.
+
+WebAssembly has no AES instructions. On the web, in 32-bit builds and on any
+CPU without them, the core runs BearSSL's bitsliced constant-time AES and its SHA-512, with
+our own HMAC-SHA512 and PBKDF2, a few dozen lines over it. WebAssembly engines
+promise no constant time, and a compiler can turn constant-time C into a branch
+or a table lookup, so we check what we ship. A script traces the compiled
+WebAssembly of AES, SHA-512, HMAC, PBKDF2 and the page codec, lists every
+branch and every memory access whose address comes from data, and keeps a
+review of why none of them depends on a secret. A test fails when one of those
+functions changes, so every new build gets the same review. That holds as long
+as an engine adds no secret-dependent branch or memory access of its own.
+
+On the web, constant time has a price, paid mostly on writes. On an Apple M5, writing
+an 8 KiB page with its journal record takes about 300 µs instead of about 100
+with the table-based AES it replaced, in Chromium, Firefox and WebKit alike.
+Right after the storage idled, as in an app, encryption adds 2.5 to 2.7 ms to a
+small commit instead of 1.4 to 1.9. Bulk writes pay more: wa-sqlite's benchmark
+workloads, other than the first, take 50% to 80% longer with the
+constant-time codec than with table-based AES. Reads pay less: decrypting an 8 KiB page
+takes 60 to 70 µs instead of 40 to 60, and a page SQLite has cached costs nothing extra.
+
+We pay it, because protecting the key matters more than raw speed.
+
+The price on writes is temporary. Once SQLCipher 5.0 is released, Evolu's core switches
+to its page format, AES-256-GCM
+([#757](https://github.com/evoluhq/evolu/issues/757)). GCM encrypts in counter
+mode, where a page's blocks don't depend on each other, so the constant-time
+AES processes four of them at once, as it already does when decrypting. We
+expect encrypting a page to then cost about what decrypting one costs now.
+
+## How we know it works
+
+The codec is the code that can lose users' data, so we test it as such.
+
+- The C tests run under AddressSanitizer and UndefinedBehaviorSanitizer, once
+  with hardware crypto and once on the software path, and together they must
+  cover every line, branch and function of the core the CPU can run.
+- Crash tests stop a transaction before each of its writes and keep the files
+  as a power loss would leave them, in the DELETE, TRUNCATE and PERSIST
+  journal modes and with exclusive locking, and for 512- and 4096-byte
+  sectors. Every crash must leave the database wholly
+  before or after the transaction.
+- Every allocation of the core and of SQLite fails in turn, and so does every
+  call to the files underneath, so the error paths run too.
+- CI runs the tests on x86-64 Linux with AES-NI, on arm64 Linux, and on arm64
+  macOS with AES, SHA-512 and data independent timing, and also as a 32-bit
+  build, as Android's 32-bit ABIs compile the core. The bindings' thread tests
+  run under ThreadSanitizer.
+- The codec is checked against references that share no code with it: an
+  implementation of the format on Node.js's `node:crypto`; the
+  `@evolu/sqlite-wasm` 2.2.4 the web used to encrypt with, the two rolling
+  back each other's hot journals; and the SQLCipher of two expo-sqlite
+  releases, built from source and crashed at every write.
+
+While enforcing those coverage gates, we found that Node.js's test runner
+merges coverage from several test processes in a way that can drop code no
+test ran, so a gate can pass on untested code. We
+[reported it](https://github.com/nodejs/node/issues/66860) and merge the
+coverage ourselves until it's fixed.
+
+Before writing the React Native module, we read the code and issue trackers of
+[op-sqlite](https://github.com/OP-Engineering/op-sqlite) and
+[react-native-nitro-sqlite](https://github.com/margelo/react-native-nitro-sqlite)
+and turned the problems their users reported into tests of ours, such as a
+JavaScript runtime that's torn down and replaced while a database is open. CI
+builds Evolu's example apps in Release, installs them on an iOS simulator and
+an Android emulator, seeds them with databases that expo-sqlite's SQLCipher
+wrote, and runs the binding's conformance suite there. The same suite tests the
+binding under Hermes and tests the Node.js binding.
+
+Every milestone also went through rounds of review by state-of-the-art AI
+models until the reviews converged, and the bugs they found got a failing test
+before their fix.
+
+## Evolu's storage, in C
+
+Evolu's sync reconciles an owner's timestamps through a skiplist stored in
+SQLite, which `@evolu/common` read and wrote with recursive common table
+expressions. That logic now lives in the core as SQL functions in C, such as
+`evolu_skiplist_insert`, which every connection on every platform has. They
+write the same rows, so existing databases need no migration. A published
+function never changes meaning; a change gets a new name.
+
+Measured with `pnpm bench:storage` in Node.js, on in-memory databases holding
+50,000 timestamps, before with better-sqlite3 and the recursive CTEs, and after
+with Evolu's SQLite and its C functions, as the mean of two runs:
+
+| Operation                       |   Before |   After | Faster |
+| ------------------------------- | -------: | ------: | -----: |
+| Append 50,000 timestamps        |   254 ms |  165 ms |   1.5× |
+| Prepend 50,000 timestamps       |   935 ms |  491 ms |   1.9× |
+| Insert 50,000 in shuffled order | 1,404 ms |  581 ms |   2.4× |
+| 1,000 timestamps at an index    |  28.7 ms |  5.2 ms |   5.5× |
+| 250 fingerprints of 16 ranges   |   169 ms | 15.7 ms |    11× |
+
+## The web
+
+On the web, the core replaced the TypeScript codec of the last post. Builds
+since `@evolu/web` 3.5.0 open what this one writes.
+
+What `@evolu/web` imports from `@evolu/sqlite-wasm` is now about 40 KB of
+minified JavaScript instead of 195 KB, 13 KB instead of 68 KB with gzip, and
+the database worker lost another 26 KB minified, 4 KB with Brotli, since the
+storage's SQL moved into the core. The WebAssembly grew from 677 KB to about
+720 KB.
+
+CI builds the WebAssembly from sqlite.org's source, pinned by the hash
+sqlite.org publishes, and the build fails unless its output matches the pinned
+SHA-256. A build in Docker on Linux gives the same bytes as one with emsdk on
+macOS, so anyone can check that the published binary is the one its source
+makes.
+
+## React Native
+
+`@evolu/react-native` now ships the core as C sources and compiles it into the
+app through a JSI module of its own. Apps no longer need expo-sqlite,
+react-native-quick-crypto or react-native-nitro-modules. React Native apps
+without Expo are supported, with the same `createEvoluDeps`.
+
+Encryption no longer depends on a build setting. With expo-sqlite, an app had
+to turn SQLCipher on, and until `@evolu/react-native` 16.1.2, an app built
+without it stored its database unencrypted, without a warning. Expo's docs
+didn't say that a key without SQLCipher does nothing, so we
+[asked them to](https://github.com/expo/expo/issues/51757), and they now do.
+Evolu's module
+always encrypts.
+
+Apps get smaller. Built for Release with each version, Evolu's Expo example
+shrank: its iOS executable from 24.4 MB to 12.8 MB, its `.app` from 56.6 MB to
+44.1 MB, and its Android APK, with all four ABIs, from 163 MB to 103 MB. The
+core adds 0.7 to 1.2 MB per architecture, while the app drops the native code
+of expo-sqlite, react-native-quick-crypto and react-native-nitro-modules, and
+on Android also the OpenSSL that expo-sqlite packages. On an iPhone 16e, the
+same builds used 26.5 MiB of memory instead of 31.4 MiB when idle, and
+47.6 MiB instead of 64.4 MiB after receiving 10,000 changes.
+
+Sync got faster too. Evolu decrypts every change it receives with
+XChaCha20-Poly1305, which ran in JavaScript. It now runs in the core, from
+Monocypher. On an iPhone 16e, decrypting a 256-byte message took 0.64 µs in C,
+not counting the call into it, instead of about 185 µs in JavaScript. A fresh
+database receiving 10,000 changes took 20% less time on the iOS simulator and
+24% to 29% less on an arm64 Android emulator.
+
+Measuring React Native also showed something no SQLite could fix. Evolu's
+in-memory workers passed messages with `setTimeout(0)`, which React Native
+fires only at the next frame or a later one, so every operation took whole
+frames. They now deliver messages through React Native's
+runtime scheduler. In the iOS simulator, a mutation took 1.5 ms instead of
+66.7 ms, and starting Evolu on a new database 2.3 ms instead of 120 ms.
+
+## Node.js and the relay
+
+`@evolu/nodejs` ships the core compiled into Node-API addons, prebuilt inside
+the package for macOS 13.5 or later and for Linux with glibc 2.28 or later or
+with musl, each on arm64 and x64. Installing it runs no install script, builds
+nothing and installs no other package for it. Each addon's build is
+deterministic: CI builds it again from a copy of its sources at another path
+and fails unless the bytes match. Windows isn't supported yet;
+[#759](https://github.com/evoluhq/evolu/issues/759) lists what it needs, and
+pull requests are welcome.
+
+Evolu on Node.js now encrypts every database that isn't in memory.
+
+The relay runs on the same core, without a key: the changes it stores are
+already encrypted end to end, and it needs the rest, such as owners' ids and
+timestamps, to sync. Its database opens as it is, and its Docker image gets the
+addon for musl, also without an install script.
+
+Its storage got faster. We ran the old relay, on better-sqlite3 and the
+recursive CTEs, against the new one, on Evolu's SQLite and its C functions, on
+their database files. Each run writes 50,000 messages of 100 to 1,000 bytes in
+batches of 500, takes 200 fingerprints of 16 ranges, iterates every timestamp 5
+times and reads 10,000 random changes, and both relays must return the same
+results:
+
+| Metric                            |     Old |     New |
+| --------------------------------- | ------: | ------: |
+| 50,000 writes in batches of 500   |  472 ms |  350 ms |
+| 200 fingerprints of 16 ranges     |  136 ms | 14.8 ms |
+| Iterating every timestamp 5 times | 88.6 ms | 61.1 ms |
+| 10,000 random reads of a change   | 54.0 ms | 52.0 ms |
+| Total                             |  753 ms |  477 ms |
+
+The new relay does the same work in a little under two-thirds of the time.
+
+## Against the alternatives
+
+The numbers so far compare Evolu with itself. To compare its SQLite with the
+libraries apps use, we wrote a benchmark that runs the same work on every
+stack. It runs wa-sqlite's 16 benchmark workloads, taken from SQLite's classic
+speed comparison, as in the last post. It also runs a driver workload of 10,000
+single-row inserts, 10,000 point selects and 10 reads of 10,000 rows, which
+measures what each call into SQLite costs: the inserts' commit isn't timed, and
+the reads find the rows in SQLite's page cache. It compares the stacks unencrypted,
+so it measures the SQLite build, the binding and the file system layer, not
+cryptography. Every connection gets the same pragmas, and every run checks its
+work.
+
+The
+[benchmark](https://github.com/evoluhq/evolu/tree/main/bench/sqlite-comparison)
+is in the repository, with one command per platform, so you can rerun it on
+your own machine.
+
+We ran everything on an Apple M5 MacBook Air with 16 GB of memory, macOS 26.6.2
+and Node.js 24.22.0, one platform at a time, with no build or other benchmark
+running beside it. Each number is the median of five rounds after a warm-up.
+
+Every number in the tables is a time, so lower is better. The ratios paired by
+round, with their ranges, are in the benchmark's results.
+
+### Node.js
+
+Evolu against better-sqlite3, which `@evolu/nodejs` used before, and Node.js's
+own `node:sqlite`, on macOS:
+
+| Metric                                | Evolu | better-sqlite3 | `node:sqlite` |
+| ------------------------------------- | ----: | -------------: | ------------: |
+| wa-sqlite's 16 workloads, total in ms |   628 |            637 |           646 |
+| 10,000 inserts, µs per insert         |  0.31 |           0.43 |          0.29 |
+| 10,000 point selects, µs per select   |  0.34 |           0.34 |          0.40 |
+| 10 reads of 10,000 rows, ms per read  |  0.89 |           0.98 |          1.78 |
+
+Each call into SQLite costs what it costs with better-sqlite3 or less, and
+reading rows costs less because the addon passes a result's values to
+JavaScript in bulk and the rows are built there.
+
+In Linux containers on the same machine, Debian 13 with glibc and Alpine with
+musl, each call again costs what it costs with better-sqlite3 or less, and
+the workloads took 1.04× and 1.07×
+better-sqlite3's time. The workloads that scan a table without an index take 8% to 25% longer there. On Linux,
+better-sqlite3 and `node:sqlite` are compiled with GCC, while Evolu's core is
+compiled with clang, whose code for SQLite's scans is slower there. In an earlier
+test with SQLite compiled by GCC in the Debian container, Evolu's scans almost
+matched better-sqlite3's.
+We report each container's second run. The first glibc run hit a disk stall,
+and in the first musl run, Evolu's point selects and row reads were slower and
+varied more. Both first runs are in the results too.
+
+### The web
+
+Evolu against SQLite's official `@sqlite.org/sqlite-wasm` with opfs-sahpool,
+and wa-sqlite with `AccessHandlePoolVFS`, in Chromium 156, Firefox 157 and
+WebKit 27.2, driven by Playwright:
+
+| Browser  | Metric                                | Evolu | `@sqlite.org/sqlite-wasm` | wa-sqlite |
+| -------- | ------------------------------------- | ----: | ------------------------: | --------: |
+| Chromium | wa-sqlite's 16 workloads, total in ms | 1,679 |                     1,865 |     2,032 |
+| Chromium | 10,000 inserts, µs per insert         |  0.68 |                      1.33 |      1.16 |
+| Chromium | 10,000 point selects, µs per select   |  0.63 |                      1.07 |      1.06 |
+| Chromium | 10 reads of 10,000 rows, ms per read  |  2.27 |                      6.58 |      4.56 |
+| Firefox  | wa-sqlite's 16 workloads, total in ms | 1,811 |                     1,841 |     3,448 |
+| Firefox  | 10,000 inserts, µs per insert         |  0.76 |                      1.26 |      6.13 |
+| Firefox  | 10,000 point selects, µs per select   |  0.77 |                      1.32 |      6.17 |
+| Firefox  | 10 reads of 10,000 rows, ms per read  |  2.40 |                      8.80 |      29.8 |
+| WebKit   | wa-sqlite's 16 workloads, total in ms |   793 |                       799 |       891 |
+| WebKit   | 10,000 inserts, µs per insert         |  0.45 |                      0.94 |      0.68 |
+| WebKit   | 10,000 point selects, µs per select   |  0.49 |                      0.98 |      0.72 |
+| WebKit   | 10 reads of 10,000 rows, ms per read  |  1.95 |                      6.15 |      3.93 |
+
+The workloads, which spend their time inside SQLite and the file layer, run
+about as fast as with SQLite's own build. Each call costs about half as much,
+and reading rows about a third. Evolu's TypeScript layer looks up the C
+functions it needs once per database and calls WebAssembly directly, copies
+bound values into memory it allocated once, reads a statement's column names
+once, and decodes text by its known length. `@sqlite.org/sqlite-wasm`'s
+object-oriented API converts and checks every argument and result of every
+call, and finds where each text ends byte by byte in JavaScript. wa-sqlite has a
+synchronous build, which the benchmark uses, but its API is asynchronous in
+every build, so every step waits for a promise, which costs the most in
+Firefox.
+
+### React Native
+
+Evolu against expo-sqlite without SQLCipher and op-sqlite with its defaults,
+all three in one Release app with React Native 0.88 on Hermes, on an iPhone 17
+simulator with iOS 27.0 and a Pixel 10 emulator with Android 17:
+
+| Device           | Metric                                | Evolu | expo-sqlite | op-sqlite |
+| ---------------- | ------------------------------------- | ----: | ----------: | --------: |
+| iOS simulator    | wa-sqlite's 16 workloads, total in ms |   780 |         829 |       811 |
+| iOS simulator    | 10,000 inserts, µs per insert         |  0.36 |        3.38 |      0.94 |
+| iOS simulator    | 10,000 point selects, µs per select   |  0.61 |        3.67 |      1.51 |
+| iOS simulator    | 10 reads of 10,000 rows, ms per read  |  2.79 |        6.96 |      4.89 |
+| Android emulator | wa-sqlite's 16 workloads, total in ms | 1,377 |       1,411 |     1,411 |
+| Android emulator | 10,000 inserts, µs per insert         |  0.38 |        4.30 |      0.97 |
+| Android emulator | 10,000 point selects, µs per select   |  0.62 |        5.29 |      1.75 |
+| Android emulator | 10 reads of 10,000 rows, ms per read  |  2.15 |        10.4 |      5.93 |
+
+The workloads run at the speed of the other two. An insert or a point select
+costs a tenth to a sixth of what it costs with expo-sqlite, and 35% to 40% of
+op-sqlite's, and reading rows costs less too.
+Evolu's JSI module binds the values, steps and builds the rows in one call, and
+reads a statement's column names once. expo-sqlite goes through Expo's module
+system, which converts every argument and result between JavaScript and Swift
+or Kotlin, and on Android, Kotlin reaches SQLite through JNI for every bound
+value, every step and every row. op-sqlite uses JSI too, but binds and runs in
+two calls, copies the values into its own C++ structures first, and builds a
+new result object with the columns' metadata on every call.
+
+## Upgrading
+
+On the web, an app updates `@evolu/web` together with `@evolu/common` 8.24 or
+later and changes nothing else.
+
+On React Native, an app needs a native rebuild with React Native 0.88 or
+later on Hermes, in an Expo app with Expo SDK 58 or later, and `@evolu/common`
+8.24 or later.
+`createEvoluDeps` moved to `@evolu/react-native`. SQL strings take single
+quotes: a double-quoted string, which expo-sqlite's SQLCipher accepted, now
+fails with no such column. Unless the app uses them
+itself, it can remove expo-sqlite with its config plugin,
+react-native-quick-crypto and react-native-nitro-modules. Existing databases
+open in place, but a database this release creates fails with `SQLITE_NOTADB`
+on an earlier release, so plan rollbacks accordingly. Don't ship the release as an over-the-air update to an older
+native build.
+
+On Node.js, `createBetterSqliteDriver` is now `createNodeJsSqliteDriver`. A
+bundler must keep `@evolu/nodejs` external, so its addon loads from the
+package.
+
+The release notes of each package list everything else.
