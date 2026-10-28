@@ -1,5 +1,25 @@
 # @evolu/sqlite-wasm
 
+## 3.54.1-build2
+
+### Patch Changes
+
+- 1095401: Fixed the OPFS pool keeping a malformed slot whose digest is bad
+
+  A slot whose header's path and flags hold no zero byte, which no pool writes, is
+  now freed when its digest is bad, even when it holds data, and mapped under all
+  but the last of those 516 bytes when its digest is valid, as in SQLite's own
+  pool. The pool searched the digest for the end of the path too, so it could keep
+  such a slot, and mapped it under a path that ran past its flags.
+
+- 1095401: Fixed a failed open of the OPFS pool changing other slots
+
+  Opening the pool when reading a slot's header throws or returns fewer bytes than
+  the slot holds now changes no slot. It read and cleaned up the slots one at a
+  time, so it could already have freed or truncated the slots listed before that
+  one, as the next open that succeeds would. The release notes of 3.54.1-build1
+  said such a short read changes nothing.
+
 ## 3.54.1-build1
 
 ### Major Changes
