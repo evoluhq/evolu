@@ -11,6 +11,11 @@ a summary here.
 - Keep reviews read-only unless edits are requested. Preserve unrelated
   working-tree changes. Do not create a commit unless asked.
 - Commit messages use sentence case, with no `feat:`/`fix:` prefix or trailing period.
+- Git pushes sign with an SSH key on the maintainer's Trezor, as the
+  [Supply chain](<apps/web/src/app/(docs)/docs/supply-chain/page.mdx>) page
+  describes. A push that fails with `device not found` waits for the
+  maintainer to connect and unlock the Trezor; never push another way, such
+  as over HTTPS with a token.
 - Write new modules and helper scripts in TypeScript. Keep existing JavaScript,
   MJS, and CJS files in their current language unless migrating them is the task.
 
