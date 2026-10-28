@@ -400,7 +400,9 @@ export const createRelay =
             );
             if (!response.ok) {
               if (response.error.type === "AbortError") break;
-              console.error("invalid protocol request", {
+              // The client's failure, not the relay's. At the default level, a
+              // client looping malformed frames would fill the log.
+              console.debug("invalid protocol request", {
                 byteLength: request.length,
                 error: response.error.error,
               });

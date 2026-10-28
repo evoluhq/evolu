@@ -1056,7 +1056,7 @@ describe("createRelay", () => {
     assertSame(entry.args[0], error);
   });
 
-  it("logs an invalid request's length and decode error, not its bytes, and serves the requests after it", async (t) => {
+  it("logs an invalid request's length and decode error at debug, not its bytes, and serves the requests after it", async (t) => {
     const { relayModule, wss } = await loadRelayModuleWithMockedTransport(
       t.mock,
     );
@@ -1086,12 +1086,17 @@ describe("createRelay", () => {
     ws.emit("message", request);
 
     await assertEventually(() => ws.send.mock.callCount() === 1);
-    const errors = console
-      .getEntriesSnapshot()
-      .filter((entry) => entry.method === "error");
-    assertSame(errors.length, 1);
-    const [message, details] = errors[0].args;
-    assertSame(message, "invalid protocol request");
+    const entries = console.getEntriesSnapshot();
+    assertEqual(
+      entries.filter((entry) => entry.method === "error"),
+      [],
+    );
+    const invalidRequestEntries = entries.filter(
+      (entry) => entry.args[0] === "invalid protocol request",
+    );
+    assertSame(invalidRequestEntries.length, 1);
+    assertSame(invalidRequestEntries[0].method, "debug");
+    const [, details] = invalidRequestEntries[0].args;
     assertTrue(isPlainObject(details));
     assertEqual(Object.keys(details).toSorted(), ["byteLength", "error"]);
     assertSame(details.byteLength, invalidRequest.length);
