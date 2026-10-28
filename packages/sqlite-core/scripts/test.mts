@@ -17,7 +17,8 @@
  *
  * @module
  */
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,7 +33,8 @@ import { prepareSqlite, sqliteSource } from "./sqlite-source.mts";
  * Builds the C tests with the C compiler `cc` and the runner's sanitizer flags,
  * or `sanitizerFlags` in their place (build.mts), and runs them, returning the
  * runner's path, status and output. The run writes its coverage profile into
- * `profileDirectory`.
+ * `profileDirectory`. Several calls can run at once, as core.test.mts runs both
+ * crypto paths.
  */
 export const runCoreTests = async ({
   env,
@@ -64,27 +66,50 @@ export const runCoreTests = async ({
     cc,
     ...(sanitizerFlags && { sanitizerFlags }),
   });
-  // A hung test fails the run, since spawnSync blocks the test runner's
-  // timeout. Each process names its profile with its pid.
-  const result = spawnSync(runner, filter == null ? [] : [filter], {
-    encoding: "utf8",
+  // Each process names its profile with its pid.
+  const child = spawn(runner, filter == null ? [] : [filter], {
     env: { ...env, LLVM_PROFILE_FILE: join(profileDirectory, "%p.profraw") },
-    timeout: 600_000,
-    killSignal: "SIGKILL",
   });
-  if (result.error && result.signal == null) throw result.error;
-  // The error tells a timeout (ETIMEDOUT) or too much output (ENOBUFS) from a
-  // crash.
-  const reason = result.error == null ? "" : `: ${result.error.message}`;
-  return {
-    runner,
-    status: result.status,
-    output:
-      result.stdout +
-      result.stderr +
-      (result.signal == null ? "" : `\nKilled by ${result.signal}${reason}.\n`),
+  // A hung test or one that never stops printing fails the run. The reason
+  // tells such a kill from a crash. Closing the pipes ends the run even when a
+  // process the runner started still holds them.
+  let reason = "";
+  const kill = (why: string) => {
+    reason = `: ${why}`;
+    child.kill("SIGKILL");
+    child.stdout.destroy();
+    child.stderr.destroy();
   };
+  const timeout = setTimeout(() => {
+    kill("timed out after 600 s");
+  }, 600_000);
+  const output = { stdout: "", stderr: "" };
+  for (const name of ["stdout", "stderr"] as const)
+    child[name].setEncoding("utf8").on("data", (chunk: string) => {
+      output[name] += chunk;
+      if (output.stdout.length + output.stderr.length > outputLimit)
+        kill(`more than ${outputLimit} characters of output`);
+    });
+  try {
+    const [status, signal] = (await once(child, "close")) as [
+      number | null,
+      NodeJS.Signals | null,
+    ];
+    return {
+      runner,
+      status,
+      output:
+        output.stdout +
+        output.stderr +
+        (signal == null ? "" : `\nKilled by ${signal}${reason}.\n`),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 };
+
+/** The most characters a run may print, far more than the C tests print. */
+const outputLimit = 1024 * 1024;
 
 if (import.meta.main) {
   const { values, positionals } = parseArgs({

@@ -117,12 +117,12 @@ jobs:
             packages/sqlite-wasm/wasm/build-info.json
           if-no-files-found: error
 
-  # Builds Evolu's SQLite core in C with sanitizers on the host and runs its C
-  # and TypeScript tests, whose C tests must cover every line, function and
-  # branch of the core's C and its native binding layer compiled for the
-  # runner's CPU and OS: x86-64 Linux, arm64 Linux, the hardware paths and CPU
-  # detection Android shares, and arm64 macOS. The amalgamation comes from the
-  # pinned SQLite source.
+  # Runs the tests of Evolu's SQLite core other than its C tests, which the
+  # sqlite-core-c job runs beside them, on each runner's OS: those of its
+  # TypeScript, which must cover every line, function and branch of it, and
+  # those that drive its C through the Node-API addon, again against the addon
+  # built with AddressSanitizer and UndefinedBehaviorSanitizer. The
+  # amalgamation comes from the pinned SQLite source.
   sqlite-core:
     name: SQLite core (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -132,16 +132,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The crypto features each runner's CPU reports, as the tests'
-        # EVOLU_CRYPTO_* mask: AES 1, SHA-512 2 and DIT 4. A runner that
-        # reports another fails. GitHub's arm64 Linux runners report no DIT.
-        include:
-          - os: ubuntu-latest
-            cpu: 1
-          - os: ubuntu-24.04-arm
-            cpu: 3
-          - os: macos-latest
-            cpu: 7
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -160,27 +151,45 @@ jobs:
             packages/sqlite-core/sqlite-cache/*.tgz
           key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
 
+      # pnpm test:sqlite-core without core.test.mts, written out, since pnpm
+      # can't leave a file out of a script's. workflows.test.mts checks that
+      # the two match.
       - name: Test
-        run: pnpm test:sqlite-core
-        env:
-          EVOLU_TEST_EXPECTED_CPU: ${{ matrix.cpu }}
+        run: node scripts/test-coverage.mts --test-coverage-include="packages/sqlite-core/**" --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-lines=100 --test-reporter=@evolu/nodejs/TestOverviewReporter "packages/sqlite-core/test/**/!(core).test.mts"
 
-      # The registry's thread tests under ThreadSanitizer, which can't
-      # combine with AddressSanitizer.
-      - name: Test threads
-        if: matrix.os == 'ubuntu-latest'
-        run: node packages/sqlite-core/scripts/test.mts binding_threads_ --thread-sanitizer
-
-  # Android's armeabi-v7a and x86 ABIs build the core for 32-bit CPUs, without
-  # hardware crypto, so the C tests also run built with -m32 and must cover all
-  # of what that build compiles. It's a job of its own so it runs beside the
-  # sqlite-core job's, not after them.
-  sqlite-core-32-bit:
-    name: SQLite core (32-bit)
-    runs-on: ubuntu-latest
+  # Builds Evolu's SQLite core in C with sanitizers on the host and runs its C
+  # tests, on the hardware and the software crypto paths at once, which must
+  # cover every line, function and branch of the core's C and its native
+  # binding layer compiled for the runner's CPU and OS: x86-64 Linux, arm64
+  # Linux, the hardware paths and CPU detection Android shares, and arm64
+  # macOS. Android's armeabi-v7a and x86 ABIs build the core for 32-bit CPUs,
+  # without hardware crypto, so the tests also run built with -m32 and must
+  # cover all of what that build compiles. They take longest of the core's
+  # tests, so they're a job of their own, which runs beside the sqlite-core
+  # job's. The amalgamation comes from the pinned SQLite source.
+  sqlite-core-c:
+    name: SQLite core C (${{ matrix.m32 && '32-bit' || matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # The crypto features each runner's CPU reports, as the tests'
+        # EVOLU_CRYPTO_* mask: AES 1, SHA-512 2 and DIT 4. A runner that
+        # reports another fails. GitHub's arm64 Linux runners report no DIT,
+        # and a 32-bit build detects none.
+        include:
+          - os: ubuntu-latest
+            cpu: 1
+          - os: ubuntu-24.04-arm
+            cpu: 3
+          - os: macos-latest
+            cpu: 7
+          - os: ubuntu-latest
+            cpu: 0
+            m32: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -200,13 +209,20 @@ jobs:
           key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
 
       - name: Install 32-bit libraries
+        if: matrix.m32
         run: sudo apt-get update && sudo apt-get install -y gcc-multilib
 
       - name: Test
         run: pnpm test:node --no-experimental-test-coverage packages/sqlite-core/test/core.test.mts
         env:
-          EVOLU_TEST_M32: "1"
-          EVOLU_TEST_EXPECTED_CPU: "0"
+          EVOLU_TEST_M32: ${{ matrix.m32 }}
+          EVOLU_TEST_EXPECTED_CPU: ${{ matrix.cpu }}
+
+      # The registry's thread tests under ThreadSanitizer, which can't
+      # combine with AddressSanitizer.
+      - name: Test threads
+        if: matrix.os == 'ubuntu-latest' && !matrix.m32
+        run: node packages/sqlite-core/scripts/test.mts binding_threads_ --thread-sanitizer
 
   # Checks the C that @evolu/react-native vendors from the SQLite core into
   # native/: that it matches native.json, the vendor script's tests, and that

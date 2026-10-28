@@ -33,12 +33,16 @@ let software: Run;
 before(
   async () => {
     const { EVOLU_TEST_SOFTWARE_CRYPTO: _, ...env } = process.env;
-    hardware = await runCoreTests({ env, profileDirectory, ...flags });
-    software = await runCoreTests({
-      env: { ...env, EVOLU_TEST_SOFTWARE_CRYPTO: "1" },
-      profileDirectory,
-      ...flags,
-    });
+    // The runs overlap. The software one, which takes longest, starts first,
+    // since the other starts only after its build.
+    [software, hardware] = await Promise.all([
+      runCoreTests({
+        env: { ...env, EVOLU_TEST_SOFTWARE_CRYPTO: "1" },
+        profileDirectory,
+        ...flags,
+      }),
+      runCoreTests({ env, profileDirectory, ...flags }),
+    ]);
   },
   // The first run compiles SQLite and can generate its amalgamation.
   { timeout: 1_200_000 },

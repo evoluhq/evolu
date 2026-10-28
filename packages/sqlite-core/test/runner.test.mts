@@ -13,6 +13,7 @@ import { spawnSync } from "node:child_process";
 import { symlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { describe, it, type TestContext } from "node:test";
+import { setImmediate as nextMacrotask } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { defaultSanitizerFlags } from "../scripts/build.mts";
 import {
@@ -29,14 +30,22 @@ describe("runCoreTests", () => {
       script: [
         "#!/bin/sh",
         'if [ "$1" = crash ]; then echo "ok 1 - crash"; kill -KILL $$; fi',
+        'if [ "$1" = hang ]; then exec sleep 60; fi',
         "yes",
       ].join("\n"),
       mode: 0o755,
     });
 
     const crashed = await runner.run("crash");
-    // More output than spawnSync takes.
+    // More output than a run may print.
     const flooded = await runner.run("flood");
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const hanging = runner.run("hang");
+    // The fake build ends within microtasks, so by the next macrotask the
+    // runner and its timeout have started.
+    await nextMacrotask();
+    t.mock.timers.tick(600_000);
+    const hung = await hanging;
 
     assertEqual(
       [crashed.status, crashed.output],
@@ -45,8 +54,12 @@ describe("runCoreTests", () => {
     assertEqual(flooded.status, null);
     assertTrue(
       flooded.output.endsWith(
-        `\nKilled by SIGKILL: spawnSync ${flooded.runner} ENOBUFS.\n`,
+        "\nKilled by SIGKILL: more than 1048576 characters of output.\n",
       ),
+    );
+    assertEqual(
+      [hung.status, hung.output],
+      [null, "\nKilled by SIGKILL: timed out after 600 s.\n"],
     );
   });
 

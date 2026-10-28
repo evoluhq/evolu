@@ -331,4 +331,30 @@ describe("GitHub workflows", () => {
 
     assertTrue(select >= 0 && select < build);
   });
+
+  // The sqlite-core job runs pnpm test:sqlite-core without the C tests, which
+  // the sqlite-core-c job runs, so a change to the script must change both.
+  it("run pnpm test:sqlite-core's tests in the sqlite-core and sqlite-core-c jobs", () => {
+    const { scripts } = JSON.parse(
+      readFileSync(new URL("package.json", root), "utf8"),
+    ) as { readonly scripts: Readonly<Record<string, string>> };
+    const run = (name: string) =>
+      /\n {8}run: (.*)/u.exec(
+        splitSteps(job(workflow("checks.yaml"), name)).find((step) =>
+          step.includes("- name: Test\n"),
+        ) ?? "",
+      )?.[1];
+
+    assertEqual(
+      run("sqlite-core"),
+      scripts["test:sqlite-core"].replace(
+        '"packages/sqlite-core/test/**/*.test.mts"',
+        '"packages/sqlite-core/test/**/!(core).test.mts"',
+      ),
+    );
+    assertEqual(
+      run("sqlite-core-c"),
+      "pnpm test:node --no-experimental-test-coverage packages/sqlite-core/test/core.test.mts",
+    );
+  });
 });
