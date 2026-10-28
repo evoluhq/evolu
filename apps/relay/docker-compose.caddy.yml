@@ -1,0 +1,35 @@
+# The relay behind Caddy, which gets and renews a Let's Encrypt certificate for
+# RELAY_DOMAIN and serves wss:// on port 443. See "Run on a server" in
+# README.md.
+services:
+  evolu-relay:
+    image: docker.io/evoluhq/relay:4
+    # No published port: clients reach the relay only through Caddy.
+    # The relay reads its EVOLU_RELAY_* variables from .env.
+    env_file: .env
+    volumes:
+      - evolu-relay-data:/app/data
+    # Docker's default json-file driver never rotates logs; local does.
+    logging:
+      driver: local
+    restart: unless-stopped
+
+  caddy:
+    image: docker.io/library/caddy:2
+    command: caddy reverse-proxy --from ${RELAY_DOMAIN:?set it in .env, such as RELAY_DOMAIN=relay.example.com} --to evolu-relay:4000
+    # Port 80 answers Let's Encrypt's HTTP challenge and redirects to HTTPS.
+    ports:
+      - "80:80"
+      - "443:443"
+    # Keeps certificates across restarts, so Caddy doesn't request new ones.
+    volumes:
+      - caddy-data:/data
+    logging:
+      driver: local
+    restart: unless-stopped
+
+volumes:
+  evolu-relay-data:
+    name: evolu-relay-data
+  caddy-data:
+    name: evolu-relay-caddy-data

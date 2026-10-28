@@ -17,7 +17,7 @@ npx @evolu/relay
 ## Run with Docker
 
 ```bash
-docker run -d --restart unless-stopped -p 4000:4000 -v evolu-relay-data:/app/data docker.io/evoluhq/relay:4
+docker run -d --restart unless-stopped --log-driver local -p 4000:4000 -v evolu-relay-data:/app/data docker.io/evoluhq/relay:4
 ```
 
 For Docker Compose, download the repository's
@@ -27,6 +27,37 @@ directory containing that file.
 
 Tags follow the npm package version: `4.0.0`, `4.0`, `4`, and `latest` for the
 newest stable release. Prerelease versions only get their full version tag.
+
+## Run on a server
+
+Apps served over HTTPS can connect only to a `wss://` relay. The repository's
+[`docker-compose.caddy.yml`](https://github.com/evoluhq/evolu/blob/main/apps/relay/docker-compose.caddy.yml)
+runs the relay behind [Caddy](https://caddyserver.com), which gets and renews a
+Let's Encrypt certificate for your domain. Only Caddy is reachable from
+outside: it serves `wss://` on port 443 and uses port 80 for the certificate
+challenge and a redirect to HTTPS.
+
+Point a DNS name, such as `relay.example.com`, at a server with Docker
+installed from [Docker's packages](https://docs.docker.com/engine/install/),
+which include Docker Compose, and open ports 80 and 443. Then run in an empty
+directory on the server:
+
+```bash
+curl -fsSL -o compose.yaml https://raw.githubusercontent.com/evoluhq/evolu/main/apps/relay/docker-compose.caddy.yml
+echo "RELAY_DOMAIN=relay.example.com" > .env
+docker compose up -d
+```
+
+Point your app to `wss://relay.example.com`, and uptime monitors to
+`https://relay.example.com/health`. The relay's database and Caddy's
+certificates are kept in volumes, so they survive restarts. To upgrade, run
+`docker compose pull` and `docker compose up -d` in that directory.
+
+The relay reads its `EVOLU_RELAY_*` variables in [Configure](#configure) from
+`.env` too; run `docker compose up -d` again after changing them. Leave `PORT`
+unset, because Caddy proxies to port 4000. The relay accepts any owner that
+connects, so anyone who finds it can store data until the disk is full:
+`EVOLU_RELAY_MAX_OWNER_BYTES` limits each owner, not the total.
 
 ## Verify the image
 
@@ -44,7 +75,7 @@ gh attestation verify oci://docker.io/evoluhq/relay:4.2.15 \
 ```
 
 To run exactly the image you verified, replace `docker.io/evoluhq/relay:4` in
-the `docker run` command above, or the `image` in `docker-compose.yml`, with
+the `docker run` command above, or the relay's `image` in a Compose file, with
 the printed reference, such as `docker.io/evoluhq/relay@sha256:…`. Tags such as
 `4` move to each new release, so verify each new version before you move to it.
 [Supply chain](https://www.evolu.dev/docs/supply-chain) explains what the
@@ -95,7 +126,7 @@ health check cannot discover.
 The image exposes port 4000, so map a custom port explicitly:
 
 ```bash
-docker run -d --restart unless-stopped -e PORT=4001 -p 4001:4001 -v evolu-relay-data:/app/data docker.io/evoluhq/relay:4
+docker run -d --restart unless-stopped --log-driver local -e PORT=4001 -p 4001:4001 -v evolu-relay-data:/app/data docker.io/evoluhq/relay:4
 ```
 
 To add authorization or integrate the relay into your own server, use the

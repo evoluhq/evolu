@@ -7,6 +7,9 @@ services:
     #   EVOLU_RELAY_MAX_OWNER_BYTES: "10MiB"
     volumes:
       - evolu-relay-data:/app/data
+    # Docker's default json-file driver never rotates logs; local does.
+    logging:
+      driver: local
     restart: unless-stopped
 
 volumes:
