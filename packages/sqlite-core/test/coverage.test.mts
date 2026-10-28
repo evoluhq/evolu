@@ -124,6 +124,44 @@ it("reports the sources under each directory it's given and no others", (t) => {
   assertEqual(measure([sources]).gaps, []);
 });
 
+it("counts every run of code that threads run at once", (t) => {
+  const { binary, profiles } = setupProgram(t, {
+    "threads.c": [
+      "#include <pthread.h>",
+      "#include <stdatomic.h>",
+      "static atomic_int started;",
+      "static void counted(void) {}",
+      "static void *call(void *unused) {",
+      "  (void)unused;",
+      "  atomic_fetch_add(&started, 1);",
+      "  while (atomic_load(&started) < 4) {}",
+      "  for (int i = 0; i < 100000; i++) counted();",
+      "  return 0;",
+      "}",
+      "int main(void) {",
+      "  pthread_t threads[4];",
+      "  for (int i = 0; i < 4; i++) pthread_create(&threads[i], 0, call, 0);",
+      "  for (int i = 0; i < 4; i++) pthread_join(threads[i], 0);",
+      "  return 0;",
+      "}",
+      "",
+    ].join("\n"),
+  });
+  const result = spawnSync(binary, {
+    env: { ...process.env, LLVM_PROFILE_FILE: join(profiles, "run.profraw") },
+  });
+  assertEqual(result.status, 0);
+
+  const profdata = run("clang", ["-print-prog-name=llvm-profdata"]).trim();
+  const shown = run(profdata, [
+    "show",
+    "--function=counted",
+    join(profiles, "run.profraw"),
+  ]);
+
+  assertEqual(/Function count: (\d+)/u.exec(shown)?.[1], "400000");
+});
+
 it("expects full coverage where the CPU has every feature its architecture's hardware paths use", () => {
   assertEqual(
     [

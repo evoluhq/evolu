@@ -27,6 +27,10 @@ import { run } from "./compile.mts";
 export const coverageFlags: ReadonlyArray<string> = [
   "-fprofile-instr-generate",
   "-fcoverage-mapping",
+  // The tests run code on several threads at once. Without atomic counters
+  // their updates get lost, and since llvm-cov derives some outcomes from
+  // differences of counters, an outcome that happened can read as never.
+  "-fprofile-update=atomic",
 ];
 
 /** How many of a kind of coverable thing there are and how many ran. */
