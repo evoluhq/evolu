@@ -68,8 +68,8 @@
     "@types/node": "^24.19.2",
     "@types/ws": "^8.18.2",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "oxlint": "^1.88.0",
-    "oxlint-tsgolint": "7.0.2004",
+    "oxlint": "^1.90.0",
+    "oxlint-tsgolint": "7.0.2005",
     "vite": "^8.3.4",
     "webpack": "^5.111.1"
   },
@@ -78,7 +78,7 @@
     "@evolu/oxlint-config": "^0.4.0",
     "@evolu/typescript-config": "^0.1.1",
     "oxlint": "^1.87.0",
-    "oxlint-tsgolint": "7.0.2004",
+    "oxlint-tsgolint": "7.0.2005",
     "typescript": ">=7.0.0",
     "vite": ">=8.0.0",
     "webpack": ">=5.108.4"

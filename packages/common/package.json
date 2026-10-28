@@ -68,7 +68,7 @@
     "@noble/ciphers": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@scure/bip39": "2.4.0",
-    "kysely": "0.29.6",
+    "kysely": "0.29.7",
     "random": "5.5.1"
   },
   "devDependencies": {

@@ -32,16 +32,16 @@
     "src/**"
   ],
   "dependencies": {
-    "eslint-plugin-jsdoc": "65.3.4"
+    "eslint-plugin-jsdoc": "65.4.2"
   },
   "devDependencies": {
     "@evolu/typescript-config": "workspace:*",
-    "oxlint": "^1.88.0",
-    "oxlint-tsgolint": "7.0.2004"
+    "oxlint": "^1.90.0",
+    "oxlint-tsgolint": "7.0.2005"
   },
   "peerDependencies": {
     "oxlint": "^1.87.0",
-    "oxlint-tsgolint": "7.0.2004"
+    "oxlint-tsgolint": "7.0.2005"
   },
   "publishConfig": {
     "access": "public",

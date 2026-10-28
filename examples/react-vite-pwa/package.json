@@ -14,7 +14,7 @@
     "@evolu/react": "workspace:*",
     "@evolu/react-web": "workspace:*",
     "@evolu/web": "workspace:*",
-    "@tabler/icons-react": "^3.49.0",
+    "@tabler/icons-react": "^3.50.0",
     "clsx": "^2.1.1",
     "react": "catalog:react19",
     "react-dom": "catalog:react19",

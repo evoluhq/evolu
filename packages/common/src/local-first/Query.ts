@@ -506,6 +506,7 @@ export const applyPatches = (
   patches: ReadonlyArray<Patch>,
   current: ReadonlyArray<Row>,
 ): ReadonlyArray<Row> =>
+  // oxlint-disable-next-line eslint/array-callback-return -- The switch covers every Patch op, and TypeScript checks that each returns.
   patches.reduce((next, patch) => {
     switch (patch.op) {
       case "replaceAll":
