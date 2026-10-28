@@ -79,17 +79,21 @@
  *   the previous slot's bytes. A read that returns fewer bytes than the slot
  *   holds fails setup with {@link SahPoolSetupError}, caused by a
  *   {@link SahPoolShortHeaderReadError}, rather than parse the header as a free
- *   slot's and truncate the slot. The header is then classified as opfs-sahpool
- *   does: a slot that names a path and holds data past the header, and is not
- *   DELETEONCLOSE, keeps its path even when its flags or digest are torn, as a
- *   tab killed between opfs-sahpool's two header writes leaves them; otherwise
- *   a transient or DELETEONCLOSE file, or a bad digest, is freed; a valid free
- *   slot is truncated to the header. Of slots whose headers map the same path,
- *   which two openers of a new or empty directory can leave, the one listed
- *   last maps the path, and the others stay unused, as in opfs-sahpool: no
- *   other file truncates, writes or reuses them. Unlike opfs-sahpool, deleting
- *   the path frees them too, so the deleted file does not come back on the next
- *   open.
+ *   slot's and truncate the slot. Every header is read before any slot is
+ *   written, so a setup that fails reading one changes no slot. The headers are
+ *   then classified as opfs-sahpool does: a slot that names a path and holds
+ *   data past the header, and is not DELETEONCLOSE, keeps its path even when
+ *   its flags or digest are torn, as a tab killed between opfs-sahpool's two
+ *   header writes leaves them; otherwise a transient or DELETEONCLOSE file, or
+ *   a bad digest, is freed; a valid free slot is truncated to the header. A
+ *   path ends at the first zero byte of the path and flags. A header with none
+ *   there, which no pool writes or tears, has a path of all but the last of
+ *   those bytes and does not keep it for the data its slot holds. Of slots
+ *   whose headers map the same path, which two openers of a new or empty
+ *   directory can leave, the one listed last maps the path, and the others stay
+ *   unused, as in opfs-sahpool: no other file truncates, writes or reuses them.
+ *   Unlike opfs-sahpool, deleting the path frees them too, so the deleted file
+ *   does not come back on the next open.
  * - Slots are topped up to {@link sahPoolDefaultCapacity}.
  * - Any other failure, such as OPFS refusing access, a header that cannot be read
  *   or written, or a VFS that cannot be allocated or registered, fails with
@@ -606,8 +610,15 @@ export const openSahPool =
     // anything thrown is caught.
     const prepared = await tryAsync(
       async (): Promise<Result<void, unknown>> => {
-        // As opfs-sahpool's getAssociatedPath, but each header is read into a
-        // zeroed buffer, so a short slot is not parsed with the previous one's.
+        // Every header is read before any slot is written, so a setup that
+        // fails reading one changes no slot. Unlike opfs-sahpool, each is read
+        // into a zeroed buffer of its own, so a short slot is not parsed with
+        // the previous one's.
+        const headers: Array<{
+          readonly slot: Slot;
+          readonly size: number;
+          readonly header: Uint8Array<ArrayBuffer>;
+        }> = [];
         for (const slot of slots) {
           const header = new Uint8Array(sahPoolHeaderDigestOffset + 8);
           const size = slot.handle.getSize();
@@ -619,19 +630,26 @@ export const openSahPool =
               requested,
               read,
             } satisfies SahPoolShortHeaderReadError);
+          headers.push({ slot, size, header });
+        }
+        // As opfs-sahpool's getAssociatedPath.
+        for (const { slot, size, header } of headers) {
           const flags = new DataView(header.buffer).getUint32(
             sahPoolHeaderFlagsOffset,
           );
-          const digest = computeSahPoolDigest(
-            header.subarray(0, sahPoolHeaderCorpusSize),
-            flags,
-          );
+          const corpus = header.subarray(0, sahPoolHeaderCorpusSize);
+          const digest = computeSahPoolDigest(corpus, flags);
           const stored = new Uint32Array(
             header.buffer,
             sahPoolHeaderDigestOffset,
             2,
           );
-          const pathLength = header.indexOf(0);
+          // As in opfs-sahpool, the path ends at the first zero byte of the
+          // path and flags. With none there, pathLength is -1, so holdsData is
+          // false, and a valid header maps all but the last of those bytes. A
+          // pool writes at most 510 bytes of path, so a header without a zero
+          // byte there is malformed, not torn.
+          const pathLength = corpus.indexOf(0);
           // A tab killed between the two header writes of opfs-sahpool leaves
           // a stale digest, and torn flags look transient, so a file with
           // data keeps its path, as in opfs-sahpool since its fix of
@@ -656,7 +674,7 @@ export const openSahPool =
             slot.handle.truncate(sahPoolHeaderSize);
             unflushedSlots.add(slot);
           } else {
-            const path = utf8Decoder.decode(header.subarray(0, pathLength));
+            const path = utf8Decoder.decode(corpus.subarray(0, pathLength));
             const shadowed = slotByPath.get(path);
             if (shadowed != null) shadowedPathBySlot.set(shadowed, path);
             slotByPath.set(path, slot);
@@ -1361,7 +1379,9 @@ export const sahPoolDigestV2Flag = SQLITE_OPEN_MEMORY;
 /**
  * The file types that persist across sessions: SQLITE_OPEN_MAIN_DB,
  * SQLITE_OPEN_MAIN_JOURNAL, SQLITE_OPEN_SUPER_JOURNAL and SQLITE_OPEN_WAL,
- * combined. A slot with another type is freed at setup.
+ * combined. A named slot with another type is freed at setup, unless its
+ * header's path and flags hold a zero byte, and it holds data past the header
+ * and is not DELETEONCLOSE.
  */
 export const sahPoolPersistentFileTypes =
   SQLITE_OPEN_MAIN_DB |

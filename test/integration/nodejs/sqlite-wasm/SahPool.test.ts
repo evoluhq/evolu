@@ -655,6 +655,92 @@ test("setup fails with SahPoolSetupError caused by a SahPoolShortHeaderReadError
   assertTrue(reopened.getPaths().includes("/test.db"));
 });
 
+// Setup reads every header before it frees or truncates a slot, so the slots
+// listed before the one whose header fails to read are not cleaned up either.
+test("setup that fails reading a header, short or with a throw, leaves the slots listed before it as they were, though it would free or truncate them", async () => {
+  const fake = setupFakeOpfs();
+  const v2 = sahPoolDigestV2Flag;
+  const rw = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+  const data = Uint8Array.of(1, 2, 3, 4);
+  const withData = (bytes: Uint8Array) => Uint8Array.of(...bytes, ...data);
+  const slots = {
+    longFree: withData(freeSlotBytes()),
+    deleteOnClose: withData(
+      createSlotBytes(
+        "/doc.db",
+        SQLITE_OPEN_MAIN_DB | SQLITE_OPEN_DELETEONCLOSE | rw | v2,
+      ),
+    ),
+    database: withData(createSlotBytes("/a.db", SQLITE_OPEN_MAIN_DB | rw | v2)),
+  };
+  for (const [fileName, bytes] of Object.entries(slots))
+    fake.writeFile(`.evolu/.opaque/${fileName}`, bytes);
+  const u = await setupSahPool({
+    fake,
+    directory: [OpfsName.orThrow(".other")],
+  });
+  const error = new DOMException("Read failed.", "InvalidStateError");
+  for (const [fault, cause] of [
+    [
+      { type: "Count", count: 0 },
+      {
+        type: "SahPoolShortHeaderRead",
+        requested: sahPoolHeaderCorpusSize + 8,
+        read: 0,
+      },
+    ],
+    [{ type: "Throw", error }, error],
+  ] as const) {
+    fake.inject((call) =>
+      call.method === "read" &&
+      call.path === ".evolu/.opaque/database" &&
+      call.at === 0
+        ? fault
+        : null,
+    );
+
+    const result = await u.openPool([OpfsName.orThrow(".evolu")]);
+
+    assertErr(result, { type: "SahPoolSetupError", cause });
+    fake.inject(null);
+    for (const [fileName, bytes] of Object.entries(slots))
+      assertEqual(fake.readFile(`.evolu/.opaque/${fileName}`), bytes);
+  }
+
+  using _pool = getOrThrow(await u.openPool([OpfsName.orThrow(".evolu")]));
+
+  assertEqual(fake.readFile(".evolu/.opaque/longFree"), freeSlotBytes());
+  assertEqual(fake.readFile(".evolu/.opaque/deleteOnClose"), freeSlotBytes());
+  assertEqual(fake.readFile(".evolu/.opaque/database"), slots.database);
+});
+
+// A path that fills its 512 bytes, followed by flags without a zero byte, which
+// no pool writes, makes opfs-sahpool find no zero byte in the 516 bytes the
+// digest covers, so the path runs through them all but the last. Searching on
+// into the digest would find a zero there and keep a slot with a bad digest
+// under a path running into its flags.
+test("setup ends a header's path at the first zero byte of its path and flags, as opfs-sahpool does, freeing a slot with none there that holds data when its digest is bad and mapping it when the digest is valid", async () => {
+  const fake = setupFakeOpfs();
+  // SQLITE_OPEN_MAIN_DB among them, without SQLITE_OPEN_DELETEONCLOSE.
+  const flags = 0x01010101;
+  const createBytes = (path: string) =>
+    createSlotBytes(path, flags, sahPoolHeaderSize + 4).fill(
+      1,
+      sahPoolHeaderSize,
+    );
+  const malformed = createBytes("a".repeat(512));
+  malformed.set([1, 0, 0, 0, 0, 0, 0, 0], sahPoolHeaderCorpusSize);
+  const valid = createBytes("b".repeat(512));
+  fake.writeFile(".evolu/.opaque/malformed", malformed);
+  fake.writeFile(".evolu/.opaque/valid", valid);
+
+  const t = await setupSahPool({ fake });
+
+  assertEqual(t.pool.getPaths(), [`${"b".repeat(512)}\u0001\u0001\u0001`]);
+  assertEqual(t.readSlot("malformed"), freeSlotBytes());
+  assertEqual(t.readSlot("valid"), valid);
+});
+
 // The default TextDecoder strips a leading byte order mark, which would map the
 // slot to another path, such as one another slot maps.
 test("setup maps a slot whose header's path starts with U+FEFF to that path, keeping the byte order mark, apart from the slot of the path without it", async () => {
