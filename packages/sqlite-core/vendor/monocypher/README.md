@@ -37,8 +37,9 @@ is compiled but unused.
 Monocypher defines its functions under global `crypto_*` names. The Node.js
 addon hides them with `-fvisibility=hidden`, but hidden visibility limits only
 the dynamic symbol table: a static link, as the React Native module's iOS pod
-and Android library will be, still resolves and can clash with another
-library's `crypto_*` symbols. So the React Native build must rename every
-vendored symbol, SQLite's, Monocypher's `crypto_*` and BearSSL's `br_*`,
-with one compile-time prefixing header, which keeps these files byte for
-byte.
+and Android library are, still resolves and can clash with another library's
+`crypto_*` symbols. So the React Native build renames every vendored symbol,
+SQLite's, Monocypher's `crypto_*` and BearSSL's `br_*`, with one compile-time
+prefixing header, `evolu_names.h`, which
+`packages/react-native/scripts/vendor-native.mts` writes, and which keeps these
+files byte for byte.
