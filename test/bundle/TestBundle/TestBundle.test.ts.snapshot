@@ -1,21 +1,21 @@
 exports[`testBundle > bundles, executes, verifies, measures, and identifies bundlers 1`] = `
 {
   "fixture": {
-    "webpack@5.111.1": {
+    "webpack@5.112.2": {
       "rawSizeInBytes": 72,
       "brotliSizeInBytes": 68
     },
-    "vite@8.3.4": {
+    "vite@8.3.5": {
       "rawSizeInBytes": 70,
       "brotliSizeInBytes": 65
     }
   },
   "fixture-copy": {
-    "webpack@5.111.1": {
+    "webpack@5.112.2": {
       "rawSizeInBytes": 72,
       "brotliSizeInBytes": 68
     },
-    "vite@8.3.4": {
+    "vite@8.3.5": {
       "rawSizeInBytes": 70,
       "brotliSizeInBytes": 65
     }

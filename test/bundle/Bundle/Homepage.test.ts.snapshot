@@ -1,21 +1,21 @@
 exports[`Homepage bundle sizes > bundle sizes 1`] = `
 {
   "Task": {
-    "webpack@5.111.1": {
-      "rawSizeInBytes": 34366,
-      "brotliSizeInBytes": 10818
+    "webpack@5.112.2": {
+      "rawSizeInBytes": 35021,
+      "brotliSizeInBytes": 10887
     },
-    "vite@8.3.4": {
-      "rawSizeInBytes": 29106,
-      "brotliSizeInBytes": 9278
+    "vite@8.3.5": {
+      "rawSizeInBytes": 29098,
+      "brotliSizeInBytes": 9269
     }
   },
   "Type": {
-    "webpack@5.111.1": {
-      "rawSizeInBytes": 11990,
-      "brotliSizeInBytes": 3843
+    "webpack@5.112.2": {
+      "rawSizeInBytes": 12181,
+      "brotliSizeInBytes": 3874
     },
-    "vite@8.3.4": {
+    "vite@8.3.5": {
       "rawSizeInBytes": 11769,
       "brotliSizeInBytes": 3807
     }

@@ -70,8 +70,8 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "oxlint": "^1.90.0",
     "oxlint-tsgolint": "7.0.2005",
-    "vite": "^8.3.4",
-    "webpack": "^5.111.1"
+    "vite": "^8.3.5",
+    "webpack": "^5.112.2"
   },
   "peerDependencies": {
     "@evolu/common": "^8.24.1",
