@@ -2,7 +2,7 @@
 
 `scripts/constant-time.mts` lists this from the pinned `wasm/sqlite3.wasm` and the reviews it holds, and `scripts/constant-time.test.mts` fails when it changes. Its module documentation describes the inspection.
 
-For each function of AES, SHA-512, HMAC-SHA512, PBKDF2 and the page codec around the tag comparison, it lists every `br_if`, `if`, `select`, `br_table` and `call_indirect`, and each load, store, `memory.copy`, `memory.fill`, call argument, `global.set`, division and remainder whose address, size or operand derives from a loaded value, a call's result or a parameter that holds a secret. `#N` is a function's Nth instruction as `wasm2wat` prints it, and `local N` and `global N` are its locals, parameters first, and the module's globals. Each loaded value and call result a finding derives from is reviewed as public or secret. The `if` at the start and end of a function with a stack frame is Emscripten's stack overflow check, which compares the stack pointer, `global 0`, with the stack's limits, `global 3` and `global 4`.
+For each function of AES, SHA-512, HMAC-SHA512, PBKDF2 and the page codec around the tag comparison, it lists every `br_if`, `if`, `select`, `br_table` and `call_indirect`, and each load, store, `memory.copy`, `memory.fill`, call argument, `global.set`, division and remainder whose address, size or operand derives from a loaded value, a call's result or a parameter that holds a secret. `#N` is a function's Nth instruction as `wasm2wat` prints it, and `local N` and `global N` are its locals, parameters first, and the module's globals. Each loaded value and call result a finding derives from is reviewed as public or secret, each call to a function the wasm defines and no review inspects says why that function needs none, and each `call_indirect` which functions it reaches. The `if` at the start and end of a function with a stack frame is Emscripten's stack overflow check, which compares the stack pointer, `global 0`, with the stack's limits, `global 3` and `global 4`.
 
 This shows that the wasm keeps the C's constant time, not that a machine runs it in constant time: wasm and its JIT compilers promise none.
 
@@ -29,6 +29,10 @@ Loaded values and call results:
 - #13 `i32.load` at `local 0`: public, `aes->impl`, the table `evolu_aes256_init` records for every key, `aes_ct64` on wasm
 - #14 `i32.load offset=4` at `#13`: public, that table's `cbc_encrypt`, `aes256_ct64_cbc_encrypt`
 
+Calls to functions without a review:
+
+- #15 `call_indirect`: `aes256_ct64_cbc_encrypt`, function 71, which is reviewed, since on wasm `evolu_aes256_init` records `aes_ct64`'s table alone
+
 ## `evolu_aes256_cbc_decrypt`, function 76
 
 The core's `evolu_aes256_cbc_decrypt`: refuses a partial block, calls the context's implementation and wipes the stack.
@@ -43,6 +47,10 @@ Loaded values and call results:
 
 - #13 `i32.load` at `local 0`: public, `aes->impl`, the table `evolu_aes256_init` records for every key, `aes_ct64` on wasm
 - #14 `i32.load offset=8` at `#13`: public, that table's `cbc_decrypt`, `aes256_ct64_cbc_decrypt`
+
+Calls to functions without a review:
+
+- #15 `call_indirect`: `aes256_ct64_cbc_decrypt`, function 72, which is reviewed, since on wasm `evolu_aes256_init` records `aes_ct64`'s table alone
 
 ## `aes256_ct64_init`, function 70
 
@@ -523,6 +531,11 @@ Loaded values and call results:
 - #134 `call 94` of `local 0, local 6, local 1, local 2, local 3, i32.add(local 4, 12)`: public, `authenticate`'s result, whether the page's HMAC matches, which the read's failure reveals
 - #140 `i32.load offset=12` at `local 4`: public, the layout `authenticate` found, which the file shows
 
+Calls to functions without a review:
+
+- #18 `call 78`: `evolu_dit_begin`, which returns 0 on wasm, which has no DIT
+- #164 `call 79`: `evolu_dit_end`, which does nothing on wasm, which has no DIT
+
 ## `evolu_page_decrypt_with_salt`, function 96
 
 The core's `evolu_page_decrypt_with_salt`, with `decrypt_page_with_salt` and `evolu_page_is_size` inlined.
@@ -547,6 +560,11 @@ Loaded values and call results:
 - #44 `i64.load offset=8 align=1` at `local 1`: public, half of the salt to try, read from a database or journal that stores it in the clear
 - #66 `call 94` of `local 0, local 10, local 2, local 3, local 4, i32.add(local 5, 12)`: public, `authenticate`'s result, whether the page's HMAC matches, which the read's failure reveals
 - #75 `i32.load offset=12` at `local 5`: public, the layout `authenticate` found, which the file shows
+
+Calls to functions without a review:
+
+- #18 `call 78`: `evolu_dit_begin`, which returns 0 on wasm, which has no DIT
+- #82 `call 79`: `evolu_dit_end`, which does nothing on wasm, which has no DIT
 
 ## `decrypt_authentic`, function 95
 
@@ -616,6 +634,13 @@ Loaded values and call results:
 - #220 `call 69` of `i32.add(local 5, 16), 16`: public, `evolu_random_bytes`'s status for the IV
 - #224 `i32.load offset=556` at `local 0`: public, `codec->layout`, page 1's layout, which the file shows: the default layout stores bytes 16 to 23 in the clear
 
+Calls to functions without a review:
+
+- #18 `call 78`: `evolu_dit_begin`, which returns 0 on wasm, which has no DIT
+- #72 `call 69`: `evolu_random_bytes` for the salt, which fills it from the platform's generator
+- #220 `call 69`: `evolu_random_bytes` for the IV
+- #461 `call 79`: `evolu_dit_end`, which does nothing on wasm, which has no DIT
+
 ## `evolu_page_codec_create`, function 89
 
 The core's `evolu_page_codec_create`, with `create_codec` inlined: it copies the key and expands it.
@@ -637,6 +662,12 @@ Loaded values and call results:
 - #1 `call 78`: public, `evolu_dit_begin`'s result, always 0 on wasm, which has no DIT
 - #5 `call 73` of `1, 720`: public, `evolu_calloc`'s result, the codec's address or NULL
 
+Calls to functions without a review:
+
+- #1 `call 78`: `evolu_dit_begin`, which returns 0 on wasm, which has no DIT
+- #5 `call 73`: `evolu_calloc`, which allocates the codec before the key is copied into it
+- #34 `call 79`: `evolu_dit_end`, which does nothing on wasm, which has no DIT
+
 ## `evolu_page_use_salt`, function 97
 
 The core's `evolu_page_use_salt`, with `adopt_salt` inlined.
@@ -657,6 +688,11 @@ Loaded values and call results:
 - #28 `i64.load offset=572 align=1` at `local 0`: public, half of `codec->salt`, which page 1 stores in the clear
 - #30 `i64.load offset=8 align=1` at `local 1`: public, half of the salt to use, read from a database or journal that stores it in the clear
 - #36 `call 78`: public, `evolu_dit_begin`'s result, always 0 on wasm, which has no DIT
+
+Calls to functions without a review:
+
+- #36 `call 78`: `evolu_dit_begin`, which returns 0 on wasm, which has no DIT
+- #62 `call 79`: `evolu_dit_end`, which does nothing on wasm, which has no DIT
 
 ## `evolu_wipe`, function 66
 

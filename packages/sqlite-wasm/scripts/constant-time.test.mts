@@ -533,9 +533,8 @@ describe("inspectConstantTime", () => {
 describe("renderListing", () => {
   it("classifies each finding by the reviews of what it depends on", async () => {
     const wasm = await setupWasm(`
+      (import "env" "f" (func (param i32) (result i32)))
       (memory 1)
-      (func (param i32) (result i32)
-        local.get 0)
       (func (param i32 i32)
         local.get 0
         br_if 0
@@ -620,9 +619,8 @@ describe("renderListing", () => {
 
   it("lists an unreviewed value, a review of nothing and a review of other code as problems", async () => {
     const wasm = await setupWasm(`
+      (import "env" "f" (func (result i32)))
       (memory 1)
-      (func (result i32)
-        i32.const 0)
       (func (param i32)
         call 0
         local.get 0
@@ -668,6 +666,102 @@ describe("renderListing", () => {
       "",
       "- #8 `br_if 0` with condition `i32.add(i32.add(#1, #3), #6)`: not reviewed, #1, #3 and #6",
     ]);
+  });
+
+  it("lists a call to a function the wasm defines and no review inspects as a problem, unless its review says why", async () => {
+    // Function 1 is a helper the compiler stopped inlining, which branches on
+    // a value it loads, and function 3 passes it only a public pointer.
+    const wasm = await setupWasm(`
+      (import "env" "f" (func (param i32)))
+      (memory 1)
+      (func (param i32)
+        local.get 0
+        i32.load
+        br_if 0)
+      (func (param i32)
+        local.get 0
+        call 0)
+      (func (param i32)
+        local.get 0
+        call 0
+        local.get 0
+        call 1
+        local.get 0
+        call 2
+        local.get 0
+        call 1)`);
+    const callee = await setupReviewed(wasm, {
+      name: "callee",
+      index: 2,
+      summary: "Calls the host.",
+    });
+    const caller = await setupReviewed(wasm, {
+      name: "caller",
+      index: 3,
+      summary: "Calls.",
+      calls: { 6: "a reviewed function", 8: "the allocator" },
+    });
+    const stale = { ...caller, name: "stale", sha256: "abc" };
+
+    const inspection = await inspectConstantTime(wasm, [callee, caller, stale]);
+    const [, , callerSection, staleSection] =
+      renderListing(inspection).split("\n## ");
+
+    assertEqual(inspection.functions[1].unreviewedCalls, [
+      { at: 4, callee: 1 },
+      { at: 8, callee: 1 },
+    ]);
+    assertEqual(inspection.problems, [
+      "caller: #4 calls function 1, which has no review.",
+      "caller: #6 is reviewed as a call, but doesn't call a function without a review.",
+      `stale: its review covers code sha256 abc, but function 3 has ${caller.sha256}.`,
+    ]);
+    assertEqual(callerSection.split("\n").slice(6), [
+      "No findings.",
+      "",
+      "Calls to functions without a review:",
+      "",
+      "- #4 `call 1`: not reviewed",
+      "- #8 `call 1`: the allocator",
+      "",
+    ]);
+    assertEqual(staleSection.split("\n").slice(10), [
+      "- #4 `call 1`: not reviewed",
+      "- #8 `call 1`: not reviewed",
+      "",
+    ]);
+  });
+
+  it("lists a call_indirect as a problem unless its review names the functions it reaches", async () => {
+    const wasm = await setupWasm(`
+      (type $v (func))
+      (table 1 funcref)
+      (func (type $v)
+        i32.const 0
+        call_indirect (type $v))`);
+    const unnamed = await setupReviewed(wasm, {
+      name: "unnamed",
+      index: 0,
+      summary: "Calls through the table.",
+    });
+    const named = {
+      ...unnamed,
+      name: "named",
+      calls: { 2: "the table's only function" },
+    };
+
+    const inspection = await inspectConstantTime(wasm, [unnamed, named]);
+
+    assertEqual(inspection.functions[0].unreviewedCalls, [
+      { at: 2, callee: null },
+    ]);
+    assertEqual(inspection.problems, [
+      "unnamed: #2 calls through the table, and its review names no function it reaches.",
+    ]);
+    assertEqual(
+      renderListing(inspection).split("\n## ")[2].split("\n").slice(-3),
+      ["", "- #2 `call_indirect`: the table's only function", ""],
+    );
   });
 });
 

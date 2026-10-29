@@ -41,6 +41,12 @@
  * function needs a new review. A finding is secret-dependent when it derives
  * from a secret.
  *
+ * A call passes no finding into its callee, so each call to a function the wasm
+ * defines goes to a reviewed function, or its review says why that function
+ * needs none, and each `call_indirect`'s review names the functions it reaches.
+ * A helper the compiler stops inlining then needs a review of its own. Imports
+ * are the host's functions, not compiled C, so they need none.
+ *
  * This shows that the wasm keeps the C's constant time, not that a machine runs
  * it in constant time: wasm and its JIT compilers promise none.
  *
@@ -71,6 +77,11 @@ export interface ReviewedFunction {
   readonly secretParams?: Readonly<Record<number, string>>;
   /** Each loaded value and call result the findings derive from, by its `#N`. */
   readonly sources?: Readonly<Record<number, SourceReview>>;
+  /**
+   * Why each function it calls that the wasm defines and no review inspects
+   * needs no review, by the call's `#N`.
+   */
+  readonly calls?: Readonly<Record<number, string>>;
 }
 
 export type SourceReview = PublicSource | SecretSource;
@@ -100,6 +111,15 @@ export interface InspectedFunction {
   readonly findings: ReadonlyArray<Finding>;
   /** The loaded values and call results the findings derive from. */
   readonly sources: ReadonlyArray<Source>;
+  /** Its calls to functions the wasm defines and no review inspects. */
+  readonly unreviewedCalls: ReadonlyArray<UnreviewedCall>;
+}
+
+export interface UnreviewedCall {
+  /** The call's `#N`. */
+  readonly at: number;
+  /** The callee's index, or null for a `call_indirect`. */
+  readonly callee: number | null;
 }
 
 export interface Finding {
@@ -219,6 +239,7 @@ interface WasmModule {
   readonly types: ReadonlyMap<number, FunctionType>;
   /** Each function's type index, imported functions first. */
   readonly functionTypes: ReadonlyMap<number, number>;
+  readonly importedFunctions: ReadonlySet<number>;
   /** Each exported function's index, by its export name. */
   readonly exports: ReadonlyMap<string, number>;
 }
@@ -259,6 +280,13 @@ const readModule = async (wasm: Uint8Array): Promise<WasmModule> => {
           /^ {2}\((?:import "[^"]*" "[^"]*" \()?func \(;(\d+);\) \(type (\d+)\)/gmu,
         ),
       ].map(([, index, type]) => [Number(index), Number(type)]),
+    ),
+    importedFunctions: new Set(
+      [
+        ...fields.matchAll(
+          /^ {2}\(import "[^"]*" "[^"]*" \(func \(;(\d+);\)/gmu,
+        ),
+      ].map(([, index]) => Number(index)),
     ),
     exports: new Map(
       [...fields.matchAll(/^ {2}\(export "([^"]*)" \(func (\d+)\)\)$/gmu)].map(
@@ -368,7 +396,7 @@ const analyze = (
   reviewByIndex: ReadonlyMap<number, ReviewedFunction>,
   instructions: ReadonlyArray<string>,
   localCount: number,
-): Pick<InspectedFunction, "findings" | "sources"> => {
+): Pick<InspectedFunction, "findings" | "sources" | "unreviewedCalls"> => {
   const loopStarts = new Map<number, ReadonlyArray<Taint>>();
   for (;;) {
     let settled = true;
@@ -384,6 +412,7 @@ const analyze = (
     const frames: Array<Frame> = [];
     const findings: Array<Finding> = [];
     const sources = new Map<string, Source>();
+    const unreviewedCalls: Array<UnreviewedCall> = [];
 
     const pop = (): Value => stack.pop()!;
     const popMany = (count: number): ReadonlyArray<Value> =>
@@ -570,14 +599,18 @@ const analyze = (
         }
         case "call": {
           const callee = Number(immediates[0]);
+          const calleeReview = reviewByIndex.get(callee);
+          if (calleeReview == null && !module.importedFunctions.has(callee))
+            unreviewedCalls.push({ at, callee });
           call(
             functionType(module, module.functionTypes.get(callee)!),
-            reviewByIndex.get(callee),
+            calleeReview,
           );
           break;
         }
         case "call_indirect":
           note("table index", [pop()], true);
+          unreviewedCalls.push({ at, callee: null });
           call(
             functionType(
               module,
@@ -618,6 +651,7 @@ const analyze = (
       return {
         findings,
         sources: [...sources.values()].filter(({ at }) => used.has(`#${at}`)),
+        unreviewedCalls,
       };
     }
   }
@@ -662,12 +696,14 @@ const problemsOf = ({
   review,
   sha256,
   sources,
+  unreviewedCalls,
 }: InspectedFunction): ReadonlyArray<string> => {
   if (sha256 !== review.sha256)
     return [
       `${review.name}: its review covers code sha256 ${review.sha256}, but function ${review.index} has ${sha256}.`,
     ];
   const used = new Set(sources.map(({ at }) => at));
+  const called = new Set(unreviewedCalls.map(({ at }) => at));
   return [
     ...sources
       .filter(({ at }) => review.sources?.[at] == null)
@@ -679,6 +715,20 @@ const problemsOf = ({
         (at) =>
           `${review.name}: #${at} is reviewed, but no finding depends on it.`,
       ),
+    ...unreviewedCalls
+      .filter(({ at }) => review.calls?.[at] == null)
+      .map(({ at, callee }) =>
+        callee === null
+          ? `${review.name}: #${at} calls through the table, and its review names no function it reaches.`
+          : `${review.name}: #${at} calls function ${callee}, which has no review.`,
+      ),
+    ...Object.keys(review.calls ?? {})
+      .map(Number)
+      .filter((at) => !called.has(at))
+      .map(
+        (at) =>
+          `${review.name}: #${at} is reviewed as a call, but doesn't call a function without a review.`,
+      ),
   ];
 };
 
@@ -686,7 +736,7 @@ const listingIntro = `# Constant time in sqlite3.wasm
 
 \`scripts/constant-time.mts\` lists this from the pinned \`wasm/sqlite3.wasm\` and the reviews it holds, and \`scripts/constant-time.test.mts\` fails when it changes. Its module documentation describes the inspection.
 
-For each function of AES, SHA-512, HMAC-SHA512, PBKDF2 and the page codec around the tag comparison, it lists every \`br_if\`, \`if\`, \`select\`, \`br_table\` and \`call_indirect\`, and each load, store, \`memory.copy\`, \`memory.fill\`, call argument, \`global.set\`, division and remainder whose address, size or operand derives from a loaded value, a call's result or a parameter that holds a secret. \`#N\` is a function's Nth instruction as \`wasm2wat\` prints it, and \`local N\` and \`global N\` are its locals, parameters first, and the module's globals. Each loaded value and call result a finding derives from is reviewed as public or secret. The \`if\` at the start and end of a function with a stack frame is Emscripten's stack overflow check, which compares the stack pointer, \`global 0\`, with the stack's limits, \`global 3\` and \`global 4\`.
+For each function of AES, SHA-512, HMAC-SHA512, PBKDF2 and the page codec around the tag comparison, it lists every \`br_if\`, \`if\`, \`select\`, \`br_table\` and \`call_indirect\`, and each load, store, \`memory.copy\`, \`memory.fill\`, call argument, \`global.set\`, division and remainder whose address, size or operand derives from a loaded value, a call's result or a parameter that holds a secret. \`#N\` is a function's Nth instruction as \`wasm2wat\` prints it, and \`local N\` and \`global N\` are its locals, parameters first, and the module's globals. Each loaded value and call result a finding derives from is reviewed as public or secret, each call to a function the wasm defines and no review inspects says why that function needs none, and each \`call_indirect\` which functions it reaches. The \`if\` at the start and end of a function with a stack frame is Emscripten's stack overflow check, which compares the stack pointer, \`global 0\`, with the stack's limits, \`global 3\` and \`global 4\`.
 
 This shows that the wasm keeps the C's constant time, not that a machine runs it in constant time: wasm and its JIT compilers promise none.
 `;
@@ -697,6 +747,7 @@ const renderFunction = ({
   instructions,
   findings,
   sources,
+  unreviewedCalls,
 }: InspectedFunction): string => {
   const isStale = sha256 !== review.sha256;
   const statusOf = (id: string): "public" | "secret" | "not reviewed" => {
@@ -762,6 +813,17 @@ const renderFunction = ({
           "",
           ...sources.map(describeSource),
         ]),
+    ...(unreviewedCalls.length === 0
+      ? []
+      : [
+          "",
+          "Calls to functions without a review:",
+          "",
+          ...unreviewedCalls.map(
+            ({ at, callee }) =>
+              `- #${at} \`${callee === null ? "call_indirect" : `call ${callee}`}\`: ${(isStale ? undefined : review.calls?.[at]) ?? "not reviewed"}`,
+          ),
+        ]),
     "",
   ].join("\n");
 };
@@ -808,6 +870,9 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
         reason: "that table's `cbc_encrypt`, `aes256_ct64_cbc_encrypt`",
       },
     },
+    calls: {
+      "15": "`aes256_ct64_cbc_encrypt`, function 71, which is reviewed, since on wasm `evolu_aes256_init` records `aes_ct64`'s table alone",
+    },
   },
   {
     name: "evolu_aes256_cbc_decrypt",
@@ -825,6 +890,9 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
         type: "Public",
         reason: "that table's `cbc_decrypt`, `aes256_ct64_cbc_decrypt`",
       },
+    },
+    calls: {
+      "15": "`aes256_ct64_cbc_decrypt`, function 72, which is reviewed, since on wasm `evolu_aes256_init` records `aes_ct64`'s table alone",
     },
   },
   {
@@ -1221,6 +1289,10 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
         reason: "the layout `authenticate` found, which the file shows",
       },
     },
+    calls: {
+      "18": "`evolu_dit_begin`, which returns 0 on wasm, which has no DIT",
+      "164": "`evolu_dit_end`, which does nothing on wasm, which has no DIT",
+    },
   },
   {
     name: "evolu_page_decrypt_with_salt",
@@ -1263,6 +1335,10 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
         type: "Public",
         reason: "the layout `authenticate` found, which the file shows",
       },
+    },
+    calls: {
+      "18": "`evolu_dit_begin`, which returns 0 on wasm, which has no DIT",
+      "82": "`evolu_dit_end`, which does nothing on wasm, which has no DIT",
     },
   },
   {
@@ -1318,6 +1394,12 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
           "`codec->layout`, page 1's layout, which the file shows: the default layout stores bytes 16 to 23 in the clear",
       },
     },
+    calls: {
+      "18": "`evolu_dit_begin`, which returns 0 on wasm, which has no DIT",
+      "72": "`evolu_random_bytes` for the salt, which fills it from the platform's generator",
+      "220": "`evolu_random_bytes` for the IV",
+      "461": "`evolu_dit_end`, which does nothing on wasm, which has no DIT",
+    },
   },
   {
     name: "evolu_page_codec_create",
@@ -1335,6 +1417,11 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
         type: "Public",
         reason: "`evolu_calloc`'s result, the codec's address or NULL",
       },
+    },
+    calls: {
+      "1": "`evolu_dit_begin`, which returns 0 on wasm, which has no DIT",
+      "5": "`evolu_calloc`, which allocates the codec before the key is copied into it",
+      "34": "`evolu_dit_end`, which does nothing on wasm, which has no DIT",
     },
   },
   {
@@ -1370,6 +1457,10 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
         reason:
           "`evolu_dit_begin`'s result, always 0 on wasm, which has no DIT",
       },
+    },
+    calls: {
+      "36": "`evolu_dit_begin`, which returns 0 on wasm, which has no DIT",
+      "62": "`evolu_dit_end`, which does nothing on wasm, which has no DIT",
     },
   },
   {
