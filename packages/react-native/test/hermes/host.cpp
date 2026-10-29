@@ -37,12 +37,14 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <mutex>
+#include <new>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -53,6 +55,21 @@
 // The crypto layer's test hook (src/evolu_crypto.h), which the host's build
 // compiles: while it's set, the platform's random source fails.
 extern "C" int evolu_test_random_fails;
+
+// While set, the next allocation through operator new fails, once, so a test
+// can fail one of the adapter's C++ allocations, which the SQLite allocator
+// below can't.
+std::atomic<bool> nextNewFails{false};
+
+void *operator new(std::size_t size) {
+  if (nextNewFails.exchange(false)) throw std::bad_alloc();
+  if (void *p = std::malloc(size == 0 ? 1 : size)) return p;
+  throw std::bad_alloc();
+}
+
+void operator delete(void *p) noexcept { std::free(p); }
+
+void operator delete(void *p, std::size_t) noexcept { std::free(p); }
 
 namespace jsi = facebook::jsi;
 
@@ -676,6 +693,65 @@ const std::vector<Test> hostTests = {
        }
        check(message == "Evolu's SQLite needs the Hermes engine.",
              "the engine check's message, not " + message);
+     }},
+
+    {"an open whose handle can't take its state opens nothing, so no file "
+     "stays held",
+     [](const std::string &directory) {
+       const std::string path = directory + "/state.db";
+       // Hermes, whose setNativeState fails once when armed, as when its
+       // allocation fails.
+       class FailingRuntime final
+           : public jsi::RuntimeDecorator<jsi::Runtime> {
+       public:
+         explicit FailingRuntime(jsi::Runtime &plain)
+             : RuntimeDecorator(plain) {}
+         bool isArmed = false;
+         void setNativeState(const jsi::Object &object,
+                             std::shared_ptr<jsi::NativeState> state) override {
+           if (std::exchange(isArmed, false)) throw std::bad_alloc();
+           RuntimeDecorator::setNativeState(object, std::move(state));
+         }
+       };
+       auto hermes = facebook::hermes::makeHermesRuntime();
+       FailingRuntime runtime(*hermes);
+       auto connections = evolu::createRuntimeConnections();
+       runtime.global().setProperty(
+           runtime, "binding", evolu::createBinding(runtime, connections));
+       runtime.isArmed = true;
+       std::string thrown =
+           runtime
+               .evaluateJavaScript(
+                   std::make_shared<jsi::StringBuffer>(
+                       thrownBy("binding.openFile(" + literal(path) + ")")),
+                   "test.js")
+               .getString(runtime)
+               .utf8(runtime);
+       check(thrown != "none", "the open to throw");
+       check(!isHeld(path), "no file held after the failed open");
+       evolu::teardownRuntimeConnections(*connections);
+     }},
+
+    {"an open whose first allocation after the open fails still records the "
+     "connection, so the teardown closes it",
+     [](const std::string &directory) {
+       const std::string path = directory + "/allocation.db";
+       TestRuntime runtime;
+       // Called right after the open, before the binding records the
+       // connection, which needs no allocation then.
+       evolu_test_key_copy_end = [](const uint8_t *, size_t) {
+         nextNewFails = true;
+       };
+       // An openMemory then takes the failure, which fails before it opens
+       // anything, if the encrypted open left it.
+       runtime.text("JSON.stringify([" +
+                    thrownBy("binding.openEncryptedFile(" + literal(path) +
+                             ", " + keyJs + ")") +
+                    ", " + thrownBy("binding.openMemory()") + "])");
+       evolu_test_key_copy_end = nullptr;
+       nextNewFails = false;
+       runtime.teardown();
+       check(!isHeld(path), "the file released by the teardown");
      }},
 
     {"an export's ArrayBuffer holds the export's bytes, which are wiped "

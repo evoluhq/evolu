@@ -752,31 +752,34 @@ jsi::Value runOnce(jsi::Runtime &rt, const jsi::Value &thisValue,
   return createResult(rt, rowValues, changes, nullptr);
 }
 
-// The bytes of an export, which its external ArrayBuffer holds: they came from
-// evolu_database_export, and the destructor wipes and frees them.
+// The bytes of an export, which its external ArrayBuffer holds. The
+// constructor runs evolu_database_export, so the plaintext copy has an owner
+// before anything can throw, and the destructor wipes and frees it.
 class ExportBuffer final : public jsi::MutableBuffer {
 public:
-  ExportBuffer(uint8_t *bytes, size_t size) : bytes_(bytes), size_(size) {}
+  ExportBuffer(evolu_database *database, evolu_database_error *record)
+      : rc_(evolu_database_export(database, &bytes_, &size_, record)) {}
   ~ExportBuffer() override { evolu_database_free_export(bytes_, size_); }
   ExportBuffer(const ExportBuffer &) = delete;
   ExportBuffer &operator=(const ExportBuffer &) = delete;
 
+  int rc() const { return rc_; }
   size_t size() const override { return size_; }
   uint8_t *data() override { return bytes_; }
 
 private:
-  uint8_t *bytes_;
-  size_t size_;
+  // Declared before rc_, so they're initialized before the export sets them.
+  uint8_t *bytes_ = nullptr;
+  size_t size_ = 0;
+  int rc_;
 };
 
 jsi::Value exportDatabase(jsi::Runtime &rt, Connection &connection) {
-  uint8_t *bytes;
-  size_t size;
   evolu_database_error record;
-  if (evolu_database_export(connection.database, &bytes, &size, &record) !=
-      SQLITE_OK)
-    throwRecord(rt, "export", record);
-  jsi::ArrayBuffer buffer(rt, std::make_shared<ExportBuffer>(bytes, size));
+  auto exported = std::make_shared<ExportBuffer>(connection.database, &record);
+  if (exported->rc() != SQLITE_OK) throwRecord(rt, "export", record);
+  size_t size = exported->size();
+  jsi::ArrayBuffer buffer(rt, std::move(exported));
   buffer.setExternalMemoryPressure(rt, size);
   return buffer;
 }
@@ -788,6 +791,10 @@ jsi::Value openDatabase(jsi::Runtime &rt, const jsi::Value &thisValue,
                         RuntimeConnections &connections, Open open) {
   jsi::Object handle = jsi::Object::create(rt, thisValue);
   auto connection = std::make_shared<Connection>();
+  // Before the open, as Hermes allocates for it, so nothing that can fail runs
+  // between the open and recording it. A failed open's handle is garbage,
+  // holding a connection that's as closed.
+  handle.setNativeState(rt, connection);
   evolu_database_error record;
   bool isTornDown;
   int rc = SQLITE_OK;
@@ -795,12 +802,16 @@ jsi::Value openDatabase(jsi::Runtime &rt, const jsi::Value &thisValue,
     // Held through the open, so a teardown waits for it.
     std::lock_guard lock(connections.mutex);
     isTornDown = connections.isTornDown;
-    if (!isTornDown) rc = open(&connection->database, &record);
-    if (rc == SQLITE_OK && !isTornDown) connections.open.push_back(connection);
+    if (!isTornDown) {
+      // Room first, so recording an open connection can't throw and leave it
+      // open with nothing to close it.
+      connections.open.reserve(connections.open.size() + 1);
+      rc = open(&connection->database, &record);
+      if (rc == SQLITE_OK) connections.open.push_back(connection);
+    }
   }
   if (isTornDown) throwError(rt, "The native module was torn down.");
   if (rc != SQLITE_OK) throwRecord(rt, "open", record);
-  handle.setNativeState(rt, std::move(connection));
   return handle;
 }
 
