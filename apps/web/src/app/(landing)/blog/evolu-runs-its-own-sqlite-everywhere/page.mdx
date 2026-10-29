@@ -22,7 +22,8 @@ export default (props) => <ArticleLayout article={article} {...props} />;
   in Node.js as a Node-API addon without better-sqlite3.
 - Every platform encrypts the same way, in SQLCipher 4's page format, and the
   core reads both page-1 layouts earlier releases wrote, so existing databases
-  open in place.
+  open in place on the web and in React Native. The relay's, unencrypted, opens
+  as it is.
 - Encryption runs in constant time, so it leaves no trace of the key in the
   CPU's caches, where other code on the same CPU, such as another tab or app,
   could look for it. It uses the CPU's AES and SHA-512 instructions where it
@@ -464,8 +465,10 @@ later on Hermes, in an Expo app with Expo SDK 58 or later, and `@evolu/common`
 8.24 or later.
 `createEvoluDeps` moved to `@evolu/react-native`. SQL strings take single
 quotes: a double-quoted string, which expo-sqlite's SQLCipher accepted, now
-fails with no such column. Unless the app uses them
-itself, it can remove expo-sqlite with its config plugin,
+fails with no such column. `installPolyfills` now installs
+`crypto.getRandomValues` itself, so call it in a module of its own that the
+app's entry file imports first. Unless the app uses them
+itself, it can then remove expo-sqlite with its config plugin,
 react-native-quick-crypto and react-native-nitro-modules. Existing databases
 open in place, but a database this release creates fails with `SQLITE_NOTADB`
 on an earlier release, so plan rollbacks accordingly. Don't ship the release as an over-the-air update to an older
