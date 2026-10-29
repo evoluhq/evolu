@@ -1281,6 +1281,45 @@ describe("JSON binary codec", () => {
     assertTrue(map16Error.message.includes("Buffer parse ended prematurely"));
   });
 
+  it("keeps the cost of nested array headers linear in the input", () => {
+    // 999 nested array16 headers that each declare 65,535 elements, then
+    // 65,535 nulls. Each header alone fits the bytes left, so an array is not
+    // preallocated at every level.
+    const levels = 999;
+    const nested = new Uint8Array(levels * 3 + 65_535).fill(0xc0);
+    for (let level = 0; level < levels; level++) {
+      nested.set([0xdc, 0xff, 0xff], level * 3);
+    }
+    // A valid value about as large: one array of 65,535 nulls.
+    const flat = new Uint8Array(3 + 65_535).fill(0xc0);
+    flat.set([0xdc, 0xff, 0xff]);
+
+    // Thread CPU time counts only this thread, so other processes on a loaded
+    // runner do not add to it.
+    const cpuTimeOf = (run: () => void): number => {
+      const start = process.threadCpuUsage();
+      run();
+      const { user, system } = process.threadCpuUsage(start);
+      return user + system;
+    };
+
+    let attempts = 0;
+    let ratio: number;
+    // Garbage collection can inflate one measurement, so a ratio over the
+    // bound is measured again unless it is too high for a pause to explain.
+    do {
+      const linearCost = cpuTimeOf(() => {
+        decodeJson(flat);
+      });
+      ratio =
+        cpuTimeOf(() => {
+          assertThrowsInstanceOf(() => decodeJson(nested), BufferError);
+        }) / linearCost;
+      attempts++;
+    } while (attempts < 3 && ratio >= 4 && ratio < 100);
+    assertTrue(ratio < 4);
+  });
+
   it("decodes exactly one value at a time", () => {
     const buffer = createBuffer();
     encodeJsonValue(buffer, JsonValue.orThrow({ first: true }));

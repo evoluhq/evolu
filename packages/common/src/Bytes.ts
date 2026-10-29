@@ -706,6 +706,7 @@ let jsonDecoderSource: Uint8Array = emptyJsonDecoderSource;
 let jsonDecoderView: DataView = emptyJsonDecoderView;
 let jsonDecoderPosition = 0;
 let jsonDecoderDepth = 0;
+let jsonDecoderArrayBudget = 0;
 const jsonStringFromCharCode = globalThis.String.fromCharCode;
 // Cache only short keys and use a fixed table to bound retained memory.
 const jsonKeyCache: Array<JsonKeyCacheEntry | undefined> = Array.from(
@@ -798,6 +799,7 @@ export const decodeJsonValue = (buffer: Buffer): JsonValue => {
     source.byteLength,
   );
   jsonDecoderPosition = 0;
+  jsonDecoderArrayBudget = source.length;
 
   try {
     const value = decodeJsonValueFromSource();
@@ -812,6 +814,7 @@ export const decodeJsonValue = (buffer: Buffer): JsonValue => {
     jsonDecoderView = emptyJsonDecoderView;
     jsonDecoderPosition = 0;
     jsonDecoderDepth = 0;
+    jsonDecoderArrayBudget = 0;
   }
 };
 
@@ -1437,9 +1440,15 @@ const decodeJsonArray = (length: number): JsonValue => {
       `JSON nesting exceeds the maximum depth of ${maxJsonNestingDepth}.`,
     );
   }
-  if (length > jsonDecoderSource.length - jsonDecoderPosition) {
+  // Each element takes at least a byte, so the arrays of a valid value declare
+  // fewer elements in total than it has bytes. Spending each declared length
+  // from that budget bounds the preallocated slots by the input's length.
+  // Checking each array only against the bytes left would let every level of
+  // nested arrays preallocate a full length.
+  if (length > jsonDecoderArrayBudget) {
     throw new BufferError("Buffer parse ended prematurely");
   }
+  jsonDecoderArrayBudget -= length;
 
   // oxlint-disable-next-line unicorn/no-new-array -- Preallocation is intentional in this decoding hot path.
   const value = new Array<JsonValue>(length);
