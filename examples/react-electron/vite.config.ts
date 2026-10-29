@@ -21,7 +21,7 @@ export default defineConfig({
     fs: {
       allow: [
         path.resolve(__dirname),
-        path.resolve(__dirname, "../../packages/web/dist"),
+        path.resolve(__dirname, "../../packages/web/src"),
         path.resolve(__dirname, "../../packages/sqlite-wasm/wasm"),
       ],
     },
