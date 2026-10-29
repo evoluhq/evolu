@@ -149,7 +149,7 @@ the verdict compares stacks within a run.
   ```
 
   ```bash
-  git -C wa-sqlite checkout 7a4b4241ba7c61ee19121aacd6c93892234ce1a1
+  git -C wa-sqlite checkout 663368072ad30a4a90c36ec4214ab43d15ea2639
   ```
 
 - Node.js: `@evolu/nodejs`'s addon for the host, which clang, make and unzip

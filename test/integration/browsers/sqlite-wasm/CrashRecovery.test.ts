@@ -190,6 +190,12 @@ test("an uncommitted insert of 10,000 rows with cache_size = 0 is rolled back by
 const transactionSql =
   "PRAGMA cache_size = 10; BEGIN; UPDATE t SET v = randomblob(3000), n = n + 1; COMMIT";
 
+// wa-sqlite test/vfs_terminated_holder.js (MIT, Copyright (c) 2023 Roy T.
+// Hashimoto), re-expressed: the next worker takes over the files of one
+// terminated mid-call. In Chromium it can find them still held, so without
+// heldTimeout this fails, as OPFSCoopSyncVFS and OPFSAdaptiveVFS failed before
+// wa-sqlite 8a8bc2ee and 010eeb50.
+//
 // Chromium terminates a worker only once the task it runs ends, or after a
 // grace of two seconds (kForcibleTerminationDelay in Blink's worker_thread.cc),
 // so the worker commits transactions for longer than that. Each of the five

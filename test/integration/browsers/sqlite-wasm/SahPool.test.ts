@@ -438,8 +438,11 @@ test("pools in two directories coexist in one worker, each with its own VFS and 
   }
 });
 
-// wa-sqlite test/vfs_handle_recovery.js (MIT, Copyright (c) 2023 Roy T.
-// Hashimoto), re-expressed: another context holds a slot.
+// wa-sqlite test/vfs_handle_recovery.js and test/vfs_pool_recovery.js (MIT,
+// Copyright (c) 2023 Roy T. Hashimoto), re-expressed: another context holds a
+// slot. The worker whose open failed opens the pool once the slot is released,
+// which fails if the failed open kept the handles it acquired beside the held
+// one, as AccessHandlePoolVFS did before wa-sqlite 5bde491c.
 test("openSahPool fails with SahPoolHeldError naming the slot another worker holds, with the engine's error, having written nothing, and with heldTimeout waits until that worker releases it", async () => {
   await using pool = setupPoolDirectory();
   {
