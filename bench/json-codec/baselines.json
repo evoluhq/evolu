@@ -29,6 +29,36 @@
           "msgpackrDecode": 18507
         }
       }
+    },
+    {
+      "environment": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M5",
+        "nodeVersion": "24.22.1",
+        "msgpackrVersion": "2.1.3",
+        "msgpackrNativeAcceleration": false,
+        "batchSize": 1000,
+        "repeatCount": 5,
+        "encodedValueLengths": {
+          "smallMixed": 141,
+          "largeNested": 6255
+        }
+      },
+      "measurementsNs": {
+        "smallMixed": {
+          "evoluEncode": 284,
+          "msgpackrEncode": 317,
+          "evoluDecode": 313,
+          "msgpackrDecode": 419
+        },
+        "largeNested": {
+          "evoluEncode": 11999,
+          "msgpackrEncode": 11899,
+          "evoluDecode": 21828,
+          "msgpackrDecode": 19718
+        }
+      }
     }
   ]
 }
