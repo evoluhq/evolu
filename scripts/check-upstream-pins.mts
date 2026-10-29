@@ -1,7 +1,15 @@
 /**
  * Compares the upstream inputs Evolu's SQLite core pins, SQLite's source zip,
- * BearSSL's commit and Monocypher's release, with the latest of each upstream,
- * so a newer one doesn't go unnoticed. Upgrading stays a reviewed change.
+ * BearSSL's commit and Monocypher's release, and the libraries Evolu's
+ * benchmarks measure it against, with the latest of each upstream, so a newer
+ * one doesn't go unnoticed. Upgrading stays a reviewed change.
+ *
+ * The libraries solve what Evolu's own code solves: msgpackr encodes
+ * MessagePack, better-sqlite3 is a Node.js SQLite addon,
+ * `@sqlite.org/sqlite-wasm` and wa-sqlite run SQLite in the browser with
+ * synchronous OPFS VFSes, and op-sqlite is a React Native SQLite binding. Their
+ * fixes can show bugs Evolu's code has too, so each of their rows links to the
+ * commits since the pin.
  *
  * Usage: `node scripts/check-upstream-pins.mts` in the repository root prints a
  * Markdown report. With `--issue`, as the weekly Upstream pins workflow runs
@@ -21,6 +29,8 @@ export interface UpstreamPin {
   readonly latest: string;
   /** The file that holds the pin, relative to the repository root. */
   readonly file: string;
+  /** A page listing what changed between the pinned and the latest version. */
+  readonly changes?: string;
 }
 
 /**
@@ -30,14 +40,27 @@ export interface UpstreamPin {
 export const downloadPageToSqliteVersion = (downloadPage: string): string =>
   match(downloadPage, /^PRODUCT,(\d+\.\d+\.\d+),\d+\/sqlite-src-\d+\.zip,/mu);
 
-/** Reads the highest `x.y.z` tag from the output of `git ls-remote --tags`. */
+/**
+ * Reads the highest release tag from the output of `git ls-remote --tags`: an
+ * `x.y.z` tag, also with a `v` prefix, which it leaves out, or a `-build<n>`
+ * suffix, which it keeps.
+ */
 export const lsRemoteToLatestTag = (lsRemote: string): string => {
-  const versions = [...lsRemote.matchAll(/refs\/tags\/(\d+)\.(\d+)\.(\d+)$/gmu)]
-    .map((found) => found.slice(1, 4).map(Number))
-    .toSorted((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+  const versions = [
+    ...lsRemote.matchAll(
+      /refs\/tags\/v?((\d+)\.(\d+)\.(\d+)(?:-build(\d+))?)$/gmu,
+    ),
+  ].toSorted((a, b) => {
+    // A tag without a build number sorts before the builds of its version.
+    for (const index of [2, 3, 4, 5]) {
+      const difference = Number(a[index] ?? -1) - Number(b[index] ?? -1);
+      if (difference !== 0) return difference;
+    }
+    return 0;
+  });
   const latest = versions.at(-1);
   if (latest == null) throw new Error("No release tag");
-  return latest.join(".");
+  return latest[1];
 };
 
 /** Reads the pinned BearSSL commit from its vendor README. */
@@ -47,6 +70,20 @@ export const readmeToBearSslPin = (readme: string): string =>
 /** Reads the pinned Monocypher release from its vendor README. */
 export const readmeToMonocypherPin = (readme: string): string =>
   match(readme, /Release: (\d+\.\d+\.\d+),/u);
+
+/** Reads the version a package.json pins exactly for the dependency `name`. */
+export const packageJsonToPin = (packageJson: string, name: string): string =>
+  match(
+    packageJson,
+    new RegExp(
+      `"${name.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)}": "(\\d+\\.\\d+\\.\\d+(?:-build\\d+)?)"`,
+      "u",
+    ),
+  );
+
+/** Reads the wa-sqlite commit the SQLite comparison reads its workloads from. */
+export const workloadToWaSqlitePin = (workload: string): string =>
+  match(workload, /waSqliteCommit = "([0-9a-f]{40})"/u);
 
 /** A Markdown table of the pins behind their upstreams, then the current ones. */
 export const pinsToReport = (pins: ReadonlyArray<UpstreamPin>): string => {
@@ -61,7 +98,7 @@ export const pinsToReport = (pins: ReadonlyArray<UpstreamPin>): string => {
     "| --- | --- | --- | --- |",
     ...behind.map(
       (pin) =>
-        `| ${pin.name} | ${pin.pinned} | ${pin.latest} | \`${pin.file}\` |`,
+        `| ${pin.name} | ${pin.pinned} | ${pin.changes == null ? pin.latest : `[${pin.latest}](${pin.changes})`} | \`${pin.file}\` |`,
     ),
     ...(current.length > 0
       ? [
@@ -93,6 +130,34 @@ if (import.meta.main) {
   const downloadPage = await fetch("https://sqlite.org/download.html");
   if (!downloadPage.ok)
     throw new Error(`sqlite.org download page: HTTP ${downloadPage.status}`);
+  const read = (path: string) => readFileSync(new URL(path, root), "utf8");
+  // A library a benchmark measures Evolu against, pinned exactly in the
+  // package.json `file` and released as tags of the GitHub `repo`.
+  const library = (
+    name: string,
+    file: string,
+    repo: string,
+    tagPrefix: string,
+  ): UpstreamPin => {
+    const pinned = packageJsonToPin(read(file), name);
+    const latest = lsRemoteToLatestTag(
+      lsRemote("--tags", `https://github.com/${repo}`),
+    );
+    return {
+      name,
+      pinned,
+      latest,
+      file,
+      changes: `https://github.com/${repo}/compare/${tagPrefix}${pinned}...${tagPrefix}${latest}`,
+    };
+  };
+  const waSqlitePin = workloadToWaSqlitePin(
+    read("bench/sqlite-comparison/workload.mts"),
+  );
+  const waSqliteLatest = match(
+    lsRemote("https://github.com/rhashimoto/wa-sqlite", "HEAD"),
+    /^([0-9a-f]{40})\tHEAD$/mu,
+  );
 
   const pins: ReadonlyArray<UpstreamPin> = [
     {
@@ -118,6 +183,32 @@ if (import.meta.main) {
       ),
       file: "packages/sqlite-core/vendor/monocypher/README.md",
     },
+    library("msgpackr", "package.json", "kriszyp/msgpackr", "v"),
+    library(
+      "better-sqlite3",
+      "bench/sqlite-comparison/package.json",
+      "WiseLibs/better-sqlite3",
+      "v",
+    ),
+    library(
+      "@sqlite.org/sqlite-wasm",
+      "bench/sqlite-comparison/package.json",
+      "sqlite/sqlite-wasm",
+      "",
+    ),
+    {
+      name: "wa-sqlite",
+      pinned: waSqlitePin,
+      latest: waSqliteLatest,
+      file: "bench/sqlite-comparison/workload.mts",
+      changes: `https://github.com/rhashimoto/wa-sqlite/compare/${waSqlitePin}...${waSqliteLatest}`,
+    },
+    library(
+      "@op-engineering/op-sqlite",
+      "bench/sqlite-comparison/react-native/app/package.json",
+      "OP-Engineering/op-sqlite",
+      "",
+    ),
   ];
   const report = pinsToReport(pins);
   process.stdout.write(`${report}\n`);

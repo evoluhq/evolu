@@ -1,6 +1,7 @@
 # Opens or updates an issue when SQLite, BearSSL or Monocypher, which Evolu's
-# SQLite core pins, has a newer upstream, and closes it once all are current
-# (scripts/check-upstream-pins.mts).
+# SQLite core pins, or a library Evolu's benchmarks measure it against, such as
+# wa-sqlite or op-sqlite, has a newer upstream, and closes it once all are
+# current (scripts/check-upstream-pins.mts).
 name: Upstream pins
 
 on:
