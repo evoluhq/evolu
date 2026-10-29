@@ -35,6 +35,8 @@
 #include "evolu_database.h"
 #include "evolu_xchacha.h"
 
+#include <jsi/hermes-interfaces.h>
+
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -842,6 +844,12 @@ void teardownRuntimeConnections(RuntimeConnections &connections) {
 jsi::Object
 createBinding(jsi::Runtime &rt,
               const std::shared_ptr<RuntimeConnections> &connections) {
+  // The binding relies on Hermes's JSI, which creates objects and typed arrays
+  // and reads a typed array's bytes natively, so creating a row or reading a
+  // key runs no JavaScript. JSI's defaults, which another engine inherits, call
+  // globals such as Uint8Array and Object.create, which the app can replace.
+  if (jsi::castInterface<facebook::hermes::IHermes>(&rt) == nullptr)
+    throw jsi::JSError(rt, "Evolu's SQLite needs the Hermes engine.");
   evolu_database_error record;
   if (evolu_database_check_build(&record) != SQLITE_OK) {
     const std::string message = record.message;

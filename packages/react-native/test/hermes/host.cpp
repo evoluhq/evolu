@@ -25,6 +25,7 @@
 #include "evolu_sqlite3.h"
 
 #include <hermes/hermes.h>
+#include <jsi/decorator.h>
 #include <jsi/instrumentation.h>
 #include <jsi/jsi.h>
 
@@ -651,6 +652,30 @@ const std::vector<Test> hostTests = {
        check(message ==
                  "SQLite was compiled without the options of sqlite_config.h.",
              "the build check's message, not " + message);
+     }},
+
+    {"createBinding throws on another engine than Hermes, whose JSI calls "
+     "globals the app can replace where Hermes runs no JavaScript",
+     [](const std::string &) {
+       // Hermes under a decorator that hides that it's Hermes, as another
+       // engine's runtime has no Hermes interface.
+       class OtherRuntime final : public jsi::RuntimeDecorator<jsi::Runtime> {
+       public:
+         explicit OtherRuntime(jsi::Runtime &plain) : RuntimeDecorator(plain) {}
+         jsi::ICast *castInterface(const jsi::UUID &) override {
+           return nullptr;
+         }
+       };
+       auto hermes = facebook::hermes::makeHermesRuntime();
+       OtherRuntime runtime(*hermes);
+       std::string message = "none";
+       try {
+         evolu::createBinding(runtime, evolu::createRuntimeConnections());
+       } catch (const jsi::JSError &error) {
+         message = error.getMessage();
+       }
+       check(message == "Evolu's SQLite needs the Hermes engine.",
+             "the engine check's message, not " + message);
      }},
 
     {"an export's ArrayBuffer holds the export's bytes, which are wiped "

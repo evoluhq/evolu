@@ -51,8 +51,9 @@ std::shared_ptr<RuntimeConnections> createRuntimeConnections();
 void teardownRuntimeConnections(RuntimeConnections &connections);
 
 /*
- * Checks the build and returns a binding for the runtime whose connections
- * belong to connections, or throws a JSError when the build check fails.
+ * Checks the engine and the build and returns a binding for the runtime whose
+ * connections belong to connections, or throws a JSError when the runtime
+ * isn't Hermes or the build check fails.
  */
 facebook::jsi::Object
 createBinding(facebook::jsi::Runtime &runtime,
