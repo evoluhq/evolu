@@ -79,9 +79,9 @@ import type { NativeManifest } from "./vendor-native.mts";
  * framework the podspec vendors.
  */
 export const hermesTarball: PinnedArchive = {
-  url: "https://repo1.maven.org/maven2/com/facebook/hermes/hermes-ios/260318099.0.4/hermes-ios-260318099.0.4-hermes-ios-debug.tar.gz",
-  file: "hermes-ios-260318099.0.4-hermes-ios-debug.tar.gz",
-  hash: "192e839ffc4d9edd45f26a88cd72c7d6b1d5fe683b5fab539fea8b5a7ebbea56",
+  url: "https://repo1.maven.org/maven2/com/facebook/hermes/hermes-ios/260318099.0.5/hermes-ios-260318099.0.5-hermes-ios-debug.tar.gz",
+  file: "hermes-ios-260318099.0.5-hermes-ios-debug.tar.gz",
+  hash: "5d19c2fbcb295dd686fea125c08a9737bacf7918cca7eb15192926e6fd228bf6",
 };
 
 /**
