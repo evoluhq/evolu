@@ -740,6 +740,38 @@ jobs:
       - name: Test ${{ matrix.browser }}
         run: pnpm exec vitest run --mode=${{ matrix.browser }} --project='browser-*'
 
+  # The SQLite Wasm browser tests in WebKit on macOS, the system Safari's
+  # WebKit runs on, whose OPFS is files on APFS, where the other jobs run
+  # WebKit only in the Linux container. The image is pinned, as
+  # react-native-apple's is.
+  browser-sqlite-wasm-macos:
+    name: SQLite Wasm (WebKit on macOS)
+    needs: sqlite-wasm
+    runs-on: macos-26
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Download SQLite wasm
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sqlite-wasm
+          path: packages/sqlite-wasm/wasm
+
+      # The WebKit of the Playwright version pnpm-lock.yaml resolves.
+      - name: Install WebKit
+        run: pnpm exec playwright install webkit
+
+      - name: Test
+        run: pnpm exec vitest run --mode=webkit --project=browser-sqlite-wasm
+
   # Builds the whole export on every run, because the E2E jobs build it without
   # the API reference, and checks that a Worker accepts it before a merge. It
   # builds while the other checks run, so the Release workflow's deploy-web job,
