@@ -12,7 +12,10 @@
  *   encrypted, so a codec a compiler broke fails even when it reads what it
  *   writes, though only in the crypto paths the CPU running it takes: every CI
  *   runner has AES instructions and every arm64 one SHA-512 instructions, so CI
- *   never checks software AES, or arm64's software SHA-512.
+ *   never checks software AES, or arm64's software SHA-512. And it runs the
+ *   inserts of {@link skiplistAnswer} through Evolu's timestamp storage
+ *   functions, which sync and the Evolu Relay run on, and checks their rows and
+ *   answers.
  *
  * It imports only Node.js's own modules at run time, as `build-native.mts`
  * does, so CI checks each addon in its target's environment before installing
@@ -38,6 +41,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import type { SqliteValue } from "@evolu/common";
 import { defaultCacheDirectory } from "../../sqlite-core/scripts/paths.mts";
 import {
   loadNativeSqlite,
@@ -128,17 +132,32 @@ export const knownAnswer = {
 };
 
 /**
+ * Inserts into Evolu's timestamp storage and the rows and answers Storage.ts's
+ * SQL, which its functions replaced, recorded for them: `@evolu/sqlite-core`'s
+ * `test/skiplist-fixture.json`.
+ */
+export const skiplistAnswer = /*#__PURE__*/ fileURLToPath(
+  /*#__PURE__*/ new URL(
+    "../../sqlite-core/test/skiplist-fixture.json",
+    import.meta.url,
+  ),
+);
+
+/**
  * Loads the running platform's addon as `@evolu/nodejs` does, throwing unless
  * it's `target`'s, and checks that it opens databases: an encrypted one that
  * stores no plaintext, shares no salt or IV with one written alike and reopens
  * with its key, which fails another key and an encrypted open of a plaintext
  * file with SQLITE_NOTADB, `known`, {@link knownAnswer} unless given, whose row
  * it reads, a plaintext one, and a memory one, which reads a result of more
- * values than a call passes as arguments and steps a statement to its end.
+ * values than a call passes as arguments, steps a statement to its end, and
+ * leaves the rows and returns the answers of `skiplist`, the path of
+ * {@link skiplistAnswer} unless given.
  */
 export const checkLoadedNativeSqlite = (
   target: NativeSqliteTarget,
   known = knownAnswer,
+  skiplist = skiplistAnswer,
 ): void => {
   // Not @evolu/common's emptyPrototype, since this script imports only
   // Node.js's own modules, so CI runs it where nothing is installed.
@@ -155,9 +174,15 @@ export const checkLoadedNativeSqlite = (
     const query = (
       database: ReturnType<typeof nativeSqlite.openMemory>,
       sql: string,
+      // The fixture's integers, which are finite.
+      parameters: ReadonlyArray<Uint8Array | number> = [],
     ) => {
-      const result = database.run(sql, []);
-      return typeof result === "number" ? [] : result;
+      const result = database.run(
+        sql,
+        parameters as ReadonlyArray<SqliteValue>,
+      );
+      if (typeof result === "number") return [];
+      return "rows" in result ? result.rows : result;
     };
     const key = new Uint8Array(32).fill(7);
     const encrypted = join(directory, "encrypted.db");
@@ -269,6 +294,114 @@ export const checkLoadedNativeSqlite = (
     statement.finalize();
     if (steps !== '[{"a":1,"b":"b"},{"a":2,"b":null},null]')
       throw new Error(`A statement stepped ${steps}.`);
+
+    // The fixture's records are strings of space-separated fields, its bytes
+    // hex, and a dash stands for null, as skiplist-fixture.mts reads them.
+    const fixture = JSON.parse(readFileSync(skiplist, "utf8")) as {
+      readonly owners: ReadonlyArray<{
+        readonly ownerId: string;
+        readonly size: number;
+        readonly timestamps: ReadonlyArray<string>;
+        readonly fingerprints: ReadonlyArray<{
+          readonly buckets: ReadonlyArray<number>;
+          readonly ranges: ReadonlyArray<string>;
+        }>;
+        readonly lowerBounds: ReadonlyArray<string>;
+      }>;
+      readonly inserts: ReadonlyArray<string>;
+      readonly rows: ReadonlyArray<string>;
+    };
+    const bytes = (hex: string) => Uint8Array.from(Buffer.from(hex, "hex"));
+    // The first column of the first row, with bytes as hex.
+    const answer = (
+      sql: string,
+      parameters: ReadonlyArray<Uint8Array | number>,
+    ) => {
+      const value = Object.values(query(memory, sql, parameters)[0])[0];
+      return value instanceof Uint8Array
+        ? Buffer.from(value).toString("hex")
+        : value;
+    };
+    const expect = (what: string, actual: unknown, expected: unknown) => {
+      if (actual !== expected)
+        throw new Error(
+          `Evolu's timestamp storage returned ${String(actual)} for ${what}, not ${String(expected)}.`,
+        );
+    };
+    // The table and index Storage.ts of @evolu/common creates.
+    query(
+      memory,
+      'create table evolu_timestamp ("ownerId" blob not null, "t" blob not null, "h1" integer, "h2" integer, "c" integer, "l" integer not null, primary key ("ownerId", "t")) strict',
+    );
+    query(
+      memory,
+      'create index evolu_timestamp_index on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
+    );
+    query(memory, "begin");
+    for (const insert of fixture.inserts) {
+      const [owner, timestamp, level, inserted] = insert.split(" ");
+      expect(
+        `the insert ${insert}`,
+        answer("select evolu_skiplist_insert(?, ?, ?)", [
+          bytes(fixture.owners[Number(owner)].ownerId),
+          bytes(timestamp),
+          Number(level),
+        ]),
+        Number(inserted),
+      );
+    }
+    query(memory, "commit");
+    const timestamps = query(
+      memory,
+      "select hex(ownerId) || ' ' || hex(t) || ' ' || h1 || ' ' || h2 || ' ' || c || ' ' || l as row from evolu_timestamp order by ownerId, t",
+    );
+    expect("the number of rows", timestamps.length, fixture.rows.length);
+    for (const [index, { row }] of timestamps.entries())
+      expect(`row ${index}`, row, fixture.rows[index]);
+    for (const owner of fixture.owners) {
+      const ownerId = bytes(owner.ownerId);
+      expect(
+        `the size of ${owner.ownerId}`,
+        answer("select evolu_skiplist_size(?)", [ownerId]),
+        owner.size,
+      );
+      for (let index = 0; index <= owner.size; index++)
+        expect(
+          `the timestamp at ${index} of ${owner.ownerId}`,
+          answer("select evolu_skiplist_timestamp_at(?, ?)", [ownerId, index]),
+          owner.timestamps[index] ?? null,
+        );
+      for (const { buckets, ranges } of owner.fingerprints) {
+        const encoded = new Uint8Array(buckets.length * 8);
+        const view = new DataView(encoded.buffer);
+        for (const [i, bucket] of buckets.entries())
+          view.setBigUint64(i * 8, BigInt(bucket));
+        // Each a fingerprint and an upper bound, 16 zero bytes for none.
+        expect(
+          `the fingerprints of ${owner.ownerId} at ${buckets.join(" ")}`,
+          answer("select evolu_skiplist_fingerprints(?, ?)", [
+            ownerId,
+            encoded,
+          ]),
+          ranges
+            .map((range) =>
+              range.replace(" -", "0".repeat(32)).replace(" ", ""),
+            )
+            .join(""),
+        );
+      }
+      for (const lowerBound of owner.lowerBounds) {
+        const [timestamp, index] = lowerBound.split(" ");
+        expect(
+          `the lower bound of ${timestamp} of ${owner.ownerId}`,
+          answer("select evolu_skiplist_lower_bound(?, ?)", [
+            ownerId,
+            bytes(timestamp),
+          ]),
+          index === "-" ? null : Number(index),
+        );
+      }
+    }
     memory.close();
     if (!/^\[\{"v":"3\.\d+\.\d+"\}\]$/u.test(version))
       throw new Error(`A memory database read ${version}.`);

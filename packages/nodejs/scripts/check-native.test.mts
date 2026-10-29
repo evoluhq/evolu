@@ -31,6 +31,7 @@ import {
   checkNativeSqlite,
   knownAnswer,
   packNativeSqlite,
+  skiplistAnswer,
 } from "./check-native.mts";
 
 // The addon the load check loads.
@@ -237,6 +238,121 @@ test("the built addon passes the load check, whose known answer fails for a corr
     assertFails(() => checkLoadedNativeSqlite(target, known), message);
   // Reading it left the fixture as it was.
   assertTrue(readFileSync(knownAnswer.path).equals(fixture));
+});
+
+/** Skiplist-fixture.json as the test changes it. */
+interface Fixture {
+  owners: Array<{
+    ownerId: string;
+    size: number;
+    timestamps: Array<string>;
+    fingerprints: Array<{ buckets: Array<number>; ranges: Array<string> }>;
+    lowerBounds: Array<string>;
+  }>;
+  inserts: Array<string>;
+  rows: Array<string>;
+}
+
+test("the load check's timestamp storage fails for an answer or a row the skiplist fixture doesn't record", (t) => {
+  const target = nativeSqliteTarget({
+    platform: process.platform,
+    arch: process.arch,
+    isMusl,
+  });
+  assert(target !== null, "Expected a target.");
+  const directory = mkdtempSync(join(tmpdir(), "evolu-skiplist-answer-"));
+  t.after(() => {
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const original = readFileSync(skiplistAnswer, "utf8");
+  const { owners, inserts, rows } = JSON.parse(original) as Fixture;
+  // The last of each, so a check that stops early fails too.
+  const last = owners.length - 1;
+  const owner = owners[last];
+  const insert = inserts[inserts.length - 1];
+  const otherInsert = `${insert.slice(0, -1)}${insert.endsWith("1") ? "0" : "1"}`;
+  const row = rows.length - 1;
+  const timestamp = owner.size - 1;
+  const fingerprints = (ranges: ReadonlyArray<string>) =>
+    ranges
+      .map((range) => range.replace(" -", "0".repeat(32)).replace(" ", ""))
+      .join("");
+  const query = owner.fingerprints.length - 1;
+  const { buckets, ranges } = owner.fingerprints[query];
+  const otherRanges = [
+    `${ranges[0].startsWith("0") ? "1" : "0"}${ranges[0].slice(1)}`,
+    ...ranges.slice(1),
+  ];
+  const bound = owner.lowerBounds.length - 1;
+  const [lowerBound, lowerBoundIndex] = owner.lowerBounds[bound].split(" ");
+
+  for (const [change, what, actual, expected] of [
+    [
+      (fixture: Fixture) => {
+        fixture.inserts[inserts.length - 1] = otherInsert;
+      },
+      `the insert ${otherInsert}`,
+      Number(insert.at(-1)),
+      Number(otherInsert.at(-1)),
+    ],
+    [
+      (fixture: Fixture) => {
+        fixture.rows.pop();
+      },
+      "the number of rows",
+      rows.length,
+      rows.length - 1,
+    ],
+    [
+      (fixture: Fixture) => {
+        fixture.rows[row] = `${rows[row]}0`;
+      },
+      `row ${row}`,
+      rows[row],
+      `${rows[row]}0`,
+    ],
+    [
+      (fixture: Fixture) => {
+        fixture.owners[last].size = owner.size + 1;
+      },
+      `the size of ${owner.ownerId}`,
+      owner.size,
+      owner.size + 1,
+    ],
+    [
+      (fixture: Fixture) => {
+        fixture.owners[last].timestamps[timestamp] = "0".repeat(32);
+      },
+      `the timestamp at ${timestamp} of ${owner.ownerId}`,
+      owner.timestamps[timestamp],
+      "0".repeat(32),
+    ],
+    [
+      (fixture: Fixture) => {
+        fixture.owners[last].fingerprints[query].ranges = otherRanges;
+      },
+      `the fingerprints of ${owner.ownerId} at ${buckets.join(" ")}`,
+      fingerprints(ranges),
+      fingerprints(otherRanges),
+    ],
+    [
+      (fixture: Fixture) => {
+        fixture.owners[last].lowerBounds[bound] = `${lowerBound} -`;
+      },
+      `the lower bound of ${lowerBound} of ${owner.ownerId}`,
+      Number(lowerBoundIndex),
+      null,
+    ],
+  ] as const) {
+    const fixture = JSON.parse(original) as Fixture;
+    change(fixture);
+    const path = join(directory, "skiplist-fixture.json");
+    writeFileSync(path, JSON.stringify(fixture));
+    assertFails(
+      () => checkLoadedNativeSqlite(target, knownAnswer, path),
+      `Evolu's timestamp storage returned ${String(actual)} for ${what}, not ${String(expected)}.`,
+    );
+  }
 });
 
 /** The header of an addon each target's check passes. */

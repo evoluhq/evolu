@@ -348,8 +348,10 @@ jobs:
   # downloads the pinned SQLite source and verifies it. The job then checks the
   # addon's header, which fails for a glibc symbol newer than 2.28, that it
   # exports only Node-API's entry points, that it loads as the package loads
-  # it, opens an encrypted, a plaintext and a memory database and reads one
-  # another implementation encrypted, and that a second build from a copy of
+  # it, opens an encrypted, a plaintext and a memory database, reads one
+  # another implementation encrypted, replays the skiplist fixture through
+  # Evolu's timestamp storage functions, which sync and the relay run on, and
+  # that a second build from a copy of
   # its sources at another path, into another build directory, gives the same
   # bytes. Reading another implementation's database catches a codec the
   # compiler broke in the crypto paths the runner's CPU takes, but not software
