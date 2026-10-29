@@ -8,7 +8,9 @@ allowBuilds:
   "@parcel/watcher": true
   "@tailwindcss/oxide": true
   better-sqlite3: false
-  electron: true
+  # Electron downloads its binary the first time it starts, and pnpm asks
+  # about it although Electron 42 and later have no install script.
+  electron: false
   electron-winstaller: true
   esbuild: true
   lmdb: true
