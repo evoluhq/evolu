@@ -449,7 +449,8 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
  * - `updatedAt`: The time of the row's latest change, or null while the row has
  *   only one change.
  * - `isDeleted`: Soft delete flag created by Evolu and used by the developer to
- *   mark rows as deleted.
+ *   mark rows as deleted. Like any change, a soft delete adds to the row's
+ *   history, so it frees no storage, locally or on relays.
  * - `ownerId`: Represents ownership and logically partitions the database.
  *
  * Every insert, update, and upsert is a change, so an upsert of an existing row
