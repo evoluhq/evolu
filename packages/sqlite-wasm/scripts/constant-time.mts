@@ -1124,40 +1124,45 @@ export const reviewedFunctions: ReadonlyArray<ReviewedFunction> = [
   {
     name: "is_page1_authentic",
     index: 100,
-    sha256: "6fd1c8004c8f06099a4e705825eedf008036417e9fa45296afcf0ad3f7d5ccee",
+    sha256: "de318807eeafb97618f53cc804c1607e9eaab3302ca1331e83970b79e9d0b80c",
     summary:
-      "`is_page1_authentic` of `evolu_page.c`, with `compute_hmac` inlined.",
+      "`is_page1_authentic` of `evolu_page.c`, with `stored_page_size`, `encrypted_start` and `compute_hmac` inlined.",
     sources: {
-      "25": {
+      "24": {
         type: "Public",
         reason:
           "byte 20 of page 1 as stored, which the default layout keeps in the clear",
+      },
+      "30": {
+        type: "Public",
+        reason:
+          "byte 17 of page 1 as stored, the page size's low byte, which the default layout keeps in the clear",
+      },
+      "32": {
+        type: "Public",
+        reason:
+          "byte 16 of page 1 as stored, the page size's high byte, which the default layout keeps in the clear",
       },
     },
   },
   {
     name: "authenticate",
     index: 94,
-    sha256: "2f306890e2f0051335e96721822f5878817e749fba3b182f41eeba95f83400d7",
+    sha256: "dee283787b132edf943c912c9ea58e79c1d70b06160d524347a37e501e9bfafc",
     summary:
-      "`authenticate` of `evolu_page.c`, with `compute_hmac` inlined, and `is_page1_authentic` inlined where it tries the default layout.",
+      "`authenticate` of `evolu_page.c`, which calls `is_page1_authentic` for page 1 in the codec's layout and in the default one, and has it inlined where it tries SQLCipher's, and has `compute_hmac` inlined for the other pages.",
     sources: {
       "20": {
         type: "Public",
         reason:
           "`codec->layout`, page 1's layout, which the file shows: the default layout stores bytes 16 to 23 in the clear",
       },
-      "78": {
+      "79": {
         type: "Public",
         reason:
-          "byte 20 of page 1 as stored, which the default layout keeps in the clear",
+          "`is_page1_authentic`'s result, whether page 1 authenticates in the default layout, which the read's failure reveals",
       },
-      "115": {
-        type: "Public",
-        reason:
-          "`evolu_constant_time_equal`'s result, whether the tag matches, which the read's failure reveals",
-      },
-      "121": {
+      "85": {
         type: "Public",
         reason: "`codec->flags`, set when the codec is created",
       },

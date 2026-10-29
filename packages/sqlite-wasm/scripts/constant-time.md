@@ -451,42 +451,44 @@ Code sha256 `75117cb62715f11eaffd11e2a314f10aad3aaa9ff56eb01eb2f04cac0f2d1165`, 
 
 ## `is_page1_authentic`, function 100
 
-`is_page1_authentic` of `evolu_page.c`, with `compute_hmac` inlined.
+`is_page1_authentic` of `evolu_page.c`, with `stored_page_size`, `encrypted_start` and `compute_hmac` inlined.
 
-Code sha256 `6fd1c8004c8f06099a4e705825eedf008036417e9fa45296afcf0ad3f7d5ccee`, 92 instructions.
+Code sha256 `de318807eeafb97618f53cc804c1607e9eaab3302ca1331e83970b79e9d0b80c`, 106 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.sub(global 0, 480), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 - #22 `if` with condition `i32.eq(local 1, 1)`: secret-independent, only parameters, constants and globals
-- #28 `br_if 1` with condition `i32.ne(#25, 80)`: secret-independent, #25 is public
-- #48 `select` with condition `i32.eq(local 1, 2)`: secret-independent, only parameters, constants and globals
-- #53 `select` with condition `local 1`: secret-independent, only parameters, constants and globals
-- #86 `if` with condition `i32.or(i32.gt_u(i32.add(local 4, 480), global 3), i32.lt_u(…`: secret-independent, only parameters, constants and globals
+- #27 `br_if 1` with condition `i32.ne(#24, 80)`: secret-independent, #24 is public
+- #40 `select` with condition `i32.eq(local 8, 1)`: secret-independent, #30 and #32 are public
+- #43 `br_if 1` with condition `i32.ne(select(65536, i32.or(#30, i32.shl(#32, 8)), i32.eq(l…`: secret-independent, #30 and #32 are public
+- #62 `select` with condition `i32.eq(local 1, 2)`: secret-independent, only parameters, constants and globals
+- #67 `select` with condition `local 1`: secret-independent, only parameters, constants and globals
+- #100 `if` with condition `i32.or(i32.gt_u(i32.add(local 4, 480), global 3), i32.lt_u(…`: secret-independent, only parameters, constants and globals
 
 Loaded values and call results:
 
-- #25 `i32.load8_u offset=20` at `local 2`: public, byte 20 of page 1 as stored, which the default layout keeps in the clear
+- #24 `i32.load8_u offset=20` at `local 2`: public, byte 20 of page 1 as stored, which the default layout keeps in the clear
+- #30 `i32.load8_u offset=17` at `local 2`: public, byte 17 of page 1 as stored, the page size's low byte, which the default layout keeps in the clear
+- #32 `i32.load8_u offset=16` at `local 2`: public, byte 16 of page 1 as stored, the page size's high byte, which the default layout keeps in the clear
 
 ## `authenticate`, function 94
 
-`authenticate` of `evolu_page.c`, with `compute_hmac` inlined, and `is_page1_authentic` inlined where it tries the default layout.
+`authenticate` of `evolu_page.c`, which calls `is_page1_authentic` for page 1 in the codec's layout and in the default one, and has it inlined where it tries SQLCipher's, and has `compute_hmac` inlined for the other pages.
 
-Code sha256 `2f306890e2f0051335e96721822f5878817e749fba3b182f41eeba95f83400d7`, 182 instructions.
+Code sha256 `dee283787b132edf943c912c9ea58e79c1d70b06160d524347a37e501e9bfafc`, 146 instructions.
 
 - #12 `if` with condition `i32.or(i32.gt_u(i32.sub(global 0, 480), global 3), i32.lt_u…`: secret-independent, only parameters, constants and globals
 - #27 `if` with condition `i32.ne(local 2, 1)`: secret-independent, only parameters, constants and globals
-- #63 `if` with condition `local 9`: secret-independent, #20 is public
-- #68 `call 100` with argument 1 `local 9`: secret-independent, #20 is public
-- #81 `if` with condition `i32.eq(#78, 80)`: secret-independent, #78 is public
-- #116 `br_if 1` with condition `#115`: secret-independent, #115 is public
-- #126 `br_if 0` with condition `i32.eqz(i32.and(#121, 1))`: secret-independent, #121 is public
-- #176 `if` with condition `i32.or(i32.gt_u(i32.add(local 6, 480), global 3), i32.lt_u(…`: secret-independent, only parameters, constants and globals
+- #62 `if` with condition `local 9`: secret-independent, #20 is public
+- #67 `call 100` with argument 1 `local 9`: secret-independent, #20 is public
+- #80 `br_if 0` with condition `#79`: secret-independent, #79 is public
+- #89 `br_if 0` with condition `i32.eqz(i32.and(#85, 1))`: secret-independent, #85 is public
+- #140 `if` with condition `i32.or(i32.gt_u(i32.add(local 6, 480), global 3), i32.lt_u(…`: secret-independent, only parameters, constants and globals
 
 Loaded values and call results:
 
 - #20 `i32.load offset=556` at `local 0`: public, `codec->layout`, page 1's layout, which the file shows: the default layout stores bytes 16 to 23 in the clear
-- #78 `i32.load8_u offset=20` at `local 3`: public, byte 20 of page 1 as stored, which the default layout keeps in the clear
-- #115 `call 68` of `local 6, i32.add(i32.add(local 3, local 4), -64), 64`: public, `evolu_constant_time_equal`'s result, whether the tag matches, which the read's failure reveals
-- #121 `i32.load8_u offset=552` at `local 0`: public, `codec->flags`, set when the codec is created
+- #79 `call 100` of `local 1, 1, local 3, local 4`: public, `is_page1_authentic`'s result, whether page 1 authenticates in the default layout, which the read's failure reveals
+- #85 `i32.load8_u offset=552` at `local 0`: public, `codec->flags`, set when the codec is created
 
 ## `evolu_page_decrypt`, function 92
 

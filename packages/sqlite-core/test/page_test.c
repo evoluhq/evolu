@@ -125,7 +125,8 @@ static void page_rejects_every_altered_byte_and_leaves_the_page_as_it_was(
     CHECK_EQ_BYTES(altered, page2, size);
   }
   // Page 1's authenticated bytes, from byte 24. Bytes 0-15, the salt, give
-  // another HMAC key, and 16-23 aren't authenticated (byte 20 is checked).
+  // another HMAC key, and 16-23 aren't authenticated (16, 17 and 20 are
+  // checked).
   for (size_t i = 24; i < size; i++) {
     memcpy(altered, page1, size);
     altered[i] ^= 0x80;
@@ -186,6 +187,18 @@ static void page_1_storing_another_page_size_than_its_length_fails(void) {
   // A page 2 has no header, so any content goes.
   CHECK_EQ_INT(evolu_page_encrypt(codec, 2, plaintext, 4096, ciphertext),
                EVOLU_PAGE_OK);
+  // Bytes 16 and 17 aren't authenticated, so a read checks them too: another
+  // page size, none, and 65536's 1.
+  CHECK(encrypt_two_pages(4096, page1, page2));
+  static const uint8_t sizes[][2] = {{0x20, 0x00}, {0x00, 0x00}, {0x00, 0x01}};
+  for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
+    memcpy(altered, page1, 4096);
+    altered[16] = sizes[i][0];
+    altered[17] = sizes[i][1];
+    CHECK(!evolu_page_decrypt_with_salt(codec, page1, 1, altered, 4096));
+    CHECK(!evolu_page_decrypt(codec, 1, altered, 4096));
+  }
+  CHECK(!evolu_page_is_key_proven(codec));
   evolu_page_codec_destroy(codec);
 }
 

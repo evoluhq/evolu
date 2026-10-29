@@ -638,6 +638,114 @@ static void codec_journal_page_1_record_gives_the_salt_a_crash_tore(void) {
   }
 }
 
+/*
+ * Whether a scratch buffer holds no decrypted copy of a page create_rows
+ * wrote: no page 1 with SQLite's header string or the table's schema, and no
+ * page with a row.
+ */
+static int is_scratch_wiped(const uint8_t *scratch, size_t size) {
+  static const char header[] = "SQLite format 3";
+  static const char schema[] = "create table t";
+  return !contains(scratch, size, header, sizeof header) &&
+         !contains(scratch, size, schema, sizeof schema - 1) &&
+         !contains(scratch, size, secret, sizeof secret - 1);
+}
+
+static int journal_reads;
+static int journal_reads_after_a_decrypted_copy;
+
+static void count_journal_read(const uint8_t *scratch, size_t size) {
+  journal_reads++;
+  journal_reads_after_a_decrypted_copy += !is_scratch_wiped(scratch, size);
+}
+
+static void codec_wipes_every_copy_of_a_page_it_decrypts_into_the_scratch_buffer(
+    void) {
+  CHECK(set_up());
+  char path[512];
+  path_of(path, "wiped-scratch.db");
+  remove_database(path);
+  sqlite3 *db = NULL;
+  size_t size;
+
+  // Reading page 1's header decrypts page 1 into the buffer.
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 5), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(query_int(db, "select count(*) from t"), 5);
+  const uint8_t *scratch = evolu_test_codec_scratch(db, &size);
+  CHECK(size > 0);
+  CHECK(is_scratch_wiped(scratch, size));
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+
+  // A read of page 1 whole at another size, as a connection that opened the
+  // file while it was empty reads it, decrypts it at its own. SQLite then
+  // reads page 1's header, which would wipe a copy left, so the test reads
+  // through the file.
+  remove_database(path);
+  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+  CHECK_EQ_INT(sqlite3_exec(db, "pragma page_size = 16384", NULL, NULL, NULL),
+               SQLITE_OK);
+  CHECK_EQ_INT(create_rows(db, 5), SQLITE_OK);
+  sqlite3_file *file = database_file(db);
+  uint8_t page[4096];
+  CHECK_EQ_INT(file->pMethods->xRead(file, page, sizeof page, 0), SQLITE_OK);
+  scratch = evolu_test_codec_scratch(db, &size);
+  CHECK(is_scratch_wiped(scratch, size));
+  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+
+  // A hot journal's checks decrypt the database's page 1, or the journal's
+  // records up to its page-1 record when a crash tore the database's.
+  evolu_test_codec_journal_read = count_journal_read;
+  static const char *const transactions[] = {
+      "update t set v = 'updated' || id",
+      "pragma user_version = 7; update t set v = 'updated' || id",
+      ("update t set v = 'updated' || id where id <= 100;"
+       "pragma user_version = 7; update t set v = 'updated' || id")};
+  for (size_t i = 0; i < sizeof transactions / sizeof transactions[0]; i++) {
+    CHECK_EQ_INT(create_crashed_database_with(path, test_key, transactions[i]),
+                 SQLITE_OK);
+    if (i > 0) CHECK(fill_bytes(path, 0, 16, 0));
+    journal_reads = 0;
+    journal_reads_after_a_decrypted_copy = 0;
+    CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+    CHECK(has_original_rows(db));
+    CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+    CHECK(journal_reads > 0);
+    CHECK_EQ_INT(journal_reads_after_a_decrypted_copy, 0);
+  }
+  // A record before the page-1 record whose page authenticates but whose
+  // checksum differs ends the walk with that page decrypted. The rollback
+  // then fails at it, since the torn salt the codec takes authenticates no
+  // record, so the open's result doesn't matter here.
+  char journal[600];
+  snprintf(journal, sizeof journal, "%s-journal", path);
+  CHECK_EQ_INT(create_crashed_database_with(path, test_key, transactions[2]),
+               SQLITE_OK);
+  CHECK(fill_bytes(path, 0, 16, 0));
+  size_t journal_size;
+  uint8_t *journal_bytes = read_file(journal, &journal_size);
+  CHECK(journal_bytes != NULL && journal_size > 28);
+  // The header's sector size, where the first record starts, and page size.
+  uint32_t sector_size = (uint32_t)journal_bytes[20] << 24 |
+                         (uint32_t)journal_bytes[21] << 16 |
+                         (uint32_t)journal_bytes[22] << 8 | journal_bytes[23];
+  uint32_t page_size = (uint32_t)journal_bytes[24] << 24 |
+                       (uint32_t)journal_bytes[25] << 16 |
+                       (uint32_t)journal_bytes[26] << 8 | journal_bytes[27];
+  free(journal_bytes);
+  CHECK(flip_bit(journal, sector_size + 4 + page_size));
+  journal_reads = 0;
+  journal_reads_after_a_decrypted_copy = 0;
+  open_db(path, test_key, &db);
+  sqlite3_close(db);
+  CHECK(journal_reads > 0);
+  CHECK_EQ_INT(journal_reads_after_a_decrypted_copy, 0);
+  evolu_test_codec_journal_read = NULL;
+  remove_database(path);
+}
+
 static void codec_hot_journal_takes_the_salt_from_the_first_bytes_last(void) {
   CHECK(set_up());
   char path[512];
@@ -655,8 +763,8 @@ static void codec_hot_journal_takes_the_salt_from_the_first_bytes_last(void) {
   CHECK(fill_bytes(path, 16, 2, 0));
 
   sqlite3 *db = NULL;
-  // The rollback succeeds; then page 1, whose page size is unauthenticated,
-  // fails SQLite's own check.
+  // The rollback succeeds; then page 1, which stores no page size, fails to
+  // authenticate.
   CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_NOTADB);
   sqlite3_close(db);
   CHECK(!file_exists(journal));
@@ -1809,21 +1917,28 @@ static void codec_page_1_storing_another_page_size_fails_also_with_sqlcipher_fil
   CHECK(set_up());
   char path[512];
   path_of(path, "tampered-size.db");
-  remove_database(path);
-  sqlite3 *db = NULL;
-  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
-  CHECK_EQ_INT(create_rows(db, 3), SQLITE_OK);
-  CHECK_EQ_INT(query_int(db, "pragma page_size"), 4096);
-  CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
-  // Bytes 16 and 17, unauthenticated in the default layout, say 8192.
-  CHECK(fill_bytes(path, 16, 1, 0x20));
-  CHECK(fill_bytes(path, 17, 1, 0x00));
-  CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_NOTADB);
-  sqlite3_close(db);
-  CHECK_EQ_INT(evolu_codec_open(path, &db, vfs_name, test_key,
-                                EVOLU_CODEC_SQLCIPHER_FILES),
-               SQLITE_NOTADB);
-  sqlite3_close(db);
+  // Bytes 16 and 17, unauthenticated in the default layout, say 8192, or no
+  // page size, which SQLite would refuse itself, without a codec failure.
+  static const uint8_t sizes[][2] = {{0x20, 0x00}, {0x00, 0x00}};
+  static const int flags[] = {0, EVOLU_CODEC_SQLCIPHER_FILES};
+  for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++)
+    for (size_t f = 0; f < sizeof flags / sizeof flags[0]; f++) {
+      remove_database(path);
+      sqlite3 *db = NULL;
+      CHECK_EQ_INT(open_db(path, test_key, &db), SQLITE_OK);
+      CHECK_EQ_INT(create_rows(db, 3), SQLITE_OK);
+      CHECK_EQ_INT(query_int(db, "pragma page_size"), 4096);
+      CHECK_EQ_INT(sqlite3_close(db), SQLITE_OK);
+      CHECK(fill_bytes(path, 16, 1, sizes[i][0]));
+      CHECK(fill_bytes(path, 17, 1, sizes[i][1]));
+      CHECK_EQ_INT(evolu_codec_open(path, &db, vfs_name, test_key, flags[f]),
+                   SQLITE_NOTADB);
+      evolu_codec_failure failure;
+      CHECK_EQ_INT(evolu_codec_take_failure(db, &failure), SQLITE_OK);
+      CHECK_EQ_INT(failure.type, EVOLU_CODEC_FAILURE_PAGE_AUTHENTICATION);
+      CHECK_EQ_INT(failure.page_number, 1);
+      sqlite3_close(db);
+    }
 }
 
 /*
@@ -5118,6 +5233,7 @@ void codec_suite(void) {
   RUN(codec_connection_opened_while_empty_reads_another_page_size);
   RUN(codec_database_missing_its_last_byte_fails_with_corrupt);
   RUN(codec_journal_page_1_record_gives_the_salt_a_crash_tore);
+  RUN(codec_wipes_every_copy_of_a_page_it_decrypts_into_the_scratch_buffer);
   RUN(codec_hot_journal_takes_the_salt_from_the_first_bytes_last);
   RUN(codec_proven_key_ends_a_journal_at_a_record_that_fails);
   RUN(codec_proven_key_keeps_its_salt_for_another_hot_journal);

@@ -198,14 +198,16 @@ static evolu_page_result encrypt_page(evolu_page_codec *codec,
 
 /*
  * Whether a page 1 authenticates in a layout. In the default layout, the HMAC
- * doesn't cover byte 20, the reserved bytes, with which SQLite would read
- * every page at another usable size, so that is checked too.
+ * doesn't cover bytes 16 to 23, so the two encrypt_page checks are checked
+ * too: the page size, which must be the page's length, and byte 20, the
+ * reserved bytes, with which SQLite would read every page at another usable
+ * size.
  */
 static int is_page1_authentic(const evolu_hmac_sha512_key *hmac_key,
                               evolu_page_layout layout, const uint8_t *page,
                               size_t size) {
   if (layout == EVOLU_PAGE_LAYOUT_MULTIPLE_CIPHERS &&
-      page[20] != EVOLU_PAGE_RESERVED_SIZE)
+      (page[20] != EVOLU_PAGE_RESERVED_SIZE || stored_page_size(page) != size))
     return 0;
   uint8_t tag[HMAC_SIZE];
   compute_hmac(hmac_key, 1, encrypted_start(layout, 1), page, size, tag);

@@ -246,13 +246,8 @@ static int decrypt_page1(CodecFile *database, size_t *size, int *rc) {
     *rc = SQLITE_OK;
     if (count == (int)sizes[i] &&
         evolu_page_decrypt(database->codec, 1, page, sizes[i])) {
-      // The default layout leaves the page size unauthenticated, so a page 1
-      // that decrypts at one size but stores another was altered.
-      if (stored_page_size(page) == sizes[i]) {
-        *size = sizes[i];
-        return 1;
-      }
-      evolu_wipe(page, sizes[i]);
+      *size = sizes[i];
+      return 1;
     }
   }
   if (evolu_page_is_size(stored)) *size = stored;
@@ -332,9 +327,17 @@ static int has_stored_checksums(const CodecFile *database) {
   return (database->flags & EVOLU_CODEC_PLAINTEXT_CHECKSUMS) == 0;
 }
 
+#ifdef EVOLU_TEST_HOOKS
+void (*evolu_test_codec_journal_read)(const uint8_t *scratch, size_t size);
+#endif
+
 static int read_journal(CodecFile *file, uint8_t *buffer, int amount,
                         sqlite3_int64 offset) {
   CodecFile *database = file->database;
+#ifdef EVOLU_TEST_HOOKS
+  if (evolu_test_codec_journal_read != NULL)
+    evolu_test_codec_journal_read(database->scratch, database->scratch_size);
+#endif
   JournalRecords *records = &file->records;
   int count;
   int rc = read_counted(file->inner, buffer, amount, offset, &count);
@@ -1120,3 +1123,13 @@ int evolu_codec_take_failure(sqlite3 *db, evolu_codec_failure *failure) {
   database->failure.page_number = 0;
   return SQLITE_OK;
 }
+
+#ifdef EVOLU_TEST_HOOKS
+const uint8_t *evolu_test_codec_scratch(sqlite3 *db, size_t *size) {
+  sqlite3_file *file = NULL;
+  sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
+  const CodecFile *database = (const CodecFile *)file;
+  *size = database->scratch_size;
+  return database->scratch;
+}
+#endif

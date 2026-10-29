@@ -19,8 +19,9 @@
  *   and unauthenticated, so SQLite learns the page size and the reserved bytes
  *   before anything is decrypted. Encryption refuses a page 1 whose reserved
  *   bytes aren't 80, because SQLite would read every page at another usable
- *   size, and so does decryption of the default layout, where byte 20 is
- *   unauthenticated; SQLCipher's layout authenticates it.
+ *   size, or whose page size isn't its length, and so does decryption of the
+ *   default layout, where those bytes are unauthenticated; SQLCipher's layout
+ *   authenticates them.
  * - The HMAC is HMAC-SHA512 of the encrypted bytes, the IV and the page number
  *   as a little-endian u32, keyed by PBKDF2-HMAC-SHA512 of the key, salted with
  *   the salt XOR 0x3a, with 2 iterations and 32 bytes. A page is authenticated,
@@ -118,8 +119,9 @@ evolu_page_result evolu_page_encrypt(evolu_page_codec *codec,
  * Authenticates a whole page and decrypts it in place, returning 1. Returns 0
  * and leaves the page as it was when size isn't a page size, its HMAC differs,
  * the codec has no salt for a page other than 1, or a page 1 of the default
- * layout doesn't reserve EVOLU_PAGE_RESERVED_SIZE bytes. A page 1 that
- * authenticates gives the codec its salt and proves the key.
+ * layout doesn't reserve EVOLU_PAGE_RESERVED_SIZE bytes or store its length as
+ * its page size. A page 1 that authenticates gives the codec its salt and
+ * proves the key.
  */
 int evolu_page_decrypt(evolu_page_codec *codec, uint32_t page_number,
                        uint8_t *page, size_t size);

@@ -44,9 +44,10 @@
  *   SQLCipher 4's own layout, which expo-sqlite's databases have, told apart by
  *   which of page 1's layouts authenticates (evolu_page.h). Its page size,
  *   4096 bytes as expo-sqlite kept it, is encrypted, so page 1 decrypts at the
- *   size it stores and then at 4096. Either way, a page 1 counts only when it
- *   stores the size it decrypted at, which the default layout leaves
- *   unauthenticated. The file keeps its layout.
+ *   size it stores and then at 4096. A page 1 of the default layout counts
+ *   only when it stores the size it decrypted at, since that layout leaves the
+ *   size unauthenticated, while SQLCipher's authenticates it, so only the key's
+ *   holder could write another. The file keeps its layout.
  * - Journal checksums are stored as SQLCipher stores them, so SQLite rolls back
  *   the hot journals SQLCipher left, and SQLCipher rolls back the codec's.
  *   The flag excludes EVOLU_CODEC_PLAINTEXT_CHECKSUMS.
@@ -284,6 +285,22 @@ int evolu_codec_open(const char *filename, sqlite3 **db, const char *vfs,
  * open on a codec VFS and SQLITE_MISUSE when db is NULL.
  */
 int evolu_codec_take_failure(sqlite3 *db, evolu_codec_failure *failure);
+
+#ifdef EVOLU_TEST_HOOKS
+/*
+ * The C test runner's hooks, with which its tests check that every copy of a
+ * page the codec decrypts into a database's scratch buffer is wiped.
+ * evolu_test_codec_scratch returns the scratch buffer of db's main database,
+ * which must be open on a codec VFS, and sets *size to its size, NULL and 0
+ * before the codec needed one. While evolu_test_codec_journal_read is set,
+ * each read of an encrypted database's journal first passes it the
+ * database's scratch buffer, which a hot journal's checks used before the
+ * rollback's first read.
+ */
+const uint8_t *evolu_test_codec_scratch(sqlite3 *db, size_t *size);
+extern void (*evolu_test_codec_journal_read)(const uint8_t *scratch,
+                                             size_t size);
+#endif
 
 #ifdef __cplusplus
 }
