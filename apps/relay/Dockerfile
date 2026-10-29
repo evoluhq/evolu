@@ -4,7 +4,7 @@
 # Dependabot proposes each Node.js 24 release and base rebuild a week after it
 # is published (.github/dependabot.yml).
 # droast ignore=DF011 reason="The published Relay package needs the Node runtime; no separate compilation stage is needed."
-FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
 
 # The published @evolu/relay version, or a packed tarball path relative to the
 # build context for verifying unpublished changes (see CONTRIBUTING.md). Why the
