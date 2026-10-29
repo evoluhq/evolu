@@ -19,7 +19,7 @@ stack runs beside them, showing what its encryption costs.
 | ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Node.js      | Evolu's SQLite through `@evolu/nodejs`'s Node-API addon, plain and encrypted | better-sqlite3 13.0.3, which `@evolu/nodejs` used before; `node:sqlite` of the running Node.js                      |
 | Web          | `packages/sqlite-wasm`, a `Pool` database, plain and encrypted               | `@sqlite.org/sqlite-wasm` 3.54.1-build1 with opfs-sahpool; wa-sqlite at the commit below with `AccessHandlePoolVFS` |
-| React Native | `@evolu/react-native` through JSI, without and with a key                    | expo-sqlite 58.0.14 without SQLCipher; op-sqlite 18.2.5 with its defaults                                           |
+| React Native | `@evolu/react-native` through JSI, without and with a key                    | expo-sqlite 58.0.14 without SQLCipher; op-sqlite 19.0.2 with its defaults                                           |
 
 Each platform's verdict compares Evolu's plain stack with the stack its
 platform used before: better-sqlite3, `@sqlite.org/sqlite-wasm` and
