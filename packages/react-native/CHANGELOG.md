@@ -1,5 +1,21 @@
 # @evolu/react-native
 
+## 16.2.1
+
+### Patch Changes
+
+- d9cfd60: Reported an encrypted database with an altered page size as tampered
+
+  Evolu authenticates every page of an encrypted database, except the page size in the first page's header, which SQLite reads before anything is decrypted, so Evolu checks it separately. Some reads skipped that check, so a database whose page size someone had altered failed to open with an error that had no cause. It now fails as any tampered database does, with `SQLITE_NOTADB` and a `SqlitePageAuthenticationError` cause, and a hot journal altered this way is treated as any other tampered journal. Only someone who can already write an app's files can alter the page size, so databases Evolu wrote aren't affected.
+
+- 9e61cac: Made the React Native binding clean up when memory runs out while it opens or exports a database
+
+  If an allocation failed at one point of an open or an export, which a device practically never hits, the database could stay open until the app restarted, or the export's unencrypted copy could stay in memory unwiped. Both now clean up, as in `@evolu/nodejs`.
+
+- 016a28c: Checked at startup that React Native runs Hermes
+
+  Evolu's React Native SQLite has required Hermes, React Native's default engine, since 16.2.0, but nothing checked it. An app on another engine, such as JavaScriptCore, now fails at startup with `Evolu's SQLite needs the Hermes engine.`, because Evolu's native code is memory-safe only on Hermes.
+
 ## 16.2.0
 
 ### Minor Changes
