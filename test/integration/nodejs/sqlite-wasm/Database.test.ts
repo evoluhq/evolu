@@ -26,6 +26,10 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
+import {
+  readSkiplistFixture,
+  skiplistFixtureRowsSql,
+} from "../../../../packages/sqlite-core/test/skiplist-fixture.mts";
 import type { SqliteCExports } from "../../../../packages/sqlite-wasm/src/CApi.ts";
 import type { EvoluCExports } from "../../../../packages/sqlite-wasm/src/EvoluCApi.ts";
 import {
@@ -238,16 +242,15 @@ test("a Memory database has Evolu's SQL functions, which evolu_core_register reg
   );
 });
 
+/** The table and index Storage.ts of @evolu/common creates. */
+const timestampTablesSql =
+  'CREATE TABLE evolu_timestamp ("ownerId" BLOB NOT NULL, "t" BLOB NOT NULL, "h1" INTEGER, "h2" INTEGER, "c" INTEGER, "l" INTEGER NOT NULL, PRIMARY KEY ("ownerId", "t")) STRICT; CREATE INDEX evolu_timestamp_index ON evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")';
+
 // The core's SHA-256 runs only there. SahPoolEncryption.test.ts checks the
 // codec's AES-256, HMAC-SHA512 and PBKDF2-HMAC-SHA512 against node:crypto.
 test("evolu_skiplist_fingerprints fingerprints each timestamp with the first 12 bytes of its SHA-256, as node:crypto computes it", async () => {
   const { database } = await setupSqliteDatabase();
-  // The table and index Storage.ts of @evolu/common creates.
-  assertOk(
-    database.exec(
-      'CREATE TABLE evolu_timestamp ("ownerId" BLOB NOT NULL, "t" BLOB NOT NULL, "h1" INTEGER, "h2" INTEGER, "c" INTEGER, "l" INTEGER NOT NULL, PRIMARY KEY ("ownerId", "t")) STRICT; CREATE INDEX evolu_timestamp_index ON evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
-    ),
-  );
+  assertOk(database.exec(timestampTablesSql));
   const owner = new Uint8Array(16).fill(1);
   const timestamps = [0, 1, 2].map((index) =>
     Uint8Array.from({ length: 16 }, (_, byte) => index * 16 + byte),
@@ -290,6 +293,77 @@ test("evolu_skiplist_fingerprints fingerprints each timestamp with the first 12 
   ]);
 });
 
+// skiplist-fixture.mts recorded the rows and answers of Storage.ts's SQL, which
+// the functions replaced, and the core's tests replay it on native builds.
+test("the skiplist functions leave the rows of the skiplist fixture's inserts and return its answers", async () => {
+  const { database } = await setupSqliteDatabase();
+  const fixture = readSkiplistFixture();
+  const select = (sql: string, parameters: ReadonlyArray<SqliteValue>) =>
+    getOrThrow(database.run(sql, parameters)).rows[0].value;
+  assertOk(database.exec(timestampTablesSql));
+
+  assertOk(database.exec("BEGIN"));
+  for (const { ownerId, timestamp, level, inserted } of fixture.inserts)
+    assertEqual(
+      select("SELECT evolu_skiplist_insert(?, ?, ?) AS value", [
+        ownerId,
+        timestamp,
+        level,
+      ]),
+      inserted ? 1 : 0,
+    );
+  assertOk(database.exec("COMMIT"));
+
+  assertEqual(
+    getOrThrow(database.run(skiplistFixtureRowsSql, [])).rows.map(
+      ({ row }) => row,
+    ),
+    fixture.rows,
+  );
+  for (const owner of fixture.owners) {
+    const { ownerId } = owner;
+    assertEqual(
+      select("SELECT evolu_skiplist_size(?) AS value", [ownerId]),
+      owner.size,
+    );
+    for (let index = 0; index <= owner.size; index++)
+      assertEqual(
+        select("SELECT evolu_skiplist_timestamp_at(?, ?) AS value", [
+          ownerId,
+          number(index),
+        ]),
+        owner.timestamps[index] ?? null,
+      );
+    for (const { buckets, ranges } of owner.fingerprints) {
+      const encoded = new Uint8Array(buckets.length * 8);
+      const view = new DataView(encoded.buffer);
+      for (const [i, bucket] of buckets.entries())
+        view.setBigUint64(i * 8, BigInt(bucket));
+      // Each a fingerprint and an upper bound, 16 zero bytes for none.
+      assertEqual(
+        select("SELECT evolu_skiplist_fingerprints(?, ?) AS value", [
+          ownerId,
+          encoded,
+        ]),
+        Uint8Array.from(
+          ranges.flatMap(({ fingerprint, upperBound }) => [
+            ...fingerprint,
+            ...(upperBound ?? new Uint8Array(16)),
+          ]),
+        ),
+      );
+    }
+    for (const { timestamp, index } of owner.lowerBounds)
+      assertEqual(
+        select("SELECT evolu_skiplist_lower_bound(?, ?) AS value", [
+          ownerId,
+          timestamp,
+        ]),
+        index,
+      );
+  }
+});
+
 test("Memory, File and EncryptedFile databases are defensive, so SQL can't write their schema, even with PRAGMA writable_schema on, which they ignore", async () => {
   const t = await setupSahPool();
 
@@ -326,8 +400,7 @@ test("Memory, File and EncryptedFile databases are defensive, so SQL can't write
  * Creates Storage.ts's skiplist table and runs a function that keeps
  * statements.
  */
-const skiplistInsertSql =
-  'CREATE TABLE evolu_timestamp ("ownerId" BLOB NOT NULL, "t" BLOB NOT NULL, "h1" INTEGER, "h2" INTEGER, "c" INTEGER, "l" INTEGER NOT NULL, PRIMARY KEY ("ownerId", "t")) STRICT; CREATE INDEX evolu_timestamp_index ON evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c"); BEGIN; SELECT evolu_skiplist_insert(zeroblob(16), zeroblob(16), 2); COMMIT';
+const skiplistInsertSql = `${timestampTablesSql}; BEGIN; SELECT evolu_skiplist_insert(zeroblob(16), zeroblob(16), 2); COMMIT`;
 
 test("disposing a database whose skiplist functions ran finalizes the statements they keep with evolu_skiplist_finalize before sqlite3_close_v2, as the native close does, and frees its memory", async () => {
   const calls: Array<string> = [];
