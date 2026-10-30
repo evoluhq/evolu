@@ -2523,6 +2523,62 @@ describe("Evolu", () => {
       ]);
     });
 
+    it("loadQuery right after a mutation reads after the mutation", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const initialLoad = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
+        ]),
+        onCompleteIds: [],
+      });
+      assertEqual(await initialLoad, []);
+      evoluInputs.length = 0;
+
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("New") });
+      const load = evolu.loadQuery(todoTitleQuery);
+
+      assertNotSame(load, initialLoad);
+      await testWaitForWorkerMessage();
+      assertEqual(
+        evoluInputs.map((input) => input.type),
+        ["Mutate", "Query"],
+      );
+    });
+
+    it("loadQuery after a mutation, sent with an earlier load, reads again", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      void evolu.loadQuery(todoTitleDescQuery);
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("New") });
+      const load = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      // Both loads are read before the mutation is stored.
+      assertEqual(
+        evoluInputs.map((input) => input.type),
+        ["Query", "Mutate"],
+      );
+
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleDescQuery, ok([{ op: "replaceAll", value: [] }])],
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
+        ]),
+        onCompleteIds: [],
+      });
+      assertEqual(await load, []);
+
+      assertNotSame(evolu.loadQuery(todoTitleQuery), load);
+    });
+
     it("loadQueries delegates to loadQuery for each query", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs } = setup;

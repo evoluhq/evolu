@@ -1707,6 +1707,9 @@ export const createEvolu =
       }>((items) => {
         if (disposed) return;
         console.debug("mutateBatch", { changeCount: items.length });
+        // Each mutation also releases them when it is made. This catches a
+        // load made after a mutation but queued with an earlier load in the
+        // same tick, which was sent before this batch.
         releaseUnsubscribedLoadingPromises();
 
         postMessage({
@@ -1828,6 +1831,10 @@ export const createEvolu =
             }
           });
         }
+
+        // Released now, not only when the batch is sent, so a load right after
+        // the mutation does not return rows cached before it.
+        releaseUnsubscribedLoadingPromises();
 
         mutateBatch.push({
           change: { ...dbChange, ownerId: options?.owner?.id ?? appOwner.id },
