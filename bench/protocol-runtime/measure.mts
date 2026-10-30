@@ -7,7 +7,7 @@ import { createPrng } from "../protocol/scenarios.mts";
 
 /** The time one measured region took. */
 export interface Timing {
-  /** Thread CPU time, user plus system: the primary clock. */
+  /** CPU time, user plus system: the primary clock. */
   readonly cpuNs: number;
   readonly wallNs: number;
 }
@@ -16,18 +16,30 @@ export interface Timing {
  * Starts a measured region on both clocks and returns the function that ends
  * it.
  *
- * Thread CPU time counts only this thread, so neither other processes nor idle
- * waits add to it, while garbage collection on this thread does.
+ * CPU time counts neither other processes nor idle waits, while garbage
+ * collection does. It is this thread's CPU time, except on Linux, where it is
+ * the process's, which also counts V8's helper threads.
  */
 export const startTiming = (): (() => Timing) => {
-  const cpuStart = process.threadCpuUsage();
+  const cpuStart = cpuUsage();
   const wallStart = process.hrtime.bigint();
   return () => {
     const wallNs = Number(process.hrtime.bigint() - wallStart);
-    const { user, system } = process.threadCpuUsage(cpuStart);
+    const { user, system } = cpuUsage(cpuStart);
     return { cpuNs: (user + system) * 1_000, wallNs };
   };
 };
+
+// On Linux, a running thread's own CPU time stays at what the scheduler last
+// accounted, so a region shorter than a few scheduler ticks reads too little,
+// often zero, while the process's CPU time adds the running thread's pending
+// time first. See task_cputime_adjusted and thread_group_cputime in
+// https://github.com/torvalds/linux/blob/v6.8/kernel/sched/cputime.c#L630-L639
+// and https://github.com/torvalds/linux/blob/v6.8/kernel/sched/cputime.c#L320-L329.
+const cpuUsage = (previous?: NodeJS.CpuUsage): NodeJS.CpuUsage =>
+  process.platform === "linux"
+    ? process.cpuUsage(previous)
+    : process.threadCpuUsage(previous);
 
 export const addTiming = (a: Timing, b: Timing): Timing => ({
   cpuNs: a.cpuNs + b.cpuNs,

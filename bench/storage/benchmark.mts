@@ -1,81 +1,273 @@
-import {
-  ansi,
-  benchmarkRaw,
-  calcStats,
-  envFlag,
-  formatDuration,
-  paintFormattedDuration,
-  printCsvRow,
-  type CbFn,
-  wantColor,
-} from "@paulmillr/jsbt/benchmark.js";
-import { strictEqual } from "node:assert";
+import { formatDuration } from "@paulmillr/jsbt/benchmark.js";
+import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { cpus } from "node:os";
+import { basename, join, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   array,
-  computeBalancedBuckets,
-  createRandom,
-  createRun,
-  createSqlite,
-  eqArrayNumber,
   getOrThrow,
   type InferType,
-  Millis,
-  Name,
-  NonNegativeInt,
   object,
-  ok,
+  PositiveInt,
   PositiveMillis,
-  type Sqlite,
-  sql,
   String,
-  testCreateRandom,
 } from "@evolu/common";
 import {
-  createBaseSqliteStorage,
-  createBaseSqliteStorageTables,
-  createTimestamp,
-  getTimestampByIndex,
-  OwnerIdBytes,
-  type TimestampBytes,
-  timestampToTimestampBytes,
-} from "@evolu/common/local-first";
-import {
-  createNodeJsSqliteDriver,
   type HrDuration,
   hrDurationToMillis,
   millisToHrDuration,
 } from "@evolu/nodejs";
 import { buildNativeSqlite } from "../../packages/nodejs/scripts/build-native.mts";
-import { parseBenchmarkMode } from "../index.mts";
+import { defaultCacheDirectory } from "../../packages/sqlite-core/scripts/paths.mts";
+import {
+  type BenchmarkMode,
+  parseBenchmarkMode,
+  parseComparisonArgs,
+} from "../index.mts";
+import { sendToParent, spawnChild } from "../protocol/child.mts";
+import { formatTable } from "../protocol/format.mts";
+import {
+  isBaseFirst,
+  ratioVerdict,
+  slowerRatio,
+  summarizeRatios,
+} from "../protocol-runtime/timing.mts";
+import {
+  benchmarkMethods,
+  measure,
+  type StorageBenchmarkResult,
+} from "./measure.mts";
 
-await buildNativeSqlite();
+const main = async (): Promise<void> => {
+  const {
+    baseCheckout,
+    maxRegressionPercent: comparisonPercent,
+    otherArgs,
+  } = parseComparisonArgs(process.argv.slice(2), "Storage");
+  const isMeasureOnly = otherArgs.includes(measureOnlyFlag);
+  // parseBenchmarkMode is strict, so the other options are removed first.
+  const benchmarkMode = parseBenchmarkMode({
+    args: otherArgs.filter((arg) => arg !== measureOnlyFlag),
+    benchmarkName: "Storage",
+  });
+  if ((baseCheckout !== null || isMeasureOnly) && benchmarkMode !== "default") {
+    throw new Error(
+      `A comparison never writes baselines, so it cannot be combined with --mode=${benchmarkMode}.`,
+    );
+  }
 
-const timestampCount = 50_000;
-const checkpointSize = 10_000;
-strictEqual(timestampCount % checkpointSize, 0);
-const getTimestampByIndexCount = 1_000;
-const fingerprintRangesCount = 250;
-const repeatCount = 3;
-const fingerprintRangesRepeatCount = 5;
+  if (baseCheckout !== null) {
+    if (isMeasureOnly) {
+      throw new Error(`${measureOnlyFlag} is the child of --base-checkout.`);
+    }
+    await compareWithCheckout(
+      baseCheckout,
+      comparisonPercent ?? maxRegressionPercent,
+    );
+    return;
+  }
+  if (comparisonPercent !== null) {
+    throw new Error("--max-regression is the threshold of --base-checkout.");
+  }
+
+  if (isMeasureOnly) {
+    // A checkout without an install of its own would load an enclosing
+    // checkout's Evolu and measure that.
+    for (const specifier of ["@evolu/common", "@evolu/nodejs"]) {
+      const path = fileURLToPath(import.meta.resolve(specifier));
+      if (!path.startsWith(`${repoRoot}${sep}`)) {
+        throw new Error(
+          `${repoRoot} has no install of its own: ${specifier} resolves to ${path}.`,
+        );
+      }
+    }
+  }
+  // Read before measuring, so an invalid file fails at once.
+  const storageBenchmarkBaselines = isMeasureOnly
+    ? null
+    : getOrThrow(
+        StorageBenchmarkBaselines.fromUnknown(
+          JSON.parse(await readFile(storageBenchmarkBaselinesUrl, "utf8")),
+        ),
+      );
+  await buildNativeSqlite();
+  const { results, sqliteVersion } = await measure(isMeasureOnly);
+  if (isMeasureOnly) {
+    await sendToParent(
+      getOrThrow(
+        StorageBenchmarkMeasurement.fromUnknown({
+          sqliteVersion,
+          durationsNs: Object.fromEntries(
+            results.map(({ method, durationNs }) => [
+              method,
+              Number(durationNs),
+            ]),
+          ),
+        }),
+      ),
+    );
+    return;
+  }
+  if (storageBenchmarkBaselines !== null) {
+    await checkBaseline(
+      benchmarkMode,
+      storageBenchmarkBaselines,
+      results,
+      sqliteVersion,
+    );
+  }
+};
+
+/** The child mode of {@link compareWithCheckout}, which prints nothing. */
+const measureOnlyFlag = "--measure-only";
+
+const repoRoot = realpathSync(fileURLToPath(new URL("../..", import.meta.url)));
 const maxRegressionPercent = 10;
-const benchmarkMode = parseBenchmarkMode({
-  args: process.argv.slice(2),
-  benchmarkName: "Storage",
+
+const pairCount = 5;
+
+/** What a {@link measureOnlyFlag} child sends: nanoseconds by method. */
+const StorageBenchmarkMeasurement = object({
+  sqliteVersion: String,
+  durationsNs: object({
+    append: PositiveInt,
+    prepend: PositiveInt,
+    insert: PositiveInt,
+    getTimestampByIndex: PositiveInt,
+    fingerprintRanges: PositiveInt,
+  }),
 });
-const updateBaseline =
-  benchmarkMode === "update-baseline" ||
-  benchmarkMode === "force-update-baseline";
-// Ascending, descending and shuffled timestamps.
-const strategies = ["append", "prepend", "insert"] as const;
-const benchmarkMethods = [
-  ...strategies,
-  "getTimestampByIndex",
-  "fingerprintRanges",
-] as const;
-type StorageBenchmarkMethod = (typeof benchmarkMethods)[number];
-const ownerId = OwnerIdBytes.orThrow(new Uint8Array(16));
+interface StorageBenchmarkMeasurement extends InferType<
+  typeof StorageBenchmarkMeasurement
+> {}
+
+/**
+ * Runs the checkout at `dir`, which has its own install, and the working tree
+ * in pairs of child processes in ABBA order, each running its own copy of this
+ * file, and compares each method's paired ratios. It fails when their
+ * [`measure.mts`](./measure.mts) differ, which would measure the versions
+ * differently, and when a method's median ratio exceeds `thresholdPercent` and
+ * every pair is slower.
+ */
+const compareWithCheckout = async (
+  dir: string,
+  thresholdPercent: number,
+): Promise<void> => {
+  const root = realpathSync(dir);
+  const [ownSource, otherSource] = await Promise.all(
+    [repoRoot, root].map((sourceRoot) =>
+      readFile(join(sourceRoot, "bench", "storage", "measure.mts")),
+    ),
+  );
+  if (!ownSource.equals(otherSource)) {
+    throw new Error(
+      `The storage measurement of ${dir} differs from the working tree's, so the two are not comparable.`,
+    );
+  }
+  const head = spawnSync("git", ["-C", root, "rev-parse", "--short=9", "HEAD"]);
+  const baseLabel =
+    head.status === 0
+      ? `${basename(root)} (${head.stdout.toString().trim()})`
+      : basename(root);
+  process.stdout.write(
+    `Storage benchmark: ${baseLabel} against the working tree, ${pairCount} pairs of child processes in ABBA order. Baselines are neither read nor written.\n`,
+  );
+
+  const pairs: Array<{
+    readonly base: StorageBenchmarkMeasurement;
+    readonly head: StorageBenchmarkMeasurement;
+  }> = [];
+  for (let pair = 0; pair < pairCount; pair++) {
+    const runSide = async (side: "base" | "head") => {
+      const sideRoot = side === "base" ? root : repoRoot;
+      const message = await spawnChild({
+        script: join(sideRoot, "bench", "storage", "benchmark.mts"),
+        args: [measureOnlyFlag],
+        cwd: sideRoot,
+        label: `Storage benchmark child in ${sideRoot}`,
+        env:
+          side === "head"
+            ? process.env
+            : {
+                ...process.env,
+                // The other checkout builds its own addon, from this
+                // checkout's SQLite source cache.
+                SQLITE_CORE_CACHE: defaultCacheDirectory(process.env),
+                SQLITE_CORE_BUILD: "",
+              },
+      });
+      const result = StorageBenchmarkMeasurement.fromUnknown(message);
+      if (!result.ok) {
+        throw new Error(
+          `The storage benchmark child in ${sideRoot} sent an invalid result: ${JSON.stringify(result.error)}`,
+        );
+      }
+      const measurement = result.value;
+      process.stderr.write(
+        `  ${side} ${benchmarkMethods.map((method) => `${method} ${formatMs(measurement.durationsNs[method])}`).join(", ")}; SQLite ${measurement.sqliteVersion}\n`,
+      );
+      return measurement;
+    };
+    process.stderr.write(
+      `\n# Pair ${pair + 1} of ${pairCount}: ${isBaseFirst(pair) ? "base first" : "working tree first"}\n`,
+    );
+    if (isBaseFirst(pair)) {
+      const base = await runSide("base");
+      pairs.push({ base, head: await runSide("head") });
+    } else {
+      const head = await runSide("head");
+      pairs.push({ base: await runSide("base"), head });
+    }
+  }
+
+  const failures: Array<string> = [];
+  const rows = benchmarkMethods.map((method) => {
+    const durations = pairs.map(({ base, head }) => ({
+      base: base.durationsNs[method],
+      head: head.durationsNs[method],
+    }));
+    const summary = summarizeRatios(durations);
+    const verdict = ratioVerdict(summary, thresholdPercent);
+    if (verdict === "regression") {
+      failures.push(`${method} ${summary.median.toFixed(3)}`);
+    }
+    return [
+      method,
+      formatMs(Math.min(...durations.map(({ base }) => base))),
+      formatMs(Math.min(...durations.map(({ head }) => head))),
+      `${summary.median.toFixed(3)} [${summary.min.toFixed(3)}..${summary.max.toFixed(3)}]`,
+      verdict === "same"
+        ? ""
+        : verdict === "regression"
+          ? `FAILS, over ${thresholdPercent}%`
+          : verdict,
+    ];
+  });
+  process.stdout.write(
+    `\nRatios are working tree / base wall time: the median of ${pairCount} paired child processes, then [min..max]. A median from ${slowerRatio.toFixed(2)} is slower, and above ${(1 + thresholdPercent / 100).toFixed(2)} with every pair slower fails.\n`,
+  );
+  process.stdout.write(
+    `SQLite: base ${pairs[0].base.sqliteVersion}, working tree ${pairs[0].head.sqliteVersion}\n`,
+  );
+  process.stdout.write(
+    formatTable(
+      ["", `${baseLabel} fastest`, "working tree fastest", "ratio", ""],
+      rows,
+    ),
+  );
+  if (failures.length > 0) {
+    throw new Error(
+      `The working tree is more than ${thresholdPercent}% slower than ${baseLabel}: ${failures.join(", ")}`,
+    );
+  }
+};
+
+const formatMs = (ns: number): string => {
+  const ms = ns / 1e6;
+  return `${ms.toFixed(ms < 10 ? 3 : ms < 100 ? 2 : 1)} ms`;
+};
 
 const StorageBenchmarkEnvironment = object({
   platform: String,
@@ -118,131 +310,117 @@ const storageBenchmarkBaselinesUrl = new URL(
   "./baselines.json",
   import.meta.url,
 );
-const storageBenchmarkBaselines = getOrThrow(
-  StorageBenchmarkBaselines.fromUnknown(
-    JSON.parse(await readFile(storageBenchmarkBaselinesUrl, "utf8")),
-  ),
-);
 
-const timestampsAsc = Array.from({ length: timestampCount }, (_, index) =>
-  timestampToTimestampBytes(createTimestamp({ millis: Millis.orThrow(index) })),
-);
-const timestampIndexesRandom = Array.from(
-  { length: timestampCount },
-  (_, index) => index,
-);
-const timestampOrderRandom = testCreateRandom("Storage.bench timestamp order");
-for (let index = timestampIndexesRandom.length - 1; index > 0; index--) {
-  const otherIndex = Math.floor(timestampOrderRandom.next() * (index + 1));
-  [timestampIndexesRandom[index], timestampIndexesRandom[otherIndex]] = [
-    timestampIndexesRandom[otherIndex],
-    timestampIndexesRandom[index],
-  ];
-}
-const timestampsByStrategy: Record<
-  (typeof strategies)[number],
-  ReadonlyArray<TimestampBytes>
-> = {
-  append: timestampsAsc,
-  prepend: timestampsAsc.toReversed(),
-  insert: timestampIndexesRandom.map((index) => timestampsAsc[index]),
-};
-
-let sqliteVersion: string | undefined;
-const setupStorage = async () => {
-  await using disposer = new AsyncDisposableStack();
-  const run = disposer.use(
-    createRun({ createSqliteDriver: createNodeJsSqliteDriver }),
-  );
-  const sqlite = disposer.use(
-    await run.ok(
-      createSqlite(Name.orThrow("Storage-bench"), { mode: "memory" }),
-    ),
-  );
-  const versionRow = sqlite.exec<{ sqliteVersion: string }>(sql`
-    select sqlite_version() as sqliteVersion;
-  `).rows[0];
-  sqliteVersion ??= versionRow.sqliteVersion;
-  strictEqual(sqliteVersion, versionRow.sqliteVersion);
-
-  createBaseSqliteStorageTables({ sqlite });
-
-  const disposables = disposer.move();
-  return {
-    sqlite,
-    storage: createBaseSqliteStorage({
-      sqlite,
-      random: createRandom(),
-    }),
-    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
+/**
+ * Compares `results` with the exact-environment baseline and fails on a
+ * regression, or writes the baseline in an update mode.
+ */
+const checkBaseline = async (
+  benchmarkMode: BenchmarkMode,
+  storageBenchmarkBaselines: StorageBenchmarkBaselines,
+  benchmarkResults: ReadonlyArray<StorageBenchmarkResult>,
+  sqliteVersion: string,
+): Promise<void> => {
+  const updateBaseline =
+    benchmarkMode === "update-baseline" ||
+    benchmarkMode === "force-update-baseline";
+  process.stderr.write("\n# Overall\n");
+  const environment: StorageBenchmarkEnvironment = {
+    platform: process.platform,
+    arch: process.arch,
+    cpu: cpus()[0]?.model ?? "unknown",
+    nodeVersion: process.versions.node,
+    sqliteVersion,
   };
-};
-
-const insertTimestamps = (
-  sqlite: Sqlite,
-  storage: ReturnType<typeof createBaseSqliteStorage>,
-  timestamps: ReadonlyArray<TimestampBytes>,
-  begin: number,
-  end: number,
-) =>
-  sqlite.transaction(() => {
-    for (let index = begin; index < end; index++) {
-      storage.insertTimestamp(ownerId, timestamps[index]);
-    }
-    return ok();
-  });
-
-interface StorageBenchmarkResult {
-  readonly method: StorageBenchmarkMethod;
-  readonly durationNs: HrDuration;
-  readonly runCount: number;
-  readonly amount: number;
-  readonly unit: "inserts" | "calls";
-}
-
-// jsbt measures with process.hrtime.bigint() and reports nanoseconds.
-const hrDurationFromJsbt = (duration: bigint): HrDuration =>
-  duration as HrDuration;
-
-const benchmarkCsv =
-  envFlag(process.env.JSBT_CSV) ||
-  !wantColor(process.env, process.stderr.isTTY || process.stdout.isTTY);
-let benchmarkSection = "";
-let benchmarkOutputStarted = false;
-let benchmarkCsvHeaderPrinted = false;
-
-const setBenchmarkSection = (title: string) => {
-  benchmarkSection = title;
-  if (benchmarkCsv) return;
-
-  process.stdout.write(
-    `${benchmarkOutputStarted ? "\n" : ""}${ansi.cyan}# ${title}${ansi.reset}\n`,
+  const existingBaseline = storageBenchmarkBaselines.baselines.find(
+    (baseline) =>
+      baseline.environment.platform === environment.platform &&
+      baseline.environment.arch === environment.arch &&
+      baseline.environment.cpu === environment.cpu &&
+      baseline.environment.nodeVersion === environment.nodeVersion &&
+      baseline.environment.sqliteVersion === environment.sqliteVersion,
   );
-  benchmarkOutputStarted = true;
-};
+  process.stderr.write(
+    `${environment.cpu}; ${environment.platform} ${environment.arch}; Node ${environment.nodeVersion}; SQLite ${environment.sqliteVersion}\n`,
+  );
+  const regressions: Array<string> = [];
 
-const benchmarkOnce = async (
-  label: string,
-  callback: CbFn,
-): Promise<bigint> => {
-  const result = await benchmarkRaw(callback, 0n);
-  if (benchmarkCsv) {
-    if (!benchmarkCsvHeaderPrinted) {
-      printCsvRow(["name", "nanoseconds", "rme"]);
-      benchmarkCsvHeaderPrinted = true;
+  for (const result of benchmarkResults) {
+    const baselineMeasurement = existingBaseline?.measurementsMs[result.method];
+    const baselineDuration =
+      baselineMeasurement === undefined
+        ? undefined
+        : millisToHrDuration(baselineMeasurement);
+    const change = baselineDuration
+      ? `, baseline ${formatDuration(baselineDuration)}, ${formatChange(result.durationNs, baselineDuration)}`
+      : "";
+    process.stderr.write(
+      `${result.method}: ${formatDuration(result.durationNs)}, ${((BigInt(result.amount) * 1_000_000_000n) / result.durationNs).toLocaleString()} ${result.unit}/sec, n=${result.runCount}${change}\n`,
+    );
+    if (
+      baselineDuration !== undefined &&
+      result.durationNs * 100n >
+        baselineDuration * BigInt(100 + maxRegressionPercent)
+    ) {
+      regressions.push(
+        `${result.method} ${formatChange(result.durationNs, baselineDuration)}`,
+      );
     }
-    printCsvRow([
-      `${benchmarkSection}; ${label}`,
-      result.stats.mean,
-      result.stats.rme.toFixed(2),
-    ]);
-  } else {
-    process.stdout.write(
-      `${label} ${paintFormattedDuration(result.perItemStr, ansi.blue)}\n`,
+  }
+
+  if (existingBaseline) {
+    if (regressions.length > 0) {
+      if (benchmarkMode === "force-update-baseline") {
+        process.stderr.write(
+          `\nForcing storage baseline update despite regressions exceeding ${maxRegressionPercent}%: ${regressions.join(", ")}\n`,
+        );
+      } else {
+        throw new Error(
+          `Storage performance regression exceeded ${maxRegressionPercent}%: ${regressions.join(", ")}`,
+        );
+      }
+    } else {
+      process.stderr.write(
+        `\nStorage benchmark passed (maximum regression ${maxRegressionPercent}%).\n`,
+      );
+    }
+  } else if (updateBaseline) {
+    process.stderr.write(
+      "\nNo storage baseline matches this environment; creating one.\n",
     );
   }
-  benchmarkOutputStarted = true;
-  return result.stats.mean;
+
+  const nextBaseline: StorageBenchmarkBaseline = {
+    environment,
+    measurementsMs: getOrThrow(
+      StorageBenchmarkMethodMeasurements.fromUnknown(
+        Object.fromEntries(
+          benchmarkResults.map((result) => [
+            result.method,
+            hrDurationToMillis(result.durationNs),
+          ]),
+        ),
+      ),
+    ),
+  };
+
+  if (updateBaseline) {
+    const baselineIndex = storageBenchmarkBaselines.baselines.findIndex(
+      (baseline) => baseline === existingBaseline,
+    );
+    const baselines = [...storageBenchmarkBaselines.baselines];
+    if (baselineIndex === -1) baselines.push(nextBaseline);
+    else baselines[baselineIndex] = nextBaseline;
+    await writeFile(
+      storageBenchmarkBaselinesUrl,
+      `${JSON.stringify({ baselines } satisfies StorageBenchmarkBaselines, null, 2)}\n`,
+    );
+    process.stderr.write("\nUpdated storage benchmark baseline\n");
+  } else if (!existingBaseline) {
+    throw new Error(
+      `Storage benchmark cannot check regressions because no baseline matches this environment. Add this entry to bench/storage/baselines.json:\n${JSON.stringify(nextBaseline, null, 2)}`,
+    );
+  }
 };
 
 const formatChange = (
@@ -256,230 +434,4 @@ const formatChange = (
   return `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`;
 };
 
-const benchmarkResults: Array<StorageBenchmarkResult> = [];
-
-setBenchmarkSection("Storage insertTimestamp");
-
-for (const strategy of strategies) {
-  const timestamps = timestampsByStrategy[strategy];
-  const runTotals: Array<bigint> = [];
-
-  for (let run = 1; run <= repeatCount; run++) {
-    await using setup = await setupStorage();
-    const { sqlite, storage } = setup;
-    let runTotal = 0n;
-
-    for (
-      let checkpoint = checkpointSize;
-      checkpoint <= timestampCount;
-      checkpoint += checkpointSize
-    ) {
-      const label = `${strategy} run ${run} ${checkpoint - checkpointSize}-${checkpoint} rows`;
-      runTotal += await benchmarkOnce(label, () =>
-        insertTimestamps(
-          sqlite,
-          storage,
-          timestamps,
-          checkpoint - checkpointSize,
-          checkpoint,
-        ),
-      );
-    }
-
-    strictEqual(storage.getSize(ownerId), timestampCount);
-    runTotals.push(runTotal);
-  }
-
-  benchmarkResults.push({
-    method: strategy,
-    durationNs: hrDurationFromJsbt(
-      calcStats(Float64Array.from(runTotals, Number)).p50,
-    ),
-    runCount: runTotals.length,
-    amount: timestampCount,
-    unit: "inserts",
-  });
-}
-
-setBenchmarkSection("Storage getTimestampByIndex");
-
-const getTimestampByIndexIndexes = Array.from(
-  { length: getTimestampByIndexCount },
-  (_, index) =>
-    NonNegativeInt.orThrow(
-      Math.floor(
-        (index * (timestampCount - 1)) / (getTimestampByIndexCount - 1),
-      ),
-    ),
-);
-
-const getTimestampByIndexMeasurements: Array<bigint> = [];
-
-for (let run = 1; run <= repeatCount; run++) {
-  const label = `getTimestampByIndex run ${run}`;
-
-  await using setup = await setupStorage();
-  const { sqlite, storage } = setup;
-  insertTimestamps(sqlite, storage, timestampsAsc, 0, timestampsAsc.length);
-  const getTimestamp = getTimestampByIndex({ sqlite });
-  let timestamp = getTimestamp(ownerId, getTimestampByIndexIndexes[0]);
-  getTimestampByIndexMeasurements.push(
-    await benchmarkOnce(label, () => {
-      for (const index of getTimestampByIndexIndexes) {
-        timestamp = getTimestamp(ownerId, index);
-      }
-      return timestamp;
-    }),
-  );
-  strictEqual(
-    eqArrayNumber(timestamp, timestampsAsc[timestampCount - 1]),
-    true,
-  );
-}
-
-benchmarkResults.push({
-  method: "getTimestampByIndex",
-  durationNs: hrDurationFromJsbt(
-    calcStats(Float64Array.from(getTimestampByIndexMeasurements, Number)).p50,
-  ),
-  runCount: getTimestampByIndexMeasurements.length,
-  amount: getTimestampByIndexCount,
-  unit: "calls",
-});
-
-setBenchmarkSection("Storage fingerprintRanges");
-
-const fingerprintRangesMeasurements: Array<bigint> = [];
-
-for (let run = 1; run <= fingerprintRangesRepeatCount; run++) {
-  const label = `fingerprintRanges run ${run}`;
-
-  await using setup = await setupStorage();
-  const { sqlite, storage } = setup;
-  insertTimestamps(sqlite, storage, timestampsAsc, 0, timestampsAsc.length);
-  const buckets = getOrThrow(
-    computeBalancedBuckets(NonNegativeInt.orThrow(timestampCount)),
-  );
-  let fingerprintRanges = storage.fingerprintRanges(ownerId, buckets);
-  fingerprintRangesMeasurements.push(
-    await benchmarkOnce(label, () => {
-      for (let index = 0; index < fingerprintRangesCount; index++) {
-        fingerprintRanges = storage.fingerprintRanges(ownerId, buckets);
-      }
-      return fingerprintRanges.length;
-    }),
-  );
-  strictEqual(fingerprintRanges.length, buckets.length);
-}
-
-benchmarkResults.push({
-  method: "fingerprintRanges",
-  durationNs: hrDurationFromJsbt(
-    calcStats(Float64Array.from(fingerprintRangesMeasurements, Number)).min,
-  ),
-  runCount: fingerprintRangesMeasurements.length,
-  amount: fingerprintRangesCount,
-  unit: "calls",
-});
-
-strictEqual(benchmarkResults.length, benchmarkMethods.length);
-process.stderr.write("\n# Overall\n");
-if (sqliteVersion === undefined) {
-  throw new Error("SQLite version was not detected");
-}
-const environment: StorageBenchmarkEnvironment = {
-  platform: process.platform,
-  arch: process.arch,
-  cpu: cpus()[0]?.model ?? "unknown",
-  nodeVersion: process.versions.node,
-  sqliteVersion,
-};
-const existingBaseline = storageBenchmarkBaselines.baselines.find(
-  (baseline) =>
-    baseline.environment.platform === environment.platform &&
-    baseline.environment.arch === environment.arch &&
-    baseline.environment.cpu === environment.cpu &&
-    baseline.environment.nodeVersion === environment.nodeVersion &&
-    baseline.environment.sqliteVersion === environment.sqliteVersion,
-);
-process.stderr.write(
-  `${environment.cpu}; ${environment.platform} ${environment.arch}; Node ${environment.nodeVersion}; SQLite ${environment.sqliteVersion}\n`,
-);
-const regressions: Array<string> = [];
-
-for (const result of benchmarkResults) {
-  const baselineMeasurement = existingBaseline?.measurementsMs[result.method];
-  const baselineDuration =
-    baselineMeasurement === undefined
-      ? undefined
-      : millisToHrDuration(baselineMeasurement);
-  const change = baselineDuration
-    ? `, baseline ${formatDuration(baselineDuration)}, ${formatChange(result.durationNs, baselineDuration)}`
-    : "";
-  process.stderr.write(
-    `${result.method}: ${formatDuration(result.durationNs)}, ${((BigInt(result.amount) * 1_000_000_000n) / result.durationNs).toLocaleString()} ${result.unit}/sec, n=${result.runCount}${change}\n`,
-  );
-  if (
-    baselineDuration !== undefined &&
-    result.durationNs * 100n >
-      baselineDuration * BigInt(100 + maxRegressionPercent)
-  ) {
-    regressions.push(
-      `${result.method} ${formatChange(result.durationNs, baselineDuration)}`,
-    );
-  }
-}
-
-if (existingBaseline) {
-  if (regressions.length > 0) {
-    if (benchmarkMode === "force-update-baseline") {
-      process.stderr.write(
-        `\nForcing storage baseline update despite regressions exceeding ${maxRegressionPercent}%: ${regressions.join(", ")}\n`,
-      );
-    } else {
-      throw new Error(
-        `Storage performance regression exceeded ${maxRegressionPercent}%: ${regressions.join(", ")}`,
-      );
-    }
-  } else {
-    process.stderr.write(
-      `\nStorage benchmark passed (maximum regression ${maxRegressionPercent}%).\n`,
-    );
-  }
-} else if (updateBaseline) {
-  process.stderr.write(
-    "\nNo storage baseline matches this environment; creating one.\n",
-  );
-}
-
-const nextBaseline: StorageBenchmarkBaseline = {
-  environment,
-  measurementsMs: getOrThrow(
-    StorageBenchmarkMethodMeasurements.fromUnknown(
-      Object.fromEntries(
-        benchmarkResults.map((result) => [
-          result.method,
-          hrDurationToMillis(result.durationNs),
-        ]),
-      ),
-    ),
-  ),
-};
-
-if (updateBaseline) {
-  const baselineIndex = storageBenchmarkBaselines.baselines.findIndex(
-    (baseline) => baseline === existingBaseline,
-  );
-  const baselines = [...storageBenchmarkBaselines.baselines];
-  if (baselineIndex === -1) baselines.push(nextBaseline);
-  else baselines[baselineIndex] = nextBaseline;
-  await writeFile(
-    storageBenchmarkBaselinesUrl,
-    `${JSON.stringify({ baselines } satisfies StorageBenchmarkBaselines, null, 2)}\n`,
-  );
-  process.stderr.write("\nUpdated storage benchmark baseline\n");
-} else if (!existingBaseline) {
-  throw new Error(
-    `Storage benchmark cannot check regressions because no baseline matches this environment. Add this entry to bench/storage/baselines.json:\n${JSON.stringify(nextBaseline, null, 2)}`,
-  );
-}
+await main();

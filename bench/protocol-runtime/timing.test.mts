@@ -6,6 +6,7 @@ import {
 } from "@evolu/common";
 import { describe, it } from "node:test";
 import {
+  caseDifferences,
   combineWorkloadHashes,
   compareWithBaseline,
   estimateEndToEndMs,
@@ -105,19 +106,31 @@ describe("summarizeRatios", () => {
 });
 
 describe("ratioVerdict", () => {
-  it("fails only above 1.10", () => {
-    assertEqual(ratioVerdict(1.1), "slower");
-    assertEqual(ratioVerdict(1.1001), "regression");
+  const verdict = (median: number, min = 1.01) =>
+    ratioVerdict({ median, min, max: median }, 10);
+
+  it("fails only above the threshold", () => {
+    assertEqual(verdict(1.1), "slower");
+    assertEqual(verdict(1.1001), "regression");
+    assertEqual(
+      ratioVerdict({ median: 1.15, min: 1.01, max: 1.2 }, 20),
+      "slower",
+    );
+  });
+
+  it("fails only when every pair is slower", () => {
+    assertEqual(verdict(1.2, 1), "slower");
+    assertEqual(verdict(1.2, 0.95), "slower");
   });
 
   it("prints slower from 1.03", () => {
-    assertEqual(ratioVerdict(1.0299), "same");
-    assertEqual(ratioVerdict(1.03), "slower");
+    assertEqual(verdict(1.0299), "same");
+    assertEqual(verdict(1.03), "slower");
   });
 
   it("prints faster from the inverse of 1.03", () => {
-    assertEqual(ratioVerdict(1 / 1.03), "faster");
-    assertEqual(ratioVerdict(0.98), "same");
+    assertEqual(verdict(1 / 1.03), "faster");
+    assertEqual(verdict(0.98), "same");
   });
 });
 
@@ -161,6 +174,22 @@ describe("formatChange", () => {
     assertEqual(formatChange(105, 100), "+5.00%");
     assertEqual(formatChange(95, 100), "-5.00%");
     assertEqual(formatChange(100, 100), "+0.00%");
+  });
+});
+
+describe("caseDifferences", () => {
+  it("lists the cases only one side has", () => {
+    assertEqual(caseDifferences(["a", "b", "c"], ["b", "c", "d"]), {
+      onlyBase: ["a"],
+      onlyHead: ["d"],
+    });
+  });
+
+  it("ignores the order of the cases", () => {
+    assertEqual(caseDifferences(["a", "b"], ["b", "a"]), {
+      onlyBase: [],
+      onlyHead: [],
+    });
   });
 });
 

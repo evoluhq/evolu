@@ -111,10 +111,14 @@ gets the expected error code without a write or a logged problem.
 
 ## Metrics
 
-The primary clock is thread CPU time, `process.threadCpuUsage()` user plus
-system, which counts only the measuring thread: neither other processes nor
-idle waits add to it, while garbage collection on that thread does. Wall time
-is recorded around the same regions and printed beside it.
+The primary clock is CPU time, user plus system: neither other processes nor
+idle waits add to it, while garbage collection does. It is the measuring
+thread's, `process.threadCpuUsage()`, except on Linux, where it is the
+process's, `process.cpuUsage()`, which also counts V8's helper threads. Linux
+reads a running thread's own CPU time only as of the scheduler's last
+accounting, so a region shorter than a few scheduler ticks reads too little,
+often zero. Wall time is recorded around the same regions and printed beside
+it.
 
 Timed regions:
 
@@ -175,8 +179,9 @@ pnpm bench:protocol-runtime --mode=force-update-baseline
 ```
 
 The benchmark has no filters. Progress goes to stderr and the report to stdout.
-It is not part of `pnpm verify` or CI, because its baselines hold one
-machine's timings.
+Its default and update modes are not part of `pnpm verify` or CI, because its
+baselines hold one machine's timings. CI runs only `--base-checkout`, as
+[Comparing with another commit](#comparing-with-another-commit) describes.
 
 ## Baselines
 
@@ -205,12 +210,18 @@ match; runs skip it, and an update removes it.
 
 ```bash
 pnpm bench:protocol-runtime --base=HEAD
+pnpm bench:protocol-runtime --base-checkout=../other-checkout
 ```
 
 `--base=<ref>` uses the protocol benchmark's snapshot of `<ref>` in the
 gitignored `tmp/bench-base/<sha>/`, with the same refusal when dependencies
-differ, and runs both versions alternately on the same machine. It never
-reads or writes baselines, so it cannot be combined with an update mode.
+differ, so the working tree's harness and install run the snapshot's Evolu
+sources. `--base-checkout=<dir>` runs a checkout of another commit with its
+own install instead: its own harness, and its own SQLite addon, which it builds
+first. It refuses a checkout whose harness or list of cases differs, which
+would measure the two versions differently. Either runs both versions alternately on the same
+machine. A comparison never reads or writes baselines, so it cannot be combined
+with an update mode.
 
 For each case it runs five pairs of child processes, one per version, in ABBA
 order: base then working tree, then working tree then base, and so on, with
@@ -219,9 +230,13 @@ over the base's. Per metric, the report prints both versions' fastest values
 and the median of the paired ratios with their range. It prints each version's
 rounds, bytes, and storage calls for reconcile scenarios, and labels a case
 `different work` when any of its work differs, such as frames or a builder's
-output. A median ratio from 1.03 is printed as slower; above 1.10, a gated
-metric fails the command. SQLite ratios are printed but never fail it, nor do
-cases whose workload hash differs between the versions.
+output. A median ratio from 1.03 is printed as slower. A gated metric fails the
+command when its median ratio is above 1.10 and every pair is slower;
+`--max-regression=<percent>` sets another threshold. SQLite ratios are printed
+but never fail it. A case whose workload hash differs between the versions is
+not gated against a snapshot and fails against a checkout, as the two are not
+comparable. The Bench workflow runs `--base-checkout` with the suite's anchor,
+as [Continuous integration](../README.md#continuous-integration) describes.
 
 ## Runtime and memory
 
@@ -248,3 +263,10 @@ repeats, so while other work runs, compare commits with `--base` instead of
 running the gated modes. Under that load, most of its paired ranges stayed
 within a few percent, but a few cases ranged from 0.6 to 1.3 while the load
 rose.
+
+On six GitHub-hosted x64 Linux runners with 4 logical CPUs, on AMD EPYC 7763,
+9V74 and 9V45 processors, base comparisons of a commit with itself took 9 to 14
+minutes. The medians of gated and SQLite metrics of 20 ms or more stayed within
+8.5% of 1, half of them within 1.2%, and no metric was more than 5% slower with
+every pair slower. Those runs used thread CPU time, whose readings of shorter
+regions were too coarse to compare on Linux.

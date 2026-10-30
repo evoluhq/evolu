@@ -1,9 +1,10 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { availableParallelism, cpus, loadavg } from "node:os";
-import { relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, join, relative } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   array,
   getOrThrow,
@@ -14,15 +15,22 @@ import {
   PositiveInt,
   record,
   String,
+  type Typed,
   union,
   Unknown,
 } from "@evolu/common";
 import { buildNativeSqlite } from "../../packages/nodejs/scripts/build-native.mts";
-import { type BenchmarkMode, parseBenchmarkMode } from "../index.mts";
+import { defaultCacheDirectory } from "../../packages/sqlite-core/scripts/paths.mts";
+import {
+  type BenchmarkMode,
+  parseBenchmarkMode,
+  parseComparisonArgs,
+} from "../index.mts";
 import { materializeBase, parseBaseArgs } from "../protocol/base.mts";
 import { spawnChild } from "../protocol/child.mts";
 import { formatGigabytes, formatTable } from "../protocol/format.mts";
 import {
+  caseDifferences,
   combineWorkloadHashes,
   compareWithBaseline,
   estimateEndToEndMs,
@@ -51,26 +59,45 @@ import {
 } from "./workload.mts";
 
 const main = async (): Promise<void> => {
-  const { baseRef, otherArgs } = parseBaseArgs(
+  const { baseRef, otherArgs: argsWithoutBase } = parseBaseArgs(
     process.argv.slice(2),
     "Protocol runtime",
   );
+  const {
+    baseCheckout,
+    maxRegressionPercent: comparisonPercent,
+    otherArgs,
+  } = parseComparisonArgs(argsWithoutBase, "Protocol runtime");
   // The working tree's children open SQLite with @evolu/nodejs's addon.
   await buildNativeSqlite();
-  // parseBenchmarkMode is strict, so --base is removed first.
+  // parseBenchmarkMode is strict, so the comparison options are removed first.
   const benchmarkMode = parseBenchmarkMode({
     args: otherArgs,
     benchmarkName: "Protocol runtime",
   });
 
-  if (baseRef === null) {
+  if (baseRef === null && baseCheckout === null) {
+    if (comparisonPercent !== null) {
+      throw new Error(
+        "--max-regression is the threshold of --base or --base-checkout.",
+      );
+    }
     await runAgainstBaseline(benchmarkMode);
-  } else if (benchmarkMode === "default") {
-    await compareWithBase(baseRef);
-  } else {
+    return;
+  }
+  if (baseRef !== null && baseCheckout !== null) {
+    throw new Error("Pass either --base or --base-checkout.");
+  }
+  if (benchmarkMode !== "default") {
     throw new Error(
-      `--base never writes baselines, so it cannot be combined with --mode=${benchmarkMode}.`,
+      `A comparison never writes baselines, so it cannot be combined with --mode=${benchmarkMode}.`,
     );
+  }
+  const thresholdPercent = comparisonPercent ?? maxRegressionPercent;
+  if (baseCheckout !== null) {
+    await compareWithBase(await checkoutBase(baseCheckout), thresholdPercent);
+  } else if (baseRef !== null) {
+    await compareWithBase(snapshotBase(baseRef), thresholdPercent);
   }
 };
 
@@ -79,6 +106,22 @@ const pairCount = 5;
 
 const repoRoot = realpathSync(fileURLToPath(new URL("../..", import.meta.url)));
 const childPath = fileURLToPath(new URL("child.mts", import.meta.url));
+
+/**
+ * A child process's script, the root it loads Evolu from, and its working
+ * directory.
+ */
+interface ChildSource {
+  readonly script: string;
+  readonly root: string;
+  readonly cwd: string;
+}
+
+const workingTreeSource: ChildSource = {
+  script: childPath,
+  root: repoRoot,
+  cwd: repoRoot,
+};
 const baselinesUrl = new URL("baselines.json", import.meta.url);
 
 /**
@@ -93,6 +136,18 @@ const harnessModulePaths = [
   "reconcile.mts",
   "../protocol/scenarios.mts",
 ];
+
+/** A SHA-256 of the harness modules of the checkout at `root`. */
+const harnessSha256 = async (root: string): Promise<string> => {
+  const hash = createHash("sha256");
+  for (const path of harnessModulePaths) {
+    const source = await readFile(
+      join(root, "bench", "protocol-runtime", path),
+    );
+    hash.update(`${path}\n${source.length}\n`).update(source);
+  }
+  return hash.digest("hex");
+};
 
 const ProtocolRuntimeBenchmarkCaseResult = object({
   name: String,
@@ -124,9 +179,9 @@ interface ProtocolRuntimeBenchmarkEnvironment extends InferType<
 
 const ProtocolRuntimeBenchmarkBaseline = object({
   environment: ProtocolRuntimeBenchmarkEnvironment,
-  /** Gated thread CPU times. */
+  /** Gated CPU times. */
   measurementsNs: record(String, PositiveInt),
-  /** Thread CPU times with SQLite, printed against the baseline only. */
+  /** CPU times with SQLite, printed against the baseline only. */
   reportedNs: record(String, PositiveInt),
 });
 interface ProtocolRuntimeBenchmarkBaseline extends InferType<
@@ -169,7 +224,7 @@ const runAgainstBaseline = async (mode: BenchmarkMode): Promise<void> => {
     progress(`\n# Repeat ${repeat} of ${repeatCount}\n`);
     const results: Array<CaseResult> = [];
     for (const name of caseNames) {
-      const result = await runCase(repoRoot, name);
+      const result = await runCase(workingTreeSource, name);
       progress(formatProgress("", result));
       results.push(result);
     }
@@ -219,11 +274,6 @@ const runAgainstBaseline = async (mode: BenchmarkMode): Promise<void> => {
     ...resultsByRepeat.flat().map((result) => result.maxRssKiB),
   );
 
-  const harnessHash = createHash("sha256");
-  for (const path of harnessModulePaths) {
-    const source = await readFile(new URL(path, import.meta.url));
-    harnessHash.update(`${path}\n${source.length}\n`).update(source);
-  }
   const environment: ProtocolRuntimeBenchmarkEnvironment = getOrThrow(
     ProtocolRuntimeBenchmarkEnvironment.fromUnknown({
       platform: process.platform,
@@ -233,7 +283,7 @@ const runAgainstBaseline = async (mode: BenchmarkMode): Promise<void> => {
       sqliteVersion,
       repeatCount,
       workloadSha256: combineWorkloadHashes(workloadHashes),
-      harnessSha256: harnessHash.digest("hex"),
+      harnessSha256: await harnessSha256(repoRoot),
     }),
   );
   const existingBaseline = baselines.find((baseline) =>
@@ -265,7 +315,7 @@ const runAgainstBaseline = async (mode: BenchmarkMode): Promise<void> => {
   };
 
   print(
-    `\nReconcile scenarios against in-memory storage: protocol-only thread CPU time, gated at ${maxRegressionPercent}%\n`,
+    `\nReconcile scenarios against in-memory storage: protocol-only CPU time, gated at ${maxRegressionPercent}%\n`,
   );
   print(
     formatTable(
@@ -353,7 +403,7 @@ const runAgainstBaseline = async (mode: BenchmarkMode): Promise<void> => {
   );
 
   print(
-    `\nMicro benchmarks: thread CPU time per call, gated at ${maxRegressionPercent}%\n`,
+    `\nMicro benchmarks: CPU time per call, gated at ${maxRegressionPercent}%\n`,
   );
   print(
     formatTable(
@@ -429,18 +479,113 @@ const runAgainstBaseline = async (mode: BenchmarkMode): Promise<void> => {
 };
 
 /**
- * Runs `ref` and the working tree in pairs of child processes per case and
- * compares their paired ratios. It fails when a gated metric's median ratio
- * exceeds the threshold.
+ * The other version a comparison runs: a snapshot of a ref's Evolu sources,
+ * which the working tree's harness and install drive, or a checkout of another
+ * commit with its own install, which runs its own harness.
  */
-const compareWithBase = async (ref: string): Promise<void> => {
-  const base = materializeBase(ref);
+type BaseVersion = SnapshotBase | CheckoutBase;
+
+interface SnapshotBase extends Typed<"SnapshotBase"> {
+  readonly label: string;
+  readonly root: string;
+}
+
+interface CheckoutBase extends Typed<"CheckoutBase"> {
+  readonly label: string;
+  readonly root: string;
+}
+
+const snapshotBase = (ref: string): SnapshotBase => {
+  const { sha, root, created } = materializeBase(ref);
   print(
-    base.created
-      ? `Extracted ${ref} into ${relative(repoRoot, base.root)}.\n`
+    created
+      ? `Extracted ${ref} into ${relative(repoRoot, root)}.\n`
       : `Reusing the ${ref} snapshot.\n`,
   );
-  const baseLabel = `${ref} (${base.sha.slice(0, 9)})`;
+  return { type: "SnapshotBase", label: `${ref} (${sha.slice(0, 9)})`, root };
+};
+
+/**
+ * Prepares the checkout at `dir`, which has its own install, and fails when its
+ * harness differs from the working tree's, which would measure the two versions
+ * differently.
+ */
+const checkoutBase = async (dir: string): Promise<CheckoutBase> => {
+  const root = realpathSync(dir);
+  if ((await harnessSha256(root)) !== (await harnessSha256(repoRoot))) {
+    throw new Error(
+      `The protocol runtime harness of ${dir} differs from the working tree's, so the two are not comparable.`,
+    );
+  }
+  // The working tree's cases drive the comparison, so a case only the
+  // checkout has would be skipped, and one only the working tree has would
+  // crash the checkout's child.
+  const workload: unknown = await import(
+    pathToFileURL(join(root, "bench", "protocol-runtime", "workload.mts")).href
+  );
+  const otherCases = array(String).fromUnknown(
+    typeof workload === "object" && workload !== null && "caseNames" in workload
+      ? workload.caseNames
+      : undefined,
+  );
+  if (!otherCases.ok) {
+    throw new Error(
+      `The protocol runtime workload of ${dir} has no case list.`,
+    );
+  }
+  const { onlyBase, onlyHead } = caseDifferences(otherCases.value, caseNames);
+  if (onlyBase.length > 0 || onlyHead.length > 0) {
+    throw new Error(
+      `The protocol runtime cases of ${dir} differ from the working tree's, so the two are not comparable: only there ${onlyBase.join(", ") || "none"}, only here ${onlyHead.join(", ") || "none"}.`,
+    );
+  }
+  // Its own script builds its addon, from this checkout's SQLite source cache.
+  const build = spawnSync(
+    process.execPath,
+    [join(root, "packages", "nodejs", "scripts", "build-native.mts")],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        SQLITE_CORE_CACHE: defaultCacheDirectory(process.env),
+        SQLITE_CORE_BUILD: "",
+      },
+      stdio: ["ignore", 2, 2],
+    },
+  );
+  if (build.status !== 0) {
+    throw new Error(`The SQLite addon of ${dir} failed to build.`);
+  }
+  const head = spawnSync("git", ["-C", root, "rev-parse", "--short=9", "HEAD"]);
+  return {
+    type: "CheckoutBase",
+    label:
+      head.status === 0
+        ? `${basename(root)} (${head.stdout.toString().trim()})`
+        : basename(root),
+    root,
+  };
+};
+
+/**
+ * Runs `base` and the working tree in pairs of child processes per case and
+ * compares their paired ratios. A gated metric fails when its median ratio
+ * exceeds `thresholdPercent` and every pair is slower. Against a checkout, a
+ * case whose workload differs fails too, as the two are not comparable.
+ */
+const compareWithBase = async (
+  base: BaseVersion,
+  thresholdPercent: number,
+): Promise<void> => {
+  const baseLabel = base.label;
+  const baseSource: ChildSource =
+    base.type === "SnapshotBase"
+      ? { script: childPath, root: base.root, cwd: repoRoot }
+      : {
+          script: join(base.root, "bench", "protocol-runtime", "child.mts"),
+          root: base.root,
+          cwd: base.root,
+        };
   print(
     `Protocol runtime benchmark: ${baseLabel} against the working tree, ${pairCount} pairs of child processes per case in ABBA order. Baselines are neither read nor written.\n`,
   );
@@ -457,7 +602,7 @@ const compareWithBase = async (ref: string): Promise<void> => {
     for (const name of caseNames) {
       const runSide = async (side: "base" | "head") => {
         const result = await runCase(
-          side === "base" ? base.root : repoRoot,
+          side === "base" ? baseSource : workingTreeSource,
           name,
         );
         progress(formatProgress(side === "base" ? "base " : "head ", result));
@@ -485,7 +630,7 @@ const compareWithBase = async (ref: string): Promise<void> => {
   const differentWork: Array<string> = [];
 
   print(
-    `\nRatios are working tree / base thread CPU time: the median of ${pairCount} paired child processes, then [min..max]. A median from ${slowerRatio.toFixed(2)} is slower, and above ${(1 + maxRegressionPercent / 100).toFixed(2)} fails a gated metric.\n`,
+    `\nRatios are working tree / base CPU time: the median of ${pairCount} paired child processes, then [min..max]. A median from ${slowerRatio.toFixed(2)} is slower, and above ${(1 + thresholdPercent / 100).toFixed(2)} with every pair slower fails a gated metric.\n`,
   );
   for (const name of caseNames) {
     const pairs = pairsByCase.get(name) ?? [];
@@ -493,7 +638,7 @@ const compareWithBase = async (ref: string): Promise<void> => {
     const headResults = pairs.map((pair) => pair.head);
     const isSameWorkload =
       sameValue(
-        `The ${ref} workload of ${name}`,
+        `The ${baseLabel} workload of ${name}`,
         baseResults.map(({ workloadSha256 }) => workloadSha256),
       ) ===
       sameValue(
@@ -506,7 +651,13 @@ const compareWithBase = async (ref: string): Promise<void> => {
     if (!isSameWorkload) workloadDiffers.push(name);
     if (differences.length > 0) differentWork.push(name);
     const labels = [
-      ...(isSameWorkload ? [] : ["WORKLOAD DIFFERS, not gated"]),
+      ...(isSameWorkload
+        ? []
+        : [
+            base.type === "CheckoutBase"
+              ? "WORKLOAD DIFFERS, fails"
+              : "WORKLOAD DIFFERS, not gated",
+          ]),
       differences.length > 0 ? "different work" : "same work",
     ];
     print(`\n== ${name} [${labels.join(", ")}]\n`);
@@ -556,7 +707,7 @@ const compareWithBase = async (ref: string): Promise<void> => {
       const summary = summarizeRatios(
         pairs.map((pair) => ({ base: read(pair.base), head: read(pair.head) })),
       );
-      const verdict = ratioVerdict(summary.median);
+      const verdict = ratioVerdict(summary, thresholdPercent);
       // A metric gates only when both versions measured the same workload.
       const gates = isGated && isSameWorkload;
       if (gates) {
@@ -569,7 +720,7 @@ const compareWithBase = async (ref: string): Promise<void> => {
         verdict === "same"
           ? ""
           : verdict === "regression"
-            ? `over ${maxRegressionPercent}%`
+            ? `over ${thresholdPercent}%`
             : verdict;
       return [
         metric,
@@ -594,25 +745,40 @@ const compareWithBase = async (ref: string): Promise<void> => {
   }
 
   print(
-    `\nSummary of the gated metrics with the same workload: ${verdictCounts.faster} faster, ${verdictCounts.same} within ${((slowerRatio - 1) * 100).toFixed(0)}%, ${verdictCounts.slower} slower below the threshold, ${verdictCounts.regression} over it.\n`,
+    `\nSummary of the gated metrics with the same workload: ${verdictCounts.faster} faster, ${verdictCounts.same} within ${((slowerRatio - 1) * 100).toFixed(0)}%, ${verdictCounts.slower} slower without failing, ${verdictCounts.regression} failing.\n`,
   );
   print(`  Different work: ${differentWork.join(", ") || "none"}\n`);
   if (workloadDiffers.length > 0) {
     print(`  Workload differs: ${workloadDiffers.join(", ")}\n`);
   }
-  if (failures.length > 0) {
+  const notComparable = base.type === "CheckoutBase" ? workloadDiffers : [];
+  if (failures.length > 0 || notComparable.length > 0) {
     throw new Error(
-      `The working tree is more than ${maxRegressionPercent}% slower than ${baseLabel}: ${failures.join(", ")}`,
+      [
+        ...(failures.length > 0
+          ? [
+              `The working tree is more than ${thresholdPercent}% slower than ${baseLabel}: ${failures.join(", ")}.`,
+            ]
+          : []),
+        ...(notComparable.length > 0
+          ? [
+              `The workload differs from ${baseLabel}, so these cases are not comparable: ${notComparable.join(", ")}.`,
+            ]
+          : []),
+      ].join(" "),
     );
   }
 };
 
-/** Runs one case in a fresh child process for the source `root`. */
-const runCase = async (root: string, name: CaseName): Promise<CaseResult> => {
+/** Runs one case in a fresh child process of `source`. */
+const runCase = async (
+  { script, root, cwd }: ChildSource,
+  name: CaseName,
+): Promise<CaseResult> => {
   const message = await spawnChild({
-    script: childPath,
+    script,
     args: [root, name],
-    cwd: repoRoot,
+    cwd,
     label: `Protocol runtime benchmark child for ${name} in ${root}`,
     // The heap cap keeps a child from growing past about 1.5 GB of RSS.
     execArgv: ["--expose-gc", "--max-old-space-size=1024"],
