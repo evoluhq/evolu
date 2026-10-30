@@ -6,7 +6,7 @@ to Docker Hub as [`evoluhq/relay`](https://hub.docker.com/r/evoluhq/relay).
 
 The relay listens on port 4000 by default and stores its SQLite database in
 the `data` directory of the current working directory. Point your app to
-`ws://localhost:4000` by setting the WebSocket transport in your Evolu config.
+`ws://localhost:4000/` by setting the WebSocket transport in your Evolu config.
 
 ## Run with npm
 
@@ -48,7 +48,7 @@ echo "RELAY_DOMAIN=relay.example.com" > .env
 docker compose up -d
 ```
 
-Point your app to `wss://relay.example.com`, and uptime monitors to
+Point your app to `wss://relay.example.com/`, and uptime monitors to
 `https://relay.example.com/health`. The relay's database and Caddy's
 certificates are kept in volumes, so they survive restarts. To upgrade, run
 `docker compose pull` and `docker compose up -d` in that directory.

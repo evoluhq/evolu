@@ -1,6 +1,7 @@
 import { isPlainObject, sleep, UnknownError, type Run } from "@evolu/common";
 import {
   createOwnerWebSocketTransport,
+  RelayUrl,
   testAppOwner,
   type Evolu,
   type EvoluDeps,
@@ -35,7 +36,7 @@ export const panicSharedWorker = async ({
   // root Run. The panic also releases the build lock that the production worker
   // otherwise holds, which would block later tests.
   const transport = createOwnerWebSocketTransport({
-    url: "wss://panic.example",
+    url: RelayUrl.orThrow("wss://panic.example/"),
     ownerId: testAppOwner.id,
   });
   evolu.useOwner(testAppOwner, [transport, transport]);

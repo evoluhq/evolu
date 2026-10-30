@@ -874,6 +874,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 백분율 리터럴이 아닙니다. "50%" 또는 "12.5%" 같은 값을 사용하세요.`;
 
+/** Formats a WebSocketUrlError in Korean. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 WebSocket URL이 아닙니다.`;
+
+/** Formats a WebSocketUrlFromStringError in Korean. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 유효한 WebSocket URL이 아닙니다.`;
+
 /**
  * Formats a LeancasedError in Korean.
  *

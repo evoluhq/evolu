@@ -871,6 +871,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ลิเทอรัลเปอร์เซ็นต์ ใช้ค่าเช่น "50%" หรือ "12.5%"`;
 
+/** Formats a WebSocketUrlError in Thai. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ URL แบบ WebSocket`;
+
+/** Formats a WebSocketUrlFromStringError in Thai. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ URL แบบ WebSocket ที่ถูกต้อง`;
+
 /**
  * Formats a LeancasedError in Thai.
  *

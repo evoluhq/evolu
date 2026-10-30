@@ -876,6 +876,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ശതമാനത്തിന്റെ literal അല്ല. "50%" അല്ലെങ്കിൽ "12.5%" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;
 
+/** Formats a WebSocketUrlError in Malayalam. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} WebSocket URL അല്ല.`;
+
+/** Formats a WebSocketUrlFromStringError in Malayalam. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ WebSocket URL അല്ല.`;
+
 /**
  * Formats a LeancasedError in Malayalam.
  *

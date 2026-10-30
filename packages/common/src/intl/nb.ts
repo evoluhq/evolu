@@ -780,6 +780,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en prosentliteral. Bruk en verdi som "50%" eller "12.5%".`;
 
+/** Formats a WebSocketUrlError in Norwegian Bokmål. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en WebSocket-URL.`;
+
+/** Formats a WebSocketUrlFromStringError in Norwegian Bokmål. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig WebSocket-URL.`;
+
 /**
  * Formats a LeancasedError in Norwegian Bokmål.
  *

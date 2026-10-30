@@ -876,6 +876,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal persentase. Gunakan nilai seperti "50%" atau "12.5%".`;
 
+/** Formats a WebSocketUrlError in Indonesian. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan URL WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Indonesian. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan URL WebSocket yang valid.`;
+
 /**
  * Formats a LeancasedError in Indonesian.
  *

@@ -877,6 +877,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} はパーセントのリテラルではありません。"50%" または "12.5%" のような値を使用してください。`;
 
+/** Formats a WebSocketUrlError in Japanese. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は WebSocket の URL ではありません。`;
+
+/** Formats a WebSocketUrlFromStringError in Japanese. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は有効な WebSocket の URL ではありません。`;
+
 /**
  * Formats a LeancasedError in Japanese.
  *

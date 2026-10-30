@@ -878,6 +878,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang literal ng porsiyento. Gumamit ng halagang tulad ng "50%" o "12.5%".`;
 
+/** Formats a WebSocketUrlError in Filipino. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi WebSocket na URL.`;
+
+/** Formats a WebSocketUrlFromStringError in Filipino. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na WebSocket na URL.`;
+
 /**
  * Formats a LeancasedError in Filipino.
  *

@@ -856,10 +856,10 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `The value ${safelyStringifyUnknownValue(error.value)} cannot be parsed into a JsonValue.`;
 
-// Type imports this module, so the Bytes, Time, and Number formatters do not
-// import their error types from those modules. Importing ByteSizeLiteralError
-// would make every program that imports Type also type-check Bytes. The
-// formatters read only the value.
+// Type imports this module, so the Bytes, Time, Number, and WebSocket
+// formatters do not import their error types from those modules. Importing
+// ByteSizeLiteralError would make every program that imports Type also
+// type-check Bytes. The formatters read only the value.
 
 /** Formats a ByteSizeLiteralError in English. */
 export const formatByteSizeLiteralError: TypeErrorFormatter<
@@ -889,6 +889,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
   TypeValueError<"PercentageLiteral">
 > = (error) =>
   `The value ${safelyStringifyUnknownValue(error.value)} is not a percentage literal. Use a value such as "50%" or "12.5%".`;
+
+/** Formats a WebSocketUrlError in English. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `The value ${safelyStringifyUnknownValue(error.value)} is not a WebSocket URL.`;
+
+/** Formats a WebSocketUrlFromStringError in English. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `The value ${safelyStringifyUnknownValue(error.value)} is not a valid WebSocket URL.`;
 
 /**
  * Formats a LeancasedError in English.

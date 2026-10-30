@@ -389,7 +389,13 @@ import type {
   EvoluConfig,
   SyncStateDep,
 } from "./Evolu.ts";
-import type { Owner, OwnerId, OwnerTransport, SyncOwner } from "./Owner.ts";
+import type {
+  Owner,
+  OwnerId,
+  OwnerTransport,
+  RelayUrl,
+  SyncOwner,
+} from "./Owner.ts";
 import {
   createProtocolBroadcastMessagesFromCrdtMessages,
   createProtocolMessageForUnsubscribe,
@@ -602,7 +608,7 @@ export interface WebSocketSyncTransport extends Typed<"WebSocket"> {
   /** Opaque and stable for the transport's lifetime, across reconnects. */
   readonly id: SyncTransportId;
   /** The relay URL without the owner-specific query. */
-  readonly label: string;
+  readonly label: RelayUrl;
   readonly connection: SyncConnection;
 }
 
@@ -981,6 +987,7 @@ export interface ErrorSyncStatus extends Typed<"Error"> {
  *   testName,
  * } from "@evolu/common";
  * import {
+ *   RelayUrl,
  *   syncStateToOwnerSyncStatus,
  *   testAppOwner,
  *   type PendingSyncRoute,
@@ -1001,7 +1008,7 @@ export interface ErrorSyncStatus extends Typed<"Error"> {
  *   transports: connections.map((connection, index) => ({
  *     type: "WebSocket",
  *     id: index === 0 ? primaryId : backupId,
- *     label: "wss://relay.example",
+ *     label: RelayUrl.orThrow("wss://relay.example/"),
  *     connection,
  *   })),
  *   tenants: [
@@ -1159,6 +1166,7 @@ export const syncStateToOwnerSyncStatus = (
  * } from "@evolu/common";
  * import {
  *   relaySyncStateToStatus,
+ *   RelayUrl,
  *   syncStateToRelaySyncStates,
  *   testAppOwner,
  *   type SyncRoute,
@@ -1170,7 +1178,7 @@ export const syncStateToOwnerSyncStatus = (
  * const transport: SyncTransport = {
  *   type: "WebSocket",
  *   id: createId<"SyncTransport">(deps),
- *   label: "wss://relay.example",
+ *   label: RelayUrl.orThrow("wss://relay.example/"),
  *   connection: {
  *     type: "Open",
  *     openedAt: Millis.orThrow(800),
@@ -1924,7 +1932,7 @@ export const initSharedWorker =
 
     interface SyncTransportEntry {
       readonly id: SyncTransportId;
-      readonly label: string;
+      readonly label: RelayUrl;
       /**
        * Outstanding requests per owner, all from one sender: a tenant, or null
        * for the worker's own Unsubscribe. A request waits while another
@@ -2121,15 +2129,14 @@ export const initSharedWorker =
           (transport) => async (run) => {
             const key = structuralLookup(transport);
             const target: SyncTarget = { type: "Transport", key };
-            // The query carries the owner ID; WebSocket accepts URLs that
-            // URL() rejects, so the label is derived without parsing.
+            // The label omits the query, which carries the owner ID. A
+            // WebSocketUrl without its query is a RelayUrl.
             const queryIndex = transport.url.indexOf("?");
             const entry: SyncTransportEntry = {
               id: createId<"SyncTransport">(run.deps),
-              label:
-                queryIndex === -1
-                  ? transport.url
-                  : transport.url.slice(0, queryIndex),
+              label: (queryIndex === -1
+                ? transport.url
+                : transport.url.slice(0, queryIndex)) as RelayUrl,
               outstandingByOwnerId: new Map(),
               timeout: syncRequestTimeout,
               socket: null,

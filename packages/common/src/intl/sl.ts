@@ -880,6 +880,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Vrednost ${safelyStringifyUnknownValue(error.value)} ni odstotni literal. Uporabite vrednost, kot je "50%" ali "12.5%".`;
 
+/** Formats a WebSocketUrlError in Slovenian. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni naslov URL WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Slovenian. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljaven naslov URL WebSocket.`;
+
 /**
  * Formats a LeancasedError in Slovenian.
  *

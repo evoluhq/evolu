@@ -57,7 +57,7 @@ import {
   testCreateRandomBytes,
 } from "../Crypto.ts";
 import { testCreateRandomLib } from "../Random.ts";
-import { getOrNull } from "../Result.ts";
+import { err, getOrNull, ok, type Result } from "../Result.ts";
 import {
   brand,
   Id,
@@ -66,9 +66,13 @@ import {
   idToIdBytes,
   Mnemonic,
   NonNegativeInt,
+  String,
+  transform,
   type Typed,
+  type TypeError,
   union,
 } from "../Type.ts";
+import { WebSocketUrl, WebSocketUrlFromString } from "../WebSocket.ts";
 import type { EncryptedDbChange, Storage } from "./Storage.ts";
 
 /**
@@ -470,16 +474,123 @@ export type OwnerTransport = OwnerWebSocketTransport;
  * @see {@link parseOwnerIdFromOwnerWebSocketTransportUrl}
  */
 export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
-  readonly url: string;
+  readonly url: WebSocketUrl;
 }
 
 /**
- * Creates an {@link OwnerWebSocketTransport} for the given relay URL and
- * {@link OwnerId}.
+ * Error returned when a {@link WebSocketUrl} is not a {@link RelayUrl}.
  *
- * The URL must be a WebSocket base URL without query parameters or fragments
- * (e.g., `wss://relay.evolu.dev`, not `wss://relay.evolu.dev?foo=bar`). The
- * function appends the `ownerId` as a query parameter.
+ * @group Transport
+ */
+export interface RelayUrlError extends TypeError<"RelayUrl"> {
+  readonly value: string;
+}
+
+/**
+ * {@link WebSocketUrl} of a relay, which has no query, such as
+ * `wss://free.evoluhq.com/`.
+ *
+ * {@link createOwnerWebSocketTransport} adds the {@link OwnerId} as the query. A
+ * relay that admits a connection by a credential beyond the OwnerId, such as a
+ * token that a reverse proxy checks, takes it in the path. Like WebSocketUrl,
+ * RelayUrl does not normalize; use {@link RelayUrlFromString} to convert other
+ * spellings, such as user input.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, RelayUrl } from "@evolu/common";
+ *
+ * assertOk(
+ *   RelayUrl.fromUnknown("wss://free.evoluhq.com/"),
+ *   "wss://free.evoluhq.com/",
+ * );
+ *
+ * assertErr(RelayUrl.fromUnknown("wss://free.evoluhq.com/?token=1"), {
+ *   type: "RelayUrl",
+ *   value: "wss://free.evoluhq.com/?token=1",
+ * });
+ * ```
+ *
+ * @group Transport
+ */
+export const RelayUrl = /*#__PURE__*/ brand(
+  "RelayUrl",
+  WebSocketUrl,
+  (value: string) =>
+    // Only a query adds "?" to a serialized URL without a fragment.
+    value.includes("?")
+      ? err<RelayUrlError>({ type: "RelayUrl", value })
+      : ok(),
+  (error) =>
+    `The value ${JSON.stringify(error.value)} is not a relay URL, which has no query.`,
+);
+export type RelayUrl = typeof RelayUrl.Output;
+
+/**
+ * Error returned when {@link RelayUrlFromString} cannot parse a string as a
+ * {@link RelayUrl}.
+ *
+ * @group Transport
+ */
+export interface RelayUrlFromStringError extends TypeError<"RelayUrlFromString"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms a relay URL into its canonical {@link RelayUrl}.
+ *
+ * Accepts what {@link WebSocketUrlFromString} accepts when the result has no
+ * query. Encoding returns the canonical spelling, not the original one.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   RelayUrlFromString,
+ * } from "@evolu/common";
+ *
+ * assertOk(
+ *   RelayUrlFromString.fromUnknown("wss://free.evoluhq.com"),
+ *   "wss://free.evoluhq.com/",
+ * );
+ *
+ * const invalid = RelayUrlFromString.fromUnknown("free.evoluhq.com");
+ * assertErr(invalid, {
+ *   type: "RelayUrlFromString",
+ *   value: "free.evoluhq.com",
+ * });
+ * assertEqual(
+ *   RelayUrlFromString.formatError(invalid.error),
+ *   'The value "free.evoluhq.com" is not a valid relay URL.',
+ * );
+ * ```
+ *
+ * @group Transport
+ */
+export const RelayUrlFromString = /*#__PURE__*/ transform(
+  "RelayUrlFromString",
+  String,
+  RelayUrl,
+  {
+    from: (value: string): Result<string, RelayUrlFromStringError> => {
+      const url = WebSocketUrlFromString.fromUnknown(value);
+      return url.ok && !url.value.includes("?")
+        ? ok(url.value)
+        : err({ type: "RelayUrlFromString", value });
+    },
+    to: (value: RelayUrl) => value,
+  },
+  (error) =>
+    `The value ${JSON.stringify(error.value)} is not a valid relay URL.`,
+);
+
+/**
+ * Creates an {@link OwnerWebSocketTransport} for the given {@link RelayUrl} and
+ * {@link OwnerId}, which it adds as the `ownerId` query parameter.
  *
  * ### Example
  *
@@ -488,13 +599,14 @@ export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
  *   assertEqual,
  *   createEvolu,
  *   createOwnerWebSocketTransport,
+ *   RelayUrl,
  *   testAppName,
  *   testAppOwner,
  *   testEvoluSchema,
  * } from "@evolu/common";
  *
  * const transport = createOwnerWebSocketTransport({
- *   url: "wss://relay.evolu.dev",
+ *   url: RelayUrl.orThrow("wss://relay.evolu.dev/"),
  *   ownerId: testAppOwner.id,
  * });
  * const _createTodoEvolu = createEvolu(testEvoluSchema, {
@@ -505,26 +617,29 @@ export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
  *
  * assertEqual(transport, {
  *   type: "WebSocket",
- *   url: `wss://relay.evolu.dev?ownerId=${testAppOwner.id}`,
+ *   url: `wss://relay.evolu.dev/?ownerId=${testAppOwner.id}`,
  * });
  * ```
  *
  * @group Transport
  */
 export const createOwnerWebSocketTransport = (config: {
-  readonly url: string;
+  readonly url: RelayUrl;
   readonly ownerId: OwnerId;
 }): OwnerWebSocketTransport => ({
   type: "WebSocket",
-  url: `${config.url}?ownerId=${config.ownerId}`,
+  // A RelayUrl has no query or fragment, and an OwnerId has only characters
+  // that a query keeps, so the URL stays canonical.
+  url: `${config.url}?ownerId=${config.ownerId}` as WebSocketUrl,
 });
 
 /**
- * Extracts {@link OwnerId} from an {@link OwnerWebSocketTransport} URL query
- * string.
+ * Extracts {@link OwnerId} from the URL of an {@link OwnerWebSocketTransport} or
+ * the request target of its handshake.
  *
- * Parses the query string `?ownerId=...` and validates that the extracted value
- * is a valid {@link OwnerId}.
+ * Returns the `ownerId` query parameter if the query has exactly one and it is
+ * a valid {@link OwnerId}, and `null` otherwise. Other query parameters are
+ * ignored.
  *
  * ### Example
  *
@@ -535,10 +650,10 @@ export const createOwnerWebSocketTransport = (config: {
  *   testAppOwner,
  * } from "@evolu/common";
  *
- * const url = `/sync?ownerId=${testAppOwner.id}`;
- *
  * assertEqual(
- *   parseOwnerIdFromOwnerWebSocketTransportUrl(url),
+ *   parseOwnerIdFromOwnerWebSocketTransportUrl(
+ *     `/sync?ownerId=${testAppOwner.id}`,
+ *   ),
  *   testAppOwner.id,
  * );
  * assertEqual(
@@ -551,7 +666,16 @@ export const createOwnerWebSocketTransport = (config: {
  */
 export const parseOwnerIdFromOwnerWebSocketTransportUrl = (
   url: string,
-): OwnerId | null => getOrNull(OwnerId.fromUnknown(url.split("=")[1]));
+): OwnerId | null => {
+  const queryStart = url.indexOf("?");
+  if (queryStart === -1) return null;
+  const ownerIds = new URLSearchParams(url.slice(queryStart + 1)).getAll(
+    "ownerId",
+  );
+  return ownerIds.length === 1
+    ? getOrNull(OwnerId.fromUnknown(ownerIds[0]))
+    : null;
+};
 
 /**
  * Common interface implemented by all owner domain errors.

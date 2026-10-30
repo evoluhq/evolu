@@ -880,6 +880,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem százalékliterál. Használjon például "50%" vagy "12.5%" értéket.`;
 
+/** Formats a WebSocketUrlError in Hungarian. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem WebSocket-URL.`;
+
+/** Formats a WebSocketUrlFromStringError in Hungarian. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes WebSocket-URL.`;
+
 /**
  * Formats a LeancasedError in Hungarian.
  *

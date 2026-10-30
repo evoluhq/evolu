@@ -875,6 +875,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਪ੍ਰਤੀਸ਼ਤ ਦਾ literal ਨਹੀਂ ਹੈ। "50%" ਜਾਂ "12.5%" ਵਰਗਾ ਮੁੱਲ ਵਰਤੋ।`;
 
+/** Formats a WebSocketUrlError in Punjabi. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} WebSocket URL ਨਹੀਂ ਹੈ।`;
+
+/** Formats a WebSocketUrlFromStringError in Punjabi. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ WebSocket URL ਨਹੀਂ ਹੈ।`;
+
 /**
  * Formats a LeancasedError in Punjabi.
  *

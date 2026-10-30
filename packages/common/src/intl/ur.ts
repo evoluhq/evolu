@@ -788,6 +788,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} فیصد کا لٹرل نہیں ہے۔ "50%" یا "12.5%" جیسی قدر استعمال کریں۔`;
 
+/** Formats a WebSocketUrlError in Urdu. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} WebSocket URL نہیں ہے۔`;
+
+/** Formats a WebSocketUrlFromStringError in Urdu. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} درست WebSocket URL نہیں ہے۔`;
+
 /**
  * Formats a LeancasedError in Urdu.
  *

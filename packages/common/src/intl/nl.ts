@@ -877,6 +877,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} is geen percentageliteral. Gebruik een waarde zoals "50%" of "12.5%".`;
 
+/** Formats a WebSocketUrlError in Dutch. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen WebSocket-URL.`;
+
+/** Formats a WebSocketUrlFromStringError in Dutch. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldige WebSocket-URL.`;
+
 /**
  * Formats a LeancasedError in Dutch.
  *

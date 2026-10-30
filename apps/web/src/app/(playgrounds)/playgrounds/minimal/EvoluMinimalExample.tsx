@@ -111,11 +111,12 @@ const appPromise = run.ok(
     transports: [
       {
         type: "WebSocket",
-        url:
+        url: Evolu.WebSocketUrlFromString.orThrow(
           process.env.NEXT_PUBLIC_EVOLU_RELAY_URL ??
-          (process.env.NODE_ENV === "development"
-            ? "ws://localhost:4000"
-            : "wss://free.evoluhq.com"),
+            (process.env.NODE_ENV === "development"
+              ? "ws://localhost:4000"
+              : "wss://free.evoluhq.com"),
+        ),
       },
     ],
   }),

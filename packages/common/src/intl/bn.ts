@@ -873,6 +873,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি শতাংশের literal নয়। "50%" বা "12.5%"-এর মতো একটি মান ব্যবহার করুন।`;
 
+/** Formats a WebSocketUrlError in Bengali. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি WebSocket URL নয়।`;
+
+/** Formats a WebSocketUrlFromStringError in Bengali. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ WebSocket URL নয়।`;
+
 /**
  * Formats a LeancasedError in Bengali.
  *

@@ -875,6 +875,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} प्रतिशत का literal नहीं है। "50%" या "12.5%" जैसे मान का उपयोग करें।`;
 
+/** Formats a WebSocketUrlError in Hindi. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} WebSocket URL नहीं है।`;
+
+/** Formats a WebSocketUrlFromStringError in Hindi. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} मान्य WebSocket URL नहीं है।`;
+
 /**
  * Formats a LeancasedError in Hindi.
  *

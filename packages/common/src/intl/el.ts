@@ -883,6 +883,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι λεκτικό ποσοστού. Χρησιμοποιήστε μια τιμή όπως "50%" ή "12.5%".`;
 
+/** Formats a WebSocketUrlError in Greek. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι διεύθυνση URL WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Greek. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη διεύθυνση URL WebSocket.`;
+
 /**
  * Formats a LeancasedError in Greek.
  *

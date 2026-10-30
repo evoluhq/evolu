@@ -25,6 +25,7 @@ import {
   sql,
   trySync,
   UrlFromString,
+  WebSocketUrl,
   type DisposableRun,
   type NativeSqlite,
   type SqliteDriver,
@@ -322,7 +323,12 @@ export const registerDeviceSuites = (deps: DeviceSuitesDeps): void => {
             appOwner: testAppOwner,
             // Unreachable, there only to make Evolu register the owner for
             // sync, which the transports' code runs.
-            transports: [{ type: "WebSocket", url: "ws://127.0.0.1:9" }],
+            transports: [
+              {
+                type: "WebSocket",
+                url: WebSocketUrl.orThrow("ws://127.0.0.1:9/"),
+              },
+            ],
           }),
         ),
         failed,

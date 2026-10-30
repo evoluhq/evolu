@@ -25,6 +25,7 @@ import {
   type CreateSqliteDriver,
   type NativeSqlite,
   type SqliteDriver,
+  WebSocketUrl,
 } from "@evolu/common";
 import {
   AppName,
@@ -546,7 +547,7 @@ test("the relay takes a writer's rows, and a fresh reader of the same owner rece
   const startEvolu = async (name: string) => {
     const deps = createMainEvoluDeps({ console: warnConsole() });
     const evoluRun = createRun({ ...deps, reportDefect: () => undefined });
-    const url = `ws://bench.invalid/${name}`;
+    const url = WebSocketUrl.orThrow(`ws://bench.invalid/${name}`);
     const evolu = await evoluRun.ok(
       createEvolu(schema, {
         appName: AppName.orThrow(name),

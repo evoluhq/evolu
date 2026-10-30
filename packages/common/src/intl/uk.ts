@@ -880,6 +880,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є відсотковим літералом. Використовуйте значення на кшталт "50%" або "12.5%".`;
 
+/** Formats a WebSocketUrlError in Ukrainian. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є URL-адресою WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Ukrainian. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою URL-адресою WebSocket.`;
+
 /**
  * Formats a LeancasedError in Ukrainian.
  *

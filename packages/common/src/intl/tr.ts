@@ -876,6 +876,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri bir yüzde değişmezi değildir. "50%" veya "12.5%" gibi bir değer kullanın.`;
 
+/** Formats a WebSocketUrlError in Turkish. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri bir WebSocket URL'si değildir.`;
+
+/** Formats a WebSocketUrlFromStringError in Turkish. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir WebSocket URL'si değildir.`;
+
 /**
  * Formats a LeancasedError in Turkish.
  *

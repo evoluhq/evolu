@@ -779,6 +779,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si literali ya asilimia. Tumia thamani kama "50%" au "12.5%".`;
 
+/** Formats a WebSocketUrlError in Swahili. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si URL ya WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Swahili. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si URL halali ya WebSocket.`;
+
 /**
  * Formats a LeancasedError in Swahili.
  *

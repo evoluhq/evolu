@@ -5,25 +5,32 @@ import { eqData } from "../Eq.ts";
 import { test } from "node:test";
 import {
   assertEqual,
+  assertErr,
   assertFalse,
   assertNotUndefined,
+  assertOk,
   assertTrue,
 } from "../Assert.ts";
 
 import {
   createAppOwner,
   createOwnerSecret,
+  createOwnerWebSocketTransport,
   deriveShardOwner,
   mnemonicToOwnerSecret,
   OwnerSecret,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
   ownerSecretToMnemonic,
+  parseOwnerIdFromOwnerWebSocketTransportUrl,
+  RelayUrl,
+  RelayUrlFromString,
   testAppOwner,
   testOwnerSecret,
 } from "./Owner.ts";
 import { testCreateDeps } from "../Task.ts";
 import { Mnemonic } from "../Type.ts";
+import { WebSocketUrl } from "../WebSocket.ts";
 
 const testOwnerSecret2 = createOwnerSecret(testCreateDeps({ seed: "owner-2" }));
 
@@ -131,4 +138,120 @@ test("different app owners produce different shard owners", () => {
   const shard2 = deriveShardOwner(appOwner2, ["contacts"]);
 
   assertFalse(Object.is(shard1.id, shard2.id));
+});
+
+test("RelayUrl accepts a canonical WebSocketUrl without a query", () => {
+  for (const url of [
+    "wss://free.evoluhq.com/",
+    "ws://localhost:4000/",
+    // A path can carry a credential, even with "=".
+    "wss://relay.example/t/a=b/",
+  ])
+    assertOk(RelayUrl.fromUnknown(url), url);
+
+  for (const url of ["wss://relay.example/?token=1", "wss://relay.example/?"]) {
+    const result = RelayUrl.fromUnknown(url);
+    assertErr(result, { type: "RelayUrl", value: url });
+    assertEqual(
+      RelayUrl.formatError(result.error),
+      `The value "${url}" is not a relay URL, which has no query.`,
+    );
+  }
+
+  // Its parents reject other spellings and URLs.
+  assertErr(RelayUrl.fromUnknown("wss://free.evoluhq.com"), {
+    type: "Url",
+    value: "wss://free.evoluhq.com",
+  });
+  assertErr(RelayUrl.fromUnknown("https://free.evoluhq.com/"), {
+    type: "WebSocketUrl",
+    value: "https://free.evoluhq.com/",
+  });
+});
+
+test("RelayUrlFromString transforms relay URLs to their canonical spelling", () => {
+  assertOk(
+    RelayUrlFromString.fromUnknown(" WSS://Free.EvoluHQ.com:443 "),
+    "wss://free.evoluhq.com/",
+  );
+  assertOk(
+    RelayUrlFromString.fromUnknown("ws://localhost:4000"),
+    "ws://localhost:4000/",
+  );
+
+  for (const value of [
+    "free.evoluhq.com",
+    "https://free.evoluhq.com",
+    "wss://free.evoluhq.com/#sync",
+    "wss://free.evoluhq.com?token=1",
+  ]) {
+    const result = RelayUrlFromString.fromUnknown(value);
+    assertErr(result, { type: "RelayUrlFromString", value });
+    assertEqual(
+      RelayUrlFromString.formatError(result.error),
+      `The value "${value}" is not a valid relay URL.`,
+    );
+  }
+});
+
+test("RelayUrlFromString encodes the canonical spelling", () => {
+  const url = RelayUrl.orThrow("wss://free.evoluhq.com/");
+  assertEqual(RelayUrlFromString.to(url), url);
+});
+
+test("createOwnerWebSocketTransport adds the OwnerId as the query of a canonical URL", () => {
+  for (const [relayUrl, expected] of [
+    ["wss://free.evoluhq.com/", "wss://free.evoluhq.com/?ownerId="],
+    ["wss://relay.example/sync", "wss://relay.example/sync?ownerId="],
+  ] as const) {
+    const transport = createOwnerWebSocketTransport({
+      url: RelayUrl.orThrow(relayUrl),
+      ownerId: testAppOwner.id,
+    });
+    assertEqual(transport, {
+      type: "WebSocket",
+      url: `${expected}${testAppOwner.id}`,
+    });
+    assertTrue(WebSocketUrl.is(transport.url));
+    assertEqual(
+      parseOwnerIdFromOwnerWebSocketTransportUrl(transport.url),
+      testAppOwner.id,
+    );
+  }
+
+  createOwnerWebSocketTransport({
+    // @ts-expect-error createOwnerWebSocketTransport takes a RelayUrl, not a string.
+    url: "wss://free.evoluhq.com/",
+    ownerId: testAppOwner.id,
+  });
+  createOwnerWebSocketTransport({
+    // @ts-expect-error A WebSocketUrl can have a query, which a RelayUrl can't.
+    url: WebSocketUrl.orThrow("wss://free.evoluhq.com/"),
+    ownerId: testAppOwner.id,
+  });
+});
+
+test("parseOwnerIdFromOwnerWebSocketTransportUrl reads only the ownerId query parameter", () => {
+  const id = testAppOwner.id;
+  for (const url of [
+    `/?ownerId=${id}`,
+    `/sync?ownerId=${id}`,
+    `/?ownerId=${id}&token=1`,
+    `/?token=1&ownerId=${id}`,
+    `/t/a=b/?ownerId=${id}`,
+  ])
+    assertEqual(parseOwnerIdFromOwnerWebSocketTransportUrl(url), id);
+
+  for (const url of [
+    "/",
+    `/${id}`,
+    `/?foo=${id}`,
+    `/?ownerId=${id}&ownerId=${id}`,
+    "/?ownerId=",
+    "/?ownerId=invalid",
+    // Only the first "?" starts the query.
+    `/a&ownerId=${id}`,
+    `/?x=?ownerId=${id}`,
+  ])
+    assertEqual(parseOwnerIdFromOwnerWebSocketTransportUrl(url), null);
 });

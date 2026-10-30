@@ -799,6 +799,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست قيمة حرفية لنسبة مئوية. استخدم قيمة مثل "50%" أو "12.5%".`;
 
+/** Formats a WebSocketUrlError in Arabic. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان URL لـ WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Arabic. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان URL صالحاً لـ WebSocket.`;
+
 /**
  * Formats a LeancasedError in Arabic.
  *

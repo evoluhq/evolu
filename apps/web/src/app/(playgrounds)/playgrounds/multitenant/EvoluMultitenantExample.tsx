@@ -369,7 +369,12 @@ const AppEvoluContext: FC<{
           appOwner,
 
           ...(process.env.NODE_ENV === "development" && {
-            transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+            transports: [
+              {
+                type: "WebSocket",
+                url: Evolu.WebSocketUrl.orThrow("ws://localhost:4000/"),
+              },
+            ],
           }),
         }),
       );

@@ -458,7 +458,7 @@ assertEqual(
 Using `CategorySchema` and `seedDefaultData` above, with the shared `run` and persisted `appOwner` from [Create Evolu](/docs/local-first#create-evolu):
 
 ```ts
-import { AppName, createEvolu } from "@evolu/common";
+import { AppName, createEvolu, WebSocketUrl } from "@evolu/common";
 // ---cut-start---
 import {
   assertEqual,
@@ -509,7 +509,7 @@ if (isFirstLogin) {
 
 // Enable sync on the same instance. Call unuseOwner() to release this use.
 const unuseOwner = evolu.useOwner(appOwner, [
-  { type: "WebSocket", url: "wss://free.evoluhq.com" },
+  { type: "WebSocket", url: WebSocketUrl.orThrow("wss://free.evoluhq.com/") },
 ]);
 // ---cut-start---
 

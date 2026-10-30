@@ -18,6 +18,7 @@ import {
   id,
   NonEmptyTrimmedString100,
   type NativeSqlite,
+  WebSocketUrl,
 } from "@evolu/common";
 import {
   AppName,
@@ -133,7 +134,7 @@ test("Evolu's DbWorker and SharedWorker encrypt and decrypt changes with the bin
   const startEvolu = async (name: string) => {
     const deps = createEvoluDeps();
     const run = createRun(deps);
-    const url = `ws://xchacha.invalid/${name}`;
+    const url = WebSocketUrl.orThrow(`ws://xchacha.invalid/${name}`);
     const evolu = await run.ok(
       createEvolu(schema, {
         appName: AppName.orThrow(name),

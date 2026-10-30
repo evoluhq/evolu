@@ -28,6 +28,7 @@ import {
   createQueryBuilder,
   kyselySql,
   testAppOwner,
+  RelayUrl,
 } from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
 import { setupAddon } from "@evolu/sqlite-core/test/setup-addon.mts";
@@ -119,7 +120,7 @@ describe("createEvoluDeps", () => {
     // The same transport twice in one claim is a defect that panics the
     // worker's root Run.
     const transport = createOwnerWebSocketTransport({
-      url: "wss://panic.example",
+      url: RelayUrl.orThrow("wss://panic.example/"),
       ownerId: testAppOwner.id,
     });
     evolu.useOwner(testAppOwner, [transport, transport]);

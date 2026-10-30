@@ -877,6 +877,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un literal de procentaj. Folosiți o valoare precum "50%" sau "12.5%".`;
 
+/** Formats a WebSocketUrlError in Romanian. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă URL WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Romanian. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă URL WebSocket validă.`;
+
 /**
  * Formats a LeancasedError in Romanian.
  *

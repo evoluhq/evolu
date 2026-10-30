@@ -3,23 +3,20 @@
 import {
   AppName,
   booleanToSqliteBoolean,
-  brand,
   constNull,
   createEvolu,
   createOwnerWebSocketTransport,
   createQueryBuilder,
-  err,
   id,
   NonEmptyTrimmedString100,
   nullOr,
-  ok,
+  RelayUrlFromString,
   SqliteBoolean,
   sqliteTrue,
-  String,
   testAppOwner,
-  trySync,
   type KyselyNotNull,
   type Millis,
+  type RelayUrl,
 } from "@evolu/common";
 import {
   relaySyncStateToStatus,
@@ -65,33 +62,12 @@ const run = createRun(createEvoluDeps());
 const { EvoluContext, useEvolu, useOwner, useQuery } =
   createEvoluBinding<typeof AppSchema>();
 
-const RelayUrl = brand(
-  "RelayUrl",
-  String,
-  (value) => {
-    const result = trySync(() => new URL(value));
-    return result.ok &&
-      (result.value.protocol === "ws:" || result.value.protocol === "wss:") &&
-      result.value.hostname !== "" &&
-      result.value.username === "" &&
-      result.value.password === "" &&
-      !value.includes("?") &&
-      !value.includes("#")
-      ? ok()
-      : err({ type: "RelayUrl", value });
-  },
-  () =>
-    "Use a ws:// or wss:// relay URL without credentials, a query, or a fragment.",
+const defaultRelayUrl = RelayUrlFromString.orThrow(
+  process.env.NEXT_PUBLIC_EVOLU_RELAY_URL ??
+    (process.env.NODE_ENV === "development"
+      ? "ws://localhost:4000"
+      : "wss://free.evoluhq.com"),
 );
-
-const defaultRelayUrl = new URL(
-  RelayUrl.orThrow(
-    process.env.NEXT_PUBLIC_EVOLU_RELAY_URL ??
-      (process.env.NODE_ENV === "development"
-        ? "ws://localhost:4000"
-        : "wss://free.evoluhq.com"),
-  ),
-).href;
 
 const appPromise = run.ok(
   createEvolu(AppSchema, {
@@ -368,7 +344,7 @@ const connectionLabels: Readonly<Record<SyncConnection["type"], string>> = {
 
 const SyncStatus: FC = () => {
   const evolu = useEvolu();
-  const [relayUrls, setRelayUrls] = useState<ReadonlyArray<string>>([
+  const [relayUrls, setRelayUrls] = useState<ReadonlyArray<RelayUrl>>([
     defaultRelayUrl,
   ]);
   const [relayUrl, setRelayUrl] = useState("");
@@ -397,11 +373,11 @@ const SyncStatus: FC = () => {
         : newest,
     null,
   );
-  // Databases can spell one relay differently, such as without a trailing
-  // slash, and each spelling gets its own connection. Show one per relay,
-  // combining the state of its connections. Remove with evoluhq/evolu#710.
+  // Another playground can connect to a relay without the OwnerId in its URL,
+  // which gets its own connection with the same label. Show one per relay,
+  // combining the state of its connections.
   const relaysByUrl = new Map<
-    string,
+    RelayUrl,
     {
       relay: RelaySyncState;
       isConnected: boolean;
@@ -411,8 +387,7 @@ const SyncStatus: FC = () => {
   >();
   for (const relay of relayStates) {
     const { transport, route } = relay;
-    const parsed = trySync(() => new URL(transport.label));
-    const url = parsed.ok ? parsed.value.href : transport.label;
+    const url = transport.label;
     const other = relaysByUrl.get(url);
     const relayStatus = relaySyncStateToStatus(relay);
     const error =
@@ -421,8 +396,8 @@ const SyncStatus: FC = () => {
         ? relayStatus.error
         : (other?.error ?? null);
     relaysByUrl.set(url, {
-      // Details show this page's connection when another database shares it.
-      relay: other && transport.label !== url ? other.relay : relay,
+      // Both connections have the same label, so details show the first.
+      relay: other?.relay ?? relay,
       isConnected: transport.connection.type === "Open" || !!other?.isConnected,
       isComplete: route.type === "Complete" || !!other?.isComplete,
       error,
@@ -633,13 +608,15 @@ const SyncStatus: FC = () => {
           className="mt-5"
           onSubmit={(event) => {
             event.preventDefault();
-            const result = RelayUrl.fromUnknown(relayUrl.trim());
+            const result = RelayUrlFromString.fromUnknown(relayUrl.trim());
             if (!result.ok) {
-              setRelayError(RelayUrl.formatError(result.error));
+              setRelayError(
+                "Use a ws:// or wss:// relay URL with a valid host name and path, without credentials, a query, or a fragment.",
+              );
               return;
             }
-            // URL normalization makes equivalent host/port spellings one relay.
-            const url = new URL(result.value).href;
+            // A canonical URL makes equivalent spellings one relay.
+            const url = result.value;
             // Browsers block ws:// from an HTTPS page except to this device.
             const { protocol, hostname } = new URL(url);
             const isLoopback =
@@ -711,7 +688,7 @@ const SyncStatus: FC = () => {
 
 // Each keyed component owns one registration. Changing one relay leaves the
 // others connected.
-const RelayRegistration: FC<{ url: string }> = ({ url }) => {
+const RelayRegistration: FC<{ url: RelayUrl }> = ({ url }) => {
   const { appOwner } = useEvolu();
   useOwner(appOwner, [
     createOwnerWebSocketTransport({ url, ownerId: appOwner.id }),

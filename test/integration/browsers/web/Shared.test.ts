@@ -22,6 +22,7 @@ import {
   createEvolu,
   createEvoluDeps,
   createOwnerWebSocketTransport,
+  RelayUrl,
   createProtocolBroadcastMessagesFromCrdtMessages,
   createTimestamp,
   DbChange,
@@ -193,7 +194,7 @@ test("requestSync crosses browser worker ports while two clients retain the owne
     },
   );
   const transport = createOwnerWebSocketTransport({
-    url: "wss://sync.example",
+    url: RelayUrl.orThrow("wss://sync.example/"),
     ownerId: testAppOwner.id,
   });
   using firstDeps = setupClient();
@@ -274,7 +275,7 @@ test("a skipped encrypted change shows on its route across browser worker ports 
     db.selectFrom("todo").select("id"),
   );
   const transport = createOwnerWebSocketTransport({
-    url: "wss://skipped-change.example",
+    url: RelayUrl.orThrow("wss://skipped-change.example/"),
     ownerId: testAppOwner.id,
   });
   evolu.useOwner(testAppOwner, [transport]);

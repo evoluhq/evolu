@@ -2,7 +2,10 @@ import { test } from "vitest";
 import { createSSRApp, defineComponent, h, nextTick, Suspense } from "vue";
 import { assertEqual } from "../../../../packages/common/src/Assert.ts";
 import type { Evolu } from "../../../../packages/common/src/local-first/Evolu.ts";
-import { testAppOwner } from "../../../../packages/common/src/local-first/Owner.ts";
+import {
+  RelayUrl,
+  testAppOwner,
+} from "../../../../packages/common/src/local-first/Owner.ts";
 import type {
   CompleteSyncRoute,
   OwnerSyncStatus,
@@ -31,7 +34,7 @@ const syncedState: SyncState = {
     {
       type: "WebSocket",
       id: transportId,
-      label: "wss://relay.example",
+      label: RelayUrl.orThrow("wss://relay.example/"),
       connection: { type: "Open", openedAt: Millis.orThrow(1000), error: null },
     },
   ],

@@ -14,7 +14,21 @@ import type { RetryError, Task } from "./Task.ts";
 import { callback, retry } from "./Task.ts";
 import type { Duration, Millis, PerformanceTime } from "./Time.ts";
 import { durationToMillis, performanceDurationBetween } from "./Time.ts";
-import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.ts";
+import {
+  ArrayBuffer,
+  brand,
+  String,
+  transform,
+  Uint8Array,
+  Url,
+  UrlFromString,
+  type Typed,
+  type TypeError,
+} from "./Type.ts";
+import {
+  formatWebSocketUrlError,
+  formatWebSocketUrlFromStringError,
+} from "./intl/_en.ts";
 
 /**
  * WebSocket with auto-reconnect.
@@ -280,10 +294,11 @@ export type WebSocketError =
 
 /**
  * An error that occurs when the platform's WebSocket constructor throws, for
- * example for a URL it rejects, a `ws:` URL on an `https:` page, or a Content
- * Security Policy that blocks the URL. These fail the same way on every
- * attempt, so the {@link WebSocket} stops connecting. The thrown value is not
- * always an `Error`.
+ * example for a URL it rejects, which a {@link WebSocketUrl} prevents, or, in
+ * some browsers, for a `ws:` URL on an `https:` page or a Content Security
+ * Policy that blocks the URL. These fail the same way on every attempt, so the
+ * {@link WebSocket} stops connecting. The thrown value is not always an
+ * `Error`.
  *
  * @group Errors
  */
@@ -595,6 +610,151 @@ const nativeToStringState: Record<number, WebSocketReadyState> = {
   [globalThis.WebSocket.OPEN]: "open",
   [globalThis.WebSocket.CLOSING]: "closing",
   [globalThis.WebSocket.CLOSED]: "closed",
+};
+
+/**
+ * Error returned when a {@link Url} is not a {@link WebSocketUrl}.
+ *
+ * @group Errors
+ */
+export interface WebSocketUrlError extends TypeError<"WebSocketUrl"> {
+  readonly value: string;
+}
+
+/**
+ * {@link Url} that a {@link WebSocket} connects to, such as
+ * `wss://free.evoluhq.com/`.
+ *
+ * Its scheme is `ws:` or `wss:`. It can have a query, such as the `ownerId`
+ * that `createOwnerWebSocketTransport` adds. It has no fragment, which the
+ * WebSocket constructor rejects, and no username or password, which browsers
+ * and Node.js send only after the server asks for them, and React Native on
+ * Android never.
+ *
+ * Each label of its host has 1 to 63 characters and the host at most 253, as
+ * DNS allows. Its host, path, and query have only the characters java.net.URI
+ * allows there, with every `%` followed by two hex digits, and its port is not
+ * 0. React Native on Android checks the URL with java.net.URI and OkHttp, which
+ * throw natively for a longer label, another character, or port 0.
+ *
+ * Like Url, WebSocketUrl does not normalize; use {@link WebSocketUrlFromString}
+ * to convert other spellings, such as user input.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, WebSocketUrl } from "@evolu/common";
+ *
+ * assertOk(
+ *   WebSocketUrl.fromUnknown("wss://free.evoluhq.com/"),
+ *   "wss://free.evoluhq.com/",
+ * );
+ *
+ * assertErr(WebSocketUrl.fromUnknown("wss://free.evoluhq.com/#sync"), {
+ *   type: "WebSocketUrl",
+ *   value: "wss://free.evoluhq.com/#sync",
+ * });
+ * ```
+ *
+ * @group Core
+ */
+export const WebSocketUrl = /*#__PURE__*/ brand(
+  "WebSocketUrl",
+  Url,
+  (value: string) =>
+    isWebSocketUrl(value)
+      ? ok()
+      : err<WebSocketUrlError>({ type: "WebSocketUrl", value }),
+  formatWebSocketUrlError,
+);
+export type WebSocketUrl = typeof WebSocketUrl.Output;
+
+/**
+ * Error returned when {@link WebSocketUrlFromString} cannot parse a string as a
+ * {@link WebSocketUrl}.
+ *
+ * @group Errors
+ */
+export interface WebSocketUrlFromStringError extends TypeError<"WebSocketUrlFromString"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms a WebSocket URL into its canonical {@link WebSocketUrl}.
+ *
+ * Accepts what {@link UrlFromString} accepts when the result is a WebSocketUrl.
+ * Encoding returns the canonical spelling, not the original one.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   WebSocketUrlFromString,
+ * } from "@evolu/common";
+ *
+ * assertOk(
+ *   WebSocketUrlFromString.fromUnknown("WSS://Free.EvoluHQ.com:443"),
+ *   "wss://free.evoluhq.com/",
+ * );
+ *
+ * const invalid = WebSocketUrlFromString.fromUnknown("https://evolu.dev");
+ * assertErr(invalid, {
+ *   type: "WebSocketUrlFromString",
+ *   value: "https://evolu.dev",
+ * });
+ * assertEqual(
+ *   WebSocketUrlFromString.formatError(invalid.error),
+ *   'The value "https://evolu.dev" is not a valid WebSocket URL.',
+ * );
+ * ```
+ *
+ * @group Core
+ */
+export const WebSocketUrlFromString = /*#__PURE__*/ transform(
+  "WebSocketUrlFromString",
+  String,
+  WebSocketUrl,
+  {
+    from: (value: string): Result<string, WebSocketUrlFromStringError> => {
+      const url = UrlFromString.fromUnknown(value);
+      return url.ok && isWebSocketUrl(url.value)
+        ? ok(url.value)
+        : err({ type: "WebSocketUrlFromString", value });
+    },
+    to: (value: WebSocketUrl) => value,
+  },
+  formatWebSocketUrlFromStringError,
+);
+
+// Checks a canonical Url. A serialized URL starts with its lowercased scheme,
+// and only a fragment adds "#" to it.
+const isWebSocketUrl = (url: string): boolean => {
+  if (
+    !(url.startsWith("ws://") || url.startsWith("wss://")) ||
+    url.includes("#")
+  )
+    return false;
+  const { username, password, hostname, port, pathname, search } = new URL(url);
+  if (username !== "" || password !== "") return false;
+  const labels = hostname.split(".");
+  // A trailing dot ends a fully qualified name with an empty root label, which
+  // the DNS limit doesn't count.
+  if (labels.at(-1) === "") labels.pop();
+  return (
+    labels.join(".").length <= 253 &&
+    labels.every((label) => label.length >= 1 && label.length <= 63) &&
+    // React Native on Android parses the URL with java.net.URI, which throws for
+    // a character it doesn't allow or a "%" without two hex digits, and with
+    // OkHttp, which throws for port 0. Nothing catches either, so the app
+    // crashes (https://github.com/react/react-native/issues/59704).
+    port !== "0" &&
+    /^(?:\[[\d:a-f]+\]|[\w!$&'()*+,.;=~-]+)$/u.test(hostname) &&
+    /^(?:[\w!$&'()*+,./:;=@~-]|%[\dA-Fa-f]{2})*$/u.test(pathname) &&
+    /^(?:[\w!$&'()*+,./:;=?@[\]~-]|%[\dA-Fa-f]{2})*$/u.test(search)
+  );
 };
 
 /**

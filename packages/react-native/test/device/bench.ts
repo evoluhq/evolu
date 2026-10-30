@@ -60,6 +60,7 @@ import {
   type SqliteDriverOptions,
   type Task,
   type TimingSafeEqual,
+  WebSocketUrl,
 } from "@evolu/common";
 import {
   AppName,
@@ -746,7 +747,7 @@ const evoluFile = ({ appName, owner }: BenchEvoluDatabase): BenchFile => ({
 /** Each syncing Evolu's own URL, which the fake WebSocket takes to the relay. */
 const relayTransport = ({ appName }: BenchEvoluDatabase): OwnerTransport => ({
   type: "WebSocket",
-  url: `ws://bench.invalid/${appName}`,
+  url: WebSocketUrl.orThrow(`ws://bench.invalid/${appName}`),
 });
 
 /** An Evolu of the existing-file cases: `rows` rows, then disposed. */

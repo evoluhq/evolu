@@ -876,6 +876,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சதவீத literal அல்ல. "50%" அல்லது "12.5%" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;
 
+/** Formats a WebSocketUrlError in Tamil. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு WebSocket URL அல்ல.`;
+
+/** Formats a WebSocketUrlFromStringError in Tamil. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் WebSocket URL அல்ல.`;
+
 /**
  * Formats a LeancasedError in Tamil.
  *

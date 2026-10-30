@@ -36,6 +36,7 @@ import {
   createOwnerSecret,
   createOwnerWebSocketTransport,
   ownerIdToOwnerIdBytes,
+  RelayUrl,
   testAppOwner,
   type SyncOwner,
   type OwnerId,
@@ -134,6 +135,7 @@ import {
   testCreateWebSocket,
   type CreateWebSocket,
   type TestCreateWebSocket,
+  WebSocketUrl,
   type WebSocketError,
 } from "../WebSocket.ts";
 import {
@@ -1192,9 +1194,9 @@ describe("sync state", () => {
     assertEqual(first.syncStates, [{ transports: [], tenants: [] }]);
 
     const { evoluChannel } = await setup.createEvolu();
-    // A relative URL, which WebSocket accepts, labels without its query.
+    // A transport is labelled with its URL without the query.
     const transport = createOwnerWebSocketTransport({
-      url: "/relay",
+      url: RelayUrl.orThrow("wss://relay.example/"),
       ownerId: testAppOwner.id,
     });
     evoluChannel.port2.postMessage({
@@ -1215,7 +1217,7 @@ describe("sync state", () => {
     assertNotUndefined(state);
     assertEqual(first.syncStates.at(-1), state);
     assertLength(state.transports, 1);
-    assertEqual(state.transports[0].label, "/relay");
+    assertEqual(state.transports[0].label, "wss://relay.example/");
     assertEqual(state.tenants, [
       {
         type: "Active",
@@ -1258,13 +1260,38 @@ describe("sync state", () => {
     assertLength(tab.syncStates, 1);
   });
 
+  it("labels both forms of a relay's transport with the relay URL", async () => {
+    await using setup = await setupSharedWorker({
+      createWebSocket: testCreateWebSocket(),
+    });
+    using disposer = new DisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const { evoluChannel } = await setup.createEvolu();
+    const url = RelayUrl.orThrow("wss://labelled.example/sync");
+    // The URL of the per-owner form has a query, which the label omits.
+    const transports = [
+      { type: "WebSocket", url },
+      createOwnerWebSocketTransport({ url, ownerId: testAppOwner.id }),
+    ] as const;
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [{ owner: { owner: testAppOwner, transports }, action: "add" }],
+    });
+    await testWaitForWorkerMessage();
+
+    assertEqual(
+      latest().transports.map(({ label }) => label),
+      [url, url],
+    );
+  });
+
   /** Registers the app owner through one transport of the instance's database. */
   const setupAppOwnerTransport = async (
     { evoluChannel }: Pick<TestEvoluInstance, "evoluChannel">,
     url: string,
   ) => {
     const transport = createOwnerWebSocketTransport({
-      url,
+      url: RelayUrl.orThrow(url),
       ownerId: testAppOwner.id,
     });
     evoluChannel.port2.postMessage({
@@ -1327,7 +1354,7 @@ describe("sync state", () => {
     const instance = await setup.createEvolu();
     const transport = await setupAppOwnerTransport(
       instance,
-      "wss://relay.example",
+      "wss://relay.example/",
     );
     createWebSocket.open(transport.url);
     await testWaitForWorkerMessage();
@@ -1404,7 +1431,7 @@ describe("sync state", () => {
     const instance = await setup.createEvolu();
     const transport = await setupAppOwnerTransport(
       instance,
-      "wss://relay.example",
+      "wss://relay.example/",
     );
     createWebSocket.open(transport.url);
     await testWaitForWorkerMessage();
@@ -1463,7 +1490,7 @@ describe("sync state", () => {
     const instance = await setup.createEvolu({ autoDispose: false });
     const { evoluChannel } = instance;
     const writableTransport = createOwnerWebSocketTransport({
-      url: "wss://relay.example/sync",
+      url: RelayUrl.orThrow("wss://relay.example/sync"),
       ownerId: testAppOwner.id,
     });
     const readonlyOwner = {
@@ -1471,7 +1498,7 @@ describe("sync state", () => {
       encryptionKey: testAppOwner2.encryptionKey,
     };
     const readonlyTransport = createOwnerWebSocketTransport({
-      url: "wss://relay.example/sync",
+      url: RelayUrl.orThrow("wss://relay.example/sync"),
       ownerId: readonlyOwner.id,
     });
     const readonlyRegistration: SyncOwner = {
@@ -1706,7 +1733,7 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const { time } = setup.run.deps;
       const transport = createOwnerWebSocketTransport({
-        url: "wss://route.example",
+        url: RelayUrl.orThrow("wss://route.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -1827,7 +1854,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://completion-time.example",
+        url: RelayUrl.orThrow("wss://completion-time.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -1866,7 +1893,7 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const { time } = setup.run.deps;
       const transport = createOwnerWebSocketTransport({
-        url: "wss://recovery-without-snapshot.example",
+        url: RelayUrl.orThrow("wss://recovery-without-snapshot.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -1942,7 +1969,7 @@ describe("sync state", () => {
       const { states, latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://registration-without-snapshot.example",
+        url: RelayUrl.orThrow("wss://registration-without-snapshot.example/"),
         ownerId: testAppOwner.id,
       });
       const owner = { owner: testAppOwner, transports: [transport] } as const;
@@ -2002,7 +2029,7 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const transport = await setupAppOwnerTransport(
         instance,
-        "wss://disposed-worker.example",
+        "wss://disposed-worker.example/",
       );
 
       const publish = setupDeferredSyncStatePublication(
@@ -2033,12 +2060,12 @@ describe("sync state", () => {
           const instance = await setup.createEvolu();
           const keepsWritable = removed === "source transport";
           const sourceTransport = createOwnerWebSocketTransport({
-            url: "wss://late-apply-source.example",
+            url: RelayUrl.orThrow("wss://late-apply-source.example/"),
             ownerId: testAppOwner.id,
           });
           const remainingTransport = keepsWritable
             ? createOwnerWebSocketTransport({
-                url: "wss://late-apply-remaining.example",
+                url: RelayUrl.orThrow("wss://late-apply-remaining.example/"),
                 ownerId: testAppOwner.id,
               })
             : sourceTransport;
@@ -2170,7 +2197,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://failed-round.example",
+        url: RelayUrl.orThrow("wss://failed-round.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -2267,7 +2294,7 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const transports = ["a", "b"].map((suffix) =>
         createOwnerWebSocketTransport({
-          url: `wss://failed-target-${suffix}.example`,
+          url: RelayUrl.orThrow(`wss://failed-target-${suffix}.example/`),
           ownerId: testAppOwner.id,
         }),
       );
@@ -2334,7 +2361,7 @@ describe("sync state", () => {
       // Both owners share one socket.
       const transport = {
         type: "WebSocket",
-        url: "wss://downgraded-owner.example",
+        url: WebSocketUrl.orThrow("wss://downgraded-owner.example/"),
       } as const;
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
@@ -2446,7 +2473,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://later-failed-round.example",
+        url: RelayUrl.orThrow("wss://later-failed-round.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -2512,7 +2539,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://complete-at.example",
+        url: RelayUrl.orThrow("wss://complete-at.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -2548,7 +2575,7 @@ describe("sync state", () => {
               owner: testAppOwner2,
               transports: [
                 createOwnerWebSocketTransport({
-                  url: "wss://complete-at-other.example",
+                  url: RelayUrl.orThrow("wss://complete-at-other.example/"),
                   ownerId: testAppOwner2.id,
                 }),
               ],
@@ -2630,7 +2657,7 @@ describe("sync state", () => {
         };
         const instance = await setup.createEvolu();
         const transport = createOwnerWebSocketTransport({
-          url: "wss://failed-apply.example",
+          url: RelayUrl.orThrow("wss://failed-apply.example/"),
           ownerId: testAppOwner.id,
         });
 
@@ -2731,7 +2758,7 @@ describe("sync state", () => {
         };
         const instance = await setup.createEvolu();
         const transport = createOwnerWebSocketTransport({
-          url: "wss://skipped-message.example",
+          url: RelayUrl.orThrow("wss://skipped-message.example/"),
           ownerId: testAppOwner.id,
         });
         instance.evoluChannel.port2.postMessage({
@@ -3158,7 +3185,7 @@ describe("sync state", () => {
         releaseDbWorkerLeaderOnDispose: false,
       });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://replayed-write-rejection.example",
+        url: RelayUrl.orThrow("wss://replayed-write-rejection.example/"),
         ownerId: testAppOwner.id,
       });
       first.evoluChannel.port2.postMessage({
@@ -3264,11 +3291,11 @@ describe("sync state", () => {
       const sibling = await setup.createEvolu({ tenantName: siblingName });
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://continuation-a.example",
+          url: RelayUrl.orThrow("wss://continuation-a.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://continuation-b.example",
+          url: RelayUrl.orThrow("wss://continuation-b.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
@@ -3356,7 +3383,7 @@ describe("sync state", () => {
       const first = await setup.createEvolu();
       const second = await setup.createEvolu({ tenantName: secondName });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://shared.example",
+        url: RelayUrl.orThrow("wss://shared.example/"),
         ownerId: testAppOwner.id,
       });
       const registration = {
@@ -3415,8 +3442,8 @@ describe("sync state", () => {
       const source = await setup.createEvolu();
       const sibling = await setup.createEvolu({ tenantName: siblingName });
       // A transport URL carries the owner ID; a transport is labelled without it.
-      const labelA = "wss://local-copy-a.example";
-      const labelB = "wss://local-copy-b.example";
+      const labelA = RelayUrl.orThrow("wss://local-copy-a.example/");
+      const labelB = RelayUrl.orThrow("wss://local-copy-b.example/");
       const transports = [
         createOwnerWebSocketTransport({
           url: labelA,
@@ -3558,7 +3585,7 @@ describe("sync state", () => {
         const { latest } = setupSyncStates(setup, disposer);
         const instance = await setup.createEvolu();
         const transport = createOwnerWebSocketTransport({
-          url: "wss://silent.example",
+          url: RelayUrl.orThrow("wss://silent.example/"),
           ownerId: testAppOwner.id,
         });
 
@@ -3639,7 +3666,7 @@ describe("sync state", () => {
       await using setup = await setupSharedWorker({ createWebSocket, time });
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://silent.example",
+        url: RelayUrl.orThrow("wss://silent.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -3688,7 +3715,7 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const { time } = setup.run.deps;
       const transport = createOwnerWebSocketTransport({
-        url: "wss://busy.example",
+        url: RelayUrl.orThrow("wss://busy.example/"),
         ownerId: testAppOwner.id,
       });
       // A frame for an owner this database does not use, as a sibling
@@ -3739,7 +3766,7 @@ describe("sync state", () => {
       // Both owners share one socket.
       const transport = {
         type: "WebSocket",
-        url: "wss://shared-silent.example",
+        url: WebSocketUrl.orThrow("wss://shared-silent.example/"),
       } as const;
 
       instance.evoluChannel.port2.postMessage({
@@ -3811,7 +3838,7 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const { time } = setup.run.deps;
       const transport = createOwnerWebSocketTransport({
-        url: "wss://closing.example",
+        url: RelayUrl.orThrow("wss://closing.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -3854,7 +3881,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://closing-complete.example",
+        url: RelayUrl.orThrow("wss://closing-complete.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -3894,11 +3921,11 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://closing-one-a.example",
+          url: RelayUrl.orThrow("wss://closing-one-a.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://closing-one-b.example",
+          url: RelayUrl.orThrow("wss://closing-one-b.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
@@ -3955,7 +3982,7 @@ describe("sync state", () => {
       const { time } = setup.run.deps;
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://first-connection.example",
+        url: RelayUrl.orThrow("wss://first-connection.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -4031,7 +4058,7 @@ describe("sync state", () => {
       await using setup = await setupSharedWorker({ createWebSocket });
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://slow.example",
+        url: RelayUrl.orThrow("wss://slow.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -4058,7 +4085,7 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const { time } = setup.run.deps;
       const transport = createOwnerWebSocketTransport({
-        url: "wss://recovering.example",
+        url: RelayUrl.orThrow("wss://recovering.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -4135,7 +4162,7 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const { time } = setup.run.deps;
       const transport = createOwnerWebSocketTransport({
-        url: "wss://skipping.example",
+        url: RelayUrl.orThrow("wss://skipping.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -4195,7 +4222,7 @@ describe("sync state", () => {
         tenantName: Name.orThrow("second"),
       });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://shared-owner.example",
+        url: RelayUrl.orThrow("wss://shared-owner.example/"),
         ownerId: testAppOwner.id,
       });
       for (const instance of [first, second]) {
@@ -4277,7 +4304,7 @@ describe("sync state", () => {
         tenantName: Name.orThrow("second"),
       });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://leaving-owner.example",
+        url: RelayUrl.orThrow("wss://leaving-owner.example/"),
         ownerId: testAppOwner.id,
       });
       const syncOwner: SyncOwner = {
@@ -4344,7 +4371,7 @@ describe("sync state", () => {
       const { time } = setup.run.deps;
       const [primary, backup] = ["primary", "backup"].map((name) =>
         createOwnerWebSocketTransport({
-          url: `wss://${name}.example`,
+          url: RelayUrl.orThrow(`wss://${name}.example/`),
           ownerId: testAppOwner.id,
         }),
       );
@@ -4406,7 +4433,7 @@ describe("sync state", () => {
       // Both owners share one socket.
       const transport = {
         type: "WebSocket",
-        url: "wss://replaced-socket.example",
+        url: WebSocketUrl.orThrow("wss://replaced-socket.example/"),
       } as const;
       for (const owner of [testAppOwner2, testAppOwner]) {
         instance.evoluChannel.port2.postMessage({
@@ -4455,7 +4482,7 @@ describe("sync state", () => {
       const { time } = setup.run.deps;
       const transports = ["up", "down"].map((name) =>
         createOwnerWebSocketTransport({
-          url: `wss://${name}.example`,
+          url: RelayUrl.orThrow(`wss://${name}.example/`),
           ownerId: testAppOwner.id,
         }),
       );
@@ -4513,7 +4540,7 @@ describe("sync state", () => {
       // Both owners share one socket.
       const transport = {
         type: "WebSocket",
-        url: "wss://two-owners.example",
+        url: WebSocketUrl.orThrow("wss://two-owners.example/"),
       } as const;
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
@@ -4606,7 +4633,7 @@ describe("sync state", () => {
       });
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://refused-owner.example",
+        url: RelayUrl.orThrow("wss://refused-owner.example/"),
         ownerId: testAppOwner.id,
       });
       for (const { evoluChannel } of [refused, instance]) {
@@ -4682,7 +4709,7 @@ describe("sync state", () => {
       // Both owners share one socket.
       const transport = {
         type: "WebSocket",
-        url: "wss://shared-slow.example",
+        url: WebSocketUrl.orThrow("wss://shared-slow.example/"),
       } as const;
       for (const owner of [testAppOwner, testAppOwner2]) {
         instance.evoluChannel.port2.postMessage({
@@ -4778,7 +4805,7 @@ describe("sync state", () => {
       const owners = [testAppOwner, testAppOwner2];
       const transports = ["a", "b"].map((suffix) =>
         createOwnerWebSocketTransport({
-          url: `wss://pending-applies-${suffix}.example`,
+          url: RelayUrl.orThrow(`wss://pending-applies-${suffix}.example/`),
           ownerId: testAppOwner.id,
         }),
       );
@@ -4850,7 +4877,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://pending-mixed-writes.example",
+        url: RelayUrl.orThrow("wss://pending-mixed-writes.example/"),
         ownerId: testAppOwner.id,
       });
       for (const owner of [testAppOwner, testAppOwner2]) {
@@ -4968,7 +4995,7 @@ describe("sync state", () => {
       const { states, latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://queued-mutation-snapshot.example",
+        url: RelayUrl.orThrow("wss://queued-mutation-snapshot.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -5048,7 +5075,7 @@ describe("sync state", () => {
         evoluOutputs.push(output);
       };
       const transport = createOwnerWebSocketTransport({
-        url: "wss://local-only-mutation.example",
+        url: RelayUrl.orThrow("wss://local-only-mutation.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -5116,7 +5143,7 @@ describe("sync state", () => {
         const instance = await setup.createEvolu();
         const transports = Array.from({ length: transportCount }, (_, index) =>
           createOwnerWebSocketTransport({
-            url: `wss://round-${index}.example`,
+            url: RelayUrl.orThrow(`wss://round-${index}.example/`),
             ownerId: testAppOwner.id,
           }),
         );
@@ -5169,7 +5196,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://queued-write.example",
+        url: RelayUrl.orThrow("wss://queued-write.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -5223,7 +5250,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://local-only-write.example",
+        url: RelayUrl.orThrow("wss://local-only-write.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -5306,7 +5333,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://aborted-creation.example",
+        url: RelayUrl.orThrow("wss://aborted-creation.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -5354,11 +5381,11 @@ describe("sync state", () => {
       const { time } = setup.run.deps;
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://stalled.example",
+          url: RelayUrl.orThrow("wss://stalled.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://busy.example",
+          url: RelayUrl.orThrow("wss://busy.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
@@ -5420,7 +5447,7 @@ describe("sync state", () => {
       // Both owners share one socket.
       const transport = {
         type: "WebSocket",
-        url: "wss://shared-socket.example",
+        url: WebSocketUrl.orThrow("wss://shared-socket.example/"),
       } as const;
       const readonlyOwner2 = {
         owner: {
@@ -5499,7 +5526,7 @@ describe("sync state", () => {
       // Both owners share one socket.
       const transport = {
         type: "WebSocket",
-        url: "wss://shared-socket.example",
+        url: WebSocketUrl.orThrow("wss://shared-socket.example/"),
       } as const;
       const readonlyOwner2 = {
         owner: {
@@ -5566,7 +5593,7 @@ describe("sync state", () => {
         owner: testAppOwner,
         transports: [
           createOwnerWebSocketTransport({
-            url: "wss://idle-unsubscribe.example",
+            url: RelayUrl.orThrow("wss://idle-unsubscribe.example/"),
             ownerId: testAppOwner.id,
           }),
         ],
@@ -5607,7 +5634,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://disposed-writer.example",
+        url: RelayUrl.orThrow("wss://disposed-writer.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -5707,7 +5734,7 @@ describe("sync state", () => {
       const { latest } = setupSyncStates(setup, disposer);
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://sibling-write.example",
+        url: RelayUrl.orThrow("wss://sibling-write.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -5808,7 +5835,7 @@ describe("sync state", () => {
       const first = await setup.createEvolu();
       const second = await setup.createEvolu({ tenantName: secondName });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://sibling-failure.example",
+        url: RelayUrl.orThrow("wss://sibling-failure.example/"),
         ownerId: testAppOwner.id,
       });
       const registration = {
@@ -6110,11 +6137,11 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://first.example",
+          url: RelayUrl.orThrow("wss://first.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://second.example",
+          url: RelayUrl.orThrow("wss://second.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
@@ -6174,11 +6201,11 @@ describe("sync state", () => {
       const instance = await setup.createEvolu();
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://first.example",
+          url: RelayUrl.orThrow("wss://first.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://skipping.example",
+          url: RelayUrl.orThrow("wss://skipping.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
@@ -6418,7 +6445,7 @@ describe("sync state", () => {
               owner: testAppOwner,
               transports: [
                 createOwnerWebSocketTransport({
-                  url: "wss://refused-route.example",
+                  url: RelayUrl.orThrow("wss://refused-route.example/"),
                   ownerId: testAppOwner.id,
                 }),
               ],
@@ -6486,7 +6513,7 @@ const createSyncTransport = (
 ): SyncTransport => ({
   type: "WebSocket",
   id,
-  label: "wss://relay.example",
+  label: RelayUrl.orThrow("wss://relay.example/"),
   connection,
 });
 
@@ -7122,7 +7149,7 @@ describe("with one evolu instance", () => {
       await using _instanceLock = await setup.run.ok(acquireLeaderLock(id));
       using evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://before-leader.example",
+        url: RelayUrl.orThrow("wss://before-leader.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -7933,11 +7960,11 @@ describe("with one evolu instance", () => {
       const { time } = run.deps;
       const { dbInputs, dbWorkerPort, evoluChannel, id } = await createEvolu();
       const writableTransport = createOwnerWebSocketTransport({
-        url: "wss://relay.example",
+        url: RelayUrl.orThrow("wss://relay.example/"),
         ownerId: testAppOwner.id,
       });
       const readonlyTransport = createOwnerWebSocketTransport({
-        url: "wss://readonly.example",
+        url: RelayUrl.orThrow("wss://readonly.example/"),
         ownerId: testAppOwner2.id,
       });
       const readonlyOwner = {
@@ -8034,11 +8061,11 @@ describe("with one evolu instance", () => {
       const instance = await setup.createEvolu();
       const { dbInputs, evoluChannel } = instance;
       const transportA = createOwnerWebSocketTransport({
-        url: "wss://first-claim-a.example",
+        url: RelayUrl.orThrow("wss://first-claim-a.example/"),
         ownerId: testAppOwner.id,
       });
       const transportB = createOwnerWebSocketTransport({
-        url: "wss://first-claim-b.example",
+        url: RelayUrl.orThrow("wss://first-claim-b.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -8091,11 +8118,11 @@ describe("with one evolu instance", () => {
       const { dbInputs, evoluChannel } = instance;
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://opened-a.example",
+          url: RelayUrl.orThrow("wss://opened-a.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://opened-b.example",
+          url: RelayUrl.orThrow("wss://opened-b.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
@@ -8127,11 +8154,11 @@ describe("with one evolu instance", () => {
       const { time } = setup.run.deps;
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://continuation-a.example",
+          url: RelayUrl.orThrow("wss://continuation-a.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://continuation-b.example",
+          url: RelayUrl.orThrow("wss://continuation-b.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
@@ -8184,7 +8211,7 @@ describe("with one evolu instance", () => {
         tenantName: Name.orThrow("second-tenant"),
       });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://attributed-replies.example",
+        url: RelayUrl.orThrow("wss://attributed-replies.example/"),
         ownerId: testAppOwner.id,
       });
       const syncOwner = {
@@ -8294,7 +8321,7 @@ describe("with one evolu instance", () => {
           tenantName: Name.orThrow("second-tenant"),
         });
         const transport = createOwnerWebSocketTransport({
-          url: "wss://turn-handover.example",
+          url: RelayUrl.orThrow("wss://turn-handover.example/"),
           ownerId: testAppOwner.id,
         });
         const syncOwner = {
@@ -8363,7 +8390,7 @@ describe("with one evolu instance", () => {
         tenantName: Name.orThrow("second-tenant"),
       });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://alternating-senders.example",
+        url: RelayUrl.orThrow("wss://alternating-senders.example/"),
         ownerId: testAppOwner.id,
       });
       const getContinues = ({ dbInputs }: TestEvoluInstance): boolean => {
@@ -8440,7 +8467,7 @@ describe("with one evolu instance", () => {
         tenantName: Name.orThrow("second-tenant"),
       });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://unsubscribe-order.example",
+        url: RelayUrl.orThrow("wss://unsubscribe-order.example/"),
         ownerId: testAppOwner.id,
       });
       const syncOwner = {
@@ -8541,11 +8568,11 @@ describe("with one evolu instance", () => {
       const { dbInputs, evoluChannel } = instance;
       const { time } = setup.run.deps;
       const transportA = createOwnerWebSocketTransport({
-        url: "wss://propagate-a.example",
+        url: RelayUrl.orThrow("wss://propagate-a.example/"),
         ownerId: testAppOwner.id,
       });
       const transportB = createOwnerWebSocketTransport({
-        url: "wss://propagate-b.example",
+        url: RelayUrl.orThrow("wss://propagate-b.example/"),
         ownerId: testAppOwner.id,
       });
       const frame = protocolMessageToArrayBuffer(
@@ -8672,11 +8699,11 @@ describe("with one evolu instance", () => {
         const first = await setup.createEvolu();
         const { dbInputs, dbWorkerPort, evoluChannel } = first;
         const transport = createOwnerWebSocketTransport({
-          url: "wss://ordered-sync.example",
+          url: RelayUrl.orThrow("wss://ordered-sync.example/"),
           ownerId: testAppOwner.id,
         });
         const nextTransport = createOwnerWebSocketTransport({
-          url: "wss://ordered-sync-next.example",
+          url: RelayUrl.orThrow("wss://ordered-sync-next.example/"),
           ownerId: testAppOwner.id,
         });
         evoluChannel.port2.postMessage({
@@ -8845,11 +8872,11 @@ describe("with one evolu instance", () => {
       const { dbInputs, dbWorkerPort, evoluChannel } = instance;
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://covering-a.example",
+          url: RelayUrl.orThrow("wss://covering-a.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://covering-b.example",
+          url: RelayUrl.orThrow("wss://covering-b.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
@@ -8925,7 +8952,7 @@ describe("with one evolu instance", () => {
       await using setup = await setupSharedWorker({ createWebSocket });
       const first = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://late-tenant.example",
+        url: RelayUrl.orThrow("wss://late-tenant.example/"),
         ownerId: testAppOwner.id,
       });
       const syncOwner = {
@@ -8997,11 +9024,11 @@ describe("with one evolu instance", () => {
       await using setup = await setupSharedWorker({ createWebSocket });
       const first = await setup.createEvolu();
       const transportA = createOwnerWebSocketTransport({
-        url: "wss://joining-tenant-a.example",
+        url: RelayUrl.orThrow("wss://joining-tenant-a.example/"),
         ownerId: testAppOwner.id,
       });
       const transportB = createOwnerWebSocketTransport({
-        url: "wss://joining-tenant-b.example",
+        url: RelayUrl.orThrow("wss://joining-tenant-b.example/"),
         ownerId: testAppOwner.id,
       });
       first.evoluChannel.port2.postMessage({
@@ -9058,11 +9085,11 @@ describe("with one evolu instance", () => {
       await using setup = await setupSharedWorker({ createWebSocket });
       const first = await setup.createEvolu();
       const transportA = createOwnerWebSocketTransport({
-        url: "wss://later-tenant-use-a.example",
+        url: RelayUrl.orThrow("wss://later-tenant-use-a.example/"),
         ownerId: testAppOwner.id,
       });
       const transportB = createOwnerWebSocketTransport({
-        url: "wss://later-tenant-use-b.example",
+        url: RelayUrl.orThrow("wss://later-tenant-use-b.example/"),
         ownerId: testAppOwner.id,
       });
       first.evoluChannel.port2.postMessage({
@@ -9210,7 +9237,7 @@ describe("with one evolu instance", () => {
       const { createEvolu } = setup;
       const { dbInputs, evoluChannel } = await createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://transport.example",
+        url: RelayUrl.orThrow("wss://transport.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -9238,7 +9265,7 @@ describe("with one evolu instance", () => {
       const { createEvolu, run } = setup;
       const { evoluChannel } = await createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://transport-events.example",
+        url: RelayUrl.orThrow("wss://transport-events.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -9303,7 +9330,7 @@ describe("with one evolu instance", () => {
         consoleEntryOrErrors.push(output);
       };
       const transport = createOwnerWebSocketTransport({
-        url: "wss://version-mismatch.example",
+        url: RelayUrl.orThrow("wss://version-mismatch.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -9392,7 +9419,7 @@ describe("with one evolu instance", () => {
       const { createEvolu } = setup;
       const { dbInputs, evoluChannel } = await createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://open-later.example",
+        url: RelayUrl.orThrow("wss://open-later.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -9428,11 +9455,11 @@ describe("with one evolu instance", () => {
         await setup.createEvolu();
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://closed.example",
+          url: RelayUrl.orThrow("wss://closed.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://opening.example",
+          url: RelayUrl.orThrow("wss://opening.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
@@ -9503,7 +9530,7 @@ describe("with one evolu instance", () => {
       const instance = await setup.createEvolu();
       const { dbInputs, evoluChannel } = instance;
       const transport = createOwnerWebSocketTransport({
-        url: "wss://queued-unsubscribe.example",
+        url: RelayUrl.orThrow("wss://queued-unsubscribe.example/"),
         ownerId: testAppOwner.id,
       });
       const syncOwner = {
@@ -9578,16 +9605,16 @@ describe("with one evolu instance", () => {
       const instance = await setup.createEvolu();
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://closed-upload.example",
+          url: RelayUrl.orThrow("wss://closed-upload.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://opening-upload.example",
+          url: RelayUrl.orThrow("wss://opening-upload.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
       const otherOwnerTransport = createOwnerWebSocketTransport({
-        url: "wss://other-owner-upload.example",
+        url: RelayUrl.orThrow("wss://other-owner-upload.example/"),
         ownerId: testAppOwner2.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -9675,11 +9702,11 @@ describe("with one evolu instance", () => {
       });
       const first = await setup.createEvolu();
       const transportA = createOwnerWebSocketTransport({
-        url: "wss://xchacha-a.example",
+        url: RelayUrl.orThrow("wss://xchacha-a.example/"),
         ownerId: testAppOwner.id,
       });
       const transportB = createOwnerWebSocketTransport({
-        url: "wss://xchacha-b.example",
+        url: RelayUrl.orThrow("wss://xchacha-b.example/"),
         ownerId: testAppOwner.id,
       });
       first.evoluChannel.port2.postMessage({
@@ -9775,7 +9802,7 @@ describe("with one evolu instance", () => {
       const { createEvolu } = setup;
       const { evoluChannel } = await createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://unsubscribe.example",
+        url: RelayUrl.orThrow("wss://unsubscribe.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -9813,7 +9840,7 @@ describe("with one evolu instance", () => {
       const { createEvolu } = setup;
       const { evoluChannel } = await createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://repeated-owner.example",
+        url: RelayUrl.orThrow("wss://repeated-owner.example/"),
         ownerId: testAppOwner.id,
       });
       const syncOwner = {
@@ -9856,7 +9883,7 @@ describe("with one evolu instance", () => {
       const instance = await setup.createEvolu();
       const { dbInputs, evoluChannel } = instance;
       const transport = createOwnerWebSocketTransport({
-        url: "wss://readonly-then-writable.example",
+        url: RelayUrl.orThrow("wss://readonly-then-writable.example/"),
         ownerId: testAppOwner.id,
       });
       const readonlySyncOwner = {
@@ -9926,7 +9953,7 @@ describe("with one evolu instance", () => {
       const instance = await setup.createEvolu();
       const { dbInputs, evoluChannel } = instance;
       const transport = createOwnerWebSocketTransport({
-        url: "wss://writable-then-readonly.example",
+        url: RelayUrl.orThrow("wss://writable-then-readonly.example/"),
         ownerId: testAppOwner.id,
       });
       const readonlySyncOwner = {
@@ -10032,7 +10059,7 @@ describe("with one evolu instance", () => {
         });
       };
       const transport = createOwnerWebSocketTransport({
-        url: "wss://explicit-sync.example",
+        url: RelayUrl.orThrow("wss://explicit-sync.example/"),
         ownerId: testAppOwner.id,
       });
       const first = { owner: testAppOwner, transports: [transport] } as const;
@@ -10111,7 +10138,7 @@ describe("with one evolu instance", () => {
       const { dbInputs, dbWorkerPort, evoluChannel } =
         await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://pending-sync.example",
+        url: RelayUrl.orThrow("wss://pending-sync.example/"),
         ownerId: testAppOwner.id,
       });
       evoluChannel.port2.postMessage({
@@ -10173,11 +10200,11 @@ describe("with one evolu instance", () => {
       const { createEvolu } = setup;
       const { evoluChannel } = await createEvolu();
       const firstTransport = createOwnerWebSocketTransport({
-        url: "wss://first-owner-use.example",
+        url: RelayUrl.orThrow("wss://first-owner-use.example/"),
         ownerId: testAppOwner.id,
       });
       const secondTransport = createOwnerWebSocketTransport({
-        url: "wss://second-owner-use.example",
+        url: RelayUrl.orThrow("wss://second-owner-use.example/"),
         ownerId: testAppOwner.id,
       });
       const firstSyncOwner = {
@@ -10228,7 +10255,7 @@ describe("with one evolu instance", () => {
       const { createEvolu, run } = setup;
       const { evoluChannel } = await createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://create-defect.example",
+        url: RelayUrl.orThrow("wss://create-defect.example/"),
         ownerId: testAppOwner.id,
       });
       const reported = run.deps.reportDefect.next();
@@ -10266,7 +10293,7 @@ describe("with one evolu instance", () => {
         );
       const evoluOutputs: Array<EvoluOutput> = [];
       const transport = createOwnerWebSocketTransport({
-        url: "wss://apply-sync.example",
+        url: RelayUrl.orThrow("wss://apply-sync.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -10448,7 +10475,7 @@ describe("with one evolu instance", () => {
           consoleEntryOrErrorBroadcastChannelName,
         );
       const transport = createOwnerWebSocketTransport({
-        url: "wss://apply-sync-ignored.example",
+        url: RelayUrl.orThrow("wss://apply-sync-ignored.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -10547,7 +10574,7 @@ describe("with one evolu instance", () => {
         encryptionKey: testAppOwner2.encryptionKey,
       };
       const readonlyTransport = createOwnerWebSocketTransport({
-        url: "wss://readonly-only.example",
+        url: RelayUrl.orThrow("wss://readonly-only.example/"),
         ownerId: readonlyOwner.id,
       });
 
@@ -10567,7 +10594,7 @@ describe("with one evolu instance", () => {
       assertEqual(dbInputs, []);
 
       const writableTransport = createOwnerWebSocketTransport({
-        url: "wss://removed-owner.example",
+        url: RelayUrl.orThrow("wss://removed-owner.example/"),
         ownerId: testAppOwner.id,
       });
       evoluChannel.port2.postMessage({
@@ -10613,7 +10640,7 @@ describe("with one evolu instance", () => {
       const { dbInputs, dbWorkerPort, evoluChannel, id } = await createEvolu();
       const outputs: Array<EvoluOutput> = [];
       const transport = createOwnerWebSocketTransport({
-        url: "wss://closed-transport.example",
+        url: RelayUrl.orThrow("wss://closed-transport.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -10679,11 +10706,11 @@ describe("with one evolu instance", () => {
       const firstCreateStarted = Promise.withResolvers<void>();
       const allowFirstCreateToFinish = Promise.withResolvers<void>();
       const transportA = createOwnerWebSocketTransport({
-        url: "wss://use-owner-a.example",
+        url: RelayUrl.orThrow("wss://use-owner-a.example/"),
         ownerId: testAppOwner.id,
       });
       const transportB = createOwnerWebSocketTransport({
-        url: "wss://use-owner-b.example",
+        url: RelayUrl.orThrow("wss://use-owner-b.example/"),
         ownerId: testAppOwner.id,
       });
       const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
@@ -10955,11 +10982,11 @@ describe("with one evolu instance", () => {
         releaseDbWorkerLeaderOnDispose: false,
       });
       const transportA = createOwnerWebSocketTransport({
-        url: "wss://replayed-a.example",
+        url: RelayUrl.orThrow("wss://replayed-a.example/"),
         ownerId: testAppOwner.id,
       });
       const transportB = createOwnerWebSocketTransport({
-        url: "wss://replayed-b.example",
+        url: RelayUrl.orThrow("wss://replayed-b.example/"),
         ownerId: testAppOwner.id,
       });
       first.evoluChannel.port2.postMessage({
@@ -11407,7 +11434,7 @@ describe("with one evolu instance", () => {
         autoDispose: false,
       });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://tenant-dispose.example",
+        url: RelayUrl.orThrow("wss://tenant-dispose.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -11439,11 +11466,11 @@ describe("with one evolu instance", () => {
       const instance = await setup.createEvolu({ autoDispose: false });
       const transports = [
         createOwnerWebSocketTransport({
-          url: "wss://dispose-sets-a.example",
+          url: RelayUrl.orThrow("wss://dispose-sets-a.example/"),
           ownerId: testAppOwner.id,
         }),
         createOwnerWebSocketTransport({
-          url: "wss://dispose-sets-b.example",
+          url: RelayUrl.orThrow("wss://dispose-sets-b.example/"),
           ownerId: testAppOwner.id,
         }),
       ] as const;
@@ -11549,7 +11576,7 @@ describe("with one evolu instance", () => {
         releaseDbWorkerLeaderOnDispose: false,
       });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://sync-during-dispose.example",
+        url: RelayUrl.orThrow("wss://sync-during-dispose.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -11591,7 +11618,7 @@ describe("with one evolu instance", () => {
       const { evoluChannel, [Symbol.asyncDispose]: disposeInstance } =
         await createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://after-dispose.example",
+        url: RelayUrl.orThrow("wss://after-dispose.example/"),
         ownerId: testAppOwner.id,
       });
 
@@ -11626,7 +11653,7 @@ describe("with one evolu instance", () => {
       });
       const instance = await setup.createEvolu({ autoDispose: false });
       const transport = createOwnerWebSocketTransport({
-        url: "wss://claim-during-dispose.example",
+        url: RelayUrl.orThrow("wss://claim-during-dispose.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -11648,7 +11675,7 @@ describe("with one evolu instance", () => {
               owner: testAppOwner,
               transports: [
                 createOwnerWebSocketTransport({
-                  url: "wss://queued-during-dispose.example",
+                  url: RelayUrl.orThrow("wss://queued-during-dispose.example/"),
                   ownerId: testAppOwner.id,
                 }),
               ],
@@ -11675,7 +11702,7 @@ describe("with one evolu instance", () => {
       await using setup = await setupSharedWorker({ createWebSocket });
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
-        url: "wss://root-dispose.example",
+        url: RelayUrl.orThrow("wss://root-dispose.example/"),
         ownerId: testAppOwner.id,
       });
       instance.evoluChannel.port2.postMessage({
@@ -11709,7 +11736,7 @@ describe("with one evolu instance", () => {
               owner: testAppOwner,
               transports: [
                 createOwnerWebSocketTransport({
-                  url: "wss://root-panic.example",
+                  url: RelayUrl.orThrow("wss://root-panic.example/"),
                   ownerId: testAppOwner.id,
                 }),
               ],
@@ -11817,11 +11844,11 @@ describe("local delivery between databases", () => {
     });
     const transports = [
       createOwnerWebSocketTransport({
-        url: "wss://local-mutation-a.example",
+        url: RelayUrl.orThrow("wss://local-mutation-a.example/"),
         ownerId: testAppOwner.id,
       }),
       createOwnerWebSocketTransport({
-        url: "wss://local-mutation-b.example",
+        url: RelayUrl.orThrow("wss://local-mutation-b.example/"),
         ownerId: testAppOwner.id,
       }),
     ] as const;
@@ -11941,7 +11968,7 @@ describe("local delivery between databases", () => {
     );
     const transports = [
       createOwnerWebSocketTransport({
-        url: "wss://local-encryption.example",
+        url: RelayUrl.orThrow("wss://local-encryption.example/"),
         ownerId: testAppOwner.id,
       }),
     ] as const;
@@ -12053,11 +12080,11 @@ describe("local delivery between databases", () => {
     });
     const transports = [
       createOwnerWebSocketTransport({
-        url: "wss://local-continuation-a.example",
+        url: RelayUrl.orThrow("wss://local-continuation-a.example/"),
         ownerId: testAppOwner.id,
       }),
       createOwnerWebSocketTransport({
-        url: "wss://local-continuation-b.example",
+        url: RelayUrl.orThrow("wss://local-continuation-b.example/"),
         ownerId: testAppOwner.id,
       }),
     ] as const;

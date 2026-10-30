@@ -59,6 +59,7 @@ import { DurationLiteral } from "../Time.ts";
 import { PercentageLiteral } from "../Number.ts";
 import { ByteSizeLiteral } from "../Bytes.ts";
 import { LeancasedString } from "../Leancase.ts";
+import { WebSocketUrl, WebSocketUrlFromString } from "../WebSocket.ts";
 import { ok, type Result } from "../Result.ts";
 import { mapObject, objectToEntries } from "../Object.ts";
 
@@ -247,6 +248,8 @@ const formattersFor = (locale: typeof en) => ({
   UuidV4: locale.formatUuidVersionError,
   UuidV7: locale.formatUuidVersionError,
   ValidDate: locale.formatValidDateError,
+  WebSocketUrl: locale.formatWebSocketUrlError,
+  WebSocketUrlFromString: locale.formatWebSocketUrlFromStringError,
   WellFormed: locale.formatWellFormedError,
 });
 
@@ -376,6 +379,8 @@ const typesByLocale = Type.localizeTypes(
     UuidV4: Type.UuidV4,
     UuidV7: Type.UuidV7,
     ValidDate: Type.ValidDate,
+    WebSocketUrl,
+    WebSocketUrlFromString,
     WellFormedString: Type.WellFormedString,
     Array: Type.array(Type.String),
     Between: Between1And2,
@@ -962,6 +967,16 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
     f.formatByteLengthFromStringError({
       type: "ByteLengthFromString",
       value: "1MB",
+    }),
+  (f) =>
+    f.formatWebSocketUrlError({
+      type: "WebSocketUrl",
+      value: "https://example.com/",
+    }),
+  (f) =>
+    f.formatWebSocketUrlFromStringError({
+      type: "WebSocketUrlFromString",
+      value: "example.com",
     }),
 ];
 

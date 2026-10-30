@@ -5,6 +5,7 @@ import {
   createOwnerSecret,
   createRandomBytes,
   NonEmptyTrimmedString100,
+  WebSocketUrl,
 } from "@evolu/common";
 import { createEvoluDeps, createRun } from "@evolu/web";
 import { Schema, todosQuery } from "./data.ts";
@@ -23,8 +24,14 @@ const evolu = await run.ok(
     appOwner,
     // Sync through one relay, several, or none.
     transports: [
-      { type: "WebSocket", url: "wss://relay.example.com" },
-      { type: "WebSocket", url: "wss://free.evoluhq.com" },
+      {
+        type: "WebSocket",
+        url: WebSocketUrl.orThrow("wss://relay.example.com/"),
+      },
+      {
+        type: "WebSocket",
+        url: WebSocketUrl.orThrow("wss://free.evoluhq.com/"),
+      },
     ],
   }),
 );

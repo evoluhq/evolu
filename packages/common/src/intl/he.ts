@@ -874,6 +874,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו ליטרל של אחוזים. יש להשתמש בערך כגון "50%" או "12.5%".`;
 
+/** Formats a WebSocketUrlError in Hebrew. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת URL מסוג WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Hebrew. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת URL חוקית מסוג WebSocket.`;
+
 /**
  * Formats a LeancasedError in Hebrew.
  *

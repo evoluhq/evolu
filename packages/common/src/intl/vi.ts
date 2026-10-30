@@ -809,6 +809,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là literal phần trăm. Hãy dùng giá trị như "50%" hoặc "12.5%".`;
 
+/** Formats a WebSocketUrlError in Vietnamese. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là URL WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Vietnamese. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là URL WebSocket hợp lệ.`;
+
 /**
  * Formats a LeancasedError in Vietnamese.
  *

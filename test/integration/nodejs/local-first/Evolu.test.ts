@@ -34,6 +34,7 @@ import {
   createAppOwner,
   createOwnerSecret,
   createOwnerWebSocketTransport,
+  RelayUrl,
   testAppOwner,
 } from "../../../../packages/common/src/local-first/Owner.ts";
 import {
@@ -502,7 +503,7 @@ describe("Evolu integration", () => {
     await using evoluRun = run.create(deps);
     await using evolu = await evoluRun.ok(createIntegrationEvolu);
     const transport = createOwnerWebSocketTransport({
-      url: "wss://skipped-change-batch.example",
+      url: RelayUrl.orThrow("wss://skipped-change-batch.example/"),
       ownerId: testAppOwner.id,
     });
     evolu.useOwner(testAppOwner, [transport]);
@@ -581,7 +582,7 @@ describe("Evolu integration", () => {
     await using relays = await setupRelays("evolu-foreign-change");
     const { relayA } = relays;
     const transport = createOwnerWebSocketTransport({
-      url: `ws://127.0.0.1:${relayA.port}`,
+      url: RelayUrl.orThrow(`ws://127.0.0.1:${relayA.port}/`),
       ownerId: testAppOwner.id,
     });
 
@@ -678,7 +679,7 @@ describe("Evolu integration", () => {
     await using relays = await setupRelays("evolu-skipped-local-copy");
     const { relayA } = relays;
     const transport = createOwnerWebSocketTransport({
-      url: `ws://127.0.0.1:${relayA.port}`,
+      url: RelayUrl.orThrow(`ws://127.0.0.1:${relayA.port}/`),
       ownerId: testAppOwner.id,
     });
     await using device = await setupDevice({
@@ -845,7 +846,7 @@ describe("Evolu integration", () => {
       await using evolu = await run.ok(createIntegrationEvolu);
       await using instances = new AsyncDisposableStack();
       const transport = createOwnerWebSocketTransport({
-        url: `ws://127.0.0.1:${relay.port}`,
+        url: RelayUrl.orThrow(`ws://127.0.0.1:${relay.port}/`),
         ownerId: testAppOwner.id,
       });
       evolu.useOwner(testAppOwner, [transport]);
@@ -926,11 +927,11 @@ describe("Evolu integration", () => {
 
     const title = NonEmptyTrimmedString100.orThrow("Learned from relay A");
     const transportA = createOwnerWebSocketTransport({
-      url: `ws://127.0.0.1:${relayA.port}`,
+      url: RelayUrl.orThrow(`ws://127.0.0.1:${relayA.port}/`),
       ownerId: testAppOwner.id,
     });
     const transportB = createOwnerWebSocketTransport({
-      url: `ws://127.0.0.1:${relayB.port}`,
+      url: RelayUrl.orThrow(`ws://127.0.0.1:${relayB.port}/`),
       ownerId: testAppOwner.id,
     });
 
@@ -990,11 +991,11 @@ describe("Evolu integration", () => {
     await using relays = await setupRelays("evolu-tenant-relay");
     const { relayA, relayB } = relays;
     const transportA = createOwnerWebSocketTransport({
-      url: `ws://127.0.0.1:${relayA.port}`,
+      url: RelayUrl.orThrow(`ws://127.0.0.1:${relayA.port}/`),
       ownerId: testAppOwner.id,
     });
     const transportB = createOwnerWebSocketTransport({
-      url: `ws://127.0.0.1:${relayB.port}`,
+      url: RelayUrl.orThrow(`ws://127.0.0.1:${relayB.port}/`),
       ownerId: testAppOwner.id,
     });
     const tenantDriversByName = new Map<Name, SqliteDriver>();
@@ -1089,7 +1090,7 @@ describe("Evolu integration", () => {
     await using relays = await setupRelays("evolu-attributed-replies");
     const { relayA } = relays;
     const transport = createOwnerWebSocketTransport({
-      url: `ws://127.0.0.1:${relayA.port}`,
+      url: RelayUrl.orThrow(`ws://127.0.0.1:${relayA.port}/`),
       ownerId: testAppOwner.id,
     });
 
@@ -1217,7 +1218,7 @@ describe("Evolu integration", () => {
     using states = setupSyncStates(device.setup.syncStateChannelName);
     const getRoute = (name: Name, port: number) =>
       syncStateToRelaySyncStates(states.getState(), name, testAppOwner.id).find(
-        ({ transport }) => transport.label === `ws://127.0.0.1:${port}`,
+        ({ transport }) => transport.label === `ws://127.0.0.1:${port}/`,
       )?.route;
     const createTenant = (appName: string) =>
       device.setup.run.ok(
@@ -1228,11 +1229,11 @@ describe("Evolu integration", () => {
         }),
       );
     const transportA = createOwnerWebSocketTransport({
-      url: `ws://127.0.0.1:${relayA.port}`,
+      url: RelayUrl.orThrow(`ws://127.0.0.1:${relayA.port}/`),
       ownerId: testAppOwner.id,
     });
     const transportB = createOwnerWebSocketTransport({
-      url: `ws://127.0.0.1:${relayB.port}`,
+      url: RelayUrl.orThrow(`ws://127.0.0.1:${relayB.port}/`),
       ownerId: testAppOwner.id,
     });
     await using source = await createTenant("ContinuationSource");
@@ -1326,7 +1327,7 @@ describe("Evolu integration", () => {
     using cleanup = new DisposableStack();
     cleanup.defer(() => quota.resolve(true));
     const transport = createOwnerWebSocketTransport({
-      url: `ws://127.0.0.1:${relays.relayA.port}`,
+      url: RelayUrl.orThrow(`ws://127.0.0.1:${relays.relayA.port}/`),
       ownerId: testAppOwner.id,
     });
     const initialRound = Promise.withResolvers<void>();
@@ -1400,10 +1401,13 @@ describe("Evolu integration", () => {
     await using writer = await createTenant("LargeWriter");
     await using sibling = await createTenant("LargeSibling");
     const transports = [
-      "ws://offline-a.localhost",
-      "ws://offline-b.localhost",
+      "ws://offline-a.localhost/",
+      "ws://offline-b.localhost/",
     ].map((url) =>
-      createOwnerWebSocketTransport({ url, ownerId: testAppOwner.id }),
+      createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow(url),
+        ownerId: testAppOwner.id,
+      }),
     );
     assertNonEmptyArray(transports);
     writer.useOwner(testAppOwner, transports);

@@ -867,6 +867,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是百分比字面值。請使用 "50%" 或 "12.5%" 這樣的值。`;
 
+/** Formats a WebSocketUrlError in Traditional Chinese. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是 WebSocket URL。`;
+
+/** Formats a WebSocketUrlFromStringError in Traditional Chinese. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 WebSocket URL。`;
+
 /**
  * Formats a LeancasedError in Traditional Chinese.
  *

@@ -183,7 +183,7 @@ test("validates relay URLs and removes configured relays", async ({
   await input.fill("https://not-a-relay.example");
   await add.click();
   await expect(error).toHaveText(
-    "Use a ws:// or wss:// relay URL without credentials, a query, or a fragment.",
+    "Use a ws:// or wss:// relay URL with a valid host name and path, without credentials, a query, or a fragment.",
   );
   await expect(relays.getByRole("listitem")).toHaveCount(1);
 
@@ -251,7 +251,7 @@ test("shows relays added by another tab without letting this tab remove them", a
   await expect(relays.getByRole("listitem")).toHaveCount(1);
 });
 
-test("counts a relay once when another playground spells its URL differently", async ({
+test("counts a relay once when another playground connects without the OwnerId", async ({
   context,
   page,
   relay,
@@ -263,7 +263,7 @@ test("counts a relay once when another playground spells its URL differently", a
   ).toBeVisible();
 
   // The minimal playground uses the same owner and connects to the relay URL
-  // without the trailing slash, so it opens a separate connection.
+  // without the OwnerId, so it opens a separate connection with the same label.
   const minimal = await context.newPage();
   await minimal.goto("/playgrounds/minimal");
   await addTodo(minimal, "From the minimal playground");

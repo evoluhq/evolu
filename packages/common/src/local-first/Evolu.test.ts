@@ -39,6 +39,7 @@ import {
   createSharedOwner,
   createSharedReadonlyOwner,
   type Owner,
+  RelayUrl,
   testAppOwner,
 } from "./Owner.ts";
 import {
@@ -79,6 +80,7 @@ import { SqliteBoolean } from "../Sqlite.ts";
 import { explicitAbortReason, testCreateDeps, testCreateRun } from "../Task.ts";
 import { testCreateId } from "../Test.ts";
 import { maxMillis, Millis } from "../Time.ts";
+import { WebSocketUrl } from "../WebSocket.ts";
 import {
   assertType,
   createIdFromString,
@@ -131,7 +133,7 @@ const testCreateEvolu = createEvolu(Schema, {
 });
 
 const testOwnerTransport = createOwnerWebSocketTransport({
-  url: "wss://example.com",
+  url: RelayUrl.orThrow("wss://example.com/"),
   ownerId: testAppOwner.id,
 });
 
@@ -653,7 +655,7 @@ describe("Evolu", () => {
           {
             type: "WebSocket",
             id: transportId,
-            label: "wss://relay.example",
+            label: RelayUrl.orThrow("wss://relay.example/"),
             connection: {
               type: "Open",
               openedAt: Millis.orThrow(1000),
@@ -759,7 +761,7 @@ describe("Evolu", () => {
           .map((id) => ({
             type: "WebSocket",
             id,
-            label: `wss://${id}.example`,
+            label: RelayUrl.orThrow(`wss://${id.toLowerCase()}.example/`),
             connection: { type: "Open", openedAt: at, error: null },
           })),
         tenants: [
@@ -1197,10 +1199,12 @@ describe("Evolu", () => {
           action: "add",
           owner: {
             owner: testPostedAppOwner,
-            transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
+            transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com/" }],
           },
         },
       ]);
+      // The default is cast, so its URL must be a canonical WebSocketUrl.
+      assertTrue(WebSocketUrl.is("wss://free.evoluhq.com/"));
     });
     it("resolves name from appName and appOwner hash", async () => {
       await using setup = await setupRunWithEvoluDeps();

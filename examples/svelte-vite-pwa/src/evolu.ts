@@ -40,7 +40,12 @@ export const evolu = await run.ok(
     appOwner: Evolu.testAppOwner,
 
     ...(import.meta.env.DEV && {
-      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+      transports: [
+        {
+          type: "WebSocket",
+          url: Evolu.WebSocketUrl.orThrow("ws://localhost:4000/"),
+        },
+      ],
     }),
   }),
 );

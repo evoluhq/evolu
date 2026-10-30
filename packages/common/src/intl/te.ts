@@ -876,6 +876,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} శాతం లిటరల్ కాదు. "50%" లేదా "12.5%" వంటి విలువను ఉపయోగించండి.`;
 
+/** Formats a WebSocketUrlError in Telugu. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} WebSocket URL కాదు.`;
+
+/** Formats a WebSocketUrlFromStringError in Telugu. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే WebSocket URL కాదు.`;
+
 /**
  * Formats a LeancasedError in Telugu.
  *

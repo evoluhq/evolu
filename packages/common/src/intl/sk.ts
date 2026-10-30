@@ -786,6 +786,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je percentuálny literál. Použite napríklad "50%" alebo "12.5%".`;
 
+/** Formats a WebSocketUrlError in Slovak. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je adresa URL protokolu WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Slovak. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nie je platná adresa URL protokolu WebSocket.`;
+
 /**
  * Formats a LeancasedError in Slovak.
  *

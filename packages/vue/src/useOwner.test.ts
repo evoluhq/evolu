@@ -1,6 +1,7 @@
 import { assertEqual, assertThrows, assertTrue } from "@evolu/common";
 import {
   createOwnerWebSocketTransport,
+  RelayUrl,
   testAppOwner,
   type Evolu,
 } from "@evolu/common/local-first";
@@ -39,7 +40,7 @@ const setupUseOwner = () => {
 
 const transports = [
   createOwnerWebSocketTransport({
-    url: "wss://relay.example",
+    url: RelayUrl.orThrow("wss://relay.example/"),
     ownerId: testAppOwner.id,
   }),
 ] as const;

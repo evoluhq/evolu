@@ -877,6 +877,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no es un literal de porcentaje. Usa un valor como "50%" o "12.5%".`;
 
+/** Formats a WebSocketUrlError in Spanish. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no es una URL de WebSocket.`;
+
+/** Formats a WebSocketUrlFromStringError in Spanish. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no es una URL de WebSocket válida.`;
+
 /**
  * Formats a LeancasedError in Spanish.
  *

@@ -17,6 +17,7 @@ import {
   type Result,
   type TypeError,
   union,
+  WebSocketUrl,
 } from "@evolu/common";
 import { createEvoluDeps, createRun } from "@evolu/web";
 import { provideEvolu, useOwnerSyncStatus, useQuery } from "@evolu/vue";
@@ -92,7 +93,12 @@ const evolu = await run.ok(
     appOwner: testAppOwner,
 
     ...(import.meta.env.DEV && {
-      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+      transports: [
+        {
+          type: "WebSocket",
+          url: WebSocketUrl.orThrow("ws://localhost:4000/"),
+        },
+      ],
     }),
   }),
 );

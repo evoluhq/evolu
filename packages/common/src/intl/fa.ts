@@ -877,6 +877,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک مقدار لفظی درصد نیست. از مقداری مانند "50%" یا "12.5%" استفاده کنید.`;
 
+/** Formats a WebSocketUrlError in Persian. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی URL با پروتکل WebSocket نیست.`;
+
+/** Formats a WebSocketUrlFromStringError in Persian. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی URL معتبر با پروتکل WebSocket نیست.`;
+
 /**
  * Formats a LeancasedError in Persian.
  *

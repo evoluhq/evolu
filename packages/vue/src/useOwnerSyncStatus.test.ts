@@ -12,6 +12,7 @@ import {
 } from "@evolu/common";
 import {
   deriveShardOwner,
+  RelayUrl,
   testAppOwner,
   type Evolu,
   type Owner,
@@ -91,7 +92,7 @@ const stateOf = (
     {
       type: "WebSocket",
       id: transportId,
-      label: "wss://relay.example",
+      label: RelayUrl.orThrow("wss://relay.example/"),
       connection: { type: "Open", openedAt: Millis.orThrow(1000), error: null },
     },
   ],

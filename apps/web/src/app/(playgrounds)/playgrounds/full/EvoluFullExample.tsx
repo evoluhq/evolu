@@ -29,6 +29,7 @@ import {
   type Result,
   type TypeError,
   type Typed,
+  WebSocketUrlFromString,
 } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-web";
@@ -118,11 +119,12 @@ const evoluFiber = run.ok(
     transports: [
       {
         type: "WebSocket",
-        url:
+        url: WebSocketUrlFromString.orThrow(
           process.env.NEXT_PUBLIC_EVOLU_RELAY_URL ??
-          (process.env.NODE_ENV === "development"
-            ? "ws://localhost:4000"
-            : "wss://free.evoluhq.com"),
+            (process.env.NODE_ENV === "development"
+              ? "ws://localhost:4000"
+              : "wss://free.evoluhq.com"),
+        ),
       },
     ],
 

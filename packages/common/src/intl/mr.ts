@@ -876,6 +876,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हे टक्केवारीचे literal नाही. "50%" किंवा "12.5%" सारखे मूल्य वापरा.`;
 
+/** Formats a WebSocketUrlError in Marathi. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा WebSocket URL नाही.`;
+
+/** Formats a WebSocketUrlFromStringError in Marathi. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध WebSocket URL नाही.`;
+
 /**
  * Formats a LeancasedError in Marathi.
  *

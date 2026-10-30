@@ -20,6 +20,7 @@ import { constVoid } from "../../../../packages/common/src/Function.ts";
 import type { Evolu } from "../../../../packages/common/src/local-first/Evolu.ts";
 import {
   createOwnerWebSocketTransport,
+  RelayUrl,
   deriveShardOwner,
   testAppOwner,
   type Owner,
@@ -96,10 +97,13 @@ const setupUseOwner = () => {
   };
 };
 
+const relayA = RelayUrl.orThrow("wss://a.example/");
+const relayB = RelayUrl.orThrow("wss://b.example/");
+
 // Recreates the owner and transports on every render, as callers usually do.
 const Registration: FC<{
   owner: ReadonlyOwner | Owner | null;
-  url: string;
+  url: RelayUrl;
 }> = ({ owner, url }) => {
   useOwner(owner && { ...owner }, [
     createOwnerWebSocketTransport({ url, ownerId: testAppOwner.id }),
@@ -240,27 +244,27 @@ test("registers an equal owner once and releases it on change and unmount", () =
   render(
     createElement(Registration, {
       owner: testAppOwner,
-      url: "wss://a.example",
+      url: relayA,
     }),
   );
   render(
     createElement(Registration, {
       owner: testAppOwner,
-      url: "wss://a.example",
+      url: relayA,
     }),
   );
-  assertEqual(calls, ["use writable wss://a.example"]);
+  assertEqual(calls, ["use writable wss://a.example/"]);
 
   render(
     createElement(Registration, {
       owner: testAppOwner,
-      url: "wss://b.example",
+      url: relayB,
     }),
   );
   assertEqual(calls.splice(0), [
-    "use writable wss://a.example",
-    "unuse writable wss://a.example",
-    "use writable wss://b.example",
+    "use writable wss://a.example/",
+    "unuse writable wss://a.example/",
+    "use writable wss://b.example/",
   ]);
 
   // A readonly owner with the same ID is a different registration.
@@ -268,16 +272,16 @@ test("registers an equal owner once and releases it on change and unmount", () =
   render(
     createElement(Registration, {
       owner: { id, encryptionKey },
-      url: "wss://b.example",
+      url: relayB,
     }),
   );
   assertEqual(calls.splice(0), [
-    "unuse writable wss://b.example",
-    "use readonly wss://b.example",
+    "unuse writable wss://b.example/",
+    "use readonly wss://b.example/",
   ]);
 
   render(createElement("div"));
-  assertEqual(calls, ["unuse readonly wss://b.example"]);
+  assertEqual(calls, ["unuse readonly wss://b.example/"]);
 });
 
 test("moves the registration to another Evolu instance", () => {
@@ -286,35 +290,35 @@ test("moves the registration to another Evolu instance", () => {
   const otherCalls: Array<string> = [];
   const element = createElement(Registration, {
     owner: testAppOwner,
-    url: "wss://a.example",
+    url: relayA,
   });
 
   render(element);
   render(element, createEvoluStub(otherCalls));
   assertEqual(calls, [
-    "use writable wss://a.example",
-    "unuse writable wss://a.example",
+    "use writable wss://a.example/",
+    "unuse writable wss://a.example/",
   ]);
-  assertEqual(otherCalls, ["use writable wss://a.example"]);
+  assertEqual(otherCalls, ["use writable wss://a.example/"]);
 });
 
 test("uses no owner while it is null", () => {
   using setup = setupUseOwner();
   const { calls, render } = setup;
 
-  render(createElement(Registration, { owner: null, url: "wss://a.example" }));
+  render(createElement(Registration, { owner: null, url: relayA }));
   assertEqual(calls, []);
 
   render(
     createElement(Registration, {
       owner: testAppOwner,
-      url: "wss://a.example",
+      url: relayA,
     }),
   );
-  render(createElement(Registration, { owner: null, url: "wss://a.example" }));
+  render(createElement(Registration, { owner: null, url: relayA }));
   assertEqual(calls, [
-    "use writable wss://a.example",
-    "unuse writable wss://a.example",
+    "use writable wss://a.example/",
+    "unuse writable wss://a.example/",
   ]);
 });
 
@@ -328,7 +332,7 @@ test("keeps one registration in StrictMode", () => {
       null,
       createElement(Registration, {
         owner: testAppOwner,
-        url: "wss://a.example",
+        url: relayA,
       }),
     ),
   );
@@ -383,7 +387,7 @@ const createSyncState = (
     {
       type: "WebSocket",
       id: transportId,
-      label: "wss://relay.example",
+      label: RelayUrl.orThrow("wss://relay.example/"),
       connection,
     },
   ],

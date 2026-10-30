@@ -90,8 +90,8 @@ export interface RelayConfig extends StorageConfig {
    * Owners specify which relays to connect to via `OwnerTransport`. In
    * WebSocket-based implementations, this check occurs before accepting the
    * connection, with the OwnerId typically extracted from the URL query string
-   * (e.g., `ws://localhost:4000?ownerId=...`). The relay requires the URL to be
-   * in the correct format for OwnerId extraction.
+   * (e.g., `ws://localhost:4000/?ownerId=...`). The relay requires the URL to
+   * be in the correct format for OwnerId extraction.
    *
    * ### Example
    *
@@ -107,6 +107,7 @@ export interface RelayConfig extends StorageConfig {
    *   createOwnerSecret,
    *   createRandomBytes,
    *   id,
+   *   RelayUrl,
    *   type AnyTask,
    * } from "@evolu/common";
    * import type { RelayConfig } from "@evolu/common/local-first";
@@ -117,7 +118,7 @@ export interface RelayConfig extends StorageConfig {
    * );
    * // Client: include the OwnerId so the relay can admit the connection.
    * const transport = createOwnerWebSocketTransport({
-   *   url: "wss://relay.evolu.dev",
+   *   url: RelayUrl.orThrow("wss://relay.evolu.dev/"),
    *   ownerId: appOwner.id,
    * });
    *

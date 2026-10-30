@@ -876,6 +876,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole prosenttiliteraali. Käytä esimerkiksi arvoa "50%" tai "12.5%".`;
 
+/** Formats a WebSocketUrlError in Finnish. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole WebSocket-URL-osoite.`;
+
+/** Formats a WebSocketUrlFromStringError in Finnish. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen WebSocket-URL-osoite.`;
+
 /**
  * Formats a LeancasedError in Finnish.
  *

@@ -59,6 +59,7 @@ import {
   type TypeError,
   UrlSafeString,
 } from "../Type.ts";
+import type { WebSocketUrl } from "../WebSocket.ts";
 import type {
   BroadcastChannel,
   CreateBroadcastChannelDep,
@@ -75,6 +76,7 @@ import type {
   OwnerId,
   OwnerTransport,
   ReadonlyOwner,
+  RelayUrlFromString,
   SyncOwner,
 } from "./Owner.ts";
 import { createOwnerWebSocketTransport } from "./Owner.ts";
@@ -288,7 +290,7 @@ export interface EvoluConfig {
    *
    * The default value is:
    *
-   * `[{ type: "WebSocket", url: "wss://free.evoluhq.com" }]`.
+   * `[{ type: "WebSocket", url: "wss://free.evoluhq.com/" }]`.
    *
    * It's a testing relay that admits anyone and may delete data, so set your
    * own relays before release, as
@@ -300,19 +302,30 @@ export interface EvoluConfig {
    * import {
    *   assertEqual,
    *   createOwnerWebSocketTransport,
+   *   RelayUrl,
    *   testAppOwner,
+   *   WebSocketUrl,
    *   type OwnerTransport,
    * } from "@evolu/common";
    *
    * // Use one relay.
    * const _singleRelay = [
-   *   { type: "WebSocket", url: "wss://relay1.example.com" },
+   *   {
+   *     type: "WebSocket",
+   *     url: WebSocketUrl.orThrow("wss://relay1.example.com/"),
+   *   },
    * ] satisfies ReadonlyArray<OwnerTransport>;
    *
    * // Use independent relays for redundancy.
    * const _redundantRelays = [
-   *   { type: "WebSocket", url: "wss://relay1.example.com" },
-   *   { type: "WebSocket", url: "wss://relay2.example.com" },
+   *   {
+   *     type: "WebSocket",
+   *     url: WebSocketUrl.orThrow("wss://relay1.example.com/"),
+   *   },
+   *   {
+   *     type: "WebSocket",
+   *     url: WebSocketUrl.orThrow("wss://relay2.example.com/"),
+   *   },
    * ] satisfies ReadonlyArray<OwnerTransport>;
    *
    * // Start local-only before authentication. After authentication, pass an
@@ -323,14 +336,14 @@ export interface EvoluConfig {
    * // Include the OwnerId when the relay admits owners by it.
    * const authenticatedRelay = [
    *   createOwnerWebSocketTransport({
-   *     url: "wss://relay.example.com",
+   *     url: RelayUrl.orThrow("wss://relay.example.com/"),
    *     ownerId: testAppOwner.id,
    *   }),
    * ];
    *
    * assertEqual(
    *   authenticatedRelay[0]?.url,
-   *   `wss://relay.example.com?ownerId=${testAppOwner.id}`,
+   *   `wss://relay.example.com/?ownerId=${testAppOwner.id}`,
    * );
    * ```
    */
@@ -826,8 +839,10 @@ export interface Evolu<
    * If {@link EvoluConfig.transports} is an empty array, this method must be
    * called with explicit non-empty transports.
    *
-   * Transports are automatically deduplicated and reference-counted, so
-   * multiple Owners using the same transport will share a single connection.
+   * Owners that use equal transports share one reference-counted connection.
+   * The transports in one array must be distinct; equal ones, such as two
+   * spellings that {@link RelayUrlFromString} converts to one URL, are a defect
+   * that stops the shared worker.
    *
    * ### Example
    *
@@ -836,15 +851,17 @@ export interface Evolu<
    *   assertEqual,
    *   createOwnerWebSocketTransport,
    *   deriveShardOwner,
+   *   RelayUrl,
    *   testAppOwner,
    *   type Evolu,
    *   type ReadonlyOwner,
    *   type UnuseOwner,
    * } from "@evolu/common";
    *
+   * const relayUrl = RelayUrl.orThrow("wss://relay.example.com/");
    * const shardOwner = deriveShardOwner(testAppOwner, ["todos", 1]);
    * const shardTransport = createOwnerWebSocketTransport({
-   *   url: "wss://relay.example.com",
+   *   url: relayUrl,
    *   ownerId: shardOwner.id,
    * });
    * const _useShardOwner = (evolu: Evolu): UnuseOwner =>
@@ -857,7 +874,7 @@ export interface Evolu<
    *   const unuseOwners = owners.map((owner) =>
    *     evolu.useOwner(owner, [
    *       createOwnerWebSocketTransport({
-   *         url: "wss://relay.example.com",
+   *         url: relayUrl,
    *         ownerId: owner.id,
    *       }),
    *     ]),
@@ -870,7 +887,7 @@ export interface Evolu<
    * // Call each returned UnuseOwner once to stop syncing.
    * assertEqual(shardTransport, {
    *   type: "WebSocket",
-   *   url: `wss://relay.example.com?ownerId=${shardOwner.id}`,
+   *   url: `wss://relay.example.com/?ownerId=${shardOwner.id}`,
    * });
    * ```
    */
@@ -1175,9 +1192,10 @@ export interface SyncStateDep {
    *   Millis,
    *   testCreateDeps,
    * } from "@evolu/common";
-   * import type {
-   *   SyncState,
-   *   SyncStateDep,
+   * import {
+   *   RelayUrl,
+   *   type SyncState,
+   *   type SyncStateDep,
    * } from "@evolu/common/local-first";
    *
    * const openRelayLabels = (deps: SyncStateDep): ReadonlyArray<string> =>
@@ -1194,7 +1212,7 @@ export interface SyncStateDep {
    *     {
    *       type: "WebSocket",
    *       id: createId<"SyncTransport">(deps),
-   *       label: "wss://relay.example",
+   *       label: RelayUrl.orThrow("wss://relay.example/"),
    *       connection: {
    *         type: "Open",
    *         openedAt: Millis.orThrow(1000),
@@ -1204,7 +1222,7 @@ export interface SyncStateDep {
    *   ],
    *   tenants: [],
    * });
-   * assertEqual(openRelayLabels({ syncState }), ["wss://relay.example"]);
+   * assertEqual(openRelayLabels({ syncState }), ["wss://relay.example/"]);
    * ```
    */
   readonly syncState: ReadonlyStore<SyncState | null>;
@@ -1418,7 +1436,9 @@ export const createEvolu =
       appName,
       appOwner,
       memoryOnly = false,
-      transports = [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
+      transports = [
+        { type: "WebSocket", url: "wss://free.evoluhq.com/" as WebSocketUrl },
+      ],
     } = config;
 
     // An AppName has at most 41 characters and an Id 22, so this is a Name.

@@ -54,7 +54,8 @@ await runMain(deps)((run) => {
     createRelay({
       port: config.port,
 
-      // Note: Relay requires URL in format ws://host:port/<ownerId>
+      // With isOwnerAllowed, the relay requires the OwnerId in the URL, as
+      // createOwnerWebSocketTransport adds it: ws://host:port/?ownerId=<ownerId>
       // isOwnerAllowed: (_ownerId) => true,
 
       isOwnerWithinQuota: (_ownerId, requiredBytes) =>

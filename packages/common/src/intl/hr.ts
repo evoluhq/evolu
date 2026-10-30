@@ -883,6 +883,18 @@ export const formatPercentageLiteralError: TypeErrorFormatter<
 > = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije literal postotka. Upotrijebite vrijednost poput "50%" ili "12.5%".`;
 
+/** Formats a WebSocketUrlError in Croatian. */
+export const formatWebSocketUrlError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrl">
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije WebSocket URL adresa.`;
+
+/** Formats a WebSocketUrlFromStringError in Croatian. */
+export const formatWebSocketUrlFromStringError: TypeErrorFormatter<
+  TypeValueError<"WebSocketUrlFromString">
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana WebSocket URL adresa.`;
+
 /**
  * Formats a LeancasedError in Croatian.
  *
