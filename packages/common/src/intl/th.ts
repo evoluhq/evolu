@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -389,6 +393,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ที่อยู่ IP ที่ถูกต้อง`;
+
+/** Formats a UrlError in Thai. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ URL รูปแบบมาตรฐาน`;
+
+/** Formats a UrlFromStringError in Thai. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ URL ที่ถูกต้อง`;
+
+/** Formats an HttpUrlError in Thai. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ URL แบบ HTTP หรือ HTTPS`;
+
+/** Formats an HttpUrlFromStringError in Thai. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ URL แบบ HTTP หรือ HTTPS ที่ถูกต้อง`;
 
 /** Formats a PhoneNumberE164Error in Thai. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

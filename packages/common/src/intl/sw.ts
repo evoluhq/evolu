@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -346,6 +350,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} si anwani halali ya IP.`;
+
+/** Formats a UrlError in Swahili. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si URL ya kanoniki.`;
+
+/** Formats a UrlFromStringError in Swahili. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si URL halali.`;
+
+/** Formats an HttpUrlError in Swahili. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si URL ya HTTP au HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Swahili. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si URL halali ya HTTP au HTTPS.`;
 
 /** Formats a PhoneNumberE164Error in Swahili. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

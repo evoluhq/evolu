@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -392,6 +396,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine gültige IP-Adresse.`;
+
+/** Formats a UrlError in German. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine kanonische URL.`;
+
+/** Formats a UrlFromStringError in German. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine gültige URL.`;
+
+/** Formats an HttpUrlError in German. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine HTTP- oder HTTPS-URL.`;
+
+/** Formats an HttpUrlFromStringError in German. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Der Wert ${safelyStringifyUnknownValue(error.value)} ist keine gültige HTTP- oder HTTPS-URL.`;
 
 /** Formats a PhoneNumberE164Error in German. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

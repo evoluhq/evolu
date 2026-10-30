@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -391,6 +395,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ IP വിലാസം അല്ല.`;
+
+/** Formats a UrlError in Malayalam. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} canonical URL അല്ല.`;
+
+/** Formats a UrlFromStringError in Malayalam. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ URL അല്ല.`;
+
+/** Formats an HttpUrlError in Malayalam. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} HTTP അല്ലെങ്കിൽ HTTPS URL അല്ല.`;
+
+/** Formats an HttpUrlFromStringError in Malayalam. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സാധുവായ HTTP അല്ലെങ്കിൽ HTTPS URL അല്ല.`;
 
 /** Formats a PhoneNumberE164Error in Malayalam. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

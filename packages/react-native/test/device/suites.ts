@@ -24,6 +24,7 @@ import {
   NonEmptyTrimmedString100,
   sql,
   trySync,
+  UrlFromString,
   type DisposableRun,
   type NativeSqlite,
   type SqliteDriver,
@@ -40,6 +41,7 @@ import { nativeSqliteAbiVersion } from "../../src/sqlite/Binding.ts";
 import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
 import { createWaitForDatabaseRelease } from "../../src/sqlite/WaitForDatabaseRelease.ts";
 import { describeBindingConformance } from "../bindingConformance.ts";
+import { urlCases } from "./urlCases.ts";
 
 /** A platform the example apps run on. */
 export type DevicePlatform = "ios" | "android";
@@ -179,6 +181,16 @@ export const registerDeviceSuites = (deps: DeviceSuitesDeps): void => {
       filled.some((byte) => byte !== 0),
       "Expected random bytes.",
     );
+  });
+
+  test("Url follows the WHATWG URL Standard, which needs Expo's URL or the example's polyfill on React Native", () => {
+    // Only the cases that differ, which a failure's message then names.
+    const differences = urlCases.flatMap(([value, expected]) => {
+      const url = UrlFromString.fromUnknown(value);
+      const actual = url.ok ? url.value : null;
+      return actual === expected ? [] : [{ value, expected, actual }];
+    });
+    assert(differences.length === 0, JSON.stringify(differences));
   });
 
   test("the driver creates evolu1-<name>.db, which reopens with its rows", () =>

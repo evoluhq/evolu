@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -344,6 +348,22 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig IP-adresse.`;
+/** Formats a UrlError in Norwegian Bokmål. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en kanonisk URL.`;
+/** Formats a UrlFromStringError in Norwegian Bokmål. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig URL.`;
+/** Formats an HttpUrlError in Norwegian Bokmål. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en HTTP- eller HTTPS-URL.`;
+/** Formats an HttpUrlFromStringError in Norwegian Bokmål. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en gyldig HTTP- eller HTTPS-URL.`;
 /** Formats a PhoneNumberE164Error in Norwegian Bokmål. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<
   PhoneNumberE164Error

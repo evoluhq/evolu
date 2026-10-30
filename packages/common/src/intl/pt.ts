@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -361,6 +365,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} não é um endereço IP válido.`;
+
+/** Formats a UrlError in Portuguese. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um URL canónico.`;
+
+/** Formats a UrlFromStringError in Portuguese. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um URL válido.`;
+
+/** Formats an HttpUrlError in Portuguese. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um URL HTTP ou HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Portuguese. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um URL HTTP ou HTTPS válido.`;
 
 /** Formats a PhoneNumberE164Error in Portuguese. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -391,6 +395,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే IP చిరునామా కాదు.`;
+
+/** Formats a UrlError in Telugu. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} canonical URL కాదు.`;
+
+/** Formats a UrlFromStringError in Telugu. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే URL కాదు.`;
+
+/** Formats an HttpUrlError in Telugu. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} HTTP లేదా HTTPS URL కాదు.`;
+
+/** Formats an HttpUrlFromStringError in Telugu. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చెల్లుబాటు అయ్యే HTTP లేదా HTTPS URL కాదు.`;
 
 /** Formats a PhoneNumberE164Error in Telugu. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

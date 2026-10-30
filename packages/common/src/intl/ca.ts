@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -392,6 +396,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} no és una adreça IP vàlida.`;
+
+/** Formats a UrlError in Catalan. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no és una URL canònica.`;
+
+/** Formats a UrlFromStringError in Catalan. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no és una URL vàlida.`;
+
+/** Formats an HttpUrlError in Catalan. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no és una URL HTTP o HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Catalan. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no és una URL HTTP o HTTPS vàlida.`;
 
 /** Formats a PhoneNumberE164Error in Catalan. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

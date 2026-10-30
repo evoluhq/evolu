@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -392,6 +396,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は有効な IP アドレスではありません。`;
+
+/** Formats a UrlError in Japanese. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は正規形式の URL ではありません。`;
+
+/** Formats a UrlFromStringError in Japanese. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は有効な URL ではありません。`;
+
+/** Formats an HttpUrlError in Japanese. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は HTTP または HTTPS の URL ではありません。`;
+
+/** Formats an HttpUrlFromStringError in Japanese. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は有効な HTTP または HTTPS の URL ではありません。`;
 
 /** Formats a PhoneNumberE164Error in Japanese. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

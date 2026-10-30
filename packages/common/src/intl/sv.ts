@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -392,6 +396,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en giltig IP-adress.`;
+
+/** Formats a UrlError in Swedish. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en kanonisk URL.`;
+
+/** Formats a UrlFromStringError in Swedish. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en giltig URL.`;
+
+/** Formats an HttpUrlError in Swedish. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en HTTP- eller HTTPS-URL.`;
+
+/** Formats an HttpUrlFromStringError in Swedish. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en giltig HTTP- eller HTTPS-URL.`;
 
 /** Formats a PhoneNumberE164Error in Swedish. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

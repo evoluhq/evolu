@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -392,6 +396,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldig IP-adres.`;
+
+/** Formats a UrlError in Dutch. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen canonieke URL.`;
+
+/** Formats a UrlFromStringError in Dutch. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldige URL.`;
+
+/** Formats an HttpUrlError in Dutch. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen HTTP- of HTTPS-URL.`;
+
+/** Formats an HttpUrlFromStringError in Dutch. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen geldige HTTP- of HTTPS-URL.`;
 
 /** Formats a PhoneNumberE164Error in Dutch. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

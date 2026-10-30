@@ -63,7 +63,12 @@ npm install @evolu/common @evolu/web
 <ConditionalPlatformAlert platform={["React Native"]} type="info">
   Evolu runs SQLite in its own native code, which React Native's autolinking
   adds to your app, without Expo. Build it with `npx react-native run-ios` or
-  `npx react-native run-android`.
+  `npx react-native run-android`. Evolu's `Url` Types also need a `URL` that
+  follows the WHATWG URL Standard, which React Native's own doesn't, so install
+  one, such as `whatwg-url-minimum` 0.2 or later, in the polyfills module
+  described below, as the [react-native
+  example](https://github.com/evoluhq/evolu/blob/main/examples/react-native/polyfills.ts)
+  does. Expo installs it itself.
 </ConditionalPlatformAlert>
 
 <ConditionalPlatformAlert platform={["Expo", "React Native"]} type="info">

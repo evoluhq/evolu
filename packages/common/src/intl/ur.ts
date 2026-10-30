@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -355,6 +359,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} درست IP ایڈریس نہیں ہے۔`;
+
+/** Formats a UrlError in Urdu. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} canonical URL نہیں ہے۔`;
+
+/** Formats a UrlFromStringError in Urdu. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} درست URL نہیں ہے۔`;
+
+/** Formats an HttpUrlError in Urdu. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} HTTP یا HTTPS URL نہیں ہے۔`;
+
+/** Formats an HttpUrlFromStringError in Urdu. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} درست HTTP یا HTTPS URL نہیں ہے۔`;
 
 /** Formats a PhoneNumberE164Error in Urdu. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

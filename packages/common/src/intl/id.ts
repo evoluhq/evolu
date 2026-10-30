@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -391,6 +395,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan alamat IP yang valid.`;
+
+/** Formats a UrlError in Indonesian. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan URL kanonis.`;
+
+/** Formats a UrlFromStringError in Indonesian. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan URL yang valid.`;
+
+/** Formats an HttpUrlError in Indonesian. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan URL HTTP atau HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Indonesian. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan URL HTTP atau HTTPS yang valid.`;
 
 /** Formats a PhoneNumberE164Error in Indonesian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

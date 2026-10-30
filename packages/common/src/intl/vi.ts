@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -347,6 +351,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là địa chỉ IP hợp lệ.`;
+
+/** Formats a UrlError in Vietnamese. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là URL chính tắc.`;
+
+/** Formats a UrlFromStringError in Vietnamese. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là URL hợp lệ.`;
+
+/** Formats an HttpUrlError in Vietnamese. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là URL HTTP hoặc HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Vietnamese. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là URL HTTP hoặc HTTPS hợp lệ.`;
 
 /** Formats a PhoneNumberE164Error in Vietnamese. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

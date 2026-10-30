@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -395,6 +399,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljaven naslov IP.`;
+
+/** Formats a UrlError in Slovenian. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni kanonični naslov URL.`;
+
+/** Formats a UrlFromStringError in Slovenian. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljaven naslov URL.`;
+
+/** Formats an HttpUrlError in Slovenian. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni naslov URL HTTP ali HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Slovenian. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni veljaven naslov URL HTTP ali HTTPS.`;
 
 /** Formats a PhoneNumberE164Error in Slovenian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

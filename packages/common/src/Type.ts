@@ -533,6 +533,8 @@ import {
   formatHexColorError,
   formatHexError,
   formatHostnameError,
+  formatHttpUrlError,
+  formatHttpUrlFromStringError,
   formatIbanError,
   formatIdError,
   formatIdentifierError,
@@ -603,6 +605,8 @@ import {
   formatUnionError,
   formatUniqueError,
   formatUppercasedError,
+  formatUrlError,
+  formatUrlFromStringError,
   formatUuidError,
   formatUuidVersionError,
   formatValidDateError,
@@ -9633,6 +9637,258 @@ const canonicalizeIpv6Address = (value: string): string | undefined => {
     ? `${hexGroups.slice(0, zerosStart).join(":")}::${hexGroups.slice(zerosStart + zerosLength).join(":")}`
     : hexGroups.join(":");
 };
+
+/**
+ * Error returned when a string is not a canonical {@link Url}.
+ *
+ * @group String
+ */
+export interface UrlError extends TypeError<"Url"> {
+  readonly value: string;
+}
+
+/**
+ * Canonical absolute URL {@link String}.
+ *
+ * A Url is a URL as the [WHATWG URL Standard](https://url.spec.whatwg.org/)
+ * serializes it, so `new URL(value).href` equals the value, such as
+ * `https://example.com/` for `https://example.com`. Like {@link DateIso}, it has
+ * one spelling per URL on an engine, so equal URLs are equal strings there. Url
+ * does not normalize; use {@link UrlFromString} to convert other spellings, such
+ * as user input. Relative URLs are rejected.
+ *
+ * Url accepts any scheme, including `javascript:`, whose links run code when
+ * followed. Use {@link HttpUrl} for links. Url sets no maximum length, and a
+ * `data:` URL can hold a whole file; compose `maxLength(2048)(Url)` or another
+ * limit when one matters, such as for a database column.
+ *
+ * Url validates with the platform's `URL`, which browsers and Node.js provide,
+ * and which Expo SDK 58 and later installs on React Native. React Native
+ * without Expo has its own `URL`, which accepts strings that are not URLs, so
+ * install one that follows the standard, such as
+ * [whatwg-url-minimum](https://github.com/expo/whatwg-url-minimum) 0.2 or
+ * later, which Expo installs, as the [react-native
+ * example](https://github.com/evoluhq/evolu/blob/main/examples/react-native/polyfills.ts)
+ * does without replacing React Native's `URL.createObjectURL`.
+ *
+ * Engines don't always parse a URL the same way. Chromium percent-encodes `|`
+ * in a path, which the others keep, and accepts a space in a host, which they
+ * reject. Firefox rejects some `xn--` hosts that the others accept, and
+ * whatwg-url-minimum accepts some right-to-left hosts that the others reject.
+ * Revisions of the standard change the serialization too, as when it began to
+ * percent-encode `^` in a path in 2025. No engine decodes a percent-escape, so
+ * the same URL can be two different strings, and a Url from one device can fail
+ * validation on another device or after an engine update. Evolu does not
+ * validate the values other devices write, so where a valid Url matters,
+ * transform a value read from the database with UrlFromString and handle its
+ * error. It doesn't make another engine's spelling equal to this one's.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, Url } from "@evolu/common";
+ *
+ * assertOk(
+ *   Url.fromUnknown("https://example.com/"),
+ *   "https://example.com/",
+ * );
+ *
+ * assertErr(Url.fromUnknown("https://example.com"), {
+ *   type: "Url",
+ *   value: "https://example.com",
+ * });
+ * ```
+ *
+ * @group String
+ */
+export const Url = /*#__PURE__*/ brand(
+  "Url",
+  String,
+  (value: string) =>
+    canonicalizeUrl(value) === value
+      ? ok()
+      : err<UrlError>({ type: "Url", value }),
+  formatUrlError,
+);
+export type Url = typeof Url.Output;
+
+/**
+ * Error returned when {@link UrlFromString} cannot parse a string as an absolute
+ * URL.
+ *
+ * @group String
+ */
+export interface UrlFromStringError extends TypeError<"UrlFromString"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms an absolute URL into its canonical {@link Url}.
+ *
+ * Accepts what the platform's `URL` parses without a base URL, as Url
+ * describes, and returns its `href`. Encoding returns the canonical spelling,
+ * not the original one.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   UrlFromString,
+ * } from "@evolu/common";
+ *
+ * // Lowercases the scheme and host, removes 443, the default port of https:,
+ * // and resolves /a/../b to /b.
+ * assertOk(
+ *   UrlFromString.fromUnknown("HTTPS://Example.com:443/a/../b"),
+ *   "https://example.com/b",
+ * );
+ *
+ * const invalid = UrlFromString.fromUnknown("/b");
+ * assertErr(invalid, { type: "UrlFromString", value: "/b" });
+ * assertEqual(
+ *   UrlFromString.formatError(invalid.error),
+ *   'The value "/b" is not a valid URL.',
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const UrlFromString = /*#__PURE__*/ transform(
+  "UrlFromString",
+  String,
+  Url,
+  {
+    from: (value: string): Result<string, UrlFromStringError> => {
+      const canonical = canonicalizeUrl(value);
+      return canonical === undefined
+        ? err({ type: "UrlFromString", value })
+        : ok(canonical);
+    },
+    to: (value: Url) => value,
+  },
+  formatUrlFromStringError,
+);
+
+/**
+ * Error returned when a {@link Url} is not an {@link HttpUrl}.
+ *
+ * @group String
+ */
+export interface HttpUrlError extends TypeError<"HttpUrl"> {
+  readonly value: string;
+}
+
+/**
+ * {@link Url} with the `http:` or `https:` scheme, such as a link to a web page.
+ *
+ * Use it for links, because Url also accepts schemes such as `javascript:`,
+ * whose links run code when followed. Evolu does not validate the values other
+ * devices write, and anyone who can write to an owner, such as a collaborator,
+ * can store any string, so transform a link read from the database with
+ * {@link HttpUrlFromString} before rendering or opening it. Like Url, HttpUrl
+ * does not normalize; use HttpUrlFromString to convert other spellings.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, HttpUrl } from "@evolu/common";
+ *
+ * assertOk(
+ *   HttpUrl.fromUnknown("https://example.com/"),
+ *   "https://example.com/",
+ * );
+ *
+ * assertErr(HttpUrl.fromUnknown("javascript:alert(1)"), {
+ *   type: "HttpUrl",
+ *   value: "javascript:alert(1)",
+ * });
+ * ```
+ *
+ * @group String
+ */
+export const HttpUrl = /*#__PURE__*/ brand(
+  "HttpUrl",
+  Url,
+  (value: string) =>
+    isHttpUrl(value) ? ok() : err<HttpUrlError>({ type: "HttpUrl", value }),
+  formatHttpUrlError,
+);
+export type HttpUrl = typeof HttpUrl.Output;
+
+/**
+ * Error returned when {@link HttpUrlFromString} cannot parse a string as an HTTP
+ * or HTTPS URL.
+ *
+ * @group String
+ */
+export interface HttpUrlFromStringError extends TypeError<"HttpUrlFromString"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms an HTTP or HTTPS URL into its canonical {@link HttpUrl}.
+ *
+ * Accepts what {@link UrlFromString} accepts with the `http:` or `https:`
+ * scheme. Encoding returns the canonical spelling, not the original one.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   HttpUrlFromString,
+ * } from "@evolu/common";
+ *
+ * assertOk(
+ *   HttpUrlFromString.fromUnknown("HTTPS://Example.com"),
+ *   "https://example.com/",
+ * );
+ *
+ * const invalid = HttpUrlFromString.fromUnknown("example.com");
+ * assertErr(invalid, { type: "HttpUrlFromString", value: "example.com" });
+ * assertEqual(
+ *   HttpUrlFromString.formatError(invalid.error),
+ *   'The value "example.com" is not a valid HTTP or HTTPS URL.',
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const HttpUrlFromString = /*#__PURE__*/ transform(
+  "HttpUrlFromString",
+  String,
+  HttpUrl,
+  {
+    from: (value: string): Result<string, HttpUrlFromStringError> => {
+      const canonical = canonicalizeUrl(value);
+      return canonical !== undefined && isHttpUrl(canonical)
+        ? ok(canonical)
+        : err({ type: "HttpUrlFromString", value });
+    },
+    to: (value: HttpUrl) => value,
+  },
+  formatHttpUrlFromStringError,
+);
+
+// Returns the platform URL's serialization of an absolute URL, or undefined
+// for a string it cannot parse without a base URL.
+const canonicalizeUrl = (value: string): string | undefined => {
+  try {
+    return new URL(value).href;
+  } catch {
+    return undefined;
+  }
+};
+
+// A serialized URL starts with its lowercased scheme, and an HTTP or HTTPS one
+// always has a host.
+const isHttpUrl = (url: string): boolean =>
+  url.startsWith("http://") || url.startsWith("https://");
 
 /**
  * Error returned when a string is not a {@link PhoneNumberE164}.

@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -395,6 +399,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою IP-адресою.`;
+
+/** Formats a UrlError in Ukrainian. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є канонічною URL-адресою.`;
+
+/** Formats a UrlFromStringError in Ukrainian. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою URL-адресою.`;
+
+/** Formats an HttpUrlError in Ukrainian. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є URL-адресою HTTP або HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Ukrainian. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є допустимою URL-адресою HTTP або HTTPS.`;
 
 /** Formats a PhoneNumberE164Error in Ukrainian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

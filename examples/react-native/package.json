@@ -11,7 +11,8 @@
     "@evolu/common": "workspace:*",
     "@evolu/react-native": "workspace:*",
     "react": "19.3.0",
-    "react-native": "0.88.1"
+    "react-native": "0.88.1",
+    "whatwg-url-minimum": "0.2.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

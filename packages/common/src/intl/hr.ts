@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -398,6 +402,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana IP adresa.`;
+
+/** Formats a UrlError in Croatian. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije kanonska URL adresa.`;
+
+/** Formats a UrlFromStringError in Croatian. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana URL adresa.`;
+
+/** Formats an HttpUrlError in Croatian. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije HTTP ili HTTPS URL adresa.`;
+
+/** Formats an HttpUrlFromStringError in Croatian. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije valjana HTTP ili HTTPS URL adresa.`;
 
 /** Formats a PhoneNumberE164Error in Croatian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

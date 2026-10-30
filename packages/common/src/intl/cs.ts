@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -392,6 +396,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná adresa IP.`;
+
+/** Formats a UrlError in Czech. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být kanonická adresa URL.`;
+
+/** Formats a UrlFromStringError in Czech. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná adresa URL.`;
+
+/** Formats an HttpUrlError in Czech. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být adresa URL s protokolem HTTP nebo HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Czech. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná adresa URL s protokolem HTTP nebo HTTPS.`;
 
 /** Formats a PhoneNumberE164Error in Czech. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

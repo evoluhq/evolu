@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -391,6 +395,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی IP معتبر نیست.`;
+
+/** Formats a UrlError in Persian. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی URL کانونی نیست.`;
+
+/** Formats a UrlFromStringError in Persian. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی URL معتبر نیست.`;
+
+/** Formats an HttpUrlError in Persian. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی URL با پروتکل HTTP یا HTTPS نیست.`;
+
+/** Formats an HttpUrlFromStringError in Persian. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک نشانی URL معتبر با پروتکل HTTP یا HTTPS نیست.`;
 
 /** Formats a PhoneNumberE164Error in Persian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

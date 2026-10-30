@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -391,6 +395,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir IP adresi değildir.`;
+
+/** Formats a UrlError in Turkish. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri kurallı bir URL değildir.`;
+
+/** Formats a UrlFromStringError in Turkish. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir URL değildir.`;
+
+/** Formats an HttpUrlError in Turkish. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri bir HTTP veya HTTPS URL'si değildir.`;
+
+/** Formats an HttpUrlFromStringError in Turkish. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri geçerli bir HTTP veya HTTPS URL'si değildir.`;
 
 /** Formats a PhoneNumberE164Error in Turkish. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

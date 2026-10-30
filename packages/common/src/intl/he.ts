@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -388,6 +392,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת IP חוקית.`;
+
+/** Formats a UrlError in Hebrew. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת URL קנונית.`;
+
+/** Formats a UrlFromStringError in Hebrew. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת URL חוקית.`;
+
+/** Formats an HttpUrlError in Hebrew. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת URL מסוג HTTP או HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Hebrew. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו כתובת URL חוקית מסוג HTTP או HTTPS.`;
 
 /** Formats a PhoneNumberE164Error in Hebrew. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

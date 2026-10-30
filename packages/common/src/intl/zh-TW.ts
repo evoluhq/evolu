@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -385,6 +389,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 IP 位址。`;
+
+/** Formats a UrlError in Traditional Chinese. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是標準 URL。`;
+
+/** Formats a UrlFromStringError in Traditional Chinese. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 URL。`;
+
+/** Formats an HttpUrlError in Traditional Chinese. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是 HTTP 或 HTTPS URL。`;
+
+/** Formats an HttpUrlFromStringError in Traditional Chinese. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是有效的 HTTP 或 HTTPS URL。`;
 
 /** Formats a PhoneNumberE164Error in Traditional Chinese. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

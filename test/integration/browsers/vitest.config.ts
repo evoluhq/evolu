@@ -28,6 +28,7 @@ export default defineProject(({ mode }) => ({
       "test/integration/shared/Polyfills/*.test.ts",
       "test/integration/shared/StackTrace/*.test.ts",
       "test/integration/shared/Task/*.test.ts",
+      "test/integration/shared/Type/*.test.ts",
       "test/integration/shared/WebSocket/*.test.ts",
       "test/integration/browsers/Type/*.test.ts",
       "test/integration/browsers/react/*.test.ts",

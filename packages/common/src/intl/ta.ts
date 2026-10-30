@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -391,6 +395,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் IP முகவரி அல்ல.`;
+
+/** Formats a UrlError in Tamil. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு canonical URL அல்ல.`;
+
+/** Formats a UrlFromStringError in Tamil. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் URL அல்ல.`;
+
+/** Formats an HttpUrlError in Tamil. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு HTTP அல்லது HTTPS URL அல்ல.`;
+
+/** Formats an HttpUrlFromStringError in Tamil. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} செல்லுபடியாகும் HTTP அல்லது HTTPS URL அல்ல.`;
 
 /** Formats a PhoneNumberE164Error in Tamil. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

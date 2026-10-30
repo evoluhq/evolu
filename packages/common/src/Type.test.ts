@@ -135,6 +135,8 @@ import {
   HexColor,
   hexToUint8Array,
   Hostname,
+  HttpUrl,
+  HttpUrlFromString,
   Iban,
   includes,
   int,
@@ -274,6 +276,8 @@ import {
   uint8ArrayToBase64,
   uint8ArrayToBase64Url,
   uint8ArrayToHex,
+  Url,
+  UrlFromString,
   UrlSafeString,
   Uuid,
   uuidToId,
@@ -322,6 +326,8 @@ import {
   type HexColorError,
   type HexError,
   type HostnameError,
+  type HttpUrlError,
+  type HttpUrlFromStringError,
   type IbanError,
   type IdentifierCasing,
   type IdentifierError,
@@ -458,6 +464,8 @@ import {
   type UnionMemberError,
   type UnionType,
   type UniqueError,
+  type UrlError,
+  type UrlFromStringError,
   type UuidError,
   type UuidVersionError,
   type ValidDateError,
@@ -660,6 +668,8 @@ describe("Type", () => {
       Hex,
       HexColor,
       Hostname,
+      HttpUrl,
+      HttpUrlFromString,
       Iban,
       Id,
       IdBytes,
@@ -727,6 +737,8 @@ describe("Type", () => {
       Unknown,
       UnknownNextResult,
       UnknownResult,
+      Url,
+      UrlFromString,
       UrlSafeString,
       Uuid,
       UuidV4,
@@ -848,6 +860,8 @@ describe("Type", () => {
       "Hex",
       "HexColor",
       "Hostname",
+      "HttpUrl",
+      "HttpUrlFromString",
       "Iban",
       "Id",
       "IdBytes",
@@ -942,6 +956,8 @@ describe("Type", () => {
       "Unique",
       "Unknown",
       "Uppercased",
+      "Url",
+      "UrlFromString",
       "UrlSafeString",
       "Uuid",
       "UuidV1",
@@ -12589,6 +12605,188 @@ describe("BrandFactory", () => {
                 );
               }),
             );
+          });
+        });
+      });
+
+      describe("Url", () => {
+        it("accepts canonical absolute URLs of any scheme", () => {
+          for (const value of [
+            "https://example.com/",
+            "https://example.com:8443/a/b?q=1#f",
+            "https://xn--mnchen-3ya.de/",
+            "wss://free.evoluhq.com/",
+            "mailto:Someone@Example.com",
+            "javascript:alert(1)",
+          ]) {
+            assertOk(Url.fromUnknown(value), value);
+            assertTrue(Url.is(value));
+          }
+          assertType<typeof Url.Input, string>();
+          assertSame(Url.parent, String);
+        });
+
+        it("rejects other spellings and strings that are not absolute URLs", () => {
+          for (const value of [
+            "https://example.com",
+            "HTTPS://example.com/",
+            "https://example.com:443/",
+            "https://example.com/a/../b",
+            " https://example.com/",
+            "https://münchen.de/",
+            "/a",
+            "//example.com/",
+            "not a url",
+            "",
+          ]) {
+            assertErr(Url.fromUnknown(value), { type: "Url", value });
+          }
+          assertEqual(
+            Url.formatError({ type: "Url", value: "https://example.com" }),
+            'The value "https://example.com" is not a canonical URL.',
+          );
+          assertType<typeof Url.Error, UrlError>();
+        });
+
+        describe("UrlFromString", () => {
+          it("transforms an absolute URL into its canonical spelling", () => {
+            for (const [value, canonical] of [
+              ["https://example.com/", "https://example.com/"],
+              ["https://example.com", "https://example.com/"],
+              ["HTTPS://Example.COM:443/a/../b", "https://example.com/b"],
+              [" https://münchen.de ", "https://xn--mnchen-3ya.de/"],
+              ["ws://Example.com", "ws://example.com/"],
+              ["javascript:alert(1)", "javascript:alert(1)"],
+            ] as const) {
+              const result = UrlFromString.fromUnknown(value);
+              assertOk(result, canonical);
+              assertEqual(UrlFromString.to(result.value), canonical);
+            }
+            const value = UrlFromString.orThrow("https://example.com");
+            assertType<typeof value, Url>();
+          });
+
+          it("rejects strings that are not absolute URLs", () => {
+            for (const value of [
+              "",
+              "not a url",
+              "/a",
+              "//example.com/",
+              "https://",
+              "http://256.0.0.1/",
+            ]) {
+              assertErr(UrlFromString.fromUnknown(value), {
+                type: "UrlFromString",
+                value,
+              });
+            }
+            assertEqual(
+              UrlFromString.formatError({ type: "UrlFromString", value: "/a" }),
+              'The value "/a" is not a valid URL.',
+            );
+            assertType<
+              typeof UrlFromString.Error,
+              | UrlFromStringError
+              | TransformOutputError<"UrlFromString", UrlError>
+            >();
+          });
+
+          it("matches the platform URL serializer", () => {
+            fc.assert(
+              fc.property(
+                fc.webUrl({ withQueryParameters: true, withFragments: true }),
+                (value) => {
+                  const { href } = new URL(value);
+                  assertOk(UrlFromString.fromUnknown(value), href);
+                  assertOk(Url.fromUnknown(href), href);
+                },
+              ),
+            );
+          });
+        });
+      });
+
+      describe("HttpUrl", () => {
+        it("accepts canonical HTTP and HTTPS URLs", () => {
+          for (const value of [
+            "http://example.com/",
+            "https://example.com/a?q=1#f",
+          ]) {
+            assertOk(HttpUrl.fromUnknown(value), value);
+          }
+          const url: Url = HttpUrl.orThrow("https://example.com/");
+          assertEqual(url, "https://example.com/");
+          assertSame(HttpUrl.parent, Url);
+        });
+
+        it("rejects other schemes and non-canonical URLs", () => {
+          for (const value of [
+            "ftp://example.com/",
+            "javascript:alert(1)",
+            "data:text/plain,a",
+            "mailto:someone@example.com",
+            "wss://example.com/",
+          ]) {
+            assertErr(HttpUrl.fromUnknown(value), { type: "HttpUrl", value });
+          }
+          assertErr(HttpUrl.fromUnknown("https://example.com"), {
+            type: "Url",
+            value: "https://example.com",
+          });
+          assertEqual(
+            HttpUrl.formatError({
+              type: "HttpUrl",
+              value: "javascript:alert(1)",
+            }),
+            'The value "javascript:alert(1)" is not an HTTP or HTTPS URL.',
+          );
+          assertType<typeof HttpUrl.Error, HttpUrlError>();
+        });
+
+        describe("HttpUrlFromString", () => {
+          it("transforms an HTTP or HTTPS URL into its canonical spelling", () => {
+            for (const [value, canonical] of [
+              ["https://example.com/", "https://example.com/"],
+              ["HTTP://Example.com", "http://example.com/"],
+              ["https://example.com:443/a/./b", "https://example.com/a/b"],
+            ] as const) {
+              const result = HttpUrlFromString.fromUnknown(value);
+              assertOk(result, canonical);
+              assertEqual(HttpUrlFromString.to(result.value), canonical);
+            }
+            const value = HttpUrlFromString.orThrow("https://example.com");
+            assertType<typeof value, HttpUrl>();
+          });
+
+          it("rejects other schemes and strings that are not absolute URLs", () => {
+            for (const value of [
+              "example.com",
+              "/a",
+              "not a url",
+              "ftp://example.com/",
+              "JavaScript:alert(1)",
+              "wss://example.com",
+            ]) {
+              assertErr(HttpUrlFromString.fromUnknown(value), {
+                type: "HttpUrlFromString",
+                value,
+              });
+            }
+            assertEqual(
+              HttpUrlFromString.formatError({
+                type: "HttpUrlFromString",
+                value: "example.com",
+              }),
+              'The value "example.com" is not a valid HTTP or HTTPS URL.',
+            );
+            assertType<
+              typeof HttpUrlFromString.Error,
+              | HttpUrlFromStringError
+              | TransformOutputError<
+                  "HttpUrlFromString",
+                  HttpUrlError | UrlError
+                >
+            >();
           });
         });
       });

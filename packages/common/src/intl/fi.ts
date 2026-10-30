@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -391,6 +395,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen IP-osoite.`;
+
+/** Formats a UrlError in Finnish. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kanoninen URL-osoite.`;
+
+/** Formats a UrlFromStringError in Finnish. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen URL-osoite.`;
+
+/** Formats an HttpUrlError in Finnish. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole HTTP- tai HTTPS-URL-osoite.`;
+
+/** Formats an HttpUrlFromStringError in Finnish. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole kelvollinen HTTP- tai HTTPS-URL-osoite.`;
 
 /** Formats a PhoneNumberE164Error in Finnish. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

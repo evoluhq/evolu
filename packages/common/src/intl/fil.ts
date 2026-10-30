@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -392,6 +396,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na IP address.`;
+
+/** Formats a UrlError in Filipino. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi canonical na URL.`;
+
+/** Formats a UrlFromStringError in Filipino. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na URL.`;
+
+/** Formats an HttpUrlError in Filipino. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi HTTP o HTTPS na URL.`;
+
+/** Formats an HttpUrlFromStringError in Filipino. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi valid na HTTP o HTTPS na URL.`;
 
 /** Formats a PhoneNumberE164Error in Filipino. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

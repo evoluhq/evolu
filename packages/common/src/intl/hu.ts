@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -395,6 +399,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes IP-cím.`;
+
+/** Formats a UrlError in Hungarian. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem kanonikus URL.`;
+
+/** Formats a UrlFromStringError in Hungarian. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes URL.`;
+
+/** Formats an HttpUrlError in Hungarian. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem HTTP- vagy HTTPS-URL.`;
+
+/** Formats an HttpUrlFromStringError in Hungarian. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem érvényes HTTP- vagy HTTPS-URL.`;
 
 /** Formats a PhoneNumberE164Error in Hungarian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

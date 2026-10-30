@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -389,6 +393,25 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ IP ঠিকানা নয়।`;
+
+/** Formats a UrlError in Bengali. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি canonical URL নয়।`;
+
+/** Formats a UrlFromStringError in Bengali. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) => `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ URL নয়।`;
+
+/** Formats an HttpUrlError in Bengali. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি HTTP বা HTTPS URL নয়।`;
+
+/** Formats an HttpUrlFromStringError in Bengali. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} মানটি বৈধ HTTP বা HTTPS URL নয়।`;
 
 /** Formats a PhoneNumberE164Error in Bengali. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

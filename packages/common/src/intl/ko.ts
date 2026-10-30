@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -389,6 +393,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 유효한 IP 주소가 아닙니다.`;
+
+/** Formats a UrlError in Korean. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 정규 URL이 아닙니다.`;
+
+/** Formats a UrlFromStringError in Korean. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 유효한 URL이 아닙니다.`;
+
+/** Formats an HttpUrlError in Korean. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 HTTP 또는 HTTPS URL이 아닙니다.`;
+
+/** Formats an HttpUrlFromStringError in Korean. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 유효한 HTTP 또는 HTTPS URL이 아닙니다.`;
 
 /** Formats a PhoneNumberE164Error in Korean. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

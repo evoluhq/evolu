@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -398,6 +402,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη διεύθυνση IP.`;
+
+/** Formats a UrlError in Greek. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι κανονική διεύθυνση URL.`;
+
+/** Formats a UrlFromStringError in Greek. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη διεύθυνση URL.`;
+
+/** Formats an HttpUrlError in Greek. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι διεύθυνση URL HTTP ή HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Greek. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι έγκυρη διεύθυνση URL HTTP ή HTTPS.`;
 
 /** Formats a PhoneNumberE164Error in Greek. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

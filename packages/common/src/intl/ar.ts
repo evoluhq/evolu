@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -356,6 +360,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان IP صالحاً.`;
+
+/** Formats a UrlError in Arabic. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان URL معيارياً.`;
+
+/** Formats a UrlFromStringError in Arabic. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان URL صالحاً.`;
+
+/** Formats an HttpUrlError in Arabic. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان URL يستخدم HTTP أو HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Arabic. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عنوان URL صالحاً يستخدم HTTP أو HTTPS.`;
 
 /** Formats a PhoneNumberE164Error in Arabic. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -392,6 +396,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă IP validă.`;
+
+/** Formats a UrlError in Romanian. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă URL canonică.`;
+
+/** Formats a UrlFromStringError in Romanian. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă URL validă.`;
+
+/** Formats an HttpUrlError in Romanian. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă URL HTTP sau HTTPS.`;
+
+/** Formats an HttpUrlFromStringError in Romanian. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o adresă URL HTTP sau HTTPS validă.`;
 
 /** Formats a PhoneNumberE164Error in Romanian. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

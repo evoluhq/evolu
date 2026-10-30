@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -391,6 +395,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध IP पत्ता नाही.`;
+
+/** Formats a UrlError in Marathi. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा canonical URL नाही.`;
+
+/** Formats a UrlFromStringError in Marathi. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध URL नाही.`;
+
+/** Formats an HttpUrlError in Marathi. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा HTTP किंवा HTTPS URL नाही.`;
+
+/** Formats an HttpUrlFromStringError in Marathi. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हा वैध HTTP किंवा HTTPS URL नाही.`;
 
 /** Formats a PhoneNumberE164Error in Marathi. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

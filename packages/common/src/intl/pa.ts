@@ -37,6 +37,8 @@ import type {
   HexColorError,
   HexError,
   HostnameError,
+  HttpUrlError,
+  HttpUrlFromStringError,
   IbanError,
   IncludesError,
   InstanceOfError,
@@ -108,6 +110,8 @@ import type {
   UlidError,
   UnionError,
   UniqueError,
+  UrlError,
+  UrlFromStringError,
   UuidError,
   UuidVersionError,
   ValidDateError,
@@ -390,6 +394,26 @@ export const formatIpAddressFromStringError: TypeErrorFormatter<
   IpAddressFromStringError
 > = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ IP ਪਤਾ ਨਹੀਂ ਹੈ।`;
+
+/** Formats a UrlError in Punjabi. */
+export const formatUrlError: TypeErrorFormatter<UrlError> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} canonical URL ਨਹੀਂ ਹੈ।`;
+
+/** Formats a UrlFromStringError in Punjabi. */
+export const formatUrlFromStringError: TypeErrorFormatter<
+  UrlFromStringError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ URL ਨਹੀਂ ਹੈ।`;
+
+/** Formats an HttpUrlError in Punjabi. */
+export const formatHttpUrlError: TypeErrorFormatter<HttpUrlError> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} HTTP ਜਾਂ HTTPS URL ਨਹੀਂ ਹੈ।`;
+
+/** Formats an HttpUrlFromStringError in Punjabi. */
+export const formatHttpUrlFromStringError: TypeErrorFormatter<
+  HttpUrlFromStringError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਵੈਧ HTTP ਜਾਂ HTTPS URL ਨਹੀਂ ਹੈ।`;
 
 /** Formats a PhoneNumberE164Error in Punjabi. */
 export const formatPhoneNumberE164Error: TypeErrorFormatter<

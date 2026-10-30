@@ -163,6 +163,8 @@ const formattersFor = (locale: typeof en) => ({
   Hex: locale.formatHexError,
   HexColor: locale.formatHexColorError,
   Hostname: locale.formatHostnameError,
+  HttpUrl: locale.formatHttpUrlError,
+  HttpUrlFromString: locale.formatHttpUrlFromStringError,
   Iban: locale.formatIbanError,
   Id: locale.formatIdError,
   "Includes@": locale.formatIncludesError,
@@ -238,6 +240,8 @@ const formattersFor = (locale: typeof en) => ({
   Ulid: locale.formatUlidError,
   Union: locale.formatUnionError,
   Unique: locale.formatUniqueError,
+  Url: locale.formatUrlError,
+  UrlFromString: locale.formatUrlFromStringError,
   UrlSafeString: locale.formatRegexError,
   Uuid: locale.formatUuidError,
   UuidV4: locale.formatUuidVersionError,
@@ -296,6 +300,8 @@ const typesByLocale = Type.localizeTypes(
     Hex: Type.Hex,
     HexColor: Type.HexColor,
     Hostname: Type.Hostname,
+    HttpUrl: Type.HttpUrl,
+    HttpUrlFromString: Type.HttpUrlFromString,
     Iban: Type.Iban,
     Id: Type.Id,
     IdBytes: Type.IdBytes,
@@ -363,6 +369,8 @@ const typesByLocale = Type.localizeTypes(
     Unknown: Type.Unknown,
     UnknownNextResult: Type.UnknownNextResult,
     UnknownResult: Type.UnknownResult,
+    Url: Type.Url,
+    UrlFromString: Type.UrlFromString,
     UrlSafeString: Type.UrlSafeString,
     Uuid: Type.Uuid,
     UuidV4: Type.UuidV4,
@@ -586,6 +594,15 @@ const messageCases: ReadonlyArray<(formatters: typeof en) => string> = [
     f.formatIpAddressFromStringError({
       type: "IpAddressFromString",
       value: "1.2.3.4:80",
+    }),
+  (f) => f.formatUrlError({ type: "Url", value: "https://example.com" }),
+  (f) => f.formatUrlFromStringError({ type: "UrlFromString", value: "/a" }),
+  (f) =>
+    f.formatHttpUrlError({ type: "HttpUrl", value: "javascript:alert(1)" }),
+  (f) =>
+    f.formatHttpUrlFromStringError({
+      type: "HttpUrlFromString",
+      value: "example.com",
     }),
   (f) =>
     f.formatPhoneNumberE164Error({
