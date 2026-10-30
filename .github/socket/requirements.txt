@@ -1,0 +1,2 @@
+# The Socket CLI the Socket workflow installs. Dependabot keeps it up to date.
+socketsecurity==2.11.6

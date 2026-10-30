@@ -1,5 +1,5 @@
-# Keeps the commit SHAs that workflows pin GitHub Actions to, and the digest
-# the relay image's base is pinned to, up to date.
+# Keeps the commit SHAs that workflows pin GitHub Actions to, the digest the
+# relay image's base is pinned to, and the Socket CLI version up to date.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -26,3 +26,10 @@ updates:
     ignore:
       - dependency-name: node
         update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: pip
+    directory: "/.github/socket"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

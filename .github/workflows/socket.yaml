@@ -46,7 +46,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Socket CLI
-        run: pip install socketsecurity==2.10.7
+        run: pip install --requirement .github/socket/requirements.txt
 
       - name: Run Socket Security Scan
         env:
