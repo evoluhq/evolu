@@ -70,7 +70,6 @@
     "@mdx-js/mdx": "^3.1.1",
     "@paulmillr/jsbt": "0.7.2",
     "@types/better-sqlite3": "^9.6.0",
-    "@types/inquirer": "^9.0.9",
     "@types/node": "^24.19.2",
     "@types/ws": "^8.18.2",
     "@typescript/native": "npm:typescript@^7.0.2",
