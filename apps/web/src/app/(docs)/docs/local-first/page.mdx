@@ -496,6 +496,40 @@ assertSame(evolu.appOwner, appOwner);
 
 </SinglePlatformCodeGroup>
 
+## Handle errors
+
+Evolu reports problems that stop the app from working, such as local data that needs a newer version of the app or an unexpected failure, in `run.deps.evoluError`, a store shared by all Evolu instances created from the same deps. Show it, or such a failure goes unnoticed. Render it outside the Suspense boundary that waits for Evolu, because the queries of a database that can't open stay pending:
+
+```tsx
+import { constNull } from "@evolu/common";
+import { useSyncExternalStore, type FC } from "react";
+// ---cut-start---
+import { assertEqual } from "@evolu/common";
+import { createEvoluDeps } from "@evolu/react-web";
+import { createRun } from "@evolu/web";
+import { prerender } from "react-dom/static";
+
+const run = createRun(createEvoluDeps());
+// ---cut-end---
+
+export const EvoluErrorAlert: FC = () => {
+  const error = useSyncExternalStore(
+    run.deps.evoluError.subscribe,
+    run.deps.evoluError.get,
+    constNull,
+  );
+  if (!error) return null;
+  return <p role="alert">Evolu error: {error.type}</p>;
+};
+// ---cut-start---
+
+const { prelude } = await prerender(<EvoluErrorAlert />);
+assertEqual(await new Response(prelude).text(), "");
+// ---cut-end---
+```
+
+Other frameworks subscribe to the store the same way. [EvoluError](/docs/api-reference/common/local-first/Evolu/type-aliases/EvoluError) lists each error and what to ask the user. Each one blocks the app: after an `UnknownError`, for example, Evolu is in an unknown state, so ask the user to close all the app's tabs, or on React Native to restart the app. A problem syncing through a relay is not an `EvoluError`; sync state shows it for the owner.
+
 ## Mutate data
 
 <SinglePlatformCodeGroup>
