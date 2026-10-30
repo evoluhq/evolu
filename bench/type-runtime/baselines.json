@@ -20,6 +20,27 @@
         "standardValid": 3149,
         "standardInvalid": 6324
       }
+    },
+    {
+      "environment": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M5",
+        "nodeVersion": "24.22.1",
+        "batchSize": 100,
+        "repeatCount": 5,
+        "workloadSha256": "dc8f4c8030f0f5b667cdc137c85a787f8a3aeccf044d19ece67953bffe620823"
+      },
+      "measurementsNs": {
+        "create": 7238,
+        "isValid": 2714,
+        "isInvalid": 58,
+        "fromUnknownValid": 2720,
+        "fromUnknownInvalidFirst": 110,
+        "fromUnknownInvalidAll": 3051,
+        "standardValid": 2753,
+        "standardInvalid": 5791
+      }
     }
   ]
 }
