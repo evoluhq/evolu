@@ -91,15 +91,20 @@ export const summarizeRatios = (
 export type RatioVerdict = "faster" | "same" | "slower" | "regression";
 
 /**
- * Classifies a head/base ratio: above the regression threshold fails, and from
- * {@link slowerRatio} on, or its inverse for faster, it is printed.
+ * Classifies paired head/base ratios. A regression needs the median above the
+ * threshold and every pair slower, so noise that leaves one pair faster does
+ * not fail. Otherwise a median from {@link slowerRatio} on, or its inverse for
+ * faster, is printed.
  */
-export const ratioVerdict = (ratio: number): RatioVerdict =>
-  ratio > 1 + maxRegressionPercent / 100
+export const ratioVerdict = (
+  { median, min }: RatioSummary,
+  thresholdPercent: number,
+): RatioVerdict =>
+  median > 1 + thresholdPercent / 100 && min > 1
     ? "regression"
-    : ratio >= slowerRatio
+    : median >= slowerRatio
       ? "slower"
-      : ratio <= 1 / slowerRatio
+      : median <= 1 / slowerRatio
         ? "faster"
         : "same";
 
@@ -169,6 +174,18 @@ export const workDifferences = (
   [...new Set([...Object.keys(base), ...Object.keys(head)])].filter(
     (key) => base[key] !== head[key],
   );
+
+/** The cases only one version has, which make the two not comparable. */
+export const caseDifferences = (
+  base: ReadonlyArray<string>,
+  head: ReadonlyArray<string>,
+): {
+  readonly onlyBase: ReadonlyArray<string>;
+  readonly onlyHead: ReadonlyArray<string>;
+} => ({
+  onlyBase: base.filter((name) => !head.includes(name)),
+  onlyHead: head.filter((name) => !base.includes(name)),
+});
 
 /**
  * Combines each case's workload hash, in the given order, into the hash a

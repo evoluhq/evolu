@@ -66,6 +66,26 @@ Compare each result only with a compatible baseline; fail when none is available
 
 Baseline updates must be explicit and complete. A normal update rejects regressions; a forced update bypasses only that guard and still requires the complete workload and all benchmark integrity checks.
 
+## Continuous integration
+
+The Checks workflow runs the suites that count deterministic work, Type and
+Protocol, against their baselines. Timing baselines match one machine, so the
+Bench workflow instead compares the head of each push to main, pull request and
+merge group with the anchor of Protocol runtime and of Storage, on the same
+hosted runner, with `--base-checkout` and a 20% threshold, as
+[CI compares benchmark timings with an explicit anchor](../docs/adr/ci-compares-timings-with-an-explicit-anchor.md)
+decides.
+
+A suite's anchor is the last commit that changed its `ci-anchor.txt`, a line
+that says why the anchor last moved. Recording a baseline does not move it.
+Rewrite that line to accept a regression in CI, or in the same commit as a
+change to the suite's harness or workload, which makes the head and the anchor
+not comparable. When a run's commits move an anchor, the workflow compares the
+head with the previous anchor without gating, so its summary shows what the
+move accepted, or, after a harness or workload change, that the two were not
+comparable. No check requires the workflow yet; it joins them once its runs
+show the spread on hosted runners.
+
 ## Adding a suite
 
 Create a directory containing:

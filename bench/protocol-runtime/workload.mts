@@ -62,7 +62,7 @@ export interface CaseResult {
   /** Null for micro benchmarks, which use no SQLite. */
   readonly sqliteVersion: string | null;
   readonly work: Work;
-  /** Gated metrics: the fastest thread CPU time of each, in nanoseconds. */
+  /** Gated metrics: the fastest CPU time of each, in nanoseconds. */
   readonly cpuNs: Metrics;
   /** Metrics that are reported but never gated. */
   readonly reportedCpuNs: Metrics;

@@ -49,15 +49,24 @@ pnpm bench:storage --mode=force-update-baseline
 
 Forced updates bypass only the regression guard. Either update mode creates an initial baseline when none matches.
 
+## Comparing with another checkout
+
+```bash
+pnpm bench:storage --base-checkout=../other-checkout
+```
+
+`--base-checkout=<dir>` runs a checkout of another commit with its own
+install. Five pairs of child processes alternate in ABBA order, each running
+its own version of this benchmark, which builds its own SQLite addon, and each
+method is compared by the median of its paired wall time ratios. It refuses a
+checkout whose [`measure.mts`](./measure.mts), which holds the workloads and
+their measurement, differs, which would measure the two versions differently.
+A median ratio from 1.03 is printed as slower. A method fails the command when
+its median ratio is above 1.10 and every pair is slower;
+`--max-regression=<percent>` sets another threshold. The comparison never
+reads or writes baselines.
+
 ## Continuous integration
 
-TODO: Run the benchmark in CI as a relative comparison. The exact-environment
-baselines cannot be used on hosted runners: the CPU model changes between runs,
-so no baseline would match, and timing noise on shared runners exceeds the 10%
-threshold. Instead, one job checks out the base commit in a Git worktree, runs
-the benchmark on the base and on the head in the same runner, and compares the
-ratios with a wider threshold, around 20%. This cancels machine differences and
-needs no CI baseline entry. It requires a benchmark mode that emits results as
-JSON without comparing to baselines, plus a comparison step. Start it
-non-blocking to learn the actual noise, then gate. Deterministic query-plan
-checks stay in the storage tests; the comparison only guards constant factors.
+The Bench workflow runs `--base-checkout` with the suite's anchor, as
+[Continuous integration](../README.md#continuous-integration) describes.

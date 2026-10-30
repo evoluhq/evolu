@@ -1,0 +1,114 @@
+name: Bench
+
+# Compares the timing benchmarks of the head with each suite's anchor on one
+# hosted runner, as docs/adr/ci-compares-timings-with-an-explicit-anchor.md
+# decides. It gates neither pull requests nor releases yet: its runs first
+# measure the spread on hosted runners.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+
+concurrency:
+  # Each push to main gets a group of its own, so a newer push does not replace
+  # a queued run, such as one that compares with a moved anchor.
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions: {}
+
+jobs:
+  compare:
+    name: Compare ${{ matrix.suite }} with its anchor
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [protocol-runtime, storage]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The anchor is found in the history.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      # The benchmark builds @evolu/nodejs's SQLite addon of both versions
+      # with the runner's clang, from the pinned SQLite zip, which every use
+      # verifies.
+      - name: Restore source archives
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/sqlite-core/sqlite-cache/*.zip
+            packages/sqlite-core/sqlite-cache/*.tgz
+          key: sqlite-core-sources-${{ hashFiles('packages/sqlite-core/scripts/sqlite-source.mts', 'packages/sqlite-core/test/sqlcipher.mts') }}
+
+      # The anchor is the last commit that changed the suite's ci-anchor.txt.
+      # When this run's commits move it, the head is compared with the previous
+      # anchor without gating, so the summary shows what the move accepted.
+      - name: Check out the anchor
+        id: anchor
+        env:
+          SUITE: ${{ matrix.suite }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          anchor=$(git log -1 --format=%H -- "bench/$SUITE/ci-anchor.txt")
+          if [ -z "$anchor" ]; then
+            echo "No commit has bench/$SUITE/ci-anchor.txt." >&2
+            exit 1
+          fi
+          previous=""
+          if [ -n "$BASE_SHA" ] && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            previous=$(git log -1 --format=%H "$BASE_SHA" -- "bench/$SUITE/ci-anchor.txt")
+          fi
+          if [ -n "$previous" ] && [ "$previous" != "$anchor" ]; then
+            sha=$previous gates=false
+          else
+            sha=$anchor gates=true
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "gates=$gates" >> "$GITHUB_OUTPUT"
+          git worktree add --detach "$RUNNER_TEMP/anchor" "$sha"
+          cd "$RUNNER_TEMP/anchor"
+          # A run that does not gate reports a previous anchor that no longer
+          # installs, as the comparison fails, instead of failing here.
+          pnpm install --frozen-lockfile || [ "$gates" = false ]
+
+      - name: Compare with the anchor
+        env:
+          SUITE: ${{ matrix.suite }}
+          ANCHOR: ${{ steps.anchor.outputs.sha }}
+          GATES: ${{ steps.anchor.outputs.gates }}
+        # The report goes to stdout, and progress and errors to stderr, which
+        # the job log shows as they come and the summary gets when the run
+        # fails.
+        run: |
+          set +e
+          pnpm "bench:$SUITE" "--base-checkout=$RUNNER_TEMP/anchor" --max-regression=20 \
+            2>&1 > "$RUNNER_TEMP/report.txt" | tee "$RUNNER_TEMP/progress.txt" >&2
+          status=${PIPESTATUS[0]}
+          set -e
+          cat "$RUNNER_TEMP/report.txt"
+          {
+            if [ "$GATES" = true ]; then
+              echo "### $SUITE against its anchor ${ANCHOR:0:9}"
+            else
+              echo "### $SUITE against its previous anchor ${ANCHOR:0:9}, not gated"
+            fi
+            echo '```'
+            cat "$RUNNER_TEMP/report.txt"
+            if [ "$status" -ne 0 ]; then
+              echo "Exited with $status:"
+              tail -n 20 "$RUNNER_TEMP/progress.txt"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$GATES" = true ]; then exit "$status"; fi

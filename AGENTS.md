@@ -70,6 +70,13 @@ for a post, run `node scripts/code-image.mts --help`.
 - After changing storage algorithms, SQL, indexes, or query plans, select the
   relevant storage tests. Run `pnpm bench:storage` only when the user
   explicitly requests it.
+- When a change leaves the Bench workflow unable to compare a suite with its
+  anchor, rewrite the suite's `ci-anchor.txt` in the same commit to say why,
+  which moves its CI anchor. Protocol runtime cannot compare across a change to
+  a harness module, listed in `bench/protocol-runtime/benchmark.mts`, to its
+  list of cases, or to a case's workload hash, which `workload.mts`,
+  `bench/protocol/frames.mts` and Evolu code such as `testAppOwner` feed;
+  storage cannot compare across a change to `bench/storage/measure.mts`.
 - After changing a published package's `dependencies`,
   `optionalDependencies`, `exports`, `publishConfig`, `types`, or `files`, or
   its build configuration, run `pnpm build`, then
