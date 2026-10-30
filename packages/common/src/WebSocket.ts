@@ -104,6 +104,13 @@ export interface WebSocket extends AsyncDisposable {
     data: BufferSource | Blob | string | globalThis.Uint8Array,
   ) => Result<void, WebSocketSendError>;
 
+  /**
+   * Returns the state of the current connection. While the WebSocket waits to
+   * retry, it is `connecting`. Once it stops connecting, because the
+   * constructor threw, {@link WebSocketOptions.shouldRetryOnClose} declined a
+   * close, or the {@link WebSocketOptions.schedule} ran out, it is `closed`, as
+   * after disposal.
+   */
   readonly getReadyState: () => WebSocketReadyState;
 
   /** Returns true if the WebSocket is open and ready to send data. */
@@ -389,6 +396,8 @@ export const createWebSocket: CreateWebSocket =
     // consumed by the next schedule step.
     let shouldResetSchedule = false;
     let resolveConnect: ConnectResolve | null = null;
+    // Set once `retry` ends, after which nothing connects again.
+    let isStopped = false;
 
     const closeSocket = () => {
       if (!socket) return;
@@ -516,6 +525,7 @@ export const createWebSocket: CreateWebSocket =
 
     // Report RetryError (schedule exhausted) via onError callback
     void retryFiber.then((result) => {
+      isStopped = true;
       if (!result.ok && result.error.type === "RetryError") {
         onError?.(result.error);
       }
@@ -534,7 +544,7 @@ export const createWebSocket: CreateWebSocket =
       },
 
       getReadyState: () => {
-        if (disposables.disposed) return "closed";
+        if (disposables.disposed || isStopped) return "closed";
         return socket ? nativeToStringState[socket.readyState] : "connecting";
       },
 

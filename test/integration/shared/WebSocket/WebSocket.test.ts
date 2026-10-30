@@ -329,18 +329,17 @@ describe("createWebSocket", () => {
     await vi.waitFor(() => expect(openCalled).toBe(true));
   });
 
-  test("getReadyState returns connecting when socket is null", async () => {
+  test("getReadyState returns closed once the schedule is exhausted", async () => {
     await using run = createRun();
 
-    // Create with invalid URL and no retries to test null socket state
+    // Nothing listens on port 1, and the schedule allows no retry.
     await using ws = await run.ok(
       createWebSocket("ws://localhost:1", {
         schedule: take(0)(spaced("1ms")),
       }),
     );
 
-    // After failed connection with no retries, socket is null
-    await vi.waitFor(() => expect(ws.getReadyState()).toBe("connecting"));
+    await vi.waitFor(() => expect(ws.getReadyState()).toBe("closed"));
   });
 
   test("calls onError on connection failure", async () => {
@@ -375,7 +374,7 @@ describe("createWebSocket", () => {
       throw thrown;
     } as unknown as typeof WebSocket;
 
-    await using _ws = await run.ok(
+    await using ws = await run.ok(
       createWebSocket("ws://example.com", {
         // Would retry twice if the throw were a retryable failure.
         schedule: take(2)(spaced("1ms")),
@@ -396,6 +395,7 @@ describe("createWebSocket", () => {
 
     expect(errors).toEqual([{ type: "WebSocketCreateError", error: thrown }]);
     expect(constructed).toBe(1);
+    expect(ws.getReadyState()).toBe("closed");
     expect(run.deps.reportDefect.getDefects()).toEqual([]);
   });
 
@@ -440,7 +440,7 @@ describe("createWebSocket", () => {
     const errors: Array<WebSocketError> = [];
     let closeCount = 0;
 
-    await using _ws = await run.ok(
+    await using ws = await run.ok(
       createWebSocket(getServerUrl("close"), {
         schedule: take(2)(spaced("1ms")),
         shouldRetryOnClose: () => false,
@@ -460,6 +460,7 @@ describe("createWebSocket", () => {
 
     expect(closeCount).toBe(1);
     expect(errors).toHaveLength(0);
+    expect(ws.getReadyState()).toBe("closed");
   });
 
   test("reconnects after server closes connection", async () => {
