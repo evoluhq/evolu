@@ -1,0 +1,590 @@
+export const metadata = {
+  title: "Queries",
+  description:
+    "How to write Evolu queries that handle incomplete rows, relations, and rows that arrive from other devices in any order.",
+};
+
+# Queries
+
+Evolu queries are SQL built with [Kysely](https://kysely.dev/), the type-safe SQL query builder. [Query data](/docs/local-first#query-data) shows how to create, load, and subscribe to a query. This page shows how to write queries whose results stay correct while changes from other devices arrive in any order: rows that are not complete yet, relations, and rows that only make sense together.
+
+## Incomplete rows
+
+Evolu syncs each mutation as a separate change, and another device can receive changes in any order. In a distributed system without a central server, this is unavoidable, so Evolu can't rely on the order, and it doesn't need to. For each column, the change with the latest timestamp wins, so devices that have received the same changes have the same data, whatever order they arrived in. But an update that arrives before the insertion of its row creates the row with only the columns the update changed, and the row stays incomplete until the insertion arrives.
+
+For example, a phone that was offline for a week reconnects and starts syncing the changes it missed, including the insertion of an order created on a laptop. Syncing them takes a few round trips, and meanwhile the laptop changes the order's note. The relay that both devices sync through sends that change to the phone right away. If the phone hasn't received the order's insertion yet, it now has an order with a note but no customer. Changes can arrive in a different order for other reasons too, as [Sync](/docs/sync#changes-arrive-in-any-order) explains.
+
+Rows can be incomplete, and a row that an older app version created has no value for a column added later. That is why queries type every app-defined column except `id` as nullable, whatever the schema requires for mutations, as [Nullability](/docs/schema#nullability) explains. Select only the rows that have the columns the app needs, and leave out soft-deleted rows:
+
+```ts
+import {
+  createIdFromString,
+  createQueryBuilder,
+  id,
+  type KyselyNotNull,
+  NonEmptyTrimmedString100,
+  NonEmptyTrimmedString1000,
+  nullOr,
+  sqliteTrue,
+} from "@evolu/common";
+// ---cut-start---
+import { AppName, assertEqual, createEvolu, testAppOwner } from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+// ---cut-end---
+
+const Schema = {
+  order: {
+    id: id("Order"),
+    customer: NonEmptyTrimmedString100,
+    note: nullOr(NonEmptyTrimmedString1000),
+  },
+};
+// ---cut-start---
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("QueriesIncompleteRows"),
+    appOwner: testAppOwner,
+  }),
+);
+// ---cut-end---
+const createQuery = createQueryBuilder(Schema);
+
+// A query defines the shape of the rows the UI gets.
+const ordersQuery = createQuery((db) =>
+  db
+    .selectFrom("order")
+    .select(["id", "customer", "note"])
+    // Leave out soft-deleted rows.
+    .where("isDeleted", "is not", sqliteTrue)
+    // A row created by an update that arrived before its insertion has no
+    // customer yet, so leave it out too.
+    .where("customer", "is not", null)
+    // Kysely doesn't narrow the row type with where, so tell it that the
+    // customer isn't null.
+    .$narrowType<{ customer: KyselyNotNull }>(),
+);
+
+// An order whose insertion has not arrived yet.
+const orderId = createIdFromString<"Order">("order-1");
+
+// Simulates the phone receiving the laptop's note change before the order's
+// insertion. The change creates the order without a customer, so the query
+// leaves the order out.
+evolu.update("order", {
+  id: orderId,
+  note: NonEmptyTrimmedString1000.orThrow("Ring twice"),
+});
+assertEqual(await evolu.loadQuery(ordersQuery), []);
+
+// Simulates the order's insertion arriving. It's an upsert because an insert
+// can't take an ID. Like an update, it writes only the columns it's given, so
+// the order keeps the note from the earlier update.
+evolu.upsert("order", {
+  id: orderId,
+  customer: NonEmptyTrimmedString100.orThrow("Ada"),
+});
+assertEqual(await evolu.loadQuery(ordersQuery), [
+  { id: orderId, customer: "Ada", note: "Ring twice" },
+]);
+```
+
+## Relations
+
+Kysely is a query builder, not an ORM, so it has no relations: related rows are joined with SQL. A join returns one result row per match. An inner join leaves out rows without a match, and a left join keeps them with nulls.
+
+To nest related rows in a result instead, select them in a subquery with [evoluJsonArrayFrom](/docs/api-reference/common/local-first/Query/functions/evoluJsonArrayFrom), or with [evoluJsonObjectFrom](/docs/api-reference/common/local-first/Query/functions/evoluJsonObjectFrom) for one row. They are Evolu's variants of Kysely's [relations recipe](https://kysely.dev/docs/recipes/relations) and parse only the JSON they produce, so a text column that looks like JSON stays a string:
+
+```ts
+import {
+  createQueryBuilder,
+  evoluJsonArrayFrom,
+  id,
+  type KyselyNotNull,
+  NonEmptyTrimmedString100,
+  PositiveInt,
+  sqliteTrue,
+} from "@evolu/common";
+// ---cut-start---
+import { AppName, assertEqual, createEvolu, testAppOwner } from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+// ---cut-end---
+
+const OrderId = id("Order");
+
+const Schema = {
+  order: { id: OrderId, customer: NonEmptyTrimmedString100 },
+  orderLine: {
+    id: id("OrderLine"),
+    orderId: OrderId,
+    product: NonEmptyTrimmedString100,
+    quantity: PositiveInt,
+  },
+};
+// ---cut-start---
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("QueriesRelations"),
+    appOwner: testAppOwner,
+  }),
+);
+// ---cut-end---
+const createQuery = createQueryBuilder(Schema);
+
+const ordersQuery = createQuery((db) =>
+  db
+    .selectFrom("order")
+    .select(["order.id", "order.customer"])
+    .where("order.isDeleted", "is not", sqliteTrue)
+    .where("order.customer", "is not", null)
+    .$narrowType<{ customer: KyselyNotNull }>()
+    .select((eb) => [
+      evoluJsonArrayFrom(
+        eb
+          .selectFrom("orderLine")
+          .select(["orderLine.product", "orderLine.quantity"])
+          .whereRef("orderLine.orderId", "=", "order.id")
+          .where("orderLine.isDeleted", "is not", sqliteTrue)
+          .where("orderLine.product", "is not", null)
+          .where("orderLine.quantity", "is not", null)
+          .$narrowType<{ product: KyselyNotNull; quantity: KyselyNotNull }>()
+          .orderBy("orderLine.product"),
+      ).as("lines"),
+    ]),
+);
+
+const { id: orderId } = evolu.insert("order", {
+  customer: NonEmptyTrimmedString100.orThrow("Ada"),
+});
+evolu.insert("orderLine", {
+  orderId,
+  product: NonEmptyTrimmedString100.orThrow("Milk"),
+  quantity: PositiveInt.orThrow(2),
+});
+evolu.insert("orderLine", {
+  orderId,
+  product: NonEmptyTrimmedString100.orThrow("Bread"),
+  quantity: PositiveInt.orThrow(1),
+});
+
+assertEqual(await evolu.loadQuery(ordersQuery), [
+  {
+    id: orderId,
+    customer: "Ada",
+    lines: [
+      { product: "Bread", quantity: 1 },
+      { product: "Milk", quantity: 2 },
+    ],
+  },
+]);
+```
+
+The nested lines are those that have arrived so far. Nothing in the order says how many lines it has, so another device can show the order with only some of them. That suits a list that several people add to, but not an order that must be shown whole, which the next section is about.
+
+## Rows that belong together
+
+Mutations made in the same microtask are stored in one SQLite transaction on the device that made them. Other devices receive each mutation as a separate change, possibly over several syncs, so they can see some mutations of a batch before the rest. Only the values of a single mutation always arrive together. A row written in an earlier batch can arrive late too.
+
+Rows belong together through values each of them carries, which arrive with it because they are written in the same mutation: the ID of another row, such as the `orderId` of an order line, or an ID derived from what the rows are about. Whether a query on another device can tell that a group is complete depends on where its rows are written:
+
+| Group                           | Complete on other devices                                                       | Two devices add to it at the same time |
+| ------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------- |
+| One mutation with a JSON column | Always, it arrives at once                                                      | One value wins                         |
+| Rows that reference each other  | When each joined row has arrived, but a varying number of rows can't be checked | Both additions stay                    |
+| A parent that lists its rows    | When every listed row has arrived                                               | One list wins                          |
+
+### One mutation
+
+When other devices must never see one change without another, make them one mutation. Values whose count varies, such as the lines of an order, can go in a JSON column created with [json](/docs/api-reference/common/Type/functions/json):
+
+```ts
+import {
+  array,
+  id,
+  json,
+  NonEmptyTrimmedString100,
+  object,
+  PositiveInt,
+} from "@evolu/common";
+// ---cut-start---
+import {
+  AppName,
+  assertEqual,
+  createEvolu,
+  createQueryBuilder,
+  type KyselyNotNull,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+// ---cut-end---
+
+const OrderLines = array(
+  object({ product: NonEmptyTrimmedString100, quantity: PositiveInt }),
+);
+const [OrderLinesJson, orderLinesToOrderLinesJson, orderLinesJsonToOrderLines] =
+  json(OrderLines, "OrderLinesJson");
+
+const Schema = {
+  order: {
+    id: id("Order"),
+    customer: NonEmptyTrimmedString100,
+    lines: OrderLinesJson,
+  },
+};
+// ---cut-start---
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("QueriesOneMutation"),
+    appOwner: testAppOwner,
+  }),
+);
+// ---cut-end---
+
+// One mutation, so every device sees the order with all its lines.
+const { id: orderId } = evolu.insert("order", {
+  customer: NonEmptyTrimmedString100.orThrow("Ada"),
+  lines: orderLinesToOrderLinesJson(
+    OrderLines.orThrow([
+      { product: "Milk", quantity: 2 },
+      { product: "Bread", quantity: 1 },
+    ]),
+  ),
+});
+// ---cut-start---
+
+const createQuery = createQueryBuilder(Schema);
+const rows = await evolu.loadQuery(
+  createQuery((db) =>
+    db
+      .selectFrom("order")
+      .select("lines")
+      .where("id", "=", orderId)
+      .where("lines", "is not", null)
+      .$narrowType<{ lines: KyselyNotNull }>(),
+  ),
+);
+assertEqual(
+  rows.map((row) => orderLinesJsonToOrderLines(row.lines)),
+  [
+    [
+      { product: "Milk", quantity: 2 },
+      { product: "Bread", quantity: 1 },
+    ],
+  ],
+);
+// ---cut-end---
+```
+
+A mutation is limited to [maxMutationSize](/docs/api-reference/common/local-first/Evolu/variables/maxMutationSize), 640 KB, so this suits small groups. The JSON value is replaced as a whole, so when two devices change the lines at the same time, the later change wins with all its lines.
+
+### Rows that reference each other
+
+When the rows must stay separate, for example because different devices write them, don't treat one row as proof that another exists. Query for all of them with an inner join, which returns a group only once all its rows have arrived, in whatever order:
+
+```ts
+import {
+  createQueryBuilder,
+  id,
+  NonEmptyTrimmedString100,
+  PositiveInt,
+  sqliteTrue,
+} from "@evolu/common";
+// ---cut-start---
+import { AppName, assertEqual, createEvolu, testAppOwner } from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+// ---cut-end---
+
+const OrderId = id("Order");
+
+const Schema = {
+  order: { id: OrderId, customer: NonEmptyTrimmedString100 },
+  payment: { id: id("Payment"), orderId: OrderId, amount: PositiveInt },
+};
+// ---cut-start---
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("QueriesReferences"),
+    appOwner: testAppOwner,
+  }),
+);
+// ---cut-end---
+const createQuery = createQueryBuilder(Schema);
+
+// An inner join returns an order only once its payment has arrived.
+const paidOrdersQuery = createQuery((db) =>
+  db
+    .selectFrom("order")
+    .innerJoin("payment", "payment.orderId", "order.id")
+    .where("order.isDeleted", "is not", sqliteTrue)
+    .where("payment.isDeleted", "is not", sqliteTrue)
+    .select(["order.id", "payment.amount"]),
+);
+
+const { id: orderId } = evolu.insert("order", {
+  customer: NonEmptyTrimmedString100.orThrow("Ada"),
+});
+assertEqual(await evolu.loadQuery(paidOrdersQuery), []);
+
+evolu.insert("payment", { orderId, amount: PositiveInt.orThrow(42) });
+assertEqual(await evolu.loadQuery(paidOrdersQuery), [
+  { id: orderId, amount: 42 },
+]);
+```
+
+An inner join checks that each kind of row is there, not how many rows of a kind: it cannot tell whether all the lines of an order have arrived.
+
+### A parent that lists its rows
+
+When the number of rows varies and other devices must see the group only whole, let the parent list their IDs in a JSON column. A query reads the list with SQLite's `json_each` and returns the parent only once every listed row has arrived with the columns the app needs:
+
+```ts
+import {
+  array,
+  createIdFromString,
+  createQueryBuilder,
+  evoluJsonArrayFrom,
+  id,
+  json,
+  kyselySql,
+  NonEmptyTrimmedString100,
+  PositiveInt,
+  sqliteTrue,
+} from "@evolu/common";
+// ---cut-start---
+import { AppName, assertEqual, createEvolu, testAppOwner } from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+// ---cut-end---
+
+const OrderLineId = id("OrderLine");
+type OrderLineId = typeof OrderLineId.Output;
+
+const [OrderLineIdsJson, orderLineIdsToOrderLineIdsJson] = json(
+  array(OrderLineId),
+  "OrderLineIdsJson",
+);
+
+const Schema = {
+  order: {
+    id: id("Order"),
+    customer: NonEmptyTrimmedString100,
+    lineIds: OrderLineIdsJson,
+  },
+  orderLine: {
+    id: OrderLineId,
+    product: NonEmptyTrimmedString100,
+    quantity: PositiveInt,
+  },
+};
+// ---cut-start---
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("QueriesListedRows"),
+    appOwner: testAppOwner,
+  }),
+);
+// ---cut-end---
+const createQuery = createQueryBuilder(Schema);
+
+const completeOrdersQuery = createQuery((db) =>
+  db
+    .selectFrom("order")
+    .where("order.isDeleted", "is not", sqliteTrue)
+    .where("order.lineIds", "is not", null)
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom(
+              kyselySql<{
+                value: OrderLineId;
+              }>`json_each(${eb.ref("order.lineIds")})`.as("listed"),
+            )
+            .leftJoin("orderLine", "orderLine.id", "listed.value")
+            // A listed line that has not arrived, or has arrived incomplete.
+            .where((line) =>
+              line.or([
+                line("orderLine.product", "is", null),
+                line("orderLine.quantity", "is", null),
+              ]),
+            )
+            .select("listed.value"),
+        ),
+      ),
+    )
+    .select(["order.id", "order.customer"])
+    .select((eb) => [
+      evoluJsonArrayFrom(
+        eb
+          .selectFrom(
+            kyselySql<{
+              value: OrderLineId;
+              key: number;
+            }>`json_each(${eb.ref("order.lineIds")})`.as("listed"),
+          )
+          .innerJoin("orderLine", "orderLine.id", "listed.value")
+          .select(["orderLine.product", "orderLine.quantity"])
+          // In the order of the list.
+          .orderBy("listed.key"),
+      ).as("lines"),
+    ]),
+);
+
+const { id: milkId } = evolu.insert("orderLine", {
+  product: NonEmptyTrimmedString100.orThrow("Milk"),
+  quantity: PositiveInt.orThrow(2),
+});
+// A line whose mutation has not arrived yet.
+const breadId = createIdFromString<"OrderLine">("bread");
+const { id: orderId } = evolu.insert("order", {
+  customer: NonEmptyTrimmedString100.orThrow("Ada"),
+  lineIds: orderLineIdsToOrderLineIdsJson([milkId, breadId]),
+});
+assertEqual(await evolu.loadQuery(completeOrdersQuery), []);
+
+evolu.upsert("orderLine", {
+  id: breadId,
+  product: NonEmptyTrimmedString100.orThrow("Bread"),
+  quantity: PositiveInt.orThrow(1),
+});
+assertEqual(await evolu.loadQuery(completeOrdersQuery), [
+  {
+    id: orderId,
+    customer: "Ada",
+    lines: [
+      { product: "Milk", quantity: 2 },
+      { product: "Bread", quantity: 1 },
+    ],
+  },
+]);
+```
+
+To remove a line, write the list without its ID. The list is one value, so when two devices change it at the same time, the later change wins. If both added a line while offline, one of the lines is no longer listed: its row stays, but the order no longer shows it. A list therefore suits a group that one device writes at once, such as an order. For a collection that several people add to, such as a shared shopping list, let the rows reference their parent, and both additions stay.
+
+## Follow-up work
+
+Store facts and let queries derive the rest: whether a payment pays an order is a join, not a row. A device has to write a result only when the app does something outside the database, such as getting a shipping label for a paid order from a shipping service. The label is a new fact, and the query that finds paid orders without one tells the app what is left to do. A decision that no query can make, such as which of two orders a payment pays, belongs to the user, and the user's choice is another fact.
+
+To do such work, select the groups that don't have the result yet, do the work for each, and write the result with an ID derived from the group's with [createIdFromString](/docs/api-reference/common/Type/functions/createIdFromString). Do it when the app starts and again whenever the query's rows change. Every tab and device that has the app open does the work then, so several can do it at the same time. With the derived ID, they write one row, and the shipping service, which gets it as an idempotency key, creates one label:
+
+```ts
+import {
+  createIdFromString,
+  createQueryBuilder,
+  id,
+  NonEmptyTrimmedString100,
+  PositiveInt,
+  sqliteTrue,
+  type QueryRows,
+} from "@evolu/common";
+// ---cut-start---
+import { AppName, assertEqual, createEvolu, testAppOwner } from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+// ---cut-end---
+
+const OrderId = id("Order");
+
+const Schema = {
+  order: { id: OrderId, customer: NonEmptyTrimmedString100 },
+  payment: { id: id("Payment"), orderId: OrderId, amount: PositiveInt },
+  shipment: {
+    id: id("Shipment"),
+    orderId: OrderId,
+    label: NonEmptyTrimmedString100,
+  },
+};
+// ---cut-start---
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("QueriesFollowUpWork"),
+    appOwner: testAppOwner,
+  }),
+);
+
+// A shipping service that creates one label per idempotency key.
+const labelsByKey = new Map<string, NonEmptyTrimmedString100>();
+const shippingService = {
+  createLabel: (idempotencyKey: string): Promise<NonEmptyTrimmedString100> => {
+    const label =
+      labelsByKey.get(idempotencyKey) ??
+      NonEmptyTrimmedString100.orThrow(`Label ${labelsByKey.size + 1}`);
+    labelsByKey.set(idempotencyKey, label);
+    return Promise.resolve(label);
+  },
+};
+// ---cut-end---
+const createQuery = createQueryBuilder(Schema);
+
+// Paid orders that no device has shipped yet.
+const ordersToShipQuery = createQuery((db) =>
+  db
+    .selectFrom("order")
+    .innerJoin("payment", "payment.orderId", "order.id")
+    .where("order.isDeleted", "is not", sqliteTrue)
+    .where("payment.isDeleted", "is not", sqliteTrue)
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom("shipment")
+            .select("shipment.id")
+            .whereRef("shipment.orderId", "=", "order.id"),
+        ),
+      ),
+    )
+    .select("order.id"),
+);
+
+const shipOrders = async (
+  orders: QueryRows<typeof ordersToShipQuery.Row>,
+): Promise<void> => {
+  for (const { id: orderId } of orders) {
+    // Derived from the order, so every tab and device that ships it asks for
+    // the same label and writes the same row.
+    const shipmentId = createIdFromString<"Shipment">(orderId);
+    const label = await shippingService.createLabel(shipmentId);
+    evolu.upsert("shipment", { id: shipmentId, orderId, label });
+  }
+};
+
+// Now, and whenever the query's rows change.
+await shipOrders(await evolu.loadQuery(ordersToShipQuery));
+const unsubscribe = evolu.subscribeQuery(ordersToShipQuery)(() => {
+  void shipOrders(evolu.getQueryRows(ordersToShipQuery));
+});
+// ---cut-start---
+unsubscribe();
+
+const shipmentsQuery = createQuery((db) =>
+  db.selectFrom("shipment").select(["orderId", "label"]),
+);
+const { id: orderId } = evolu.insert("order", {
+  customer: NonEmptyTrimmedString100.orThrow("Ada"),
+});
+assertEqual(await evolu.loadQuery(ordersToShipQuery), []);
+
+evolu.insert("payment", { orderId, amount: PositiveInt.orThrow(42) });
+const orders = await evolu.loadQuery(ordersToShipQuery);
+assertEqual(orders, [{ id: orderId }]);
+
+// Two devices ship the order at the same time.
+await Promise.all([shipOrders(orders), shipOrders(orders)]);
+assertEqual(await evolu.loadQuery(shipmentsQuery), [
+  { orderId, label: "Label 1" },
+]);
+assertEqual(labelsByKey.size, 1);
+assertEqual(await evolu.loadQuery(ordersToShipQuery), []);
+// ---cut-end---
+```
+
+This works only when every tab and device that does the work writes the same row:
+
+- **Select the work by facts that stay true as rows arrive**, such as a join on an ID that both rows carry and that the app never changes. Don't choose among candidates, such as the open order with the same amount, because devices with different rows would choose differently and write different results. [What a device can decide alone](/docs/sync#what-a-device-can-decide-alone) explains which facts stay true and what to do when a decision needs others.
+- **Write the same values everywhere.** A time or a random value differs between devices, and the last write replaces the others.
+- **Make every request idempotent.** The database merges the rows, but a request, an email, or a payment happens once for each tab and device unless the other side recognizes it by its key.
+
+Each write is still a change that's stored and synced, so a result that several tabs and devices wrote at once is one row with a few changes in its history. They hold the same values, so they cost a little storage and sync, nothing more. A durable queue that runs such work once on each device is planned but not implemented yet. A request that fails leaves its group in the query, so the work tries it again when the query's rows next change. To retry sooner, also run the work on a timer or when the app is back online.

@@ -546,6 +546,10 @@ export interface MutationOptions {
    * usually one synchronous block, and {@link Evolu.requestSync} sends it early.
    * When one mutation cannot be stored, none of its batch is.
    *
+   * Other devices receive a batch as separate changes, one per mutation,
+   * possibly over several syncs, so their queries can show part of a batch
+   * until the rest arrives. The values of one mutation always arrive together.
+   *
    * Stored does not always mean visible. A change quarantined for
    * {@link QuarantineReason.TimestampDrift} is stored in
    * `evolu_message_quarantine` without changing application rows. `onComplete`

@@ -36,7 +36,7 @@ Evolu mutations accept already validated values so they do not run column valida
 
 ## Uniqueness
 
-Evolu is a distributed system that allows independent offline edits. Guaranteeing global uniqueness of arbitrary user-chosen values, such as names or email addresses, requires coordinating which writes are accepted. A device that is offline cannot coordinate with the other devices before accepting an edit. Evolu therefore rejects user-defined unique [indexes](/docs/indexes).
+Evolu is a distributed system that allows independent offline edits. Guaranteeing global uniqueness of arbitrary user-chosen values, such as names or email addresses, requires coordinating which writes are accepted. A device that is offline cannot coordinate with the other devices before accepting an edit. Evolu therefore rejects user-defined unique [indexes](/docs/indexes). Uniqueness is one of the decisions that [a device can't make alone](/docs/sync#what-a-device-can-decide-alone).
 
 Two devices sharing a database can independently create an item with the same name while offline. Each item has a different `id`. After synchronization, both devices contain both items. The devices agree on the data; deciding whether those items represent the same real-world entity belongs to the application and its users.
 
@@ -118,7 +118,9 @@ assertType<
 >();
 ```
 
-Evolu does not rely on changes being delivered in timestamp order. An update can arrive before the corresponding insertion, leaving the row incomplete until the older change arrives. Evolu still resolves the final value of each column independently by timestamp. By explicitly filtering for the shape the current app expects, only usable rows are selected.
+Evolu does not rely on changes being delivered in timestamp order, as [Sync](/docs/sync) explains. An update can arrive before the corresponding insertion, leaving the row incomplete until the older change arrives. Evolu still resolves the final value of each column independently by timestamp. By explicitly filtering for the shape the current app expects, only usable rows are selected, as [Incomplete rows](/docs/queries#incomplete-rows) shows.
+
+The same applies across rows. Mutations made in the same microtask are stored in one SQLite transaction on the device that made them, but other devices receive them as separate changes and can see some of them before the rest. Only the values of a single mutation always arrive together. Code on another device therefore should not assume that a row exists because another row written in the same batch does; it should query for every row it needs, as [Rows that belong together](/docs/queries#rows-that-belong-together) shows.
 
 ## Default values
 

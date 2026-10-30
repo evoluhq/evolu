@@ -1,0 +1,74 @@
+export const metadata = {
+  title: "Sync",
+  description:
+    "How Evolu syncs without a central server, why changes arrive in any order, how devices still end with the same data, and what a device can decide alone.",
+};
+
+# Sync
+
+Most sync services send every write through one server, usually a database, which numbers the writes as it accepts them. Clients then fetch the changes after the last number they have, so they all see the changes in the same order. It is the order in which the server accepted the writes, not the order in which they were made: the writes of a client that was offline get their place when it reconnects, and the server decides how they fit.
+
+Evolu has no authoritative server. This page explains what it does instead and what that means for apps.
+
+## No central server
+
+An app syncs through relays, as many as it chooses, including one the user runs (sync between devices without a relay, P2P, is possible but not implemented yet). A relay stores the encrypted changes of the owners it serves and sends them to clients. It cannot read them, and it does not decide their order.
+
+Relays don't sync with each other by default, because an app can use any number of them. Even relays that sync with each other, as backups of each other, are not something an app can rely on, because any relay can be down. Clients carry changes between relays instead: a client syncs each owner it uses with each of its relays, and sends the changes it receives from one relay to the others. A relay that was down for a day catches up when clients reconnect to it, and sync goes on through the other relays meanwhile. A device can be offline for any time too, and its changes sync when it reconnects.
+
+## Changes arrive in any order
+
+Evolu syncs each mutation as a separate change, and another device can receive changes in any order:
+
+- A device that was offline sends its changes when it reconnects, after other devices have already synced newer ones.
+- Sync doesn't replay a log. It finds the changes the other side is missing by comparing ranges of timestamps, as the [Protocol](/docs/api-reference/common/local-first/Protocol) describes, and sends them as it finds them, possibly over several syncs.
+- A device uploads a new change and a relay broadcasts it to the other connected devices right away, even while the sending device or a receiving device is still syncing older changes.
+- An app can sync through several relays, and one can pass a change on before another passes on an older one.
+
+Each device applies a change as soon as it receives it, so an edit made on one device appears on the others right away, which is usually what an app wants. Waiting for older changes first would delay every change. A device also couldn't tell when to stop waiting, because it can't know whether it has every older change, as [An order that is consistent but not final](#an-order-that-is-consistent-but-not-final) explains. Apps therefore see rows that are incomplete or missing for a while, which [Queries](/docs/queries) shows how to handle.
+
+## Devices end with the same data
+
+Every change has a timestamp: the device's time in milliseconds, a counter, and a random ID of the database session that made it, which makes the timestamp unique. Timestamps sort changes the same way on every device. For each column of each row, the change with the latest timestamp wins, so devices that have received the same changes have the same data, whatever order the changes arrived in. Synced tables also keep every change, which [Time travel](/docs/time-travel) shows how to query.
+
+A change that arrives late still changes what a device shows. A row created on a device that was offline appears when that device syncs, and its edits win wherever they are the latest. Device clocks can be wrong, which the [Timestamp](/docs/api-reference/common/local-first/Timestamp) reference describes along with how Evolu limits the effect.
+
+## An order that is consistent but not final
+
+The order of timestamps respects cause and effect. When a device receives a change, its clock moves past that change's timestamp, so whatever the device writes afterwards sorts after everything it has seen.
+
+What no device can know is whether it already has every change up to some moment, because a device that was offline can always bring older ones. An order that all devices agree on and that never changes would need them to agree before accepting a write, which a device that is offline can't do. Evolu accepts every write and merges it, which is what lets each device work offline and any relay be down.
+
+## What a device can decide alone
+
+A device can always show the data it has, because changes that arrive later update what it shows. Acting on the data is different. When an app writes a result or does something outside the database because of what a query returns, a change that arrives later can't take that back. An action is therefore safe only when more changes can't make its reason wrong. Such reasoning is called monotonic, and the [CALM theorem](https://arxiv.org/abs/1901.01930) shows that it is exactly what distributed systems can do without coordinating, which a device that is offline can't do.
+
+A reason stays true when it rests on facts that the app writes once and never changes or deletes, such as the order a payment references or the reference of a bank transfer. A join on such facts stays true as more rows arrive, and so does a check that every row a list names has arrived, as in [Rows that belong together](/docs/queries#rows-that-belong-together). Evolu's merge works this way too: a device only adds changes, and which change wins depends only on which changes it has.
+
+Other reasons can turn false when more changes arrive:
+
+- **A value nobody has taken yet**, such as a username. Another device can take it while offline, which is why Evolu has no unique indexes, as [Uniqueness](/docs/schema#uniqueness) explains.
+- **A row that hasn't arrived**, such as a missing receipt. Use it only to skip work that is already done.
+- **The best of several candidates**, such as the open order with the same amount. A device with more rows would choose another.
+- **A limit on a total**, such as a balance that must not go below zero. Two devices can each spend what looks available.
+- **A value that can still change, or a row that can still be deleted.** The change can arrive after the action.
+
+An app that needs such a decision has these options:
+
+- **Let users decide**, by showing the conflict and a way to resolve it, as for duplicates.
+- **Let one place decide**, such as a server, or a service that does an action only once, such as a payment provider that pays an invoice only once.
+- **Undo the action** when a later change makes it wrong, such as by canceling the shipment of an order that was deleted later.
+
+[Follow-up work](/docs/queries#follow-up-work) shows actions whose reasons stay true.
+
+## Logs and chains
+
+Some systems keep a log of each writer's changes, in which each change refers to the one before it, or a graph in which each change lists the changes its writer had seen, as commits do in Git. That adds one thing: a device can tell that it is missing a change and wait for it.
+
+It does not remove the merge. Changes made at the same time on different devices still have to be put in some order, and a branch that arrives late still changes that order. Systems without a central server that keep such logs, such as Git, Automerge, or Hypercore's Autobase, merge them in the end too.
+
+Evolu keeps no such logs and merges every change by its timestamp as soon as it arrives. An app that must know that a group of changes is complete can record the group in its data and check it in a query, as [Rows that belong together](/docs/queries#rows-that-belong-together) shows.
+
+## Owners and writers
+
+Data belongs to an [owner](/docs/api-reference/common/local-first/Owner), a logical unit with its own keys, by which relays find, store, and sync its data. All devices of a user write to the same owner, and several people can write to a shared one. Each database session writes with its own random ID, so an owner has many writers, and sync merges the changes of all of them.

@@ -1098,6 +1098,8 @@ In React, `useQuery` suspends until its query loads, so render it inside `Suspen
 
 Local queries are typically fast, especially with [indexes](/docs/indexes), so preloading is rarely needed. To start loading before a component renders, call `evolu.loadQuery`; `useQuery` reuses that load unless a mutation or sync drops it first.
 
+Changes from other devices can arrive in any order, as [Sync](/docs/sync) explains, so a row can be incomplete and a related row can be missing for a while. [Queries](/docs/queries) shows how to write queries that handle that, and how to join and nest related rows.
+
 ## Delete data
 
 To delete a row, set `isDeleted` to `sqliteTrue` (1). Synced tables use **soft deletes**. Tables prefixed with `_` delete the row permanently and have no sync history. In the examples below, `todoId` is the ID of the row to delete.

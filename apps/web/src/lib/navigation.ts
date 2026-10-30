@@ -22,6 +22,8 @@ export const navigation: Array<NavGroup> = [
         href: "/docs/api-reference/common/local-first/Owner",
       },
       { title: "Schema", href: "/docs/schema" },
+      { title: "Queries", href: "/docs/queries" },
+      { title: "Sync", href: "/docs/sync" },
       { title: "Relay", href: "/docs/relay" },
       { title: "Time travel", href: "/docs/time-travel" },
       { title: "Indexes", href: "/docs/indexes" },
