@@ -6,6 +6,7 @@ import {
   assert,
   assertEqual,
   assertInstanceOf,
+  assertNonNullable,
   assertSame,
   constVoid,
   createRun,
@@ -19,6 +20,7 @@ import {
   type CreateSqliteDriver,
   type EvoluDeps,
   type EvoluError,
+  type MessagePort,
   type NativeSqlite,
 } from "@evolu/common";
 import {
@@ -29,6 +31,8 @@ import {
   kyselySql,
   testAppOwner,
   RelayUrl,
+  type EvoluInput,
+  type EvoluOutput,
 } from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
 import { setupAddon } from "@evolu/sqlite-core/test/setup-addon.mts";
@@ -105,8 +109,17 @@ describe("createEvoluDeps", () => {
       });
 
     using first = createDeps();
-    await using run = createRun(first);
-    await using evolu = await run.ok(
+    // Keeps the instance's input port to post what useOwner rejects.
+    const evoluPorts: Array<MessagePort<EvoluInput, EvoluOutput>> = [];
+    await using run = createRun({
+      ...first,
+      createMessageChannel: <Input, Output = never>() => {
+        const channel = first.createMessageChannel<Input, Output>();
+        evoluPorts.push(channel.port1 as never);
+        return channel;
+      },
+    });
+    await using _evolu = await run.ok(
       createEvolu(
         { todo: { id: id("Todo") } },
         {
@@ -118,12 +131,23 @@ describe("createEvoluDeps", () => {
       ),
     );
     // The same transport twice in one claim is a defect that panics the
-    // worker's root Run.
+    // worker's root Run. useOwner throws for it, so this posts it as a
+    // defective tab would.
     const transport = createOwnerWebSocketTransport({
       url: RelayUrl.orThrow("wss://panic.example/"),
       ownerId: testAppOwner.id,
     });
-    evolu.useOwner(testAppOwner, [transport, transport]);
+    const [evoluPort] = evoluPorts;
+    assertNonNullable(evoluPort);
+    evoluPort.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport, transport] },
+          action: "add",
+        },
+      ],
+    });
     const defect = await reported.promise;
     assertInstanceOf(defect, Error);
     assertEqual(

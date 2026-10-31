@@ -28,6 +28,7 @@ import {
   acquireLeaderLockCallback,
   type LockManagerDep,
 } from "../LockManager.ts";
+import { structuralLookup } from "../Lookup.ts";
 import { createMicrotaskBatch } from "../Microtask.ts";
 import {
   createMutableRecord,
@@ -261,8 +262,9 @@ export interface EvoluConfig {
    * Transport configuration for sync and backup.
    *
    * If not specified, Evolu uses the default Evolu relay. Pass one or more
-   * transports to override it with your own relays. Pass an empty array to
-   * disable sync, which is useful when sync should be configured later.
+   * transports to override it with your own relays. They must be distinct, as
+   * {@link Evolu.useOwner} requires. Pass an empty array to disable sync, which
+   * is useful when sync should be configured later.
    *
    * Empty transports start the instance without sync. In that case,
    * {@link Evolu.useOwner} must be called with explicit non-empty transports to
@@ -840,9 +842,9 @@ export interface Evolu<
    * called with explicit non-empty transports.
    *
    * Owners that use equal transports share one reference-counted connection.
-   * The transports in one array must be distinct; equal ones, such as two
-   * spellings that {@link RelayUrlFromString} converts to one URL, are a defect
-   * that stops the shared worker.
+   * The transports in one array must be distinct, so this method throws for
+   * equal ones, such as two spellings that {@link RelayUrlFromString} converts
+   * to one URL.
    *
    * ### Example
    *
@@ -1870,6 +1872,15 @@ export const createEvolu =
       assertNonEmptyReadonlyArray(
         effectiveTransports,
         "useOwner requires explicit non-empty transports when config.transports is empty.",
+      );
+      // The shared worker claims each transport once and treats a duplicate as
+      // a defect that stops it for every tab, so the caller's mistake fails
+      // here, in its own tab.
+      assert(
+        new Set(
+          effectiveTransports.map((transport) => structuralLookup(transport)),
+        ).size === effectiveTransports.length,
+        "useOwner requires distinct transports.",
       );
 
       // Post only what workers use. Forwarding the caller's object would copy

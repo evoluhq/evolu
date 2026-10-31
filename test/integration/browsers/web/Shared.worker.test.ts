@@ -1,9 +1,9 @@
 import {
   assertEqual,
+  assertNonNullable,
   constVoid,
   createConsole,
   createQueryBuilder,
-  createRun,
   id,
   sleep,
   type EvoluError,
@@ -22,6 +22,7 @@ import {
 import { test } from "vitest";
 import {
   panicSharedWorker,
+  setupRunWithEvoluPorts,
   waitForSharedWorkerClose,
 } from "./_panicSharedWorker.ts";
 import {
@@ -100,7 +101,8 @@ const setupTab = async (
       ),
     }),
   );
-  const run = disposer.use(createRun(deps));
+  const { run, evoluPorts } = setupRunWithEvoluPorts(deps);
+  disposer.use(run);
   const evolu = disposer.use(
     await run.ok(
       createEvolu(schema, {
@@ -111,7 +113,9 @@ const setupTab = async (
       }),
     ),
   );
-  return { deps, run, evolu };
+  const [evoluPort] = evoluPorts;
+  assertNonNullable(evoluPort);
+  return { deps, run, evolu, evoluPort };
 };
 
 test("a panic of the production shared worker reaches evoluError", async () => {

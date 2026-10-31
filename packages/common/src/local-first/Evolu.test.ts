@@ -2,7 +2,9 @@ import {
   assert,
   assertEqual,
   assertEqualBytes,
+  assertErr,
   assertFalse,
+  assertInstanceOf,
   assertLength,
   assertNonNullable,
   assertNotNull,
@@ -40,6 +42,7 @@ import {
   createSharedReadonlyOwner,
   type Owner,
   RelayUrl,
+  RelayUrlFromString,
   testAppOwner,
 } from "./Owner.ts";
 import {
@@ -1486,6 +1489,74 @@ describe("Evolu", () => {
             ],
           },
         ]);
+      });
+
+      it("throws for equal transports and posts only distinct ones", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+
+        assertEqual(
+          assertThrowsInstanceOf(() => {
+            evolu.useOwner(testAppOwner, [
+              testOwnerTransport,
+              { ...testOwnerTransport },
+            ]);
+          }, Error).message,
+          "useOwner requires distinct transports.",
+        );
+
+        const otherTransport = createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://other.example.com/"),
+          ownerId: testAppOwner.id,
+        });
+        evolu.useOwner(testAppOwner, [testOwnerTransport, otherTransport]);
+        await testWaitForWorkerMessage();
+
+        assertEqual(evoluInputs, [
+          {
+            type: "UseOwner",
+            actions: [
+              {
+                owner: {
+                  owner: testPostedAppOwner,
+                  transports: [testOwnerTransport, otherTransport],
+                },
+                action: "add",
+              },
+            ],
+          },
+        ]);
+      });
+
+      it("fails createEvolu for equal config transports", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+
+        // Two spellings of one relay make equal transports.
+        const result = await run.abortable(
+          createEvolu(Schema, {
+            appName: testAppName,
+            appOwner: testAppOwner,
+            transports: [
+              testOwnerTransport,
+              createOwnerWebSocketTransport({
+                url: RelayUrlFromString.orThrow("WSS://Example.COM"),
+                ownerId: testAppOwner.id,
+              }),
+            ],
+          }),
+        );
+
+        assertErr(result);
+        assertSame(result.error.reason.type, "PanicAbortReason");
+        assertInstanceOf(result.error.reason.defect, Error);
+        assertEqual(
+          result.error.reason.defect.message,
+          "useOwner requires distinct transports.",
+        );
+        await testWaitForWorkerMessage();
+        assertEqual(evoluInputs, []);
       });
 
       it("throws when unuseOwner is called twice", async () => {

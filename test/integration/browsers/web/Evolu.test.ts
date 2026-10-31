@@ -1,9 +1,9 @@
 import {
   assertEqual,
+  assertNonNullable,
   constVoid,
   createConsole,
   createQueryBuilder,
-  createRun,
   createUnknownError,
   id,
   testStubGlobal,
@@ -19,6 +19,7 @@ import { test } from "vitest";
 import { createEvoluDeps } from "../../../../packages/web/src/local-first/Evolu.ts";
 import {
   panicSharedWorker,
+  setupRunWithEvoluPorts,
   waitForSharedWorkerClose,
 } from "./_panicSharedWorker.ts";
 
@@ -43,7 +44,8 @@ const setupDeps = (disposer: AsyncDisposableStack): EvoluDeps =>
 
 /** Opens an app of its own name with the deps. */
 const setupApp = async (disposer: AsyncDisposableStack, deps: EvoluDeps) => {
-  const run = disposer.use(createRun(deps));
+  const { run, evoluPorts } = setupRunWithEvoluPorts(deps);
+  disposer.use(run);
   const evolu = disposer.use(
     await run.ok(
       createEvolu(schema, {
@@ -54,7 +56,9 @@ const setupApp = async (disposer: AsyncDisposableStack, deps: EvoluDeps) => {
       }),
     ),
   );
-  return { deps, run, evolu };
+  const [evoluPort] = evoluPorts;
+  assertNonNullable(evoluPort);
+  return { deps, run, evolu, evoluPort };
 };
 
 test("a tab starts its database's DbWorker once the worker's script loads", async () => {
