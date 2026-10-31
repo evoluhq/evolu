@@ -450,7 +450,12 @@
  *
  * @module
  */
-import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/ciphers/utils.js";
+import {
+  bytesToHex,
+  concatBytes,
+  hexToBytes,
+  utf8ToBytes,
+} from "@noble/ciphers/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
@@ -10477,13 +10482,24 @@ export const createId = <B extends string = never>(
  * operation is not reversible; store the original identifier separately when it
  * must be retained.
  *
+ * Without a namespace, the same string creates the same Id everywhere, which a
+ * reference to an external entity needs. Rows of different owners can then
+ * share the Id, and a query or join by `id` alone matches a row in each owner.
+ * Pass a namespace Id, such as the
+ * {@link @evolu/common!"local-first/Owner".OwnerId | OwnerId} of the row's owner
+ * or the Id of a parent row, to create an Id per namespace, such as for each
+ * owner's seed rows. The hash then covers the namespace's bytes followed by the
+ * string.
+ *
  * ### Example
  *
  * ```ts
  * import {
  *   assertEqual,
+ *   assertNotSame,
  *   assertType,
  *   createIdFromString,
+ *   testAppOwner,
  *   type Brand,
  *   type Id,
  * } from "@evolu/common";
@@ -10494,17 +10510,27 @@ export const createId = <B extends string = never>(
  *
  * assertEqual(first, second);
  * assertType<typeof todoId, Id & Brand<"Todo">>();
+ *
+ * const groceries = createIdFromString("groceries", testAppOwner.id);
+ *
+ * assertEqual(groceries, createIdFromString("groceries", testAppOwner.id));
+ * assertNotSame(groceries, createIdFromString("groceries"));
  * ```
  *
  * @group String
  */
 export const createIdFromString = <B extends string = never>(
   value: string,
+  namespace?: Id,
   ..._validation: IdBrandValidation<B>
-): CreatedId<B> =>
-  idBytesToId(
-    sha256(utf8ToBytes(value)).slice(0, 16) as IdBytes,
+): CreatedId<B> => {
+  const bytes = utf8ToBytes(value);
+  return idBytesToId(
+    sha256(
+      namespace == null ? bytes : concatBytes(idToIdBytes(namespace), bytes),
+    ).slice(0, 16) as IdBytes,
   ) as CreatedId<B>;
+};
 
 /**
  * Creates an {@link Id} whose bytes use the UUID v7 timestamp layout.

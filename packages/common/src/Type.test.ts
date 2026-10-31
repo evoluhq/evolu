@@ -18,6 +18,7 @@ import {
   assertFalse,
   assertInstanceOf,
   assertLength,
+  assertNotSame,
   assertOk,
   assertSame,
   assertThrowsInstanceOf,
@@ -42,6 +43,7 @@ import { testCreateDeps } from "./Task.ts";
 import { Millis, testCreateTime } from "./Time.ts";
 import { utf8ToBytes } from "./Bytes.ts";
 import { eqData } from "./Eq.ts";
+import { testAppOwner } from "./local-first/Owner.ts";
 import type { StandardSchemaV1 } from "./StandardSchema.ts";
 import * as fc from "fast-check";
 import {
@@ -13814,6 +13816,33 @@ describe("BrandFactory", () => {
             void (random satisfies Id & Brand<"Todo">);
             // @ts-expect-error A Todo Id must not satisfy a User Id API.
             void (todoRandom satisfies Id & Brand<"User">);
+          });
+        });
+
+        it("creates a deterministic Id per namespace", () => {
+          const ownerId = testAppOwner.id;
+          const projectId = createIdFromString("project");
+          const scoped = createIdFromString("groceries", ownerId);
+          const todoScoped = createIdFromString<"Todo">("groceries", ownerId);
+          assertType<typeof scoped, Id>();
+          assertType<typeof todoScoped, Id & Brand<"Todo">>();
+
+          assertTrue(Id.is(scoped));
+          assertSame(createIdFromString("groceries", ownerId), scoped);
+          assertSame<Id>(todoScoped, scoped);
+          assertNotSame(createIdFromString("groceries", projectId), scoped);
+          assertNotSame(createIdFromString("groceries"), scoped);
+          // Ids are stored and synced, so the algorithm must never change: the
+          // first 16 SHA-256 bytes of the namespace's bytes and the string's
+          // UTF-8.
+          assertSame(scoped, "GiJylVDDv97ViTswFNV8jg");
+
+          const _unionBrand = "Todo" as "Todo" | "User";
+          void (() => {
+            // @ts-expect-error Every Id creator rejects union brands.
+            createIdFromString<typeof _unionBrand>("todo", ownerId);
+            // @ts-expect-error A namespace must be an Id, not any string.
+            createIdFromString("todo", "project");
           });
         });
 
