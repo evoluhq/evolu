@@ -25,6 +25,7 @@ import {
   getSqliteSchema,
   sql,
   SqliteBoolean,
+  type SqliteDep,
   type SqliteSchema,
 } from "../../../../../packages/common/src/Sqlite.ts";
 import type {
@@ -570,6 +571,66 @@ describe("ensureSqliteSchema", () => {
     assertTrue(todoColumns.has("updatedAt"));
     assertTrue(todoColumns.has("isDeleted"));
     assertTrue(todoColumns.has("ownerId"));
+  });
+
+  const getQueryPlan = (
+    deps: SqliteDep,
+    query: string,
+  ): ReadonlyArray<string> =>
+    deps.sqlite
+      .exec<{ detail: string }>(sql`explain query plan ${sql.raw(query)};`)
+      .rows.map(({ detail }) => detail);
+
+  it("indexes id in every app table, so a lookup or join by id searches the index", async () => {
+    await using deps = await setupSqlite();
+
+    ensureSqliteSchema(deps)({
+      tables: {
+        todo: new Set(["title", "categoryId"]),
+        todoCategory: new Set(["name"]),
+        _todoDraft: new Set(["title"]),
+      },
+      indexes: [],
+    });
+
+    assertEqual(
+      getQueryPlan(deps, `select "title" from "todo" where "id" = 'x'`),
+      ["SEARCH todo USING INDEX evolu_todo_id (id=?)"],
+    );
+    assertEqual(
+      getQueryPlan(deps, `select "title" from "_todoDraft" where "id" = 'x'`),
+      ["SEARCH _todoDraft USING INDEX evolu__todoDraft_id (id=?)"],
+    );
+    assertEqual(
+      getQueryPlan(
+        deps,
+        `select "todo"."title", "todoCategory"."name"
+        from "todo"
+        join "todoCategory" on "todoCategory"."id" = "todo"."categoryId"`,
+      ),
+      [
+        "SCAN todo",
+        "SEARCH todoCategory USING INDEX evolu_todoCategory_id (id=?)",
+      ],
+    );
+  });
+
+  it("adds the id index to an app table created without it", async () => {
+    await using deps = await setupSqlite();
+    const schema: SqliteSchema = {
+      tables: { todo: new Set(["title"]) },
+      indexes: [],
+    };
+    ensureSqliteSchema(deps)(schema);
+    // As a table that an earlier version created.
+    deps.sqlite.exec(sql`drop index evolu_todo_id;`);
+
+    ensureSqliteSchema(deps)(schema);
+
+    assertEqual(
+      getQueryPlan(deps, `select "title" from "todo" where "id" = 'x'`),
+      ["SEARCH todo USING INDEX evolu_todo_id (id=?)"],
+    );
   });
 
   it("adds new columns to existing tables", async () => {

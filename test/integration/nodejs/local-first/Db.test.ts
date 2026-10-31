@@ -209,6 +209,17 @@ const quarantineIndex = {
   sql: 'create index evolu_message_quarantine_reason_timestamp\n      on evolu_message_quarantine ("reason", "timestamp")',
 };
 
+const appIdIndexes = [
+  {
+    name: "evolu_testTable_id",
+    sql: 'create index "evolu_testTable_id"\n        on "testTable" ("id")',
+  },
+  {
+    name: "evolu__localTable_id",
+    sql: 'create index "evolu__localTable_id"\n        on "_localTable" ("id")',
+  },
+];
+
 const quarantineQuery = createQuery((db) =>
   db
     .selectFrom("evolu_message_quarantine")
@@ -794,6 +805,7 @@ describe("worker startup", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -1076,6 +1088,7 @@ describe("query and mutation flow", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -1227,6 +1240,7 @@ describe("query and mutation flow", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -1366,6 +1380,7 @@ describe("query and mutation flow", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -1992,6 +2007,7 @@ describe("query and mutation flow", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -2255,6 +2271,7 @@ describe("sync message flow", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -2634,6 +2651,7 @@ describe("sync message flow", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -2923,6 +2941,7 @@ describe("sync message flow", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -4728,6 +4747,7 @@ describe("quarantine replay", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -4939,6 +4959,7 @@ describe("quarantine replay", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -5188,6 +5209,7 @@ describe("quarantine replay", () => {
             sql: 'create index evolu_timestamp_index\n      on evolu_timestamp ("ownerId", "l", "t", "h1", "h2", "c")',
           },
           quarantineIndex,
+          ...appIdIndexes,
         ],
         tables: {
           _localTable: new Set([
@@ -7558,10 +7580,11 @@ describe("database version", () => {
       );
     }
     const expected = getSqliteSnapshot(dbSetup);
-    // A version 1 database lacks the quarantine columns and their index.
-    dbSetup.sqlite.exec(sql`
-      drop index evolu_message_quarantine_reason_timestamp;
-    `);
+    // A version 1 database lacks the quarantine columns and their index, and
+    // the id indexes of app tables.
+    for (const { name } of [quarantineIndex, ...appIdIndexes]) {
+      dbSetup.sqlite.exec(sql`drop index ${sql.identifier(name)};`);
+    }
     for (const column of ["reason", "origin", "quarantinedAt"]) {
       dbSetup.sqlite.exec(sql`
         alter table evolu_message_quarantine

@@ -1578,6 +1578,10 @@ describe("Evolu integration", () => {
             name: "evolu_message_quarantine_reason_timestamp",
             sql: 'create index evolu_message_quarantine_reason_timestamp\n      on evolu_message_quarantine ("reason", "timestamp")',
           },
+          {
+            name: "evolu_todo_id",
+            sql: 'create index "evolu_todo_id"\n        on "todo" ("id")',
+          },
         ],
         tables: {
           evolu_config: new Set(["clock"]),

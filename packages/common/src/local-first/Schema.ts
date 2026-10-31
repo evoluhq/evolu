@@ -913,7 +913,8 @@ export const createQueryBuilder = <S extends EvoluSchema>(
 
 /**
  * Creates missing tables, columns, and indexes, and drops indexes that the new
- * schema no longer defines.
+ * schema no longer defines. Every app table also gets an index on `id`, named
+ * `evolu_<table>_id`.
  *
  * @group SQLite
  */
@@ -937,6 +938,13 @@ export const ensureSqliteSchema =
           `);
         }
       }
+      // The primary key starts with ownerId, so without this index, a lookup
+      // or a join by id alone reads the whole table. A table created before
+      // Evolu added it gets it here.
+      queries.push(sql`
+        create index if not exists ${sql.identifier(`evolu_${tableName}_id`)}
+        on ${sql.identifier(tableName)} ("id");
+      `);
     }
 
     // Remove current indexes that are not in the newSchema.
