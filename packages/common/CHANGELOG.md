@@ -1,5 +1,221 @@
 # @evolu/common
 
+## 8.25.0
+
+### Minor Changes
+
+- f4e7be7: Added deleteOwner to Relay, which deletes an owner's data
+
+  A relay operator can now delete everything a relay stores for an owner, its messages, timestamps, usage, and write key, such as the data of a customer who leaves a paid relay, without editing the relay's database file. `relay.deleteOwner(ownerId)` waits for the owner's write in progress and closes the connections subscribed to the owner. Refuse the owner's writes first with `isOwnerWithinQuota`, or its devices upload their data again on their next sync. `isOwnerAllowed` is not enough, because it checks only the OwnerId a connection names when it connects.
+
+  `Storage` no longer has `deleteOwner`, which sync never called; `BaseSqliteStorage` and the new `RelaySqliteStorage` have it. `createRelaySqliteStorage` now returns a `RelaySqliteStorage`, whose `deleteOwner` returns a `Task` instead of deleting right away, so run it, as in `await run(storage.deleteOwner(ownerIdBytes))`. A call such as `storage.deleteOwner(ownerIdBytes)` still compiles but deletes nothing. A custom implementation of `Relay` needs `deleteOwner`.
+
+  ```ts
+  import {
+    assertType,
+    type OwnerId,
+    type OwnerIdBytes,
+    type Result,
+    type Run,
+    type Task,
+    type UnknownError,
+  } from "@evolu/common";
+  import type { Relay, RelaySqliteStorage } from "@evolu/common/local-first";
+
+  // The relay's isOwnerWithinQuota answers with !deletedOwnerIds.has(ownerId).
+  const deletedOwnerIds = new Set<OwnerId>();
+
+  const deleteCustomer = (
+    relay: Relay,
+    ownerId: OwnerId,
+  ): Task<void, UnknownError> => {
+    deletedOwnerIds.add(ownerId);
+    return relay.deleteOwner(ownerId);
+  };
+
+  assertType<ReturnType<typeof deleteCustomer>, Task<void, UnknownError>>();
+
+  // RelaySqliteStorage's deleteOwner returns a Task, so a custom relay runs it.
+  const deleteFromStorage = (
+    run: Run,
+    storage: RelaySqliteStorage,
+    ownerIdBytes: OwnerIdBytes,
+  ): Promise<Result<void, UnknownError>> =>
+    run(storage.deleteOwner(ownerIdBytes));
+
+  assertType<
+    ReturnType<RelaySqliteStorage["deleteOwner"]>,
+    Task<void, UnknownError>
+  >();
+  assertType<
+    ReturnType<typeof deleteFromStorage>,
+    Promise<Result<void, UnknownError>>
+  >();
+  ```
+
+- d2cbfd4: Added an optional namespace to createIdFromString
+
+  The same string creates the same Id everywhere, so rows of different owners, such as each shared owner's seed rows, can share an Id, and a query or join by `id` alone then matches a row in each owner. Passing a namespace Id, such as the OwnerId of the row's owner or the Id of a parent row, creates an Id per namespace. Ids created without one are unchanged.
+
+  ```ts
+  import {
+    assertNotSame,
+    createIdFromString,
+    testAppOwner,
+  } from "@evolu/common";
+
+  const groceries = createIdFromString("groceries", testAppOwner.id);
+
+  assertNotSame(groceries, createIdFromString("groceries"));
+  ```
+
+- b2e5000: Added WebSocketUrl and RelayUrl Types, which WebSocket transports now require
+
+  `WebSocketUrl` accepts a `ws:` or `wss:` URL, including its query, only in its canonical spelling, without a fragment or credentials, and in a form that React Native on Android can connect to. `RelayUrl` is a `WebSocketUrl` without a query, because `createOwnerWebSocketTransport` puts the OwnerId there. `WebSocketUrlFromString` and `RelayUrlFromString` convert other spellings, such as user input. All four validate with the platform's `URL`, as `Url` does, so React Native without Expo needs one that follows the WHATWG URL Standard, such as `whatwg-url-minimum` 0.2 or later, because React Native's own `URL` makes them reject every relay URL.
+
+  `createOwnerWebSocketTransport` now requires a `RelayUrl`, and the `url` of a WebSocket transport is a `WebSocketUrl`, so a malformed relay URL fails where the app creates it instead of never connecting. Equal relays are now equal strings, so `ws://localhost:4000` and `ws://localhost:4000/` no longer open two connections to one relay. A relay URL without a path ends with `/`, and so does its label in sync state, which is now a `RelayUrl`; the default relay is `wss://free.evoluhq.com/`. Transports are a local-first API, which isn't stable yet, so this ships in a minor version.
+
+  ```ts
+  import {
+    assertEqual,
+    createOwnerWebSocketTransport,
+    RelayUrlFromString,
+    testAppOwner,
+    WebSocketUrl,
+    type OwnerTransport,
+  } from "@evolu/common";
+
+  const _before = [
+    // @ts-expect-error A transport's url is a WebSocketUrl, not a string.
+    { type: "WebSocket", url: "ws://localhost:4000" },
+    createOwnerWebSocketTransport({
+      // @ts-expect-error createOwnerWebSocketTransport takes a RelayUrl, not a string.
+      url: "wss://relay.example.com",
+      ownerId: testAppOwner.id,
+    }),
+  ] satisfies ReadonlyArray<OwnerTransport>;
+
+  const relayUrl = RelayUrlFromString.orThrow("WSS://Relay.Example.com");
+  const transports = [
+    { type: "WebSocket", url: WebSocketUrl.orThrow("ws://localhost:4000/") },
+    createOwnerWebSocketTransport({ url: relayUrl, ownerId: testAppOwner.id }),
+  ] satisfies ReadonlyArray<OwnerTransport>;
+
+  assertEqual(
+    transports[1].url,
+    `wss://relay.example.com/?ownerId=${testAppOwner.id}`,
+  );
+  ```
+
+- f50d979: Added Url, UrlFromString, HttpUrl and HttpUrlFromString Types
+
+  `Url` accepts an absolute URL only in the canonical spelling the [WHATWG URL Standard](https://url.spec.whatwg.org/) serializes, so equal URLs are equal strings on an engine, and `UrlFromString` converts any other spelling, such as user input, to it. `HttpUrl` and `HttpUrlFromString` do the same for `http:` and `https:` URLs. Use them for links, because `Url` accepts any scheme, including `javascript:`. Evolu does not validate the values other devices write, so transform a link read from the database with `HttpUrlFromString` before rendering or opening it.
+
+  The Types validate with the platform's `URL`, which browsers, Node.js, and Expo SDK 58 and later provide. React Native without Expo needs a conformant `URL` installed, such as `whatwg-url-minimum` 0.2 or later, as the `react-native` example does.
+
+  ```ts
+  import {
+    assertErr,
+    assertOk,
+    HttpUrl,
+    HttpUrlFromString,
+    Url,
+    UrlFromString,
+  } from "@evolu/common";
+
+  assertOk(
+    UrlFromString.fromUnknown(" HTTPS://Example.com:443/a/../b "),
+    "https://example.com/b",
+  );
+  assertErr(Url.fromUnknown("https://example.com"));
+
+  assertOk(
+    HttpUrlFromString.fromUnknown("https://münchen.de"),
+    "https://xn--mnchen-3ya.de/",
+  );
+  assertErr(HttpUrl.fromUnknown("javascript:alert(1)"));
+  ```
+
+### Patch Changes
+
+- 952cee0: Bounded the memory decodeJsonValue uses for nested arrays
+
+  `decodeJsonValue` reserved room for each array's declared length before reading it, so a deliberately crafted value of many nested arrays could make it use hundreds of megabytes before reporting the value as invalid. Evolu decodes JSON columns of synced changes with it only after decrypting them, so such a value could come only from a device that holds the owner's keys. The arrays of one value can now reserve no more elements than the value has bytes, and valid values decode as before.
+
+- 9b66810: Made useOwner throw for equal transports instead of stopping the shared worker
+
+  Two equal transports in one array, such as the same relay passed twice to `useOwner`, were a defect the shared worker found only when it claimed them. It stopped, so every open tab got the defect as its `evoluError` and stopped working until reloaded. `useOwner` now throws for them, so the mistake fails only in the tab that made it. `createEvolu` passes the `transports` of its config to `useOwner`, so equal ones make it fail with that defect, which panics the Run it runs on. Two spellings that `RelayUrlFromString` converts to one URL make equal transports too.
+
+- 7a7e311: Fixed app indexes named like SQLite's or Evolu's failing the next start
+
+  An app index whose name began with `sqlite` or `evolu` and any next character, such as `sqlitesByDate` or `evolutionByDate`, was left out when Evolu read the database's indexes, so the next start created it again and failed with "index already exists". Evolu now compares the `sqlite_` and `evolu_` prefixes literally. Index names starting with `evolu_` are reserved for Evolu's own indexes, and `createEvolu` now rejects them.
+
+- ef25d85: Fixed loadQuery right after a mutation returning rows from before it
+
+  A query loaded earlier and loaded again in the same synchronous code as a mutation, such as `evolu.insert(...)` followed by `await evolu.loadQuery(query)`, returned its earlier rows, without the change. Only the next load read it. A mutation now drops those rows when it is made. Subscribed queries, such as those of a mounted `useQuery`, keep their rows until their refresh, as before.
+
+- ff5cc09: Fixed queries by ID reading the whole table
+
+  A query that finds or joins rows by ID alone, such as `.where("id", "=", id)` or a join on a column that holds an ID, read the whole table, because an app table's primary key starts with `ownerId`. Evolu now indexes `id` in every app table, so such a query searches the index. An existing database gets the indexes on its next start, which reads each table once. An index the app defined on `id` alone is no longer needed.
+
+- b2e5000: Fixed reading the OwnerId from relay URLs with other query parameters
+
+  A relay that admits connections with `isOwnerAllowed` read the OwnerId from whatever followed the first `=` in the request URL. It refused a URL with another query parameter or with `=` in its path, and read an OwnerId from a parameter with another name. `parseOwnerIdFromOwnerWebSocketTransportUrl` now reads only the `ownerId` query parameter and returns `null` when it's missing or repeated. The URLs that `createOwnerWebSocketTransport` creates were read correctly before unless the relay URL had `=` in its path, and now always are.
+
+- ed0da2a: Reported a WebSocket that stopped connecting as closed
+
+  `getReadyState` of a `createWebSocket` WebSocket returned `"connecting"` after it stopped connecting for good: when the constructor threw, `shouldRetryOnClose` declined a close, or the reconnect schedule ran out. It now returns `"closed"`, as the platform WebSocket does for a connection that couldn't be opened. While the WebSocket waits to retry, it still returns `"connecting"`. Evolu itself doesn't read it, so only apps that use `createWebSocket` directly are affected.
+
+- 1e73148: Fixed relays storing a new owner's write key before its quota check
+
+  A relay stored the write key of an owner it hadn't seen with any request that carried one, including a sync request without changes, before it asked `isOwnerWithinQuota`. On a relay that admits anyone, requests with made-up OwnerIds added rows that no quota limited. On a relay whose quota refuses unknown owners, someone who knew an OwnerId could claim it, and the relay then refused the owner's own writes until its operator deleted the owner. A relay now stores an owner's write key only with the first write for the owner that passes the quota check, so a quota that refuses an OwnerId also keeps others from claiming it. Once the quota admits it, whoever writes first still can, as [Privacy](https://www.evolu.dev/docs/privacy#write-keys) describes.
+
+  Write keys that earlier releases stored stay. With the relay stopped, `delete from evolu_writeKey where ownerId not in (select ownerId from evolu_message);` deletes the ones stored without data, which an owner's next accepted write stores again, and `relay.deleteOwner` removes a squatter that stored data.
+
+  For custom relay storage: `Storage` no longer has `validateWriteKey`. `RelayStorage`, which `applyProtocolMessageAsRelay` now takes, has it, and it only compares keys, because the relay calls it only for a request without messages. Its `writeMessages` takes the writer's write key before the messages, so an implementation written for `Storage` no longer compiles. It must compare the key with the owner's under the owner's lock, return `StorageWriteKeyError` for another, and store a new owner's key in the write's transaction, as `createRelaySqliteStorage` does.
+
+  ```ts
+  import {
+    assertType,
+    ok,
+    type NonEmptyReadonlyArray,
+    type Task,
+  } from "@evolu/common";
+  import type {
+    EncryptedCrdtMessage,
+    OwnerIdBytes,
+    OwnerWriteKey,
+    RelayStorage,
+    RelayStorageWriteMessagesError,
+    Storage,
+    StorageWriteMessagesError,
+  } from "@evolu/common/local-first";
+
+  // A client's Storage no longer has validateWriteKey; RelayStorage has it.
+  assertType<"validateWriteKey" extends keyof Storage ? true : false, false>();
+
+  const writeMessagesWithoutWriteKey =
+    (
+      _ownerIdBytes: OwnerIdBytes,
+      _messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+    ): Task<void, StorageWriteMessagesError> =>
+    () =>
+      ok();
+
+  // @ts-expect-error RelayStorage's writeMessages takes the write key before the messages.
+  const _before: RelayStorage["writeMessages"] = writeMessagesWithoutWriteKey;
+
+  const _after: RelayStorage["writeMessages"] =
+    (_ownerIdBytes, _writeKey, _messages) => () =>
+      ok();
+
+  assertType<Parameters<RelayStorage["writeMessages"]>[1], OwnerWriteKey>();
+  assertType<
+    ReturnType<RelayStorage["writeMessages"]>,
+    Task<void, RelayStorageWriteMessagesError>
+  >();
+  ```
+
 ## 8.24.1
 
 ### Patch Changes
