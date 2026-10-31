@@ -1161,6 +1161,43 @@ describe("getSqliteSchema", () => {
     });
   });
 
+  it("matches the internal sqlite_ prefix literally", async () => {
+    await using deps = await setupSqlite();
+    const { sqlite } = deps;
+
+    sqlite.exec(sql`create table t (id text primary key, value text);`);
+    sqlite.exec(sql`create index sqlitesByValue on t (value);`);
+
+    const schema = getSqliteSchema(deps)();
+
+    assertEqual(toSnapshot(schema).indexes, [
+      {
+        name: "sqlitesByValue",
+        sql: "create index sqlitesByValue on t (value)",
+      },
+    ]);
+  });
+
+  it("excludeIndexNamePrefix matches its prefix literally", async () => {
+    await using deps = await setupSqlite();
+    const { sqlite } = deps;
+
+    sqlite.exec(sql`create table t (id text primary key, value text);`);
+    sqlite.exec(sql`create index evolu_idx_value on t (value);`);
+    sqlite.exec(sql`create index evolutionByValue on t (value);`);
+
+    const schema = getSqliteSchema(deps)({
+      excludeIndexNamePrefix: "evolu_",
+    });
+
+    assertEqual(toSnapshot(schema).indexes, [
+      {
+        name: "evolutionByValue",
+        sql: "create index evolutionByValue on t (value)",
+      },
+    ]);
+  });
+
   it("excludeIndexNamePrefix escapes single quote safely", async () => {
     await using deps = await setupSqlite();
     const { sqlite } = deps;

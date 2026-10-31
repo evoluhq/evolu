@@ -305,7 +305,8 @@ export type ValidateSchema<S extends EvoluSchema> =
  * Defines SQLite indexes with Kysely's index builder.
  *
  * Unique indexes are not supported because concurrent offline writes can
- * violate uniqueness during synchronization.
+ * violate uniqueness during synchronization. Index names starting with `evolu_`
+ * are reserved for Evolu.
  *
  * @group SQLite
  */
@@ -840,6 +841,12 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
   const indexes = indexesConfig
     ? indexesConfig(createIndex).map((index): SqliteIndex => {
         const node = index.toOperationNode();
+        // getEvoluSqliteSchema leaves such indexes out, so the next start would
+        // create the index again and fail.
+        assert(
+          !node.name.name.startsWith("evolu_"),
+          "Index names starting with evolu_ are reserved for Evolu.",
+        );
         assert(
           !node.unique,
           "Unique indexes are not supported because they can prevent synchronization.",

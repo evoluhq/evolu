@@ -71,6 +71,21 @@ test("evoluSchemaToSqliteSchema compiles ordinary indexes", () => {
   ]);
 });
 
+test("evoluSchemaToSqliteSchema rejects index names that Evolu reserves", () => {
+  const error = assertThrowsInstanceOf(
+    () =>
+      evoluSchemaToSqliteSchema(testEvoluSchema, (create) => [
+        create("evolu_todoTitle").on("todo").column("title"),
+      ]),
+    Error,
+  );
+
+  assertEqual(
+    error.message,
+    "Index names starting with evolu_ are reserved for Evolu.",
+  );
+});
+
 test("evoluSchemaToSqliteSchema rejects unique indexes", () => {
   const error = assertThrowsInstanceOf(
     () =>

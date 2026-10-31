@@ -875,9 +875,12 @@ export const getSqliteSchema =
       (tables[tableName] ??= new Set()).add(columnName);
     });
 
+    // The prefixes are compared with substr, because in like, _ matches any
+    // character.
+    const escapedPrefix = excludeIndexNamePrefix?.replaceAll("'", "''");
     const indexNamePrefixFilter =
-      excludeIndexNamePrefix != null
-        ? ` and name not like '${excludeIndexNamePrefix.replaceAll("'", "''")}%'`
+      escapedPrefix != null
+        ? ` and substr(name, 1, length('${escapedPrefix}')) <> '${escapedPrefix}'`
         : "";
 
     // prettier-ignore
@@ -887,7 +890,7 @@ export const getSqliteSchema =
         from sqlite_master
         where
           type = 'index'
-          and name not like 'sqlite_%'
+          and substr(name, 1, 7) <> 'sqlite_'
           ${sql.raw(indexNamePrefixFilter)};
       `,
     );

@@ -633,6 +633,32 @@ describe("ensureSqliteSchema", () => {
     );
   });
 
+  it("keeps app indexes whose names begin like SQLite's or Evolu's", async () => {
+    await using deps = await setupSqlite();
+    const schema: SqliteSchema = {
+      tables: { todo: new Set(["title"]) },
+      indexes: [
+        {
+          name: "sqlitesByTitle",
+          sql: 'create index "sqlitesByTitle" on "todo" ("title")',
+        },
+        {
+          name: "evolutionByTitle",
+          sql: 'create index "evolutionByTitle" on "todo" ("title")',
+        },
+      ],
+    };
+    ensureSqliteSchema(deps)(schema);
+
+    // As on the next start, which must not create them again.
+    ensureSqliteSchema(deps)(schema);
+
+    assertEqual(
+      getSqliteSchema(deps)().indexes.map(({ name }) => name),
+      ["evolu_todo_id", "sqlitesByTitle", "evolutionByTitle"],
+    );
+  });
+
   it("adds new columns to existing tables", async () => {
     await using deps = await setupSqlite();
 
