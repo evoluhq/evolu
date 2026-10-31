@@ -36,9 +36,10 @@ import {
 } from "../Type.ts";
 import type { Awaitable } from "../Types.ts";
 import type { Evolu } from "./Evolu.ts";
-import type { Owner, OwnerError, OwnerIdBytes, SharedOwner } from "./Owner.ts";
-import { OwnerId, OwnerWriteKey } from "./Owner.ts";
-import type { ProtocolQuotaError, ProtocolWriteError } from "./Protocol.ts";
+import type { OwnerError, OwnerIdBytes, SharedOwner } from "./Owner.ts";
+import { OwnerId } from "./Owner.ts";
+import type { ProtocolQuotaError } from "./Protocol.ts";
+import type { RelayStorage } from "./Relay.ts";
 import { type SystemColumns, systemColumnsWithId } from "./Schema.ts";
 import type { syncStateToOwnerSyncStatus } from "./Shared.ts";
 import {
@@ -119,13 +120,14 @@ export interface StorageConfig {
  *
  * Protocol owns message framing, set reconciliation, and sync continuation.
  * Storage owns batch acceptance, persistence, and the timestamp and fingerprint
- * queries used by reconciliation. Protocol functions accept any implementation
- * that satisfies this contract.
+ * queries used by reconciliation. The client protocol accepts any
+ * implementation that satisfies this contract. The relay protocol takes a
+ * {@link RelayStorage} instead, whose writeMessages also checks the write key.
  *
  * {@link Storage.writeMessages} returns the {@link StorageWriteMessagesError}
  * that made it store none of a batch. Implementations return it without
  * reporting it; the caller owns reporting. The client protocol forwards these
- * errors unchanged, while the relay protocol maps them to wire error codes.
+ * errors unchanged.
  *
  * The Storage API is synchronous because SQLite's synchronous API is the
  * fastest way to use SQLite. Synchronous bindings, as Evolu's SQLite drivers
@@ -207,17 +209,6 @@ export interface Storage {
   ) => void;
 
   /**
-   * Validates the {@link OwnerWriteKey} for the given {@link Owner}.
-   *
-   * Returns `true` if the write key is valid, `false` otherwise. A relay logs a
-   * throw and answers the request with {@link ProtocolWriteError}.
-   */
-  readonly validateWriteKey: (
-    ownerId: OwnerIdBytes,
-    writeKey: OwnerWriteKey,
-  ) => boolean;
-
-  /**
    * Write encrypted {@link CrdtMessage}s to storage.
    *
    * Stores none of the messages and returns the cause when the batch cannot be
@@ -266,15 +257,13 @@ export interface StorageQuotaError
 /**
  * Reasons why {@link Storage.writeMessages} stored none of a batch.
  *
- * The built-in relay storage stores opaque encrypted messages and rejects
- * batches over quota. The built-in client storage decrypts and validates
- * incoming messages before updating its clock and database tables. It skips a
- * message that fails instead of rejecting its batch, and sync state shows it as
- * the route's `skippedError` without ending the sync round, so a message is
- * never a reason to reject a batch. The contract permits quota checks on either
- * side.
+ * The built-in client storage decrypts and validates incoming messages before
+ * updating its clock and database tables. It skips a message that fails instead
+ * of rejecting its batch, and sync state shows it as the route's `skippedError`
+ * without ending the sync round, so a message is never a reason to reject a
+ * batch. The contract permits quota checks.
  *
- * Both built-in storages return {@link UnknownError} when SQLite fails the
+ * The built-in client storage returns {@link UnknownError} when SQLite fails the
  * write, for example on a full disk, after rolling it back.
  *
  * @group Core
@@ -570,7 +559,7 @@ export interface DbChange extends InferType<typeof DbChange> {}
  */
 export interface BaseSqliteStorage extends Omit<
   Storage,
-  "validateWriteKey" | "writeMessages" | "readDbChange"
+  "writeMessages" | "readDbChange"
 > {
   /**
    * Inserts a timestamp for an owner into the skiplist-based storage.

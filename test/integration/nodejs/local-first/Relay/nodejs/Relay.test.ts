@@ -42,6 +42,7 @@ import {
   InfiniteUpperBound,
   MessageType,
   ownerIdToOwnerIdBytes,
+  ProtocolErrorCode,
   RangeType,
   SubscriptionFlags,
   testAppOwner,
@@ -1542,6 +1543,49 @@ describe("createRelay", () => {
         )
       );
     });
+  });
+
+  it("stores no write key for requests without messages or writes its quota refuses", async () => {
+    await using setup = await startTestRelay({
+      isOwnerWithinQuota: () => false,
+    });
+    await using socket = await testSetupWebSocket(
+      `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
+    );
+    const createId = testCreateId();
+    for (const owner of [testAppOwner, testRelayAppOwner2]) {
+      for (const [request, errorCode] of [
+        [
+          createProtocolMessageBuffer(owner.id, {
+            messageType: MessageType.Request,
+            writeKey: owner.writeKey,
+          }).unwrap(),
+          ProtocolErrorCode.NoError,
+        ],
+        [
+          createProtocolMessageFromCrdtMessages(
+            setupCryptoDeps(setup.run.deps),
+          )(owner, [testCreateCrdtMessage(createId(), 1, "x")]),
+          ProtocolErrorCode.QuotaError,
+        ],
+      ] as const) {
+        const response = socket.waitForMessage();
+        socket.send(request);
+        assertEqual(
+          await response,
+          createProtocolMessageBuffer(owner.id, {
+            messageType: MessageType.Response,
+            errorCode,
+          }).unwrap(),
+        );
+      }
+    }
+
+    assertEqual(
+      setup.driver.exec(sql`select count(*) as count from evolu_writeKey;`)
+        .rows,
+      [{ count: 0 }],
+    );
   });
 
   it("deletes an owner's data and closes the connections subscribed to it", async () => {

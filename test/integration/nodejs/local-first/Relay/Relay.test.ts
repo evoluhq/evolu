@@ -13,7 +13,6 @@ import {
   assertErr,
   assertFalse,
   assertOk,
-  assertSame,
   assertThrowsInstanceOf,
   assertTrue,
   err,
@@ -58,6 +57,7 @@ import {
 } from "../../../../../packages/common/src/Task.ts";
 import {
   setupInterceptedSqlite,
+  setupRelayStorageAsStorage,
   setupSqlite,
   setupSqliteAndRelayStorage,
   testCreateSqliteDep,
@@ -73,53 +73,59 @@ const testTimestamp = createTimestamp();
 
 installPolyfills();
 
-test("validateWriteKey", async () => {
+test("validateWriteKey compares with the stored write key and stores none", async () => {
   await using setup = await setupSqliteAndRelayStorage();
-  const { storage } = setup;
+  const { run, storage, sqlite } = setup;
 
-  const writeKey = testAppOwner.writeKey;
-  const differentWriteKey = testAppOwner2.writeKey;
+  // An owner without a write key gets one with its first accepted write.
+  for (const writeKey of [testAppOwner.writeKey, testAppOwner2.writeKey])
+    assertTrue(storage.validateWriteKey(testAppOwnerIdBytes, writeKey));
+  assertEqual(countOwnerRows(sqlite), [0, 0, 0, 0]);
 
-  // New owner
-  const result1 = storage.validateWriteKey(testAppOwnerIdBytes, writeKey);
-  assertTrue(result1);
-
-  // Existing owner, same write key
-  const result2 = storage.validateWriteKey(testAppOwnerIdBytes, writeKey);
-  assertTrue(result2);
-
-  // Existing owner ID, different write key
-  const result3 = storage.validateWriteKey(
-    testAppOwnerIdBytes,
-    differentWriteKey,
+  await run.orThrow(
+    storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+      {
+        timestamp: testTimestamp,
+        change: new Uint8Array(3) as EncryptedDbChange,
+      },
+    ]),
   );
-  assertFalse(result3);
+
+  assertTrue(
+    storage.validateWriteKey(testAppOwnerIdBytes, testAppOwner.writeKey),
+  );
+  assertFalse(
+    storage.validateWriteKey(testAppOwnerIdBytes, testAppOwner2.writeKey),
+  );
 });
 
 test("deleteOwner", async () => {
   await using setup = await setupSqliteAndRelayStorage();
   const { run, storage, sqlite } = setup;
 
-  // The first use of a write key stores it.
-  assertTrue(
-    storage.validateWriteKey(testAppOwnerIdBytes, testAppOwner.writeKey),
-  );
-
   const message: EncryptedCrdtMessage = {
     timestamp: testTimestamp,
     change: new Uint8Array([1, 2, 3]) as EncryptedDbChange,
   };
 
-  await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
+  await run(
+    storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+      message,
+    ]),
+  );
 
   assertEqual(storage.getSize(testAppOwnerIdBytes), 1);
 
   assertOk(await run(storage.deleteOwner(testAppOwnerIdBytes)));
 
   assertEqual(countOwnerRows(sqlite), [0, 0, 0, 0]);
-  // A deleted owner's next write key is stored as a new owner's.
-  assertTrue(
-    storage.validateWriteKey(testAppOwnerIdBytes, testAppOwner2.writeKey),
+  // A deleted owner's next write stores its key as a new owner's.
+  assertOk(
+    await run(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner2.writeKey, [
+        message,
+      ]),
+    ),
   );
 });
 
@@ -135,7 +141,11 @@ test("deleteOwner waits for a write in progress for the owner", async () => {
   };
 
   // The write reads the owner's usage and waits for its quota check.
-  const write = run(storage.writeMessages(testAppOwnerIdBytes, [message]));
+  const write = run(
+    storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+      message,
+    ]),
+  );
   const deletion = run(storage.deleteOwner(testAppOwnerIdBytes));
   quota.resolve(true);
 
@@ -147,14 +157,15 @@ test("deleteOwner waits for a write in progress for the owner", async () => {
 test("deleteOwner returns UnknownError and deletes nothing when SQLite fails it", async () => {
   await using setup = await setupSqliteAndRelayStorage();
   const { run, storage, sqlite } = setup;
-  assertTrue(
-    storage.validateWriteKey(testAppOwnerIdBytes, testAppOwner.writeKey),
-  );
   const message: EncryptedCrdtMessage = {
     timestamp: testTimestamp,
     change: new Uint8Array([1, 2, 3]) as EncryptedDbChange,
   };
-  await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
+  await run.orThrow(
+    storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+      message,
+    ]),
+  );
   // The usage is deleted after the write key, messages, and timestamps.
   sqlite.exec(sql`
     create temp trigger evolu_usage_delete_fails
@@ -193,7 +204,11 @@ test("readDbChange returns stored encrypted change", async () => {
     change: new Uint8Array([1, 2, 3]) as EncryptedDbChange,
   };
 
-  await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
+  await run.orThrow(
+    storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+      message,
+    ]),
+  );
 
   assertEqualBytes(
     storage.readDbChange(
@@ -228,7 +243,11 @@ describe("writeMessages", () => {
     await using setup = await setupSqliteAndRelayStorage();
     const { run, storage, sqlite } = setup;
 
-    await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
+    await run(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        message,
+      ]),
+    );
 
     assertEqual(getStoredBytes({ sqlite })(testAppOwnerIdBytes), 3);
   });
@@ -238,13 +257,17 @@ describe("writeMessages", () => {
     const { run, storage, sqlite } = setup;
 
     await run.orThrow(
-      storage.writeMessages(testAppOwnerIdBytes, [createTestMessage(0)]),
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        createTestMessage(0),
+      ]),
     );
     assertEqual(getStoredBytes({ sqlite })(testAppOwnerIdBytes), 0);
 
     // The Run survives, so later writes still work.
     await run.orThrow(
-      storage.writeMessages(testAppOwnerIdBytes, [createTestMessage()]),
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        createTestMessage(),
+      ]),
     );
     assertEqual(getStoredBytes({ sqlite })(testAppOwnerIdBytes), 3);
   });
@@ -253,8 +276,16 @@ describe("writeMessages", () => {
     await using setup = await setupSqliteAndRelayStorage();
     const { run, storage, sqlite } = setup;
 
-    await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
-    await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
+    await run(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        message,
+      ]),
+    );
+    await run(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        message,
+      ]),
+    );
 
     assertEqual(getStoredBytes({ sqlite })(testAppOwnerIdBytes), 3);
   });
@@ -283,6 +314,7 @@ describe("writeMessages", () => {
       await run.orThrow(
         storage.writeMessages(
           testAppOwnerIdBytes,
+          testAppOwner.writeKey,
           mapArray(written, (millis) => ({
             timestamp: timestampAt(millis),
             change: new Uint8Array(1) as EncryptedDbChange,
@@ -309,9 +341,17 @@ describe("writeMessages", () => {
     await using setup = await setupSqliteAndRelayStorage();
     const { run, storage, sqlite } = setup;
 
-    await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
+    await run.orThrow(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        message,
+      ]),
+    );
 
-    await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
+    await run.orThrow(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        message,
+      ]),
+    );
 
     const countResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
@@ -354,10 +394,13 @@ describe("writeMessages", () => {
         ...Array.from({ length: count - 1 }, () => createTestMessage()),
       ] as const;
       execs = 0;
-      assertTrue(
-        storage.validateWriteKey(testAppOwnerIdBytes, testAppOwner.writeKey),
+      await run.orThrow(
+        storage.writeMessages(
+          testAppOwnerIdBytes,
+          testAppOwner.writeKey,
+          messages,
+        ),
       );
-      await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, messages));
       for (const { timestamp } of messages) {
         storage.readDbChange(
           testAppOwnerIdBytes,
@@ -376,7 +419,10 @@ describe("writeMessages", () => {
     const { run, storage, sqlite } = setup;
 
     await run.orThrow(
-      storage.writeMessages(testAppOwnerIdBytes, [message, message]),
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        message,
+        message,
+      ]),
     );
 
     const countResult = sqlite.exec<{ count: number }>(sql`
@@ -410,12 +456,104 @@ describe("writeMessages", () => {
     const message2 = createTestMessage();
 
     await Promise.all([
-      run(storage.writeMessages(testAppOwnerIdBytes, [message1])),
-      run(storage.writeMessages(testAppOwnerIdBytes, [message2])),
+      run(
+        storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+          message1,
+        ]),
+      ),
+      run(
+        storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+          message2,
+        ]),
+      ),
     ]);
 
     assertFalse(concurrentAccess);
     assertEqual(storage.getSize(testAppOwnerIdBytes), 2);
+  });
+
+  it("stores a new owner's write key with its first write and rejects another", async () => {
+    await using setup = await setupSqliteAndRelayStorage();
+    const { run, storage, sqlite } = setup;
+    const firstMessage = createTestMessage();
+
+    await run.orThrow(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        firstMessage,
+      ]),
+    );
+    assertEqual(countOwnerRows(sqlite), [1, 1, 1, 1]);
+
+    // Also a write of messages the owner already has, which the protocol would
+    // otherwise broadcast.
+    for (const message of [createTestMessage(), firstMessage])
+      assertEqual(
+        await run(
+          storage.writeMessages(testAppOwnerIdBytes, testAppOwner2.writeKey, [
+            message,
+          ]),
+        ),
+        err({ type: "StorageWriteKeyError", ownerId: testAppOwner.id }),
+      );
+    assertEqual(storage.getSize(testAppOwnerIdBytes), 1);
+  });
+
+  it("rejects the later of two concurrent first writes with another write key", async () => {
+    const quota = Promise.withResolvers<boolean>();
+    await using setup = await setupSqliteAndRelayStorage({
+      isOwnerWithinQuota: () => quota.promise,
+    });
+    const { run, storage } = setup;
+
+    // The first write waits for its quota check while holding the owner's
+    // lock, and the second waits for the lock.
+    const first = run(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        createTestMessage(),
+      ]),
+    );
+    const second = run(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner2.writeKey, [
+        createTestMessage(),
+      ]),
+    );
+    quota.resolve(true);
+
+    assertOk(await first);
+    assertEqual(
+      await second,
+      err({ type: "StorageWriteKeyError", ownerId: testAppOwner.id }),
+    );
+    assertEqual(storage.getSize(testAppOwnerIdBytes), 1);
+  });
+
+  it("stores no write key for a request without messages or a write its quota refuses", async () => {
+    await using setup = await setupSqliteAndRelayStorage({
+      isOwnerWithinQuota: constFalse,
+    });
+    const { run, sqlite } = setup;
+    const createRequest = (withMessage: boolean) => {
+      const request = createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        writeKey: testAppOwner.writeKey,
+      });
+      if (withMessage) request.addMessage(createTestMessage(100));
+      return request.unwrap();
+    };
+
+    for (const withMessage of [false, true]) {
+      const { message } = await run.orThrow(
+        applyProtocolMessageAsRelay(createRequest(withMessage)),
+      );
+      assertEqual(
+        await run(applyProtocolMessageAsClient(message)),
+        withMessage
+          ? err({ type: "ProtocolQuotaError", ownerId: testAppOwner.id })
+          : ok({ type: "Readonly" }),
+      );
+    }
+
+    assertEqual(countOwnerRows(sqlite), [0, 0, 0, 0]);
   });
 
   it("allows concurrent writes for different owners", async () => {
@@ -437,8 +575,16 @@ describe("writeMessages", () => {
     const message2 = createTestMessage();
 
     await Promise.all([
-      run(storage.writeMessages(testAppOwnerIdBytes, [message1])),
-      run(storage.writeMessages(testAppOwner2IdBytes, [message2])),
+      run(
+        storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+          message1,
+        ]),
+      ),
+      run(
+        storage.writeMessages(testAppOwner2IdBytes, testAppOwner2.writeKey, [
+          message2,
+        ]),
+      ),
     ]);
 
     assertEqual(maxConcurrentWrites, 2);
@@ -453,7 +599,9 @@ describe("writeMessages", () => {
     const { run, storage, sqlite } = setup;
 
     const result = await run(
-      storage.writeMessages(testAppOwnerIdBytes, [message]),
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        message,
+      ]),
     );
 
     assertErr(result, { type: "StorageQuotaError", ownerId: testAppOwner.id });
@@ -493,7 +641,11 @@ describe("writeMessages", () => {
       timestamp: createTimestamp({ millis: millis as Millis }),
       change: new Uint8Array(3) as EncryptedDbChange,
     }));
-    await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [later]));
+    await run.orThrow(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        later,
+      ]),
+    );
     const readTables = () =>
       ["evolu_timestamp", "evolu_message", "evolu_usage"].map(
         (table) => sqlite.exec(sql`select * from ${sql.raw(table)};`).rows,
@@ -510,13 +662,19 @@ describe("writeMessages", () => {
       end;
     `);
     const result = await run(
-      storage.writeMessages(testAppOwnerIdBytes, [earlier]),
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        earlier,
+      ]),
     );
     assertTrue(!result.ok && UnknownError.is(result.error));
     assertEqual(readTables(), tables);
 
     sqlite.exec(sql`drop trigger evolu_timestamp_update_fails;`);
-    await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [earlier]));
+    await run.orThrow(
+      storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+        earlier,
+      ]),
+    );
     assertEqual(storage.getSize(testAppOwnerIdBytes), 2);
   });
 
@@ -536,10 +694,6 @@ describe("writeMessages", () => {
       );
       return run(applyProtocolMessageAsClient(message));
     };
-    // The owner's first write key is stored before the database is full.
-    assertTrue(
-      storage.validateWriteKey(testAppOwnerIdBytes, testAppOwner.writeKey),
-    );
     const { pageCount } = sqlite.exec<{ pageCount: number }>(sql`
       select page_count as pageCount from pragma_page_count();
     `).rows[0];
@@ -549,7 +703,9 @@ describe("writeMessages", () => {
       await respond(),
       err({ type: "ProtocolWriteError", ownerId: testAppOwner.id }),
     );
-    assertEqual(storage.getSize(testAppOwnerIdBytes), 0);
+    // The new owner's write key, stored before the message that didn't fit,
+    // rolled back with it.
+    assertEqual(countOwnerRows(sqlite), [0, 0, 0, 0]);
     const logged = run.deps.console.getEntriesSnapshot();
     assertEqual(
       logged.map(({ method }) => method),
@@ -562,7 +718,11 @@ describe("writeMessages", () => {
     assertEqual(storage.getSize(testAppOwnerIdBytes), 1);
   });
 
-  for (const failingQuery of ["split_timestamps", "from evolu_usage"]) {
+  for (const failingQuery of [
+    "from evolu_writeKey",
+    "split_timestamps",
+    "from evolu_usage",
+  ]) {
     it(`answers a write whose ${failingQuery} read SQLite fails with WriteError and keeps serving`, async () => {
       await using setup = await setupSqlite();
       const { sqlite } = setup;
@@ -580,7 +740,9 @@ describe("writeMessages", () => {
         }),
         timingSafeEqual: testTimingSafeEqual,
       })({ isOwnerWithinQuota: constTrue });
-      await using run = testCreateRun({ storage });
+      await using run = testCreateRun({
+        storage: setupRelayStorageAsStorage(storage),
+      });
       const request = createProtocolMessageBuffer(testAppOwner.id, {
         messageType: MessageType.Request,
         writeKey: testAppOwner.writeKey,
@@ -630,7 +792,9 @@ describe("writeMessages", () => {
       }),
       timingSafeEqual: testTimingSafeEqual,
     })({ isOwnerWithinQuota: constTrue });
-    await using run = testCreateRun({ storage });
+    await using run = testCreateRun({
+      storage: setupRelayStorageAsStorage(storage),
+    });
     const request = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       writeKey: testAppOwner.writeKey,
@@ -649,16 +813,17 @@ describe("writeMessages", () => {
       err({ type: "ProtocolWriteError", ownerId: testAppOwner.id }),
     );
     assertFalse(isFailing);
-    assertEqual(storage.getSize(testAppOwnerIdBytes), 0);
+    // The key is stored in the write's transaction, which rolled back.
+    assertEqual(countOwnerRows(sqlite), [0, 0, 0, 0]);
     const logged = run.deps.console.getEntriesSnapshot();
     assertEqual(
       logged.map(({ method }) => method),
       ["error"],
     );
-    assertSame(logged[0]?.args[0], failure);
+    assertTrue(UnknownError.is(logged[0]?.args[0]));
 
     assertOk(await respond(), { type: "Readonly" });
-    assertEqual(storage.getSize(testAppOwnerIdBytes), 1);
+    assertEqual(countOwnerRows(sqlite), [1, 1, 1, 1]);
   });
 
   it("throws when write starts on disposed run", async () => {
@@ -670,7 +835,12 @@ describe("writeMessages", () => {
 
     assertEqual(
       assertThrowsInstanceOf(
-        () => run(storage.writeMessages(testAppOwnerIdBytes, [message])),
+        () =>
+          run(
+            storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+              message,
+            ]),
+          ),
         Error,
       ).message,
       "Cannot use a disposed object.",
@@ -701,7 +871,11 @@ describe("writeMessages", () => {
       });
       const { run, storage } = setup;
 
-      await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
+      await run.orThrow(
+        storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+          message,
+        ]),
+      );
       assertTrue(quotaCheckCalled);
       assertEqual(receivedOwnerId, testAppOwner.id);
       assertEqual(receivedBytes, 3);
@@ -723,7 +897,11 @@ describe("writeMessages", () => {
       });
       const { run, storage } = setup;
 
-      await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
+      await run.orThrow(
+        storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+          message,
+        ]),
+      );
       assertTrue(quotaCheckCalled);
       assertEqual(receivedOwnerId, testAppOwner.id);
       assertEqual(receivedBytes, 3);
@@ -736,7 +914,9 @@ describe("writeMessages", () => {
       const { run, storage } = setup;
 
       const result = await run(
-        storage.writeMessages(testAppOwnerIdBytes, [message]),
+        storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+          message,
+        ]),
       );
 
       assertErr(result, {
@@ -755,7 +935,9 @@ describe("writeMessages", () => {
       const { run, storage } = setup;
 
       const result = await run(
-        storage.writeMessages(testAppOwnerIdBytes, [message]),
+        storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+          message,
+        ]),
       );
 
       assertErr(result, {
@@ -774,14 +956,24 @@ describe("writeMessages", () => {
       const { run, storage, sqlite } = setup;
 
       const message1 = createTestMessage(50);
-      await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message1]));
+      await run.orThrow(
+        storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+          message1,
+        ]),
+      );
 
       const message2 = createTestMessage(40);
-      await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message2]));
+      await run.orThrow(
+        storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+          message2,
+        ]),
+      );
 
       const largeMessage = createTestMessage(20);
       const result3 = await run(
-        storage.writeMessages(testAppOwnerIdBytes, [largeMessage]),
+        storage.writeMessages(testAppOwnerIdBytes, testAppOwner.writeKey, [
+          largeMessage,
+        ]),
       );
       assertEqual(
         result3,

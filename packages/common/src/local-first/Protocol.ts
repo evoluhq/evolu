@@ -70,9 +70,11 @@
  * initiator can write changes. It's ok to not send a WriteKey if the initiator
  * is only syncing (read-only) and not sending messages. The non-initiator
  * decodes the whole request first and then validates the WriteKey, before
- * storing any messages or reconciling ranges. Only the subscriptionFlag takes
- * effect before that, because subscribing needs no WriteKey: broadcasts carry
- * only encrypted changes. So a request rejected with
+ * storing any messages or reconciling ranges. A relay stores a new owner's
+ * WriteKey only with the owner's first write that passes its quota check, so a
+ * request without messages or a refused write stores none. Only the
+ * subscriptionFlag takes effect before that, because subscribing needs no
+ * WriteKey: broadcasts carry only encrypted changes. So a request rejected with
  * {@link ProtocolWriteKeyError} still changes its subscription.
  *
  * ## Synchronization
@@ -128,10 +130,10 @@
  * decodes a whole request before acting on it, so for a malformed one it
  * returns `ProtocolInvalidDataError` without subscribing, storing, or
  * broadcasting anything, and sends no reply. When its storage throws while
- * validating the WriteKey, for example because SQLite cannot store a new
- * owner's key on a full disk, the relay logs the error and answers with
- * `ProtocolWriteError`, like a failed write. Likewise, a client applies nothing
- * from a message it cannot decode.
+ * validating the WriteKey, for example because SQLite cannot read the page that
+ * holds it, the relay logs the error and answers with `ProtocolWriteError`,
+ * like a failed write. Likewise, a client applies nothing from a message it
+ * cannot decode.
  *
  * {@link decryptAndDecodeDbChange} returns `ProtocolInvalidDataError`,
  * {@link ProtocolTimestampMismatchError}, or
@@ -309,10 +311,12 @@ import {
   RangeType,
   type RangeUpperBound,
   type SkipRange,
+  type Storage,
   type StorageDep,
   type StorageWriteMessagesError,
   type TimestampsRange,
 } from "./Storage.ts";
+import type { RelayStorageDep } from "./Relay.ts";
 import {
   Counter,
   eqTimestamp,
@@ -1399,7 +1403,7 @@ export const applyProtocolMessageAsRelay =
   ): Task<
     ApplyProtocolMessageAsRelayResult,
     ProtocolInvalidDataError,
-    StorageDep
+    RelayStorageDep
   > =>
   async (run) => {
     const { storage } = run.deps;
@@ -1464,29 +1468,17 @@ export const applyProtocolMessageAsRelay =
         exhaustiveCheck(request.subscriptionFlag);
     }
 
-    if (writeKey) {
-      let isValid: boolean;
-      try {
-        isValid = storage.validateWriteKey(ownerIdBytes, writeKey);
-      } catch (error) {
-        // A relay storage stores the write key of a new owner, which SQLite
-        // can fail, for example on a full disk. A boolean has no room for the
-        // error, so it is answered like a failed write.
-        run.deps.console.error(error);
-        return ok(createErrorResponse(ProtocolErrorCode.WriteError));
-      }
-      if (!isValid) {
-        return ok(createErrorResponse(ProtocolErrorCode.WriteKeyError));
-      }
-    }
-
     if (isNonEmptyArray(messages)) {
       if (!writeKey) {
         return ok(createErrorResponse(ProtocolErrorCode.WriteKeyError));
       }
 
       try {
-        const result = await run(storage.writeMessages(ownerIdBytes, messages));
+        // The storage checks the write key under the owner's lock, and stores
+        // a new owner's key only with a write that passes the quota check.
+        const result = await run(
+          storage.writeMessages(ownerIdBytes, writeKey, messages),
+        );
 
         if (!result.ok) {
           // A storage returns a failed write without reporting it.
@@ -1496,7 +1488,9 @@ export const applyProtocolMessageAsRelay =
             createErrorResponse(
               result.error.type === "StorageQuotaError"
                 ? ProtocolErrorCode.QuotaError
-                : ProtocolErrorCode.WriteError,
+                : result.error.type === "StorageWriteKeyError"
+                  ? ProtocolErrorCode.WriteKeyError
+                  : ProtocolErrorCode.WriteError,
             ),
           );
         }
@@ -1533,6 +1527,21 @@ export const applyProtocolMessageAsRelay =
           broadcastBuffer.addMessage(message);
         }
         options.broadcast(ownerId, broadcastBuffer.unwrap());
+      }
+    } else if (writeKey) {
+      // A request without messages stores nothing, so it only compares its
+      // write key with the owner's.
+      let isValid: boolean;
+      try {
+        isValid = storage.validateWriteKey(ownerIdBytes, writeKey);
+      } catch (error) {
+        // SQLite can fail the read, for example on a corrupt page. A boolean
+        // has no room for the error, so it is answered like a failed write.
+        run.deps.console.error(error);
+        return ok(createErrorResponse(ProtocolErrorCode.WriteError));
+      }
+      if (!isValid) {
+        return ok(createErrorResponse(ProtocolErrorCode.WriteKeyError));
       }
     }
 
@@ -1703,6 +1712,14 @@ interface DecodedBroadcast extends Typed<"Broadcast"> {
   readonly messages: ReadonlyArray<EncryptedCrdtMessage>;
 }
 
+/**
+ * The storage that sync reads, which a client's {@link Storage} and a relay's
+ * storage both are.
+ */
+interface SyncStorageDep {
+  readonly storage: Omit<Storage, "writeMessages">;
+}
+
 const decodeVersionAndOwner = (input: Buffer): [NonNegativeInt, OwnerId] => {
   // This structure must never change across protocol versions. The version
   // and owner ID must always be the first two fields in every protocol message
@@ -1821,7 +1838,7 @@ const maxSyncStorageReads = 8_192;
  * `onChangeTooLarge`, or `onMessage`, is a defect.
  */
 const sync =
-  (deps: StorageDep & ConsoleDep) =>
+  (deps: SyncStorageDep & ConsoleDep) =>
   (
     ranges: NonEmptyReadonlyArray<Range>,
     output: ProtocolMessageBuffer,
@@ -2220,7 +2237,7 @@ const getTimestampsRangeReserve = (
  * failure.
  */
 const readSplitRanges =
-  (deps: StorageDep) =>
+  (deps: SyncStorageDep) =>
   (
     ownerId: OwnerIdBytes,
     lower: NonNegativeInt,

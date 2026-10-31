@@ -2,12 +2,14 @@ import {
   assertEqual,
   assertEqualBytes,
   assertFalse,
+  assertOk,
   assertSame,
   assertThrowsInstanceOf,
   assertTrue,
   createRandom,
   createRun,
   createSqlite,
+  err,
   isNonEmptyArray,
   Millis,
   Name,
@@ -26,10 +28,11 @@ import {
   InfiniteUpperBound,
   NodeId,
   OwnerWriteKey,
+  ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
   RangeType,
   type RangeUpperBound,
-  type Storage,
+  type RelayStorage,
   testAppOwner,
   type Timestamp,
   type TimestampBytes,
@@ -55,9 +58,10 @@ installPolyfills();
 await buildNativeSqlite();
 
 const modules: MemoryStorageModules = {
-  common: { ok },
+  common: { err, ok },
   localFirst: {
     InfiniteUpperBound,
+    ownerIdBytesToOwnerId,
     RangeType,
     timestampBytesToFingerprint,
     timestampToTimestampBytes,
@@ -127,7 +131,9 @@ const setupSqliteStorage = async (
   })({ isOwnerWithinQuota: () => true });
   const write = async (batch: ReadonlyArray<EncryptedCrdtMessage>) => {
     if (isNonEmptyArray(batch)) {
-      await run.orThrow(storage.writeMessages(ownerId, batch));
+      await run.orThrow(
+        storage.writeMessages(ownerId, testAppOwner.writeKey, batch),
+      );
     }
   };
   await write(messages);
@@ -142,16 +148,21 @@ const setupSqliteStorage = async (
 const writeToMemory = async (
   storage: MemoryStorage,
   batch: ReadonlyArray<EncryptedCrdtMessage>,
+  writeKey?: OwnerWriteKey,
 ) => {
   if (!isNonEmptyArray(batch)) return;
   await using run = createRun();
-  await run.orThrow(storage.writeMessages(ownerId, batch));
+  await run.orThrow(
+    writeKey === undefined
+      ? storage.writeMessages(ownerId, batch)
+      : storage.writeMessages(ownerId, writeKey, batch),
+  );
 };
 
 const index = (value: number) => NonNegativeInt.orThrow(value);
 
 /** Every answer the protocol reads from storage, for comparison. */
-const describeStorage = (storage: Storage) => {
+const describeStorage = (storage: RelayStorage) => {
   const size = storage.getSize(ownerId);
   const bounds = [0, 1, Math.floor(size / 3), Math.floor(size / 2), size - 1];
   const timestamps: Array<string> = [];
@@ -292,11 +303,10 @@ describe("createMemoryStorage", () => {
 
     const writeKey = testAppOwner.writeKey;
     const otherWriteKey = OwnerWriteKey.orThrow(new Uint8Array(16));
-    assertTrue(memory.validateWriteKey(ownerId, writeKey));
+    await writeToMemory(memory, messages.slice(250, 400), writeKey);
+    assertEqual(memory.getSize(ownerId), 400);
     assertTrue(memory.validateWriteKey(ownerId, writeKey));
     assertFalse(memory.validateWriteKey(ownerId, otherWriteKey));
-    await writeToMemory(memory, messages.slice(250, 400));
-    assertEqual(memory.getSize(ownerId), 400);
 
     memory.reset();
     assertEqual(describeStorage(memory), fresh);
@@ -315,9 +325,26 @@ describe("createMemoryStorage", () => {
     await using sqlite = await setupSqliteStorage([]);
     const memory = createMemoryStorage(modules, snapshot, 0);
     const otherWriteKey = OwnerWriteKey.orThrow(new Uint8Array(16));
-    for (const storage of [memory, sqlite.storage]) {
+    const storages: ReadonlyArray<RelayStorage> = [memory, sqlite.storage];
+    for (const storage of storages) {
+      await using run = createRun();
+      // An owner without a write key gets one with its first write.
+      assertTrue(storage.validateWriteKey(ownerId, otherWriteKey));
+      assertOk(
+        await run(
+          storage.writeMessages(ownerId, testAppOwner.writeKey, [
+            messages[300],
+          ]),
+        ),
+      );
       assertTrue(storage.validateWriteKey(ownerId, testAppOwner.writeKey));
       assertFalse(storage.validateWriteKey(ownerId, otherWriteKey));
+      assertEqual(
+        await run(
+          storage.writeMessages(ownerId, otherWriteKey, [messages[301]]),
+        ),
+        err({ type: "StorageWriteKeyError", ownerId: testAppOwner.id }),
+      );
     }
   });
 

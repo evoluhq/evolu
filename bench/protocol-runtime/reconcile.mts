@@ -17,8 +17,16 @@
  */
 import { createHash } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
-import type { RandomNumber } from "@evolu/common";
-import type { EncryptedDbChange, Storage } from "@evolu/common/local-first";
+import type { NonEmptyReadonlyArray, RandomNumber } from "@evolu/common";
+import type {
+  EncryptedCrdtMessage,
+  EncryptedDbChange,
+  OwnerIdBytes,
+  OwnerWriteKey,
+  RelaySqliteStorage,
+  RelayStorage,
+  Storage,
+} from "@evolu/common/local-first";
 import type { Modules } from "../protocol/child.mts";
 import { createFrameParser } from "../protocol/frames.mts";
 import {
@@ -157,7 +165,7 @@ export const measureReconcile = async (
   /** Syncs from the client's first request until an outcome. */
   const sync = async (
     clientStorage: Storage,
-    relayStorage: Storage,
+    relayStorage: RelayStorage,
   ): Promise<SyncRecord> => {
     const clientConsole = common.testCreateConsole({ level: "warn" });
     const relayConsole = common.testCreateConsole({ level: "warn" });
@@ -460,7 +468,7 @@ const createSqliteSide = async (
   },
 ): Promise<
   AsyncDisposable & {
-    readonly storage: Storage;
+    readonly storage: RelaySqliteStorage & Storage;
     readonly sqliteVersion: string;
   }
 > => {
@@ -489,7 +497,13 @@ const createSqliteSide = async (
       change: entryOf(row).change,
     }));
     if (isNonEmpty(messages)) {
-      await run.orThrow(storage.writeMessages(ownerIdBytes, messages));
+      await run.orThrow(
+        storage.writeMessages(
+          ownerIdBytes,
+          localFirst.testAppOwner.writeKey,
+          messages,
+        ),
+      );
     }
   }
   const [{ sqliteVersion }] = sqlite.exec<{ sqliteVersion: string }>(
@@ -498,7 +512,30 @@ const createSqliteSide = async (
 
   const disposables = stack.move();
   return {
-    storage,
+    // A client calls writeMessages(ownerId, messages), and a relay
+    // writeMessages(ownerId, writeKey, messages). A client's writes carry no
+    // write key, so they use the app owner's.
+    storage: {
+      ...storage,
+      writeMessages: ((
+        ownerId: OwnerIdBytes,
+        writeKeyOrMessages:
+          OwnerWriteKey | NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+        messages?: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+      ) =>
+        writeKeyOrMessages instanceof Uint8Array
+          ? storage.writeMessages(
+              ownerId,
+              writeKeyOrMessages,
+              messages as NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+            )
+          : storage.writeMessages(
+              ownerId,
+              localFirst.testAppOwner.writeKey,
+              writeKeyOrMessages,
+            )) as RelaySqliteStorage["writeMessages"] &
+        Storage["writeMessages"],
+    },
     sqliteVersion,
     [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };

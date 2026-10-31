@@ -42,6 +42,7 @@ import {
   ownerIdToOwnerIdBytes,
   testAppOwner,
   type OwnerIdBytes,
+  type OwnerWriteKey,
 } from "./Owner.ts";
 import {
   applyProtocolMessageAsClient,
@@ -88,6 +89,7 @@ import {
   zeroFingerprint,
   type StorageWriteMessagesError,
 } from "./Storage.ts";
+import type { RelayStorageDep } from "./Relay.ts";
 import { err, getOrThrow, ok } from "../Result.ts";
 import {
   AbortError,
@@ -945,9 +947,16 @@ const shouldNotBeCalledStorageDep: StorageDep = {
     fingerprintRanges: shouldNotBeCalled,
     findLowerBound: shouldNotBeCalled,
     iterate: shouldNotBeCalled,
-    validateWriteKey: shouldNotBeCalled,
     writeMessages: shouldNotBeCalled,
     readDbChange: shouldNotBeCalled,
+  },
+};
+
+const shouldNotBeCalledRelayStorageDep: RelayStorageDep & StorageDep = {
+  storage: {
+    ...shouldNotBeCalledStorageDep.storage,
+    validateWriteKey: shouldNotBeCalled,
+    writeMessages: shouldNotBeCalled,
   },
 };
 
@@ -1630,7 +1639,7 @@ test("ProtocolDecodeError keeps its name when its class is renamed, as minifiers
 
 describe("E2E versioning", () => {
   it("same versions", async () => {
-    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    await using run = testCreateRun(shouldNotBeCalledRelayStorageDep);
     const v0 = 0 as NonNegativeInt;
 
     const clientMessage = createProtocolMessageBuffer(testAppOwner.id, {
@@ -1645,7 +1654,7 @@ describe("E2E versioning", () => {
   });
 
   it("non-initiator version is higher", async () => {
-    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    await using run = testCreateRun(shouldNotBeCalledRelayStorageDep);
     const v0 = 0 as NonNegativeInt;
     const v1 = 1 as NonNegativeInt;
 
@@ -1675,7 +1684,7 @@ describe("E2E versioning", () => {
   });
 
   it("initiator version is higher", async () => {
-    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    await using run = testCreateRun(shouldNotBeCalledRelayStorageDep);
     const v0 = 0 as NonNegativeInt;
     const v1 = 1 as NonNegativeInt;
 
@@ -1705,7 +1714,7 @@ describe("E2E versioning", () => {
   });
 
   it("transport routes the non-initiator's mismatch reply", async () => {
-    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    await using run = testCreateRun(shouldNotBeCalledRelayStorageDep);
     const v2 = 2 as NonNegativeInt;
 
     const clientMessage = createProtocolMessageBuffer(testAppOwner.id, {
@@ -1748,7 +1757,7 @@ describe("E2E versioning", () => {
  */
 const getRelayDecodeErrorMessage = async (
   message: Uint8Array,
-  storage: StorageDep["storage"] = shouldNotBeCalledStorageDep.storage,
+  storage: RelayStorageDep["storage"] = shouldNotBeCalledRelayStorageDep.storage,
 ): Promise<string> => {
   await using run = testCreateRun({ storage });
   const result = await run(applyProtocolMessageAsRelay(message));
@@ -1875,8 +1884,8 @@ describe("E2E errors", () => {
       });
       return request.unwrap();
     };
-    const storage: StorageDep["storage"] = {
-      ...shouldNotBeCalledStorageDep.storage,
+    const storage: RelayStorageDep["storage"] = {
+      ...shouldNotBeCalledRelayStorageDep.storage,
       validateWriteKey: constTrue,
     };
 
@@ -1894,12 +1903,12 @@ describe("E2E errors", () => {
     await using run = testCreateRun({
       storage: {
         ...storage,
-        writeMessages: (_ownerId, messages) => () => {
+        writeMessages: (_ownerId, _writeKey, messages) => () => {
           for (const { change } of messages) writtenLengths.push(change.length);
           return ok();
         },
       },
-    } satisfies StorageDep);
+    } satisfies RelayStorageDep);
     assertOk(
       await run(applyProtocolMessageAsRelay(createRequestWithChange(41))),
     );
@@ -1985,14 +1994,18 @@ describe("E2E errors", () => {
 
     let responseMessage: Uint8Array;
     {
+      // The storage checks the write key of a request with messages.
       await using run = testCreateRun({
         storage: {
-          ...shouldNotBeCalledStorageDep.storage,
-          validateWriteKey: constFalse,
+          ...shouldNotBeCalledRelayStorageDep.storage,
+          writeMessages: () => () =>
+            err({ type: "StorageWriteKeyError", ownerId: testAppOwner.id }),
         },
-      });
+      } satisfies RelayStorageDep);
       const response = await run.orThrow(
-        applyProtocolMessageAsRelay(initiatorMessage),
+        applyProtocolMessageAsRelay(initiatorMessage, {
+          broadcast: shouldNotBeCalled,
+        }),
       );
       assertEqualBytes(
         response.message,
@@ -2028,15 +2041,14 @@ describe("E2E errors", () => {
     let broadcastCount = 0;
     /** Returns the relay's response and what it logged for the write. */
     const relayResponseFor = async (
-      writeMessages: StorageDep["storage"]["writeMessages"],
+      writeMessages: RelayStorageDep["storage"]["writeMessages"],
     ) => {
       await using run = testCreateRun({
         storage: {
-          ...shouldNotBeCalledStorageDep.storage,
-          validateWriteKey: () => true,
+          ...shouldNotBeCalledRelayStorageDep.storage,
           writeMessages,
         },
-      } satisfies StorageDep);
+      } satisfies RelayStorageDep);
       const { message } = await run.orThrow(
         applyProtocolMessageAsRelay(initiatorMessage, {
           broadcast: () => {
@@ -2103,13 +2115,13 @@ describe("E2E errors", () => {
     // store and broadcast the messages.
     await using run = testCreateRun({
       storage: {
-        ...shouldNotBeCalledStorageDep.storage,
+        ...shouldNotBeCalledRelayStorageDep.storage,
         writeMessages: () => () => {
           sideEffects.push("writeMessages");
           return ok();
         },
       },
-    } satisfies StorageDep);
+    } satisfies RelayStorageDep & StorageDep);
 
     const response = await run.orThrow(
       applyProtocolMessageAsRelay(request.unwrap(), {
@@ -2135,14 +2147,14 @@ describe("E2E errors", () => {
     const abort = createAbortError({ type: "Stop" });
     await using run = testCreateRun({
       storage: {
-        ...shouldNotBeCalledStorageDep.storage,
+        ...shouldNotBeCalledRelayStorageDep.storage,
         validateWriteKey: constTrue,
         writeMessages: () => () => {
           // oxlint-disable-next-line typescript/only-throw-error -- AbortError is Task abort control flow.
           throw abort;
         },
       },
-    } satisfies StorageDep);
+    } satisfies RelayStorageDep & StorageDep);
 
     const result = await run.abortable(
       applyProtocolMessageAsRelay(
@@ -2174,11 +2186,11 @@ describe("E2E errors", () => {
     {
       await using run = testCreateRun({
         storage: {
-          ...shouldNotBeCalledStorageDep.storage,
+          ...shouldNotBeCalledRelayStorageDep.storage,
           validateWriteKey: constTrue,
           writeMessages: () => () => ok(),
         },
-      } satisfies StorageDep);
+      } satisfies RelayStorageDep & StorageDep);
       await run.orThrow(
         applyProtocolMessageAsRelay(request.unwrap(), {
           totalMaxSize,
@@ -2219,7 +2231,7 @@ describe("E2E relay options", () => {
       const request = setupRequestHeader(hasWriteKey, subscriptionFlag);
       request.extend([0]);
       const subscriptions: Array<string> = [];
-      await using run = testCreateRun(shouldNotBeCalledStorageDep);
+      await using run = testCreateRun(shouldNotBeCalledRelayStorageDep);
 
       const result = await run(
         applyProtocolMessageAsRelay(request.unwrap(), {
@@ -2240,7 +2252,7 @@ describe("E2E relay options", () => {
   });
 
   it("subscribe", async () => {
-    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    await using run = testCreateRun(shouldNotBeCalledRelayStorageDep);
     const message = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       subscriptionFlag: SubscriptionFlags.Subscribe,
@@ -2270,7 +2282,7 @@ describe("E2E relay options", () => {
     {
       await using run = testCreateRun({
         storage: {
-          ...shouldNotBeCalledStorageDep.storage,
+          ...shouldNotBeCalledRelayStorageDep.storage,
           validateWriteKey: constFalse,
         },
       });
@@ -2292,7 +2304,7 @@ describe("E2E relay options", () => {
   });
 
   it("unsubscribe", async () => {
-    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    await using run = testCreateRun(shouldNotBeCalledRelayStorageDep);
     const message = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       subscriptionFlag: SubscriptionFlags.Unsubscribe,
@@ -2311,7 +2323,7 @@ describe("E2E relay options", () => {
   });
 
   it("no subscription flag (None)", async () => {
-    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    await using run = testCreateRun(shouldNotBeCalledRelayStorageDep);
     const message = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       subscriptionFlag: SubscriptionFlags.None,
@@ -2335,7 +2347,7 @@ describe("E2E relay options", () => {
   });
 
   it("default subscription flag (undefined)", async () => {
-    await using run = testCreateRun(shouldNotBeCalledStorageDep);
+    await using run = testCreateRun(shouldNotBeCalledRelayStorageDep);
     const message = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       // No subscriptionFlag provided, should default to None
@@ -2394,7 +2406,7 @@ describe("E2E relay options", () => {
 
     await using run = testCreateRun({
       storage: {
-        ...shouldNotBeCalledStorageDep.storage,
+        ...shouldNotBeCalledRelayStorageDep.storage,
         validateWriteKey: constTrue,
         writeMessages: () => () => ok(),
       },
@@ -2626,18 +2638,13 @@ describe("decoding before applying", () => {
     const sideEffects: Array<string> = [];
     await using run = testCreateRun({
       storage: {
-        ...shouldNotBeCalledStorageDep.storage,
-        // A relay storage stores the write key of a new owner.
-        validateWriteKey: () => {
-          sideEffects.push("validateWriteKey");
-          return true;
-        },
+        ...shouldNotBeCalledRelayStorageDep.storage,
         writeMessages: () => () => {
           sideEffects.push("writeMessages");
           return ok();
         },
       },
-    } satisfies StorageDep);
+    } satisfies RelayStorageDep & StorageDep);
 
     const result = await run(
       applyProtocolMessageAsRelay(request.unwrap(), {
@@ -2677,7 +2684,7 @@ describe("decoding before applying", () => {
     const sideEffects: Array<string> = [];
     await using run = testCreateRun({
       storage: {
-        ...shouldNotBeCalledStorageDep.storage,
+        ...shouldNotBeCalledRelayStorageDep.storage,
         validateWriteKey: () => {
           sideEffects.push("validateWriteKey");
           return true;
@@ -2687,7 +2694,7 @@ describe("decoding before applying", () => {
           return ok();
         },
       },
-    } satisfies StorageDep);
+    } satisfies RelayStorageDep & StorageDep);
     const apply = (request: Uint8Array) =>
       run(
         applyProtocolMessageAsRelay(request, {
@@ -2703,12 +2710,8 @@ describe("decoding before applying", () => {
     const largest = setupRequest(defaultProtocolMessageMaxSize - overhead);
     assertSame(largest.length, defaultProtocolMessageMaxSize);
     assertOk(await apply(largest));
-    assertEqual(sideEffects, [
-      "subscribe",
-      "validateWriteKey",
-      "writeMessages",
-      "broadcast",
-    ]);
+    // A request with messages has its write key checked by writeMessages.
+    assertEqual(sideEffects, ["subscribe", "writeMessages", "broadcast"]);
 
     sideEffects.length = 0;
     const tooLarge = setupRequest(defaultProtocolMessageMaxSize - overhead + 1);
@@ -2763,23 +2766,23 @@ describe("decoding before applying", () => {
   }
 
   it("relay answers a write key its storage fails to validate with WriteError", async () => {
-    const deps = setupCryptoDeps();
-    const request = createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
-      createTestCrdtMessage(deps),
-    ]);
-    // SQLite can fail to store the write key of a new owner, such as on a full
-    // disk.
-    const failure = new Error("database or disk is full");
+    // A request without messages only compares its write key.
+    const request = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      writeKey: testAppOwner.writeKey,
+    }).unwrap();
+    // SQLite can fail to read the write key, such as on a corrupt page.
+    const failure = new Error("database disk image is malformed");
     let response: Uint8Array;
     {
       await using run = testCreateRun({
         storage: {
-          ...shouldNotBeCalledStorageDep.storage,
+          ...shouldNotBeCalledRelayStorageDep.storage,
           validateWriteKey: () => {
             throw failure;
           },
         },
-      } satisfies StorageDep);
+      } satisfies RelayStorageDep & StorageDep);
 
       ({ message: response } = await run.orThrow(
         applyProtocolMessageAsRelay(request),
@@ -2807,11 +2810,11 @@ describe("decoding before applying", () => {
     const defect = new Error("broadcast failed");
     await using run = testCreateRun({
       storage: {
-        ...shouldNotBeCalledStorageDep.storage,
+        ...shouldNotBeCalledRelayStorageDep.storage,
         validateWriteKey: constTrue,
         writeMessages: () => () => ok(),
       },
-    } satisfies StorageDep);
+    } satisfies RelayStorageDep & StorageDep);
 
     const result = await run.abortable(
       applyProtocolMessageAsRelay(request, {
@@ -2982,7 +2985,7 @@ describe("split-range failures", () => {
           });
           await using run = testCreateRun({
             storage: {
-              ...shouldNotBeCalledStorageDep.storage,
+              ...shouldNotBeCalledRelayStorageDep.storage,
               getSize: () =>
                 NonNegativeInt.orThrow(method === "fingerprintRanges" ? 32 : 1),
               findLowerBound: (_ownerId, _begin, end) => end,
@@ -2994,7 +2997,7 @@ describe("split-range failures", () => {
                 throw failure;
               },
             },
-          } satisfies StorageDep);
+          } satisfies RelayStorageDep & StorageDep);
           const message = input.unwrap();
           const result =
             role === "client"
@@ -3067,7 +3070,7 @@ describe("sync defects", () => {
       };
       await using run = testCreateRun({
         storage: {
-          ...shouldNotBeCalledStorageDep.storage,
+          ...shouldNotBeCalledRelayStorageDep.storage,
           getSize: () => NonNegativeInt.orThrow(32),
           findLowerBound: (_ownerId, _begin, end) => end,
           fingerprint: () => range.fingerprint,
@@ -3076,7 +3079,7 @@ describe("sync defects", () => {
           // assertion inside the split's trial.
           fingerprintRanges: () => [range, range],
         },
-      } satisfies StorageDep);
+      } satisfies RelayStorageDep & StorageDep);
 
       const result =
         role === "client"
@@ -3105,7 +3108,7 @@ describe("sync defects", () => {
       });
       await using run = testCreateRun({
         storage: {
-          ...shouldNotBeCalledStorageDep.storage,
+          ...shouldNotBeCalledRelayStorageDep.storage,
           getSize: () => NonNegativeInt.orThrow(2),
           findLowerBound: (_ownerId, _begin, end) => end,
           validateWriteKey: constTrue,
@@ -3116,7 +3119,7 @@ describe("sync defects", () => {
           },
           readDbChange: () => new Uint8Array(41) as EncryptedDbChange,
         },
-      } satisfies StorageDep);
+      } satisfies RelayStorageDep & StorageDep);
 
       const result =
         role === "client"
@@ -3303,9 +3306,8 @@ test("upload requests fill a frame exactly before their continuation range", asy
     const uploaded: Array<CrdtMessage> = [];
     await using run = testCreateRun({
       storage: {
-        ...shouldNotBeCalledStorageDep.storage,
-        validateWriteKey: constTrue,
-        writeMessages: (_ownerId, messages) => () => {
+        ...shouldNotBeCalledRelayStorageDep.storage,
+        writeMessages: (_ownerId, _writeKey, messages) => () => {
           for (const message of messages) {
             uploaded.push({
               timestamp: message.timestamp,
@@ -3324,7 +3326,7 @@ test("upload requests fill a frame exactly before their continuation range", asy
         fingerprint: () => zeroFingerprint,
         iterate: () => {},
       },
-    } satisfies StorageDep);
+    } satisfies RelayStorageDep);
     await run.orThrow(
       applyProtocolMessageAsRelay(request, {
         totalMaxSize: ProtocolMessageMaxSize.orThrow(maxSize),
@@ -3430,18 +3432,32 @@ test("client continuation broadcasts exactly the uploaded messages within the fr
   let receivedBroadcast = false;
   await using receiverRun = testCreateRun({
     storage: {
-      ...shouldNotBeCalledStorageDep.storage,
+      ...shouldNotBeCalledRelayStorageDep.storage,
       getSize: () => NonNegativeInt.orThrow(0),
       findLowerBound: () => NonNegativeInt.orThrow(0),
       fingerprint: () => zeroFingerprint,
       iterate: () => {},
       validateWriteKey: constTrue,
-      writeMessages: (_ownerId, uploaded) => () => {
-        assertEqual(uploaded, [messages[0]]);
-        return ok();
-      },
+      // The client writes the broadcast's messages, and the relay the
+      // request's, with the request's write key.
+      writeMessages:
+        (
+          _ownerId: OwnerIdBytes,
+          writeKeyOrMessages:
+            OwnerWriteKey | NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+          relayMessages?: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+        ) =>
+        () => {
+          assertEqual(
+            writeKeyOrMessages instanceof Uint8Array
+              ? relayMessages
+              : writeKeyOrMessages,
+            [messages[0]],
+          );
+          return ok();
+        },
     },
-  } satisfies StorageDep);
+  } satisfies RelayStorageDep & StorageDep);
   assertOk(
     await receiverRun(
       applyProtocolMessageAsClient(broadcast, {

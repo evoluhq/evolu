@@ -19,6 +19,7 @@ import { realpathSync } from "node:fs";
 import { setTimeout } from "node:timers/promises";
 import { inspect } from "node:util";
 import type {
+  NonEmptyReadonlyArray,
   RandomNumber,
   SqliteQuery,
   SqliteRow,
@@ -27,7 +28,10 @@ import type {
 import type {
   EncryptedCrdtMessage,
   EncryptedDbChange,
+  OwnerIdBytes,
+  OwnerWriteKey,
   ProtocolChangeTooLargeError,
+  RelaySqliteStorage,
   Storage,
 } from "@evolu/common/local-first";
 import {
@@ -590,8 +594,13 @@ const toSideDiagnostics = (
 
 /** A real in-memory SQLite relay storage; it also stands in for the client. */
 interface Side extends AsyncDisposable {
-  /** Counts every method call while counting. */
-  readonly storage: Storage;
+  /**
+   * Counts every method call while counting. It is a client's storage too,
+   * whose writes, which carry no write key, use the app owner's, so they also
+   * pay the relay's write key lookup, one statement and one row per write,
+   * which a client's storage doesn't.
+   */
+  readonly storage: RelaySqliteStorage & Storage;
   /** Writes rows in timestamp order without counting. */
   readonly load: (sortedRows: ReadonlyArray<Row>) => Promise<void>;
   readonly readAll: () => ReadonlyArray<StoredRow>;
@@ -693,7 +702,7 @@ const createSide = async (
   }
 
   const countedStorage = createCountingProxy(
-    storage,
+    storage as RelaySqliteStorage & Storage,
     {
       iterate: (ownerId, begin, end, callback) => {
         storage.iterate(ownerId, begin, end, (timestamp, index) => {
@@ -705,14 +714,28 @@ const createSide = async (
         if (counting) fingerprintRangesBuckets += buckets.length;
         return storage.fingerprintRanges(ownerId, buckets, upperBound);
       },
-      writeMessages: (ownerId, messages) => {
+      // A client calls writeMessages(ownerId, messages), and a relay
+      // writeMessages(ownerId, writeKey, messages).
+      writeMessages: ((
+        ownerId: OwnerIdBytes,
+        writeKeyOrMessages:
+          OwnerWriteKey | NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+        relayMessages?: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+      ) => {
+        const [writeKey, messages] =
+          writeKeyOrMessages instanceof Uint8Array
+            ? [
+                writeKeyOrMessages,
+                relayMessages as NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+              ]
+            : [localFirst.testAppOwner.writeKey, writeKeyOrMessages];
         for (const message of messages) {
           const key = timestampToKey(message.timestamp);
           if (!storedKeys.has(key)) storedKeys.add(key);
           else if (counting) redundantMessages++;
         }
-        return storage.writeMessages(ownerId, messages);
-      },
+        return storage.writeMessages(ownerId, writeKey, messages);
+      }) as RelaySqliteStorage["writeMessages"] & Storage["writeMessages"],
     },
     (method) => {
       if (counting)
@@ -732,7 +755,13 @@ const createSide = async (
           change: changeOfRow(row) as EncryptedDbChange,
         }));
         if (!isNonEmpty(messages)) continue;
-        await run.orThrow(storage.writeMessages(ownerIdBytes, messages));
+        await run.orThrow(
+          storage.writeMessages(
+            ownerIdBytes,
+            localFirst.testAppOwner.writeKey,
+            messages,
+          ),
+        );
         for (const row of batch) storedKeys.add(row.key);
       }
     },

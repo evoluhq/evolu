@@ -111,10 +111,10 @@
             "rounds": 3,
             "bytes": 2091,
             "redundantMessages": 0,
-            "clientSqlStatements": 47,
-            "clientSqlRows": 66,
-            "relaySqlStatements": 78,
-            "relaySqlRows": 122
+            "clientSqlStatements": 48,
+            "clientSqlRows": 67,
+            "relaySqlStatements": 77,
+            "relaySqlRows": 123
           },
           "diagnostics": {
             "request": {
@@ -199,10 +199,10 @@
             "rounds": 3,
             "bytes": 20039,
             "redundantMessages": 0,
-            "clientSqlStatements": 199,
-            "clientSqlRows": 213,
-            "relaySqlStatements": 238,
-            "relaySqlRows": 366
+            "clientSqlStatements": 200,
+            "clientSqlRows": 214,
+            "relaySqlStatements": 237,
+            "relaySqlRows": 367
           },
           "diagnostics": {
             "request": {
@@ -255,7 +255,7 @@
               "findLowerBound": 37,
               "iterate": 6,
               "deleteOwner": 0,
-              "validateWriteKey": 2,
+              "validateWriteKey": 1,
               "writeMessages": 1,
               "readDbChange": 50,
               "iterateRows": 194,
@@ -287,10 +287,10 @@
             "rounds": 33,
             "bytes": 266148,
             "redundantMessages": 0,
-            "clientSqlStatements": 4902,
-            "clientSqlRows": 7593,
-            "relaySqlStatements": 5001,
-            "relaySqlRows": 7735
+            "clientSqlStatements": 4923,
+            "clientSqlRows": 7614,
+            "relaySqlStatements": 5000,
+            "relaySqlRows": 7736
           },
           "diagnostics": {
             "request": {
@@ -343,7 +343,7 @@
               "findLowerBound": 2140,
               "iterate": 246,
               "deleteOwner": 0,
-              "validateWriteKey": 32,
+              "validateWriteKey": 11,
               "writeMessages": 21,
               "readDbChange": 100,
               "iterateRows": 3370,
@@ -375,10 +375,10 @@
             "rounds": 5,
             "bytes": 227013,
             "redundantMessages": 0,
-            "clientSqlStatements": 3951,
-            "clientSqlRows": 7584,
-            "relaySqlStatements": 4276,
-            "relaySqlRows": 8777
+            "clientSqlStatements": 3953,
+            "clientSqlRows": 7586,
+            "relaySqlStatements": 4275,
+            "relaySqlRows": 8778
           },
           "diagnostics": {
             "request": {
@@ -431,7 +431,7 @@
               "findLowerBound": 1846,
               "iterate": 253,
               "deleteOwner": 0,
-              "validateWriteKey": 4,
+              "validateWriteKey": 2,
               "writeMessages": 2,
               "readDbChange": 100,
               "iterateRows": 5113,
@@ -463,10 +463,10 @@
             "rounds": 3,
             "bytes": 224808,
             "redundantMessages": 0,
-            "clientSqlStatements": 1729,
-            "clientSqlRows": 6000,
-            "relaySqlStatements": 5724,
-            "relaySqlRows": 12328
+            "clientSqlStatements": 1730,
+            "clientSqlRows": 6001,
+            "relaySqlStatements": 5723,
+            "relaySqlRows": 12329
           },
           "diagnostics": {
             "request": {
@@ -519,7 +519,7 @@
               "findLowerBound": 2540,
               "iterate": 295,
               "deleteOwner": 0,
-              "validateWriteKey": 2,
+              "validateWriteKey": 1,
               "writeMessages": 1,
               "readDbChange": 100,
               "iterateRows": 7298,
@@ -551,10 +551,10 @@
             "rounds": 11,
             "bytes": 10827629,
             "redundantMessages": 0,
-            "clientSqlStatements": 40083,
-            "clientSqlRows": 38402,
-            "relaySqlStatements": 20074,
-            "relaySqlRows": 40060
+            "clientSqlStatements": 40095,
+            "clientSqlRows": 38412,
+            "relaySqlStatements": 20073,
+            "relaySqlRows": 40061
           },
           "diagnostics": {
             "request": {
@@ -695,7 +695,7 @@
               "findLowerBound": 46,
               "iterate": 36,
               "deleteOwner": 0,
-              "validateWriteKey": 11,
+              "validateWriteKey": 0,
               "writeMessages": 11,
               "readDbChange": 0,
               "iterateRows": 17112,
@@ -727,10 +727,10 @@
             "rounds": 56,
             "bytes": 11040424,
             "redundantMessages": 0,
-            "clientSqlStatements": 38103,
-            "clientSqlRows": 37881,
-            "relaySqlStatements": 39408,
-            "relaySqlRows": 50571
+            "clientSqlStatements": 38134,
+            "clientSqlRows": 37912,
+            "relaySqlStatements": 39407,
+            "relaySqlRows": 50572
           },
           "diagnostics": {
             "request": {
@@ -783,7 +783,7 @@
               "findLowerBound": 2934,
               "iterate": 2692,
               "deleteOwner": 0,
-              "validateWriteKey": 55,
+              "validateWriteKey": 15,
               "writeMessages": 40,
               "readDbChange": 10001,
               "iterateRows": 26329,
@@ -815,10 +815,10 @@
             "rounds": 14,
             "bytes": 11077773,
             "redundantMessages": 0,
-            "clientSqlStatements": 41360,
-            "clientSqlRows": 54704,
-            "relaySqlStatements": 40026,
-            "relaySqlRows": 43091
+            "clientSqlStatements": 41370,
+            "clientSqlRows": 54714,
+            "relaySqlStatements": 40025,
+            "relaySqlRows": 43092
           },
           "diagnostics": {
             "request": {
@@ -871,7 +871,7 @@
               "findLowerBound": 3338,
               "iterate": 3007,
               "deleteOwner": 0,
-              "validateWriteKey": 13,
+              "validateWriteKey": 6,
               "writeMessages": 7,
               "readDbChange": 10004,
               "iterateRows": 18277,
@@ -903,10 +903,10 @@
             "rounds": 12,
             "bytes": 11208456,
             "redundantMessages": 0,
-            "clientSqlStatements": 40900,
-            "clientSqlRows": 47497,
-            "relaySqlStatements": 48445,
-            "relaySqlRows": 61489
+            "clientSqlStatements": 40907,
+            "clientSqlRows": 47504,
+            "relaySqlStatements": 48444,
+            "relaySqlRows": 61490
           },
           "diagnostics": {
             "request": {
@@ -959,7 +959,7 @@
               "findLowerBound": 5912,
               "iterate": 5421,
               "deleteOwner": 0,
-              "validateWriteKey": 11,
+              "validateWriteKey": 5,
               "writeMessages": 6,
               "readDbChange": 10003,
               "iterateRows": 31962,
@@ -991,10 +991,10 @@
             "rounds": 39,
             "bytes": 1021286,
             "redundantMessages": 0,
-            "clientSqlStatements": 10049,
-            "clientSqlRows": 12261,
-            "relaySqlStatements": 9880,
-            "relaySqlRows": 10317
+            "clientSqlStatements": 10070,
+            "clientSqlRows": 12282,
+            "relaySqlStatements": 9879,
+            "relaySqlRows": 10318
           },
           "diagnostics": {
             "request": {
@@ -1047,7 +1047,7 @@
               "findLowerBound": 753,
               "iterate": 605,
               "deleteOwner": 0,
-              "validateWriteKey": 38,
+              "validateWriteKey": 17,
               "writeMessages": 21,
               "readDbChange": 2505,
               "iterateRows": 4103,
@@ -1079,10 +1079,10 @@
             "rounds": 5,
             "bytes": 980636,
             "redundantMessages": 0,
-            "clientSqlStatements": 10238,
-            "clientSqlRows": 13691,
-            "relaySqlStatements": 8809,
-            "relaySqlRows": 8006
+            "clientSqlStatements": 10240,
+            "clientSqlRows": 13693,
+            "relaySqlStatements": 8808,
+            "relaySqlRows": 8007
           },
           "diagnostics": {
             "request": {
@@ -1135,7 +1135,7 @@
               "findLowerBound": 433,
               "iterate": 399,
               "deleteOwner": 0,
-              "validateWriteKey": 4,
+              "validateWriteKey": 2,
               "writeMessages": 2,
               "readDbChange": 2501,
               "iterateRows": 2501,
@@ -1167,10 +1167,10 @@
             "rounds": 3,
             "bytes": 965860,
             "redundantMessages": 0,
-            "clientSqlStatements": 9297,
-            "clientSqlRows": 13271,
-            "relaySqlStatements": 8322,
-            "relaySqlRows": 7806
+            "clientSqlStatements": 9298,
+            "clientSqlRows": 13272,
+            "relaySqlStatements": 8321,
+            "relaySqlRows": 7807
           },
           "diagnostics": {
             "request": {
@@ -1223,7 +1223,7 @@
               "findLowerBound": 272,
               "iterate": 256,
               "deleteOwner": 0,
-              "validateWriteKey": 2,
+              "validateWriteKey": 1,
               "writeMessages": 1,
               "readDbChange": 2500,
               "iterateRows": 2500,
@@ -1255,10 +1255,10 @@
             "rounds": 9,
             "bytes": 6330796,
             "redundantMessages": 0,
-            "clientSqlStatements": 4066,
-            "clientSqlRows": 3748,
-            "relaySqlStatements": 2060,
-            "relaySqlRows": 4048
+            "clientSqlStatements": 4076,
+            "clientSqlRows": 3756,
+            "relaySqlStatements": 2059,
+            "relaySqlRows": 4049
           },
           "diagnostics": {
             "request": {
@@ -1399,7 +1399,7 @@
               "findLowerBound": 40,
               "iterate": 32,
               "deleteOwner": 0,
-              "validateWriteKey": 9,
+              "validateWriteKey": 0,
               "writeMessages": 9,
               "readDbChange": 0,
               "iterateRows": 1216,
@@ -1487,7 +1487,7 @@
               "findLowerBound": 19,
               "iterate": 18,
               "deleteOwner": 0,
-              "validateWriteKey": 2,
+              "validateWriteKey": 0,
               "writeMessages": 2,
               "readDbChange": 0,
               "iterateRows": 31,
@@ -1521,8 +1521,8 @@
             "redundantMessages": 0,
             "clientSqlStatements": 0,
             "clientSqlRows": 0,
-            "relaySqlStatements": 205,
-            "relaySqlRows": 101
+            "relaySqlStatements": 204,
+            "relaySqlRows": 102
           },
           "diagnostics": {
             "request": {
@@ -1575,7 +1575,7 @@
               "findLowerBound": 0,
               "iterate": 0,
               "deleteOwner": 0,
-              "validateWriteKey": 1,
+              "validateWriteKey": 0,
               "writeMessages": 1,
               "readDbChange": 0,
               "iterateRows": 0,
@@ -1609,8 +1609,8 @@
             "redundantMessages": 0,
             "clientSqlStatements": 407,
             "clientSqlRows": 658,
-            "relaySqlStatements": 10069,
-            "relaySqlRows": 5062
+            "relaySqlStatements": 10068,
+            "relaySqlRows": 5063
           },
           "diagnostics": {
             "request": {
@@ -1663,7 +1663,7 @@
               "findLowerBound": 36,
               "iterate": 18,
               "deleteOwner": 0,
-              "validateWriteKey": 4,
+              "validateWriteKey": 1,
               "writeMessages": 3,
               "readDbChange": 0,
               "iterateRows": 3,

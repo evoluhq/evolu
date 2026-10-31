@@ -1,13 +1,22 @@
 import { resolve } from "node:path";
+import type { NonEmptyReadonlyArray } from "../../../packages/common/src/Array.ts";
 import type { TimingSafeEqual } from "../../../packages/common/src/Crypto.ts";
 import { constTrue } from "../../../packages/common/src/Function.ts";
 import {
   createRelaySqliteStorage,
   createRelayStorageTables,
-  type RelayStorage,
+  type RelaySqliteStorage,
+  type RelayStorageDep,
 } from "../../../packages/common/src/local-first/Relay.ts";
 import {
+  testAppOwner,
+  type OwnerIdBytes,
+  type OwnerWriteKey,
+} from "../../../packages/common/src/local-first/Owner.ts";
+import {
   createBaseSqliteStorageTables,
+  type EncryptedCrdtMessage,
+  type Storage,
   type StorageConfig,
   type StorageDep,
 } from "../../../packages/common/src/local-first/Storage.ts";
@@ -172,15 +181,47 @@ export const setupInterceptedSqlite = (
     ) as SqliteExecResult<R>,
 });
 
+/**
+ * Returns `relayStorage` as also a client's {@link Storage}, so a test can sync
+ * relay storages with each other. A write without a write key, such as a
+ * client's, writes with the app owner's.
+ */
+export const setupRelayStorageAsStorage = (
+  relayStorage: RelaySqliteStorage,
+): RelaySqliteStorage & Storage => ({
+  ...relayStorage,
+  // A client calls writeMessages(ownerIdBytes, messages), and a relay
+  // writeMessages(ownerIdBytes, writeKey, messages). A client's write never gets
+  // StorageWriteKeyError unless the test stored another key for the owner.
+  writeMessages: ((
+    ownerIdBytes: OwnerIdBytes,
+    writeKeyOrMessages:
+      OwnerWriteKey | NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+    messages?: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+  ) =>
+    writeKeyOrMessages instanceof Uint8Array
+      ? relayStorage.writeMessages(
+          ownerIdBytes,
+          writeKeyOrMessages,
+          messages as NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+        )
+      : relayStorage.writeMessages(
+          ownerIdBytes,
+          testAppOwner.writeKey,
+          writeKeyOrMessages,
+        )) as RelaySqliteStorage["writeMessages"] & Storage["writeMessages"],
+});
+
 export interface TestSqliteAndRelayStorageSetup extends AsyncDisposable {
-  readonly run: DisposableRun<StorageDep>;
+  readonly run: DisposableRun<RelayStorageDep & StorageDep>;
   readonly sqlite: SqliteDep["sqlite"];
-  readonly storage: RelayStorage;
+  readonly storage: RelaySqliteStorage & Storage;
 }
 
 /**
  * Creates a disposable test setup with relay storage and SQLite deps, on the
- * driver of {@link testCreateSqliteDep} unless `deps` passes another.
+ * driver of {@link testCreateSqliteDep} unless `deps` passes another. Its
+ * storage is also a client's, as {@link setupRelayStorageAsStorage} makes it.
  */
 export const setupSqliteAndRelayStorage = async (
   config?: Partial<StorageConfig>,
@@ -193,13 +234,14 @@ export const setupSqliteAndRelayStorage = async (
   createBaseSqliteStorageTables({ sqlite });
   createRelayStorageTables({ sqlite });
 
-  const storage = createRelaySqliteStorage({
+  const relayStorage = createRelaySqliteStorage({
     ...run.deps,
     timingSafeEqual: testTimingSafeEqual,
   })({
     isOwnerWithinQuota: constTrue,
     ...config,
   });
+  const storage = setupRelayStorageAsStorage(relayStorage);
   const runWithStorage = disposer.use(run.create({ storage }));
   const disposables = disposer.move();
 

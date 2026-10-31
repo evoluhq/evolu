@@ -43,6 +43,11 @@ import type {
   Storage,
   StorageDep,
 } from "../../../../../packages/common/src/local-first/Storage.ts";
+import type {
+  RelaySqliteStorage,
+  RelayStorage,
+  RelayStorageDep,
+} from "../../../../../packages/common/src/local-first/Relay.ts";
 import {
   DbChange,
   fingerprintSize,
@@ -412,7 +417,7 @@ describe("the storage reads of an answer", () => {
       await using setup = await setupStoredItems(count);
       const { run, storage } = setup;
       let calls = 0;
-      const countingStorage: Storage = {
+      const countingStorage: RelaySqliteStorage & Storage = {
         ...storage,
         findLowerBound: (...args) => {
           calls++;
@@ -967,7 +972,7 @@ describe("sync near the size limit", () => {
      */
     const syncClientWithRelay = async (
       clientRun: Run<StorageDep>,
-      relayRun: Run<StorageDep>,
+      relayRun: Run<RelayStorageDep>,
       onChangeTooLarge?: (error: ProtocolChangeTooLargeError) => void,
     ) => {
       let message = createProtocolMessageForSync(clientRun.deps)(
@@ -1512,7 +1517,7 @@ describe("E2E sync", { timeout: 15_000 }, () => {
 
     const reconcile = async (
       clientStorage: Storage,
-      relayStorage: Storage,
+      relayStorage: RelayStorage,
       rangesMaxSize = defaultProtocolMessageRangesMaxSize,
     ) => {
       const clientStorageDep = {

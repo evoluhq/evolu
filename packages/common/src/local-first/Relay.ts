@@ -10,6 +10,7 @@ import {
   firstInArray,
   isNonEmptyArray,
   mapArray,
+  type NonEmptyReadonlyArray,
 } from "../Array.ts";
 import { assert } from "../Assert.ts";
 import type { TimingSafeEqualDep } from "../Crypto.ts";
@@ -22,17 +23,20 @@ import {
   uint8ArrayToBase64Url,
   type Name,
   type NonNegativeInt,
+  type Typed,
 } from "../Type.ts";
 import { isPromiseLike, type Awaitable } from "../Types.ts";
 import {
   OwnerId,
   ownerIdBytesToOwnerId,
+  type OwnerError,
   type OwnerIdBytes,
   // OwnerTransport,
   OwnerWriteKey,
 } from "./Owner.ts";
-import type { ProtocolWriteKeyError } from "./Protocol.ts";
+import type { ProtocolWriteError, ProtocolWriteKeyError } from "./Protocol.ts";
 import type {
+  EncryptedCrdtMessage,
   EncryptedDbChange,
   SqliteStorageDeps,
   Storage,
@@ -80,10 +84,11 @@ export interface RelayConfig extends StorageConfig {
    * describes.
    *
    * OwnerId exposure also allows write-key squatting. The relay stores the
-   * first write key presented for an owner, so anyone who learns an OwnerId
-   * before the owner's own write key reaches the relay can claim it. The owner
-   * then gets {@link ProtocolWriteKeyError} on this relay until the operator
-   * deletes everything the relay stores for that OwnerId with
+   * write key of the first write it accepts for an owner, so anyone who learns
+   * an OwnerId can claim it by writing there before the owner's devices do,
+   * unless {@link StorageConfig.isOwnerWithinQuota} refuses that write. The
+   * owner then gets {@link ProtocolWriteKeyError} on this relay until the
+   * operator deletes everything the relay stores for that OwnerId with
    * {@link Relay.deleteOwner}, which removes the squatter's key and the data
    * stored with it. This callback does not prevent that: it receives only the
    * OwnerId of a connection, which a squatter can name as well, and every
@@ -181,12 +186,11 @@ export interface Relay extends AsyncDisposable {
    * To keep the owner's data off the relay, refuse its writes first with
    * {@link StorageConfig.isOwnerWithinQuota}, which the relay asks before every
    * write that adds data, including writes that wait for the deletion.
-   * Otherwise its devices upload their data again on their next sync.
-   * {@link RelayConfig.isOwnerAllowed} is not enough: it checks only the OwnerId
-   * a connection names when it connects, and an admitted connection can sync
-   * any owner, such as one an app shares among its owners. A device that still
-   * syncs the owner stores its write key again, because the relay stores a new
-   * owner's write key before it asks isOwnerWithinQuota.
+   * Otherwise its devices upload their data again on their next sync. A refused
+   * write stores no write key either. {@link RelayConfig.isOwnerAllowed} is not
+   * enough: it checks only the OwnerId a connection names when it connects, and
+   * an admitted connection can sync any owner, such as one an app shares among
+   * its owners.
    *
    * It deletes in one SQLite transaction, during which the relay serves no
    * connection, and which needs free disk space for a journal of about the
@@ -197,61 +201,94 @@ export interface Relay extends AsyncDisposable {
   readonly deleteOwner: (ownerId: OwnerId) => Task<void, UnknownError>;
 }
 
-/** The {@link Storage} of a relay. */
-export interface RelayStorage extends Storage {
+/**
+ * The storage a relay syncs with. Unlike a client's {@link Storage}, it checks
+ * the {@link OwnerWriteKey} of every write.
+ */
+export interface RelayStorage extends Omit<Storage, "writeMessages"> {
+  /**
+   * Returns whether `writeKey` is the owner's write key or the owner has none,
+   * without storing it. A relay calls it only for a request without messages,
+   * logs a throw, and answers the request with {@link ProtocolWriteError}.
+   */
+  readonly validateWriteKey: (
+    ownerId: OwnerIdBytes,
+    writeKey: OwnerWriteKey,
+  ) => boolean;
+
+  /**
+   * Writes the messages of a writer with `writeKey`, like
+   * {@link Storage.writeMessages}. A relay doesn't call
+   * {@link RelayStorage.validateWriteKey} before it, so it checks the key
+   * itself, under the owner's lock.
+   *
+   * Returns {@link StorageWriteKeyError} when the owner has another write key.
+   * An owner without one stores `writeKey` in the transaction of its first
+   * write that passes the quota check, so a request without messages or a
+   * refused write stores none.
+   */
+  readonly writeMessages: (
+    ownerIdBytes: OwnerIdBytes,
+    writeKey: OwnerWriteKey,
+    messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+  ) => Task<void, RelayStorageWriteMessagesError>;
+}
+
+export interface RelayStorageDep {
+  readonly storage: RelayStorage;
+}
+
+/** Error when a write presents another write key than the owner's. */
+export interface StorageWriteKeyError
+  extends OwnerError, Typed<"StorageWriteKeyError"> {}
+
+/**
+ * Reasons why {@link RelayStorage.writeMessages} stored none of a batch.
+ *
+ * The built-in relay storage stores opaque encrypted messages. It rejects a
+ * batch over quota or with another write key than the owner's, and returns
+ * {@link UnknownError} when SQLite fails the write, for example on a full disk,
+ * after rolling it back.
+ */
+export type RelayStorageWriteMessagesError =
+  StorageWriteMessagesError | StorageWriteKeyError;
+
+/** A {@link RelayStorage} on SQLite. */
+export interface RelaySqliteStorage extends RelayStorage {
   /**
    * Deletes all data of an owner after the owner's write in progress, holding
-   * the lock that {@link Storage.writeMessages} holds.
+   * the lock that {@link RelayStorage.writeMessages} holds.
    */
   readonly deleteOwner: (ownerId: OwnerIdBytes) => Task<void, UnknownError>;
 }
 
 export const createRelaySqliteStorage =
   (deps: SqliteStorageDeps & TimingSafeEqualDep) =>
-  (config: StorageConfig): RelayStorage => {
+  (config: StorageConfig): RelaySqliteStorage => {
     const sqliteStorageBase = createBaseSqliteStorage(deps);
 
     /** Mutex keyed by OwnerId to prevent concurrent writes and deletions. */
     const mutexByOwnerId = createMutexByKey<OwnerId>();
 
+    const selectWriteKey = (ownerId: OwnerIdBytes): OwnerWriteKey | null =>
+      deps.sqlite.prepared<{ writeKey: OwnerWriteKey }>`
+        select writeKey
+        from evolu_writeKey
+        where ownerId = ${ownerId};
+      `.rows.at(0)?.writeKey ?? null;
+
     return {
       ...sqliteStorageBase,
 
-      /**
-       * Lazily authorizes the initiator's {@link OwnerWriteKey} for the given
-       * {@link OwnerId}.
-       *
-       * - If the {@link OwnerId} does not exist, it is created and associated with
-       *   the provided write key.
-       * - If the {@link OwnerId} exists, the provided write key is compared to the
-       *   stored key.
-       */
       validateWriteKey: (ownerId, writeKey) => {
-        const selectWriteKey = deps.sqlite.prepared<{
-          writeKey: OwnerWriteKey;
-        }>`
-          select writeKey
-          from evolu_writeKey
-          where ownerId = ${ownerId};
-        `;
-        const { rows } = selectWriteKey;
-
-        if (isNonEmptyArray(rows)) {
-          return deps.timingSafeEqual(rows[0].writeKey, writeKey);
-        }
-
-        // When SQLite fails this insert, for example on a full disk, the throw
-        // reaches the protocol, which logs it and answers with WriteError,
-        // because a boolean has no room for the error.
-        deps.sqlite.prepared`
-          insert into evolu_writeKey (ownerId, writeKey)
-          values (${ownerId}, ${writeKey});
-        `;
-
-        return true;
+        const storedWriteKey = selectWriteKey(ownerId);
+        return (
+          storedWriteKey === null ||
+          deps.timingSafeEqual(storedWriteKey, writeKey)
+        );
       },
 
-      writeMessages: (ownerIdBytes, messages) => async (run) => {
+      writeMessages: (ownerIdBytes, writeKey, messages) => async (run) => {
         const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
         const uniqueMessagesWithTimestampBytes = dedupeArray(
           mapArray(messages, (m) => ({
@@ -265,6 +302,20 @@ export const createRelaySqliteStorage =
           mutexByOwnerId.withLock(ownerId, async () => {
             // SQLite can fail these reads, for example on a corrupt page, and
             // a throw would panic the relay's shared Run.
+            const storedWriteKey = trySync(
+              () => selectWriteKey(ownerIdBytes),
+              createUnknownError,
+            );
+            if (!storedWriteKey.ok) return storedWriteKey;
+            if (
+              storedWriteKey.value !== null &&
+              !deps.timingSafeEqual(storedWriteKey.value, writeKey)
+            )
+              return err<RelayStorageWriteMessagesError>({
+                type: "StorageWriteKeyError",
+                ownerId,
+              });
+
             const readResult = trySync(() => {
               const existingTimestampsResult =
                 sqliteStorageBase.getExistingTimestamps(
@@ -317,7 +368,7 @@ export const createRelaySqliteStorage =
               ? await quotaResult
               : quotaResult;
             if (!isWithinQuota) {
-              return err<StorageWriteMessagesError>({
+              return err<RelayStorageWriteMessagesError>({
                 type: "StorageQuotaError",
                 ownerId,
               });
@@ -333,6 +384,14 @@ export const createRelaySqliteStorage =
             // shared Run.
             return trySync(() => {
               deps.sqlite.transaction(() => {
+                // An owner's first write that passes the quota check stores
+                // its write key, so a refused write stores none.
+                if (storedWriteKey.value === null)
+                  deps.sqlite.prepared`
+                    insert into evolu_writeKey (ownerId, writeKey)
+                    values (${ownerIdBytes}, ${writeKey});
+                  `;
+
                 for (const { timestamp, change } of newMessages) {
                   [firstTimestamp, lastTimestamp] = extendTimestampBounds(
                     timestamp,

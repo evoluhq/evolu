@@ -32,7 +32,7 @@ import {
   parseOwnerIdFromOwnerWebSocketTransportUrl,
   type Relay,
   type RelayConfig,
-  type StorageDep,
+  type RelayStorageDep,
 } from "@evolu/common/local-first";
 import { once } from "events";
 import { existsSync } from "fs";
@@ -387,7 +387,7 @@ export const createRelay =
       // reading stops being served.
       const requests: Array<Uint8Array> = [];
 
-      const serveRequests: Task<void, never, StorageDep> = async (run) => {
+      const serveRequests: Task<void, never, RelayStorageDep> = async (run) => {
         try {
           while (requests.length > 0) {
             await run.ok(yieldNow);

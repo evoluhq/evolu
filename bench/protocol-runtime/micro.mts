@@ -14,7 +14,7 @@ import type {
 import type {
   CrdtMessage,
   EncryptedCrdtMessage,
-  Storage,
+  RelayStorage,
 } from "@evolu/common/local-first";
 import type { Modules } from "../protocol/child.mts";
 import {
@@ -149,7 +149,7 @@ const createMicro = (modules: Modules, name: MicroName): Micro => {
   };
 
   /** One long-lived relay Run over empty in-memory storage, as in production. */
-  const createRelay = (storage: Storage) => {
+  const createRelay = (storage: RelayStorage) => {
     const console = common.testCreateConsole({ level: "warn" });
     const run = common.createRun({ storage, console });
     return {

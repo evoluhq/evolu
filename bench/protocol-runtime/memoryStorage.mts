@@ -10,21 +10,28 @@
  */
 import type { NonNegativeInt } from "@evolu/common";
 import type {
+  EncryptedCrdtMessage,
   EncryptedDbChange,
   Fingerprint,
   FingerprintRange,
+  OwnerIdBytes,
   OwnerWriteKey,
+  RelayStorage,
+  RelayStorageWriteMessagesError,
   Storage,
+  StorageWriteMessagesError,
   TimestampBytes,
 } from "@evolu/common/local-first";
+import type { NonEmptyReadonlyArray, Task } from "@evolu/common";
 import type { CommonModule, LocalFirstModule } from "../protocol/child.mts";
 
 /** The loaded Evolu exports the storage is built from. */
 export interface MemoryStorageModules {
-  readonly common: Pick<CommonModule, "ok">;
+  readonly common: Pick<CommonModule, "err" | "ok">;
   readonly localFirst: Pick<
     LocalFirstModule,
     | "InfiniteUpperBound"
+    | "ownerIdBytesToOwnerId"
     | "RangeType"
     | "timestampBytesToFingerprint"
     | "timestampToTimestampBytes"
@@ -51,7 +58,22 @@ export interface MemoryStorageSnapshot {
   readonly changesByKey: ReadonlyMap<string, EncryptedDbChange>;
 }
 
-export interface MemoryStorage extends Storage {
+/**
+ * A client's {@link Storage} or a relay's, which writes with the writer's write
+ * key.
+ */
+export interface MemoryStorage extends RelayStorage, Storage {
+  readonly writeMessages: {
+    (
+      ownerIdBytes: OwnerIdBytes,
+      messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+    ): Task<void, StorageWriteMessagesError>;
+    (
+      ownerIdBytes: OwnerIdBytes,
+      writeKey: OwnerWriteKey,
+      messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+    ): Task<void, RelayStorageWriteMessagesError>;
+  };
   /** The stored rows in timestamp order, for verification. */
   readonly readAll: () => ReadonlyArray<MemoryStorageEntry>;
   /**
@@ -211,108 +233,125 @@ export const createMemoryStorage = (
       }
     },
 
-    validateWriteKey: (_ownerId, candidate) => {
-      if (writeKey === null) {
-        writeKey = candidate;
-        return true;
-      }
-      // Both are 16 bytes, as OwnerWriteKey guarantees.
-      let difference = 0;
-      for (let index = 0; index < candidate.length; index++) {
-        difference |= writeKey[index] ^ candidate[index];
-      }
-      return difference === 0;
-    },
+    validateWriteKey: (_ownerId, candidate) =>
+      writeKey === null || isWriteKey(writeKey, candidate),
 
-    writeMessages: (_ownerId, messages) => () => {
-      const added: Array<{
-        readonly key: string;
-        readonly timestamp: TimestampBytes;
-      }> = [];
-      for (const { timestamp, change } of messages) {
-        const timestampBytes = localFirst.timestampToTimestampBytes(timestamp);
-        const key = timestampBytesToKey(timestampBytes);
-        // A key added earlier in this batch is already in addedChangesByKey.
-        if (addedChangesByKey.has(key) || snapshot.changesByKey.has(key)) {
-          continue;
-        }
-        addedChangesByKey.set(key, change);
-        added.push({ key, timestamp: timestampBytes });
-      }
-      if (added.length === 0) return common.ok();
-      added.sort((a, b) => (a.key < b.key ? -1 : 1));
-
-      // Inserts the new entries, ascending by key. A few are spliced in one by
-      // one. Otherwise they are placed from the largest down, and the stored
-      // rows above each one move up as a block by the count of new entries not
-      // above them, so only rows after the first insertion point move, each
-      // once. Both keep `Array.prototype.copyWithin` off regular arrays, where
-      // it is much slower than a loop.
-      const required = size + added.length;
-      const currentCapacity = fingerprintWords.length / wordsPerFingerprint;
-      if (required > currentCapacity) {
-        const next = Math.max(required, currentCapacity * 2);
-        const grownFingerprints = new Uint32Array(next * wordsPerFingerprint);
-        grownFingerprints.set(fingerprintWords);
-        fingerprintWords = grownFingerprints;
-        const grownPrefix = new Uint32Array((next + 1) * wordsPerFingerprint);
-        grownPrefix.set(prefixWords);
-        prefixWords = grownPrefix;
-      }
-      let first = size;
-      if (added.length <= maxSplicedEntries) {
-        for (const { key, timestamp } of added) {
-          const position = lowerBound(key, size);
-          keys.splice(position, 0, key);
-          timestamps.splice(position, 0, timestamp);
-          fingerprintWords.copyWithin(
-            (position + 1) * wordsPerFingerprint,
-            position * wordsPerFingerprint,
-            size * wordsPerFingerprint,
-          );
-          writeFingerprintWords(
-            fingerprintWords,
-            position,
-            localFirst.timestampBytesToFingerprint(timestamp),
-          );
-          size++;
-          first = Math.min(first, position);
-        }
-      } else {
-        for (let index = 0; index < added.length; index++) {
-          keys.push("");
-          timestamps.push(added[0].timestamp);
-        }
-        let end = size;
-        for (let index = added.length - 1; index >= 0; index--) {
-          const { key, timestamp } = added[index];
-          const position = lowerBound(key, end);
-          const shift = index + 1;
-          for (let source = end - 1; source >= position; source--) {
-            keys[source + shift] = keys[source];
-            timestamps[source + shift] = timestamps[source];
+    // A client calls writeMessages(ownerIdBytes, messages), and a relay
+    // writeMessages(ownerIdBytes, writeKey, messages). As a relay's, the first
+    // write that adds rows stores its write key.
+    writeMessages: ((
+        ownerIdBytes: OwnerIdBytes,
+        writeKeyOrMessages:
+          OwnerWriteKey | NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+        relayMessages?: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+      ) =>
+      () => {
+        const [candidate, messages] =
+          writeKeyOrMessages instanceof Uint8Array
+            ? [
+                writeKeyOrMessages,
+                relayMessages as NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+              ]
+            : [undefined, writeKeyOrMessages];
+        if (
+          candidate !== undefined &&
+          writeKey !== null &&
+          !isWriteKey(writeKey, candidate)
+        )
+          return common.err({
+            type: "StorageWriteKeyError",
+            ownerId: localFirst.ownerIdBytesToOwnerId(ownerIdBytes),
+          });
+        const added: Array<{
+          readonly key: string;
+          readonly timestamp: TimestampBytes;
+        }> = [];
+        for (const { timestamp, change } of messages) {
+          const timestampBytes =
+            localFirst.timestampToTimestampBytes(timestamp);
+          const key = timestampBytesToKey(timestampBytes);
+          // A key added earlier in this batch is already in addedChangesByKey.
+          if (addedChangesByKey.has(key) || snapshot.changesByKey.has(key)) {
+            continue;
           }
-          fingerprintWords.copyWithin(
-            (position + shift) * wordsPerFingerprint,
-            position * wordsPerFingerprint,
-            end * wordsPerFingerprint,
-          );
-          keys[position + index] = key;
-          timestamps[position + index] = timestamp;
-          writeFingerprintWords(
-            fingerprintWords,
-            position + index,
-            localFirst.timestampBytesToFingerprint(timestamp),
-          );
-          end = position;
+          addedChangesByKey.set(key, change);
+          added.push({ key, timestamp: timestampBytes });
         }
-        size += added.length;
-        first = end;
-      }
-      firstChanged = Math.min(firstChanged, first);
-      updatePrefix(first);
-      return common.ok();
-    },
+        if (added.length === 0) return common.ok();
+        if (candidate !== undefined) writeKey ??= candidate;
+        added.sort((a, b) => (a.key < b.key ? -1 : 1));
+
+        // Inserts the new entries, ascending by key. A few are spliced in one by
+        // one. Otherwise they are placed from the largest down, and the stored
+        // rows above each one move up as a block by the count of new entries not
+        // above them, so only rows after the first insertion point move, each
+        // once. Both keep `Array.prototype.copyWithin` off regular arrays, where
+        // it is much slower than a loop.
+        const required = size + added.length;
+        const currentCapacity = fingerprintWords.length / wordsPerFingerprint;
+        if (required > currentCapacity) {
+          const next = Math.max(required, currentCapacity * 2);
+          const grownFingerprints = new Uint32Array(next * wordsPerFingerprint);
+          grownFingerprints.set(fingerprintWords);
+          fingerprintWords = grownFingerprints;
+          const grownPrefix = new Uint32Array((next + 1) * wordsPerFingerprint);
+          grownPrefix.set(prefixWords);
+          prefixWords = grownPrefix;
+        }
+        let first = size;
+        if (added.length <= maxSplicedEntries) {
+          for (const { key, timestamp } of added) {
+            const position = lowerBound(key, size);
+            keys.splice(position, 0, key);
+            timestamps.splice(position, 0, timestamp);
+            fingerprintWords.copyWithin(
+              (position + 1) * wordsPerFingerprint,
+              position * wordsPerFingerprint,
+              size * wordsPerFingerprint,
+            );
+            writeFingerprintWords(
+              fingerprintWords,
+              position,
+              localFirst.timestampBytesToFingerprint(timestamp),
+            );
+            size++;
+            first = Math.min(first, position);
+          }
+        } else {
+          for (let index = 0; index < added.length; index++) {
+            keys.push("");
+            timestamps.push(added[0].timestamp);
+          }
+          let end = size;
+          for (let index = added.length - 1; index >= 0; index--) {
+            const { key, timestamp } = added[index];
+            const position = lowerBound(key, end);
+            const shift = index + 1;
+            for (let source = end - 1; source >= position; source--) {
+              keys[source + shift] = keys[source];
+              timestamps[source + shift] = timestamps[source];
+            }
+            fingerprintWords.copyWithin(
+              (position + shift) * wordsPerFingerprint,
+              position * wordsPerFingerprint,
+              end * wordsPerFingerprint,
+            );
+            keys[position + index] = key;
+            timestamps[position + index] = timestamp;
+            writeFingerprintWords(
+              fingerprintWords,
+              position + index,
+              localFirst.timestampBytesToFingerprint(timestamp),
+            );
+            end = position;
+          }
+          size += added.length;
+          first = end;
+        }
+        firstChanged = Math.min(firstChanged, first);
+        updatePrefix(first);
+        return common.ok();
+      }) as MemoryStorage["writeMessages"],
 
     readDbChange: (_ownerId, timestamp) =>
       changeOf(timestampBytesToKey(timestamp)),
@@ -407,4 +446,17 @@ const writeFingerprintWords = (
         (fingerprint[word * 4 + 3] << 24)) >>>
       0;
   }
+};
+
+/** Whether two write keys are equal, compared in constant time. */
+const isWriteKey = (
+  stored: OwnerWriteKey,
+  candidate: OwnerWriteKey,
+): boolean => {
+  // Both are 16 bytes, as OwnerWriteKey guarantees.
+  let difference = 0;
+  for (let index = 0; index < candidate.length; index++) {
+    difference |= stored[index] ^ candidate[index];
+  }
+  return difference === 0;
 };

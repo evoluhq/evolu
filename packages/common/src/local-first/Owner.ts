@@ -163,9 +163,9 @@ export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Output;
 /**
  * A token that authorizes write operations for an {@link Owner}.
  *
- * The initial key is derived from {@link OwnerSecret}. Relays keep the first
- * write key they receive for an owner and reject any other, so a write key
- * can't be rotated yet: an owner with a key from {@link createOwnerWriteKey}
+ * The initial key is derived from {@link OwnerSecret}. Relays keep the write key
+ * of the first write they accept for an owner and reject any other, so a write
+ * key can't be rotated yet: an owner with a key from {@link createOwnerWriteKey}
  * can't write to or sync with relays that already store its previous key.
  *
  * @group Core

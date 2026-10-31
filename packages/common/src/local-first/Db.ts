@@ -84,7 +84,6 @@ import {
   defectToError,
   type UnknownError,
 } from "../Error.ts";
-import { constFalse } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import {
   acquireLeaderLock,
@@ -1197,9 +1196,6 @@ const createClientStorage = (
     onChangeTooLarge: (error) => {
       skippedError ??= error;
     },
-
-    // Not implemented yet.
-    validateWriteKey: constFalse,
 
     writeMessages: (ownerIdBytes, encryptedMessages) => () => {
       // TODO: Add quota checking for collaborative scenarios.

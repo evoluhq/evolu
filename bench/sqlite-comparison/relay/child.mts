@@ -104,7 +104,8 @@ const writeMs = await time(async () => {
     await run.orThrow(
       storage.writeMessages(
         ownerIdBytes,
-        batch as unknown as Parameters<typeof storage.writeMessages>[1],
+        testAppOwner.writeKey,
+        batch as unknown as Parameters<typeof storage.writeMessages>[2],
       ),
     );
   }
