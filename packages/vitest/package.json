@@ -46,7 +46,7 @@
     "vitest": "^5.0.5"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.24.1",
+    "@evolu/common": "^8.25.0",
     "vitest": "^4.1.2 || ^5.0.0"
   },
   "publishConfig": {
