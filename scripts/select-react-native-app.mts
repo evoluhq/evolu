@@ -16,6 +16,13 @@
  *   autolinking reads: `react-native.config.js` or the podspec. The examples
  *   differ only in autolinking, entry files and the Android build's
  *   configuration cache.
+ * - A change to `packages/react-native/package.json` that touches only its
+ *   `version` and `peerDependencies`, and a change to
+ *   `packages/react-native/CHANGELOG.md`, select none, so a Version Packages
+ *   pull request runs no app job. The podspec reads the version only as the
+ *   pod's metadata, a peer range installs nothing without a change to
+ *   `pnpm-lock.yaml`, and the release runs every app job on the commit it
+ *   releases.
  * - A renamed file counts under both its old and its new path.
  * - A missing, all-zero or unfetchable base selects every job, and so does a
  *   `workflow_dispatch` run, as for a branch.
@@ -48,6 +55,9 @@ const expoPaths = [
   "examples/react-expo/",
   "pnpm-lock.yaml",
 ];
+
+const reactNativePackageJson = "packages/react-native/package.json";
+const reactNativeChangelog = "packages/react-native/CHANGELOG.md";
 
 const withoutExpoPaths = [
   ".github/workflows/react-native-app.yaml",
@@ -91,7 +101,34 @@ export const selectReactNativeAppJobs = ({
       encoding: "utf8",
     },
   );
-  const files = diff.split("\0").filter((file) => file !== "");
+  // The package.json without the fields a release changes, or null when the
+  // commit has no such JSON file.
+  const packageJsonWithoutReleaseFields = (commit: string): string | null => {
+    const shown = spawnSync(
+      "git",
+      ["show", `${commit}:${reactNativePackageJson}`],
+      { cwd, encoding: "utf8" },
+    );
+    if (shown.status !== 0) return null;
+    try {
+      const {
+        version: _version,
+        peerDependencies: _peerDependencies,
+        ...fields
+      } = JSON.parse(shown.stdout) as Record<string, unknown>;
+      return JSON.stringify(fields);
+    } catch {
+      return null;
+    }
+  };
+  const files = diff.split("\0").filter((file) => {
+    if (file === "" || file === reactNativeChangelog) return false;
+    if (file !== reactNativePackageJson) return true;
+    const before = packageJsonWithoutReleaseFields(base);
+    return (
+      before === null || before !== packageJsonWithoutReleaseFields("HEAD")
+    );
+  });
   const matches = (paths: ReadonlyArray<string>) =>
     files.some((file) =>
       paths.some((path) =>

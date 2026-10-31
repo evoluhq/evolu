@@ -94,6 +94,103 @@ describe("selectReactNativeAppJobs", () => {
     );
   });
 
+  const reactNativePackageJson = (fields: Record<string, unknown>) =>
+    `${JSON.stringify(
+      {
+        name: "@evolu/react-native",
+        version: "16.0.0",
+        dependencies: { "@evolu/sqlite-core": "workspace:*" },
+        peerDependencies: { "@evolu/common": "^8.24.1" },
+        codegenConfig: { name: "EvoluReactNativeSpec" },
+        ...fields,
+      },
+      null,
+      2,
+    )}\n`;
+
+  it("selects no app job for a pull request that changes only the version and peer ranges of @evolu/react-native and its changelog, as a Version Packages pull request does", (t) => {
+    const repository = setupRepository(t, [], {
+      edits: [
+        [
+          "packages/react-native/package.json",
+          reactNativePackageJson({}),
+          reactNativePackageJson({
+            version: "16.0.1",
+            peerDependencies: { "@evolu/common": "^8.25.0" },
+          }),
+        ],
+        ["packages/react-native/CHANGELOG.md", "# 16.0.0\n", "# 16.0.1\n"],
+      ],
+    });
+
+    assertEqual(
+      selectReactNativeAppJobs({
+        event: "pull_request",
+        base: repository.base,
+        cwd: repository.clone,
+      }),
+      none,
+    );
+  });
+
+  for (const [what, after] of [
+    [
+      "its codegenConfig",
+      reactNativePackageJson({
+        version: "16.0.1",
+        codegenConfig: { name: "EvoluSpec" },
+      }),
+    ],
+    [
+      "its dependencies",
+      reactNativePackageJson({
+        dependencies: { "@evolu/sqlite-core": "workspace:^" },
+      }),
+    ],
+    ["it into a file that isn't JSON", "{\n"],
+  ] as const)
+    it(`selects the Expo example's app jobs for a pull request that changes ${what} in @evolu/react-native's package.json`, (t) => {
+      const repository = setupRepository(t, [], {
+        edits: [
+          [
+            "packages/react-native/package.json",
+            reactNativePackageJson({}),
+            after,
+          ],
+        ],
+      });
+
+      assertEqual(
+        selectReactNativeAppJobs({
+          event: "pull_request",
+          base: repository.base,
+          cwd: repository.clone,
+        }),
+        expoOnly,
+      );
+    });
+
+  it("selects the Expo example's app jobs for a pull request that adds @evolu/react-native's package.json", (t) => {
+    const repository = setupRepository(t, [], {
+      edits: [
+        [
+          "packages/react-native/package.json",
+          null,
+          reactNativePackageJson({}),
+        ],
+      ],
+    });
+
+    assertEqual(
+      selectReactNativeAppJobs({
+        event: "pull_request",
+        base: repository.base,
+        cwd: repository.clone,
+      }),
+      expoOnly,
+    );
+  });
+
   it("diffs a merge-queue run against its base, fetched into the shallow checkout", (t) => {
     const repository = setupRepository(t, ["README.md"]);
 
@@ -181,9 +278,11 @@ describe("select-react-native-app.mts", () => {
 
 /**
  * An origin with a base commit and a commit on top that changes `files`, moves
- * each `[from, to]` of `renames` with `git mv` and removes each of `deletes`
- * with `git rm`, from where the base commit holds them, and a shallow clone of
- * the latter, as CI checks out.
+ * each `[from, to]` of `renames` with `git mv`, removes each of `deletes` with
+ * `git rm`, from where the base commit holds them, and writes each `[file,
+ * before, after]` of `edits` with `before` in the base commit, unless it is
+ * `null`, and `after` on top, and a shallow clone of the latter, as CI checks
+ * out.
  */
 const setupRepository = (
   t: TestContext,
@@ -191,9 +290,11 @@ const setupRepository = (
   {
     renames = [],
     deletes = [],
+    edits = [],
   }: {
     renames?: ReadonlyArray<readonly [string, string]>;
     deletes?: ReadonlyArray<string>;
+    edits?: ReadonlyArray<readonly [string, string | null, string]>;
   } = {},
 ) => {
   const directory = mkdtempSync(join(tmpdir(), "evolu-select-app-"));
@@ -222,12 +323,21 @@ const setupRepository = (
     mkdirSync(dirname(join(origin, file)), { recursive: true });
     writeFileSync(join(origin, file), `${file}\n`);
   }
+  for (const [file, before] of edits)
+    if (before !== null) {
+      mkdirSync(dirname(join(origin, file)), { recursive: true });
+      writeFileSync(join(origin, file), before);
+    }
   git(origin, "add", ".");
   git(origin, "commit", "--quiet", "-m", "Base");
   const base = git(origin, "rev-parse", "HEAD");
   for (const file of files) {
     mkdirSync(dirname(join(origin, file)), { recursive: true });
     writeFileSync(join(origin, file), `${file}\n`);
+  }
+  for (const [file, , after] of edits) {
+    mkdirSync(dirname(join(origin, file)), { recursive: true });
+    writeFileSync(join(origin, file), after);
   }
   for (const [from, to] of renames) git(origin, "mv", from, to);
   for (const file of deletes) git(origin, "rm", "--quiet", file);
