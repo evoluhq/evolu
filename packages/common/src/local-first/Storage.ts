@@ -640,10 +640,7 @@ export const createBaseSqliteStorage = (
 
     // A batch has no known size, so the planner would make the owner's
     // timestamps the outer loop. A cross join keeps the order as written, so
-    // each timestamp is looked up by primary key. The condition is in where,
-    // not on, because sql-parser-cst, which formats this SQL, rejects cross
-    // join ... on and Prettier then leaves the query unformatted
-    // (https://github.com/nene/sql-parser-cst/issues/140).
+    // each timestamp is looked up by primary key.
     const result = deps.sqlite.prepared<{
       timestampBytes: TimestampBytes;
     }>`
@@ -662,7 +659,7 @@ export const createBaseSqliteStorage = (
       select s.timestampBytes
       from split_timestamps s
       cross join evolu_timestamp t
-      where t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
+        on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
     `;
 
     return result.rows.map((row) => row.timestampBytes);
