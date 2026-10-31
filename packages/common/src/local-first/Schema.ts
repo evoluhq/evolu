@@ -1014,6 +1014,13 @@ export const kysely = /*#__PURE__*/ new Kysely.Kysely({
 
 const createIndex = kysely.schema.createIndex.bind(kysely.schema);
 
+// The primary key starts with ownerId, because owners are the unit of
+// sharing and deletion: a database holds the AppOwner, shard owners, and
+// shared owners, and reading, copying, or deleting one owner's rows reads
+// one range of the table. The id is unique only within its owner: each owner
+// has its own history and keys, so a change from one owner must never touch
+// another owner's row. Lookups and joins by id alone use the
+// evolu_<table>_id index that ensureSqliteSchema creates.
 const createAppTable = (tableName: string, columns: ReadonlySet<string>) => sql`
   create table ${sql.identifier(tableName)} (
     "id" text,
