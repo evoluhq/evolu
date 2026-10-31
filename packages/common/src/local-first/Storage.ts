@@ -244,9 +244,6 @@ export interface Storage {
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
   ) => EncryptedDbChange;
-
-  /** Delete all data for the given {@link Owner}. */
-  readonly deleteOwner: (ownerId: OwnerIdBytes) => void;
 }
 
 /**
@@ -597,6 +594,9 @@ export interface BaseSqliteStorage extends Omit<
     ownerIdBytes: OwnerIdBytes,
     timestampsBytes: NonEmptyReadonlyArray<TimestampBytes>,
   ) => ReadonlyArray<TimestampBytes>;
+
+  /** Deletes the owner's timestamps and usage. */
+  readonly deleteOwner: (ownerId: OwnerIdBytes) => void;
 }
 
 /**

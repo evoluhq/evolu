@@ -13,11 +13,11 @@ import {
 } from "../Array.ts";
 import { assert } from "../Assert.ts";
 import type { TimingSafeEqualDep } from "../Crypto.ts";
-import { createUnknownError } from "../Error.ts";
+import { createUnknownError, type UnknownError } from "../Error.ts";
 import { err, ok, trySync } from "../Result.ts";
 import type { SqliteDep } from "../Sqlite.ts";
 import { sql } from "../Sqlite.ts";
-import { createMutexByKey } from "../Task.ts";
+import { createMutexByKey, type Task } from "../Task.ts";
 import {
   uint8ArrayToBase64Url,
   type Name,
@@ -27,6 +27,7 @@ import { isPromiseLike, type Awaitable } from "../Types.ts";
 import {
   OwnerId,
   ownerIdBytesToOwnerId,
+  type OwnerIdBytes,
   // OwnerTransport,
   OwnerWriteKey,
 } from "./Owner.ts";
@@ -82,10 +83,11 @@ export interface RelayConfig extends StorageConfig {
    * first write key presented for an owner, so anyone who learns an OwnerId
    * before the owner's own write key reaches the relay can claim it. The owner
    * then gets {@link ProtocolWriteKeyError} on this relay until the operator
-   * deletes everything the relay stores for that OwnerId, which removes the
-   * squatter's key and the data stored with it. This callback does not prevent
-   * that: it receives only the OwnerId of a connection, which a squatter can
-   * name as well, and every message on the connection can name another owner.
+   * deletes everything the relay stores for that OwnerId with
+   * {@link Relay.deleteOwner}, which removes the squatter's key and the data
+   * stored with it. This callback does not prevent that: it receives only the
+   * OwnerId of a connection, which a squatter can name as well, and every
+   * message on the connection can name another owner.
    *
    * Owners specify which relays to connect to via `OwnerTransport`. In
    * WebSocket-based implementations, this check occurs before accepting the
@@ -170,14 +172,46 @@ export interface RelayConfig extends StorageConfig {
 export interface Relay extends AsyncDisposable {
   /** The TCP port actually bound by the relay. */
   readonly port: number;
+
+  /**
+   * Deletes everything the relay stores for an owner, its messages, timestamps,
+   * usage, and write key, after the owner's write in progress, and closes the
+   * connections subscribed to it.
+   *
+   * To keep the owner's data off the relay, refuse its writes first with
+   * {@link StorageConfig.isOwnerWithinQuota}, which the relay asks before every
+   * write that adds data, including writes that wait for the deletion.
+   * Otherwise its devices upload their data again on their next sync.
+   * {@link RelayConfig.isOwnerAllowed} is not enough: it checks only the OwnerId
+   * a connection names when it connects, and an admitted connection can sync
+   * any owner, such as one an app shares among its owners. A device that still
+   * syncs the owner stores its write key again, because the relay stores a new
+   * owner's write key before it asks isOwnerWithinQuota.
+   *
+   * It deletes in one SQLite transaction, during which the relay serves no
+   * connection, and which needs free disk space for a journal of about the
+   * owner's data. Deleting an owner with a million changes takes seconds.
+   * SQLite leaves the deleted rows' bytes in the database file's free space
+   * until it overwrites them.
+   */
+  readonly deleteOwner: (ownerId: OwnerId) => Task<void, UnknownError>;
+}
+
+/** The {@link Storage} of a relay. */
+export interface RelayStorage extends Storage {
+  /**
+   * Deletes all data of an owner after the owner's write in progress, holding
+   * the lock that {@link Storage.writeMessages} holds.
+   */
+  readonly deleteOwner: (ownerId: OwnerIdBytes) => Task<void, UnknownError>;
 }
 
 export const createRelaySqliteStorage =
   (deps: SqliteStorageDeps & TimingSafeEqualDep) =>
-  (config: StorageConfig): Storage => {
+  (config: StorageConfig): RelayStorage => {
     const sqliteStorageBase = createBaseSqliteStorage(deps);
 
-    /** Mutex keyed by OwnerId to prevent concurrent writes. */
+    /** Mutex keyed by OwnerId to prevent concurrent writes and deletions. */
     const mutexByOwnerId = createMutexByKey<OwnerId>();
 
     return {
@@ -342,19 +376,26 @@ export const createRelaySqliteStorage =
         return row.change;
       },
 
-      deleteOwner: (ownerId) => {
-        deps.sqlite.transaction(() => {
-          deps.sqlite.exec(sql`
-            delete from evolu_writeKey where ownerId = ${ownerId};
-          `);
+      deleteOwner: (ownerIdBytes) =>
+        // A write reads the owner's usage before it waits for its quota check,
+        // so deleting meanwhile would let it store that usage afterward.
+        mutexByOwnerId.withLock(ownerIdBytesToOwnerId(ownerIdBytes), () =>
+          // SQLite can fail the delete, for example on a full disk. The
+          // transaction has rolled back.
+          trySync(() => {
+            deps.sqlite.transaction(() => {
+              deps.sqlite.exec(sql`
+                delete from evolu_writeKey where ownerId = ${ownerIdBytes};
+              `);
 
-          deps.sqlite.exec(sql`
-            delete from evolu_message where ownerId = ${ownerId};
-          `);
+              deps.sqlite.exec(sql`
+                delete from evolu_message where ownerId = ${ownerIdBytes};
+              `);
 
-          sqliteStorageBase.deleteOwner(ownerId);
-        });
-      },
+              sqliteStorageBase.deleteOwner(ownerIdBytes);
+            });
+          }, createUnknownError),
+        ),
     };
   };
 

@@ -6,6 +6,7 @@ import {
   assertNonEmptyArray,
   assertNotNull,
   assertNotUndefined,
+  assertOk,
   assertSame,
   assertTrue,
   assertType,
@@ -23,8 +24,10 @@ import {
   testCreateRun,
   testName,
   testSetupWebSocket,
+  UnknownError,
   type ConsoleEntry,
   type CreateSqliteDriver,
+  type OwnerIdBytes,
   type SqliteDriver,
   type XChaCha20Poly1305Dep,
 } from "@evolu/common";
@@ -38,6 +41,7 @@ import {
   defaultProtocolMessageMaxSize,
   InfiniteUpperBound,
   MessageType,
+  ownerIdToOwnerIdBytes,
   RangeType,
   SubscriptionFlags,
   testAppOwner,
@@ -370,6 +374,20 @@ const createFullRound = (): Uint8Array => {
   });
   return round.unwrap();
 };
+
+/**
+ * Counts an owner's rows in evolu_timestamp, evolu_message, evolu_writeKey, and
+ * evolu_usage.
+ */
+const countOwnerRows = (driver: SqliteDriver, ownerId: OwnerIdBytes) =>
+  ["evolu_timestamp", "evolu_message", "evolu_writeKey", "evolu_usage"].map(
+    (table) =>
+      driver.exec(sql`
+        select count(*) as count
+        from ${sql.raw(table)}
+        where "ownerId" = ${ownerId};
+      `).rows[0].count,
+  );
 
 describe("createRelay", () => {
   afterEach(() => {
@@ -1524,6 +1542,97 @@ describe("createRelay", () => {
         )
       );
     });
+  });
+
+  it("deletes an owner's data and closes the connections subscribed to it", async () => {
+    await using disposer = new AsyncDisposableStack();
+    const createId = testCreateId();
+    const setup = disposer.use(await startTestRelay());
+    const urlFor = (ownerId: string) =>
+      `ws://127.0.0.1:${setup.relay.port}/?ownerId=${ownerId}`;
+    const [subscriber, otherSubscriber] = await Promise.all(
+      [testAppOwner, testRelayAppOwner2].map(async (owner) => {
+        const socket = disposer.use(await testSetupWebSocket(urlFor(owner.id)));
+        socket.send(
+          createProtocolMessageBuffer(owner.id, {
+            messageType: MessageType.Request,
+            subscriptionFlag: SubscriptionFlags.Subscribe,
+          }).unwrap(),
+        );
+        await socket.waitForMessage();
+        return socket;
+      }),
+    );
+    const writer = disposer.use(
+      await testSetupWebSocket(urlFor(testAppOwner.id)),
+    );
+    for (const owner of [testAppOwner, testRelayAppOwner2]) {
+      const response = writer.waitForMessage();
+      writer.send(
+        createProtocolMessageFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
+          owner,
+          [testCreateCrdtMessage(createId(), 1, "Victoria")],
+        ),
+      );
+      await response;
+    }
+    let closeCode: number | null = null;
+    subscriber.socket.addEventListener("close", (event) => {
+      closeCode = event.code;
+    });
+
+    assertOk(await setup.run(setup.relay.deleteOwner(testAppOwner.id)));
+
+    assertEqual(
+      countOwnerRows(setup.driver, ownerIdToOwnerIdBytes(testAppOwner.id)),
+      [0, 0, 0, 0],
+    );
+    assertEqual(
+      countOwnerRows(
+        setup.driver,
+        ownerIdToOwnerIdBytes(testRelayAppOwner2.id),
+      ),
+      [1, 1, 1, 1],
+    );
+    await assertEventually(() => closeCode === 1000);
+    assertEqual(otherSubscriber.socket.readyState, WebSocket.OPEN);
+    assertEqual(writer.socket.readyState, WebSocket.OPEN);
+  });
+
+  it("returns UnknownError from deleteOwner when SQLite fails it and closes no connection", async () => {
+    await using setup = await setupRelay();
+    const { driver, run, ws } = setup;
+    const written = ws.waitForMessage();
+    ws.send(
+      createProtocolMessageFromCrdtMessages(setupCryptoDeps(run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(testCreateId()(), 1, "Victoria")],
+      ),
+    );
+    await written;
+    const subscribed = ws.waitForMessage();
+    ws.send(createFullRound());
+    await subscribed;
+    // The usage is deleted after the write key, messages, and timestamps.
+    driver.exec(sql`
+      create temp trigger evolu_usage_delete_fails
+      before delete on evolu_usage
+      begin
+        select raise(abort, 'injected');
+      end;
+    `);
+
+    const result = await run(setup.relay.deleteOwner(testAppOwner.id));
+
+    assertTrue(!result.ok && UnknownError.is(result.error));
+    assertEqual(
+      countOwnerRows(driver, ownerIdToOwnerIdBytes(testAppOwner.id)),
+      [1, 1, 1, 1],
+    );
+    // waitForMessage rejects when the relay closes the subscribed connection.
+    const answered = ws.waitForMessage();
+    ws.send(createFullRound());
+    await answered;
   });
 
   it("reuses the existing relay database on restart", async () => {

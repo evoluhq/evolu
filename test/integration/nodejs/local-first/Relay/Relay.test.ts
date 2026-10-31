@@ -114,22 +114,75 @@ test("deleteOwner", async () => {
 
   assertEqual(storage.getSize(testAppOwnerIdBytes), 1);
 
-  storage.deleteOwner(testAppOwnerIdBytes);
+  assertOk(await run(storage.deleteOwner(testAppOwnerIdBytes)));
 
-  for (const table of [
-    "evolu_timestamp",
-    "evolu_message",
-    "evolu_writeKey",
-    "evolu_usage",
-  ]) {
-    const countResult = sqlite.exec<{ count: number }>(sql`
-      select count(*) as count
-      from ${sql.raw(table)}
-      where ownerid = ${testAppOwnerIdBytes};
-    `);
-    assertEqual(countResult.rows[0].count, 0);
-  }
+  assertEqual(countOwnerRows(sqlite), [0, 0, 0, 0]);
+  // A deleted owner's next write key is stored as a new owner's.
+  assertTrue(
+    storage.validateWriteKey(testAppOwnerIdBytes, testAppOwner2.writeKey),
+  );
 });
+
+test("deleteOwner waits for a write in progress for the owner", async () => {
+  const quota = Promise.withResolvers<boolean>();
+  await using setup = await setupSqliteAndRelayStorage({
+    isOwnerWithinQuota: () => quota.promise,
+  });
+  const { run, storage, sqlite } = setup;
+  const message: EncryptedCrdtMessage = {
+    timestamp: testTimestamp,
+    change: new Uint8Array([1, 2, 3]) as EncryptedDbChange,
+  };
+
+  // The write reads the owner's usage and waits for its quota check.
+  const write = run(storage.writeMessages(testAppOwnerIdBytes, [message]));
+  const deletion = run(storage.deleteOwner(testAppOwnerIdBytes));
+  quota.resolve(true);
+
+  assertOk(await write);
+  assertOk(await deletion);
+  assertEqual(countOwnerRows(sqlite), [0, 0, 0, 0]);
+});
+
+test("deleteOwner returns UnknownError and deletes nothing when SQLite fails it", async () => {
+  await using setup = await setupSqliteAndRelayStorage();
+  const { run, storage, sqlite } = setup;
+  assertTrue(
+    storage.validateWriteKey(testAppOwnerIdBytes, testAppOwner.writeKey),
+  );
+  const message: EncryptedCrdtMessage = {
+    timestamp: testTimestamp,
+    change: new Uint8Array([1, 2, 3]) as EncryptedDbChange,
+  };
+  await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
+  // The usage is deleted after the write key, messages, and timestamps.
+  sqlite.exec(sql`
+    create temp trigger evolu_usage_delete_fails
+    before delete on evolu_usage
+    begin
+      select raise(abort, 'injected');
+    end;
+  `);
+
+  const result = await run(storage.deleteOwner(testAppOwnerIdBytes));
+
+  assertTrue(!result.ok && UnknownError.is(result.error));
+  assertEqual(countOwnerRows(sqlite), [1, 1, 1, 1]);
+});
+
+/**
+ * Counts the app owner's rows in evolu_timestamp, evolu_message,
+ * evolu_writeKey, and evolu_usage.
+ */
+const countOwnerRows = (sqlite: SqliteDep["sqlite"]) =>
+  ["evolu_timestamp", "evolu_message", "evolu_writeKey", "evolu_usage"].map(
+    (table) =>
+      sqlite.exec<{ count: number }>(sql`
+        select count(*) as count
+        from ${sql.raw(table)}
+        where ownerid = ${testAppOwnerIdBytes};
+      `).rows[0].count,
+  );
 
 test("readDbChange returns stored encrypted change", async () => {
   await using setup = await setupSqliteAndRelayStorage();

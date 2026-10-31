@@ -330,9 +330,6 @@ describe("createMemoryStorage", () => {
         Error,
       );
     }
-    assertThrowsInstanceOf(() => {
-      memory.deleteOwner(ownerId);
-    }, Error);
   });
 
   it("rejects a fingerprint of another size", () => {

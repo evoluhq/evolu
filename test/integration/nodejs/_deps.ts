@@ -4,6 +4,7 @@ import { constTrue } from "../../../packages/common/src/Function.ts";
 import {
   createRelaySqliteStorage,
   createRelayStorageTables,
+  type RelayStorage,
 } from "../../../packages/common/src/local-first/Relay.ts";
 import {
   createBaseSqliteStorageTables,
@@ -174,7 +175,7 @@ export const setupInterceptedSqlite = (
 export interface TestSqliteAndRelayStorageSetup extends AsyncDisposable {
   readonly run: DisposableRun<StorageDep>;
   readonly sqlite: SqliteDep["sqlite"];
-  readonly storage: StorageDep["storage"];
+  readonly storage: RelayStorage;
 }
 
 /**

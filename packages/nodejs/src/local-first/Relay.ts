@@ -28,6 +28,7 @@ import {
   createRelaySqliteStorage,
   createRelayStorageTables,
   defaultProtocolMessageMaxSize,
+  ownerIdToOwnerIdBytes,
   parseOwnerIdFromOwnerWebSocketTransportUrl,
   type Relay,
   type RelayConfig,
@@ -469,6 +470,21 @@ export const createRelay =
 
     return ok({
       port: address.port,
+
+      deleteOwner: (ownerId) => async (run) => {
+        const result = await run(
+          storage.deleteOwner(ownerIdToOwnerIdBytes(ownerId)),
+        );
+        if (!result.ok) return result;
+        // A closed connection reconnects through isOwnerAllowed.
+        for (const socket of ownerSocketRelation.iterateB(ownerId)) {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.close(1000, "Evolu Relay deleted the owner");
+          }
+        }
+        return ok();
+      },
+
       [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   };

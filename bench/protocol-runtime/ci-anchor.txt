@@ -1,1 +1,1 @@
-The protocol runtime benchmark gained its CI comparison, with process CPU time on Linux.
+The harness's in-memory storage dropped deleteOwner, which Storage no longer has, so its harness differs from the previous anchor's.

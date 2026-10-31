@@ -317,10 +317,6 @@ export const createMemoryStorage = (
     readDbChange: (_ownerId, timestamp) =>
       changeOf(timestampBytesToKey(timestamp)),
 
-    deleteOwner: () => {
-      throw new Error("The memory storage does not delete owners.");
-    },
-
     readAll: () =>
       timestamps.slice(0, size).map((timestamp, index) => ({
         timestamp,
