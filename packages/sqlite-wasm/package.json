@@ -62,7 +62,7 @@
     "wabt": "1.0.39"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.25.0"
+    "@evolu/common": "^8.26.0"
   },
   "publishConfig": {
     "access": "public",
