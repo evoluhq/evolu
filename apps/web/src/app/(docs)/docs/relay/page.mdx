@@ -50,3 +50,10 @@ The relay serves each connection's requests one at a time and serves other
 connections between them, and one request holds it only briefly, but many
 connections can still load it. Run it behind a reverse proxy that serves TLS,
 and limit connections per IP address there.
+
+The relay sends every connection an empty heartbeat at least every thirty
+seconds while it is idle, and clients replace a connection that stays silent
+for about two minutes, so the proxy's idle timeout must be longer than thirty
+seconds. See
+[OwnerWebSocketTransport](/docs/api-reference/common/local-first/Owner/interfaces/OwnerWebSocketTransport#heartbeats)
+for the heartbeat contract.

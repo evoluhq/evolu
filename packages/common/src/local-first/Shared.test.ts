@@ -38,6 +38,7 @@ import {
   ownerIdToOwnerIdBytes,
   RelayUrl,
   testAppOwner,
+  type OwnerWebSocketTransport,
   type SyncOwner,
   type OwnerId,
 } from "./Owner.ts";
@@ -106,6 +107,7 @@ import { acquireLeaderLock, testCreateLockManager } from "../LockManager.ts";
 import { installPolyfills } from "../Polyfills.ts";
 import { err, ok, type Result } from "../Result.ts";
 import type { Patch, Query, Row } from "./Query.ts";
+import type { Random, RandomNumber } from "../Random.ts";
 import { createSet } from "../Set.ts";
 import type { SqliteSchema } from "../Sqlite.ts";
 import { createStore } from "../Store.ts";
@@ -116,8 +118,10 @@ import {
   Millis,
   millisToDateIso,
   testCreateTime,
+  type Duration,
   type PerformanceTime,
   type TestTime,
+  type TimeoutId,
 } from "../Time.ts";
 import {
   assertType,
@@ -189,12 +193,15 @@ const getDbWorkerInit = (
 const setupSharedWorker = async ({
   createWebSocket = testCreateWebSocket({ throwOnCreate: true }),
   time,
+  random,
   seed,
   getDevicePersistence = () => Promise.resolve("Unknown"),
   xChaCha20Poly1305,
 }: {
   createWebSocket?: CreateWebSocket;
   time?: TestTime;
+  /** Draws each connection's idle jitter. */
+  random?: Random;
   getDevicePersistence?: () => Promise<DevicePersistence>;
   /**
    * Seeds the worker's random bytes, which are otherwise the same for every
@@ -235,6 +242,7 @@ const setupSharedWorker = async ({
       createMessagePort: testCreateMessagePort,
       createWebSocket,
       ...(time && { time }),
+      ...(random && { random }),
       ...(seed && { randomBytes: testCreateDeps({ seed }).randomBytes }),
       getDevicePersistence,
       ...(xChaCha20Poly1305 && { xChaCha20Poly1305 }),
@@ -458,6 +466,77 @@ const setupTab = (
   setup.worker.self.onConnect(channel.port2);
   return { port: channel.port1, outputs, workerIds, syncStates };
 };
+
+/**
+ * Test time whose wall clock, and optionally `performance.now()`, jump without
+ * firing timers, as across a system sleep. `advance()` cannot model a sleep,
+ * because it runs every due timer on the way. Pending timers fire after their
+ * remaining delay once time advances again, as native timers do after wake.
+ */
+const setupSleepingTime = () => {
+  // Late enough that a backward step keeps the wall clock non-negative.
+  const base = testCreateTime({ startAt: Millis.orThrow(10 * 86_400_000) });
+  let wallOffset = 0;
+  let monotonicOffset = 0;
+  const now = ((type?: "DateIso") => {
+    const millis = Millis.orThrow(base.now() + wallOffset);
+    return type === "DateIso" ? millisToDateIso(millis) : millis;
+  }) as TestTime["now"];
+  const time: TestTime = {
+    ...base,
+    now,
+    performance: {
+      ...base.performance,
+      now: () => (base.performance.now() + monotonicOffset) as PerformanceTime,
+    },
+  };
+  return {
+    time,
+    /**
+     * Sleeps for the duration. Where `counted`, `performance.now()` counts the
+     * sleep, as on Windows; otherwise it stops, as on Apple.
+     */
+    sleep: (duration: Duration, { counted = false } = {}): void => {
+      const millis = durationToMillis(duration);
+      wallOffset += millis;
+      if (counted) monotonicOffset += millis;
+    },
+    /** Steps the wall clock alone, forward or backward. */
+    stepClock: (millis: number): void => {
+      wallOffset += millis;
+    },
+  };
+};
+
+/** Counts the timers a {@link TestTime} arms and those still pending. */
+const setupTimerCount = (base: TestTime) => {
+  let calls = 0;
+  const pending = new Set<TimeoutId>();
+  const time: TestTime = {
+    ...base,
+    setTimeout: (callback, delay) => {
+      // A zero delay runs again inside advance(), which then never returns.
+      assert(durationToMillis(delay) > 0, "A timer re-armed at once.");
+      calls++;
+      const id = base.setTimeout(() => {
+        pending.delete(id);
+        callback();
+      }, delay);
+      pending.add(id);
+      return id;
+    },
+    clearTimeout: (id) => {
+      pending.delete(id);
+      base.clearTimeout(id);
+    },
+  };
+  return { time, calls: () => calls, pending: () => pending.size };
+};
+
+/** Draws a fixed value, so each connection's idle jitter is known. */
+const createFixedRandom = (value: number): Random => ({
+  next: () => value as RandomNumber,
+});
 
 /** Collects the sync state broadcasts. */
 const setupSyncStates = (
@@ -3605,7 +3684,8 @@ describe("sync state", () => {
         await respondToSyncRound(instance, createWebSocket);
         await postMutation(instance, setup.run);
 
-        // One of two requests is answered before the timeout, which re-arms it.
+        // One of two requests is answered before the timeout, which restarts
+        // its silence.
         time.advance(Millis.orThrow(85_000));
         fractionalOffset = fractional ? 0.125 : 0;
         createWebSocket.message(transport.url, relayResponse());
@@ -3614,8 +3694,9 @@ describe("sync state", () => {
           ok: true,
           value: { type: "Converged" },
         });
-        // Fractional readings leave 84,999.25 ms when the timer fires. Rounding
-        // upward schedules 85,000 ms, preserving the full silence interval.
+        // Fractional readings leave 24,999.25 ms at the check 150 seconds in.
+        // Rounding upward schedules 25,000 ms, so the next check sees the full
+        // silence.
         fractionalOffset = fractional ? 0.875 : 0;
         time.advance("5s");
         await testWaitForWorkerMessage();
@@ -3653,16 +3734,9 @@ describe("sync state", () => {
       });
     }
 
-    it("measures request silence on a clock a system adjustment cannot move", async () => {
+    it("measures request silence on a clock a backward system adjustment cannot move", async () => {
       const createWebSocket = testCreateWebSocket({ isOpen: false });
-      const baseTime = testCreateTime();
-      let offset = 0;
-      // Move only the wall clock, leaving performance.now() monotonic.
-      const now = ((type?: "DateIso") => {
-        const millis = Millis.orThrow(baseTime.now() + offset);
-        return type === "DateIso" ? millisToDateIso(millis) : millis;
-      }) as TestTime["now"];
-      const time = { ...baseTime, now };
+      const { time, stepClock } = setupSleepingTime();
       await using setup = await setupSharedWorker({ createWebSocket, time });
       const instance = await setup.createEvolu();
       const transport = createOwnerWebSocketTransport({
@@ -3685,7 +3759,7 @@ describe("sync state", () => {
       await respondToSyncRound(instance, createWebSocket);
       await postMutation(instance, setup.run);
 
-      // The request is answered 85 seconds in, which re-arms the timeout.
+      // The request is answered 85 seconds in, which restarts its silence.
       time.advance(Millis.orThrow(85_000));
       createWebSocket.message(transport.url, relayResponse());
       await testWaitForWorkerMessage();
@@ -3694,17 +3768,66 @@ describe("sync state", () => {
         value: { type: "Converged" },
       });
 
-      // The system clock jumps an hour while five seconds actually pass, so
-      // the timeout must see five seconds of silence and re-arm.
-      offset += durationToMillis("1h");
+      // The system clock steps an hour back while five seconds pass, so the
+      // timeout must see five seconds of silence and re-arm, and the sleep
+      // rule must only move its baseline.
+      stepClock(-3_600_000);
       time.advance("5s");
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.reconnectedUrls, []);
 
       // The timeout still fires on real silence.
-      time.advance(Millis.orThrow(85_000));
+      time.advance(Millis.orThrow(84_999));
+      await testWaitForWorkerMessage();
+      assertEqual(createWebSocket.reconnectedUrls, []);
+      time.advance("1ms");
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+    });
+
+    it("replaces a connection whose clock steps forward with a request outstanding, without doubling", async () => {
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
+      const { time, stepClock } = setupSleepingTime();
+      await using setup = await setupSharedWorker({ createWebSocket, time });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const instance = await setup.createEvolu();
+      const transport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://stepped.example/"),
+        ownerId: testAppOwner.id,
+      });
+      instance.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            owner: { owner: testAppOwner, transports: [transport] },
+            action: "add",
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      createWebSocket.open(transport.url);
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(instance, createWebSocket);
+
+      // A request near its deadline, then a forward step, which looks like a
+      // system sleep: the next check replaces the connection.
+      time.advance(Millis.orThrow(80_000));
+      await testWaitForWorkerMessage();
+      stepClock(3_600_000);
+      time.advance(Millis.orThrow(9_999));
+      await testWaitForWorkerMessage();
+      assertEqual(createWebSocket.reconnectedUrls, []);
+      time.advance("1ms");
+      await testWaitForWorkerMessage();
+      assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+      assertSame(latest().transports[0].connection.type, "Disconnected");
+
+      // A sleep says nothing about the link, so the timeout stays 90 seconds.
+      await timeOutRounds(
+        { setup, instance, createWebSocket, url: transport.url },
+        [90],
+      );
     });
 
     it("reconnects a socket whose request for one owner stays unanswered while another owner's frames arrive", async () => {
@@ -4079,6 +4202,479 @@ describe("sync state", () => {
       );
     });
 
+    describe("liveness", () => {
+      /**
+       * Claims a transport for the app owner, opens it, with a heartbeat first
+       * unless `heartbeat` is false, and settles its first round, so nothing is
+       * outstanding.
+       */
+      const openSettledTransport = async (
+        instance: TestEvoluInstance,
+        createWebSocket: TestCreateWebSocket,
+        { heartbeat = true } = {},
+      ): Promise<OwnerWebSocketTransport> => {
+        const transport = createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://watched.example/"),
+          ownerId: testAppOwner.id,
+        });
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              owner: { owner: testAppOwner, transports: [transport] },
+              action: "add",
+            },
+          ],
+        });
+        await testWaitForWorkerMessage();
+        createWebSocket.open(transport.url);
+        if (heartbeat) createWebSocket.message(transport.url, "");
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(instance, createWebSocket);
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(instance, false, {
+          ok: true,
+          value: { type: "Converged" },
+        });
+        return transport;
+      };
+
+      for (const [value, jitter] of [
+        [0, 0],
+        [0.99999, 29_999],
+      ] as const) {
+        it(`replaces a connection silent for two minutes plus its ${jitter} ms jitter after a heartbeat, doubling the timeout`, async () => {
+          const createWebSocket = testCreateWebSocket({ isOpen: false });
+          await using setup = await setupSharedWorker({
+            createWebSocket,
+            random: createFixedRandom(value),
+          });
+          using disposer = new DisposableStack();
+          const { latest } = setupSyncStates(setup, disposer);
+          const instance = await setup.createEvolu();
+          const { time } = setup.run.deps;
+          const transport = await openSettledTransport(
+            instance,
+            createWebSocket,
+          );
+
+          time.advance(Millis.orThrow(120_000 + jitter - 1));
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, []);
+          time.advance("1ms");
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+          assertSame(latest().transports[0].connection.type, "Disconnected");
+
+          // The silence can be a large frame on a slow link, so the reconnect
+          // round gets twice as long.
+          await timeOutRounds(
+            { setup, instance, createWebSocket, url: transport.url },
+            [180],
+          );
+        });
+      }
+
+      it("watches silence only once the relay has sent a heartbeat", async () => {
+        const createWebSocket = testCreateWebSocket({ isOpen: false });
+        await using setup = await setupSharedWorker({
+          createWebSocket,
+          // Fails a replacement that re-arms its timer.
+          time: setupTimerCount(testCreateTime()).time,
+          random: createFixedRandom(0),
+        });
+        using disposer = new DisposableStack();
+        const { states } = setupSyncStates(setup, disposer);
+        const instance = await setup.createEvolu();
+        const { time } = setup.run.deps;
+        // Binary frames alone, as from a relay that sends no heartbeats.
+        const transport = await openSettledTransport(
+          instance,
+          createWebSocket,
+          { heartbeat: false },
+        );
+        time.advance("10m");
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.reconnectedUrls, []);
+
+        // A heartbeat after binary frames still arms it.
+        createWebSocket.message(transport.url, "");
+        await testWaitForWorkerMessage();
+        time.advance(Millis.orThrow(119_999));
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.reconnectedUrls, []);
+        time.advance("1ms");
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+
+        // A frame of the abandoned connection watches nothing, so nothing
+        // replaces it again or publishes.
+        createWebSocket.message(transport.url, "");
+        await testWaitForWorkerMessage();
+        const stateCount = states.length;
+        time.advance("10m");
+        await testWaitForWorkerMessage();
+        assertLength(states, stateCount);
+        assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+      });
+
+      it("restarts the silence at any frame once the relay has sent a heartbeat", async () => {
+        const createWebSocket = testCreateWebSocket({ isOpen: false });
+        await using setup = await setupSharedWorker({
+          createWebSocket,
+          random: createFixedRandom(0),
+        });
+        const instance = await setup.createEvolu();
+        const { time } = setup.run.deps;
+        const transport = await openSettledTransport(instance, createWebSocket);
+
+        // A binary frame that answers nothing, as a broadcast does.
+        time.advance(Millis.orThrow(100_000));
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(instance, false, {
+          ok: true,
+          value: { type: "Converged" },
+        });
+        time.advance(Millis.orThrow(119_999));
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.reconnectedUrls, []);
+        time.advance("1ms");
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+      });
+
+      it("times a request out while heartbeats arrive", async () => {
+        const createWebSocket = testCreateWebSocket({ isOpen: false });
+        await using setup = await setupSharedWorker({ createWebSocket });
+        const instance = await setup.createEvolu();
+        const { time } = setup.run.deps;
+        const transport = await openSettledTransport(instance, createWebSocket);
+        await postMutation(instance, setup.run);
+
+        // Heartbeats prove the socket alive, not that the request arrived.
+        for (let i = 0; i < 2; i++) {
+          time.advance("30s");
+          createWebSocket.message(transport.url, "");
+          await testWaitForWorkerMessage();
+        }
+        time.advance(Millis.orThrow(29_999));
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.reconnectedUrls, []);
+        time.advance("1ms");
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+      });
+
+      it("checks at most once an interval while a grown timeout's request outlasts the idle deadline", async () => {
+        const createWebSocket = testCreateWebSocket({ isOpen: false });
+        const timers = setupTimerCount(testCreateTime());
+        await using setup = await setupSharedWorker({
+          createWebSocket,
+          time: timers.time,
+          random: createFixedRandom(0),
+        });
+        const instance = await setup.createEvolu();
+        const { time } = setup.run.deps;
+        const transport = createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://grown.example/"),
+          ownerId: testAppOwner.id,
+        });
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              owner: { owner: testAppOwner, transports: [transport] },
+              action: "add",
+            },
+          ],
+        });
+        await testWaitForWorkerMessage();
+        const context = {
+          setup,
+          instance,
+          createWebSocket,
+          url: transport.url,
+        };
+        await timeOutRounds(context, [90]);
+
+        // The idle deadline passes at 120 seconds, while the unanswered round
+        // keeps the connection under the 180-second request timeout.
+        createWebSocket.open(transport.url);
+        createWebSocket.message(transport.url, "");
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(instance, createWebSocket);
+        const calls = timers.calls();
+        time.advance(Millis.orThrow(179_999));
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+        assertSame(timers.calls() - calls, 5);
+        time.advance("1ms");
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.reconnectedUrls, [
+          transport.url,
+          transport.url,
+        ]);
+      });
+
+      it("keeps one timer per open connection and none once it ends", async () => {
+        const createWebSocket = testCreateWebSocket({ isOpen: false });
+        const timers = setupTimerCount(testCreateTime());
+        await using setup = await setupSharedWorker({
+          createWebSocket,
+          time: timers.time,
+        });
+        const instance = await setup.createEvolu();
+        const { time } = setup.run.deps;
+        const owner = {
+          owner: testAppOwner,
+          transports: [
+            createOwnerWebSocketTransport({
+              url: RelayUrl.orThrow("wss://timers.example/"),
+              ownerId: testAppOwner.id,
+            }),
+          ],
+        } as const;
+        const { url } = owner.transports[0];
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [{ owner, action: "add" }],
+        });
+        await testWaitForWorkerMessage();
+        const pending = timers.pending();
+
+        const open = async (): Promise<void> => {
+          createWebSocket.open(url);
+          await testWaitForWorkerMessage();
+          await respondToSyncRound(instance, createWebSocket);
+        };
+
+        // A second open replaces the timer.
+        await open();
+        assertSame(timers.pending(), pending + 1);
+        await open();
+        assertSame(timers.pending(), pending + 1);
+
+        createWebSocket.error(url, {
+          type: "WebSocketConnectionError",
+          event: new Event("error"),
+        });
+        await testWaitForWorkerMessage();
+        assertSame(timers.pending(), pending);
+
+        await open();
+        createWebSocket.close(url);
+        await testWaitForWorkerMessage();
+        assertSame(timers.pending(), pending);
+
+        await open();
+        time.advance(Millis.orThrow(90_000));
+        await testWaitForWorkerMessage();
+        assertEqual(createWebSocket.reconnectedUrls, [url]);
+        assertSame(timers.pending(), pending);
+
+        await open();
+        assertSame(timers.pending(), pending + 1);
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [{ owner, action: "remove" }],
+        });
+        await testWaitForWorkerMessage();
+        time.advance("3s");
+        await testWaitForWorkerMessage();
+        assertSame(timers.pending(), pending);
+      });
+
+      describe("sleep", () => {
+        it("replaces a connection at the first check after a sleep, on any relay, keeping the timeout", async () => {
+          const createWebSocket = testCreateWebSocket({ isOpen: false });
+          const { time, sleep } = setupSleepingTime();
+          await using setup = await setupSharedWorker({
+            createWebSocket,
+            time,
+          });
+          using disposer = new DisposableStack();
+          const { latest } = setupSyncStates(setup, disposer);
+          const instance = await setup.createEvolu();
+          const transport = await openSettledTransport(
+            instance,
+            createWebSocket,
+            { heartbeat: false },
+          );
+
+          time.advance("10s");
+          sleep("45s");
+          time.advance(Millis.orThrow(19_999));
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, []);
+          time.advance("1ms");
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+          assertSame(latest().transports[0].connection.type, "Disconnected");
+
+          // A sleep says nothing about the link. The reopened connection
+          // starts its own baseline after the wake, so only its unanswered
+          // round replaces it, after the base timeout.
+          await timeOutRounds(
+            { setup, instance, createWebSocket, url: transport.url },
+            [90],
+          );
+        });
+
+        it("ignores clock jumps under five seconds, which do not add up", async () => {
+          const createWebSocket = testCreateWebSocket({ isOpen: false });
+          const { time, sleep } = setupSleepingTime();
+          await using setup = await setupSharedWorker({
+            createWebSocket,
+            time,
+          });
+          const instance = await setup.createEvolu();
+          const transport = await openSettledTransport(
+            instance,
+            createWebSocket,
+            { heartbeat: false },
+          );
+
+          for (let i = 0; i < 2; i++) {
+            sleep(Millis.orThrow(4_999));
+            time.advance("30s");
+            await testWaitForWorkerMessage();
+          }
+          assertEqual(createWebSocket.reconnectedUrls, []);
+          sleep("5s");
+          time.advance("30s");
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+        });
+
+        it("detects a sleep after a backward clock step, which moves the baseline", async () => {
+          const createWebSocket = testCreateWebSocket({ isOpen: false });
+          const { time, sleep, stepClock } = setupSleepingTime();
+          await using setup = await setupSharedWorker({
+            createWebSocket,
+            time,
+          });
+          const instance = await setup.createEvolu();
+          const transport = await openSettledTransport(
+            instance,
+            createWebSocket,
+            { heartbeat: false },
+          );
+
+          stepClock(-3_600_000);
+          time.advance("30s");
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, []);
+          sleep("5s");
+          time.advance("30s");
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+        });
+
+        it("does not replace a connection that opens after a sleep", async () => {
+          const createWebSocket = testCreateWebSocket({ isOpen: false });
+          const { time, sleep } = setupSleepingTime();
+          await using setup = await setupSharedWorker({
+            createWebSocket,
+            time,
+          });
+          const instance = await setup.createEvolu();
+          sleep("1h");
+          await openSettledTransport(instance, createWebSocket, {
+            heartbeat: false,
+          });
+          time.advance("1m");
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, []);
+        });
+      });
+
+      // Where performance.now() counts a sleep, as on Windows, the sleep rule
+      // sees nothing and the idle rule covers it, while timers wait out their
+      // remaining delay after the wake.
+      describe("counted sleep", () => {
+        const setupCountedSleep = async () => {
+          const createWebSocket = testCreateWebSocket({ isOpen: false });
+          const { time, sleep } = setupSleepingTime();
+          const setup = await setupSharedWorker({
+            createWebSocket,
+            time,
+            random: createFixedRandom(0),
+          });
+          const instance = await setup.createEvolu();
+          const transport = await openSettledTransport(
+            instance,
+            createWebSocket,
+          );
+          return { createWebSocket, time, sleep, setup, instance, transport };
+        };
+
+        it("replaces a connection silent past its deadline at the armed check after the wake, up to one interval late", async () => {
+          const { createWebSocket, time, sleep, setup, instance, transport } =
+            await setupCountedSleep();
+          await using _setup = setup;
+
+          sleep(Millis.orThrow(100_000), { counted: true });
+          time.advance(Millis.orThrow(29_999));
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, []);
+          time.advance("1ms");
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+          await timeOutRounds(
+            { setup, instance, createWebSocket, url: transport.url },
+            [180],
+          );
+        });
+
+        it("replaces a connection after a short sleep once the rest of its deadline passes", async () => {
+          const { createWebSocket, time, sleep, setup, transport } =
+            await setupCountedSleep();
+          await using _setup = setup;
+
+          sleep("45s", { counted: true });
+          time.advance(Millis.orThrow(74_999));
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, []);
+          time.advance("1ms");
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+        });
+
+        it("leaves a connection to the request rule when a request goes out before the check", async () => {
+          const { createWebSocket, time, sleep, setup, instance, transport } =
+            await setupCountedSleep();
+          await using _setup = setup;
+
+          sleep("10m", { counted: true });
+          await postMutation(instance, setup.run);
+          time.advance(Millis.orThrow(89_999));
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, []);
+          time.advance("1ms");
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+        });
+
+        it("restarts the silence at frames delivered after the wake", async () => {
+          const { createWebSocket, time, sleep, setup, transport } =
+            await setupCountedSleep();
+          await using _setup = setup;
+
+          sleep("10m", { counted: true });
+          createWebSocket.message(transport.url, "");
+          await testWaitForWorkerMessage();
+          time.advance(Millis.orThrow(119_999));
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, []);
+          time.advance("1ms");
+          await testWaitForWorkerMessage();
+          assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
+        });
+      });
+    });
+
     it("keeps a grown timeout until the database is reconciled with the relay", async () => {
       const createWebSocket = testCreateWebSocket({ isOpen: false });
       await using setup = await setupSharedWorker({ createWebSocket });
@@ -4424,7 +5020,8 @@ describe("sync state", () => {
     });
 
     it("leaves every route through a replaced socket incomplete", async () => {
-      const createWebSocket = testCreateWebSocket();
+      // Only an opened socket is watched.
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
       await using setup = await setupSharedWorker({ createWebSocket });
       using disposer = new DisposableStack();
       const { latest } = setupSyncStates(setup, disposer);
@@ -4443,6 +5040,10 @@ describe("sync state", () => {
           ],
         });
         await testWaitForWorkerMessage();
+        if (owner === testAppOwner2) {
+          createWebSocket.open(transport.url);
+          await testWaitForWorkerMessage();
+        }
         await respondToSyncRound(instance, createWebSocket, owner);
         createWebSocket.message(transport.url, relayResponse(owner.id));
         await testWaitForWorkerMessage();
@@ -5440,7 +6041,8 @@ describe("sync state", () => {
     });
 
     it("counts an Unsubscribe as a request until the relay answers it", async () => {
-      const createWebSocket = testCreateWebSocket();
+      // Only an opened socket is watched.
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
       await using setup = await setupSharedWorker({ createWebSocket });
       const instance = await setup.createEvolu();
       const { time } = setup.run.deps;
@@ -5480,6 +6082,8 @@ describe("sync state", () => {
       });
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.createdUrls, [transport.url]);
+      createWebSocket.open(transport.url);
+      await testWaitForWorkerMessage();
       await respondToSyncRound(instance, createWebSocket);
       createWebSocket.message(transport.url, relayResponse());
       await testWaitForWorkerMessage();
@@ -5583,7 +6187,8 @@ describe("sync state", () => {
     });
 
     it("stops timing an unanswered Unsubscribe when its idle socket is disposed", async () => {
-      const createWebSocket = testCreateWebSocket();
+      // Only an opened socket is watched.
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
       await using setup = await setupSharedWorker({ createWebSocket });
       using disposer = new DisposableStack();
       const { states, latest } = setupSyncStates(setup, disposer);
@@ -5602,6 +6207,8 @@ describe("sync state", () => {
         type: "UseOwner",
         actions: [{ owner, action: "add" }],
       });
+      await testWaitForWorkerMessage();
+      createWebSocket.open(owner.transports[0].url);
       await testWaitForWorkerMessage();
       await respondToSyncRound(instance, createWebSocket);
       // Answer the round, so the Unsubscribe is the only outstanding request.
@@ -9314,7 +9921,8 @@ describe("with one evolu instance", () => {
     });
 
     it("routes a relay's version-mismatch reply to the tenant", async () => {
-      const createWebSocket = testCreateWebSocket();
+      // Only an opened socket is watched.
+      const createWebSocket = testCreateWebSocket({ isOpen: false });
       await using setup = await setupSharedWorker({ createWebSocket });
       using disposer = new DisposableStack();
       const { latest } = setupSyncStates(setup, disposer);
@@ -9343,6 +9951,8 @@ describe("with one evolu instance", () => {
           },
         ],
       });
+      await testWaitForWorkerMessage();
+      createWebSocket.open(transport.url);
       await testWaitForWorkerMessage();
       await respondToSyncRound(instance, createWebSocket);
       dbInputs.length = 0;

@@ -906,9 +906,13 @@ export interface Evolu<
    * this after the relay provider confirms additional quota is available. It
    * also checks again the changes this database skipped from the owner's
    * relays, and sends such a relay the changes received from other relays,
-   * which otherwise wait for its next sync, such as after a reconnect. Existing
-   * connections and {@link Evolu.useOwner} registrations are retained, including
-   * registrations shared by multiple instances or tabs.
+   * which otherwise wait for its next sync, such as after a reconnect. On a
+   * relay that sends no heartbeats, a request is also how the shared worker
+   * notices a connection that died without closing: an unanswered request
+   * replaces it after the request timeout, ninety seconds unless it has grown,
+   * as Liveness in the Shared module describes. Existing connections and
+   * {@link Evolu.useOwner} registrations are retained, including registrations
+   * shared by multiple instances or tabs.
    *
    * The owner must have an active writable registration in this database.
    * Unregistered or read-only owners are ignored. Requests are skipped while

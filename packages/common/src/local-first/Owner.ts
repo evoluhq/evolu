@@ -72,6 +72,7 @@ import {
   type TypeError,
   union,
 } from "../Type.ts";
+import type { PositiveMillis } from "../Time.ts";
 import { WebSocketUrl, WebSocketUrlFromString } from "../WebSocket.ts";
 import type { EncryptedDbChange, Storage } from "./Storage.ts";
 
@@ -469,6 +470,24 @@ export type OwnerTransport = OwnerWebSocketTransport;
  * Legitimate clients will be properly configured with valid credentials, so
  * automatic retry is OK.
  *
+ * ## Heartbeats
+ *
+ * The WebSocket API answers a relay's pings without telling JavaScript, in
+ * browsers, React Native and Node alike, so a client cannot see whether an idle
+ * connection still works. A relay therefore sends an empty text frame as the
+ * first frame of every connection, and then at least every
+ * {@link relayHeartbeatInterval} while nothing else is queued for the connection
+ * and none of its requests is being served. Protocol messages are binary, so
+ * text frames are reserved for heartbeats: a relay that sends one on a
+ * connection promises them on that connection, and clients ignore their
+ * content. Clients before `@evolu/common` 8.26.0 drop them unread.
+ *
+ * The client replaces a connection that has carried no frame for much longer
+ * than the interval, so a relay sends no unsolicited frame larger than 1 MB,
+ * and a proxy in front of it must allow more than one interval of idle time. A
+ * relay that sends no heartbeats still works, but a client notices its silent
+ * connections only through unanswered requests and system sleep.
+ *
  * @group Transport
  * @see {@link createOwnerWebSocketTransport}
  * @see {@link parseOwnerIdFromOwnerWebSocketTransportUrl}
@@ -476,6 +495,14 @@ export type OwnerTransport = OwnerWebSocketTransport;
 export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
   readonly url: WebSocketUrl;
 }
+
+/**
+ * The longest a relay waits between heartbeats on an idle connection, as
+ * {@link OwnerWebSocketTransport} describes: thirty seconds.
+ *
+ * @group Transport
+ */
+export const relayHeartbeatInterval = 30_000 as PositiveMillis;
 
 /**
  * Error returned when a {@link WebSocketUrl} is not a {@link RelayUrl}.

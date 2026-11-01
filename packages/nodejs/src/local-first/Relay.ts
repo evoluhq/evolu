@@ -6,6 +6,7 @@ import {
   createSqlite,
   type CreateSqliteDriverDep,
   daemon,
+  durationToMillis,
   type Name,
   ok,
   OwnerId,
@@ -29,9 +30,11 @@ import {
   createRelayStorageTables,
   defaultProtocolMessageMaxSize,
   ownerIdToOwnerIdBytes,
+  type OwnerWebSocketTransport,
   parseOwnerIdFromOwnerWebSocketTransportUrl,
   type Relay,
   type RelayConfig,
+  relayHeartbeatInterval,
   type RelayStorageDep,
 } from "@evolu/common/local-first";
 import { once } from "events";
@@ -50,16 +53,16 @@ export interface NodeJsRelayConfig extends RelayConfig {
 
   /**
    * How often the relay pings every connection with a WebSocket ping frame,
-   * which browsers answer automatically. A connection from which nothing has
-   * arrived since the previous ping is terminated, so an idle dead path is
-   * detected within two intervals. Any incoming data counts, so a slow upload
-   * that delays the answer keeps its connection. A connection with data still
-   * queued in the relay for it, such as a large reply on a slow link, is not
-   * pinged or terminated until the operating system takes the data, because the
-   * answer waits behind it; TCP ends such a connection if its path is dead. Nor
-   * is a connection whose requests the relay is serving, because it does not
-   * read the connection meanwhile; it is pinged again once they are served. A
-   * connection is terminated instead of queuing a broadcast that would leave
+   * which WebSocket clients answer automatically. A connection from which
+   * nothing has arrived since the previous ping is terminated, so an idle dead
+   * path is detected within two intervals. Any incoming data counts, so a slow
+   * upload that delays the answer keeps its connection. A connection with data
+   * still queued in the relay for it, such as a large reply on a slow link, is
+   * not pinged or terminated until the operating system takes the data, because
+   * the answer waits behind it; TCP ends such a connection if its path is dead.
+   * Nor is a connection whose requests the relay is serving, because it does
+   * not read the connection meanwhile; it is pinged again once they are served.
+   * A connection is terminated instead of queuing a broadcast that would leave
    * more than 16 MB of broadcasts unsent to it, whether its client stopped
    * reading or reads more slowly than its owners' traffic arrives; the client
    * reconciles after it reconnects. Replies to a client's own requests do not
@@ -67,7 +70,12 @@ export interface NodeJsRelayConfig extends RelayConfig {
    * Data the operating system already holds still delays the answer, so a link
    * too slow to send it within an interval reconnects once, after the data
    * ahead of the ping arrives. The traffic also keeps NAT mappings alive.
-   * Defaults to thirty seconds.
+   *
+   * WebSocket clients do not tell JavaScript about pings, so the relay sends an
+   * empty text frame right after each one, with the same exceptions, as the
+   * heartbeat its clients watch; see {@link OwnerWebSocketTransport}. The
+   * interval must therefore be at most {@link relayHeartbeatInterval}, and
+   * {@link createRelay} panics on a longer one. Defaults to thirty seconds.
    */
   readonly pingInterval?: PositiveDuration;
 }
@@ -100,7 +108,10 @@ export const createRelayDeps = (): RelayDeps => ({
  * requests of its connection, which the relay meanwhile neither reads nor
  * pings, so the callback should settle quickly. One answer makes a bounded
  * number of storage reads, so one request holds the relay only briefly. Limit
- * connections per IP address in a reverse proxy in front of the relay.
+ * connections per IP address in a reverse proxy in front of the relay, and let
+ * it keep an idle connection open for more than {@link relayHeartbeatInterval},
+ * because the relay sends the heartbeats that {@link OwnerWebSocketTransport}
+ * describes.
  *
  * For uptime monitors and container health checks, the relay answers `GET` and
  * `HEAD` requests for `/health` with status 200 and `{"status":"ok"}` while its
@@ -133,6 +144,10 @@ export const createRelay =
     pingInterval = "30s",
   }: NodeJsRelayConfig): Task<Relay, never, RelayDeps> =>
   async (run) => {
+    assert(
+      durationToMillis(pingInterval) <= relayHeartbeatInterval,
+      "pingInterval must be at most relayHeartbeatInterval",
+    );
     await using disposer = new AsyncDisposableStack();
     const console = run.deps.console.child("relay");
 
@@ -219,6 +234,11 @@ export const createRelay =
         }
         activeSockets.delete(client);
         client.ping();
+        // WebSocket clients answer the ping without telling JavaScript, so clients
+        // watch this heartbeat instead. It skips what the ping skips: a
+        // client with a request being served has its own timeout, and queued
+        // data arrives as frames of its own.
+        client.send("");
       }
       pingTimeoutId = run.deps.time.setTimeout(pingClients, pingInterval);
     };
@@ -321,6 +341,10 @@ export const createRelay =
 
     wss.on("connection", (ws, request) => {
       console.debug("on connection", wss.clients.size);
+      // The first heartbeat tells the client that this relay sends them, so
+      // it starts watching the connection at once. ws reads the connection
+      // only after this handler, so the heartbeat is the first frame.
+      ws.send("");
       activeSockets.add(ws);
       // Any incoming bytes count, not only pongs: a client's pong waits
       // behind an upload it is still sending over a slow link.

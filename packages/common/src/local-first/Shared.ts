@@ -235,8 +235,9 @@
  * such as a response it cannot post, refuses the database with an
  * {@link UnknownError}. A frame the relay silently drops, such as invalid data,
  * leaves its request outstanding, and the requests of other databases for its
- * owner on that socket, uploads included, waiting, until the liveness rule
- * below replaces the socket and the reopen's rounds reconcile them.
+ * owner on that socket, uploads included, waiting, until the unanswered request
+ * rule in Liveness below replaces the socket and the reopen's rounds reconcile
+ * them.
  *
  * A result that skipped a message records the error on the route as its
  * `skippedError`, without ending its chain, so it requests no round. A message
@@ -262,35 +263,48 @@
  *
  * ### Liveness
  *
- * An open socket can be dead without a close event, when a NAT drops an idle
- * mapping or the path fails while nothing is sent. The relay pings every
- * connection and terminates one from which nothing has arrived since the
- * previous ping, which also keeps NAT mappings alive. The shared worker
- * reconnects a socket when a request for an owner has been outstanding for
- * ninety seconds, enough for a 1 MB frame at about 90 kbit/s, with no Response
- * for that owner since. Frames for other owners do not count: they prove the
- * socket alive, not that the request was received.
+ * An open socket can be dead without a close event: after a system sleep, a
+ * network change, a NAT or proxy that drops the connection, or a relay host
+ * that dies without closing it. The relay pings every connection and terminates
+ * one from which nothing has arrived since the previous ping, which also keeps
+ * NAT mappings alive. The WebSocket API answers pings without telling
+ * JavaScript, in browsers, React Native and Node alike, so the relay also sends
+ * heartbeats, as {@link OwnerWebSocketTransport} describes. Each open connection
+ * has one timer, which checks it at least every thirty seconds and replaces it
+ * by the first rule that applies:
+ *
+ * - A sleep: the wall clock jumped five seconds or more ahead of
+ *   `performance.now()` since the last check, which happens where the monotonic
+ *   clock stops during system sleep, or after a forward clock step. It works
+ *   with every relay and keeps the transport's timeout.
+ * - An unanswered request: a request for an owner has been outstanding for ninety
+ *   seconds, enough for a 1 MB frame at about 90 kbit/s, with no Response for
+ *   that owner since. Frames for other owners do not count: they prove the
+ *   socket alive, not that the request was received.
+ * - Silence: nothing is outstanding and no frame has arrived for two minutes plus
+ *   up to thirty seconds of jitter, once the relay has sent a heartbeat. It
+ *   catches a connection that dies while awake, and a sleep where
+ *   `performance.now()` counts it, as on Windows, once the deadline passes.
  *
  * A slow link looks like a dead one, because the browser reports no transfer
- * progress and a large frame saves nothing until it arrives whole. Each timeout
- * therefore doubles the transport's timeout, up to twenty-four minutes: a
- * connection that reopens but times out again is more likely slow than dead.
- * The timeout belongs to the transport, not to an owner, because a small reply
- * for one owner can wait behind another owner's large frame on the socket. A
- * grown timeout lasts while a request is outstanding on the socket or a
- * database that is not refused has an unsettled route through it, including one
- * waiting after a failure, and ends with the transport. A settled route that is
- * incomplete does not count, because its reconciliation has ended. A reply's
- * speed proves nothing, because a recovery on a slow link starts with small
- * replies that arrive quickly. The reopen drops the outstanding and waiting
- * requests and starts the open rounds, so a dropped frame delays a route
- * instead of stranding it.
+ * progress and a large frame saves nothing until it arrives whole. Each request
+ * or silence timeout therefore doubles the transport's timeout, up to
+ * twenty-four minutes: a connection that reopens but times out again is more
+ * likely slow than dead. The timeout belongs to the transport, not to an owner,
+ * because a small reply for one owner can wait behind another owner's large
+ * frame on the socket. A grown timeout lasts while a request is outstanding on
+ * the socket or a database that is not refused has an unsettled route through
+ * it, including one waiting after a failure, and ends with the transport. A
+ * settled route that is incomplete does not count, because its reconciliation
+ * has ended. A reply's speed proves nothing, because a recovery on a slow link
+ * starts with small replies that arrive quickly. The reopen drops the
+ * outstanding and waiting requests and starts the open rounds, so a dropped
+ * frame delays a route instead of stranding it.
  *
- * The shared worker sends nothing while idle, so a path that dies then may go
+ * On a relay that sends no heartbeats, a connection that dies while awake goes
  * unnoticed until its next request; until then, changes from other devices stop
- * arriving while routes still read complete. A periodic empty request would
- * notice it without waiting for the app to send. That is deferred, because
- * relay pings already keep NAT mappings alive, the common cause.
+ * arriving while routes still read complete, and {@link Evolu.requestSync}
+ * notices it sooner.
  *
  * @module
  */
@@ -389,12 +403,14 @@ import type {
   EvoluConfig,
   SyncStateDep,
 } from "./Evolu.ts";
-import type {
-  Owner,
-  OwnerId,
-  OwnerTransport,
-  RelayUrl,
-  SyncOwner,
+import {
+  type Owner,
+  type OwnerId,
+  type OwnerTransport,
+  type OwnerWebSocketTransport,
+  relayHeartbeatInterval,
+  type RelayUrl,
+  type SyncOwner,
 } from "./Owner.ts";
 import {
   createProtocolBroadcastMessagesFromCrdtMessages,
@@ -622,9 +638,10 @@ export interface SyncTransportError {
 /**
  * The connection of a {@link SyncTransport}: `Connecting` until its first
  * connection opens or fails, `Open` while a connection is open, and
- * `Disconnected` from a close, a failure, or an unanswered request that
- * replaced the connection, until a connection opens again. It never returns to
- * `Connecting`. The transport's events drive these states.
+ * `Disconnected` from a close, a failure, or a sleep, an unanswered request or
+ * silence that replaced the connection, until a connection opens again; see
+ * Liveness in this module's documentation. It never returns to `Connecting`.
+ * The transport's events drive these states.
  */
 export type SyncConnection =
   ConnectingSyncConnection | OpenSyncConnection | DisconnectedSyncConnection;
@@ -645,8 +662,9 @@ export interface OpenSyncConnection extends Typed<"Open"> {
 }
 
 /**
- * No connection: a connection closed or failed, or the relay did not answer a
- * request in time. The transport reconnects by itself.
+ * No connection: a connection closed or failed, or the shared worker replaced
+ * one after a sleep, an unanswered request, or silence. The transport
+ * reconnects by itself.
  */
 export interface DisconnectedSyncConnection extends Typed<"Disconnected"> {
   /** When it disconnected. Failed reconnect attempts leave it unchanged. */
@@ -654,9 +672,8 @@ export interface DisconnectedSyncConnection extends Typed<"Disconnected"> {
   /** When the last connection opened, or null when none has. */
   readonly openedAt: Millis | null;
   /**
-   * The last error, or null. A close or an unanswered request records none, so
-   * it can come from an earlier connection. Errors while reconnecting are
-   * routine.
+   * The last error, or null. A close or a replacement records none, so it can
+   * come from an earlier connection. Errors while reconnecting are routine.
    */
   readonly error: SyncTransportError | null;
 }
@@ -843,7 +860,15 @@ export interface RelaySyncState {
  * - `Syncing`: a relay connects for the first time or reconciles. A first
  *   connection to a host that drops packets stays `Syncing` until the platform
  *   gives up on it, which can take a minute.
- * - `Synced`: a relay is up to date, and none syncs.
+ * - `Synced`: a relay is up to date, and none syncs. A connection that dies
+ *   without closing stays `Synced` until the shared worker replaces it: about
+ *   thirty seconds after a system sleep where `performance.now()` stops during
+ *   sleep, and otherwise, on a relay that sends heartbeats and while no request
+ *   is outstanding on the connection, at most two and a half minutes after its
+ *   last frame, or up to thirty seconds more after a sleep where
+ *   `performance.now()` counts it. An outstanding request of any owner on the
+ *   connection leaves it to the request timeout instead, ninety seconds unless
+ *   it has grown; see Liveness in this module's documentation.
  * - `Offline`: every relay is disconnected. Evolu keeps reconnecting, up to 30
  *   seconds apart, so `Offline` can briefly outlast the outage.
  * - `Error`: a relay failed, a relay offers a change this database skipped, or
@@ -1558,6 +1583,30 @@ const syncRequestTimeout = PositiveMillis.orThrow(90_000);
  */
 const maxSyncRequestTimeout = PositiveMillis.orThrow(16 * syncRequestTimeout);
 
+/**
+ * How long a connection with nothing outstanding may carry no frame, before its
+ * jitter, once its relay has sent a heartbeat: {@link syncRequestTimeout} plus
+ * {@link relayHeartbeatInterval}.
+ *
+ * The relay sends a heartbeat at least every interval while nothing is queued
+ * for the connection, so the heartbeat interval covers the tick a heartbeat can
+ * just miss, and the request timeout covers an unsolicited 1 MB frame on a slow
+ * link, which arrives whole or not at all.
+ */
+const syncIdleTimeout = PositiveMillis.orThrow(
+  syncRequestTimeout + relayHeartbeatInterval,
+);
+
+/**
+ * How far the wall clock must jump ahead of `performance.now()` between two
+ * checks of a connection to count as a system sleep: a clock-noise floor, not a
+ * relay bound. A connection often survives a sleep of under twenty seconds,
+ * through retransmitted pings, but longer sleeps or a network change during one
+ * leave it dead without a close, so any sleep this long replaces it, as
+ * Chromium closes its sockets at suspend.
+ */
+const syncSleepThreshold = 5_000;
+
 const connectingSyncConnection: ConnectingSyncConnection = {
   type: "Connecting",
 };
@@ -1940,7 +1989,8 @@ export const initSharedWorker =
        * sender's turn. `silentSince` is when the first outstanding request was
        * sent or a Response for the owner last arrived. It is monotonic, so a
        * system clock adjustment cannot make a request look timed out or keep
-       * one from timing out.
+       * one from timing out; a forward one replaces the connection as a sleep
+       * instead.
        */
       readonly outstandingByOwnerId: Map<
         OwnerId,
@@ -1957,16 +2007,32 @@ export const initSharedWorker =
       /**
        * The timeout of every request on the socket: frames arrive one after
        * another, so a reply can wait behind another owner's large frame. It
-       * doubles after each timeout and survives reconnects until nothing is
-       * outstanding and every route through the transport of a database that is
-       * not refused has settled.
+       * doubles after each request or idle timeout and survives reconnects
+       * until nothing is outstanding and every route through the transport of a
+       * database that is not refused has settled.
        */
       timeout: PositiveMillis;
       socket: WebSocket | null;
       /** Socket events drive it, so publishing never reads the socket. */
       connection: SyncConnection;
-      /** Armed while a request is outstanding on an open socket. */
-      timeoutId: TimeoutId | null;
+      /** The open connection's watchdog, or null while none is open. */
+      liveness: SyncLiveness | null;
+    }
+
+    interface SyncLiveness {
+      /**
+       * The wall clock minus `performance.now()` at the last check. It jumps by
+       * a system sleep where the monotonic clock stops during one.
+       */
+      clockOffset: number;
+      /**
+       * When the last frame arrived, or null until a heartbeat has, so a relay
+       * that sends none never looks idle.
+       */
+      lastFrameAt: PerformanceTime | null;
+      /** Spreads the idle deadlines of clients that heard one relay tick. */
+      readonly idleJitter: Millis;
+      timeoutId: TimeoutId;
     }
     const transportsByKey = new Map<StructuralLookupKey, SyncTransportEntry>();
     let isDisposed = false;
@@ -2024,66 +2090,110 @@ export const initSharedWorker =
         tenant.refreshSyncRoutes();
     };
 
-    const clearSyncRequestTimeout = (entry: SyncTransportEntry): void => {
-      if (entry.timeoutId === null) return;
-      deps.time.clearTimeout(entry.timeoutId);
-      entry.timeoutId = null;
+    const dropSyncLiveness = (entry: SyncTransportEntry): void => {
+      if (entry.liveness === null) return;
+      deps.time.clearTimeout(entry.liveness.timeoutId);
+      entry.liveness = null;
     };
 
-    const armSyncRequestTimeout = (
+    // An open connection has one timer, which checks the Liveness rules in
+    // this module's documentation and re-arms itself until a rule replaces the
+    // connection. Sends and frames never arm it: every deadline they start is
+    // at least syncRequestTimeout away, beyond the next check.
+    const checkSyncLiveness = (
       entry: SyncTransportEntry,
-      delay: PositiveMillis,
+      liveness: SyncLiveness,
     ): void => {
-      entry.timeoutId = deps.time.setTimeout(() => {
-        entry.timeoutId = null;
+      const now = deps.time.performance.now();
+
+      // Subtracting a monotonic reading from a wall-clock one breaks the Time
+      // convention on purpose: where performance.now() stops during system
+      // sleep, which WebKit, Chromium and Firefox do on Apple, Linux and
+      // Android, as React Native does, only the wall clock sees the sleep. A
+      // forward clock step looks the same, and a backward one only moves the
+      // baseline. Where performance.now() counts sleep, as on Windows and in
+      // Node on macOS, the idle rule covers a sleep instead.
+      // https://bugs.webkit.org/show_bug.cgi?id=225610
+      // https://crbug.com/1206450
+      // https://github.com/w3c/hr-time/issues/115
+      const clockOffset = deps.time.now() - now;
+      const skew = clockOffset - liveness.clockOffset;
+      if (skew >= syncSleepThreshold) {
+        // A sleep says nothing about the link, so the timeout stays.
+        replaceSyncConnection(entry, "Sleep", skew);
+        return;
+      }
+      liveness.clockOffset = clockOffset;
+
+      let delay: number = relayHeartbeatInterval;
+      if (entry.outstandingByOwnerId.size > 0) {
         // Frames for other owners prove the socket alive, not that this
         // owner's request was received, so each owner's silence is measured
         // separately.
-        const now = deps.time.performance.now();
-        let shortestRemaining: number | null = null;
-        let isTimedOut = false;
         for (const { silentSince } of entry.outstandingByOwnerId.values()) {
-          const remaining =
-            entry.timeout - performanceDurationBetween(silentSince, now);
-          if (remaining <= 0) isTimedOut = true;
-          else if (shortestRemaining === null || remaining < shortestRemaining)
-            shortestRemaining = remaining;
+          const silence = performanceDurationBetween(silentSince, now);
+          const remaining = entry.timeout - silence;
+          if (remaining <= 0) {
+            doubleSyncRequestTimeout(entry);
+            replaceSyncConnection(entry, "Request", silence);
+            return;
+          }
+          delay = Math.min(delay, remaining);
         }
-        if (!isTimedOut) {
-          // Emptying outstandingByOwnerId clears this timer, so an owner is
-          // still outstanding.
-          assertNonNullable(shortestRemaining);
-          // Timer delays use integer milliseconds; round up to wait at least
-          // the remaining fractional duration, which is positive and at most
-          // entry.timeout.
-          armSyncRequestTimeout(
-            entry,
-            Math.ceil(shortestRemaining) as PositiveMillis,
-          );
+      } else if (liveness.lastFrameAt !== null) {
+        const silence = performanceDurationBetween(liveness.lastFrameAt, now);
+        const remaining = syncIdleTimeout + liveness.idleJitter - silence;
+        if (remaining <= 0) {
+          // Silence this long can be a large frame still arriving on a slow
+          // link, so the reconnect round gets longer to finish.
+          doubleSyncRequestTimeout(entry);
+          replaceSyncConnection(entry, "Idle", silence);
           return;
         }
-        // A request went unanswered for the whole timeout: it was lost, the
-        // connection is dead, or the link is too slow for the frames ahead of
-        // its reply. A frame that never arrives whole saves nothing, so on a
-        // slow link the same reply would time out forever. Doubling the
-        // timeout lets it arrive after a reconnect that opens fine.
-        entry.timeout = Math.min(
-          entry.timeout * 2,
-          maxSyncRequestTimeout,
-        ) as PositiveMillis;
-        // Reconnecting abandons the connection and starts a fresh retry
-        // schedule. The socket reports no close for it, so the transport
-        // disconnects here.
-        entry.socket?.reconnect();
-        // `now` is monotonic; the reported time is wall clock.
-        entry.connection = disconnectSyncConnection(
-          entry.connection,
-          deps.time.now(),
-          null,
-        );
-        refreshAllSyncRoutes();
-        publishSyncState();
-      }, delay);
+        delay = Math.min(delay, remaining);
+      }
+      // Timer delays use integer milliseconds; round up to wait at least the
+      // remaining fractional duration, which is positive, because a rule
+      // whose deadline has passed replaced the connection above.
+      liveness.timeoutId = deps.time.setTimeout(
+        () => {
+          checkSyncLiveness(entry, liveness);
+        },
+        Math.ceil(delay) as PositiveMillis,
+      );
+    };
+
+    // A request went unanswered for the whole timeout, or an idle connection
+    // went silent: it was lost, the connection is dead, or the link is too
+    // slow for the frames ahead of it. A frame that never arrives whole saves
+    // nothing, so on a slow link the same frame would time out forever.
+    // Doubling the timeout lets it arrive after a reconnect that opens fine.
+    const doubleSyncRequestTimeout = (entry: SyncTransportEntry): void => {
+      entry.timeout = Math.min(
+        entry.timeout * 2,
+        maxSyncRequestTimeout,
+      ) as PositiveMillis;
+    };
+
+    const replaceSyncConnection = (
+      entry: SyncTransportEntry,
+      rule: "Sleep" | "Request" | "Idle",
+      gap: number,
+    ): void => {
+      // The label omits the owner ID, which the URL carries.
+      console.debug("transportReplaced", { rule, gap, label: entry.label });
+      dropSyncLiveness(entry);
+      // Reconnecting abandons the connection and starts a fresh retry
+      // schedule. The socket reports no close for it, so the transport
+      // disconnects here.
+      entry.socket?.reconnect();
+      entry.connection = disconnectSyncConnection(
+        entry.connection,
+        deps.time.now(),
+        null,
+      );
+      refreshAllSyncRoutes();
+      publishSyncState();
     };
 
     const syncRequests: SyncRequests = {
@@ -2109,8 +2219,6 @@ export const initSharedWorker =
         } else {
           outstanding.waiting.push({ sender, message });
         }
-        if (entry.timeoutId === null)
-          armSyncRequestTimeout(entry, entry.timeout);
         publishSyncState();
       },
       hasOutstanding: (ownerId, key) =>
@@ -2141,7 +2249,7 @@ export const initSharedWorker =
               timeout: syncRequestTimeout,
               socket: null,
               connection: connectingSyncConnection,
-              timeoutId: null,
+              liveness: null,
             };
             await using disposer = new AsyncDisposableStack();
             // Registered before the socket, so an aborted creation also
@@ -2162,7 +2270,19 @@ export const initSharedWorker =
                   // Requests in flight on the previous connection are never
                   // answered.
                   entry.outstandingByOwnerId.clear();
-                  clearSyncRequestTimeout(entry);
+                  dropSyncLiveness(entry);
+                  const liveness: SyncLiveness = {
+                    clockOffset:
+                      run.deps.time.now() - run.deps.time.performance.now(),
+                    lastFrameAt: null,
+                    idleJitter: Math.floor(
+                      run.deps.random.next() * relayHeartbeatInterval,
+                    ) as Millis,
+                    timeoutId: run.deps.time.setTimeout(() => {
+                      checkSyncLiveness(entry, liveness);
+                    }, relayHeartbeatInterval),
+                  };
+                  entry.liveness = liveness;
                   // A connection that opens keeps the last error of an earlier
                   // one.
                   entry.connection = {
@@ -2196,7 +2316,7 @@ export const initSharedWorker =
                     run.deps.time.now(),
                     null,
                   );
-                  clearSyncRequestTimeout(entry);
+                  dropSyncLiveness(entry);
                   refreshAllSyncRoutes();
                   publishSyncState();
                 },
@@ -2217,11 +2337,20 @@ export const initSharedWorker =
                     now,
                     { type: error.type, at: now },
                   );
+                  dropSyncLiveness(entry);
                   refreshAllSyncRoutes();
                   publishSyncState();
                 },
 
                 onMessage: (data) => {
+                  const { liveness } = entry;
+                  // A heartbeat is a text frame. Once one shows that the relay
+                  // sends them, any frame shows the connection alive.
+                  if (
+                    liveness !== null &&
+                    (liveness.lastFrameAt !== null || typeof data === "string")
+                  )
+                    liveness.lastFrameAt = run.deps.time.performance.now();
                   if (!(data instanceof ArrayBuffer)) return;
 
                   const message = new Uint8Array(data);
@@ -2291,8 +2420,6 @@ export const initSharedWorker =
                         } else entry.outstandingByOwnerId.delete(ownerId);
                       }
                     }
-                    if (entry.outstandingByOwnerId.size === 0)
-                      clearSyncRequestTimeout(entry);
                     publishSyncState();
                   }
 
@@ -2316,7 +2443,7 @@ export const initSharedWorker =
             // retry, so this entry stays registered meanwhile. It keeps its
             // last connection and holds no socket to reconnect.
             disposer.defer(() => {
-              clearSyncRequestTimeout(entry);
+              dropSyncLiveness(entry);
               entry.socket = null;
             });
             const disposables = disposer.move();

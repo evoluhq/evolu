@@ -10,6 +10,8 @@ import {
   assertSame,
 } from "../../../../packages/common/src/Assert.ts";
 import { createXChaCha20Poly1305 } from "../../../../packages/common/src/Crypto.ts";
+import { once } from "node:events";
+import { connect, createServer, type AddressInfo, type Socket } from "node:net";
 import { describe, it } from "node:test";
 import { createConsoleStoreOutput } from "../../../../packages/common/src/Console.ts";
 import { UnknownError } from "../../../../packages/common/src/Error.ts";
@@ -356,7 +358,8 @@ describe("Evolu integration", () => {
           }),
           onMessage: (data) => {
             options?.onMessage?.(data);
-            onMessage(url);
+            // The relay's heartbeats are text; tests observe its replies.
+            if (data instanceof ArrayBuffer) onMessage(url);
           },
         }),
     });
@@ -377,6 +380,54 @@ describe("Evolu integration", () => {
           );
         }, 5_000);
         await allClosed.promise;
+      },
+    };
+  };
+
+  /**
+   * A TCP proxy to a relay that can stall the connections it carries, as a dead
+   * path does: a stalled connection drops data in both directions and passes on
+   * neither FIN nor RST, so neither end learns that it died. Connections made
+   * after a stall are carried normally.
+   */
+  const setupStallingProxy = async (port: number) => {
+    const sockets = new Set<Socket>();
+    const stalled = new Set<Socket>();
+    let writtenToRelayCount = 0;
+    const server = createServer((client) => {
+      const upstream = connect(port, "127.0.0.1");
+      const forward = (from: Socket, to: Socket, onWritten = constVoid) => {
+        sockets.add(from);
+        from.on("data", (chunk) => {
+          if (!stalled.has(from)) to.write(chunk, onWritten);
+        });
+        from.on("end", () => {
+          if (!stalled.has(from)) to.end();
+        });
+        from.on("close", () => {
+          if (!stalled.has(from)) to.destroy();
+        });
+        from.on("error", constVoid);
+      };
+      forward(client, upstream, () => {
+        writtenToRelayCount++;
+      });
+      forward(upstream, client);
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    return {
+      port: (server.address() as AddressInfo).port,
+      /** How many chunks from clients the relay's sockets have taken. */
+      writtenToRelayCount: (): number => writtenToRelayCount,
+      stall: (): void => {
+        for (const socket of sockets) stalled.add(socket);
+      },
+      [Symbol.asyncDispose]: async () => {
+        const closed = once(server, "close");
+        server.close();
+        for (const socket of sockets) socket.destroy();
+        await closed;
       },
     };
   };
@@ -1131,7 +1182,9 @@ describe("Evolu integration", () => {
         seeded.reject(new Error("The seeding socket failed"));
       });
       let replyCount = 0;
-      seeder.addEventListener("message", () => {
+      seeder.addEventListener("message", (event) => {
+        // The relay's heartbeats are text.
+        if (typeof event.data === "string") return;
         if (++replyCount === frames.length) seeded.resolve();
       });
       seeder.addEventListener("open", () => {
@@ -1378,6 +1431,103 @@ describe("Evolu integration", () => {
     await stored.promise;
     assertEqual(device.setup.tabErrors, []);
     assertEqual(device.setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("replaces a connection whose path stops carrying data without closing it", async () => {
+    // One fake clock drives the relay's pings and heartbeats and the client's
+    // watchdog.
+    const time = testCreateTime();
+    await using relayRun = testCreateRun({
+      ...createRelayDeps(),
+      createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+      time,
+    });
+    await using relay = await relayRun.ok(
+      createRelay({
+        port: Port.orThrow(0),
+        name: Name.orThrow("evolu-stalled-path"),
+        isOwnerWithinQuota: () => true,
+      }),
+    );
+    await using proxy = await setupStallingProxy(relay.port);
+    await using setup = await setupRunWithEvoluDeps({ time, createWebSocket });
+    using states = setupSyncStates(setup.syncStateChannelName);
+    await using evolu = await setup.run.ok(setup.createIntegrationEvolu);
+    const connection = () => states.getState()?.transports.at(0)?.connection;
+    const connectionType = () => connection()?.type;
+    const isComplete = () =>
+      syncStateToRelaySyncStates(
+        states.getState(),
+        evolu.name,
+        testAppOwner.id,
+      ).at(0)?.route.type === "Complete";
+    // Advancing past two relay ticks at once would leave the client no time
+    // to answer the first ping, so time moves in steps that the sockets
+    // follow in real time.
+    const step = async (millis: number): Promise<void> => {
+      time.advance(Millis.orThrow(millis));
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 30);
+      });
+    };
+    // A relay tick that waits until the client's pong has reached the relay,
+    // which terminates a connection that sends nothing between two ticks.
+    const tick = async (): Promise<void> => {
+      const writtenCount = proxy.writtenToRelayCount();
+      time.advance("30s");
+      for (
+        let waited = 0;
+        proxy.writtenToRelayCount() === writtenCount;
+        waited += 5
+      ) {
+        assert(waited < 5_000, "Expected the client to answer the ping.");
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 5);
+        });
+      }
+      // The relay reads the pong in the poll phase of a later event-loop
+      // turn, which the second of these checks follows.
+      for (let turn = 0; turn < 2; turn++)
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve);
+        });
+    };
+    evolu.useOwner(testAppOwner, [
+      createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow(`ws://127.0.0.1:${proxy.port}/`),
+        ownerId: testAppOwner.id,
+      }),
+    ]);
+    await states.waitForState(isComplete);
+    const opened = connection();
+    assertSame(opened?.type, "Open");
+
+    // Heartbeats keep the idle connection, not a replacement, past the
+    // deadline of two minutes plus up to thirty seconds of jitter.
+    for (let count = 0; count < 6; count++) await tick();
+    assertEqual(connection(), opened);
+
+    // Nothing arrives anymore, and neither end sees a close or an error, so
+    // only the client's watchdog can notice, at its deadline after the last
+    // heartbeat, which came at most one tick before the stall.
+    proxy.stall();
+    let stalledFor = 0;
+    while (connectionType() === "Open") {
+      assert(stalledFor < 150_000, "Expected a replacement.");
+      await step(1_000);
+      stalledFor += 1_000;
+    }
+    assertTrue(stalledFor > 90_000);
+    assertSame(connectionType(), "Disconnected");
+
+    // The transport reconnects through the proxy and syncs again.
+    for (let second = 0; connectionType() !== "Open"; second++) {
+      assert(second < 60, "Expected the transport to reconnect.");
+      await step(1_000);
+    }
+    await states.waitForState(isComplete);
+    assertEqual(setup.tabErrors, []);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
   });
 
   it("delivers every chunk of a large sibling mutation with closed sockets", async () => {

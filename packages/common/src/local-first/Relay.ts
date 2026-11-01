@@ -32,6 +32,7 @@ import {
   type OwnerError,
   type OwnerIdBytes,
   // OwnerTransport,
+  type OwnerWebSocketTransport,
   OwnerWriteKey,
 } from "./Owner.ts";
 import type { ProtocolWriteError, ProtocolWriteKeyError } from "./Protocol.ts";
@@ -51,6 +52,10 @@ import {
 } from "./Storage.ts";
 import { timestampToTimestampBytes } from "./Timestamp.ts";
 
+/**
+ * Configuration of a relay. A relay should also send the heartbeats that
+ * {@link OwnerWebSocketTransport} describes.
+ */
 export interface RelayConfig extends StorageConfig {
   /**
    * The relay name.

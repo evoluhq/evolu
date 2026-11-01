@@ -294,6 +294,7 @@ import {
   OwnerId,
   OwnerIdBytes,
   ownerIdToOwnerIdBytes,
+  type OwnerWebSocketTransport,
   OwnerWriteKey,
   ownerWriteKeyLength,
 } from "./Owner.ts";
@@ -1355,6 +1356,9 @@ export const applyProtocolMessageAsClient =
 /**
  * Options for {@link applyProtocolMessageAsRelay}. The callbacks must not throw,
  * because a throw is a defect that aborts the Run.
+ *
+ * A relay built on it should also send the heartbeats that
+ * {@link OwnerWebSocketTransport} describes.
  */
 export interface ApplyProtocolMessageAsRelayOptions {
   /** To subscribe an owner for broadcasting. */
