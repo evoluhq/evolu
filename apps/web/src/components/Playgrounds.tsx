@@ -8,6 +8,11 @@ const playgrounds = [
     href: "/playgrounds/minimal",
   },
   {
+    name: "Local-Only",
+    description: "Keep data on this device without a relay, and delete it.",
+    href: "/playgrounds/local-only",
+  },
+  {
     name: "Sync",
     description: "Keep syncing through relay outages with independent backups.",
     href: "/playgrounds/sync",
