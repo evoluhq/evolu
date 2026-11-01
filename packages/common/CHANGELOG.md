@@ -1,5 +1,69 @@
 # @evolu/common
 
+## 8.26.0
+
+### Minor Changes
+
+- b352b38: Replaced relay connections that die without closing, after a system sleep or two minutes of silence
+
+  A relay connection can die without a close event, after a system sleep, a network change, or a proxy that drops it. The WebSocket API answers the relay's pings without telling JavaScript, in browsers, React Native and Node alike, so an app kept reading `Synced` while changes from other devices stopped arriving, until it sent something itself.
+
+  The shared worker now replaces such a connection and reconnects:
+
+  - After a system sleep of five seconds or more, at its next check, within about thirty seconds of waking. This works with every relay, wherever `performance.now()` stops during sleep: in WebKit, Chromium and Firefox on Apple platforms, including WebViews such as Tauri's on macOS, in Chromium and Firefox on Linux and Android, and in React Native.
+  - After two minutes plus up to thirty seconds of jitter without any frame, while no request is outstanding on the connection, on a relay that sends heartbeats: `@evolu/nodejs` 4.6.0 or `@evolu/relay` 4.3.0 and later. This also covers a connection that dies while the device is awake, and a sleep on Windows. Upgrade your relay to get it.
+
+  `relayHeartbeatInterval` is the thirty-second interval of that heartbeat, which the `OwnerWebSocketTransport` documentation describes for anyone writing a relay.
+
+  ```ts
+  import { assertSame, relayHeartbeatInterval } from "@evolu/common";
+
+  // A relay sends an empty text frame at least this often to an idle connection.
+  assertSame(relayHeartbeatInterval, 30_000);
+  ```
+
+- f4ed930: Implemented Evolu.deleteDatabase
+
+  `deleteDatabase` was declared but threw, so an app couldn't wipe its local data, for example when a user resets the app or removes an account from a device ([#676](https://github.com/evoluhq/evolu/issues/676)). It now deletes the instance's local database on this device and resolves once the database's files are gone, which lets the app wait for the wipe to finish.
+
+  The deletion runs after the mutations and requests made before it. Then every instance of the database disposes itself, in every tab, and the requests they made after the deletion are dropped. Each instance, including the one that asked, first calls `EvoluConfig.onDatabaseDeleted`, which is now called, or reloads the app when it's not set, because rendering a disposed instance throws. Until the app reloads or provides another instance, `@evolu/react` keeps the components that use the disposed one suspended instead of throwing, and other bindings can check the new `isDatabaseDeleted`. On the web, the deletion also removes the database's OPFS directory, whose name would show which owner used the device. A database kept in memory, as with `memoryOnly`, has a name of its own and no files, so deleting it leaves a stored database of the same owner alone.
+
+  It deletes only this device's copy. Changes not yet synced are lost, and an instance created later with the same owner opens a new, empty database, which its transports fill again from relays, so forget the owner first if its data must not come back.
+
+  `deleteDatabase` now returns a promise of a `Result` instead of `void`. It fails with `DatabaseHeldError` when another context keeps holding the files, and with `UnknownError` when the platform fails to delete them. After an `UnknownError`, the instances keep working, and calling it again deletes again. After a `DatabaseHeldError`, the database's next worker waits for the files as every startup does, and Evolu refuses the database when they stay held. It fails with the new `EvoluDisposedError` when its instance is disposed first, so await it before disposing. `exportDatabase` already rejected with that error, which is now a declared type.
+
+  ```ts
+  import {
+    assertType,
+    type DeleteDatabaseError,
+    type Evolu,
+    type Result,
+  } from "@evolu/common";
+
+  const deleteLocalData = (evolu: Evolu) => evolu.deleteDatabase();
+
+  assertType<
+    Awaited<ReturnType<typeof deleteLocalData>>,
+    Result<void, DeleteDatabaseError>
+  >();
+  ```
+
+  Custom platform integrations: `DbWorkerDeps` now requires `deleteDatabaseFiles`, a `DeleteDatabaseFiles` that deletes a database's files by name. `@evolu/web` exports its `createDeleteDatabaseFiles`.
+
+### Patch Changes
+
+- d6838fb: Kept a database in memory apart from the stored database of the same owner
+
+  Instances of one `appName` and `appOwner` shared one database whatever their mode, and it kept the mode of the instance that opened it ([#742](https://github.com/evoluhq/evolu/issues/742)). A `memoryOnly` instance created while a stored one was open, or within a few seconds after it was disposed, as an app does to stop keeping data on the device, wrote to the stored database, local-only tables included. A stored instance created while a `memoryOnly` one was open lost the changes that hadn't synced when the memory database closed.
+
+  A database kept in memory, with `memoryOnly` or where the platform offers no persistent storage, as in Safari's Private Browsing, now has a name of its own, `${appName}-${createIdFromString("MemoryDatabase", appOwner.id)}`, so it never shares a local database with the stored one. `Evolu.name` changes for such instances. Instances kept in memory still share one memory database across tabs, as stored instances share the stored one. Both still sync the owner, so while a stored instance of the owner syncs on the device, it stores the changes made in memory too; to keep nothing on the device, dispose it first.
+
+  Each tab now checks whether the browser offers persistent storage when it creates an instance without `memoryOnly`, instead of the shared worker checking once for all its tabs, and `evolu.devicePersistence` resolves when `createEvolu` does.
+
+  Update `@evolu/web` and `@evolu/react-native` together with `@evolu/common`: with an older one, `createEvolu` throws because its deps have no `getDevicePersistence`, and an older `@evolu/common` cannot start the new web shared worker.
+
+  Custom platform integrations: `EvoluPlatformDeps` now requires `getDevicePersistence`, the `DevicePersistenceDep` that `SharedWorkerDeps` no longer takes, and the `OnDevicePersistence` message is gone. Local-first APIs aren't stable yet, so these incompatible changes ship as a patch; see [Updating](https://www.evolu.dev/docs/local-first#updating).
+
 ## 8.25.0
 
 ### Minor Changes
