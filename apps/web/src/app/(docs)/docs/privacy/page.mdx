@@ -24,7 +24,7 @@ All data Evolu syncs is encrypted end-to-end. This means:
 
 The database key is derived from the app owner's secret, which Evolu doesn't store, so the database is only as safe as the place the app keeps that secret. The examples use `testAppOwner`, whose secret is public, so use it only for testing.
 
-With the `memoryOnly` option, the database is kept in memory and nothing is stored on the device. Instances with the same `appName` and `appOwner` share one database, which keeps the mode it was opened with until a few seconds after the last of them is disposed, so `evolu.devicePersistence` tells which mode an instance got.
+With the `memoryOnly` option, the database is kept in memory and nothing is stored on the device. A database kept in memory has a name of its own, so it never shares a local database with an instance of the same `appName` and `appOwner` that stores its database. Both still sync the owner, so while any instance that stores its database syncs that owner on the device, it stores the changes made in memory too. To keep nothing on the device, dispose those instances first.
 
 ## API design prevents data leaks
 

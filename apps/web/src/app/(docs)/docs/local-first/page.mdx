@@ -89,6 +89,17 @@ npm install @evolu/common @evolu/web
   support comes later.
 </ConditionalPlatformAlert>
 
+## Updating
+
+The local-first APIs aren't stable yet, so incompatible changes to them ship as
+patch releases, with migration notes in the [release
+notes](https://github.com/evoluhq/evolu/releases). Those changes are to the code
+you write. An update keeps the data your deployed app stored on users' devices,
+and when Evolu changes how it stores data, the updated app migrates existing
+databases when it opens them. Read the release notes before you update, and
+update the Evolu packages together, because a release of one can need the same
+release of the others.
+
 ## Define schema
 
 First, define your app database schema—tables, columns, and types.

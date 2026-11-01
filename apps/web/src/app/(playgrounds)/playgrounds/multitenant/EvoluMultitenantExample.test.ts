@@ -78,6 +78,7 @@ const setupEffect = async ({ waitForDisposal = false } = {}) => {
       createDbWorker: testCreateWorker,
       createBroadcastChannel: testCreateBroadcastChannel,
       createMessageChannel: testCreateMessageChannel,
+      getDevicePersistence: () => Promise.resolve("Unknown" as const),
       lockManager: testCreateLockManager(),
       reloadApp: constVoid,
       sharedWorker,

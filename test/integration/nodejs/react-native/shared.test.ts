@@ -1,10 +1,12 @@
 import { describe, it } from "node:test";
 import {
   assertEqual,
+  assertSame,
   assertTrue,
 } from "../../../../packages/common/src/Assert.ts";
 import { constVoid } from "../../../../packages/common/src/Function.ts";
 import {
+  AppName,
   createEvolu,
   testAppName,
 } from "../../../../packages/common/src/local-first/Evolu.ts";
@@ -33,6 +35,23 @@ const todoTitlesQuery = createQueryBuilder(Schema)((db) =>
 );
 
 describe("createEvoluDeps", () => {
+  it("tells an instance that its database is persisted", async () => {
+    using deps = createEvoluDeps({
+      reloadApp: constVoid,
+      createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+    });
+    await using run = createRun(deps);
+    await using evolu = await run.ok(
+      createEvolu(Schema, {
+        appName: AppName.orThrow("PersistedApp"),
+        appOwner: testAppOwner,
+        transports: [],
+      }),
+    );
+
+    assertSame(await evolu.devicePersistence, "Persisted");
+  });
+
   it("reopens a database after deps created again replaced its tab leader", async () => {
     let openCount = 0;
     const createDeps = () =>

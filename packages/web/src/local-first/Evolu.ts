@@ -408,6 +408,13 @@ export const createEvoluDeps = (
       createDbWorker,
       createBroadcastChannel,
       createMessageChannel,
+      // Safari's Private Browsing and Firefox's private windows offer no OPFS,
+      // and a browser may delete it, as Chrome's incognito does when the
+      // session ends. The tab shares its workers' storage partition.
+      getDevicePersistence: async () =>
+        (await tryAsync(() => navigator.storage.getDirectory())).ok
+          ? "Unknown"
+          : "NotPersisted",
       lockManager: {
         query: () => navigator.locks.query(),
         request: requestLock,

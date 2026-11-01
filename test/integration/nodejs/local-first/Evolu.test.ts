@@ -1996,6 +1996,48 @@ describe("Evolu integration", () => {
     assertEqual(sqliteDriverOptions, [{ mode: "memory" }]);
   });
 
+  it("keeps a memoryOnly database apart from the stored one of the same owner", async () => {
+    const openedDatabases: Array<{
+      readonly name: Name;
+      readonly mode: SqliteDriverOptions["mode"] | undefined;
+    }> = [];
+    await using setup = await setupRunWithEvoluDeps({
+      createSqliteDriver: (name, options) => {
+        openedDatabases.push({ name, mode: options?.mode });
+        return testCreateSqliteDep.createSqliteDriver(name, options);
+      },
+    });
+    const { run } = setup;
+    const stored = await run.ok(setup.createIntegrationEvolu);
+    const inserted = Promise.withResolvers<void>();
+    stored.insert(
+      "todo",
+      { title: NonEmptyTrimmedString100.orThrow("Stored") },
+      { onComplete: inserted.resolve },
+    );
+    await inserted.promise;
+
+    // Opened while the stored one is open, as by a switch that stops keeping
+    // data on the device.
+    const memory = await run.ok(
+      createEvolu(Schema, {
+        appName: testAppName,
+        appOwner: testAppOwner,
+        transports: [],
+        memoryOnly: true,
+      }),
+    );
+
+    assertFalse(memory.name === stored.name);
+    assertSame(await memory.devicePersistence, "NotPersisted");
+    assertEqual(await memory.loadQuery(todoTitlesQuery), []);
+    assertEqual(await stored.loadQuery(todoTitlesQuery), [{ title: "Stored" }]);
+    assertEqual(openedDatabases, [
+      { name: stored.name, mode: "encrypted" },
+      { name: memory.name, mode: "memory" },
+    ]);
+  });
+
   it("keeps refused work pending until disposal and never completes mutations", async () => {
     await using setup = await setupRunWithEvoluDeps();
     const { createIntegrationEvolu, run } = setup;

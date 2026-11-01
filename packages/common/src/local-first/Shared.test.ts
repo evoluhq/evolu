@@ -1,4 +1,4 @@
-import { describe, it, mock, type TestContext } from "node:test";
+import { describe, it, type TestContext } from "node:test";
 import { sql as kyselySql } from "kysely";
 
 import {
@@ -52,7 +52,6 @@ import {
   type ProtocolTimestampMismatchError,
   SubscriptionFlags,
 } from "./Protocol.ts";
-import type { DevicePersistence } from "./Evolu.ts";
 import {
   createQueryBuilder,
   type EvoluSchema,
@@ -190,12 +189,10 @@ const setupSharedWorker = async ({
   createWebSocket = testCreateWebSocket({ throwOnCreate: true }),
   time,
   seed,
-  getDevicePersistence = () => Promise.resolve("Unknown"),
   xChaCha20Poly1305,
 }: {
   createWebSocket?: CreateWebSocket;
   time?: TestTime;
-  getDevicePersistence?: () => Promise<DevicePersistence>;
   /**
    * Seeds the worker's random bytes, which are otherwise the same for every
    * worker.
@@ -236,7 +233,6 @@ const setupSharedWorker = async ({
       createWebSocket,
       ...(time && { time }),
       ...(seed && { randomBytes: testCreateDeps({ seed }).randomBytes }),
-      getDevicePersistence,
       ...(xChaCha20Poly1305 && { xChaCha20Poly1305 }),
     }),
   );
@@ -365,25 +361,9 @@ const setupSharedWorker = async ({
   ) => {
     const instance = await createEvoluBeforeDbWorkerLeader(options);
     await instance.acquireDbWorkerLeader();
-
-    // Once the DbWorker starts, the tenant adds the instance and tells it its
-    // device persistence first, so tests see only the outputs that follow.
-    const firstOutputs: Array<EvoluOutput> = [];
-    instance.evoluChannel.port2.onMessage = (output) => {
-      firstOutputs.push(output);
-    };
+    // Once the DbWorker starts, the tenant adds the instance.
     await testWaitForWorkerMessage();
-    instance.evoluChannel.port2.onMessage = null;
-    assertLength(firstOutputs, 1);
-    const [devicePersistenceOutput] = firstOutputs;
-    assert(
-      devicePersistenceOutput.type === "OnDevicePersistence",
-      "Expected the device persistence first.",
-    );
-
-    return Object.assign(instance, {
-      devicePersistence: devicePersistenceOutput.devicePersistence,
-    });
+    return instance;
   };
 
   return {
@@ -779,30 +759,12 @@ describe("storage", () => {
   const isMemoryOnly = (output: SharedWorkerOutput | undefined): boolean =>
     getDbWorkerInit(output).memoryOnly;
 
-  /** Every device persistence the tenant sent to the instance so far. */
-  const receiveDevicePersistences = async (
-    evoluChannel: TestMessageChannel<EvoluOutput, EvoluInput>,
-  ): Promise<ReadonlyArray<DevicePersistence>> => {
-    const devicePersistences: Array<DevicePersistence> = [];
-    evoluChannel.port2.onMessage = (output) => {
-      if (output.type === "OnDevicePersistence") {
-        devicePersistences.push(output.devicePersistence);
-      }
-    };
-    await testWaitForWorkerMessage();
-    return devicePersistences;
-  };
-
-  it("keeps every database in memory, replacements included, without persistent storage", async () => {
-    const getDevicePersistence = mock.fn(() =>
-      Promise.resolve<DevicePersistence>("NotPersisted"),
-    );
-    await using setup = await setupSharedWorker({ getDevicePersistence });
+  it("keeps a memoryOnly database in memory, replacements included", async () => {
+    await using setup = await setupSharedWorker();
     using disposer = new DisposableStack();
 
-    const first = await setup.createEvolu();
+    const first = await setup.createEvolu({ memoryOnly: true });
     assertTrue(isMemoryOnly(setup.sharedWorkerOutputs.at(0)));
-    assertSame(first.devicePersistence, "NotPersisted");
 
     // A replacement DbWorker, as after its tab closed, keeps it in memory too.
     await first.releaseDbWorkerLeader();
@@ -820,63 +782,18 @@ describe("storage", () => {
       clock: createTimestamp(),
     });
     await testWaitForWorkerMessage();
-
-    assertSame(getDevicePersistence.mock.callCount(), 1);
   });
 
-  for (const devicePersistence of ["Persisted", "Unknown"] as const) {
-    it(`stores databases and tells instances ${devicePersistence} where the platform promises it`, async () => {
-      await using setup = await setupSharedWorker({
-        getDevicePersistence: () => Promise.resolve(devicePersistence),
-      });
+  it("stores a database its instance does not keep in memory", async () => {
+    await using setup = await setupSharedWorker();
 
-      const instance = await setup.createEvolu();
+    await setup.createEvolu();
 
-      assertEqual(
-        setup.sharedWorkerOutputs.map(({ type }) => type),
-        ["DbWorkerInit"],
-      );
-      assertFalse(isMemoryOnly(setup.sharedWorkerOutputs.at(0)));
-      assertSame(instance.devicePersistence, devicePersistence);
-    });
-  }
-
-  it("tells an instance configured memoryOnly that its database is not persisted", async () => {
-    await using setup = await setupSharedWorker({
-      getDevicePersistence: () => Promise.resolve("Persisted"),
-    });
-
-    const instance = await setup.createEvolu({ memoryOnly: true });
-
-    assertTrue(isMemoryOnly(setup.sharedWorkerOutputs.at(0)));
-    assertSame(instance.devicePersistence, "NotPersisted");
-  });
-
-  it("tells a later instance of the same name the mode the first one chose", async () => {
-    await using setup = await setupSharedWorker({
-      getDevicePersistence: () => Promise.resolve("Persisted"),
-    });
-    const { run, worker } = setup;
-    await setup.createEvolu({ memoryOnly: true });
-
-    const secondId: EvoluInstanceId = createId(run.deps);
-    await using _secondInstanceLock = await run.ok(acquireLeaderLock(secondId));
-    using secondChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
-    worker.port.postMessage({
-      type: "CreateEvolu",
-      name: testName,
-      id: secondId,
-      consoleLevel: "debug",
-      sqliteSchema: testSqliteSchema,
-      encryptionKey: testAppOwner.encryptionKey,
-      memoryOnly: false,
-      evoluPort: secondChannel.port1.native,
-    });
-    await testWaitForWorkerMessage();
-
-    assertEqual(await receiveDevicePersistences(secondChannel), [
-      "NotPersisted",
-    ]);
+    assertEqual(
+      setup.sharedWorkerOutputs.map(({ type }) => type),
+      ["DbWorkerInit"],
+    );
+    assertFalse(isMemoryOnly(setup.sharedWorkerOutputs.at(0)));
   });
 });
 
@@ -897,7 +814,6 @@ describe("builds", () => {
         lockManager,
         createMessagePort: testCreateMessagePort,
         createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
-        getDevicePersistence: () => Promise.resolve("Unknown" as const),
       }),
     );
     const outputs: Array<SharedWorkerOutput> = [];
@@ -7630,9 +7546,7 @@ describe("with one evolu instance", () => {
         siblingOutputs.push(output);
       };
       await testWaitForWorkerMessage();
-      assertEqual(siblingOutputs, [
-        { type: "OnDevicePersistence", devicePersistence: "Unknown" },
-      ]);
+      assertEqual(siblingOutputs, []);
       siblingChannel.port2.postMessage({
         type: "Mutate",
         changes: [
@@ -10826,16 +10740,13 @@ describe("with one evolu instance", () => {
           consoleLevel: "silent",
           sqliteSchema: testSqliteSchema,
           encryptionKey: testAppOwner.encryptionKey,
-          memoryOnly: true,
+          memoryOnly: false,
           evoluPort: siblingChannel.port1.native,
         },
         [siblingChannel.port1.native],
       );
       await testWaitForWorkerMessage();
-      // The tenant keeps the first instance's persistent database.
-      assertEqual(siblingOutputs.splice(0), [
-        { type: "OnDevicePersistence", devicePersistence: "Unknown" },
-      ]);
+      assertEqual(siblingOutputs.splice(0), []);
 
       const bytes = new Uint8Array([1, 2, 3]);
       const mutation: ExtractTyped<EvoluInput, "Mutate"> = {
@@ -12282,13 +12193,10 @@ describe("refusal", () => {
     });
     await testWaitForWorkerMessage();
     // The tab is told through its own connection, not the broadcast channel,
-    // and its instance learns only its device persistence: pending work stays
-    // pending.
+    // and its instance learns nothing: pending work stays pending.
     assertEqual(firstTabOutputs(), [{ type: "Error", error: refusal }]);
     assertEqual(broadcasts, []);
-    assertEqual(evoluOutputs.splice(0), [
-      { type: "OnDevicePersistence", devicePersistence: "Unknown" },
-    ]);
+    assertEqual(evoluOutputs.splice(0), []);
 
     // Later requests are dropped without a response.
     instance.evoluChannel.port2.postMessage({
@@ -12326,9 +12234,7 @@ describe("refusal", () => {
     );
     await testWaitForWorkerMessage();
     assertEqual(firstTabOutputs(), [{ type: "Error", error: refusal }]);
-    assertEqual(secondOutputs, [
-      { type: "OnDevicePersistence", devicePersistence: "Unknown" },
-    ]);
+    assertEqual(secondOutputs, []);
 
     // A tab that connects later is told once, through its own connection.
     const laterTab = setupTab(setup, disposer);

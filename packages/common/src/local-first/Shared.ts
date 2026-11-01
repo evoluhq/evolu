@@ -71,27 +71,18 @@
  *
  * ## Storage
  *
- * The platform tells the worker with {@link DevicePersistenceDep} what it can
- * promise about stored databases. The worker asks once, after it takes the
- * build lock and before any DbWorker starts. A browser checks whether it can
- * open the origin private file system, which Safari's Private Browsing and
- * Firefox's private windows refuse. Without persistent storage, every DbWorker
- * the worker starts keeps its database in memory, replacements included. The
- * decision holds for the worker's lifetime, so all its tabs see one mode, and
- * the next worker checks again.
+ * The tab decides whether a database is kept in memory, because of
+ * {@link EvoluConfig.memoryOnly} or because the platform offers no persistent
+ * storage, which a browser tells by failing to open the origin private file
+ * system, as Safari's Private Browsing and Firefox's private windows do. A
+ * database kept in memory has a name of its own, so all instances of a tenant
+ * ask for the same mode, and every DbWorker the tenant starts, replacements
+ * included, keeps it.
  *
- * A tenant tells each instance it adds its {@link Evolu.devicePersistence}:
- * `NotPersisted` when its database is kept in memory, because of the platform
- * or {@link EvoluConfig.memoryOnly}, otherwise what the platform promised.
- * Instances of one name share the tenant, so a later instance gets the mode the
- * first one chose.
- *
- * The check cannot tell a private session from a storage failure, but memory
- * loses nothing that refusing to start would have kept, and the persistent
- * database stays untouched. Each DbWorker keeps its own memory, so when the tab
- * hosting it closes, or on the web navigates away, data that exists only
- * locally or has not synced yet is lost, even though its replacement starts in
- * memory too.
+ * Each DbWorker keeps its own memory, so when the tab hosting a database kept
+ * in memory closes, or on the web navigates away, data that exists only locally
+ * or has not synced yet is lost, even though its replacement starts in memory
+ * too.
  *
  * ## Synchronization routing
  *
@@ -383,12 +374,7 @@ import type {
   DbWorkerInit,
   UnsupportedDbVersionError,
 } from "./Db.ts";
-import type {
-  DevicePersistence,
-  Evolu,
-  EvoluConfig,
-  SyncStateDep,
-} from "./Evolu.ts";
+import type { Evolu, EvoluConfig, SyncStateDep } from "./Evolu.ts";
 import type {
   Owner,
   OwnerId,
@@ -1334,11 +1320,6 @@ export type EvoluOutput =
       /** The mutation with these onComplete callbacks could not be stored. */
       readonly type: "OnMutateFailed";
       readonly onCompleteIds: ReadonlyArray<Id>;
-    }
-  | {
-      /** Sent once, when the tenant adds the instance; see Storage. */
-      readonly type: "OnDevicePersistence";
-      readonly devicePersistence: DevicePersistence;
     };
 
 export type DbWorkerInput =
@@ -1489,22 +1470,10 @@ export type DbWorkerQueuedResponse =
           };
     };
 
-/**
- * Tells what the platform can promise about the databases it stores.
- *
- * `NotPersisted` means the platform offers no persistent storage now, as a
- * browser does in Safari's Private Browsing or a Firefox private window, so the
- * worker keeps every database in memory; see Storage in the Shared module.
- */
-export interface DevicePersistenceDep {
-  readonly getDevicePersistence: () => Promise<DevicePersistence>;
-}
-
 export type SharedWorkerDeps = WorkerDeps &
   CreateBroadcastChannelDep &
   CreateMessageChannelDep &
   CreateWebSocketDep &
-  DevicePersistenceDep &
   LockManagerDep &
   Partial<XChaCha20Poly1305Dep>;
 
@@ -1915,11 +1884,6 @@ export const initSharedWorker =
     // Builds.
     disposer.use(await run.ok(acquireLeaderLock("tab")));
     starting.dispose();
-
-    // Checked once, before any DbWorker starts, so without persistent
-    // storage every DbWorker of this worker, replacements included, keeps its
-    // database in memory; see Storage.
-    const platformDevicePersistence = await deps.getDevicePersistence();
 
     disposer.defer(
       deps.consoleStoreOutputEntry.subscribe(() => {
@@ -2380,12 +2344,7 @@ export const initSharedWorker =
       await sharedWorkerRun.ok(
         createSharedResourceByKey(
           (message: ExtractTyped<SharedWorkerInput, "CreateEvolu">) =>
-            createEvoluTenant(
-              message,
-              message.memoryOnly ? "NotPersisted" : platformDevicePersistence,
-              currentTenantsByName,
-              workerId,
-            ),
+            createEvoluTenant(message, currentTenantsByName, workerId),
           {
             idleDisposeAfter: "3s",
             lookup: (message) => message.name,
@@ -2406,8 +2365,8 @@ const createEvoluTenant =
       consoleLevel,
       sqliteSchema,
       encryptionKey,
+      memoryOnly,
     }: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
-    devicePersistence: DevicePersistence,
     currentTenantsByName: Map<Name, BorrowedResource<EvoluTenant>>,
     workerId: SharedWorkerId,
   ): Task<EvoluTenant, never, EvoluTenantDeps> =>
@@ -2696,7 +2655,7 @@ const createEvoluTenant =
           consoleLevel,
           sqliteSchema,
           encryptionKey,
-          memoryOnly: devicePersistence === "NotPersisted",
+          memoryOnly,
           sharedWorkerId: workerId,
           port: dbWorkerChannel.port1.native,
         },
@@ -3644,13 +3603,6 @@ const createEvoluTenant =
           disposer.defer(() => {
             instance.port.onMessage = null;
           });
-          // Instances of one name share the tenant, so each learns the mode
-          // the first one chose.
-          instance.port.postMessage({
-            type: "OnDevicePersistence",
-            devicePersistence,
-          });
-
           // The main-thread Evolu instance holds this per-instance leader lock
           // while it is alive. Acquiring the same lock here means the main
           // thread instance was disposed or its tab closed, so the tenant-side

@@ -141,8 +141,7 @@
       </p>
     {/if}
 
-    <!-- Resolves once the database starts. See `DevicePersistence` in
-    `@evolu/common/local-first`. -->
+    <!-- See `DevicePersistence` in `@evolu/common/local-first`. -->
     {#await evolu.devicePersistence then devicePersistence}
       {#if devicePersistence === "NotPersisted"}
         <p class="sync-status">

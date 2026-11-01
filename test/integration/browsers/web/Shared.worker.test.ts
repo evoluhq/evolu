@@ -93,6 +93,7 @@ const setupTab = async (
       console: createConsole({ level: "silent" }),
       createBroadcastChannel,
       createMessageChannel,
+      getDevicePersistence: () => Promise.resolve("Unknown"),
       createDbWorker,
       lockManager: navigator.locks,
       reloadApp: constVoid,

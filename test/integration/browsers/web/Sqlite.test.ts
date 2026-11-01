@@ -621,6 +621,7 @@ describe("createWasmSqliteDriver", () => {
           console: createConsole({ level: "silent" }),
           createBroadcastChannel,
           createMessageChannel,
+          getDevicePersistence: () => Promise.resolve("Unknown"),
           createDbWorker: () =>
             createWorker<DbWorkerInit, never>(
               new Worker(
@@ -687,6 +688,7 @@ describe("createWasmSqliteDriver", () => {
           console: createConsole({ level: "silent" }),
           createBroadcastChannel,
           createMessageChannel,
+          getDevicePersistence: () => Promise.resolve("Unknown"),
           createDbWorker: () =>
             createWorker<DbWorkerInit, never>(
               new Worker(

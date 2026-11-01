@@ -165,6 +165,7 @@ test("requestSync crosses browser worker ports while two clients retain the owne
       console: createConsole({ level: "silent" }),
       createBroadcastChannel,
       createMessageChannel,
+      getDevicePersistence: () => Promise.resolve("Unknown"),
       createDbWorker: () =>
         createWorker<DbWorkerInit, never>(
           new Worker(
@@ -242,6 +243,7 @@ test("a skipped encrypted change shows on its route across browser worker ports 
     console: createConsole({ level: "silent" }),
     createBroadcastChannel,
     createMessageChannel,
+    getDevicePersistence: () => Promise.resolve("Unknown"),
     createDbWorker: () =>
       createWorker<DbWorkerInit, never>(
         new Worker(
@@ -361,6 +363,7 @@ test("a refused SharedWorker reports the error to a later client store", async (
       console: createConsole({ level: "silent" }),
       createBroadcastChannel,
       createMessageChannel,
+      getDevicePersistence: () => Promise.resolve("Unknown"),
       createDbWorker: () => {
         dbWorkerCount++;
         return createWorker<DbWorkerInit, never>(

@@ -111,7 +111,6 @@ provideEvolu(evolu);
  * `DevicePersistence` in `@evolu/common/local-first`.
  */
 const isNotPersisted = shallowRef(false);
-// Resolves once the database starts.
 void evolu.devicePersistence.then((devicePersistence) => {
   isNotPersisted.value = devicePersistence === "NotPersisted";
 });

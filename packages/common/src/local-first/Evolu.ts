@@ -139,9 +139,10 @@ export interface EvoluConfig {
    * local database. Changing either opens a different database. Keep `appName`
    * stable across ordinary application updates.
    *
-   * Instances that share an `appName` and AppOwner open the same database and
-   * must use the same schema. Evolu applies the schema of the first instance
-   * and later instances join it.
+   * Instances that share an `appName` and AppOwner, and keep their database the
+   * same way, stored or in memory (see {@link EvoluConfig.memoryOnly}), open the
+   * same database and must use the same schema. Evolu applies the schema of the
+   * first instance and later instances join it.
    *
    * A different app name lets you create a separate local replica for the same
    * AppOwner—for example, to test a different SQLite implementation or index
@@ -193,6 +194,16 @@ export interface EvoluConfig {
    * This option controls device persistence independently of synchronization.
    * When synchronization is enabled, data can still be synchronized and
    * persisted remotely.
+   *
+   * A database kept in memory, with this option or where the platform offers no
+   * persistent storage, has a name of its own, so it never shares a local
+   * database, lock, or files with the stored database of the same
+   * {@link AppOwner}. Instances of one `appName` and `appOwner` kept in memory
+   * share one memory database, as stored instances share one stored database.
+   * Both still sync the owner, like any two databases of it, so while a stored
+   * instance of the owner syncs on this device, the changes made in memory are
+   * stored on the device too. To keep nothing on the device, dispose the stored
+   * instances of the owner first.
    *
    * Useful for testing or temporary sessions. Data that exists only in this
    * database is lost when the database closes.
@@ -357,7 +368,9 @@ export interface EvoluConfig {
  *
  * Evolu uses AppName as the base prefix for {@link Evolu.name}. The final
  * instance name is derived per {@link AppOwner} as
- * `${appName}-${createIdFromString(appOwner.id)}`.
+ * `${appName}-${createIdFromString(appOwner.id)}`, or for a database kept in
+ * memory as `${appName}-${createIdFromString("MemoryDatabase", appOwner.id)}`;
+ * see {@link EvoluConfig.memoryOnly}.
  *
  * Uses the same safe alphabet as {@link UrlSafeString} (letters, digits, `-`,
  * `_`) and must be between 1 and 41 characters.
@@ -407,8 +420,9 @@ export interface Evolu<
   S extends EvoluSchema = EvoluSchema,
 > extends AsyncDisposable {
   /**
-   * Evolu instance name is derived from {@link EvoluConfig.appName} and
-   * {@link AppOwner}'s hash.
+   * Evolu instance name is derived from {@link EvoluConfig.appName},
+   * {@link AppOwner}'s hash, and whether the database is kept in memory; see
+   * {@link AppName}.
    */
   readonly name: Name;
 
@@ -416,8 +430,8 @@ export interface Evolu<
   readonly appOwner: AppOwner;
 
   /**
-   * Whether this device keeps the database, resolved once the shared worker
-   * serves it, or `Unknown` if this instance is disposed first.
+   * Whether this device keeps the database, which {@link createEvolu} decides
+   * before it creates the instance.
    *
    * Apps tell the user when it is `NotPersisted`, because then data that has
    * not synced is lost when the database closes. Apps must not tell the user
@@ -952,10 +966,11 @@ export type UnuseOwner = () => void;
  *
  * - `Persisted`: the platform stores it in the app's own file, as React Native
  *   does.
- * - `NotPersisted`: it is kept in memory, because {@link EvoluConfig.memoryOnly}
- *   asks for that or the platform offers no persistent storage, as a browser
- *   does in Safari's Private Browsing or a Firefox private window. Data that
- *   has not synced is lost when the database closes.
+ * - `NotPersisted`: it is kept in memory, under a name of its own, because
+ *   {@link EvoluConfig.memoryOnly} asks for that or the platform offers no
+ *   persistent storage, as a browser does in Safari's Private Browsing or a
+ *   Firefox private window. Data that has not synced is lost when the database
+ *   closes.
  * - `Unknown`: it is stored, but the platform may delete it. A browser can keep
  *   storage only for a private session, as Chrome's incognito does without
  *   telling the app, delete it after a while or when disk space runs low, and
@@ -1245,6 +1260,24 @@ export interface RequestPersistentStorageDep {
 }
 
 /**
+ * Tells what the platform can promise about the databases it stores.
+ *
+ * {@link createEvolu} asks it for each instance without
+ * {@link EvoluConfig.memoryOnly}. `NotPersisted` means the platform offers no
+ * persistent storage now, as a browser does in Safari's Private Browsing or a
+ * Firefox private window, so the instance keeps its database in memory, under
+ * the name `memoryOnly` gives it. A platform that cannot tell a private session
+ * from a storage failure answers `NotPersisted` for both: memory loses nothing
+ * that refusing to start would have kept, and the stored database stays
+ * untouched.
+ *
+ * @group Construction
+ */
+export interface DevicePersistenceDep {
+  readonly getDevicePersistence: () => Promise<DevicePersistence>;
+}
+
+/**
  * Shared platform dependencies for creating {@link Evolu} instances.
  *
  * Includes platform adapters, the shared {@link EvoluErrorDep.evoluError} store,
@@ -1269,6 +1302,7 @@ export type EvoluDeps = EvoluPlatformDeps &
 export type EvoluPlatformDeps = CreateDbWorkerDep &
   CreateBroadcastChannelDep &
   CreateMessageChannelDep &
+  DevicePersistenceDep &
   LockManagerDep &
   ReloadAppDep &
   SharedWorkerDep &
@@ -1437,14 +1471,25 @@ export const createEvolu =
     const {
       appName,
       appOwner,
-      memoryOnly = false,
       transports = [
         { type: "WebSocket", url: "wss://free.evoluhq.com/" as WebSocketUrl },
       ],
     } = config;
 
-    // An AppName has at most 41 characters and an Id 22, so this is a Name.
-    const name = `${appName}-${createIdFromString(appOwner.id)}` as Name;
+    const devicePersistence: DevicePersistence = config.memoryOnly
+      ? "NotPersisted"
+      : await run.deps.getDevicePersistence();
+    const memoryOnly = devicePersistence === "NotPersisted";
+    // A database kept in memory gets a name of its own, so it never shares a
+    // tenant, a lock, or files with the stored database of its owner. Its
+    // hash input, the owner ID's bytes and a suffix, is longer than an owner
+    // ID, so it never equals a stored name's input. An AppName has at most 41
+    // characters and an Id 22, so this is a Name.
+    const name = `${appName}-${
+      memoryOnly
+        ? createIdFromString("MemoryDatabase", appOwner.id)
+        : createIdFromString(appOwner.id)
+    }` as Name;
     const console = run.deps.console.child(name).child("Evolu");
     console.info("createEvolu");
 
@@ -1552,11 +1597,6 @@ export const createEvolu =
       exportDatabasePending = null;
     });
 
-    const devicePersistence = Promise.withResolvers<DevicePersistence>();
-    // A disposed instance never hears from its tenant, so awaiters settle.
-    disposer.defer(() => {
-      devicePersistence.resolve("Unknown");
-    });
     let isPersistentStorageRequested = false;
 
     let postMessage: (input: EvoluInput) => void;
@@ -1673,10 +1713,6 @@ export const createEvolu =
             }
             break;
           }
-
-          case "OnDevicePersistence":
-            devicePersistence.resolve(message.devicePersistence);
-            break;
 
           default:
             exhaustiveCheck(message);
@@ -1825,11 +1861,9 @@ export const createEvolu =
         // load would show Firefox's permission prompt to every visitor.
         if (!isPersistentStorageRequested) {
           isPersistentStorageRequested = true;
-          void devicePersistence.promise.then((persistence) => {
-            if (persistence === "Unknown" && !disposed) {
-              run.deps.requestPersistentStorage?.();
-            }
-          });
+          if (devicePersistence === "Unknown") {
+            run.deps.requestPersistentStorage?.();
+          }
         }
 
         // Released now, not only when the batch is sent, so a load right after
@@ -1935,7 +1969,7 @@ export const createEvolu =
         {
           name,
           appOwner,
-          devicePersistence: devicePersistence.promise,
+          devicePersistence: Promise.resolve(devicePersistence),
 
           insert: createMutation("insert"),
           update: createMutation("update"),

@@ -79,8 +79,6 @@ export const createEvoluDeps = (
       createMessagePort,
       createWebSocket,
       createSqliteDriver: deps.createSqliteDriver,
-      // Databases are files the app owns.
-      getDevicePersistence: () => Promise.resolve("Persisted" as const),
       lockManager,
       randomBytes: createRandomBytes(),
       ...(deps.waitForDatabaseRelease && {
@@ -164,6 +162,8 @@ export const createEvoluDeps = (
     createDbWorker,
     createBroadcastChannel,
     createMessageChannel,
+    // Databases are files the app owns.
+    getDevicePersistence: () => Promise.resolve("Persisted"),
     lockManager,
     reloadApp: deps.reloadApp,
     sharedWorker,

@@ -83,7 +83,6 @@ export class AppService implements OnDestroy {
     );
     this.initializeData();
     this.initializeAppOwner();
-    // Resolves once the database starts.
     void this.evolu.devicePersistence.then((devicePersistence) => {
       this.isNotPersisted.set(devicePersistence === "NotPersisted");
     });

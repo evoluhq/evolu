@@ -29,6 +29,7 @@ import {
   AppName,
   createEvolu,
   createEvoluDeps,
+  type DevicePersistence,
   type Evolu,
   type EvoluConfig,
   maxMutationSize,
@@ -227,6 +228,7 @@ describe("Evolu", () => {
       createDbWorker: testCreateWorker,
       createBroadcastChannel: testCreateBroadcastChannel,
       createMessageChannel: testCreateMessageChannel,
+      getDevicePersistence: () => Promise.resolve("Unknown"),
       lockManager: testCreateLockManager(),
       reloadApp: constVoid,
       sharedWorker: sharedWorkerDep,
@@ -314,6 +316,7 @@ describe("Evolu", () => {
           createDbWorker: testCreateWorker,
           createBroadcastChannel: testCreateBroadcastChannel,
           createMessageChannel: testCreateMessageChannel,
+          getDevicePersistence: () => Promise.resolve("Unknown"),
           lockManager,
           sharedWorker: worker,
           reloadApp: constVoid,
@@ -468,6 +471,7 @@ describe("Evolu", () => {
         },
         createBroadcastChannel: testCreateBroadcastChannel,
         createMessageChannel: testCreateMessageChannel,
+        getDevicePersistence: () => Promise.resolve("Unknown" as const),
         lockManager: testCreateLockManager(),
         sharedWorker: worker,
         reloadApp: constVoid,
@@ -539,6 +543,7 @@ describe("Evolu", () => {
           createDbWorker: testCreateWorker,
           createBroadcastChannel: testCreateBroadcastChannel,
           createMessageChannel: testCreateMessageChannel,
+          getDevicePersistence: () => Promise.resolve("Unknown" as const),
           lockManager: testCreateLockManager(),
           sharedWorker: worker,
           reloadApp: constVoid,
@@ -876,6 +881,7 @@ describe("Evolu", () => {
         createDbWorker: testCreateWorker,
         createBroadcastChannel: testCreateBroadcastChannel,
         createMessageChannel: testCreateMessageChannel,
+        getDevicePersistence: () => Promise.resolve("Unknown" as const),
         lockManager: testCreateLockManager(),
         sharedWorker: { port, [Symbol.dispose]: constVoid },
         reloadApp: constVoid,
@@ -1065,6 +1071,7 @@ describe("Evolu", () => {
           return channel;
         },
         createMessageChannel: testCreateMessageChannel,
+        getDevicePersistence: () => Promise.resolve("Unknown" as const),
         lockManager: testCreateLockManager(),
         sharedWorker: testCreateSharedWorker<
           SharedWorkerInput,
@@ -1115,6 +1122,7 @@ describe("Evolu", () => {
           return channel;
         },
         createMessageChannel: testCreateMessageChannel,
+        getDevicePersistence: () => Promise.resolve("Unknown" as const),
         lockManager: testCreateLockManager(),
         sharedWorker,
         reloadApp: constVoid,
@@ -1245,6 +1253,7 @@ describe("Evolu", () => {
         createDbWorker: testCreateWorker,
         createBroadcastChannel: testCreateBroadcastChannel,
         createMessageChannel: testCreateMessageChannel,
+        getDevicePersistence: () => Promise.resolve("Unknown" as const),
         lockManager: testCreateLockManager(),
         reloadApp: constVoid,
         sharedWorker,
@@ -1631,9 +1640,97 @@ describe("Evolu", () => {
   });
 
   describe("device persistence", () => {
-    const setupPersistenceRequests = async () => {
+    const memoryName = `AppName-${createIdFromString("MemoryDatabase", testAppOwner.id)}`;
+
+    /** Creates an instance, recording its CreateEvolu and platform checks. */
+    const setupStorage = async ({
+      memoryOnly,
+      platform,
+    }: {
+      memoryOnly: boolean;
+      platform: DevicePersistence;
+    }) => {
+      let platformCheckCount = 0;
+      const createEvoluMessages: Array<
+        Extract<SharedWorkerInput, { type: "CreateEvolu" }>
+      > = [];
+      const setup = await setupRunWithEvoluDeps({
+        getDevicePersistence: () => {
+          platformCheckCount += 1;
+          return Promise.resolve(platform);
+        },
+        onSharedWorkerPostMessage: (message) => {
+          if (message.type === "CreateEvolu") createEvoluMessages.push(message);
+        },
+      });
+      const evolu = await setup.run.ok(
+        createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          memoryOnly,
+        }),
+      );
+      assertLength(createEvoluMessages, 1);
+      const [message] = createEvoluMessages;
+      assertSame(message.name, evolu.name);
+      return Object.assign(setup, {
+        evolu,
+        message,
+        getPlatformCheckCount: () => platformCheckCount,
+      });
+    };
+
+    it("names a memoryOnly database apart from the stored one, without asking the platform", async () => {
+      await using setup = await setupStorage({
+        memoryOnly: true,
+        platform: "Persisted",
+      });
+
+      assertSame(setup.evolu.name, memoryName);
+      assertNotSame(
+        setup.evolu.name,
+        `AppName-${createIdFromString(testAppOwner.id)}`,
+      );
+      assertTrue(setup.message.memoryOnly);
+      assertSame(await setup.evolu.devicePersistence, "NotPersisted");
+      assertSame(setup.getPlatformCheckCount(), 0);
+    });
+
+    it("keeps the database in memory, under the memoryOnly name, where the platform offers no persistent storage", async () => {
+      await using setup = await setupStorage({
+        memoryOnly: false,
+        platform: "NotPersisted",
+      });
+
+      assertSame(setup.evolu.name, memoryName);
+      assertTrue(setup.message.memoryOnly);
+      assertSame(await setup.evolu.devicePersistence, "NotPersisted");
+      assertSame(setup.getPlatformCheckCount(), 1);
+    });
+
+    for (const platform of ["Persisted", "Unknown"] as const) {
+      it(`stores the database and resolves devicePersistence to ${platform} where the platform promises it`, async () => {
+        await using setup = await setupStorage({
+          memoryOnly: false,
+          platform,
+        });
+
+        assertSame(
+          setup.evolu.name,
+          `AppName-${createIdFromString(testAppOwner.id)}`,
+        );
+        assertFalse(setup.message.memoryOnly);
+        assertSame(await setup.evolu.devicePersistence, platform);
+      });
+    }
+
+    const setupPersistenceRequests = async (
+      devicePersistence: DevicePersistence,
+    ) => {
       let requestCount = 0;
       const setup = await setupRunWithEvoluDeps({
+        getDevicePersistence: () => Promise.resolve(devicePersistence),
         requestPersistentStorage: () => {
           requestCount += 1;
         },
@@ -1641,35 +1738,9 @@ describe("Evolu", () => {
       return Object.assign(setup, { getRequestCount: () => requestCount });
     };
 
-    it("resolves devicePersistence to what its tenant sends", async () => {
-      await using setup = await setupRunWithEvoluDeps();
-      const evolu = await setup.run.ok(testCreateEvolu);
-
-      setup.postEvoluOutput({
-        type: "OnDevicePersistence",
-        devicePersistence: "NotPersisted",
-      });
-
-      assertSame(await evolu.devicePersistence, "NotPersisted");
-    });
-
-    it("resolves devicePersistence to Unknown when disposed before its tenant sends it", async () => {
-      await using setup = await setupRunWithEvoluDeps();
-      const evolu = await setup.run.ok(testCreateEvolu);
-
-      await evolu[Symbol.asyncDispose]();
-
-      assertSame(await evolu.devicePersistence, "Unknown");
-    });
-
     it("requests persistent storage once, after the first mutation, when devicePersistence is Unknown", async () => {
-      await using setup = await setupPersistenceRequests();
+      await using setup = await setupPersistenceRequests("Unknown");
       const evolu = await setup.run.ok(testCreateEvolu);
-      setup.postEvoluOutput({
-        type: "OnDevicePersistence",
-        devicePersistence: "Unknown",
-      });
-      await evolu.devicePersistence;
       await testWaitForWorkerMessage();
       assertSame(setup.getRequestCount(), 0);
 
@@ -1682,52 +1753,18 @@ describe("Evolu", () => {
       assertSame(setup.getRequestCount(), 1);
     });
 
-    it("requests persistent storage once devicePersistence resolves after the first mutation", async () => {
-      await using setup = await setupPersistenceRequests();
-      const evolu = await setup.run.ok(testCreateEvolu);
-
-      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("A") });
-      await testWaitForWorkerMessage();
-      assertSame(setup.getRequestCount(), 0);
-
-      setup.postEvoluOutput({
-        type: "OnDevicePersistence",
-        devicePersistence: "Unknown",
-      });
-      await evolu.devicePersistence;
-      await testWaitForWorkerMessage();
-
-      assertSame(setup.getRequestCount(), 1);
-    });
-
     for (const devicePersistence of ["Persisted", "NotPersisted"] as const) {
       it(`does not request persistent storage when devicePersistence is ${devicePersistence}`, async () => {
-        await using setup = await setupPersistenceRequests();
+        await using setup = await setupPersistenceRequests(devicePersistence);
         const evolu = await setup.run.ok(testCreateEvolu);
-        setup.postEvoluOutput({
-          type: "OnDevicePersistence",
-          devicePersistence,
-        });
 
         evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("A") });
-        await evolu.devicePersistence;
         await testWaitForWorkerMessage();
 
+        assertSame(await evolu.devicePersistence, devicePersistence);
         assertSame(setup.getRequestCount(), 0);
       });
     }
-
-    it("does not request persistent storage after disposal", async () => {
-      await using setup = await setupPersistenceRequests();
-      const evolu = await setup.run.ok(testCreateEvolu);
-
-      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("A") });
-      await evolu[Symbol.asyncDispose]();
-      await evolu.devicePersistence;
-      await testWaitForWorkerMessage();
-
-      assertSame(setup.getRequestCount(), 0);
-    });
   });
 
   describe("dispose evolu", () => {

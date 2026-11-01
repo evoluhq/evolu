@@ -72,6 +72,18 @@ test("a tab starts its database's DbWorker once the worker's script loads", asyn
   await waitForSharedWorkerClose(app.run);
 });
 
+test("a tab finds the persistent storage the browser offers", async () => {
+  await using disposer = new AsyncDisposableStack();
+  const app = await setupApp(disposer, setupDeps(disposer));
+
+  // The tab, not its workers, decides whether a database is stored.
+  assertEqual(await app.deps.getDevicePersistence(), "Unknown");
+
+  // Releases the build lock for the tests that run after this one.
+  await panicSharedWorker(app);
+  await waitForSharedWorkerClose(app.run);
+});
+
 test("a tab refuses its database when the DbWorker's script fails to load", async () => {
   await using disposer = new AsyncDisposableStack();
   const deps = setupDeps(disposer);

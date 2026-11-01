@@ -406,7 +406,6 @@ const AppLoading: FC = () => (
  * private window. See `DevicePersistence` in `@evolu/common/local-first`.
  */
 const DevicePersistenceNotice: FC = () => {
-  // Resolves once the database starts.
   const devicePersistence = use(app.useEvolu().devicePersistence);
   if (devicePersistence !== "NotPersisted") return null;
   return (
