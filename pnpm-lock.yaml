@@ -9707,8 +9707,8 @@ packages:
   sprintf-js@1.1.3:
     resolution: {integrity: sha512-Oo+0REFV59/rz3gfJNKQiBlwfHaSESl1pcGyABQsnnIfWOFt6JNj5gCog2U6MLZ//IGYD+nA8nI+mTShREReaA==}
 
-  sql-parser-cst@0.42.3:
-    resolution: {integrity: sha512-Dr3+toSySqXBgJBpfHPrsZg38Ie5VOczkcD/JAEZplCoAwnzdTRkLax41K2TyQMXpZCbBcj8iaE7nyKHfQBfwQ==}
+  sql-parser-cst@0.42.4:
+    resolution: {integrity: sha512-3hZQEaGJLoVokUsk+OA/WnWSsOuCBIDKNwEBAlQgZoCjt0MvwAdJ0Zf8D3KojQhLkqFiXZXeTEZ4aBQBeYUGtg==}
 
   stackframe@1.3.4:
     resolution: {integrity: sha512-oeVtt7eWQS+Na6F//S4kJ2K2VbRlS9D43mAlMyVpVWovy9o+jfgH8O9agzANzaiLjclA0oYzUXEM4PurhSUChw==}
@@ -19202,7 +19202,7 @@ snapshots:
   prettier-plugin-sql-cst@0.23.1:
     dependencies:
       prettier: 3.9.10
-      sql-parser-cst: 0.42.3
+      sql-parser-cst: 0.42.4
 
   prettier-plugin-tailwindcss@0.8.1(prettier-plugin-jsdoc@1.8.1(prettier@3.9.10)(supports-color@8.1.1))(prettier@3.9.10):
     dependencies:
@@ -20371,7 +20371,7 @@ snapshots:
   sprintf-js@1.1.3:
     optional: true
 
-  sql-parser-cst@0.42.3: {}
+  sql-parser-cst@0.42.4: {}
 
   stackframe@1.3.4: {}
 

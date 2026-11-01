@@ -1,5 +1,6 @@
 import {
   AbortError,
+  assert,
   assertEqual,
   assertFalse,
   assertInstanceOf,
@@ -16,6 +17,7 @@ import {
   createXChaCha20Poly1305,
   isPlainObject,
   Port,
+  PositiveMillis,
   sql,
   testCreateConsole,
   testCreateDeps,
@@ -29,6 +31,7 @@ import {
   type CreateSqliteDriver,
   type OwnerIdBytes,
   type SqliteDriver,
+  type TestSetupWebSocket,
   type XChaCha20Poly1305Dep,
 } from "@evolu/common";
 import {
@@ -44,6 +47,7 @@ import {
   ownerIdToOwnerIdBytes,
   ProtocolErrorCode,
   RangeType,
+  relayHeartbeatInterval,
   SubscriptionFlags,
   testAppOwner,
   testCreateCrdtMessage,
@@ -136,7 +140,7 @@ const setupRelay = async () => {
 
   const relaySetup = disposer.use(await startTestRelay());
   const ws = disposer.use(
-    await testSetupWebSocket(
+    await setupRelayWebSocket(
       `ws://127.0.0.1:${relaySetup.relay.port}/?ownerId=${testAppOwner.id}`,
     ),
   );
@@ -227,8 +231,12 @@ const createFakeSocket = (mock: TestContext["mock"]) => {
     readonly ping = mock.fn();
     readonly terminate = mock.fn();
     readonly send = mock.fn(
-      (_data: Uint8Array, _options: unknown, callback: () => void) => {
-        callback();
+      (
+        _data: Uint8Array | string,
+        _options?: unknown,
+        callback?: () => void,
+      ) => {
+        callback?.();
       },
     );
     readonly pause = mock.fn(() => {
@@ -240,6 +248,81 @@ const createFakeSocket = (mock: TestContext["mock"]) => {
   }
   return new FakeSocket();
 };
+
+/**
+ * What a connection on mocked transport was sent, in order: the relay's
+ * heartbeats, which are empty text, and binary frames.
+ */
+const sentFrames = (ws: {
+  readonly send: {
+    readonly mock: {
+      readonly calls: ReadonlyArray<{
+        readonly arguments: ReadonlyArray<unknown>;
+      }>;
+    };
+  };
+}): Array<"heartbeat" | "binary"> =>
+  ws.send.mock.calls.map(({ arguments: [data] }) =>
+    data === "" ? "heartbeat" : "binary",
+  );
+
+/**
+ * Opens a connection to the relay and reads its first frame, the heartbeat
+ * every connection starts with, so later waits read replies. A wait registered
+ * as soon as the connection opens receives it.
+ */
+const setupRelayWebSocket = async (
+  url: string,
+): Promise<TestSetupWebSocket> => {
+  await using disposer = new AsyncDisposableStack();
+  const ws = disposer.use(await testSetupWebSocket(url));
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const first = await Promise.race([
+    ws.waitForMessage(),
+    new Promise<"no heartbeat">((resolve) => {
+      timeoutId = setTimeout(() => resolve("no heartbeat"), 1000);
+    }),
+  ]);
+  clearTimeout(timeoutId);
+  // A failed assertion closes the connection, which the relay's disposal
+  // would otherwise wait for.
+  assertSame(first, "");
+  disposer.move();
+  return ws;
+};
+
+/**
+ * Resolves at the client's next text frame, a heartbeat, and rejects after a
+ * second without one.
+ */
+const onceHeartbeat = (client: WsWebSocket): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const onMessage = (_data: unknown, isBinary: boolean) => {
+      if (isBinary) return;
+      cleanup();
+      resolve();
+    };
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error("Expected a heartbeat."));
+    }, 1000);
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      client.off("message", onMessage);
+    };
+    client.on("message", onMessage);
+  });
+
+/** Resolves at the client's next binary frame, skipping the heartbeats. */
+const onceBinary = (client: WsWebSocket): Promise<void> =>
+  new Promise((resolve) => {
+    const onMessage = (_data: unknown, isBinary: boolean) => {
+      if (!isBinary) return;
+      client.off("message", onMessage);
+      resolve();
+    };
+    client.on("message", onMessage);
+  });
 
 const assertEventually = async (condition: () => boolean): Promise<void> => {
   const deadline = Date.now() + 1000;
@@ -284,17 +367,17 @@ const setupSubscriber = async (
       subscriptionFlag: SubscriptionFlags.Subscribe,
     }).unwrap(),
   );
-  await once(subscriber, "message");
+  await onceBinary(subscriber);
 
   let receivedCount = 0;
-  subscriber.on("message", () => {
-    receivedCount++;
+  subscriber.on("message", (_data, isBinary) => {
+    if (isBinary) receivedCount++;
   });
   const createId = testCreateId();
   let frameCount = 0;
 
   const broadcast = async (count: number): Promise<void> => {
-    await using writer = await testSetupWebSocket(url);
+    await using writer = await setupRelayWebSocket(url);
     for (const frame of Array.from({ length: count }, () => frameCount++)) {
       const messages = Array.from({ length: 80 }, (_, index) =>
         testCreateCrdtMessage(
@@ -340,7 +423,7 @@ const setupStoredHistory = async (
   setup: Awaited<ReturnType<typeof startTestRelay>>,
   url: string,
 ): Promise<void> => {
-  await using writer = await testSetupWebSocket(url);
+  await using writer = await setupRelayWebSocket(url);
   const createId = testCreateId();
   for (let frame = 0; frame < 2; frame++) {
     const messages = Array.from({ length: 80 }, (_, index) =>
@@ -464,17 +547,95 @@ describe("createRelay", () => {
       `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       { autoPong: false },
     );
+    let heartbeatCount = 0;
+    client.on("message", (_data, isBinary) => {
+      if (!isBinary) heartbeatCount++;
+    });
     await once(client, "open");
     const closed = once(client, "close");
 
-    // The first tick pings; the second finds no answer.
-    const ping = once(client, "ping");
+    // The first tick pings; the second finds no answer and sends no
+    // heartbeat.
+    const heartbeat = onceHeartbeat(client);
     time.advance("50ms");
-    await ping;
+    await heartbeat;
     time.advance("50ms");
 
     const [code] = (await closed) as [number];
     assertSame(code, 1006);
+    assertSame(heartbeatCount, 2);
+  });
+
+  it("sends a heartbeat as each connection's first frame and after each ping", async () => {
+    await using setup = await startTestRelay({ pingInterval: "50ms" });
+    const { time } = setup.run.deps;
+    const client = new WsWebSocket(
+      `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
+    );
+    const frames: Array<string> = [];
+    client.on("message", (data, isBinary) => {
+      // ws hands a text frame over as a Buffer.
+      frames.push(
+        isBinary ? "binary" : `text "${(data as Buffer).toString()}"`,
+      );
+    });
+    client.on("ping", () => {
+      frames.push("ping");
+    });
+    await once(client, "open");
+    const closed = once(client, "close");
+
+    // The first heartbeat comes before the reply to a request sent at once.
+    const reply = onceBinary(client);
+    client.send(
+      createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        subscriptionFlag: SubscriptionFlags.Subscribe,
+      }).unwrap(),
+    );
+    await reply;
+    assertEqual(frames, ['text ""', "binary"]);
+
+    // WebSocket clients answer pings without telling JavaScript, so a heartbeat,
+    // which JavaScript sees, follows each one.
+    const heartbeat = onceHeartbeat(client);
+    time.advance("50ms");
+    await heartbeat;
+    assertEqual(frames, ['text ""', "binary", "ping", 'text ""']);
+
+    client.close();
+    await closed;
+  });
+
+  it("panics on a pingInterval longer than the heartbeat interval before it opens its database", async () => {
+    await using run = testCreateRun({
+      ...createRelayDeps(),
+      console: testCreateConsole(),
+    });
+    const rejection = await run(
+      createRelay({
+        port: Port.orThrow(0),
+        name: testName,
+        isOwnerWithinQuota: () => true,
+        pingInterval: PositiveMillis.orThrow(relayHeartbeatInterval + 1),
+      }),
+    ).then(
+      async (result) => {
+        // A relay that started anyway must not outlive the test.
+        if (result.ok) await result.value[Symbol.asyncDispose]();
+        return null;
+      },
+      (error: unknown) => error,
+    );
+    assertTrue(AbortError.is(rejection));
+    assert(rejection.reason.type === "PanicAbortReason", "Expected a panic.");
+    assertInstanceOf(rejection.reason.defect, Error);
+    assertSame(
+      rejection.reason.defect.message,
+      "pingInterval must be at most relayHeartbeatInterval",
+    );
+    assertEqual(await run.deps.reportDefect.next(), rejection);
+    assertFalse(existsSync(`${testName}.db`));
   });
 
   it("keeps a connection that sends data while its pong is delayed", async () => {
@@ -525,19 +686,30 @@ describe("createRelay", () => {
     // The stalled reader stands in for a large frame crossing a slow link,
     // and the broadcasts outgrow the socket buffers, so the rest waits on the
     // relay together with any ping sent after them. No answer can arrive
-    // meanwhile, and neither tick terminates it.
+    // meanwhile, and neither tick terminates it or sends a heartbeat, which
+    // would only wait behind the queued frames.
+    let heartbeatCount = 0;
+    subscriber.on("message", (_data, isBinary) => {
+      if (!isBinary) heartbeatCount++;
+    });
     subscriber.pause();
     await broadcast(24);
     time.advance("50ms");
     time.advance("50ms");
     subscriber.resume();
     assertSame(await received(24), "received");
+    assertSame(heartbeatCount, 0);
 
     // Written broadcasts no longer count toward the cap, so a client that
     // keeps reading receives more than 16 MB over its connection.
     await broadcast(24);
     assertSame(await received(48), "received");
     assertSame(subscriber.readyState, WsWebSocket.OPEN);
+
+    // With nothing queued, the next tick pings and sends a heartbeat again.
+    const heartbeat = onceHeartbeat(subscriber);
+    time.advance("50ms");
+    await heartbeat;
 
     subscriber.close();
     await closed;
@@ -585,12 +757,15 @@ describe("createRelay", () => {
     run.deps.time.advance("1s");
     assertSame(ws.ping.mock.callCount(), 0);
     assertSame(ws.terminate.mock.callCount(), 0);
+    // Nor does it send heartbeats: the client's request timeout watches it.
+    assertEqual(sentFrames(ws), ["heartbeat"]);
 
     continueQuotaCheck.resolve(true);
     await assertEventually(() => ws.resume.mock.callCount() === 1);
     run.deps.time.advance("1s");
     assertSame(ws.ping.mock.callCount(), 1);
     assertSame(ws.terminate.mock.callCount(), 0);
+    assertEqual(sentFrames(ws), ["heartbeat", "binary", "heartbeat"]);
   });
 
   it("terminates a connection more than 16 MB behind on broadcasts", async () => {
@@ -624,8 +799,8 @@ describe("createRelay", () => {
     const roundCount = 30;
     let receivedCount = 0;
     const received = new Promise<"received">((resolve) => {
-      client.on("message", () => {
-        if (++receivedCount === roundCount) resolve("received");
+      client.on("message", (_data, isBinary) => {
+        if (isBinary && ++receivedCount === roundCount) resolve("received");
       });
     });
 
@@ -686,8 +861,9 @@ describe("createRelay", () => {
     const uploadCount = 40;
     let receivedCount = 0;
     const received = new Promise<"received">((resolve) => {
-      client.on("message", () => {
-        if (++receivedCount === roundCount + uploadCount) resolve("received");
+      client.on("message", (_data, isBinary) => {
+        if (isBinary && ++receivedCount === roundCount + uploadCount)
+          resolve("received");
       });
     });
 
@@ -768,8 +944,9 @@ describe("createRelay", () => {
         [testCreateCrdtMessage(testCreateId()(), 1, "Victoria")],
       ),
     );
-    await assertEventually(() => writer.send.mock.callCount() === 1);
-    assertSame(client.send.mock.callCount(), 0);
+    await assertEventually(() => sentFrames(writer).length === 2);
+    assertEqual(sentFrames(writer), ["heartbeat", "binary"]);
+    assertEqual(sentFrames(client), ["heartbeat"]);
     assertEqual(
       console
         .getEntriesSnapshot()
@@ -792,18 +969,18 @@ describe("createRelay", () => {
     await Promise.all([once(busy, "open"), once(other, "open")]);
 
     const replies: Array<"busy" | "other"> = [];
-    busy.on("message", () => {
-      replies.push("busy");
+    busy.on("message", (_data, isBinary) => {
+      if (isBinary) replies.push("busy");
     });
-    other.on("message", () => {
-      replies.push("other");
+    other.on("message", (_data, isBinary) => {
+      if (isBinary) replies.push("other");
     });
 
     const request = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
     }).unwrap();
     const busyCount = 100;
-    const firstBusyReply = once(busy, "message");
+    const firstBusyReply = onceBinary(busy);
     for (let index = 0; index < busyCount; index++) busy.send(request);
     await firstBusyReply;
     other.send(request);
@@ -914,7 +1091,7 @@ describe("createRelay", () => {
 
   it("accepts websocket upgrades when owner authorization is disabled", async () => {
     await using setup = await startTestRelay();
-    await using ws = await testSetupWebSocket(
+    await using ws = await setupRelayWebSocket(
       `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
     );
 
@@ -930,7 +1107,7 @@ describe("createRelay", () => {
         return true;
       },
     });
-    await using _ws = await testSetupWebSocket(
+    await using _ws = await setupRelayWebSocket(
       `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
     );
 
@@ -1104,7 +1281,8 @@ describe("createRelay", () => {
     ws.emit("message", invalidRequest);
     ws.emit("message", request);
 
-    await assertEventually(() => ws.send.mock.callCount() === 1);
+    await assertEventually(() => sentFrames(ws).length === 2);
+    assertEqual(sentFrames(ws), ["heartbeat", "binary"]);
     const entries = console.getEntriesSnapshot();
     assertEqual(
       entries.filter((entry) => entry.method === "error"),
@@ -1152,7 +1330,7 @@ describe("createRelay", () => {
     });
 
     const { port } = await started.promise;
-    await using ws = await testSetupWebSocket(
+    await using ws = await setupRelayWebSocket(
       `ws://127.0.0.1:${port}/?ownerId=${testAppOwner.id}`,
     );
     const closeCode = new Promise<number>((resolve) => {
@@ -1199,7 +1377,7 @@ describe("createRelay", () => {
     assertEqual(entry.path, ["relay"]);
     assertSame(entry.method, "debug");
 
-    await using next = await testSetupWebSocket(
+    await using next = await setupRelayWebSocket(
       `ws://127.0.0.1:${relay.port}/?ownerId=${testAppOwner.id}`,
     );
     const response = next.waitForMessage();
@@ -1239,7 +1417,7 @@ describe("createRelay", () => {
     const createId = testCreateId();
     const setup = disposer.use(await startTestRelay());
     const writer = disposer.use(
-      await testSetupWebSocket(
+      await setupRelayWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
@@ -1280,12 +1458,12 @@ describe("createRelay", () => {
     const setup = disposer.use(await startTestRelay());
     const { console } = setup;
     const writer = disposer.use(
-      await testSetupWebSocket(
+      await setupRelayWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
     const subscriber = disposer.use(
-      await testSetupWebSocket(
+      await setupRelayWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
@@ -1341,12 +1519,12 @@ describe("createRelay", () => {
     const createId = testCreateId();
     const setup = disposer.use(await startTestRelay());
     const writer = disposer.use(
-      await testSetupWebSocket(
+      await setupRelayWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
     const subscriber = disposer.use(
-      await testSetupWebSocket(
+      await setupRelayWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
@@ -1404,12 +1582,12 @@ describe("createRelay", () => {
     const createId = testCreateId();
     const setup = disposer.use(await startTestRelay());
     const subscriber = disposer.use(
-      await testSetupWebSocket(
+      await setupRelayWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
     const writer = disposer.use(
-      await testSetupWebSocket(
+      await setupRelayWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
@@ -1463,12 +1641,12 @@ describe("createRelay", () => {
     const setup = disposer.use(await startTestRelay());
     const { console } = setup;
     const subscriber = disposer.use(
-      await testSetupWebSocket(
+      await setupRelayWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
     const writer = disposer.use(
-      await testSetupWebSocket(
+      await setupRelayWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
@@ -1549,7 +1727,7 @@ describe("createRelay", () => {
     await using setup = await startTestRelay({
       isOwnerWithinQuota: () => false,
     });
-    await using socket = await testSetupWebSocket(
+    await using socket = await setupRelayWebSocket(
       `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
     );
     const createId = testCreateId();
@@ -1596,7 +1774,9 @@ describe("createRelay", () => {
       `ws://127.0.0.1:${setup.relay.port}/?ownerId=${ownerId}`;
     const [subscriber, otherSubscriber] = await Promise.all(
       [testAppOwner, testRelayAppOwner2].map(async (owner) => {
-        const socket = disposer.use(await testSetupWebSocket(urlFor(owner.id)));
+        const socket = disposer.use(
+          await setupRelayWebSocket(urlFor(owner.id)),
+        );
         socket.send(
           createProtocolMessageBuffer(owner.id, {
             messageType: MessageType.Request,
@@ -1608,7 +1788,7 @@ describe("createRelay", () => {
       }),
     );
     const writer = disposer.use(
-      await testSetupWebSocket(urlFor(testAppOwner.id)),
+      await setupRelayWebSocket(urlFor(testAppOwner.id)),
     );
     for (const owner of [testAppOwner, testRelayAppOwner2]) {
       const response = writer.waitForMessage();
@@ -1843,7 +2023,7 @@ describe("createRelay", () => {
     wss.emit("connection", ws, { socket: new EventEmitter() });
     ws.emit("message", new ArrayBuffer(3));
 
-    assertEqual(ws.send.mock.callCount(), 0);
+    assertEqual(sentFrames(ws), ["heartbeat"]);
     assertFalse(
       console.getEntriesSnapshot().some((entry) => entry.method === "error"),
     );
@@ -1900,7 +2080,7 @@ describe("createRelay", () => {
 
     // Aborting the relay's Run aborts the Task serving the connection, so the
     // request in flight gets no reply, and the queued one is not served.
-    assertSame(ws.send.mock.callCount(), 0);
+    assertEqual(sentFrames(ws), ["heartbeat"]);
     assertSame(isOwnerWithinQuota.mock.callCount(), 1);
     assertFalse(
       console.getEntriesSnapshot().some((entry) => entry.method === "error"),
@@ -1930,6 +2110,7 @@ describe("createRelay", () => {
       readonly bufferedAmount = 0;
       readonly close = t.mock.fn();
       readonly ping = t.mock.fn();
+      readonly send = t.mock.fn();
       readonly terminate = t.mock.fn();
     }
 
@@ -1938,12 +2119,14 @@ describe("createRelay", () => {
     wss.emit("connection", ws, { socket: new EventEmitter() });
     run.deps.time.advance("1s");
     assertSame(ws.ping.mock.callCount(), 1);
+    assertEqual(sentFrames(ws), ["heartbeat", "heartbeat"]);
 
     // The mocked server keeps the connection, so a surviving timer would
     // terminate it at the next tick, as it sent nothing since the ping.
     await relay[Symbol.asyncDispose]();
     run.deps.time.advance("2s");
     assertSame(ws.ping.mock.callCount(), 1);
+    assertEqual(sentFrames(ws), ["heartbeat", "heartbeat"]);
     assertSame(ws.terminate.mock.callCount(), 0);
   });
 
@@ -2014,7 +2197,7 @@ describe("createRelay", () => {
     closeServer();
     await disposing;
 
-    assertSame(ws.send.mock.callCount(), 0);
+    assertEqual(sentFrames(ws), ["heartbeat"]);
     assertSame(socket.destroy.mock.callCount(), 1);
     assertSame(wss.handleUpgrade.mock.callCount(), 0);
   });
