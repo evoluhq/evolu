@@ -4,8 +4,10 @@ import {
   createIdFromString,
   createRun,
   createSqlite,
+  err,
   id,
   Name,
+  ok,
   sql,
   testCreateRun,
   type UnknownError,
@@ -103,6 +105,8 @@ const createWorkerDriver = () => {
     export: () => send({ type: "export" }),
     dispose: () => send({ type: "dispose" }),
     deleteDatabase: () => send({ type: "deleteDatabase" }),
+    deleteDatabaseFiles: (name: string) =>
+      send({ type: "deleteDatabaseFiles", name }),
     disposeAndClose: () => send({ type: "disposeAndClose" }),
     holdPoolFile: (name: string) => send({ type: "holdPoolFile", name }),
     releasePoolFile: () => send({ type: "releasePoolFile" }),
@@ -153,6 +157,19 @@ const createSqliteWasmWorker = () => {
 
 const waitForLock = async (name: string): Promise<void> => {
   await navigator.locks.request(name, () => undefined);
+};
+
+/** Whether the OPFS root has the pool directory `.<name>`. */
+const hasPoolDirectory = async (name: string): Promise<boolean> => {
+  const root = await navigator.storage.getDirectory();
+  return root.getDirectoryHandle(`.${name}`).then(
+    () => true,
+    (error: unknown) => {
+      if (error instanceof DOMException && error.name === "NotFoundError")
+        return false;
+      throw error;
+    },
+  );
 };
 
 describe("createWasmSqliteDriver", () => {
@@ -770,4 +787,108 @@ describe("createWasmSqliteDriver", () => {
       timeout,
     );
   });
+});
+
+describe("createDeleteDatabaseFiles", () => {
+  const timeout = 30_000;
+
+  test(
+    "deletes the file and the pool directory of a closed database without its key, and deleting again succeeds",
+    async () => {
+      const name = `deleteFiles${Date.now()}`;
+      const key = new Uint8Array(32).fill(42);
+      const driver = createWorkerDriver();
+      try {
+        assertWorkerOk(await driver.create(name, key));
+        await driver.exec("CREATE TABLE t (data TEXT)");
+        await driver.exec("INSERT INTO t (data) VALUES (?)", ["deleted"]);
+        assertWorkerOk(await driver.dispose());
+        expect(await hasPoolDirectory(name)).toBe(true);
+
+        const deleteResult = await driver.deleteDatabaseFiles(name);
+        assertWorkerOk(deleteResult);
+        expect(deleteResult.data?.result).toEqual(ok());
+        expect(await hasPoolDirectory(name)).toBe(false);
+        // A missing directory counts as deleted because every engine rejects
+        // its removal with NotFoundError.
+        const root = await navigator.storage.getDirectory();
+        await expect(
+          root.removeEntry(`.${name}`, { recursive: true }),
+        ).rejects.toHaveProperty("name", "NotFoundError");
+
+        const deleteAgainResult = await driver.deleteDatabaseFiles(name);
+        assertWorkerOk(deleteAgainResult);
+        expect(deleteAgainResult.data?.result).toEqual(ok());
+        expect(await hasPoolDirectory(name)).toBe(false);
+
+        assertWorkerOk(await driver.create(name, key));
+        const queryResult = await driver.exec(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 't'",
+        );
+        assertWorkerOk(queryResult);
+        expect(queryResult.data?.rows).toEqual([]);
+        assertWorkerOk(await driver.dispose());
+        // Leaves no pool directory behind.
+        assertWorkerOk(await driver.deleteDatabaseFiles(name));
+      } finally {
+        driver.terminate();
+      }
+    },
+    timeout,
+  );
+
+  test(
+    "creates no pool directory when it deletes a name without one",
+    async () => {
+      const name = `deleteMissing${Date.now()}`;
+      const driver = createWorkerDriver();
+      try {
+        const deleteResult = await driver.deleteDatabaseFiles(name);
+        assertWorkerOk(deleteResult);
+        expect(deleteResult.data?.result).toEqual(ok());
+        expect(await hasPoolDirectory(name)).toBe(false);
+      } finally {
+        driver.terminate();
+      }
+    },
+    timeout,
+  );
+
+  test(
+    "fails with DatabaseHeldError while another context still holds a pool file after 10 seconds, deleting nothing, and deletes once it is released",
+    async () => {
+      const name = `deleteHeld${Date.now()}`;
+      const driver = createWorkerDriver();
+      const holder = createWorkerDriver();
+      try {
+        assertWorkerOk(await driver.create(name));
+        await driver.exec("CREATE TABLE t (data TEXT)");
+        await driver.exec("INSERT INTO t (data) VALUES (?)", ["held"]);
+        assertWorkerOk(await driver.dispose());
+        assertWorkerOk(await holder.holdPoolFile(name));
+
+        const deleteResult = await driver.deleteDatabaseFiles(name);
+        assertWorkerOk(deleteResult);
+        expect(deleteResult.data?.result).toEqual(
+          err({ type: "DatabaseHeldError", name }),
+        );
+
+        assertWorkerOk(await holder.releasePoolFile());
+        expect(await hasPoolDirectory(name)).toBe(true);
+        assertWorkerOk(await driver.create(name));
+        const queryResult = await driver.exec("SELECT data FROM t");
+        assertWorkerOk(queryResult);
+        expect(queryResult.data?.rows).toEqual([{ data: "held" }]);
+        assertWorkerOk(await driver.dispose());
+        const releasedDeleteResult = await driver.deleteDatabaseFiles(name);
+        assertWorkerOk(releasedDeleteResult);
+        expect(releasedDeleteResult.data?.result).toEqual(ok());
+        expect(await hasPoolDirectory(name)).toBe(false);
+      } finally {
+        driver.terminate();
+        holder.terminate();
+      }
+    },
+    timeout,
+  );
 });

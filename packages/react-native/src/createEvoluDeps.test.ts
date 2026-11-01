@@ -14,7 +14,10 @@ import {
   type ReloadAppDep,
   type XChaCha20Poly1305Dep,
 } from "@evolu/common";
-import type { WaitForDatabaseReleaseDep } from "@evolu/common/local-first";
+import type {
+  DeleteDatabaseFilesDep,
+  WaitForDatabaseReleaseDep,
+} from "@evolu/common/local-first";
 import { mock, test } from "node:test";
 
 /** What the fakes were asked, in order. */
@@ -49,6 +52,9 @@ mock.module(new URL("./specs/NativeEvoluSqlite.ts", import.meta.url).href, {
             calls.push(`isFileOpen ${path}`);
             return false;
           },
+          deleteFile: (path: string) => {
+            calls.push(`deleteFile ${path}`);
+          },
           encryptXChaCha20Poly1305: (...args: ReadonlyArray<Uint8Array>) => {
             calls.push("encryptXChaCha20Poly1305");
             xChaChaArguments.push(args);
@@ -81,6 +87,7 @@ mock.module(new URL("./specs/NativeEvoluApp.ts", import.meta.url).href, {
 
 type SharedDeps = ConsoleDep &
   CreateSqliteDriverDep &
+  DeleteDatabaseFilesDep &
   ReloadAppDep &
   WaitForDatabaseReleaseDep &
   XChaCha20Poly1305Dep;
@@ -102,7 +109,7 @@ const callsAtImport = [...calls];
 
 const testName = Name.orThrow("Test");
 
-test("wires the native driver, waitForDatabaseRelease, EvoluApp's reloadApp and the binding's XChaCha20-Poly1305 into the shared wiring, in EvoluApp's directory", async () => {
+test("wires the native driver, waitForDatabaseRelease, deleteDatabaseFiles, EvoluApp's reloadApp and the binding's XChaCha20-Poly1305 into the shared wiring, in EvoluApp's directory", async () => {
   const console = createConsole();
 
   assertSame(createEvoluDeps({ console }), evoluDeps);
@@ -119,6 +126,7 @@ test("wires the native driver, waitForDatabaseRelease, EvoluApp's reloadApp and 
     );
   }
   assertOk(await run(deps.waitForDatabaseRelease(testName)));
+  assertOk(await run(deps.deleteDatabaseFiles(testName)));
   deps.reloadApp();
 
   // The binding takes the key first and the nonce second.
@@ -150,6 +158,7 @@ test("wires the native driver, waitForDatabaseRelease, EvoluApp's reloadApp and 
     "openEncryptedFile /data/SQLite/evolu1-Test.db",
     "close",
     "isFileOpen /data/SQLite/evolu1-Test.db",
+    "deleteFile /data/SQLite/evolu1-Test.db",
     "reloadApp",
     "encryptXChaCha20Poly1305",
     "decryptXChaCha20Poly1305",

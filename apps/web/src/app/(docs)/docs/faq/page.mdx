@@ -132,7 +132,9 @@ assertTrue(sizeInBytes > 0);
 
 ## How to delete OPFS Sqlite in browser?
 
-To clear the OPFS (Origin Private File System) SQLite database:
+Call `evolu.deleteDatabase()`, which deletes the database's file and its OPFS directory, and disposes the database's instances in every tab; see [Purge data](/docs/local-first#purge-data).
+
+To clear the OPFS (Origin Private File System) SQLite database by hand, such as when the app doesn't start:
 
 1. Install the [OPFS Explorer Chrome DevTools extension](https://chrome.google.com/webstore/detail/opfs-explorer/acndjpgkpaclldomagafnognkcgjignd)
 2. Disable JavaScript in your browser

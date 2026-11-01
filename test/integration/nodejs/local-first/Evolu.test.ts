@@ -2,6 +2,7 @@ import {
   assert,
   assertEqual,
   assertFalse,
+  assertThrowsInstanceOf,
   assertTrue,
   assertLength,
   assertNotNull,
@@ -12,7 +13,10 @@ import {
 import { createXChaCha20Poly1305 } from "../../../../packages/common/src/Crypto.ts";
 import { describe, it } from "node:test";
 import { createConsoleStoreOutput } from "../../../../packages/common/src/Console.ts";
-import { UnknownError } from "../../../../packages/common/src/Error.ts";
+import {
+  createUnknownError,
+  UnknownError,
+} from "../../../../packages/common/src/Error.ts";
 import {
   constVoid,
   disposable,
@@ -20,8 +24,10 @@ import {
 } from "../../../../packages/common/src/Function.ts";
 import type {
   DbWorkerInit,
+  DeleteDatabaseFiles,
   WaitForDatabaseRelease,
 } from "../../../../packages/common/src/local-first/Db.ts";
+import type { ReloadApp } from "../../../../packages/common/src/Platform.ts";
 import { startDbWorker } from "../../../../packages/common/src/local-first/Db.ts";
 import {
   AppName,
@@ -151,11 +157,16 @@ describe("Evolu integration", () => {
     createSqliteDriver,
     createWebSocket = testCreateWebSocket({ throwOnCreate: true }),
     seed,
+    // The default database is in memory, so there are no files to delete.
+    deleteDatabaseFiles = () => () => ok(),
+    reloadApp = constVoid,
     waitForDatabaseRelease,
   }: {
     time?: TestTime;
     createSqliteDriver?: CreateSqliteDriver;
     createWebSocket?: CreateWebSocket;
+    deleteDatabaseFiles?: DeleteDatabaseFiles;
+    reloadApp?: ReloadApp;
     waitForDatabaseRelease?: WaitForDatabaseRelease;
     /**
      * Seeds the DbWorker's randomness and the tab's, which creates the
@@ -220,6 +231,7 @@ describe("Evolu integration", () => {
         createMessagePort,
         lockManager,
         createSqliteDriver: createSqliteDriver ?? createSharedSqliteDriver,
+        deleteDatabaseFiles,
         ...(waitForDatabaseRelease && { waitForDatabaseRelease }),
       }),
     );
@@ -294,7 +306,7 @@ describe("Evolu integration", () => {
       run.create({
         ...run.deps,
         createDbWorker,
-        reloadApp: constVoid,
+        reloadApp,
         sharedWorker,
       }),
     );
@@ -1953,6 +1965,8 @@ describe("Evolu integration", () => {
       createMessagePort,
       lockManager: testCreateLockManager(),
       createSqliteDriver,
+      // The database is in memory, so there are no files to delete.
+      deleteDatabaseFiles: () => () => ok(),
     });
 
     const createDbWorker = () =>
@@ -2209,5 +2223,127 @@ describe("Evolu integration", () => {
     await first[Symbol.asyncDispose]();
     assertEqual(await secondLoad, []);
     assertEqual(await firstLoad, []);
+  });
+
+  describe("deleteDatabase", () => {
+    it("deletes the database for every tab, and a later instance starts it again", async () => {
+      const deletedNames: Array<Name> = [];
+      const reloads: Array<string | undefined> = [];
+      await using setup = await setupRunWithEvoluDeps({
+        // Each DbWorker opens its own memory database, so the revived one
+        // starts empty.
+        createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+        deleteDatabaseFiles: (name) => () => {
+          deletedNames.push(name);
+          return ok();
+        },
+        reloadApp: (url) => {
+          reloads.push(url);
+        },
+      });
+      const { run, createIntegrationEvolu } = setup;
+      await using caller = await run.ok(createIntegrationEvolu);
+      using laterTabDeps = createEvoluDeps({
+        ...run.deps,
+        sharedWorker: setup.connectLaterTab(),
+      });
+      await using laterTabRun = run.create(laterTabDeps);
+      const otherTabDeleted = Promise.withResolvers<void>();
+      await using otherTab = await laterTabRun.ok(
+        createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          onDatabaseDeleted: otherTabDeleted.resolve,
+        }),
+      );
+      caller.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("Deleted"),
+      });
+      assertEqual(await otherTab.loadQuery(todoTitlesQuery), [
+        { title: "Deleted" },
+      ]);
+
+      assertEqual(await caller.deleteDatabase(), ok());
+      await otherTabDeleted.promise;
+
+      assertEqual(deletedNames.at(0), caller.name);
+      // The tab that asked reloads too, as it has no onDatabaseDeleted.
+      assertEqual(reloads, [undefined]);
+      for (const evolu of [caller, otherTab])
+        assertThrowsInstanceOf(() => {
+          evolu.getQueryRows(todoTitlesQuery);
+        }, Error);
+
+      await using revived = await run.ok(createIntegrationEvolu);
+      revived.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("Revived"),
+      });
+      assertEqual(await revived.loadQuery(todoTitlesQuery), [
+        { title: "Revived" },
+      ]);
+    });
+
+    it("deletes once for instances that ask at the same time, and answers both", async () => {
+      const deletedNames: Array<Name> = [];
+      await using setup = await setupRunWithEvoluDeps({
+        deleteDatabaseFiles: (name) => () => {
+          deletedNames.push(name);
+          return ok();
+        },
+      });
+      const { run, createIntegrationEvolu } = setup;
+      await using first = await run.ok(createIntegrationEvolu);
+      await using second = await run.ok(createIntegrationEvolu);
+      assertEqual(await first.loadQuery(todoTitlesQuery), []);
+
+      assertEqual(
+        await Promise.all([first.deleteDatabase(), second.deleteDatabase()]),
+        [ok(), ok()],
+      );
+      assertEqual(deletedNames, [first.name]);
+    });
+
+    it("answers a failed deletion, after which the instances keep working", async () => {
+      const error = createUnknownError(new Error("disk I/O error"));
+      await using setup = await setupRunWithEvoluDeps({
+        deleteDatabaseFiles: () => () => err(error),
+      });
+      const { run, createIntegrationEvolu } = setup;
+      await using evolu = await run.ok(createIntegrationEvolu);
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
+
+      assertEqual(await evolu.deleteDatabase(), err(error));
+
+      evolu.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("Kept working"),
+      });
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), [
+        { title: "Kept working" },
+      ]);
+    });
+
+    it("refuses the database when its files stay held after a held deletion", async () => {
+      let isHeld = false;
+      await using setup = await setupRunWithEvoluDeps({
+        deleteDatabaseFiles: (name) => () => {
+          isHeld = true;
+          return err({ type: "DatabaseHeldError", name });
+        },
+        // The next DbWorker waits for the same files, as every startup does.
+        waitForDatabaseRelease: (name) => () =>
+          isHeld ? err({ type: "DatabaseHeldError", name }) : ok(),
+      });
+      const { run, createIntegrationEvolu } = setup;
+      await using evolu = await run.ok(createIntegrationEvolu);
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
+      const error = { type: "DatabaseHeldError", name: evolu.name } as const;
+      const refused = setup.waitForTabError();
+
+      assertEqual(await evolu.deleteDatabase(), err(error));
+      await refused;
+
+      assertEqual(setup.tabErrors, [error]);
+    });
   });
 });

@@ -82,6 +82,9 @@ export interface FlushSyncDep {
  * also clear in-memory state after persistent storage was purged; it does not
  * purge storage itself.
  *
+ * On every platform, Evolu also reloads the app when an instance's database was
+ * deleted, unless the instance's `EvoluConfig.onDatabaseDeleted` handles that.
+ *
  * - Web: Reloads the page, or loads the specified URL instead
  * - React Native: Restarts the app (URL ignored)
  *

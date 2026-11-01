@@ -84,6 +84,38 @@
  * or has not synced yet is lost, even though its replacement starts in memory
  * too.
  *
+ * ## Deletion
+ *
+ * {@link Evolu.deleteDatabase} queues a deletion like any request, so it runs
+ * after every request queued before it. The leading DbWorker ends serving,
+ * closes the database, and deletes its files with {@link DeleteDatabaseFiles},
+ * all under the database's leader lock, so no other DbWorker opens them. Then
+ * it tells the tenant and ends, which releases the lock. A database kept in
+ * memory has a name of its own and no files, so its DbWorker deletes none; see
+ * Storage.
+ *
+ * The tenant tells each of its instances, in every tab, and disposes its side
+ * of them, which drops the requests they queued after the deletion. Every
+ * instance reacts the same way, whichever asked: it resolves its pending call,
+ * calls {@link EvoluConfig.onDatabaseDeleted}, or reloads the app without it,
+ * and disposes itself.
+ *
+ * The tenant then starts no DbWorker until an instance of its name is created,
+ * which revives it as a new tenant would be created: with that instance's
+ * options and a new session NodeId, because the new database's clock starts
+ * behind the messages relays already have. A DbWorker requested before the
+ * deletion, such as after a tab leader change, that reports in afterwards would
+ * lead with the earlier options or recreate the deleted database, so the tenant
+ * discards it: it deletes the database its own startup created, which holds no
+ * data, and ends.
+ *
+ * A deletion that fails answers its instance with the error, and the database
+ * may be partly deleted. The DbWorker ends, and a replacement serves the
+ * requests after it, as after a tab leader change, unless it refuses startup,
+ * as it does when the files stay held. When the tab hosting the DbWorker closes
+ * during the deletion, the replacement reopens the database, creating it again
+ * if it was already deleted, and deletes it again.
+ *
  * ## Synchronization routing
  *
  * WebSocket transports are shared resources keyed by their configuration and
@@ -372,6 +404,7 @@ import type {
 import type {
   DatabaseHeldError,
   DbWorkerInit,
+  DeleteDatabaseFiles,
   UnsupportedDbVersionError,
 } from "./Db.ts";
 import type { Evolu, EvoluConfig, SyncStateDep } from "./Evolu.ts";
@@ -402,6 +435,7 @@ import type { CrdtMessage, StorageWriteMessagesError } from "./Storage.ts";
 import {
   createInitialTimestamp,
   orderTimestamp,
+  type NodeId,
   type Timestamp,
 } from "./Timestamp.ts";
 
@@ -1290,6 +1324,9 @@ export type EvoluInput =
     }
   | {
       readonly type: "Export";
+    }
+  | {
+      readonly type: "DeleteDatabase";
     };
 
 export type EvoluOutput =
@@ -1320,6 +1357,18 @@ export type EvoluOutput =
       /** The mutation with these onComplete callbacks could not be stored. */
       readonly type: "OnMutateFailed";
       readonly onCompleteIds: ReadonlyArray<Id>;
+    }
+  | {
+      /**
+       * The database was deleted, so the instance disposes itself. The tenant
+       * no longer has it, and this is its last message.
+       */
+      readonly type: "OnDatabaseDeleted";
+    }
+  | {
+      /** The instance's deletion failed; see Deletion. */
+      readonly type: "OnDeleteDatabaseFailed";
+      readonly error: DatabaseHeldError | UnknownError;
     };
 
 export type DbWorkerInput =
@@ -1331,7 +1380,12 @@ export type DbWorkerInput =
           }
         | { readonly request: DbWorkerReadRequest }
       ))
-  | Typed<"Dispose">;
+  | Typed<"Dispose">
+  /**
+   * The tenant will not use the worker, which deletes the database if its
+   * startup created it, then ends.
+   */
+  | Typed<"Discard">;
 
 export type DbWorkerRequest = DbWorkerWriteRequest | DbWorkerReadRequest;
 
@@ -1361,7 +1415,10 @@ export type DbWorkerReadRequest =
   | {
       readonly type: "ForEvolu";
       readonly id: EvoluInstanceId;
-      readonly message: ExtractTyped<EvoluInput, "Query" | "Export">;
+      readonly message: ExtractTyped<
+        EvoluInput,
+        "Query" | "Export" | "DeleteDatabase"
+      >;
     }
   | {
       readonly type: "ForSharedWorker";
@@ -1387,6 +1444,14 @@ export type DbWorkerOutput =
       readonly type: "LeaderRefused";
       readonly error:
         DatabaseHeldError | UnknownError | UnsupportedDbVersionError;
+    }
+  | {
+      /**
+       * The worker closed the database and deleted its files, which a database
+       * kept in memory does not have; this answers the deletion the tenant
+       * dispatched to it. It is the worker's last message on its port.
+       */
+      readonly type: "DatabaseDeleted";
     }
   | {
       readonly type: "OnQueuedResponse";
@@ -1433,6 +1498,14 @@ export type DbWorkerQueuedResponse =
             /** SQLite failed the export; nothing changed. */
             readonly type: "ExportFailed";
             readonly error: UnknownError;
+          }
+        | {
+            /**
+             * The deletion failed, and the database may be partly deleted. The
+             * worker then ends, so this is its last message on its port.
+             */
+            readonly type: "DeleteDatabaseFailed";
+            readonly error: DatabaseHeldError | UnknownError;
           };
     }
   | {
@@ -2360,13 +2433,7 @@ export const initSharedWorker =
 
 const createEvoluTenant =
   (
-    {
-      name,
-      consoleLevel,
-      sqliteSchema,
-      encryptionKey,
-      memoryOnly,
-    }: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
+    creation: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
     currentTenantsByName: Map<Name, BorrowedResource<EvoluTenant>>,
     workerId: SharedWorkerId,
   ): Task<EvoluTenant, never, EvoluTenantDeps> =>
@@ -2375,14 +2442,43 @@ const createEvoluTenant =
     const tenantRun = disposer.use(run.create());
 
     const { deps } = run;
+    const { name } = creation;
     const console = deps.console.child(name).child("SharedWorker");
-    console.setLevel(consoleLevel);
 
-    // Every clock adopted from a DbWorker gets the session's NodeId, never the
-    // stored one, so a copy of the database, such as a backup restored on
-    // another device, stamps under its own NodeId from its first write. See
-    // docs/adr/node-id-is-random-per-session.md.
-    const nodeId = createInitialTimestamp(deps).nodeId;
+    /**
+     * What the tenant's database starts with, from the instance that created
+     * the tenant, or that revives it after a deletion; see Deletion.
+     */
+    interface Generation {
+      /**
+       * Every clock adopted from a DbWorker gets the session's NodeId, never
+       * the stored one, so a copy of the database, such as a backup restored on
+       * another device, stamps under its own NodeId from its first write. A
+       * revived database starts with a new clock, so it gets a new NodeId too.
+       * See docs/adr/node-id-is-random-per-session.md.
+       */
+      readonly nodeId: NodeId;
+      readonly consoleLevel: ConsoleLevel;
+      readonly sqliteSchema: SqliteSchema;
+      readonly encryptionKey: EncryptionKey;
+      readonly memoryOnly: boolean;
+    }
+
+    const createGeneration = ({
+      consoleLevel,
+      sqliteSchema,
+      encryptionKey,
+      memoryOnly,
+    }: ExtractTyped<SharedWorkerInput, "CreateEvolu">): Generation => ({
+      nodeId: createInitialTimestamp(deps).nodeId,
+      consoleLevel,
+      sqliteSchema,
+      encryptionKey,
+      memoryOnly,
+    });
+
+    let generation = createGeneration(creation);
+    console.setLevel(generation.consoleLevel);
 
     interface EvoluInstance extends AsyncDisposable {
       readonly id: EvoluInstanceId;
@@ -2446,12 +2542,22 @@ const createEvoluTenant =
 
     /**
      * The tenant's database worker: `Starting` until one leads, then `Leading`,
-     * which a replacement leader replaces. `Refused` is final, and `Disposed`
-     * changes only to `Refused`, when a worker requested earlier refuses
-     * startup or the leader fails before it handles the dispose message.
+     * which a replacement leader replaces. A leader that failed a deletion
+     * ends, so the tenant is `Replacing` until its replacement leads, and
+     * dispatches nothing meanwhile. `Refused` is final, and `Disposed` changes
+     * only to `Refused`, when a worker requested earlier refuses startup or the
+     * leader fails before it handles the dispose message, or to `Deleted`, when
+     * the leader completes a deletion it started before. `Deleted` ends a
+     * generation and changes to `Starting` when an instance revives the
+     * database; see Deletion.
      */
     type DbWorkerState =
-      Typed<"Starting"> | LeadingDbWorker | RefusedDbWorker | Typed<"Disposed">;
+      | Typed<"Starting">
+      | LeadingDbWorker
+      | ReplacingDbWorker
+      | RefusedDbWorker
+      | Typed<"Deleted">
+      | Typed<"Disposed">;
 
     interface LeadingDbWorker extends Typed<"Leading"> {
       readonly port: MessagePort<DbWorkerInput, DbWorkerOutput>;
@@ -2465,6 +2571,11 @@ const createEvoluTenant =
         readonly entry: QueueEntry;
         readonly attemptId: Id;
       } | null;
+    }
+
+    interface ReplacingDbWorker extends Typed<"Replacing"> {
+      /** The ended leader's clock, which its replacement adopts. */
+      readonly clock: Timestamp;
     }
 
     interface RefusedDbWorker extends Typed<"Refused"> {
@@ -2501,19 +2612,26 @@ const createEvoluTenant =
     // until Dispose arrives, its tab closes, or this worker ends, and the next
     // DbWorker for this database, of this worker or another build, waits for
     // that lock before it reads the clock. A requested DbWorker that reports
-    // in later gets Dispose, and a refused tenant stays refused, so it keeps
-    // dropping requests.
+    // in later gets Dispose, or Discard when the database was deleted, and a
+    // refused tenant stays refused, so it keeps dropping requests.
     disposer.defer(() => {
       if (dbWorker.type === "Leading")
         dbWorker.port.postMessage({ type: "Dispose" });
-      if (dbWorker.type !== "Refused") dbWorker = { type: "Disposed" };
+      if (dbWorker.type !== "Refused" && dbWorker.type !== "Deleted")
+        dbWorker = { type: "Disposed" };
     });
 
     const initDbWorker = (): void => {
       // Without a tab leader yet, the store subscription starts the DbWorker
       // once a tab announces itself.
       const tabLeaderPort = deps.tabLeaderPortStore.get();
-      if (dbWorker.type === "Refused" || !tabLeaderPort) return;
+      if (
+        dbWorker.type === "Refused" ||
+        dbWorker.type === "Deleted" ||
+        !tabLeaderPort
+      )
+        return;
+      const workerGeneration = generation;
 
       const dbWorkerChannel = deps.createMessageChannel<
         DbWorkerOutput,
@@ -2527,6 +2645,17 @@ const createEvoluTenant =
             const previous = dbWorker;
             if (previous.type === "Leading")
               assertNotSame(previous.port, currentDbWorkerPort);
+            if (
+              workerGeneration !== generation ||
+              previous.type === "Deleted"
+            ) {
+              // This worker was requested before the database was deleted.
+              // The tenant will not use it, so it deletes the database its
+              // startup created and releases the database lock.
+              currentDbWorkerPort.postMessage({ type: "Discard" });
+              currentDbWorkerPort[Symbol.dispose]();
+              break;
+            }
             if (previous.type === "Refused" || previous.type === "Disposed") {
               // This worker was requested before the refusal or before
               // disposal started. The tenant will not use it, so let it
@@ -2536,23 +2665,26 @@ const createEvoluTenant =
               break;
             }
             if (previous.type === "Leading") previous.port[Symbol.dispose]();
+            // A leader that ended after a failed deletion is replaced as well,
+            // and its database may be partly deleted.
+            const replaced =
+              previous.type === "Leading" || previous.type === "Replacing"
+                ? previous
+                : null;
             dbWorker = {
               type: "Leading",
               port: currentDbWorkerPort,
               // A replacement may advance the clock by releasing quarantine,
               // or start behind it with an empty memoryOnly database. Keep the
               // greater clock; pending writes retain their captured inputs.
-              clock: adoptClock(
-                previous.type === "Leading" ? previous.clock : null,
-                message.clock,
-              ),
+              clock: adoptClock(replaced?.clock ?? null, message.clock),
               activeDispatch: null,
             };
             // A replacement leader may have committed writes whose responses
             // were lost, and may have released quarantine at startup. A lost
             // response may also have reported stored owner messages, so the
             // owners reconcile through every transport again.
-            if (previous.type === "Leading") {
+            if (replaced) {
               refreshQueries();
               requestCreateSyncMessages(
                 new Set(getSyncOwners().map(({ ownerId }) => ownerId)),
@@ -2567,8 +2699,13 @@ const createEvoluTenant =
           case "LeaderRefused": {
             console.info("leaderRefused", message.error);
             // A refused tenant keeps its first error, which its tabs already
-            // received, so a later refusal only releases its port.
-            if (dbWorker.type === "Refused") {
+            // received, so a later refusal only releases its port, as does
+            // one from a worker requested before the database was deleted.
+            if (
+              dbWorker.type === "Refused" ||
+              dbWorker.type === "Deleted" ||
+              workerGeneration !== generation
+            ) {
               currentDbWorkerPort[Symbol.dispose]();
               break;
             }
@@ -2599,6 +2736,41 @@ const createEvoluTenant =
               reportRefusal(instance.tabPort, message.error);
             }
             dbWorkerInited.resolve();
+            break;
+          }
+          case "DatabaseDeleted": {
+            currentDbWorkerPort[Symbol.dispose]();
+            // The tenant was disposed or refused while its leader deleted
+            // the database. A disposed tenant records the deletion, so a
+            // worker requested before it is discarded.
+            if (dbWorker.type === "Disposed") {
+              dbWorker = { type: "Deleted" };
+              break;
+            }
+            if (dbWorker.type === "Refused") break;
+            const leading = dbWorker;
+            assert(
+              leading.type === "Leading" &&
+                leading.port === currentDbWorkerPort &&
+                leading.activeDispatch?.entry.type === "Read" &&
+                leading.activeDispatch.entry.request.message.type ===
+                  "DeleteDatabase",
+              "Only the leader deletes, when the deletion is dispatched.",
+            );
+            // Each instance is told and disposed, whatever it queued after
+            // the deletion is dropped, and the tenant waits for an instance
+            // that revives the database.
+            queue.length = 0;
+            pendingWriteCountByOwnerId.clear();
+            pendingApplyCountForAllRoutesByOwnerId.clear();
+            ownerTransportApplyRelation.clear();
+            dbWorker = { type: "Deleted" };
+            console.info("databaseDeleted");
+            // oxlint-disable-next-line unicorn/no-useless-spread -- Snapshot the instances, because disposing one removes it from the map.
+            for (const instance of [...instancesById.values()]) {
+              instance.port.postMessage({ type: "OnDatabaseDeleted" });
+              void instance[Symbol.asyncDispose]();
+            }
             break;
           }
           case "OnQueuedResponse": {
@@ -2635,6 +2807,13 @@ const createEvoluTenant =
             assertNonNullable(head);
             updatePendingWork(head, -1);
             leading.activeDispatch = null;
+            if (response.message.type === "DeleteDatabaseFailed") {
+              // The worker ended after the failure, so a replacement serves the
+              // requests after it, as one does after a leader change.
+              currentDbWorkerPort[Symbol.dispose]();
+              dbWorker = { type: "Replacing", clock: leading.clock };
+              initDbWorker();
+            }
             // Follow-up uploads and retries are already queued or sent. Only
             // now can removing the completed head establish convergence.
             refreshSyncRoutes();
@@ -2652,10 +2831,10 @@ const createEvoluTenant =
         {
           type: "DbWorkerInit",
           name,
-          consoleLevel,
-          sqliteSchema,
-          encryptionKey,
-          memoryOnly,
+          consoleLevel: generation.consoleLevel,
+          sqliteSchema: generation.sqliteSchema,
+          encryptionKey: generation.encryptionKey,
+          memoryOnly: generation.memoryOnly,
           sharedWorkerId: workerId,
           port: dbWorkerChannel.port1.native,
         },
@@ -2669,7 +2848,7 @@ const createEvoluTenant =
       current: Timestamp | null,
       reported: Timestamp,
     ): Timestamp => {
-      const clock = { ...reported, nodeId };
+      const clock = { ...reported, nodeId: generation.nodeId };
       return current && orderTimestamp(clock, current) <= 0 ? current : clock;
     };
 
@@ -2741,6 +2920,7 @@ const createEvoluTenant =
       refusedTabPorts.add(tabPort);
       tabPort.postMessage({ type: "Error", error });
     };
+
     const runQueue = (): void => {
       if (
         dbWorker.type !== "Leading" ||
@@ -2909,6 +3089,13 @@ const createEvoluTenant =
         case "ExportFailed":
           instance?.port.postMessage({
             type: "OnExportFailed",
+            error: response.message.error,
+          });
+          break;
+
+        case "DeleteDatabaseFailed":
+          instance?.port.postMessage({
+            type: "OnDeleteDatabaseFailed",
             error: response.message.error,
           });
           break;
@@ -3552,6 +3739,15 @@ const createEvoluTenant =
         refreshSyncRoutes,
 
         addInstance: (message, tabPort, onDisposed) => {
+          // A deleted database is created again, as by a new tenant, with
+          // this instance's options and a new session NodeId.
+          if (dbWorker.type === "Deleted") {
+            generation = createGeneration(message);
+            console.setLevel(generation.consoleLevel);
+            dbWorker = { type: "Starting" };
+            initDbWorker();
+          }
+
           const disposer = new AsyncDisposableStack();
           const instance: EvoluInstance = {
             id: message.id,
@@ -3620,7 +3816,8 @@ const createEvoluTenant =
             if (dbWorker.type === "Refused") return;
             switch (message.type) {
               case "Query":
-              case "Export": {
+              case "Export":
+              case "DeleteDatabase": {
                 enqueueRequest({
                   type: "Read",
                   request: { type: "ForEvolu", id: instance.id, message },

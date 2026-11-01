@@ -1,8 +1,9 @@
 /**
  * React Native's SQLite driver on the N-API mirror of the binding, with real
  * files: the shared iterate contract, exec's one-shot statements and prepare's
- * statements, export, delete, memory and encrypted databases, wrong keys, and
- * the waits for a file another connection holds, on a test Run's time.
+ * statements, export, delete, memory and encrypted databases, wrong keys, the
+ * waits for a file another connection holds, on a test Run's time, and the
+ * deletion of a database's files.
  */
 import {
   assert,
@@ -13,6 +14,7 @@ import {
   assertThrows,
   assertTrue,
   bytesToHex,
+  createUnknownError,
   EncryptionKey,
   err,
   Millis,
@@ -22,6 +24,7 @@ import {
   testCreateRun,
   type NativeSqlite,
   type NativeSqliteDatabase,
+  type NativeSqliteError,
   type SqliteDriverOptions,
 } from "@evolu/common";
 import {
@@ -37,6 +40,7 @@ import {
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -50,6 +54,7 @@ import {
   describeSqliteDriverPrepare,
   setupSqliteAndDriver,
 } from "../../../../test/integration/nodejs/Sqlite/_prepare.ts";
+import { createDeleteDatabaseFiles } from "../../src/sqlite/DeleteDatabaseFiles.ts";
 import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
 import { createWaitForDatabaseRelease } from "../../src/sqlite/WaitForDatabaseRelease.ts";
 
@@ -72,8 +77,9 @@ const setupDirectory = (t: TestContext): string => {
 };
 
 /**
- * The driver and the wait over the databases in `directory`, through
- * `nativeSqlite`, and a test Run whose time the test advances.
+ * The driver, the wait and the deletion of the files over the databases in
+ * `directory`, through `nativeSqlite`, and a test Run whose time the test
+ * advances.
  */
 const setupDriver = (directory: string, nativeSqlite = binding) => {
   const run = testCreateRun();
@@ -87,6 +93,7 @@ const setupDriver = (directory: string, nativeSqlite = binding) => {
     openAbortable: (options?: SqliteDriverOptions) =>
       run.abortable(createSqliteDriver(testName, options)),
     waitForRelease: () => run(createWaitForDatabaseRelease(deps)(testName)),
+    deleteFiles: () => run(createDeleteDatabaseFiles(deps)(testName)),
   };
 };
 
@@ -634,4 +641,136 @@ test("the wait finds the database of a directory that doesn't exist yet free at 
   await using _run = setup.run;
 
   assertEqual(await setup.waitForRelease(), ok());
+});
+
+test("deleteDatabaseFiles deletes an encrypted database's file and its -journal, -wal and -shm, leaves other databases, and succeeds again once they are missing", async (t) => {
+  const directory = setupDirectory(t);
+  const setup = setupDriver(directory);
+  await using _run = setup.run;
+  {
+    using driver = await setup.open(encrypted);
+    driver.exec(sql`create table t (a);`);
+  }
+  const sidecars = ["-journal", "-wal", "-shm"].map(
+    (suffix) => `${setup.path}${suffix}`,
+  );
+  for (const sidecar of sidecars) writeFileSync(sidecar, "");
+  const other = join(directory, "evolu1-Other.db");
+  writeFileSync(other, "");
+
+  assertEqual(await setup.deleteFiles(), ok());
+
+  for (const path of [setup.path, ...sidecars]) assertFalse(existsSync(path));
+  assertTrue(existsSync(other));
+  assertEqual(await setup.deleteFiles(), ok());
+});
+
+test("deleteDatabaseFiles finds the files of a directory that doesn't exist yet deleted", async (t) => {
+  const directory = join(setupDirectory(t), "SQLite");
+  const setup = setupDriver(directory);
+  await using _run = setup.run;
+
+  assertEqual(await setup.deleteFiles(), ok());
+  assertFalse(existsSync(directory));
+});
+
+test("deleteDatabaseFiles fails with DatabaseHeldError and deletes nothing when another connection still holds the file after 10 seconds", async (t) => {
+  const setup = setupDriver(setupDirectory(t));
+  await using _run = setup.run;
+  const holder = binding.openFile(setup.path);
+  t.after(() => {
+    holder.close();
+  });
+
+  const deleted = setup.deleteFiles();
+  let isSettled = false;
+  void deleted.then(() => {
+    isSettled = true;
+  });
+  // Each second of test time ends one retry delay, so the attempts are a
+  // second apart, and the one at 10 seconds is the last.
+  for (let second = 1; second <= 10; second += 1) {
+    await flushMicrotasks();
+    assertFalse(isSettled);
+    setup.run.deps.time.advance(Millis.orThrow(1000));
+  }
+  await flushMicrotasks();
+  assertTrue(isSettled);
+
+  assertEqual(
+    await deleted,
+    err({ type: "DatabaseHeldError", name: testName }),
+  );
+  assertTrue(existsSync(setup.path));
+});
+
+test("deleteDatabaseFiles deletes the files once the other connection closes", async (t) => {
+  const setup = setupDriver(setupDirectory(t));
+  await using _run = setup.run;
+  const holder = binding.openFile(setup.path);
+
+  const deleted = setup.deleteFiles();
+  let isDeleted = false;
+  void deleted.then(() => {
+    isDeleted = true;
+  });
+  for (let second = 1; second <= 5; second += 1) {
+    await flushMicrotasks();
+    setup.run.deps.time.advance(Millis.orThrow(1000));
+  }
+  await flushMicrotasks();
+  assertFalse(isDeleted);
+  assertTrue(existsSync(setup.path));
+  holder.close();
+  setup.run.deps.time.advance(Millis.orThrow(1000));
+
+  assertEqual(await deleted, ok());
+  assertFalse(existsSync(setup.path));
+});
+
+test("deleteDatabaseFiles fails at once with an UnknownError for a file the binding can't remove", async (t) => {
+  const directory = setupDirectory(t);
+  // A directory at the database's path, which unlink refuses.
+  mkdirSync(join(directory, `evolu1-${testName}.db`));
+  let thrown: unknown = null;
+  let deletes = 0;
+  const setup = setupDriver(directory, {
+    ...binding,
+    deleteFile: (path) => {
+      deletes++;
+      try {
+        binding.deleteFile(path);
+      } catch (error) {
+        thrown = error;
+        throw error;
+      }
+    },
+  });
+  await using _run = setup.run;
+
+  const deleted = await setup.deleteFiles();
+
+  assertInstanceOf(thrown, Error);
+  const cause = thrown.cause as NativeSqliteError;
+  // SQLITE_IOERR_DELETE.
+  assertEqual([cause.operation, cause.extendedCode], ["deleteFile", 2570]);
+  assertEqual(deleted, err(createUnknownError(thrown)));
+  assertEqual(deletes, 1);
+});
+
+test("deleteDatabaseFiles fails at once with an UnknownError for a thrown value that isn't an Error", async (t) => {
+  const thrown = { type: "Unexpected" };
+  let deletes = 0;
+  const setup = setupDriver(setupDirectory(t), {
+    ...binding,
+    deleteFile: () => {
+      deletes++;
+      // oxlint-disable-next-line typescript/only-throw-error -- Anything can be thrown.
+      throw thrown;
+    },
+  });
+  await using _run = setup.run;
+
+  assertEqual(await setup.deleteFiles(), err(createUnknownError(thrown)));
+  assertEqual(deletes, 1);
 });

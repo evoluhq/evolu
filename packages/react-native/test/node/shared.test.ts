@@ -31,6 +31,7 @@ import {
   kyselySql,
   testAppOwner,
   RelayUrl,
+  type DeleteDatabaseFiles,
   type EvoluInput,
   type EvoluOutput,
 } from "@evolu/common/local-first";
@@ -51,6 +52,10 @@ const setupMemorySqliteDriver = (): CreateSqliteDriver => (name) =>
     nativeSqlite: binding,
     databaseDirectory: tmpdir(),
   })(name, { mode: "memory" });
+
+// The tests delete no database, and their databases are in memory, so there
+// are no files to delete.
+const deleteNoDatabaseFiles: DeleteDatabaseFiles = () => () => ok();
 
 /** Resolves with the deps' first EvoluError. */
 const waitForEvoluError = (deps: EvoluDeps): Promise<EvoluError | null> =>
@@ -78,6 +83,7 @@ describe("createEvoluDeps", () => {
         createSqliteDriver: () => {
           throw new Error("No database is opened.");
         },
+        deleteDatabaseFiles: deleteNoDatabaseFiles,
       });
 
     const first = createDeps();
@@ -106,6 +112,7 @@ describe("createEvoluDeps", () => {
       createEvoluDeps({
         reloadApp: constVoid,
         createSqliteDriver: setupMemorySqliteDriver(),
+        deleteDatabaseFiles: deleteNoDatabaseFiles,
       });
 
     using first = createDeps();
@@ -200,6 +207,7 @@ describe("createEvoluDeps", () => {
       createSqliteDriver: () => () => {
         throw error;
       },
+      deleteDatabaseFiles: deleteNoDatabaseFiles,
     });
     const evoluError = waitForEvoluError(deps);
     await using run = createRun(deps);
@@ -238,6 +246,7 @@ describe("createEvoluDeps", () => {
         events.push(`wait ${name}`);
         return ok();
       },
+      deleteDatabaseFiles: deleteNoDatabaseFiles,
     });
     await using run = createRun(deps);
     let tenantDisposed = Promise.resolve();
@@ -280,6 +289,7 @@ describe("createEvoluDeps", () => {
     using deps = createEvoluDeps({
       reloadApp: constVoid,
       createSqliteDriver: setupMemorySqliteDriver(),
+      deleteDatabaseFiles: deleteNoDatabaseFiles,
     });
     const schema = {
       todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },

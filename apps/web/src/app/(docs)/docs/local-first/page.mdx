@@ -1662,12 +1662,45 @@ assertSame(mnemonic, testAppOwner.mnemonic);
 
 ## Purge data
 
+`evolu.deleteDatabase()` deletes the instance's local database on this device and resolves once its files are gone. Its promise resolves with a `Result`, which fails with `DatabaseHeldError` when another context keeps holding the files, or with `UnknownError` when the platform fails to delete them. After an `UnknownError`, the instances keep working, and calling it again deletes again. After a `DatabaseHeldError`, the database's next worker waits for the files as every startup does, and Evolu refuses the database when they stay held. It fails with `EvoluDisposedError` when its instance is disposed first. It runs after the mutations made before it. Every instance of the database then disposes itself, in every tab, including the one that asked. Each first calls `onDatabaseDeleted` from its config, or reloads the app without it, because rendering a disposed instance throws. In React, components that use an instance the deletion disposed stay suspended until the app reloads or provides another instance.
+
+```ts
+// ---cut-start---
+import {
+  AppName,
+  assertEqual,
+  createEvolu,
+  id,
+  NonEmptyTrimmedString100,
+  ok,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("LocalFirstPurge"),
+    appOwner: testAppOwner,
+    transports: [],
+  }),
+);
+// ---cut-end---
+const deleted = await evolu.deleteDatabase();
+// ---cut-start---
+assertEqual(deleted, ok());
+// ---cut-end---
+```
+
+It deletes only this device's copy, and changes not yet synced are lost. An instance created later with the same owner opens a new, empty database, which its transports fill again from relays, so forget the owner first if its data must not come back.
+
 <Note>
-  `Evolu.deleteDatabase` and `Evolu.deleteOwner` are declared but **not
-  implemented yet**. Both currently throw. Implementation is planned soon.
+  `Evolu.deleteOwner` is declared but **not implemented yet**. It currently
+  throws.
 </Note>
 
-`deleteDatabase` is intended to remove an instance's local database. `deleteOwner` is intended to remove an owner's local rows and history and stop using that owner across tabs. Neither currently provides a working purge operation. The Evolu 7 `resetAppOwner` method is no longer available.
+`deleteOwner` is intended to remove an owner's local rows and history and stop using that owner across tabs. The Evolu 7 `resetAppOwner` method is no longer available.
 
 ## Restore data
 

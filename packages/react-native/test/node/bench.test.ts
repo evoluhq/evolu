@@ -186,6 +186,8 @@ test("a timing session logs meta, the options, six runs per case in order and do
           "worker",
           createStrictDriver(databaseDirectory),
         ),
+        // The session deletes no database through Evolu.
+        deleteDatabaseFiles: () => () => ok(),
         reloadApp: () => undefined,
         console: warnConsole(),
       });

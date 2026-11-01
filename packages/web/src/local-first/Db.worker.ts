@@ -7,6 +7,7 @@ installPolyfills();
 import { createRandomBytes } from "@evolu/common";
 import { startDbWorker } from "@evolu/common/local-first";
 import {
+  createDeleteDatabaseFiles,
   createWaitForDatabaseRelease,
   createWasmSqliteDriver,
   loadSqliteWasm,
@@ -30,6 +31,7 @@ const sqliteDeps = {
 void run(startDbWorker(createWorkerSelf(self)), {
   ...run.deps,
   createSqliteDriver: createWasmSqliteDriver(sqliteDeps),
+  deleteDatabaseFiles: createDeleteDatabaseFiles(sqliteDeps),
   waitForDatabaseRelease: createWaitForDatabaseRelease(sqliteDeps),
 });
 

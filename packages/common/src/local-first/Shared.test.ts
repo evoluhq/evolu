@@ -271,9 +271,10 @@ const setupSharedWorker = async ({
   } = {}) => {
     const instanceDisposables = new AsyncDisposableStack();
     const id = createId<"EvoluInstance">(tabDeps);
-    const dbInputs: Array<Exclude<DbWorkerInput, { type: "Dispose" }>> = [];
-    const dbDisposeInputs: Array<Extract<DbWorkerInput, { type: "Dispose" }>> =
-      [];
+    const dbInputs: Array<ExtractTyped<DbWorkerInput, "Request">> = [];
+    const dbDisposeInputs: Array<
+      ExtractTyped<DbWorkerInput, "Dispose" | "Discard">
+    > = [];
     let dbWorkerLeaderLock: AsyncDisposable | null = null;
 
     const releaseDbWorkerLeader = async (): Promise<void> => {
@@ -327,7 +328,7 @@ const setupSharedWorker = async ({
       testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(initDbWorker.port),
     );
     dbWorkerPort.onMessage = (input) => {
-      if (input.type === "Dispose") {
+      if (input.type === "Dispose" || input.type === "Discard") {
         dbDisposeInputs.push(input);
         if (releaseDbWorkerLeaderOnDispose) void releaseDbWorkerLeader();
         return;
@@ -5156,6 +5157,104 @@ describe("sync state", () => {
         ok: true,
         value: { type: "Converged" },
       });
+      assertSame(routeOf(latest()).type, "Complete");
+    });
+
+    it("completes a revived database's route, which a write the deletion dropped leaves alone", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const transport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://revived.example/"),
+        ownerId: testAppOwner.id,
+      });
+      const deleted = await setup.createEvolu();
+      deleted.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+      await testWaitForWorkerMessage();
+      await queueMutation(deleted);
+      deleted.dbWorkerPort.postMessage({ type: "DatabaseDeleted" });
+      await testWaitForWorkerMessage();
+      await deleted.releaseDbWorkerLeader();
+
+      const revived = await setup.createEvolu();
+      revived.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            owner: { owner: testAppOwner, transports: [transport] },
+            action: "add",
+          },
+        ],
+      });
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(revived, createWebSocket);
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await respondToApplySync(revived, false, {
+        ok: true,
+        value: { type: "Converged" },
+      });
+
+      assertSame(routeOf(latest()).type, "Complete");
+      // The dropped write never reaches the revived database's worker.
+      assertFalse(
+        revived.dbInputs.some(
+          ({ request }) =>
+            request.type === "ForEvolu" && request.message.type === "Mutate",
+        ),
+      );
+    });
+
+    it("completes a revived database's route, which an apply the deletion dropped leaves alone", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const transport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://revived.example/"),
+        ownerId: testAppOwner.id,
+      });
+      const useOwner = (instance: TestEvoluInstance): void => {
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              owner: { owner: testAppOwner, transports: [transport] },
+              action: "add",
+            },
+          ],
+        });
+      };
+      const converged = { ok: true, value: { type: "Converged" } } as const;
+      const deleted = await setup.createEvolu();
+      useOwner(deleted);
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(deleted, createWebSocket);
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await respondToApplySync(deleted, false, converged);
+      deleted.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+      await testWaitForWorkerMessage();
+      // A frame received during the deletion queues an apply behind it.
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      deleted.dbWorkerPort.postMessage({ type: "DatabaseDeleted" });
+      await testWaitForWorkerMessage();
+      await deleted.releaseDbWorkerLeader();
+
+      // The revived instance keeps the tenant while the released socket ends.
+      const revived = await setup.createEvolu();
+      setup.run.deps.time.advance("3s");
+      await testWaitForWorkerMessage();
+      await testWaitForWorkerMessage();
+      useOwner(revived);
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(revived, createWebSocket);
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await respondToApplySync(revived, false, converged);
+
       assertSame(routeOf(latest()).type, "Complete");
     });
 
@@ -10997,10 +11096,9 @@ describe("with one evolu instance", () => {
       using dbWorkerPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
         initDbWorker.port,
       );
-      const nextDbInputs: Array<Exclude<DbWorkerInput, { type: "Dispose" }>> =
-        [];
+      const nextDbInputs: Array<ExtractTyped<DbWorkerInput, "Request">> = [];
       dbWorkerPort.onMessage = (input) => {
-        if (input.type !== "Dispose") nextDbInputs.push(input);
+        if (input.type === "Request") nextDbInputs.push(input);
       };
 
       // An empty memoryOnly replacement starts with a fresh clock and node ID.
@@ -12546,4 +12644,751 @@ describe("refusal", () => {
       await testWaitForWorkerMessage();
       assertEqual(leaderInputs, [{ type: "Dispose" }]);
     });
+});
+
+describe("database deletion", () => {
+  /** Adds an instance of the test database through a tab's connection. */
+  const addInstance = async (
+    setup: SharedWorkerSetup,
+    tabPort: Pick<SharedWorkerSetup["worker"]["port"], "postMessage">,
+    disposer: AsyncDisposableStack,
+    { consoleLevel = "debug" }: { consoleLevel?: ConsoleLevel } = {},
+  ) => {
+    const id = createId<"EvoluInstance">(setup.run.deps);
+    const instanceDisposer = disposer.use(new AsyncDisposableStack());
+    instanceDisposer.use(await setup.run.ok(acquireLeaderLock(id)));
+    const channel = instanceDisposer.use(
+      testCreateMessageChannel<EvoluOutput, EvoluInput>(),
+    );
+    const outputs: Array<EvoluOutput> = [];
+    channel.port2.onMessage = (output) => {
+      outputs.push(output);
+    };
+    tabPort.postMessage(
+      {
+        type: "CreateEvolu",
+        name: testName,
+        id,
+        consoleLevel,
+        sqliteSchema: testSqliteSchema,
+        encryptionKey: testAppOwner.encryptionKey,
+        memoryOnly: false,
+        evoluPort: channel.port1.native,
+      },
+      [channel.port1.native],
+    );
+    await testWaitForWorkerMessage();
+    return {
+      id,
+      port: channel.port2,
+      outputs,
+      /** Disposes the instance, as its tab does. */
+      dispose: async () => {
+        await instanceDisposer.disposeAsync();
+        await testWaitForWorkerMessage();
+      },
+    };
+  };
+
+  /**
+   * Answers the deletion the instance's DbWorker received last, with its error
+   * or as deleted.
+   */
+  const answerDeletion = async (
+    { dbInputs, dbWorkerPort, id }: TestEvoluInstance,
+    error?: DatabaseHeldError | UnknownError,
+  ): Promise<void> => {
+    const input = dbInputs.at(-1);
+    assertNotUndefined(input);
+    assertEqual(input.request, {
+      type: "ForEvolu",
+      id,
+      message: { type: "DeleteDatabase" },
+    });
+    dbWorkerPort.postMessage(
+      error
+        ? {
+            type: "OnQueuedResponse",
+            attemptId: input.attemptId,
+            response: {
+              type: "ForEvolu",
+              id,
+              message: { type: "DeleteDatabaseFailed", error },
+            },
+          }
+        : { type: "DatabaseDeleted" },
+    );
+    await testWaitForWorkerMessage();
+  };
+
+  const createTestMutation = (
+    setup: SharedWorkerSetup,
+  ): ExtractTyped<EvoluInput, "Mutate"> => ({
+    type: "Mutate",
+    changes: [
+      {
+        ownerId: testAppOwner.id,
+        ...testCreateCrdtMessage(createId(setup.run.deps), 1, "value").change,
+      },
+    ],
+    onCompleteIds: [],
+    subscribedQueries: new Set(),
+  });
+
+  /** Connects a tab that becomes the tab leader, so it hosts new DbWorkers. */
+  const setupLeaderTab = async (
+    setup: SharedWorkerSetup,
+    disposer: AsyncDisposableStack,
+  ) => {
+    const tab = setupTab(setup, disposer);
+    tab.port.postMessage({ type: "AnnounceTabLeader", consoleLevel: "debug" });
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+    return tab;
+  };
+
+  /** Starts the DbWorker of an init and collects what it receives. */
+  const setupDbWorkerPort = (
+    init: DbWorkerInit,
+    disposer: AsyncDisposableStack,
+  ) => {
+    const port = disposer.use(
+      testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(init.port),
+    );
+    const inputs: Array<DbWorkerInput> = [];
+    port.onMessage = (input) => {
+      inputs.push(input);
+    };
+    return { port, inputs };
+  };
+
+  it("runs after the requests queued before it, without a clock", async () => {
+    await using setup = await setupSharedWorker();
+    const instance = await setup.createEvolu();
+
+    instance.evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    assertLength(instance.dbInputs, 1);
+    const [query] = instance.dbInputs;
+
+    instance.dbWorkerPort.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: query.attemptId,
+      response: {
+        type: "ForEvolu",
+        id: instance.id,
+        message: { type: "Query", rowsByQuery: new Map() },
+      },
+    });
+    await testWaitForWorkerMessage();
+
+    assertSame(instance.dbInputs.length, 2);
+    const deletion = instance.dbInputs.at(-1);
+    assertNotUndefined(deletion);
+    assertEqual(deletion, {
+      type: "Request",
+      attemptId: deletion.attemptId,
+      request: {
+        type: "ForEvolu",
+        id: instance.id,
+        message: { type: "DeleteDatabase" },
+      },
+    });
+  });
+
+  it("tells every instance and disposes them", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const caller = await setup.createEvolu();
+    const callerOutputs: Array<EvoluOutput> = [];
+    caller.evoluChannel.port2.onMessage = (output) => {
+      callerOutputs.push(output);
+    };
+    const sibling = await addInstance(setup, setup.worker.port, disposer);
+    const other = await addInstance(
+      setup,
+      setupTab(setup, disposer).port,
+      disposer,
+    );
+    sibling.outputs.length = 0;
+    other.outputs.length = 0;
+
+    caller.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    other.port.postMessage(createTestMutation(setup));
+    await testWaitForWorkerMessage();
+    await answerDeletion(caller);
+
+    const deleted = { type: "OnDatabaseDeleted" };
+    assertEqual(callerOutputs, [deleted]);
+    assertEqual(sibling.outputs, [deleted]);
+    assertEqual(other.outputs, [deleted]);
+
+    // Nothing holds the tenant, so it ends once idle.
+    setup.run.deps.time.advance("3s");
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+    assertEqual(latest().tenants, []);
+  });
+
+  it("answers a failure to its instance and serves later requests on a replacement DbWorker", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvolu();
+    const outputs: Array<EvoluOutput> = [];
+    instance.evoluChannel.port2.onMessage = (output) => {
+      outputs.push(output);
+    };
+    const outputCount = setup.sharedWorkerOutputs.length;
+
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    instance.evoluChannel.port2.postMessage(createTestMutation(setup));
+    const error = { type: "DatabaseHeldError", name: testName } as const;
+    const dispatchedCount = instance.dbInputs.length;
+    await answerDeletion(instance, error);
+
+    assertEqual(outputs.splice(0), [{ type: "OnDeleteDatabaseFailed", error }]);
+    // The worker ended after the failure, so nothing is dispatched to it.
+    assertEqual(instance.dbInputs.length, dispatchedCount);
+    const replacement = setupDbWorkerPort(
+      getDbWorkerInit(setup.sharedWorkerOutputs.at(outputCount)),
+      disposer,
+    );
+    // A replacement can start ahead, as when it releases quarantine.
+    const replacementClock = createTimestamp({ millis: Millis.orThrow(42) });
+    replacement.port.postMessage({
+      type: "LeaderAcquired",
+      clock: replacementClock,
+    });
+    await testWaitForWorkerMessage();
+
+    assertEqual(outputs, [{ type: "RefreshQueries" }]);
+    assertLength(replacement.inputs, 1);
+    const [write] = replacement.inputs;
+    assertSame(write.type, "Request");
+    assertTrue("clock" in write);
+    // The write takes its clock when the replacement leads, not behind it.
+    assertEqual(write.clock, {
+      ...replacementClock,
+      nodeId: write.clock.nodeId,
+    });
+  });
+
+  it("keeps the clock of a leader that failed a deletion when its replacement starts behind it", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const initialClock = createTimestamp({ millis: Millis.orThrow(23) });
+    const instance = await setup.createEvolu({ initialClock });
+    const outputCount = setup.sharedWorkerOutputs.length;
+
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    await answerDeletion(
+      instance,
+      createUnknownError(new Error("disk I/O error")),
+    );
+    const replacement = setupDbWorkerPort(
+      getDbWorkerInit(setup.sharedWorkerOutputs.at(outputCount)),
+      disposer,
+    );
+    replacement.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    instance.evoluChannel.port2.postMessage(createTestMutation(setup));
+    await testWaitForWorkerMessage();
+
+    assertLength(replacement.inputs, 1);
+    const [write] = replacement.inputs;
+    assertSame(write.type, "Request");
+    assertTrue("clock" in write);
+    assertEqual(write.clock, { ...initialClock, nodeId: write.clock.nodeId });
+  });
+
+  it("answers nothing to an asking instance disposed before its deletion fails, and a replacement serves the others", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const leaderTab = await setupLeaderTab(setup, disposer);
+    const caller = await addInstance(setup, leaderTab.port, disposer);
+    const sibling = await addInstance(setup, leaderTab.port, disposer);
+    const leader = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(0)),
+      disposer,
+    );
+    leader.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    caller.port.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    const deletion = leader.inputs.at(-1);
+    assert(deletion?.type === "Request", "Expected the deletion.");
+    caller.outputs.length = 0;
+
+    await caller.dispose();
+    leader.port.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: deletion.attemptId,
+      response: {
+        type: "ForEvolu",
+        id: caller.id,
+        message: {
+          type: "DeleteDatabaseFailed",
+          error: createUnknownError(new Error("disk I/O error")),
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+    const replacement = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(1)),
+      disposer,
+    );
+    replacement.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    sibling.port.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    await testWaitForWorkerMessage();
+
+    assertEqual(caller.outputs, []);
+    const query = replacement.inputs.at(-1);
+    assert(query?.type === "Request", "Expected the query.");
+    assertEqual(query.request, {
+      type: "ForEvolu",
+      id: sibling.id,
+      message: { type: "Query", queries: createSet([testQuery]) },
+    });
+  });
+
+  it("reconciles the owners on the replacement after a failed deletion", async () => {
+    const createWebSocket = testCreateWebSocket();
+    await using setup = await setupSharedWorker({ createWebSocket });
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvolu();
+    const transport = createOwnerWebSocketTransport({
+      url: RelayUrl.orThrow("wss://failed-deletion.example/"),
+      ownerId: testAppOwner.id,
+    });
+    instance.evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          action: "add",
+          owner: { owner: testAppOwner, transports: [transport] },
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+    await respondToSyncRound(instance, createWebSocket);
+    const outputCount = setup.sharedWorkerOutputs.length;
+
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    await answerDeletion(
+      instance,
+      createUnknownError(new Error("disk I/O error")),
+    );
+    const replacement = setupDbWorkerPort(
+      getDbWorkerInit(setup.sharedWorkerOutputs.at(outputCount)),
+      disposer,
+    );
+    replacement.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+
+    // The database may be partly deleted, so the owner reconciles again.
+    const request = replacement.inputs.at(0);
+    assert(request?.type === "Request", "Expected a request.");
+    assertEqual(request.request, {
+      type: "ForSharedWorker",
+      message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+    });
+  });
+
+  it("discards a DbWorker requested before the deletion that reports in after it", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvolu();
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    const leaderTab = await setupLeaderTab(setup, disposer);
+
+    await answerDeletion(instance);
+    const stale = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(0)),
+      disposer,
+    );
+    stale.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+
+    assertEqual(stale.inputs, [{ type: "Discard" }]);
+  });
+
+  it("revives the database for an instance that joins later, with a new NodeId and the joiner's options", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvolu();
+    instance.evoluChannel.port2.postMessage(createTestMutation(setup));
+    await testWaitForWorkerMessage();
+    const [write] = instance.dbInputs;
+    assertTrue("clock" in write);
+    instance.dbWorkerPort.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: write.attemptId,
+      response: {
+        type: "ForEvolu",
+        id: instance.id,
+        message: {
+          type: "Mutate",
+          clock: write.clock,
+          messagesByOwnerId: new Map(),
+          rowsByQuery: new Map(),
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    await answerDeletion(instance);
+    const outputCount = setup.sharedWorkerOutputs.length;
+
+    const joiner = await addInstance(setup, setup.worker.port, disposer, {
+      consoleLevel: "silent",
+    });
+
+    assertEqual(joiner.outputs, []);
+    const init = getDbWorkerInit(setup.sharedWorkerOutputs.at(outputCount));
+    assertSame(init.consoleLevel, "silent");
+    const revived = setupDbWorkerPort(init, disposer);
+    revived.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    joiner.port.postMessage(createTestMutation(setup));
+    await testWaitForWorkerMessage();
+
+    const revivedWrite = revived.inputs.at(-1);
+    assertNotUndefined(revivedWrite);
+    assertSame(revivedWrite.type, "Request");
+    assertTrue("clock" in revivedWrite);
+    assertFalse(revivedWrite.clock.nodeId === write.clock.nodeId);
+  });
+
+  it("discards a DbWorker requested before the deletion that reports in after the revival", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvolu();
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    const leaderTab = await setupLeaderTab(setup, disposer);
+    await answerDeletion(instance);
+    const joiner = await addInstance(setup, leaderTab.port, disposer);
+
+    const stale = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(0)),
+      disposer,
+    );
+    const revived = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(1)),
+      disposer,
+    );
+    stale.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    revived.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    joiner.port.postMessage({ type: "Query", queries: createSet([testQuery]) });
+    await testWaitForWorkerMessage();
+
+    assertEqual(stale.inputs, [{ type: "Discard" }]);
+    assertLength(revived.inputs, 1);
+  });
+
+  it("deletes again on a replacement DbWorker when the tab hosting the deleting one closes", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvolu();
+    const outputs: Array<EvoluOutput> = [];
+    instance.evoluChannel.port2.onMessage = (output) => {
+      outputs.push(output);
+    };
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    assertSame(instance.dbInputs.length, 1);
+    const leaderTab = await setupLeaderTab(setup, disposer);
+
+    // The deleting DbWorker's tab closes before it answers.
+    await instance.releaseDbWorkerLeader();
+    const replacement = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(0)),
+      disposer,
+    );
+    replacement.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    const request = replacement.inputs.at(-1);
+    assert(request?.type === "Request", "Expected the deletion again.");
+    assertEqual(request.request, {
+      type: "ForEvolu",
+      id: instance.id,
+      message: { type: "DeleteDatabase" },
+    });
+    replacement.port.postMessage({ type: "DatabaseDeleted" });
+    await testWaitForWorkerMessage();
+
+    assertEqual(
+      outputs.filter(({ type }) => type === "OnDatabaseDeleted"),
+      [{ type: "OnDatabaseDeleted" }],
+    );
+  });
+
+  it("ignores a deletion that ends after a DbWorker requested before it refused the disposed tenant", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const leaderTab = await setupLeaderTab(setup, disposer);
+    const instance = await addInstance(setup, leaderTab.port, disposer);
+    const leader = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(0)),
+      disposer,
+    );
+    leader.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    instance.port.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    const nextLeaderTab = await setupLeaderTab(setup, disposer);
+    await instance.dispose();
+    setup.run.deps.time.advance("3s");
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+    const stale = setupDbWorkerPort(
+      getDbWorkerInit(nextLeaderTab.outputs.at(0)),
+      disposer,
+    );
+    stale.port.postMessage({
+      type: "LeaderRefused",
+      error: { type: "DatabaseHeldError", name: testName },
+    });
+    await testWaitForWorkerMessage();
+
+    leader.port.postMessage({ type: "DatabaseDeleted" });
+    await testWaitForWorkerMessage();
+
+    // A new instance gets a new tenant, which starts a DbWorker.
+    const outputCount = nextLeaderTab.outputs.length;
+    await addInstance(setup, nextLeaderTab.port, disposer);
+    const next = setupDbWorkerPort(
+      getDbWorkerInit(nextLeaderTab.outputs.at(outputCount)),
+      disposer,
+    );
+    next.port.postMessage({ type: "LeaderAcquired", clock: createTimestamp() });
+    await testWaitForWorkerMessage();
+    assertEqual(next.inputs, []);
+  });
+
+  it("records a deletion that ends after the tenant was disposed, so a DbWorker requested before it is discarded", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const leaderTab = await setupLeaderTab(setup, disposer);
+    const instance = await addInstance(setup, leaderTab.port, disposer);
+    const leader = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(0)),
+      disposer,
+    );
+    leader.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    instance.port.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    const nextLeaderTab = await setupLeaderTab(setup, disposer);
+
+    // The deletion outlasts its instance and the tenant's idle time.
+    await instance.dispose();
+    setup.run.deps.time.advance("3s");
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+    assertSame(leader.inputs.at(-1)?.type, "Dispose");
+    leader.port.postMessage({ type: "DatabaseDeleted" });
+    await testWaitForWorkerMessage();
+
+    const stale = setupDbWorkerPort(
+      getDbWorkerInit(nextLeaderTab.outputs.at(0)),
+      disposer,
+    );
+    stale.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(stale.inputs, [{ type: "Discard" }]);
+  });
+
+  it("discards a DbWorker requested before the deletion that reports in after the tenant ended", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const instance = await setup.createEvolu();
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    const leaderTab = await setupLeaderTab(setup, disposer);
+    await answerDeletion(instance);
+
+    setup.run.deps.time.advance("3s");
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+    assertEqual(latest().tenants, []);
+
+    const stale = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(0)),
+      disposer,
+    );
+    stale.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(stale.inputs, [{ type: "Discard" }]);
+  });
+
+  it("ignores a refusal from a DbWorker requested before the deletion, and revives the database", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvolu();
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    const leaderTab = await setupLeaderTab(setup, disposer);
+    await answerDeletion(instance);
+    const stale = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(0)),
+      disposer,
+    );
+    stale.port.postMessage({
+      type: "LeaderRefused",
+      error: { type: "DatabaseHeldError", name: testName },
+    });
+    await testWaitForWorkerMessage();
+
+    const joiner = await addInstance(setup, leaderTab.port, disposer);
+
+    assertSame(getDbWorkerInit(leaderTab.outputs.at(1)).name, testName);
+    assertEqual(joiner.outputs, []);
+    assertEqual(
+      [...setup.sharedWorkerOutputs, ...leaderTab.outputs].filter(
+        ({ type }) => type === "Error",
+      ),
+      [],
+    );
+  });
+
+  it("ignores a refusal from a DbWorker requested before the deletion that arrives after the revival", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvolu();
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    const leaderTab = await setupLeaderTab(setup, disposer);
+    await answerDeletion(instance);
+    const joiner = await addInstance(setup, leaderTab.port, disposer);
+    const stale = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(0)),
+      disposer,
+    );
+    const revived = setupDbWorkerPort(
+      getDbWorkerInit(leaderTab.outputs.at(1)),
+      disposer,
+    );
+    revived.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+
+    stale.port.postMessage({
+      type: "LeaderRefused",
+      error: { type: "DatabaseHeldError", name: testName },
+    });
+    await testWaitForWorkerMessage();
+    joiner.port.postMessage({ type: "Query", queries: createSet([testQuery]) });
+    await testWaitForWorkerMessage();
+
+    assertLength(revived.inputs, 1);
+    assertSame(revived.inputs[0].type, "Request");
+    assertEqual(
+      [...setup.sharedWorkerOutputs, ...leaderTab.outputs].filter(
+        ({ type }) => type === "Error",
+      ),
+      [],
+    );
+  });
+
+  it("starts no DbWorker for a new tab leader while the database is deleted", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvolu();
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    await answerDeletion(instance);
+
+    const leaderTab = await setupLeaderTab(setup, disposer);
+
+    assertEqual(leaderTab.outputs, []);
+  });
+
+  it("logs a revived database at the console level of the instance that revived it", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const { console } = setup.run.deps;
+    const instance = await setup.createEvolu({ consoleLevel: "warn" });
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    await testWaitForWorkerMessage();
+    await answerDeletion(instance);
+    const hasInfo = (): boolean =>
+      console
+        .getEntriesSnapshot()
+        .some(({ method, path }) => method === "info" && path[0] === testName);
+    assertFalse(hasInfo());
+    const outputCount = setup.sharedWorkerOutputs.length;
+
+    await addInstance(setup, setup.worker.port, disposer, {
+      consoleLevel: "info",
+    });
+    const revived = setupDbWorkerPort(
+      getDbWorkerInit(setup.sharedWorkerOutputs.at(outputCount)),
+      disposer,
+    );
+    revived.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+
+    assertTrue(hasInfo());
+  });
 });

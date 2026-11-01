@@ -8,6 +8,7 @@ import {
   type ReadonlyStore,
 } from "@evolu/common";
 import {
+  isDatabaseDeleted,
   syncStateToOwnerSyncStatus,
   type Evolu,
   type EvoluSchema,
@@ -172,6 +173,18 @@ export const createEvoluBinding = <
   const useEvolu = (): Evolu<S> => {
     const evolu = use(EvoluContext);
     assert(evolu, "EvoluContext is missing.");
+    // Its methods throw, so wait until the app reloads or provides another.
+    // The deletion can also land between a render and its effects, so the
+    // effects below check it too. Its subscriptions do nothing after disposal,
+    // and React renders again when reading the rows throws, which suspends.
+    if (isDatabaseDeleted(evolu)) {
+      let suspension = databaseDeletedSuspensionByEvolu.get(evolu);
+      if (!suspension) {
+        suspension = new Promise<never>(constVoid);
+        databaseDeletedSuspensionByEvolu.set(evolu, suspension);
+      }
+      use(suspension);
+    }
     return evolu;
   };
 
@@ -186,7 +199,13 @@ export const createEvoluBinding = <
 
     if (once) {
       /* oxlint-disable react/rules-of-hooks -- The once branch remains stable for the lifetime of this subscription. */
-      useEffect(() => evolu.subscribeQuery(query)(constVoid), [evolu, query]);
+      useEffect(
+        () =>
+          isDatabaseDeleted(evolu)
+            ? undefined
+            : evolu.subscribeQuery(query)(constVoid),
+        [evolu, query],
+      );
       return evolu.getQueryRows(query);
     }
 
@@ -259,7 +278,10 @@ export const createEvoluBinding = <
       });
 
     useEffect(
-      () => (owner ? evolu.useOwner(owner, transports) : undefined),
+      () =>
+        owner && !isDatabaseDeleted(evolu)
+          ? evolu.useOwner(owner, transports)
+          : undefined,
       // oxlint-disable-next-line react/exhaustive-deps -- The key stands for the owner and transports, which callers usually recreate on each render.
       [evolu, key],
     );
@@ -306,3 +328,8 @@ export const createEvoluBinding = <
 };
 
 const noRelaysSyncStatus: OwnerSyncStatus = { type: "NoRelays" };
+
+// Each never settles, so a component stays suspended on it. React's retry
+// listeners on it keep the suspended components, so there is one for each
+// deleted instance, which they share and which goes away with it.
+const databaseDeletedSuspensionByEvolu = new WeakMap<object, Promise<never>>();

@@ -52,7 +52,10 @@
  * error or no memory, made SQLite roll the transaction back; then the commit
  * fails and the mutation is answered with an {@link UnknownError}. A dispose
  * message, the SharedWorker ending, or an abort that is not a panic posts
- * nothing. When a worker fails before it gets its port, such as a web worker
+ * nothing. A deletion ends the worker without refusing the database: it posts
+ * that the database was deleted, or answers the failed deletion. A discard
+ * message posts nothing, after the worker deletes the database its own startup
+ * created. When a worker fails before it gets its port, such as a web worker
  * whose script fails to load, the tab that hosts it posts the refusal in its
  * place; see {@link CreateDbWorker}.
  *
@@ -84,13 +87,14 @@ import {
   defectToError,
   type UnknownError,
 } from "../Error.ts";
+import { exhaustiveCheck } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import {
   acquireLeaderLock,
   acquireLeaderLockCallback,
 } from "../LockManager.ts";
 import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
-import { err, getOk, ok, trySync, type Result } from "../Result.ts";
+import { err, getOk, ok, tryAsync, trySync, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
   SqliteDep,
@@ -162,6 +166,7 @@ import type {
   DbWorkerOutput,
   DbWorkerQueuedResponse,
   EvoluInput,
+  EvoluInstanceId,
   SharedWorkerId,
 } from "./Shared.ts";
 import {
@@ -231,8 +236,30 @@ export type DbWorkerDeps = WorkerDeps &
   CreateBroadcastChannelDep &
   LockManagerDep &
   CreateSqliteDriverDep &
+  DeleteDatabaseFilesDep &
   Partial<WaitForDatabaseReleaseDep> &
   Partial<XChaCha20Poly1305Dep>;
+
+/**
+ * Deletes the files of the persistent database `name`: the database file and
+ * its journal, and on the web the pool directory that holds them. Files that do
+ * not exist count as deleted, so deleting again succeeds. It fails with
+ * {@link DatabaseHeldError} when another context keeps holding the files, and
+ * with an {@link UnknownError} when the platform fails to delete one, which can
+ * leave the database partly deleted.
+ *
+ * {@link startDbWorker} calls it while it holds the database's leader lock and
+ * the database is closed. It deletes at the file level, so it needs no key and
+ * never opens the database.
+ */
+export type DeleteDatabaseFiles = (
+  name: Name,
+) => Task<void, DatabaseHeldError | UnknownError>;
+
+/** Dependency wrapper for {@link DeleteDatabaseFiles}. */
+export interface DeleteDatabaseFilesDep {
+  readonly deleteDatabaseFiles: DeleteDatabaseFiles;
+}
 
 /**
  * Waits until no other context holds the files of the persistent database
@@ -277,7 +304,8 @@ export interface UnsupportedDbVersionError extends Typed<"UnsupportedDbVersionEr
 
 /**
  * Another context kept holding the database's files, so the database did not
- * open; see {@link WaitForDatabaseRelease}.
+ * open, or `Evolu.deleteDatabase` did not delete it; see
+ * {@link WaitForDatabaseRelease}.
  *
  * A browser can keep the files of a worker that ended without closing them
  * until the browser restarts. Ask the user to close the app's other tabs or to
@@ -291,8 +319,9 @@ export interface DatabaseHeldError extends Typed<"DatabaseHeldError"> {
 
 /**
  * Starts the platform-agnostic Evolu DbWorker and owns its resources until it
- * refuses startup or fails, the worker receives a dispose message, the
- * SharedWorker that requested it ends, or its {@link Run} is aborted.
+ * refuses startup or fails, it handles a deletion, the worker receives a
+ * dispose or discard message, the SharedWorker that requested it ends, or its
+ * {@link Run} is aborted.
  */
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
@@ -369,7 +398,10 @@ export const startDbWorker =
         timestampConfig: { maxDrift: defaultTimestampMaxDrift },
       };
       const startup = sqlite.transaction(
-        (): Result<Timestamp, UnsupportedDbVersionError> => {
+        (): Result<
+          { readonly clock: Timestamp; readonly created: boolean },
+          UnsupportedDbVersionError
+        > => {
           // Only the version record is read before the version check, because a
           // newer database can hold schema objects this code cannot read.
           const { rows: versionColumnRows } = sqlite.exec<{ name: string }>(sql`
@@ -400,7 +432,10 @@ export const startDbWorker =
             saveClock(dbDeps)(released);
           }
           tryApplyQuarantinedMessages(dbDeps);
-          return ok(initialClock);
+          return ok({
+            clock: initialClock,
+            created: versionColumns.size === 0,
+          });
         },
       );
       if (!startup.ok) {
@@ -413,7 +448,7 @@ export const startDbWorker =
         });
         return ok();
       }
-      const initialClock = startup.value;
+      const { clock: initialClock, created } = startup.value;
 
       const storage = createClientStorage({
         ...dbDeps,
@@ -426,16 +461,24 @@ export const startDbWorker =
         clock: initialClock,
       });
 
-      await run.ok(
-        callback<void>(({ resolve, reject }) => {
+      const ending = await run.ok(
+        callback<
+          | Typed<"Dispose">
+          | Typed<"Discard">
+          | {
+              readonly type: "DeleteDatabase";
+              readonly attemptId: Id;
+              readonly id: EvoluInstanceId;
+            }
+        >(({ resolve, reject }) => {
           port.onMessage = (input) => {
             // A throw, such as a response that cannot be posted, panics this
             // worker's Run like a task defect, so the database is refused.
             // Mutations, queries, and exports answer their SQLite failures
             // instead.
             try {
-              if (input.type === "Dispose") {
-                resolve(ok());
+              if (input.type === "Dispose" || input.type === "Discard") {
+                resolve(ok(input));
                 return;
               }
 
@@ -586,7 +629,19 @@ export const startDbWorker =
                     ? { type: "Export", file: file.value }
                     : { type: "ExportFailed", error: file.error },
                 });
+                return;
               }
+
+              if (request.message.type === "DeleteDatabase") {
+                // Serving ends first, so nothing else reaches the database
+                // the deletion closes.
+                resolve(
+                  ok({ type: "DeleteDatabase", attemptId, id: request.id }),
+                );
+                return;
+              }
+
+              exhaustiveCheck(request.message);
             } catch (error) {
               reject(error);
             }
@@ -598,7 +653,7 @@ export const startDbWorker =
           // (https://bugzilla.mozilla.org/show_bug.cgi?id=2077609).
           const sharedWorkerEnded = acquireLeaderLockCallback(deps)(
             initMessage.sharedWorkerId,
-            () => resolve(ok()),
+            () => resolve(ok({ type: "Dispose" })),
           );
 
           return () => {
@@ -607,6 +662,62 @@ export const startDbWorker =
           };
         }),
       );
+
+      // This worker still holds the database lock, which the disposer releases
+      // after the answer. Closing first leaves no connection to the files. A
+      // throw would refuse the database instead of answering, so only an abort,
+      // which stops this worker on purpose, throws here.
+      const closeAndDeleteFiles = async (): Promise<
+        Result<void, DatabaseHeldError | UnknownError>
+      > => {
+        const closed = await tryAsync(
+          () => sqlite[Symbol.asyncDispose](),
+          createUnknownError,
+        );
+        // A database kept in memory has a name of its own, so it has no files.
+        if (!closed.ok || initMessage.memoryOnly) return closed;
+        return run(deps.deleteDatabaseFiles(initMessage.name));
+      };
+
+      switch (ending.type) {
+        case "Dispose":
+          break;
+
+        case "Discard": {
+          // A worker the tenant will not use, such as one requested before
+          // the tenant deleted the database, deletes the database its startup
+          // created, so none reappears. It handled no request, so the
+          // database holds no data.
+          if (!created || initMessage.memoryOnly) break;
+          const deleted = await closeAndDeleteFiles();
+          if (!deleted.ok) deps.console.info("discardFailed", deleted.error);
+          break;
+        }
+
+        case "DeleteDatabase": {
+          const deleted = await closeAndDeleteFiles();
+          port.postMessage(
+            deleted.ok
+              ? { type: "DatabaseDeleted" }
+              : {
+                  type: "OnQueuedResponse",
+                  attemptId: ending.attemptId,
+                  response: {
+                    type: "ForEvolu",
+                    id: ending.id,
+                    message: {
+                      type: "DeleteDatabaseFailed",
+                      error: deleted.error,
+                    },
+                  },
+                },
+          );
+          break;
+        }
+
+        default:
+          exhaustiveCheck(ending);
+      }
 
       return ok();
     } catch (error) {

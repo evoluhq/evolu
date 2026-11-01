@@ -57,6 +57,7 @@ import {
   Id,
   type Name,
   PositiveInt,
+  type Typed,
   type TypeError,
   UrlSafeString,
 } from "../Type.ts";
@@ -254,10 +255,13 @@ export interface EvoluConfig {
   readonly indexes?: IndexesConfig;
 
   /**
-   * Called when this instance's local database is deleted.
+   * Called when {@link Evolu.deleteDatabase} deletes this instance's local
+   * database, whether this or another instance in any tab asked, right before
+   * this instance disposes itself.
    *
-   * Apps can use this to update UI immediately because the corresponding
-   * {@link Evolu} instance becomes unusable after local database deletion.
+   * Without it, the app reloads, because rendering a disposed instance throws.
+   * An app that can replace the instance, such as by remounting the part of its
+   * UI that uses it, can do that instead.
    */
   readonly onDatabaseDeleted?: () => void;
 
@@ -638,9 +642,10 @@ export interface Evolu<
    * {@link EvoluErrorDep.evoluError} is not set. React's `useQuery` throws the
    * error to the nearest error boundary. If the database is refused, because it
    * refused startup or its worker failed, unanswered loads stay pending until
-   * disposal resolves them with empty rows. Observe
-   * {@link EvoluErrorDep.evoluError} to display the refusal independently of
-   * query loading.
+   * disposal resolves them with empty rows. Loads that a deletion of the
+   * database dropped stay pending, because the app replaces the instance; see
+   * {@link Evolu.deleteDatabase}. Observe {@link EvoluErrorDep.evoluError} to
+   * display the refusal independently of query loading.
    *
    * Loading is batched. Returned promises are cached while pending and can be
    * reused after they settle, which prevents redundant database queries and
@@ -804,33 +809,72 @@ export interface Evolu<
    * Exports are sequential: concurrent calls share one pending export instead
    * of starting parallel exports.
    *
-   * The pending promise rejects if this {@link Evolu} instance is disposed
-   * before export completion, and with an {@link UnknownError} when SQLite fails
-   * the export, after which the next call exports again. If the database is
-   * refused, export stays pending until disposal; see {@link Evolu.loadQuery}.
+   * The pending promise rejects with an {@link EvoluDisposedError} if this
+   * {@link Evolu} instance is disposed before export completion, and with an
+   * {@link UnknownError} when SQLite fails the export, after which the next call
+   * exports again. If the database is refused, export stays pending until
+   * disposal; see {@link Evolu.loadQuery}.
    */
   readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
   // TODO: Add exportHistory.
 
   /**
-   * Delete the local SQLite database for this {@link Evolu} instance on the
-   * current device.
+   * Deletes the local database of this {@link Evolu} instance on this device,
+   * and resolves once its files are gone.
    *
-   * **Warning**: This first drops all tables. “The dropped table is completely
-   * removed from the database schema and the disk file. The table can not be
-   * recovered. All indices and triggers associated with the table are also
-   * deleted.” https://sqlite.org/lang_droptable.html
+   * The deletion runs after the mutations and requests made before it. Then
+   * every instance of the database, identified by {@link Evolu.name}, disposes
+   * itself in every tab, and the requests they made after the deletion are
+   * dropped, so their loads stay pending and a suspended component stays
+   * suspended until the app replaces the instance. Before it disposes itself,
+   * each instance, this one included, calls
+   * {@link EvoluConfig.onDatabaseDeleted}, or reloads the app without it.
    *
-   * After that, it deletes the SQLite file identified by {@link Evolu.name},
-   * permanently forgetting all local data for that instance on this device.
+   * It deletes only this device's copy. Changes not yet synced are lost. An
+   * instance created later with the same {@link EvoluConfig.appOwner} opens a
+   * new, empty database, which its transports fill again from relays, so forget
+   * the owner first if the data must not come back. Encrypted copies in device
+   * backups and in freed storage remain. A deletion is as durable as a commit:
+   * a power loss right after it can undo it.
    *
-   * All instances identified by {@link Evolu.name} will be self-disposed. Use
-   * {@link EvoluConfig.onDatabaseDeleted} to update app UI when that happens.
+   * A database kept in memory, as with {@link EvoluConfig.memoryOnly}, has a
+   * name of its own and no files, so deleting it leaves a stored database of
+   * the same owner alone.
    *
-   * Currently not implemented.
+   * Concurrent calls share one deletion. It deletes no file another context
+   * holds, because that context could still write to it, and fails with
+   * {@link DatabaseHeldError} when such a file stays held. Evolu's instances
+   * release the files before the deletion, so only a context outside Evolu's
+   * coordination can hold them, such as a React Native runtime that a reload
+   * replaced. Its next DbWorker then waits for the files, as every startup
+   * does, and the database is refused with that error when they stay held. It
+   * fails with an {@link UnknownError} when the platform fails to delete them;
+   * the database may then be partly deleted, its instances keep working, and
+   * the next call deletes again. It fails with {@link EvoluDisposedError} when
+   * this instance is disposed before the deletion ends, which may or may not
+   * then run, so await it before disposing. If the database is refused, it
+   * stays pending until disposal; see {@link Evolu.loadQuery}.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import {
+   *   assertType,
+   *   type DeleteDatabaseError,
+   *   type Evolu,
+   *   type Result,
+   * } from "@evolu/common";
+   *
+   * const deleteLocalData = (evolu: Evolu) => evolu.deleteDatabase();
+   *
+   * assertType<
+   *   Awaited<ReturnType<typeof deleteLocalData>>,
+   *   Result<void, DeleteDatabaseError>
+   * >();
+   * ```
    */
-  readonly deleteDatabase: () => void;
+  readonly deleteDatabase: () => Promise<Result<void, DeleteDatabaseError>>;
 
   /**
    * Delete all local data for a specific {@link Owner}.
@@ -959,6 +1003,21 @@ export interface Evolu<
  * @group Core
  */
 export type UnuseOwner = () => void;
+
+/**
+ * The {@link Evolu} instance was disposed before an operation it started ended.
+ *
+ * @group Core
+ */
+export interface EvoluDisposedError extends Typed<"EvoluDisposedError"> {}
+
+/**
+ * An error of {@link Evolu.deleteDatabase}.
+ *
+ * @group Core
+ */
+export type DeleteDatabaseError =
+  DatabaseHeldError | EvoluDisposedError | UnknownError;
 
 /**
  * Whether this device keeps an {@link Evolu} database, stating only what Evolu
@@ -1523,7 +1582,8 @@ export const createEvolu =
 
     /**
      * Settle pending query loads during disposal so awaiting callers and React
-     * `use` thenables do not hang forever during teardown.
+     * `use` thenables do not hang forever during teardown. A deletion of the
+     * database drops them first, so they stay pending.
      */
     const loadingPromisesByQuery = disposer.adopt(
       new Map<Query, LoadingPromise>(),
@@ -1595,6 +1655,15 @@ export const createEvolu =
     disposer.defer(() => {
       exportDatabasePending?.reject({ type: "EvoluDisposedError" });
       exportDatabasePending = null;
+    });
+
+    let deleteDatabasePending = null as PromiseWithResolvers<
+      Result<void, DeleteDatabaseError>
+    > | null;
+
+    disposer.defer(() => {
+      deleteDatabasePending?.resolve(err({ type: "EvoluDisposedError" }));
+      deleteDatabasePending = null;
     });
 
     let isPersistentStorageRequested = false;
@@ -1711,6 +1780,39 @@ export const createEvolu =
             for (const onCompleteId of message.onCompleteIds) {
               onMutateCompleteCallbacks.unregister(onCompleteId);
             }
+            break;
+          }
+
+          case "OnDatabaseDeleted": {
+            // The tenant disposed its side of the instance, so this side
+            // disposes itself, even when the callback throws.
+            instancesWithDeletedDatabase.add(evolu);
+            // The deletion dropped the loads still pending. The app replaces
+            // this instance, and settling them would make React render a
+            // suspended component again with it disposed, which throws.
+            loadingPromisesByQuery.clear();
+            try {
+              // Wakes every subscription while the instance still answers
+              // getQueryRows, so React renders again and suspends, and other
+              // bindings show no rows of the deleted database.
+              rowsByQueryMapStore.set(new Map());
+              deleteDatabasePending?.resolve(ok());
+              deleteDatabasePending = null;
+              if (config.onDatabaseDeleted) config.onDatabaseDeleted();
+              else run.deps.reloadApp();
+            } finally {
+              void evolu[Symbol.asyncDispose]();
+            }
+            break;
+          }
+
+          case "OnDeleteDatabaseFailed": {
+            assert(
+              deleteDatabasePending,
+              "OnDeleteDatabaseFailed received without pending deletion.",
+            );
+            deleteDatabasePending.resolve(err(message.error));
+            deleteDatabasePending = null;
             break;
           }
 
@@ -1964,132 +2066,160 @@ export const createEvolu =
 
     run.signal.throwIfAborted();
 
-    return ok(
-      disposable<Evolu<S>>(
-        {
-          name,
-          appOwner,
-          devicePersistence: Promise.resolve(devicePersistence),
+    // Bound before any message from the tenant, which can dispose it.
+    const evolu = disposable<Evolu<S>>(
+      {
+        name,
+        appOwner,
+        devicePersistence: Promise.resolve(devicePersistence),
 
-          insert: createMutation("insert"),
-          update: createMutation("update"),
-          upsert: createMutation("upsert"),
+        insert: createMutation("insert"),
+        update: createMutation("update"),
+        upsert: createMutation("upsert"),
 
-          getMutationSize: (table, values) => {
-            const columns = createMutableRecord<string, SqliteValue>();
-            for (const [column, value] of objectToEntries(
-              values as ReadonlyRecord<string, SqliteValue | undefined>,
-            )) {
-              if (
-                value !== undefined &&
-                column !== "id" &&
-                column !== "isDeleted"
-              ) {
-                columns[column] = value;
-              }
+        getMutationSize: (table, values) => {
+          const columns = createMutableRecord<string, SqliteValue>();
+          for (const [column, value] of objectToEntries(
+            values as ReadonlyRecord<string, SqliteValue | undefined>,
+          )) {
+            if (
+              value !== undefined &&
+              column !== "id" &&
+              column !== "isDeleted"
+            ) {
+              columns[column] = value;
             }
-            return measureMutation(
-              DbChange.orThrow({
-                table: String(table),
-                // Every ID takes 16 bytes, and the flags always take one.
-                id: mutationSizeId,
-                values: columns,
-                isInsert: true,
-                isDelete: null,
-              }),
-            );
-          },
-
-          loadQuery,
-          loadQueries: <Q extends Queries<S>>(
-            queries: [...Q],
-          ): [...QueriesToQueryRowsPromises<Q>] =>
-            queries.map((query) => loadQuery(query)) as [
-              ...QueriesToQueryRowsPromises<Q>,
-            ],
-
-          subscribeQuery: (query) => (listener) => {
-            subscribedQueriesRefCount.increment(query);
-            let isSubscribed = true;
-
-            let previousRows: unknown = null;
-
-            const unsubscribe = rowsByQueryMapStore.subscribe(() => {
-              const rows = getQueryRows(query);
-              if (previousRows === rows) return;
-              previousRows = rows;
-              listener();
-            });
-
-            // Invalidation can happen after loading but before a framework
-            // subscribes. Register first so subsequent invalidations also
-            // refresh this query.
-            const loadingPromise = loadingPromisesByQuery.get(query);
-            if (loadingPromise?.releaseOnSettle) {
-              // Retain the pending promise for its awaiters, but queue a read
-              // after the mutation or sync that invalidated its result.
-              loadingPromise.releaseOnSettle = false;
-              queryBatch.push(query);
-            } else if (!loadingPromise) {
-              const rows = rowsByQueryMapStore.get().get(query);
-              if (rows) {
-                // Queue a read, but keep cached rows available to React use()
-                // so a render before the worker responds does not suspend.
-                void loadQuery(query);
-                const entry = loadingPromisesByQuery.get(query);
-                assertNotUndefined(entry);
-                settleLoadingPromise(entry, ok(rows));
-              }
-            }
-
-            return () => {
-              assert(
-                isSubscribed,
-                "subscribeQuery unsubscribe can be called only once.",
-              );
-              isSubscribed = false;
-
-              previousRows = null;
-
-              if (disposed) return;
-
-              unsubscribe();
-              subscribedQueriesRefCount.decrement(query);
-            };
-          },
-          getQueryRows,
-
-          exportDatabase: () => {
-            if (!exportDatabasePending) {
-              exportDatabasePending =
-                Promise.withResolvers<Uint8Array<ArrayBuffer>>();
-              postMessage({ type: "Export" });
-            }
-            return exportDatabasePending.promise;
-          },
-
-          deleteDatabase: () => {
-            todo();
-          },
-
-          deleteOwner: (owner) => {
-            void owner;
-            todo();
-          },
-
-          useOwner,
-          requestSync: (ownerId) => {
-            // Do not let the forced mutation flush overtake pending owner actions.
-            useOwnerBatch.flushNow();
-            // Queue preceding mutations before the reconciliation request.
-            mutateBatch.flushNow();
-            useOwnerBatch.push({ action: "sync", ownerId });
-          },
+          }
+          return measureMutation(
+            DbChange.orThrow({
+              table: String(table),
+              // Every ID takes 16 bytes, and the flags always take one.
+              id: mutationSizeId,
+              values: columns,
+              isInsert: true,
+              isDelete: null,
+            }),
+          );
         },
-        disposer,
-      ),
+
+        loadQuery,
+        loadQueries: <Q extends Queries<S>>(
+          queries: [...Q],
+        ): [...QueriesToQueryRowsPromises<Q>] =>
+          queries.map((query) => loadQuery(query)) as [
+            ...QueriesToQueryRowsPromises<Q>,
+          ],
+
+        subscribeQuery: (query) => (listener) => {
+          // A framework can subscribe after disposal with a function it took
+          // before, as React does in an effect after a deletion, so it does
+          // nothing, as an unsubscribe after disposal does.
+          if (disposed) return constVoid;
+          subscribedQueriesRefCount.increment(query);
+          let isSubscribed = true;
+
+          let previousRows: unknown = null;
+
+          const unsubscribe = rowsByQueryMapStore.subscribe(() => {
+            const rows = getQueryRows(query);
+            if (previousRows === rows) return;
+            previousRows = rows;
+            listener();
+          });
+
+          // Invalidation can happen after loading but before a framework
+          // subscribes. Register first so subsequent invalidations also
+          // refresh this query.
+          const loadingPromise = loadingPromisesByQuery.get(query);
+          if (loadingPromise?.releaseOnSettle) {
+            // Retain the pending promise for its awaiters, but queue a read
+            // after the mutation or sync that invalidated its result.
+            loadingPromise.releaseOnSettle = false;
+            queryBatch.push(query);
+          } else if (!loadingPromise) {
+            const rows = rowsByQueryMapStore.get().get(query);
+            if (rows) {
+              // Queue a read, but keep cached rows available to React use()
+              // so a render before the worker responds does not suspend.
+              void loadQuery(query);
+              const entry = loadingPromisesByQuery.get(query);
+              assertNotUndefined(entry);
+              settleLoadingPromise(entry, ok(rows));
+            }
+          }
+
+          return () => {
+            assert(
+              isSubscribed,
+              "subscribeQuery unsubscribe can be called only once.",
+            );
+            isSubscribed = false;
+
+            previousRows = null;
+
+            if (disposed) return;
+
+            unsubscribe();
+            subscribedQueriesRefCount.decrement(query);
+          };
+        },
+        getQueryRows,
+
+        exportDatabase: () => {
+          if (!exportDatabasePending) {
+            exportDatabasePending =
+              Promise.withResolvers<Uint8Array<ArrayBuffer>>();
+            postMessage({ type: "Export" });
+          }
+          return exportDatabasePending.promise;
+        },
+
+        deleteDatabase: () => {
+          if (!deleteDatabasePending) {
+            deleteDatabasePending =
+              Promise.withResolvers<Result<void, DeleteDatabaseError>>();
+            // Queue the changes and queries made before it, so the changes
+            // are deleted rather than dropped and the queries are answered.
+            useOwnerBatch.flushNow();
+            mutateBatch.flushNow();
+            queryBatch.flushNow();
+            postMessage({ type: "DeleteDatabase" });
+          }
+          return deleteDatabasePending.promise;
+        },
+
+        deleteOwner: (owner) => {
+          void owner;
+          todo();
+        },
+
+        useOwner,
+        requestSync: (ownerId) => {
+          // Do not let the forced mutation flush overtake pending owner actions.
+          useOwnerBatch.flushNow();
+          // Queue preceding mutations before the reconciliation request.
+          mutateBatch.flushNow();
+          useOwnerBatch.push({ action: "sync", ownerId });
+        },
+      },
+      disposer,
     );
+    return ok(evolu);
   };
+
+const instancesWithDeletedDatabase = new WeakSet<object>();
+
+/**
+ * Whether the deletion of the database of the {@link Evolu} instance disposed
+ * it; see {@link Evolu.deleteDatabase}. A framework binding checks it before it
+ * uses the instance, so a component the app has not replaced yet waits instead
+ * of throwing.
+ *
+ * @group Core
+ */
+export const isDatabaseDeleted = <S extends EvoluSchema>(
+  evolu: Evolu<S>,
+): boolean => instancesWithDeletedDatabase.has(evolu);
 
 //     case "onReset": {
 //       if (message.reload) {

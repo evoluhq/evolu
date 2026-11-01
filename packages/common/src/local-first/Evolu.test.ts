@@ -32,6 +32,7 @@ import {
   type DevicePersistence,
   type Evolu,
   type EvoluConfig,
+  isDatabaseDeleted,
   maxMutationSize,
   testAppName,
   type EvoluPlatformDeps,
@@ -1923,7 +1924,7 @@ describe("Evolu", () => {
 
       assertEqual(
         assertThrowsInstanceOf(() => {
-          evolu.deleteDatabase();
+          void evolu.deleteDatabase();
         }, Error).message,
         disposedMessage,
       );
@@ -1950,17 +1951,10 @@ describe("Evolu", () => {
       );
     });
 
-    it("delete methods are placeholders", async () => {
+    it("deleteOwner is a placeholder", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run } = setup;
       const evolu = await run.ok(testCreateEvolu);
-
-      assertEqual(
-        assertThrowsInstanceOf(() => {
-          evolu.deleteDatabase();
-        }, Error).message,
-        "not yet implemented",
-      );
 
       assertEqual(
         assertThrowsInstanceOf(() => {
@@ -2658,6 +2652,20 @@ describe("Evolu", () => {
       assertEqual(evoluInputs, []);
 
       unsubscribe();
+    });
+
+    it("ignores a subscription made after dispose with a function taken before it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      // As React subscribes in an effect after the render that took it.
+      const subscribe = evolu.subscribeQuery(todoTitleQuery);
+
+      await evolu[Symbol.asyncDispose]();
+
+      subscribe(() => {
+        throw new Error("A disposed instance notified a listener.");
+      })();
     });
 
     it("allows subscribeQuery unsubscribe after dispose", async () => {
@@ -3732,6 +3740,391 @@ describe("Evolu", () => {
         err({ type: "AbortError", reason: explicitAbortReason }),
       );
       assertEqualBytes(await sharedExport, file);
+    });
+  });
+
+  describe("deleteDatabase", () => {
+    const disposedMessage = "Cannot use a disposed object.";
+
+    /** Captures the instance's channel, so a test can deliver to it directly. */
+    const setupWithEvoluChannel = async (
+      overrides: Partial<EvoluPlatformDeps> = {},
+    ) => {
+      const channels: Array<{
+        readonly port1: {
+          onMessage: ((message: EvoluOutput) => void) | null;
+        };
+      }> = [];
+      const setup = await setupRunWithEvoluDeps({
+        ...overrides,
+        createMessageChannel: <Input, Output = never>() => {
+          const channel = testCreateMessageChannel<Input, Output>();
+          channels.push(channel as never);
+          return channel;
+        },
+      });
+      return Object.assign(setup, {
+        deliver: (output: EvoluOutput): void => {
+          const evoluChannel = channels.find(
+            (channel) => channel.port1.onMessage,
+          );
+          assertNonNullable(evoluChannel?.port1.onMessage);
+          evoluChannel.port1.onMessage(output);
+        },
+      });
+    };
+
+    it("asks for the deletion after the changes made before it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      evolu.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("Deleted with the database"),
+      });
+      void evolu.deleteDatabase();
+      await testWaitForWorkerMessage();
+
+      assertEqual(
+        evoluInputs.map(({ type }) => type),
+        ["Mutate", "DeleteDatabase"],
+      );
+    });
+
+    it("asks for the deletion after the queries loaded before it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      void evolu.loadQuery(todoTitleQuery);
+      void evolu.deleteDatabase();
+      await testWaitForWorkerMessage();
+
+      assertEqual(
+        evoluInputs.map(({ type }) => type),
+        ["Query", "DeleteDatabase"],
+      );
+    });
+
+    it("asks for the deletion after the owner actions made before it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      evolu.useOwner(testAppOwner, [testOwnerTransport]);
+      void evolu.deleteDatabase();
+      await testWaitForWorkerMessage();
+
+      assertEqual(
+        evoluInputs.map(({ type }) => type),
+        ["UseOwner", "DeleteDatabase"],
+      );
+    });
+
+    it("resolves its call, and calls onDatabaseDeleted, in the instance that asked", async () => {
+      const events: Array<string> = [];
+      await using setup = await setupRunWithEvoluDeps({
+        reloadApp: () => {
+          events.push("reload");
+        },
+      });
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(
+        createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          onDatabaseDeleted: () => {
+            events.push("onDatabaseDeleted");
+          },
+        }),
+      );
+
+      const deletion = evolu.deleteDatabase();
+      postEvoluOutput({ type: "OnDatabaseDeleted" });
+
+      assertEqual(await deletion, ok());
+      assertEqual(events, ["onDatabaseDeleted"]);
+    });
+
+    it("resolves once the database is deleted, after which the instance is disposed", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const deletion = evolu.deleteDatabase();
+      await testWaitForWorkerMessage();
+      postEvoluOutput({ type: "OnDatabaseDeleted" });
+
+      assertEqual(await deletion, ok());
+      await testWaitForWorkerMessage();
+      assertEqual(
+        assertThrowsInstanceOf(() => {
+          evolu.getQueryRows(todoTitleQuery);
+        }, Error).message,
+        disposedMessage,
+      );
+    });
+
+    it("leaves a load the deletion dropped pending in the tab that asked", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const deletion = evolu.deleteDatabase();
+      const settled = evolu.loadQuery(todoTitleQuery).then(() => "settled");
+      await testWaitForWorkerMessage();
+      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      assertEqual(await deletion, ok());
+      await testWaitForWorkerMessage();
+
+      // Settling it would make React render a suspended component again with
+      // the disposed instance, which throws.
+      assertEqual(
+        await Promise.race([settled, Promise.resolve("pending")]),
+        "pending",
+      );
+    });
+
+    it("leaves a load the deletion dropped pending in a tab that reloads", async () => {
+      const reloads: Array<string | undefined> = [];
+      await using setup = await setupRunWithEvoluDeps({
+        reloadApp: (url) => {
+          reloads.push(url);
+        },
+      });
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const settled = evolu.loadQuery(todoTitleQuery).then(() => "settled");
+      await testWaitForWorkerMessage();
+      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      await testWaitForWorkerMessage();
+
+      assertEqual(reloads, [undefined]);
+      assertEqual(
+        await Promise.race([settled, Promise.resolve("pending")]),
+        "pending",
+      );
+    });
+
+    it("shares a pending deletion, and asks again after it failed", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const first = evolu.deleteDatabase();
+      const second = evolu.deleteDatabase();
+      await testWaitForWorkerMessage();
+      assertSame(first, second);
+      assertEqual(evoluInputs, [{ type: "DeleteDatabase" }]);
+
+      const error = createUnknownError(new Error("disk I/O error"));
+      postEvoluOutput({ type: "OnDeleteDatabaseFailed", error });
+      assertEqual(await first, err(error));
+
+      void evolu.deleteDatabase();
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [
+        { type: "DeleteDatabase" },
+        { type: "DeleteDatabase" },
+      ]);
+    });
+
+    it("resolves with EvoluDisposedError when the instance is disposed first", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const deletion = evolu.deleteDatabase();
+      await evolu[Symbol.asyncDispose]();
+
+      assertEqual(await deletion, err({ type: "EvoluDisposedError" }));
+    });
+
+    it("calls onDatabaseDeleted, then disposes the instance, when the database was deleted", async () => {
+      const events: Array<string> = [];
+      await using setup = await setupRunWithEvoluDeps({
+        reloadApp: () => {
+          events.push("reload");
+        },
+      });
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(
+        createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          onDatabaseDeleted: () => {
+            events.push("onDatabaseDeleted");
+            // Still usable while the callback runs.
+            evolu.getQueryRows(todoTitleQuery);
+          },
+        }),
+      );
+
+      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      await testWaitForWorkerMessage();
+
+      assertEqual(events, ["onDatabaseDeleted"]);
+      assertThrowsInstanceOf(() => {
+        evolu.getQueryRows(todoTitleQuery);
+      }, Error);
+    });
+
+    it("disposes the instance when onDatabaseDeleted throws", async () => {
+      const error = new Error("UI failed");
+      await using setup = await setupWithEvoluChannel();
+      const { run } = setup;
+      const evolu = await run.ok(
+        createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          onDatabaseDeleted: () => {
+            throw error;
+          },
+        }),
+      );
+
+      assertSame(
+        assertThrowsInstanceOf(() => {
+          setup.deliver({ type: "OnDatabaseDeleted" });
+        }, Error),
+        error,
+      );
+      await testWaitForWorkerMessage();
+
+      assertThrowsInstanceOf(() => {
+        evolu.getQueryRows(todoTitleQuery);
+      }, Error);
+    });
+
+    it("resolves its call and marks the instance deleted before onDatabaseDeleted, even when it throws", async () => {
+      const error = new Error("UI failed");
+      await using setup = await setupWithEvoluChannel();
+      const { run } = setup;
+      const deletedInCallback: Array<boolean> = [];
+      const evolu = await run.ok(
+        createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          onDatabaseDeleted: () => {
+            deletedInCallback.push(isDatabaseDeleted(evolu));
+            throw error;
+          },
+        }),
+      );
+      const deletion = evolu.deleteDatabase();
+
+      assertSame(
+        assertThrowsInstanceOf(() => {
+          setup.deliver({ type: "OnDatabaseDeleted" });
+        }, Error),
+        error,
+      );
+
+      assertEqual(await deletion, ok());
+      assertEqual(deletedInCallback, [true]);
+    });
+
+    it("reloads the app without onDatabaseDeleted when the database was deleted", async () => {
+      const reloads: Array<string | undefined> = [];
+      await using setup = await setupRunWithEvoluDeps({
+        reloadApp: (url) => {
+          reloads.push(url);
+        },
+      });
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      await testWaitForWorkerMessage();
+
+      assertEqual(reloads, [undefined]);
+      assertThrowsInstanceOf(() => {
+        evolu.getQueryRows(todoTitleQuery);
+      }, Error);
+    });
+
+    it("wakes its subscriptions with no rows when the database is deleted", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      const notifiedRows: Array<unknown> = [];
+      evolu.subscribeQuery(todoTitleQuery)(() => {
+        notifiedRows.push(evolu.getQueryRows(todoTitleQuery));
+      });
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
+        ]),
+        onCompleteIds: [],
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(notifiedRows.splice(0), [[{ title: "A" }]]);
+
+      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      await testWaitForWorkerMessage();
+
+      // Bindings render again, so they show no deleted rows.
+      assertEqual(notifiedRows, [[]]);
+    });
+
+    it("tells bindings that the deletion disposed the instance", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      assertFalse(isDatabaseDeleted(evolu));
+
+      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      await testWaitForWorkerMessage();
+
+      assertTrue(isDatabaseDeleted(evolu));
+    });
+
+    it("does not tell bindings that an instance disposed without a deletion was deleted", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const evolu = await setup.run.ok(testCreateEvolu);
+
+      await evolu[Symbol.asyncDispose]();
+
+      assertFalse(isDatabaseDeleted(evolu));
+    });
+
+    it("reloads the app without onDatabaseDeleted in the instance that asked, after its call resolves", async () => {
+      const reloads: Array<string | undefined> = [];
+      await using setup = await setupRunWithEvoluDeps({
+        reloadApp: (url) => {
+          reloads.push(url);
+        },
+      });
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const deletion = evolu.deleteDatabase();
+      await testWaitForWorkerMessage();
+      postEvoluOutput({ type: "OnDatabaseDeleted" });
+
+      assertEqual(await deletion, ok());
+      assertEqual(reloads, [undefined]);
+    });
+
+    it("throws when OnDeleteDatabaseFailed arrives without pending deletion", async () => {
+      await using setup = await setupWithEvoluChannel();
+      await setup.run.ok(testCreateEvolu);
+
+      assertEqual(
+        assertThrowsInstanceOf(() => {
+          setup.deliver({
+            type: "OnDeleteDatabaseFailed",
+            error: createUnknownError(new Error("disk I/O error")),
+          });
+        }, Error).message,
+        "OnDeleteDatabaseFailed received without pending deletion.",
+      );
     });
   });
 });

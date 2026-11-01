@@ -39,7 +39,9 @@ import {
 } from "../../../../packages/common/src/Function.ts";
 import {
   startDbWorker,
+  type DatabaseHeldError,
   type DbWorkerInit,
+  type DeleteDatabaseFiles,
   type WaitForDatabaseRelease,
 } from "../../../../packages/common/src/local-first/Db.ts";
 import {
@@ -374,6 +376,9 @@ const setupDb = async ({
 
 const testSharedWorkerId = testCreateId()<"SharedWorker">();
 
+// The harness's databases are in memory, so there are no files to delete.
+const deleteNoDatabaseFiles: DeleteDatabaseFiles = () => () => ok();
+
 interface DbWorkerSetup extends DbSetup {
   /** The defects the DbWorker's Run reported. */
   readonly reportDefect: TestReportDefect;
@@ -400,6 +405,7 @@ const setupDbWorker = async ({
   createBroadcastChannel = testCreateBroadcastChannel,
   expectRefused = false,
   lockManager = testCreateLockManager(),
+  deleteDatabaseFiles = deleteNoDatabaseFiles,
   waitForDatabaseRelease,
   xChaCha20Poly1305,
 }: {
@@ -414,6 +420,7 @@ const setupDbWorker = async ({
   /** The worker is expected to post LeaderRefused instead of LeaderAcquired. */
   expectRefused?: boolean;
   lockManager?: LockManagerDep["lockManager"];
+  deleteDatabaseFiles?: DeleteDatabaseFiles;
   waitForDatabaseRelease?: WaitForDatabaseRelease;
   xChaCha20Poly1305?: XChaCha20Poly1305;
 } = {}): Promise<DbWorkerSetup> => {
@@ -439,6 +446,7 @@ const setupDbWorker = async ({
       lockManager,
       createSqliteDriver: dbSetup.createSqliteDriver,
       time: dbSetup.time,
+      deleteDatabaseFiles,
       ...(waitForDatabaseRelease && { waitForDatabaseRelease }),
       ...(xChaCha20Poly1305 && { xChaCha20Poly1305 }),
     }),
@@ -555,6 +563,7 @@ const startDbWorkerUntilDone = async (dbSetup: DbSetup) => {
     createMessagePort,
     lockManager: testCreateLockManager(),
     createSqliteDriver: dbSetup.createSqliteDriver,
+    deleteDatabaseFiles: deleteNoDatabaseFiles,
     time: dbSetup.time,
   });
   // Returns a panic as an Err instead of rejecting.
@@ -717,6 +726,7 @@ describe("worker startup", () => {
       createMessagePort,
       lockManager: testCreateLockManager(),
       createSqliteDriver: dbSetup.createSqliteDriver,
+      deleteDatabaseFiles: deleteNoDatabaseFiles,
       time: dbSetup.time,
     });
 
@@ -929,6 +939,7 @@ describe("worker startup", () => {
         createMessagePort,
         lockManager,
         createSqliteDriver: dbSetup.createSqliteDriver,
+        deleteDatabaseFiles: deleteNoDatabaseFiles,
         time: dbSetup.time,
       }),
     );
@@ -7747,6 +7758,7 @@ describe("worker failure", () => {
       createMessagePort,
       lockManager,
       createSqliteDriver: dbSetup.createSqliteDriver,
+      deleteDatabaseFiles: deleteNoDatabaseFiles,
       time: dbSetup.time,
     });
     const fiber = run.abortable(startDbWorker(worker.self));
@@ -8164,5 +8176,303 @@ describe("worker failure", () => {
       { type: "LeaderRefused", error: createUnknownError(defect) },
     ]);
     assertEqual(setup.outputs, []);
+  });
+});
+
+describe("database deletion", () => {
+  /**
+   * A DbWorker that records closing SQLite and deleting the database files in
+   * order, the deletion with whether the worker held the database's leader
+   * lock.
+   */
+  const setupDeletingDbWorker = async ({
+    dbSetup,
+    memoryOnly,
+    deleted = ok(),
+    closeError,
+    console,
+  }: {
+    dbSetup: DbSetup;
+    memoryOnly: boolean;
+    deleted?:
+      | Result<void, DatabaseHeldError | UnknownError>
+      | Promise<Result<void, DatabaseHeldError | UnknownError>>;
+    closeError?: Error;
+    console?: TestConsole;
+  }) => {
+    const events: Array<string> = [];
+    const lockManager = testCreateLockManager();
+    const setup = await setupDbWorker({
+      dbSetup: {
+        ...dbSetup,
+        createSqliteDriver: (name, options) => async (run) => {
+          const driver = await run.ok(
+            dbSetup.createSqliteDriver(name, options),
+          );
+          return ok({
+            ...driver,
+            [Symbol.dispose]: () => {
+              events.push("close");
+              if (closeError) throw closeError;
+              driver[Symbol.dispose]();
+            },
+          });
+        },
+      },
+      memoryOnly,
+      lockManager,
+      ...(console && { console, consoleLevel: "info" }),
+      deleteDatabaseFiles: (name) => async () => {
+        const { held = [] } = await lockManager.query();
+        events.push(
+          held.some((lock) => lock.name === `evolu-leaderlock-${name}`)
+            ? "delete under lock"
+            : "delete",
+        );
+        return deleted;
+      },
+    });
+    return Object.assign(setup, {
+      events,
+      /** Resolves once the worker released the database's leader lock. */
+      waitForEnd: async () => {
+        await using run = testCreateRun({ lockManager });
+        await using _lock = await run.ok(acquireLeaderLock(setup.workerName));
+      },
+    });
+  };
+
+  const deleteDatabaseRequest = (setup: DbSetup): DbWorkerRequest => ({
+    type: "ForEvolu",
+    id: setup.evoluInstanceId,
+    message: { type: "DeleteDatabase" },
+  });
+
+  it("closes a file database, deletes its files under the leader lock, tells the tenant, and ends", async () => {
+    await using dbSetup = await setupDb();
+    await using setup = await setupDeletingDbWorker({
+      dbSetup,
+      memoryOnly: false,
+    });
+
+    const outputs = await postRequest(
+      setup,
+      deleteDatabaseRequest(setup),
+      setup.createId(),
+      "activity",
+    );
+    await setup.waitForEnd();
+
+    assertEqual(outputs, [{ type: "DatabaseDeleted" }]);
+    assertEqual(setup.events, ["close", "delete under lock"]);
+
+    // The ended worker serves nothing.
+    setup.port.postMessage({
+      type: "Request",
+      attemptId: setup.createId(),
+      request: {
+        type: "ForEvolu",
+        id: setup.evoluInstanceId,
+        message: { type: "Export" },
+      },
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(setup.outputs, []);
+  });
+
+  it("finishes a deletion when a dispose message arrives and its SharedWorker ends during it", async () => {
+    await using dbSetup = await setupDb();
+    const deleted =
+      Promise.withResolvers<Result<void, DatabaseHeldError | UnknownError>>();
+    await using setup = await setupDeletingDbWorker({
+      dbSetup,
+      memoryOnly: false,
+      deleted: deleted.promise,
+    });
+
+    const outputs = postRequest(
+      setup,
+      deleteDatabaseRequest(setup),
+      setup.createId(),
+      "activity",
+    );
+    await testWaitForWorkerMessage();
+    assertEqual(setup.events, ["close", "delete under lock"]);
+    setup.port.postMessage({ type: "Dispose" });
+    await setup.endSharedWorker();
+    await testWaitForWorkerMessage();
+    deleted.resolve(ok());
+
+    assertEqual(await outputs, [{ type: "DatabaseDeleted" }]);
+    await setup.waitForEnd();
+  });
+
+  it("answers a failed deletion with its error, without refusing the database, and ends", async () => {
+    await using dbSetup = await setupDb();
+    const error = { type: "DatabaseHeldError", name: dbSetup.name } as const;
+    await using setup = await setupDeletingDbWorker({
+      dbSetup,
+      memoryOnly: false,
+      deleted: err(error),
+    });
+    const attemptId = setup.createId();
+
+    const outputs = await postRequest(
+      setup,
+      deleteDatabaseRequest(setup),
+      attemptId,
+    );
+    await setup.waitForEnd();
+
+    assertEqual(outputs, [
+      {
+        type: "OnQueuedResponse",
+        attemptId,
+        response: {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: { type: "DeleteDatabaseFailed", error },
+        },
+      },
+    ]);
+    assertEqual(setup.events, ["close", "delete under lock"]);
+    assertEqual(setup.consoleEntryOrErrors, []);
+  });
+
+  it("answers with an UnknownError and deletes nothing when SQLite fails to close", async () => {
+    await using dbSetup = await setupDb();
+    const closeError = new Error("disk I/O error");
+    await using setup = await setupDeletingDbWorker({
+      dbSetup,
+      memoryOnly: false,
+      closeError,
+    });
+    const attemptId = setup.createId();
+
+    const outputs = await postRequest(
+      setup,
+      deleteDatabaseRequest(setup),
+      attemptId,
+    );
+    await setup.waitForEnd();
+
+    assertEqual(outputs, [
+      {
+        type: "OnQueuedResponse",
+        attemptId,
+        response: {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: {
+            type: "DeleteDatabaseFailed",
+            error: createUnknownError(closeError),
+          },
+        },
+      },
+    ]);
+    assertEqual(setup.events, ["close"]);
+  });
+
+  it("deletes no files of a database kept in memory, which has a name of its own", async () => {
+    await using dbSetup = await setupDb();
+    await using setup = await setupDeletingDbWorker({
+      dbSetup,
+      memoryOnly: true,
+    });
+
+    const outputs = await postRequest(
+      setup,
+      deleteDatabaseRequest(setup),
+      setup.createId(),
+      "activity",
+    );
+    await setup.waitForEnd();
+
+    assertEqual(outputs, [{ type: "DatabaseDeleted" }]);
+    assertEqual(setup.events, ["close"]);
+  });
+
+  it("deletes a file database its startup created when discarded", async () => {
+    await using dbSetup = await setupDb();
+    await using setup = await setupDeletingDbWorker({
+      dbSetup,
+      memoryOnly: false,
+    });
+
+    setup.port.postMessage({ type: "Discard" });
+    await setup.waitForEnd();
+
+    assertEqual(setup.outputs, []);
+    assertEqual(setup.events, ["close", "delete under lock"]);
+  });
+
+  it("only logs a failed deletion when discarded", async () => {
+    await using dbSetup = await setupDb();
+    const error = { type: "DatabaseHeldError", name: dbSetup.name } as const;
+    const console = testCreateConsole({ level: "silent" });
+    await using setup = await setupDeletingDbWorker({
+      dbSetup,
+      memoryOnly: false,
+      deleted: err(error),
+      console,
+    });
+
+    setup.port.postMessage({ type: "Discard" });
+    await setup.waitForEnd();
+
+    assertEqual(setup.outputs, []);
+    assertEqual(setup.events, ["close", "delete under lock"]);
+    assertEqual(setup.reportDefect.getDefects(), []);
+    assertEqual(
+      console
+        .getEntriesSnapshot()
+        .filter(({ args }) => args[0] === "discardFailed"),
+      [{ method: "info", path: [], args: ["discardFailed", error] }],
+    );
+  });
+
+  it("keeps a file database its startup found when discarded", async () => {
+    await using dbSetup = await setupDb();
+    {
+      await using _creator = await setupDbWorker({
+        dbSetup,
+        memoryOnly: false,
+      });
+    }
+    await using setup = await setupDeletingDbWorker({
+      dbSetup,
+      memoryOnly: false,
+    });
+
+    setup.port.postMessage({ type: "Discard" });
+    await setup.waitForEnd();
+
+    assertEqual(setup.events, ["close"]);
+  });
+
+  it("deletes no files of a memory database when discarded", async () => {
+    await using dbSetup = await setupDb();
+    await using setup = await setupDeletingDbWorker({
+      dbSetup,
+      memoryOnly: true,
+    });
+
+    setup.port.postMessage({ type: "Discard" });
+    await setup.waitForEnd();
+
+    assertEqual(setup.events, ["close"]);
+  });
+
+  it("deletes nothing when disposed", async () => {
+    await using dbSetup = await setupDb();
+    await using setup = await setupDeletingDbWorker({
+      dbSetup,
+      memoryOnly: false,
+    });
+
+    setup.port.postMessage({ type: "Dispose" });
+    await setup.waitForEnd();
+
+    assertEqual(setup.events, ["close"]);
   });
 });

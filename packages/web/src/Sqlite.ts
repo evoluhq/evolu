@@ -5,10 +5,13 @@
  */
 
 import {
+  createUnknownError,
   disposable,
   err,
   exhaustiveCheck,
   ok,
+  tryAsync,
+  trySync,
   type CreateSqliteDriver,
   type DatabaseHeldError,
   type Name,
@@ -18,8 +21,12 @@ import {
   type Task,
   type Typed,
   type TypeName,
+  type UnknownError,
 } from "@evolu/common";
-import type { WaitForDatabaseRelease } from "@evolu/common/local-first";
+import type {
+  DeleteDatabaseFiles,
+  WaitForDatabaseRelease,
+} from "@evolu/common/local-first";
 import {
   createEncryptedSqliteDatabase,
   createSqliteDatabase,
@@ -28,7 +35,9 @@ import {
   sqliteWasmUrl,
   SqliteVfsPath,
   type deriveLegacySqliteKey,
+  type OpfsDirectoryHandle,
   type OpfsName,
+  type OpfsRoot,
   type OpfsRootDep,
   type SahPool,
   type SahPoolError,
@@ -228,6 +237,99 @@ export const createWaitForDatabaseRelease =
     using _pool = getOrThrowWithMessage(opened);
     return ok();
   };
+
+/**
+ * Creates the {@link DeleteDatabaseFiles} of Evolu for the web. It opens the
+ * pool {@link createWasmSqliteDriver} opens for the database, waiting for held
+ * files as {@link createWaitForDatabaseRelease} does, deletes `/evolu1.db` with
+ * its journal, disposes the pool, and removes the pool's directory `.<name>`
+ * with every slot of the pool. A missing file counts as deleted, and so does a
+ * missing directory, which it then doesn't create.
+ *
+ * It fails with {@link DatabaseHeldError} when another context still holds a
+ * file of the pool 10 seconds after the first attempt, and deletes nothing. Any
+ * other failure, such as SQLite that failed to load or a file that could not be
+ * deleted, fails with an {@link UnknownError}, after which only the pool's
+ * disposal still runs.
+ */
+export const createDeleteDatabaseFiles =
+  (deps: OpfsRootWithRemoveEntryDep & SqliteWasmLoadDep): DeleteDatabaseFiles =>
+  (name) =>
+  async (run) => {
+    const directory = `.${name}`;
+    const root = await tryAsync(() => deps.opfsRoot.getDirectory());
+    if (!root.ok) return err(createUnknownError(root.error));
+    // Opening the pool would create the directory, whose name reveals which
+    // owner used the device, so a database without one is deleted already.
+    // The database's leader lock keeps any other pool from creating it
+    // meanwhile.
+    const found = await tryAsync(() =>
+      root.value.getDirectoryHandle(directory),
+    );
+    if (!found.ok)
+      return isNotFoundError(found.error)
+        ? ok()
+        : err(createUnknownError(found.error));
+
+    const sqliteWasm = await deps.sqliteWasmLoad;
+    if (!sqliteWasm.ok) return err(createUnknownError(sqliteWasm.error));
+    const opened = await run(
+      // As createWaitForDatabaseRelease waits.
+      openDatabasePool(name, { heldTimeout: "10s" }),
+      { ...deps, sqliteWasm: sqliteWasm.value },
+    );
+    if (!opened.ok)
+      return err(
+        opened.error.type === "SahPoolHeldError"
+          ? { type: "DatabaseHeldError", name }
+          : createUnknownError(opened.error),
+      );
+
+    const pool = opened.value;
+    const unlinked = trySync(() => pool.unlink(databasePath));
+    const disposed = trySync(() => {
+      pool[Symbol.dispose]();
+    });
+    if (!unlinked.ok) return err(createUnknownError(unlinked.error));
+    if (!unlinked.value.ok)
+      return err(createUnknownError(unlinked.value.error));
+    if (!disposed.ok) return err(createUnknownError(disposed.error));
+
+    // Removing the directory with every slot also removes a free header whose
+    // flush failed, which unlink does not report, so the database cannot come
+    // back.
+    const removed = await tryAsync(() =>
+      root.value.removeEntry(directory, { recursive: true }),
+    );
+    if (!removed.ok && !isNotFoundError(removed.error))
+      return err(createUnknownError(removed.error));
+    return ok();
+  };
+
+const isNotFoundError = (error: unknown): boolean =>
+  error instanceof DOMException && error.name === "NotFoundError";
+
+/**
+ * An {@link OpfsRoot} whose directory can also look up a directory without
+ * creating it and remove an entry, which `navigator.storage` provides in a
+ * dedicated worker.
+ */
+export interface OpfsRootWithRemoveEntry extends OpfsRoot {
+  readonly getDirectory: () => Promise<
+    OpfsDirectoryHandle & {
+      readonly getDirectoryHandle: (name: string) => Promise<unknown>;
+      readonly removeEntry: (
+        name: string,
+        options: { readonly recursive: true },
+      ) => Promise<void>;
+    }
+  >;
+}
+
+/** Dependency wrapper for {@link OpfsRootWithRemoveEntry}. */
+export interface OpfsRootWithRemoveEntryDep {
+  readonly opfsRoot: OpfsRootWithRemoveEntry;
+}
 
 // The pool of a database's file is in the directory `.<name>`, as in
 // @evolu/web 3.

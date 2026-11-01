@@ -6,6 +6,7 @@ import {
   assertInstanceOf,
   assertSame,
   assertType,
+  createUnknownError,
   EncryptionKey,
   err,
   FiniteNumber,
@@ -26,8 +27,9 @@ interface FakeDatabaseOptions {
 }
 
 /**
- * A fake of `@evolu/sqlite-wasm` that records what the driver does with it, in
- * order, in `events`. Each test resets it and sets the results it needs.
+ * A fake of `@evolu/sqlite-wasm` and of the OPFS root that records what the
+ * driver does with them, in order, in `events`. Each test resets it and sets
+ * the results it needs.
  */
 const fake = (() => {
   const sqliteWasm = { label: "sqliteWasm" };
@@ -36,10 +38,34 @@ const fake = (() => {
   const pool = {
     unlink: (path: string) => {
       state.events.push(`unlink ${path}`);
+      if (state.unlinkThrows) throw state.unlinkThrows;
       return state.unlinkResult;
     },
     [Symbol.dispose]: () => {
       state.events.push("dispose pool");
+      if (state.disposePoolThrows) throw state.disposePoolThrows;
+    },
+  };
+  const opfsRootDirectory = {
+    getDirectoryHandle: (name: string) => {
+      state.events.push(`get ${name}`);
+      return state.getDirectoryHandleRejects
+        ? Promise.reject(state.getDirectoryHandleRejects)
+        : Promise.resolve({});
+    },
+    removeEntry: (name: string, options: unknown) => {
+      state.events.push(`remove ${name} ${JSON.stringify(options)}`);
+      return state.removeEntryRejects
+        ? Promise.reject(state.removeEntryRejects)
+        : Promise.resolve();
+    },
+  };
+  const opfsRoot = {
+    getDirectory: () => {
+      state.events.push("get OPFS root");
+      return state.getDirectoryRejects
+        ? Promise.reject(state.getDirectoryRejects)
+        : Promise.resolve(opfsRootDirectory as never);
     },
   };
 
@@ -71,11 +97,15 @@ const fake = (() => {
     createSqliteWasmSources: [] as Array<unknown>,
     databaseOptions: [] as Array<FakeDatabaseOptions>,
     databaseResult: null as Result<never, unknown> | null,
+    disposePoolThrows: null as Error | null,
     events: [] as Array<string>,
     exportResult: ok(new Uint8Array([1, 2, 3])) as Result<Uint8Array, unknown>,
+    getDirectoryHandleRejects: null as Error | null,
+    getDirectoryRejects: null as Error | null,
     poolDeps: [] as Array<Record<string, unknown>>,
     poolOptions: [] as Array<unknown>,
     poolResults: [] as Array<Result<never, unknown>>,
+    removeEntryRejects: null as Error | null,
     runResult: ok({ rows: [{ value: "run" }], changes: 1 }) as Result<
       unknown,
       unknown
@@ -85,12 +115,14 @@ const fake = (() => {
       changes: 2,
     }) as Result<unknown, unknown>,
     unlinkResult: ok(true) as Result<boolean, unknown>,
+    unlinkThrows: null as Error | null,
   });
   const state = initialState();
 
   return {
     state,
     pool,
+    opfsRoot,
     sqliteWasm,
     sqliteVfsPaths,
     reset: () => {
@@ -144,10 +176,14 @@ mock.module("@evolu/sqlite-wasm", {
   exports: fake.exports,
 });
 
-const { createWaitForDatabaseRelease, createWasmSqliteDriver, loadSqliteWasm } =
-  await import("./Sqlite.ts");
+const {
+  createDeleteDatabaseFiles,
+  createWaitForDatabaseRelease,
+  createWasmSqliteDriver,
+  loadSqliteWasm,
+} = await import("./Sqlite.ts");
 
-const testOpfsRoot = { getDirectory: () => Promise.reject(new Error("Fake")) };
+const testOpfsRoot = fake.opfsRoot;
 const testSubtleCrypto = { label: "subtleCrypto" } as unknown as SubtleCrypto;
 const testKey = EncryptionKey.orThrow(new Uint8Array(32).fill(42));
 const testName = Name.orThrow("Test");
@@ -515,6 +551,189 @@ describe("createWaitForDatabaseRelease", () => {
 
     assertSame(defect.cause, compileError);
     assertEqual(fake.state.events, []);
+  });
+});
+
+describe("createDeleteDatabaseFiles", () => {
+  // What a successful delete does, which a failed step cuts short.
+  const deleteEvents = [
+    "get OPFS root",
+    "get .Test",
+    "open pool .Test",
+    "unlink /evolu1.db",
+    "dispose pool",
+    'remove .Test {"recursive":true}',
+  ];
+
+  const deleteDatabaseFiles = async () => {
+    await using run = testCreateRun();
+    return await run(createDeleteDatabaseFiles(setupDriverDeps())(testName));
+  };
+
+  it("opens the pool in .<name>, waiting up to 10 seconds for held files, deletes /evolu1.db, disposes the pool and removes .<name>", async () => {
+    fake.reset();
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, ok());
+    assertEqual(fake.state.events, deleteEvents);
+    assertEqual(fake.state.poolOptions, [
+      { directory: [".Test"], heldTimeout: "10s" },
+    ]);
+    assertSame(fake.state.poolDeps[0]?.opfsRoot, testOpfsRoot);
+    assertSame(fake.state.poolDeps[0]?.sqliteWasm, fake.sqliteWasm);
+  });
+
+  it("counts a missing directory as deleted without opening the pool, which would create it", async () => {
+    fake.reset();
+    fake.state.getDirectoryHandleRejects = new DOMException(
+      "Missing",
+      "NotFoundError",
+    );
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, ok());
+    assertEqual(fake.state.events, deleteEvents.slice(0, 2));
+  });
+
+  it("counts a missing file and a directory removed meanwhile as deleted", async () => {
+    fake.reset();
+    fake.state.unlinkResult = ok(false);
+    fake.state.removeEntryRejects = new DOMException(
+      "Missing",
+      "NotFoundError",
+    );
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, ok());
+    assertEqual(fake.state.events, deleteEvents);
+  });
+
+  it("fails with UnknownError when looking up .<name> fails otherwise than missing", async () => {
+    fake.reset();
+    const typeMismatchError = new DOMException(
+      "Not a directory",
+      "TypeMismatchError",
+    );
+    fake.state.getDirectoryHandleRejects = typeMismatchError;
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, err(createUnknownError(typeMismatchError)));
+    assertEqual(fake.state.events, deleteEvents.slice(0, 2));
+  });
+
+  it("fails with DatabaseHeldError when the pool is still held, without retrying itself or deleting anything", async () => {
+    fake.reset();
+    fake.state.poolResults.push(err(heldError));
+    await using run = testCreateRun();
+
+    const deleted = run(createDeleteDatabaseFiles(setupDriverDeps())(testName));
+    await flushMicrotasks();
+    // Longer than a retry would wait.
+    run.deps.time.advance("1s");
+
+    assertEqual(
+      await deleted,
+      err({ type: "DatabaseHeldError", name: testName }),
+    );
+    assertEqual(fake.state.events, deleteEvents.slice(0, 3));
+  });
+
+  it("fails with UnknownError when the pool fails otherwise than held, without deleting anything", async () => {
+    fake.reset();
+    const setupError = { type: "SahPoolSetupError", cause: null };
+    fake.state.poolResults.push(err(setupError));
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, err(createUnknownError(setupError)));
+    assertEqual(fake.state.events, deleteEvents.slice(0, 3));
+  });
+
+  it("fails with UnknownError when SQLite failed to load, before opening the pool", async () => {
+    fake.reset();
+    const compileError = { type: "SqliteWasmCompileError", cause: null };
+    await using run = testCreateRun();
+
+    const deleted = await run(
+      createDeleteDatabaseFiles(setupDriverDeps(err(compileError)))(testName),
+    );
+
+    assertEqual(deleted, err(createUnknownError(compileError)));
+    assertEqual(fake.state.events, deleteEvents.slice(0, 2));
+  });
+
+  it("fails with UnknownError when deleting the file fails, and disposes the pool but keeps .<name>", async () => {
+    fake.reset();
+    const ioError = { type: "SqliteVfsIoError", cause: null };
+    fake.state.unlinkResult = err(ioError);
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, err(createUnknownError(ioError)));
+    assertEqual(fake.state.events, deleteEvents.slice(0, 5));
+  });
+
+  it("fails with UnknownError when deleting the file throws, and disposes the pool but keeps .<name>", async () => {
+    fake.reset();
+    const thrown = new Error("Cannot unlink /evolu1.db, which is open.");
+    fake.state.unlinkThrows = thrown;
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, err(createUnknownError(thrown)));
+    assertEqual(fake.state.events, deleteEvents.slice(0, 5));
+  });
+
+  it("fails with UnknownError when disposing the pool throws, and keeps .<name>", async () => {
+    fake.reset();
+    const thrown = new Error("Cannot dispose a SahPool with an open file.");
+    fake.state.disposePoolThrows = thrown;
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, err(createUnknownError(thrown)));
+    assertEqual(fake.state.events, deleteEvents.slice(0, 5));
+  });
+
+  it("fails with the error of deleting the file when disposing the pool throws too", async () => {
+    fake.reset();
+    const ioError = { type: "SqliteVfsIoError", cause: null };
+    fake.state.unlinkResult = err(ioError);
+    fake.state.disposePoolThrows = new Error("Dispose failed.");
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, err(createUnknownError(ioError)));
+    assertEqual(fake.state.events, deleteEvents.slice(0, 5));
+  });
+
+  it("fails with UnknownError when the OPFS root fails", async () => {
+    fake.reset();
+    const securityError = new DOMException("Denied", "SecurityError");
+    fake.state.getDirectoryRejects = securityError;
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, err(createUnknownError(securityError)));
+    assertEqual(fake.state.events, deleteEvents.slice(0, 1));
+  });
+
+  it("fails with UnknownError when removing .<name> fails otherwise than missing", async () => {
+    fake.reset();
+    const heldDirectoryError = new DOMException(
+      "Held",
+      "NoModificationAllowedError",
+    );
+    fake.state.removeEntryRejects = heldDirectoryError;
+
+    const deleted = await deleteDatabaseFiles();
+
+    assertEqual(deleted, err(createUnknownError(heldDirectoryError)));
+    assertEqual(fake.state.events, deleteEvents);
   });
 });
 

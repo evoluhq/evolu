@@ -9,6 +9,7 @@ import {
 } from "@evolu/common";
 import { installPolyfills } from "@evolu/common/polyfills";
 import {
+  createDeleteDatabaseFiles,
   createWaitForDatabaseRelease,
   createWasmSqliteDriver,
   loadSqliteWasm,
@@ -25,6 +26,7 @@ const sqliteDeps = {
 };
 const createSqliteDriver = createWasmSqliteDriver(sqliteDeps);
 const waitForDatabaseRelease = createWaitForDatabaseRelease(sqliteDeps);
+const deleteDatabaseFiles = createDeleteDatabaseFiles(sqliteDeps);
 
 // Typed reference to the Web Worker global scope.
 const workerScope = globalThis as never as {
@@ -69,6 +71,7 @@ workerScope.onmessage = (e: MessageEvent) => {
         | "export"
         | "dispose"
         | "deleteDatabase"
+        | "deleteDatabaseFiles"
         | "disposeAndClose"
         | "holdPoolFile"
         | "releasePoolFile";
@@ -150,6 +153,13 @@ workerScope.onmessage = (e: MessageEvent) => {
           lockRelease?.resolve();
           lockRelease = null;
           workerScope.postMessage({ ok: true });
+          break;
+        }
+        case "deleteDatabaseFiles": {
+          if (!cmd.name) throw new Error("Name required");
+          await using run = createRun();
+          const result = await run(deleteDatabaseFiles(Name.orThrow(cmd.name)));
+          workerScope.postMessage({ ok: true, data: { result } });
           break;
         }
         case "disposeAndClose": {

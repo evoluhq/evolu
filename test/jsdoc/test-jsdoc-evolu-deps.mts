@@ -1,6 +1,10 @@
 // oxlint-disable-next-line import/no-empty-named-blocks, unicorn/require-module-specifiers -- Includes global declarations during type-checking without emitting a runtime import.
 import type {} from "../../packages/react-native/src/ErrorUtils.d.ts";
-import { constVoid, type ConsoleDep } from "../../packages/common/src/index.ts";
+import {
+  constVoid,
+  ok,
+  type ConsoleDep,
+} from "../../packages/common/src/index.ts";
 import type { EvoluDeps } from "../../packages/common/src/local-first/index.ts";
 import { createNodeJsSqliteDriver } from "../../packages/nodejs/src/Sqlite.ts";
 import { createEvoluDeps as createInProcessEvoluDeps } from "../../packages/react-native/src/shared.ts";
@@ -36,5 +40,7 @@ export const createDocsEvoluDeps = (
     ...(deps.console && { console: deps.console }),
     createSqliteDriver: (name) =>
       createNodeJsSqliteDriver(name, { mode: "memory" }),
+    // The databases are in memory, so there are no files to delete.
+    deleteDatabaseFiles: () => () => ok(),
     reloadApp: constVoid,
   });

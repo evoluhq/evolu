@@ -17,6 +17,7 @@ import {
   createRun,
   id,
   NonEmptyTrimmedString100,
+  ok,
   type NativeSqlite,
   WebSocketUrl,
 } from "@evolu/common";
@@ -110,6 +111,37 @@ test("Evolu stores and queries rows in an encrypted database in EvoluApp's direc
   assertFalse(
     readFileSync(path).toString("latin1", 0, 15) === "SQLite format 3",
   );
+});
+
+test("Evolu deletes its database's file from EvoluApp's directory", async () => {
+  const schema = {
+    todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
+  };
+  using deps = createEvoluDeps();
+  await using run = createRun(deps);
+  await using evolu = await run.ok(
+    createEvolu(schema, {
+      appName: AppName.orThrow("deleted"),
+      appOwner: testAppOwner,
+      transports: [],
+    }),
+  );
+  const inserted = Promise.withResolvers<void>();
+  evolu.insert(
+    "todo",
+    { title: NonEmptyTrimmedString100.orThrow("deleted") },
+    { onComplete: inserted.resolve },
+  );
+  await inserted.promise;
+  const path = join(directory, `evolu1-${evolu.name}.db`);
+  assertTrue(existsSync(path));
+
+  // The DbWorker closes its connection first, or the binding would find the
+  // file held.
+  assertEqual(await evolu.deleteDatabase(), ok());
+
+  assertFalse(existsSync(path));
+  assertFalse(existsSync(`${path}-journal`));
 });
 
 test("Evolu's DbWorker and SharedWorker encrypt and decrypt changes with the binding", async () => {

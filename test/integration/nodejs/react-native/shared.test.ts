@@ -13,6 +13,7 @@ import {
 import { testAppOwner } from "../../../../packages/common/src/local-first/Owner.ts";
 import { createQueryBuilder } from "../../../../packages/common/src/local-first/Schema.ts";
 import { installPolyfills } from "../../../../packages/common/src/Polyfills.ts";
+import { ok } from "../../../../packages/common/src/Result.ts";
 import { createRun, sleep } from "../../../../packages/common/src/Task.ts";
 import {
   id,
@@ -39,6 +40,8 @@ describe("createEvoluDeps", () => {
     using deps = createEvoluDeps({
       reloadApp: constVoid,
       createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+      // The driver's databases are in memory, so there are no files to delete.
+      deleteDatabaseFiles: () => () => ok(),
     });
     await using run = createRun(deps);
     await using evolu = await run.ok(
@@ -61,6 +64,9 @@ describe("createEvoluDeps", () => {
           openCount += 1;
           return testCreateSqliteDep.createSqliteDriver(name, options);
         },
+        // The driver's databases are in memory, so there are no files to
+        // delete.
+        deleteDatabaseFiles: () => () => ok(),
       });
     const createTodoEvolu = createEvolu(Schema, {
       appName: testAppName,

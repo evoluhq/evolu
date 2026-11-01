@@ -5,9 +5,11 @@ export type { DatabaseHeldError, UnsupportedDbVersionError } from "./Db.ts";
 export { AppName, createEvolu, maxMutationSize, testAppName } from "./Evolu.ts";
 export type {
   AppNameError,
+  DeleteDatabaseError,
   Evolu,
   EvoluConfig,
   EvoluDeps,
+  EvoluDisposedError,
   EvoluError,
   UnuseOwner,
 } from "./Evolu.ts";

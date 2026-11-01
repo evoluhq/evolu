@@ -24,6 +24,7 @@ import type {
   CreateDbWorker,
   DbWorker,
   DbWorkerInit,
+  DeleteDatabaseFilesDep,
   EvoluDeps,
   SharedWorker,
   SharedWorkerInput,
@@ -57,6 +58,7 @@ let sharedWorkerSelf: SharedWorkerSelf<
  */
 export const createEvoluDeps = (
   deps: CreateSqliteDriverDep &
+    DeleteDatabaseFilesDep &
     ReloadAppDep &
     Partial<ConsoleDep> &
     Partial<WaitForDatabaseReleaseDep> &
@@ -79,6 +81,7 @@ export const createEvoluDeps = (
       createMessagePort,
       createWebSocket,
       createSqliteDriver: deps.createSqliteDriver,
+      deleteDatabaseFiles: deps.deleteDatabaseFiles,
       lockManager,
       randomBytes: createRandomBytes(),
       ...(deps.waitForDatabaseRelease && {

@@ -4,6 +4,7 @@ import {
   createElement,
   StrictMode,
   Suspense,
+  useLayoutEffect,
   type FC,
   type ReactNode,
 } from "react";
@@ -12,12 +13,19 @@ import { renderToString } from "react-dom/server";
 import { beforeAll, test } from "vitest";
 import {
   assertEqual,
+  assertNonNullable,
   assertSame,
 } from "../../../../packages/common/src/Assert.ts";
 import { emptyArray } from "../../../../packages/common/src/Array.ts";
 import { createUnknownError } from "../../../../packages/common/src/Error.ts";
 import { constVoid } from "../../../../packages/common/src/Function.ts";
-import type { Evolu } from "../../../../packages/common/src/local-first/Evolu.ts";
+import { testCreateLockManager } from "../../../../packages/common/src/LockManager.ts";
+import {
+  createEvolu,
+  testAppName,
+  type Evolu,
+  type EvoluPlatformDeps,
+} from "../../../../packages/common/src/local-first/Evolu.ts";
 import {
   createOwnerWebSocketTransport,
   RelayUrl,
@@ -27,10 +35,14 @@ import {
   type OwnerId,
   type ReadonlyOwner,
 } from "../../../../packages/common/src/local-first/Owner.ts";
+import { createQueryBuilder } from "../../../../packages/common/src/local-first/Schema.ts";
 import type {
   CompleteSyncRoute,
+  EvoluOutput,
   OwnerSyncStatus,
   PendingSyncRoute,
+  SharedWorkerInput,
+  SharedWorkerOutput,
   SyncConnection,
   SyncRoute,
   SyncState,
@@ -40,14 +52,25 @@ import type {
   QueryRows,
 } from "../../../../packages/common/src/local-first/Query.ts";
 import { testGlobalUnhandledRejections } from "../../../../packages/common/src/Platform.ts";
+import { ok } from "../../../../packages/common/src/Result.ts";
 import { createStore } from "../../../../packages/common/src/Store.ts";
-import { testCreateDeps } from "../../../../packages/common/src/Task.ts";
+import {
+  testCreateDeps,
+  testCreateRun,
+} from "../../../../packages/common/src/Task.ts";
 import { Millis } from "../../../../packages/common/src/Time.ts";
 import {
   createId,
+  id,
   Name,
   testName,
 } from "../../../../packages/common/src/Type.ts";
+import {
+  testCreateBroadcastChannel,
+  testCreateMessageChannel,
+  testCreateSharedWorker,
+  testCreateWorker,
+} from "../../../../packages/common/src/Worker.ts";
 import { createEvoluBinding } from "../../../../packages/react/src/local-first/createEvoluBinding.ts";
 
 beforeAll(() => {
@@ -235,6 +258,229 @@ test("useQuery and useQueries handle the loads they start while server rendering
   const error = createUnknownError(new Error("incomplete input"));
   for (const load of loads) load.reject(error);
   assertEqual(await unhandledRejections.settle(), []);
+});
+
+const deletionSchema = { todo: { id: id("Todo") } };
+const deletionBinding = createEvoluBinding<typeof deletionSchema>();
+const createDeletionQuery = createQueryBuilder(deletionSchema);
+const todosQuery = createDeletionQuery((db) =>
+  db.selectFrom("todo").selectAll(),
+);
+const todoIdsQuery = createDeletionQuery((db) =>
+  db.selectFrom("todo").select("id"),
+);
+
+/**
+ * Creates an Evolu instance whose SharedWorker messages the test delivers
+ * synchronously, so it controls when a deletion lands during a React commit.
+ */
+const setupEvolu = async (disposer: AsyncDisposableStack) => {
+  const channels: Array<{
+    readonly port1: {
+      onMessage: ((output: EvoluOutput) => void) | null;
+    };
+  }> = [];
+  let reloadCount = 0;
+  const evoluDeps: EvoluPlatformDeps = {
+    createDbWorker: testCreateWorker,
+    createBroadcastChannel: testCreateBroadcastChannel,
+    createMessageChannel: <Input, Output = never>() => {
+      const channel = testCreateMessageChannel<Input, Output>();
+      channels.push(channel as never);
+      return channel;
+    },
+    getDevicePersistence: () => Promise.resolve("Unknown"),
+    lockManager: testCreateLockManager(),
+    reloadApp: () => {
+      reloadCount += 1;
+    },
+    sharedWorker: disposer.use(
+      testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
+    ),
+  };
+  const run = disposer.use(testCreateRun(evoluDeps));
+  const evolu = await run.ok(
+    createEvolu(deletionSchema, {
+      appName: testAppName,
+      appOwner: testAppOwner,
+      transports: [],
+    }),
+  );
+  return {
+    evolu,
+    getReloadCount: () => reloadCount,
+    deliver: (output: EvoluOutput): void => {
+      const channel = channels.find(({ port1 }) => port1.onMessage);
+      assertNonNullable(channel?.port1.onMessage);
+      channel.port1.onMessage(output);
+    },
+  };
+};
+
+/** Renders the element under the instance, a boundary, and a fallback. */
+const setupDeletionRoot = (
+  disposer: AsyncDisposableStack,
+  evolu: Evolu<typeof deletionSchema>,
+) => {
+  const caught: Array<unknown> = [];
+  const container = document.createElement("div");
+  // React would log an error the boundary catches.
+  const root = createRoot(container, { onCaughtError: constVoid });
+  disposer.defer(() => {
+    act(() => {
+      root.unmount();
+    });
+  });
+  // Each call creates new elements, so the components render again.
+  const render = (
+    element: ReturnType<typeof createElement>,
+    value: Evolu<typeof deletionSchema> = evolu,
+  ): void => {
+    root.render(
+      createElement(
+        deletionBinding.EvoluContext,
+        { value },
+        createElement(
+          ErrorBoundary,
+          {
+            onError: (error) => {
+              caught.push(error);
+            },
+          },
+          createElement(
+            Suspense,
+            { fallback: createElement("span", null, "Suspended") },
+            element,
+          ),
+        ),
+      ),
+    );
+  };
+  return {
+    caught,
+    render,
+    getFallback: () => container.querySelector("span")?.textContent,
+    getText: () => container.textContent,
+  };
+};
+
+const Todos: FC = () => {
+  const todos = deletionBinding.useQuery(todosQuery);
+  return createElement("p", null, `${todos.length} todos`);
+};
+
+test("suspends a component whose instance's database was deleted instead of using the disposed instance", async () => {
+  await using disposer = new AsyncDisposableStack();
+  const { evolu, deliver, getReloadCount } = await setupEvolu(disposer);
+  const { caught, render, getFallback, getText } = setupDeletionRoot(
+    disposer,
+    evolu,
+  );
+
+  // oxlint-disable-next-line typescript/require-await -- An async act waits for the render that suspends.
+  await act(async () => {
+    render(createElement(Todos));
+  });
+  // oxlint-disable-next-line typescript/require-await -- An async act flushes the render that retries after the load.
+  await act(async () => {
+    deliver({
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map([
+        [todosQuery, ok([{ op: "replaceAll", value: [{ id: "a" }] }])],
+      ]),
+      onCompleteIds: [],
+    });
+  });
+  assertEqual(getText(), "1 todos");
+
+  // The deletion renders the component again, before the reload replaces the
+  // page, so it does not keep showing the deleted rows.
+  act(() => {
+    deliver({ type: "OnDatabaseDeleted" });
+  });
+
+  assertEqual(getReloadCount(), 1);
+  assertEqual(caught, []);
+  assertEqual(getFallback(), "Suspended");
+});
+
+test("renders another instance the app provides after a deletion", async () => {
+  await using disposer = new AsyncDisposableStack();
+  const deleted = await setupEvolu(disposer);
+  const provided = await setupEvolu(disposer);
+  const { caught, render, getFallback, getText } = setupDeletionRoot(
+    disposer,
+    deleted.evolu,
+  );
+  for (const [{ evolu, deliver }, id] of [
+    [deleted, "deleted"],
+    [provided, "provided"],
+  ] as const) {
+    void evolu.loadQuery(todosQuery);
+    deliver({
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map([
+        [todosQuery, ok([{ op: "replaceAll", value: [{ id }] }])],
+      ]),
+      onCompleteIds: [],
+    });
+  }
+  act(() => {
+    render(createElement(Todos));
+  });
+  act(() => {
+    deleted.deliver({ type: "OnDatabaseDeleted" });
+  });
+  assertEqual(getFallback(), "Suspended");
+
+  // As an onDatabaseDeleted that replaces the instance does.
+  // oxlint-disable-next-line typescript/require-await -- An async act flushes the revealed content.
+  await act(async () => {
+    render(createElement(Todos), provided.evolu);
+  });
+
+  assertEqual(caught, []);
+  assertEqual(getText(), "1 todos");
+});
+
+test("waits instead of throwing when a deletion disposes the instance before React subscribes", async () => {
+  await using disposer = new AsyncDisposableStack();
+  const { evolu, deliver } = await setupEvolu(disposer);
+  const { caught, render, getFallback } = setupDeletionRoot(disposer, evolu);
+  void evolu.loadQuery(todosQuery);
+  void evolu.loadQuery(todoIdsQuery);
+  deliver({
+    type: "OnPatchesByQuery",
+    patchesByQuery: new Map([
+      [todosQuery, ok([{ op: "replaceAll", value: [{ id: "a" }] }])],
+      [todoIdsQuery, ok([{ op: "replaceAll", value: [{ id: "a" }] }])],
+    ]),
+    onCompleteIds: [],
+  });
+
+  // Each hook subscribes or registers in an effect after the commit.
+  const Subscriber: FC = () => {
+    deletionBinding.useQuery(todoIdsQuery, { once: true });
+    deletionBinding.useOwner(testAppOwner, [
+      createOwnerWebSocketTransport({ url: relayA, ownerId: testAppOwner.id }),
+    ]);
+    return createElement(Todos);
+  };
+  // Layout effects run before those effects, so the deletion lands between
+  // the render and the subscriptions.
+  const DeleteOnCommit: FC = () => {
+    useLayoutEffect(() => {
+      deliver({ type: "OnDatabaseDeleted" });
+    }, []);
+    return createElement(Subscriber);
+  };
+
+  act(() => {
+    render(createElement(DeleteOnCommit));
+  });
+
+  assertEqual(caught, []);
+  assertEqual(getFallback(), "Suspended");
 });
 
 test("registers an equal owner once and releases it on change and unmount", () => {
