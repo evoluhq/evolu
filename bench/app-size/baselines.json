@@ -1,1 +1,123 @@
-{}
+{
+  "cli-android": {
+    "image": "ubuntu24 20261026.354.1",
+    "apk": 33001267,
+    "libs": {
+      "libappmodules.so": 1332288,
+      "libc++_shared.so": 1292904,
+      "libfbjni.so": 177000,
+      "libhermestooling.so": 140792,
+      "libhermesvm.so": 2705536,
+      "libimagepipeline.so": 8760,
+      "libjsi.so": 412784,
+      "libnative-filters.so": 277744,
+      "libnative-imagetranscoder.so": 585376,
+      "libreactnative.so": 7048592
+    },
+    "dex": 2178604,
+    "jsBundle": 2694004,
+    "assets": 2035,
+    "resources": 683179
+  },
+  "cli-ios": {
+    "image": "macos26 20261026.0455.2",
+    "app": 24358311,
+    "executable": 1231232,
+    "executableByLibrary": {
+      "app": 14715,
+      "libEvoluReactNative.a": 1119405,
+      "libPods-EvoluRN.a": 255,
+      "libReactAppDependencyProvider.a": 963,
+      "libReactCodegen.a": 5564,
+      "libswiftCompatibility56.a": 4131,
+      "linkerSynthesized": 12470,
+      "stubs": 3332
+    },
+    "frameworks": {
+      "React.framework": 11874048,
+      "ReactNativeDependencies.framework": 1277696,
+      "hermesvm.framework": 6379536
+    },
+    "jsBundle": 3399595,
+    "evolu": 1121834
+  },
+  "expo-android": {
+    "image": "ubuntu24 20261026.354.1",
+    "apk": 56229395,
+    "libs": {
+      "libappmodules.so": 2156088,
+      "libc++_shared.so": 1292904,
+      "libexpo-modules-core.so": 1589544,
+      "libexpo-modules-jsi.so": 91072,
+      "libexpo-modules-v2.so": 345912,
+      "libexpo-modules-worklets.so": 115912,
+      "libfbjni.so": 177000,
+      "libgesturehandler.so": 92000,
+      "libgifimage.so": 319088,
+      "libhermestooling.so": 140792,
+      "libhermesvm.so": 2705536,
+      "libimagepipeline.so": 8760,
+      "libjsi.so": 412784,
+      "libnative-filters.so": 277744,
+      "libnative-imagetranscoder.so": 585376,
+      "libreact_codegen_rngesturehandler_codegen.so": 362288,
+      "libreact_codegen_rnscreens.so": 1230280,
+      "libreact_codegen_safeareacontext.so": 154256,
+      "libreactnative.so": 7048592,
+      "libreanimated.so": 1666760,
+      "librnscreens.so": 103928,
+      "libstatic-webp.so": 502112,
+      "libworklets.so": 1293000,
+      "libzstd-kmp.so": 731872
+    },
+    "dex": 5706356,
+    "jsBundle": 3616980,
+    "assets": 3271,
+    "resources": 2253433
+  },
+  "expo-ios": {
+    "image": "macos26 20261021.0445.8",
+    "app": 37088212,
+    "executable": 5445456,
+    "executableByLibrary": {
+      "app": 17701,
+      "libEXConstants.a": 11973,
+      "libEvoluReactNative.a": 1118908,
+      "libExpo.a": 135103,
+      "libExpoAsset.a": 11025,
+      "libExpoDomWebView.a": 71799,
+      "libExpoGlassEffect.a": 34096,
+      "libExpoKeepAwake.a": 6967,
+      "libExpoLinking.a": 9970,
+      "libExpoLogBox.a": 253,
+      "libExpoModulesWorkletsAdapter.a": 8455,
+      "libExpoRouter.a": 206342,
+      "libExpoSplashScreen.a": 14653,
+      "libExpoStatusBar.a": 8420,
+      "libPods-expoapp.a": 255,
+      "libRNCMaskedView.a": 1152,
+      "libRNGestureHandler.a": 231775,
+      "libRNReanimated.a": 1038678,
+      "libRNScreens.a": 721156,
+      "libRNWorklets.a": 413681,
+      "libReactAppDependencyProvider.a": 924,
+      "libReactCodegen.a": 260848,
+      "libclang_rt.iossim.a": 1725,
+      "libreact-native-safe-area-context.a": 44008,
+      "linkerSynthesized": 290405,
+      "stubs": 21540
+    },
+    "frameworks": {
+      "ExpoFileSystem.framework": 1348320,
+      "ExpoFont.framework": 293744,
+      "ExpoModulesCore.framework": 3992240,
+      "ExpoModulesJSI.framework": 1367568,
+      "ExpoModulesWorklets.framework": 180608,
+      "React.framework": 11874048,
+      "ReactNativeDependencies.framework": 1277696,
+      "hermesvm.framework": 6379536
+    },
+    "jsBundle": 4476966,
+    "evolu": 1121322
+  }
+}
