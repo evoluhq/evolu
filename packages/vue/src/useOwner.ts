@@ -1,4 +1,5 @@
 import type {
+  Evolu,
   NonEmptyReadonlyArray,
   Owner,
   OwnerTransport,
@@ -13,7 +14,8 @@ import { useEvolu } from "./useEvolu.ts";
  *
  * Using an Owner means syncing it with the provided transports, or the
  * transports defined in Evolu config when transports are omitted. The owner is
- * used until the current effect scope, such as the component, is disposed. A
+ * used until the current effect scope, such as the component, is disposed, or
+ * until {@link Evolu.deleteOwner} deletes it, which this scope does not undo. A
  * null owner uses none, and so does server rendering. Server rendering starts
  * when the server renderer does, so a call on the server before that, such as
  * from a store that a router guard uses first, uses the owner as on the

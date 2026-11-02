@@ -72,6 +72,7 @@ import {
   type DbWorkerQueuedResponse,
   type EvoluInput,
   type EvoluOutput,
+  type OwnerRegistrationId,
   type SharedWorkerId,
   type SharedWorkerInput,
   type SharedWorkerOutput,
@@ -155,6 +156,9 @@ installPolyfills();
 const testAppOwner2 = createAppOwner(
   createOwnerSecret(testCreateDeps({ seed: "shared-owner-2" })),
 );
+
+// Names each UseOwner add, so a remove names the registration it releases.
+const createRegistrationId: () => OwnerRegistrationId = testCreateId();
 
 const TestRowId = id("TestRow");
 
@@ -1201,6 +1205,7 @@ describe("sync state", () => {
         {
           owner: { owner: testAppOwner, transports: [transport] },
           action: "add",
+          id: createRegistrationId(),
         },
       ],
     });
@@ -1271,7 +1276,13 @@ describe("sync state", () => {
     ] as const;
     evoluChannel.port2.postMessage({
       type: "UseOwner",
-      actions: [{ owner: { owner: testAppOwner, transports }, action: "add" }],
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports },
+          action: "add",
+          id: createRegistrationId(),
+        },
+      ],
     });
     await testWaitForWorkerMessage();
 
@@ -1296,6 +1307,7 @@ describe("sync state", () => {
         {
           owner: { owner: testAppOwner, transports: [transport] },
           action: "add",
+          id: createRegistrationId(),
         },
       ],
     });
@@ -1501,6 +1513,7 @@ describe("sync state", () => {
       owner: readonlyOwner,
       transports: [readonlyTransport],
     };
+    const readonlyRegistrationId = createRegistrationId();
 
     evoluChannel.port2.postMessage({
       type: "UseOwner",
@@ -1508,8 +1521,13 @@ describe("sync state", () => {
         {
           owner: { owner: testAppOwner, transports: [writableTransport] },
           action: "add",
+          id: createRegistrationId(),
         },
-        { owner: readonlyRegistration, action: "add" },
+        {
+          owner: readonlyRegistration,
+          action: "add",
+          id: readonlyRegistrationId,
+        },
       ],
     });
     await testWaitForWorkerMessage();
@@ -1566,7 +1584,7 @@ describe("sync state", () => {
 
     evoluChannel.port2.postMessage({
       type: "UseOwner",
-      actions: [{ owner: readonlyRegistration, action: "remove" }],
+      actions: [{ action: "remove", id: readonlyRegistrationId }],
     });
     await testWaitForWorkerMessage();
     const [tenant] = latest().tenants;
@@ -1739,6 +1757,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -1858,6 +1877,7 @@ describe("sync state", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transport] },
           },
         ],
@@ -1897,6 +1917,7 @@ describe("sync state", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transport] },
           },
         ],
@@ -1969,9 +1990,10 @@ describe("sync state", () => {
         ownerId: testAppOwner.id,
       });
       const owner = { owner: testAppOwner, transports: [transport] } as const;
+      const registrationId = createRegistrationId();
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "add", owner }],
+        actions: [{ action: "add", id: registrationId, owner }],
       });
       await testWaitForWorkerMessage();
       await respondToSyncRound(instance, createWebSocket);
@@ -1993,12 +2015,12 @@ describe("sync state", () => {
       try {
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
-          actions: [{ action: "remove", owner }],
+          actions: [{ action: "remove", id: registrationId }],
         });
         await testWaitForWorkerMessage();
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
-          actions: [{ action: "add", owner }],
+          actions: [{ action: "add", id: createRegistrationId(), owner }],
         });
         await testWaitForWorkerMessage();
         assertLength(states, publishedCount);
@@ -2089,11 +2111,16 @@ describe("sync state", () => {
           instance.evoluChannel.port2.onMessage = (output) => {
             outputs.push(output);
           };
+          const registrationId = createRegistrationId();
           instance.evoluChannel.port2.postMessage({
             type: "UseOwner",
             actions: [
-              { action: "add", owner: registration },
-              { action: "add", owner: remainingRegistration },
+              { action: "add", id: registrationId, owner: registration },
+              {
+                action: "add",
+                id: createRegistrationId(),
+                owner: remainingRegistration,
+              },
             ],
           });
           await testWaitForWorkerMessage();
@@ -2106,7 +2133,7 @@ describe("sync state", () => {
           await testWaitForWorkerMessage();
           instance.evoluChannel.port2.postMessage({
             type: "UseOwner",
-            actions: [{ action: "remove", owner: registration }],
+            actions: [{ action: "remove", id: registrationId }],
           });
           instance.evoluChannel.port2.postMessage({
             type: "Query",
@@ -2202,6 +2229,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -2298,7 +2326,11 @@ describe("sync state", () => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "add", owner: { owner: testAppOwner, transports } },
+          {
+            action: "add",
+            id: createRegistrationId(),
+            owner: { owner: testAppOwner, transports },
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -2359,12 +2391,21 @@ describe("sync state", () => {
         type: "WebSocket",
         url: WebSocketUrl.orThrow("wss://downgraded-owner.example/"),
       } as const;
+      const writableOwner2RegistrationId = createRegistrationId();
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [testAppOwner, testAppOwner2].map((owner) => ({
-          owner: { owner, transports: [transport] },
-          action: "add",
-        })),
+        actions: [
+          {
+            owner: { owner: testAppOwner, transports: [transport] },
+            action: "add",
+            id: createRegistrationId(),
+          },
+          {
+            owner: { owner: testAppOwner2, transports: [transport] },
+            action: "add",
+            id: writableOwner2RegistrationId,
+          },
+        ],
       });
       await testWaitForWorkerMessage();
       createWebSocket.open(transport.url);
@@ -2393,11 +2434,9 @@ describe("sync state", () => {
               transports: [transport],
             },
             action: "add",
+            id: createRegistrationId(),
           },
-          {
-            owner: { owner: testAppOwner2, transports: [transport] },
-            action: "remove",
-          },
+          { action: "remove", id: writableOwner2RegistrationId },
         ],
       });
       await testWaitForWorkerMessage();
@@ -2478,6 +2517,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -2543,6 +2583,7 @@ describe("sync state", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transport] },
           },
         ],
@@ -2567,6 +2608,7 @@ describe("sync state", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: {
               owner: testAppOwner2,
               transports: [
@@ -2663,6 +2705,7 @@ describe("sync state", () => {
             {
               owner: { owner: testAppOwner, transports: [transport] },
               action: "add",
+              id: createRegistrationId(),
             },
           ],
         });
@@ -2763,6 +2806,7 @@ describe("sync state", () => {
             {
               owner: { owner: testAppOwner, transports: [transport] },
               action: "add",
+              id: createRegistrationId(),
             },
           ],
         });
@@ -3190,6 +3234,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -3299,7 +3344,11 @@ describe("sync state", () => {
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
           actions: [
-            { action: "add", owner: { owner: testAppOwner, transports } },
+            {
+              action: "add",
+              id: createRegistrationId(),
+              owner: { owner: testAppOwner, transports },
+            },
           ],
         });
         await testWaitForWorkerMessage();
@@ -3389,13 +3438,13 @@ describe("sync state", () => {
 
       first.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [registration],
+        actions: [{ ...registration, id: createRegistrationId() }],
       });
       await testWaitForWorkerMessage();
       await respondToSyncRound(first, createWebSocket);
       second.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [registration],
+        actions: [{ ...registration, id: createRegistrationId() }],
       });
       await testWaitForWorkerMessage();
       await respondToSyncRound(second, createWebSocket);
@@ -3472,7 +3521,11 @@ describe("sync state", () => {
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
           actions: [
-            { action: "add", owner: { owner: testAppOwner, transports } },
+            {
+              action: "add",
+              id: createRegistrationId(),
+              owner: { owner: testAppOwner, transports },
+            },
           ],
         });
         await testWaitForWorkerMessage();
@@ -3591,6 +3644,7 @@ describe("sync state", () => {
             {
               owner: { owner: testAppOwner, transports: [transport] },
               action: "add",
+              id: createRegistrationId(),
             },
           ],
         });
@@ -3667,6 +3721,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -3719,6 +3774,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -3774,6 +3830,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -3815,6 +3872,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -3848,6 +3906,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner2, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -3887,6 +3946,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -3930,6 +3990,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -3974,7 +4035,11 @@ describe("sync state", () => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { owner: { owner: testAppOwner, transports }, action: "add" },
+          {
+            owner: { owner: testAppOwner, transports },
+            action: "add",
+            id: createRegistrationId(),
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -4031,6 +4096,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -4107,6 +4173,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -4140,6 +4207,7 @@ describe("sync state", () => {
             {
               owner: { owner: testAppOwner, transports: [transport] },
               action: "add",
+              id: createRegistrationId(),
             },
           ],
         });
@@ -4304,6 +4372,7 @@ describe("sync state", () => {
             {
               owner: { owner: testAppOwner, transports: [transport] },
               action: "add",
+              id: createRegistrationId(),
             },
           ],
         });
@@ -4354,9 +4423,10 @@ describe("sync state", () => {
           ],
         } as const;
         const { url } = owner.transports[0];
+        const registrationId = createRegistrationId();
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
-          actions: [{ owner, action: "add" }],
+          actions: [{ owner, action: "add", id: registrationId }],
         });
         await testWaitForWorkerMessage();
         const pending = timers.pending();
@@ -4395,7 +4465,7 @@ describe("sync state", () => {
         assertSame(timers.pending(), pending + 1);
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
-          actions: [{ owner, action: "remove" }],
+          actions: [{ action: "remove", id: registrationId }],
         });
         await testWaitForWorkerMessage();
         time.advance("3s");
@@ -4607,6 +4677,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -4684,6 +4755,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -4745,6 +4817,7 @@ describe("sync state", () => {
             {
               owner: { owner: testAppOwner, transports: [transport] },
               action: "add",
+              id: createRegistrationId(),
             },
           ],
         });
@@ -4824,10 +4897,14 @@ describe("sync state", () => {
         owner: testAppOwner,
         transports: [transport],
       };
-      for (const instance of [first, second]) {
+      const secondRegistrationId = createRegistrationId();
+      for (const [instance, id] of [
+        [first, createRegistrationId()],
+        [second, secondRegistrationId],
+      ] as const) {
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
-          actions: [{ owner: syncOwner, action: "add" }],
+          actions: [{ owner: syncOwner, action: "add", id }],
         });
         await testWaitForWorkerMessage();
       }
@@ -4860,7 +4937,7 @@ describe("sync state", () => {
       // leaves no incomplete route, so the base timeout applies again.
       second.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: syncOwner, action: "remove" }],
+        actions: [{ action: "remove", id: secondRegistrationId }],
       });
       await testWaitForWorkerMessage();
       first.evoluChannel.port2.postMessage({
@@ -4894,9 +4971,12 @@ describe("sync state", () => {
         owner: testAppOwner,
         transports: [primary],
       };
+      const onPrimaryRegistrationId = createRegistrationId();
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: onPrimary, action: "add" }],
+        actions: [
+          { owner: onPrimary, action: "add", id: onPrimaryRegistrationId },
+        ],
       });
       await testWaitForWorkerMessage();
       await timeOutRounds(
@@ -4913,10 +4993,11 @@ describe("sync state", () => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { owner: onPrimary, action: "remove" },
+          { action: "remove", id: onPrimaryRegistrationId },
           {
             owner: { owner: testAppOwner, transports: [primary, backup] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -4953,7 +5034,11 @@ describe("sync state", () => {
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
           actions: [
-            { owner: { owner, transports: [transport] }, action: "add" },
+            {
+              owner: { owner, transports: [transport] },
+              action: "add",
+              id: createRegistrationId(),
+            },
           ],
         });
         await testWaitForWorkerMessage();
@@ -5009,7 +5094,11 @@ describe("sync state", () => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { owner: { owner: testAppOwner, transports }, action: "add" },
+          {
+            owner: { owner: testAppOwner, transports },
+            action: "add",
+            id: createRegistrationId(),
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -5066,6 +5155,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -5080,6 +5170,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner2, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -5161,6 +5252,7 @@ describe("sync state", () => {
             {
               owner: { owner: testAppOwner, transports: [transport] },
               action: "add",
+              id: createRegistrationId(),
             },
           ],
         });
@@ -5233,7 +5325,11 @@ describe("sync state", () => {
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
           actions: [
-            { owner: { owner, transports: [transport] }, action: "add" },
+            {
+              owner: { owner, transports: [transport] },
+              action: "add",
+              id: createRegistrationId(),
+            },
           ],
         });
         await testWaitForWorkerMessage();
@@ -5331,7 +5427,13 @@ describe("sync state", () => {
       for (const owner of owners) {
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
-          actions: [{ action: "add", owner: { owner, transports } }],
+          actions: [
+            {
+              action: "add",
+              id: createRegistrationId(),
+              owner: { owner, transports },
+            },
+          ],
         });
         await testWaitForWorkerMessage();
         for (const _transport of transports)
@@ -5404,6 +5506,7 @@ describe("sync state", () => {
           actions: [
             {
               action: "add",
+              id: createRegistrationId(),
               owner: { owner, transports: [transport] },
             },
           ],
@@ -5521,6 +5624,7 @@ describe("sync state", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transport] },
           },
         ],
@@ -5602,6 +5706,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -5680,7 +5785,9 @@ describe("sync state", () => {
         );
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
-          actions: [{ owner: syncOwner, action: "add" }],
+          actions: [
+            { owner: syncOwner, action: "add", id: createRegistrationId() },
+          ],
         });
         await testWaitForWorkerMessage();
         // Each first claim of an open transport starts its own round.
@@ -5724,6 +5831,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -5785,6 +5893,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -5823,6 +5932,7 @@ describe("sync state", () => {
             {
               owner: { owner: testAppOwner, transports: [transport] },
               action: "add",
+              id: createRegistrationId(),
             },
           ],
         });
@@ -5876,6 +5986,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -5959,6 +6070,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -6009,7 +6121,11 @@ describe("sync state", () => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { owner: { owner: testAppOwner, transports }, action: "add" },
+          {
+            owner: { owner: testAppOwner, transports },
+            action: "add",
+            id: createRegistrationId(),
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -6084,6 +6200,7 @@ describe("sync state", () => {
         url: transport.url,
         data: createProtocolMessageForUnsubscribe(testAppOwner2.id),
       };
+      const readonlyOwner2RegistrationId = createRegistrationId();
 
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
@@ -6091,8 +6208,13 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
-          { owner: readonlyOwner2, action: "add" },
+          {
+            owner: readonlyOwner2,
+            action: "add",
+            id: readonlyOwner2RegistrationId,
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -6111,7 +6233,7 @@ describe("sync state", () => {
       // relay answers like any request.
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: readonlyOwner2, action: "remove" }],
+        actions: [{ action: "remove", id: readonlyOwner2RegistrationId }],
       });
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.sentMessages.splice(0), [unsubscribe]);
@@ -6123,11 +6245,12 @@ describe("sync state", () => {
       assertEqual(createWebSocket.reconnectedUrls, []);
 
       // An unanswered Unsubscribe reconnects the socket like any request.
+      const readdedRegistrationId = createRegistrationId();
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { owner: readonlyOwner2, action: "add" },
-          { owner: readonlyOwner2, action: "remove" },
+          { owner: readonlyOwner2, action: "add", id: readdedRegistrationId },
+          { action: "remove", id: readdedRegistrationId },
         ],
       });
       await testWaitForWorkerMessage();
@@ -6154,14 +6277,20 @@ describe("sync state", () => {
         },
         transports: [transport],
       } as const;
+      const readonlyOwner2RegistrationId = createRegistrationId();
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
-          { owner: readonlyOwner2, action: "add" },
+          {
+            owner: readonlyOwner2,
+            action: "add",
+            id: readonlyOwner2RegistrationId,
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -6174,7 +6303,7 @@ describe("sync state", () => {
       await respondToSyncRound(instance, createWebSocket);
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: readonlyOwner2, action: "remove" }],
+        actions: [{ action: "remove", id: readonlyOwner2RegistrationId }],
       });
       await testWaitForWorkerMessage();
       createWebSocket.message(transport.url, relayResponse());
@@ -6218,9 +6347,10 @@ describe("sync state", () => {
           }),
         ],
       } as const;
+      const registrationId = createRegistrationId();
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner, action: "add" }],
+        actions: [{ owner, action: "add", id: registrationId }],
       });
       await testWaitForWorkerMessage();
       createWebSocket.open(owner.transports[0].url);
@@ -6235,7 +6365,7 @@ describe("sync state", () => {
       });
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner, action: "remove" }],
+        actions: [{ action: "remove", id: registrationId }],
       });
       await testWaitForWorkerMessage();
       assertLength(createWebSocket.sentMessages.splice(0), 1);
@@ -6266,6 +6396,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -6366,6 +6497,7 @@ describe("sync state", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -6467,7 +6599,7 @@ describe("sync state", () => {
       for (const instance of [first, second]) {
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
-          actions: [registration],
+          actions: [{ ...registration, id: createRegistrationId() }],
         });
         await testWaitForWorkerMessage();
         await respondToSyncRound(instance, createWebSocket);
@@ -6771,7 +6903,11 @@ describe("sync state", () => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { owner: { owner: testAppOwner, transports }, action: "add" },
+          {
+            owner: { owner: testAppOwner, transports },
+            action: "add",
+            id: createRegistrationId(),
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -6835,7 +6971,11 @@ describe("sync state", () => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { owner: { owner: testAppOwner, transports }, action: "add" },
+          {
+            owner: { owner: testAppOwner, transports },
+            action: "add",
+            id: createRegistrationId(),
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -7073,6 +7213,7 @@ describe("sync state", () => {
               ],
             },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -7797,6 +7938,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transport] },
           },
         ],
@@ -8598,10 +8740,12 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [writableTransport] },
             action: "add",
+            id: createRegistrationId(),
           },
           {
             owner: { owner: readonlyOwner, transports: [readonlyTransport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -8694,6 +8838,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transportA] },
           },
         ],
@@ -8709,6 +8854,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transportB] },
           },
         ],
@@ -8750,7 +8896,11 @@ describe("with one evolu instance", () => {
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "add", owner: { owner: testAppOwner, transports } },
+          {
+            action: "add",
+            id: createRegistrationId(),
+            owner: { owner: testAppOwner, transports },
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -8786,7 +8936,11 @@ describe("with one evolu instance", () => {
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "add", owner: { owner: testAppOwner, transports } },
+          {
+            action: "add",
+            id: createRegistrationId(),
+            owner: { owner: testAppOwner, transports },
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -8866,7 +9020,9 @@ describe("with one evolu instance", () => {
       ] as const) {
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
-          actions: [{ action: "add", owner: syncOwner }],
+          actions: [
+            { action: "add", id: createRegistrationId(), owner: syncOwner },
+          ],
         });
         await testWaitForWorkerMessage();
         assertEqual(
@@ -8958,13 +9114,14 @@ describe("with one evolu instance", () => {
         const takeSentUrls = (): ReadonlyArray<string> =>
           createWebSocket.sentMessages.splice(0).map(({ url }) => url);
 
-        for (const [instance, sentUrls] of [
-          [first, [transport.url]],
-          [second, []],
+        const firstRegistrationId = createRegistrationId();
+        for (const [instance, sentUrls, id] of [
+          [first, [transport.url], firstRegistrationId],
+          [second, [], createRegistrationId()],
         ] as const) {
           instance.evoluChannel.port2.postMessage({
             type: "UseOwner",
-            actions: [{ action: "add", owner: syncOwner }],
+            actions: [{ action: "add", id, owner: syncOwner }],
           });
           await testWaitForWorkerMessage();
           assertEqual(
@@ -8976,7 +9133,7 @@ describe("with one evolu instance", () => {
         if (removesOwner) {
           first.evoluChannel.port2.postMessage({
             type: "UseOwner",
-            actions: [{ action: "remove", owner: syncOwner }],
+            actions: [{ action: "remove", id: firstRegistrationId }],
           });
           await testWaitForWorkerMessage();
         }
@@ -9052,6 +9209,7 @@ describe("with one evolu instance", () => {
           actions: [
             {
               action: "add",
+              id: createRegistrationId(),
               owner: { owner: testAppOwner, transports: [transport] },
             },
           ],
@@ -9094,16 +9252,27 @@ describe("with one evolu instance", () => {
         owner: testAppOwner,
         transports: [transport],
       } as const;
+      // Each instance has at most one registration, which its remove releases.
+      const registrationIdByInstance = new Map<
+        TestEvoluInstance,
+        OwnerRegistrationId
+      >();
       const useOwner = async (
         instance: TestEvoluInstance,
         action: "add" | "remove" | "sync",
       ): Promise<void> => {
+        if (action === "add")
+          registrationIdByInstance.set(instance, createRegistrationId());
+        const id = registrationIdByInstance.get(instance);
+        assertNotUndefined(id);
         instance.evoluChannel.port2.postMessage({
           type: "UseOwner",
           actions: [
             action === "sync"
               ? { ownerId: testAppOwner.id, action }
-              : { action, owner: syncOwner },
+              : action === "add"
+                ? { action, id, owner: syncOwner }
+                : { action, id },
           ],
         });
         await testWaitForWorkerMessage();
@@ -9210,6 +9379,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transportA] },
           },
         ],
@@ -9234,6 +9404,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transportB] },
           },
         ],
@@ -9331,6 +9502,7 @@ describe("with one evolu instance", () => {
           actions: [
             {
               action: "add",
+              id: createRegistrationId(),
               owner: {
                 owner: testAppOwner,
                 transports:
@@ -9406,6 +9578,7 @@ describe("with one evolu instance", () => {
             actions: [
               {
                 action: "add",
+                id: createRegistrationId(),
                 owner: { owner: testAppOwner, transports: [nextTransport] },
               },
             ],
@@ -9507,7 +9680,11 @@ describe("with one evolu instance", () => {
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "add", owner: { owner: testAppOwner, transports } },
+          {
+            action: "add",
+            id: createRegistrationId(),
+            owner: { owner: testAppOwner, transports },
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -9582,7 +9759,9 @@ describe("with one evolu instance", () => {
 
       first.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "add", owner: syncOwner }],
+        actions: [
+          { action: "add", id: createRegistrationId(), owner: syncOwner },
+        ],
       });
       await testWaitForWorkerMessage();
       assertEqual(await respondToSyncRound(first, createWebSocket), [
@@ -9613,7 +9792,9 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
       siblingChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "add", owner: syncOwner }],
+        actions: [
+          { action: "add", id: createRegistrationId(), owner: syncOwner },
+        ],
       });
       await testWaitForWorkerMessage();
       assertEqual(first.dbInputs, []);
@@ -9626,7 +9807,9 @@ describe("with one evolu instance", () => {
       });
       second.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "add", owner: syncOwner }],
+        actions: [
+          { action: "add", id: createRegistrationId(), owner: syncOwner },
+        ],
       });
       await testWaitForWorkerMessage();
       assertEqual(await respondToSyncRound(second, createWebSocket), []);
@@ -9656,6 +9839,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transportB] },
           },
         ],
@@ -9674,6 +9858,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transportA] },
           },
         ],
@@ -9717,6 +9902,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transportA] },
           },
         ],
@@ -9735,7 +9921,9 @@ describe("with one evolu instance", () => {
       } as const;
       second.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "add", owner: syncOwnerB }],
+        actions: [
+          { action: "add", id: createRegistrationId(), owner: syncOwnerB },
+        ],
       });
       await testWaitForWorkerMessage();
 
@@ -9837,8 +10025,8 @@ describe("with one evolu instance", () => {
       siblingChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "add", owner: syncOwnerB },
-          { action: "add", owner: syncOwnerB },
+          { action: "add", id: createRegistrationId(), owner: syncOwnerB },
+          { action: "add", id: createRegistrationId(), owner: syncOwnerB },
         ],
       });
       await testWaitForWorkerMessage();
@@ -9867,6 +10055,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -9895,6 +10084,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -9961,6 +10151,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -10052,6 +10243,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -10091,6 +10283,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports },
           },
         ],
@@ -10160,10 +10353,11 @@ describe("with one evolu instance", () => {
         owner: testAppOwner,
         transports: [transport],
       } as const;
+      const registrationId = createRegistrationId();
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: syncOwner, action: "add" }],
+        actions: [{ owner: syncOwner, action: "add", id: registrationId }],
       });
       await testWaitForWorkerMessage();
       assertEqual(await respondToSyncRound(instance, createWebSocket), [
@@ -10173,7 +10367,7 @@ describe("with one evolu instance", () => {
       // The Unsubscribe waits for the answer to the tenant's round.
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: syncOwner, action: "remove" }],
+        actions: [{ action: "remove", id: registrationId }],
       });
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.sentMessages, []);
@@ -10189,7 +10383,9 @@ describe("with one evolu instance", () => {
       // which does not continue it, so only the round's own answer does.
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: syncOwner, action: "add" }],
+        actions: [
+          { owner: syncOwner, action: "add", id: createRegistrationId() },
+        ],
       });
       await testWaitForWorkerMessage();
       assertEqual(await respondToSyncRound(instance, createWebSocket), []);
@@ -10243,9 +10439,14 @@ describe("with one evolu instance", () => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "add", owner: { owner: testAppOwner, transports } },
           {
             action: "add",
+            id: createRegistrationId(),
+            owner: { owner: testAppOwner, transports },
+          },
+          {
+            action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner2, transports: [otherOwnerTransport] },
           },
         ],
@@ -10337,6 +10538,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transportA] },
           },
         ],
@@ -10355,6 +10557,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transportB] },
           },
         ],
@@ -10428,6 +10631,7 @@ describe("with one evolu instance", () => {
         url: RelayUrl.orThrow("wss://unsubscribe.example/"),
         ownerId: testAppOwner.id,
       });
+      const registrationId = createRegistrationId();
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
@@ -10435,6 +10639,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: registrationId,
           },
         ],
       });
@@ -10442,12 +10647,7 @@ describe("with one evolu instance", () => {
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [
-          {
-            owner: { owner: testAppOwner, transports: [transport] },
-            action: "remove",
-          },
-        ],
+        actions: [{ action: "remove", id: registrationId }],
       });
       await testWaitForWorkerMessage();
 
@@ -10470,19 +10670,21 @@ describe("with one evolu instance", () => {
         owner: testAppOwner,
         transports: [transport],
       } as const;
+      const firstRegistrationId = createRegistrationId();
+      const secondRegistrationId = createRegistrationId();
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { owner: syncOwner, action: "add" },
-          { owner: syncOwner, action: "add" },
+          { owner: syncOwner, action: "add", id: firstRegistrationId },
+          { owner: syncOwner, action: "add", id: secondRegistrationId },
         ],
       });
       await testWaitForWorkerMessage();
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: syncOwner, action: "remove" }],
+        actions: [{ action: "remove", id: secondRegistrationId }],
       });
       await testWaitForWorkerMessage();
 
@@ -10490,7 +10692,7 @@ describe("with one evolu instance", () => {
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: syncOwner, action: "remove" }],
+        actions: [{ action: "remove", id: firstRegistrationId }],
       });
       await testWaitForWorkerMessage();
 
@@ -10520,17 +10722,31 @@ describe("with one evolu instance", () => {
         owner: testAppOwner,
         transports: [transport],
       } as const;
+      const readonlyRegistrationId = createRegistrationId();
+      const writableRegistrationId = createRegistrationId();
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "add", owner: readonlySyncOwner }],
+        actions: [
+          {
+            action: "add",
+            id: readonlyRegistrationId,
+            owner: readonlySyncOwner,
+          },
+        ],
       });
       await testWaitForWorkerMessage();
       assertEqual(dbInputs, []);
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "add", owner: writableSyncOwner }],
+        actions: [
+          {
+            action: "add",
+            id: writableRegistrationId,
+            owner: writableSyncOwner,
+          },
+        ],
       });
       await testWaitForWorkerMessage();
       assertLength(dbInputs, 1);
@@ -10542,7 +10758,7 @@ describe("with one evolu instance", () => {
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "remove", owner: readonlySyncOwner },
+          { action: "remove", id: readonlyRegistrationId },
           { action: "sync", ownerId: testAppOwner.id },
         ],
       });
@@ -10559,7 +10775,7 @@ describe("with one evolu instance", () => {
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "remove", owner: writableSyncOwner }],
+        actions: [{ action: "remove", id: writableRegistrationId }],
       });
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.sentMessages, [
@@ -10590,13 +10806,28 @@ describe("with one evolu instance", () => {
         owner: testAppOwner,
         transports: [transport],
       } as const;
+      const firstWritableRegistrationId = createRegistrationId();
+      const readonlyRegistrationId = createRegistrationId();
+      const secondWritableRegistrationId = createRegistrationId();
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "add", owner: writableSyncOwner },
-          { action: "add", owner: readonlySyncOwner },
-          { action: "add", owner: writableSyncOwner },
+          {
+            action: "add",
+            id: firstWritableRegistrationId,
+            owner: writableSyncOwner,
+          },
+          {
+            action: "add",
+            id: readonlyRegistrationId,
+            owner: readonlySyncOwner,
+          },
+          {
+            action: "add",
+            id: secondWritableRegistrationId,
+            owner: writableSyncOwner,
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -10609,7 +10840,7 @@ describe("with one evolu instance", () => {
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "remove", owner: writableSyncOwner },
+          { action: "remove", id: secondWritableRegistrationId },
           { action: "sync", ownerId: testAppOwner.id },
         ],
       });
@@ -10624,7 +10855,7 @@ describe("with one evolu instance", () => {
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "remove", owner: writableSyncOwner },
+          { action: "remove", id: firstWritableRegistrationId },
           { action: "sync", ownerId: testAppOwner.id },
         ],
       });
@@ -10646,7 +10877,7 @@ describe("with one evolu instance", () => {
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "remove", owner: readonlySyncOwner }],
+        actions: [{ action: "remove", id: readonlyRegistrationId }],
       });
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.sentMessages, [
@@ -10691,14 +10922,17 @@ describe("with one evolu instance", () => {
         id: createId<"OwnerId">(setup.run.deps),
         encryptionKey: testAppOwner.encryptionKey,
       };
+      const firstRegistrationId = createRegistrationId();
+      const firstAgainRegistrationId = createRegistrationId();
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "add", owner: first },
-          { action: "add", owner: first },
-          { action: "add", owner: second },
+          { action: "add", id: firstRegistrationId, owner: first },
+          { action: "add", id: firstAgainRegistrationId, owner: first },
+          { action: "add", id: createRegistrationId(), owner: second },
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: readonlyOwner, transports: [transport] },
           },
         ],
@@ -10731,9 +10965,9 @@ describe("with one evolu instance", () => {
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "remove", owner: first },
+          { action: "remove", id: firstAgainRegistrationId },
           { action: "sync", ownerId: testAppOwner.id },
-          { action: "remove", owner: first },
+          { action: "remove", id: firstRegistrationId },
           { action: "sync", ownerId: testAppOwner.id },
         ],
       });
@@ -10769,6 +11003,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transport] },
           },
         ],
@@ -10838,19 +11073,21 @@ describe("with one evolu instance", () => {
         owner: testAppOwner,
         transports: [secondTransport],
       } as const;
+      const firstRegistrationId = createRegistrationId();
+      const secondRegistrationId = createRegistrationId();
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { owner: firstSyncOwner, action: "add" },
-          { owner: secondSyncOwner, action: "add" },
+          { owner: firstSyncOwner, action: "add", id: firstRegistrationId },
+          { owner: secondSyncOwner, action: "add", id: secondRegistrationId },
         ],
       });
       await testWaitForWorkerMessage();
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: firstSyncOwner, action: "remove" }],
+        actions: [{ action: "remove", id: firstRegistrationId }],
       });
       await testWaitForWorkerMessage();
 
@@ -10863,7 +11100,7 @@ describe("with one evolu instance", () => {
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ owner: secondSyncOwner, action: "remove" }],
+        actions: [{ action: "remove", id: secondRegistrationId }],
       });
       await testWaitForWorkerMessage();
 
@@ -10889,6 +11126,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -10933,6 +11171,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -11112,6 +11351,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -11207,6 +11447,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: readonlyOwner, transports: [readonlyTransport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -11220,12 +11461,14 @@ describe("with one evolu instance", () => {
         url: RelayUrl.orThrow("wss://removed-owner.example/"),
         ownerId: testAppOwner.id,
       });
+      const writableRegistrationId = createRegistrationId();
       evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
           {
             owner: { owner: testAppOwner, transports: [writableTransport] },
             action: "add",
+            id: writableRegistrationId,
           },
         ],
       });
@@ -11233,12 +11476,7 @@ describe("with one evolu instance", () => {
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [
-          {
-            owner: { owner: testAppOwner, transports: [writableTransport] },
-            action: "remove",
-          },
-        ],
+        actions: [{ action: "remove", id: writableRegistrationId }],
       });
       await testWaitForWorkerMessage();
 
@@ -11277,6 +11515,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -11337,6 +11576,7 @@ describe("with one evolu instance", () => {
         ownerId: testAppOwner.id,
       });
       const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+      const registrationId = createRegistrationId();
 
       let pausedFirstCreate = false;
       const pausingCreateWebSocket: CreateWebSocket =
@@ -11346,15 +11586,7 @@ describe("with one evolu instance", () => {
             firstCreateStarted.resolve();
             evoluChannel.port2.postMessage({
               type: "UseOwner",
-              actions: [
-                {
-                  owner: {
-                    owner: testAppOwner,
-                    transports: [transportB, transportA],
-                  },
-                  action: "remove",
-                },
-              ],
+              actions: [{ action: "remove", id: registrationId }],
             });
             await allowFirstCreateToFinish.promise;
           }
@@ -11377,6 +11609,7 @@ describe("with one evolu instance", () => {
               transports: [transportA, transportB],
             },
             action: "add",
+            id: registrationId,
           },
         ],
       });
@@ -11614,6 +11847,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: {
               owner: testAppOwner,
               transports: [transportA, transportB],
@@ -12063,6 +12297,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -12098,6 +12333,7 @@ describe("with one evolu instance", () => {
         type: "UseOwner",
         actions: transports.map((transport) => ({
           action: "add" as const,
+          id: createRegistrationId(),
           owner: { owner: testAppOwner, transports: [transport] },
         })),
       });
@@ -12203,6 +12439,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transport] },
           },
           { action: "sync", ownerId: testAppOwner.id },
@@ -12249,6 +12486,7 @@ describe("with one evolu instance", () => {
           {
             owner: { owner: testAppOwner, transports: [transport] },
             action: "add",
+            id: createRegistrationId(),
           },
         ],
       });
@@ -12280,6 +12518,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transport] },
           },
         ],
@@ -12290,6 +12529,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: {
               owner: testAppOwner,
               transports: [
@@ -12329,6 +12569,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: { owner: testAppOwner, transports: [transport] },
           },
         ],
@@ -12351,6 +12592,7 @@ describe("with one evolu instance", () => {
         actions: [
           {
             action: "add",
+            id: createRegistrationId(),
             owner: {
               owner: testAppOwner,
               transports: [
@@ -12476,8 +12718,8 @@ describe("local delivery between databases", () => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "add", owner: syncOwner },
-          { action: "add", owner: syncOwner },
+          { action: "add", id: createRegistrationId(), owner: syncOwner },
+          { action: "add", id: createRegistrationId(), owner: syncOwner },
         ],
       });
     }
@@ -12486,6 +12728,7 @@ describe("local delivery between databases", () => {
       actions: [
         {
           action: "add",
+          id: createRegistrationId(),
           owner: {
             owner: {
               id: testAppOwner.id,
@@ -12498,7 +12741,13 @@ describe("local delivery between databases", () => {
     });
     unrelated.evoluChannel.port2.postMessage({
       type: "UseOwner",
-      actions: [{ action: "add", owner: { owner: testAppOwner2, transports } }],
+      actions: [
+        {
+          action: "add",
+          id: createRegistrationId(),
+          owner: { owner: testAppOwner2, transports },
+        },
+      ],
     });
     await testWaitForWorkerMessage();
     for (const instance of [writer, ...siblings, readonly, unrelated]) {
@@ -12597,7 +12846,13 @@ describe("local delivery between databases", () => {
     ): Promise<void> => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
-        actions: [{ action: "add", owner: { owner, transports } }],
+        actions: [
+          {
+            action: "add",
+            id: createRegistrationId(),
+            owner: { owner, transports },
+          },
+        ],
       });
       await testWaitForWorkerMessage();
     };
@@ -12711,7 +12966,11 @@ describe("local delivery between databases", () => {
       instance.evoluChannel.port2.postMessage({
         type: "UseOwner",
         actions: [
-          { action: "add", owner: { owner: testAppOwner, transports } },
+          {
+            action: "add",
+            id: createRegistrationId(),
+            owner: { owner: testAppOwner, transports },
+          },
         ],
       });
       await testWaitForWorkerMessage();
@@ -13256,50 +13515,50 @@ describe("refusal", () => {
     });
 });
 
-describe("database deletion", () => {
-  /** Adds an instance of the test database through a tab's connection. */
-  const addInstance = async (
-    setup: SharedWorkerSetup,
-    tabPort: Pick<SharedWorkerSetup["worker"]["port"], "postMessage">,
-    disposer: AsyncDisposableStack,
-    { consoleLevel = "debug" }: { consoleLevel?: ConsoleLevel } = {},
-  ) => {
-    const id = createId<"EvoluInstance">(setup.run.deps);
-    const instanceDisposer = disposer.use(new AsyncDisposableStack());
-    instanceDisposer.use(await setup.run.ok(acquireLeaderLock(id)));
-    const channel = instanceDisposer.use(
-      testCreateMessageChannel<EvoluOutput, EvoluInput>(),
-    );
-    const outputs: Array<EvoluOutput> = [];
-    channel.port2.onMessage = (output) => {
-      outputs.push(output);
-    };
-    tabPort.postMessage(
-      {
-        type: "CreateEvolu",
-        name: testName,
-        id,
-        consoleLevel,
-        sqliteSchema: testSqliteSchema,
-        encryptionKey: testAppOwner.encryptionKey,
-        memoryOnly: false,
-        evoluPort: channel.port1.native,
-      },
-      [channel.port1.native],
-    );
-    await testWaitForWorkerMessage();
-    return {
-      id,
-      port: channel.port2,
-      outputs,
-      /** Disposes the instance, as its tab does. */
-      dispose: async () => {
-        await instanceDisposer.disposeAsync();
-        await testWaitForWorkerMessage();
-      },
-    };
+/** Adds an instance of the test database through a tab's connection. */
+const addInstance = async (
+  setup: SharedWorkerSetup,
+  tabPort: Pick<SharedWorkerSetup["worker"]["port"], "postMessage">,
+  disposer: AsyncDisposableStack,
+  { consoleLevel = "debug" }: { consoleLevel?: ConsoleLevel } = {},
+) => {
+  const id = createId<"EvoluInstance">(setup.run.deps);
+  const instanceDisposer = disposer.use(new AsyncDisposableStack());
+  instanceDisposer.use(await setup.run.ok(acquireLeaderLock(id)));
+  const channel = instanceDisposer.use(
+    testCreateMessageChannel<EvoluOutput, EvoluInput>(),
+  );
+  const outputs: Array<EvoluOutput> = [];
+  channel.port2.onMessage = (output) => {
+    outputs.push(output);
   };
+  tabPort.postMessage(
+    {
+      type: "CreateEvolu",
+      name: testName,
+      id,
+      consoleLevel,
+      sqliteSchema: testSqliteSchema,
+      encryptionKey: testAppOwner.encryptionKey,
+      memoryOnly: false,
+      evoluPort: channel.port1.native,
+    },
+    [channel.port1.native],
+  );
+  await testWaitForWorkerMessage();
+  return {
+    id,
+    port: channel.port2,
+    outputs,
+    /** Disposes the instance, as its tab does. */
+    dispose: async () => {
+      await instanceDisposer.disposeAsync();
+      await testWaitForWorkerMessage();
+    },
+  };
+};
 
+describe("database deletion", () => {
   /**
    * Answers the deletion the instance's DbWorker received last, with its error
    * or as deleted.
@@ -13595,6 +13854,7 @@ describe("database deletion", () => {
       actions: [
         {
           action: "add",
+          id: createRegistrationId(),
           owner: { owner: testAppOwner, transports: [transport] },
         },
       ],
@@ -13958,6 +14218,59 @@ describe("database deletion", () => {
     );
   });
 
+  it("leaves no owner deletion it dropped on the revived database", async () => {
+    await using setup = await setupSharedWorker({
+      createWebSocket: testCreateWebSocket(),
+    });
+    await using disposer = new AsyncDisposableStack();
+    const instance = await setup.createEvolu();
+    instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
+    instance.evoluChannel.port2.postMessage({
+      type: "DeleteOwner",
+      ownerId: testAppOwner2.id,
+    });
+    await testWaitForWorkerMessage();
+    await answerDeletion(instance);
+    const outputCount = setup.sharedWorkerOutputs.length;
+    const joiner = await addInstance(setup, setup.worker.port, disposer);
+    const revived = setupDbWorkerPort(
+      getDbWorkerInit(setup.sharedWorkerOutputs.at(outputCount)),
+      disposer,
+    );
+    revived.port.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp(),
+    });
+    await testWaitForWorkerMessage();
+
+    joiner.port.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          action: "add",
+          id: createRegistrationId(),
+          owner: {
+            owner: testAppOwner2,
+            transports: [
+              createOwnerWebSocketTransport({
+                url: RelayUrl.orThrow("wss://revived-owner.example/"),
+                ownerId: testAppOwner2.id,
+              }),
+            ],
+          },
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    const round = revived.inputs.at(-1);
+    assert(round?.type === "Request", "Expected a round.");
+    assertEqual(round.request, {
+      type: "ForSharedWorker",
+      message: { type: "CreateSyncMessages", owners: [testAppOwner2] },
+    });
+  });
+
   it("starts no DbWorker for a new tab leader while the database is deleted", async () => {
     await using setup = await setupSharedWorker();
     await using disposer = new AsyncDisposableStack();
@@ -14000,5 +14313,677 @@ describe("database deletion", () => {
     await testWaitForWorkerMessage();
 
     assertTrue(hasInfo());
+  });
+});
+
+describe("owner deletion", () => {
+  const ownerTransport = createOwnerWebSocketTransport({
+    url: RelayUrl.orThrow("wss://owner-deletion.example/"),
+    ownerId: testAppOwner2.id,
+  });
+  const syncOwner: SyncOwner = {
+    owner: testAppOwner2,
+    transports: [ownerTransport],
+  };
+
+  const useOwner = (
+    port: Pick<TestEvoluInstance["evoluChannel"]["port2"], "postMessage">,
+    owner: SyncOwner = syncOwner,
+  ): OwnerRegistrationId => {
+    const id = createRegistrationId();
+    port.postMessage({
+      type: "UseOwner",
+      actions: [{ action: "add", id, owner }],
+    });
+    return id;
+  };
+
+  const unuseOwner = (
+    port: Pick<TestEvoluInstance["evoluChannel"]["port2"], "postMessage">,
+    id: OwnerRegistrationId,
+  ): void => {
+    port.postMessage({ type: "UseOwner", actions: [{ action: "remove", id }] });
+  };
+
+  const deleteOwner = (
+    port: Pick<TestEvoluInstance["evoluChannel"]["port2"], "postMessage">,
+  ): void => {
+    port.postMessage({ type: "DeleteOwner", ownerId: testAppOwner2.id });
+  };
+
+  /**
+   * Answers the owner deletion the instance's DbWorker received last, as
+   * deleted or with the error.
+   */
+  const answerOwnerDeletion = async (
+    { dbInputs, dbWorkerPort, id }: TestEvoluInstance,
+    error?: UnknownError,
+  ): Promise<void> => {
+    const input = dbInputs.at(-1);
+    assertNotUndefined(input);
+    assertEqual(input, {
+      type: "Request",
+      attemptId: input.attemptId,
+      request: {
+        type: "ForEvolu",
+        id,
+        message: { type: "DeleteOwner", ownerId: testAppOwner2.id },
+      },
+    });
+    dbWorkerPort.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: input.attemptId,
+      response: {
+        type: "ForEvolu",
+        id,
+        message: error
+          ? { type: "DeleteOwnerFailed", error }
+          : { type: "OwnerDeleted" },
+      },
+    });
+    await testWaitForWorkerMessage();
+  };
+
+  const collectOutputs = (instance: TestEvoluInstance) => {
+    const outputs: Array<EvoluOutput> = [];
+    instance.evoluChannel.port2.onMessage = (output) => {
+      outputs.push(output);
+    };
+    return outputs;
+  };
+
+  const ownerIdsOf = (
+    state: SyncState,
+    tenantName?: Name,
+  ): ReadonlyArray<OwnerId> =>
+    ownersOf(state, tenantName)
+      .map(({ ownerId }) => ownerId)
+      .toSorted();
+
+  it("runs after the requests queued before it, refreshes every instance's queries, and tells every instance", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const caller = await setup.createEvolu();
+    const callerOutputs = collectOutputs(caller);
+    const sibling = await addInstance(setup, setup.worker.port, disposer);
+    const other = await addInstance(
+      setup,
+      setupTab(setup, disposer).port,
+      disposer,
+    );
+
+    caller.evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    deleteOwner(caller.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    assertLength(caller.dbInputs, 1);
+    caller.dbWorkerPort.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: caller.dbInputs[0].attemptId,
+      response: {
+        type: "ForEvolu",
+        id: caller.id,
+        message: { type: "Query", rowsByQuery: new Map() },
+      },
+    });
+    await testWaitForWorkerMessage();
+    callerOutputs.length = 0;
+    sibling.outputs.length = 0;
+    other.outputs.length = 0;
+
+    // A deletion takes no clock.
+    await answerOwnerDeletion(caller);
+
+    const told = (isAnswer: boolean): ReadonlyArray<EvoluOutput> => [
+      { type: "RefreshQueries" },
+      { type: "OnOwnerDeleted", ownerId: testAppOwner2.id, isAnswer },
+    ];
+    assertEqual(callerOutputs, told(true));
+    assertEqual(sibling.outputs, told(false));
+    assertEqual(other.outputs, told(false));
+  });
+
+  it("ends the owner's registrations in every instance and keeps other owners'", async () => {
+    await using setup = await setupSharedWorker({
+      createWebSocket: testCreateWebSocket({ isOpen: false }),
+    });
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const caller = await setup.createEvolu();
+    const sibling = await addInstance(setup, setup.worker.port, disposer);
+    useOwner(caller.evoluChannel.port2);
+    useOwner(sibling.port);
+    useOwner(caller.evoluChannel.port2, {
+      owner: testAppOwner,
+      transports: [
+        createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://kept-owner.example/"),
+          ownerId: testAppOwner.id,
+        }),
+      ],
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(
+      ownerIdsOf(latest()),
+      [testAppOwner.id, testAppOwner2.id].toSorted(),
+    );
+
+    deleteOwner(caller.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await answerOwnerDeletion(caller);
+
+    assertEqual(ownerIdsOf(latest()), [testAppOwner.id]);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("leaves another database that uses the owner syncing it, and copies none of its writes into the deleting one", async () => {
+    const createWebSocket = testCreateWebSocket();
+    await using setup = await setupSharedWorker({ createWebSocket });
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const otherName = Name.orThrow("other");
+    const deleting = await setup.createEvolu();
+    const other = await setup.createEvolu({ tenantName: otherName });
+    for (const instance of [deleting, other]) {
+      useOwner(instance.evoluChannel.port2);
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(instance, createWebSocket, testAppOwner2);
+    }
+    // Both databases apply the answer to each round.
+    for (const _ of [deleting, other]) {
+      createWebSocket.message(ownerTransport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      for (const instance of [deleting, other])
+        await respondToApplySync(instance, false, {
+          ok: true,
+          value: { type: "Converged" },
+        });
+    }
+    // The other database's round went out once the relay answered the first.
+    assertEqual(createWebSocket.sentMessages.splice(0), [
+      {
+        url: ownerTransport.url,
+        data: createProtocolMessageForUnsubscribe(testAppOwner2.id),
+      },
+    ]);
+
+    /** Writes for the owner in the other database and returns the uploads. */
+    const writeInOther = async (): Promise<ReadonlyArray<string>> => {
+      other.evoluChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [
+          { ownerId: testAppOwner2.id, table: "todo" } as MutationChange,
+        ],
+        onCompleteIds: [],
+        subscribedQueries: new Set(),
+      });
+      await testWaitForWorkerMessage();
+      const input = other.dbInputs.at(-1);
+      assertNotUndefined(input);
+      assertSame(input.request.type, "ForEvolu");
+      assertSame(input.request.message.type, "Mutate");
+      other.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: input.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: other.id,
+          message: {
+            type: "Mutate",
+            clock: createTimestamp(),
+            messagesByOwnerId: new Map([
+              [
+                testAppOwner2.id,
+                [testCreateCrdtMessage(createId(setup.run.deps), 1, "hello")],
+              ],
+            ]),
+            rowsByQuery: new Map(),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+      return createWebSocket.sentMessages.splice(0).map(({ url }) => url);
+    };
+
+    deleteOwner(deleting.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    const dispatchedCount = deleting.dbInputs.length;
+    // A copy queued behind the deletion would store the rows again after it.
+    assertEqual(await writeInOther(), [ownerTransport.url]);
+    await answerOwnerDeletion(deleting);
+
+    assertEqual(ownerIdsOf(latest()), []);
+    assertEqual(ownerIdsOf(latest(), otherName), [testAppOwner2.id]);
+    assertEqual(await writeInOther(), [ownerTransport.url]);
+    assertSame(deleting.dbInputs.length, dispatchedCount);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("releases nothing for a remove from before the deletion, not a registration made after it", async () => {
+    await using setup = await setupSharedWorker({
+      createWebSocket: testCreateWebSocket({ isOpen: false }),
+    });
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const instance = await setup.createEvolu();
+    const before = useOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    deleteOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await answerOwnerDeletion(instance);
+    const after = useOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+
+    unuseOwner(instance.evoluChannel.port2, before);
+    await testWaitForWorkerMessage();
+    assertEqual(ownerIdsOf(latest()), [testAppOwner2.id]);
+
+    unuseOwner(instance.evoluChannel.port2, after);
+    await testWaitForWorkerMessage();
+    assertEqual(ownerIdsOf(latest()), []);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("releases the transports of a registration that acquires them during the deletion", async () => {
+    const createWebSocket = testCreateWebSocket();
+    const creating = Promise.withResolvers<void>();
+    const continueCreating = Promise.withResolvers<void>();
+    await using setup = await setupSharedWorker({
+      createWebSocket: (url, options) => async (run) => {
+        creating.resolve();
+        await continueCreating.promise;
+        return run(createWebSocket(url, options));
+      },
+    });
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const instance = await setup.createEvolu();
+    useOwner(instance.evoluChannel.port2);
+    await creating.promise;
+    deleteOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await answerOwnerDeletion(instance);
+
+    continueCreating.resolve();
+    await testWaitForWorkerMessage();
+
+    assertEqual(ownerIdsOf(latest()), []);
+    assertEqual(createWebSocket.sentMessages.at(-1), {
+      url: ownerTransport.url,
+      data: createProtocolMessageForUnsubscribe(testAppOwner2.id),
+    });
+    // The deleted owner gets no round.
+    assertEqual(instance.dbInputs.length, 1);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("ends another instance's waiting registrations of the owner and starts its waiting registrations of other owners", async () => {
+    const createWebSocket = testCreateWebSocket();
+    const creating = Promise.withResolvers<void>();
+    const continueCreating = Promise.withResolvers<void>();
+    await using setup = await setupSharedWorker({
+      createWebSocket: (url, options) => async (run) => {
+        creating.resolve();
+        await continueCreating.promise;
+        return run(createWebSocket(url, options));
+      },
+    });
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const caller = await setup.createEvolu();
+    const sibling = await addInstance(setup, setup.worker.port, disposer);
+    useOwner(sibling.port);
+    await creating.promise;
+    useOwner(sibling.port);
+    useOwner(sibling.port, {
+      owner: testAppOwner,
+      transports: [
+        createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://kept-owner.example/"),
+          ownerId: testAppOwner.id,
+        }),
+      ],
+    });
+    await testWaitForWorkerMessage();
+    deleteOwner(caller.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await answerOwnerDeletion(caller);
+
+    continueCreating.resolve();
+    await testWaitForWorkerMessage();
+
+    assertEqual(ownerIdsOf(latest()), [testAppOwner.id]);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("starts no round for a registration the deletion ended while it acquired its transports", async () => {
+    const createWebSocket = testCreateWebSocket();
+    const slowTransport = createOwnerWebSocketTransport({
+      url: RelayUrl.orThrow("wss://slow-owner-deletion.example/"),
+      ownerId: testAppOwner2.id,
+    });
+    // Closed, so its first claim starts no round of its own.
+    const createClosedWebSocket = testCreateWebSocket({ isOpen: false });
+    const creatingSlow = Promise.withResolvers<void>();
+    const continueSlow = Promise.withResolvers<void>();
+    await using setup = await setupSharedWorker({
+      createWebSocket: (url, options) => async (run) => {
+        if (url !== slowTransport.url)
+          return run(createWebSocket(url, options));
+        creatingSlow.resolve();
+        await continueSlow.promise;
+        return run(createClosedWebSocket(url, options));
+      },
+    });
+    await using disposer = new AsyncDisposableStack();
+    // Another database claims the owner's transport.
+    const other = await setup.createEvolu({
+      tenantName: Name.orThrow("other"),
+    });
+    useOwner(other.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await respondToSyncRound(other, createWebSocket, testAppOwner2);
+    const deleting = await setup.createEvolu();
+    const sibling = await addInstance(setup, setup.worker.port, disposer);
+    // The database's first writable registration reconciles through the
+    // claimed transport once it acquires its own.
+    useOwner(deleting.evoluChannel.port2, {
+      owner: testAppOwner2,
+      transports: [slowTransport],
+    });
+    await creatingSlow.promise;
+    deleteOwner(deleting.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await answerOwnerDeletion(deleting);
+    // A sibling uses the owner again and reconciles.
+    useOwner(sibling.port);
+    await testWaitForWorkerMessage();
+    await respondToSyncRound(deleting, createWebSocket, testAppOwner2);
+    const dispatchedCount = deleting.dbInputs.length;
+
+    continueSlow.resolve();
+    await testWaitForWorkerMessage();
+
+    assertEqual(
+      deleting.dbInputs
+        .slice(dispatchedCount)
+        .map(({ request }) => request.message.type),
+      [],
+    );
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("ends a registration still waiting behind another's acquisition", async () => {
+    const createWebSocket = testCreateWebSocket();
+    const creating = Promise.withResolvers<void>();
+    const continueCreating = Promise.withResolvers<void>();
+    await using setup = await setupSharedWorker({
+      createWebSocket: (url, options) => async (run) => {
+        creating.resolve();
+        await continueCreating.promise;
+        return run(createWebSocket(url, options));
+      },
+    });
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const instance = await setup.createEvolu();
+    const first = useOwner(instance.evoluChannel.port2);
+    await creating.promise;
+    const waiting = useOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    deleteOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await answerOwnerDeletion(instance);
+
+    continueCreating.resolve();
+    await testWaitForWorkerMessage();
+
+    assertEqual(ownerIdsOf(latest()), []);
+    assertEqual(createWebSocket.sentMessages.at(-1), {
+      url: ownerTransport.url,
+      data: createProtocolMessageForUnsubscribe(testAppOwner2.id),
+    });
+    // The deleted owner gets no round.
+    assertEqual(instance.dbInputs.length, 1);
+
+    unuseOwner(instance.evoluChannel.port2, first);
+    unuseOwner(instance.evoluChannel.port2, waiting);
+    await testWaitForWorkerMessage();
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("applies no relay frame and creates no round for the owner while its deletion is queued", async () => {
+    const createWebSocket = testCreateWebSocket();
+    await using setup = await setupSharedWorker({ createWebSocket });
+    const instance = await setup.createEvolu();
+    useOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await respondToSyncRound(instance, createWebSocket, testAppOwner2);
+    deleteOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    const dispatchedCount = instance.dbInputs.length;
+
+    createWebSocket.message(
+      ownerTransport.url,
+      protocolMessageToArrayBuffer(
+        createProtocolMessageBuffer(testAppOwner2.id, {
+          messageType: MessageType.Response,
+          errorCode: ProtocolErrorCode.NoError,
+        }).unwrap(),
+      ),
+    );
+    instance.evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [{ action: "sync", ownerId: testAppOwner2.id }],
+    });
+    await testWaitForWorkerMessage();
+    await answerOwnerDeletion(instance);
+
+    // Nothing was queued behind the deletion.
+    assertSame(instance.dbInputs.length, dispatchedCount);
+  });
+
+  const relayResponse = (): ArrayBuffer =>
+    protocolMessageToArrayBuffer(
+      createProtocolMessageBuffer(testAppOwner2.id, {
+        messageType: MessageType.Response,
+        errorCode: ProtocolErrorCode.NoError,
+      }).unwrap(),
+    );
+
+  it("releases the transports of the owner's registrations, so the relay is told to stop", async () => {
+    const createWebSocket = testCreateWebSocket();
+    await using setup = await setupSharedWorker({ createWebSocket });
+    const instance = await setup.createEvolu();
+    useOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await respondToSyncRound(instance, createWebSocket, testAppOwner2);
+    deleteOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await answerOwnerDeletion(instance);
+
+    // The relay answers the round, after which the Unsubscribe goes out.
+    createWebSocket.message(ownerTransport.url, relayResponse());
+    await testWaitForWorkerMessage();
+
+    assertEqual(createWebSocket.sentMessages, [
+      {
+        url: ownerTransport.url,
+        data: createProtocolMessageForUnsubscribe(testAppOwner2.id),
+      },
+    ]);
+  });
+
+  it("publishes the owner's routes as pending once its deletion is queued", async () => {
+    const createWebSocket = testCreateWebSocket();
+    await using setup = await setupSharedWorker({ createWebSocket });
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const instance = await setup.createEvolu();
+    useOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await respondToSyncRound(instance, createWebSocket, testAppOwner2);
+    createWebSocket.message(ownerTransport.url, relayResponse());
+    await testWaitForWorkerMessage();
+    await respondToApplySync(instance, false, {
+      ok: true,
+      value: { type: "Converged" },
+    });
+    const routeTypes = (): ReadonlyArray<SyncRoute["type"]> => {
+      const [owner] = ownersOf(latest());
+      assert(owner?.type === "Writable", "Expected the writable owner.");
+      return owner.routes.map(({ type }) => type);
+    };
+    assertEqual(routeTypes(), ["Complete"]);
+
+    deleteOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+
+    assertEqual(routeTypes(), ["Pending"]);
+  });
+
+  it("keeps the owner's routes pending while its deletion is queued", async () => {
+    const createWebSocket = testCreateWebSocket();
+    await using setup = await setupSharedWorker({ createWebSocket });
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const instance = await setup.createEvolu();
+    useOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await respondToSyncRound(instance, createWebSocket, testAppOwner2);
+    deleteOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+
+    // The tenant drops the reply, so its round never completes.
+    createWebSocket.message(ownerTransport.url, relayResponse());
+    await testWaitForWorkerMessage();
+
+    const [owner] = ownersOf(latest());
+    assert(owner?.type === "Writable", "Expected the writable owner.");
+    assertEqual(
+      owner.routes.map(({ type }) => type),
+      ["Pending"],
+    );
+  });
+
+  it("answers nothing to an asking instance disposed before the answer, and serves the others", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const leader = await setup.createEvolu();
+    const leaderOutputs = collectOutputs(leader);
+
+    /** Queues a deletion from an instance that is disposed before its answer. */
+    const deleteFromDisposed = async () => {
+      const asker = await addInstance(setup, setup.worker.port, disposer);
+      deleteOwner(asker.port);
+      await testWaitForWorkerMessage();
+      await asker.dispose();
+      return asker.id;
+    };
+    const answer = async (
+      id: EvoluInstanceId,
+      message: ExtractTyped<DbWorkerQueuedResponse, "ForEvolu">["message"],
+    ) => {
+      const input = leader.dbInputs.at(-1);
+      assertNotUndefined(input);
+      assertEqual(input.request, {
+        type: "ForEvolu",
+        id,
+        message: { type: "DeleteOwner", ownerId: testAppOwner2.id },
+      });
+      leader.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: input.attemptId,
+        response: { type: "ForEvolu", id, message },
+      });
+      await testWaitForWorkerMessage();
+    };
+
+    await answer(await deleteFromDisposed(), {
+      type: "DeleteOwnerFailed",
+      error: createUnknownError(new Error("disk I/O error")),
+    });
+    await answer(await deleteFromDisposed(), { type: "OwnerDeleted" });
+    assertEqual(leaderOutputs.splice(0), [
+      { type: "RefreshQueries" },
+      { type: "OnOwnerDeleted", ownerId: testAppOwner2.id, isAnswer: false },
+    ]);
+
+    // A refusal answers no disposed instance either.
+    leader.evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    await testWaitForWorkerMessage();
+    await deleteFromDisposed();
+    leader.dbWorkerPort.postMessage({
+      type: "LeaderRefused",
+      error: createUnknownError(new Error("disk I/O error")),
+    });
+    await testWaitForWorkerMessage();
+
+    assertEqual(leaderOutputs, []);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("answers a failed deletion to its instance, and the owner keeps syncing and reconciles again", async () => {
+    const createWebSocket = testCreateWebSocket();
+    await using setup = await setupSharedWorker({ createWebSocket });
+    await using disposer = new AsyncDisposableStack();
+    const { latest } = setupSyncStates(setup, disposer);
+    const caller = await setup.createEvolu();
+    const callerOutputs = collectOutputs(caller);
+    const sibling = await addInstance(setup, setup.worker.port, disposer);
+    useOwner(caller.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    await respondToSyncRound(caller, createWebSocket, testAppOwner2);
+    deleteOwner(caller.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    callerOutputs.length = 0;
+    sibling.outputs.length = 0;
+    const error = createUnknownError(new Error("disk I/O error"));
+
+    await answerOwnerDeletion(caller, error);
+
+    assertEqual(callerOutputs, [{ type: "OnDeleteOwnerFailed", error }]);
+    assertEqual(sibling.outputs, []);
+    assertEqual(ownerIdsOf(latest()), [testAppOwner2.id]);
+    const round = caller.dbInputs.at(-1);
+    assertNotUndefined(round);
+    assertEqual(round.request, {
+      type: "ForSharedWorker",
+      message: { type: "CreateSyncMessages", owners: [testAppOwner2] },
+    });
+  });
+
+  it("answers a queued deletion and later ones with the refusal of the database", async () => {
+    await using setup = await setupSharedWorker();
+    const instance = await setup.createEvolu();
+    const outputs = collectOutputs(instance);
+    instance.evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    deleteOwner(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    const error: UnsupportedDbVersionError = {
+      type: "UnsupportedDbVersionError",
+      storedVersion: PositiveInt.orThrow(3),
+      supportedVersion: PositiveInt.orThrow(2),
+    };
+
+    instance.dbWorkerPort.postMessage({ type: "LeaderRefused", error });
+    await testWaitForWorkerMessage();
+    assertEqual(outputs.splice(0), [{ type: "OnDeleteOwnerFailed", error }]);
+
+    deleteOwner(instance.evoluChannel.port2);
+    instance.evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(outputs, [{ type: "OnDeleteOwnerFailed", error }]);
   });
 });

@@ -2,6 +2,7 @@ import {
   createRun,
   isPlainObject,
   sleep,
+  testCreateId,
   UnknownError,
   type DisposableRun,
   type MessagePort,
@@ -77,6 +78,7 @@ export const panicSharedWorker = async ({
       {
         owner: { owner: testAppOwner, transports: [transport, transport] },
         action: "add",
+        id: testCreateId()<"OwnerRegistration">(),
       },
     ],
   });

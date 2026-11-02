@@ -42,10 +42,13 @@ import {
   createOwnerWebSocketTransport,
   createSharedOwner,
   createSharedReadonlyOwner,
+  createShardOwner,
   type Owner,
+  type OwnerId,
   RelayUrl,
   RelayUrlFromString,
   testAppOwner,
+  testOwnerSecret,
 } from "./Owner.ts";
 import {
   createProtocolBroadcastMessagesFromCrdtMessages,
@@ -67,6 +70,7 @@ import {
   type DbWorkerOutput,
   type EvoluInput,
   type EvoluOutput,
+  type OwnerRegistrationId,
   type SharedWorker,
   type SharedWorkerId,
   type SharedWorkerInput,
@@ -148,6 +152,22 @@ const testPostedAppOwner: Owner = {
   encryptionKey: testAppOwner.encryptionKey,
   writeKey: testAppOwner.writeKey,
 };
+
+const testSharedOwner = createSharedOwner(
+  createOwnerSecret(testCreateDeps({ seed: "evolu-shared-owner" })),
+);
+
+/** The registration IDs that the inputs' owner actions name, in order. */
+const getRegistrationIds = (
+  inputs: ReadonlyArray<EvoluInput>,
+): Array<OwnerRegistrationId> =>
+  inputs.flatMap((input) =>
+    input.type === "UseOwner"
+      ? input.actions.flatMap((action) =>
+          action.action === "sync" ? [] : [action.id],
+        )
+      : [],
+  );
 
 const createQuery = createQueryBuilder(Schema);
 
@@ -244,6 +264,34 @@ describe("Evolu", () => {
       postEvoluOutput,
       [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
+  };
+
+  /** Captures the instance's channel, so a test can deliver to it directly. */
+  const setupWithEvoluChannel = async (
+    overrides: Partial<EvoluPlatformDeps> = {},
+  ) => {
+    const channels: Array<{
+      readonly port1: {
+        onMessage: ((message: EvoluOutput) => void) | null;
+      };
+    }> = [];
+    const setup = await setupRunWithEvoluDeps({
+      ...overrides,
+      createMessageChannel: <Input, Output = never>() => {
+        const channel = testCreateMessageChannel<Input, Output>();
+        channels.push(channel as never);
+        return channel;
+      },
+    });
+    return Object.assign(setup, {
+      deliver: (output: EvoluOutput): void => {
+        const evoluChannel = channels.find(
+          (channel) => channel.port1.onMessage,
+        );
+        assertNonNullable(evoluChannel?.port1.onMessage);
+        evoluChannel.port1.onMessage(output);
+      },
+    });
   };
 
   it("AppName", () => {
@@ -1206,9 +1254,11 @@ describe("Evolu", () => {
         (input) => input.type === "UseOwner",
       );
       assertNotUndefined(input);
+      const [id] = getRegistrationIds([input]);
       assertEqual(input.actions, [
         {
           action: "add",
+          id,
           owner: {
             owner: testPostedAppOwner,
             transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com/" }],
@@ -1314,16 +1364,17 @@ describe("Evolu", () => {
         assertEqual(evoluInputs, []);
 
         await testWaitForWorkerMessage();
+        const [id] = getRegistrationIds(evoluInputs);
         assertEqual(evoluInputs, [
           {
             type: "UseOwner",
-            actions: [{ action: "add", owner }],
+            actions: [{ action: "add", id, owner }],
           },
           {
             type: "UseOwner",
             actions: [
               { action: "sync", ownerId: sharedOwner.id },
-              { action: "remove", owner },
+              { action: "remove", id },
             ],
           },
           {
@@ -1376,6 +1427,7 @@ describe("Evolu", () => {
 
         await testWaitForWorkerMessage();
 
+        const [id] = getRegistrationIds(evoluInputs);
         assertEqual(evoluInputs, [
           {
             type: "UseOwner",
@@ -1386,6 +1438,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport],
                 },
                 action: "add",
+                id,
               },
             ],
           },
@@ -1412,6 +1465,7 @@ describe("Evolu", () => {
 
         await testWaitForWorkerMessage();
 
+        const [id] = getRegistrationIds(evoluInputs);
         assertEqual(evoluInputs, [
           {
             type: "UseOwner",
@@ -1422,6 +1476,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport],
                 },
                 action: "add",
+                id,
               },
             ],
           },
@@ -1440,6 +1495,7 @@ describe("Evolu", () => {
         evolu.useOwner(readonlyOwner, [testOwnerTransport]);
         await testWaitForWorkerMessage();
 
+        const [appOwnerId, readonlyOwnerId] = getRegistrationIds(evoluInputs);
         assertEqual(evoluInputs, [
           {
             type: "UseOwner",
@@ -1450,6 +1506,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport],
                 },
                 action: "add",
+                id: appOwnerId,
               },
               {
                 owner: {
@@ -1460,6 +1517,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport],
                 },
                 action: "add",
+                id: readonlyOwnerId,
               },
             ],
           },
@@ -1478,6 +1536,7 @@ describe("Evolu", () => {
 
         await testWaitForWorkerMessage();
 
+        const [id] = getRegistrationIds(evoluInputs);
         assertEqual(evoluInputs, [
           {
             type: "UseOwner",
@@ -1488,17 +1547,27 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport],
                 },
                 action: "add",
+                id,
               },
-              {
-                owner: {
-                  owner: testPostedAppOwner,
-                  transports: [testOwnerTransport],
-                },
-                action: "remove",
-              },
+              { action: "remove", id },
             ],
           },
         ]);
+      });
+
+      it("names each registration, and its UnuseOwner names the same one", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+
+        const unuseFirst = evolu.useOwner(testAppOwner, [testOwnerTransport]);
+        evolu.useOwner(testAppOwner, [testOwnerTransport]);
+        unuseFirst();
+        await testWaitForWorkerMessage();
+
+        const [first, second, removed] = getRegistrationIds(evoluInputs);
+        assertNotSame(first, second);
+        assertSame(removed, first);
       });
 
       it("throws for equal transports and posts only distinct ones", async () => {
@@ -1523,6 +1592,7 @@ describe("Evolu", () => {
         evolu.useOwner(testAppOwner, [testOwnerTransport, otherTransport]);
         await testWaitForWorkerMessage();
 
+        const [id] = getRegistrationIds(evoluInputs);
         assertEqual(evoluInputs, [
           {
             type: "UseOwner",
@@ -1533,6 +1603,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport, otherTransport],
                 },
                 action: "add",
+                id,
               },
             ],
           },
@@ -1576,6 +1647,7 @@ describe("Evolu", () => {
 
         const unuseOwner = evolu.useOwner(testAppOwner, [testOwnerTransport]);
         await testWaitForWorkerMessage();
+        const [id] = getRegistrationIds(evoluInputs);
         evoluInputs.length = 0;
 
         unuseOwner();
@@ -1590,18 +1662,7 @@ describe("Evolu", () => {
         await testWaitForWorkerMessage();
 
         assertEqual(evoluInputs, [
-          {
-            type: "UseOwner",
-            actions: [
-              {
-                owner: {
-                  owner: testPostedAppOwner,
-                  transports: [testOwnerTransport],
-                },
-                action: "remove",
-              },
-            ],
-          },
+          { type: "UseOwner", actions: [{ action: "remove", id }] },
         ]);
       });
 
@@ -1623,6 +1684,7 @@ describe("Evolu", () => {
 
         await testWaitForWorkerMessage();
 
+        const [id] = getRegistrationIds(evoluInputs);
         assertEqual(evoluInputs[0], {
           type: "UseOwner",
           actions: [
@@ -1632,6 +1694,7 @@ describe("Evolu", () => {
                 transports: [testOwnerTransport],
               },
               action: "add",
+              id,
             },
           ],
         });
@@ -1931,7 +1994,7 @@ describe("Evolu", () => {
 
       assertEqual(
         assertThrowsInstanceOf(() => {
-          evolu.deleteOwner(testAppOwner);
+          void evolu.deleteOwner(testSharedOwner);
         }, Error).message,
         disposedMessage,
       );
@@ -1948,19 +2011,6 @@ describe("Evolu", () => {
           evolu.requestSync(testAppOwner.id);
         }, Error).message,
         disposedMessage,
-      );
-    });
-
-    it("deleteOwner is a placeholder", async () => {
-      await using setup = await setupRunWithEvoluDeps();
-      const { run } = setup;
-      const evolu = await run.ok(testCreateEvolu);
-
-      assertEqual(
-        assertThrowsInstanceOf(() => {
-          evolu.deleteOwner(testAppOwner);
-        }, Error).message,
-        "not yet implemented",
       );
     });
 
@@ -3746,34 +3796,6 @@ describe("Evolu", () => {
   describe("deleteDatabase", () => {
     const disposedMessage = "Cannot use a disposed object.";
 
-    /** Captures the instance's channel, so a test can deliver to it directly. */
-    const setupWithEvoluChannel = async (
-      overrides: Partial<EvoluPlatformDeps> = {},
-    ) => {
-      const channels: Array<{
-        readonly port1: {
-          onMessage: ((message: EvoluOutput) => void) | null;
-        };
-      }> = [];
-      const setup = await setupRunWithEvoluDeps({
-        ...overrides,
-        createMessageChannel: <Input, Output = never>() => {
-          const channel = testCreateMessageChannel<Input, Output>();
-          channels.push(channel as never);
-          return channel;
-        },
-      });
-      return Object.assign(setup, {
-        deliver: (output: EvoluOutput): void => {
-          const evoluChannel = channels.find(
-            (channel) => channel.port1.onMessage,
-          );
-          assertNonNullable(evoluChannel?.port1.onMessage);
-          evoluChannel.port1.onMessage(output);
-        },
-      });
-    };
-
     it("asks for the deletion after the changes made before it", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs } = setup;
@@ -4124,6 +4146,249 @@ describe("Evolu", () => {
           });
         }, Error).message,
         "OnDeleteDatabaseFailed received without pending deletion.",
+      );
+    });
+  });
+
+  describe("deleteOwner", () => {
+    const createEvoluWithOnOwnerDeleted = (
+      onOwnerDeleted: (ownerId: OwnerId) => void,
+    ) =>
+      createEvolu(Schema, {
+        appName: testAppName,
+        appOwner: testAppOwner,
+        transports: [],
+        onOwnerDeleted,
+      });
+
+    it("asks for the deletion after the owner actions, changes, and queries made before it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const unuseOwner = evolu.useOwner(testSharedOwner, [testOwnerTransport]);
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Deleted with its owner") },
+        { owner: testSharedOwner },
+      );
+      unuseOwner();
+      void evolu.loadQuery(todoTitleQuery);
+      void evolu.deleteOwner(testSharedOwner);
+      await testWaitForWorkerMessage();
+
+      assertEqual(
+        evoluInputs.map(({ type }) => type),
+        ["UseOwner", "Mutate", "Query", "DeleteOwner"],
+      );
+      assertEqual(evoluInputs.at(-1), {
+        type: "DeleteOwner",
+        ownerId: testSharedOwner.id,
+      });
+    });
+
+    it("resolves its call, and calls onOwnerDeleted, once the owner is deleted", async () => {
+      const deletedOwnerIds: Array<OwnerId> = [];
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(
+        createEvoluWithOnOwnerDeleted((ownerId) => {
+          deletedOwnerIds.push(ownerId);
+        }),
+      );
+
+      const deletion = evolu.deleteOwner(testSharedOwner);
+      await testWaitForWorkerMessage();
+      postEvoluOutput({
+        type: "OnOwnerDeleted",
+        ownerId: testSharedOwner.id,
+        isAnswer: true,
+      });
+
+      assertEqual(await deletion, ok());
+      assertEqual(deletedOwnerIds, [testSharedOwner.id]);
+      // The instance keeps working.
+      evolu.getQueryRows(todoTitleQuery);
+    });
+
+    it("resolves its call before onOwnerDeleted, even when it throws", async () => {
+      const error = new Error("UI failed");
+      await using setup = await setupWithEvoluChannel();
+      const { run } = setup;
+      const evolu = await run.ok(
+        createEvoluWithOnOwnerDeleted(() => {
+          throw error;
+        }),
+      );
+      const deletion = evolu.deleteOwner(testSharedOwner);
+
+      assertSame(
+        assertThrowsInstanceOf(() => {
+          setup.deliver({
+            type: "OnOwnerDeleted",
+            ownerId: testSharedOwner.id,
+            isAnswer: true,
+          });
+        }, Error),
+        error,
+      );
+
+      assertEqual(
+        await Promise.race([deletion, Promise.resolve("pending")]),
+        ok(),
+      );
+    });
+
+    it("calls onOwnerDeleted when another instance deleted the owner, and keeps its own call pending", async () => {
+      const deletedOwnerIds: Array<OwnerId> = [];
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(
+        createEvoluWithOnOwnerDeleted((ownerId) => {
+          deletedOwnerIds.push(ownerId);
+        }),
+      );
+
+      const settled = evolu.deleteOwner(testSharedOwner).then(() => "settled");
+      await testWaitForWorkerMessage();
+      postEvoluOutput({
+        type: "OnOwnerDeleted",
+        ownerId: testSharedOwner.id,
+        isAnswer: false,
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(deletedOwnerIds, [testSharedOwner.id]);
+      assertEqual(
+        await Promise.race([settled, Promise.resolve("pending")]),
+        "pending",
+      );
+    });
+
+    it("asks once per call and answers its calls in order", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      const otherOwner = createSharedOwner(createOwnerSecret(run.deps));
+
+      const first = evolu.deleteOwner(testSharedOwner);
+      const second = evolu.deleteOwner(otherOwner);
+      const third = evolu.deleteOwner(testSharedOwner);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [
+        { type: "DeleteOwner", ownerId: testSharedOwner.id },
+        { type: "DeleteOwner", ownerId: otherOwner.id },
+        { type: "DeleteOwner", ownerId: testSharedOwner.id },
+      ]);
+
+      // A failure between two successes tells the oldest pending call from
+      // the newest for both answers.
+      const error = createUnknownError(new Error("disk I/O error"));
+      postEvoluOutput({
+        type: "OnOwnerDeleted",
+        ownerId: testSharedOwner.id,
+        isAnswer: true,
+      });
+      postEvoluOutput({ type: "OnDeleteOwnerFailed", error });
+      postEvoluOutput({
+        type: "OnOwnerDeleted",
+        ownerId: testSharedOwner.id,
+        isAnswer: true,
+      });
+
+      assertEqual(await first, ok());
+      assertEqual(await second, err(error));
+      assertEqual(await third, ok());
+    });
+
+    it("resolves with the refusal of the database", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      const error: UnsupportedDbVersionError = {
+        type: "UnsupportedDbVersionError",
+        storedVersion: PositiveInt.orThrow(3),
+        supportedVersion: PositiveInt.orThrow(2),
+      };
+
+      const deletion = evolu.deleteOwner(testSharedOwner);
+      postEvoluOutput({ type: "OnDeleteOwnerFailed", error });
+
+      assertEqual(await deletion, err(error));
+    });
+
+    it("resolves with EvoluDisposedError when the instance is disposed first", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const first = evolu.deleteOwner(testSharedOwner);
+      const second = evolu.deleteOwner(testSharedOwner);
+      await evolu[Symbol.asyncDispose]();
+
+      const disposed = err({ type: "EvoluDisposedError" });
+      assertEqual(
+        await Promise.all([
+          Promise.race([first, Promise.resolve("pending")]),
+          Promise.race([second, Promise.resolve("pending")]),
+        ]),
+        [disposed, disposed],
+      );
+    });
+
+    it("rejects the AppOwner and throws for an owner with its ID", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const message =
+        "deleteOwner cannot delete an owner with the AppOwner's ID, which names the database. Use deleteDatabase.";
+      assertEqual(
+        assertThrowsInstanceOf(() => {
+          // @ts-expect-error deleteOwner takes no AppOwner, which names the database.
+          void evolu.deleteOwner(evolu.appOwner);
+        }, Error).message,
+        message,
+      );
+      // A ShardOwner created from the AppOwner's secret has its ID.
+      assertEqual(
+        assertThrowsInstanceOf(() => {
+          void evolu.deleteOwner(createShardOwner(testOwnerSecret));
+        }, Error).message,
+        message,
+      );
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, []);
+    });
+
+    it("throws when OnOwnerDeleted answers no pending deletion", async () => {
+      await using setup = await setupWithEvoluChannel();
+      await setup.run.ok(testCreateEvolu);
+
+      assertEqual(
+        assertThrowsInstanceOf(() => {
+          setup.deliver({
+            type: "OnOwnerDeleted",
+            ownerId: testSharedOwner.id,
+            isAnswer: true,
+          });
+        }, Error).message,
+        "OnOwnerDeleted answered no pending owner deletion.",
+      );
+    });
+
+    it("throws when OnDeleteOwnerFailed arrives without pending deletion", async () => {
+      await using setup = await setupWithEvoluChannel();
+      await setup.run.ok(testCreateEvolu);
+
+      assertEqual(
+        assertThrowsInstanceOf(() => {
+          setup.deliver({
+            type: "OnDeleteOwnerFailed",
+            error: createUnknownError(new Error("disk I/O error")),
+          });
+        }, Error).message,
+        "OnDeleteOwnerFailed received without pending owner deletion.",
       );
     });
   });

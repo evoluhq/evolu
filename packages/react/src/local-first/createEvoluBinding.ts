@@ -91,7 +91,9 @@ export interface ReactBinding<S extends EvoluSchema = EvoluSchema> {
    * Uses an Owner for sync through {@link Evolu.useOwner} while the component is
    * mounted, and stops when it unmounts or the Evolu instance, owner, or
    * transports change. A null owner uses none, for a component that waits for
-   * one.
+   * one. {@link Evolu.deleteOwner} of the owner ends its use, and the component
+   * uses the owner again only once it remounts or the Evolu instance, owner, or
+   * transports change.
    *
    * The owner and transports are compared by content, so recreating them on
    * each render keeps the same registration.

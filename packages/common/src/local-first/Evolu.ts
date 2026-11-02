@@ -22,7 +22,7 @@ import { createConsole } from "../Console.ts";
 import type { DecryptWithXChaCha20Poly1305Error } from "../Crypto.ts";
 import type { UnknownError } from "../Error.ts";
 import { createUnknownError } from "../Error.ts";
-import { constVoid, disposable, exhaustiveCheck, todo } from "../Function.ts";
+import { constVoid, disposable, exhaustiveCheck } from "../Function.ts";
 import {
   acquireLeaderLock,
   acquireLeaderLockCallback,
@@ -79,6 +79,9 @@ import type {
   OwnerTransport,
   ReadonlyOwner,
   RelayUrlFromString,
+  ShardOwner,
+  SharedOwner,
+  SharedReadonlyOwner,
   SyncOwner,
 } from "./Owner.ts";
 import { createOwnerWebSocketTransport } from "./Owner.ts";
@@ -266,12 +269,16 @@ export interface EvoluConfig {
   readonly onDatabaseDeleted?: () => void;
 
   /**
-   * Called when local data for an {@link Owner} is deleted.
+   * Called when {@link Evolu.deleteOwner} deletes an owner's rows from this
+   * instance's local database, whether this or another instance in any tab
+   * asked.
    *
-   * Apps can use this to update UI immediately because that owner stops being
-   * used across tabs and instances.
+   * The owner no longer syncs in any instance of the database, so the app stops
+   * showing it here, such as by leaving a screen of its data, whichever tab
+   * deleted it. It runs once per deletion, so an owner deleted twice, such as
+   * from two tabs at once, gets two calls.
    */
-  readonly onOwnerDeleted?: (owner: Owner) => void;
+  readonly onOwnerDeleted?: (ownerId: OwnerId) => void;
 
   /**
    * Transport configuration for sync and backup.
@@ -877,17 +884,67 @@ export interface Evolu<
   readonly deleteDatabase: () => Promise<Result<void, DeleteDatabaseError>>;
 
   /**
-   * Delete all local data for a specific {@link Owner}.
+   * Deletes the rows of a {@link ShardOwner}, {@link SharedOwner}, or
+   * {@link SharedReadonlyOwner} from the local database of this {@link Evolu}
+   * instance on this device, stops syncing the owner, and resolves once the
+   * rows are gone.
    *
-   * This deletes all rows whose `ownerId` matches the provided owner and
-   * deletes that owner's local history as well.
+   * The deletion runs after the mutations and requests made before it. It
+   * deletes the owner's rows of every table, local-only tables included, and
+   * its history in one transaction. Then it ends every {@link Evolu.useOwner}
+   * registration of the owner in every instance of the database, identified by
+   * {@link Evolu.name}, in every tab, so relays don't bring the rows back, and
+   * calling the {@link UnuseOwner} of such a registration does nothing. Then
+   * each instance calls {@link EvoluConfig.onOwnerDeleted}, this one before code
+   * awaiting this call continues, and loads its subscribed queries again, which
+   * return the owner's rows until they load.
    *
-   * It also stops using that owner across all tabs and instances. Use
-   * {@link EvoluConfig.onOwnerDeleted} to update app UI when that happens.
+   * It deletes only this device's copy. Changes not yet synced are lost. Relays
+   * keep the owner's data, and so do other local databases that use the owner.
+   * A later `useOwner` syncs the data back, and a mutation with the owner
+   * stores its rows again, so stop using the owner first, such as by removing
+   * it from where the app lists it. Encrypted copies in device backups and in
+   * freed storage remain.
    *
-   * Currently not implemented.
+   * It takes no {@link AppOwner}, whose ID names the database;
+   * {@link Evolu.deleteDatabase} deletes the whole database instead. An owner
+   * created from the AppOwner's secret has the same ID, so this method throws
+   * for it.
+   *
+   * Each call deletes on its own, in call order. It fails with an
+   * {@link UnknownError} when SQLite fails the deletion, which then deletes
+   * nothing, and the owner keeps syncing. When the database is refused, it
+   * fails with the refusal's error, as {@link EvoluError} describes. It fails
+   * with {@link EvoluDisposedError} when this instance is disposed before the
+   * deletion ends, which may or may not then run.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import {
+   *   assertType,
+   *   type DeleteOwnerError,
+   *   type Evolu,
+   *   type Result,
+   *   type ShardOwner,
+   * } from "@evolu/common";
+   *
+   * const deleteWallet = (evolu: Evolu, walletOwner: ShardOwner) =>
+   *   evolu.deleteOwner(walletOwner);
+   *
+   * assertType<
+   *   Awaited<ReturnType<typeof deleteWallet>>,
+   *   Result<void, DeleteOwnerError>
+   * >();
+   *
+   * const _deleteAppOwner = (evolu: Evolu) =>
+   *   // @ts-expect-error deleteOwner takes no AppOwner, which names the database.
+   *   evolu.deleteOwner(evolu.appOwner);
+   * ```
    */
-  readonly deleteOwner: (owner: Owner) => void;
+  readonly deleteOwner: (
+    owner: ShardOwner | SharedOwner | SharedReadonlyOwner,
+  ) => Promise<Result<void, DeleteOwnerError>>;
 
   /**
    * Use an Owner for sync. Returns a {@link UnuseOwner}.
@@ -1022,6 +1079,17 @@ export interface EvoluDisposedError extends Typed<"EvoluDisposedError"> {}
  */
 export type DeleteDatabaseError =
   DatabaseHeldError | EvoluDisposedError | UnknownError;
+
+/**
+ * An error of {@link Evolu.deleteOwner}.
+ *
+ * @group Core
+ */
+export type DeleteOwnerError =
+  | DatabaseHeldError
+  | EvoluDisposedError
+  | UnknownError
+  | UnsupportedDbVersionError;
 
 /**
  * Whether this device keeps an {@link Evolu} database, stating only what Evolu
@@ -1670,6 +1738,17 @@ export const createEvolu =
       deleteDatabasePending = null;
     });
 
+    // In call order, which is the order the tenant answers them in.
+    const deleteOwnerPending: Array<
+      PromiseWithResolvers<Result<void, DeleteOwnerError>>
+    > = [];
+
+    disposer.defer(() => {
+      for (const pending of deleteOwnerPending)
+        pending.resolve(err({ type: "EvoluDisposedError" }));
+      deleteOwnerPending.length = 0;
+    });
+
     let isPersistentStorageRequested = false;
 
     let postMessage: (input: EvoluInput) => void;
@@ -1817,6 +1896,30 @@ export const createEvolu =
             );
             deleteDatabasePending.resolve(err(message.error));
             deleteDatabasePending = null;
+            break;
+          }
+
+          case "OnOwnerDeleted": {
+            // Resolved first, so a throwing callback leaves no call pending.
+            if (message.isAnswer) {
+              const pending = deleteOwnerPending.shift();
+              assert(
+                pending,
+                "OnOwnerDeleted answered no pending owner deletion.",
+              );
+              pending.resolve(ok());
+            }
+            config.onOwnerDeleted?.(message.ownerId);
+            break;
+          }
+
+          case "OnDeleteOwnerFailed": {
+            const pending = deleteOwnerPending.shift();
+            assert(
+              pending,
+              "OnDeleteOwnerFailed received without pending owner deletion.",
+            );
+            pending.resolve(err(message.error));
             break;
           }
 
@@ -2041,9 +2144,11 @@ export const createEvolu =
         transports: effectiveTransports,
       };
 
+      const registrationId = createId<"OwnerRegistration">(run.deps);
       useOwnerBatch.push({
-        owner: syncOwner,
         action: "add",
+        id: registrationId,
+        owner: syncOwner,
       });
 
       let isUsed = true;
@@ -2052,10 +2157,7 @@ export const createEvolu =
         if (disposed) return;
         assert(isUsed, "UnuseOwner can be called only once.");
         isUsed = false;
-        useOwnerBatch.push({
-          owner: syncOwner,
-          action: "remove",
-        });
+        useOwnerBatch.push({ action: "remove", id: registrationId });
       };
     };
 
@@ -2193,8 +2295,23 @@ export const createEvolu =
         },
 
         deleteOwner: (owner) => {
-          void owner;
-          todo();
+          assert(
+            owner.id !== appOwner.id,
+            "deleteOwner cannot delete an owner with the AppOwner's ID, which names the database. Use deleteDatabase.",
+          );
+          const pending =
+            Promise.withResolvers<Result<void, DeleteOwnerError>>();
+          deleteOwnerPending.push(pending);
+          // Queue the owner actions, changes, and queries made before it, so
+          // the deletion ends the registrations made before it, even those
+          // still waiting for their turn, deletes the changes, and comes after
+          // the queries, which read the rows.
+          useOwnerBatch.flushNow();
+          mutateBatch.flushNow();
+          queryBatch.flushNow();
+          // Only the ID, so the owner's keys reach no other tab.
+          postMessage({ type: "DeleteOwner", ownerId: owner.id });
+          return pending.promise;
         },
 
         useOwner,

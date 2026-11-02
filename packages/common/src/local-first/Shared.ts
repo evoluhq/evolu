@@ -116,6 +116,26 @@
  * during the deletion, the replacement reopens the database, creating it again
  * if it was already deleted, and deletes it again.
  *
+ * {@link Evolu.deleteOwner} queues a deletion of an owner's rows like any
+ * request. The DbWorker deletes the owner's rows of every table in the
+ * database's file, including tables this build's schema lacks, and the owner's
+ * rows of Evolu's own tables, in one transaction, and keeps serving. While the
+ * deletion is queued, the tenant neither applies the owner's sync messages nor
+ * creates its rounds, which would store its rows again after the deletion. Once
+ * the rows are gone, the tenant ends every registration of the owner in every
+ * instance, which releases its transports, so relays do not bring the rows
+ * back. A registration still acquiring its transports releases them once
+ * acquired, and one still waiting for its turn never starts. Each registration
+ * has an ID, so the remove of a registration the deletion ended releases
+ * nothing, and never a registration made after it. The tenant then refreshes
+ * every instance's queries and tells every instance, and each calls
+ * {@link EvoluConfig.onOwnerDeleted}, the asking one right after it resolves its
+ * call, so before code awaiting the call continues. A deletion that fails rolls
+ * back and answers its instance with the error, and the owner keeps syncing and
+ * reconciles what its rounds skipped. A refused database deletes no owner, so
+ * it answers each deletion of one with its refusal, at once or when it is
+ * refused, while a deletion of the database stays pending.
+ *
  * ## Synchronization routing
  *
  * WebSocket transports are shared resources keyed by their configuration and
@@ -194,8 +214,9 @@
  * answered and its rounds start again.
  *
  * Every tenant with a writable registration applies every frame for its owner,
- * so each database stores the messages any reply carries. Only the sender of
- * the requests a Response answers reconciles its ranges and may continue; the
+ * except while a deletion of the owner is queued (see Deletion), so each
+ * database stores the messages any reply carries. Only the sender of the
+ * requests a Response answers reconciles its ranges and may continue; the
  * others only store its messages and record any relay error it carries. If
  * every tenant continued every Response, the requests would multiply with each
  * round of a catch-up. Tenants using one owner through one socket therefore
@@ -211,11 +232,13 @@
  *   and its continuation the owner can have no request outstanding or waiting.
  * - The tenant has no replicated write for the owner queued, because its upload
  *   is sent only after the database worker answers it.
+ * - The tenant has no deletion of the owner queued, because it applies none of
+ *   the owner's frames meanwhile; see Deletion.
  * - The tenant has sent a round through the transport since the last event that
  *   requires one: the route's creation, the socket opening, an explicit
- *   request, a replacement leader, or storing messages from another transport,
- *   unless the route skipped a message. No failed result has arrived on the
- *   route since.
+ *   request, a replacement leader, a failed deletion of the owner, or storing
+ *   messages from another transport, unless the route skipped a message. No
+ *   failed result has arrived on the route since.
  * - No result that skipped a received message or a stored change too large to
  *   send has arrived on the route since a round was last requested through it,
  *   and since that request, no messages have been stored from another
@@ -356,12 +379,7 @@ import {
 import { createUnknownError, type UnknownError } from "../Error.ts";
 import { disposable, exhaustiveCheck } from "../Function.ts";
 import { acquireLeaderLock, type LockManagerDep } from "../LockManager.ts";
-import {
-  createLookupMap,
-  structuralLookup,
-  type LookupMap,
-  type StructuralLookupKey,
-} from "../Lookup.ts";
+import { structuralLookup, type StructuralLookupKey } from "../Lookup.ts";
 import type { ReloadApp } from "../Platform.ts";
 import { createRefCountedRelation } from "../Relation.ts";
 import {
@@ -1334,8 +1352,21 @@ export type EvoluInput =
       readonly type: "UseOwner";
       readonly actions: ReadonlyArray<
         | {
+            readonly action: "add";
+            /**
+             * Names the registration, so its remove releases exactly it,
+             * whatever registrations of the owner came and went meanwhile.
+             */
+            readonly id: OwnerRegistrationId;
             readonly owner: SyncOwner;
-            readonly action: "add" | "remove";
+          }
+        | {
+            /**
+             * Releases the registration, unless the owner's deletion ended it;
+             * see Deletion.
+             */
+            readonly action: "remove";
+            readonly id: OwnerRegistrationId;
           }
         | {
             readonly ownerId: OwnerId;
@@ -1352,7 +1383,13 @@ export type EvoluInput =
     }
   | {
       readonly type: "DeleteDatabase";
+    }
+  | {
+      readonly type: "DeleteOwner";
+      readonly ownerId: OwnerId;
     };
+
+export type OwnerRegistrationId = Id & Brand<"OwnerRegistration">;
 
 export type EvoluOutput =
   | {
@@ -1394,6 +1431,26 @@ export type EvoluOutput =
       /** The instance's deletion failed; see Deletion. */
       readonly type: "OnDeleteDatabaseFailed";
       readonly error: DatabaseHeldError | UnknownError;
+    }
+  | {
+      /**
+       * The owner's rows were deleted, so the instance calls
+       * {@link EvoluConfig.onOwnerDeleted}. Every instance is told, and
+       * `isAnswer` tells the one whose oldest pending owner deletion this
+       * answers; see Deletion.
+       */
+      readonly type: "OnOwnerDeleted";
+      readonly ownerId: OwnerId;
+      readonly isAnswer: boolean;
+    }
+  | {
+      /**
+       * The instance's oldest pending owner deletion failed, or its database is
+       * refused; see Deletion.
+       */
+      readonly type: "OnDeleteOwnerFailed";
+      readonly error:
+        DatabaseHeldError | UnknownError | UnsupportedDbVersionError;
     };
 
 export type DbWorkerInput =
@@ -1442,7 +1499,7 @@ export type DbWorkerReadRequest =
       readonly id: EvoluInstanceId;
       readonly message: ExtractTyped<
         EvoluInput,
-        "Query" | "Export" | "DeleteDatabase"
+        "Query" | "Export" | "DeleteDatabase" | "DeleteOwner"
       >;
     }
   | {
@@ -1531,6 +1588,15 @@ export type DbWorkerQueuedResponse =
              */
             readonly type: "DeleteDatabaseFailed";
             readonly error: DatabaseHeldError | UnknownError;
+          }
+        | {
+            /** The owner's rows were deleted in one transaction. */
+            readonly type: "OwnerDeleted";
+          }
+        | {
+            /** SQLite failed the deletion, which rolled back. */
+            readonly type: "DeleteOwnerFailed";
+            readonly error: UnknownError;
           };
     }
   | {
@@ -1590,7 +1656,8 @@ interface EvoluTenant extends AsyncDisposable {
 
   /**
    * Whether this tenant applies sync messages for the owner: an instance has a
-   * writable registration for it, and the database was not refused.
+   * writable registration for it, the database was not refused, and no deletion
+   * of the owner is queued.
    */
   readonly isApplyingOwner: (ownerId: OwnerId) => boolean;
 
@@ -2609,14 +2676,18 @@ const createEvoluTenant =
 
     interface EvoluInstance extends AsyncDisposable {
       readonly id: EvoluInstanceId;
-      /** A null lease reserves a registration while its transports are acquired. */
-      readonly ownerRegistrations: LookupMap<
-        SyncOwner,
-        Array<ClaimLease | null>
-      >;
+      readonly ownerRegistrations: Map<OwnerRegistrationId, OwnerRegistration>;
+      /** The owners of received registrations still waiting for their turn. */
+      readonly ownerIdByQueuedRegistrationId: Map<OwnerRegistrationId, OwnerId>;
       readonly port: MessagePort<EvoluOutput, EvoluInput>;
       readonly tabPort: TabPort;
       readonly rowsByQuery: Map<Query, ReadonlyArray<Row>>;
+    }
+
+    interface OwnerRegistration {
+      readonly syncOwner: SyncOwner;
+      /** Null while the registration's transports are acquired. */
+      lease: ClaimLease | null;
     }
 
     const instancesById = disposer.adopt(
@@ -2669,14 +2740,14 @@ const createEvoluTenant =
 
     /**
      * The tenant's database worker: `Starting` until one leads, then `Leading`,
-     * which a replacement leader replaces. A leader that failed a deletion
-     * ends, so the tenant is `Replacing` until its replacement leads, and
-     * dispatches nothing meanwhile. `Refused` is final, and `Disposed` changes
-     * only to `Refused`, when a worker requested earlier refuses startup or the
-     * leader fails before it handles the dispose message, or to `Deleted`, when
-     * the leader completes a deletion it started before. `Deleted` ends a
-     * generation and changes to `Starting` when an instance revives the
-     * database; see Deletion.
+     * which a replacement leader replaces. A leader that failed a deletion of
+     * the database ends, so the tenant is `Replacing` until its replacement
+     * leads, and dispatches nothing meanwhile. `Refused` is final, and
+     * `Disposed` changes only to `Refused`, when a worker requested earlier
+     * refuses startup or the leader fails before it handles the dispose
+     * message, or to `Deleted`, when the leader completes a deletion it started
+     * before. `Deleted` ends a generation and changes to `Starting` when an
+     * instance revives the database; see Deletion.
      */
     type DbWorkerState =
       | Typed<"Starting">
@@ -2714,6 +2785,9 @@ const createEvoluTenant =
     const queue: Array<QueueEntry> = [];
     const pendingWriteCountByOwnerId = new Map<OwnerId, number>();
     const pendingApplyCountForAllRoutesByOwnerId = new Map<OwnerId, number>();
+    // While a deletion of an owner is queued, the tenant neither applies nor
+    // creates its sync messages; see Deletion.
+    const pendingOwnerDeletionCountByOwnerId = new Map<OwnerId, number>();
     // Queued applies of relay frames, counted per owner and source transport.
     const ownerTransportApplyRelation = createRefCountedRelation<
       OwnerId,
@@ -2853,9 +2927,21 @@ const createEvoluTenant =
               dbWorker.port[Symbol.dispose]();
             }
             currentDbWorkerPort[Symbol.dispose]();
+            // A refused database deletes no owner, so each queued deletion
+            // of one is answered with the refusal, as later ones are.
+            for (const entry of queue)
+              if (
+                entry.type === "Read" &&
+                entry.request.message.type === "DeleteOwner"
+              )
+                instancesById.get(entry.request.id)?.port.postMessage({
+                  type: "OnDeleteOwnerFailed",
+                  error: message.error,
+                });
             queue.length = 0;
             pendingWriteCountByOwnerId.clear();
             pendingApplyCountForAllRoutesByOwnerId.clear();
+            pendingOwnerDeletionCountByOwnerId.clear();
             ownerTransportApplyRelation.clear();
             dbWorker = { type: "Refused", error: message.error };
             deps.publishSyncState();
@@ -2890,6 +2976,7 @@ const createEvoluTenant =
             queue.length = 0;
             pendingWriteCountByOwnerId.clear();
             pendingApplyCountForAllRoutesByOwnerId.clear();
+            pendingOwnerDeletionCountByOwnerId.clear();
             ownerTransportApplyRelation.clear();
             dbWorker = { type: "Deleted" };
             console.info("databaseDeleted");
@@ -2941,6 +3028,18 @@ const createEvoluTenant =
               dbWorker = { type: "Replacing", clock: leading.clock };
               initDbWorker();
             }
+            // The owner keeps syncing, and reconciles what its rounds
+            // skipped while the deletion was queued, unless another deletion
+            // of it is queued.
+            if (
+              response.message.type === "DeleteOwnerFailed" &&
+              entry.type === "Read" &&
+              entry.request.message.type === "DeleteOwner"
+            )
+              requestCreateSyncMessages(
+                new Set([entry.request.message.ownerId]),
+                allTransports,
+              );
             // Follow-up uploads and retries are already queued or sent. Only
             // now can removing the completed head establish convergence.
             refreshSyncRoutes();
@@ -3002,6 +3101,14 @@ const createEvoluTenant =
     const updatePendingWork = (entry: QueueEntry, delta: 1 | -1): void => {
       switch (entry.type) {
         case "Read":
+          if (entry.request.message.type === "DeleteOwner")
+            updatePendingCount(
+              pendingOwnerDeletionCountByOwnerId,
+              entry.request.message.ownerId,
+              delta,
+            );
+          break;
+
         case "CreateSyncMessages":
           break;
 
@@ -3227,6 +3334,51 @@ const createEvoluTenant =
           });
           break;
 
+        case "OwnerDeleted": {
+          assertSame(first.message.type, "DeleteOwner");
+          const { ownerId } = first.message;
+          // The owner stops syncing in every instance, so relays do not bring
+          // its rows back. A registration still acquiring its transports
+          // releases them once acquired, and one still waiting for its turn
+          // never starts.
+          for (const {
+            ownerRegistrations,
+            ownerIdByQueuedRegistrationId,
+          } of instancesById.values()) {
+            for (const [
+              registrationId,
+              { syncOwner, lease },
+            ] of ownerRegistrations)
+              if (syncOwner.owner.id === ownerId) {
+                lease?.release();
+                ownerRegistrations.delete(registrationId);
+              }
+            for (const [
+              registrationId,
+              queuedOwnerId,
+            ] of ownerIdByQueuedRegistrationId)
+              if (queuedOwnerId === ownerId)
+                ownerIdByQueuedRegistrationId.delete(registrationId);
+          }
+          deps.refreshAllSyncRoutes();
+          deps.publishSyncState();
+          refreshQueries();
+          for (const [id, { port }] of instancesById)
+            port.postMessage({
+              type: "OnOwnerDeleted",
+              ownerId,
+              isAnswer: id === response.id,
+            });
+          break;
+        }
+
+        case "DeleteOwnerFailed":
+          instance?.port.postMessage({
+            type: "OnDeleteOwnerFailed",
+            error: response.message.error,
+          });
+          break;
+
         default:
           exhaustiveCheck(response.message);
       }
@@ -3250,7 +3402,9 @@ const createEvoluTenant =
     const getSyncOwners = () => {
       const ownersById = new Map<OwnerId, { writable: boolean }>();
       for (const instance of instancesById.values()) {
-        for (const { owner } of instance.ownerRegistrations.keys()) {
+        for (const {
+          syncOwner: { owner },
+        } of instance.ownerRegistrations.values()) {
           const entry = ownersById.get(owner.id) ?? { writable: false };
           entry.writable ||= "writeKey" in owner;
           ownersById.set(owner.id, entry);
@@ -3299,11 +3453,13 @@ const createEvoluTenant =
           // worker answers it. Local-only changes create no synchronization
           // work.
           const hasQueuedWrite = pendingWriteCountByOwnerId.has(ownerId);
+          // A queued deletion of the owner drops its frames; see Deletion.
           const isReconciled =
             isOpen &&
             !deps.syncRequests.hasOutstanding(ownerId, key) &&
             !hasQueuedApply &&
-            !hasQueuedWrite;
+            !hasQueuedWrite &&
+            !pendingOwnerDeletionCountByOwnerId.has(ownerId);
           // Settling drops the failure, so the next one requests a round
           // again. A route with a skip it is not rechecking settles without
           // completing, because its relay may offer the skipped message, the
@@ -3623,7 +3779,9 @@ const createEvoluTenant =
     ): ReadonlyMap<OwnerId, Owner> => {
       const ownersById = new Map<OwnerId, Owner>();
       for (const instance of instancesById.values()) {
-        for (const { owner } of instance.ownerRegistrations.keys()) {
+        for (const {
+          syncOwner: { owner },
+        } of instance.ownerRegistrations.values()) {
           if (!ownerIds.has(owner.id) || !("writeKey" in owner)) continue;
           ownersById.set(owner.id, owner);
         }
@@ -3631,10 +3789,12 @@ const createEvoluTenant =
       return ownersById;
     };
 
-    // Applying a sync message requires the write key, and a refused database
-    // applies none.
+    // Applying a sync message requires the write key. A refused database
+    // applies none, and neither does a database with a deletion of the owner
+    // queued; see Deletion.
     const getApplyingOwner = (ownerId: OwnerId): Owner | undefined =>
-      dbWorker.type === "Refused"
+      dbWorker.type === "Refused" ||
+      pendingOwnerDeletionCountByOwnerId.has(ownerId)
         ? undefined
         : getUsedOwnersById(new Set([ownerId])).get(ownerId);
 
@@ -3649,7 +3809,14 @@ const createEvoluTenant =
       } = {},
     ): void => {
       if (dbWorker.type === "Refused") return;
-      const usedOwnersById = getUsedOwnersById(ownerIds);
+      // An owner whose deletion is queued gets no round; see Deletion.
+      const usedOwnersById = getUsedOwnersById(
+        new Set(
+          [...ownerIds].filter(
+            (ownerId) => !pendingOwnerDeletionCountByOwnerId.has(ownerId),
+          ),
+        ),
+      );
       // Opening, storing messages from another transport, a failure, and an
       // explicit request each require a new round before completion. The
       // round also checks again whether the relay holds a skipped message.
@@ -3722,11 +3889,16 @@ const createEvoluTenant =
     const toggleSyncOwner =
       (
         instance: EvoluInstance,
-        syncOwner: SyncOwner,
-        action: "add" | "remove",
+        action: Exclude<
+          ExtractTyped<EvoluInput, "UseOwner">["actions"][number],
+          { readonly action: "sync" }
+        >,
       ): Task<void, never, EvoluTenantDeps> =>
       async (run) => {
-        if (action === "add") {
+        if (action.action === "add") {
+          const { id, owner: syncOwner } = action;
+          // The owner's deletion ended it before its turn.
+          if (!instance.ownerIdByQueuedRegistrationId.delete(id)) return ok();
           const ownerId = syncOwner.owner.id;
           const isFirstWritableUse =
             "writeKey" in syncOwner.owner &&
@@ -3738,23 +3910,29 @@ const createEvoluTenant =
           // through every claimed transport, whichever instance made them, so
           // later registrations need no round.
           const claimedKeys = getClaimedKeys(ownerId);
-          const leases = instance.ownerRegistrations.getOrInsertComputed(
-            syncOwner,
-            () => [],
-          );
+          const registration: OwnerRegistration = { syncOwner, lease: null };
           // First-claim callbacks must see the owner before acquisition finishes.
-          const index = leases.push(null) - 1;
+          instance.ownerRegistrations.set(id, registration);
           refreshSyncRoutes();
           try {
-            leases[index] = await run.ok(
+            const lease = await run.ok(
               deps.transports.claim(ownerId, syncOwner.transports),
             );
-          } finally {
-            if (leases[index] === null) {
-              leases.splice(index, 1);
-              if (leases.length === 0)
-                instance.ownerRegistrations.delete(syncOwner);
+            // The owner's deletion can end the registration while its
+            // transports are acquired, which then releases them at once and
+            // starts no round.
+            if (instance.ownerRegistrations.get(id) !== registration) {
+              lease.release();
+              deps.publishSyncState();
+              return ok();
             }
+            registration.lease = lease;
+          } finally {
+            if (
+              registration.lease === null &&
+              instance.ownerRegistrations.get(id) === registration
+            )
+              instance.ownerRegistrations.delete(id);
             deps.refreshAllSyncRoutes();
           }
           if (isFirstWritableUse)
@@ -3764,14 +3942,13 @@ const createEvoluTenant =
                 key,
               });
         } else {
-          const claimLeases = instance.ownerRegistrations.get(syncOwner);
-          assertNotUndefined(claimLeases);
-          const claimLease = claimLeases.pop();
-          assertNonNullable(claimLease);
-          claimLease.release();
-          if (claimLeases.length === 0) {
-            instance.ownerRegistrations.delete(syncOwner);
-          }
+          const registration = instance.ownerRegistrations.get(action.id);
+          // The owner's deletion ended it.
+          if (!registration) return ok();
+          // The instance's actions run in order, so its add has ended.
+          assertNonNullable(registration.lease);
+          registration.lease.release();
+          instance.ownerRegistrations.delete(action.id);
         }
         deps.refreshAllSyncRoutes();
         deps.publishSyncState();
@@ -3878,18 +4055,8 @@ const createEvoluTenant =
           const disposer = new AsyncDisposableStack();
           const instance: EvoluInstance = {
             id: message.id,
-            ownerRegistrations: createLookupMap({
-              lookup: (syncOwner: SyncOwner) =>
-                structuralLookup<{
-                  readonly owner: SyncOwner["owner"];
-                  readonly transports: ReadonlyArray<StructuralLookupKey>;
-                }>({
-                  owner: syncOwner.owner,
-                  transports: syncOwner.transports
-                    .map(structuralLookup)
-                    .toSorted(),
-                }),
-            }),
+            ownerRegistrations: new Map(),
+            ownerIdByQueuedRegistrationId: new Map(),
             port: deps.createMessagePort<EvoluOutput, EvoluInput>(
               message.evoluPort,
             ),
@@ -3903,9 +4070,8 @@ const createEvoluTenant =
           disposer.defer(onDisposed);
 
           disposer.defer(() => {
-            for (const leases of instance.ownerRegistrations.values()) {
-              for (const lease of leases) lease?.release();
-            }
+            for (const { lease } of instance.ownerRegistrations.values())
+              lease?.release();
             instance.ownerRegistrations.clear();
             deps.refreshAllSyncRoutes();
             deps.publishSyncState();
@@ -3940,15 +4106,29 @@ const createEvoluTenant =
             });
 
           instance.port.onMessage = (message) => {
-            if (dbWorker.type === "Refused") return;
+            if (dbWorker.type === "Refused") {
+              // A refused database deletes no owner, so it answers at once.
+              if (message.type === "DeleteOwner")
+                instance.port.postMessage({
+                  type: "OnDeleteOwnerFailed",
+                  error: dbWorker.error,
+                });
+              return;
+            }
             switch (message.type) {
               case "Query":
               case "Export":
-              case "DeleteDatabase": {
+              case "DeleteDatabase":
+              case "DeleteOwner": {
                 enqueueRequest({
                   type: "Read",
                   request: { type: "ForEvolu", id: instance.id, message },
                 });
+                // A queued deletion of an owner keeps its routes pending.
+                if (message.type === "DeleteOwner") {
+                  refreshSyncRoutes();
+                  deps.publishSyncState();
+                }
                 runQueue();
                 break;
               }
@@ -3972,6 +4152,14 @@ const createEvoluTenant =
                 break;
               }
               case "UseOwner": {
+                // Recorded on receipt, because the owner's deletion can end
+                // a registration before its turn.
+                for (const action of message.actions)
+                  if (action.action === "add")
+                    instance.ownerIdByQueuedRegistrationId.set(
+                      action.id,
+                      action.owner.owner.id,
+                    );
                 void instanceRun(
                   useOwnerMutex.withLock(async (run) => {
                     for (const action of message.actions) {
@@ -3987,22 +4175,24 @@ const createEvoluTenant =
                           );
                           break;
                         case "add":
-                        case "remove":
                           console.debug("useOwner", {
                             id: instance.id,
                             action: action.action,
+                            registrationId: action.id,
                             ownerId: action.owner.owner.id,
                             transportUrls: action.owner.transports.map(
                               ({ url }) => url,
                             ),
                           });
-                          await run(
-                            toggleSyncOwner(
-                              instance,
-                              action.owner,
-                              action.action,
-                            ),
-                          );
+                          await run(toggleSyncOwner(instance, action));
+                          break;
+                        case "remove":
+                          console.debug("useOwner", {
+                            id: instance.id,
+                            action: action.action,
+                            registrationId: action.id,
+                          });
+                          await run(toggleSyncOwner(instance, action));
                           break;
                         default:
                           exhaustiveCheck(action);

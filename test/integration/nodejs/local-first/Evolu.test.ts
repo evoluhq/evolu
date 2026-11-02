@@ -42,8 +42,10 @@ import {
   createAppOwner,
   createOwnerSecret,
   createOwnerWebSocketTransport,
+  deriveShardOwner,
   RelayUrl,
   testAppOwner,
+  type OwnerId,
 } from "../../../../packages/common/src/local-first/Owner.ts";
 import {
   createProtocolBroadcastMessagesFromCrdtMessages,
@@ -2494,6 +2496,60 @@ describe("Evolu integration", () => {
       await refused;
 
       assertEqual(setup.tabErrors, [error]);
+    });
+  });
+
+  describe("deleteOwner", () => {
+    it("deletes the owner's rows for every tab, where each instance calls onOwnerDeleted", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run } = setup;
+      const walletOwner = deriveShardOwner(testAppOwner, ["wallet", 1]);
+      const deletedOwnerIds: Array<OwnerId> = [];
+      await using caller = await run.ok(
+        createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          onOwnerDeleted: (ownerId) => {
+            deletedOwnerIds.push(ownerId);
+          },
+        }),
+      );
+      using laterTabDeps = createEvoluDeps({
+        ...run.deps,
+        sharedWorker: setup.connectLaterTab(),
+      });
+      await using laterTabRun = run.create(laterTabDeps);
+      const otherTabDeleted = Promise.withResolvers<OwnerId>();
+      await using otherTab = await laterTabRun.ok(
+        createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          onOwnerDeleted: otherTabDeleted.resolve,
+        }),
+      );
+      caller.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("Kept"),
+      });
+      caller.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Deleted") },
+        { owner: walletOwner },
+      );
+      assertEqual(await otherTab.loadQuery(todoTitlesQuery), [
+        { title: "Deleted" },
+        { title: "Kept" },
+      ]);
+
+      assertEqual(await caller.deleteOwner(walletOwner), ok());
+
+      assertEqual(deletedOwnerIds, [walletOwner.id]);
+      assertEqual(await otherTabDeleted.promise, walletOwner.id);
+      for (const evolu of [caller, otherTab])
+        assertEqual(await evolu.loadQuery(todoTitlesQuery), [
+          { title: "Kept" },
+        ]);
     });
   });
 });

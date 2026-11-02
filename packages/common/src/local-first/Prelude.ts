@@ -6,6 +6,7 @@ export { AppName, createEvolu, maxMutationSize, testAppName } from "./Evolu.ts";
 export type {
   AppNameError,
   DeleteDatabaseError,
+  DeleteOwnerError,
   Evolu,
   EvoluConfig,
   EvoluDeps,

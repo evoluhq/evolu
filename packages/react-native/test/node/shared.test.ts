@@ -14,6 +14,7 @@ import {
   id,
   NonEmptyTrimmedString100,
   ok,
+  testCreateId,
   testStubGlobal,
   testWaitForWorkerMessage,
   UnknownError,
@@ -152,6 +153,7 @@ describe("createEvoluDeps", () => {
         {
           owner: { owner: testAppOwner, transports: [transport, transport] },
           action: "add",
+          id: testCreateId()<"OwnerRegistration">(),
         },
       ],
     });

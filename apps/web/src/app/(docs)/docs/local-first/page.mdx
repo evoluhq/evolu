@@ -1695,12 +1695,50 @@ assertEqual(deleted, ok());
 
 It deletes only this device's copy, and changes not yet synced are lost. An instance created later with the same owner opens a new, empty database, which its transports fill again from relays, so forget the owner first if its data must not come back.
 
-<Note>
-  `Evolu.deleteOwner` is declared but **not implemented yet**. It currently
-  throws.
-</Note>
+`evolu.deleteOwner(owner)` deletes the rows of a shard or shared owner, such as a wallet's shard owner, from the instance's local database, and keeps the rest. It deletes the owner's rows of every table, local-only tables included, and its history in one transaction, then stops syncing the owner in every instance of the database, in every tab, so relays don't bring the rows back. Other databases that use the owner keep it. Every instance of the database, including the one that asked, then calls `onOwnerDeleted` from its config with the owner's ID, so the app stops showing the owner in one place, whichever tab deleted it. Subscribed queries load again right after, and until then they still return the owner's rows. Its promise resolves with a `Result`, which fails with `UnknownError` when SQLite fails the deletion, which then deletes nothing, with the refusal's error when Evolu refused the database, or with `EvoluDisposedError` when its instance is disposed first. It takes no AppOwner, whose ID names the database; `deleteDatabase` deletes the whole database instead.
 
-`deleteOwner` is intended to remove an owner's local rows and history and stop using that owner across tabs. The Evolu 7 `resetAppOwner` method is no longer available.
+```ts
+// ---cut-start---
+import {
+  AppName,
+  assertEqual,
+  createEvolu,
+  createQueryBuilder,
+  deriveShardOwner,
+  id,
+  NonEmptyTrimmedString100,
+  ok,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("LocalFirstPurgeOwner"),
+    appOwner: testAppOwner,
+    transports: [],
+  }),
+);
+const walletOwner = deriveShardOwner(testAppOwner, ["wallet", 1]);
+evolu.insert(
+  "todo",
+  { title: NonEmptyTrimmedString100.orThrow("Pay rent") },
+  { owner: walletOwner },
+);
+// ---cut-end---
+const deleted = await evolu.deleteOwner(walletOwner);
+// ---cut-start---
+assertEqual(deleted, ok());
+const todos = createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select("title"),
+);
+assertEqual(await evolu.loadQuery(todos), []);
+// ---cut-end---
+```
+
+Like `deleteDatabase`, it deletes only this device's copy, and changes not yet synced are lost. Relays keep the owner's data, and a later `useOwner` of the owner syncs it back, so stop using the owner first, such as by removing it from where the app lists it. The Evolu 7 `resetAppOwner` method is no longer available.
 
 ## Restore data
 

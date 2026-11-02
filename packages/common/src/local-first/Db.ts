@@ -44,20 +44,20 @@
  * an {@link UnknownError} before the database lock is released. The SharedWorker
  * then treats the database as refused and tells its tabs instead of waiting for
  * the worker forever. A mutation or a received sync batch that SQLite fails to
- * store is answered with an {@link UnknownError}, as is each query or export
- * that SQLite fails, and a received frame whose ranges SQLite fails to
- * reconcile and an owner whose sync round SQLite fails to create are logged and
- * reported as failed, so the database stays available. A subscribed query that
- * SQLite fails does not fail its mutation, unless its error, such as an I/O
- * error or no memory, made SQLite roll the transaction back; then the commit
- * fails and the mutation is answered with an {@link UnknownError}. A dispose
- * message, the SharedWorker ending, or an abort that is not a panic posts
- * nothing. A deletion ends the worker without refusing the database: it posts
- * that the database was deleted, or answers the failed deletion. A discard
- * message posts nothing, after the worker deletes the database its own startup
- * created. When a worker fails before it gets its port, such as a web worker
- * whose script fails to load, the tab that hosts it posts the refusal in its
- * place; see {@link CreateDbWorker}.
+ * store is answered with an {@link UnknownError}, as is each query, export, or
+ * owner deletion that SQLite fails, and a received frame whose ranges SQLite
+ * fails to reconcile and an owner whose sync round SQLite fails to create are
+ * logged and reported as failed, so the database stays available. A subscribed
+ * query that SQLite fails does not fail its mutation, unless its error, such as
+ * an I/O error or no memory, made SQLite roll the transaction back; then the
+ * commit fails and the mutation is answered with an {@link UnknownError}. A
+ * dispose message, the SharedWorker ending, or an abort that is not a panic
+ * posts nothing. A deletion of the database ends the worker without refusing
+ * it: it posts that the database was deleted, or answers the failed deletion. A
+ * discard message posts nothing, after the worker deletes the database its own
+ * startup created. When a worker fails before it gets its port, such as a web
+ * worker whose script fails to load, the tab that hosts it posts the refusal in
+ * its place; see {@link CreateDbWorker}.
  *
  * @module
  */
@@ -319,9 +319,9 @@ export interface DatabaseHeldError extends Typed<"DatabaseHeldError"> {
 
 /**
  * Starts the platform-agnostic Evolu DbWorker and owns its resources until it
- * refuses startup or fails, it handles a deletion, the worker receives a
- * dispose or discard message, the SharedWorker that requested it ends, or its
- * {@link Run} is aborted.
+ * refuses startup or fails, it handles a deletion of the database, the worker
+ * receives a dispose or discard message, the SharedWorker that requested it
+ * ends, or its {@link Run} is aborted.
  */
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
@@ -474,8 +474,8 @@ export const startDbWorker =
           port.onMessage = (input) => {
             // A throw, such as a response that cannot be posted, panics this
             // worker's Run like a task defect, so the database is refused.
-            // Mutations, queries, and exports answer their SQLite failures
-            // instead.
+            // Mutations, queries, exports, and owner deletions answer their
+            // SQLite failures instead.
             try {
               if (input.type === "Dispose" || input.type === "Discard") {
                 resolve(ok(input));
@@ -628,6 +628,60 @@ export const startDbWorker =
                   message: file.ok
                     ? { type: "Export", file: file.value }
                     : { type: "ExportFailed", error: file.error },
+                });
+                return;
+              }
+
+              if (request.message.type === "DeleteOwner") {
+                const { ownerId } = request.message;
+                // A newer build can create app tables this build's schema
+                // lacks, so they are read from the file. App tables store the
+                // OwnerId, and Evolu's own tables its bytes. Only index names
+                // reserve the evolu_ prefix, so Evolu's tables are named.
+                // Inside trySync, a value that is not an OwnerId fails only
+                // this deletion.
+                const deleted = trySync(() => {
+                  const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
+                  sqlite.transaction(() => {
+                    // Only tables, because deleting from a view fails.
+                    const { rows: appTables } = sqlite.exec<{
+                      name: string;
+                    }>(sql`
+                      select m.name
+                      from sqlite_master as m
+                      join pragma_table_info(m.name) as c on c.name = 'ownerId'
+                      where
+                        m.type = 'table'
+                        and m.name not in
+                          (
+                            'evolu_history',
+                            'evolu_message_quarantine',
+                            'evolu_timestamp',
+                            'evolu_usage'
+                          );
+                    `);
+                    for (const { name } of appTables)
+                      sqlite.exec(sql`
+                        delete from ${sql.identifier(name)}
+                        where "ownerId" = ${ownerId};
+                      `);
+                    sqlite.exec(sql`
+                      delete from evolu_history
+                      where "ownerId" = ${ownerIdBytes};
+                    `);
+                    sqlite.exec(sql`
+                      delete from evolu_message_quarantine
+                      where "ownerId" = ${ownerIdBytes};
+                    `);
+                    baseSqliteStorage.deleteOwner(ownerIdBytes);
+                  });
+                }, createUnknownError);
+                postQueuedResponse({
+                  type: "ForEvolu",
+                  id: request.id,
+                  message: deleted.ok
+                    ? { type: "OwnerDeleted" }
+                    : { type: "DeleteOwnerFailed", error: deleted.error },
                 });
                 return;
               }

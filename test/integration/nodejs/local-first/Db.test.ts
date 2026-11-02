@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
-import type { NonEmptyReadonlyArray } from "../../../../packages/common/src/Array.ts";
+import {
+  mapArray,
+  type NonEmptyReadonlyArray,
+} from "../../../../packages/common/src/Array.ts";
 import {
   assert,
   assertEqual,
@@ -51,6 +54,7 @@ import {
   testAppOwner,
   type Owner,
   type OwnerEncryptionKey,
+  type OwnerId,
 } from "../../../../packages/common/src/local-first/Owner.ts";
 import {
   applyProtocolMessageAsRelay,
@@ -8474,5 +8478,264 @@ describe("database deletion", () => {
     await setup.waitForEnd();
 
     assertEqual(setup.events, ["close"]);
+  });
+});
+
+describe("owner deletion", () => {
+  const newerSqliteSchema: SqliteSchema = {
+    indexes: [],
+    tables: {
+      ...defaultSqliteSchema.tables,
+      newerTable: new Set(["value"]),
+      // Only index names starting with evolu_ are reserved.
+      evolu_appTable: new Set(["value"]),
+    },
+  };
+
+  /** Writes rows of the owner to every table that stores owners' data. */
+  const writeOwnerRows = async (
+    setup: DbWorkerSetup,
+    ownerId: OwnerId,
+  ): Promise<void> => {
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        createMutationChange({
+          ownerId,
+          table: "testTable",
+          id: setup.createId(),
+          // The schema lacks the note column, so it is quarantined.
+          values: { name: "synced", note: "quarantined" },
+          isInsert: true,
+          isDelete: null,
+        }),
+        createMutationChange({
+          ownerId,
+          table: "_localTable",
+          id: setup.createId(),
+          values: { value: "local only" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      ]),
+    );
+  };
+
+  const countOwnerRows = (setup: DbSetup, ownerId: OwnerId) => {
+    const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
+    const count = (table: string, value: SqliteValue): number => {
+      const { rows } = setup.sqlite.exec<{ count: number }>(sql`
+        select count(*) as "count"
+        from ${sql.identifier(table)}
+        where "ownerId" = ${value};
+      `);
+      return rows[0].count;
+    };
+    return {
+      testTable: count("testTable", ownerId),
+      _localTable: count("_localTable", ownerId),
+      newerTable: count("newerTable", ownerId),
+      evolu_appTable: count("evolu_appTable", ownerId),
+      evolu_history: count("evolu_history", ownerIdBytes),
+      evolu_message_quarantine: count("evolu_message_quarantine", ownerIdBytes),
+      evolu_timestamp: count("evolu_timestamp", ownerIdBytes),
+      evolu_usage: count("evolu_usage", ownerIdBytes),
+    };
+  };
+
+  /**
+   * A database whose two owners have rows in every table, including tables that
+   * a newer build created and the DbWorker's schema lacks, one of them starting
+   * with evolu_.
+   */
+  const setupOwnersDatabase = async (dbSetup: DbSetup) => {
+    {
+      await using newer = await setupDbWorker({
+        dbSetup,
+        sqliteSchema: newerSqliteSchema,
+      });
+      for (const ownerId of [testAppOwner.id, testDbAppOwner2.id]) {
+        await writeOwnerRows(newer, ownerId);
+        await postRequest(
+          newer,
+          setupMutateRequest(
+            newer.evoluInstanceId,
+            mapArray(["newerTable", "evolu_appTable"], (table) =>
+              createMutationChange({
+                ownerId,
+                table,
+                id: newer.createId(),
+                values: { value: "newer" },
+                isInsert: true,
+                isDelete: null,
+              }),
+            ),
+          ),
+        );
+      }
+    }
+    const setup = await setupDbWorker({ dbSetup });
+    // The counted tables are every table that stores owners.
+    const { rows: ownerTables } = setup.sqlite.exec<{ name: string }>(sql`
+      select m.name
+      from sqlite_master as m
+      join pragma_table_info(m.name) as c on c.name = 'ownerId'
+      where m.type = 'table';
+    `);
+    assertEqual(
+      new Set(ownerTables.map(({ name }) => name)),
+      new Set(Object.keys(countOwnerRows(setup, testAppOwner.id))),
+    );
+    for (const ownerId of [testAppOwner.id, testDbAppOwner2.id]) {
+      const counts = countOwnerRows(setup, ownerId);
+      // Every table holds rows of both owners.
+      assertTrue(Object.values(counts).every((count) => count > 0));
+    }
+    return setup;
+  };
+
+  const deleteOwnerRequest = (
+    setup: DbSetup,
+    ownerId: OwnerId,
+  ): DbWorkerRequest => ({
+    type: "ForEvolu",
+    id: setup.evoluInstanceId,
+    message: { type: "DeleteOwner", ownerId },
+  });
+
+  it("deletes the owner's rows from every table in the file, including one its schema lacks", async () => {
+    await using dbSetup = await setupDb();
+    await using setup = await setupOwnersDatabase(dbSetup);
+    const keptCounts = countOwnerRows(setup, testAppOwner.id);
+    const attemptId = setup.createId();
+
+    const outputs = await postRequest(
+      setup,
+      deleteOwnerRequest(setup, testDbAppOwner2.id),
+      attemptId,
+    );
+
+    assertEqual(outputs, [
+      {
+        type: "OnQueuedResponse",
+        attemptId,
+        response: {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: { type: "OwnerDeleted" },
+        },
+      },
+    ]);
+    assertEqual(countOwnerRows(setup, testDbAppOwner2.id), {
+      testTable: 0,
+      _localTable: 0,
+      newerTable: 0,
+      evolu_appTable: 0,
+      evolu_history: 0,
+      evolu_message_quarantine: 0,
+      evolu_timestamp: 0,
+      evolu_usage: 0,
+    });
+    assertEqual(countOwnerRows(setup, testAppOwner.id), keptCounts);
+  });
+
+  it("leaves a view and a table without owners alone", async () => {
+    await using dbSetup = await setupDb();
+    await using setup = await setupOwnersDatabase(dbSetup);
+    // Evolu creates neither, but a database file can hold them.
+    setup.sqlite.exec(sql`
+      create view "ownerView" as
+        select "ownerId", "name" from "testTable";
+    `);
+    setup.sqlite.exec(sql`create table "plain" ("value" any);`);
+    setup.sqlite.exec(sql`insert into "plain" ("value") values (1);`);
+    const attemptId = setup.createId();
+
+    const outputs = await postRequest(
+      setup,
+      deleteOwnerRequest(setup, testDbAppOwner2.id),
+      attemptId,
+    );
+
+    assertEqual(outputs, [
+      {
+        type: "OnQueuedResponse",
+        attemptId,
+        response: {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: { type: "OwnerDeleted" },
+        },
+      },
+    ]);
+    assertSame(countOwnerRows(setup, testDbAppOwner2.id).testTable, 0);
+    assertEqual(setup.sqlite.exec(sql`select "value" from "plain";`).rows, [
+      { value: 1 },
+    ]);
+  });
+
+  it("answers a value that is not an OwnerId with a failed deletion, without refusing the database", async () => {
+    await using setup = await setupDbWorker();
+
+    // A plain JavaScript caller can pass the owner's ID, whose id is
+    // undefined.
+    const outputs = await postRequest(
+      setup,
+      deleteOwnerRequest(setup, undefined as unknown as OwnerId),
+      setup.createId(),
+      "activity",
+    );
+
+    assertLength(outputs, 1);
+    const [output] = outputs;
+    assert(output.type === "OnQueuedResponse", "Expected an answer.");
+    assertSame(output.response.message.type, "DeleteOwnerFailed");
+  });
+
+  it("answers a failure with an UnknownError, deletes nothing, and keeps serving", async () => {
+    const error = new Error("disk I/O error");
+    let failsUsageDeletion = false;
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        // The last statement of the deletion fails.
+        if (failsUsageDeletion && query.sql.includes("delete from evolu_usage"))
+          throw error;
+      },
+    });
+    await using setup = await setupOwnersDatabase(dbSetup);
+    const counts = countOwnerRows(setup, testDbAppOwner2.id);
+    failsUsageDeletion = true;
+    const attemptId = setup.createId();
+
+    const outputs = await postRequest(
+      setup,
+      deleteOwnerRequest(setup, testDbAppOwner2.id),
+      attemptId,
+    );
+
+    assertEqual(outputs, [
+      {
+        type: "OnQueuedResponse",
+        attemptId,
+        response: {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: {
+            type: "DeleteOwnerFailed",
+            error: createUnknownError(error),
+          },
+        },
+      },
+    ]);
+    assertEqual(countOwnerRows(setup, testDbAppOwner2.id), counts);
+    assertEqual(setup.reportDefect.getDefects(), []);
+
+    const queryOutputs = await postRequest(setup, {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: { type: "Query", queries: createSet([testTableQuery]) },
+    });
+    assertLength(queryOutputs, 1);
+    assertSame(queryOutputs[0].type, "OnQueuedResponse");
   });
 });
