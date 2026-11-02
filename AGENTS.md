@@ -77,6 +77,11 @@ for a post, run `node scripts/code-image.mts --help`.
   list of cases, or to a case's workload hash, which `workload.mts`,
   `bench/protocol/frames.mts` and Evolu code such as `testAppOwner` feed;
   storage cannot compare across a change to `bench/storage/measure.mts`.
+- After a change that moves the example apps' sizes on purpose, such as to
+  `@evolu/react-native`'s native code or the examples' dependencies, update
+  `bench/app-size/baselines.json` from a dispatched CI run on its branch, as
+  `bench/app-size/README.md` describes. The app jobs report size differences
+  and never fail on them.
 - After changing a published package's `dependencies`,
   `optionalDependencies`, `exports`, `publishConfig`, `types`, or `files`, or
   its build configuration, run `pnpm build`, then

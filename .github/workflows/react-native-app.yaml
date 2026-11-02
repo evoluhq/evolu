@@ -8,7 +8,8 @@ name: React Native apps
 # and the app to reload. The Expo example's jobs always run; the example
 # without Expo's when the caller asks, since the native code is the same in
 # both, which differ only in autolinking, entry files and the Android build's
-# configuration cache.
+# configuration cache. Each job then reports its app's size against
+# bench/app-size/baselines.json, as bench/app-size/README.md describes.
 on:
   workflow_call:
     inputs:
@@ -105,9 +106,13 @@ jobs:
         working-directory: examples/react-expo/ios
         run: pod install
 
+      # A plain build keeps the executable's symbols, which an archive strips.
+      # DEPLOYMENT_POSTPROCESSING strips them as an archive does, so the size
+      # step measures what ships, and LD_GENERATE_MAP_FILE writes the link map
+      # it attributes the executable with.
       - name: Build
         working-directory: examples/react-expo/ios
-        run: xcodebuild -workspace expoapp.xcworkspace -scheme expoapp -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+        run: xcodebuild -workspace expoapp.xcworkspace -scheme expoapp -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES DEPLOYMENT_POSTPROCESSING=YES LD_GENERATE_MAP_FILE=YES
 
       # Every object of Evolu's pod, ios/*.mm and the TurboModule included,
       # which no cross-compile builds.
@@ -151,6 +156,24 @@ jobs:
           path: ${{ runner.temp }}/simulator.png
           if-no-files-found: ignore
           retention-days: 7
+
+      # Reports how the app's size differs from bench/app-size/baselines.json
+      # and never fails the job, which would block a release. Not on
+      # macos-latest: its Xcode isn't the pinned one, and the nightly run's two
+      # calls of this workflow would upload the same artifact.
+      - name: Measure size
+        if: ${{ !inputs.macos-latest }}
+        continue-on-error: true
+        run: node bench/app-size/measure.mts --key=expo-ios --image="$ImageOS $ImageVersion" --app=examples/react-expo/ios/build/Build/Products/Release-iphonesimulator/expoapp.app --link-map=examples/react-expo/ios/build/Build/Intermediates.noindex/expoapp.build/Release-iphonesimulator/expoapp.build/expoapp-LinkMap-normal-arm64.txt --out="$RUNNER_TEMP/app-size" --summary="$GITHUB_STEP_SUMMARY"
+
+      - name: Upload size
+        if: ${{ !inputs.macos-latest }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: app-size-expo-ios
+          path: ${{ runner.temp }}/app-size/expo-ios.json
+          if-no-files-found: error
 
   react-native-android-app:
     name: React Native Android app (Expo)
@@ -217,9 +240,11 @@ jobs:
 
       # Expo 58's generated app/build.gradle starts node at configuration time,
       # which the configuration cache refuses, so this build runs without it.
+      # x86_64 is for the emulator, and arm64-v8a, which most phones run, for
+      # the size step.
       - name: Build
         working-directory: examples/react-expo/android
-        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 --console=plain
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64,arm64-v8a --console=plain
 
       - name: Wait for the emulator
         run: |
@@ -240,6 +265,19 @@ jobs:
         run: |
           adb logcat -d | tail -n 500 || true
           cat "$RUNNER_TEMP/emulator.log" || true
+
+      # As in the iOS job.
+      - name: Measure size
+        continue-on-error: true
+        run: node bench/app-size/measure.mts --key=expo-android --image="$ImageOS $ImageVersion" --apk=examples/react-expo/android/app/build/outputs/apk/release/app-release.apk --out="$RUNNER_TEMP/app-size" --summary="$GITHUB_STEP_SUMMARY"
+
+      - name: Upload size
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: app-size-expo-android
+          path: ${{ runner.temp }}/app-size/expo-android.json
+          if-no-files-found: error
 
   react-native-cli-ios-app:
     name: React Native iOS app (without Expo${{ matrix.linkage && ', static frameworks' || '' }})
@@ -309,9 +347,10 @@ jobs:
           if [ -n "$LINKAGE" ]; then export USE_FRAMEWORKS=$LINKAGE; fi
           pod install
 
+      # As the Expo app's Build step, for the size step.
       - name: Build
         working-directory: examples/react-native/ios
-        run: xcodebuild -workspace EvoluRN.xcworkspace -scheme EvoluRN -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+        run: xcodebuild -workspace EvoluRN.xcworkspace -scheme EvoluRN -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES DEPLOYMENT_POSTPROCESSING=YES LD_GENERATE_MAP_FILE=YES
 
       - name: Check the names Evolu's pod defines
         run: node packages/react-native/scripts/vendor-native.mts --check-objects=examples/react-native/ios/build/Build/Intermediates.noindex/Pods.build/Release-iphonesimulator/EvoluReactNative.build/Objects-normal/arm64
@@ -353,6 +392,22 @@ jobs:
           path: ${{ runner.temp }}/simulator.png
           if-no-files-found: ignore
           retention-days: 7
+
+      # As in the Expo app's job, and only with static libraries, the default
+      # linkage, whose size represents the app's.
+      - name: Measure size
+        if: ${{ !inputs.macos-latest && matrix.linkage != 'static' }}
+        continue-on-error: true
+        run: node bench/app-size/measure.mts --key=cli-ios --image="$ImageOS $ImageVersion" --app=examples/react-native/ios/build/Build/Products/Release-iphonesimulator/EvoluRN.app --link-map=examples/react-native/ios/build/Build/Intermediates.noindex/EvoluRN.build/Release-iphonesimulator/EvoluRN.build/EvoluRN-LinkMap-normal-arm64.txt --out="$RUNNER_TEMP/app-size" --summary="$GITHUB_STEP_SUMMARY"
+
+      - name: Upload size
+        if: ${{ !inputs.macos-latest && matrix.linkage != 'static' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: app-size-cli-ios
+          path: ${{ runner.temp }}/app-size/cli-ios.json
+          if-no-files-found: error
 
   react-native-cli-android-app:
     name: React Native Android app (without Expo)
@@ -411,10 +466,10 @@ jobs:
         run: node packages/react-native/scripts/device-tests.mts --write-fixtures="$RUNNER_TEMP/fixtures"
 
       # React Native's Gradle plugins, the template and Evolu's library allow
-      # the configuration cache.
+      # the configuration cache. The ABIs are the Expo app's.
       - name: Build
         working-directory: examples/react-native/android
-        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 --configuration-cache --console=plain
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64,arm64-v8a --configuration-cache --console=plain
 
       - name: Wait for the emulator
         run: |
@@ -435,3 +490,15 @@ jobs:
         run: |
           adb logcat -d | tail -n 500 || true
           cat "$RUNNER_TEMP/emulator.log" || true
+
+      - name: Measure size
+        continue-on-error: true
+        run: node bench/app-size/measure.mts --key=cli-android --image="$ImageOS $ImageVersion" --apk=examples/react-native/android/app/build/outputs/apk/release/app-release.apk --out="$RUNNER_TEMP/app-size" --summary="$GITHUB_STEP_SUMMARY"
+
+      - name: Upload size
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: app-size-cli-android
+          path: ${{ runner.temp }}/app-size/cli-android.json
+          if-no-files-found: error
