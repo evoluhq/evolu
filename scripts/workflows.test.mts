@@ -242,17 +242,28 @@ describe("GitHub workflows", () => {
     );
   });
 
-  // The packages publish only when every app job passed on the commit.
-  it("pack the release only after every React Native app job passed", () => {
+  // The packages publish only when the checks and every app job passed on the
+  // commit. The app jobs don't wait for the checks, so pack needs both.
+  it("pack the release only after the checks and every React Native app job passed", () => {
     const release = workflow("release.yaml");
     const pack = job(release, "pack");
     const appJobs = job(release, "react-native-app");
 
+    assertTrue(/\n    needs: \[[^\]]*\bchecks\b/u.test(pack));
     assertTrue(/\n    needs: \[[^\]]*\breact-native-app\b/u.test(pack));
     // A status function would run it after their failure.
     assertEqual(/\b(?:always|cancelled|failure)\(\)/u.test(pack), false);
     assertTrue(appJobs.includes("\n      without-expo: true\n"));
     assertTrue(appJobs.includes("\n      static-frameworks: true\n"));
+  });
+
+  // select-mode doesn't wait for the checks, so without its own need a failed
+  // check would still open the Version Packages pull request.
+  it("version the packages only after the checks passed", () => {
+    const version = job(workflow("release.yaml"), "version");
+
+    assertTrue(/\n    needs: \[[^\]]*\bchecks\b/u.test(version));
+    assertEqual(/\b(?:always|cancelled|failure)\(\)/u.test(version), false);
   });
 
   // A fork's schedule would spend its owner's macOS minutes.

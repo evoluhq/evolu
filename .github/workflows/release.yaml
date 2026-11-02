@@ -19,7 +19,6 @@ jobs:
   select-mode:
     # Prevents release automation from running on forks.
     if: github.repository == 'evoluhq/evolu' && github.ref == 'refs/heads/main'
-    needs: checks
     runs-on: ubuntu-latest
     outputs:
       mode: ${{ steps.select-mode.outputs.mode }}
@@ -40,7 +39,7 @@ jobs:
 
   version:
     if: needs.select-mode.outputs.mode == 'version'
-    needs: select-mode
+    needs: [checks, select-mode]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -68,7 +67,8 @@ jobs:
           script: pnpm run version
 
   # Nothing is packed before every React Native app job passes on the commit
-  # being released.
+  # being released. The app jobs take nothing from the checks, so they start
+  # without waiting for them; the longest app job sets how long a release takes.
   react-native-app:
     if: needs.select-mode.outputs.mode == 'publish'
     needs: select-mode
@@ -81,7 +81,7 @@ jobs:
 
   pack:
     if: needs.select-mode.outputs.mode == 'publish'
-    needs: [select-mode, react-native-app]
+    needs: [checks, select-mode, react-native-app]
     runs-on: ubuntu-latest
     outputs:
       pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
