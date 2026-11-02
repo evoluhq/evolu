@@ -201,6 +201,66 @@ describe("GitHub workflows", () => {
     );
   });
 
+  // The size steps come last, after the device suites, which they never keep
+  // from running, and continue on error, since a failed job would block a
+  // release. iOS builds strip and write the link map they read, and Android
+  // builds arm64-v8a, which they measure, beside the emulator's x86_64.
+  it("measure each React Native app's size last, without failing its job", () => {
+    const text = workflow("react-native-app.yaml");
+    const measured = [
+      ["react-native-ios-app", "expo-ios", "${{ !inputs.macos-latest }}"],
+      ["react-native-android-app", "expo-android", null],
+      [
+        "react-native-cli-ios-app",
+        "cli-ios",
+        "${{ !inputs.macos-latest && matrix.linkage != 'static' }}",
+      ],
+      ["react-native-cli-android-app", "cli-android", null],
+    ] as const;
+    const condition = (step: string) =>
+      /\n {8}if: (.*)\n/u.exec(step)?.[1] ?? null;
+
+    assertEqual(
+      measured.map(([name]) => {
+        const steps = splitSteps(job(text, name));
+        const [measure = "", upload = ""] = steps.slice(-2);
+        const deviceTests = steps.findIndex((step) =>
+          step.includes("- name: Device tests\n"),
+        );
+        const build =
+          steps.find((step) => step.includes("- name: Build\n")) ?? "";
+        return [
+          name,
+          measure.includes("- name: Measure size\n") &&
+            /--key=([\w-]+) /u.exec(measure)?.[1],
+          upload.includes("uses: actions/upload-artifact@") &&
+            /\n {10}name: (.*)\n/u.exec(upload)?.[1],
+          condition(measure),
+          condition(upload),
+          [measure, upload].every((step) =>
+            step.includes("\n        continue-on-error: true\n"),
+          ),
+          deviceTests >= 0 && deviceTests < steps.length - 2,
+          name.includes("-ios-")
+            ? build.includes(
+                " DEPLOYMENT_POSTPROCESSING=YES LD_GENERATE_MAP_FILE=YES",
+              )
+            : build.includes(" -PreactNativeArchitectures=x86_64,arm64-v8a "),
+        ];
+      }),
+      measured.map(([name, key, ifCondition]) => [
+        name,
+        key,
+        `app-size-${key}`,
+        ifCondition,
+        ifCondition,
+        true,
+        true,
+        true,
+      ]),
+    );
+  });
+
   // A failed app job must fail CI; only a selection that needs none skips
   // them.
   it("accept skipped React Native app jobs in the ci job only when the selection needs none", () => {

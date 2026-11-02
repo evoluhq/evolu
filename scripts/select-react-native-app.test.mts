@@ -32,6 +32,7 @@ describe("selectReactNativeAppJobs", () => {
     [["examples/react-expo/app/index.tsx"], expoOnly],
     [["pnpm-lock.yaml"], expoOnly],
     [[".github/workflows/react-native-app.yaml"], all],
+    [["bench/app-size/baselines.json"], all],
     [["examples/react-native/App.tsx"], all],
     [["packages/react-native/react-native.config.js"], all],
     [["packages/react-native/EvoluReactNative.podspec"], all],

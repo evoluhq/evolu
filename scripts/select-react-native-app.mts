@@ -11,11 +11,11 @@
  *   Native or Expo update changes.
  * - The jobs of the example without Expo run too when a file is under
  *   `examples/react-native/` or `packages/react-native/android/`, which only
- *   that example's Android job builds with Gradle's configuration cache, or is
- *   the app workflow, which defines them, or what React Native CLI's
- *   autolinking reads: `react-native.config.js` or the podspec. The examples
- *   differ only in autolinking, entry files and the Android build's
- *   configuration cache.
+ *   that example's Android job builds with Gradle's configuration cache, or
+ *   under `bench/app-size/`, which measures every app job's app, or is the app
+ *   workflow, which defines them, or what React Native CLI's autolinking reads:
+ *   `react-native.config.js` or the podspec. The examples differ only in
+ *   autolinking, entry files and the Android build's configuration cache.
  * - A change to `packages/react-native/package.json` that touches only its
  *   `version` and `peerDependencies`, and a change to
  *   `packages/react-native/CHANGELOG.md`, select none, so a Version Packages
@@ -61,6 +61,7 @@ const reactNativeChangelog = "packages/react-native/CHANGELOG.md";
 
 const withoutExpoPaths = [
   ".github/workflows/react-native-app.yaml",
+  "bench/app-size/",
   "examples/react-native/",
   "packages/react-native/react-native.config.js",
   "packages/react-native/EvoluReactNative.podspec",

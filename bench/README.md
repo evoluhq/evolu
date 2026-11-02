@@ -4,6 +4,10 @@ Benchmarks measure performance characteristics that ordinary correctness tests d
 
 ## Suites
 
+- [App size](./app-size/README.md) records the sizes of the example apps'
+  Release builds on iOS and Android. Only CI measures them, so it has no
+  `bench:app-size` script and no modes; it records the runner image without
+  matching it, and reports differences without failing.
 - [JSON binary codec](./json-codec/README.md) measures `JsonValue` MessagePack
   encoding and decoding against msgpackr.
 - [Protocol](./protocol/README.md) measures deterministic sync protocol work:
