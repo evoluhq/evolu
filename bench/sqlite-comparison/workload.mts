@@ -8,7 +8,7 @@
  */
 
 /** The wa-sqlite commit whose benchmark SQL files the workloads are. */
-export const waSqliteCommit = "663368072ad30a4a90c36ec4214ab43d15ea2639";
+export const waSqliteCommit = "e4f54a0554f2ff1ee2af2cc3be1fb16fb2320310";
 
 /**
  * SQLite's page cache of every connection, in KiB as a negative `cache_size`:

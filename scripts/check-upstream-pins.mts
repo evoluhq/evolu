@@ -11,6 +11,14 @@
  * fixes can show bugs Evolu's code has too, so each of their rows links to the
  * commits since the pin.
  *
+ * When a library has a newer version, read its commits for such bugs and bump
+ * its pin. Once every pin is current, the next run closes the issue, so the
+ * next newer version opens a new one, which notifies, where an edit to an open
+ * issue doesn't. Bumping a pin doesn't rerun a benchmark: run one when a change
+ * could matter to Evolu, such as a faster binding, and act on what it shows.
+ * Benchmark results stay local, and a post that cites them links them at the
+ * commit that holds them.
+ *
  * Usage: `node scripts/check-upstream-pins.mts` in the repository root prints a
  * Markdown report. With `--issue`, as the weekly Upstream pins workflow runs
  * it, it also opens or updates the repository's one issue listing the pins
@@ -230,7 +238,7 @@ if (import.meta.main) {
       `[.[] | select(.title == "${issueTitle}")][0].number // ""`,
     ]).trim();
     const isBehind = pins.some((pin) => pin.pinned !== pin.latest);
-    const body = `${report}\n\nThe weekly Upstream pins workflow keeps this issue up to date.\n`;
+    const body = `${report}\n\nThe weekly Upstream pins workflow keeps this issue up to date, and [its script](https://github.com/evoluhq/evolu/blob/main/scripts/check-upstream-pins.mts) says how to handle it.\n`;
     if (isBehind && open !== "")
       gh(["issue", "edit", open, "--body-file", "-"], body);
     else if (isBehind)

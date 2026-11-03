@@ -19,7 +19,7 @@ stack runs beside them, showing what its encryption costs.
 | ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Node.js      | Evolu's SQLite through `@evolu/nodejs`'s Node-API addon, plain and encrypted | better-sqlite3 13.0.3, which `@evolu/nodejs` used before; `node:sqlite` of the running Node.js                      |
 | Web          | `packages/sqlite-wasm`, a `Pool` database, plain and encrypted               | `@sqlite.org/sqlite-wasm` 3.54.1-build1 with opfs-sahpool; wa-sqlite at the commit below with `AccessHandlePoolVFS` |
-| React Native | `@evolu/react-native` through JSI, without and with a key                    | expo-sqlite 58.0.14 without SQLCipher; op-sqlite 19.0.2 with its defaults                                           |
+| React Native | `@evolu/react-native` through JSI, without and with a key                    | expo-sqlite 58.0.14 without SQLCipher; op-sqlite 19.0.3 with its defaults                                           |
 
 Each platform's verdict compares Evolu's plain stack with the stack its
 platform used before: better-sqlite3, `@sqlite.org/sqlite-wasm` and
@@ -149,7 +149,7 @@ the verdict compares stacks within a run.
   ```
 
   ```bash
-  git -C wa-sqlite checkout 663368072ad30a4a90c36ec4214ab43d15ea2639
+  git -C wa-sqlite checkout e4f54a0554f2ff1ee2af2cc3be1fb16fb2320310
   ```
 
 - Node.js: `@evolu/nodejs`'s addon for the host, which clang, make and unzip
@@ -231,23 +231,6 @@ Each command writes `results/<target>.json`, with every run's timings, and
 `results/<target>.md`, the summary, and a second run of a target replaces its
 files. `pnpm bench:sqlite-comparison report` merges every target's results,
 and the relay gate's, into `results/report.md`. Git ignores `results/`.
-
-[`results-2026-10-27/`](./results-2026-10-27/) holds a run of every target on
-`0a9a95ebc`, with this benchmark's code before it was committed, so the results
-name the checkout `0a9a95ebc with uncommitted changes`, and with
-`@evolu/nodejs`'s addons from CI for that commit.
-[`report.md`](./results-2026-10-27/report.md) merges them. The web and React
-Native targets ran again later that day, with the same packages, after a review
-of the harness: the `@sqlite.org/sqlite-wasm` adapter had read the column names
-for every row, and it and the expo-sqlite and op-sqlite adapters had copied
-every call's parameters. In Chromium's second round, `@sqlite.org/sqlite-wasm`'s
-first workload took 2.4 s rather than about 1 s, which the totals without it
-don't include. Both Docker targets ran twice: in glibc's first run, the VM's
-disk stalled in the first workload, whose 1,000 inserts each wait for an fsync,
-and in musl's, Evolu's point selects and row reads were slower and varied more,
-while better-sqlite3's were steady. Evolu's row reads still vary in musl's
-second run. The second runs are the targets' results, and the first are kept as
-`node-linux-arm64-glibc-run1` and `node-linux-arm64-musl-run1`.
 
 ## The relay regression gate
 
