@@ -87,7 +87,9 @@ Worklets' generated code. `evolu` on iOS measures the same C exactly.
 
 The prebuilt frameworks of React Native and Expo keep their local symbols even
 in an archive: `strip -S -x` took React from 11.9 to 6.3 MB, hermesvm from 6.4
-to 3.0 MB and ExpoModulesCore from 4.0 to 2.1 MB.
+to 3.0 MB and ExpoModulesCore from 4.0 to 2.1 MB, as
+[react/react-native#59772](https://github.com/react/react-native/issues/59772)
+and [expo/expo#52838](https://github.com/expo/expo/issues/52838) report.
 
 ## Baselines
 
