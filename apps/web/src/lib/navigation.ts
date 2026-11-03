@@ -17,6 +17,7 @@ export const navigation: Array<NavGroup> = [
       { title: "Getting started", href: "/docs/local-first" },
       { title: "Playgrounds", href: "/docs/playgrounds" },
       { title: "Examples", href: "/docs/examples" },
+      { title: "React Native", href: "/docs/react-native" },
       {
         title: "Owners",
         href: "/docs/api-reference/common/local-first/Owner",

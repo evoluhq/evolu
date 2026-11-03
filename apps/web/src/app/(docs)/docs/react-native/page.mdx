@@ -1,0 +1,135 @@
+export const metadata = {
+  title: "React Native",
+  description:
+    "Why Evolu builds on React Native, how to start from an example, and what Evolu adds to an app's size.",
+};
+
+# React Native
+
+Evolu runs on iOS and Android with React Native, with or without Expo.
+[Getting started](/docs/local-first) shows how to install it. This page explains
+why Evolu builds on React Native, how to start from an example, what Evolu adds
+to an app's size, and which bundler to use.
+
+## Why React Native
+
+**One codebase.** An Evolu app shares its schema, its queries and most of its
+code between the web, iOS and Android. Evolu runs its own SQLite core
+everywhere, compiled to WebAssembly on the web and to native code on iOS and
+Android, so a database, its encryption and its sync behave the same on every
+platform.
+
+**Native where it matters.** SQLite, its encryption and the decryption of
+synced changes run in Evolu's native code, which JavaScript calls directly
+through JSI.
+
+**JavaScript updates over the air.** A React Native app can ship a new version
+of its JavaScript without a new build in the App Store or Google Play, for
+example with [EAS Update](https://docs.expo.dev/eas-update/introduction/),
+within the stores' rules for such updates. That covers Evolu's JavaScript too,
+but not its native code: when an Evolu release changes its native module, the
+app needs a new build. Expo's
+[fingerprint runtime version policy](https://docs.expo.dev/eas-update/runtime-versions/)
+sends an update only to builds whose native code matches.
+
+## Starting from an example
+
+The [Expo example](https://github.com/evoluhq/evolu/tree/main/examples/react-expo)
+is a complete app with Expo Router: a schema, queries and a UI. It also has two
+routes, `app/native-tests.tsx` and `app/native-bench.tsx`, that run Evolu's
+device tests and benchmarks from inside Evolu's repository, so leave them out of
+an app based on it, and use published versions instead of the `workspace:` and
+`catalog:` ones, which only Evolu's repository resolves.
+
+The [React Native
+example](https://github.com/evoluhq/evolu/tree/main/examples/react-native) shows
+the setup without Expo: the `URL` polyfill, and `polyfills.ts` imported first
+from `index.js`. Its app only hosts Evolu's device tests.
+
+## App size
+
+### What Evolu adds
+
+Evolu's native code is SQLite with Evolu's encryption, the crypto it uses, and
+the JSI binding. On iOS, the linker's map gives SQLite about 90% of it. In
+Evolu's examples, it takes 1.1 MB
+of the iOS app's executable, and 1.3 MB of the Android app's arm64 libraries, in
+the `libappmodules.so` that React Native's autolinking builds.
+
+Evolu used to run on expo-sqlite with SQLCipher, react-native-quick-crypto and
+react-native-nitro-modules, and on Android also the OpenSSL that expo-sqlite
+packages. When it switched to its own core, the Expo example's Android APK, with
+all four ABIs, went from 163 MB to 103 MB, and on an iPhone 16e the app used
+26.5 MiB of memory instead of 31.4 MiB when idle, and 47.6 MiB instead of
+64.4 MiB after receiving 10,000 changes, as
+[Evolu runs its own SQLite everywhere](/blog/evolu-runs-its-own-sqlite-everywhere#react-native)
+reports.
+
+### The example apps
+
+Built for Release with React Native 0.88.1 and Expo SDK 58:
+
+| App                   |  Size | Download, roughly |
+| --------------------- | ----: | ----------------: |
+| iOS, Expo             | 37 MB |             20 MB |
+| iOS, without Expo     | 24 MB |             13 MB |
+| Android, Expo         | 32 MB |       10 to 13 MB |
+| Android, without Expo | 18 MB |         6 to 8 MB |
+
+Size is the iOS `.app`, and the Android APK for arm64, close to what Google Play
+sends to a phone. The downloads are rough local estimates, not what the stores
+report: the iOS app zipped with each binary's code replaced by random bytes, to
+simulate how the App Store's encryption keeps code from compressing, and the
+Android APK compressed with gzip and xz.
+
+Most of each app is React Native itself. In the example without Expo, React
+Native's iOS frameworks, React, hermesvm and ReactNativeDependencies, take
+19.5 MB of the 24 MB app, and its Android libraries 12.6 MB of the 18 MB APK. A
+fully native app doesn't ship them, but it still needs its own database,
+encryption and sync.
+
+React Native's and Expo's prebuilt iOS frameworks also keep local symbols that
+an app doesn't need. With them stripped, the example without Expo would take
+15 MB instead of 24 MB, and the Expo example 25 MB instead of 37 MB. The
+downloads would shrink only by 1.3 and 1.8 MB, because symbols compress well.
+We reported it to [React
+Native](https://github.com/react/react-native/issues/59772) and
+[Expo](https://github.com/expo/expo/issues/52838).
+
+The table, the downloads and the stripped sizes come from local builds. CI
+measures the examples on every app job, and the current values are in
+[`bench/app-size/baselines.json`](https://github.com/evoluhq/evolu/blob/main/bench/app-size/baselines.json),
+whose [README](https://github.com/evoluhq/evolu/tree/main/bench/app-size)
+explains each one. Its iOS `.app` sizes match the table, but its Android APKs
+hold both ABIs that CI builds, x86_64 and arm64, so they are bigger: 33 MB
+without Expo and 56 MB with it.
+
+## Metro or Re.Pack
+
+[Re.Pack](https://re-pack.dev) is a React Native bundler built on Rspack and
+webpack, and an alternative to Metro, which Expo and the React Native CLI use by
+default. Its main feature is code splitting with Module Federation, for apps
+that load parts of themselves at runtime. Evolu's examples use Metro, so Expo's
+and React Native's docs apply to them unchanged. Evolu isn't tested with
+Re.Pack.
+
+Re.Pack's own early benchmark
+([callstack/repack#1517](https://github.com/callstack/repack/pull/1517),
+October 2026, iOS, React Native before 0.88) found:
+
+- Bundle size: about the same as Metro's on a bare React Native app, and 12–16%
+  smaller on an Expo app.
+- Build speed: on the bare app, cold release builds 1.2–2× faster and the dev
+  server starting about 3× faster. With Expo, Re.Pack was the slower one.
+- Edits: the dev bundle updated 1.25–2.5× faster on both apps.
+- Memory: it grows with the app's size, to 7.7 GB at 3,000 screens, where Metro
+  needed 4.6 GB.
+
+For Expo, Re.Pack's repository has an
+[integration](https://github.com/callstack/repack/blob/main/packages/repack-expo/README.md)
+that supports Expo Router from SDK 56, but it isn't published yet, and its first
+version doesn't support EAS Update.
+
+A smaller JavaScript bundle barely changes an app's size, because most of a
+React Native app is native code. In the example without Expo, the bundle is
+3.4 MB of the 24 MB iOS app.
