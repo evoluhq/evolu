@@ -69,18 +69,19 @@ reports.
 
 Built for Release with React Native 0.88.1 and Expo SDK 58:
 
-| App                   |  Size | Download, roughly |
-| --------------------- | ----: | ----------------: |
-| iOS, Expo             | 37 MB |             14 MB |
-| iOS, without Expo     | 24 MB |              8 MB |
-| Android, Expo         | 32 MB |       10 to 13 MB |
-| Android, without Expo | 18 MB |         6 to 8 MB |
+| App                   |  Size |    Download |
+| --------------------- | ----: | ----------: |
+| iOS, Expo             | 37 MB | 11 to 14 MB |
+| iOS, without Expo     | 24 MB |   7 to 8 MB |
+| Android, Expo         | 32 MB |       13 MB |
+| Android, without Expo | 18 MB |        8 MB |
 
 Size is the iOS `.app`, and the Android APK for arm64, close to what Google Play
-sends to a phone. The downloads are rough local estimates, not what the stores
-report: the iOS app zipped with its executable's code replaced by random bytes,
-to simulate the App Store's encryption, which keeps that code from compressing,
-and the Android APK compressed with gzip and xz.
+sends to a phone. The downloads are the platforms' own estimates: the compressed
+size in Xcode's App Thinning Size Report, and `bundletool get-size total` for an
+arm64 phone. Xcode's estimate leaves out that the App Store encrypts an app's
+executable, which then barely compresses, so the higher iOS figure adds it, by
+zipping the app with its executable's code replaced by random bytes.
 
 Most of each app is React Native itself. In the example without Expo, React
 Native's iOS frameworks, React, hermesvm and ReactNativeDependencies, take
