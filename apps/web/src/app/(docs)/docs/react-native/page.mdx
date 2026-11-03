@@ -6,31 +6,33 @@ export const metadata = {
 
 # React Native
 
-Evolu runs on iOS and Android with React Native, with or without Expo.
-[Getting started](/docs/local-first) shows how to install it. This page explains
-why Evolu builds on React Native, how to start from an example, what Evolu adds
-to an app's size, and which bundler to use.
+With coding agents, a separate Swift and Kotlin app no longer looks like twice
+the work, so many developers nowadays want fully native apps. They expect
+JavaScript to make apps big and slow. This page measures what Evolu's React
+Native apps actually ship and shows where native code runs instead of
+JavaScript, with or without Expo.
 
 ## Why React Native
 
 **One codebase.** An Evolu app shares its schema, its queries and most of its
-code between the web, iOS and Android. Evolu runs its own SQLite core
-everywhere, compiled to WebAssembly on the web and to native code on iOS and
-Android, so a database, its encryption and its sync behave the same on every
-platform.
+code between the web, iOS and Android. Coding agents make a second codebase
+cheap to write, but not to review, to test, or to keep behaving the same on
+every platform.
 
-**Native where it matters.** SQLite, its encryption and the decryption of
-synced changes run in Evolu's native code, which JavaScript calls directly
-through JSI.
+**Native where speed matters.** React Native draws with the platform's own
+views, and code where speed matters doesn't have to run in JavaScript. Evolu
+used to decrypt synced changes in JavaScript and now does it in C, which
+JavaScript calls directly through JSI. That took a 256-byte change on an iPhone
+16e from about 185 µs to 0.64 µs, not counting the call, as
+[Evolu runs its own SQLite everywhere](/blog/evolu-runs-its-own-sqlite-everywhere#react-native)
+reports. An app can do the same for its own hot paths with a native module, and
+JavaScript is the glue between them.
 
 **JavaScript updates over the air.** A React Native app can ship a new version
 of its JavaScript without a new build in the App Store or Google Play, for
 example with [EAS Update](https://docs.expo.dev/eas-update/introduction/),
-within the stores' rules for such updates. That covers Evolu's JavaScript too,
-but not its native code: when an Evolu release changes its native module, the
-app needs a new build. Expo's
-[fingerprint runtime version policy](https://docs.expo.dev/eas-update/runtime-versions/)
-sends an update only to builds whose native code matches.
+within the stores' rules for such updates. That covers Evolu's JavaScript too
+(its native code, which rarely changes, needs a new build).
 
 ## Starting from an example
 
