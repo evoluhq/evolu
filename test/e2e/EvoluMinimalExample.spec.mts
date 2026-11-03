@@ -171,7 +171,7 @@ test("shows when changes can't leave this device", async ({ page, relay }) => {
 
   await relay.stop();
   await expect(syncStatus).toHaveText(
-    "Offline. Changes will sync when you're back online.",
+    "Can't reach the sync server. Changes will sync once the connection is back.",
   );
 
   // A one-byte quota rejects every write.

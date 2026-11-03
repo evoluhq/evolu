@@ -322,7 +322,7 @@ const syncLabels: Readonly<Record<OwnerSyncStatus["type"], string>> = {
   NoRelays: "Starting",
   Syncing: "Syncing",
   Synced: "Synced",
-  Offline: "Offline",
+  Disconnected: "Disconnected",
   Error: "Sync error",
 };
 
@@ -330,7 +330,7 @@ const syncDescriptions: Readonly<Record<OwnerSyncStatus["type"], string>> = {
   NoRelays: "Setting up its relays.",
   Syncing: "Connecting to its relays or reconciling this database with them.",
   Synced: "Up to date with the connected relays.",
-  Offline: "No relay is connected. You can keep editing locally.",
+  Disconnected: "No relay is connected. You can keep editing locally.",
   Error:
     "A relay failed or holds a change this database cannot read. See the relay details below.",
 };
@@ -365,10 +365,21 @@ const SyncStatus: FC = () => {
     evolu.name,
     evolu.appOwner.id,
   );
-  const syncedAt = relayStates.reduce<Millis | null>(
-    (newest, { route: { completeAt } }) =>
-      completeAt !== null && (newest === null || completeAt > newest)
-        ? completeAt
+  // A time that stays true while the status lasts, as OwnerSyncStatus
+  // recommends: since when the owner is up to date, or disconnected.
+  const upToDateSince = relayStates.reduce<Millis | null>(
+    (newest, { route }) =>
+      route.type === "Complete" &&
+      (newest === null || route.completeAt > newest)
+        ? route.completeAt
+        : newest,
+    null,
+  );
+  const disconnectedSince = relayStates.reduce<Millis | null>(
+    (newest, { transport: { connection } }) =>
+      connection.type === "Disconnected" &&
+      (newest === null || connection.disconnectedAt > newest)
+        ? connection.disconnectedAt
         : newest,
     null,
   );
@@ -451,7 +462,7 @@ const SyncStatus: FC = () => {
                     ? "error"
                     : status.type === "Synced"
                       ? "success"
-                      : status.type === "Offline"
+                      : status.type === "Disconnected"
                         ? "neutral"
                         : "progress"
             }
@@ -490,12 +501,22 @@ const SyncStatus: FC = () => {
                   : "Keep this page open. Your changes wait in memory until a relay reconnects."}
         </p>
       </div>
-      <dl className="mt-4 flex justify-between gap-3 text-sm">
-        <dt className="text-zinc-500">Last successful sync</dt>
-        <dd>
-          <Timestamp value={syncedAt} />
-        </dd>
-      </dl>
+      {(status.type === "Synced" || status.type === "Disconnected") && (
+        <dl className="mt-4 flex justify-between gap-3 text-sm">
+          <dt className="text-zinc-500">
+            {status.type === "Synced"
+              ? "Up to date since"
+              : "Disconnected since"}
+          </dt>
+          <dd>
+            <Timestamp
+              value={
+                status.type === "Synced" ? upToDateSince : disconnectedSince
+              }
+            />
+          </dd>
+        </dl>
+      )}
 
       <section
         aria-labelledby="relays-heading"

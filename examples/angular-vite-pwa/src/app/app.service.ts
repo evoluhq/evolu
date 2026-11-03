@@ -63,8 +63,8 @@ export class AppService implements OnDestroy {
     );
     // An app that sells relay quota offers more for a ProtocolQuotaError, then
     // calls `this.evolu.requestSync(this.evolu.appOwner.id)`.
-    return status.type === "Offline"
-      ? "Offline. Changes will sync when you're back online."
+    return status.type === "Disconnected"
+      ? "Can't reach the sync server. Changes will sync once the connection is back."
       : status.type === "Error"
         ? status.error.type === "ProtocolQuotaError"
           ? "Sync is paused because the sync server is full."

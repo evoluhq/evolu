@@ -733,7 +733,7 @@ test("returns NoRelays before the first snapshot and follows the store", () => {
     { type: "NoRelays" },
     { type: "Syncing" },
     { type: "Synced" },
-    { type: "Offline" },
+    { type: "Disconnected" },
   ]);
 });
 

@@ -546,7 +546,66 @@ assertEqual(await new Response(prelude).text(), "");
 // ---cut-end---
 ```
 
-Other frameworks subscribe to the store the same way. [EvoluError](/docs/api-reference/common/local-first/Evolu/type-aliases/EvoluError) lists each error and what to ask the user. Each one blocks the app: after an `UnknownError`, for example, Evolu is in an unknown state, so ask the user to close all the app's tabs, or on React Native to restart the app. A problem syncing through a relay is not an `EvoluError`; sync state shows it for the owner.
+Other frameworks subscribe to the store the same way. [EvoluError](/docs/api-reference/common/local-first/Evolu/type-aliases/EvoluError) lists each error and what to ask the user. Each one blocks the app: after an `UnknownError`, for example, Evolu is in an unknown state, so ask the user to close all the app's tabs, or on React Native to restart the app. A problem syncing through a relay is not an `EvoluError`; the owner's [sync status](#sync-status) shows it.
+
+## Sync status
+
+Evolu stores changes in the local database before they sync, so sync needs no UI while it works. Show the app owner's sync status once, such as below the header, and say something only when no relay can be reached or a relay fails: one quiet line inside an element with `role="status"` that stays mounted, because screen readers announce changes only in a live region that already exists. Take `useOwnerSyncStatus` from the same `createEvoluBinding` call as `useQuery`:
+
+```tsx
+import type { FC } from "react";
+// ---cut-start---
+import {
+  AppName,
+  assertEqual,
+  createEvolu,
+  id,
+  NonEmptyTrimmedString100,
+  testAppOwner,
+} from "@evolu/common";
+import { createEvoluBinding } from "@evolu/react";
+import { createEvoluDeps } from "@evolu/react-web";
+import { createRun } from "@evolu/web";
+import { prerender } from "react-dom/static";
+
+const Schema = {
+  todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
+};
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("sync-status"),
+    appOwner: testAppOwner,
+  }),
+);
+const { EvoluContext, useOwnerSyncStatus } =
+  createEvoluBinding<typeof Schema>();
+// ---cut-end---
+
+export const SyncStatus: FC = () => {
+  const status = useOwnerSyncStatus(run.deps.syncState);
+  const message =
+    status.type === "Disconnected"
+      ? "Can't reach the sync server. Changes will sync once the connection is back."
+      : status.type === "Error"
+        ? `Sync error: ${status.error.type}.`
+        : null;
+  return <div role="status">{message && <p>{message}</p>}</div>;
+};
+// ---cut-start---
+
+const { prelude } = await prerender(
+  <EvoluContext value={evolu}>
+    <SyncStatus />
+  </EvoluContext>,
+);
+assertEqual(await new Response(prelude).text(), '<div role="status"></div>');
+// ---cut-end---
+```
+
+`Disconnected` means that no relay can be reached. Evolu can't tell whether the device is offline or the relays are down (WebSockets report only that a connection failed, not why), so don't tell users that they are offline. An app may wait a few seconds before showing it, because brief disconnections, such as waking from sleep, reconnect quickly. For an error the app can act on, such as a `ProtocolQuotaError`, write text that says what to do. Vue has the same `useOwnerSyncStatus`; elsewhere, subscribe to `run.deps.syncState` and pass its value to [syncStateToOwnerSyncStatus](/docs/api-reference/common/local-first/Shared/functions/syncStateToOwnerSyncStatus) with the database's name and the owner's ID.
+
+If your app shows an indicator anyway, such as a dot, show a time only when someone opens it. While the status is `Synced`, say "Up to date since" the newest `completeAt` of the routes whose `type` is `Complete`, which [syncStateToRelaySyncStates](/docs/api-reference/common/local-first/Shared/functions/syncStateToRelaySyncStates) returns. While it is `Disconnected`, say since when, from the newest `disconnectedAt` of their connections. Don't show a route's `lastReceivedAt` as the time of the last sync: it is when the last message for the owner arrived, so it gets older on a quiet connection that works. [OwnerSyncStatus](/docs/api-reference/common/local-first/Shared/type-aliases/OwnerSyncStatus) describes each status and what to show for it.
 
 ## Mutate data
 

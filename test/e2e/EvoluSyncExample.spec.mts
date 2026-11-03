@@ -15,7 +15,7 @@ test("shows connection and synchronization state while editing items", async ({
     .getByRole("region", { name: "Synchronization", exact: true })
     .getByRole("status");
   const relays = page.getByRole("region", { name: "Relays", exact: true });
-  await expect(status).toHaveText("Offline");
+  await expect(status).toHaveText("Disconnected");
   // A failed first connection stays disconnected while it reconnects.
   await expect(relays.getByText("Disconnected", { exact: true })).toBeVisible();
 
@@ -67,16 +67,16 @@ test("recovers automatically after disconnect and restores items through the rel
   await addItem(page, "Before disconnect");
 
   await relay.stop();
-  // Losing the connection makes sync offline; it is not a failed sync result.
-  await expect(status).toHaveText("Offline");
-  await addItem(page, "Written offline");
+  // Losing the connection disconnects sync; it is not a failed sync result.
+  await expect(status).toHaveText("Disconnected");
+  await addItem(page, "Written while disconnected");
   const firstItem = page.getByRole("checkbox", {
     name: "Before disconnect",
     exact: true,
   });
   await firstItem.click();
   await expect(firstItem).toBeChecked();
-  await expect(status).toHaveText("Offline");
+  await expect(status).toHaveText("Disconnected");
 
   await relay.start();
   await expect(status).toHaveText("Synced", afterRestart);
@@ -95,7 +95,10 @@ test("recovers automatically after disconnect and restores items through the rel
     restored.getByRole("checkbox", { name: "Before disconnect", exact: true }),
   ).toBeChecked();
   await expect(
-    restored.getByRole("checkbox", { name: "Written offline", exact: true }),
+    restored.getByRole("checkbox", {
+      name: "Written while disconnected",
+      exact: true,
+    }),
   ).not.toBeChecked();
   await expect(
     restored

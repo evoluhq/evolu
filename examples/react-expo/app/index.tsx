@@ -221,8 +221,8 @@ const SyncStatus: FC = () => {
   // An app that sells relay quota offers more for a ProtocolQuotaError, then
   // calls `evolu.requestSync(evolu.appOwner.id)`.
   const message =
-    status.type === "Offline"
-      ? "Offline. Your changes are saved on this device."
+    status.type === "Disconnected"
+      ? "Can't reach the sync server. Your changes are saved on this device."
       : status.type === "Error"
         ? status.error.type === "ProtocolQuotaError"
           ? "Sync is paused because the sync server is full. Your changes are saved on this device."

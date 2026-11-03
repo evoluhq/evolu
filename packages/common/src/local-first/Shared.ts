@@ -908,8 +908,11 @@ export interface RelaySyncState {
  *   the connection leaves it to the request timeout instead, ninety seconds
  *   without a Response for its owner unless the timeout has grown; see Liveness
  *   in this module's documentation.
- * - `Offline`: every relay is disconnected. Evolu keeps reconnecting, up to 30
- *   seconds apart, so `Offline` can briefly outlast the outage.
+ * - `Disconnected`: every relay is disconnected. Evolu can't tell whether the
+ *   device is offline or the relays are down (WebSockets report only that a
+ *   connection failed, not why), so tell users that the app can't reach its
+ *   sync server, not that they are offline. Evolu keeps reconnecting, up to 30
+ *   seconds apart, so `Disconnected` can briefly outlast the outage.
  * - `Error`: a relay failed, a relay offers a change this database skipped, or
  *   this database stores a change too large to send. `error` is the newest
  *   failure, or without one, the newest skipped change: a failure stops syncing
@@ -920,12 +923,23 @@ export interface RelaySyncState {
  * indicator that changes with every edit distracts, and screen readers announce
  * each change.
  *
- * For `Offline` and `Error`, show one quiet line that lasts as long as the
+ * An app that shows an indicator anyway, such as a dot, may show a time when
+ * someone opens it, from the routes {@link syncStateToRelaySyncStates} returns.
+ * While `Synced`, say "Up to date since" the newest `completeAt` of the routes
+ * whose `type` is `Complete`. That is when the owner last became up to date,
+ * after the last edit or the last change from another device, so it stays true
+ * however long the connection is quiet, while a route's `lastReceivedAt` would
+ * read "Last synced 4 hours ago" on a quiet connection that works. While
+ * `Disconnected`, say since when, from the newest `disconnectedAt` of the
+ * connections. After a sleep, that is when the connection was replaced after
+ * waking, not when syncing stopped.
+ *
+ * For `Disconnected` and `Error`, show one quiet line that lasts as long as the
  * status, not a dialog, which interrupts, or a toast, which disappears while
  * the problem lasts. Do not say that changes are saved on this device unless
  * {@link Evolu.devicePersistence} is `Persisted`: a browser may keep them only
- * for a private session or delete them later. Evolu reports `Offline` at once;
- * an app may wait a few seconds before showing it, because brief
+ * for a private session or delete them later. Evolu reports `Disconnected` at
+ * once; an app may wait a few seconds before showing it, because brief
  * disconnections, such as waking from sleep, reconnect quickly. For `Error`,
  * write actionable text for the error types the app can act on, such as a
  * {@link ProtocolQuotaError}: the relay stores no more data for the owner, so
@@ -959,8 +973,8 @@ export interface RelaySyncState {
  *     case "Syncing":
  *     case "Synced":
  *       return null;
- *     case "Offline":
- *       return "Offline. Changes will sync when you're back online.";
+ *     case "Disconnected":
+ *       return "Can't reach the sync server. Changes will sync once the connection is back.";
  *     case "Error":
  *       return status.error.type === "ProtocolQuotaError"
  *         ? "Sync is paused because the sync server is full."
@@ -970,8 +984,8 @@ export interface RelaySyncState {
  *
  * assertEqual(syncStatusToMessage({ type: "Synced" }), null);
  * assertEqual(
- *   syncStatusToMessage({ type: "Offline" }),
- *   "Offline. Changes will sync when you're back online.",
+ *   syncStatusToMessage({ type: "Disconnected" }),
+ *   "Can't reach the sync server. Changes will sync once the connection is back.",
  * );
  * assertEqual(
  *   syncStatusToMessage({
@@ -999,11 +1013,14 @@ export type OwnerSyncStatus = NoRelaysSyncStatus | RelaySyncStatus;
  * The status of a {@link RelaySyncState}, from {@link relaySyncStateToStatus}:
  * `Error` when its route has a failure or a skipped change, the failure first;
  * otherwise `Synced` when the route is complete, `Syncing` while the
- * transport's connection is `Connecting` or `Open`, and `Offline` while it is
- * `Disconnected`.
+ * transport's connection is `Connecting` or `Open`, and `Disconnected` while it
+ * is disconnected.
  */
 export type RelaySyncStatus =
-  SyncingSyncStatus | SyncedSyncStatus | OfflineSyncStatus | ErrorSyncStatus;
+  | SyncingSyncStatus
+  | SyncedSyncStatus
+  | DisconnectedSyncStatus
+  | ErrorSyncStatus;
 
 /** Evolu reports no relay syncing the owner in the database. */
 export interface NoRelaysSyncStatus extends Typed<"NoRelays"> {}
@@ -1015,7 +1032,7 @@ export interface SyncingSyncStatus extends Typed<"Syncing"> {}
 export interface SyncedSyncStatus extends Typed<"Synced"> {}
 
 /** Relays are disconnected and reconnecting, so changes wait on this device. */
-export interface OfflineSyncStatus extends Typed<"Offline"> {}
+export interface DisconnectedSyncStatus extends Typed<"Disconnected"> {}
 
 /** A route failed or holds a change the database skipped. */
 export interface ErrorSyncStatus extends Typed<"Error"> {
@@ -1030,8 +1047,9 @@ export interface ErrorSyncStatus extends Typed<"Error"> {
  * Tells what an app shows about syncing an owner in a database: `Error` when a
  * relay has one, holding the newest failure of any relay or, without one, the
  * newest skipped change; otherwise the first of `Syncing`, `Synced`, and
- * `Offline` that a relay has, or `NoRelays`. Accepts null, the store's value
- * before the first snapshot. See {@link OwnerSyncStatus} for what to show.
+ * `Disconnected` that a relay has, or `NoRelays`. Accepts null, the store's
+ * value before the first snapshot. See {@link OwnerSyncStatus} for what to
+ * show.
  *
  * The same status is the same object: statuses other than `Error` are shared
  * constants, and an `Error` status is the same object for the same error
@@ -1098,7 +1116,7 @@ export interface ErrorSyncStatus extends Typed<"Error"> {
  * // Before the first snapshot, nothing syncs the owner.
  * assertEqual(statusOf(null), { type: "NoRelays" });
  *
- * // A first connection is syncing; a lost one is offline.
+ * // A first connection is syncing; a lost one is disconnected.
  * const connecting: SyncConnection = { type: "Connecting" };
  * assertEqual(statusOf(stateOf([connecting], [pending(primaryId)])), {
  *   type: "Syncing",
@@ -1110,7 +1128,7 @@ export interface ErrorSyncStatus extends Typed<"Error"> {
  *   error: null,
  * };
  * assertEqual(statusOf(stateOf([disconnected], [pending(primaryId)])), {
- *   type: "Offline",
+ *   type: "Disconnected",
  * });
  *
  * // A quota failure on one relay shows before a newer skipped change on
@@ -1166,7 +1184,7 @@ export const syncStateToOwnerSyncStatus = (
   let skippedError: SyncRouteError | null = null;
   let isSyncing = false;
   let isSynced = false;
-  let isOffline = false;
+  let isDisconnected = false;
   for (const relay of syncStateToRelaySyncStates(state, name, ownerId)) {
     const { route } = relay;
     // A failure stops syncing through its relay, and a skipped change is
@@ -1194,8 +1212,8 @@ export const syncStateToOwnerSyncStatus = (
       case "Synced":
         isSynced = true;
         break;
-      case "Offline":
-        isOffline = true;
+      case "Disconnected":
+        isDisconnected = true;
         break;
       default:
         exhaustiveCheck(status);
@@ -1208,8 +1226,8 @@ export const syncStateToOwnerSyncStatus = (
       ? syncingSyncStatus
       : isSynced
         ? syncedSyncStatus
-        : isOffline
-          ? offlineSyncStatus
+        : isDisconnected
+          ? disconnectedSyncStatus
           : noRelaysSyncStatus;
 };
 
@@ -1315,7 +1333,7 @@ export const relaySyncStateToStatus = ({
       const error = route.failure ?? route.skippedError;
       if (error) return syncRouteErrorToSyncStatus(error);
       return transport.connection.type === "Disconnected"
-        ? offlineSyncStatus
+        ? disconnectedSyncStatus
         : syncingSyncStatus;
     }
   }
@@ -1327,7 +1345,7 @@ export const relaySyncStateToStatus = ({
 const noRelaysSyncStatus: NoRelaysSyncStatus = { type: "NoRelays" };
 const syncingSyncStatus: SyncingSyncStatus = { type: "Syncing" };
 const syncedSyncStatus: SyncedSyncStatus = { type: "Synced" };
-const offlineSyncStatus: OfflineSyncStatus = { type: "Offline" };
+const disconnectedSyncStatus: DisconnectedSyncStatus = { type: "Disconnected" };
 const errorSyncStatusByError = /*#__PURE__*/ new WeakMap<
   SyncRouteError,
   ErrorSyncStatus

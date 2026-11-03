@@ -1380,7 +1380,7 @@ describe("sync state", () => {
     });
     assertEqual(
       syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
-      { type: "Offline" },
+      { type: "Disconnected" },
     );
 
     // A failed reconnect attempt records its error, not a new disconnect.
@@ -4011,7 +4011,7 @@ describe("sync state", () => {
       assertSame(routeOf(latest()).type, "Pending");
       assertEqual(
         syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
-        { type: "Offline" },
+        { type: "Disconnected" },
       );
     });
 
@@ -4123,7 +4123,7 @@ describe("sync state", () => {
       });
       assertEqual(
         syncStateToOwnerSyncStatus(latest(), testName, testAppOwner.id),
-        { type: "Offline" },
+        { type: "Disconnected" },
       );
     });
 
@@ -7593,7 +7593,7 @@ describe("relaySyncStateToStatus", () => {
       assertEqual(
         statusOf(createPendingRoute(id)),
         transport.connection.type === "Disconnected"
-          ? { type: "Offline" }
+          ? { type: "Disconnected" }
           : { type: "Syncing" },
       );
       assertEqual(
@@ -7668,7 +7668,7 @@ describe("syncStateToOwnerSyncStatus", () => {
     assertEqual(ownerStatusOf([]), noRelays);
   });
 
-  it("counts a first connection as Syncing and a lost one as Offline", () => {
+  it("counts a first connection as Syncing and a lost one as Disconnected", () => {
     assertEqual(ownerStatusOf([createPendingRoute(connectingId)]), {
       type: "Syncing",
     });
@@ -7676,12 +7676,12 @@ describe("syncStateToOwnerSyncStatus", () => {
       type: "Syncing",
     });
     assertEqual(ownerStatusOf([createPendingRoute(disconnectedId)]), {
-      type: "Offline",
+      type: "Disconnected",
     });
   });
 
-  it("ranks Error over Syncing over Synced over Offline", () => {
-    // A complete route counts even while another relay is offline.
+  it("ranks Error over Syncing over Synced over Disconnected", () => {
+    // A complete route counts even while another relay is disconnected.
     assertEqual(
       ownerStatusOf([
         createPendingRoute(disconnectedId),
@@ -7807,7 +7807,7 @@ describe("syncStateToOwnerSyncStatus", () => {
     });
     assertEqual(
       syncStateToOwnerSyncStatus(state, secondName, testAppOwner.id),
-      { type: "Offline" },
+      { type: "Disconnected" },
     );
   });
 

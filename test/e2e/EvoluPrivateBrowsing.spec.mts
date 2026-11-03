@@ -65,7 +65,7 @@ test("keeps data in memory and restores synced data from the relay", async ({
   // The tab hosted the in-memory database, so its reload starts empty.
   await page.reload();
   await expect(page.getByRole("status")).toHaveText(
-    "Offline. Changes will sync when you're back online.",
+    "Can't reach the sync server. Changes will sync once the connection is back.",
   );
   await expect(page.getByText(notPersistedNotice)).toBeVisible();
   await expect(page.getByRole("listitem")).toHaveCount(0);
