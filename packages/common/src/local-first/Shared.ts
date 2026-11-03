@@ -316,8 +316,8 @@
  * NAT mappings alive. The WebSocket API answers pings without telling
  * JavaScript, in browsers, React Native and Node alike, so the relay also sends
  * heartbeats, as {@link OwnerWebSocketTransport} describes. Each open connection
- * has one timer, which checks it at least every thirty seconds and replaces it
- * by the first rule that applies:
+ * has one timer, which checks it at least every five seconds and replaces it by
+ * the first rule that applies:
  *
  * - A sleep: the wall clock jumped five seconds or more ahead of
  *   `performance.now()` since the last check, which happens where the monotonic
@@ -899,14 +899,15 @@ export interface RelaySyncState {
  *   connection to a host that drops packets stays `Syncing` until the platform
  *   gives up on it, which can take a minute.
  * - `Synced`: a relay is up to date, and none syncs. A connection that dies
- *   without closing stays `Synced` until the shared worker replaces it: about
- *   thirty seconds after a system sleep where `performance.now()` stops during
- *   sleep, and otherwise, on a relay that sends heartbeats and while no request
- *   is outstanding on the connection, at most two and a half minutes after its
- *   last frame, or up to thirty seconds more after a sleep where
- *   `performance.now()` counts it. An outstanding request of any owner on the
- *   connection leaves it to the request timeout instead, ninety seconds unless
- *   it has grown; see Liveness in this module's documentation.
+ *   without closing stays `Synced` until the shared worker replaces it: within
+ *   about five seconds of waking from a system sleep where `performance.now()`
+ *   stops during sleep, and otherwise, on a relay that sends heartbeats and
+ *   while no request is outstanding on the connection, at most two and a half
+ *   minutes after its last frame, or up to five seconds more after a sleep
+ *   where `performance.now()` counts it. An outstanding request of any owner on
+ *   the connection leaves it to the request timeout instead, ninety seconds
+ *   without a Response for its owner unless the timeout has grown; see Liveness
+ *   in this module's documentation.
  * - `Offline`: every relay is disconnected. Evolu keeps reconnecting, up to 30
  *   seconds apart, so `Offline` can briefly outlast the outage.
  * - `Error`: a relay failed, a relay offers a change this database skipped, or
@@ -1716,6 +1717,15 @@ const syncIdleTimeout = PositiveMillis.orThrow(
  */
 const syncSleepThreshold = 5_000;
 
+/**
+ * How often an open connection is checked, which bounds how long after waking a
+ * sleep is noticed. The request and idle deadlines do not depend on it, because
+ * a check re-arms for the nearest deadline when that comes sooner. Five seconds
+ * is cheap everywhere: React Native on iOS runs its frame-rate timer only while
+ * the next timer is at most a second away.
+ */
+const syncLivenessCheckInterval = PositiveMillis.orThrow(5_000);
+
 const connectingSyncConnection: ConnectingSyncConnection = {
   type: "Connecting",
 };
@@ -2203,7 +2213,11 @@ export const initSharedWorker =
     // An open connection has one timer, which checks the Liveness rules in
     // this module's documentation and re-arms itself until a rule replaces the
     // connection. Sends and frames never arm it: every deadline they start is
-    // at least syncRequestTimeout away, beyond the next check.
+    // at least syncRequestTimeout away, beyond the next check. It uses no
+    // online or offline events: Chromium does not deliver them to workers,
+    // React Native has none, and elsewhere they follow network interfaces,
+    // not whether the relay is reachable.
+    // https://issues.chromium.org/issues/40155587
     const checkSyncLiveness = (
       entry: SyncTransportEntry,
       liveness: SyncLiveness,
@@ -2216,10 +2230,15 @@ export const initSharedWorker =
       // Android, as React Native does, only the wall clock sees the sleep. A
       // forward clock step looks the same, and a backward one only moves the
       // baseline. Where performance.now() counts sleep, as on Windows and in
-      // Node on macOS, the idle rule covers a sleep instead.
+      // Node on macOS, the idle rule covers a sleep instead. A check that runs
+      // late is no sleep: React Native on Android pauses timers while its
+      // activity is paused, such as under a dialog, while frames keep arriving.
+      // On iOS, React Native fires a timer when the wall clock reaches its
+      // target, so a backward step delays this check by the size of the step.
       // https://bugs.webkit.org/show_bug.cgi?id=225610
       // https://crbug.com/1206450
       // https://github.com/w3c/hr-time/issues/115
+      // https://github.com/react/react-native/issues/59782
       const clockOffset = deps.time.now() - now;
       const skew = clockOffset - liveness.clockOffset;
       if (skew >= syncSleepThreshold) {
@@ -2229,7 +2248,7 @@ export const initSharedWorker =
       }
       liveness.clockOffset = clockOffset;
 
-      let delay: number = relayHeartbeatInterval;
+      let delay: number = syncLivenessCheckInterval;
       if (entry.outstandingByOwnerId.size > 0) {
         // Frames for other owners prove the socket alive, not that this
         // owner's request was received, so each owner's silence is measured
@@ -2384,7 +2403,7 @@ export const initSharedWorker =
                     ) as Millis,
                     timeoutId: run.deps.time.setTimeout(() => {
                       checkSyncLiveness(entry, liveness);
-                    }, relayHeartbeatInterval),
+                    }, syncLivenessCheckInterval),
                   };
                   entry.liveness = liveness;
                   // A connection that opens keeps the last error of an earlier

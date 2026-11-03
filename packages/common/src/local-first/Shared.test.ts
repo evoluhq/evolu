@@ -3665,8 +3665,8 @@ describe("sync state", () => {
           ok: true,
           value: { type: "Converged" },
         });
-        // Fractional readings leave 24,999.25 ms at the check 150 seconds in.
-        // Rounding upward schedules 25,000 ms, so the next check sees the full
+        // Fractional readings leave 4,999.25 ms at the check 170 seconds in.
+        // Rounding upward schedules 5,000 ms, so the next check sees the full
         // silence.
         fractionalOffset = fractional ? 0.875 : 0;
         time.advance("5s");
@@ -3783,12 +3783,13 @@ describe("sync state", () => {
       await testWaitForWorkerMessage();
       await respondToSyncRound(instance, createWebSocket);
 
-      // A request near its deadline, then a forward step, which looks like a
-      // system sleep: the next check replaces the connection.
-      time.advance(Millis.orThrow(80_000));
+      // A forward step just before the request's deadline, which looks like a
+      // system sleep: at the check on the deadline both rules apply, and the
+      // sleep rule replaces the connection.
+      time.advance(Millis.orThrow(85_000));
       await testWaitForWorkerMessage();
       stepClock(3_600_000);
-      time.advance(Millis.orThrow(9_999));
+      time.advance(Millis.orThrow(4_999));
       await testWaitForWorkerMessage();
       assertEqual(createWebSocket.reconnectedUrls, []);
       time.advance("1ms");
@@ -4395,7 +4396,7 @@ describe("sync state", () => {
         time.advance(Millis.orThrow(179_999));
         await testWaitForWorkerMessage();
         assertEqual(createWebSocket.reconnectedUrls, [transport.url]);
-        assertSame(timers.calls() - calls, 5);
+        assertSame(timers.calls() - calls, 35);
         time.advance("1ms");
         await testWaitForWorkerMessage();
         assertEqual(createWebSocket.reconnectedUrls, [
@@ -4492,7 +4493,7 @@ describe("sync state", () => {
 
           time.advance("10s");
           sleep("45s");
-          time.advance(Millis.orThrow(19_999));
+          time.advance(Millis.orThrow(4_999));
           await testWaitForWorkerMessage();
           assertEqual(createWebSocket.reconnectedUrls, []);
           time.advance("1ms");
@@ -4602,8 +4603,10 @@ describe("sync state", () => {
             await setupCountedSleep();
           await using _setup = setup;
 
-          sleep(Millis.orThrow(100_000), { counted: true });
-          time.advance(Millis.orThrow(29_999));
+          // The first check after the wake comes three seconds past the
+          // deadline.
+          sleep(Millis.orThrow(118_000), { counted: true });
+          time.advance(Millis.orThrow(4_999));
           await testWaitForWorkerMessage();
           assertEqual(createWebSocket.reconnectedUrls, []);
           time.advance("1ms");
