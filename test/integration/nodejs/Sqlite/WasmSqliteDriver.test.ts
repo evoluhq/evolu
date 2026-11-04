@@ -35,6 +35,7 @@ import {
 } from "../../../../packages/web/src/Sqlite.ts";
 import {
   OpfsName,
+  sahPoolHeaderSize,
   type SahPoolOptions,
 } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
 import { setupFakeOpfs, type FakeOpfs } from "../sqlite-wasm/_fakeOpfs.ts";
@@ -93,6 +94,20 @@ const getPoolPaths = async (
   return t.pool.getPaths();
 };
 
+/** Returns the size of the slot of testName's pool whose header maps the path. */
+const slotSize = (fake: FakeOpfs, path: string) =>
+  fake
+    .listFiles(".Test/.opaque")
+    .map((fileName) => {
+      const bytes = fake.readFile(`.Test/.opaque/${fileName}`);
+      assert(bytes != null, "Expected the slot.");
+      return bytes;
+    })
+    .find(
+      (bytes) =>
+        new TextDecoder().decode(bytes.subarray(0, bytes.indexOf(0))) === path,
+    )?.length;
+
 // Lets resolved promises settle before test time advances.
 const flushMicrotasks = (): Promise<void> =>
   new Promise((resolve) => {
@@ -133,6 +148,57 @@ test("an encrypted database is /evolu1.db of the pool in .<name>, stores no plai
   }
   using driver = await setup.open(options);
   assertEqual(driver.exec(sql`select data from t;`).rows, [{ data: "secret" }]);
+});
+
+test("an encrypted database holds its lock in exclusive locking mode and keeps its journal empty between transactions until it closes, which deletes the journal", async () => {
+  const fake = setupFakeOpfs();
+  const setup = await setupDriver(fake);
+  await using _run = setup.run;
+  {
+    using driver = await setup.open({
+      mode: "encrypted",
+      encryptionKey: testKey,
+    });
+
+    assertEqual(driver.exec(sql`pragma locking_mode;`).rows, [
+      { locking_mode: "exclusive" },
+    ]);
+    driver.exec(sql`create table t (data blob);`);
+    driver.exec(sql`insert into t (data) values (randomblob(100000));`);
+    driver.exec(sql`update t set data = randomblob(100000);`);
+    assertEqual(slotSize(fake, "/evolu1.db-journal"), sahPoolHeaderSize);
+  }
+
+  assertEqual(await getPoolPaths(fake, testDirectory), ["/evolu1.db"]);
+});
+
+test("an encrypted database ignores the empty journal a worker terminated between transactions left, and closing after its first write deletes it", async () => {
+  const fake = setupFakeOpfs();
+  const options = { mode: "encrypted", encryptionKey: testKey } as const;
+  const terminated = await setupDriver(fake);
+  await using _terminatedRun = terminated.run;
+  // Never disposed, as a terminated worker never closes its database.
+  const driver = await terminated.open(options);
+  driver.exec(sql`create table t (data text);`);
+  driver.exec(sql`insert into t (data) values (${"kept"});`);
+  fake.releaseHandles();
+
+  assertEqual(await getPoolPaths(fake, testDirectory), [
+    "/evolu1.db",
+    "/evolu1.db-journal",
+  ]);
+  assertEqual(slotSize(fake, "/evolu1.db-journal"), sahPoolHeaderSize);
+  const setup = await setupDriver(fake);
+  await using _run = setup.run;
+  {
+    using reopened = await setup.open(options);
+    assertEqual(reopened.exec(sql`select data from t;`).rows, [
+      { data: "kept" },
+    ]);
+    reopened.exec(sql`insert into t (data) values (${"added"});`);
+    assertEqual(slotSize(fake, "/evolu1.db-journal"), sahPoolHeaderSize);
+  }
+  assertEqual(await getPoolPaths(fake, testDirectory), ["/evolu1.db"]);
 });
 
 for (const encrypted of [false, true])

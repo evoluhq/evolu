@@ -78,6 +78,12 @@ export const loadSqliteWasm: Task<SqliteWasm, SqliteWasmError> = (run) =>
  * `@evolu/web` 3.4.1 and earlier cannot open it. A database in the `memory`
  * mode uses no OPFS.
  *
+ * An encrypted database is opened in exclusive locking mode: its connection
+ * takes the file's lock at the open and holds it until it closes, so SQLite
+ * keeps its page cache between transactions without rereading page 1. Its
+ * rollback journal stays between transactions, truncated to 0 bytes after each
+ * commit, until a connection that wrote closes.
+ *
  * In WebKit on macOS, such as Safari, whose file system ignores case by
  * default, names that differ only in case share the directory, and both can
  * hold it at once, so make database names differ in more than case.
@@ -135,6 +141,27 @@ export const createWasmSqliteDriver =
           ),
         );
         database = disposer.use(encrypted.database);
+        // In normal locking mode, every transaction locks the file, checks for
+        // a hot journal and rereads page 1's change counter, which the codec
+        // authenticates and decrypts whole: 67 µs in Chromium, 87 µs in WebKit
+        // and 115 µs in Firefox (M-series Mac, November 2026). Queries share a
+        // transaction per batch, but sync reconciliation runs most of its
+        // storage reads on their own, about 12,000 in the protocol benchmark's
+        // random-halves-20k scenario. Exclusive mode also commits a small
+        // write transaction 0.5 to 1.9 ms sooner. The pool's exclusive handles
+        // and the leader lock already keep every other context out, so the
+        // lock costs no concurrency. A journal size limit of 0 truncates the
+        // journal the mode keeps after each commit, so it holds no earlier
+        // transaction's records, which builds whose pool encrypted in
+        // TypeScript can misread (see Database.ts of @evolu/sqlite-wasm), and
+        // takes no space between transactions. A worker ended during a write
+        // leaves a hot journal, as in normal mode, which the next open rolls
+        // back.
+        getOrThrowWithMessage(
+          database.exec(
+            "pragma journal_size_limit = 0; pragma locking_mode = exclusive; begin exclusive; commit;",
+          ),
+        );
         break;
       }
 

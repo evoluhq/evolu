@@ -31,12 +31,16 @@ import {
   defaultBuildDirectory,
   defaultCacheDirectory,
 } from "@evolu/sqlite-core/scripts/paths.mts";
-import { setupAddon } from "@evolu/sqlite-core/test/setup-addon.mts";
+import {
+  loadAddon,
+  setupAddonPath,
+} from "@evolu/sqlite-core/test/setup-addon.mts";
 import {
   buildSqlcipherFixture,
   expoSqliteReleases,
   runSqlcipherFixture,
 } from "@evolu/sqlite-core/test/sqlcipher.mts";
+import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -44,6 +48,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,7 +63,8 @@ import { createDeleteDatabaseFiles } from "../../src/sqlite/DeleteDatabaseFiles.
 import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
 import { createWaitForDatabaseRelease } from "../../src/sqlite/WaitForDatabaseRelease.ts";
 
-const binding = (await setupAddon()).createBinding() as NativeSqlite;
+const addonPath = await setupAddonPath();
+const binding = loadAddon(addonPath).createBinding() as NativeSqlite;
 
 const testName = Name.orThrow("Test");
 
@@ -164,6 +170,103 @@ test("an encrypted database stores no plaintext and reopens with its key", async
   assertEqual(driver.exec(sql`select data from t;`).rows, [
     { data: "evolu-secret" },
   ]);
+});
+
+test("an encrypted database holds its lock in exclusive locking mode and keeps its journal empty between transactions until it closes, which deletes the journal", async (t) => {
+  const setup = setupDriver(setupDirectory(t));
+  await using _run = setup.run;
+  {
+    using driver = await setup.open(encrypted);
+
+    assertEqual(driver.exec(sql`pragma locking_mode;`).rows, [
+      { locking_mode: "exclusive" },
+    ]);
+    driver.exec(sql`create table t (data blob);`);
+    driver.exec(sql`insert into t (data) values (randomblob(100000));`);
+    driver.exec(sql`update t set data = randomblob(100000);`);
+    assertSame(statSync(`${setup.path}-journal`).size, 0);
+  }
+
+  assertFalse(existsSync(`${setup.path}-journal`));
+});
+
+test("an encrypted database ignores the empty journal an app killed between transactions left, and closing after its first write deletes it", async (t) => {
+  const directory = setupDirectory(t);
+  // The driver in a process of its own, which writes and is killed without
+  // closing the database, as iOS or Android ends an app.
+  const killed = spawnSync(
+    process.execPath,
+    [
+      "--disable-warning=ExperimentalWarning",
+      "--input-type=module",
+      "-e",
+      `
+        const common = await import(${JSON.stringify(import.meta.resolve("@evolu/common"))});
+        const { loadAddon } = await import(${JSON.stringify(import.meta.resolve("@evolu/sqlite-core/test/setup-addon.mts"))});
+        const { createReactNativeSqliteDriver } = await import(${JSON.stringify(new URL("../../src/sqlite/Driver.ts", import.meta.url).href)});
+        const run = common.testCreateRun();
+        const driver = await run.ok(
+          createReactNativeSqliteDriver({
+            nativeSqlite: loadAddon(${JSON.stringify(addonPath)}).createBinding(),
+            databaseDirectory: ${JSON.stringify(directory)},
+          })(common.Name.orThrow(${JSON.stringify(testName)}), {
+            mode: "encrypted",
+            encryptionKey: common.EncryptionKey.orThrow(new Uint8Array(${JSON.stringify([...testKey])})),
+          }),
+        );
+        driver.exec({ sql: "create table t (data text);", parameters: [] });
+        driver.exec({ sql: "insert into t (data) values ('kept');", parameters: [] });
+        process.kill(process.pid, "SIGKILL");
+      `,
+    ],
+    // spawnSync blocks the test's own timeout.
+    { encoding: "utf8", timeout: 60_000 },
+  );
+  assertEqual(
+    [killed.error, killed.signal, killed.stderr],
+    [undefined, "SIGKILL", ""],
+  );
+  const setup = setupDriver(directory);
+  await using _run = setup.run;
+
+  assertSame(statSync(`${setup.path}-journal`).size, 0);
+  {
+    using driver = await setup.open(encrypted);
+    assertEqual(driver.exec(sql`select data from t;`).rows, [{ data: "kept" }]);
+    driver.exec(sql`insert into t (data) values (${"added"});`);
+    assertSame(statSync(`${setup.path}-journal`).size, 0);
+  }
+  assertFalse(existsSync(`${setup.path}-journal`));
+});
+
+test("an encrypted open whose exclusive lock fails closes the database, releasing its file, and throws", async (t) => {
+  // The binding, with BEGIN EXCLUSIVE failing as with a lock another process
+  // holds.
+  const lockedBinding: NativeSqlite = {
+    ...binding,
+    openEncryptedFile: (path, key) => {
+      const database = binding.openEncryptedFile(path, key);
+      return {
+        prepare: (sqlText) => database.prepare(sqlText),
+        run: (sqlText, parameters) => {
+          if (/begin exclusive/iu.test(sqlText))
+            throw new Error("database is locked");
+          return database.run(sqlText, parameters);
+        },
+        export: () => database.export(),
+        close: () => {
+          database.close();
+        },
+      };
+    },
+  };
+  const setup = setupDriver(setupDirectory(t), lockedBinding);
+  await using _run = setup.run;
+
+  const error = await openError(setup, encrypted);
+
+  assertSame(error.message, "database is locked");
+  assertFalse(binding.isFileOpen(setup.path));
 });
 
 test("memory databases are each their own and write no file", async (t) => {

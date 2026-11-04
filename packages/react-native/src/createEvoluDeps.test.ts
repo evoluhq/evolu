@@ -43,6 +43,10 @@ mock.module(new URL("./specs/NativeEvoluSqlite.ts", import.meta.url).href, {
           openEncryptedFile: (path: string) => {
             calls.push(`openEncryptedFile ${path}`);
             return {
+              run: (sqlText: string) => {
+                calls.push(`run ${sqlText}`);
+                return 0;
+              },
               close: () => {
                 calls.push("close");
               },
@@ -156,6 +160,10 @@ test("wires the native driver, waitForDatabaseRelease, deleteDatabaseFiles, Evol
 
   assertEqual(calls.slice(2), [
     "openEncryptedFile /data/SQLite/evolu1-Test.db",
+    "run pragma journal_size_limit = 0;",
+    "run pragma locking_mode = exclusive;",
+    "run begin exclusive;",
+    "run commit;",
     "close",
     "isFileOpen /data/SQLite/evolu1-Test.db",
     "deleteFile /data/SQLite/evolu1-Test.db",

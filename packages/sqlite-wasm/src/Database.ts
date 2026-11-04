@@ -119,9 +119,12 @@
  *   other's hot journals. With a journal SQLite keeps, in PERSIST mode or with
  *   EXCLUSIVE locking and a database recreated at its path, those builds can
  *   take a stale page 1's salt from the journal and keep a half-applied
- *   transaction, so sharing a pool is supported in DELETE mode only. 2.2.4
- *   never rolls back a hot journal, so after a crash here a 2.2.4 tab reads the
- *   half-written rows, and its next write transaction keeps them.
+ *   transaction, so sharing a pool is supported in DELETE mode only. EXCLUSIVE
+ *   locking with `journal_size_limit = 0` counts as DELETE mode here: the
+ *   journal it keeps is truncated after each commit, so it holds no earlier
+ *   transaction's records. 2.2.4 never rolls back a hot journal, so after a
+ *   crash here a 2.2.4 tab reads the half-written rows, and its next write
+ *   transaction keeps them.
  *
  * ## Statements
  *

@@ -4,10 +4,13 @@
  * DELETE mode, Evolu's configuration, as tabs of two Evolu versions sharing a
  * pool: each build reads and extends the other's databases, keyed with the raw
  * key or as 2.2.4 keyed them, and rolls back the hot journals the other left
- * when its worker was terminated, as closing a tab does.
+ * when its worker was terminated, as closing a tab does. The C build also holds
+ * a database in exclusive locking mode with `journal_size_limit = 0`, as
+ * `@evolu/web` opens an encrypted one, and 3.54.0-build2 ignores the empty
+ * journal that mode keeps and rolls back a hot one.
  *
  * `test/integration/nodejs/sqlite-wasm/CrossBuild.test.ts` covers the same over
- * a fake OPFS.
+ * a fake OPFS, except exclusive locking mode.
  */
 
 import {
@@ -18,9 +21,14 @@ import {
   EncryptionKey,
 } from "@evolu/common";
 import { test } from "vitest";
-import type { OpfsName } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
 import {
+  sahPoolHeaderSize,
+  type OpfsName,
+} from "../../../../packages/sqlite-wasm/src/SahPool.ts";
+import {
+  findSlot,
   okOrThrow,
+  readSlots,
   setupPoolDirectory,
   setupSqliteJsWorker,
   setupSqliteWorker,
@@ -328,6 +336,49 @@ test("the C build rolls back, in one worker and each with its own key, the hot j
   await assertRowsUnchanged(worker, a);
   await assertRowsUnchanged(worker, b);
 });
+
+// The SQL @evolu/web runs after it opens an encrypted database.
+const exclusiveLockingSql =
+  "PRAGMA journal_size_limit = 0; PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT;";
+
+for (const interrupted of [false, true])
+  test(`3.54.0-build2 ${interrupted ? "rolls back the hot journal of a write interrupted in" : "ignores the empty journal kept by"} a database the C build held in exclusive locking mode with journal_size_limit = 0, as @evolu/web does, when its worker was terminated, keeping every row, and its write leaves no journal`, async () => {
+    await using pool = setupPoolDirectory();
+    {
+      using crashed = await setupPoolWorker("c", pool.directory);
+      const database = await openDatabase(crashed, pool.directory);
+      assertOk(
+        await crashed.run(
+          "exec",
+          database,
+          `${exclusiveLockingSql} ${createRowsSql} ${interrupted ? spillSql : ""}`,
+        ),
+      );
+      crashed.terminate();
+    }
+    // Only the interrupted write's journal holds records.
+    const journal = findSlot(
+      await readSlots(pool.directory),
+      "/evolu1.db-journal",
+    )[1];
+    assertEqual(
+      [interrupted, journal.length > sahPoolHeaderSize],
+      [interrupted, interrupted],
+    );
+    using worker = await setupPoolWorker("3.54.0-build2", pool.directory);
+
+    const database = await openDatabase(worker, pool.directory);
+
+    await assertRowsUnchanged(worker, database);
+    assertOk(
+      await worker.run(
+        "exec",
+        database,
+        "INSERT INTO t(v) VALUES (zeroblob(3000))",
+      ),
+    );
+    assertEqual(await worker.run("getPaths", pool.directory), ["/evolu1.db"]);
+  });
 
 test("3.54.0-build2 and the C build each open as Legacy224, through createEncryptedSqliteDatabase's fallback, and extend a database 2.2.4 created with the SQL @evolu/web runs, and each reads the rows of the other", async () => {
   await using pool = setupPoolDirectory();

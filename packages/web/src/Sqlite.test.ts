@@ -86,6 +86,10 @@ const fake = (() => {
       state.events.push(`run ${query} ${JSON.stringify(parameters)}`);
       return state.runResult;
     },
+    exec: (query: string) => {
+      state.events.push(`exec ${query}`);
+      return state.execResult;
+    },
     export: () => state.exportResult,
     [Symbol.dispose]: () => {
       state.events.push(`close ${options.type}`);
@@ -99,6 +103,7 @@ const fake = (() => {
     databaseResult: null as Result<never, unknown> | null,
     disposePoolThrows: null as Error | null,
     events: [] as Array<string>,
+    execResult: ok() as Result<void, unknown>,
     exportResult: ok(new Uint8Array([1, 2, 3])) as Result<Uint8Array, unknown>,
     getDirectoryHandleRejects: null as Error | null,
     getDirectoryRejects: null as Error | null,
@@ -188,6 +193,10 @@ const testSubtleCrypto = { label: "subtleCrypto" } as unknown as SubtleCrypto;
 const testKey = EncryptionKey.orThrow(new Uint8Array(32).fill(42));
 const testName = Name.orThrow("Test");
 
+// The SQL the driver runs after it opens an encrypted database.
+const exclusiveLockingSql =
+  "pragma journal_size_limit = 0; pragma locking_mode = exclusive; begin exclusive; commit;";
+
 const setupDriverDeps = (
   sqliteWasm: Result<unknown, unknown> = ok(fake.sqliteWasm),
 ) => ({
@@ -249,7 +258,7 @@ describe("createWasmSqliteDriver", () => {
     assertSame(fake.state.databaseOptions[0]?.vfs, fake.pool);
   });
 
-  it("opens /evolu1.db of the pool in .<name> encrypted with the key", async () => {
+  it("opens /evolu1.db of the pool in .<name> encrypted with the key, then takes its lock in exclusive locking mode with an empty journal", async () => {
     await using _setup = await setupDriver({
       mode: "encrypted",
       encryptionKey: testKey,
@@ -258,6 +267,7 @@ describe("createWasmSqliteDriver", () => {
     assertEqual(fake.state.events, [
       "open pool .Test",
       "open EncryptedFile /evolu1.db",
+      `exec ${exclusiveLockingSql}`,
     ]);
     assertSame(fake.state.databaseOptions[0]?.vfs, fake.pool);
     assertSame(fake.state.databaseOptions[0]?.key, testKey);
@@ -439,6 +449,32 @@ describe("createWasmSqliteDriver", () => {
     assertEqual(fake.state.events, [
       "open pool .Test",
       "open EncryptedFile /evolu1.db",
+      "dispose pool",
+    ]);
+  });
+
+  it("closes the encrypted database and disposes the pool when taking the exclusive lock fails, and throws", async () => {
+    fake.reset();
+    const sqliteError = { type: "SqliteError", message: "disk I/O error" };
+    fake.state.execResult = err(sqliteError);
+    await using run = testCreateRun();
+
+    const defect = getDefect(
+      await run.abortable(
+        createWasmSqliteDriver(setupDriverDeps())(testName, {
+          mode: "encrypted",
+          encryptionKey: testKey,
+        }),
+      ),
+    );
+
+    assertSame(defect.message, "disk I/O error");
+    assertSame(defect.cause, sqliteError);
+    assertEqual(fake.state.events, [
+      "open pool .Test",
+      "open EncryptedFile /evolu1.db",
+      `exec ${exclusiveLockingSql}`,
+      "close EncryptedFile",
       "dispose pool",
     ]);
   });
