@@ -3968,6 +3968,162 @@ describe("sync message flow", () => {
       }
     });
 
+    it("recomputes time columns from timestamps without reading stored values", async () => {
+      const startAt = Millis.orThrow(Date.UTC(10000, 0, 1));
+      await using setup = await setupDbWorker({
+        sqliteSchema: createTestSqliteSchema(["name", "note"]),
+        time: testCreateTime({ startAt }),
+      });
+      const rowId = setup.createId();
+      const applyAt = async (offset: number, isInsert: boolean) => {
+        await postRequest(
+          setup,
+          setupApplySyncRequest(
+            await createBroadcastProtocolMessage([
+              {
+                timestamp: createTimestamp({
+                  millis: Millis.orThrow(startAt + offset),
+                }),
+                change: DbChange.orThrow({
+                  table: "testTable",
+                  id: rowId,
+                  values: { name: `at ${offset}` },
+                  isInsert,
+                  isDelete: null,
+                }),
+              },
+            ]),
+          ),
+        );
+      };
+
+      await applyAt(1, true);
+      assertEqual(
+        selectTestTableRows(setup).map(({ createdAt, updatedAt }) => ({
+          createdAt,
+          updatedAt,
+        })),
+        [{ createdAt: "+010000-01-01T00:00:00.001Z", updatedAt: null }],
+      );
+      await applyAt(5, false);
+      // Deliberately disagree with both timestamps so reading stored values
+      // cannot produce the dates below.
+      setup.sqlite.exec(sql`
+        update evolu_history
+        set "value" = ${"2000-01-01T00:00:00.000Z"}
+        where "column" in ('createdAt', 'updatedAt');
+      `);
+
+      // An intermediate insert triggers recomputation without replacing the
+      // earliest or latest time row.
+      await applyAt(3, true);
+
+      assertEqual(
+        selectTestTableRows(setup).map(({ createdAt, updatedAt }) => ({
+          createdAt,
+          updatedAt,
+        })),
+        [
+          {
+            createdAt: "+010000-01-01T00:00:00.001Z",
+            updatedAt: "+010000-01-01T00:00:00.005Z",
+          },
+        ],
+      );
+    });
+
+    for (const origin of ["local", "incoming"] as const) {
+      it(`applies an interleaved ${origin} batch like the same changes one by one`, async () => {
+        const testSqliteSchema = createTestSqliteSchema(["name", "note"]);
+        const sqliteSchema: SqliteSchema = {
+          ...testSqliteSchema,
+          tables: {
+            ...testSqliteSchema.tables,
+            anotherTable: new Set(["name", "note"]),
+          },
+        };
+        await using batch = await setupDbWorker({ sqliteSchema });
+        await using sequential = await setupDbWorker({ sqliteSchema });
+        const createId = testCreateId();
+        const firstId = createId();
+        const secondId = createId();
+        const thirdId = createId();
+        const changes = (
+          [
+            ["testTable", firstId, "first", true, null],
+            ["anotherTable", secondId, "second", true, null],
+            ["testTable", thirdId, "third", false, null],
+            ["testTable", firstId, "first updated", false, null],
+            ["anotherTable", secondId, "second deleted", false, true],
+            ["testTable", thirdId, "third upserted", true, null],
+            ["testTable", firstId, "first upserted", true, null],
+            ["anotherTable", secondId, "second restored", false, false],
+          ] as const
+        ).map(([table, id, name, isInsert, isDelete]) =>
+          createMutationChange({
+            table,
+            id,
+            values: { name },
+            isInsert,
+            isDelete,
+          }),
+        );
+        assertNonEmptyReadonlyArray(changes);
+
+        if (origin === "local") {
+          await postRequest(
+            batch,
+            setupMutateRequest(batch.evoluInstanceId, changes),
+          );
+          for (const change of changes)
+            await postRequest(
+              sequential,
+              setupMutateRequest(sequential.evoluInstanceId, [change]),
+            );
+        } else {
+          const messages = changes.map((change, index): CrdtMessage => ({
+            timestamp: createTimestamp({ millis: Millis.orThrow(index + 1) }),
+            change,
+          }));
+          assertNonEmptyReadonlyArray(messages);
+          await postRequest(
+            batch,
+            setupApplySyncRequest(
+              await createBroadcastProtocolMessage(messages),
+            ),
+          );
+          for (const message of messages)
+            await postRequest(
+              sequential,
+              setupApplySyncRequest(
+                await createBroadcastProtocolMessage([message]),
+              ),
+            );
+        }
+
+        // This equivalence also holds before sorting. It guards the order
+        // independence sorting relies on; it does not measure its speed.
+        for (const table of ["testTable", "anotherTable"])
+          assertEqual(
+            batch.sqlite.exec(sql`
+              select * from ${sql.identifier(table)} order by "ownerId", "id";
+            `).rows,
+            sequential.sqlite.exec(sql`
+              select * from ${sql.identifier(table)} order by "ownerId", "id";
+            `).rows,
+          );
+        const historyQuery = sql`
+          select *
+          from evolu_history
+          order by "ownerId", "table", "id", "column", "timestamp";
+        `;
+        assertEqual(
+          batch.sqlite.exec(historyQuery).rows,
+          sequential.sqlite.exec(historyQuery).rows,
+        );
+      });
+    }
+
     it("creates a row from a change without values", async () => {
       await using setup = await setupDbWorker({
         sqliteSchema: createTestSqliteSchema(["name", "note"]),

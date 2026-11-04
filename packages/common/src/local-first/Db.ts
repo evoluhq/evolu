@@ -82,6 +82,7 @@ import {
   type RandomBytesDep,
   type XChaCha20Poly1305Dep,
 } from "../Crypto.ts";
+import { eqUint8Array } from "../Eq.ts";
 import {
   createUnknownError,
   defectToError,
@@ -94,6 +95,7 @@ import {
   acquireLeaderLockCallback,
 } from "../LockManager.ts";
 import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
+import { orderString, orderUint8Array } from "../Order.ts";
 import { err, getOk, ok, tryAsync, trySync, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
@@ -1146,10 +1148,11 @@ const systemColumnsWithoutOwnerId = systemColumns.difference(
  * Every applied change also stores one time row, named `createdAt` when its
  * `isInsert` is set and `updatedAt` otherwise, so `readDbChange` can restore
  * the flag for sync. After storing a time row, both columns are recomputed from
- * the row's time rows: `createdAt` from its earliest change, and `updatedAt`
- * from its latest change, or null while the row has only one. The result
- * depends only on which changes were applied, not on their order, and replaces
- * values earlier releases computed differently.
+ * the row's time-row timestamps, without reading their stored values:
+ * `createdAt` from its earliest change, and `updatedAt` from its latest change,
+ * or null while the row has only one. The result depends only on which changes
+ * were applied, not on their order, and replaces values earlier releases
+ * computed differently.
  */
 const applyColumnChange =
   (deps: SqliteDep) =>
@@ -1209,14 +1212,23 @@ const applyColumnChange =
       // unique index. A single query with "column" in (...) ordered by
       // "timestamp" makes SQLite use evolu_history_ownerId_timestamp and read
       // the owner's whole history.
-      deps.sqlite.prepared`
+      //
+      // Only the timestamps are read, so the seeks stay in the covering index:
+      // a time row's value is in the history table, whose pages a batch
+      // touches at random. Every time row stores its own timestamp's date,
+      // because ValidDbChangeValues rejects time columns in a change's values,
+      // so the dates come out the same.
+      const { rows } = deps.sqlite.prepared<{
+        firstTimestamp: TimestampBytes;
+        lastTimestamp: TimestampBytes;
+      }>`
         with
           firstChange as (
             select *
             from (
               select *
               from (
-                select "timestamp", "value"
+                select "timestamp"
                 from evolu_history
                 where
                   "ownerId" = ${ownerIdBytes}
@@ -1229,7 +1241,7 @@ const applyColumnChange =
               union all
               select *
               from (
-                select "timestamp", "value"
+                select "timestamp"
                 from evolu_history
                 where
                   "ownerId" = ${ownerIdBytes}
@@ -1248,7 +1260,7 @@ const applyColumnChange =
             from (
               select *
               from (
-                select "timestamp", "value"
+                select "timestamp"
                 from evolu_history
                 where
                   "ownerId" = ${ownerIdBytes}
@@ -1261,7 +1273,7 @@ const applyColumnChange =
               union all
               select *
               from (
-                select "timestamp", "value"
+                select "timestamp"
                 from evolu_history
                 where
                   "ownerId" = ${ownerIdBytes}
@@ -1275,20 +1287,27 @@ const applyColumnChange =
             order by "timestamp" desc
             limit 1
           )
-        insert into ${sql.identifier(table)}
-          ("ownerId", "id", "createdAt", "updatedAt")
         select
-          ${ownerId},
-          ${id},
-          firstChange."value",
-          case
-            when lastChange."timestamp" = firstChange."timestamp" then null
-            else lastChange."value"
-          end
+          firstChange."timestamp" as firstTimestamp,
+          lastChange."timestamp" as lastTimestamp
         from
           firstChange,
-          lastChange
-        where true
+          lastChange;
+      `;
+      const timeRow = rows[0];
+      assertNonNullable(timeRow);
+      const { firstTimestamp, lastTimestamp } = timeRow;
+      const createdAt = millisToDateIso(
+        timestampBytesToTimestamp(firstTimestamp).millis,
+      );
+      const updatedAt = eqUint8Array(firstTimestamp, lastTimestamp)
+        ? null
+        : millisToDateIso(timestampBytesToTimestamp(lastTimestamp).millis);
+
+      deps.sqlite.prepared`
+        insert into ${sql.identifier(table)}
+          ("ownerId", "id", "createdAt", "updatedAt")
+        values (${ownerId}, ${id}, ${createdAt}, ${updatedAt})
         on conflict ("ownerId", "id") do update
           set
             "createdAt" = excluded."createdAt",
@@ -1646,6 +1665,13 @@ const applyMessages =
     now: Millis,
   ): boolean => {
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
+    const messagesToApply: Array<{
+      change: DbChange;
+      timestamp: Timestamp;
+      timestampBytes: TimestampBytes;
+      idBytes: IdBytes;
+      hasDrift: boolean;
+    }> = [];
     let wroteNewMessages = false;
 
     // Earlier releases choose how to insert a timestamp from these bounds, so
@@ -1675,12 +1701,40 @@ const applyMessages =
       wroteNewMessages = true;
 
       const hasDrift = isTimestampBeyondMaxDrift(deps)(timestamp.millis, now);
+      messagesToApply.push({
+        change,
+        timestamp,
+        timestampBytes,
+        idBytes: idToIdBytes(change.id),
+        hasDrift,
+      });
+    }
+
+    // Applied in the history index's order of id within each table, a batch
+    // reads each index page once instead of jumping between random leaves,
+    // which matters once its pages exceed the page cache. The order of the
+    // tables doesn't matter. Neither does the order for the result: value
+    // columns keep the latest timestamp, time columns are recomputed from all
+    // time rows, and quarantine ignores duplicates. The sort is stable, so a
+    // row's changes keep their order.
+    messagesToApply.sort(
+      (a, b) =>
+        orderString(a.change.table, b.change.table) ||
+        orderUint8Array(a.idBytes, b.idBytes),
+    );
+
+    for (const {
+      change,
+      timestamp,
+      timestampBytes,
+      idBytes,
+      hasDrift,
+    } of messagesToApply) {
       // SystemColumns are not encoded in change.values.
       const columns = appendToArray(dbChangeToColumns(change), [
         change.isInsert ? "createdAt" : "updatedAt",
         millisToDateIso(timestamp.millis),
       ]);
-      const idBytes = idToIdBytes(change.id);
 
       for (const [column, value] of columns) {
         if (
