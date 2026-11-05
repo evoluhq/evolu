@@ -212,6 +212,13 @@ export interface DbWorkerInit {
   readonly encryptionKey: EncryptionKey;
   readonly memoryOnly: boolean;
   /**
+   * The channel this DbWorker posts console entries and errors on, which the
+   * SharedWorker that requested it names: a stored worker's is
+   * {@link consoleEntryOrErrorBroadcastChannelName}, and a private memory
+   * worker's reaches only its instance's deps.
+   */
+  readonly consoleEntryOrErrorChannelName: string;
+  /**
    * The SharedWorker that requested this DbWorker. It leads for this ID while
    * it runs, so the DbWorker stops serving once it can lead for it.
    */
@@ -355,7 +362,7 @@ export const startDbWorker =
 
       const consoleEntryOrErrorBroadcastChannel = disposer.use(
         deps.createBroadcastChannel<ConsoleEntryOrError>(
-          consoleEntryOrErrorBroadcastChannelName,
+          initMessage.consoleEntryOrErrorChannelName,
         ),
       );
 

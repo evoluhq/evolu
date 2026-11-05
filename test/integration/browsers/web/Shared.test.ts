@@ -29,12 +29,14 @@ import {
   postConsoleEntry,
   syncStateToRelaySyncStates,
   testAppOwner,
+  consoleEntryOrErrorBroadcastChannelName,
   type ConsoleEntryOrError,
   type DbWorkerInit,
   type SharedWorkerInput,
   type SharedWorkerOutput,
 } from "@evolu/common/local-first";
-import { test } from "vitest";
+import { onTestFinished, test } from "vitest";
+import { removeTestDatabase } from "./_removeTestDatabase.ts";
 import {
   createBroadcastChannel,
   createMessageChannel,
@@ -127,6 +129,7 @@ test("a worker of another build tells its tab it waits until the first build clo
     type: "Connected",
     workerId: waiting.workerId,
     syncStateChannelName: `evolu:sync-state:${waiting.workerId}`,
+    consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
   });
 });
 
@@ -178,12 +181,13 @@ test("requestSync crosses browser worker ports while two clients retain the owne
         ),
       lockManager: navigator.locks,
       reloadApp: constVoid,
-      sharedWorker: createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
-        new SharedWorker(
-          new URL("./workers/sync-shared-worker.ts", import.meta.url),
-          { name: workerName, type: "module" },
+      createStoredWorker: () =>
+        createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
+          new SharedWorker(
+            new URL("./workers/sync-shared-worker.ts", import.meta.url),
+            { name: workerName, type: "module" },
+          ),
         ),
-      ),
     });
   const createInstance = createEvolu(
     { todo: { id: id("Todo") } },
@@ -191,7 +195,6 @@ test("requestSync crosses browser worker ports while two clients retain the owne
       appName: AppName.orThrow(`test-${crypto.randomUUID()}`),
       appOwner: testAppOwner,
       transports: [],
-      memoryOnly: true,
     },
   );
   const transport = createOwnerWebSocketTransport({
@@ -201,6 +204,7 @@ test("requestSync crosses browser worker ports while two clients retain the owne
   using firstDeps = setupClient();
   await using firstRun = createRun(firstDeps);
   await using first = await firstRun.ok(createInstance);
+  onTestFinished(() => removeTestDatabase(first.name));
   const initial = nextMessage.promise;
   first.useOwner(testAppOwner, [transport]);
   await initial;
@@ -256,12 +260,13 @@ test("a skipped encrypted change shows on its route across browser worker ports 
       ),
     lockManager: navigator.locks,
     reloadApp: constVoid,
-    sharedWorker: createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
-      new SharedWorker(
-        new URL("./workers/sync-shared-worker.ts", import.meta.url),
-        { name: workerName, type: "module" },
+    createStoredWorker: () =>
+      createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
+        new SharedWorker(
+          new URL("./workers/sync-shared-worker.ts", import.meta.url),
+          { name: workerName, type: "module" },
+        ),
       ),
-    ),
   });
   await using run = createRun(deps);
   const schema = { todo: { id: id("Todo") } };
@@ -379,12 +384,13 @@ test("a refused SharedWorker reports the error to a later client store", async (
       reloadApp: constVoid,
       // The production Shared.worker.ts never releases the build lock, so the
       // tests after this one would wait for it; the e2e suite covers it.
-      sharedWorker: createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
-        new SharedWorker(
-          new URL("./workers/sync-shared-worker.ts", import.meta.url),
-          { name: workerName, type: "module" },
+      createStoredWorker: () =>
+        createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
+          new SharedWorker(
+            new URL("./workers/sync-shared-worker.ts", import.meta.url),
+            { name: workerName, type: "module" },
+          ),
         ),
-      ),
     });
   const createInstance = createEvolu(
     { todo: { id: id("Todo") } },

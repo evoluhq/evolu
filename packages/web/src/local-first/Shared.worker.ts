@@ -29,13 +29,28 @@ import {
   createWorkerDeps,
 } from "../Worker.ts";
 
-const errors = createBroadcastChannel<ConsoleEntryOrError>(
-  consoleEntryOrErrorBroadcastChannelName,
-);
-// Each tab logs an uncaught error, including a Run defect, and sets it as its
-// evoluError.
+// An unnamed dedicated worker is the one-tab SharedWorker polyfill for stored
+// databases. Only this exact static name selects an instance-owned worker.
+const isMemoryInstance =
+  !("onconnect" in self) && self.name === "evolu-memory-instance";
+const errors = isMemoryInstance
+  ? null
+  : createBroadcastChannel<ConsoleEntryOrError>(
+      consoleEntryOrErrorBroadcastChannelName,
+    );
+// A stored worker broadcasts an uncaught error, including a Run defect, on the
+// global channel, which a tab listens to once its own stored worker starts,
+// after its storage check. Each such tab logs the error and sets it as its
+// evoluError. A memory worker posts it on its own
+// port, so only its instance's tab reports it.
 addUncaughtErrorListener(self, (error) => {
-  errors.postMessage({ type: "Error", error: createUnknownError(error) });
+  const unknownError = createUnknownError(error);
+  if (errors) errors.postMessage({ type: "Error", error: unknownError });
+  else
+    (self as DedicatedWorkerGlobalScope).postMessage({
+      type: "Error",
+      error: unknownError,
+    } satisfies SharedWorkerOutput);
 });
 
 const run = createRun({
@@ -69,6 +84,15 @@ void run(async (run) => {
   using _closeOnPanic = run.onAbort(() => {
     workerSelf[Symbol.dispose]();
   });
+
+  if (isMemoryInstance) {
+    // Private workers coexist with the stored one-tab polyfill and every
+    // build: neither origin-wide lock protects a database they can share.
+    await using _ = await run.ok(
+      initSharedWorker(workerSelf, { mode: "memory-instance" }),
+    );
+    return await run(waitForAbort);
+  }
 
   await navigator.locks.request(
     "evolu-one-tab-sharedworker-polyfill",

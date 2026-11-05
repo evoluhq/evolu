@@ -7,6 +7,7 @@ import {
   assertTrue,
   createConsole,
   createIdFromString,
+  id,
   PositiveInt,
   testCreateRun,
   testName,
@@ -16,7 +17,10 @@ import {
   type UnsupportedDbVersionError,
 } from "@evolu/common";
 import {
+  AppName,
   buildsBroadcastChannelName,
+  consoleEntryOrErrorBroadcastChannelName,
+  createEvolu,
   testAppOwner,
   type BuildWaiting,
   type BuildWaitingRequest,
@@ -30,43 +34,173 @@ import { describe, it, mock } from "node:test";
 import { createEvoluDeps } from "./Evolu.ts";
 
 describe("createEvoluDeps", () => {
-  it("createEvoluDeps calls callback when one-tab SharedWorker polyfill is already open", () => {
-    const nativeSharedWorkerPort = createClosableNativePort<unknown>();
-    const nativeDbWorker = createClosableNativePort();
+  it("calls the callback when the one-tab SharedWorker polyfill is already open", async () => {
     const onSharedWorkerUnsupported = mock.fn<() => void>();
-
-    using _sharedWorker = testStubGlobal(
-      "SharedWorker",
-      class {
-        readonly port = nativeSharedWorkerPort as unknown as NativeMessagePort<
-          never,
-          unknown
-        >;
-      },
-    );
-    const Worker = mock.fn(function () {
-      return nativeDbWorker;
-    });
-    using _worker = testStubGlobal("Worker", Worker);
-    using _addEventListener = testStubGlobal("addEventListener", () => {});
-    using _removeEventListener = testStubGlobal(
-      "removeEventListener",
-      () => {},
-    );
-
-    using deps = createEvoluDeps({
-      onSharedWorkerUnsupported,
-    });
-
-    nativeSharedWorkerPort.onmessage?.(
+    using setup = setupWebEvoluDeps({ onSharedWorkerUnsupported });
+    await setup.ready;
+    setup.sharedWorkerPort.onmessage?.(
       new MessageEvent("message", {
         data: { type: "SharedWorkerUnsupported" },
       }),
     );
+    assertSame(onSharedWorkerUnsupported.mock.callCount(), 1);
+    assertSame(setup.getDbWorkerCount(), 0);
+  });
 
-    assertEqual(onSharedWorkerUnsupported.mock.callCount(), 1);
-    assertEqual(Worker.mock.callCount(), 0);
-    assertNonNullable(deps);
+  it("starts the stored worker once storage is available, without an instance", async () => {
+    const probe = Promise.withResolvers<unknown>();
+    using setup = setupWebEvoluDeps({ storageProbe: probe.promise });
+    assertSame(setup.getSharedWorkerCount(), 0);
+    probe.resolve(undefined);
+    assertSame(await setup.ready, "Unknown");
+    assertSame(setup.getSharedWorkerCount(), 1);
+    assertSame(
+      (await setup.deps.storedWorker).port.native,
+      setup.sharedWorkerPort,
+    );
+  });
+
+  it("keeps refused storage outside stored-worker build coordination", async (t) => {
+    t.mock.timers.enable({ apis: ["setInterval"] });
+    const probe = Promise.withResolvers<unknown>();
+    using setup = setupWebEvoluDeps({
+      storageProbe: probe.promise,
+      hasFocus: true,
+    });
+    const waiting = {
+      type: "BuildWaiting",
+      workerId: createIdFromString<"SharedWorker">("refused-waiting"),
+    };
+    setup.receive(waiting);
+    probe.reject(new Error("Storage is unavailable."));
+    assertSame(await setup.ready, "NotPersisted");
+    setup.receive(waiting);
+    setup.receive({ type: "BuildWaitingRequest" });
+    setup.setFocus(false);
+    t.mock.timers.tick(1000);
+    assertSame(setup.getSharedWorkerCount(), 0);
+    assertSame(setup.reloadApp.mock.callCount(), 0);
+    assertEqual(setup.builds.posted, []);
+  });
+
+  it("keeps an explicit memory instance private while its stored connection can reload the tab", async () => {
+    const probe = Promise.withResolvers<unknown>();
+    using setup = setupWebEvoluDeps({ storageProbe: probe.promise });
+    await using run = testCreateRun(setup.deps);
+    await using _evolu = await run.ok(
+      createEvolu(
+        { todo: { id: id("Todo") } },
+        {
+          appName: AppName.orThrow("test-memory-only"),
+          memoryOnly: true,
+          appOwner: testAppOwner,
+          transports: [],
+        },
+      ),
+    );
+    assertSame(setup.getSharedWorkerCount(), 0);
+    assertEqual(setup.getWorkerOptions(), [
+      { type: "module", name: "evolu-memory-instance" },
+    ]);
+    probe.resolve(undefined);
+    await setup.ready;
+    setup.connect(createIdFromString<"SharedWorker">("memory-tab-stored"));
+    setup.receive({
+      type: "BuildWaiting",
+      workerId: createIdFromString<"SharedWorker">("memory-tab-other"),
+    });
+    assertSame(setup.getSharedWorkerCount(), 1);
+    assertSame(setup.reloadApp.mock.callCount(), 1);
+  });
+
+  it("reports a stored worker's script-load failure once", async () => {
+    for (const useSharedWorkerPolyfill of [false, true]) {
+      using setup = setupWebEvoluDeps({ useSharedWorkerPolyfill });
+      await setup.ready;
+      const errorTarget = useSharedWorkerPolyfill
+        ? setup.dbWorkers[0]
+        : setup.nativeSharedWorker;
+      assertNonNullable(errorTarget);
+      errorTarget.dispatchEvent(new Event("error"));
+      await waitForMacrotask();
+
+      const error = setup.deps.evoluError.get();
+      assertEqual(error, {
+        type: "UnknownError",
+        error: { message: "The SharedWorker failed to load." },
+      });
+      errorTarget.dispatchEvent(new Event("error"));
+      await waitForMacrotask();
+      assertSame(setup.deps.evoluError.get(), error);
+    }
+  });
+
+  it("reports an evaluation ErrorEvent before a memory worker's first message", async () => {
+    using setup = setupWebEvoluDeps();
+    await setup.ready;
+    const createMemoryInstanceWorker = setup.deps.createMemoryInstanceWorker;
+    assertNonNullable(createMemoryInstanceWorker);
+    using _worker = createMemoryInstanceWorker();
+    const [worker] = setup.dbWorkers;
+    assertNonNullable(worker);
+    const details = {
+      message: "The memory worker module threw.",
+      filename: "Shared.worker.js",
+      lineno: 7,
+      colno: 13,
+    };
+
+    worker.dispatchEvent(new ErrorEvent("error", details));
+    await waitForMacrotask();
+
+    assertEqual(setup.deps.evoluError.get(), {
+      type: "UnknownError",
+      error: details,
+    });
+  });
+
+  it("terminates a memory worker disposed before its first message and reports nothing", async () => {
+    using setup = setupWebEvoluDeps();
+    await setup.ready;
+    const createMemoryInstanceWorker = setup.deps.createMemoryInstanceWorker;
+    assertNonNullable(createMemoryInstanceWorker);
+    const memoryWorker = createMemoryInstanceWorker();
+    const [nativeWorker] = setup.dbWorkers;
+    assertNonNullable(nativeWorker);
+
+    memoryWorker[Symbol.dispose]();
+    assertSame(nativeWorker.terminate.mock.callCount(), 1);
+    nativeWorker.dispatchEvent(new Event("error"));
+    await waitForMacrotask();
+
+    assertSame(setup.deps.evoluError.get(), null);
+  });
+
+  it("keeps the port's real error when an ErrorEvent follows a memory worker message", async () => {
+    using setup = setupWebEvoluDeps({});
+    await setup.ready;
+    const createMemoryInstanceWorker = setup.deps.createMemoryInstanceWorker;
+    assertNonNullable(createMemoryInstanceWorker);
+    using _worker = createMemoryInstanceWorker();
+    const [nativeWorker] = setup.dbWorkers;
+    assertNonNullable(nativeWorker);
+    const error = {
+      type: "UnknownError",
+      error: "The original error",
+    } as const;
+    nativeWorker.dispatchEvent(
+      new MessageEvent("message", { data: { type: "Error", error } }),
+    );
+    nativeWorker.onmessage?.(
+      new MessageEvent("message", { data: { type: "Error", error } }),
+    );
+    assertSame(setup.deps.evoluError.get(), error);
+
+    nativeWorker.dispatchEvent(
+      new ErrorEvent("error", { message: "The browser's reduced error" }),
+    );
+
+    assertSame(setup.deps.evoluError.get(), error);
   });
 
   it("installs the polyfills it needs, such as DisposableStack, which Safari lacks", () => {
@@ -112,8 +246,9 @@ describe("createEvoluDeps", () => {
       supportedVersion: PositiveInt.orThrow(2),
     });
 
-    it("reloads once for a refusal, even with focus, instead of reporting it", () => {
+    it("reloads once for a refusal, even with focus, instead of reporting it", async () => {
       using setup = setupWebEvoluDeps({ hasFocus: true });
+      await setup.ready;
 
       setup.post({ type: "Error", error: createRefusal(3) });
 
@@ -123,8 +258,9 @@ describe("createEvoluDeps", () => {
       assertFalse(setup.isAutomaticReloadMarked());
     });
 
-    it("reloads for each refusal before the page unloads", () => {
+    it("reloads for each refusal before the page unloads", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
 
       setup.post({ type: "Error", error: createRefusal(3) });
       setup.post({ type: "Error", error: createRefusal(3) });
@@ -133,8 +269,9 @@ describe("createEvoluDeps", () => {
       assertSame(setup.deps.evoluError.get(), null);
     });
 
-    it("reports a refusal that recurs after its reload without creating a DbWorker", () => {
+    it("reports a refusal that recurs after its reload without creating a DbWorker", async () => {
       using setup = setupWebEvoluDeps({ refusalReloads: "3" });
+      await setup.ready;
       const error = createRefusal(3);
 
       setup.post({ type: "Error", error });
@@ -144,8 +281,9 @@ describe("createEvoluDeps", () => {
       assertSame(setup.getDbWorkerCount(), 0);
     });
 
-    it("reloads again for a newer stored version", () => {
+    it("reloads again for a newer stored version", async () => {
       using setup = setupWebEvoluDeps({ refusalReloads: "3" });
+      await setup.ready;
 
       setup.post({ type: "Error", error: createRefusal(4) });
 
@@ -154,10 +292,11 @@ describe("createEvoluDeps", () => {
       assertSame(setup.getRefusalReloads(), "3,4");
     });
 
-    it("reloads once for refusals of several databases, then reports them", () => {
+    it("reloads once for refusals of several databases, then reports them", async () => {
       let refusalReloads: string | null;
       {
         using firstPage = setupWebEvoluDeps();
+        await firstPage.ready;
         firstPage.post({ type: "Error", error: createRefusal(3) });
         firstPage.post({ type: "Error", error: createRefusal(4) });
         assertSame(firstPage.reloadApp.mock.callCount(), 2);
@@ -165,6 +304,7 @@ describe("createEvoluDeps", () => {
       }
       assertNonNullable(refusalReloads);
       using secondPage = setupWebEvoluDeps({ refusalReloads });
+      await secondPage.ready;
       const error = createRefusal(4);
 
       secondPage.post({ type: "Error", error });
@@ -174,8 +314,9 @@ describe("createEvoluDeps", () => {
       assertEqual(secondPage.deps.evoluError.get(), error);
     });
 
-    it("reports a refusal without session storage", () => {
+    it("reports a refusal without session storage", async () => {
       using setup = setupWebEvoluDeps({ isSessionStorageAvailable: false });
+      await setup.ready;
       const error = createRefusal(3);
 
       setup.post({ type: "Error", error });
@@ -194,6 +335,7 @@ describe("createEvoluDeps", () => {
     it("asks the browser once to keep the site's data", async () => {
       const storage = setupStorage(false);
       using setup = setupWebEvoluDeps({ storage });
+      await setup.ready;
 
       setup.deps.requestPersistentStorage?.();
       setup.deps.requestPersistentStorage?.();
@@ -206,6 +348,7 @@ describe("createEvoluDeps", () => {
     it("does not ask when the site's data is already persistent", async () => {
       const storage = setupStorage(true);
       using setup = setupWebEvoluDeps({ storage });
+      await setup.ready;
 
       setup.deps.requestPersistentStorage?.();
       await waitForMacrotask();
@@ -221,6 +364,7 @@ describe("createEvoluDeps", () => {
         persist: mock.fn(() => Promise.resolve(true)),
       };
       using setup = setupWebEvoluDeps({ storage });
+      await setup.ready;
 
       setup.deps.requestPersistentStorage?.();
       await waitForMacrotask();
@@ -232,6 +376,7 @@ describe("createEvoluDeps", () => {
       const storage = setupStorage(false);
       const requestPersistentStorage = mock.fn<() => void>();
       using setup = setupWebEvoluDeps({ storage, requestPersistentStorage });
+      await setup.ready;
 
       setup.deps.requestPersistentStorage?.();
       await waitForMacrotask();
@@ -244,6 +389,7 @@ describe("createEvoluDeps", () => {
   describe("DbWorker loading", () => {
     it("posts the init once its DbWorker's script loads", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       const { init, port } = setup.startDbWorker();
       const [dbWorker] = setup.dbWorkers;
       assertNonNullable(dbWorker);
@@ -263,8 +409,25 @@ describe("createEvoluDeps", () => {
       assertSame(dbWorker.terminate.mock.callCount(), 0);
     });
 
+    it("posts nothing to a DbWorker disposed before its script loads", async () => {
+      using setup = setupWebEvoluDeps();
+      await setup.ready;
+      const { init } = setup.startDbWorker();
+      const dbWorker = setup.deps.createDbWorker();
+      const nativeDbWorker = setup.dbWorkers.at(-1);
+      assertNonNullable(nativeDbWorker);
+      dbWorker.postMessage(init, [init.port]);
+
+      dbWorker[Symbol.dispose]();
+      nativeDbWorker.dispatchEvent(new MessageEvent("message", { data: null }));
+      await waitForMacrotask();
+
+      assertSame(nativeDbWorker.postMessage.mock.callCount(), 0);
+    });
+
     it("refuses the database of a DbWorker whose script fails to load", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       const { port } = setup.startDbWorker();
       const [dbWorker] = setup.dbWorkers;
       assertNonNullable(dbWorker);
@@ -295,6 +458,7 @@ describe("createEvoluDeps", () => {
 
     it("refuses the database of a DbWorker whose script throws while it runs", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       const { port } = setup.startDbWorker();
       const [dbWorker] = setup.dbWorkers;
       assertNonNullable(dbWorker);
@@ -330,6 +494,7 @@ describe("createEvoluDeps", () => {
 
     it("posts nothing for a DbWorker that loads after the deps are disposed", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       const { port } = setup.startDbWorker();
       const [dbWorker] = setup.dbWorkers;
       assertNonNullable(dbWorker);
@@ -349,6 +514,7 @@ describe("createEvoluDeps", () => {
 
     it("ends its part as if it closed when the page enters the cache", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       setup.connect(workerId);
       await setup.waitForTabLeadership();
       setup.startDbWorker();
@@ -364,6 +530,7 @@ describe("createEvoluDeps", () => {
 
     it("releases the locks of its Evolu instances when the page enters the cache", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       await using run = testCreateRun({
         lockManager: setup.deps.lockManager,
       });
@@ -380,6 +547,7 @@ describe("createEvoluDeps", () => {
 
     it("releases at once a lock granted after the page entered the cache", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       const name = "evolu-granted-after-cache";
       const held = Promise.withResolvers<void>();
       const holding = navigator.locks.request(name, () => held.promise);
@@ -395,8 +563,9 @@ describe("createEvoluDeps", () => {
       assertTrue(await isLockAvailable(name));
     });
 
-    it("reloads once when the page is restored from the cache", () => {
+    it("reloads once when the page is restored from the cache", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       setup.dispatchPageTransition("pageshow", false);
 
       setup.dispatchPageTransition("pagehide", true);
@@ -407,8 +576,9 @@ describe("createEvoluDeps", () => {
       assertFalse(setup.isAutomaticReloadMarked());
     });
 
-    it("ignores a pagehide that does not enter the cache", () => {
+    it("ignores a pagehide that does not enter the cache", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       setup.startDbWorker();
 
       setup.dispatchPageTransition("pagehide", false);
@@ -419,8 +589,9 @@ describe("createEvoluDeps", () => {
       assertSame(setup.reloadApp.mock.callCount(), 0);
     });
 
-    it("ends its DbWorkers when disposed, and then ignores the cache", () => {
+    it("ends its DbWorkers when disposed, and then ignores the cache", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       setup.startDbWorker();
 
       setup.disposeDeps();
@@ -436,8 +607,9 @@ describe("createEvoluDeps", () => {
     const firstWorkerId = createIdFromString<"SharedWorker">("first");
     const relaunchedWorkerId = createIdFromString<"SharedWorker">("relaunched");
 
-    it("reloads at once when its worker connects again", () => {
+    it("reloads at once when its worker connects again", async () => {
       using setup = setupWebEvoluDeps({ hasFocus: true });
+      await setup.ready;
       setup.connect(firstWorkerId);
 
       setup.connect(relaunchedWorkerId);
@@ -446,8 +618,9 @@ describe("createEvoluDeps", () => {
       assertFalse(setup.isAutomaticReloadMarked());
     });
 
-    it("reloads at once when its worker reports waiting again", () => {
+    it("reloads at once when its worker reports waiting again", async () => {
       using setup = setupWebEvoluDeps({ hasFocus: true });
+      await setup.ready;
       setup.connect(firstWorkerId);
 
       setup.post({ type: "Waiting", workerId: relaunchedWorkerId });
@@ -456,8 +629,9 @@ describe("createEvoluDeps", () => {
       assertEqual(setup.builds.posted, [{ type: "BuildWaitingRequest" }]);
     });
 
-    it("reloads at once when a waiting tab's worker connects as another worker", () => {
+    it("reloads at once when a waiting tab's worker connects as another worker", async () => {
       using setup = setupWebEvoluDeps({ hasFocus: true });
+      await setup.ready;
       setup.post({ type: "Waiting", workerId: firstWorkerId });
       setup.post({ type: "Error", error: { type: "OtherBuildRunningError" } });
 
@@ -475,8 +649,9 @@ describe("createEvoluDeps", () => {
       ]);
     });
 
-    it("reloads at once when a waiting tab's worker waits as another worker", () => {
+    it("reloads at once when a waiting tab's worker waits as another worker", async () => {
       using setup = setupWebEvoluDeps({ hasFocus: true });
+      await setup.ready;
       setup.post({ type: "Waiting", workerId: firstWorkerId });
 
       setup.post({ type: "Waiting", workerId: relaunchedWorkerId });
@@ -487,8 +662,9 @@ describe("createEvoluDeps", () => {
       ]);
     });
 
-    it("does not reload when its waiting worker connects", () => {
+    it("does not reload when its waiting worker connects", async () => {
       using setup = setupWebEvoluDeps({ hasFocus: true });
+      await setup.ready;
       setup.post({ type: "Waiting", workerId: firstWorkerId });
 
       setup.connect(firstWorkerId);
@@ -515,8 +691,9 @@ describe("createEvoluDeps", () => {
       type: "BuildWaitingRequest",
     };
 
-    it("announces its build when its worker waits and when asked", () => {
+    it("announces its build when its worker waits and when asked", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
 
       setup.post({ type: "Waiting", workerId: ownWorkerId });
       setup.receive(buildWaitingRequest);
@@ -527,8 +704,9 @@ describe("createEvoluDeps", () => {
       ]);
     });
 
-    it("asks waiting tabs to announce once it connects, and stops announcing", () => {
+    it("asks waiting tabs to announce once it connects, and stops announcing", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       setup.post({ type: "Waiting", workerId: ownWorkerId });
 
       setup.connect(ownWorkerId);
@@ -540,8 +718,9 @@ describe("createEvoluDeps", () => {
       ]);
     });
 
-    it("does not announce its build after an automatic reload", () => {
+    it("does not announce its build after an automatic reload", async () => {
       using setup = setupWebEvoluDeps({ isAutomaticReload: true });
+      await setup.ready;
 
       setup.post({ type: "Waiting", workerId: ownWorkerId });
       setup.receive(buildWaitingRequest);
@@ -551,8 +730,9 @@ describe("createEvoluDeps", () => {
       assertFalse(setup.isAutomaticReloadMarked());
     });
 
-    it("reloads at once when another build waits and the user is not in the tab", () => {
+    it("reloads at once when another build waits and the user is not in the tab", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       setup.connect(ownWorkerId);
 
       setup.receive(otherBuildWaiting);
@@ -562,9 +742,10 @@ describe("createEvoluDeps", () => {
       assertSame(setup.getReloadedFor(), otherWorkerId);
     });
 
-    it("reloads the tab the user is in once it loses focus", (t) => {
+    it("reloads the tab the user is in once it loses focus", async (t) => {
       t.mock.timers.enable({ apis: ["setInterval"] });
       using setup = setupWebEvoluDeps({ hasFocus: true });
+      await setup.ready;
       setup.connect(ownWorkerId);
 
       setup.receive(otherBuildWaiting);
@@ -580,8 +761,9 @@ describe("createEvoluDeps", () => {
       assertSame(setup.reloadApp.mock.callCount(), 1);
     });
 
-    it("reloads once it connects for another build announced while it waited", () => {
+    it("reloads once it connects for another build announced while it waited", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
       setup.post({ type: "Waiting", workerId: ownWorkerId });
 
       setup.receive(otherBuildWaiting);
@@ -591,8 +773,33 @@ describe("createEvoluDeps", () => {
       assertSame(setup.reloadApp.mock.callCount(), 1);
     });
 
-    it("ignores its own worker and invalid messages", () => {
+    it("remembers another build announced while its storage probe is pending", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const probe = Promise.withResolvers<unknown>();
+      using setup = setupWebEvoluDeps({
+        storageProbe: probe.promise,
+        hasFocus: true,
+      });
+      setup.receive(otherBuildWaiting);
+      assertSame(setup.getSharedWorkerCount(), 0);
+      probe.resolve(undefined);
+      await setup.ready;
+
+      setup.post({ type: "Waiting", workerId: ownWorkerId });
+      setup.connect(ownWorkerId);
+      setup.setFocus(false);
+      t.mock.timers.tick(1000);
+
+      assertSame(setup.reloadApp.mock.callCount(), 1);
+      assertEqual(setup.builds.posted, [
+        { type: "BuildWaiting", workerId: ownWorkerId },
+        buildWaitingRequest,
+      ]);
+    });
+
+    it("ignores its own worker and invalid messages", async () => {
       using setup = setupWebEvoluDeps();
+      await setup.ready;
 
       setup.receive({ type: "BuildWaiting", workerId: ownWorkerId });
       setup.connect(ownWorkerId);
@@ -602,8 +809,9 @@ describe("createEvoluDeps", () => {
       assertSame(setup.reloadApp.mock.callCount(), 0);
     });
 
-    it("reloads at most once for each waiting worker", () => {
+    it("reloads at most once for each waiting worker", async () => {
       using setup = setupWebEvoluDeps({ reloadedFor: otherWorkerId });
+      await setup.ready;
       setup.connect(ownWorkerId);
 
       setup.receive(otherBuildWaiting);
@@ -614,8 +822,9 @@ describe("createEvoluDeps", () => {
       assertSame(setup.getReloadedFor(), `${otherWorkerId},${thirdWorkerId}`);
     });
 
-    it("does not reload without session storage", () => {
+    it("does not reload without session storage", async () => {
       using setup = setupWebEvoluDeps({ isSessionStorageAvailable: false });
+      await setup.ready;
       setup.connect(ownWorkerId);
 
       setup.receive(otherBuildWaiting);
@@ -623,9 +832,10 @@ describe("createEvoluDeps", () => {
       assertSame(setup.reloadApp.mock.callCount(), 0);
     });
 
-    it("does not reload once disposed", (t) => {
+    it("does not reload once disposed", async (t) => {
       t.mock.timers.enable({ apis: ["setInterval"] });
       using setup = setupWebEvoluDeps({ hasFocus: true });
+      await setup.ready;
       setup.connect(ownWorkerId);
       setup.receive(otherBuildWaiting);
 
@@ -644,6 +854,8 @@ describe("createEvoluDeps", () => {
  * synchronously.
  */
 const setupWebEvoluDeps = ({
+  storageProbe = Promise.resolve(undefined),
+  onSharedWorkerUnsupported,
   hasFocus: initialHasFocus = false,
   isAutomaticReload = false,
   isSessionStorageAvailable = true,
@@ -651,7 +863,11 @@ const setupWebEvoluDeps = ({
   reloadedFor,
   storage,
   requestPersistentStorage,
+  useSharedWorkerPolyfill = false,
 }: {
+  /** Controls the single storage probe, including a deliberately pending one. */
+  storageProbe?: Promise<unknown>;
+  onSharedWorkerUnsupported?: () => void;
   hasFocus?: boolean;
   isAutomaticReload?: boolean;
   isSessionStorageAvailable?: boolean;
@@ -662,27 +878,33 @@ const setupWebEvoluDeps = ({
   /** Stands in for `navigator.storage`. */
   storage?: Pick<StorageManager, "persist" | "persisted">;
   requestPersistentStorage?: () => void;
+  useSharedWorkerPolyfill?: boolean;
 } = {}) => {
   using disposer = new DisposableStack();
   const sharedWorkerPort = createClosableNativePort<unknown>();
+  const nativeSharedWorker = Object.assign(new EventTarget(), {
+    port: sharedWorkerPort as unknown as NativeMessagePort<never, unknown>,
+  });
+  const SharedWorker = mock.fn(function () {
+    return nativeSharedWorker;
+  });
   disposer.use(
     testStubGlobal(
       "SharedWorker",
-      class {
-        readonly port = sharedWorkerPort as unknown as NativeMessagePort<
-          never,
-          unknown
-        >;
-      },
+      useSharedWorkerPolyfill ? undefined : SharedWorker,
     ),
   );
   const createFakeDbWorker = () =>
-    Object.assign(new EventTarget(), {
-      ...createClosableNativePort(),
+    Object.assign(createClosableNativePort<unknown>(), {
       terminate: mock.fn<() => void>(),
     });
   const dbWorkers: Array<ReturnType<typeof createFakeDbWorker>> = [];
-  const Worker = mock.fn(function () {
+  const workerOptions: Array<WorkerOptions | undefined> = [];
+  const Worker = mock.fn(function (
+    _url: string | URL,
+    options?: WorkerOptions,
+  ) {
+    workerOptions.push(options);
     const dbWorker = createFakeDbWorker();
     dbWorkers.push(dbWorker);
     return dbWorker;
@@ -769,18 +991,30 @@ const setupWebEvoluDeps = ({
   );
   let hasFocus = initialHasFocus;
   disposer.use(testStubGlobal("document", { hasFocus: () => hasFocus }));
-  if (storage) {
-    disposer.use(
-      testStubGlobal("navigator", { locks: navigator.locks, storage }),
-    );
-  }
+  const getDirectory = mock.fn(() => storageProbe);
+  disposer.use(
+    testStubGlobal("navigator", {
+      locks: navigator.locks,
+      storage: {
+        getDirectory,
+        persist: () => Promise.resolve(false),
+        persisted: () => Promise.resolve(false),
+        ...storage,
+      },
+    }),
+  );
   const reloadApp = mock.fn<ReloadApp>();
 
   const deps = createEvoluDeps({
     console: createConsole({ level: "silent" }),
     reloadApp,
     ...(requestPersistentStorage && { requestPersistentStorage }),
+    ...(onSharedWorkerUnsupported && { onSharedWorkerUnsupported }),
   });
+  const persistence = deps.getDevicePersistence();
+  const ready = storageProbe
+    .then(waitForMacrotask, waitForMacrotask)
+    .then(() => persistence);
   const builds = channels.find(
     (channel) => channel.name === buildsBroadcastChannelName,
   );
@@ -792,12 +1026,16 @@ const setupWebEvoluDeps = ({
 
   return {
     deps,
+    ready,
     builds,
     reloadApp,
     sharedWorkerPort,
+    nativeSharedWorker,
     post,
     dbWorkers,
+    getSharedWorkerCount: (): number => SharedWorker.mock.callCount(),
     getDbWorkerCount: (): number => Worker.mock.callCount(),
+    getWorkerOptions: () => workerOptions,
     /**
      * Starts a DbWorker in this tab, as the SharedWorker asks its leader, and
      * returns its init with the init's port, as the SharedWorker sees it.
@@ -811,6 +1049,7 @@ const setupWebEvoluDeps = ({
         sqliteSchema: { tables: {}, indexes: [] },
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
+        consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
         sharedWorkerId: createIdFromString<"SharedWorker">("worker"),
         port: port as unknown as NativeMessagePort<
           DbWorkerOutput,
@@ -850,6 +1089,7 @@ const setupWebEvoluDeps = ({
         type: "Connected",
         workerId,
         syncStateChannelName: `evolu:sync-state:${workerId}`,
+        consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
       });
     },
     setFocus: (value: boolean): void => {
@@ -882,9 +1122,10 @@ const waitForMacrotask = (): Promise<void> =>
 const isLockAvailable = (name: string): Promise<boolean> =>
   navigator.locks.request(name, { ifAvailable: true }, (lock) => lock !== null);
 
-const createClosableNativePort = <Output = never>() => ({
-  close: mock.fn(),
-  onmessage: null as ((event: MessageEvent<Output>) => void) | null,
-  postMessage:
-    mock.fn<(message: unknown, transfer?: ReadonlyArray<unknown>) => void>(),
-});
+const createClosableNativePort = <Output = never>() =>
+  Object.assign(new EventTarget(), {
+    close: mock.fn(),
+    onmessage: null as ((event: MessageEvent<Output>) => void) | null,
+    postMessage:
+      mock.fn<(message: unknown, transfer?: ReadonlyArray<unknown>) => void>(),
+  });

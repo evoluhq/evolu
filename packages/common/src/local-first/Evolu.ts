@@ -39,7 +39,7 @@ import {
 } from "../Object.ts";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.ts";
 import { createRefCountByKey } from "../RefCount.ts";
-import { err, ok, type Result } from "../Result.ts";
+import { err, ok, trySync, type Result } from "../Result.ts";
 import { createSet, isNonEmptySet } from "../Set.ts";
 import {
   SqliteBoolean,
@@ -48,7 +48,7 @@ import {
 } from "../Sqlite.ts";
 import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.ts";
 import { createStore } from "../Store.ts";
-import type { Task } from "../Task.ts";
+import { callback, type Task } from "../Task.ts";
 import {
   brand,
   createId,
@@ -116,12 +116,16 @@ import type {
 import { evoluSchemaToSqliteSchema, isLocalOnlyTable } from "./Schema.ts";
 import type {
   ConsoleEntryOrError,
+  CreateMemoryInstanceWorkerDep,
+  CreateStoredWorkerDep,
   EvoluInput,
   EvoluOutput,
   OtherBuildRunningError,
   OwnerSyncStatus,
   PendingSyncRoute,
-  SharedWorkerDep,
+  SharedWorker,
+  SharedWorkerInput,
+  SharedWorkerOutput,
   SyncState,
   syncStateToOwnerSyncStatus,
   syncStateToRelaySyncStates,
@@ -143,10 +147,10 @@ export interface EvoluConfig {
    * local database. Changing either opens a different database. Keep `appName`
    * stable across ordinary application updates.
    *
-   * Instances that share an `appName` and AppOwner, and keep their database the
-   * same way, stored or in memory (see {@link EvoluConfig.memoryOnly}), open the
-   * same database and must use the same schema. Evolu applies the schema of the
-   * first instance and later instances join it.
+   * Stored instances that share an `appName` and AppOwner open the same
+   * database and must use the same schema. Evolu applies the schema of the
+   * first instance and later instances join it. Each memory instance has its
+   * own database; see {@link EvoluConfig.memoryOnly}.
    *
    * A different app name lets you create a separate local replica for the same
    * AppOwner—for example, to test a different SQLite implementation or index
@@ -202,12 +206,33 @@ export interface EvoluConfig {
    * A database kept in memory, with this option or where the platform offers no
    * persistent storage, has a name of its own, so it never shares a local
    * database, lock, or files with the stored database of the same
-   * {@link AppOwner}. Instances of one `appName` and `appOwner` kept in memory
-   * share one memory database, as stored instances share one stored database.
-   * Both still sync the owner, like any two databases of it, so while a stored
-   * instance of the owner syncs on this device, the changes made in memory are
-   * stored on the device too. To keep nothing on the device, dispose the stored
-   * instances of the owner first.
+   * {@link AppOwner}. Each memory instance gets a random name and its own
+   * database for its lifetime.
+   *
+   * On the web, a memory instance exchanges changes with every other instance,
+   * stored instances of the same owner included, only through relays, so not
+   * offline. Its own tab hosts its workers. Closing or reloading its tab, or
+   * entering the back-forward cache, ends the instance and loses its data.
+   *
+   * Web dependencies check storage once when they are created. If storage is
+   * available, they start the stored worker even when every instance uses this
+   * option, and Evolu may then reload the whole page: when another tab loads a
+   * new version of the app, when Safari relaunches the stored worker, or, in a
+   * page that also stores databases, when one was written by a newer version.
+   * The reload ends every instance in the page, memory instances too, losing
+   * their unsynced changes. When the browser refuses storage, the stored worker
+   * never starts and Evolu never reloads the page for these reasons. Returning
+   * from the back-forward cache and the default reload after
+   * {@link Evolu.deleteDatabase} still apply.
+   *
+   * On in-process platforms such as React Native, the shared worker forwards
+   * each change one running database uploads to the others that synchronize the
+   * owner, even offline. A database started later gets earlier changes only
+   * from a relay.
+   *
+   * Memory and stored instances can still synchronize the same owner, so
+   * changes made in memory can reach a stored database too. To keep nothing on
+   * the device, dispose the stored instances of the owner first.
    *
    * Useful for testing or temporary sessions. Data that exists only in this
    * database is lost when the database closes.
@@ -377,11 +402,11 @@ export interface EvoluConfig {
 /**
  * Application name.
  *
- * Evolu uses AppName as the base prefix for {@link Evolu.name}. The final
- * instance name is derived per {@link AppOwner} as
- * `${appName}-${createIdFromString(appOwner.id)}`, or for a database kept in
- * memory as `${appName}-${createIdFromString("MemoryDatabase", appOwner.id)}`;
- * see {@link EvoluConfig.memoryOnly}.
+ * Evolu uses AppName as the base prefix for {@link Evolu.name}. The final stored
+ * database name is derived per {@link AppOwner} as
+ * `${appName}-${createIdFromString(appOwner.id)}`. A memory instance uses the
+ * same prefix with a hash of its owner, a memory marker, and a random instance
+ * ID, so every instance gets its own name; see {@link EvoluConfig.memoryOnly}.
  *
  * Uses the same safe alphabet as {@link UrlSafeString} (letters, digits, `-`,
  * `_`) and must be between 1 and 41 characters.
@@ -432,8 +457,8 @@ export interface Evolu<
 > extends AsyncDisposable {
   /**
    * Evolu instance name is derived from {@link EvoluConfig.appName},
-   * {@link AppOwner}'s hash, and whether the database is kept in memory; see
-   * {@link AppName}.
+   * {@link AppOwner}'s hash, and, for a memory database, a random instance ID;
+   * see {@link AppName}.
    */
   readonly name: Name;
 
@@ -445,8 +470,9 @@ export interface Evolu<
    * before it creates the instance.
    *
    * Apps tell the user when it is `NotPersisted`, because then data that has
-   * not synced is lost when the database closes. Apps must not tell the user
-   * that data is saved on the device when it is `Unknown`.
+   * not synced is lost when the instance ends. On the web this includes its tab
+   * entering the back-forward cache. Apps must not tell the user that data is
+   * saved on the device when it is `Unknown`.
    *
    * ### Example
    *
@@ -1097,11 +1123,11 @@ export type DeleteOwnerError =
  *
  * - `Persisted`: the platform stores it in the app's own file, as React Native
  *   does.
- * - `NotPersisted`: it is kept in memory, under a name of its own, because
- *   {@link EvoluConfig.memoryOnly} asks for that or the platform offers no
- *   persistent storage, as a browser does in Safari's Private Browsing or a
- *   Firefox private window. Data that has not synced is lost when the database
- *   closes.
+ * - `NotPersisted`: it is kept in memory, under a random per-instance name,
+ *   because {@link EvoluConfig.memoryOnly} asks for that or the platform offers
+ *   no persistent storage, as a browser does in Safari's Private Browsing or a
+ *   Firefox private window. Data that has not synced is lost when the instance
+ *   ends, including when its tab enters the back-forward cache on the web.
  * - `Unknown`: it is stored, but the platform may delete it. A browser can keep
  *   storage only for a private session, as Chrome's incognito does without
  *   telling the app, delete it after a while or when disk space runs low, and
@@ -1253,15 +1279,21 @@ export interface EvoluErrorDep {
    * An {@link UnknownError} leaves Evolu in an unknown state, so the app can
    * only ask the user to close all its tabs. A failed shared worker closes
    * itself, and a database whose worker failed stays refused while any tab uses
-   * it, so the app opened again starts over. Some errors reach every tab, such
-   * as an unexpected failure of the shared worker. An app that forwards this
-   * store to an error tracker from each tab then reports such an error once per
-   * tab. A failed worker that a tab hosts, except a web worker whose script
-   * failed to load, is also reported by that tab's error reporter, its error
-   * handlers on the web or `ErrorUtils` in React Native, so an app that sends
-   * both to one error tracker sees that failure twice. A tab hosts each
-   * database's worker, and also the shared worker in React Native or in a
-   * browser without SharedWorker.
+   * it, so the app opened again starts over. Some errors reach every tab
+   * connected to the stored worker, such as an unexpected failure of that
+   * worker. An app that forwards this store to an error tracker from each tab
+   * then reports such an error once per tab. On the web, dependencies start the
+   * stored worker as soon as their initial storage check succeeds, even before
+   * an instance exists. When the browser refuses storage, these dependencies
+   * start no stored worker and listen to none, so this store includes only
+   * errors from the workers of memory instances these dependencies created. A
+   * memory instance worker's failure reaches only its own tab. A failed worker
+   * that a tab hosts, except a web worker whose script failed to load, is also
+   * reported by that tab's error reporter, its error handlers on the web or
+   * `ErrorUtils` in React Native, so an app that sends both to one error
+   * tracker sees that failure twice. A tab hosts each database's worker, on the
+   * web each of its memory instances' workers, and also the shared worker in
+   * React Native or in a browser without SharedWorker.
    *
    * ### Example
    *
@@ -1318,12 +1350,19 @@ export interface EvoluErrorDep {
  */
 export interface SyncStateDep {
   /**
-   * {@link ReadonlyStore} of the latest {@link SyncState} shared by all
-   * {@link Evolu} instances, or null before the shared worker sends its first
-   * snapshot. It lists every database the shared worker serves, including other
-   * tabs', so an app finds its own by {@link Evolu.name}. Apps show users an
-   * owner's {@link OwnerSyncStatus}, from {@link syncStateToOwnerSyncStatus} or a
-   * framework binding's `useOwnerSyncStatus`; views of each relay use
+   * {@link ReadonlyStore} of the latest {@link SyncState} from these
+   * dependencies' workers, or null before any of them sends a snapshot. It
+   * lists every database the shared worker serves, other tabs' included. On the
+   * web, memory databases run in workers of their own, so it also lists the
+   * memory databases of instances these dependencies created. On the web,
+   * dependencies start the stored worker as soon as their initial storage check
+   * succeeds, even before an instance exists; when the browser refuses storage,
+   * the store includes only the memory databases of instances these
+   * dependencies created. Each worker reports its own transports, so one relay
+   * can appear once per worker. An app finds its own database by
+   * {@link Evolu.name}. Apps show users an owner's {@link OwnerSyncStatus}, from
+   * {@link syncStateToOwnerSyncStatus} or a framework binding's
+   * `useOwnerSyncStatus`; views of each relay use
    * {@link syncStateToRelaySyncStates}.
    *
    * Each snapshot keeps the previous snapshot's object for every part that did
@@ -1346,10 +1385,15 @@ export interface SyncStateDep {
    *   type SyncStateDep,
    * } from "@evolu/common/local-first";
    *
-   * const openRelayLabels = (deps: SyncStateDep): ReadonlyArray<string> =>
-   *   (deps.syncState.get()?.transports ?? [])
-   *     .filter(({ connection }) => connection.type === "Open")
-   *     .map(({ label }) => label);
+   * const openRelayLabels = (
+   *   deps: SyncStateDep,
+   * ): ReadonlyArray<string> => [
+   *   ...new Set(
+   *     (deps.syncState.get()?.transports ?? [])
+   *       .filter(({ connection }) => connection.type === "Open")
+   *       .map(({ label }) => label),
+   *   ),
+   * ];
    *
    * using syncState = createStore<SyncState | null>(null);
    * assertEqual(openRelayLabels({ syncState }), []);
@@ -1357,6 +1401,16 @@ export interface SyncStateDep {
    * const deps = testCreateDeps();
    * syncState.set({
    *   transports: [
+   *     {
+   *       type: "WebSocket",
+   *       id: createId<"SyncTransport">(deps),
+   *       label: RelayUrl.orThrow("wss://relay.example/"),
+   *       connection: {
+   *         type: "Open",
+   *         openedAt: Millis.orThrow(1000),
+   *         error: null,
+   *       },
+   *     },
    *     {
    *       type: "WebSocket",
    *       id: createId<"SyncTransport">(deps),
@@ -1393,19 +1447,37 @@ export interface RequestPersistentStorageDep {
 /**
  * Tells what the platform can promise about the databases it stores.
  *
- * {@link createEvolu} asks it for each instance without
- * {@link EvoluConfig.memoryOnly}. `NotPersisted` means the platform offers no
- * persistent storage now, as a browser does in Safari's Private Browsing or a
- * Firefox private window, so the instance keeps its database in memory, under
- * the name `memoryOnly` gives it. A platform that cannot tell a private session
- * from a storage failure answers `NotPersisted` for both: memory loses nothing
- * that refusing to start would have kept, and the stored database stays
- * untouched.
+ * {@link createEvoluDeps} asks it once and gives every instance without
+ * {@link EvoluConfig.memoryOnly} the same answer. `NotPersisted` means the
+ * platform offers no persistent storage now, as a browser does in Safari's
+ * Private Browsing or a Firefox private window, so the instance keeps its
+ * database in memory, under the random per-instance name `memoryOnly` gives it.
+ * A platform that cannot tell a private session from a storage failure answers
+ * `NotPersisted` for both: memory loses nothing that refusing to start would
+ * have kept, and the stored database stays untouched.
+ *
+ * A later storage failure is reported through the normal error path; it never
+ * silently changes an instance from stored to memory.
  *
  * @group Construction
  */
 export interface DevicePersistenceDep {
   readonly getDevicePersistence: () => Promise<DevicePersistence>;
+}
+
+/**
+ * The worker {@link CreateStoredWorkerDep} started, once the platform's storage
+ * check answers.
+ *
+ * Where that worker did not start, because storage is refused on a platform
+ * whose memory instances have workers of their own or because the deps were
+ * disposed first, or where it failed to start, it resolves to a worker that
+ * drops every message.
+ *
+ * @group Construction
+ */
+export interface StoredWorkerDep {
+  readonly storedWorker: Promise<SharedWorker>;
 }
 
 /**
@@ -1419,14 +1491,18 @@ export interface DevicePersistenceDep {
 export type EvoluDeps = EvoluPlatformDeps &
   ConsoleDep &
   EvoluErrorDep &
+  StoredWorkerDep &
   SyncStateDep &
   Disposable;
 
 /**
- * Platform-specific dependencies required to create {@link EvoluDeps}.
+ * Platform-specific dependencies {@link createEvoluDeps} passes to every
+ * {@link createEvolu} instance.
  *
  * Provides worker and channel adapters plus optional platform integrations for
- * logging, synchronous UI flush, and persistent storage requests.
+ * logging, synchronous UI flush, persistent storage requests, and
+ * {@link CreateMemoryInstanceWorkerDep} for workers owned by memory instances.
+ * {@link createEvoluDeps} also takes {@link CreateStoredWorkerDep}.
  *
  * @group Construction
  */
@@ -1436,8 +1512,8 @@ export type EvoluPlatformDeps = CreateDbWorkerDep &
   DevicePersistenceDep &
   LockManagerDep &
   ReloadAppDep &
-  SharedWorkerDep &
   Partial<ConsoleDep> &
+  Partial<CreateMemoryInstanceWorkerDep> &
   Partial<FlushSyncDep> &
   Partial<RequestPersistentStorageDep>;
 
@@ -1448,136 +1524,261 @@ export type EvoluPlatformDeps = CreateDbWorkerDep &
  * Call this once per platform and reuse the returned deps when creating
  * multiple Evolu instances. The returned deps object owns long-lived resources
  * such as worker channels and the shared {@link EvoluErrorDep.evoluError} and
- * {@link SyncStateDep.syncState} stores.
+ * {@link SyncStateDep.syncState} stores. The sync state includes the stored
+ * worker and every private memory worker created through these deps. Where the
+ * platform provides {@link CreateMemoryInstanceWorkerDep}, as the web does, a
+ * memory instance owns and disposes its private worker; its errors and console
+ * entries reach only these deps.
+ *
+ * It checks storage once and starts the stored worker as soon as the check
+ * answers, without waiting for an instance. Where storage is refused and memory
+ * instances have workers of their own, it never starts it, so such a browser
+ * tab takes no part in stored workers' build coordination.
  *
  * Dispose it only during app shutdown.
  *
  * @group Construction
  */
-export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
-  const { createBroadcastChannel, sharedWorker } = deps;
+export const createEvoluDeps = (
+  deps: EvoluPlatformDeps & CreateStoredWorkerDep,
+): EvoluDeps => {
+  const { createBroadcastChannel, createMemoryInstanceWorker } = deps;
   const console = deps.console ?? createConsole();
-  // Opened when the worker connects.
-  let syncStateBroadcastChannel: BroadcastChannel<SyncState> | null = null;
-  let tabLeaderElection: Disposable | null = null;
+  // Each worker owns its sockets and tenants. Include private workers in this
+  // deps' snapshot, and remove their entries when their instance ends.
+  const statesByWorker = new Map<SharedWorker, SyncState>();
+  const workers = new Set<Disposable>();
+  let isDisposed = false;
 
   using disposer = new DisposableStack();
-  disposer.use(sharedWorker);
   const evoluError = disposer.use(createStore<EvoluError | null>(null));
   const syncState = disposer.use(createStore<SyncState | null>(null));
   disposer.defer(() => {
-    syncStateBroadcastChannel?.[Symbol.dispose]();
+    isDisposed = true;
+    // Whole-deps shutdown keeps the last snapshot and notifies no subscribers,
+    // whose errors could otherwise interrupt disposal of the remaining workers.
+    statesByWorker.clear();
+    for (const worker of workers) worker[Symbol.dispose]();
   });
 
-  const consoleEntryOrErrorBroadcastChannel = disposer.use(
-    createBroadcastChannel<ConsoleEntryOrError>(
-      consoleEntryOrErrorBroadcastChannelName,
-    ),
-  );
   const setEvoluError = (error: EvoluError): void => {
     if (evoluError.get()?.type === "UnsupportedDbVersionError") return;
     evoluError.set(error);
   };
 
-  consoleEntryOrErrorBroadcastChannel.onMessage = (message) => {
-    switch (message.type) {
-      case "ConsoleEntry":
-        console.write(message.entry);
-        // Fallback channel for unexpected errors without EvoluError typing.
-        if (message.entry.method === "error") {
-          setEvoluError(createUnknownError(message.entry.args));
-        }
-        break;
-
-      case "Error": {
-        // Every build shares this channel, so another build's worker can post
-        // an error type this build does not post, such as an older build's
-        // sync error. That build's own tabs show it, so this tab only logs it.
-        if (message.error.type === "UnknownError") setEvoluError(message.error);
-        // Keep typed errors visible in logs as operational failures.
-        console.error(message.error);
-        break;
-      }
-
-      default:
-        exhaustiveCheck(message);
-    }
+  const publishSyncState = (): void => {
+    const states = [...statesByWorker.values()];
+    const state: SyncState = {
+      transports: states.flatMap((state) => state.transports),
+      tenants: states.flatMap((state) => state.tenants),
+    };
+    // Structured clones get their unchanged parts back, including when another
+    // worker supplied the snapshot, so unrelated instances keep their identity.
+    // An unchanged merged snapshot keeps the store's previous value.
+    const previous = syncState.get();
+    syncState.set(
+      previous ? shareStructure(previous, state, syncStateItemToKey) : state,
+    );
   };
 
-  sharedWorker.port.onMessage = (message) => {
-    switch (message.type) {
-      case "DbWorkerInit":
-        deps.createDbWorker().postMessage(message, [message.port]);
-        break;
+  const connectWorker = (
+    sharedWorker: SharedWorker,
+    mode: "stored" | "memory-instance",
+  ): SharedWorker => {
+    let syncStateBroadcastChannel: BroadcastChannel<SyncState> | null = null;
+    let tabLeaderElection: Disposable | null = null;
 
-      case "Error":
-        // Sent to this tab only: its database is refused, a mutation it made
-        // could not be stored, or its worker still waits for another build.
-        setEvoluError(message.error);
-        console.error(message.error);
-        break;
+    using workerDisposer = new DisposableStack();
+    workerDisposer.use(sharedWorker);
+    workerDisposer.defer(() => {
+      tabLeaderElection?.[Symbol.dispose]();
+      syncStateBroadcastChannel?.[Symbol.dispose]();
+      if (statesByWorker.delete(sharedWorker)) publishSyncState();
+    });
+    const connectedResources = workerDisposer.use(new DisposableStack());
+    const listenForConsoleEntries = (channelName: string): void => {
+      const consoleEntryOrErrorBroadcastChannel = connectedResources.use(
+        createBroadcastChannel<ConsoleEntryOrError>(channelName),
+      );
+      consoleEntryOrErrorBroadcastChannel.onMessage = (message) => {
+        switch (message.type) {
+          case "ConsoleEntry":
+            console.write(message.entry);
+            // Fallback channel for unexpected errors without EvoluError typing.
+            if (message.entry.method === "error") {
+              setEvoluError(createUnknownError(message.entry.args));
+            }
+            break;
 
-      case "Waiting":
-        // Platform adapters act on it; see Builds in the Shared module.
-        break;
+          case "Error": {
+            // Stored workers of every build share their channel, so another
+            // build can post an error type this build does not post, such as
+            // an older build's sync error. That build's own tabs show it, so
+            // this tab only logs it. A memory worker's channel reaches only
+            // its owning deps.
+            if (message.error.type === "UnknownError")
+              setEvoluError(message.error);
+            // Keep typed errors visible in logs as operational failures.
+            console.error(message.error);
+            break;
+          }
 
-      case "Connected": {
-        assert(!syncStateBroadcastChannel, "The shared worker connects once.");
-        // The wait the error reported is over.
-        if (evoluError.get()?.type === "OtherBuildRunningError") {
-          evoluError.set(null);
+          default:
+            exhaustiveCheck(message);
         }
-        // The worker is the channel's only sender, and one sender's messages
-        // arrive in order, so the last one is current.
-        syncStateBroadcastChannel = createBroadcastChannel<SyncState>(
-          message.syncStateChannelName,
-        );
-        syncStateBroadcastChannel.onMessage = (state) => {
-          // Every snapshot arrives as a new structured clone, so its unchanged
-          // parts get the previous snapshot's objects back, and an unchanged
-          // snapshot leaves the store as it is.
-          const previous = syncState.get();
-          syncState.set(
-            previous
-              ? shareStructure(previous, state, syncStateItemToKey)
-              : state,
+      };
+    };
+    if (mode === "stored")
+      listenForConsoleEntries(consoleEntryOrErrorBroadcastChannelName);
+    const { port } = sharedWorker;
+    port.onMessage = (message) => {
+      switch (message.type) {
+        case "DbWorkerInit": {
+          const dbWorker = deps.createDbWorker();
+          // A memory instance owns every DbWorker its private worker requests.
+          if (mode === "memory-instance") connectedResources.use(dbWorker);
+          dbWorker.postMessage(message, [message.port]);
+          break;
+        }
+
+        case "Error":
+          // Sent to this tab only: its database is refused, a mutation it made
+          // could not be stored, its stored worker still waits for another
+          // build, or its memory worker failed to load or reported an uncaught
+          // error.
+          setEvoluError(message.error);
+          console.error(message.error);
+          break;
+
+        case "Waiting":
+          // Platform adapters act on it; see Builds in the Shared module.
+          break;
+
+        case "Connected": {
+          assert(
+            !syncStateBroadcastChannel,
+            "The shared worker connects once.",
           );
-        };
-        // Asking only after listening misses no snapshot.
-        sharedWorker.port.postMessage({ type: "RequestSyncState" });
-        // Only this worker's tabs compete, so a tab of another worker never
-        // hosts its DbWorkers.
-        tabLeaderElection = acquireLeaderLockCallback(deps)(
-          `tab-${message.workerId}`,
-          () => {
-            sharedWorker.port.postMessage({
+          // Only the stored worker's connection ends the wait it reported.
+          if (
+            mode === "stored" &&
+            evoluError.get()?.type === "OtherBuildRunningError"
+          ) {
+            evoluError.set(null);
+          }
+          // The stored worker's channel is open since it started.
+          if (mode === "memory-instance") {
+            listenForConsoleEntries(message.consoleEntryOrErrorChannelName);
+          }
+          // This worker is its channel's only sender, and one sender's
+          // messages arrive in order, so its last snapshot is current.
+          syncStateBroadcastChannel = createBroadcastChannel<SyncState>(
+            message.syncStateChannelName,
+          );
+          syncStateBroadcastChannel.onMessage = (state) => {
+            statesByWorker.set(sharedWorker, state);
+            publishSyncState();
+          };
+          // Asking only after listening misses no snapshot.
+          port.postMessage({ type: "RequestSyncState" });
+          const announceTabLeader = (): void => {
+            port.postMessage({
               type: "AnnounceTabLeader",
               consoleLevel: console.getLevel(),
             });
-          },
-        );
-        break;
-      }
+          };
+          if (mode === "stored") {
+            // Only this stored worker's tabs compete to host its DbWorkers.
+            tabLeaderElection = acquireLeaderLockCallback(deps)(
+              `tab-${message.workerId}`,
+              announceTabLeader,
+            );
+          } else {
+            // The instance's own tab is its only host, for its whole lifetime.
+            announceTabLeader();
+          }
+          break;
+        }
 
-      default:
-        exhaustiveCheck(message);
-    }
+        default:
+          exhaustiveCheck(message);
+      }
+    };
+
+    const disposables = workerDisposer.move();
+    const connectedWorker: SharedWorker = {
+      port,
+      [Symbol.dispose]: () => {
+        workers.delete(connectedWorker);
+        disposables.dispose();
+      },
+    };
+    workers.add(connectedWorker);
+    return connectedWorker;
   };
 
-  disposer.defer(() => {
-    tabLeaderElection?.[Symbol.dispose]();
-  });
+  const createClosedWorker = (): SharedWorker => {
+    // A disposed port drops what instances post to it.
+    using channel = deps.createMessageChannel<
+      SharedWorkerInput,
+      SharedWorkerOutput
+    >();
+    return { port: channel.port1, [Symbol.dispose]: constVoid };
+  };
+
+  const startWorker = (
+    create: () => SharedWorker,
+    mode: "stored" | "memory-instance",
+  ): SharedWorker => {
+    const worker = trySync(create);
+    if (worker.ok) return connectWorker(worker.value, mode);
+    const error = createUnknownError(worker.error);
+    // Reported after the caller, so an evoluError subscriber that throws
+    // cannot reject the stored worker or end the Run creating an instance. A
+    // console output that throws does not keep it from evoluError either.
+    queueMicrotask(() => {
+      try {
+        console.error(error);
+      } finally {
+        setEvoluError(error);
+      }
+    });
+    return createClosedWorker();
+  };
+
+  const devicePersistence = deps.getDevicePersistence();
+  const storedWorker = devicePersistence.then((persistence) =>
+    !isDisposed &&
+    (persistence !== "NotPersisted" || !createMemoryInstanceWorker)
+      ? startWorker(deps.createStoredWorker, "stored")
+      : createClosedWorker(),
+  );
 
   return disposable<EvoluDeps>(
     {
       ...deps,
       console,
       evoluError,
+      getDevicePersistence: () => devicePersistence,
+      storedWorker,
       syncState,
+      ...(createMemoryInstanceWorker && {
+        createMemoryInstanceWorker: () =>
+          startWorker(createMemoryInstanceWorker, "memory-instance"),
+      }),
     },
     disposer,
   );
 };
+
+// Waits for a promise the platform settles, so aborting the waiting Task does
+// not wait for it.
+const promiseToTask = <T>(promise: Promise<T>): Task<T> =>
+  callback(({ resolve, reject }) => {
+    void promise.then((value) => {
+      resolve(ok(value));
+    }, reject);
+  });
 
 // Transports, tenants, owners, and routes come and go, so each is compared
 // with its previous self by its ID: a transport's id, a tenant's name, an
@@ -1597,7 +1798,7 @@ export const createEvolu =
   <S extends EvoluSchema>(
     schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
     config: EvoluConfig,
-  ): Task<Evolu<S>, never, EvoluPlatformDeps> =>
+  ): Task<Evolu<S>, never, EvoluPlatformDeps & StoredWorkerDep> =>
   async (run) => {
     const {
       appName,
@@ -1609,16 +1810,17 @@ export const createEvolu =
 
     const devicePersistence: DevicePersistence = config.memoryOnly
       ? "NotPersisted"
-      : await run.deps.getDevicePersistence();
+      : await run.ok(promiseToTask(run.deps.getDevicePersistence()));
     const memoryOnly = devicePersistence === "NotPersisted";
-    // A database kept in memory gets a name of its own, so it never shares a
-    // tenant, a lock, or files with the stored database of its owner. Its
-    // hash input, the owner ID's bytes and a suffix, is longer than an owner
-    // ID, so it never equals a stored name's input. An AppName has at most 41
-    // characters and an Id 22, so this is a Name.
+    const instanceId = createId<"EvoluInstance">(run.deps);
+    // Each memory instance has its own tenant, locks, and DbWorker everywhere.
+    // Its hash input, the owner ID's bytes followed by a memory marker and a
+    // random instance ID, is longer than an owner ID, so it never equals a
+    // stored name's input.
+    // An AppName has at most 41 characters and an Id 22, so this is a Name.
     const name = `${appName}-${
       memoryOnly
-        ? createIdFromString("MemoryDatabase", appOwner.id)
+        ? createIdFromString(`MemoryDatabase-${instanceId}`, appOwner.id)
         : createIdFromString(appOwner.id)
     }` as Name;
     const console = run.deps.console.child(name).child("Evolu");
@@ -1755,9 +1957,12 @@ export const createEvolu =
 
     // Scope worker/channel wiring and keep only postMessage outside.
     {
-      const id = createId<"EvoluInstance">(run.deps);
-      const { createMessageChannel, sharedWorker } = run.deps;
-      disposer.use(await run.ok(acquireLeaderLock(id)));
+      const { createMessageChannel } = run.deps;
+      const sharedWorker =
+        memoryOnly && run.deps.createMemoryInstanceWorker
+          ? disposer.use(run.deps.createMemoryInstanceWorker())
+          : await run.ok(promiseToTask(run.deps.storedWorker));
+      disposer.use(await run.ok(acquireLeaderLock(instanceId)));
 
       const evoluChannel = disposer.use(
         createMessageChannel<EvoluInput, EvoluOutput>(),
@@ -1932,7 +2137,7 @@ export const createEvolu =
         {
           type: "CreateEvolu",
           name,
-          id,
+          id: instanceId,
           consoleLevel: console.getLevel(),
           sqliteSchema: evoluSchemaToSqliteSchema(schema, config.indexes),
           encryptionKey: appOwner.encryptionKey,

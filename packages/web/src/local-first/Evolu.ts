@@ -1,11 +1,15 @@
 import {
+  callback,
   createUnknownError,
+  err,
   exhaustiveCheck,
+  ok,
   tryAsync,
   trySync,
   type ConsoleDep,
   type ReloadApp,
   type ReloadAppDep,
+  type Task,
   type UnknownError,
   type UnsupportedDbVersionError,
 } from "@evolu/common";
@@ -14,7 +18,9 @@ import type {
   SharedWorker as CommonSharedWorker,
   CreateDbWorker,
   DbWorkerInit,
+  CreateMemoryInstanceWorkerDep,
   Evolu,
+  EvoluConfig,
   EvoluDeps,
   RequestPersistentStorageDep,
   SharedWorkerId,
@@ -28,6 +34,7 @@ import {
   createEvoluDeps as createCommonEvoluDeps,
 } from "@evolu/common/local-first";
 import { reloadApp } from "../Platform.ts";
+import { createRun } from "../Task.ts";
 import {
   createBroadcastChannel,
   createMessageChannel,
@@ -48,29 +55,47 @@ export interface SharedWorkerUnsupportedDep {
 /**
  * Creates Evolu dependencies for the web platform.
  *
- * When another build of the app waits for this one, this tab reloads to load
- * the build the server now serves: at once if the user is not in the tab,
- * otherwise once they leave it. See Builds in the Shared module of
- * `@evolu/common`. A tab whose database refuses to start with
+ * Checks storage once when the deps are created. If it is available, the tab
+ * starts its stored worker as soon as that check resolves, without waiting for
+ * an instance. It then reloads for new builds until it closes, which also ends
+ * any {@link EvoluConfig.memoryOnly} instances. It reloads at once if the user
+ * is not in the tab, otherwise once they leave it. See Builds in the Shared
+ * module of `@evolu/common`. A tab whose database refuses to start with
  * {@link UnsupportedDbVersionError} reloads once for each stored version, even
  * while the user is in it, because the server may now serve a build that
  * supports the database. The error is reported when the reloaded build refuses
- * it too, or when the tab has no session storage. A tab whose worker was
+ * it too, or when the tab has no session storage. A tab whose stored worker was
  * relaunched without its state, as WebKit does when the process hosting it
- * ends, also reloads at once.
+ * ends, also reloads at once. Closing another tab can trigger that Safari
+ * relaunch and end this tab's memory instances when storage is available.
+ *
+ * If storage is refused, the tab never starts the stored worker, and build
+ * coordination never reloads it. The `syncState` store includes only the memory
+ * databases of instances these dependencies created. The `evoluError` store
+ * includes only errors from the workers of memory instances these dependencies
+ * created. The back-forward cache reload described below and
+ * {@link Evolu.deleteDatabase}'s default reload, without
+ * {@link EvoluConfig.onDatabaseDeleted}, still apply.
  *
  * When the page enters the browser's back-forward cache, as Safari does on
  * every navigation away, this tab ends its part as if it closed: it stops the
- * database workers it hosts, so another tab takes them over, the shared worker
- * ends this tab's Evolu instances, and the tab reloads if the user comes back
- * to it.
+ * database workers it hosts, so another tab takes over stored databases, and
+ * ends this tab's Evolu instances. Memory databases end with their instances.
+ * The tab reloads if the user comes back to it.
  *
  * Where the browser offers no persistent storage, as in Safari's Private
  * Browsing or a Firefox private window, the database is kept in memory, and
  * {@link Evolu.devicePersistence} resolves to `NotPersisted`, so the app can
- * tell the user. Data that exists only locally, or has not synced yet, is lost
- * when the tab hosting the database closes or navigates away, even while other
- * tabs stay open.
+ * tell the user. Each memory instance has its own database and workers in its
+ * own tab. When storage is refused, closing another tab leaves it intact.
+ * Explicit memory instances in a tab with storage also end when Evolu reloads
+ * that tab for a waiting build, a stored worker relaunch, or a database
+ * refusal. Data that exists only locally, or has not synced yet, is lost when
+ * the instance ends, including when its tab closes, reloads, or enters the
+ * back-forward cache. A memory instance exchanges changes with every other
+ * instance, stored instances of the same owner included, only through relays,
+ * so not offline. Each opens its own relay sockets, even beside a stored
+ * instance of the same owner.
  *
  * After the first local mutation of a database the browser stores, this tab
  * asks the browser once with `navigator.storage.persist()` not to delete the
@@ -119,6 +144,8 @@ export const createEvoluDeps = (
   let isPersistentStorageRequested = false;
 
   using disposer = new DisposableStack();
+  // Owns these deps' async work, so disposing them aborts it.
+  const run = disposer.use(createRun());
   const buildsBroadcastChannel = disposer.use(
     createBroadcastChannel<unknown>(buildsBroadcastChannelName),
   );
@@ -160,6 +187,8 @@ export const createEvoluDeps = (
   };
 
   // Builds of different releases share the channel, so messages are validated.
+  // Keep announcements until the stored worker connects: their tab may freeze
+  // before it can answer that worker's request.
   buildsBroadcastChannel.onMessage = (message) => {
     if (BuildWaitingRequest.is(message)) {
       announceWaitingBuild();
@@ -254,105 +283,135 @@ export const createEvoluDeps = (
   disposer.defer(() => {
     for (const dbWorker of dbWorkers) dbWorker[Symbol.dispose]();
   });
-  // Disposal stops waiting for DbWorkers to load, because the SharedWorker then
-  // requests a replacement elsewhere, and a refusal posted afterwards would
-  // refuse a database another tab serves.
-  const { signal: dbWorkerLoadSignal } = disposer.adopt(
-    new AbortController(),
-    (controller) => {
-      controller.abort();
-    },
-  );
-
   const createDbWorker: CreateDbWorker = () => {
     const nativeDbWorker = new Worker(
       new URL("Db.worker.js", import.meta.url),
       { type: "module" },
     );
-    const dbWorker = createWorker<DbWorkerInit, never>(nativeDbWorker);
-    dbWorkers.add(dbWorker);
-
+    const worker = createWorker<DbWorkerInit, never>(nativeDbWorker);
     // The DbWorker posts one message once its script has loaded, and the init
     // waits for it, because a worker that never runs cannot refuse its
-    // database, so the tab keeps the init's port to refuse it instead. A script
-    // that fails to load fires a plain Event at the Worker object
-    // (https://html.spec.whatwg.org/multipage/workers.html#worker-processing-model),
-    // and one that throws while it runs fires an ErrorEvent with the message
-    // and position but without the error value
-    // (https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception).
-    // An ErrorEvent stays uncanceled, so the browser still logs it and passes it
-    // to the page's own error handlers, while a plain Event reaches no other
-    // handler.
-    const loaded = Promise.withResolvers<UnknownError | null>();
-    const handleLoad = (event: Event): void => {
-      loaded.resolve(
-        event.type === "message"
-          ? null
-          : createUnknownError(
-              event instanceof ErrorEvent
-                ? {
-                    message: event.message,
-                    filename: event.filename,
-                    lineno: event.lineno,
-                    colno: event.colno,
-                  }
-                : { message: "The DbWorker failed to load." },
-            ),
-      );
-    };
-    nativeDbWorker.addEventListener("message", handleLoad, {
-      signal: dbWorkerLoadSignal,
-    });
-    nativeDbWorker.addEventListener("error", handleLoad, {
-      signal: dbWorkerLoadSignal,
-    });
+    // database, so the tab keeps the init's port to refuse it instead. Each
+    // DbWorker has its own Run: disposing it aborts the wait, because the
+    // SharedWorker then requests a replacement elsewhere, and a refusal posted
+    // afterwards would refuse a database another tab serves.
+    const dbWorkerRun = run.create();
+    const loaded = dbWorkerRun.abortable(
+      waitForWorkerLoad(
+        nativeDbWorker,
+        nativeDbWorker,
+        "The DbWorker failed to load.",
+      ),
+    );
 
-    return {
-      ...dbWorker,
+    const dbWorker: ReturnType<CreateDbWorker> = {
+      ...worker,
+      [Symbol.dispose]: () => {
+        dbWorkers.delete(dbWorker);
+        dbWorkerRun[Symbol.dispose]();
+        worker[Symbol.dispose]();
+      },
       postMessage: (init, transfer) => {
-        void loaded.promise.then((error) => {
-          if (!error) {
-            dbWorker.postMessage(init, transfer);
+        void loaded.then((result) => {
+          if (result.ok) {
+            worker.postMessage(init, transfer);
             return;
           }
+          if (result.error.type === "AbortError") return;
           createMessagePort(init.port).postMessage({
             type: "LeaderRefused",
-            error,
+            error: result.error,
           });
-          dbWorkers.delete(dbWorker);
           dbWorker[Symbol.dispose]();
         });
       },
     };
+    dbWorkers.add(dbWorker);
+    return dbWorker;
   };
 
-  const webSharedWorker = createSharedWorker<
-    SharedWorkerInput,
-    SharedWorkerOutput
-  >(
-    new SharedWorker(new URL("Shared.worker.js", import.meta.url), {
-      type: "module",
-    }),
-  );
-  let onSharedWorkerMessage: ((message: SharedWorkerOutput) => void) | null =
-    null;
-  const sharedWorker: CommonSharedWorker = {
-    ...webSharedWorker,
-    port: {
-      ...webSharedWorker.port,
-      get onMessage() {
-        return onSharedWorkerMessage;
+  const createStoredWorker = (): CommonSharedWorker => {
+    const nativeSharedWorker = new SharedWorker(
+      new URL("Shared.worker.js", import.meta.url),
+      { type: "module" },
+    );
+    const worker = createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
+      nativeSharedWorker,
+    );
+    let onMessage: ((message: SharedWorkerOutput) => void) | null = null;
+    const receive = (
+      message: SharedWorkerOutput | SharedWorkerUnsupported,
+    ): void => {
+      handleSharedWorkerMessage(message, (message) => {
+        onMessage?.(message);
+      });
+    };
+    // The stored worker lives as long as these deps, whose Run ends the wait.
+    // As for a DbWorker, the failure is delivered outside the Run, so an
+    // evoluError subscriber that throws cannot end the Run.
+    void run
+      .abortable(
+        waitForWorkerLoad(
+          // The one-tab polyfill exposes its dedicated Worker as the port.
+          typeof nativeSharedWorker.addEventListener === "function"
+            ? nativeSharedWorker
+            : nativeSharedWorker.port,
+          nativeSharedWorker.port,
+          "The SharedWorker failed to load.",
+        ),
+      )
+      .then((loaded) => {
+        if (!loaded.ok && loaded.error.type !== "AbortError")
+          receive({ type: "Error", error: loaded.error });
+      });
+    return {
+      ...worker,
+      port: {
+        ...worker.port,
+        get onMessage() {
+          return onMessage;
+        },
+        set onMessage(fn) {
+          onMessage = fn;
+          worker.port.onMessage = fn ? receive : null;
+        },
       },
-      set onMessage(fn) {
-        onSharedWorkerMessage = fn;
-        webSharedWorker.port.onMessage = fn
-          ? (message: SharedWorkerOutput | SharedWorkerUnsupported) => {
-              handleSharedWorkerMessage(message, fn);
-            }
-          : null;
-      },
-    },
+    };
   };
+
+  // A memory database belongs to its instance, so its worker and DbWorker
+  // stay in this tab. Keep both the URL and options static for bundlers.
+  const createMemoryInstanceWorker: CreateMemoryInstanceWorkerDep["createMemoryInstanceWorker"] =
+    () => {
+      const nativeWorker = new Worker(
+        new URL("Shared.worker.js", import.meta.url),
+        { type: "module", name: "evolu-memory-instance" },
+      );
+      const worker = createWorker<SharedWorkerInput, SharedWorkerOutput>(
+        nativeWorker,
+      );
+      // Ending the instance disposes this Run, which stops the wait.
+      const workerRun = run.create();
+      void workerRun
+        .abortable(
+          waitForWorkerLoad(
+            nativeWorker,
+            nativeWorker,
+            "The SharedWorker failed to load.",
+          ),
+        )
+        .then((loaded) => {
+          if (!loaded.ok && loaded.error.type !== "AbortError")
+            worker.onMessage?.({ type: "Error", error: loaded.error });
+        });
+      return {
+        port: worker,
+        [Symbol.dispose]: () => {
+          workerRun[Symbol.dispose]();
+          worker[Symbol.dispose]();
+        },
+      };
+    };
 
   const requestPersistentStorage = (): void => {
     if (isPersistentStorageRequested) return;
@@ -406,8 +465,10 @@ export const createEvoluDeps = (
       requestPersistentStorage,
       ...deps,
       createDbWorker,
+      createMemoryInstanceWorker,
       createBroadcastChannel,
       createMessageChannel,
+      createStoredWorker,
       // Safari's Private Browsing and Firefox's private windows offer no OPFS,
       // and a browser may delete it, as Chrome's incognito does when the
       // session ends. The tab shares its workers' storage partition.
@@ -420,7 +481,6 @@ export const createEvoluDeps = (
         request: requestLock,
       },
       reloadApp: reloadThisApp,
-      sharedWorker,
     }),
   );
 
@@ -452,6 +512,54 @@ export const createEvoluDeps = (
     },
   };
 };
+
+/**
+ * Waits for a worker's first message, which proves that its script loaded and
+ * that it reports its own errors, and fails with the first error event before
+ * it.
+ *
+ * A script that fails to load fires a plain Event
+ * (https://html.spec.whatwg.org/multipage/workers.html#worker-processing-model),
+ * and one that throws while it evaluates fires an ErrorEvent with the message
+ * and position but without the error value
+ * (https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception).
+ * After the first message, a dedicated Worker still fires an ErrorEvent for
+ * each runtime error the worker reports itself, so the Task stops listening
+ * there. An ErrorEvent stays uncanceled, so the browser still logs it and
+ * passes it to the page's own error handlers.
+ */
+const waitForWorkerLoad = (
+  errorTarget: EventTarget,
+  messageTarget: EventTarget,
+  loadFailureMessage: string,
+): Task<void, UnknownError> =>
+  callback(({ resolve }) => {
+    const handleMessage = (): void => {
+      resolve(ok());
+    };
+    const handleError = (event: Event): void => {
+      resolve(
+        err(
+          createUnknownError(
+            event instanceof ErrorEvent
+              ? {
+                  message: event.message,
+                  filename: event.filename,
+                  lineno: event.lineno,
+                  colno: event.colno,
+                }
+              : { message: loadFailureMessage },
+          ),
+        ),
+      );
+    };
+    messageTarget.addEventListener("message", handleMessage);
+    errorTarget.addEventListener("error", handleError);
+    return () => {
+      messageTarget.removeEventListener("message", handleMessage);
+      errorTarget.removeEventListener("error", handleError);
+    };
+  });
 
 // Marks, for the tab's session, that Evolu reloaded the page for another build.
 const automaticReloadKey = "evolu:automatic-reload";

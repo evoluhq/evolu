@@ -15,8 +15,9 @@ import {
   testAppOwner,
   type EvoluDeps,
 } from "@evolu/common/local-first";
-import { test } from "vitest";
+import { onTestFinished, test } from "vitest";
 import { createEvoluDeps } from "../../../../packages/web/src/local-first/Evolu.ts";
+import { removeTestDatabase } from "./_removeTestDatabase.ts";
 import {
   panicSharedWorker,
   setupRunWithEvoluPorts,
@@ -52,13 +53,20 @@ const setupApp = async (disposer: AsyncDisposableStack, deps: EvoluDeps) => {
         appName: AppName.orThrow(`test-${crypto.randomUUID()}`),
         appOwner: testAppOwner,
         transports: [],
-        memoryOnly: true,
       }),
     ),
   );
   const [evoluPort] = evoluPorts;
   assertNonNullable(evoluPort);
+  onTestFinished(() => removeTestDatabase(evolu.name));
   return { deps, run, evolu, evoluPort };
+};
+
+const closeAppWorker = async (
+  app: Awaited<ReturnType<typeof setupApp>>,
+): Promise<void> => {
+  await panicSharedWorker(app);
+  await waitForSharedWorkerClose(app.run);
 };
 
 test("a tab starts its database's DbWorker once the worker's script loads", async () => {
@@ -68,8 +76,7 @@ test("a tab starts its database's DbWorker once the worker's script loads", asyn
   assertEqual(await app.evolu.loadQuery(todosQuery), []);
 
   // Releases the build lock for the tests that run after this one.
-  await panicSharedWorker(app);
-  await waitForSharedWorkerClose(app.run);
+  await closeAppWorker(app);
 });
 
 test("a tab finds the persistent storage the browser offers", async () => {
@@ -78,10 +85,10 @@ test("a tab finds the persistent storage the browser offers", async () => {
 
   // The tab, not its workers, decides whether a database is stored.
   assertEqual(await app.deps.getDevicePersistence(), "Unknown");
+  assertEqual(await app.evolu.loadQuery(todosQuery), []);
 
   // Releases the build lock for the tests that run after this one.
-  await panicSharedWorker(app);
-  await waitForSharedWorkerClose(app.run);
+  await closeAppWorker(app);
 });
 
 test("a tab refuses its database when the DbWorker's script fails to load", async () => {
@@ -117,6 +124,5 @@ test("a tab refuses its database when the DbWorker's script fails to load", asyn
   // worker to release the build lock for the tests that run after this one.
   const otherApp = await setupApp(disposer, deps);
   assertEqual(await otherApp.evolu.loadQuery(todosQuery), []);
-  await panicSharedWorker(otherApp);
-  await waitForSharedWorkerClose(otherApp.run);
+  await closeAppWorker(otherApp);
 });

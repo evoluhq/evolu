@@ -34,10 +34,17 @@ tells what it knows for sure with `evolu.devicePersistence`:
 - `NotPersisted`: the database is kept in memory, because the `memoryOnly`
   option asks for it or the browser refuses storage, as private browsing does
   in Safari and the other WebKit browsers and in Firefox, or as a storage
-  failure does. Data synced with a relay comes back, as on a new device, but
-  changes that have not synced are lost when the tab hosting the database
-  closes. When the browser refuses storage, a database it stored earlier stays
-  untouched and opens again once storage works.
+  failure does. Each instance has its own memory database, even for the same
+  app and owner. Its data lasts until the instance ends: closing, reloading, or
+  navigating away from its tab, including entering the back-forward cache, ends
+  it. Where storage is available, Evolu may reload the tab, for example when
+  another tab loads a new version of the app. Data synced with a relay comes
+  back, as on a new device, but changes that have not synced are lost when the
+  instance ends. On the web, a memory instance exchanges changes with every
+  other instance, stored instances of the same owner included, only through
+  relays, so not offline. When the browser refuses storage, a database it
+  stored earlier stays untouched and opens again when the app loads after
+  storage works again.
 - `Unknown`: the browser stores the database, but it may delete it, as Chrome's
   incognito does when the session ends, without telling the app.
 
@@ -300,7 +307,7 @@ assertEqual(
 
 Evolu batches mutations queued in the same microtask and applies them in a SQLite transaction. The draft deletion and document upsert above are therefore applied together. Local tables use the same mutation and reactive query APIs as synced tables.
 
-Drafts in local tables also survive reloads and accidentally closed tabs, so keep anything a user would be sad to lose there. For example, when a tab loads a new version of your app whose Evolu workers changed, such as after an Evolu update, Evolu reloads the tabs still running the previous version.
+Drafts in local tables also survive reloads and accidentally closed tabs when their database is stored, so keep anything a user would be sad to lose there. For example, when a tab loads a new version of your app whose Evolu workers changed, such as after an Evolu update, Evolu reloads tabs still running the previous version, which ends their memory instances too; see [Will my data stay on the device?](#will-my-data-stay-on-the-device).
 
 ## How do I integrate with external systems that have their own IDs?
 

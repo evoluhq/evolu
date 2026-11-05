@@ -66,6 +66,7 @@ import {
   syncStateToRelaySyncStates,
   type EvoluInstanceId,
   initSharedWorker,
+  type InitSharedWorkerOptions,
   type ConsoleEntryOrError,
   type DbWorkerInput,
   type DbWorkerOutput,
@@ -195,12 +196,14 @@ const getDbWorkerInit = (
 
 const setupSharedWorker = async ({
   createWebSocket = testCreateWebSocket({ throwOnCreate: true }),
+  mode,
   time,
   random,
   seed,
   xChaCha20Poly1305,
 }: {
   createWebSocket?: CreateWebSocket;
+  mode?: InitSharedWorkerOptions["mode"];
   time?: TestTime;
   /** Draws each connection's idle jitter. */
   random?: Random;
@@ -249,7 +252,7 @@ const setupSharedWorker = async ({
     }),
   );
 
-  disposer.use(await run.ok(initSharedWorker(worker.self)));
+  disposer.use(await run.ok(initSharedWorker(worker.self, mode && { mode })));
   worker.connect();
   worker.port.onMessage = (output) => {
     if (output.type === "Connected") {
@@ -260,7 +263,8 @@ const setupSharedWorker = async ({
     sharedWorkerOutput.resolve();
     sharedWorkerOutput = Promise.withResolvers<void>();
   };
-  const { workerId, syncStateChannelName } = await connected.promise;
+  const { workerId, syncStateChannelName, consoleEntryOrErrorChannelName } =
+    await connected.promise;
 
   const disposables = disposer.move();
 
@@ -384,6 +388,7 @@ const setupSharedWorker = async ({
     sharedWorkerOutputs,
     workerId,
     syncStateChannelName,
+    consoleEntryOrErrorChannelName,
     run,
     worker,
 
@@ -868,6 +873,20 @@ describe("storage", () => {
     await testWaitForWorkerMessage();
   });
 
+  for (const mode of ["stored", "memory-instance"] as const) {
+    it(`gives its DbWorkers the console channel it names to its tab in ${mode} mode`, async () => {
+      await using setup = await setupSharedWorker({ mode });
+
+      await setup.createEvolu({ memoryOnly: mode === "memory-instance" });
+
+      assertSame(
+        getDbWorkerInit(setup.sharedWorkerOutputs.at(0))
+          .consoleEntryOrErrorChannelName,
+        setup.consoleEntryOrErrorChannelName,
+      );
+    });
+  }
+
   it("stores a database its instance does not keep in memory", async () => {
     await using setup = await setupSharedWorker();
 
@@ -886,6 +905,7 @@ describe("builds", () => {
   const setupBuildWorker = (
     lockManager: ReturnType<typeof testCreateLockManager>,
     disposer: AsyncDisposableStack,
+    mode: "stored" | "memory-instance" = "stored",
   ) => {
     const worker = disposer.use(
       testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
@@ -904,7 +924,7 @@ describe("builds", () => {
     worker.port.onMessage = (output) => {
       outputs.push(output);
     };
-    const started = run.ok(initSharedWorker(worker.self));
+    const started = run.ok(initSharedWorker(worker.self, { mode }));
     worker.connect();
     return { worker, run, outputs, started };
   };
@@ -941,6 +961,60 @@ describe("builds", () => {
     });
     await testWaitForWorkerMessage();
   };
+
+  it("connects a memory worker beside a held build lock and broadcasts only on its worker-ID channel", async () => {
+    await using disposer = new AsyncDisposableStack();
+    const lockManager = testCreateLockManager();
+    const mainThreadRun = disposer.use(testCreateRun({ lockManager }));
+    const otherBuild = await mainThreadRun.ok(acquireLeaderLock("tab"));
+    const { run, outputs, started } = setupBuildWorker(
+      lockManager,
+      disposer,
+      "memory-instance",
+    );
+    try {
+      await testWaitForWorkerMessage();
+      assertEqual(
+        outputs.map(({ type }) => type),
+        ["Connected"],
+      );
+      const [connected] = outputs;
+      assertNotUndefined(connected);
+      assert(connected.type === "Connected", "Expected a Connected output.");
+      const privateEntries: Array<ConsoleEntryOrError> = [];
+      const globalEntries: Array<ConsoleEntryOrError> = [];
+      using privateChannel = testCreateBroadcastChannel<ConsoleEntryOrError>(
+        connected.consoleEntryOrErrorChannelName,
+      );
+      using globalChannel = testCreateBroadcastChannel<ConsoleEntryOrError>(
+        consoleEntryOrErrorBroadcastChannelName,
+      );
+      privateChannel.onMessage = (output) => {
+        privateEntries.push(output);
+      };
+      globalChannel.onMessage = (output) => {
+        globalEntries.push(output);
+      };
+      const entries: ReadonlyArray<ConsoleEntry> = [
+        { method: "info", path: ["memory"], args: ["private entry"] },
+        { method: "error", path: ["memory"], args: ["private error"] },
+      ];
+      for (const entry of entries) {
+        run.deps.consoleStoreOutputEntry.set(entry);
+        await testWaitForWorkerMessage();
+      }
+      assertEqual(
+        privateEntries,
+        entries.map((entry) => ({ type: "ConsoleEntry", entry })),
+      );
+      assertEqual(globalEntries, []);
+    } finally {
+      // A missing lock bypass fails the assertion, not the test timeout, and
+      // the blocked initialization still finishes before its Run is disposed.
+      await otherBuild[Symbol.asyncDispose]();
+      disposer.use(await started);
+    }
+  });
 
   it("serves no tab request while a leader tab of an earlier release holds the lock", async () => {
     await using disposer = new AsyncDisposableStack();
@@ -1013,6 +1087,7 @@ describe("builds", () => {
       type: "Connected",
       workerId,
       syncStateChannelName: `evolu:sync-state:${workerId}`,
+      consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
     };
     assertEqual(outputs, [waiting, connected]);
     assertEqual(laterOutputs, [waiting, connected]);

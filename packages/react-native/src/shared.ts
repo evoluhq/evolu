@@ -99,76 +99,74 @@ export const createEvoluDeps = (
       void dbWorkerRun(startDbWorker(self));
     });
 
-  let sharedWorker: SharedWorker;
-  if (sharedWorkerSelf) {
-    const channel = createMessageChannel<
-      SharedWorkerInput,
-      SharedWorkerOutput
-    >();
-    assertNonNullable(sharedWorkerSelf.onConnect);
-    sharedWorkerSelf.onConnect(channel.port2);
-    sharedWorker = {
-      port: channel.port1,
-      [Symbol.dispose]: () => {
-        channel[Symbol.dispose]();
-      },
-    };
-  } else {
-    sharedWorker = createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
-      (self) => {
-        // Every tab connects through this, so a panicked worker can dispose
-        // its tabs' ports and drop their later messages, as a closed web
-        // SharedWorker does, instead of handling them on its disposed Run.
-        const tabPorts = new Set<
-          MessagePort<SharedWorkerOutput, SharedWorkerInput>
-        >();
-        const workerSelf: SharedWorkerSelf<
-          SharedWorkerInput,
-          SharedWorkerOutput
-        > = {
-          onConnect: null,
-          [Symbol.dispose]: () => {
-            self[Symbol.dispose]();
-          },
-        };
-        self.onConnect = (port) => {
-          tabPorts.add(port);
-          assertNonNullable(workerSelf.onConnect);
-          workerSelf.onConnect(port);
-        };
-        sharedWorkerSelf = self;
-        const sharedWorkerRun = createWorkerRun();
-        void sharedWorkerRun(async (run) => {
-          // After a panic, deps created again start another worker, which
-          // waits for this one's build lock. Each tab sets the panic's defect
-          // as its evoluError, as on the web.
-          using _onAbort = run.onAbort((abortError) => {
-            sharedWorkerSelf = null;
-            for (const port of tabPorts) port[Symbol.dispose]();
-            using errors = createBroadcastChannel<ConsoleEntryOrError>(
-              consoleEntryOrErrorBroadcastChannelName,
-            );
-            errors.postMessage({
-              type: "Error",
-              error: createUnknownError(defectToError(abortError)),
-            });
+  const createStoredWorker = (): SharedWorker => {
+    if (sharedWorkerSelf) {
+      const channel = createMessageChannel<
+        SharedWorkerInput,
+        SharedWorkerOutput
+      >();
+      assertNonNullable(sharedWorkerSelf.onConnect);
+      sharedWorkerSelf.onConnect(channel.port2);
+      return {
+        port: channel.port1,
+        [Symbol.dispose]: () => {
+          channel[Symbol.dispose]();
+        },
+      };
+    }
+    return createSharedWorker<SharedWorkerInput, SharedWorkerOutput>((self) => {
+      // Every tab connects through this, so a panicked worker can dispose
+      // its tabs' ports and drop their later messages, as a closed web
+      // SharedWorker does, instead of handling them on its disposed Run.
+      const tabPorts = new Set<
+        MessagePort<SharedWorkerOutput, SharedWorkerInput>
+      >();
+      const workerSelf: SharedWorkerSelf<
+        SharedWorkerInput,
+        SharedWorkerOutput
+      > = {
+        onConnect: null,
+        [Symbol.dispose]: () => {
+          self[Symbol.dispose]();
+        },
+      };
+      self.onConnect = (port) => {
+        tabPorts.add(port);
+        assertNonNullable(workerSelf.onConnect);
+        workerSelf.onConnect(port);
+      };
+      sharedWorkerSelf = self;
+      const sharedWorkerRun = createWorkerRun();
+      void sharedWorkerRun(async (run) => {
+        // After a panic, deps created again start another worker, which
+        // waits for this one's build lock. Each tab sets the panic's defect
+        // as its evoluError, as on the web.
+        using _onAbort = run.onAbort((abortError) => {
+          sharedWorkerSelf = null;
+          for (const port of tabPorts) port[Symbol.dispose]();
+          using errors = createBroadcastChannel<ConsoleEntryOrError>(
+            consoleEntryOrErrorBroadcastChannelName,
+          );
+          errors.postMessage({
+            type: "Error",
+            error: createUnknownError(defectToError(abortError)),
           });
-          await using _ = await run.ok(initSharedWorker(workerSelf));
-          return await run(waitForAbort);
         });
-      },
-    );
-  }
+        await using _ = await run.ok(initSharedWorker(workerSelf));
+        return await run(waitForAbort);
+      });
+    });
+  };
 
   return createCommonEvoluDeps({
     ...deps,
     createDbWorker,
     createBroadcastChannel,
     createMessageChannel,
+    createStoredWorker,
     // Databases are files the app owns.
     getDevicePersistence: () => Promise.resolve("Persisted"),
     lockManager,
     reloadApp: deps.reloadApp,
-    sharedWorker,
   });
 };

@@ -24,7 +24,9 @@ All data Evolu syncs is encrypted end-to-end. This means:
 
 The database key is derived from the app owner's secret, which Evolu doesn't store, so the database is only as safe as the place the app keeps that secret. The examples use `testAppOwner`, whose secret is public, so use it only for testing.
 
-With the `memoryOnly` option, the database is kept in memory and nothing is stored on the device. A database kept in memory has a name of its own, so it never shares a local database with an instance of the same `appName` and `appOwner` that stores its database. Both still sync the owner, so while any instance that stores its database syncs that owner on the device, it stores the changes made in memory too. To keep nothing on the device, dispose those instances first.
+With the `memoryOnly` option, this instance keeps its database in memory and stores nothing on the device. Its data lasts until the instance ends, for example when its tab closes or reloads. On the web, it exchanges changes with other instances only through relays.
+
+A memory instance and an instance that stores its database can still sync the same owner: through a relay, and on React Native also directly, even offline. The stored instance then keeps those changes on the device. To keep nothing on the device, dispose those instances first.
 
 ## API design prevents data leaks
 
@@ -44,10 +46,10 @@ The Evolu Relay can't decrypt user data. What the relay sees:
 
 - **OwnerId**: A unique identifier for the data owner. Every relay the owner uses and everyone the owner shares data with know it; keep it from anyone else. A relay that admits anyone who knows an OwnerId lets them download the owner's encrypted changes and subscribe to new ones, which reveals the metadata listed here, and [register their own write key](#write-keys) by writing there before the owner's devices do. The OwnerId doesn't tell the relay who the owner is, unless the relay identifies its users itself, for example for billing
 - **Timestamps**: When changes occurred (for synchronization ordering)
-- **NodeId**: Every timestamp includes a random ID of the session that wrote the change. Evolu picks a new one when an app starts using its database and keeps it until shortly after the app stops. On the web, a session spans every open tab of the app, so it can last days. Within a session, it's the same for every owner the database writes changes for, so a relay can link those owners, even across IP addresses. Across sessions it changes, so a relay can't use it to count an owner's devices or follow one device over time, though connections, IP addresses, and changes made offline that upload in the next session can still link sessions. Changes stored before NodeIds became per session keep the NodeId of the database that wrote them
+- **NodeId**: Every timestamp includes a random ID of the session that wrote the change. Evolu picks a new one when an app starts using its database and keeps it until shortly after the app stops. On the web, a stored database's session spans every open tab using it, so it can last days; a memory database's session belongs to one instance. Within a session, it's the same for every owner the database writes changes for, so a relay can link those owners, even across IP addresses. Across sessions it changes, so a relay can't use it to count an owner's devices or follow one device over time, though connections, IP addresses, and changes made offline that upload in the next session can still link sessions. Changes stored before NodeIds became per session keep the NodeId of the database that wrote them
 - **Encrypted binary blobs**: The actual data, encrypted and padded, so only its approximate size shows
 - **Write key**: A token that authorizes writes for an owner, [described below](#write-keys)
-- **IP addresses**: Network addresses of connecting clients (standard for any network service unless using Tor or similar privacy networks). Owners synced over one connection are linked to each other, and by default all owners sync over one connection per relay
+- **IP addresses**: Network addresses of connecting clients (standard for any network service unless using Tor or similar privacy networks). Owners synced over one connection are linked to each other. By default, all owners an app syncs share one connection per relay. On the web, each memory instance opens its own
 
 The relay functions purely as a message buffer for synchronization and backup—it stores and forwards encrypted messages without any ability to decrypt them.
 

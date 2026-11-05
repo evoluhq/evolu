@@ -219,14 +219,18 @@ test("validates relay URLs and removes configured relays", async ({
   ).toHaveText("Local only");
 });
 
-test("shows relays added by another tab without letting this tab remove them", async ({
+test("keeps another memory tab's relays out of this tab's list", async ({
   backupRelay,
   context,
   page,
   relay,
 }) => {
   await page.goto("/playgrounds/sync");
-  // Tabs in one context share the worker and the database's relay claims.
+  await expect(
+    page.getByText("1 of 1 relay up to date", { exact: true }),
+  ).toBeVisible();
+  // Each memory instance owns its worker and relay registrations, even in
+  // another tab of the same browser context.
   const otherPage = await context.newPage();
   await otherPage.goto(page.url());
   const otherRelays = otherPage.getByRole("region", {
@@ -234,27 +238,31 @@ test("shows relays added by another tab without letting this tab remove them", a
     exact: true,
   });
   await addRelay(otherRelays, backupRelay.url);
+  await expect(
+    otherPage.getByText("2 of 2 relays up to date", { exact: true }),
+  ).toBeVisible();
+  // A change made after the second relay is ready reaches the first tab
+  // through their common relay before its relay list is checked.
+  await addItem(otherPage, "After adding a relay in the other tab");
+  await expect(
+    page.getByRole("checkbox", {
+      name: "After adding a relay in the other tab",
+      exact: true,
+    }),
+  ).toBeVisible();
 
   const relays = page.getByRole("region", { name: "Relays", exact: true });
-  const sharedRelay = relays
-    .getByRole("listitem")
-    .filter({ hasText: backupRelay.url });
-  await expect(sharedRelay).toContainText("Used by another tab or playground.");
   await expect(
-    sharedRelay.getByRole("button", { name: /^Remove /u }),
+    relays.getByRole("listitem").filter({ hasText: backupRelay.url }),
   ).toHaveCount(0);
   await expect(
     relays.getByRole("button", { name: `Remove ${relay.url}`, exact: true }),
   ).toBeVisible();
 
-  await otherRelays
-    .getByRole("button", { name: `Remove ${backupRelay.url}`, exact: true })
-    .click();
-  await expect(sharedRelay).toHaveCount(0);
   await expect(relays.getByRole("listitem")).toHaveCount(1);
 });
 
-test("counts a relay once when another playground connects without the OwnerId", async ({
+test("keeps the minimal playground's connection out of the sync playground's list", async ({
   context,
   page,
   relay,

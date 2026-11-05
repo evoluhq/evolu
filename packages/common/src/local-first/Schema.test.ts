@@ -27,7 +27,7 @@ import {
   testTodoId,
   type TimestampBytes,
 } from "../index.ts";
-import type { EvoluPlatformDeps } from "./Evolu.ts";
+import type { EvoluPlatformDeps, StoredWorkerDep } from "./Evolu.ts";
 import { evoluSchemaToSqliteSchema, type ValidateSchema } from "./Schema.ts";
 
 test("history queries select and filter by ownerId bytes", () => {
@@ -188,7 +188,7 @@ test("testEvoluSchema supports project-linked and independent todos", () => {
   });
   assertType<
     typeof createTodos,
-    Task<Evolu<TestEvoluSchema>, never, EvoluPlatformDeps>
+    Task<Evolu<TestEvoluSchema>, never, EvoluPlatformDeps & StoredWorkerDep>
   >();
 });
 
@@ -232,6 +232,10 @@ test("testLocalOnlyEvoluSchema supports keys with or without recovery material",
   });
   assertType<
     typeof createAccounts,
-    Task<Evolu<typeof testLocalOnlyEvoluSchema>, never, EvoluPlatformDeps>
+    Task<
+      Evolu<typeof testLocalOnlyEvoluSchema>,
+      never,
+      EvoluPlatformDeps & StoredWorkerDep
+    >
   >();
 });

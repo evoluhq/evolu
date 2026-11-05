@@ -14,7 +14,10 @@ import {
   TestTodoId,
   testTodoId,
 } from "@evolu/common";
-import type { EvoluPlatformDeps } from "@evolu/common/local-first";
+import type {
+  EvoluPlatformDeps,
+  StoredWorkerDep,
+} from "@evolu/common/local-first";
 
 assertType<typeof testAppName, AppName>();
 assertType<TestEvoluSchema, typeof testEvoluSchema>();
@@ -30,7 +33,7 @@ const createTodos = createEvolu(testEvoluSchema, {
 });
 assertType<
   typeof createTodos,
-  Task<Evolu<TestEvoluSchema>, never, EvoluPlatformDeps>
+  Task<Evolu<TestEvoluSchema>, never, EvoluPlatformDeps & StoredWorkerDep>
 >();
 
 const createAccounts = createEvolu(testLocalOnlyEvoluSchema, {
@@ -40,7 +43,11 @@ const createAccounts = createEvolu(testLocalOnlyEvoluSchema, {
 });
 assertType<
   typeof createAccounts,
-  Task<Evolu<typeof testLocalOnlyEvoluSchema>, never, EvoluPlatformDeps>
+  Task<
+    Evolu<typeof testLocalOnlyEvoluSchema>,
+    never,
+    EvoluPlatformDeps & StoredWorkerDep
+  >
 >();
 
 // @ts-expect-error A todo ID is not a project ID.

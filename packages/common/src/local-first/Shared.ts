@@ -12,16 +12,16 @@
  * with its own session NodeId, but an earlier release stamps with the NodeId
  * stored in the clock, which can be another worker's.
  *
- * The worker therefore takes an origin-wide lock before it answers any tab and
- * holds it for its lifetime. A worker of another build waits, with its tabs'
- * messages buffered, until every tab of the first one is closed or reloaded and
- * the browser ends it. The lock is the one that earlier releases take in their
- * leader tab, so they are excluded too. An earlier release's worker can outlive
- * its leader tab and resume once the lock is free; it computes new timestamps
- * when it retries, so it cannot reuse another worker's. A tab of an earlier
- * release that opens while a worker of this release runs gets no response to
- * its database requests until it reloads, and until then it also blocks workers
- * that start after this one ends.
+ * The worker for stored databases therefore takes an origin-wide lock before it
+ * answers any tab and holds it for its lifetime. A worker of another build
+ * waits, with its tabs' messages buffered, until every tab of the first one is
+ * closed or reloaded and the browser ends it. The lock is the one that earlier
+ * releases take in their leader tab, so they are excluded too. An earlier
+ * release's worker can outlive its leader tab and resume once the lock is free;
+ * it computes new timestamps when it retries, so it cannot reuse another
+ * worker's. A tab of an earlier release that opens while a worker of this
+ * release runs gets no response to its database requests until it reloads, and
+ * until then it also blocks workers that start after this one ends.
  *
  * On the web, the wait is usually short, because tabs of the running build
  * reload to load the build the server now serves:
@@ -48,16 +48,26 @@
  * local-only tables. A write a background tab has in flight can be lost, as
  * when a tab crashes.
  *
+ * Web dependencies check storage once when they are created. When storage is
+ * available, they start the stored worker as soon as the check succeeds, even
+ * before an instance exists. The tab takes part in build coordination, so a
+ * reload for a new build also ends its memory instances and loses their
+ * unsynced changes. When the browser refuses storage, the stored worker never
+ * starts and build coordination never reloads the tab. Returning from the
+ * back-forward cache and the default reload after {@link Evolu.deleteDatabase}
+ * still apply.
+ *
  * The wait lasts while a tab of the running build does not reload: a tab of an
  * earlier release, a tab Safari has frozen, a tab without session storage, or a
  * tab whose reload loads the running build again, for example because another
  * Evolu app shares the origin or a cache still serves the old build. A worker
  * still waiting after three seconds reports {@link OtherBuildRunningError} to
- * its tabs. Every build broadcasts console entries and errors on
- * {@link consoleEntryOrErrorBroadcastChannelName}, so a waiting tab also prints
- * the running build's output, reports each {@link UnknownError} it sends as its
- * own `evoluError`, and only logs any other error, such as an older build's
- * sync error.
+ * its tabs. Every build's worker for stored databases broadcasts console
+ * entries and errors on {@link consoleEntryOrErrorBroadcastChannelName}, so a
+ * waiting tab also prints the running build's output, reports each
+ * {@link UnknownError} it sends as its own `evoluError`, and only logs any other
+ * error, such as an older build's sync error. Memory workers are described in
+ * Storage.
  *
  * The tabs of one worker elect the host of its DbWorkers among themselves, with
  * a lock scoped to the worker, so a tab of another worker never hosts them.
@@ -71,18 +81,31 @@
  *
  * ## Storage
  *
- * The tab decides whether a database is kept in memory, because of
+ * An instance keeps its database in memory because of
  * {@link EvoluConfig.memoryOnly} or because the platform offers no persistent
- * storage, which a browser tells by failing to open the origin private file
- * system, as Safari's Private Browsing and Firefox's private windows do. A
- * database kept in memory has a name of its own, so all instances of a tenant
- * ask for the same mode, and every DbWorker the tenant starts, replacements
- * included, keeps it.
+ * storage. Web dependencies check the origin private file system once when they
+ * are created; failure means every instance keeps its database in memory, as in
+ * Safari's Private Browsing and Firefox's private windows. A database kept in
+ * memory has a random per-instance name, so it never shares a tenant, lock, or
+ * DbWorker with another instance or a stored database.
  *
- * Each DbWorker keeps its own memory, so when the tab hosting a database kept
- * in memory closes, or on the web navigates away, data that exists only locally
- * or has not synced yet is lost, even though its replacement starts in memory
- * too.
+ * On the web, each memory instance runs this worker in its own dedicated
+ * Worker, and its own tab hosts its DbWorker. It broadcasts console entries and
+ * errors on a channel named after its worker ID, which only the deps that
+ * created it hear. It takes neither the build lock nor the one-tab polyfill
+ * lock, so it works beside stored instances even without native SharedWorker
+ * support. When the browser refuses storage, the tab never starts the stored
+ * worker, so build coordination cannot reload it and closing another tab leaves
+ * its data intact. With storage available, the stored worker starts even when
+ * every instance uses `memoryOnly`. Its build coordination, Safari relaunch, or
+ * unsupported database version can reload the tab and end its memory instances.
+ * Ending the instance loses its local data; on the web, closing or reloading
+ * its tab or entering the back-forward cache ends it too. Web memory instances
+ * exchange changes only through relays, and do not exchange them offline.
+ * In-process platforms need only the random name because their JS runtime
+ * already hosts every DbWorker. Their shared worker forwards each change one
+ * running database uploads to the others that synchronize the owner, even
+ * offline. A database started later gets earlier changes only from a relay.
  *
  * ## Deletion
  *
@@ -140,11 +163,13 @@
  *
  * WebSocket transports are shared resources keyed by their configuration and
  * claimed by owner ID, so every tenant (one named local database) using an
- * owner shares that owner's sockets, whichever tenant claimed them. An incoming
- * frame is offered to every tenant with a writable registration for its owner.
- * Each stores the frame's messages, which is idempotent, but only the tenant
- * whose request a Response answers reconciles it, as Synchronization completion
- * describes.
+ * owner shares that owner's sockets within this worker, whichever tenant
+ * claimed them. Each private memory worker on the web owns its own sockets,
+ * including when a stored instance syncs the same owner: no socket or request
+ * routing is deduplicated across workers. An incoming frame is offered to every
+ * tenant with a writable registration for its owner. Each stores the frame's
+ * messages, which is idempotent, but only the tenant whose request a Response
+ * answers reconciles it, as Synchronization completion describes.
  *
  * Traffic goes only where it is needed. A continuation returns to the transport
  * that produced the response, a round started by a socket opening or by a
@@ -189,11 +214,18 @@
  * a status never disagrees with the routes it comes from.
  *
  * Each worker broadcasts snapshots on its own channel, whose name a connecting
- * tab receives through its port, so a tab never hears another worker, such as
- * one of a different app version, and
- * {@link SyncStateDep.syncState | deps.syncState} keeps the last snapshot. The
- * worker publishes after every change it observes. The snapshot lives in worker
- * memory only, so a new worker starts empty.
+ * tab receives through its port, so a tab hears only the workers it connects
+ * to, never one of a different app version.
+ * {@link SyncStateDep.syncState | deps.syncState} is null until any of these
+ * deps' workers sends a snapshot. On the web, dependencies start the stored
+ * worker as soon as their initial storage check succeeds, even before an
+ * instance exists. Their sync state combines the memory databases of instances
+ * these deps created with the stored databases the shared worker serves, other
+ * tabs' included. When the browser refuses storage, the sync state includes
+ * only those memory databases. Each worker reports its own transports, so one
+ * relay can appear once per worker. The worker publishes after every change it
+ * observes. Each snapshot lives in worker memory only, so a new worker starts
+ * empty.
  *
  * ## Synchronization completion
  *
@@ -439,7 +471,15 @@ import type {
   DeleteDatabaseFiles,
   UnsupportedDbVersionError,
 } from "./Db.ts";
-import type { Evolu, EvoluConfig, SyncStateDep } from "./Evolu.ts";
+import type {
+  createEvolu,
+  createEvoluDeps,
+  DevicePersistenceDep,
+  Evolu,
+  EvoluConfig,
+  EvoluErrorDep,
+  SyncStateDep,
+} from "./Evolu.ts";
 import {
   type Owner,
   type OwnerId,
@@ -478,8 +518,32 @@ export type SharedWorker = CommonSharedWorker<
   SharedWorkerOutput
 >;
 
-export interface SharedWorkerDep {
-  readonly sharedWorker: SharedWorker;
+/**
+ * Starts the worker that serves the stored databases of every instance created
+ * through these deps, and the memory databases of instances without a worker of
+ * their own.
+ *
+ * {@link createEvoluDeps} calls it at most once, after the platform's
+ * {@link DevicePersistenceDep} answers. A thrown error becomes the deps'
+ * {@link EvoluErrorDep.evoluError}.
+ */
+export interface CreateStoredWorkerDep {
+  readonly createStoredWorker: () => SharedWorker;
+}
+
+/**
+ * Creates a worker owned by one memory instance on platforms where another tab
+ * could otherwise host its database. In-process platforms need no factory.
+ *
+ * Each call creates a new worker running {@link initSharedWorker} in
+ * `"memory-instance"` mode. {@link createEvolu} disposes it with its instance.
+ * The worker reports console entries and errors on its own worker-ID channel
+ * and sends instance-specific and uncaught errors on its own port. A thrown
+ * error becomes the deps' {@link EvoluErrorDep.evoluError}, and the instance
+ * starts with a worker that drops every message.
+ */
+export interface CreateMemoryInstanceWorkerDep {
+  readonly createMemoryInstanceWorker: () => SharedWorker;
 }
 
 export type SharedWorkerInput =
@@ -512,7 +576,8 @@ export type SharedWorkerOutput =
   | {
       /**
        * Sent to one tab only: its database is refused, a mutation it made could
-       * not be stored, or another build keeps this worker waiting.
+       * not be stored, another build keeps its stored worker waiting, or its
+       * memory worker reports an uncaught error.
        */
       readonly type: "Error";
       readonly error:
@@ -531,14 +596,18 @@ export type SharedWorkerOutput =
     }
   | {
       /**
-       * Sent to a connecting tab once the worker holds the build lock; see
-       * Builds in this module's documentation. The tab elects the host of the
-       * worker's DbWorkers among the worker's tabs, scoped by `workerId`, and
-       * listens for {@link SyncState} on `syncStateChannelName`.
+       * A stored worker sends this once it holds the build lock; see Builds in
+       * this module's documentation. Its tabs elect the host of its DbWorkers,
+       * scoped by `workerId`. A memory worker sends this at once without the
+       * build lock, and its own tab hosts its DbWorkers without an election.
+       * The tab listens for {@link SyncState} on `syncStateChannelName`, and for
+       * this worker's console entries and errors on
+       * `consoleEntryOrErrorChannelName`.
        */
       readonly type: "Connected";
       readonly workerId: SharedWorkerId;
       readonly syncStateChannelName: string;
+      readonly consoleEntryOrErrorChannelName: string;
     };
 
 export type ConsoleEntryOrError =
@@ -555,8 +624,9 @@ export const consoleEntryOrErrorBroadcastChannelName =
   "evolu:console-entry-or-error";
 
 /**
- * Posts a {@link ConsoleEntry} to tabs on a channel named
- * {@link consoleEntryOrErrorBroadcastChannelName}.
+ * Posts a {@link ConsoleEntry} to tabs on the worker's channel: stored workers
+ * use {@link consoleEntryOrErrorBroadcastChannelName}, and memory workers use
+ * their worker-ID channel, which only their own deps hear.
  *
  * An argument that cannot be structured-cloned is replaced: an `Error` by the
  * plain object {@link createUnknownError} makes of it, and any other value, such
@@ -1987,16 +2057,30 @@ interface TransportsDep {
 // Long enough for another build's tabs to reload and its worker to end.
 const otherBuildRunningReportDelay: PositiveDuration = "3s";
 
+/** Options for {@link initSharedWorker}. */
+export interface InitSharedWorkerOptions {
+  /**
+   * `"memory-instance"` serves one memory instance: it skips the build lock and
+   * broadcasts only on its worker-ID channel.
+   *
+   * The default value is: `"stored"`.
+   */
+  readonly mode?: "stored" | "memory-instance";
+}
+
 /**
  * Initializes the platform-agnostic Evolu SharedWorker.
  *
- * The worker holds the build lock until it is disposed, so a platform connects
- * every `createEvoluDeps` call in a JS runtime to one worker, as React Native
- * does; see Builds.
+ * A worker for stored databases holds the build lock until it is disposed, so a
+ * platform connects every `createEvoluDeps` call in a JS runtime to one worker,
+ * as React Native does; see Builds. A private memory worker shares no database
+ * with another build, so it skips that lock and broadcasts only on its
+ * instance's channel.
  */
 export const initSharedWorker =
   (
     self: SharedWorkerSelf<SharedWorkerInput, SharedWorkerOutput>,
+    { mode = "stored" }: InitSharedWorkerOptions = {},
   ): Task<AsyncDisposableStack, never, SharedWorkerDeps> =>
   async (run) => {
     const { deps } = run;
@@ -2004,16 +2088,21 @@ export const initSharedWorker =
 
     await using disposer = new AsyncDisposableStack();
 
+    const workerId = createId<"SharedWorker">(deps);
     const tabLeaderPortStore = disposer.use(createStore<TabPort | null>(null));
+    // Its DbWorkers post on the same channel, and the tab listens to it.
+    const consoleEntryOrErrorChannelName =
+      mode === "memory-instance"
+        ? `${consoleEntryOrErrorBroadcastChannelName}:${workerId}`
+        : consoleEntryOrErrorBroadcastChannelName;
     const consoleEntryOrErrorBroadcastChannel = disposer.use(
       deps.createBroadcastChannel<ConsoleEntryOrError>(
-        consoleEntryOrErrorBroadcastChannelName,
+        consoleEntryOrErrorChannelName,
       ),
     );
     const postConsoleEntryOrError = (output: ConsoleEntryOrError): void => {
       consoleEntryOrErrorBroadcastChannel.postMessage(output);
     };
-    const workerId = createId<"SharedWorker">(deps);
     // Each worker broadcasts on its own channel, so a tab hears only the
     // worker its port connects to.
     const syncStateChannelName = `evolu:sync-state:${workerId}`;
@@ -2023,8 +2112,9 @@ export const initSharedWorker =
 
     const sharedWorkerReady = Promise.withResolvers<void>();
 
-    // Until this worker holds the build lock, it tells connecting tabs that they
-    // wait, and reports a lasting wait to them; see Builds.
+    // Until a stored worker holds the build lock, it tells connecting tabs
+    // that they wait, and reports a lasting wait to them; see Builds. A memory
+    // worker skips that lock and connects its own tab without waiting.
     const starting = disposer.use(new DisposableStack());
     const waitingTabPorts: Array<TabPort> = [];
     let isOtherBuildRunning = false;
@@ -2044,7 +2134,7 @@ export const initSharedWorker =
 
     // Register ASAP so the worker does not miss connections.
     self.onConnect = (port) => {
-      if (!starting.disposed) {
+      if (!starting.disposed && mode === "stored") {
         port.postMessage({ type: "Waiting", workerId });
         waitingTabPorts.push(port);
         if (isOtherBuildRunning) reportOtherBuildRunning(port);
@@ -2085,6 +2175,7 @@ export const initSharedWorker =
           type: "Connected",
           workerId,
           syncStateChannelName,
+          consoleEntryOrErrorChannelName,
         });
       });
     };
@@ -2099,7 +2190,9 @@ export const initSharedWorker =
     // Released after every tenant is disposed and has told its DbWorker to
     // stop. Earlier releases take the same lock in their leader tab; see
     // Builds.
-    disposer.use(await run.ok(acquireLeaderLock("tab")));
+    if (mode === "stored") {
+      disposer.use(await run.ok(acquireLeaderLock("tab")));
+    }
     starting.dispose();
 
     disposer.defer(
@@ -2648,7 +2741,12 @@ export const initSharedWorker =
       await sharedWorkerRun.ok(
         createSharedResourceByKey(
           (message: ExtractTyped<SharedWorkerInput, "CreateEvolu">) =>
-            createEvoluTenant(message, currentTenantsByName, workerId),
+            createEvoluTenant(
+              message,
+              currentTenantsByName,
+              workerId,
+              consoleEntryOrErrorChannelName,
+            ),
           {
             idleDisposeAfter: "3s",
             lookup: (message) => message.name,
@@ -2667,6 +2765,7 @@ const createEvoluTenant =
     creation: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
     currentTenantsByName: Map<Name, BorrowedResource<EvoluTenant>>,
     workerId: SharedWorkerId,
+    consoleEntryOrErrorChannelName: string,
   ): Task<EvoluTenant, never, EvoluTenantDeps> =>
   async (run) => {
     await using disposer = new AsyncDisposableStack();
@@ -3098,6 +3197,7 @@ const createEvoluTenant =
           sqliteSchema: generation.sqliteSchema,
           encryptionKey: generation.encryptionKey,
           memoryOnly: generation.memoryOnly,
+          consoleEntryOrErrorChannelName,
           sharedWorkerId: workerId,
           port: dbWorkerChannel.port1.native,
         },

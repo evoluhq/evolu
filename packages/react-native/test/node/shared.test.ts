@@ -96,6 +96,26 @@ describe("createEvoluDeps", () => {
     await waitForSyncState(second);
   });
 
+  it("connects deps created in one tick to one shared worker", async () => {
+    const createDeps = () =>
+      createEvoluDeps({
+        reloadApp: constVoid,
+        createSqliteDriver: () => {
+          throw new Error("No database is opened.");
+        },
+        deleteDatabaseFiles: deleteNoDatabaseFiles,
+      });
+
+    using first = createDeps();
+    using second = createDeps();
+    await waitForSyncState(first);
+    await testWaitForWorkerMessage();
+
+    // A second in-process worker would wait for the first one's build lock
+    // and never publish a sync state.
+    assertNonNullable(second.syncState.get());
+  });
+
   it("starts another shared worker after the running one panics", async () => {
     const reported = Promise.withResolvers<unknown>();
     const reportError = mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>(

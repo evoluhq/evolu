@@ -62,7 +62,7 @@ test("keeps data in memory and restores synced data from the relay", async ({
   await addTodo(page, "Unsynced todo");
   await expect(page.getByRole("listitem")).toHaveCount(2);
 
-  // The tab hosted the in-memory database, so its reload starts empty.
+  // Reloading ends this instance and its memory database.
   await page.reload();
   await expect(page.getByRole("status")).toHaveText(
     "Can't reach the sync server. Changes will sync once the connection is back.",
@@ -87,7 +87,57 @@ test("does not ask the browser to keep data it keeps in memory", async ({
   expect(await persistCallCount()).toBe(0);
 });
 
-test("shares live changes between private tabs", async ({ context, page }) => {
+test("keeps private tabs separate while the relay is stopped", async ({
+  context,
+  page,
+  relay,
+}) => {
+  await relay.stop();
+  const otherPage = await context.newPage();
+  await otherPage.goto("/playgrounds/minimal");
+  await expect(otherPage.getByPlaceholder("Add a new todo...")).toBeVisible();
+
+  await addTodo(otherPage, "Unsynced todo");
+  // The first tab's mutation completes after the second tab's is stored, so if
+  // the tabs shared a database, the first tab's query would already include the
+  // second tab's todo.
+  await addTodo(page, "Only in the first tab");
+  await expect(page.getByRole("listitem")).toHaveCount(1);
+  await expect(otherPage.getByRole("listitem")).toHaveCount(1);
+  await expect(
+    page.getByRole("checkbox", { name: "Unsynced todo" }),
+  ).toHaveCount(0);
+});
+
+test("keeps a private tab's unsynced data when the first tab closes", async ({
+  context,
+  page,
+  relay,
+}) => {
+  await relay.stop();
+  const otherPage = await context.newPage();
+  await otherPage.goto("/playgrounds/minimal");
+  await expect(otherPage.getByPlaceholder("Add a new todo...")).toBeVisible();
+  await addTodo(otherPage, "Unsynced todo");
+
+  await page.close();
+
+  const todo = otherPage.getByRole("checkbox", {
+    name: "Unsynced todo",
+    exact: true,
+  });
+  // A fresh mutation proves the surviving instance still serves its database
+  // after the first tab and any workers it hosted have ended.
+  await addTodo(otherPage, "After the first tab closed");
+  await expect(otherPage.getByRole("listitem")).toHaveCount(2);
+  await todo.click();
+  await expect(todo).toBeChecked();
+});
+
+test("syncs live changes between private tabs through the relay", async ({
+  context,
+  page,
+}) => {
   const otherPage = await context.newPage();
   await otherPage.goto("/playgrounds/minimal");
   await expect(otherPage.getByPlaceholder("Add a new todo...")).toBeVisible();

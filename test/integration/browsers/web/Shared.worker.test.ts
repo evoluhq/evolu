@@ -19,7 +19,8 @@ import {
   type SharedWorkerInput,
   type SharedWorkerOutput,
 } from "@evolu/common/local-first";
-import { test } from "vitest";
+import { onTestFinished, test } from "vitest";
+import { removeTestDatabase } from "./_removeTestDatabase.ts";
 import {
   panicSharedWorker,
   setupRunWithEvoluPorts,
@@ -88,18 +89,22 @@ const setupTab = async (
     name: string,
   ) => SharedWorker = createProductionSharedWorker,
 ) => {
+  // Ending a simulated tab also stops workers whose startup has not requested
+  // its database lock yet, so they cannot recreate files after test cleanup.
+  const dbWorkers = disposer.use(new DisposableStack());
   const deps = disposer.use(
     createEvoluDeps({
       console: createConsole({ level: "silent" }),
       createBroadcastChannel,
       createMessageChannel,
       getDevicePersistence: () => Promise.resolve("Unknown"),
-      createDbWorker,
+      createDbWorker: () => dbWorkers.use(createDbWorker()),
       lockManager: navigator.locks,
       reloadApp: constVoid,
-      sharedWorker: createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
-        createNativeSharedWorker(workerName),
-      ),
+      createStoredWorker: () =>
+        createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
+          createNativeSharedWorker(workerName),
+        ),
     }),
   );
   const { run, evoluPorts } = setupRunWithEvoluPorts(deps);
@@ -110,12 +115,14 @@ const setupTab = async (
         appName,
         appOwner: testAppOwner,
         transports: [],
-        memoryOnly: true,
       }),
     ),
   );
   const [evoluPort] = evoluPorts;
   assertNonNullable(evoluPort);
+  // The lifecycle cases reopen the same stored database across simulated
+  // tabs. Remove it only after the entire case has closed every tab.
+  onTestFinished(() => removeTestDatabase(evolu.name));
   return { deps, run, evolu, evoluPort };
 };
 

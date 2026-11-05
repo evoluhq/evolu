@@ -23,9 +23,7 @@ import {
   syncStateToOwnerSyncStatus,
   syncStateToRelaySyncStates,
   type OwnerSyncStatus,
-  type RelaySyncState,
   type SyncConnection,
-  type SyncRouteError,
 } from "@evolu/common/local-first";
 import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-web";
@@ -383,48 +381,24 @@ const SyncStatus: FC = () => {
         : newest,
     null,
   );
-  // Another playground can connect to a relay without the OwnerId in its URL,
-  // which gets its own connection with the same label. Show one per relay,
-  // combining the state of its connections.
-  const relaysByUrl = new Map<
-    RelayUrl,
-    {
-      relay: RelaySyncState;
-      isConnected: boolean;
-      isComplete: boolean;
-      error: SyncRouteError | null;
-    }
-  >();
-  for (const relay of relayStates) {
-    const { transport, route } = relay;
-    const url = transport.label;
-    const other = relaysByUrl.get(url);
+  const relays = relayStates.map((relay) => {
     const relayStatus = relaySyncStateToStatus(relay);
-    const error =
-      relayStatus.type === "Error" &&
-      (!other?.error || relayStatus.error.at > other.error.at)
-        ? relayStatus.error
-        : (other?.error ?? null);
-    relaysByUrl.set(url, {
-      // Both connections have the same label, so details show the first.
-      relay: other?.relay ?? relay,
-      isConnected: transport.connection.type === "Open" || !!other?.isConnected,
-      isComplete: route.type === "Complete" || !!other?.isComplete,
-      error,
-    });
-  }
-  const relays = [...relaysByUrl];
-  const connectedCount = relays.filter(
-    ([, { isConnected }]) => isConnected,
-  ).length;
-  const completeCount = relays.filter(
-    ([, { isComplete }]) => isComplete,
-  ).length;
-  const configuredCount = new Set([...relayUrls, ...relaysByUrl.keys()]).size;
+    return {
+      relay,
+      isConnected: relay.transport.connection.type === "Open",
+      isComplete: relay.route.type === "Complete",
+      error: relayStatus.type === "Error" ? relayStatus.error : null,
+    };
+  });
+  const connectedCount = relays.filter(({ isConnected }) => isConnected).length;
+  const completeCount = relays.filter(({ isComplete }) => isComplete).length;
+  // Listed until the worker reports the relay, so it can always be removed.
+  const pendingRelayUrls = relayUrls.filter(
+    (url) => !relayStates.some(({ transport }) => transport.label === url),
+  );
+  const configuredCount = relays.length + pendingRelayUrls.length;
   const isLocalOnly = configuredCount === 0;
   const relaysNoun = configuredCount === 1 ? "relay" : "relays";
-  // Listed until the worker reports the relay, so it can always be removed.
-  const pendingRelayUrls = relayUrls.filter((url) => !relaysByUrl.has(url));
 
   const removeRelayButton = (url: string) => (
     <button
@@ -527,18 +501,15 @@ const SyncStatus: FC = () => {
         </h3>
         <ul className="space-y-4">
           {relays.map(
-            ([
-              url,
-              {
-                relay: {
-                  transport: { connection },
-                  route,
-                },
-                isConnected,
-                isComplete,
-                error,
+            ({
+              relay: {
+                transport: { label: url, connection },
+                route,
               },
-            ]) => (
+              isConnected,
+              isComplete,
+              error,
+            }) => (
               <li key={url} className="rounded-xl bg-zinc-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="min-w-0 text-xs break-all text-zinc-600">
@@ -601,13 +572,7 @@ const SyncStatus: FC = () => {
                     </p>
                   )}
                 </details>
-                {relayUrls.includes(url) ? (
-                  removeRelayButton(url)
-                ) : (
-                  <p className="mt-3 text-xs text-zinc-500">
-                    Used by another tab or playground.
-                  </p>
-                )}
+                {removeRelayButton(url)}
               </li>
             ),
           )}

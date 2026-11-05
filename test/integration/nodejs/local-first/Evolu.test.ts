@@ -124,6 +124,7 @@ import {
   createWorker,
   testCreateMessageChannel,
   testCreateSharedWorker,
+  testCreateWorker,
   testWaitForWorkerMessage,
 } from "../../../../packages/common/src/Worker.ts";
 import { testCreateSqliteDep } from "../_deps.ts";
@@ -311,7 +312,7 @@ describe("Evolu integration", () => {
         ...run.deps,
         createDbWorker,
         reloadApp,
-        sharedWorker,
+        storedWorker: Promise.resolve(sharedWorker),
       }),
     );
     const { workerId, syncStateChannelName } = await connected.promise;
@@ -563,7 +564,7 @@ describe("Evolu integration", () => {
     );
     using deps = createEvoluDeps({
       ...run.deps,
-      sharedWorker: setup.connectLaterTab(),
+      createStoredWorker: setup.connectLaterTab,
     });
     await using evoluRun = run.create(deps);
     await using evolu = await evoluRun.ok(createIntegrationEvolu);
@@ -918,7 +919,7 @@ describe("Evolu integration", () => {
       if (instanceCount === 2) {
         const laterTab = instances.use(setup.connectLaterTab());
         const laterRun = instances.use(
-          run.create({ ...run.deps, sharedWorker: laterTab }),
+          run.create({ ...run.deps, storedWorker: Promise.resolve(laterTab) }),
         );
         const second = instances.use(await laterRun.ok(createIntegrationEvolu));
         second.useOwner(testAppOwner, [transport]);
@@ -1794,7 +1795,7 @@ describe("Evolu integration", () => {
           rows: [
             {
               clock: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 165, 46, 34, 149, 181, 157, 13, 25,
+                0, 0, 0, 0, 0, 0, 0, 1, 48, 14, 183, 86, 103, 158, 74, 232,
               ]),
             },
           ],
@@ -1811,7 +1812,7 @@ describe("Evolu integration", () => {
               ]),
               table: "todo",
               timestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 165, 46, 34, 149, 181, 157, 13, 25,
+                0, 0, 0, 0, 0, 0, 0, 1, 48, 14, 183, 86, 103, 158, 74, 232,
               ]),
               value: "Integration todo",
             },
@@ -1824,7 +1825,7 @@ describe("Evolu integration", () => {
               ]),
               table: "todo",
               timestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 165, 46, 34, 149, 181, 157, 13, 25,
+                0, 0, 0, 0, 0, 0, 0, 1, 48, 14, 183, 86, 103, 158, 74, 232,
               ]),
               value: "1970-01-01T00:00:00.000Z",
             },
@@ -1836,15 +1837,15 @@ describe("Evolu integration", () => {
           rows: [
             {
               c: 1,
-              h1: 89079661760565,
-              h2: 267151136508171,
+              h1: 157182104044695,
+              h2: 58441487019123,
               l: 1,
               ownerId: new Uint8Array([
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
               ]),
               t: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 165, 46, 34, 149, 181, 157, 13, 25,
+                0, 0, 0, 0, 0, 0, 0, 1, 48, 14, 183, 86, 103, 158, 74, 232,
               ]),
             },
           ],
@@ -1854,10 +1855,10 @@ describe("Evolu integration", () => {
           rows: [
             {
               firstTimestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 165, 46, 34, 149, 181, 157, 13, 25,
+                0, 0, 0, 0, 0, 0, 0, 1, 48, 14, 183, 86, 103, 158, 74, 232,
               ]),
               lastTimestamp: new Uint8Array([
-                0, 0, 0, 0, 0, 0, 0, 1, 165, 46, 34, 149, 181, 157, 13, 25,
+                0, 0, 0, 0, 0, 0, 0, 1, 48, 14, 183, 86, 103, 158, 74, 232,
               ]),
               ownerId: new Uint8Array([
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
@@ -2153,7 +2154,7 @@ describe("Evolu integration", () => {
         ...run.deps,
         createDbWorker,
         reloadApp: constVoid,
-        sharedWorker,
+        storedWorker: Promise.resolve(sharedWorker),
       },
     );
 
@@ -2202,6 +2203,89 @@ describe("Evolu integration", () => {
       { name: stored.name, mode: "encrypted" },
       { name: memory.name, mode: "memory" },
     ]);
+  });
+
+  it("disposes an instance's private worker and removes its sync state", async () => {
+    using disposer = new DisposableStack();
+    const workerId = createIdFromString<"SharedWorker">(
+      "owned-memory-instance",
+    );
+    const syncStateChannelName = `evolu:sync-state:${workerId}`;
+    using syncStateChannel =
+      createBroadcastChannel<SyncState>(syncStateChannelName);
+    let privateState: SyncState = { transports: [], tenants: [] };
+    const privateWorker = disposer.use(
+      testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
+    );
+    let isPrivateWorkerDisposed = false;
+    privateWorker.self.onConnect = (port) => {
+      port.onMessage = (message) => {
+        if (message.type === "CreateEvolu") {
+          privateState = {
+            transports: [],
+            tenants: [{ type: "Active", name: message.name, owners: [] }],
+          };
+        }
+        if (
+          message.type === "CreateEvolu" ||
+          message.type === "RequestSyncState"
+        )
+          syncStateChannel.postMessage(privateState);
+      };
+      port.postMessage({
+        type: "Connected",
+        workerId,
+        syncStateChannelName,
+        consoleEntryOrErrorChannelName: `${consoleEntryOrErrorBroadcastChannelName}:${workerId}`,
+      });
+    };
+    const createMemoryInstanceWorker = (): SharedWorker => {
+      privateWorker.connect();
+      return {
+        port: privateWorker.port,
+        [Symbol.dispose]: () => {
+          isPrivateWorkerDisposed = true;
+          privateWorker[Symbol.dispose]();
+        },
+      };
+    };
+    const sharedWorker = disposer.use(
+      testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
+    );
+    sharedWorker.self.onConnect = (port) => {
+      port.onMessage = constVoid;
+    };
+    sharedWorker.connect();
+    using deps = createEvoluDeps({
+      createBroadcastChannel,
+      createDbWorker: testCreateWorker,
+      createMessageChannel,
+      createMemoryInstanceWorker,
+      getDevicePersistence: () => Promise.resolve("Unknown"),
+      lockManager: testCreateLockManager(),
+      reloadApp: constVoid,
+      createStoredWorker: () => sharedWorker,
+    });
+    await using run = testCreateRun(deps);
+    await using evolu = await run.ok(
+      createEvolu(Schema, {
+        appName: testAppName,
+        appOwner: testAppOwner,
+        memoryOnly: true,
+        transports: [],
+      }),
+    );
+    await testWaitForWorkerMessage();
+
+    assertEqual(deps.syncState.get()?.tenants, [
+      { type: "Active", name: evolu.name, owners: [] },
+    ]);
+    assertFalse(isPrivateWorkerDisposed);
+
+    await evolu[Symbol.asyncDispose]();
+
+    assertTrue(isPrivateWorkerDisposed);
+    assertEqual(deps.syncState.get()?.tenants, []);
   });
 
   it("keeps refused work pending until disposal and never completes mutations", async () => {
@@ -2305,7 +2389,7 @@ describe("Evolu integration", () => {
     );
     using lateDeps = createEvoluDeps({
       ...run.deps,
-      sharedWorker: setup.connectLaterTab(),
+      createStoredWorker: setup.connectLaterTab,
     });
     const reported = Promise.withResolvers<void>();
     lateDeps.evoluError.subscribe(reported.resolve);
@@ -2358,7 +2442,7 @@ describe("Evolu integration", () => {
     );
     using lateDeps = createEvoluDeps({
       ...run.deps,
-      sharedWorker: setup.connectLaterTab(),
+      createStoredWorker: setup.connectLaterTab,
     });
     assertSame(lateDeps.evoluError.get(), null);
     const reported = Promise.withResolvers<void>();
@@ -2397,7 +2481,7 @@ describe("Evolu integration", () => {
       await using caller = await run.ok(createIntegrationEvolu);
       using laterTabDeps = createEvoluDeps({
         ...run.deps,
-        sharedWorker: setup.connectLaterTab(),
+        createStoredWorker: setup.connectLaterTab,
       });
       await using laterTabRun = run.create(laterTabDeps);
       const otherTabDeleted = Promise.withResolvers<void>();
@@ -2517,7 +2601,7 @@ describe("Evolu integration", () => {
       );
       using laterTabDeps = createEvoluDeps({
         ...run.deps,
-        sharedWorker: setup.connectLaterTab(),
+        createStoredWorker: setup.connectLaterTab,
       });
       await using laterTabRun = run.create(laterTabDeps);
       const otherTabDeleted = Promise.withResolvers<OwnerId>();

@@ -202,13 +202,20 @@ examples use the same DOM visibility observer to detect even brief Suspense hide
 The sync playground tests restart the relay, add a backup relay, and check the
 connection and synchronization state while one relay is down and after it
 catches up.
+The private-browsing tests in Firefox and WebKit check that memory databases
+belong to individual instances: offline tabs don't exchange changes, closing
+the first tab preserves the second tab's unsynced changes, and online tabs
+exchange changes through the relay. Chromium skips these tests because its
+incognito windows provide OPFS.
 `StaticSite.spec.mts` requests the served export without a browser and checks
 what the Cloudflare configuration adds: the docs and root 404 pages, the
 redirects, and the content types of the docs Markdown, `llms.txt`, and the RSS
 feed. Only the Chromium project runs it, and the dev configuration skips it.
 Each test gets fresh browser storage and a separate relay process with a
-temporary database directory, removed after the test. Tabs within a context
-share storage and workers; contexts within a test share only the relays.
+temporary database directory, removed after the test. Stored databases share
+storage and workers between tabs within a context; memory databases belong to
+one instance and exchange changes between tabs only through relays. Contexts
+within a test share only the relays.
 Every test fails on uncaught browser errors and unexpected dialogs, including
 the examples' Evolu error alert; tests declare the dialogs they expect.
 

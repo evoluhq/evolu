@@ -651,15 +651,13 @@ describe("createWasmSqliteDriver", () => {
             ),
           lockManager: navigator.locks,
           reloadApp: constVoid,
-          sharedWorker: createSharedWorker<
-            SharedWorkerInput,
-            SharedWorkerOutput
-          >(
-            new SharedWorker(
-              new URL("./workers/sync-shared-worker.ts", import.meta.url),
-              { name: workerName, type: "module" },
+          createStoredWorker: () =>
+            createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
+              new SharedWorker(
+                new URL("./workers/sync-shared-worker.ts", import.meta.url),
+                { name: workerName, type: "module" },
+              ),
             ),
-          ),
         });
         await using run = createRun(deps);
         await using evolu = await run.ok(
@@ -718,15 +716,13 @@ describe("createWasmSqliteDriver", () => {
             ),
           lockManager: navigator.locks,
           reloadApp: constVoid,
-          sharedWorker: createSharedWorker<
-            SharedWorkerInput,
-            SharedWorkerOutput
-          >(
-            new SharedWorker(
-              new URL("./workers/sync-shared-worker.ts", import.meta.url),
-              { name: workerName, type: "module" },
+          createStoredWorker: () =>
+            createSharedWorker<SharedWorkerInput, SharedWorkerOutput>(
+              new SharedWorker(
+                new URL("./workers/sync-shared-worker.ts", import.meta.url),
+                { name: workerName, type: "module" },
+              ),
             ),
-          ),
         });
         await using run = createRun(deps);
         await using evolu = await run.ok(

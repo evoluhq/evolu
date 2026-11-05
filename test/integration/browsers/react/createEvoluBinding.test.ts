@@ -25,6 +25,7 @@ import {
   testAppName,
   type Evolu,
   type EvoluPlatformDeps,
+  type StoredWorkerDep,
 } from "../../../../packages/common/src/local-first/Evolu.ts";
 import {
   createOwnerWebSocketTransport,
@@ -281,7 +282,7 @@ const setupEvolu = async (disposer: AsyncDisposableStack) => {
     };
   }> = [];
   let reloadCount = 0;
-  const evoluDeps: EvoluPlatformDeps = {
+  const evoluDeps: EvoluPlatformDeps & StoredWorkerDep = {
     createDbWorker: testCreateWorker,
     createBroadcastChannel: testCreateBroadcastChannel,
     createMessageChannel: <Input, Output = never>() => {
@@ -294,8 +295,10 @@ const setupEvolu = async (disposer: AsyncDisposableStack) => {
     reloadApp: () => {
       reloadCount += 1;
     },
-    sharedWorker: disposer.use(
-      testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
+    storedWorker: Promise.resolve(
+      disposer.use(
+        testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
+      ),
     ),
   };
   const run = disposer.use(testCreateRun(evoluDeps));

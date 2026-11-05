@@ -406,6 +406,7 @@ const setupDbWorker = async ({
   time,
   console = testCreateConsole({ level: "silent" }),
   consoleLevel = console.getLevel(),
+  consoleEntryOrErrorChannelName,
   createBroadcastChannel = testCreateBroadcastChannel,
   expectRefused = false,
   lockManager = testCreateLockManager(),
@@ -420,6 +421,7 @@ const setupDbWorker = async ({
   console?: TestConsole;
   /** The app's level, which DbWorkerInit carries. */
   consoleLevel?: ConsoleLevel;
+  consoleEntryOrErrorChannelName?: string;
   createBroadcastChannel?: CreateBroadcastChannelDep["createBroadcastChannel"];
   /** The worker is expected to post LeaderRefused instead of LeaderAcquired. */
   expectRefused?: boolean;
@@ -479,7 +481,7 @@ const setupDbWorker = async ({
   };
   const consoleEntryOrErrorBroadcastChannel = disposer.use(
     testCreateBroadcastChannel<ConsoleEntryOrError>(
-      consoleEntryOrErrorBroadcastChannelName,
+      consoleEntryOrErrorChannelName ?? consoleEntryOrErrorBroadcastChannelName,
     ),
   );
 
@@ -513,6 +515,8 @@ const setupDbWorker = async ({
     sqliteSchema,
     encryptionKey: testAppOwner.encryptionKey,
     memoryOnly,
+    consoleEntryOrErrorChannelName:
+      consoleEntryOrErrorChannelName ?? consoleEntryOrErrorBroadcastChannelName,
     sharedWorkerId: testSharedWorkerId,
     port: channel.port1.native,
   });
@@ -581,6 +585,7 @@ const startDbWorkerUntilDone = async (dbSetup: DbSetup) => {
     sqliteSchema: defaultSqliteSchema,
     encryptionKey: testAppOwner.encryptionKey,
     memoryOnly: true,
+    consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
     sharedWorkerId: testSharedWorkerId,
     port: channel.port1.native,
   });
@@ -794,6 +799,30 @@ describe("worker startup", () => {
     ]);
   });
 
+  it("writes console entries to its memory instance private channel", async () => {
+    const globalEntries: Array<ConsoleEntryOrError> = [];
+    using globalChannel = testCreateBroadcastChannel<ConsoleEntryOrError>(
+      consoleEntryOrErrorBroadcastChannelName,
+    );
+    globalChannel.onMessage = (output) => {
+      globalEntries.push(output);
+    };
+    await using setup = await setupDbWorker({
+      consoleEntryOrErrorChannelName: `${consoleEntryOrErrorBroadcastChannelName}:memory-instance`,
+    });
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: ["DbWorker"],
+      args: ["Only this memory instance receives the entry."],
+    };
+
+    setup.consoleStoreOutput.write(entry);
+    await testWaitForWorkerMessage();
+
+    assertEqual(setup.consoleEntryOrErrors, [{ type: "ConsoleEntry", entry }]);
+    assertEqual(globalEntries, []);
+  });
+
   it("acquires leadership and initializes SQLite", async () => {
     await using setup = await setupDbWorker();
 
@@ -963,6 +992,7 @@ describe("worker startup", () => {
       sqliteSchema: defaultSqliteSchema,
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: true,
+      consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
       sharedWorkerId: testSharedWorkerId,
       port: channel.port1.native,
     });
@@ -7934,6 +7964,7 @@ describe("worker failure", () => {
       sqliteSchema: defaultSqliteSchema,
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: true,
+      consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
       sharedWorkerId: testSharedWorkerId,
       port: channel.port1.native,
     });

@@ -21,7 +21,10 @@ import {
   type EvoluConfig,
   type Run,
 } from "@evolu/common";
-import type { EvoluPlatformDeps } from "@evolu/common/local-first";
+import type {
+  EvoluPlatformDeps,
+  StoredWorkerDep,
+} from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
@@ -81,7 +84,7 @@ const setupEffect = async ({ waitForDisposal = false } = {}) => {
       getDevicePersistence: () => Promise.resolve("Unknown" as const),
       lockManager: testCreateLockManager(),
       reloadApp: constVoid,
-      sharedWorker,
+      storedWorker: Promise.resolve(sharedWorker),
     }),
   );
   type TestRun = typeof run;
@@ -95,7 +98,7 @@ const setupEffect = async ({ waitForDisposal = false } = {}) => {
 
   const create =
     (schema: typeof AppSchema, config: EvoluConfig) =>
-    async (run: Run<EvoluPlatformDeps>) => {
+    async (run: Run<EvoluPlatformDeps & StoredWorkerDep>) => {
       const instance = await run.ok(
         createEvolu(schema, { ...config, transports: [] }),
       );

@@ -13,13 +13,14 @@ import {
   assertRejects,
   assertSame,
   assertThrowsInstanceOf,
+  assertThrowsSame,
   assertTrue,
 } from "../Assert.ts";
 import * as fc from "fast-check";
 import { describe, it } from "node:test";
 import type { Brand } from "../Brand.ts";
 import { createBuffer } from "../Bytes.ts";
-import type { ConsoleEntry, TestConsole } from "../Console.ts";
+import type { ConsoleEntry } from "../Console.ts";
 import { testCreateConsole } from "../Console.ts";
 import { createXChaCha20Poly1305 } from "../Crypto.ts";
 import { createUnknownError, type UnknownError } from "../Error.ts";
@@ -36,6 +37,7 @@ import {
   maxMutationSize,
   testAppName,
   type EvoluPlatformDeps,
+  type StoredWorkerDep,
 } from "./Evolu.ts";
 import {
   createOwnerSecret,
@@ -66,6 +68,7 @@ import { createQueryBuilder } from "./Schema.ts";
 import {
   consoleEntryOrErrorBroadcastChannelName,
   type ConsoleEntryOrError,
+  type CreateStoredWorkerDep,
   type DbWorkerInput,
   type DbWorkerOutput,
   type EvoluInput,
@@ -78,16 +81,12 @@ import {
   type SyncState,
   syncStateToOwnerSyncStatus,
 } from "./Shared.ts";
-import {
-  acquireLeaderLock,
-  type LockManagerDep,
-  testCreateLockManager,
-} from "../LockManager.ts";
+import { acquireLeaderLock, testCreateLockManager } from "../LockManager.ts";
 import { installPolyfills } from "../Polyfills.ts";
 import { err, ok, type Result } from "../Result.ts";
 import { SqliteBoolean } from "../Sqlite.ts";
 import { explicitAbortReason, testCreateDeps, testCreateRun } from "../Task.ts";
-import { testCreateId } from "../Test.ts";
+import { testCreateId, testStubGlobal } from "../Test.ts";
 import { maxMillis, Millis } from "../Time.ts";
 import { WebSocketUrl } from "../WebSocket.ts";
 import {
@@ -224,35 +223,34 @@ describe("Evolu", () => {
       queuedEvoluOutputs.push(output);
     };
 
-    const sharedWorkerDep: EvoluPlatformDeps["sharedWorker"] =
-      onSharedWorkerPostMessage
-        ? {
-            port: {
-              postMessage: (message, transfer) => {
-                sharedWorker.port.postMessage(message, transfer);
-                onSharedWorkerPostMessage(message);
-              },
-              get onMessage() {
-                return sharedWorker.port.onMessage;
-              },
-              set onMessage(value) {
-                sharedWorker.port.onMessage = value;
-              },
-              native: sharedWorker.port.native,
-              [Symbol.dispose]: constVoid,
+    const storedWorker: SharedWorker = onSharedWorkerPostMessage
+      ? {
+          port: {
+            postMessage: (message, transfer) => {
+              sharedWorker.port.postMessage(message, transfer);
+              onSharedWorkerPostMessage(message);
             },
+            get onMessage() {
+              return sharedWorker.port.onMessage;
+            },
+            set onMessage(value) {
+              sharedWorker.port.onMessage = value;
+            },
+            native: sharedWorker.port.native,
             [Symbol.dispose]: constVoid,
-          }
-        : sharedWorker;
+          },
+          [Symbol.dispose]: constVoid,
+        }
+      : sharedWorker;
 
-    const evoluDeps: EvoluPlatformDeps = {
+    const evoluDeps: EvoluPlatformDeps & StoredWorkerDep = {
       createDbWorker: testCreateWorker,
       createBroadcastChannel: testCreateBroadcastChannel,
       createMessageChannel: testCreateMessageChannel,
       getDevicePersistence: () => Promise.resolve("Unknown"),
       lockManager: testCreateLockManager(),
       reloadApp: constVoid,
-      sharedWorker: sharedWorkerDep,
+      storedWorker: Promise.resolve(storedWorker),
       ...overrides,
     };
     const run = disposer.use(testCreateRun(evoluDeps));
@@ -324,8 +322,7 @@ describe("Evolu", () => {
 
   describe("createEvoluDeps", () => {
     const setupCreateEvoluDeps = async (
-      console: TestConsole = testCreateConsole(),
-      lockManager: LockManagerDep["lockManager"] = testCreateLockManager(),
+      overrides: Partial<EvoluPlatformDeps> = {},
     ): Promise<{
       readonly deps: ReturnType<typeof createEvoluDeps>;
       readonly messages: Array<SharedWorkerInput>;
@@ -366,10 +363,11 @@ describe("Evolu", () => {
           createBroadcastChannel: testCreateBroadcastChannel,
           createMessageChannel: testCreateMessageChannel,
           getDevicePersistence: () => Promise.resolve("Unknown"),
-          lockManager,
-          sharedWorker: worker,
+          lockManager: testCreateLockManager(),
+          createStoredWorker: () => worker,
           reloadApp: constVoid,
-          console,
+          console: testCreateConsole(),
+          ...overrides,
         }),
       );
 
@@ -396,6 +394,8 @@ describe("Evolu", () => {
             type: "Connected",
             workerId,
             syncStateChannelName: `evolu:sync-state:${workerId}`,
+            consoleEntryOrErrorChannelName:
+              consoleEntryOrErrorBroadcastChannelName,
           });
           await testWaitForWorkerMessage();
         },
@@ -416,6 +416,44 @@ describe("Evolu", () => {
       });
 
       await setup.connect(testCreateId()<"SharedWorker">());
+      assertSame(setup.deps.evoluError.get(), null);
+    });
+
+    it("keeps a stored worker's OtherBuildRunningError when a memory worker connects", async () => {
+      const createWorkerId = testCreateId();
+      using memoryWorker = testCreateSharedWorker<
+        SharedWorkerInput,
+        SharedWorkerOutput
+      >();
+      memoryWorker.self.onConnect = (port) => {
+        port.onMessage = constVoid;
+        port.postMessage({
+          type: "Connected",
+          workerId: createWorkerId<"SharedWorker">(),
+          syncStateChannelName: "memory-wait-sync-state",
+          consoleEntryOrErrorChannelName: "memory-wait-console",
+        });
+      };
+      memoryWorker.connect();
+      using setup = await setupCreateEvoluDeps({
+        createMemoryInstanceWorker: () => memoryWorker,
+      });
+      setup.sharedWorkerPort.postMessage({
+        type: "Error",
+        error: { type: "OtherBuildRunningError" },
+      });
+      await testWaitForWorkerMessage();
+      const waitingError = setup.deps.evoluError.get();
+      assertEqual(waitingError, { type: "OtherBuildRunningError" });
+
+      const createMemoryInstanceWorker = setup.deps.createMemoryInstanceWorker;
+      assertNotUndefined(createMemoryInstanceWorker);
+      using _memoryConnection = createMemoryInstanceWorker();
+      await testWaitForWorkerMessage();
+
+      assertSame(setup.deps.evoluError.get(), waitingError);
+
+      await setup.connect(createWorkerId<"SharedWorker">());
       assertSame(setup.deps.evoluError.get(), null);
     });
 
@@ -449,7 +487,7 @@ describe("Evolu", () => {
 
     it("announces itself as tab leader with its console level once its worker connects", async () => {
       const testConsole = testCreateConsole();
-      using setup = await setupCreateEvoluDeps(testConsole);
+      using setup = await setupCreateEvoluDeps({ console: testConsole });
       const { messages, connect } = setup;
 
       await connect(testCreateId()<"SharedWorker">());
@@ -467,9 +505,9 @@ describe("Evolu", () => {
       const worker = createWorkerId<"SharedWorker">();
       // The tab's worker holds this lock for its lifetime.
       await using _workerBuildLock = await run.ok(acquireLeaderLock("tab"));
-      using first = await setupCreateEvoluDeps(undefined, lockManager);
-      using second = await setupCreateEvoluDeps(undefined, lockManager);
-      using ofOtherWorker = await setupCreateEvoluDeps(undefined, lockManager);
+      using first = await setupCreateEvoluDeps({ lockManager });
+      using second = await setupCreateEvoluDeps({ lockManager });
+      using ofOtherWorker = await setupCreateEvoluDeps({ lockManager });
       await first.connect(worker);
       await second.connect(worker);
       await ofOtherWorker.connect(createWorkerId<"SharedWorker">());
@@ -522,7 +560,7 @@ describe("Evolu", () => {
         createMessageChannel: testCreateMessageChannel,
         getDevicePersistence: () => Promise.resolve("Unknown" as const),
         lockManager: testCreateLockManager(),
-        sharedWorker: worker,
+        createStoredWorker: () => worker,
         reloadApp: constVoid,
       });
 
@@ -537,6 +575,8 @@ describe("Evolu", () => {
           sqliteSchema,
           encryptionKey: testAppOwner.encryptionKey,
           memoryOnly: true,
+          consoleEntryOrErrorChannelName:
+            consoleEntryOrErrorBroadcastChannelName,
           sharedWorkerId,
           port: dbWorkerChannel.port1.native,
         },
@@ -553,11 +593,81 @@ describe("Evolu", () => {
         sqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: true,
+        consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
         sharedWorkerId,
         port: dbWorkerChannel.port1.native,
       });
 
       dbWorkerChannel[Symbol.dispose]();
+    });
+
+    it("hosts the DbWorkers a memory worker requests for as long as its instance", async () => {
+      using disposer = new DisposableStack();
+      const dbWorkerMessages: Array<DbWorkerInit> = [];
+      let dbWorkerDisposeCount = 0;
+      const workerId = testCreateId()<"SharedWorker">();
+      const channelName = `${consoleEntryOrErrorBroadcastChannelName}:${workerId}`;
+      using memoryWorker = testCreateSharedWorker<
+        SharedWorkerInput,
+        SharedWorkerOutput
+      >();
+      const memoryPort =
+        Promise.withResolvers<
+          MessagePort<SharedWorkerOutput, SharedWorkerInput>
+        >();
+      memoryWorker.self.onConnect = (port) => {
+        port.onMessage = constVoid;
+        port.postMessage({
+          type: "Connected",
+          workerId,
+          syncStateChannelName: `evolu:sync-state:${workerId}`,
+          consoleEntryOrErrorChannelName: channelName,
+        });
+        memoryPort.resolve(port);
+      };
+      memoryWorker.connect();
+      using setup = await setupCreateEvoluDeps({
+        createMemoryInstanceWorker: () => memoryWorker,
+        createDbWorker: () => {
+          const worker = disposer.use(testCreateWorker<DbWorkerInit>());
+          worker.self.onMessage = (message) => {
+            dbWorkerMessages.push(message);
+          };
+          return {
+            ...worker,
+            [Symbol.dispose]: () => {
+              dbWorkerDisposeCount++;
+              worker[Symbol.dispose]();
+            },
+          };
+        },
+      });
+      const createMemoryInstanceWorker = setup.deps.createMemoryInstanceWorker;
+      assertNotUndefined(createMemoryInstanceWorker);
+      using memoryConnection = createMemoryInstanceWorker();
+      using dbWorkerChannel = testCreateMessageChannel<
+        DbWorkerOutput,
+        DbWorkerInput
+      >();
+      const init: DbWorkerInit = {
+        type: "DbWorkerInit",
+        name: testName,
+        consoleLevel: "debug",
+        sqliteSchema: { tables: {}, indexes: [] },
+        encryptionKey: testAppOwner.encryptionKey,
+        memoryOnly: true,
+        consoleEntryOrErrorChannelName: channelName,
+        sharedWorkerId: workerId,
+        port: dbWorkerChannel.port1.native,
+      };
+
+      (await memoryPort.promise).postMessage(init, [init.port]);
+      await testWaitForWorkerMessage();
+
+      assertEqual(dbWorkerMessages, [init]);
+      assertSame(dbWorkerDisposeCount, 0);
+      memoryConnection[Symbol.dispose]();
+      assertSame(dbWorkerDisposeCount, 1);
     });
 
     it("falls back to default console when not provided", async () => {
@@ -584,6 +694,8 @@ describe("Evolu", () => {
             type: "Connected",
             workerId: testCreateId()<"SharedWorker">(),
             syncStateChannelName: "evolu:sync-state:worker",
+            consoleEntryOrErrorChannelName:
+              consoleEntryOrErrorBroadcastChannelName,
           });
         };
         worker.connect();
@@ -594,7 +706,7 @@ describe("Evolu", () => {
           createMessageChannel: testCreateMessageChannel,
           getDevicePersistence: () => Promise.resolve("Unknown" as const),
           lockManager: testCreateLockManager(),
-          sharedWorker: worker,
+          createStoredWorker: () => worker,
           reloadApp: constVoid,
         });
 
@@ -634,7 +746,7 @@ describe("Evolu", () => {
 
     it("wires console channel to console.write", async () => {
       const testConsole = testCreateConsole();
-      using setup = await setupCreateEvoluDeps(testConsole);
+      using setup = await setupCreateEvoluDeps({ console: testConsole });
       const { consoleEntryOrErrorBroadcastChannel } = setup;
 
       const entry: ConsoleEntry = {
@@ -686,6 +798,258 @@ describe("Evolu", () => {
       otherChannel.postMessage(createState("other"));
       await testWaitForWorkerMessage();
       assertEqual(deps.syncState.get(), createState("changed"));
+    });
+
+    it("combines shared and memory workers' sync states and removes a disposed memory worker", async () => {
+      const createId = testCreateId();
+      const sharedWorkerId = createId<"SharedWorker">();
+      const memoryChannelNames: Array<string> = [];
+      using setup = await setupCreateEvoluDeps({
+        createMemoryInstanceWorker: () => {
+          const channelName = `memory-sync-state-${memoryChannelNames.length}`;
+          memoryChannelNames.push(channelName);
+          const worker = testCreateSharedWorker<
+            SharedWorkerInput,
+            SharedWorkerOutput
+          >();
+          worker.self.onConnect = (port) => {
+            port.onMessage = constVoid;
+            port.postMessage({
+              type: "Connected",
+              workerId: createId<"SharedWorker">(),
+              syncStateChannelName: channelName,
+              consoleEntryOrErrorChannelName: `${channelName}-console`,
+            });
+          };
+          worker.connect();
+          return worker;
+        },
+      });
+      const createMemoryInstanceWorker = setup.deps.createMemoryInstanceWorker;
+      assertNotUndefined(createMemoryInstanceWorker);
+      using first = createMemoryInstanceWorker();
+      using _second = createMemoryInstanceWorker();
+      await setup.connect(sharedWorkerId);
+      using sharedChannel = testCreateBroadcastChannel<SyncState>(
+        `evolu:sync-state:${sharedWorkerId}`,
+      );
+      using firstChannel = testCreateBroadcastChannel<SyncState>(
+        memoryChannelNames[0],
+      );
+      using secondChannel = testCreateBroadcastChannel<SyncState>(
+        memoryChannelNames[1],
+      );
+      const createState = (name: string): SyncState => ({
+        transports: [
+          {
+            type: "WebSocket",
+            id: createIdFromString<"SyncTransport">(name),
+            label: RelayUrl.orThrow("wss://relay.example/"),
+            connection: {
+              type: "Open",
+              openedAt: Millis.orThrow(1000),
+              error: null,
+            },
+          },
+        ],
+        tenants: [{ type: "Active", name: Name.orThrow(name), owners: [] }],
+      });
+      sharedChannel.postMessage(createState("stored"));
+      firstChannel.postMessage(createState("first"));
+      secondChannel.postMessage(createState("second"));
+      await testWaitForWorkerMessage();
+
+      assertEqual(
+        setup.deps.syncState.get()?.tenants.map((tenant) => tenant.name),
+        ["stored", "first", "second"],
+      );
+      assertEqual(
+        setup.deps.syncState.get()?.transports.map((transport) => transport.id),
+        ["stored", "first", "second"].map((name) =>
+          createIdFromString<"SyncTransport">(name),
+        ),
+      );
+
+      first[Symbol.dispose]();
+      assertEqual(
+        setup.deps.syncState.get()?.tenants.map((tenant) => tenant.name),
+        ["stored", "second"],
+      );
+      assertSame(setup.deps.syncState.get()?.transports.length, 2);
+
+      firstChannel.postMessage(createState("disposed"));
+      secondChannel.postMessage(createState("updated"));
+      await testWaitForWorkerMessage();
+      assertEqual(
+        setup.deps.syncState.get()?.tenants.map((tenant) => tenant.name),
+        ["stored", "updated"],
+      );
+    });
+
+    it("disposes every worker without notifying sync state subscribers", async () => {
+      using disposer = new DisposableStack();
+      const createId = testCreateId();
+      const disposedWorkerNames: Array<string> = [];
+      const createTrackedWorker = (name: string): SharedWorker => {
+        const worker = disposer.use(
+          testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
+        );
+        worker.self.onConnect = (port) => {
+          port.onMessage = constVoid;
+          port.postMessage({
+            type: "Connected",
+            workerId: createId<"SharedWorker">(),
+            syncStateChannelName: `teardown-sync-state-${name}`,
+            consoleEntryOrErrorChannelName: `teardown-console-${name}`,
+          });
+        };
+        worker.connect();
+        return {
+          port: worker.port,
+          [Symbol.dispose]: () => {
+            disposedWorkerNames.push(name);
+            worker[Symbol.dispose]();
+          },
+        };
+      };
+      let memoryWorkerCount = 0;
+      using deps = createEvoluDeps({
+        createDbWorker: testCreateWorker,
+        createBroadcastChannel: testCreateBroadcastChannel,
+        createMessageChannel: testCreateMessageChannel,
+        createMemoryInstanceWorker: () =>
+          createTrackedWorker(`memory-${++memoryWorkerCount}`),
+        getDevicePersistence: () => Promise.resolve("Unknown"),
+        lockManager: testCreateLockManager(),
+        reloadApp: constVoid,
+        createStoredWorker: () => createTrackedWorker("stored"),
+        console: testCreateConsole(),
+      });
+      await deps.storedWorker;
+      const createMemoryInstanceWorker = deps.createMemoryInstanceWorker;
+      assertNotUndefined(createMemoryInstanceWorker);
+      using _first = createMemoryInstanceWorker();
+      using _second = createMemoryInstanceWorker();
+      await testWaitForWorkerMessage();
+      for (const name of ["stored", "memory-1", "memory-2"]) {
+        const channel = disposer.use(
+          testCreateBroadcastChannel<SyncState>(`teardown-sync-state-${name}`),
+        );
+        channel.postMessage({
+          transports: [],
+          tenants: [{ type: "Active", name: Name.orThrow(name), owners: [] }],
+        });
+      }
+      await testWaitForWorkerMessage();
+      const snapshot = deps.syncState.get();
+      assertNotNull(snapshot);
+      assertEqual(
+        snapshot.tenants.map(({ name }) => name),
+        ["stored", "memory-1", "memory-2"],
+      );
+      let notificationCount = 0;
+      deps.syncState.subscribe(() => {
+        notificationCount++;
+        throw new Error("A subscriber failed during shutdown.");
+      });
+
+      deps[Symbol.dispose]();
+
+      assertSame(notificationCount, 0);
+      assertSame(deps.syncState.get(), snapshot);
+      assertEqual(disposedWorkerNames, ["stored", "memory-1", "memory-2"]);
+    });
+
+    it("receives a memory worker's errors and console entries until it is disposed", async () => {
+      const firstConsole = testCreateConsole();
+      const workerId = testCreateId()<"SharedWorker">();
+      using first = await setupCreateEvoluDeps({
+        console: firstConsole,
+        createMemoryInstanceWorker: () => {
+          const worker = testCreateSharedWorker<
+            SharedWorkerInput,
+            SharedWorkerOutput
+          >();
+          worker.self.onConnect = (port) => {
+            port.onMessage = constVoid;
+            port.postMessage({
+              type: "Connected",
+              workerId,
+              syncStateChannelName: `evolu:sync-state:${workerId}`,
+              consoleEntryOrErrorChannelName: `${consoleEntryOrErrorBroadcastChannelName}:${workerId}`,
+            });
+          };
+          worker.connect();
+          return worker;
+        },
+      });
+      const createMemoryInstanceWorker = first.deps.createMemoryInstanceWorker;
+      assertNotUndefined(createMemoryInstanceWorker);
+      using _worker = createMemoryInstanceWorker();
+      using channel = testCreateBroadcastChannel<ConsoleEntryOrError>(
+        `${consoleEntryOrErrorBroadcastChannelName}:${workerId}`,
+      );
+      await testWaitForWorkerMessage();
+      const error = createUnknownError("Only the memory instance failed");
+      const entry: ConsoleEntry = {
+        method: "info",
+        path: ["memory"],
+        args: ["A private worker's entry"],
+      };
+      channel.postMessage({ type: "Error", error });
+      channel.postMessage({ type: "ConsoleEntry", entry });
+      await testWaitForWorkerMessage();
+
+      assertEqual(first.deps.evoluError.get(), error);
+      assertEqual(firstConsole.getEntriesSnapshot().at(-1), entry);
+
+      _worker[Symbol.dispose]();
+      channel.postMessage({
+        type: "Error",
+        error: createUnknownError("The disposed worker's error"),
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(first.deps.evoluError.get(), error);
+    });
+
+    it("keeps the stored console channel open for the deps lifetime", async () => {
+      const console = testCreateConsole();
+      using setup = await setupCreateEvoluDeps({ console });
+      const postStoredMessages = async (message: string): Promise<void> => {
+        const error = createUnknownError(message);
+        const entry: ConsoleEntry = {
+          method: "info",
+          path: ["stored"],
+          args: [message],
+        };
+        setup.consoleEntryOrErrorBroadcastChannel.postMessage({
+          type: "Error",
+          error,
+        });
+        setup.consoleEntryOrErrorBroadcastChannel.postMessage({
+          type: "ConsoleEntry",
+          entry,
+        });
+        await testWaitForWorkerMessage();
+        assertEqual(setup.deps.evoluError.get(), error);
+        assertEqual(console.getEntriesSnapshot(), [
+          { method: "error", path: [], args: [error] },
+          entry,
+        ]);
+      };
+
+      await postStoredMessages("Before any port post");
+      assertEqual(setup.messages, []);
+
+      setup.deps[Symbol.dispose]();
+      const error = setup.deps.evoluError.get();
+      setup.consoleEntryOrErrorBroadcastChannel.postMessage({
+        type: "Error",
+        error: createUnknownError("After deps disposal"),
+      });
+      await testWaitForWorkerMessage();
+      assertSame(setup.deps.evoluError.get(), error);
+      assertEqual(console.getEntriesSnapshot(), []);
     });
 
     it("keeps the unchanged parts of each sync state snapshot", async () => {
@@ -908,6 +1272,8 @@ describe("Evolu", () => {
           type: "Connected",
           workerId: testCreateId()<"SharedWorker">(),
           syncStateChannelName: name,
+          consoleEntryOrErrorChannelName:
+            consoleEntryOrErrorBroadcastChannelName,
         });
       };
       worker.connect();
@@ -932,7 +1298,7 @@ describe("Evolu", () => {
         createMessageChannel: testCreateMessageChannel,
         getDevicePersistence: () => Promise.resolve("Unknown" as const),
         lockManager: testCreateLockManager(),
-        sharedWorker: { port, [Symbol.dispose]: constVoid },
+        createStoredWorker: () => ({ port, [Symbol.dispose]: constVoid }),
         reloadApp: constVoid,
       });
       await testWaitForWorkerMessage();
@@ -1010,7 +1376,7 @@ describe("Evolu", () => {
 
     it("only logs a sync error that an older build broadcasts", async () => {
       const testConsole = testCreateConsole();
-      using setup = await setupCreateEvoluDeps(testConsole);
+      using setup = await setupCreateEvoluDeps({ console: testConsole });
       const { deps, consoleEntryOrErrorBroadcastChannel } = setup;
       const error = {
         type: "ProtocolQuotaError",
@@ -1034,7 +1400,7 @@ describe("Evolu", () => {
     for (const source of ["SharedWorker", "Error", "ConsoleEntry"] as const) {
       it(`preserves the first startup refusal while logging a later ${source} message`, async () => {
         const testConsole = testCreateConsole();
-        using setup = await setupCreateEvoluDeps(testConsole);
+        using setup = await setupCreateEvoluDeps({ console: testConsole });
         const { deps, sharedWorkerPort, consoleEntryOrErrorBroadcastChannel } =
           setup;
         assertSame(deps.evoluError.get(), null);
@@ -1103,15 +1469,14 @@ describe("Evolu", () => {
       });
     }
 
-    it("throws for unknown tab output type", () => {
+    it("throws for unknown tab output type", async () => {
       const consoleEntryOrErrorBroadcastChannel: {
         value: {
           readonly onMessage: ((message: ConsoleEntryOrError) => void) | null;
         } | null;
       } = { value: null };
 
-      using _deps = createEvoluDeps({
-        createDbWorker: testCreateWorker,
+      using _setup = await setupCreateEvoluDeps({
         createBroadcastChannel: <Input, Output = Input>(name: string) => {
           const channel = testCreateBroadcastChannel<Input, Output>(name);
           consoleEntryOrErrorBroadcastChannel.value = channel as NonNullable<
@@ -1119,14 +1484,6 @@ describe("Evolu", () => {
           >;
           return channel;
         },
-        createMessageChannel: testCreateMessageChannel,
-        getDevicePersistence: () => Promise.resolve("Unknown" as const),
-        lockManager: testCreateLockManager(),
-        sharedWorker: testCreateSharedWorker<
-          SharedWorkerInput,
-          SharedWorkerOutput
-        >(),
-        reloadApp: constVoid,
       });
 
       const onMessage = consoleEntryOrErrorBroadcastChannel.value?.onMessage;
@@ -1148,6 +1505,8 @@ describe("Evolu", () => {
           type: "Connected",
           workerId: testCreateId()<"SharedWorker">(),
           syncStateChannelName: "evolu:sync-state:worker",
+          consoleEntryOrErrorChannelName:
+            consoleEntryOrErrorBroadcastChannelName,
         });
       };
       worker.connect();
@@ -1163,7 +1522,7 @@ describe("Evolu", () => {
         },
       };
 
-      const deps = createEvoluDeps({
+      using deps = createEvoluDeps({
         createDbWorker: testCreateWorker,
         createBroadcastChannel: <Input, Output = Input>(name: string) => {
           const channel = testCreateBroadcastChannel<Input, Output>(name);
@@ -1173,12 +1532,13 @@ describe("Evolu", () => {
         createMessageChannel: testCreateMessageChannel,
         getDevicePersistence: () => Promise.resolve("Unknown" as const),
         lockManager: testCreateLockManager(),
-        sharedWorker,
+        createStoredWorker: () => sharedWorker,
         reloadApp: constVoid,
       });
 
-      // The console/error channel, then the sync state channel its worker names.
-      assertSame(broadcastChannels.length, 1);
+      // The global channel opens once the stored worker starts, after the
+      // storage check, then the sync state channel once it connects.
+      assertSame(broadcastChannels.length, 0);
       await testWaitForWorkerMessage();
       assertLength(broadcastChannels, 2);
       assertFalse(broadcastChannels[0].isDisposed());
@@ -1188,6 +1548,287 @@ describe("Evolu", () => {
       assertTrue(broadcastChannels[0].isDisposed());
       assertTrue(broadcastChannels[1].isDisposed());
       assertTrue(workerDisposed);
+    });
+
+    describe("workers", () => {
+      const setupStoredWorkerDeps = (
+        overrides: Partial<EvoluPlatformDeps & CreateStoredWorkerDep> = {},
+      ) => {
+        const storedWorkers: Array<SharedWorker> = [];
+        const deps = createEvoluDeps({
+          createDbWorker: testCreateWorker,
+          createBroadcastChannel: testCreateBroadcastChannel,
+          createMessageChannel: testCreateMessageChannel,
+          createStoredWorker: () => {
+            const worker = testCreateSharedWorker<
+              SharedWorkerInput,
+              SharedWorkerOutput
+            >();
+            storedWorkers.push(worker);
+            return worker;
+          },
+          getDevicePersistence: () => Promise.resolve("Unknown"),
+          lockManager: testCreateLockManager(),
+          reloadApp: constVoid,
+          ...overrides,
+        });
+        return Object.assign(deps, { storedWorkers });
+      };
+
+      it("checks storage once and starts once it answers, without an instance", async () => {
+        const persistence = Promise.withResolvers<DevicePersistence>();
+        let checkCount = 0;
+        using deps = setupStoredWorkerDeps({
+          getDevicePersistence: () => {
+            checkCount += 1;
+            return persistence.promise;
+          },
+        });
+        assertSame(deps.getDevicePersistence(), deps.getDevicePersistence());
+        await testWaitForWorkerMessage();
+        assertSame(deps.storedWorkers.length, 0);
+
+        persistence.resolve("Unknown");
+        const storedWorker = await deps.storedWorker;
+        assertLength(deps.storedWorkers, 1);
+        assertSame(storedWorker.port, deps.storedWorkers[0].port);
+        assertSame(checkCount, 1);
+      });
+
+      it("never starts for refused storage where instances get workers of their own", async () => {
+        const memoryWorkerInputs: Array<SharedWorkerInput["type"]> = [];
+        using deps = setupStoredWorkerDeps({
+          getDevicePersistence: () => Promise.resolve("NotPersisted"),
+          createMemoryInstanceWorker: () => {
+            const worker = testCreateSharedWorker<
+              SharedWorkerInput,
+              SharedWorkerOutput
+            >();
+            worker.self.onConnect = (port) => {
+              port.onMessage = (message) => {
+                memoryWorkerInputs.push(message.type);
+              };
+            };
+            worker.connect();
+            return worker;
+          },
+        });
+        await using run = testCreateRun(deps);
+        await using _evolu = await run.ok(
+          createEvolu(
+            { todo: { id: id("Todo") } },
+            { appName: testAppName, appOwner: testAppOwner, transports: [] },
+          ),
+        );
+        await testWaitForWorkerMessage();
+
+        assertLength(deps.storedWorkers, 0);
+        assertTrue(memoryWorkerInputs.includes("CreateEvolu"));
+      });
+
+      it("starts for refused storage where memory instances have no workers of their own", async () => {
+        using deps = setupStoredWorkerDeps({
+          getDevicePersistence: () => Promise.resolve("NotPersisted"),
+        });
+        await deps.storedWorker;
+        assertLength(deps.storedWorkers, 1);
+      });
+
+      it("does not start when disposed before storage answers", async () => {
+        const persistence = Promise.withResolvers<DevicePersistence>();
+        const deps = setupStoredWorkerDeps({
+          getDevicePersistence: () => persistence.promise,
+        });
+        deps[Symbol.dispose]();
+        persistence.resolve("Unknown");
+        await deps.storedWorker;
+        assertLength(deps.storedWorkers, 0);
+      });
+
+      const memoryConfig = {
+        appName: testAppName,
+        appOwner: testAppOwner,
+        transports: [],
+        memoryOnly: true,
+      } satisfies EvoluConfig;
+
+      it("reports a memory worker that fails to start, and its instance still starts", async () => {
+        const error = new Error("The worker script is blocked.");
+        using deps = setupStoredWorkerDeps({
+          console: testCreateConsole(),
+          createMemoryInstanceWorker: () => {
+            throw error;
+          },
+        });
+        await using run = testCreateRun(deps);
+        await using _evolu = await run.ok(
+          createEvolu({ todo: { id: id("Todo") } }, memoryConfig),
+        );
+
+        assertEqual(deps.evoluError.get(), createUnknownError(error));
+      });
+
+      for (const memoryOnly of [false, true]) {
+        it(`aborts creating ${memoryOnly ? "a memory" : "a stored"} instance while storage is checked`, async () => {
+          using deps = setupStoredWorkerDeps({
+            getDevicePersistence: () =>
+              new Promise<DevicePersistence>(constVoid),
+          });
+          await using run = testCreateRun(deps);
+          const fiber = run.abortable(
+            createEvolu(
+              { todo: { id: id("Todo") } },
+              { ...memoryConfig, memoryOnly },
+            ),
+          );
+
+          fiber.abort();
+          const result = await fiber;
+
+          assertErr(result);
+          assertSame(result.error.type, "AbortError");
+        });
+      }
+
+      for (const mode of ["stored", "memory"] as const) {
+        it(`reports a ${mode} worker that fails to start after its caller, so a throwing evoluError subscriber cannot fail it`, async () => {
+          const error = new Error("The worker script is blocked.");
+          const subscriberError = new Error("The subscriber failed.");
+          const console = testCreateConsole();
+          const fail = (): never => {
+            throw error;
+          };
+          using deps = setupStoredWorkerDeps({
+            console,
+            ...(mode === "stored"
+              ? { createStoredWorker: fail }
+              : { createMemoryInstanceWorker: fail }),
+          });
+          deps.evoluError.subscribe(() => {
+            throw subscriberError;
+          });
+          const reports: Array<() => void> = [];
+          {
+            using _queueMicrotask = testStubGlobal(
+              "queueMicrotask",
+              (report: () => void) => {
+                reports.push(report);
+              },
+            );
+            if (mode === "stored") await deps.storedWorker;
+            else {
+              const createMemoryInstanceWorker =
+                deps.createMemoryInstanceWorker;
+              assertNotUndefined(createMemoryInstanceWorker);
+              using _worker = createMemoryInstanceWorker();
+            }
+          }
+          assertLength(reports, 1);
+          assertSame(deps.evoluError.get(), null);
+
+          assertThrowsSame(reports[0], subscriberError);
+          assertEqual(deps.evoluError.get(), createUnknownError(error));
+          assertEqual(console.getEntriesSnapshot(), [
+            { method: "error", path: [], args: [createUnknownError(error)] },
+          ]);
+        });
+      }
+
+      it("sets evoluError for a worker that fails to start even when logging it throws", async () => {
+        const error = new Error("The worker script is blocked.");
+        const logError = new Error("The console output failed.");
+        using deps = setupStoredWorkerDeps({
+          console: {
+            ...testCreateConsole(),
+            error: () => {
+              throw logError;
+            },
+          },
+          createStoredWorker: () => {
+            throw error;
+          },
+        });
+        const reports: Array<() => void> = [];
+        {
+          using _queueMicrotask = testStubGlobal(
+            "queueMicrotask",
+            (report: () => void) => {
+              reports.push(report);
+            },
+          );
+          await deps.storedWorker;
+        }
+        assertLength(reports, 1);
+
+        assertThrowsSame(reports[0], logError);
+        assertEqual(deps.evoluError.get(), createUnknownError(error));
+      });
+
+      it("reports a worker that fails to start and resolves to a disposed port", async () => {
+        const error = new Error("The worker script is blocked.");
+        const channels: Array<{
+          readonly port1: unknown;
+          readonly isDisposed: () => boolean;
+        }> = [];
+        using deps = setupStoredWorkerDeps({
+          console: testCreateConsole(),
+          createMessageChannel: <Input, Output = never>() => {
+            const channel = testCreateMessageChannel<Input, Output>();
+            channels.push(channel);
+            return channel;
+          },
+          createStoredWorker: () => {
+            throw error;
+          },
+        });
+        const storedWorker = await deps.storedWorker;
+        assertEqual(deps.evoluError.get(), createUnknownError(error));
+        assertLength(channels, 1);
+        assertSame(storedWorker.port, channels[0].port1);
+        assertTrue(channels[0].isDisposed());
+      });
+
+      it("ignores the stored workers' global channel where storage is refused", async () => {
+        const console = testCreateConsole();
+        using deps = setupStoredWorkerDeps({
+          console,
+          getDevicePersistence: () => Promise.resolve("NotPersisted"),
+          createMemoryInstanceWorker: () => {
+            const worker = testCreateSharedWorker<
+              SharedWorkerInput,
+              SharedWorkerOutput
+            >();
+            worker.self.onConnect = (port) => {
+              port.onMessage = constVoid;
+              port.postMessage({
+                type: "Connected",
+                workerId: testCreateId()<"SharedWorker">(),
+                syncStateChannelName: "refused-memory-sync-state",
+                consoleEntryOrErrorChannelName: "refused-memory-console",
+              });
+            };
+            worker.connect();
+            return worker;
+          },
+        });
+        await deps.storedWorker;
+        const createMemoryInstanceWorker = deps.createMemoryInstanceWorker;
+        assertNotUndefined(createMemoryInstanceWorker);
+        using _memoryWorker = createMemoryInstanceWorker();
+        using globalChannel = testCreateBroadcastChannel<ConsoleEntryOrError>(
+          consoleEntryOrErrorBroadcastChannelName,
+        );
+        await testWaitForWorkerMessage();
+        globalChannel.postMessage({
+          type: "Error",
+          error: createUnknownError("Another tab's stored worker failed."),
+        });
+        await testWaitForWorkerMessage();
+
+        assertSame(deps.storedWorkers.length, 0);
+        assertSame(deps.evoluError.get(), null);
+        assertEqual(console.getEntriesSnapshot(), []);
+      });
     });
   });
 
@@ -1307,7 +1948,7 @@ describe("Evolu", () => {
         getDevicePersistence: () => Promise.resolve("Unknown" as const),
         lockManager: testCreateLockManager(),
         reloadApp: constVoid,
-        sharedWorker,
+        storedWorker: Promise.resolve(sharedWorker),
       });
 
       const evolu = await run.ok(testCreateEvolu);
@@ -1328,7 +1969,7 @@ describe("Evolu", () => {
         "type",
       ]);
       assertEqual(message.name, evolu.name);
-      assertEqual(message.id, "in2khoBFZNo9ESZlzuacxA");
+      assertEqual(message.id, "dXpWgmgRSqCJV_tQPAS7Ug");
       assertTrue(typeof message.consoleLevel === "string");
       assertTrue(
         typeof message.sqliteSchema === "object" &&
@@ -1704,8 +2345,6 @@ describe("Evolu", () => {
   });
 
   describe("device persistence", () => {
-    const memoryName = `AppName-${createIdFromString("MemoryDatabase", testAppOwner.id)}`;
-
     /** Creates an instance, recording its CreateEvolu and platform checks. */
     const setupStorage = async ({
       memoryOnly,
@@ -1751,7 +2390,6 @@ describe("Evolu", () => {
         platform: "Persisted",
       });
 
-      assertSame(setup.evolu.name, memoryName);
       assertNotSame(
         setup.evolu.name,
         `AppName-${createIdFromString(testAppOwner.id)}`,
@@ -1761,16 +2399,37 @@ describe("Evolu", () => {
       assertSame(setup.getPlatformCheckCount(), 0);
     });
 
-    it("keeps the database in memory, under the memoryOnly name, where the platform offers no persistent storage", async () => {
+    it("keeps the database in memory, under a separate name, where the platform offers no persistent storage", async () => {
       await using setup = await setupStorage({
         memoryOnly: false,
         platform: "NotPersisted",
       });
 
-      assertSame(setup.evolu.name, memoryName);
+      assertNotSame(
+        setup.evolu.name,
+        `AppName-${createIdFromString(testAppOwner.id)}`,
+      );
       assertTrue(setup.message.memoryOnly);
       assertSame(await setup.evolu.devicePersistence, "NotPersisted");
       assertSame(setup.getPlatformCheckCount(), 1);
+    });
+
+    it("gives each memory instance its own name", async () => {
+      await using setup = await setupStorage({
+        memoryOnly: true,
+        platform: "NotPersisted",
+      });
+      await using another = await setup.run.ok(
+        createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          memoryOnly: true,
+        }),
+      );
+
+      assertNotSame(another.name, setup.evolu.name);
+      assertSame(await another.devicePersistence, "NotPersisted");
     });
 
     for (const platform of ["Persisted", "Unknown"] as const) {
