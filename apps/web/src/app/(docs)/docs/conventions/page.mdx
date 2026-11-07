@@ -1179,6 +1179,16 @@ the path, such as `// See docs/adr/sync-uses-websocket-not-webtransport.md.`
 and reference to an ADR resolves, and that code points only to accepted ADRs.
 Documentation, such as a blog post, may link an ADR of any status.
 
+## Supported tool versions
+
+Evolu supports the current major version of each tool it works with, such as
+Vite, Next.js, React, Svelte, Vue, Angular, Expo, React Native, Electron,
+TypeScript and Node.js, as the examples use them. Code, tests and reviews
+target those versions: don't add workarounds or tests for older ones, and don't
+report review findings that affect only older versions. Browsers are different:
+Evolu supports the current releases of Chromium, Firefox and WebKit, and works
+around their bugs.
+
 ## Versioning
 
 Published packages follow semantic versioning. Fixes are patch releases,

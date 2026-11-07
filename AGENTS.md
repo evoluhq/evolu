@@ -18,6 +18,11 @@ a summary here.
   as over HTTPS with a token.
 - Write new modules and helper scripts in TypeScript. Keep existing JavaScript,
   MJS, and CJS files in their current language unless migrating them is the task.
+- Evolu supports only the current major version of each tool, as the examples
+  use it, such as Vite, Next.js, React, Expo, React Native, TypeScript, and
+  Node.js. Add no workarounds or tests for older versions, and don't report
+  review findings that affect only them. Browsers are different: Evolu
+  supports current Chromium, Firefox, and WebKit and works around their bugs.
 
 ## Repository and commands
 
