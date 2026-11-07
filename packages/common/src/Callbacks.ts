@@ -7,7 +7,7 @@
 import type { RandomBytesDep } from "./Crypto.ts";
 import type { Result } from "./Result.ts";
 import { createId, Id } from "./Type.ts";
-import type { Callback } from "./Types.ts";
+import type { Callback, IsSameType } from "./Types.ts";
 
 /**
  * Request-response correlation for callbacks across boundaries.
@@ -77,7 +77,9 @@ export interface Callbacks<T = undefined> extends Disposable {
   readonly register: (callback: Callback<T>) => Id;
 
   /** Executes and removes a callback associated with the given ID. */
-  readonly execute: T extends undefined
+  // Only undefined takes no argument; a union argument, such as a Result,
+  // stays one type.
+  readonly execute: IsSameType<T, undefined> extends true
     ? (id: Id) => undefined
     : (id: Id, arg: T) => undefined;
 
@@ -91,7 +93,7 @@ export const createCallbacks = <T = undefined>(
 ): Callbacks<T> => {
   const callbackMap = new Map<Id, Callback<T>>();
 
-  const execute: Callbacks<T>["execute"] = ((id: Id, ...args: Array<T>) => {
+  const execute: Callbacks<T>["execute"] = (id: Id, ...args: Array<T>) => {
     const callback = callbackMap.get(id);
     if (!callback) return undefined;
     callbackMap.delete(id);
@@ -102,7 +104,7 @@ export const createCallbacks = <T = undefined>(
       callback(args[0]);
     }
     return undefined;
-  }) as Callbacks<T>["execute"];
+  };
 
   return {
     register: (callback) => {

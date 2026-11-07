@@ -2,7 +2,9 @@ import { test } from "node:test";
 import { assertEqual, assertFalse, assertSame, assertTrue } from "./Assert.ts";
 
 import { createCallbacks } from "./Callbacks.ts";
+import { err, ok, type Result } from "./Result.ts";
 import { testCreateDeps } from "./Task.ts";
+import { createId } from "./Type.ts";
 
 test("Callbacks with no argument", () => {
   const deps = testCreateDeps();
@@ -36,6 +38,36 @@ test("Callbacks with string type", () => {
   receivedValue = null;
   callbacks.execute(id, "should not execute");
   assertSame(receivedValue, null);
+});
+
+test("Callbacks with a union type", () => {
+  const deps = testCreateDeps();
+  const callbacks = createCallbacks<Result<void, string>>(deps);
+
+  const received: Array<Result<void, string>> = [];
+  const okId = callbacks.register((result) => {
+    received.push(result);
+  });
+  const errId = callbacks.register((result) => {
+    received.push(result);
+  });
+
+  callbacks.execute(okId, ok());
+  callbacks.execute(errId, err("failed"));
+  assertEqual(received, [ok(), err("failed")]);
+});
+
+test("Callbacks of never or any require an argument", () => {
+  const deps = testCreateDeps();
+  using neverCallbacks = createCallbacks<never>(deps);
+  using anyCallbacks = createCallbacks<any>(deps);
+  // No callback is registered under it, so nothing runs.
+  const id = createId(deps);
+
+  // @ts-expect-error execute of Callbacks<never> requires an argument.
+  neverCallbacks.execute(id);
+  // @ts-expect-error execute of Callbacks<any> requires an argument.
+  anyCallbacks.execute(id);
 });
 
 test("Callbacks with Promise.withResolvers pattern", async () => {
