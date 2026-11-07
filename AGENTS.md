@@ -246,6 +246,11 @@ for a post, run `node scripts/code-image.mts --help`.
   derivable from sibling fields, such as a status beside the data it summarizes.
   Both rules apply to public outputs, such as snapshots; do not flatten an
   internal union into booleans at the API boundary.
+- Apply the same rules to lifecycles spread across callbacks or collections.
+  Keep transition checks and updates with the code that owns the state, and
+  change the phase and its data together. Cancel late event delivery or check
+  that the event still belongs to the current operation. A boolean or nullable
+  value suffices when it represents the whole state.
 - Inside factories, order declarations as: derived constants/assertions, mutable
   variables, owned resources, listeners/timers, local functions, returned API.
 - Inline single-use, non-exported options types without `readonly`. Use readonly

@@ -750,6 +750,21 @@ Avoid an `interface Upload` with independent `isComplete`, `completedAt`, and
 `error` fields. It accepts a complete upload with an error or without its
 completion time.
 
+Apply the same rules to lifecycles spread across callbacks or collections.
+Keep transition checks and updates with the code that owns the state, and
+change the phase and its data together.
+For example, an owner registration can wait for its turn, acquire transports,
+or be active. Only the active variant stores the transport lease.
+
+An event can arrive after its operation has been replaced. Cancel delivery when
+possible or check the operation's identity before applying the event. For
+example, a database worker reply must match the current dispatch attempt before
+it can remove the request from the queue.
+
+A boolean or nullable value suffices when it represents the whole state. A
+batch that is either empty or has a nonempty queue can use the queue's presence
+to decide whether to schedule a flush.
+
 ## Disposing
 
 Create disposable objects with
