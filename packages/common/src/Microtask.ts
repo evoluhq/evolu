@@ -29,6 +29,9 @@ export const createMicrotaskBatch = <T>(
   // Appended in place, so a batch costs O(n). The queue is private until
   // flushQueuedItems hands it over, after which it's never mutated again.
   let queue: NonEmptyArray<T> | null = null;
+  // A number, not the batch, so a pending callback doesn't keep flushed items
+  // alive.
+  let generation = 0;
 
   disposer.defer(() => {
     queue = null;
@@ -46,7 +49,10 @@ export const createMicrotaskBatch = <T>(
       push: (item) => {
         if (queue == null) {
           queue = [item];
-          queueMicrotask(flushQueuedItems);
+          const scheduledGeneration = ++generation;
+          queueMicrotask(() => {
+            if (generation === scheduledGeneration) flushQueuedItems();
+          });
           return;
         }
 

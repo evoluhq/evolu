@@ -42,6 +42,24 @@ describe("createMicrotaskBatch", () => {
     assertEqual(flushed, [[1], [2]]);
   });
 
+  it("keeps the next batch in microtask order after flushNow", async () => {
+    const events: Array<ReadonlyArray<number> | "marker"> = [];
+    using batch = createMicrotaskBatch<number>((items) => {
+      events.push(items);
+    });
+
+    batch.push(1);
+    batch.flushNow();
+    queueMicrotask(() => {
+      events.push("marker");
+    });
+    batch.push(2);
+
+    await Promise.resolve();
+
+    assertEqual(events, [[1], "marker", [2]]);
+  });
+
   it("flushNow on empty queue does nothing", () => {
     const flushed: Array<ReadonlyArray<number>> = [];
     const batch = createMicrotaskBatch<number>((items) => {
