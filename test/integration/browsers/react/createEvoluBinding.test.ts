@@ -391,7 +391,7 @@ test("suspends a component whose instance's database was deleted instead of usin
       patchesByQuery: new Map([
         [todosQuery, ok([{ op: "replaceAll", value: [{ id: "a" }] }])],
       ]),
-      onCompleteIds: [],
+      callbackIds: [],
     });
   });
   assertEqual(getText(), "1 todos");
@@ -425,7 +425,7 @@ test("renders another instance the app provides after a deletion", async () => {
       patchesByQuery: new Map([
         [todosQuery, ok([{ op: "replaceAll", value: [{ id }] }])],
       ]),
-      onCompleteIds: [],
+      callbackIds: [],
     });
   }
   act(() => {
@@ -458,7 +458,7 @@ test("waits instead of throwing when a deletion disposes the instance before Rea
       [todosQuery, ok([{ op: "replaceAll", value: [{ id: "a" }] }])],
       [todoIdsQuery, ok([{ op: "replaceAll", value: [{ id: "a" }] }])],
     ]),
-    onCompleteIds: [],
+    callbackIds: [],
   });
 
   // Each hook subscribes or registers in an effect after the commit.

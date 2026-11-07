@@ -1751,7 +1751,7 @@ describe("sync state", () => {
       instance.evoluChannel.port2.postMessage({
         type: "Mutate",
         changes: [{ ownerId, table: "todo" } as MutationChange],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       await testWaitForWorkerMessage();
@@ -5643,7 +5643,7 @@ describe("sync state", () => {
         instance.evoluChannel.port2.postMessage({
           type: "Mutate",
           changes,
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: new Set(),
         });
       }
@@ -5759,7 +5759,7 @@ describe("sync state", () => {
         instance.evoluChannel.port2.postMessage({
           type: "Mutate",
           changes: [change],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: new Set(),
         });
       }
@@ -5820,7 +5820,7 @@ describe("sync state", () => {
         changes: [
           { ownerId: testAppOwner.id, table: "_local" } as MutationChange,
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       await testWaitForWorkerMessage();
@@ -6110,7 +6110,7 @@ describe("sync state", () => {
             }),
           },
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       await testWaitForWorkerMessage();
@@ -6529,7 +6529,7 @@ describe("sync state", () => {
         changes: [
           { ownerId: testAppOwner.id, table: "todo" } as MutationChange,
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       await testWaitForWorkerMessage();
@@ -6630,7 +6630,7 @@ describe("sync state", () => {
         changes: [
           { ownerId: testAppOwner.id, table: "todo" } as MutationChange,
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       await testWaitForWorkerMessage();
@@ -8123,7 +8123,7 @@ describe("with one evolu instance", () => {
   });
 
   describe("queued responses", () => {
-    it("handles mutate and query responses with correct onCompleteIds", async () => {
+    it("handles mutate and query responses with correct callbackIds", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run } = setup;
       const { time } = run.deps;
@@ -8133,7 +8133,7 @@ describe("with one evolu instance", () => {
         outputs.push(output);
       };
 
-      const mutateOnCompleteId = "mutate-complete" as Id;
+      const mutateOnSuccessId = "mutate-success" as Id;
       const change: MutationChange = {
         ownerId: testAppOwner.id,
         ...testCreateCrdtMessage(createId(setup.run.deps), 1, "updated").change,
@@ -8142,7 +8142,7 @@ describe("with one evolu instance", () => {
       evoluChannel.port2.postMessage({
         type: "Mutate",
         changes: [change],
-        onCompleteIds: [mutateOnCompleteId],
+        callbackIds: [mutateOnSuccessId],
         subscribedQueries: new Set([testQuery]),
       });
       time.advance("10s");
@@ -8156,7 +8156,7 @@ describe("with one evolu instance", () => {
         message: {
           type: "Mutate",
           changes: [change],
-          onCompleteIds: [mutateOnCompleteId],
+          callbackIds: [mutateOnSuccessId],
           subscribedQueries: new Set([testQuery]),
         },
       });
@@ -8214,8 +8214,8 @@ describe("with one evolu instance", () => {
       assertSame(mutateOutput.type, "OnPatchesByQuery");
       assertSame(queryOutput.type, "OnPatchesByQuery");
 
-      assertEqual(mutateOutput.onCompleteIds, [mutateOnCompleteId]);
-      assertEqual(queryOutput.onCompleteIds, []);
+      assertEqual(mutateOutput.callbackIds, [mutateOnSuccessId]);
+      assertEqual(queryOutput.callbackIds, []);
       assertEqual(
         mutateOutput.patchesByQuery.get(testQuery),
         ok([{ op: "replaceAll", value: [{ value: 1 }] }]),
@@ -8297,7 +8297,7 @@ describe("with one evolu instance", () => {
       first.evoluChannel.port2.postMessage({
         type: "Mutate",
         changes: [change],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set([testQuery]),
       });
       time.advance("10s");
@@ -8311,7 +8311,7 @@ describe("with one evolu instance", () => {
         message: {
           type: "Mutate",
           changes: [change],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: new Set([testQuery]),
         },
       });
@@ -8411,7 +8411,7 @@ describe("with one evolu instance", () => {
         if (output.type === "Error") broadcastErrors.push(output);
       };
 
-      const onCompleteId = createId(run.deps);
+      const callbackId = createId(run.deps);
       evoluChannel.port2.postMessage({
         type: "Mutate",
         changes: [
@@ -8420,7 +8420,7 @@ describe("with one evolu instance", () => {
             ...testCreateCrdtMessage(createId(run.deps), 1, "failed").change,
           },
         ],
-        onCompleteIds: [onCompleteId],
+        callbackIds: [callbackId],
         subscribedQueries: new Set([testQuery]),
       });
       evoluChannel.port2.postMessage({
@@ -8452,7 +8452,7 @@ describe("with one evolu instance", () => {
       ]);
       assertEqual(broadcastErrors, []);
       assertEqual(outputs, [
-        { type: "OnMutateFailed", onCompleteIds: [onCompleteId] },
+        { type: "OnMutateFailed", callbackIds: [callbackId], error },
       ]);
       const queryInput = dbInputs.at(-1);
       assertNotUndefined(queryInput);
@@ -8497,7 +8497,7 @@ describe("with one evolu instance", () => {
             ...testCreateCrdtMessage(createId(run.deps), 1, "failed").change,
           },
         ],
-        onCompleteIds: [createId(run.deps)],
+        callbackIds: [createId(run.deps)],
         subscribedQueries: new Set(),
       });
       await testWaitForWorkerMessage();
@@ -8559,7 +8559,7 @@ describe("with one evolu instance", () => {
       };
       const outputCount = sharedWorkerOutputs.length;
       const error = createUnknownError(new Error("malformed JSON"));
-      const onCompleteId = createId(run.deps);
+      const callbackId = createId(run.deps);
       const otherQuery = createTestQuery((db) =>
         db.selectFrom("test").select(["value"]),
       );
@@ -8600,7 +8600,7 @@ describe("with one evolu instance", () => {
                 .change,
             },
           ],
-          onCompleteIds: [onCompleteId],
+          callbackIds: [callbackId],
           subscribedQueries: new Set([testQuery, otherQuery]),
         },
         {
@@ -8627,7 +8627,7 @@ describe("with one evolu instance", () => {
           patchesByQuery: new Map([
             [testQuery, ok([{ op: "replaceAll", value: [{ value: 1 }] }])],
           ]),
-          onCompleteIds: [],
+          callbackIds: [],
         },
         {
           type: "OnPatchesByQuery",
@@ -8638,13 +8638,13 @@ describe("with one evolu instance", () => {
             [testQuery, err(error)],
             [otherQuery, ok([{ op: "replaceAll", value: [{ value: 2 }] }])],
           ]),
-          onCompleteIds: [onCompleteId],
+          callbackIds: [callbackId],
         },
         // The tab kept the rows, so nothing changed.
         {
           type: "OnPatchesByQuery",
           patchesByQuery: new Map([[testQuery, ok([])]]),
-          onCompleteIds: [],
+          callbackIds: [],
         },
       ]);
       assertEqual(sharedWorkerOutputs.slice(outputCount), []);
@@ -8874,7 +8874,7 @@ describe("with one evolu instance", () => {
         changes: [
           { ownerId: testAppOwner.id, table: "todo" } as MutationChange,
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set([testQuery]),
       });
       time.advance("10s");
@@ -9655,7 +9655,7 @@ describe("with one evolu instance", () => {
                 .change,
             },
           ],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: new Set(),
         });
         await testWaitForWorkerMessage();
@@ -10072,7 +10072,7 @@ describe("with one evolu instance", () => {
       siblingChannel.port2.postMessage({
         type: "Mutate",
         changes: [{ ...crdtMessage.change, ownerId: testAppOwner.id }],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       setup.run.deps.time.advance("10s");
@@ -10562,7 +10562,7 @@ describe("with one evolu instance", () => {
         instance.evoluChannel.port2.postMessage({
           type: "Mutate",
           changes: [{ ...message.change, ownerId: testAppOwner.id }],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: new Set(),
         });
         await testWaitForWorkerMessage();
@@ -10679,7 +10679,7 @@ describe("with one evolu instance", () => {
       first.evoluChannel.port2.postMessage({
         type: "Mutate",
         changes: [{ ...crdtMessage.change, ownerId: testAppOwner.id }],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       setup.run.deps.time.advance("10s");
@@ -11408,7 +11408,7 @@ describe("with one evolu instance", () => {
               .change,
           },
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       time.advance("10s");
@@ -11618,7 +11618,7 @@ describe("with one evolu instance", () => {
         changes: [
           { ownerId: testAppOwner.id, table: "todo" } as MutationChange,
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set([testQuery]),
       });
       time.advance("10s");
@@ -11652,7 +11652,7 @@ describe("with one evolu instance", () => {
         patchesByQuery: new Map([
           [testQuery, ok([{ op: "replaceAll", value: [{ value: 2 }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       assertEqual(createWebSocket.sentMessages, []);
     });
@@ -11800,7 +11800,7 @@ describe("with one evolu instance", () => {
           },
         ],
         subscribedQueries: new Set(),
-        onCompleteIds: [],
+        callbackIds: [],
       };
       first.evoluChannel.port2.postMessage(mutation);
       siblingChannel.port2.postMessage(mutation);
@@ -12093,7 +12093,7 @@ describe("with one evolu instance", () => {
               .change,
           },
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       await testWaitForWorkerMessage();
@@ -12132,7 +12132,7 @@ describe("with one evolu instance", () => {
           },
         ],
         subscribedQueries: new Set(),
-        onCompleteIds: [],
+        callbackIds: [],
       };
 
       // A write is in flight when the leader is lost.
@@ -12239,7 +12239,7 @@ describe("with one evolu instance", () => {
           },
         ],
         subscribedQueries: new Set(),
-        onCompleteIds: [],
+        callbackIds: [],
       };
       const respond = (
         port: typeof instance.dbWorkerPort,
@@ -12357,7 +12357,7 @@ describe("with one evolu instance", () => {
           },
         ],
         subscribedQueries: new Set(),
-        onCompleteIds: [],
+        callbackIds: [],
       };
       first.evoluChannel.port2.postMessage(mutation);
       second.evoluChannel.port2.postMessage(mutation);
@@ -12866,7 +12866,7 @@ describe("local delivery between databases", () => {
       writer.evoluChannel.port2.postMessage({
         type: "Mutate",
         changes: [{ ...message.change, ownerId: testAppOwner.id }],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       await testWaitForWorkerMessage();
@@ -12962,7 +12962,7 @@ describe("local delivery between databases", () => {
       writer.evoluChannel.port2.postMessage({
         type: "Mutate",
         changes: [{ ...message.change, ownerId: testAppOwner.id }],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       await testWaitForWorkerMessage();
@@ -13273,7 +13273,7 @@ describe("refusal", () => {
             .change,
         },
       ],
-      onCompleteIds: [createId(setup.run.deps)],
+      callbackIds: [createId(setup.run.deps)],
       subscribedQueries: new Set(),
     });
     await testWaitForWorkerMessage();
@@ -13354,7 +13354,7 @@ describe("refusal", () => {
             .change,
         },
       ],
-      onCompleteIds: [createId(setup.run.deps)],
+      callbackIds: [createId(setup.run.deps)],
       subscribedQueries: new Set(),
     });
     await testWaitForWorkerMessage();
@@ -13459,7 +13459,7 @@ describe("refusal", () => {
             .change,
         },
       ],
-      onCompleteIds: [createId(setup.run.deps)],
+      callbackIds: [createId(setup.run.deps)],
       subscribedQueries: new Set(),
     });
     await testWaitForWorkerMessage();
@@ -13694,7 +13694,7 @@ describe("database deletion", () => {
         ...testCreateCrdtMessage(createId(setup.run.deps), 1, "value").change,
       },
     ],
-    onCompleteIds: [],
+    callbackIds: [],
     subscribedQueries: new Set(),
   });
 
@@ -14610,7 +14610,7 @@ describe("owner deletion", () => {
         changes: [
           { ownerId: testAppOwner2.id, table: "todo" } as MutationChange,
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: new Set(),
       });
       await testWaitForWorkerMessage();

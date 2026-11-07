@@ -656,16 +656,16 @@ const setupMutateRequest = (
   id: EvoluInstanceId,
   changes: NonEmptyReadonlyArray<MutationChange>,
   {
-    onCompleteIds = [],
+    callbackIds = [],
     subscribedQueries = emptySet,
   }: {
-    onCompleteIds?: ReadonlyArray<Id>;
+    callbackIds?: ReadonlyArray<Id>;
     subscribedQueries?: ReadonlySet<Query>;
   } = {},
 ): ExtractTyped<DbWorkerWriteRequest, "ForEvolu"> => ({
   type: "ForEvolu",
   id,
-  message: { type: "Mutate", changes, onCompleteIds, subscribedQueries },
+  message: { type: "Mutate", changes, callbackIds, subscribedQueries },
 });
 
 const setupApplySyncRequest = (
@@ -1055,7 +1055,7 @@ describe("query and mutation flow", () => {
             isDelete: null,
           }),
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: emptySet,
       },
     });
@@ -1090,7 +1090,7 @@ describe("query and mutation flow", () => {
               isDelete: null,
             }),
           ],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: createSet([localTableQuery]),
         },
       }),
@@ -1232,7 +1232,7 @@ describe("query and mutation flow", () => {
                 isDelete: null,
               }),
             ],
-            onCompleteIds: [],
+            callbackIds: [],
             subscribedQueries: createSet([localTableQuery]),
           },
         },
@@ -1382,7 +1382,7 @@ describe("query and mutation flow", () => {
               isDelete: true,
             }),
           ],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: createSet([localTableQuery]),
         },
       }),
@@ -1531,7 +1531,7 @@ describe("query and mutation flow", () => {
             isDelete: null,
           }),
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: emptySet,
       },
     });
@@ -1568,7 +1568,7 @@ describe("query and mutation flow", () => {
             isDelete: true,
           }),
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: emptySet,
       },
     });
@@ -1632,7 +1632,7 @@ describe("query and mutation flow", () => {
               isDelete: null,
             }),
           ],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: emptySet,
         },
       },
@@ -1865,7 +1865,7 @@ describe("query and mutation flow", () => {
             isDelete: null,
           }),
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: emptySet,
       },
     });
@@ -1972,7 +1972,7 @@ describe("query and mutation flow", () => {
             isDelete: null,
           }),
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: emptySet,
       },
     });
@@ -1998,7 +1998,7 @@ describe("query and mutation flow", () => {
             isDelete: null,
           }),
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: emptySet,
       },
     });
@@ -2225,7 +2225,7 @@ describe("sync message flow", () => {
               isDelete: null,
             }),
           ],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: emptySet,
         },
       }),
@@ -2495,7 +2495,7 @@ describe("sync message flow", () => {
             isDelete: null,
           }),
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: emptySet,
       },
     });
@@ -2619,7 +2619,7 @@ describe("sync message flow", () => {
               isDelete: null,
             }),
           ],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: createSet([testTableQuery]),
         },
       }),
@@ -4607,7 +4607,7 @@ describe("sync message flow", () => {
             isDelete: null,
           }),
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: emptySet,
       },
     });
@@ -4626,7 +4626,7 @@ describe("sync message flow", () => {
             isDelete: true,
           }),
         ],
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: emptySet,
       },
     });
@@ -5985,7 +5985,7 @@ const createReplayRequest = (
       id: setup.evoluInstanceId,
       message: {
         type: "Mutate",
-        onCompleteIds: [],
+        callbackIds: [],
         subscribedQueries: createSet([testTableQuery]),
         changes: [
           createMutationChange({
@@ -6231,7 +6231,7 @@ describe("write replay", () => {
             id: setup.evoluInstanceId,
             message: {
               type: "Mutate",
-              onCompleteIds: [],
+              callbackIds: [],
               subscribedQueries: emptySet,
               changes: [
                 createMutationChange({
@@ -6459,7 +6459,7 @@ describe("clock drift quarantine", () => {
                     testTableQuery,
                     quarantineQuery,
                   ]),
-                  onCompleteIds: [setup.createId()],
+                  callbackIds: [setup.createId()],
                 },
               )
             : setupApplySyncRequest(
@@ -6529,7 +6529,7 @@ describe("clock drift quarantine", () => {
             [{ timestamp: quarantinedTimestamp, change }],
           );
           // The subscribed quarantine query is loaded with the mutation, so
-          // the instance sees the quarantined rows before it runs onComplete.
+          // the instance sees the quarantined rows before it runs onSuccess.
           assertEqual(
             output.response.message.rowsByQuery.get(quarantineQuery),
             ok(quarantinedRows(quarantinedTimestamp)),

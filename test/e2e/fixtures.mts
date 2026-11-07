@@ -318,7 +318,7 @@ export const countPersistCalls = async (
 
 /**
  * Adds a todo with Enter. The examples clear the input in the mutation's
- * onComplete callback.
+ * onSuccess callback.
  */
 export const addTodo = async (page: Page, title: string): Promise<void> => {
   const input = page.getByPlaceholder("Add a new todo...");

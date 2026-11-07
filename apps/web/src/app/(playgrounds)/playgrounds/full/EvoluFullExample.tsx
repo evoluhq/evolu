@@ -413,7 +413,7 @@ const HomeTabProject: FC<{
         projectId: project.id,
       },
       {
-        onComplete: () => {
+        onSuccess: () => {
           setNewTodoTitle("");
         },
       },

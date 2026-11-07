@@ -100,7 +100,7 @@ test("Evolu stores and queries rows in an encrypted database in EvoluApp's direc
   evolu.insert(
     "todo",
     { title: NonEmptyTrimmedString100.orThrow("stored") },
-    { onComplete: inserted.resolve },
+    { onSuccess: inserted.resolve },
   );
   await inserted.promise;
 
@@ -130,7 +130,7 @@ test("Evolu deletes its database's file from EvoluApp's directory", async () => 
   evolu.insert(
     "todo",
     { title: NonEmptyTrimmedString100.orThrow("deleted") },
-    { onComplete: inserted.resolve },
+    { onSuccess: inserted.resolve },
   );
   await inserted.promise;
   const path = join(directory, `evolu1-${evolu.name}.db`);
@@ -192,7 +192,7 @@ test("Evolu's DbWorker and SharedWorker encrypt and decrypt changes with the bin
       writer.evolu.insert(
         "todo",
         { title: NonEmptyTrimmedString100.orThrow(title) },
-        { onComplete: inserted.resolve },
+        { onSuccess: inserted.resolve },
       );
       await inserted.promise;
     };

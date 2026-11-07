@@ -1634,7 +1634,7 @@ describe("Evolu integration", () => {
       {
         title: NonEmptyTrimmedString100.orThrow("Local note"),
       },
-      { onComplete: inserted.resolve },
+      { onSuccess: inserted.resolve },
     );
     await inserted.promise;
     await observed.promise;
@@ -1647,7 +1647,7 @@ describe("Evolu integration", () => {
     writer.update(
       "_note",
       { id: noteId, title: NonEmptyTrimmedString100.orThrow("Updated") },
-      { onComplete: updated.resolve },
+      { onSuccess: updated.resolve },
     );
     await updated.promise;
     assertEqual(await writer.loadQuery(notesQuery), [
@@ -1673,7 +1673,7 @@ describe("Evolu integration", () => {
     reopened.update(
       "_note",
       { id: noteId, isDeleted: SqliteBoolean.orThrow(1) },
-      { onComplete: deleted.resolve },
+      { onSuccess: deleted.resolve },
     );
     await deleted.promise;
     assertEqual(await reopened.loadQuery(notesQuery), []);
@@ -1705,7 +1705,7 @@ describe("Evolu integration", () => {
         title: NonEmptyTrimmedString100.orThrow("Integration todo"),
       },
       {
-        onComplete: () => {
+        onSuccess: () => {
           completed += 1;
           mutationCompleted.resolve();
         },
@@ -1893,7 +1893,7 @@ describe("Evolu integration", () => {
     const evolu = await run.ok(createIntegrationEvolu);
     const mutationsCompleted = Promise.withResolvers<void>();
     let pendingMutations = 4;
-    const onComplete = () => {
+    const onSuccess = () => {
       pendingMutations -= 1;
       if (pendingMutations === 0) mutationsCompleted.resolve();
     };
@@ -1904,7 +1904,7 @@ describe("Evolu integration", () => {
         title: NonEmptyTrimmedString100.orThrow("Inserted null"),
         isCompleted: null,
       },
-      { onComplete },
+      { onSuccess },
     ).id;
     const updatedId = evolu.insert(
       "todo",
@@ -1912,9 +1912,9 @@ describe("Evolu integration", () => {
         title: NonEmptyTrimmedString100.orThrow("Updated null"),
         isCompleted: SqliteBoolean.orThrow(1),
       },
-      { onComplete },
+      { onSuccess },
     ).id;
-    evolu.update("todo", { id: updatedId, isCompleted: null }, { onComplete });
+    evolu.update("todo", { id: updatedId, isCompleted: null }, { onSuccess });
     const upsertedId = TodoId.orThrow(createIdFromString("upserted-null"));
     evolu.upsert(
       "todo",
@@ -1923,7 +1923,7 @@ describe("Evolu integration", () => {
         title: NonEmptyTrimmedString100.orThrow("Upserted null"),
         isCompleted: null,
       },
-      { onComplete },
+      { onSuccess },
     );
 
     await mutationsCompleted.promise;
@@ -1972,7 +1972,7 @@ describe("Evolu integration", () => {
         title: NonEmptyTrimmedString100.orThrow("Persisted after recreate"),
       },
       {
-        onComplete: () => {
+        onSuccess: () => {
           completed += 1;
           mutationCompleted.resolve();
         },
@@ -1995,7 +1995,7 @@ describe("Evolu integration", () => {
     unsubscribe();
   });
 
-  it("stores a drifted mutation in quarantine that a subscribed query shows before onComplete", async () => {
+  it("stores a drifted mutation in quarantine that a subscribed query shows before onSuccess", async () => {
     // System time that can be moved back, as when a clock set to the future is
     // corrected. The SharedWorker captures it for every write.
     const baseTime = testCreateTime();
@@ -2028,34 +2028,34 @@ describe("Evolu integration", () => {
     const { id: aheadId } = evolu.insert(
       "todo",
       { title: NonEmptyTrimmedString100.orThrow("Ahead") },
-      { onComplete: ahead.resolve },
+      { onSuccess: ahead.resolve },
     );
     await ahead.promise;
 
     // After system time is corrected, the next write is quarantined. The
-    // subscribed quarantine query already shows it when onComplete runs.
+    // subscribed quarantine query already shows it when onSuccess runs.
     shift = 0;
-    let rowsInOnComplete: ReadonlyArray<typeof quarantineQuery.Row> | undefined;
+    let rowsInOnSuccess: ReadonlyArray<typeof quarantineQuery.Row> | undefined;
     const quarantined = Promise.withResolvers<void>();
     evolu.insert(
       "todo",
       { title: NonEmptyTrimmedString100.orThrow("Quarantined") },
       {
-        onComplete: () => {
-          rowsInOnComplete = evolu.getQueryRows(quarantineQuery);
+        onSuccess: () => {
+          rowsInOnSuccess = evolu.getQueryRows(quarantineQuery);
           quarantined.resolve();
         },
       },
     );
     await quarantined.promise;
     unsubscribe();
-    assertNotUndefined(rowsInOnComplete);
+    assertNotUndefined(rowsInOnSuccess);
     const quarantinedRow = {
       reason: QuarantineReason.TimestampDrift,
       origin: QuarantineOrigin.LocalMutation,
       quarantinedAt: Millis.orThrow(0),
     };
-    assertEqual(rowsInOnComplete, [
+    assertEqual(rowsInOnSuccess, [
       {
         column: "createdAt",
         value: "1970-01-01T01:00:00.000Z",
@@ -2082,7 +2082,7 @@ describe("Evolu integration", () => {
     evolu.insert(
       "todo",
       { title: NonEmptyTrimmedString100.orThrow("After") },
-      { onComplete: after.resolve },
+      { onSuccess: after.resolve },
     );
     await after.promise;
     assertLength(await evolu.loadQuery(quarantineQuery), 2);
@@ -2180,7 +2180,7 @@ describe("Evolu integration", () => {
     stored.insert(
       "todo",
       { title: NonEmptyTrimmedString100.orThrow("Stored") },
-      { onComplete: inserted.resolve },
+      { onSuccess: inserted.resolve },
     );
     await inserted.promise;
 
@@ -2325,7 +2325,7 @@ describe("Evolu integration", () => {
       "todo",
       { title: NonEmptyTrimmedString100.orThrow("Lost") },
       {
-        onComplete: () => {
+        onSuccess: () => {
           completed = true;
         },
       },

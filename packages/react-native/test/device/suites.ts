@@ -337,7 +337,7 @@ export const registerDeviceSuites = (deps: DeviceSuitesDeps): void => {
       evolu.insert(
         "todo",
         { title: NonEmptyTrimmedString100.orThrow("stored") },
-        { onComplete: inserted.resolve },
+        { onSuccess: inserted.resolve },
       );
       await Promise.race([inserted.promise, failed]);
       assertEqual(await Promise.race([evolu.loadQuery(titlesQuery), failed]), [

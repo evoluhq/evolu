@@ -2728,7 +2728,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
 
       assertEqual(await loadPromise, [{ title: "A" }]);
@@ -2804,7 +2804,7 @@ describe("Evolu", () => {
       assertTrue(channels[0].isDisposed());
     });
 
-    it("does not execute mutate onComplete callback after dispose", async () => {
+    it("does not execute mutate onSuccess callback after dispose", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs, postEvoluOutput } = setup;
       const evolu = await run.ok(testCreateEvolu);
@@ -2814,7 +2814,7 @@ describe("Evolu", () => {
         "todo",
         { title: NonEmptyTrimmedString100.orThrow("With completion") },
         {
-          onComplete: () => {
+          onSuccess: () => {
             called += 1;
           },
         },
@@ -2823,14 +2823,14 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       const mutate = evoluInputs[0] as ExtractTyped<EvoluInput, "Mutate">;
-      const [onCompleteId] = mutate.onCompleteIds;
+      const [callbackId] = mutate.callbackIds;
 
       await evolu[Symbol.asyncDispose]();
 
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map(),
-        onCompleteIds: [onCompleteId],
+        callbackIds: [callbackId],
       });
 
       await testWaitForWorkerMessage();
@@ -2838,18 +2838,22 @@ describe("Evolu", () => {
       assertEqual(called, 0);
     });
 
-    it("releases the onComplete callbacks of a failed mutation without running them", async () => {
+    it("runs onError instead of onSuccess for a failed mutation", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs, postEvoluOutput } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      let called = 0;
+      let succeeded = 0;
+      const errors: Array<UnknownError> = [];
       evolu.insert(
         "todo",
         { title: NonEmptyTrimmedString100.orThrow("First failed") },
         {
-          onComplete: () => {
-            called += 1;
+          onSuccess: () => {
+            succeeded += 1;
+          },
+          onError: (error) => {
+            errors.push(error);
           },
         },
       );
@@ -2857,8 +2861,8 @@ describe("Evolu", () => {
         "todo",
         { title: NonEmptyTrimmedString100.orThrow("Second failed") },
         {
-          onComplete: () => {
-            called += 10;
+          onSuccess: () => {
+            succeeded += 1;
           },
         },
       );
@@ -2866,23 +2870,156 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       const mutate = evoluInputs[0] as ExtractTyped<EvoluInput, "Mutate">;
-      const { onCompleteIds } = mutate;
-      assertLength(onCompleteIds, 2);
+      const { callbackIds } = mutate;
+      assertLength(callbackIds, 2);
 
-      postEvoluOutput({ type: "OnMutateFailed", onCompleteIds });
-      // Patches naming released callbacks find nothing to run.
+      const error = createUnknownError(new Error("Disk I/O error."));
+      postEvoluOutput({ type: "OnMutateFailed", callbackIds, error });
+      // Patches naming callbacks that already ran find nothing to run.
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map(),
-        onCompleteIds,
+        callbackIds,
       });
 
       await testWaitForWorkerMessage();
 
-      assertEqual(called, 0);
+      assertEqual(succeeded, 0);
+      assertEqual(errors, [error]);
     });
 
-    it("executes mutate onComplete callback when query patches are received", async () => {
+    it("runs onSuccess instead of onError for a stored mutation", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      let succeeded = 0;
+      const errors: Array<UnknownError> = [];
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Only onError") },
+        {
+          onError: (error) => {
+            errors.push(error);
+          },
+        },
+      );
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Both callbacks") },
+        {
+          onSuccess: () => {
+            succeeded += 1;
+          },
+          onError: (error) => {
+            errors.push(error);
+          },
+        },
+      );
+
+      await testWaitForWorkerMessage();
+
+      const mutate = evoluInputs[0] as ExtractTyped<EvoluInput, "Mutate">;
+      const { callbackIds } = mutate;
+      assertLength(callbackIds, 2);
+
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map(),
+        callbackIds,
+      });
+
+      await testWaitForWorkerMessage();
+
+      assertEqual(succeeded, 1);
+      assertEqual(errors, []);
+    });
+
+    it("runs every callback of a batch when one throws, and reports the throw", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const defect = new Error("Callback failed.");
+      const errors: Array<UnknownError> = [];
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("First failed") },
+        {
+          onError: () => {
+            throw defect;
+          },
+        },
+      );
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Second failed") },
+        {
+          onError: (error) => {
+            errors.push(error);
+          },
+        },
+      );
+      await testWaitForWorkerMessage();
+
+      const { callbackIds } = evoluInputs[0] as ExtractTyped<
+        EvoluInput,
+        "Mutate"
+      >;
+      const error = createUnknownError(new Error("Disk I/O error."));
+      postEvoluOutput({ type: "OnMutateFailed", callbackIds, error });
+      await testWaitForWorkerMessage();
+
+      assertEqual(errors, [error]);
+      assertEqual(run.deps.reportDefect.getDefects(), [defect]);
+    });
+
+    it("runs every query listener and mutation callback of an answer when a listener throws, and reports the throw", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const defect = new Error("Listener failed.");
+      evolu.subscribeQuery(todoTitleQuery)(() => {
+        throw defect;
+      });
+      let listened = 0;
+      evolu.subscribeQuery(todoTitleQuery)(() => {
+        listened += 1;
+      });
+      let succeeded = 0;
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("New") },
+        {
+          onSuccess: () => {
+            succeeded += 1;
+          },
+        },
+      );
+      await testWaitForWorkerMessage();
+
+      const { callbackIds } = evoluInputs.find(
+        (input) => input.type === "Mutate",
+      ) as ExtractTyped<EvoluInput, "Mutate">;
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [
+            todoTitleQuery,
+            ok([{ op: "replaceAll", value: [{ title: "New" }] }]),
+          ],
+        ]),
+        callbackIds,
+      });
+      await testWaitForWorkerMessage();
+
+      assertSame(listened, 1);
+      assertSame(succeeded, 1);
+      assertEqual(run.deps.reportDefect.getDefects(), [defect]);
+    });
+
+    it("executes mutate onSuccess callback when query patches are received", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs, postEvoluOutput } = setup;
       const evolu = await run.ok(testCreateEvolu);
@@ -2892,7 +3029,7 @@ describe("Evolu", () => {
         "todo",
         { title: NonEmptyTrimmedString100.orThrow("With completion") },
         {
-          onComplete: () => {
+          onSuccess: () => {
             called += 1;
           },
         },
@@ -2901,12 +3038,12 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       const mutate = evoluInputs[0] as ExtractTyped<EvoluInput, "Mutate">;
-      const [onCompleteId] = mutate.onCompleteIds;
+      const [callbackId] = mutate.callbackIds;
 
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map(),
-        onCompleteIds: [onCompleteId],
+        callbackIds: [callbackId],
       });
 
       await testWaitForWorkerMessage();
@@ -2914,7 +3051,7 @@ describe("Evolu", () => {
       assertEqual(called, 1);
     });
 
-    it("uses flushSync for query patches with onComplete callbacks", async () => {
+    it("uses flushSync for query patches with onSuccess callbacks", async () => {
       let flushSyncCalls = 0;
 
       await using setup = await setupRunWithEvoluDeps({
@@ -2932,7 +3069,7 @@ describe("Evolu", () => {
         "todo",
         { title: NonEmptyTrimmedString100.orThrow("With completion") },
         {
-          onComplete: () => {
+          onSuccess: () => {
             called += 1;
           },
         },
@@ -2941,12 +3078,12 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       const mutate = evoluInputs[0] as ExtractTyped<EvoluInput, "Mutate">;
-      const [onCompleteId] = mutate.onCompleteIds;
+      const [callbackId] = mutate.callbackIds;
 
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map(),
-        onCompleteIds: [onCompleteId],
+        callbackIds: [callbackId],
       });
 
       await testWaitForWorkerMessage();
@@ -2955,7 +3092,7 @@ describe("Evolu", () => {
       assertEqual(called, 1);
     });
 
-    it("does not use flushSync when query patches have no onComplete callbacks", async () => {
+    it("does not use flushSync when query patches have no onSuccess callbacks", async () => {
       let flushSyncCalls = 0;
 
       await using setup = await setupRunWithEvoluDeps({
@@ -2971,7 +3108,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map(),
-        onCompleteIds: [],
+        callbackIds: [],
       });
 
       assertEqual(flushSyncCalls, 0);
@@ -3030,7 +3167,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       const initialRows = await initialLoad;
       assertEqual(initialRows, []);
@@ -3066,7 +3203,7 @@ describe("Evolu", () => {
             ok([{ op: "replaceAll", value: [{ title: "Synced" }] }]),
           ],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await testWaitForWorkerMessage();
       assertEqual(evolu.getQueryRows(todoTitleQuery), [{ title: "Synced" }]);
@@ -3103,7 +3240,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       assertEqual(await initialLoad, []);
       assertSame(evolu.loadQuery(todoTitleQuery), initialLoad);
@@ -3116,7 +3253,7 @@ describe("Evolu", () => {
             ok([{ op: "replaceAll", value: [{ title: "New" }] }]),
           ],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await testWaitForWorkerMessage();
       assertEqual(evolu.getQueryRows(todoTitleQuery), [{ title: "New" }]);
@@ -3142,7 +3279,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await initialLoad;
       unsubscribe();
@@ -3166,7 +3303,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await initialLoad;
       postEvoluOutput({ type: "RefreshQueries" });
@@ -3190,7 +3327,7 @@ describe("Evolu", () => {
             ok([{ op: "replaceAll", value: [{ title: "Synced" }] }]),
           ],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await testWaitForWorkerMessage();
       assertEqual(evolu.getQueryRows(todoTitleQuery), [{ title: "Synced" }]);
@@ -3223,7 +3360,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await initialLoad;
       postEvoluOutput({ type: "RefreshQueries" });
@@ -3275,7 +3412,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       assertEqual(await initialLoad, []);
       evoluInputs.length = 0;
@@ -3312,7 +3449,7 @@ describe("Evolu", () => {
           [todoTitleDescQuery, ok([{ op: "replaceAll", value: [] }])],
           [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       assertEqual(await load, []);
 
@@ -3458,7 +3595,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "R" }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
 
       assertEqual(await loadFiber, [{ title: "R" }]);
@@ -3484,7 +3621,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
 
       evoluInputs.length = 0;
@@ -3531,7 +3668,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
 
       assertEqual(await firstLoad, [{ title: "A" }]);
@@ -3543,7 +3680,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "B" }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
 
       await testWaitForWorkerMessage();
@@ -3571,7 +3708,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([[todoTitleQuery, err(error)]]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await testWaitForWorkerMessage();
 
@@ -3614,7 +3751,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       const rows = await firstLoad;
       notifications = 0;
@@ -3633,7 +3770,7 @@ describe("Evolu", () => {
             ok([{ op: "replaceAll", value: [{ title: "C" }] }]),
           ],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await testWaitForWorkerMessage();
 
@@ -3654,7 +3791,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "B" }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await testWaitForWorkerMessage();
 
@@ -3681,7 +3818,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([[todoTitleQuery, err(error)]]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await rejection;
       evoluInputs.length = 0;
@@ -3705,7 +3842,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "X" }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
 
       await testWaitForWorkerMessage();
@@ -3728,13 +3865,13 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
 
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map(),
-        onCompleteIds: [],
+        callbackIds: [],
       });
 
       await testWaitForWorkerMessage();
@@ -3771,7 +3908,7 @@ describe("Evolu", () => {
               values: { title: "Todo 1" },
             },
           ],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: new Set(),
           type: "Mutate",
         },
@@ -3821,7 +3958,7 @@ describe("Evolu", () => {
               values: { title: "Upserted" },
             },
           ],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: new Set(),
           type: "Mutate",
         },
@@ -3880,14 +4017,14 @@ describe("Evolu", () => {
               values: { title: "C" },
             },
           ],
-          onCompleteIds: [],
+          callbackIds: [],
           subscribedQueries: new Set(),
           type: "Mutate",
         },
       ]);
     });
 
-    it("includes the owner's id and onComplete callback ids", async () => {
+    it("includes the owner's id and onSuccess callback ids", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs } = setup;
       const evolu = await run.ok(testCreateEvolu);
@@ -3896,7 +4033,7 @@ describe("Evolu", () => {
       const insertedId = evolu.insert(
         "todo",
         { title: NonEmptyTrimmedString100.orThrow("With callback") },
-        { owner: sharedOwner, onComplete: constVoid },
+        { owner: sharedOwner, onSuccess: constVoid },
       ).id;
 
       await testWaitForWorkerMessage();
@@ -3905,8 +4042,8 @@ describe("Evolu", () => {
 
       const input = evoluInputs[0];
       assertSame(input?.type, "Mutate");
-      const onCompleteId = input.onCompleteIds[0];
-      assertNotUndefined(onCompleteId);
+      const callbackId = input.callbackIds[0];
+      assertNotUndefined(callbackId);
       assertEqual(evoluInputs, [
         {
           changes: [
@@ -3919,7 +4056,7 @@ describe("Evolu", () => {
               values: { title: "With callback" },
             },
           ],
-          onCompleteIds: [onCompleteId],
+          callbackIds: [callbackId],
           subscribedQueries: new Set(),
           type: "Mutate",
         },
@@ -4061,7 +4198,7 @@ describe("Evolu", () => {
       const completed: Array<string> = [];
 
       const { id } = evolu.insert("note", atLimit, {
-        onComplete: () => {
+        onSuccess: () => {
           completed.push("at limit");
         },
       });
@@ -4071,7 +4208,7 @@ describe("Evolu", () => {
             "note",
             { data: new Uint8Array(dataAtLimitLength + 1) },
             {
-              onComplete: () => {
+              onSuccess: () => {
                 completed.push("over limit");
               },
             },
@@ -4092,7 +4229,7 @@ describe("Evolu", () => {
       postEvoluOutput({
         type: "OnPatchesByQuery",
         patchesByQuery: new Map(),
-        onCompleteIds: mutate.onCompleteIds,
+        callbackIds: mutate.callbackIds,
       });
       await testWaitForWorkerMessage();
       assertEqual(completed, ["at limit"]);
@@ -4742,7 +4879,7 @@ describe("Evolu", () => {
         patchesByQuery: new Map([
           [todoTitleQuery, ok([{ op: "replaceAll", value: [{ title: "A" }] }])],
         ]),
-        onCompleteIds: [],
+        callbackIds: [],
       });
       await testWaitForWorkerMessage();
       assertEqual(notifiedRows.splice(0), [[{ title: "A" }]]);

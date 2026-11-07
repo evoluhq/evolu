@@ -56,8 +56,8 @@ export const hasNodeBuffer =
  * the provided callback to ensure the DOM is updated immediately.
  *
  * For example, with React, when we want to focus on an element rendered as a
- * result of a mutation, Evolu ensures all DOM changes are flushed synchronously
- * if an onComplete callback is used.
+ * result of a mutation, Evolu flushes DOM changes synchronously when an update
+ * answers a callback, such as onSuccess.
  *
  * https://react.dev/reference/react-dom/flushSync
  *

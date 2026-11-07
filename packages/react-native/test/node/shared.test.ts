@@ -362,7 +362,7 @@ describe("createEvoluDeps", () => {
       evolu.insert(
         "todo",
         { title: NonEmptyTrimmedString100.orThrow("stored") },
-        { onComplete: inserted.resolve },
+        { onSuccess: inserted.resolve },
       );
       await inserted.promise;
       assertEqual(await evolu.loadQuery(titlesQuery), [{ title: "stored" }]);

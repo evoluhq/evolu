@@ -1898,7 +1898,7 @@ const loadQueries =
 
 //     deps.postMessage({
 //       type: "onReset",
-//       onCompleteId: message.onCompleteId,
+//       callbackId: message.callbackId,
 //       reload: message.reload,
 //     });
 //   },

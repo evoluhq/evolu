@@ -1434,7 +1434,7 @@ export type EvoluInput =
   | {
       readonly type: "Mutate";
       readonly changes: NonEmptyReadonlyArray<MutationChange>;
-      readonly onCompleteIds: ReadonlyArray<Id>;
+      readonly callbackIds: ReadonlyArray<Id>;
       readonly subscribedQueries: ReadonlySet<Query>;
     }
   | {
@@ -1491,7 +1491,7 @@ export type EvoluOutput =
         Query,
         Result<ReadonlyArray<Patch>, UnknownError>
       >;
-      readonly onCompleteIds: ReadonlyArray<Id>;
+      readonly callbackIds: ReadonlyArray<Id>;
     }
   | {
       readonly type: "RefreshQueries";
@@ -1505,9 +1505,10 @@ export type EvoluOutput =
       readonly error: UnknownError;
     }
   | {
-      /** The mutation with these onComplete callbacks could not be stored. */
+      /** The mutation with these callbacks could not be stored. */
       readonly type: "OnMutateFailed";
-      readonly onCompleteIds: ReadonlyArray<Id>;
+      readonly callbackIds: ReadonlyArray<Id>;
+      readonly error: UnknownError;
     }
   | {
       /**
@@ -3362,9 +3363,9 @@ const createEvoluTenant =
             instance.port.postMessage({
               type: "OnPatchesByQuery",
               patchesByQuery,
-              onCompleteIds:
+              callbackIds:
                 first.message.type === "Mutate"
-                  ? first.message.onCompleteIds
+                  ? first.message.callbackIds
                   : emptyArray,
             });
           }
@@ -3430,14 +3431,14 @@ const createEvoluTenant =
         }
 
         case "MutateFailed": {
-          // The tab shows it, and the instance releases the mutation's
-          // onComplete callbacks without running them. A write outlives its
-          // instance, so without one, every tab is told.
+          // The tab shows it, and the instance runs the mutation's onError
+          // callbacks. A write outlives its instance, so without one, every
+          // tab is told.
           //
           // A replay after leader replacement can fail although the earlier
           // leader committed the write and only its answer was lost. The tab
-          // then shows an error for a stored write, and its onComplete
-          // callbacks never run. Nothing is lost or reused: the replacement
+          // then shows an error for a stored write, and its onError callbacks
+          // run. Nothing is lost or reused: the replacement
           // adopted the stored clock, refreshed every instance's queries, and
           // reconciles every used owner.
           const { error } = response.message;
@@ -3446,7 +3447,8 @@ const createEvoluTenant =
             instance.tabPort.postMessage({ type: "Error", error });
             instance.port.postMessage({
               type: "OnMutateFailed",
-              onCompleteIds: first.message.onCompleteIds,
+              callbackIds: first.message.callbackIds,
+              error,
             });
           } else {
             deps.postConsoleEntryOrError({ type: "Error", error });

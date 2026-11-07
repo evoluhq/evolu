@@ -235,7 +235,7 @@ const Items: FC = () => {
             "todo",
             { title: result.value },
             {
-              onComplete: () => {
+              onSuccess: () => {
                 setTitle((current) => (current === title ? "" : current));
               },
             },

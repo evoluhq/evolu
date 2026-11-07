@@ -183,7 +183,7 @@ const Todos: FC = () => {
       "todo",
       { title: result.value },
       {
-        onComplete: () => {
+        onSuccess: () => {
           setNewTodoTitle("");
         },
       },

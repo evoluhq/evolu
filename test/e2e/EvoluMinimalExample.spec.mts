@@ -19,7 +19,7 @@ test("creates, completes, renames, and deletes a todo", async ({
   const input = page.getByPlaceholder("Add a new todo...");
   await input.fill("  First todo  ");
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  // The example clears the input in the mutation's onComplete callback.
+  // The example clears the input in the mutation's onSuccess callback.
   await expect(input).toHaveValue("");
   await expect(page.getByRole("listitem")).toHaveCount(1);
 

@@ -7,6 +7,7 @@
 import * as Kysely from "kysely";
 import type { StandardSchemaV1 } from "../StandardSchema.ts";
 import { assert, assertNonNullable } from "../Assert.ts";
+import type { UnknownError } from "../Error.ts";
 import { getOwnProp, mapObject, type ReadonlyRecord } from "../Object.ts";
 import {
   eqSqliteIndex,
@@ -536,11 +537,11 @@ export interface MutationOptions {
   /**
    * Called after the mutation's changes are stored and subscribed queries
    * reflect them. Useful for follow-up work (e.g., notifications, navigation)
-   * after insert, update, or upsert. It never runs when the database is
-   * unavailable or the mutation could not be stored, which
-   * {@link EvoluErrorDep.evoluError} reports. It still runs when SQLite fails a
-   * subscribed query, which then keeps its previous rows; see
-   * {@link Evolu.loadQuery}.
+   * after insert, update, or upsert. When the mutation could not be stored,
+   * {@link MutationOptions.onError} runs instead. Neither runs when the database
+   * is unavailable or the instance is disposed before it receives the
+   * mutation's result. It still runs when SQLite fails a subscribed query,
+   * which then keeps its previous rows; see {@link Evolu.loadQuery}.
    *
    * An Evolu instance stores its mutations in batches, each in one transaction.
    * A batch holds the mutations made before Evolu sends it in a microtask,
@@ -553,14 +554,27 @@ export interface MutationOptions {
    *
    * Stored does not always mean visible. A change quarantined for
    * {@link QuarantineReason.TimestampDrift} is stored in
-   * `evolu_message_quarantine` without changing application rows. `onComplete`
+   * `evolu_message_quarantine` without changing application rows. `onSuccess`
    * still fires after storage commits; no drift error is reported. Applications
    * can subscribe to the quarantine table; those query results reflect the
-   * change before `onComplete` runs. See the
+   * change before `onSuccess` runs. See the
    * {@link @evolu/common!"local-first/Timestamp" | Timestamp module} for drift
    * and release behavior.
    */
-  readonly onComplete?: () => void;
+  readonly onSuccess?: () => void;
+
+  /**
+   * Called instead of {@link MutationOptions.onSuccess} when the mutation could
+   * not be stored, with none of its batch. {@link EvoluErrorDep.evoluError}
+   * reports the error too, so an app shows it there once and passes `onError`
+   * only where it must know that the mutation ended, such as to release a lock
+   * or settle a promise.
+   *
+   * A replay after leader replacement can fail although the earlier leader
+   * stored the mutation and only its answer was lost, so `onError` can run for
+   * a stored mutation.
+   */
+  readonly onError?: (error: UnknownError) => void;
 
   /**
    * The {@link Owner} of the mutated row. If omitted, the {@link AppOwner}.

@@ -49,6 +49,7 @@ import {
 import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.ts";
 import { createStore } from "../Store.ts";
 import { callback, type Task } from "../Task.ts";
+import type { Callback } from "../Types.ts";
 import {
   brand,
   createId,
@@ -505,12 +506,12 @@ export interface Evolu<
    * every row has a globally unique, conflict-free identifier without
    * coordination.
    *
-   * Pass `onComplete` when follow-up work must wait until the mutation is
-   * stored and subscribed queries reflect it. It never runs when the database
-   * is unavailable; see {@link Evolu.loadQuery}. It also never runs when the
-   * mutation could not be stored, which {@link EvoluErrorDep.evoluError}
-   * reports. A stored change is not always visible; see
-   * {@link MutationOptions.onComplete}.
+   * Pass `onSuccess` when follow-up work must wait until the mutation is stored
+   * and subscribed queries reflect it. It never runs when the database is
+   * unavailable; see {@link Evolu.loadQuery}. When the mutation could not be
+   * stored, {@link MutationOptions.onError} runs instead, and
+   * {@link EvoluErrorDep.evoluError} reports the error. A stored change is not
+   * always visible; see {@link MutationOptions.onSuccess}.
    *
    * ### Example
    *
@@ -530,12 +531,12 @@ export interface Evolu<
    *
    * const insertTodoAndNotify = (
    *   evolu: Evolu<TestEvoluSchema>,
-   *   onComplete: () => void,
+   *   onSuccess: () => void,
    * ) =>
    *   evolu.insert(
    *     "todo",
    *     { title: NonEmptyTrimmedString100.orThrow("Another todo") },
-   *     { onComplete },
+   *     { onSuccess },
    *   ).id;
    *
    * assertType<
@@ -1920,7 +1921,9 @@ export const createEvolu =
       }
     };
 
-    const onMutateCompleteCallbacks = disposer.use(createCallbacks(run.deps));
+    const mutationCallbacks = disposer.use(
+      createCallbacks<Result<void, UnknownError>>(run.deps),
+    );
 
     let exportDatabasePending = null as PromiseWithResolvers<
       Uint8Array<ArrayBuffer>
@@ -1973,7 +1976,7 @@ export const createEvolu =
           case "OnPatchesByQuery": {
             console.debug("onPatchesByQuery", {
               queryCount: message.patchesByQuery.size,
-              onCompleteCount: message.onCompleteIds.length,
+              callbackCount: message.callbackIds.length,
             });
             const state = rowsByQueryMapStore.get();
             const nextRowsByQueryMap = new Map(state);
@@ -2020,7 +2023,10 @@ export const createEvolu =
               }
             }
 
-            if (run.deps.flushSync && message.onCompleteIds.length > 0) {
+            // Any callback flushes, also an onError-only mutation's, which
+            // costs a synchronous render but no tracking of which callbacks
+            // have onSuccess.
+            if (run.deps.flushSync && message.callbackIds.length > 0) {
               run.deps.flushSync(() => {
                 rowsByQueryMapStore.set(nextRowsByQueryMap);
               });
@@ -2028,8 +2034,8 @@ export const createEvolu =
               rowsByQueryMapStore.set(nextRowsByQueryMap);
             }
 
-            for (const onCompleteId of message.onCompleteIds) {
-              onMutateCompleteCallbacks.execute(onCompleteId);
+            for (const callbackId of message.callbackIds) {
+              mutationCallbacks.execute(callbackId, ok());
             }
             break;
           }
@@ -2064,9 +2070,9 @@ export const createEvolu =
           }
 
           case "OnMutateFailed": {
-            // The tab reports the failure, and these callbacks never run.
-            for (const onCompleteId of message.onCompleteIds) {
-              onMutateCompleteCallbacks.unregister(onCompleteId);
+            // The tab reports the failure too.
+            for (const callbackId of message.callbackIds) {
+              mutationCallbacks.execute(callbackId, err(message.error));
             }
             break;
           }
@@ -2153,7 +2159,7 @@ export const createEvolu =
     const mutateBatch = disposer.use(
       createMicrotaskBatch<{
         readonly change: MutationChange;
-        readonly onComplete: (() => void) | undefined;
+        readonly callback: Callback<Result<void, UnknownError>> | null;
       }>((items) => {
         if (disposed) return;
         console.debug("mutateBatch", { changeCount: items.length });
@@ -2165,10 +2171,8 @@ export const createEvolu =
         postMessage({
           type: "Mutate",
           changes: mapArray(items, (item) => item.change),
-          onCompleteIds: items.flatMap((item) =>
-            item.onComplete
-              ? [onMutateCompleteCallbacks.register(item.onComplete)]
-              : [],
+          callbackIds: items.flatMap(({ callback }) =>
+            callback ? [mutationCallbacks.register(callback)] : [],
           ),
           subscribedQueries: subscribedQueriesRefCount.keys(),
         });
@@ -2284,9 +2288,23 @@ export const createEvolu =
         // the mutation does not return rows cached before it.
         releaseUnsubscribedLoadingPromises();
 
+        const onSuccess = options?.onSuccess;
+        const onError = options?.onError;
         mutateBatch.push({
           change: { ...dbChange, ownerId: options?.owner?.id ?? appOwner.id },
-          onComplete: options?.onComplete,
+          callback:
+            onSuccess || onError
+              ? (result) => {
+                  // A throw must not skip the batch's later callbacks, such as
+                  // one that settles a promise.
+                  try {
+                    if (result.ok) onSuccess?.();
+                    else onError?.(result.error);
+                  } catch (error) {
+                    run.deps.reportDefect(error);
+                  }
+                }
+              : null,
         });
 
         return { id };
@@ -2435,7 +2453,13 @@ export const createEvolu =
             const rows = getQueryRows(query);
             if (previousRows === rows) return;
             previousRows = rows;
-            listener();
+            // A throw must not skip later listeners or the mutation callbacks
+            // of the same answer, which settle promises.
+            try {
+              listener();
+            } catch (error) {
+              run.deps.reportDefect(error);
+            }
           });
 
           // Invalidation can happen after loading but before a framework
@@ -2551,17 +2575,17 @@ export const isDatabaseDeleted = <S extends EvoluSchema>(
 //       if (message.reload) {
 //         deps.reloadApp(reloadUrl);
 //       } else {
-//         onCompleteCallbacks.execute(message.onCompleteId);
+//         callbacks.execute(message.callbackId);
 //       }
 //       break;
 //     }
 
 // resetAppOwner: (_options) => {
 //   const { promise, resolve } = Promise.withResolvers<undefined>();
-//   const _onCompleteId = onCompleteCallbacks.register(resolve);
+//   const _callbackId = callbacks.register(resolve);
 //   // dbWorker.postMessage({
 //   //   type: "reset",
-//   //   onCompleteId,
+//   //   callbackId,
 //   //   reload: options?.reload ?? true,
 //   // });
 //   return promise;
@@ -2569,10 +2593,10 @@ export const isDatabaseDeleted = <S extends EvoluSchema>(
 
 // restoreAppOwner: (_mnemonic, _options) => {
 //   const { promise, resolve } = Promise.withResolvers<undefined>();
-//   const _onCompleteId = onCompleteCallbacks.register(resolve);
+//   const _callbackId = callbacks.register(resolve);
 //   // dbWorker.postMessage({
 //   //   type: "reset",
-//   //   onCompleteId,
+//   //   callbackId,
 //   //   reload: options?.reload ?? true,
 //   //   restore: { mnemonic, sqliteSchema },
 //   // });

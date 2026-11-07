@@ -204,7 +204,7 @@
  * for the same owner stamped in the same logical millisecond with the same
  * counter would get identical timestamps. Each copy would keep its own change,
  * relays and third devices the first to arrive, and a copy that received the
- * other's timestamp first would skip its own change while `onComplete` still
+ * other's timestamp first would skip its own change while `onSuccess` still
  * ran. Range fingerprints hash only timestamps, so sync could not heal it. A
  * copy instead starts a session with a new node ID before it writes.
  *

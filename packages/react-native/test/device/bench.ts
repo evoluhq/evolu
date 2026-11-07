@@ -798,7 +798,7 @@ const createTitles = (count: number): ReadonlyArray<NonEmptyTrimmedString100> =>
     NonEmptyTrimmedString100.orThrow(`t${index}`),
   );
 
-/** Inserts the titles in one tick, and resolves at the last `onComplete`. */
+/** Inserts the titles in one tick, and resolves at the last `onSuccess`. */
 const insertTitles = (
   evolu: BenchEvolu,
   titles: ReadonlyArray<NonEmptyTrimmedString100>,
@@ -810,7 +810,7 @@ const insertTitles = (
       "item",
       { title },
       index === titles.length - 1
-        ? { onComplete: completed.resolve }
+        ? { onSuccess: completed.resolve }
         : undefined,
     );
   });
