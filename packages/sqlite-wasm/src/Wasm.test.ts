@@ -7,6 +7,7 @@ import {
   assertInstanceOf,
   assertOk,
   assertSame,
+  assertThrowsInstanceOf,
   testCreateDeps,
   trySync,
 } from "@evolu/common";
@@ -31,11 +32,12 @@ import {
  * NULL slot, so installed functions are called through it from JavaScript, and
  * a broken flag the test sets.
  */
-const setupFakeSqliteWasm = () => {
-  const functionTable = new WebAssembly.Table({
+const setupFakeSqliteWasm = (
+  functionTable = new WebAssembly.Table({
     initial: 1,
     element: "anyfunc",
-  });
+  }),
+) => {
   let broken = false;
   const callFunction = (pointer: SqliteFunctionPtr) =>
     functionTable.get(pointer) as (...args: ReadonlyArray<unknown>) => unknown;
@@ -261,6 +263,21 @@ test("disposing installed functions empties their slots, which later installs re
     second.pointers.map((pointer) => deps.callFunction(pointer)()),
     [3, 4],
   );
+});
+
+test("a failed function table growth releases slots taken by that install", () => {
+  const deps = setupFakeSqliteWasm(
+    new WebAssembly.Table({ initial: 1, maximum: 2, element: "anyfunc" }),
+  );
+  const install = installWasmFunctions(deps);
+  const fn = { signature: "i()", fn: () => 7 };
+
+  assertThrowsInstanceOf(() => install([fn, fn]), RangeError);
+
+  assertSame(deps.functionTable.get(1), null);
+  using installed = install([fn]);
+  assertEqual(installed.pointers, [1]);
+  assertEqual(deps.callFunction(installed.pointers[0])(), 7);
 });
 
 test("disposing installed functions twice empties their slots once", () => {

@@ -1008,18 +1008,15 @@ export const installWasmFunctions =
       "": Object.fromEntries(imports.entries()),
     });
 
+    using disposer = new DisposableStack();
     const pointers = mapArray(functions, (_, index) => {
       const pointer = freeSlots.pop() ?? (table.grow(1) as SqliteFunctionPtr);
-      table.set(pointer, exports[index]);
-      return pointer;
-    });
-
-    using disposer = new DisposableStack();
-    disposer.defer(() => {
-      for (const pointer of pointers) {
+      disposer.defer(() => {
         table.set(pointer, null);
         freeSlots.push(pointer);
-      }
+      });
+      table.set(pointer, exports[index]);
+      return pointer;
     });
 
     return disposable<SqliteWasmFunctions>({ pointers }, disposer);
