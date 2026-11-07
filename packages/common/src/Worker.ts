@@ -390,7 +390,7 @@ export const createMessageChannel: CreateMessageChannel = <
     flushScheduled: false,
     flushTask: null,
     ownerCount: 0,
-    pendingTransferCount: 0,
+    deliveredTransferCount: 0,
   };
   const state2: PortState<Input> = {
     handler: null,
@@ -398,7 +398,7 @@ export const createMessageChannel: CreateMessageChannel = <
     flushScheduled: false,
     flushTask: null,
     ownerCount: 0,
-    pendingTransferCount: 0,
+    deliveredTransferCount: 0,
   };
 
   const native1 = createNativeMessagePortToken<Input, Output>();
@@ -769,12 +769,22 @@ const createMemorySharedWorkerPair = <Input, Output = never>(): {
 };
 
 interface PortState<T> {
-  handler: ((message: T) => void) | null;
-  readonly queue: Array<T>;
+  handler: {
+    readonly owner: DisposableStack;
+    readonly callback: (message: T) => void;
+  } | null;
+  queue: Array<PortMessage<T>>;
   flushScheduled: boolean;
   flushTask: WorkerTask | null;
   ownerCount: number;
-  pendingTransferCount: number;
+  /** Delivered reservations that can be claimed by a wrapper or forwarded. */
+  deliveredTransferCount: number;
+}
+
+interface PortMessage<T> {
+  readonly message: T;
+  readonly transferredPorts:
+    ReadonlyArray<PortRegistration<any, any>> | undefined;
 }
 
 interface PortRegistration<Input, Output> {
@@ -783,35 +793,23 @@ interface PortRegistration<Input, Output> {
   readonly native: NativeMessagePort<Input, Output>;
 }
 
-const createPort = <Input, Output>({
-  receive,
-  peerReceive,
-  native,
-}: PortRegistration<Input, Output>): MessagePort<Input, Output> => {
+const createPort = <Input, Output>(
+  registration: PortRegistration<Input, Output>,
+): MessagePort<Input, Output> => {
+  const { receive, peerReceive, native } = registration;
   using disposer = new DisposableStack();
 
-  if (receive.pendingTransferCount > 0) receive.pendingTransferCount -= 1;
+  if (receive.deliveredTransferCount > 0) receive.deliveredTransferCount -= 1;
   else receive.ownerCount += 1;
 
   disposer.defer(() => {
-    receive.ownerCount -= 1;
-    if (receive.ownerCount > 0) return;
-
-    nativePortRegistry.delete(native);
-
-    if (receive.flushTask != null) {
-      cancelWorkerTask(receive.flushTask);
-      receive.flushTask = null;
-    }
-
-    receive.handler = null;
-    receive.flushScheduled = false;
-    receive.queue.length = 0;
+    if (receive.handler?.owner === disposables) receive.handler = null;
+    releasePorts([registration]);
   });
 
   const disposables = disposer.move();
 
-  const scheduleFlush = (state: PortState<any>): void => {
+  const scheduleFlush = <T>(state: PortState<T>): void => {
     if (state.flushScheduled || state.ownerCount === 0) return;
     state.flushScheduled = true;
 
@@ -820,51 +818,110 @@ const createPort = <Input, Output>({
       state.flushScheduled = false;
       if (state.ownerCount === 0) return;
 
-      const firstHandler = state.handler;
-      if (!firstHandler) return;
-
-      for (const message of state.queue.splice(0)) {
-        const handler = state.handler;
-        if (!handler) return;
-
-        handler(message);
+      let callback = state.handler?.callback;
+      if (!callback) return;
+      const messages = state.queue;
+      state.queue = [];
+      let next = 0;
+      try {
+        while (callback && next < messages.length) {
+          const { message, transferredPorts } = messages[next++];
+          if (transferredPorts)
+            for (const port of transferredPorts)
+              // A delivered port stays reserved until a wrapper claims it or a
+              // message carries it on, also after the handler returns, as a
+              // web port can be wrapped later. Without garbage collection
+              // hooks, a port the handler drops, also by throwing, stays
+              // reserved.
+              port.receive.deliveredTransferCount += 1;
+          callback(message);
+          callback = state.handler?.callback;
+        }
+      } finally {
+        if (next < messages.length) {
+          if (state.ownerCount === 0) {
+            for (; next < messages.length; next++) {
+              const { transferredPorts } = messages[next];
+              if (transferredPorts) releasePorts(transferredPorts);
+            }
+          } else {
+            // Keep the tail ahead of reentrant posts if the handler detached
+            // or threw. A thrown error still leaves the next flush scheduled.
+            state.queue = messages.slice(next).concat(state.queue);
+            if (state.handler) scheduleFlush(state);
+          }
+        }
       }
     });
   };
 
   return {
     postMessage: (message, transfer) => {
-      if (
-        disposables.disposed ||
-        receive.ownerCount === 0 ||
-        peerReceive.ownerCount === 0
-      )
-        return;
-
-      for (const transferable of transfer ?? []) {
-        if (transferable instanceof ArrayBuffer) continue;
-
-        const registration = nativePortRegistry.get(transferable);
-        if (!registration) continue;
-
-        registration.receive.ownerCount += 1;
-        registration.receive.pendingTransferCount += 1;
+      let transferredPorts: Array<PortRegistration<any, any>> | undefined;
+      if (transfer) {
+        // Reading the list can throw or close a port, so nothing is reserved
+        // until it has been read. Unlike a web port, which throws a
+        // DataCloneError, a port transferred twice in one message or through
+        // its own channel isn't rejected; Evolu does neither, and such a port
+        // stays reserved.
+        const transferables = [...transfer];
+        for (const transferable of transferables) {
+          const transferred = nativePortRegistry.get(transferable);
+          if (!transferred) continue;
+          if (transferred.receive.deliveredTransferCount > 0)
+            transferred.receive.deliveredTransferCount -= 1;
+          else transferred.receive.ownerCount += 1;
+          (transferredPorts ??= []).push(transferred);
+        }
       }
-
-      peerReceive.queue.push(message);
+      if (disposables.disposed || peerReceive.ownerCount === 0) {
+        // A dropped message releases the port transfers it carries, as a web
+        // port detaches them even when nothing receives the message.
+        if (transferredPorts) releasePorts(transferredPorts);
+        return;
+      }
+      peerReceive.queue.push({ message, transferredPorts });
       scheduleFlush(peerReceive);
     },
+    // Wrappers of one port share its handler, as web wrappers share the native
+    // port's onmessage. Only disposal checks the owner, so disposing one wrapper
+    // doesn't clear the handler another one set.
     get onMessage() {
-      return disposables.disposed ? null : receive.handler;
+      return disposables.disposed ? null : (receive.handler?.callback ?? null);
     },
     set onMessage(fn) {
-      if (disposables.disposed || receive.ownerCount === 0) return;
-      receive.handler = fn;
+      if (disposables.disposed) return;
+      receive.handler = fn ? { owner: disposables, callback: fn } : null;
       if (fn) scheduleFlush(receive);
     },
     native,
     [Symbol.dispose]: () => disposables.dispose(),
   };
+};
+
+const releasePorts = (
+  ports: ReadonlyArray<PortRegistration<any, any>>,
+): void => {
+  // A dropped message can release the last owner of another port whose
+  // queue also holds transfers. Drain those reservations without recursion.
+  const remaining = [...ports];
+  for (let port = remaining.pop(); port; port = remaining.pop()) {
+    const { receive, native } = port;
+    receive.ownerCount -= 1;
+    if (receive.ownerCount > 0) continue;
+
+    nativePortRegistry.delete(native);
+    if (receive.flushTask != null) {
+      cancelWorkerTask(receive.flushTask);
+      receive.flushTask = null;
+    }
+    receive.handler = null;
+    receive.flushScheduled = false;
+    for (const { transferredPorts } of receive.queue)
+      if (transferredPorts)
+        for (const transferred of transferredPorts) remaining.push(transferred);
+    receive.queue.length = 0;
+  }
 };
 
 // React Native fires a setTimeout(0) only at the next frame or a later one, so a
@@ -1030,6 +1087,6 @@ const createNativeMessagePortToken = <Input, Output>(): NativeMessagePort<
  * longer referenced.
  */
 const nativePortRegistry = new WeakMap<
-  NativeMessagePort<any, any>,
+  Transferable,
   PortRegistration<any, any>
 >();

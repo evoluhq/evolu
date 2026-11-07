@@ -3203,6 +3203,10 @@ const createEvoluTenant =
         },
         [dbWorkerChannel.port1.native],
       );
+      // In memory, a transfer doesn't detach the wrapper, as a web transfer
+      // does, so the wrapper would keep the port open after the DbWorker
+      // closes it.
+      dbWorkerChannel.port1[Symbol.dispose]();
     };
 
     // The current clock already has the session's NodeId, so this compares

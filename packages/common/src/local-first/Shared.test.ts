@@ -14,6 +14,7 @@ import {
   assertNotSame,
   assertOk,
   assertSame,
+  assertThrowsInstanceOf,
   assertTrue,
 } from "../Assert.ts";
 import { createBuffer, encodeNonNegativeInt } from "../Bytes.ts";
@@ -871,6 +872,21 @@ describe("storage", () => {
       clock: createTimestamp(),
     });
     await testWaitForWorkerMessage();
+  });
+
+  it("releases a DbWorker's port once the DbWorker closes it", async () => {
+    await using setup = await setupSharedWorker();
+    const instance = await setup.createEvolu();
+    const init = getDbWorkerInit(setup.sharedWorkerOutputs.at(0));
+
+    instance.dbWorkerPort[Symbol.dispose]();
+
+    // An in-memory port stays registered while any wrapper holds it.
+    const error = assertThrowsInstanceOf(
+      () => testCreateMessagePort(init.port),
+      Error,
+    );
+    assertTrue(error.message.includes("Unknown native port"));
   });
 
   for (const mode of ["stored", "memory-instance"] as const) {

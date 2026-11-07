@@ -305,6 +305,179 @@ describe("testCreateMessageChannel", () => {
 
     await expectArrayAfterWorkerMessage(received, ["hello"]);
   });
+
+  it("drops a transfer reservation when the receiving port closes before delivery", () => {
+    using delivery = testCreateMessageChannel<NativeMessagePort<never>>();
+    using transferred = testCreateMessageChannel<never>();
+    const native = transferred.port1.native;
+
+    delivery.port1.postMessage(native, [native]);
+    transferred.port1[Symbol.dispose]();
+    delivery.port2[Symbol.dispose]();
+
+    const error = assertThrowsInstanceOf(
+      () => testCreateMessagePort(native),
+      Error,
+    );
+    assertTrue(error.message.includes("Unknown native port"));
+  });
+
+  it("preserves a buffered transfer when a wrapper is opened and disposed before delivery", async () => {
+    using delivery = testCreateMessageChannel<NativeMessagePort<never>>();
+    using transferred = testCreateMessageChannel<never>();
+    const native = transferred.port1.native;
+
+    delivery.port1.postMessage(native, [native]);
+    const alias = testCreateMessagePort(native);
+    transferred.port1[Symbol.dispose]();
+    alias[Symbol.dispose]();
+    await testWaitForWorkerMessage();
+
+    const received: Array<NativeMessagePort<never>> = [];
+    delivery.port2.onMessage = (native) => {
+      received.push(native);
+    };
+    await expectArrayAfterWorkerMessage(received, [native]);
+    using wrapped = testCreateMessagePort(native);
+    assertSame(wrapped.native, native);
+  });
+
+  for (const secondHop of [
+    "disposed after delivery",
+    "dropped",
+    "closed before the forward",
+  ] as const) {
+    it(`releases a forwarded port when the second hop is ${secondHop}`, async () => {
+      using first = testCreateMessageChannel<NativeMessagePort<never>>();
+      using second = testCreateMessageChannel<NativeMessagePort<never>>();
+      using transferred = testCreateMessageChannel<never>();
+      const native = transferred.port1.native;
+      const received: Array<NativeMessagePort<never>> = [];
+
+      first.port2.onMessage = (port) => {
+        if (secondHop === "closed before the forward")
+          second.port2[Symbol.dispose]();
+        second.port1.postMessage(port, [port]);
+        if (secondHop === "dropped") second.port2[Symbol.dispose]();
+      };
+      second.port2.onMessage = (port) => {
+        using wrapped = testCreateMessagePort(port);
+        received.push(wrapped.native);
+      };
+
+      first.port1.postMessage(native, [native]);
+      transferred.port1[Symbol.dispose]();
+      await expectArrayAfterWorkerMessage(
+        received,
+        secondHop === "disposed after delivery" ? [native] : [],
+      );
+
+      const error = assertThrowsInstanceOf(
+        () => testCreateMessagePort(native),
+        Error,
+      );
+      assertTrue(error.message.includes("Unknown native port"));
+    });
+  }
+
+  it("does not reserve ports when a transfer-list getter throws", () => {
+    using delivery = testCreateMessageChannel<NativeMessagePort<never>>();
+    using transferred = testCreateMessageChannel<never>();
+    const native = transferred.port1.native;
+    const transfer = [native];
+    const getterError = new Error("Transfer-list read failed.");
+    Object.defineProperty(transfer, 1, {
+      get: () => {
+        throw getterError;
+      },
+    });
+
+    assertSame(
+      assertThrowsInstanceOf(
+        () => delivery.port1.postMessage(native, transfer),
+        Error,
+      ),
+      getterError,
+    );
+    transferred.port1[Symbol.dispose]();
+    delivery.port2[Symbol.dispose]();
+
+    const error = assertThrowsInstanceOf(
+      () => testCreateMessagePort(native),
+      Error,
+    );
+    assertTrue(error.message.includes("Unknown native port"));
+  });
+
+  it("does not reserve ports when reading the transfer list closes the receiver", () => {
+    using delivery = testCreateMessageChannel<NativeMessagePort<never>>();
+    using transferred = testCreateMessageChannel<never>();
+    const native = transferred.port1.native;
+    const transfer: Array<NativeMessagePort<never>> = [];
+    Object.defineProperty(transfer, 0, {
+      get: () => {
+        delivery.port2[Symbol.dispose]();
+        return native;
+      },
+    });
+
+    delivery.port1.postMessage(native, transfer);
+    transferred.port1[Symbol.dispose]();
+
+    const error = assertThrowsInstanceOf(
+      () => testCreateMessagePort(native),
+      Error,
+    );
+    assertTrue(error.message.includes("Unknown native port"));
+  });
+
+  it("drops transfer reservations for remaining messages when a handler closes its port", async () => {
+    using delivery = testCreateMessageChannel<
+      "close" | NativeMessagePort<never>
+    >();
+    using transferred = testCreateMessageChannel<never>();
+    const native = transferred.port1.native;
+
+    delivery.port2.onMessage = () => {
+      delivery.port2[Symbol.dispose]();
+    };
+    delivery.port1.postMessage("close");
+    delivery.port1.postMessage(native, [native]);
+    transferred.port1[Symbol.dispose]();
+    await testWaitForWorkerMessage();
+
+    const error = assertThrowsInstanceOf(
+      () => testCreateMessagePort(native),
+      Error,
+    );
+    assertTrue(error.message.includes("Unknown native port"));
+  });
+
+  it("keeps the undelivered tail ahead of reentrant posts when a handler closes only its wrapper", async () => {
+    type Message = "close" | "later" | NativeMessagePort<never>;
+    using delivery = testCreateMessageChannel<Message>();
+    using surviving = testCreateMessagePort(delivery.port2.native);
+    using transferred = testCreateMessageChannel<never>();
+    const native = transferred.port1.native;
+    const received: Array<Message> = [];
+
+    delivery.port2.onMessage = (message) => {
+      received.push(message);
+      delivery.port2[Symbol.dispose]();
+      delivery.port1.postMessage("later");
+    };
+    delivery.port1.postMessage("close");
+    delivery.port1.postMessage(native, [native]);
+    transferred.port1[Symbol.dispose]();
+    await expectArrayAfterWorkerMessage(received, ["close"]);
+
+    surviving.onMessage = (message) => {
+      received.push(message);
+    };
+    await expectArrayAfterWorkerMessage(received, ["close", native, "later"]);
+    using wrapped = testCreateMessagePort(native);
+    assertSame(wrapped.native, native);
+  });
 });
 
 describe("testCreateMessagePort", () => {
@@ -359,6 +532,23 @@ describe("testCreateMessagePort", () => {
     transferredPort1.postMessage("delivered");
 
     await expectArrayAfterWorkerMessage(received, ["delivered"]);
+  });
+
+  it("does not call a disposed wrapper's handler while another wrapper keeps the port open", async () => {
+    using channel = testCreateMessageChannel<string>();
+    using surviving = testCreateMessagePort(channel.port2.native);
+    const received: Array<string> = [];
+    channel.port2.onMessage = (message) => {
+      received.push(message);
+    };
+    channel.port2[Symbol.dispose]();
+    channel.port1.postMessage("buffered");
+    await expectArrayAfterWorkerMessage(received, []);
+
+    surviving.onMessage = (message) => {
+      received.push(message);
+    };
+    await expectArrayAfterWorkerMessage(received, ["buffered"]);
   });
 
   it("throws for disposed native port", () => {
@@ -920,6 +1110,41 @@ describe("React Native's runtime scheduler", () => {
     assertSame(scheduler.errors[0], error);
     assertSame(scheduler.errors[1], error);
     assertEqual(received, ["next", "later"]);
+  });
+
+  it("delivers remaining port messages and their transfers after a handler throws", async () => {
+    using scheduler = setupNativeRuntimeScheduler();
+    using delivery = testCreateMessageChannel<
+      "throws" | NativeMessagePort<never>
+    >();
+    using transferred = testCreateMessageChannel<never>();
+    const native = transferred.port1.native;
+    const error = new Error("Handler failed.");
+    const received: Array<NativeMessagePort<never>> = [];
+
+    delivery.port2.onMessage = (message) => {
+      if (message === "throws") throw error;
+      using wrapped = testCreateMessagePort(message);
+      received.push(wrapped.native);
+    };
+    delivery.port1.postMessage("throws");
+    delivery.port1.postMessage(native, [native]);
+    transferred.port1[Symbol.dispose]();
+    scheduler.runTasks();
+    assertEqual(received, []);
+
+    // The scheduler drops its queued tasks and runs a microtask checkpoint.
+    await Promise.resolve();
+    scheduler.runTasks();
+
+    assertEqual(received, [native]);
+    assertEqual(scheduler.errors.length, 1);
+    assertSame(scheduler.errors[0], error);
+    const wrappingError = assertThrowsInstanceOf(
+      () => testCreateMessagePort(native),
+      Error,
+    );
+    assertTrue(wrappingError.message.includes("Unknown native port"));
   });
 
   it("delivers broadcast messages in its tasks", () => {
