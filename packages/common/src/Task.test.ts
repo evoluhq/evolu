@@ -11004,6 +11004,79 @@ describe("MutexByKey", () => {
   });
 });
 
+describe("Keyed lock cleanup", () => {
+  for (const [name, createKeyedLock] of [
+    [
+      "SemaphoreByKey",
+      () => ({ withLock: createSemaphoreByKey<string>(1).withPermit }),
+    ],
+    ["MutexByKey", () => createMutexByKey<string>()],
+  ] as const) {
+    it(`${name} keeps a replacement lock when a cancelled waiter finishes`, async () => {
+      await using run = testCreateRun({
+        runConfig: { eventsEnabled: createRef(true) },
+      });
+      const { withLock } = createKeyedLock();
+      const originalStarted = Promise.withResolvers<void>();
+      const finishOriginal = Promise.withResolvers<void>();
+      const finishReplacement = Promise.withResolvers<void>();
+
+      const original = run(
+        withLock("key", async () => {
+          originalStarted.resolve();
+          await finishOriginal.promise;
+          return ok();
+        }),
+      );
+      await originalStarted.promise;
+
+      const waiter = run.abortable(withLock("key", () => ok()));
+      let replacement: Fiber<void> | undefined;
+      original.run.onEvent = (event) => {
+        if (event.id !== original.run.id) return;
+
+        // Cancel the waiter when the protected Task returns, before the
+        // wrapper releases its permit. Start the replacement as soon as that
+        // wrapper finishes, while the waiter is still unwinding.
+        if (event.data.type === "ChildRemoved") waiter.abort(testAbortReason);
+        if (
+          event.data.type === "StateChanged" &&
+          event.data.state.type === "Aborted"
+        )
+          replacement = run(
+            withLock("key", async () => {
+              await finishReplacement.promise;
+              return ok();
+            }),
+          );
+      };
+
+      try {
+        finishOriginal.resolve();
+        assertOk(await original, undefined);
+        assertErr(await waiter, testAbortError);
+        assertNotUndefined(replacement);
+
+        let contenderStarted = false;
+        const contender = run(
+          withLock("key", () => {
+            contenderStarted = true;
+            return ok();
+          }),
+        );
+        await run.ok(yieldNow);
+        assertFalse(contenderStarted);
+
+        finishReplacement.resolve();
+        assertOk(await replacement, undefined);
+        assertOk(await contender, undefined);
+      } finally {
+        finishReplacement.resolve();
+      }
+    });
+  }
+});
+
 describe("MutexRef", () => {
   it("get returns the current value", async () => {
     await using run = testCreateRun();

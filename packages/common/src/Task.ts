@@ -6116,7 +6116,8 @@ export function createSemaphoreByKey<K, L = K>(
         using _permit = await run.ok(semaphore.take(requestedPermits));
         return await run(task);
       } finally {
-        if (semaphore.isIdle()) semaphoresByKey.delete(key);
+        if (semaphore.isIdle() && semaphoresByKey.get(key) === semaphore)
+          semaphoresByKey.delete(key);
       }
     };
 
