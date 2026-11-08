@@ -4,6 +4,7 @@ import {
   assertFalse,
   assertNonNullable,
   assertSame,
+  assertThrowsInstanceOf,
   assertTrue,
   createConsole,
   createIdFromString,
@@ -771,6 +772,34 @@ describe("createEvoluDeps", () => {
 
       setup.connect(ownWorkerId);
       assertSame(setup.reloadApp.mock.callCount(), 1);
+    });
+
+    it("handles builds once it connects, also when an evoluError listener throws as the wait clears", async () => {
+      using setup = setupWebEvoluDeps();
+      await setup.ready;
+      setup.post({ type: "Waiting", workerId: ownWorkerId });
+      setup.post({ type: "Error", error: { type: "OtherBuildRunningError" } });
+      setup.receive(otherBuildWaiting);
+      const listenerError = new Error("An app's listener failed.");
+      const unsubscribe = setup.deps.evoluError.subscribe(() => {
+        throw listenerError;
+      });
+
+      // The store throws after it notifies every listener.
+      assertSame(
+        assertThrowsInstanceOf(() => {
+          setup.connect(ownWorkerId);
+        }, Error),
+        listenerError,
+      );
+      unsubscribe();
+
+      assertSame(setup.deps.evoluError.get(), null);
+      assertSame(setup.reloadApp.mock.callCount(), 1);
+      assertEqual(setup.builds.posted, [
+        { type: "BuildWaiting", workerId: ownWorkerId },
+        buildWaitingRequest,
+      ]);
     });
 
     it("remembers another build announced while its storage probe is pending", async (t) => {

@@ -1612,6 +1612,10 @@ export const createEvoluDeps = (
             break;
 
           case "Error": {
+            // Keep typed errors visible in logs as operational failures,
+            // logged first, so an evoluError listener that throws doesn't hide
+            // them.
+            console.error(message.error);
             // Stored workers of every build share their channel, so another
             // build can post an error type this build does not post, such as
             // an older build's sync error. That build's own tabs show it, so
@@ -1619,8 +1623,6 @@ export const createEvoluDeps = (
             // its owning deps.
             if (message.error.type === "UnknownError")
               setEvoluError(message.error);
-            // Keep typed errors visible in logs as operational failures.
-            console.error(message.error);
             break;
           }
 
@@ -1647,8 +1649,9 @@ export const createEvoluDeps = (
           // could not be stored, its stored worker still waits for another
           // build, or its memory worker failed to load or reported an uncaught
           // error.
-          setEvoluError(message.error);
+          // Logged first, so an evoluError listener that throws doesn't hide it.
           console.error(message.error);
+          setEvoluError(message.error);
           break;
 
         case "Waiting":
@@ -1660,13 +1663,6 @@ export const createEvoluDeps = (
             !syncStateBroadcastChannel,
             "The shared worker connects once.",
           );
-          // Only the stored worker's connection ends the wait it reported.
-          if (
-            mode === "stored" &&
-            evoluError.get()?.type === "OtherBuildRunningError"
-          ) {
-            evoluError.set(null);
-          }
           // The stored worker's channel is open since it started.
           if (mode === "memory-instance") {
             listenForConsoleEntries(message.consoleEntryOrErrorChannelName);
@@ -1697,6 +1693,14 @@ export const createEvoluDeps = (
           } else {
             // The instance's own tab is its only host, for its whole lifetime.
             announceTabLeader();
+          }
+          // Only the stored worker's connection ends the wait it reported.
+          // Last, so an app's listener that throws stops none of the above.
+          if (
+            mode === "stored" &&
+            evoluError.get()?.type === "OtherBuildRunningError"
+          ) {
+            evoluError.set(null);
           }
           break;
         }

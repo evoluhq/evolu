@@ -404,7 +404,19 @@ describe("Evolu", () => {
     };
 
     it("reports an OtherBuildRunningError its worker sends and clears it once the worker connects", async () => {
-      using setup = await setupCreateEvoluDeps();
+      const lockManager = testCreateLockManager();
+      const requestedLocks: Array<string> = [];
+      using setup = await setupCreateEvoluDeps({
+        lockManager: {
+          query: () => lockManager.query(),
+          request: ((name: string, ...rest: Array<unknown>) => {
+            requestedLocks.push(name);
+            return (
+              lockManager.request as (...args: Array<unknown>) => unknown
+            )(name, ...rest);
+          }) as LockManager["request"],
+        },
+      });
 
       setup.sharedWorkerPort.postMessage({
         type: "Error",
@@ -415,8 +427,58 @@ describe("Evolu", () => {
         type: "OtherBuildRunningError",
       });
 
-      await setup.connect(testCreateId()<"SharedWorker">());
+      // Cleared last, so an app's listener that throws, which stops the rest
+      // of the handler, finds the tab competing to host DbWorkers already.
+      const workerId = testCreateId()<"SharedWorker">();
+      let competesWhenCleared = false;
+      setup.deps.evoluError.subscribe(() => {
+        competesWhenCleared = requestedLocks.some((name) =>
+          name.endsWith(`tab-${workerId}`),
+        );
+      });
+      await setup.connect(workerId);
       assertSame(setup.deps.evoluError.get(), null);
+      assertTrue(competesWhenCleared);
+    });
+
+    it("logs an error its worker sends before it reports it", async () => {
+      const testConsole = testCreateConsole();
+      using setup = await setupCreateEvoluDeps({ console: testConsole });
+      const error = createUnknownError("The worker failed.");
+      // So an app's listener that throws can't hide it from the console.
+      let entriesWhenReported: ReadonlyArray<ConsoleEntry> = [];
+      setup.deps.evoluError.subscribe(() => {
+        entriesWhenReported = testConsole.getEntriesSnapshot();
+      });
+
+      setup.sharedWorkerPort.postMessage({ type: "Error", error });
+      await testWaitForWorkerMessage();
+
+      assertEqual(setup.deps.evoluError.get(), error);
+      assertEqual(entriesWhenReported, [
+        { method: "error", path: [], args: [error] },
+      ]);
+    });
+
+    it("logs an error of its worker's console channel before it reports it", async () => {
+      const testConsole = testCreateConsole();
+      using setup = await setupCreateEvoluDeps({ console: testConsole });
+      const error = createUnknownError("A DbWorker failed.");
+      let entriesWhenReported: ReadonlyArray<ConsoleEntry> = [];
+      setup.deps.evoluError.subscribe(() => {
+        entriesWhenReported = testConsole.getEntriesSnapshot();
+      });
+
+      setup.consoleEntryOrErrorBroadcastChannel.postMessage({
+        type: "Error",
+        error,
+      });
+      await testWaitForWorkerMessage();
+
+      assertEqual(setup.deps.evoluError.get(), error);
+      assertEqual(entriesWhenReported, [
+        { method: "error", path: [], args: [error] },
+      ]);
     });
 
     it("keeps a stored worker's OtherBuildRunningError when a memory worker connects", async () => {

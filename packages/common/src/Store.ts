@@ -32,7 +32,9 @@ export interface ReadonlyStore<T> extends Disposable {
 
   /**
    * Registers a listener to be called on state changes and returns a function
-   * to unsubscribe.
+   * to unsubscribe. A listener that throws stops no other listener; once every
+   * listener ran, the change throws that error, or an `AggregateError` of every
+   * error, in listener order, when several threw.
    */
   readonly subscribe: (listener: Listener) => Unsubscribe;
 }
@@ -61,9 +63,18 @@ export const createStore = <T>(initialState: T, eq?: Eq<T>): Store<T> => {
   const listeners = new Set<Listener>();
 
   const notifyIfChanged = (previousState: T): void => {
-    if (!equality(previousState, ref.get())) {
-      for (const listener of listeners) listener();
+    if (equality(previousState, ref.get())) return;
+    const errors: Array<unknown> = [];
+    for (const listener of listeners) {
+      try {
+        listener();
+      } catch (error) {
+        errors.push(error);
+      }
     }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1)
+      throw new AggregateError(errors, "Store listeners threw.");
   };
 
   return {

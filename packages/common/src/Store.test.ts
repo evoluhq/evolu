@@ -1,5 +1,9 @@
 import { describe, it, mock } from "node:test";
-import { assertEqual } from "./Assert.ts";
+import {
+  assertEqual,
+  assertThrowsInstanceOf,
+  assertThrowsSame,
+} from "./Assert.ts";
 
 import { createStore } from "./Store.ts";
 
@@ -25,6 +29,44 @@ describe("set", () => {
     store.set(1);
 
     assertEqual(listener.mock.callCount(), 1);
+  });
+
+  it("notifies every listener when one throws, then throws its error", () => {
+    const store = createStore(0);
+    const error = new Error("Listener failed.");
+    store.subscribe(() => {
+      throw error;
+    });
+    const later = mock.fn<() => void>();
+    store.subscribe(later);
+
+    assertThrowsSame(() => {
+      store.set(1);
+    }, error);
+
+    assertEqual(store.get(), 1);
+    assertEqual(later.mock.callCount(), 1);
+  });
+
+  it("throws an AggregateError of every error, in listener order, when several listeners throw", () => {
+    const store = createStore(0);
+    const first = new Error("First listener failed.");
+    const second = new Error("Second listener failed.");
+    store.subscribe(() => {
+      throw first;
+    });
+    store.subscribe(() => {
+      throw second;
+    });
+    const later = mock.fn<() => void>();
+    store.subscribe(later);
+
+    const error = assertThrowsInstanceOf(() => {
+      store.set(1);
+    }, AggregateError);
+
+    assertEqual(error.errors, [first, second]);
+    assertEqual(later.mock.callCount(), 1);
   });
 
   it("does not notify listeners when state is equal", () => {

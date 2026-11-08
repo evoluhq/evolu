@@ -250,7 +250,6 @@ export const createEvoluDeps = (
       case "Connected": {
         waitingWorkerId = null;
         connectedWorkerId = message.workerId;
-        forward(message);
         for (const workerId of earlyAnnouncedWorkerIds) {
           handleWaitingBuild(workerId);
         }
@@ -258,6 +257,9 @@ export const createEvoluDeps = (
         buildsBroadcastChannel.postMessage({
           type: "BuildWaitingRequest",
         } satisfies BuildWaitingRequest);
+        // Last, so an app's evoluError listener that throws stops none of the
+        // above.
+        forward(message);
         break;
       }
 
