@@ -16,12 +16,15 @@ import {
   createAppOwner,
   createOwnerSecret,
   createOwnerWebSocketTransport,
+  createShardOwner,
+  createSharedOwner,
   deriveShardOwner,
   mnemonicToOwnerSecret,
   OwnerSecret,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
   ownerSecretToMnemonic,
+  ownerSecretToOwnerId,
   parseOwnerIdFromOwnerWebSocketTransportUrl,
   RelayUrl,
   RelayUrlFromString,
@@ -87,6 +90,23 @@ test("createAppOwner derives fixed keys from a 12-word mnemonic", () => {
     "d9cae8d1e141e9f4824ba9b56b9b991d242c1a37f48a146053c3d69f432c5599",
   );
   assertEqual(bytesToHex(owner.writeKey), "8d77d62517c4d525223647a189261ab2");
+});
+
+test("ownerSecretToOwnerId gives the OwnerId of every owner its secret creates", () => {
+  const secret = mnemonicToOwnerSecret(
+    Mnemonic.orThrow("all all all all all all all all all all all all"),
+  );
+
+  assertEqual(ownerSecretToOwnerId(secret), "njGMKFwCtldekpIYmB-VKA");
+  assertEqual(ownerSecretToOwnerId(testOwnerSecret), testAppOwner.id);
+  assertEqual(
+    ownerSecretToOwnerId(testOwnerSecret),
+    createShardOwner(testOwnerSecret).id,
+  );
+  assertEqual(
+    ownerSecretToOwnerId(testOwnerSecret),
+    createSharedOwner(testOwnerSecret).id,
+  );
 });
 
 test("createAppOwner is deterministic", () => {

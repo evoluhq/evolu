@@ -245,16 +245,46 @@ export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
   bip39.mnemonicToEntropy(mnemonic, wordlist) as OwnerSecret;
 
 /**
- * Creates an {@link Owner} from a {@link OwnerSecret} using SLIP-21 key
- * derivation.
+ * Converts an {@link OwnerSecret} to the {@link OwnerId} of the owners it
+ * creates, without deriving their keys or mnemonic, such as to tell whether a
+ * backup's {@link AppOwner} is already on the device.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertTrue,
+ *   mnemonicToOwnerSecret,
+ *   ownerSecretToOwnerId,
+ *   testAppOwner,
+ *   type OwnerId,
+ * } from "@evolu/common";
+ *
+ * // The IDs of the AppOwners on this device.
+ * const appOwnerIds: ReadonlySet<OwnerId> = new Set([testAppOwner.id]);
+ *
+ * // A backup's mnemonic, of an AppOwner that's already on this device.
+ * const secret = mnemonicToOwnerSecret(testAppOwner.mnemonic);
+ *
+ * assertTrue(appOwnerIds.has(ownerSecretToOwnerId(secret)));
+ * ```
+ *
+ * @group Core
  */
-const createOwner = (secret: OwnerSecret): Owner => ({
-  id: ownerIdBytesToOwnerId(
+export const ownerSecretToOwnerId = (secret: OwnerSecret): OwnerId =>
+  ownerIdBytesToOwnerId(
     createSlip21(secret, ["Evolu", "OwnerIdBytes"]).slice(
       0,
       16,
     ) as OwnerIdBytes,
-  ),
+  );
+
+/**
+ * Creates an {@link Owner} from a {@link OwnerSecret} using SLIP-21 key
+ * derivation.
+ */
+const createOwner = (secret: OwnerSecret): Owner => ({
+  id: ownerSecretToOwnerId(secret),
 
   encryptionKey: createSlip21(secret, [
     "Evolu",
