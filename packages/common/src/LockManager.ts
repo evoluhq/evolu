@@ -122,7 +122,11 @@ export const testCreateLockManager = (
  *
  * Leadership is held until the returned handle is disposed. Once released,
  * another waiting caller may become the next leader. Waiting for leadership is
- * abortable via the calling {@link Task}'s signal.
+ * abortable via the calling {@link Task}'s signal, and leadership granted after
+ * the abort is released at once. Racing it, as `timeout` does, can drop
+ * leadership granted as the other Task wins, such as with a lock manager that
+ * grants in a microtask, and nothing releases it; to bound the wait, keep the
+ * handle of {@link acquireLeaderLockCallback} instead.
  *
  * @group Leader election
  */
@@ -136,6 +140,13 @@ export const acquireLeaderLock =
       createLeaderLockName(name),
       { mode: "exclusive", signal: run.signal },
       async () => {
+        // Web Locks grant a request before they run its callback, and an
+        // abort after the grant doesn't cancel it, so a lock granted after
+        // the abort is released at once.
+        if (run.signal.aborted) {
+          acquisition.reject(run.signal.reason);
+          return;
+        }
         acquisition.resolve();
         await released.promise;
       },
@@ -161,7 +172,8 @@ export const acquireLeaderLock =
  *
  * Leadership is held until the returned handle is disposed. Once released,
  * another waiting caller may become the next leader. Waiting for leadership is
- * abortable by disposing the returned handle.
+ * abortable by disposing the returned handle, and leadership granted after the
+ * disposal is released at once, without the callback.
  *
  * @group Leader election
  */
@@ -175,6 +187,9 @@ export const acquireLeaderLockCallback =
       createLeaderLockName(name),
       { mode: "exclusive", signal: abortController.signal },
       async () => {
+        // As in acquireLeaderLock, a lock granted after the disposal is
+        // released at once.
+        if (abortController.signal.aborted) return;
         const released = Promise.withResolvers<void>();
         release = released.resolve;
         callback();
@@ -189,6 +204,52 @@ export const acquireLeaderLockCallback =
         release?.();
       },
     };
+  };
+
+/**
+ * Whether a caller leads for `name`, as {@link acquireLeaderLock} or
+ * {@link acquireLeaderLockCallback} makes it. A context that ends leads for
+ * nothing, so another context can check that one leading for a name, such as a
+ * worker leading for its ID while it runs, still runs. A caller that asked to
+ * lead for a name nobody leads for leads for it before any later check, once
+ * its context had a lock request answered. A context's first request can reach
+ * the lock manager late, as in Chromium, which first asks the browser whether
+ * the context may use storage, and the Web Locks spec promises no order across
+ * contexts beyond that.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   acquireLeaderLock,
+ *   assertFalse,
+ *   assertTrue,
+ *   isLeaderLockHeld,
+ *   testCreateLockManager,
+ *   testCreateRun,
+ * } from "@evolu/common";
+ *
+ * await using run = testCreateRun({
+ *   lockManager: testCreateLockManager(),
+ * });
+ * const isHeld = isLeaderLockHeld(run.deps);
+ * assertFalse(await isHeld("example"));
+ *
+ * const lease = await run.ok(acquireLeaderLock("example"));
+ * assertTrue(await isHeld("example"));
+ *
+ * await lease[Symbol.asyncDispose]();
+ * assertFalse(await isHeld("example"));
+ * ```
+ *
+ * @group Leader election
+ */
+export const isLeaderLockHeld =
+  (deps: LockManagerDep) =>
+  async (name: string): Promise<boolean> => {
+    const { held = [] } = await deps.lockManager.query();
+    const lockName = createLeaderLockName(name);
+    return held.some((lock) => lock.name === lockName);
   };
 
 const createLeaderLockName = (name: string): string =>

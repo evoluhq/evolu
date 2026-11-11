@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { err, getOrThrow } from "../../../../packages/common/src/Result.ts";
+import { constVoid } from "../../../../packages/common/src/Function.ts";
 import {
   acquireLeaderLock,
   acquireLeaderLockCallback,
+  isLeaderLockHeld,
   testCreateLockManager,
 } from "../../../../packages/common/src/LockManager.ts";
 import {
@@ -13,6 +15,40 @@ import {
   yieldNow,
 } from "../../../../packages/common/src/Task.ts";
 import { Name } from "../../../../packages/common/src/Type.ts";
+
+/**
+ * A lock manager that grants each request only when the test calls `grant`,
+ * also after the request's abort, as Web Locks run the callback of a request
+ * they granted just before its abort.
+ */
+const setupLateGrantLockManager = () => {
+  const grants: Array<() => Promise<void>> = [];
+  const lockManager: LockManager = {
+    request: <T>(
+      name: string,
+      _options: LockOptions | LockGrantedCallback<T>,
+      callback?: LockGrantedCallback<T>,
+    ): Promise<Awaited<T>> => {
+      const { promise, resolve } = Promise.withResolvers<Awaited<T>>();
+      grants.push(async () => {
+        resolve(await callback!({ mode: "exclusive", name }));
+      });
+      return promise;
+    },
+    query: () => Promise.resolve({ held: [], pending: [] }),
+  };
+  return {
+    lockManager,
+    /** Grants the oldest request, whose lock its callback then holds. */
+    grant: (): { readonly isReleased: () => boolean } => {
+      let released = false;
+      void grants.shift()!().then(() => {
+        released = true;
+      });
+      return { isReleased: () => released };
+    },
+  };
+};
 
 describe("testCreateLockManager", () => {
   test("isolates same visible names across wrappers", async () => {
@@ -172,6 +208,21 @@ describe("acquireLeaderLock", () => {
     await third[Symbol.asyncDispose]();
   });
 
+  test("releases leadership the lock manager grants after the abort", async () => {
+    const lateGrant = setupLateGrantLockManager();
+    await using run = testCreateRun({ lockManager: lateGrant.lockManager });
+
+    const waiting = run.abortable(acquireLeaderLock(leaderLockName));
+    await run.ok(yieldNow);
+    const reason = { type: "TestAbortReason" };
+    waiting.abort(reason);
+    const granted = lateGrant.grant();
+
+    await expect(waiting).resolves.toEqual(err(createAbortError(reason)));
+    await run.ok(yieldNow);
+    expect(granted.isReleased()).toBe(true);
+  });
+
   test("panics on non-abort lock manager failures", async () => {
     const error = new Error("boom");
     await using run = testCreateRun({
@@ -272,5 +323,59 @@ describe("acquireLeaderLockCallback", () => {
 
     await thirdAcquired.promise;
     expect(secondCallbackCalled).toBe(false);
+  });
+
+  test("releases leadership the lock manager grants after the disposal, without calling back", async () => {
+    const lateGrant = setupLateGrantLockManager();
+    await using run = testCreateRun();
+    let calledBack = false;
+
+    const waiting = acquireLeaderLockCallback(lateGrant)(leaderLockName, () => {
+      calledBack = true;
+    });
+    waiting[Symbol.dispose]();
+    const granted = lateGrant.grant();
+
+    await run.ok(yieldNow);
+    expect(calledBack).toBe(false);
+    expect(granted.isReleased()).toBe(true);
+  });
+});
+
+describe("isLeaderLockHeld", () => {
+  const leaderLockName = Name.orThrow("HeldLeaderLock");
+
+  test("tells whether a caller leads for the name", async () => {
+    await using run = testCreateRun({ lockManager: testCreateLockManager() });
+    const isHeld = isLeaderLockHeld(run.deps);
+    expect(await isHeld(leaderLockName)).toBe(false);
+
+    const lease = await run.ok(acquireLeaderLock(leaderLockName));
+    expect(await isHeld(leaderLockName)).toBe(true);
+    expect(await isHeld("OtherHeldLeaderLock")).toBe(false);
+
+    await lease[Symbol.asyncDispose]();
+    expect(await isHeld(leaderLockName)).toBe(false);
+  });
+
+  test("matches the whole name, as a database's gate extends the database's name", async () => {
+    await using run = testCreateRun({ lockManager: testCreateLockManager() });
+    const isHeld = isLeaderLockHeld(run.deps);
+    const gateName = `${leaderLockName}-gate`;
+    {
+      // A DbWorker leads for its database while it checks its gate.
+      await using _database = await run.ok(acquireLeaderLock(leaderLockName));
+      expect(await isHeld(gateName)).toBe(false);
+    }
+    await using _gate = await run.ok(acquireLeaderLock(gateName));
+    expect(await isHeld(leaderLockName)).toBe(false);
+    expect(await isHeld(gateName)).toBe(true);
+  });
+
+  test("finds a caller that asked to lead for a free name right before", async () => {
+    const deps = { lockManager: testCreateLockManager() };
+    using _leader = acquireLeaderLockCallback(deps)(leaderLockName, constVoid);
+
+    expect(await isLeaderLockHeld(deps)(leaderLockName)).toBe(true);
   });
 });
