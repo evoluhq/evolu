@@ -71,6 +71,44 @@ const provider = createPasskeyKeyProvider({
   userName: "Device",
 });
 
+// WebKit's GTK and WPE ports, which Playwright's WebKit on Linux is built from,
+// have no WebAuthn, so they lack navigator.credentials, PublicKeyCredential and
+// AuthenticatorAssertionResponse
+// (https://bugs.webkit.org/show_bug.cgi?id=205350). The tests that stub
+// WebAuthn skip there.
+const hasWebAuthn = !(
+  server.browser === "webkit" && server.platform === "linux"
+);
+
+describe("passkey key provider without WebAuthn", () => {
+  test("has WebAuthn in every browser but WebKit on Linux", () => {
+    assertSame("credentials" in navigator, hasWebAuthn);
+    assertSame("PublicKeyCredential" in globalThis, hasWebAuthn);
+    assertSame("AuthenticatorAssertionResponse" in globalThis, hasWebAuthn);
+  });
+
+  test("returns UnknownError where the page lacks navigator.credentials, as WebKit's GTK and WPE ports do, at registration and when getting the key", async () => {
+    await using run = testCreateRun();
+    // Shadows the getter of Navigator.prototype, where there is one.
+    Object.defineProperty(navigator, "credentials", {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      const created = await run(provider.createKey);
+      assertErr(created);
+      assertSame(created.error.type, "UnknownError");
+      const key = await run(
+        provider.getKey(DeviceSecretKeyId.orThrow(new Uint8Array([1, 2, 3]))),
+      );
+      assertErr(key);
+      assertSame(key.error.type, "UnknownError");
+    } finally {
+      Reflect.deleteProperty(navigator, "credentials");
+    }
+  });
+});
+
 // Vitest's Playwright provider exposes CDP only for Chromium.
 describe.skipIf(server.browser !== "chromium")("passkey key provider", () => {
   test("gets the same 32-byte key for a passkey, from the v1 PRF input", async () => {
@@ -199,295 +237,308 @@ const setupAssertion = ({
   }) as PublicKeyCredential;
 };
 
-describe("passkey key provider with stubbed WebAuthn", () => {
-  const keyId = DeviceSecretKeyId.orThrow(new Uint8Array([1, 2, 3]));
-  // User present and user verified.
-  const verified = 0x05;
-  const output = new Uint8Array(32).fill(7);
+describe.skipIf(!hasWebAuthn)(
+  "passkey key provider with stubbed WebAuthn",
+  () => {
+    const keyId = DeviceSecretKeyId.orThrow(new Uint8Array([1, 2, 3]));
+    // User present and user verified.
+    const verified = 0x05;
+    const output = new Uint8Array(32).fill(7);
 
-  const getKey = async (assertion: PublicKeyCredential) => {
-    await using run = testCreateRun();
-    using _get = vi
-      .spyOn(navigator.credentials, "get")
-      .mockResolvedValue(assertion);
-    return await run(provider.getKey(keyId));
-  };
-
-  const assertUnknownError = (result: Result<unknown, { type: string }>) => {
-    assertErr(result);
-    assertSame(result.error.type, "UnknownError");
-  };
-
-  test("gets the key of the passkey it names, with required user verification", async () => {
-    await using run = testCreateRun();
-    using get = vi
-      .spyOn(navigator.credentials, "get")
-      .mockResolvedValue(
-        setupAssertion({ rawId: keyId, flags: verified, prfOutput: output }),
-      );
-
-    assertOk(await run(provider.getKey(keyId)));
-
-    const [options] = get.mock.calls[0] ?? [];
-    assertEqual(options?.publicKey?.allowCredentials, [
-      { type: "public-key", id: new Uint8Array(keyId) },
-    ]);
-    // Without it, anyone holding the device could get the key.
-    assertSame(options?.publicKey?.userVerification, "required");
-  });
-
-  test("ends as aborted when its Run aborts a prompt, while registering or getting the key", async () => {
-    // A prompt rejects with the reason of the signal it was given, as in a
-    // browser. Without a signal, it gives no credential.
-    const promptUntilAborted = (
-      options?: CredentialCreationOptions | CredentialRequestOptions,
-    ) =>
-      new Promise<null>((resolve, reject) => {
-        const signal = options?.signal;
-        if (!signal) {
-          resolve(null);
-          return;
-        }
-        signal.addEventListener("abort", () => {
-          // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- A prompt rejects with its signal's reason.
-          reject(signal.reason);
-        });
-      });
-    const abortPrompt = async <T>(task: Task<T, DeviceSecretKeyError>) => {
+    const getKey = async (assertion: PublicKeyCredential) => {
       await using run = testCreateRun();
-      const fiber = run.abortable(task);
-      fiber.abort();
-      const result = await fiber;
-      assertErr(result);
-      assertTrue(AbortError.is(result.error));
-    };
-
-    {
-      using _create = vi
-        .spyOn(navigator.credentials, "create")
-        .mockImplementation(promptUntilAborted);
-      await abortPrompt(provider.createKey);
-    }
-    using _get = vi
-      .spyOn(navigator.credentials, "get")
-      .mockImplementation(promptUntilAborted);
-    await abortPrompt(provider.getKey(keyId));
-  });
-
-  test("returns UnknownError for a credential whose fields throw, as an extension wrapping it can, at registration and when getting the key", async () => {
-    const throwing = {
-      get: (): never => {
-        throw new Error("Wrapped.");
-      },
-    };
-    const throwingMethod = {
-      value: (): never => {
-        throw new Error("Wrapped.");
-      },
-    };
-    const authenticatorData = new Uint8Array(37);
-    authenticatorData[32] = verified;
-    const response = (data: PropertyDescriptor) =>
-      Object.create(AuthenticatorAssertionResponse.prototype, {
-        authenticatorData: data,
-      }) as AuthenticatorAssertionResponse;
-    const credential = (descriptors: PropertyDescriptorMap) =>
-      Object.create(PublicKeyCredential.prototype, {
-        rawId: { value: new Uint8Array(keyId).buffer },
-        response: { value: response({ value: authenticatorData.buffer }) },
-        getClientExtensionResults: {
-          value: () => ({ prf: { results: { first: output } } }),
-        },
-        ...descriptors,
-      }) as PublicKeyCredential;
-    // The credential is valid with no field throwing.
-    assertOk(await getKey(credential({})));
-
-    // Registration reads only the credential ID.
-    {
-      await using run = testCreateRun();
-      using _create = vi
-        .spyOn(navigator.credentials, "create")
-        .mockResolvedValue(credential({ rawId: throwing }));
-      assertUnknownError(await run(provider.createKey));
-    }
-    for (const descriptors of [
-      { rawId: throwing },
-      { response: throwing },
-      { response: { value: response(throwing) } },
-      { getClientExtensionResults: throwingMethod },
-      {
-        getClientExtensionResults: {
-          value: () => ({
-            prf: { results: Object.defineProperty({}, "first", throwing) },
-          }),
-        },
-      },
-    ])
-      assertUnknownError(await getKey(credential(descriptors)));
-  });
-
-  test("accepts a PRF output as an ArrayBuffer or as a view", async () => {
-    // Other bytes around it, so a read that drops the view's offset differs.
-    const backing = new Uint8Array(40);
-    backing.set(output, 4);
-    const view = backing.subarray(4, 36);
-    for (const prfOutput of [output.slice().buffer, view]) {
-      const result = await getKey(
-        setupAssertion({ rawId: keyId, flags: verified, prfOutput }),
-      );
-      assertOk(result);
-      assertEqualBytes(result.value, output);
-    }
-  });
-
-  test("rejects a PRF output that isn't 32 bytes", async () => {
-    for (const prfOutput of ["bytes", new Uint8Array(16)])
-      assertUnknownError(
-        await getKey(
-          setupAssertion({ rawId: keyId, flags: verified, prfOutput }),
-        ),
-      );
-  });
-
-  test("rejects an assertion for another passkey or without user verification", async () => {
-    assertUnknownError(
-      await getKey(
-        setupAssertion({
-          rawId: new Uint8Array([9]),
-          flags: verified,
-          prfOutput: output,
-        }),
-      ),
-    );
-    // User present only.
-    assertUnknownError(
-      await getKey(
-        setupAssertion({ rawId: keyId, flags: 0x01, prfOutput: output }),
-      ),
-    );
-  });
-
-  test("registers a passkey whose provider doesn't report PRF support", async () => {
-    await using run = testCreateRun();
-    using _create = vi.spyOn(navigator.credentials, "create").mockResolvedValue(
-      Object.create(PublicKeyCredential.prototype, {
-        rawId: { value: new Uint8Array(keyId).buffer },
-        getClientExtensionResults: { value: () => ({}) },
-      }) as PublicKeyCredential,
-    );
-
-    assertOk(await run(provider.createKey), keyId);
-  });
-
-  test("reports an assertion without a PRF output as unavailable", async () => {
-    assertErr(
-      await getKey(
-        setupAssertion({ rawId: keyId, flags: verified, prfOutput: undefined }),
-      ),
-      { type: "DeviceSecretKeyUnavailable" },
-    );
-  });
-
-  test("reports a refused registration", async () => {
-    await using run = testCreateRun();
-    using _create = vi
-      .spyOn(navigator.credentials, "create")
-      .mockRejectedValue(new DOMException("Refused.", "NotAllowedError"));
-
-    assertErr(await run(provider.createKey), {
-      type: "DeviceSecretKeyRefused",
-    });
-  });
-
-  test("reports an Error named NotAllowedError as refused, as a wrapper in the page can throw, and no other value of that name", async () => {
-    await using run = testCreateRun();
-    const named = Object.assign(new Error("Refused."), {
-      name: "NotAllowedError",
-    });
-    {
       using _get = vi
         .spyOn(navigator.credentials, "get")
-        .mockRejectedValue(named);
-      assertErr(await run(provider.getKey(keyId)), {
-        type: "DeviceSecretKeyRefused",
-      });
-    }
-    using _get = vi
-      .spyOn(navigator.credentials, "get")
-      .mockRejectedValue({ name: "NotAllowedError" });
-    assertUnknownError(await run(provider.getKey(keyId)));
-  });
+        .mockResolvedValue(assertion);
+      return await run(provider.getKey(keyId));
+    };
 
-  test("returns UnknownError when WebAuthn gives no credential, at registration and when getting the key", async () => {
-    await using run = testCreateRun();
-    {
-      using _create = vi
-        .spyOn(navigator.credentials, "create")
-        .mockResolvedValue(null);
-      assertUnknownError(await run(provider.createKey));
-    }
-    using _get = vi.spyOn(navigator.credentials, "get").mockResolvedValue(null);
-    assertUnknownError(await run(provider.getKey(keyId)));
-  });
+    const assertUnknownError = (result: Result<unknown, { type: string }>) => {
+      assertErr(result);
+      assertSame(result.error.type, "UnknownError");
+    };
 
-  test("returns UnknownError where the page lacks the PublicKeyCredential global, as a wrapper can leave it, at registration and when getting the key", async () => {
-    await using run = testCreateRun();
-    const credential = setupAssertion({
-      rawId: keyId,
-      flags: verified,
-      prfOutput: output,
+    test("gets the key of the passkey it names, with required user verification", async () => {
+      await using run = testCreateRun();
+      using get = vi
+        .spyOn(navigator.credentials, "get")
+        .mockResolvedValue(
+          setupAssertion({ rawId: keyId, flags: verified, prfOutput: output }),
+        );
+
+      assertOk(await run(provider.getKey(keyId)));
+
+      const [options] = get.mock.calls[0] ?? [];
+      assertEqual(options?.publicKey?.allowCredentials, [
+        { type: "public-key", id: new Uint8Array(keyId) },
+      ]);
+      // Without it, anyone holding the device could get the key.
+      assertSame(options?.publicKey?.userVerification, "required");
     });
-    using _create = vi
-      .spyOn(navigator.credentials, "create")
-      .mockResolvedValue(credential);
-    using _get = vi
-      .spyOn(navigator.credentials, "get")
-      .mockResolvedValue(credential);
-    vi.stubGlobal("PublicKeyCredential", undefined);
-    try {
-      assertUnknownError(await run(provider.createKey));
-      assertUnknownError(await run(provider.getKey(keyId)));
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
 
-  test("returns UnknownError for a registration with an empty credential ID", async () => {
-    await using run = testCreateRun();
-    using _create = vi.spyOn(navigator.credentials, "create").mockResolvedValue(
-      Object.create(PublicKeyCredential.prototype, {
-        rawId: { value: new ArrayBuffer(0) },
-        getClientExtensionResults: {
-          value: () => ({ prf: { enabled: true } }),
+    test("ends as aborted when its Run aborts a prompt, while registering or getting the key", async () => {
+      // A prompt rejects with the reason of the signal it was given, as in a
+      // browser. Without a signal, it gives no credential.
+      const promptUntilAborted = (
+        options?: CredentialCreationOptions | CredentialRequestOptions,
+      ) =>
+        new Promise<null>((resolve, reject) => {
+          const signal = options?.signal;
+          if (!signal) {
+            resolve(null);
+            return;
+          }
+          signal.addEventListener("abort", () => {
+            // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- A prompt rejects with its signal's reason.
+            reject(signal.reason);
+          });
+        });
+      const abortPrompt = async <T>(task: Task<T, DeviceSecretKeyError>) => {
+        await using run = testCreateRun();
+        const fiber = run.abortable(task);
+        fiber.abort();
+        const result = await fiber;
+        assertErr(result);
+        assertTrue(AbortError.is(result.error));
+      };
+
+      {
+        using _create = vi
+          .spyOn(navigator.credentials, "create")
+          .mockImplementation(promptUntilAborted);
+        await abortPrompt(provider.createKey);
+      }
+      using _get = vi
+        .spyOn(navigator.credentials, "get")
+        .mockImplementation(promptUntilAborted);
+      await abortPrompt(provider.getKey(keyId));
+    });
+
+    test("returns UnknownError for a credential whose fields throw, as an extension wrapping it can, at registration and when getting the key", async () => {
+      const throwing = {
+        get: (): never => {
+          throw new Error("Wrapped.");
         },
-      }) as PublicKeyCredential,
-    );
-
-    assertUnknownError(await run(provider.createKey));
-  });
-
-  test("rejects an assertion whose response isn't an assertion response", async () => {
-    assertUnknownError(
-      await getKey(
+      };
+      const throwingMethod = {
+        value: (): never => {
+          throw new Error("Wrapped.");
+        },
+      };
+      const authenticatorData = new Uint8Array(37);
+      authenticatorData[32] = verified;
+      const response = (data: PropertyDescriptor) =>
+        Object.create(AuthenticatorAssertionResponse.prototype, {
+          authenticatorData: data,
+        }) as AuthenticatorAssertionResponse;
+      const credential = (descriptors: PropertyDescriptorMap) =>
         Object.create(PublicKeyCredential.prototype, {
           rawId: { value: new Uint8Array(keyId).buffer },
-          response: { value: {} },
+          response: { value: response({ value: authenticatorData.buffer }) },
           getClientExtensionResults: {
             value: () => ({ prf: { results: { first: output } } }),
           },
-        }) as PublicKeyCredential,
-      ),
-    );
-  });
-});
+          ...descriptors,
+        }) as PublicKeyCredential;
+      // The credential is valid with no field throwing.
+      assertOk(await getKey(credential({})));
+
+      // Registration reads only the credential ID.
+      {
+        await using run = testCreateRun();
+        using _create = vi
+          .spyOn(navigator.credentials, "create")
+          .mockResolvedValue(credential({ rawId: throwing }));
+        assertUnknownError(await run(provider.createKey));
+      }
+      for (const descriptors of [
+        { rawId: throwing },
+        { response: throwing },
+        { response: { value: response(throwing) } },
+        { getClientExtensionResults: throwingMethod },
+        {
+          getClientExtensionResults: {
+            value: () => ({
+              prf: { results: Object.defineProperty({}, "first", throwing) },
+            }),
+          },
+        },
+      ])
+        assertUnknownError(await getKey(credential(descriptors)));
+    });
+
+    test("accepts a PRF output as an ArrayBuffer or as a view", async () => {
+      // Other bytes around it, so a read that drops the view's offset differs.
+      const backing = new Uint8Array(40);
+      backing.set(output, 4);
+      const view = backing.subarray(4, 36);
+      for (const prfOutput of [output.slice().buffer, view]) {
+        const result = await getKey(
+          setupAssertion({ rawId: keyId, flags: verified, prfOutput }),
+        );
+        assertOk(result);
+        assertEqualBytes(result.value, output);
+      }
+    });
+
+    test("rejects a PRF output that isn't 32 bytes", async () => {
+      for (const prfOutput of ["bytes", new Uint8Array(16)])
+        assertUnknownError(
+          await getKey(
+            setupAssertion({ rawId: keyId, flags: verified, prfOutput }),
+          ),
+        );
+    });
+
+    test("rejects an assertion for another passkey or without user verification", async () => {
+      assertUnknownError(
+        await getKey(
+          setupAssertion({
+            rawId: new Uint8Array([9]),
+            flags: verified,
+            prfOutput: output,
+          }),
+        ),
+      );
+      // User present only.
+      assertUnknownError(
+        await getKey(
+          setupAssertion({ rawId: keyId, flags: 0x01, prfOutput: output }),
+        ),
+      );
+    });
+
+    test("registers a passkey whose provider doesn't report PRF support", async () => {
+      await using run = testCreateRun();
+      using _create = vi
+        .spyOn(navigator.credentials, "create")
+        .mockResolvedValue(
+          Object.create(PublicKeyCredential.prototype, {
+            rawId: { value: new Uint8Array(keyId).buffer },
+            getClientExtensionResults: { value: () => ({}) },
+          }) as PublicKeyCredential,
+        );
+
+      assertOk(await run(provider.createKey), keyId);
+    });
+
+    test("reports an assertion without a PRF output as unavailable", async () => {
+      assertErr(
+        await getKey(
+          setupAssertion({
+            rawId: keyId,
+            flags: verified,
+            prfOutput: undefined,
+          }),
+        ),
+        { type: "DeviceSecretKeyUnavailable" },
+      );
+    });
+
+    test("reports a refused registration", async () => {
+      await using run = testCreateRun();
+      using _create = vi
+        .spyOn(navigator.credentials, "create")
+        .mockRejectedValue(new DOMException("Refused.", "NotAllowedError"));
+
+      assertErr(await run(provider.createKey), {
+        type: "DeviceSecretKeyRefused",
+      });
+    });
+
+    test("reports an Error named NotAllowedError as refused, as a wrapper in the page can throw, and no other value of that name", async () => {
+      await using run = testCreateRun();
+      const named = Object.assign(new Error("Refused."), {
+        name: "NotAllowedError",
+      });
+      {
+        using _get = vi
+          .spyOn(navigator.credentials, "get")
+          .mockRejectedValue(named);
+        assertErr(await run(provider.getKey(keyId)), {
+          type: "DeviceSecretKeyRefused",
+        });
+      }
+      using _get = vi
+        .spyOn(navigator.credentials, "get")
+        .mockRejectedValue({ name: "NotAllowedError" });
+      assertUnknownError(await run(provider.getKey(keyId)));
+    });
+
+    test("returns UnknownError when WebAuthn gives no credential, at registration and when getting the key", async () => {
+      await using run = testCreateRun();
+      {
+        using _create = vi
+          .spyOn(navigator.credentials, "create")
+          .mockResolvedValue(null);
+        assertUnknownError(await run(provider.createKey));
+      }
+      using _get = vi
+        .spyOn(navigator.credentials, "get")
+        .mockResolvedValue(null);
+      assertUnknownError(await run(provider.getKey(keyId)));
+    });
+
+    test("returns UnknownError where the page lacks the PublicKeyCredential global, as a wrapper can leave it, at registration and when getting the key", async () => {
+      await using run = testCreateRun();
+      const credential = setupAssertion({
+        rawId: keyId,
+        flags: verified,
+        prfOutput: output,
+      });
+      using _create = vi
+        .spyOn(navigator.credentials, "create")
+        .mockResolvedValue(credential);
+      using _get = vi
+        .spyOn(navigator.credentials, "get")
+        .mockResolvedValue(credential);
+      vi.stubGlobal("PublicKeyCredential", undefined);
+      try {
+        assertUnknownError(await run(provider.createKey));
+        assertUnknownError(await run(provider.getKey(keyId)));
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    test("returns UnknownError for a registration with an empty credential ID", async () => {
+      await using run = testCreateRun();
+      using _create = vi
+        .spyOn(navigator.credentials, "create")
+        .mockResolvedValue(
+          Object.create(PublicKeyCredential.prototype, {
+            rawId: { value: new ArrayBuffer(0) },
+            getClientExtensionResults: {
+              value: () => ({ prf: { enabled: true } }),
+            },
+          }) as PublicKeyCredential,
+        );
+
+      assertUnknownError(await run(provider.createKey));
+    });
+
+    test("rejects an assertion whose response isn't an assertion response", async () => {
+      assertUnknownError(
+        await getKey(
+          Object.create(PublicKeyCredential.prototype, {
+            rawId: { value: new Uint8Array(keyId).buffer },
+            response: { value: {} },
+            getClientExtensionResults: {
+              value: () => ({ prf: { results: { first: output } } }),
+            },
+          }) as PublicKeyCredential,
+        ),
+      );
+    });
+  },
+);
 
 /**
  * The cases that "Passkeys & WebAuthn PRF"
  * (https://www.corbado.com/blog/passkeys-prf-webauthn) describes, as the
  * passkey providers and browsers it names behave.
  */
-describe("createPasskeyAuth", () => {
+describe.skipIf(!hasWebAuthn)("createPasskeyAuth", () => {
   // User present and user verified.
   const verified = 0x05;
 

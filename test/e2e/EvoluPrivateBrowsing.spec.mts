@@ -98,6 +98,10 @@ test("starts the passkey variant in memory, without a passkey", async ({
   page,
 }) => {
   await page.addInitScript(() => {
+    // WebKit's GTK and WPE ports, which Playwright's WebKit on Linux is built
+    // from, have no WebAuthn, so no passkey can be requested there
+    // (https://bugs.webkit.org/show_bug.cgi?id=205350).
+    if (!("credentials" in navigator)) return;
     const refuse = () =>
       Promise.reject(new Error("No passkey where nothing persists"));
     navigator.credentials.create = refuse;
