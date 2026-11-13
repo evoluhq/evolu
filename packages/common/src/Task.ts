@@ -95,6 +95,7 @@
  * |              | {@link allSettled}        | Return every Task Result                              |
  * |              | {@link each}              | Handle each Task Result                               |
  * | Interop      | {@link callback}          | Wrap callback APIs                                    |
+ * |              | {@link promiseToTask}     | Await a promise through the Run                       |
  * |              | {@link fetch}             | Native fetch with bounded Response use                |
  * | Timing       | {@link sleep}             | Pause execution                                       |
  * |              | {@link timeout}           | Time-bounded execution                                |
@@ -3843,6 +3844,110 @@ export const callback =
 
     return promise;
   };
+
+/**
+ * Creates a {@link Task} that awaits the promise `start` returns, through the
+ * {@link Run}, whose abort ends the wait at once and ignores the late result,
+ * also a late rejection.
+ *
+ * It takes a function, not a promise, because a Task is lazy: each run starts
+ * the operation anew, so {@link retry}, {@link repeat}, and {@link timeout} start
+ * it again rather than await the promise of the first run. `start` gets the
+ * Run's signal, so the operation itself can abort, as `fetch` and WebAuthn
+ * allow. The signal also aborts once the Task settles, when the Run ends.
+ *
+ * Without `mapError`, a rejection is a defect, for a promise that rejects only
+ * on a bug. With it, the rejection becomes an {@link Err} with the error it
+ * returns, as {@link tryAsync} maps one, and a `mapError` that throws is a
+ * defect. A synchronous throw of `start` is a rejection, as in
+ * {@link tryAsync}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   createRun,
+ *   promiseToTask,
+ *   type Task,
+ *   type Typed,
+ * } from "@evolu/common";
+ *
+ * interface ReadError extends Typed<"ReadError"> {
+ *   readonly cause: unknown;
+ * }
+ *
+ * // A platform API that returns a promise and observes an AbortSignal.
+ * const readSetting = (
+ *   name: string,
+ *   signal: AbortSignal,
+ * ): Promise<string> =>
+ *   name === "theme"
+ *     ? Promise.resolve(signal.aborted ? "" : "dark")
+ *     : Promise.reject(new Error(`No setting ${name}`));
+ *
+ * const readSettingTask = (name: string): Task<string, ReadError> =>
+ *   promiseToTask(
+ *     (signal) => readSetting(name, signal),
+ *     (cause) => ({ type: "ReadError", cause }),
+ *   );
+ *
+ * // Without mapError, the Task has no error, as a rejection is a defect.
+ * const themeTask = promiseToTask((signal) =>
+ *   readSetting("theme", signal),
+ * );
+ * assertType<typeof themeTask, Task<string>>();
+ *
+ * await using run = createRun();
+ * assertOk(await run(readSettingTask("theme")), "dark");
+ * const missing = await run(readSettingTask("font"));
+ * assertErr(missing);
+ * assertType<typeof missing.error, ReadError>();
+ * ```
+ *
+ * @group Interop
+ */
+export function promiseToTask<T>(
+  start: (signal: AbortSignal) => Promise<T>,
+): Task<T>;
+/** Maps a rejection to an error. */
+export function promiseToTask<T, E>(
+  start: (signal: AbortSignal) => Promise<T>,
+  mapError: (error: unknown) => E,
+): Task<T, E>;
+export function promiseToTask<T, E>(
+  start: (signal: AbortSignal) => Promise<T>,
+  mapError?: (error: unknown) => E,
+): Task<T, E> {
+  return callback<T, E>(({ run, resolve, reject }) => {
+    // Settlement is one-shot, so a result after an abort changes nothing, and
+    // the handlers keep a late rejection handled. The executor turns a
+    // synchronous throw of start into a rejection.
+    void new Promise<T>((resolvePromise) => {
+      resolvePromise(start(run.signal));
+    }).then(
+      (value) => {
+        resolve(ok(value));
+      },
+      (error: unknown) => {
+        if (!mapError) {
+          reject(error);
+          return;
+        }
+        let mapped: E;
+        try {
+          mapped = mapError(error);
+        } catch (defect) {
+          reject(defect);
+          return;
+        }
+        resolve(err(mapped));
+      },
+    );
+  });
+}
 
 /**
  * Pauses execution for a specified {@link PositiveDuration}.

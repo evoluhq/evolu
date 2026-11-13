@@ -20,6 +20,7 @@ import {
 
 import { emptyArray, type NonEmptyReadonlyArray } from "./Array.ts";
 import { testCreateConsole } from "./Console.ts";
+import { constVoid } from "./Function.ts";
 import { emptyRecord } from "./Object.ts";
 import type { Int1To100OrPositiveInt } from "./Number.ts";
 import { none, some, type Option } from "./Option.ts";
@@ -56,6 +57,7 @@ import {
   firstN,
   firstNSettled,
   prioritized,
+  promiseToTask,
   race,
   repeat,
   retry,
@@ -5657,6 +5659,120 @@ describe("callback", () => {
     );
 
     assertOk(result, undefined);
+  });
+});
+
+describe("promiseToTask", () => {
+  it("resolves with the value of the promise", async () => {
+    await using run = createRun();
+
+    const task = promiseToTask(() => Promise.resolve("hello"));
+
+    assertType<typeof task, Task<string>>();
+    assertEqual(await run(task), ok("hello"));
+  });
+
+  it("panics the Run tree with a rejection without mapError", async () => {
+    await using run = testCreateRun();
+    const defect = new Error("boom");
+
+    const task = promiseToTask(() => Promise.reject(defect));
+
+    await assertRejects(run(task), panic(defect));
+    assertSame(await run.deps.reportDefect.next(), run.signal.reason);
+  });
+
+  it("maps a rejection with mapError", async () => {
+    await using run = createRun();
+    const rejection = new Error("missing");
+
+    const task = promiseToTask(
+      () => Promise.reject(rejection),
+      (error) => ({ type: "ReadError", error }) as const,
+    );
+
+    assertEqual(await run(task), err({ type: "ReadError", error: rejection }));
+  });
+
+  it("handles a synchronous throw of start as a rejection", async () => {
+    await using run = createRun();
+    const thrown = new Error("thrown");
+
+    const task = promiseToTask(
+      (): Promise<string> => {
+        throw thrown;
+      },
+      (error) => ({ type: "ReadError", error }) as const,
+    );
+
+    assertEqual(await run(task), err({ type: "ReadError", error: thrown }));
+  });
+
+  it("panics the Run tree when mapError throws", async () => {
+    await using run = testCreateRun();
+    const defect = new Error("mapError failed");
+
+    const task = promiseToTask(
+      () => Promise.reject(new Error("missing")),
+      (): never => {
+        throw defect;
+      },
+    );
+
+    await assertRejects(run(task), panic(defect));
+    assertSame(await run.deps.reportDefect.next(), run.signal.reason);
+  });
+
+  it("ends the wait at once on abort and ignores the late result", async () => {
+    await using run = testCreateRun();
+    const settled = Promise.withResolvers<string>();
+    const task = promiseToTask(() => settled.promise);
+
+    const fiber = run.abortable(task);
+    fiber.abort(testAbortReason);
+
+    assertEqual(await fiber, err(testAbortError));
+    // A late rejection is neither a defect nor an unhandled rejection.
+    settled.reject(new Error("late"));
+    await Promise.resolve();
+    assertEqual(run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("passes the Run's signal, which the abort aborts", async () => {
+    await using run = createRun();
+    const received: Array<AbortSignal> = [];
+    const task = promiseToTask((signal) => {
+      received.push(signal);
+      return new Promise<never>(constVoid);
+    });
+
+    const fiber = run.abortable(task);
+    assertLength(received, 1);
+    const [signal] = received;
+    assertFalse(signal.aborted);
+    fiber.abort(testAbortReason);
+
+    assertTrue(signal.aborted);
+    assertEqual(await fiber, err(testAbortError));
+  });
+
+  it("starts the operation again on each run, so retry retries it", async () => {
+    await using run = createRun();
+    let starts = 0;
+    const task = promiseToTask(
+      () => {
+        starts++;
+        return starts < 3
+          ? Promise.reject(new Error("not yet"))
+          : Promise.resolve(starts);
+      },
+      () => ({ type: "NotYet" }) as const,
+    );
+
+    const result = await run(retry(task, take(3)(spaced("1ms"))));
+
+    assertEqual(result, ok(3));
+    assertSame(starts, 3);
   });
 });
 
