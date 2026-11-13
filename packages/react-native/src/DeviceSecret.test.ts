@@ -135,7 +135,10 @@ test("throws on a native build without the method, as an over-the-air update can
   delete nativeEvoluApp.getOrAddDeviceSecret;
 
   // A build error, as a missing module is, not a storage failure.
-  const error = assertThrowsInstanceOf(() => loadDeviceSecret(appName), Error);
+  const error = assertThrowsInstanceOf(
+    () => loadDeviceSecret(appName),
+    TypeError,
+  );
   assertTrue(
     error.message.startsWith(
       "Evolu's native method EvoluApp.getOrAddDeviceSecret isn't in this native build.",
@@ -227,7 +230,7 @@ test("forgetDeviceSecret reports a native failure as UnknownError", async () => 
 test("forgetDeviceSecret throws on a native build without the method", () => {
   delete nativeEvoluApp.forgetDeviceSecret;
 
-  const error = assertThrowsInstanceOf(() => forget(appName), Error);
+  const error = assertThrowsInstanceOf(() => forget(appName), TypeError);
   assertTrue(
     error.message.startsWith(
       "Evolu's native method EvoluApp.forgetDeviceSecret isn't in this native build.",

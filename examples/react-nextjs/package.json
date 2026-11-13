@@ -12,18 +12,18 @@
     "@evolu/react": "workspace:*",
     "@evolu/react-web": "workspace:*",
     "@evolu/web": "workspace:*",
-    "next": "16.4.3",
+    "next": "16.4.6",
     "react": "catalog:react19",
     "react-dom": "catalog:react19"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.11",
-    "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/postcss": "^4.3.5",
     "@types/node": "^24.19.2",
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
     "postcss": "^8.5.32",
-    "tailwindcss": "^4.1.18",
+    "tailwindcss": "^4.3.5",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

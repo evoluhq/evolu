@@ -1880,7 +1880,7 @@ const readWasmEnumJson = async (bytes: Uint8Array): Promise<Uint8Array> => {
   const { __wasm_call_ctors: callCtors, sqlite3__wasm_enum_json: enumJson } =
     instance.exports;
   if (typeof callCtors !== "function" || typeof enumJson !== "function")
-    throw new Error(
+    throw new TypeError(
       "The wasm lacks __wasm_call_ctors or sqlite3__wasm_enum_json",
     );
   (callCtors as () => void)();

@@ -76,7 +76,7 @@ export const loadDeviceSecret = (
   // which is a build error, as a missing module is, not a storage failure the
   // app would show the user.
   if (typeof evoluApp.getOrAddDeviceSecret !== "function")
-    throw new Error(
+    throw new TypeError(
       missingNativeCodeMessage("method EvoluApp.getOrAddDeviceSecret"),
     );
   return async (run) => {
@@ -139,7 +139,7 @@ export const forgetDeviceSecret = (
   const evoluApp = loadEvoluApp();
   // A build error on an older native build, as in loadDeviceSecret.
   if (typeof evoluApp.forgetDeviceSecret !== "function")
-    throw new Error(
+    throw new TypeError(
       missingNativeCodeMessage("method EvoluApp.forgetDeviceSecret"),
     );
   // The old device database stays. Its name derives from the device owner,
