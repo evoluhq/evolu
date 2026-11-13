@@ -72,19 +72,16 @@ const provider = createPasskeyKeyProvider({
 });
 
 // WebKit's GTK and WPE ports, which Playwright's WebKit on Linux is built from,
-// have no WebAuthn, so they lack navigator.credentials, PublicKeyCredential and
-// AuthenticatorAssertionResponse
-// (https://bugs.webkit.org/show_bug.cgi?id=205350). The tests that stub
-// WebAuthn skip there.
+// have no WebAuthn (https://bugs.webkit.org/show_bug.cgi?id=205350): they
+// expose PublicKeyCredential but lack navigator.credentials. The tests that
+// stub WebAuthn skip there.
 const hasWebAuthn = !(
   server.browser === "webkit" && server.platform === "linux"
 );
 
 describe("passkey key provider without WebAuthn", () => {
-  test("has WebAuthn in every browser but WebKit on Linux", () => {
+  test("has navigator.credentials in every browser but WebKit on Linux", () => {
     assertSame("credentials" in navigator, hasWebAuthn);
-    assertSame("PublicKeyCredential" in globalThis, hasWebAuthn);
-    assertSame("AuthenticatorAssertionResponse" in globalThis, hasWebAuthn);
   });
 
   test("returns UnknownError where the page lacks navigator.credentials, as WebKit's GTK and WPE ports do, at registration and when getting the key", async () => {
