@@ -1,5 +1,181 @@
 # @evolu/vue
 
+## 2.2.0
+
+### Minor Changes
+
+- 518e073: Added useStore
+
+  `useStore(store)` returns the value of an Evolu `ReadonlyStore`, such as `evoluError` or `syncState` of the deps, in a ref that follows the store until the component's effect scope is disposed, as React's `useSyncExternalStore` does. Apps no longer mirror a store into a ref by hand. During server rendering, it reads the store once.
+
+  ```ts
+  import {
+    assertType,
+    type ReadonlyStore,
+    type SyncState,
+  } from "@evolu/common";
+  import { useStore } from "@evolu/vue";
+  import type { Ref } from "vue";
+
+  // Call composables in component setup.
+  const useSyncState = (syncState: ReadonlyStore<SyncState | null>) =>
+    useStore(syncState);
+
+  assertType<
+    ReturnType<typeof useSyncState>,
+    Readonly<Ref<SyncState | null>>
+  >();
+  ```
+
+- 518e073: Added waitForRows
+
+  A component couldn't tell a loading query from an empty one, and a query SQLite failed reached no UI, only an unhandled rejection, so apps listed each query twice, once for `useQuery` and once for an `await evolu.loadQuery` under `<Suspense>`. `waitForRows` takes the rows that `useQuery`, `useQueries`, `useDeviceQuery`, or `useDeviceQueries` returned and waits for their first loads, so an async setup under `<Suspense>` renders once they loaded. It rejects with the first failure, which then reaches `onErrorCaptured` of a component above and isn't also reported as an unhandled rejection; a failed load that no `waitForRows` awaits is still reported as one. It stays pending for an instance whose database was deleted, as React's `useQuery` stays suspended, and while a refused database answers no load.
+
+  ```ts
+  import {
+    assertType,
+    createQueryBuilder,
+    testEvoluSchema,
+    type QueryRows,
+  } from "@evolu/common";
+  import { useQueries, useQuery, waitForRows } from "@evolu/vue";
+  import type { Ref } from "vue";
+
+  const createQuery = createQueryBuilder(testEvoluSchema);
+  const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+  const allProjects = createQuery((db) => db.selectFrom("project").selectAll());
+
+  // An async setup of a component under <Suspense>.
+  const setup = async () => {
+    // oxlint-disable-next-line react/rules-of-hooks -- Composables run before the await.
+    const todos = useQuery(allTodos);
+    // oxlint-disable-next-line react/rules-of-hooks -- Composables run before the await.
+    const [projects] = useQueries([allProjects]);
+    // A failure reaches onErrorCaptured of a component above.
+    await waitForRows(todos, projects);
+    return { todos, projects };
+  };
+
+  assertType<
+    Awaited<ReturnType<typeof setup>>["projects"],
+    Readonly<Ref<QueryRows<typeof allProjects.Row>>>
+  >();
+  ```
+
+- 518e073: Exported UseQueryOptions and UseQueriesOptions
+
+  The options of `useQuery` and `useDeviceQuery` are now the exported `UseQueryOptions`, and those of `useQueries` and `useDeviceQueries` the exported `UseQueriesOptions`, so a helper that forwards them can name their type. They take the same `once` as before.
+
+- 518e073: Added createEvoluApp support
+
+  `EvoluAppProvider` provides an app that `createEvoluApp` created. Its default slot gets the instance of the AppOwner the tab has open, so `useEvolu`, the query composables, `useOwner`, and `useOwnerSyncStatus` read that AppOwner's data, and the slot remounts when the tab opens another AppOwner. While the tab has none open, such as after a removal, it renders the `withoutAppOwner` slot instead, such as a choice to create or restore an AppOwner, and while the AppOwner's instance opens, the `opening` slot. `useEvoluApp` returns the app, to open, add, or remove an AppOwner, `useAppOwners` follows the AppOwners on this device, and `useDeviceEvolu`, `useDeviceQuery`, and `useDeviceQueries` read the device database. `createEvoluBinding` returns a `VueBinding`: `useEvolu`, `useEvoluApp`, `useDeviceEvolu`, and the query composables typed with the app's schema and its device schema, so `useDeviceQuery` rejects a query of the app's tables.
+
+  `useEvolu` and `createUseEvolu` now type the instance as `AppOwnerEvolu`, an `Evolu` without `Symbol.asyncDispose`, because the components don't own it, so a helper that takes `useEvolu()`'s value declares `AppOwnerEvolu<S>` instead of `Evolu<S>`. `provideEvolu` and `EvoluProvider` accept either. `createUseEvolu` is deprecated: `createEvoluBinding<S>().useEvolu` returns the same instance, also for an app that `createEvolu` created.
+
+  ```ts
+  import {
+    assertType,
+    type AppOwnerEntry,
+    type AppOwnerEvolu,
+    type Evolu,
+    type EvoluApp,
+    type EvoluSchema,
+    type Name,
+  } from "@evolu/common";
+  import {
+    createEvoluBinding,
+    EvoluAppProvider,
+    useAppOwners,
+    useEvolu,
+  } from "@evolu/vue";
+  import { h, type Ref, type VNode } from "vue";
+
+  // The app is awaited, such as in `<script setup>` under `<Suspense>`.
+  const renderApp = (app: EvoluApp<EvoluSchema>) =>
+    h(
+      EvoluAppProvider,
+      { app },
+      {
+        default: () => h("p", "The open AppOwner's data"),
+        withoutAppOwner: () => h("p", "Create or restore an AppOwner"),
+        opening: () => h("p", "Opening"),
+      },
+    );
+
+  const oldNameOf = (evolu: Evolu) => evolu.name;
+  const nameOf = (evolu: AppOwnerEvolu<EvoluSchema>) => evolu.name;
+
+  // Call composables in component setup.
+  const useDatabaseName = () => {
+    // @ts-expect-error -- An AppOwnerEvolu has no Symbol.asyncDispose, so it isn't an Evolu.
+    oldNameOf(useEvolu());
+    return nameOf(useEvolu());
+  };
+
+  assertType<
+    [ReturnType<typeof useDatabaseName>, ReturnType<typeof useAppOwners>],
+    [Name, Readonly<Ref<ReadonlyArray<AppOwnerEntry>>>]
+  >();
+  assertType<ReturnType<typeof renderApp>, VNode>();
+
+  // Typed with the app's schema and its device schema.
+  const { useEvoluApp } = createEvoluBinding<EvoluSchema>();
+  assertType<ReturnType<typeof useEvoluApp>, EvoluApp<EvoluSchema>>();
+  ```
+
+### Patch Changes
+
+- 518e073: Typed the refs of useQueries as read-only
+
+  `useQueries` returned each query's rows as a `Ref`, though the refs are read-only at run time, as `useQuery`'s are, and an assignment to one only warns. It now types them as `Readonly<Ref>`, so such an assignment doesn't compile.
+
+  ```ts
+  import { createQueryBuilder, testEvoluSchema } from "@evolu/common";
+  import type { useQueries } from "@evolu/vue";
+
+  const allTodos = createQueryBuilder(testEvoluSchema)((db) =>
+    db.selectFrom("todo").selectAll(),
+  );
+  type TodosRef = ReturnType<
+    typeof useQueries<typeof testEvoluSchema, [typeof allTodos], []>
+  >[0];
+
+  // Rows change through mutations, which the refs then show.
+  const clearTodos = (todos: TodosRef) => {
+    // @ts-expect-error Cannot assign to 'value' because it is a read-only property.
+    todos.value = [];
+  };
+  void clearTodos;
+  ```
+
+- 518e073: Fixed Vue composables leaking subscriptions in a component that unmounted while its async setup awaited
+
+  A component whose `<script setup>` awaits before calling `useQuery`, `useQueries`, `useOwner`, or `useOwnerSyncStatus` could unmount during the await, such as when the user switched views. Vue then makes its stopped scope current again, which never runs what `onScopeDispose` registers, so the query's and the sync status's subscriptions stayed for the life of the Evolu instance, and `useOwner` kept syncing the owner over its transports. In such a scope, the query composables now return no rows without touching the instance, which the app may have disposed during the await, while `useOwner` uses no owner, and `useOwnerSyncStatus` reads the status once.
+
+- 518e073: Fixed Vue components throwing after deleteDatabase
+
+  `deleteDatabase` disposes the instance, and the app reloads or replaces it afterward. Until then, a component that set up after the deletion, such as one that shows when a list becomes empty, threw "Cannot use a disposed object." from `useQuery`, `useQueries`, or `useOwner`. They now check `isDatabaseDeleted`, as the React binding does: the query composables return empty rows, and `useOwner` uses no owner.
+
+- Updated dependencies [546484b]
+- Updated dependencies [18f65ea]
+- Updated dependencies [518e073]
+- Updated dependencies [e75628b]
+- Updated dependencies [518e073]
+- Updated dependencies [518e073]
+- Updated dependencies [a73e71d]
+- Updated dependencies [abd13c6]
+- Updated dependencies [518e073]
+- Updated dependencies [f004cd2]
+- Updated dependencies [ac5706c]
+- Updated dependencies [8dd9cf4]
+- Updated dependencies [771dc61]
+- Updated dependencies [f004cd2]
+- Updated dependencies [518e073]
+- Updated dependencies [e532d48]
+- Updated dependencies [505274b]
+- Updated dependencies [1e1568d]
+  - @evolu/common@8.28.0
+
 ## 2.1.2
 
 ### Patch Changes
