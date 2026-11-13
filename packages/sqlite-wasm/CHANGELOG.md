@@ -1,5 +1,34 @@
 # @evolu/sqlite-wasm
 
+## 3.54.1-build4
+
+### Patch Changes
+
+- d0291e3: Released callback slots after a failed Wasm install
+
+  If installing SQLite callbacks runs out of slots, it releases the slots
+  already taken by that call so a later installation can reuse them.
+
+- Updated dependencies [546484b]
+- Updated dependencies [18f65ea]
+- Updated dependencies [518e073]
+- Updated dependencies [e75628b]
+- Updated dependencies [518e073]
+- Updated dependencies [518e073]
+- Updated dependencies [a73e71d]
+- Updated dependencies [abd13c6]
+- Updated dependencies [518e073]
+- Updated dependencies [f004cd2]
+- Updated dependencies [ac5706c]
+- Updated dependencies [8dd9cf4]
+- Updated dependencies [771dc61]
+- Updated dependencies [f004cd2]
+- Updated dependencies [518e073]
+- Updated dependencies [e532d48]
+- Updated dependencies [505274b]
+- Updated dependencies [1e1568d]
+  - @evolu/common@8.28.0
+
 ## 3.54.1-build3
 
 ### Patch Changes

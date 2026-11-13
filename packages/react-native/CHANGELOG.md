@@ -1,5 +1,93 @@
 # @evolu/react-native
 
+## 16.3.0
+
+### Minor Changes
+
+- 518e073: Added loadDeviceSecret, which keeps createEvoluApp's DeviceSecret in secure storage
+
+  `createEvoluApp`'s `DeviceSecret` auth needs a secret only the platform can unlock. `loadDeviceSecret` creates one on the first use, keeps it in the iOS Keychain or, on Android, encrypted with an Android Keystore key, and loads it at later starts without a prompt. It fails with a `LoadDeviceSecretError`: when Android can't read a stored one, `DeviceSecretUnreadableError`, and it keeps the secret. Let the user try again, and once they confirm, `forgetDeviceSecret` starts over; the AppOwners that device database kept then come back only from their backups.
+
+  ```ts
+  import {
+    assertType,
+    type DeviceSecret,
+    type Task,
+    type UnknownError,
+  } from "@evolu/common";
+  import type {
+    DeviceSecretStorageUnavailableError,
+    DeviceSecretUnreadableError,
+    LoadDeviceSecretError,
+    loadDeviceSecret,
+  } from "@evolu/react-native";
+
+  // Pass the secret to createEvoluApp as { type: "DeviceSecret", secret }.
+  assertType<
+    ReturnType<typeof loadDeviceSecret>,
+    Task<DeviceSecret, LoadDeviceSecretError>
+  >();
+  assertType<
+    LoadDeviceSecretError,
+    | DeviceSecretStorageUnavailableError
+    | DeviceSecretUnreadableError
+    | UnknownError
+  >();
+  ```
+
+  It adds native code, so rebuild the app's native project.
+
+### Patch Changes
+
+- 771dc61: Kept memory databases separate for each instance
+
+  Instances of one app and owner that kept their database in memory, with
+  `memoryOnly` or where the browser refuses storage, shared one memory database,
+  and on the web one of their tabs hosted it. Closing that tab emptied the other
+  tabs' memory databases and lost their unsynced changes. Each memory instance now
+  has its own database under a random `Evolu.name`, and on the web its own tab
+  runs its workers. Stored databases are unchanged.
+
+  A memory instance loses its data when it ends, including when its tab closes,
+  navigates away, or enters the back-forward cache. On the web, it exchanges
+  changes with other instances, stored instances of the same owner included, only
+  through relays, so not offline. It opens its own relay connections, so a relay
+  can appear in `deps.syncState` once per worker.
+
+  Where the browser refuses storage, Evolu no longer reloads the tab when another
+  tab loads a new version of the app. Where storage is available, it still may,
+  and the reload ends `memoryOnly` instances too.
+
+  Update `@evolu/web` and `@evolu/react-native` together with `@evolu/common`;
+  with an older adapter, `evoluError` reports an `UnknownError` and instances
+  never load. Custom platform integrations pass `createStoredWorker` to
+  `createEvoluDeps` instead of `sharedWorker`, and may pass the new
+  `createMemoryInstanceWorker` to run each memory instance in a worker of its
+  own. Code that runs `createEvolu` with its own deps provides `storedWorker`.
+
+- Updated dependencies [546484b]
+- Updated dependencies [18f65ea]
+- Updated dependencies [518e073]
+- Updated dependencies [e75628b]
+- Updated dependencies [518e073]
+- Updated dependencies [518e073]
+- Updated dependencies [a73e71d]
+- Updated dependencies [abd13c6]
+- Updated dependencies [518e073]
+- Updated dependencies [f004cd2]
+- Updated dependencies [ac5706c]
+- Updated dependencies [8dd9cf4]
+- Updated dependencies [771dc61]
+- Updated dependencies [f004cd2]
+- Updated dependencies [518e073]
+- Updated dependencies [518e073]
+- Updated dependencies [518e073]
+- Updated dependencies [e532d48]
+- Updated dependencies [505274b]
+- Updated dependencies [1e1568d]
+  - @evolu/common@8.28.0
+  - @evolu/react@11.3.0
+
 ## 16.2.3
 
 ### Patch Changes

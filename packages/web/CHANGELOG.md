@@ -1,5 +1,86 @@
 # @evolu/web
 
+## 3.8.0
+
+### Minor Changes
+
+- 518e073: Added createPasskeyAuth, which unlocks createEvoluApp's device database with a passkey
+
+  The web has no secure storage that needs no prompt, so `createEvoluApp`'s `DeviceSecret` auth needs a key only the user can unlock. `createPasskeyAuth` unlocks the DeviceSecret with a key derived from a passkey's WebAuthn PRF output, which the user confirms on every start, and on the first use creates the passkey. Its `state` tells the app what to show: whether a secret is stored, a failure with whether the app can offer to start over, or the unlocked secret, and where the browser keeps nothing, that the app should start without a passkey. Call `unlock` in a user gesture, and `startOver` with the app's own confirmation, which it asks only when a stored secret would be lost.
+
+  ```ts
+  import { AppName, assertEqual } from "@evolu/common";
+  import { createEvoluDeps, createPasskeyAuth, createRun } from "@evolu/web";
+
+  await using run = createRun(createEvoluDeps());
+  await using auth = await run.orThrow(
+    createPasskeyAuth({
+      appName: AppName.orThrow("your-app-name"),
+      rpName: "Your App",
+      userName: "Device",
+    }),
+  );
+
+  // Nothing is stored yet, so the first unlock creates the passkey.
+  assertEqual(auth.state.get(), { type: "Locked", hasDeviceSecret: false });
+  ```
+
+  PRF support varies with the browser and the passkey provider, so an unlock can fail with `DeviceSecretKeyUnavailableError` for a provider without PRF, or with `DeviceSecretKeyRefusedError` for a dismissed prompt, a deleted passkey, or a provider that refuses PRF. `createPasskeyKeyProvider` is the key provider it uses with `unlockWrappedDeviceSecret`, for an app that builds its own flow.
+
+### Patch Changes
+
+- a73e71d: Notified every Store listener when one throws
+
+  A Store stopped notifying its remaining listeners when one of them threw, so a listener subscribed later, such as React's, could keep rendering the previous value. It now calls every listener and then throws the error, or an `AggregateError` of every error, in listener order, when several listeners threw. A tab also finishes connecting to its worker when an `evoluError` listener throws as the tab clears another build's `OtherBuildRunningError`. A tab also logs a worker's error before it reports it, so an `evoluError` listener that throws no longer hides it from the console.
+
+- 771dc61: Kept memory databases separate for each instance
+
+  Instances of one app and owner that kept their database in memory, with
+  `memoryOnly` or where the browser refuses storage, shared one memory database,
+  and on the web one of their tabs hosted it. Closing that tab emptied the other
+  tabs' memory databases and lost their unsynced changes. Each memory instance now
+  has its own database under a random `Evolu.name`, and on the web its own tab
+  runs its workers. Stored databases are unchanged.
+
+  A memory instance loses its data when it ends, including when its tab closes,
+  navigates away, or enters the back-forward cache. On the web, it exchanges
+  changes with other instances, stored instances of the same owner included, only
+  through relays, so not offline. It opens its own relay connections, so a relay
+  can appear in `deps.syncState` once per worker.
+
+  Where the browser refuses storage, Evolu no longer reloads the tab when another
+  tab loads a new version of the app. Where storage is available, it still may,
+  and the reload ends `memoryOnly` instances too.
+
+  Update `@evolu/web` and `@evolu/react-native` together with `@evolu/common`;
+  with an older adapter, `evoluError` reports an `UnknownError` and instances
+  never load. Custom platform integrations pass `createStoredWorker` to
+  `createEvoluDeps` instead of `sharedWorker`, and may pass the new
+  `createMemoryInstanceWorker` to run each memory instance in a worker of its
+  own. Code that runs `createEvolu` with its own deps provides `storedWorker`.
+
+- Updated dependencies [546484b]
+- Updated dependencies [18f65ea]
+- Updated dependencies [d0291e3]
+- Updated dependencies [518e073]
+- Updated dependencies [e75628b]
+- Updated dependencies [518e073]
+- Updated dependencies [518e073]
+- Updated dependencies [a73e71d]
+- Updated dependencies [abd13c6]
+- Updated dependencies [518e073]
+- Updated dependencies [f004cd2]
+- Updated dependencies [ac5706c]
+- Updated dependencies [8dd9cf4]
+- Updated dependencies [771dc61]
+- Updated dependencies [f004cd2]
+- Updated dependencies [518e073]
+- Updated dependencies [e532d48]
+- Updated dependencies [505274b]
+- Updated dependencies [1e1568d]
+  - @evolu/common@8.28.0
+  - @evolu/sqlite-wasm@3.54.1-build4
+
 ## 3.7.1
 
 ### Patch Changes
