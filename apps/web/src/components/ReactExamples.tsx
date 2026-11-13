@@ -9,25 +9,27 @@ const examples = [
   {
     repo: "https://github.com/evoluhq/evolu/tree/main/examples/react-nextjs",
     name: "Next.js",
-    description: "Example usage of Next.js with Evolu.",
+    description: "A full app with no passkey.",
     logo: NextjsLogo,
   },
   {
     repo: "https://github.com/evoluhq/evolu/tree/main/examples/react-expo",
     name: "Expo",
-    description: "Evolu on mobile with Expo.",
+    description:
+      "A full mobile app whose key the iOS Keychain or Android Keystore keeps.",
     logo: ExpoLogo,
   },
   {
     repo: "https://github.com/evoluhq/evolu/tree/main/examples/react-vite-pwa",
     name: "Vite + React + PWA",
-    description: "Offline support, installable on mobile.",
+    description:
+      "The canonical React web app, with a passkey. Offline, installable.",
     logo: ViteLogo,
   },
   {
     repo: "https://github.com/evoluhq/evolu/tree/main/examples/react-electron",
     name: "Electron",
-    description: "Desktop app with Electron.",
+    description: "A full desktop app with no passkey.",
     logo: ElectronLogo,
   },
 ];

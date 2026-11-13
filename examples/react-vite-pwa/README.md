@@ -1,30 +1,36 @@
-# React + TypeScript + Vite
+# React Vite PWA
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Evolu in a React PWA built with Vite, with `@evolu/react-web`. The app is the
+passkey variant of the full playground: a passkey protects the device database's
+key, so the first use creates or restores an account and creates the passkey,
+and later starts unlock with it. Where the browser keeps nothing, as in private
+browsing, the app starts in memory without a passkey. See the
+[examples' checklist](../README.md).
 
-Currently, two official plugins are available:
+## Quick start
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+# From the repository root...
+pnpm install
+pnpm --filter "@example/react-vite-pwa^..." build
 
-## Expanding the ESLint configuration
+# Start a local relay on ws://localhost:4000, which the example syncs with in
+# development
+pnpm relay
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: "latest",
-    sourceType: "module",
-    project: ["./tsconfig.json", "./tsconfig.node.json"],
-    tsconfigRootDir: __dirname,
-  },
-};
+# In another terminal, start Vite
+pnpm --filter @example/react-vite-pwa dev
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+A production build syncs with Evolu's free relay, which is for testing.
+
+## Passkeys need a secure context
+
+WebAuthn works only in a secure context: `https://`, or `http://localhost`.
+Open the development server on `localhost`, not on a LAN address, and serve a
+build over HTTPS to try it on another device.
+
+## PWA updates
+
+[`PWABadge`](src/PWABadge.tsx) asks before it updates the app, because reloading
+asks for the passkey again.

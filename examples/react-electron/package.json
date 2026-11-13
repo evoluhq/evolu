@@ -17,12 +17,15 @@
     "react-dom": "catalog:react19"
   },
   "devDependencies": {
+    "@tailwindcss/forms": "^0.5.11",
+    "@tailwindcss/vite": "^4.1.18",
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@vitejs/plugin-react": "^6.1.2",
     "electron": "45.1.0",
     "electron-builder": "^26.18.0",
+    "tailwindcss": "^4.1.18",
     "vite": "^8.3.5",
     "vite-plugin-electron": "^1.1.2",
     "vite-plugin-electron-renderer": "^1.0.0"

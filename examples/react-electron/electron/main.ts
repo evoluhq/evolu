@@ -9,8 +9,7 @@ const __dirname = import.meta.dirname;
 // │ │ └── index.html
 // │ │
 // │ ├─┬ dist-electron
-// │ │ ├── main.js
-// │ │ └── preload.mjs
+// │ │ └── main.js
 // │
 process.env.APP_ROOT = path.join(__dirname, "..");
 
@@ -39,18 +38,20 @@ const reportError = (error: unknown): void => {
 const createWindow = (): void => {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
+    // No preload: the renderer needs no API of the main process yet. A preload
+    // should expose only named functions the app calls, never ipcRenderer
+    // itself, which would let any script in the renderer reach every IPC
+    // channel. Storing the DeviceSecret with safeStorage
+    // (https://github.com/evoluhq/evolu/issues/782) would add one. See
+    // https://www.electronjs.org/docs/latest/tutorial/security#20-do-not-expose-electron-apis-to-untrusted-web-content
     webPreferences: {
-      preload: path.join(__dirname, "preload.mjs"),
+      // DevTools show the app's storage and console, so a packaged build
+      // turns them off, which the default menu's shortcut can't open either.
+      devTools: !app.isPackaged,
     },
   });
 
-  // Open DevTools for debugging
-  win.webContents.openDevTools();
-
-  // Test active push message to Renderer-process.
-  win.webContents.on("did-finish-load", () => {
-    win?.webContents.send("main-process-message", new Date().toLocaleString());
-  });
+  if (VITE_DEV_SERVER_URL) win.webContents.openDevTools();
 
   const loadWindow = VITE_DEV_SERVER_URL
     ? win.loadURL(VITE_DEV_SERVER_URL)

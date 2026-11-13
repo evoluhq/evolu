@@ -7,7 +7,7 @@ const examples = [
   {
     repo: "https://github.com/evoluhq/evolu/tree/main/examples/svelte-vite-pwa",
     name: "Vite + Svelte + PWA",
-    description: "Offline support, installable on mobile.",
+    description: "A full app with no passkey. Offline, installable.",
     logo: ViteLogo,
   },
   // TODO SvelteKit example

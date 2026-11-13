@@ -17,3 +17,68 @@ body {
   margin: 0;
   padding: 0;
 }
+
+button {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  border: none;
+  background-color: #f3f4f6;
+  color: #374151;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #e5e7eb;
+}
+
+button.primary {
+  background-color: #2563eb;
+  color: white;
+}
+
+button.text {
+  padding: 0 0.25rem;
+  background: none;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+section {
+  margin-bottom: 2rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  background-color: white;
+}
+
+section h2 {
+  margin: 0 0 1rem;
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+
+ul,
+ol {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.note {
+  font-size: 0.875rem;
+  color: #4b5563;
+}
+
+.detail {
+  font-size: 0.75rem;
+  color: #6b7280;
+}

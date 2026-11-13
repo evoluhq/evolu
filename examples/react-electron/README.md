@@ -2,7 +2,10 @@
 
 Evolu runs in Electron's renderer process like in any Chromium browser, with
 `@evolu/react-web`, as shown in this example. Its React component is the same
-minimal todo app as the web examples.
+full app as the Next.js example, which starts without a prompt, until
+[evoluhq/evolu#782](https://github.com/evoluhq/evolu/issues/782) stores the
+device database's key with Electron's `safeStorage`. See the
+[examples' checklist](../README.md).
 
 ## Quick start
 
