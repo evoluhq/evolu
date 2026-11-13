@@ -40,11 +40,18 @@ import {
   nullOr,
   object,
   type ObjectType,
+  type Typed,
   type UnionType,
   type withDefault,
 } from "../Type.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
-import type { Evolu, EvoluErrorDep, maxMutationSize } from "./Evolu.ts";
+import type {
+  createEvolu,
+  createEvoluApp,
+  Evolu,
+  EvoluErrorDep,
+  maxMutationSize,
+} from "./Evolu.ts";
 import type {
   AppOwner,
   Owner,
@@ -533,20 +540,22 @@ export type Mutation<S extends EvoluSchema, Kind extends MutationKind> = <
  *
  * @group Mutations
  */
-export interface MutationOptions {
+export interface MutationOptions<MutationOwner extends Owner = Owner> {
   /**
    * Called after the mutation's changes are stored and subscribed queries
    * reflect them. Useful for follow-up work (e.g., notifications, navigation)
-   * after insert, update, or upsert. When the mutation could not be stored,
-   * {@link MutationOptions.onError} runs instead. Neither runs when the database
-   * is unavailable or the instance is disposed before it receives the
+   * after insert, update, or upsert. When the mutation could not be stored, or
+   * the database is refused, {@link MutationOptions.onError} runs instead.
+   * Neither runs when the instance is disposed before it receives the
    * mutation's result. It still runs when SQLite fails a subscribed query,
    * which then keeps its previous rows; see {@link Evolu.loadQuery}.
    *
    * An Evolu instance stores its mutations in batches, each in one transaction.
    * A batch holds the mutations made before Evolu sends it in a microtask,
-   * usually one synchronous block, and {@link Evolu.requestSync} sends it early.
-   * When one mutation cannot be stored, none of its batch is.
+   * usually one synchronous block. {@link Evolu.requestSync}, an uncached
+   * {@link Evolu.loadQuery}, {@link Evolu.deleteDatabase}, and
+   * {@link Evolu.deleteOwner} send it early. When one mutation cannot be stored,
+   * none of its batch is.
    *
    * Other devices receive a batch as separate changes, one per mutation,
    * possibly over several syncs, so their queries can show part of a batch
@@ -565,19 +574,28 @@ export interface MutationOptions {
 
   /**
    * Called instead of {@link MutationOptions.onSuccess} when the mutation could
-   * not be stored, with none of its batch. {@link EvoluErrorDep.evoluError}
-   * reports the error too, so an app shows it there once and passes `onError`
-   * only where it must know that the mutation ended, such as to release a lock
-   * or settle a promise.
+   * not be stored, with none of its batch, or when the database is refused,
+   * such as when another context holds its files.
+   * {@link EvoluErrorDep.evoluError} reports the error too, a refusal once per
+   * tab and again for each instance the tab creates later, so an app shows it
+   * there and passes `onError` only where it must know that the mutation ended,
+   * such as to release a lock or settle a promise.
    *
    * A replay after leader replacement can fail although the earlier leader
-   * stored the mutation and only its answer was lost, so `onError` can run for
-   * a stored mutation.
+   * stored the mutation and only its answer was lost, and a mutation in flight
+   * when the database was refused may have been stored by the worker that
+   * refused it, so `onError` can run for a stored mutation.
    */
   readonly onError?: (error: UnknownError) => void;
 
   /**
-   * The {@link Owner} of the mutated row. If omitted, the {@link AppOwner}.
+   * The {@link Owner} of the mutated row. If omitted, the {@link AppOwner}. An
+   * AppOwner's data lives only in its own database, which its deletion deletes,
+   * so a mutation owned by another AppOwner throws. An instance of
+   * {@link createEvoluApp} recognizes another AppOwner by the IDs the app lists;
+   * one of {@link createEvolu} only by its type, so it misses an owner with
+   * another AppOwner's ID but another type, such as one created from that
+   * AppOwner's secret.
    *
    * It must be an Owner with its write key, because a relay accepts a change
    * only with the owner's write key. A {@link SharedReadonlyOwner} has none, so
@@ -644,7 +662,7 @@ export interface MutationOptions {
    * assertEqual(sharedOwner.type, "SharedOwner");
    * ```
    */
-  readonly owner?: Owner;
+  readonly owner?: MutationOwner;
 }
 
 /**
@@ -655,6 +673,48 @@ export interface MutationOptions {
  */
 export interface MutationChange extends DbChange {
   readonly ownerId: OwnerId;
+}
+
+/**
+ * A {@link MutationChange} that can apply only while its row is as given, which
+ * the DbWorker's transaction checks. Evolu makes such changes itself, such as
+ * for {@link createEvoluApp}'s device database; a {@link Mutation} never makes
+ * one.
+ *
+ * @group Mutations
+ */
+export interface ConditionalMutationChange extends MutationChange {
+  /**
+   * Applies a change of a local-only table only while its row is as given. A
+   * tab decides a change from the rows it read, which another tab's change may
+   * already have made outdated, and changes from different tabs reach the
+   * DbWorker in no guaranteed order, so such a change then changes nothing
+   * instead of writing over the other one.
+   */
+  readonly onlyIf?: MutationChangeCondition;
+}
+
+/**
+ * The state a row must be in for a {@link ConditionalMutationChange} to apply.
+ *
+ * @group Mutations
+ */
+export type MutationChangeCondition = RowAbsentCondition | RowMatchesCondition;
+
+/**
+ * The row doesn't exist.
+ *
+ * @group Mutations
+ */
+export interface RowAbsentCondition extends Typed<"RowAbsent"> {}
+
+/**
+ * The row exists, and each of these columns has its value.
+ *
+ * @group Mutations
+ */
+export interface RowMatchesCondition extends Typed<"RowMatches"> {
+  readonly values: ReadonlyRecord<string, SqliteValue>;
 }
 
 /**

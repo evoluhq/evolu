@@ -18,6 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { setTimeout } from "node:timers/promises";
 import { join } from "node:path";
@@ -38,6 +39,7 @@ describe("parseDeviceTestsLine", () => {
         "2026-10-23 12:00:00.000 I  expoapp[123:456] [javascript] EvoluNativeTests passed=0 failed=0 total=0",
         "EvoluNativeTests failed: opens a file: Expected values to be equal.",
         "I/ReactNativeJS( 4242): EvoluNativeTests reloaded",
+        "EvoluNativeTests relaunched",
         "EvoluNativeTests passed=3 failed=x total=4",
         "EvoluNativeTests passed=3",
         "EvoluNativeTests other",
@@ -48,6 +50,7 @@ describe("parseDeviceTestsLine", () => {
         { type: "Summary", passed: 0, failed: 0, total: 0 },
         { type: "Failed", text: "opens a file: Expected values to be equal." },
         { type: "Reloaded" },
+        { type: "Relaunched" },
         null,
         null,
         null,
@@ -63,40 +66,45 @@ describe("countDeviceTests", () => {
     const android = countDeviceTests("android");
 
     assertTrue(ios > 40);
-    assertEqual(ios, android);
+    // The DeviceSecret record no Keystore key can read is Android's.
+    assertEqual(android, ios + 1);
   });
 });
 
 for (const platform of ["ios", "android"] as const)
   describe(`runDeviceTests on ${platform}`, () => {
-    it("passes when the app logs every test passed, the total Node counts, and then that it reloaded, after seeding the fixtures into expo-sqlite's directory", async (t) => {
+    it("passes when the app logs every test passed, the total Node counts, that it reloaded, and once restarted that it relaunched, after seeding the fixtures into expo-sqlite's directory", async (t) => {
       const fake = setupFakeDevice(t, platform);
       fake.log([
         "Running app",
         "EvoluNativeTests passed=3 failed=0 total=3",
         "EvoluNativeTests reloaded",
+        "@reopened",
+        "EvoluNativeTests relaunched",
       ]);
 
-      // The marker of an earlier run the app didn't finish, which would make
-      // it log that it reloaded and run nothing.
+      // The marker and the DeviceSecret check of an earlier run the app didn't
+      // finish, which would make it log that it reloaded and run nothing.
       if (platform === "ios") {
         mkdirSync(join(fake.directory, "container/Documents/SQLite"), {
           recursive: true,
         });
-        writeFileSync(
-          join(
-            fake.directory,
-            "container/Documents/SQLite/evolu1-native-tests-reload.db",
-          ),
-          "",
-        );
+        for (const file of [
+          "evolu1-native-tests-reload.db",
+          "evolu1-native-tests-device-secret.db",
+        ])
+          writeFileSync(
+            join(fake.directory, "container/Documents/SQLite", file),
+            "",
+          );
       }
 
       const result = await fake.run({ expectedTotal: 3 });
 
       assertEqual(result, {
         passed: true,
-        output: "Device tests: 3 of 3 passed, and the app reloaded.\n",
+        output:
+          "Device tests: 3 of 3 passed, the app reloaded, and it relaunched with the DeviceSecret it stored.\n",
       });
       assertEqual(fake.commands(), fake.expectedCommands);
       if (platform === "ios")
@@ -105,6 +113,105 @@ for (const platform of ["ios", "android"] as const)
           ["evolu1-a.db", "evolu1-b.db", "evolu1-b.db-journal"],
         );
     });
+
+    if (platform === "ios")
+      it("fails when the Keychain holds no item of the DeviceSecret, or one readable otherwise than after the first unlock on this device only", async (t) => {
+        for (const [keychainItems, readable] of [
+          ["0|0", "0"],
+          ["2|1", "1"],
+        ] as const) {
+          const fake = setupFakeDevice(t, platform, { keychainItems });
+          fake.log([
+            "EvoluNativeTests passed=3 failed=0 total=3",
+            "EvoluNativeTests reloaded",
+          ]);
+
+          assertEqual(await fake.run({ expectedTotal: 3 }), {
+            passed: false,
+            output: `Device tests: the Keychain holds ${keychainItems[0]} items of the DeviceSecret, ${readable} of them readable after the first unlock on this device only and not synced.\n`,
+          });
+        }
+      });
+
+    if (platform === "android")
+      it("fails when the DeviceSecret record isn't the size of an encrypted one", async (t) => {
+        const fake = setupFakeDevice(t, platform, { secretRecordLength: 43 });
+        fake.log([
+          "EvoluNativeTests passed=3 failed=0 total=3",
+          "EvoluNativeTests reloaded",
+        ]);
+
+        assertEqual(await fake.run({ expectedTotal: 3 }), {
+          passed: false,
+          output:
+            "Device tests: the DeviceSecret record has 43 bytes, not the 71 of an encrypted one.\n",
+        });
+      });
+
+    if (platform === "android")
+      it("fails when the Keystore keeps a key of the app name the app forgot", async (t) => {
+        const fake = setupFakeDevice(t, platform, { keystoreKeys: "1|1" });
+        fake.log([
+          "EvoluNativeTests passed=3 failed=0 total=3",
+          "EvoluNativeTests reloaded",
+        ]);
+
+        assertEqual(await fake.run({ expectedTotal: 3 }), {
+          passed: false,
+          output:
+            "Device tests: the Keystore holds 1 keys of the app name the app kept and 1 of the one it forgot, not 1 and 0.\n",
+        });
+      });
+
+    if (platform === "android")
+      it("fails when the app didn't replace the DeviceSecret record it couldn't read", async (t) => {
+        const fake = setupFakeDevice(t, platform, {
+          keepsUnreadableSecret: true,
+        });
+        fake.log([
+          "EvoluNativeTests passed=3 failed=0 total=3",
+          "EvoluNativeTests reloaded",
+        ]);
+
+        assertEqual(await fake.run({ expectedTotal: 3 }), {
+          passed: false,
+          output:
+            "Device tests: the app didn't replace the DeviceSecret record it couldn't read after forgetting it.\n",
+        });
+      });
+
+    if (platform === "android")
+      it("fails when the record that replaced the unreadable one isn't the size of an encrypted one", async (t) => {
+        const fake = setupFakeDevice(t, platform, {
+          replacedSecretRecordLength: 43,
+        });
+        fake.log([
+          "EvoluNativeTests passed=3 failed=0 total=3",
+          "EvoluNativeTests reloaded",
+        ]);
+
+        assertEqual(await fake.run({ expectedTotal: 3 }), {
+          passed: false,
+          output:
+            "Device tests: the DeviceSecret record that replaced the unreadable one has 43 bytes, not the 71 of an encrypted one.\n",
+        });
+      });
+
+    if (platform === "android")
+      it("rejects when reading the DeviceSecret record back fails", async (t) => {
+        const fake = setupFakeDevice(t, platform, { pullFails: true });
+        fake.log([
+          "EvoluNativeTests passed=3 failed=0 total=3",
+          "EvoluNativeTests reloaded",
+        ]);
+
+        await assertRejects(fake.run({ expectedTotal: 3 }), (error) => {
+          assertTrue(
+            error instanceof Error &&
+              error.message.includes("failed to stat remote object"),
+          );
+        });
+      });
 
     it("fails with each failed test's line", async (t) => {
       const fake = setupFakeDevice(t, platform);
@@ -165,6 +272,79 @@ for (const platform of ["ios", "android"] as const)
         passed: false,
         output:
           "Device tests: 3 of 3 passed, but the app didn't log that it reloaded within 1 s.\n",
+      });
+    });
+
+    it("fails when the restarted app doesn't log that it relaunched, ignoring another reload", async (t) => {
+      const fake = setupFakeDevice(t, platform);
+      fake.log([
+        "EvoluNativeTests passed=3 failed=0 total=3",
+        "EvoluNativeTests reloaded",
+        "@reopened",
+        "EvoluNativeTests reloaded",
+      ]);
+
+      assertEqual(await fake.run({ expectedTotal: 3, timeout: 1 }), {
+        passed: false,
+        output:
+          "Device tests: 3 of 3 passed and the app reloaded, but it didn't log that it relaunched within 1 s.\n",
+      });
+      // Restarted once.
+      assertEqual(fake.commands(), fake.expectedCommands);
+    });
+
+    it("gives the restarted app the launch window again, however long the run took", async (t) => {
+      const fake = setupFakeDevice(t, platform, { reopensSlowly: true });
+      fake.log([
+        "EvoluNativeTests passed=3 failed=0 total=3",
+        "@sleep 0.5",
+        "EvoluNativeTests reloaded",
+        "@reopened",
+        "@sleep 0.3",
+        "EvoluNativeTests relaunched",
+      ]);
+
+      // Without waiting for a crash report, so a death the driver detects
+      // ends the run before the app's next line.
+      const result = await fake.run({
+        expectedTotal: 3,
+        launchMilliseconds: 400,
+        crashReportMilliseconds: 0,
+      });
+
+      assertTrue(result.passed);
+    });
+
+    it("waits on a relaunched line that comes before the restart", async (t) => {
+      const fake = setupFakeDevice(t, platform);
+      fake.log([
+        "EvoluNativeTests relaunched",
+        "EvoluNativeTests passed=3 failed=0 total=3",
+        "EvoluNativeTests relaunched",
+      ]);
+
+      assertEqual(await fake.run({ expectedTotal: 3, timeout: 1 }), {
+        passed: false,
+        output:
+          "Device tests: 3 of 3 passed, but the app didn't log that it reloaded within 1 s.\n",
+      });
+    });
+
+    it("rejects when restarting the app fails", async (t) => {
+      const fake = setupFakeDevice(t, platform, { reopenFails: true });
+      fake.log([
+        "EvoluNativeTests passed=3 failed=0 total=3",
+        "EvoluNativeTests reloaded",
+      ]);
+
+      await assertRejects(fake.run({ expectedTotal: 3 }), (error) => {
+        assertTrue(
+          (error as Error).message.includes(
+            platform === "ios"
+              ? "An error was encountered processing the command"
+              : "Error: Activity not started",
+          ),
+        );
       });
     });
 
@@ -355,13 +535,16 @@ describe("runDeviceTests through adb", () => {
     fake.log([
       "EvoluNativeTests passed=3 failed=0 total=3",
       "EvoluNativeTests reloaded",
+      "@reopened",
+      "EvoluNativeTests relaunched",
     ]);
 
-    await fake.run({
+    const result = await fake.run({
       expectedTotal: 3,
       url: "evolutest://native-tests?a=1&b=2",
     });
 
+    assertTrue(result.passed);
     assertTrue(
       fake
         .commands()
@@ -445,6 +628,8 @@ describe("runDeviceTestsCli", () => {
     fake.log([
       `EvoluNativeTests passed=${total} failed=0 total=${total}`,
       "EvoluNativeTests reloaded",
+      "@reopened",
+      "EvoluNativeTests relaunched",
     ]);
     const log = t.mock.method(console, "log", () => undefined);
 
@@ -464,7 +649,11 @@ describe("runDeviceTestsCli", () => {
     assertEqual(code, 0);
     assertEqual(
       log.mock.calls.map((call) => call.arguments),
-      [[`Device tests: ${total} of ${total} passed, and the app reloaded.`]],
+      [
+        [
+          `Device tests: ${total} of ${total} passed, the app reloaded, and it relaunched with the DeviceSecret it stored.`,
+        ],
+      ],
     );
     assertTrue(
       fake.commands().includes("simctl openurl SIM evolutest://native-tests"),
@@ -555,9 +744,13 @@ describe("runDeviceTestsCli arguments", () => {
 /**
  * A fake xcrun or adb in a directory of its own, which streams the lines of
  * `log` as the app's log once the app is opened: `@die` ends the app's process,
- * as a crash does, `@sleep <seconds>` pauses, and `@exit <code>` ends the
- * stream with that code and an error, as when the device goes away.
+ * as a crash does, `@sleep <seconds>` pauses, `@reopened` waits until the app
+ * was opened again, and `@exit <code>` ends the stream with that code and an
+ * error, as when the device goes away.
  */
+const sha1 = (text: string): string =>
+  createHash("sha1").update(text).digest("hex");
+
 const setupFakeDevice = (
   t: TestContext,
   platform: "ios" | "android",
@@ -570,6 +763,15 @@ const setupFakeDevice = (
     openFails = false,
     printsNoContainer = false,
     streamSpawnFails = false,
+    keepsUnreadableSecret = false,
+    replacedSecretRecordLength = 71,
+    pullFails = false,
+    reopenFails = false,
+    reopensSlowly = false,
+    // Two items, as from two access groups.
+    keychainItems = "2|2",
+    secretRecordLength = 71,
+    keystoreKeys = "1|0",
   }: {
     crashReport?: boolean;
     launches?: boolean;
@@ -588,6 +790,32 @@ const setupFakeDevice = (
     printsNoContainer?: boolean;
     /** Makes the tool lose its execute bit just before the log stream starts. */
     streamSpawnFails?: boolean;
+    /**
+     * Makes the DeviceSecret record no Keystore key can read come back as it
+     * was seeded, as when the app didn't forget and replace it.
+     */
+    keepsUnreadableSecret?: boolean;
+    /** The size of the record that replaced the unreadable one. */
+    replacedSecretRecordLength?: number;
+    /** Makes reading that record back fail. */
+    pullFails?: boolean;
+    /** Makes opening the app again fail. */
+    reopenFails?: boolean;
+    /** Makes the app opened again run only a moment after it was opened. */
+    reopensSlowly?: boolean;
+    /**
+     * What the keychain database answers for the DeviceSecret: its items, and
+     * how many of them are readable after the first unlock on this device
+     * only.
+     */
+    keychainItems?: string;
+    /** The size of the DeviceSecret record the app stored on Android. */
+    secretRecordLength?: number;
+    /**
+     * What Keystore2's database answers for the keys of the app name the app
+     * kept and of the one it forgot.
+     */
+    keystoreKeys?: string;
   } = {},
 ) => {
   const directory = mkdtempSync(join(tmpdir(), "evolu-device-tests-"));
@@ -629,6 +857,7 @@ ${streamSilent ? "exec sleep 600\n" : ""}${platform === "ios" ? "echo 'Filtering
 while IFS= read -r line; do
   case "$line" in
     @sleep*) sleep "\${line#@sleep }" ;;
+    @reopened) while [ ! -f '${directory}/reopened' ]; do sleep 0.01; done ;;
     @exit*) echo 'The device went away.' >&2; exit "\${line#@exit }" ;;
     @die) rm -f '${directory}/alive'
       ${
@@ -650,6 +879,16 @@ exec sleep 600
     platform === "ios"
       ? `printf 'PID\\tStatus\\tLabel\\n'; [ -f '${directory}/alive' ] && printf '4242\\t0\\tUIKitApplication:${app}[ab12][rb-legacy]\\n'; printf -- '-\\t0\\tcom.apple.homed\\n'`
       : `[ -f '${directory}/alive' ] && echo 4242 || exit 1`;
+  // Opening an app that was opened before marks the restart, or fails. A slow
+  // one starts in the background, without the tool's output, which the driver
+  // waits to close.
+  const reopen = `if [ -f '${directory}/opened' ]; then ${
+    reopenFails
+      ? `echo '${platform === "ios" ? "An error was encountered processing the command" : "Error: Activity not started"}' >&2; exit 1`
+      : reopensSlowly
+        ? `touch '${directory}/reopened'; (sleep 0.2; touch '${directory}/alive') </dev/null >/dev/null 2>&1 & exit 0`
+        : `touch '${directory}/reopened'`
+  }; fi; `;
   // What the driver writes, so the simulator opens the URL without asking.
   const approval = `simctl spawn ${device} defaults write com.apple.launchservices.schemeapproval com.apple.CoreSimulator.CoreSimulatorBridge-->evolutest -string ${app}`;
   const tool =
@@ -658,13 +897,14 @@ exec sleep 600
 printf '%s\\n' "$*" >> '${directory}/commands'
 case "$1 $2 $4" in
   "simctl terminate"*) rm -f '${directory}/alive' ;;
+  "simctl getenv"*) echo '${directory}/home' ;;
   "simctl get_app_container"*) ${streamSpawnFails ? `chmod 644 "$0"; ` : ""}${hangs === "seeding" ? "exec sleep 5" : printsNoContainer ? ":" : `echo '${directory}/container'`} ;;
   "simctl spawn log") ${streamFails ? "echo 'Unable to lookup in current state: Shutdown' >&2; exit 149" : `exec sh '${directory}/stream.sh'`} ;;
   "simctl spawn launchctl") ${hangs === "liveness" ? "exec sleep 5" : alive} ;;
   "simctl spawn defaults") printf '%s\\n' "$*" >> '${directory}/approvals' ;;
   # As iOS asks before it opens an app at a URL whose scheme wasn't approved,
   # and the app doesn't start until someone answers.
-  "simctl openurl"*) ${openFails ? "echo 'An error was encountered processing the command' >&2; exit 1" : `grep -qxF '${approval}' '${directory}/approvals' 2>/dev/null || exit 0; touch ${launches ? `'${directory}/alive' ` : ""}'${directory}/opened'`} ;;
+  "simctl openurl"*) ${openFails ? "echo 'An error was encountered processing the command' >&2; exit 1" : `grep -qxF '${approval}' '${directory}/approvals' 2>/dev/null || exit 0; ${reopen}touch ${launches ? `'${directory}/alive' ` : ""}'${directory}/opened'`} ;;
   *) echo "xcrun: unexpected $*" >&2; exit 2 ;;
 esac
 `
@@ -674,20 +914,34 @@ shift 2
 # The device's shell would unquote the arguments after shell.
 case "$(printf '%s ' "$@" | tr -d "'")" in
   "root "*|"wait-for-device "*|"push "*) ;;
+  "pull "*) ${pullFails ? "echo 'adb: error: failed to stat remote object' >&2; exit 1; " : ""}case "$2" in
+    *-unreadable) ${keepsUnreadableSecret ? `head -c 44 /dev/zero | tr '\\0' '\\7' > "$3"` : `head -c ${replacedSecretRecordLength} /dev/zero > "$3"`} ;;
+    *) head -c ${secretRecordLength} /dev/zero > "$3" ;;
+  esac ;;
   "logcat -c "*) ;;
   "logcat -b crash "*) ${hangs === "crash buffer" ? "exec sleep 5" : `cat '${directory}/crash'`} ;;
   "logcat -v "*) exec sh '${directory}/stream.sh' ;;
   "shell pidof "*) ${hangs === "liveness" ? "exec sleep 5" : alive} ;;
   "shell stat "*) ${hangs === "seeding" ? "exec sleep 5" : "echo 10123"} ;;
   "shell mkdir "*|"shell rm "*|"shell chown "*|"shell restorecon "*) ;;
+  "shell sqlite3 "*) echo '${keystoreKeys}' ;;
   "shell am force-stop "*) rm -f '${directory}/alive' ;;
-  "shell am start "*) ${streamSpawnFails ? `chmod 644 "$0"; ` : ""}${openFails ? "echo 'Error: Activity not started' >&2; exit 1" : `touch ${launches ? `'${directory}/alive' ` : ""}'${directory}/opened'`} ;;
+  "shell am start "*) ${streamSpawnFails ? `chmod 644 "$0"; ` : ""}${openFails ? "echo 'Error: Activity not started' >&2; exit 1" : `${reopen}touch ${launches ? `'${directory}/alive' ` : ""}'${directory}/opened'`} ;;
   *) echo "adb: unexpected $*" >&2; exit 2 ;;
 esac
 `;
   const toolPath = join(directory, platform === "ios" ? "xcrun" : "adb");
   writeFileSync(toolPath, tool);
   chmodSync(toolPath, 0o755);
+  const sqlite3Path = join(directory, "sqlite3");
+  writeFileSync(
+    sqlite3Path,
+    `#!/bin/sh
+printf 'sqlite3 %s\\n' "$*" >> '${directory}/commands'
+echo '${keychainItems}'
+`,
+  );
+  chmodSync(sqlite3Path, 0o755);
   // macOS checks a new executable at its first run, which took over a second
   // under test:react-native-sqlite's load, so it runs once before a test's
   // command limits apply, and its command isn't recorded.
@@ -704,27 +958,47 @@ esac
           `simctl spawn ${device} log stream --level info --style compact --predicate subsystem == "com.facebook.react.log"`,
           approval,
           `simctl openurl ${device} evolutest://native-tests`,
+          `simctl getenv ${device} HOME`,
+          `sqlite3 -init /dev/null -readonly ${directory}/home/Library/Keychains/keychain-2-debug.db select count(*), count(*) filter (where pdmn = 'cku' and sync = 0) from genp where svce = x'${sha1(`dev.evolu.deviceSecret/${app}`)}' and acct = x'${sha1("native-tests-device-secret")}' and tomb = 0;`,
+          `simctl terminate ${device} ${app}`,
+          `simctl openurl ${device} evolutest://native-tests`,
         ]
       : [
           `-s ${device} shell 'am' 'force-stop' '${app}'`,
           `-s ${device} root`,
           `-s ${device} wait-for-device`,
-          `-s ${device} shell 'mkdir' '-p' '${appData}/files/SQLite'`,
-          `-s ${device} shell 'rm' '-f' '${appData}/files/SQLite/evolu1-native-tests-reload.db'`,
+          `-s ${device} shell 'mkdir' '-p' '${appData}/files/SQLite' '${appData}/no_backup'`,
+          `-s ${device} shell 'rm' '-f' '${appData}/files/SQLite/evolu1-native-tests-reload.db' '${appData}/files/SQLite/evolu1-native-tests-device-secret.db' '${appData}/no_backup/evolu-device-secret-native-tests-device-secret'`,
           `-s ${device} push ${files
             .split(" ")
             .map((file) => join(fixtures, file))
             .join(" ")} ${appData}/files/SQLite/`,
+          `-s ${device} push SECRET ${appData}/no_backup/evolu-device-secret-native-tests-device-secret-unreadable`,
           `-s ${device} shell 'stat' '-c' '%u' '${appData}'`,
-          `-s ${device} shell 'chown' '-R' '10123:10123' '${appData}/files'`,
-          `-s ${device} shell 'restorecon' '-R' '${appData}/files'`,
+          `-s ${device} shell 'chown' '-R' '10123:10123' '${appData}/files' '${appData}/no_backup'`,
+          `-s ${device} shell 'restorecon' '-R' '${appData}/files' '${appData}/no_backup'`,
           `-s ${device} logcat -c`,
           `-s ${device} shell 'am' 'start' '-W' '-a' 'android.intent.action.VIEW' '-d' 'evolutest://native-tests' '${app}'`,
           `-s ${device} logcat -v brief -s ReactNativeJS:V`,
+          `-s ${device} pull ${appData}/no_backup/evolu-device-secret-native-tests-device-secret-unreadable PULLED`,
+          `-s ${device} pull ${appData}/no_backup/evolu-device-secret-native-tests-device-secret PULLED`,
+          `-s ${device} shell 'sqlite3' '/data/misc/keystore/persistent.sqlite' 'select count(*) filter (where alias = '\\''dev.evolu.deviceSecret.native-tests-device-secret-kept'\\''), count(*) filter (where alias = '\\''dev.evolu.deviceSecret.native-tests-device-secret-forgotten'\\'') from keyentry where domain = 0 and namespace = 10123 and state = 1;'`,
+          `-s ${device} shell 'am' 'force-stop' '${app}'`,
+          `-s ${device} push SECRET ${appData}/no_backup/evolu-device-secret-native-tests-device-secret-truncated-10`,
+          `-s ${device} push SECRET ${appData}/no_backup/evolu-device-secret-native-tests-device-secret-truncated-20`,
+          `-s ${device} pull ${appData}/no_backup/evolu-device-secret-native-tests-device-secret-tampered PULLED`,
+          `-s ${device} push SECRET ${appData}/no_backup/evolu-device-secret-native-tests-device-secret-tampered`,
+          `-s ${device} shell 'chown' '10123:10123' '${appData}/no_backup/evolu-device-secret-native-tests-device-secret-truncated-10' '${appData}/no_backup/evolu-device-secret-native-tests-device-secret-truncated-20' '${appData}/no_backup/evolu-device-secret-native-tests-device-secret-tampered'`,
+          `-s ${device} shell 'restorecon' '${appData}/no_backup/evolu-device-secret-native-tests-device-secret-truncated-10' '${appData}/no_backup/evolu-device-secret-native-tests-device-secret-truncated-20' '${appData}/no_backup/evolu-device-secret-native-tests-device-secret-tampered'`,
+          `-s ${device} shell 'am' 'start' '-W' '-a' 'android.intent.action.VIEW' '-d' 'evolutest://native-tests' '${app}'`,
         ];
   const tools =
     platform === "ios"
-      ? { xcrun: toolPath, crashReportsDirectory: crashReports }
+      ? {
+          xcrun: toolPath,
+          sqlite3: sqlite3Path,
+          crashReportsDirectory: crashReports,
+        }
       : { adb: toolPath, crashReportsDirectory: crashReports };
 
   return {
@@ -745,6 +1019,16 @@ esac
         .filter(
           (command) =>
             !command.includes("launchctl list") && !command.includes("pidof"),
+        )
+        // The unreadable DeviceSecret record is written to a new temporary
+        // directory each run.
+        .map((command) =>
+          command
+            .replace(
+              / push \S+\/evolu-device-secret-[^/ ]+\/secret /u,
+              " push SECRET ",
+            )
+            .replace(/ \S+\/evolu-device-secret-[^/ ]+\/secret$/u, " PULLED"),
         ),
     /** Whether the log stream still runs. */
     streamRuns: () => {

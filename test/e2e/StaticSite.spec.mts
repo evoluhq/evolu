@@ -32,6 +32,17 @@ test("redirects the removed migrations page", async ({ request }) => {
   }
 });
 
+test("redirects the full playground and the removed ones to its instant variant", async ({
+  request,
+}) => {
+  for (const name of ["full", "local-only", "sync", "multitenant"]) {
+    const path = `/playgrounds/${name}`;
+    const response = await request.get(path, { maxRedirects: 0 });
+    expect(response.status(), path).toBe(308);
+    expect(response.headers().location, path).toBe("/playgrounds/full/instant");
+  }
+});
+
 test("redirects trailing slashes permanently, keeping the query", async ({
   request,
 }) => {

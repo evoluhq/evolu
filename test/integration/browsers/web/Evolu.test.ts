@@ -6,6 +6,7 @@ import {
   createQueryBuilder,
   createUnknownError,
   id,
+  ok,
   testStubGlobal,
   type EvoluError,
 } from "@evolu/common";
@@ -89,6 +90,30 @@ test("a tab finds the persistent storage the browser offers", async () => {
 
   // Releases the build lock for the tests that run after this one.
   await closeAppWorker(app);
+});
+
+test("deleteDatabase deletes the database's files with a DbWorker started only to delete", async () => {
+  await using disposer = new AsyncDisposableStack();
+  const deps = setupDeps(disposer);
+  const app = await setupApp(disposer, deps);
+  app.evolu.insert("todo", {});
+  assertEqual((await app.evolu.loadQuery(todosQuery)).length, 1);
+  const root = await navigator.storage.getDirectory();
+  await root.getDirectoryHandle(`.${app.evolu.name}`);
+
+  assertEqual(await app.evolu.deleteDatabase(), ok());
+
+  const missing = await root.getDirectoryHandle(`.${app.evolu.name}`).then(
+    () => null,
+    (error: unknown) => error,
+  );
+  assertEqual(missing instanceof DOMException && missing.name, "NotFoundError");
+
+  // The instance of the deleted database is disposed, so another app panics
+  // the worker to release the build lock for the tests that run after this one.
+  const otherApp = await setupApp(disposer, deps);
+  assertEqual(await otherApp.evolu.loadQuery(todosQuery), []);
+  await closeAppWorker(otherApp);
 });
 
 test("a tab refuses its database when the DbWorker's script fails to load", async () => {

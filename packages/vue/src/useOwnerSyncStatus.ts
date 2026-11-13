@@ -11,12 +11,12 @@ import {
 import {
   getCurrentInstance,
   onMounted,
-  onScopeDispose,
   type Ref,
   shallowReadonly,
   shallowRef,
 } from "vue";
 import { isServerRendering } from "./isServerRendering.ts";
+import { subscribeForScope } from "./subscribeForScope.ts";
 import { useEvolu } from "./useEvolu.ts";
 
 /**
@@ -79,7 +79,7 @@ export function useOwnerSyncStatus(
       status.value = readStatus();
     });
   // A shallowRef ignores an assignment of the object it already holds.
-  onScopeDispose(
+  subscribeForScope(() =>
     syncState.subscribe(() => {
       if (isFollowing) status.value = readStatus();
     }),

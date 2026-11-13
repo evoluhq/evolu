@@ -1,189 +1,91 @@
 import { expect } from "playwright/test";
-import { expectStaysVisible } from "./expectStaysVisible.mts";
-import { addTodo, afterRestart, countPersistCalls, test } from "./fixtures.mts";
+import { addTodo, readMnemonic, restorePrompt, test } from "./fixtures.mts";
 
-test.beforeEach(async ({ page }) => {
+// The minimal playground: one query, adding, completing, and deleting todos,
+// and its one account's restore and deletion. The full playground's spec
+// covers the rest.
+test("adds, completes, and deletes todos, which survive a reload", async ({
+  page,
+}) => {
   await page.goto("/playgrounds/minimal");
-  await expect(page.getByPlaceholder("Add a new todo...")).toBeVisible();
-  // The notice shares the input's Suspense boundary, so it would show by now.
-  await expect(
-    page.getByText("Your data isn't kept on this device"),
-  ).toHaveCount(0);
-  await expect(page.getByRole("listitem")).toHaveCount(0);
-});
-
-test("creates, completes, renames, and deletes a todo", async ({
-  browserEvents,
-  page,
-}) => {
   const input = page.getByPlaceholder("Add a new todo...");
-  await input.fill("  First todo  ");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
-  // The example clears the input in the mutation's onSuccess callback.
-  await expect(input).toHaveValue("");
-  await expect(page.getByRole("listitem")).toHaveCount(1);
+  for (const title of ["First todo", "Second todo"]) {
+    await input.fill(title);
+    await input.press("Enter");
+    await expect(page.getByRole("checkbox", { name: title })).toBeVisible();
+    // onSuccess clears the input once the todo is stored.
+    await expect(input).toHaveValue("");
+  }
 
-  const todo = page.getByRole("checkbox", { name: "First todo", exact: true });
-  await expect(todo).not.toBeChecked();
-  // The controlled checkbox updates after SQLite acknowledges the mutation.
-  await todo.click();
-  await expect(todo).toBeChecked();
-
-  browserEvents.acceptNextDialog("Edit todo", "Renamed todo");
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
-  await expect(
-    page.getByRole("checkbox", { name: "Renamed todo", exact: true }),
-  ).toBeChecked();
-  await expect(todo).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(page.getByRole("listitem")).toHaveCount(0);
-});
-
-test("asks the browser to keep the site's data after the first change", async ({
-  page,
-}) => {
-  const persistCallCount = await countPersistCalls(page);
-  await page.reload();
-  await expect(page.getByPlaceholder("Add a new todo...")).toBeVisible();
-  expect(await persistCallCount()).toBe(0);
-
-  await addTodo(page, "First");
-  await expect.poll(persistCallCount).toBe(1);
-  await addTodo(page, "Second");
-  expect(await persistCallCount()).toBe(1);
-});
-
-test("keeps todos and deletions after reload", async ({ page }) => {
-  await addTodo(page, "Keep me");
-  await page.getByRole("checkbox", { name: "Keep me", exact: true }).click();
-  await expect(
-    page.getByRole("checkbox", { name: "Keep me", exact: true }),
-  ).toBeChecked();
-
-  await addTodo(page, "Delete me");
+  const first = page.getByRole("checkbox", { name: "First todo" });
+  await first.click();
+  await expect(first).toBeChecked();
   await page
     .getByRole("listitem")
-    .filter({ hasText: "Delete me" })
-    .getByRole("button", { name: "Delete", exact: true })
+    .filter({ hasText: "Second todo" })
+    .getByRole("button", { name: "Delete" })
     .click();
-  await expect(page.getByRole("listitem")).toHaveCount(1);
+  await expect(page.getByRole("checkbox", { name: "Second todo" })).toHaveCount(
+    0,
+  );
 
   await page.reload();
-  await expect(page.getByPlaceholder("Add a new todo...")).toBeVisible();
-  await expect(page.getByRole("listitem")).toHaveCount(1);
-  await expect(
-    page.getByRole("checkbox", { name: "Keep me", exact: true }),
-  ).toBeChecked();
-  await expect(
-    page.getByRole("checkbox", { name: "Delete me", exact: true }),
-  ).toHaveCount(0);
+  await expect(first).toBeChecked();
+  await expect(page.getByRole("checkbox")).toHaveCount(1);
 });
 
-test("shares live changes between tabs without Suspense flicker", async ({
-  context,
-  page,
-}) => {
-  const otherPage = await context.newPage();
-  await otherPage.goto("/playgrounds/minimal");
-  await expect(otherPage.getByPlaceholder("Add a new todo...")).toBeVisible();
+const deleteConfirm =
+  "Delete this account? It's removed from this device, and only its mnemonic brings back what synced.";
+const replaceConfirm =
+  "Replace this account? It's removed from this device, and only its mnemonic brings back what synced.";
 
-  await addTodo(page, "Shared todo");
-  const otherTodo = otherPage.getByRole("checkbox", {
-    name: "Shared todo",
-    exact: true,
-  });
-  await expect(otherTodo).toBeVisible();
-
-  await page.bringToFront();
-  const input = page.getByPlaceholder("Add a new todo...");
-  await input.fill("Unfinished draft");
-
-  // The example's Suspense fallback is null. Watch the persistent input and
-  // its ancestors so even a brief hide/show between assertions is recorded.
-  await expectStaysVisible(
-    input,
-    "Loaded UI must not disappear during updates",
-    async () => {
-      await otherPage.bringToFront();
-      await otherTodo.click();
-      await expect(otherTodo).toBeChecked();
-      await page.bringToFront();
-      await expect(
-        page.getByRole("checkbox", { name: "Shared todo", exact: true }),
-      ).toBeChecked();
-      await expect(input).toHaveValue("Unfinished draft");
-
-      await page.getByRole("button", { name: "Delete", exact: true }).click();
-      await expect(page.getByRole("listitem")).toHaveCount(0);
-      await expect(otherPage.getByRole("listitem")).toHaveCount(0);
-
-      await otherPage.bringToFront();
-      await addTodo(otherPage, "From the second tab");
-      await page.bringToFront();
-      await expect(
-        page.getByRole("checkbox", {
-          name: "From the second tab",
-          exact: true,
-        }),
-      ).toBeVisible();
-      await expect(page.getByRole("listitem")).toHaveCount(1);
-      await expect(input).toHaveValue("Unfinished draft");
-    },
-  );
-});
-
-test("syncs between isolated browser contexts through the relay", async ({
+test("restores the account in another browser, and here after deleting it", async ({
   browserEvents,
   page,
 }) => {
+  await page.goto("/playgrounds/minimal");
   await addTodo(page, "Synced todo");
+  const mnemonic = await readMnemonic(page);
 
-  // This context has its own OPFS database and SharedWorker. The relay is
-  // the only path by which it can receive the first context's data.
-  const otherContext = await browserEvents.newContext();
-  const otherPage = await otherContext.newPage();
-  await otherPage.goto(page.url());
-  const otherTodo = otherPage.getByRole("checkbox", {
-    name: "Synced todo",
-    exact: true,
-  });
-  await expect(otherTodo).toBeVisible();
-  await otherTodo.click();
-  await expect(otherTodo).toBeChecked();
+  // Restoring in another browser replaces its account and proves the todo
+  // reached the relay.
+  const otherPage = await (await browserEvents.newContext()).newPage();
+  await otherPage.goto("/playgrounds/minimal");
+  // Showing its own mnemonic first proves the account UI handles clicks.
+  expect(await readMnemonic(otherPage)).not.toBe(mnemonic);
+  browserEvents.acceptNextDialog(restorePrompt, mnemonic);
+  browserEvents.acceptNextDialog(replaceConfirm);
+  await otherPage.getByRole("button", { name: "Restore Account" }).click();
   await expect(
-    page.getByRole("checkbox", { name: "Synced todo", exact: true }),
-  ).toBeChecked();
+    otherPage.getByRole("checkbox", { name: "Synced todo" }),
+  ).toBeVisible();
+  expect(await readMnemonic(otherPage)).toBe(mnemonic);
 
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(page.getByRole("listitem")).toHaveCount(0);
-  await expect(otherPage.getByRole("listitem")).toHaveCount(0);
+  // Deleting the account here leaves none, and its mnemonic brings the synced
+  // todo back.
+  browserEvents.acceptNextDialog(deleteConfirm);
+  await page.getByRole("button", { name: "Delete Account" }).click();
+  await expect(page.getByText("No account is open.")).toBeVisible();
+  browserEvents.acceptNextDialog(restorePrompt, mnemonic);
+  await page.getByRole("button", { name: "Restore Account" }).click();
+  await expect(
+    page.getByRole("checkbox", { name: "Synced todo" }),
+  ).toBeVisible();
 });
 
-test("shows when changes can't leave this device", async ({ page, relay }) => {
-  test.slow();
-  // One always-mounted live region shows the sync line, empty while sync works.
-  const syncStatus = page.getByRole("status");
-  // Sync problems are not alerts, not even the example's evoluError alert.
-  // Next.js adds a route announcer alert, empty without client navigation, so
-  // count only alerts with text.
-  const syncAlert = page.getByRole("alert").filter({ hasText: /\S/u });
+test("creates a new, empty account after deleting the account", async ({
+  browserEvents,
+  page,
+}) => {
+  await page.goto("/playgrounds/minimal");
+  await addTodo(page, "Old todo");
+  const mnemonic = await readMnemonic(page);
 
-  await relay.stop();
-  await expect(syncStatus).toHaveText(
-    "Can't reach the sync server. Changes will sync once the connection is back.",
-  );
-
-  // A one-byte quota rejects every write.
-  await relay.start({ EVOLU_RELAY_MAX_OWNER_BYTES: "1B" });
-  await expect(syncStatus).toBeEmpty(afterRestart);
-  await addTodo(page, "Over quota");
-  await expect(syncStatus).toHaveText(
-    "Sync is paused because the sync server is full.",
-  );
-  await expect(syncAlert).toHaveCount(0);
-
-  await relay.stop();
-  await relay.start();
-  await expect(syncStatus).toBeEmpty(afterRestart);
+  browserEvents.acceptNextDialog(deleteConfirm);
+  await page.getByRole("button", { name: "Delete Account" }).click();
+  await expect(page.getByText("No account is open.")).toBeVisible();
+  await page.getByRole("button", { name: "Create Account" }).click();
+  await expect(page.getByPlaceholder("Add a new todo...")).toBeVisible();
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  expect(await readMnemonic(page)).not.toBe(mnemonic);
 });

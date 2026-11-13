@@ -1,4 +1,4 @@
-import type { Evolu } from "@evolu/common";
+import type { AppOwnerEvolu } from "@evolu/common";
 import {
   type ComponentInternalInstance,
   getCurrentInstance,
@@ -13,15 +13,21 @@ import {
 // oxlint-disable-next-line evolu/require-pure-annotation
 export const evoluInstanceMap = new WeakMap<
   ComponentInternalInstance,
-  Evolu<any>
+  AppOwnerEvolu<any>
 >();
 
 /** The injection key for providing Evolu. */
-export const EvoluContext: InjectionKey<Evolu<any> | null> =
+export const EvoluContext: InjectionKey<AppOwnerEvolu<any> | null> =
   /*#__PURE__*/ Symbol("EvoluContext");
 
-/** Provide the Evolu instance to components via Vue's provide/inject system. */
-export const provideEvolu = (evolu: Evolu<any> | (() => Evolu<any>)): void => {
+/**
+ * Provide the Evolu instance to components via Vue's provide/inject system. It
+ * takes an {@link AppOwnerEvolu}, an Evolu instance without disposal, because
+ * the components never dispose it.
+ */
+export const provideEvolu = (
+  evolu: AppOwnerEvolu<any> | (() => AppOwnerEvolu<any>),
+): void => {
   const vueInstance = getCurrentInstance();
 
   if (!vueInstance) {

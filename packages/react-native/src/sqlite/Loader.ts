@@ -23,7 +23,8 @@ import { nativeSqliteAbiVersion } from "./Binding.ts";
  * the module or implements another version of the binding.
  */
 export const loadNativeSqlite = (): NativeSqlite => {
-  if (!NativeEvoluSqlite) throw new Error(missingModuleMessage("EvoluSqlite"));
+  if (!NativeEvoluSqlite)
+    throw new Error(missingNativeCodeMessage("module EvoluSqlite"));
   const binding = NativeEvoluSqlite.createBinding() as NativeSqlite;
   if (binding.abiVersion !== nativeSqliteAbiVersion)
     throw new Error(
@@ -34,9 +35,14 @@ export const loadNativeSqlite = (): NativeSqlite => {
 
 /** Returns `EvoluApp`, and throws when the native build lacks it. */
 export const loadEvoluApp = (): EvoluApp => {
-  if (!NativeEvoluApp) throw new Error(missingModuleMessage("EvoluApp"));
+  if (!NativeEvoluApp)
+    throw new Error(missingNativeCodeMessage("module EvoluApp"));
   return NativeEvoluApp;
 };
 
-const missingModuleMessage = (name: string): string =>
-  `Evolu's native module ${name} isn't in this native build. Expo Go can't load Evolu's native code, and an over-the-air update can't add it to a build made without it. Rebuild the native app, in Expo as a development build, and bump the version that over-the-air updates target, such as Expo's runtime version.`;
+/**
+ * The message of a native build without some of Evolu's native code, such as
+ * `module EvoluApp` or a method of it, which only a rebuild adds.
+ */
+export const missingNativeCodeMessage = (code: string): string =>
+  `Evolu's native ${code} isn't in this native build. Expo Go can't load Evolu's native code, and an over-the-air update can't add it to a build made without it. Rebuild the native app, in Expo as a development build, and bump the version that over-the-air updates target, such as Expo's runtime version.`;

@@ -1,3 +1,4 @@
+export * from "./Auth.ts";
 export * from "./Db.ts";
 export * from "./Evolu.ts";
 export * from "./Owner.ts";

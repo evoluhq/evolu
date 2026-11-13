@@ -354,7 +354,8 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
 });
 
 /**
- * Deterministic {@link AppOwner} for tests.
+ * Deterministic {@link AppOwner} for tests. Its secret is public, so anyone can
+ * read data stored or synced with it.
  *
  * @group Testing
  */
@@ -387,6 +388,11 @@ export const createShardOwner = (secret: OwnerSecret): ShardOwner => ({
 
 /**
  * Derives a {@link ShardOwner} from an {@link AppOwner} using the specified path.
+ *
+ * It derives from the AppOwner's {@link OwnerEncryptionKey}, not its
+ * {@link OwnerSecret}, so whoever holds that key, which also encrypts the
+ * AppOwner's local database, derives every ShardOwner, write key included. Keep
+ * the encryption key as secret as the mnemonic.
  *
  * **Advantages of derived owners:**
  *
@@ -768,40 +774,4 @@ export interface OwnerUsage {
    * - **Overhead tracking** - comparison with actual storage size
    */
   readonly storedBytes: NonNegativeInt;
-}
-
-/**
- * An {@link AppOwner} for encrypting device-only data.
- *
- * Device-only data belongs to the current device rather than to the synced app
- * identity. A common example is the last used {@link AppOwner}, which can be
- * stored so users do not need to enter the mnemonic every time they reopen the
- * app.
- *
- * This data must be encrypted because other OS processes may be able to read
- * unencrypted app-controlled storage such as `localStorage`, `IndexedDB`, or
- * similar stores.
- *
- * DeviceAppOwner is backed by a platform-specific secure primitive such as Expo
- * SecureStore, Electron safeStorage, or WebAuthn PRF.
- *
- * Use DeviceAppOwner with a local-only Evolu instance. Local-only means an
- * Evolu instance with empty transports (`transports: []`) so it does not sync
- * its AppOwner, and local-only (prefixed with "_") tables.
- *
- * A local-only Evolu instance is better than plain platform storage because
- * device-only data gets schema, reactivity, and the same cross-platform
- * behavior as the rest of Evolu.
- *
- * The local-only Evolu instance can still use other owners for sync via
- * `useOwner`. Use it for data that belongs to the current device rather than
- * the user app Evolu instance (news delivery etc.).
- *
- * DeviceAppOwner Evolu instance is secure only when its data stays on the
- * device.
- *
- * @group Variants
- */
-export interface DeviceAppOwner extends AppOwner {
-  readonly source: "ExpoSecureStore" | "WebAuthnPrf" | "ElectronSafeStorage";
 }

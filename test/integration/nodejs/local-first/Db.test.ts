@@ -42,11 +42,12 @@ import {
 } from "../../../../packages/common/src/Function.ts";
 import {
   startDbWorker,
-  type DatabaseHeldError,
   type DbWorkerInit,
+  type OpenDbWorkerInit,
   type DeleteDatabaseFiles,
   type WaitForDatabaseRelease,
 } from "../../../../packages/common/src/local-first/Db.ts";
+import { deviceEvoluSchema } from "../../../../packages/common/src/local-first/Auth.ts";
 import {
   createAppOwner,
   createOwnerSecret,
@@ -55,6 +56,7 @@ import {
   type Owner,
   type OwnerEncryptionKey,
   type OwnerId,
+  type OwnerSecret,
 } from "../../../../packages/common/src/local-first/Owner.ts";
 import {
   applyProtocolMessageAsRelay,
@@ -72,9 +74,12 @@ import {
 } from "../../../../packages/common/src/local-first/Query.ts";
 import {
   createQueryBuilder,
+  evoluSchemaToSqliteSchema,
   QuarantineOrigin,
   QuarantineReason,
+  type ConditionalMutationChange,
   type MutationChange,
+  type MutationChangeCondition,
 } from "../../../../packages/common/src/local-first/Schema.ts";
 import type {
   ConsoleEntryOrError,
@@ -85,6 +90,7 @@ import type {
   EvoluInstanceId,
 } from "../../../../packages/common/src/local-first/Shared.ts";
 import { consoleEntryOrErrorBroadcastChannelName } from "../../../../packages/common/src/local-first/Shared.ts";
+import { databaseHeldTimeout } from "../../../../packages/common/src/Sqlite.ts";
 import {
   type CrdtMessage,
   DbChange,
@@ -104,6 +110,7 @@ import {
 } from "../../../../packages/common/src/local-first/Timestamp.ts";
 import {
   acquireLeaderLock,
+  isLeaderLockHeld,
   testCreateLockManager,
   type LockManagerDep,
 } from "../../../../packages/common/src/LockManager.ts";
@@ -160,6 +167,7 @@ import {
 } from "../../../../packages/common/src/Worker.ts";
 import { buildNativeSqlite } from "../../../../packages/nodejs/scripts/build-native.mts";
 import { createNodeJsSqliteDriver } from "../../../../packages/nodejs/src/Sqlite.ts";
+import { lockManager as reactNativeLockManager } from "../../../../packages/react-native/src/LockManager.ts";
 import {
   setupSqliteAndRelayStorage,
   testCreateSqliteDep,
@@ -378,7 +386,10 @@ const setupDb = async ({
   };
 };
 
-const testSharedWorkerId = testCreateId()<"SharedWorker">();
+const createTestId = testCreateId();
+const testSharedWorkerId = createTestId<"SharedWorker">();
+const testGateId = createTestId();
+const testAttemptId = createTestId();
 
 // The harness's databases are in memory, so there are no files to delete.
 const deleteNoDatabaseFiles: DeleteDatabaseFiles = () => () => ok();
@@ -403,6 +414,7 @@ const setupDbWorker = async ({
   dbSetup: providedDbSetup,
   sqliteSchema = defaultSqliteSchema,
   memoryOnly = true,
+  createFirstAppOwner = null,
   time,
   console = testCreateConsole({ level: "silent" }),
   consoleLevel = console.getLevel(),
@@ -416,6 +428,7 @@ const setupDbWorker = async ({
 }: {
   dbSetup?: DbSetup;
   memoryOnly?: boolean;
+  createFirstAppOwner?: OpenDbWorkerInit["createFirstAppOwner"];
   sqliteSchema?: SqliteSchema;
   time?: TestTime;
   console?: TestConsole;
@@ -442,6 +455,8 @@ const setupDbWorker = async ({
   const sharedWorkerLock = disposer.use(
     await sharedWorkerRun.ok(acquireLeaderLock(testSharedWorkerId)),
   );
+  // As its tenant, which leads for the database's gate.
+  disposer.use(await sharedWorkerRun.ok(acquireLeaderLock(testGateId)));
 
   const run = disposer.use(
     testCreateRun({
@@ -510,11 +525,14 @@ const setupDbWorker = async ({
   const initActivity = waitForActivity();
   worker.postMessage({
     type: "DbWorkerInit",
+    mode: "Open",
     name: workerName,
     consoleLevel,
     sqliteSchema,
     encryptionKey: testAppOwner.encryptionKey,
     memoryOnly,
+    createFirstAppOwner,
+    gateId: testGateId,
     consoleEntryOrErrorChannelName:
       consoleEntryOrErrorChannelName ?? consoleEntryOrErrorBroadcastChannelName,
     sharedWorkerId: testSharedWorkerId,
@@ -564,27 +582,32 @@ const startDbWorkerUntilDone = async (dbSetup: DbSetup) => {
     native: {} as WorkerSelf<DbWorkerInit>["native"],
     [Symbol.dispose]: constVoid,
   };
+  const lockManager = testCreateLockManager();
   await using run = testCreateRun({
     console: testCreateConsole({ level: "silent" }),
     consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
     createBroadcastChannel: testCreateBroadcastChannel,
     createMessagePort,
-    lockManager: testCreateLockManager(),
+    lockManager,
     createSqliteDriver: dbSetup.createSqliteDriver,
     deleteDatabaseFiles: deleteNoDatabaseFiles,
     time: dbSetup.time,
   });
+  await using _gate = await run.ok(acquireLeaderLock(testGateId));
   // Returns a panic as an Err instead of rejecting.
   const done = run.abortable(startDbWorker(self));
   using channel = testCreateMessageChannel<DbWorkerOutput, DbWorkerInput>();
   while (!self.onMessage) await testWaitForWorkerMessage();
   self.onMessage({
     type: "DbWorkerInit",
+    mode: "Open",
     name: dbSetup.name,
     consoleLevel: "silent",
     sqliteSchema: defaultSqliteSchema,
     encryptionKey: testAppOwner.encryptionKey,
     memoryOnly: true,
+    createFirstAppOwner: null,
+    gateId: testGateId,
     consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
     sharedWorkerId: testSharedWorkerId,
     port: channel.port1.native,
@@ -919,6 +942,125 @@ describe("worker startup", () => {
     });
   });
 
+  describe("first AppOwner", () => {
+    const deviceSqliteSchema = evoluSchemaToSqliteSchema(deviceEvoluSchema);
+    const deviceOwnerId = testDbAppOwner2.id;
+
+    const selectAppOwnerRows = (setup: DbSetup) =>
+      setup.sqlite.exec<{
+        readonly ownerId: OwnerId;
+        readonly id: OwnerId;
+        readonly secret: OwnerSecret;
+        readonly name: SqliteValue;
+        readonly lastOpenedAt: SqliteValue;
+        readonly createdAt: SqliteValue;
+        readonly updatedAt: SqliteValue;
+        readonly isDeleted: SqliteValue;
+      }>(sql`
+        select
+          "ownerId",
+          "id",
+          "secret",
+          "name",
+          "lastOpenedAt",
+          "createdAt",
+          "updatedAt",
+          "isDeleted"
+        from "_evolu_appOwner";
+      `).rows;
+
+    it("is created by the startup that creates the database", async () => {
+      await using setup = await setupDbWorker({
+        sqliteSchema: deviceSqliteSchema,
+        createFirstAppOwner: { deviceOwnerId },
+      });
+
+      const rows = selectAppOwnerRows(setup);
+      assertNonEmptyReadonlyArray(rows);
+      const [row] = rows;
+      assertEqual(rows, [
+        {
+          ownerId: deviceOwnerId,
+          id: createAppOwner(row.secret).id,
+          secret: row.secret,
+          name: null,
+          lastOpenedAt: null,
+          createdAt: millisToDateIso(setup.time.now()),
+          updatedAt: null,
+          isDeleted: null,
+        },
+      ]);
+      assertEqual(row.secret.length, 32);
+    });
+
+    it("is created in the startup's transaction, so an insert that fails leaves no database and the next startup creates it", async () => {
+      let failInsert = true;
+      let failed = 0;
+      await using dbSetup = await setupDb({
+        onExec: (query) => {
+          if (
+            !failInsert ||
+            !query.sql.includes('insert into "_evolu_appOwner"')
+          )
+            return;
+          failed++;
+          throw new Error("database or disk is full");
+        },
+      });
+      {
+        await using _refused = await setupDbWorker({
+          dbSetup,
+          sqliteSchema: deviceSqliteSchema,
+          createFirstAppOwner: { deviceOwnerId },
+          expectRefused: true,
+        });
+      }
+      assertSame(failed, 1);
+      // A database committed without its first AppOwner would never get one.
+      assertEqual(
+        dbSetup.sqlite.exec(sql`select "name" from sqlite_master;`).rows,
+        [],
+      );
+
+      failInsert = false;
+      await using setup = await setupDbWorker({
+        dbSetup,
+        sqliteSchema: deviceSqliteSchema,
+        createFirstAppOwner: { deviceOwnerId },
+      });
+      assertLength(selectAppOwnerRows(setup), 1);
+    });
+
+    it("is never created in an existing database", async () => {
+      await using dbSetup = await setupDb();
+      {
+        await using _first = await setupDbWorker({
+          dbSetup,
+          sqliteSchema: deviceSqliteSchema,
+          createFirstAppOwner: { deviceOwnerId },
+        });
+      }
+      // As after the app deleted every AppOwner.
+      dbSetup.sqlite.exec(sql`delete from "_evolu_appOwner";`);
+
+      await using second = await setupDbWorker({
+        dbSetup,
+        sqliteSchema: deviceSqliteSchema,
+        createFirstAppOwner: { deviceOwnerId },
+      });
+
+      assertEqual(selectAppOwnerRows(second), []);
+    });
+
+    it("is not created without createFirstAppOwner", async () => {
+      await using setup = await setupDbWorker({
+        sqliteSchema: deviceSqliteSchema,
+      });
+
+      assertEqual(selectAppOwnerRows(setup), []);
+    });
+  });
+
   it("releases leadership after dispose message", async () => {
     await using setup = await setupDbWorker();
     await using run = testCreateRun({ lockManager: setup.lockManager });
@@ -952,6 +1094,7 @@ describe("worker startup", () => {
     disposer.use(
       await sharedWorkerRun.ok(acquireLeaderLock(testSharedWorkerId)),
     );
+    disposer.use(await sharedWorkerRun.ok(acquireLeaderLock(testGateId)));
     const workerSelfDisposed = Promise.withResolvers<void>();
     let workerSelfDisposeCount = 0;
     const self: WorkerSelf<DbWorkerInit> = {
@@ -987,11 +1130,14 @@ describe("worker startup", () => {
     while (!self.onMessage) await testWaitForWorkerMessage();
     self.onMessage({
       type: "DbWorkerInit",
+      mode: "Open",
       name: dbSetup.name,
       consoleLevel: "silent",
       sqliteSchema: defaultSqliteSchema,
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: true,
+      createFirstAppOwner: null,
+      gateId: testGateId,
       consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
       sharedWorkerId: testSharedWorkerId,
       port: channel.port1.native,
@@ -1068,6 +1214,122 @@ describe("query and mutation flow", () => {
       `).rows,
       [{ value: null }],
     );
+  });
+
+  it("local-only change with onlyIf applies only while its row is as given", async () => {
+    await using setup = await setupDbWorker();
+
+    const rowId = setup.createId();
+    const missingId = setup.createId();
+    const change = (
+      id: Id,
+      values: Readonly<Record<string, SqliteValue>>,
+      isDelete: boolean | null,
+      onlyIf: MutationChangeCondition,
+    ): ConditionalMutationChange => ({
+      ...createMutationChange({
+        table: "_localTable",
+        id,
+        values,
+        // An update changes only an existing row, so a change that creates one
+        // is an upsert.
+        isInsert: onlyIf.type === "RowAbsent",
+        isDelete,
+      }),
+      onlyIf,
+    });
+    const rowMatches = (values: Readonly<Record<string, SqliteValue>>) =>
+      ({ type: "RowMatches", values }) as const;
+    const selectValues = () =>
+      setup.sqlite.exec<{ readonly id: Id; readonly value: SqliteValue }>(sql`
+        select "id", "value" from "_localTable";
+      `).rows;
+
+    // Only a missing row is inserted.
+    for (const value of ["marked", "replaced"])
+      await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          change(rowId, { value }, null, { type: "RowAbsent" }),
+        ]),
+      );
+    assertEqual(selectValues(), [{ id: rowId, value: "marked" }]);
+
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        change(
+          rowId,
+          { value: "changed" },
+          null,
+          rowMatches({ value: "other" }),
+        ),
+        change(rowId, {}, true, rowMatches({ value: "other" })),
+        // Every column must have its value.
+        change(
+          rowId,
+          {},
+          true,
+          rowMatches({ value: "marked", updatedAt: "never" }),
+        ),
+        // A missing row matches nothing, so the change creates nothing.
+        change(missingId, { value: "created" }, null, rowMatches({})),
+      ]),
+    );
+    assertEqual(selectValues(), [{ id: rowId, value: "marked" }]);
+
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        change(rowId, {}, true, rowMatches({ value: "marked" })),
+      ]),
+    );
+    assertEqual(selectValues(), []);
+
+    // A null and a blob match only themselves, as a pending key's null
+    // wrappedSecret and a stored one's bytes do.
+    const blob = new Uint8Array([1, 2, 3]);
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        change(rowId, { value: null }, null, { type: "RowAbsent" }),
+      ]),
+    );
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        change(rowId, { value: "changed" }, null, rowMatches({ value: "" })),
+        change(rowId, { value: "changed" }, null, rowMatches({ value: blob })),
+      ]),
+    );
+    assertEqual(selectValues(), [{ id: rowId, value: null }]);
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        change(rowId, { value: blob }, null, rowMatches({ value: null })),
+      ]),
+    );
+    assertEqual(selectValues(), [{ id: rowId, value: blob }]);
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        change(rowId, {}, true, rowMatches({ value: null })),
+        change(
+          rowId,
+          {},
+          true,
+          rowMatches({ value: new Uint8Array([1, 2, 4]) }),
+        ),
+      ]),
+    );
+    assertEqual(selectValues(), [{ id: rowId, value: blob }]);
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        change(rowId, {}, true, rowMatches({ value: blob.slice() })),
+      ]),
+    );
+    assertEqual(selectValues(), []);
   });
 
   it("local-only mutation updates query rows and SQLite state", async () => {
@@ -1707,7 +1969,7 @@ describe("query and mutation flow", () => {
 
       // An upsert of an existing row changes it.
       const upsertedAt = await mutateAt(insertedId, "upserted", true);
-      // An update of a missing row creates it.
+      // An update of a missing row creates it, unless the table is local-only.
       const createdByUpdateAt = await mutateAt(
         createdByUpdateId,
         "updated",
@@ -1716,10 +1978,76 @@ describe("query and mutation flow", () => {
 
       assertEqual(selectRows(), [
         { value: "upserted", createdAt: insertedAt, updatedAt: upsertedAt },
-        { value: "updated", createdAt: createdByUpdateAt, updatedAt: null },
+        ...(table === "testTable"
+          ? [
+              {
+                value: "updated",
+                createdAt: createdByUpdateAt,
+                updatedAt: null,
+              },
+            ]
+          : []),
       ]);
     });
   }
+
+  it("local-only update changes only an existing row, so an update after a delete leaves the row deleted", async () => {
+    await using setup = await setupDbWorker();
+    const missingId = setup.createId();
+    const deletedId = setup.createId();
+    const existingId = setup.createId();
+    const upsertedId = setup.createId();
+    const change = (
+      id: Id,
+      values: Readonly<Record<string, SqliteValue>>,
+      isInsert: boolean,
+      isDelete: boolean | null,
+    ): MutationChange =>
+      createMutationChange({
+        table: "_localTable",
+        id,
+        values,
+        isInsert,
+        isDelete,
+      });
+    const selectValues = () =>
+      setup.sqlite.exec<{ readonly id: Id; readonly value: SqliteValue }>(sql`
+        select "id", "value" from "_localTable";
+      `).rows;
+
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        change(deletedId, { value: "deleted" }, true, null),
+        change(existingId, { value: "existing" }, true, null),
+      ]),
+    );
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        change(deletedId, {}, false, true),
+      ]),
+    );
+    // A stale tab's updates, which can't know of the delete.
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        change(missingId, { value: "created" }, false, null),
+        change(deletedId, { value: "recreated" }, false, null),
+        change(deletedId, {}, false, false),
+        change(existingId, { value: "updated" }, false, null),
+        change(upsertedId, { value: "upserted" }, true, null),
+      ]),
+    );
+
+    assertEqual(
+      selectValues().toSorted((a, b) => a.id.localeCompare(b.id)),
+      [
+        { id: existingId, value: "updated" },
+        { id: upsertedId, value: "upserted" },
+      ].toSorted((a, b) => a.id.localeCompare(b.id)),
+    );
+  });
 
   it("local-only insert and update in one request leave updatedAt null", async () => {
     await using setup = await setupDbWorker();
@@ -1877,6 +2205,7 @@ describe("query and mutation flow", () => {
         message: {
           type: "Query",
           queries: createSet([testTableQuery]),
+          callbackIds: [],
         },
       }),
       [
@@ -1919,6 +2248,7 @@ describe("query and mutation flow", () => {
       message: {
         type: "Query",
         queries: createSet<Query>([testTableQuery, localTableQuery]),
+        callbackIds: [],
       },
     });
 
@@ -2203,6 +2533,54 @@ describe("query and mutation flow", () => {
         { name: "_localTable", rows: [] },
       ],
     });
+  });
+});
+
+describe("AppOwner row check", () => {
+  it("answers whether the device database stores an AppOwner's row", async () => {
+    await using setup = await setupDbWorker({
+      sqliteSchema: {
+        indexes: [],
+        tables: { _evolu_appOwner: new Set(["secret"]) },
+      },
+    });
+    setup.sqlite.exec(sql`
+      insert into "_evolu_appOwner" ("ownerId", "id")
+      values (${testAppOwner.id}, ${testDbAppOwner2.id});
+    `);
+
+    for (const [ownerId, exists] of [
+      [testDbAppOwner2.id, true],
+      [testAppOwner.id, false],
+    ] as const) {
+      const outputs = await postRequest(setup, {
+        type: "ForSharedWorker",
+        message: { type: "HasAppOwner", ownerId },
+      });
+      assertEqual(getQueuedSharedWorkerMessage(outputs, "HasAppOwner"), {
+        type: "HasAppOwner",
+        result: ok(exists),
+      });
+    }
+  });
+
+  it("answers SQLite's failure to read the row, not that no row exists, logs it, and keeps serving", async () => {
+    const console = testCreateConsole({ level: "error" });
+    // The database has no AppOwner table, so the read fails.
+    await using setup = await setupDbWorker({ console });
+
+    for (let i = 0; i < 2; i++) {
+      const outputs = await postRequest(setup, {
+        type: "ForSharedWorker",
+        message: { type: "HasAppOwner", ownerId: testAppOwner.id },
+      });
+      const { result } = getQueuedSharedWorkerMessage(outputs, "HasAppOwner");
+      assertErr(result);
+      assertSame(result.error.type, "UnknownError");
+    }
+    const entries = console.getEntriesSnapshot();
+    assertLength(entries, 2);
+    assertSame(entries[0].method, "error");
   });
 });
 
@@ -2947,6 +3325,7 @@ describe("sync message flow", () => {
         message: {
           type: "Query",
           queries: createSet([testTableQuery]),
+          callbackIds: [],
         },
       }),
       [
@@ -3803,6 +4182,7 @@ describe("sync message flow", () => {
             message: {
               type: "Query",
               queries: createSet([query]),
+              callbackIds: [],
             },
           },
           setup.createId(),
@@ -5364,6 +5744,7 @@ describe("quarantine replay", () => {
           message: {
             type: "Query",
             queries: createSet([testTableWithNoteQuery]),
+            callbackIds: [],
           },
         }),
         [
@@ -5693,6 +6074,7 @@ describe("quarantine replay", () => {
             message: {
               type: "Query",
               queries: createSet([testTableWithNoteQuery]),
+              callbackIds: [],
             },
           },
           setup.createId(),
@@ -5866,6 +6248,7 @@ describe("quarantine replay", () => {
             message: {
               type: "Query",
               queries: createSet([futureTableQuery]),
+              callbackIds: [],
             },
           },
           queryAttemptId,
@@ -7959,11 +8342,14 @@ describe("worker failure", () => {
     };
     worker.postMessage({
       type: "DbWorkerInit",
+      mode: "Open",
       name: dbSetup.name,
       consoleLevel: "silent",
       sqliteSchema: defaultSqliteSchema,
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: true,
+      createFirstAppOwner: null,
+      gateId: testGateId,
       consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
       sharedWorkerId: testSharedWorkerId,
       port: channel.port1.native,
@@ -8085,6 +8471,7 @@ describe("worker failure", () => {
           message: {
             type: "Query",
             queries: createSet([testTableWithNoteQuery, testTableQuery]),
+            callbackIds: [],
           },
         },
         attemptId,
@@ -8160,6 +8547,7 @@ describe("worker failure", () => {
       message: {
         type: "Query",
         queries: createSet<Query>([testTableQuery, localTableQuery]),
+        callbackIds: [],
       },
     };
     broken = true;
@@ -8313,7 +8701,7 @@ describe("worker failure", () => {
       {
         type: "ForEvolu",
         id: setup.evoluInstanceId,
-        message: { type: "Query", queries },
+        message: { type: "Query", queries, callbackIds: [] },
       },
       setup.createId(),
       "activity",
@@ -8372,299 +8760,323 @@ describe("worker failure", () => {
 
 describe("database deletion", () => {
   /**
-   * A DbWorker that records closing SQLite and deleting the database files in
-   * order, the deletion with whether the worker held the database's leader
-   * lock.
+   * Starts a DbWorker that only deletes, with a database lock it shares with
+   * the test, and collects what it posts. The test leads for the SharedWorker's
+   * ID until it ends the SharedWorker.
    */
-  const setupDeletingDbWorker = async ({
+  const startDeletingOnlyDbWorker = async ({
     dbSetup,
-    memoryOnly,
-    deleted = ok(),
-    closeError,
-    console,
+    lockManager,
+    deleteDatabaseFiles,
   }: {
     dbSetup: DbSetup;
-    memoryOnly: boolean;
-    deleted?:
-      | Result<void, DatabaseHeldError | UnknownError>
-      | Promise<Result<void, DatabaseHeldError | UnknownError>>;
-    closeError?: Error;
-    console?: TestConsole;
+    lockManager: LockManagerDep["lockManager"];
+    deleteDatabaseFiles: DeleteDatabaseFiles;
   }) => {
-    const events: Array<string> = [];
-    const lockManager = testCreateLockManager();
-    const setup = await setupDbWorker({
-      dbSetup: {
-        ...dbSetup,
-        createSqliteDriver: (name, options) => async (run) => {
-          const driver = await run.ok(
-            dbSetup.createSqliteDriver(name, options),
-          );
-          return ok({
-            ...driver,
-            [Symbol.dispose]: () => {
-              events.push("close");
-              if (closeError) throw closeError;
-              driver[Symbol.dispose]();
-            },
-          });
-        },
-      },
-      memoryOnly,
+    const sharedWorkerRun = testCreateRun({ lockManager });
+    const attemptLock = await sharedWorkerRun.ok(
+      acquireLeaderLock(testAttemptId),
+    );
+    const self: WorkerSelf<DbWorkerInit> = {
+      postMessage: constVoid,
+      onMessage: null,
+      native: {} as WorkerSelf<DbWorkerInit>["native"],
+      [Symbol.dispose]: constVoid,
+    };
+    let opened = false;
+    const run = testCreateRun({
+      console: testCreateConsole({ level: "silent" }),
+      consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
+      createBroadcastChannel: testCreateBroadcastChannel,
+      createMessagePort,
       lockManager,
-      ...(console && { console, consoleLevel: "info" }),
+      createSqliteDriver: ((name, options) => {
+        opened = true;
+        return dbSetup.createSqliteDriver(name, options);
+      }) satisfies CreateSqliteDriver,
+      deleteDatabaseFiles,
+      time: dbSetup.time,
+    });
+    const done = run(startDbWorker(self));
+    const channel = testCreateMessageChannel<DbWorkerOutput, DbWorkerInput>();
+    const outputs: Array<DbWorkerOutput> = [];
+    channel.port2.onMessage = (output) => {
+      outputs.push(output);
+    };
+    while (!self.onMessage) await testWaitForWorkerMessage();
+    self.onMessage({
+      type: "DbWorkerInit",
+      mode: "Delete",
+      name: dbSetup.name,
+      consoleLevel: "silent",
+      consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
+      attemptId: testAttemptId,
+      port: channel.port1.native,
+    });
+    return {
+      outputs,
+      done,
+      isOpened: () => opened,
+      endAttempt: () => attemptLock[Symbol.asyncDispose](),
+      [Symbol.asyncDispose]: async () => {
+        await done;
+        channel[Symbol.dispose]();
+        await run[Symbol.asyncDispose]();
+        await sharedWorkerRun[Symbol.asyncDispose]();
+      },
+    };
+  };
+
+  it("deletes the files without opening the database once it holds the database lock, then ends", async () => {
+    await using dbSetup = await setupDb();
+    const lockManager = testCreateLockManager();
+    // An earlier DbWorker of the database holds its lock.
+    await using lockRun = testCreateRun({ lockManager });
+    const earlier = await lockRun.ok(acquireLeaderLock(dbSetup.name));
+    const deletions: Array<string> = [];
+    await using worker = await startDeletingOnlyDbWorker({
+      dbSetup,
+      lockManager,
       deleteDatabaseFiles: (name) => async () => {
         const { held = [] } = await lockManager.query();
-        events.push(
+        deletions.push(
           held.some((lock) => lock.name === `evolu-leaderlock-${name}`)
             ? "delete under lock"
             : "delete",
         );
-        return deleted;
-      },
-    });
-    return Object.assign(setup, {
-      events,
-      /** Resolves once the worker released the database's leader lock. */
-      waitForEnd: async () => {
-        await using run = testCreateRun({ lockManager });
-        await using _lock = await run.ok(acquireLeaderLock(setup.workerName));
-      },
-    });
-  };
-
-  const deleteDatabaseRequest = (setup: DbSetup): DbWorkerRequest => ({
-    type: "ForEvolu",
-    id: setup.evoluInstanceId,
-    message: { type: "DeleteDatabase" },
-  });
-
-  it("closes a file database, deletes its files under the leader lock, tells the tenant, and ends", async () => {
-    await using dbSetup = await setupDb();
-    await using setup = await setupDeletingDbWorker({
-      dbSetup,
-      memoryOnly: false,
-    });
-
-    const outputs = await postRequest(
-      setup,
-      deleteDatabaseRequest(setup),
-      setup.createId(),
-      "activity",
-    );
-    await setup.waitForEnd();
-
-    assertEqual(outputs, [{ type: "DatabaseDeleted" }]);
-    assertEqual(setup.events, ["close", "delete under lock"]);
-
-    // The ended worker serves nothing.
-    setup.port.postMessage({
-      type: "Request",
-      attemptId: setup.createId(),
-      request: {
-        type: "ForEvolu",
-        id: setup.evoluInstanceId,
-        message: { type: "Export" },
+        return ok();
       },
     });
     await testWaitForWorkerMessage();
-    assertEqual(setup.outputs, []);
+    assertEqual(deletions, []);
+
+    await earlier[Symbol.asyncDispose]();
+    await worker.done;
+    await testWaitForWorkerMessage();
+
+    assertEqual(deletions, ["delete under lock"]);
+    assertEqual(worker.outputs, [{ type: "DatabaseDeleted" }]);
+    assertFalse(worker.isOpened());
   });
 
-  it("finishes a deletion when a dispose message arrives and its SharedWorker ends during it", async () => {
+  it("stops waiting for the database lock after databaseHeldTimeout, answers DatabaseHeldError, and deletes nothing once the lock is released", async () => {
     await using dbSetup = await setupDb();
-    const deleted =
-      Promise.withResolvers<Result<void, DatabaseHeldError | UnknownError>>();
-    await using setup = await setupDeletingDbWorker({
+    const lockManager = testCreateLockManager();
+    // A tab of another build keeps the database open.
+    await using lockRun = testCreateRun({ lockManager });
+    const other = await lockRun.ok(acquireLeaderLock(dbSetup.name));
+    let deleted = false;
+    await using worker = await startDeletingOnlyDbWorker({
       dbSetup,
-      memoryOnly: false,
-      deleted: deleted.promise,
+      lockManager,
+      deleteDatabaseFiles: () => () => {
+        deleted = true;
+        return ok();
+      },
     });
-
-    const outputs = postRequest(
-      setup,
-      deleteDatabaseRequest(setup),
-      setup.createId(),
-      "activity",
-    );
     await testWaitForWorkerMessage();
-    assertEqual(setup.events, ["close", "delete under lock"]);
-    setup.port.postMessage({ type: "Dispose" });
-    await setup.endSharedWorker();
+    assertSame(databaseHeldTimeout, "10s");
+    dbSetup.time.advance("9s");
+    dbSetup.time.advance("999ms");
     await testWaitForWorkerMessage();
-    deleted.resolve(ok());
+    assertEqual(worker.outputs, []);
 
-    assertEqual(await outputs, [{ type: "DatabaseDeleted" }]);
-    await setup.waitForEnd();
-  });
-
-  it("answers a failed deletion with its error, without refusing the database, and ends", async () => {
-    await using dbSetup = await setupDb();
-    const error = { type: "DatabaseHeldError", name: dbSetup.name } as const;
-    await using setup = await setupDeletingDbWorker({
-      dbSetup,
-      memoryOnly: false,
-      deleted: err(error),
-    });
-    const attemptId = setup.createId();
-
-    const outputs = await postRequest(
-      setup,
-      deleteDatabaseRequest(setup),
-      attemptId,
-    );
-    await setup.waitForEnd();
-
-    assertEqual(outputs, [
+    dbSetup.time.advance("1ms");
+    await worker.done;
+    await testWaitForWorkerMessage();
+    assertEqual(worker.outputs, [
       {
-        type: "OnQueuedResponse",
-        attemptId,
-        response: {
-          type: "ForEvolu",
-          id: setup.evoluInstanceId,
-          message: { type: "DeleteDatabaseFailed", error },
-        },
+        type: "DeleteFailed",
+        error: { type: "DatabaseHeldError", name: dbSetup.name },
       },
     ]);
-    assertEqual(setup.events, ["close", "delete under lock"]);
-    assertEqual(setup.consoleEntryOrErrors, []);
+
+    // It aborted its request, so nothing takes the lock once it's released.
+    await other[Symbol.asyncDispose]();
+    await testWaitForWorkerMessage();
+    assertFalse(deleted);
+    assertFalse(await isLeaderLockHeld({ lockManager })(dbSetup.name));
   });
 
-  it("answers with an UnknownError and deletes nothing when SQLite fails to close", async () => {
+  it("releases a database lock the React Native lock manager grants as databaseHeldTimeout ends the wait", async () => {
     await using dbSetup = await setupDb();
-    const closeError = new Error("disk I/O error");
-    await using setup = await setupDeletingDbWorker({
-      dbSetup,
-      memoryOnly: false,
-      closeError,
-    });
-    const attemptId = setup.createId();
-
-    const outputs = await postRequest(
-      setup,
-      deleteDatabaseRequest(setup),
-      attemptId,
-    );
-    await setup.waitForEnd();
-
-    assertEqual(outputs, [
-      {
-        type: "OnQueuedResponse",
-        attemptId,
-        response: {
-          type: "ForEvolu",
-          id: setup.evoluInstanceId,
-          message: {
-            type: "DeleteDatabaseFailed",
-            error: createUnknownError(closeError),
-          },
-        },
-      },
-    ]);
-    assertEqual(setup.events, ["close"]);
-  });
-
-  it("deletes no files of a database kept in memory, which has a name of its own", async () => {
-    await using dbSetup = await setupDb();
-    await using setup = await setupDeletingDbWorker({
-      dbSetup,
-      memoryOnly: true,
-    });
-
-    const outputs = await postRequest(
-      setup,
-      deleteDatabaseRequest(setup),
-      setup.createId(),
-      "activity",
-    );
-    await setup.waitForEnd();
-
-    assertEqual(outputs, [{ type: "DatabaseDeleted" }]);
-    assertEqual(setup.events, ["close"]);
-  });
-
-  it("deletes a file database its startup created when discarded", async () => {
-    await using dbSetup = await setupDb();
-    await using setup = await setupDeletingDbWorker({
-      dbSetup,
-      memoryOnly: false,
-    });
-
-    setup.port.postMessage({ type: "Discard" });
-    await setup.waitForEnd();
-
-    assertEqual(setup.outputs, []);
-    assertEqual(setup.events, ["close", "delete under lock"]);
-  });
-
-  it("only logs a failed deletion when discarded", async () => {
-    await using dbSetup = await setupDb();
-    const error = { type: "DatabaseHeldError", name: dbSetup.name } as const;
-    const console = testCreateConsole({ level: "silent" });
-    await using setup = await setupDeletingDbWorker({
-      dbSetup,
-      memoryOnly: false,
-      deleted: err(error),
-      console,
-    });
-
-    setup.port.postMessage({ type: "Discard" });
-    await setup.waitForEnd();
-
-    assertEqual(setup.outputs, []);
-    assertEqual(setup.events, ["close", "delete under lock"]);
-    assertEqual(setup.reportDefect.getDefects(), []);
-    assertEqual(
-      console
-        .getEntriesSnapshot()
-        .filter(({ args }) => args[0] === "discardFailed"),
-      [{ method: "info", path: [], args: ["discardFailed", error] }],
-    );
-  });
-
-  it("keeps a file database its startup found when discarded", async () => {
-    await using dbSetup = await setupDb();
-    {
-      await using _creator = await setupDbWorker({
+    const offsets = Array.from({ length: 81 }, (_, i) => i - 40);
+    const heldAfterEnd: Array<boolean> = [];
+    // The lock manager grants through microtasks, so the grant and the
+    // deadline can meet in one microtask checkpoint, at one of these offsets
+    // in microtasks between releasing the lock and the deadline.
+    for (const offset of offsets) {
+      const lockManager = testCreateLockManager(reactNativeLockManager);
+      await using lockRun = testCreateRun({ lockManager });
+      const other = await lockRun.ok(acquireLeaderLock(dbSetup.name));
+      await using worker = await startDeletingOnlyDbWorker({
         dbSetup,
-        memoryOnly: false,
+        lockManager,
+        deleteDatabaseFiles: deleteNoDatabaseFiles,
       });
+      await testWaitForWorkerMessage();
+
+      const [before, after] =
+        offset < 0
+          ? [
+              () => dbSetup.time.advance("10s"),
+              () => other[Symbol.asyncDispose](),
+            ]
+          : [
+              () => other[Symbol.asyncDispose](),
+              () => dbSetup.time.advance("10s"),
+            ];
+      void before();
+      for (let i = 0; i < Math.abs(offset); i++) await Promise.resolve();
+      void after();
+      await worker.done;
+      await testWaitForWorkerMessage();
+
+      assertLength(worker.outputs, 1);
+      heldAfterEnd.push(await isLeaderLockHeld({ lockManager })(dbSetup.name));
     }
-    await using setup = await setupDeletingDbWorker({
-      dbSetup,
-      memoryOnly: false,
-    });
-
-    setup.port.postMessage({ type: "Discard" });
-    await setup.waitForEnd();
-
-    assertEqual(setup.events, ["close"]);
+    assertEqual(
+      heldAfterEnd,
+      offsets.map(() => false),
+    );
   });
 
-  it("deletes no files of a memory database when discarded", async () => {
+  it("opens nothing and posts nothing when its gate ended before it got the database lock", async () => {
     await using dbSetup = await setupDb();
-    await using setup = await setupDeletingDbWorker({
-      dbSetup,
-      memoryOnly: true,
+    const lockManager = testCreateLockManager();
+    await using lockRun = testCreateRun({ lockManager });
+    await using _sharedWorker = await lockRun.ok(
+      acquireLeaderLock(testSharedWorkerId),
+    );
+    const gate = await lockRun.ok(acquireLeaderLock(testGateId));
+    // An earlier DbWorker of the database holds its lock.
+    const earlier = await lockRun.ok(acquireLeaderLock(dbSetup.name));
+    let opened = false;
+    // On the web, waiting for the files opens the pool and creates its
+    // directory.
+    let waitedForFiles = false;
+    using worker = testCreateWorker<DbWorkerInit>();
+    await using run = testCreateRun({
+      consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
+      createBroadcastChannel: testCreateBroadcastChannel,
+      createMessagePort,
+      lockManager,
+      createSqliteDriver: ((name, options) => {
+        opened = true;
+        return dbSetup.createSqliteDriver(name, options);
+      }) satisfies CreateSqliteDriver,
+      deleteDatabaseFiles: deleteNoDatabaseFiles,
+      waitForDatabaseRelease: () => () => {
+        waitedForFiles = true;
+        return ok();
+      },
+      time: dbSetup.time,
     });
+    const done = run(startDbWorker(worker.self));
+    using channel = testCreateMessageChannel<DbWorkerOutput, DbWorkerInput>();
+    const outputs: Array<DbWorkerOutput> = [];
+    const posted = Promise.withResolvers<void>();
+    channel.port2.onMessage = (output) => {
+      outputs.push(output);
+      posted.resolve();
+    };
+    worker.postMessage({
+      type: "DbWorkerInit",
+      mode: "Open",
+      name: dbSetup.name,
+      consoleLevel: "silent",
+      sqliteSchema: defaultSqliteSchema,
+      encryptionKey: testAppOwner.encryptionKey,
+      memoryOnly: false,
+      createFirstAppOwner: null,
+      gateId: testGateId,
+      consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
+      sharedWorkerId: testSharedWorkerId,
+      port: channel.port1.native,
+    });
+    await testWaitForWorkerMessage();
 
-    setup.port.postMessage({ type: "Discard" });
-    await setup.waitForEnd();
+    // The tenant deleted the database meanwhile, also for a removal.
+    await gate[Symbol.asyncDispose]();
+    await earlier[Symbol.asyncDispose]();
+    await Promise.race([done, posted.promise]);
+    await testWaitForWorkerMessage();
 
-    assertEqual(setup.events, ["close"]);
+    assertFalse(waitedForFiles);
+    assertFalse(opened);
+    assertEqual(outputs, []);
+    channel.port2.postMessage({ type: "Dispose" });
+    await done;
   });
 
-  it("deletes nothing when disposed", async () => {
+  it("deletes nothing and posts nothing when its attempt ended before it got the database lock", async () => {
     await using dbSetup = await setupDb();
-    await using setup = await setupDeletingDbWorker({
+    const lockManager = testCreateLockManager();
+    await using lockRun = testCreateRun({ lockManager });
+    const earlier = await lockRun.ok(acquireLeaderLock(dbSetup.name));
+    let deleted = false;
+    await using worker = await startDeletingOnlyDbWorker({
       dbSetup,
-      memoryOnly: false,
+      lockManager,
+      deleteDatabaseFiles: () => () => {
+        deleted = true;
+        return ok();
+      },
     });
 
-    setup.port.postMessage({ type: "Dispose" });
-    await setup.waitForEnd();
+    // A later attempt or SharedWorker may open the database meanwhile.
+    await worker.endAttempt();
+    await earlier[Symbol.asyncDispose]();
+    await worker.done;
+    await testWaitForWorkerMessage();
 
-    assertEqual(setup.events, ["close"]);
+    assertFalse(deleted);
+    assertEqual(worker.outputs, []);
+    assertFalse(worker.isOpened());
+  });
+
+  it("answers a failed deletion of the files with DeleteFailed", async () => {
+    await using dbSetup = await setupDb();
+    const error = { type: "DatabaseHeldError", name: dbSetup.name } as const;
+    await using worker = await startDeletingOnlyDbWorker({
+      dbSetup,
+      lockManager: testCreateLockManager(),
+      deleteDatabaseFiles: () => () => err(error),
+    });
+    await worker.done;
+    await testWaitForWorkerMessage();
+
+    assertEqual(worker.outputs, [{ type: "DeleteFailed", error }]);
+    assertFalse(worker.isOpened());
+  });
+
+  it("deletes a database's files once its serving DbWorker got Dispose and released the lock", async () => {
+    await using dbSetup = await setupDb();
+    const lockManager = testCreateLockManager();
+    await using serving = await setupDbWorker({ dbSetup, lockManager });
+    const deletions: Array<string> = [];
+    await using worker = await startDeletingOnlyDbWorker({
+      dbSetup,
+      lockManager,
+      deleteDatabaseFiles: (name) => async () => {
+        const { held = [] } = await lockManager.query();
+        deletions.push(
+          held.some((lock) => lock.name === `evolu-leaderlock-${name}`)
+            ? "delete under lock"
+            : "delete",
+        );
+        return ok();
+      },
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(deletions, []);
+
+    serving.port.postMessage({ type: "Dispose" });
+    await worker.done;
+    await testWaitForWorkerMessage();
+
+    assertEqual(deletions, ["delete under lock"]);
+    assertEqual(worker.outputs, [{ type: "DatabaseDeleted" }]);
   });
 });
 
@@ -8920,7 +9332,11 @@ describe("owner deletion", () => {
     const queryOutputs = await postRequest(setup, {
       type: "ForEvolu",
       id: setup.evoluInstanceId,
-      message: { type: "Query", queries: createSet([testTableQuery]) },
+      message: {
+        type: "Query",
+        queries: createSet([testTableQuery]),
+        callbackIds: [],
+      },
     });
     assertLength(queryOutputs, 1);
     assertSame(queryOutputs[0].type, "OnQueuedResponse");

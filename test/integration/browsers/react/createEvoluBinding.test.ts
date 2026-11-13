@@ -4,30 +4,40 @@ import {
   createElement,
   StrictMode,
   Suspense,
+  useEffect,
   useLayoutEffect,
+  useState,
   type FC,
   type ReactNode,
 } from "react";
 import { createRoot, hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
-import { beforeAll, test } from "vitest";
+import { beforeAll, describe, it, test } from "vitest";
 import {
+  assert,
   assertEqual,
   assertNonNullable,
   assertSame,
 } from "../../../../packages/common/src/Assert.ts";
 import { emptyArray } from "../../../../packages/common/src/Array.ts";
+import { createConsoleStoreOutput } from "../../../../packages/common/src/Console.ts";
 import { createUnknownError } from "../../../../packages/common/src/Error.ts";
 import { constVoid } from "../../../../packages/common/src/Function.ts";
 import { testCreateLockManager } from "../../../../packages/common/src/LockManager.ts";
 import {
   createEvolu,
+  createEvoluApp,
   testAppName,
+  type AppOwnerEntry,
+  type CurrentAppOwner,
   type Evolu,
+  type EvoluApp,
   type EvoluPlatformDeps,
   type StoredWorkerDep,
 } from "../../../../packages/common/src/local-first/Evolu.ts";
 import {
+  createAppOwner,
+  createOwnerSecret,
   createOwnerWebSocketTransport,
   RelayUrl,
   deriveShardOwner,
@@ -36,9 +46,15 @@ import {
   type OwnerId,
   type ReadonlyOwner,
 } from "../../../../packages/common/src/local-first/Owner.ts";
-import { createQueryBuilder } from "../../../../packages/common/src/local-first/Schema.ts";
+import {
+  createQueryBuilder,
+  type EvoluSchema,
+} from "../../../../packages/common/src/local-first/Schema.ts";
+import { initSharedWorker } from "../../../../packages/common/src/local-first/Shared.ts";
 import type {
   CompleteSyncRoute,
+  DbWorkerInput,
+  DbWorkerOutput,
   EvoluOutput,
   OwnerSyncStatus,
   PendingSyncRoute,
@@ -64,13 +80,18 @@ import {
   createId,
   id,
   Name,
+  NonEmptyTrimmedString100,
+  String,
   testName,
 } from "../../../../packages/common/src/Type.ts";
+import { testCreateWebSocket } from "../../../../packages/common/src/WebSocket.ts";
 import {
   testCreateBroadcastChannel,
   testCreateMessageChannel,
+  testCreateMessagePort,
   testCreateSharedWorker,
   testCreateWorker,
+  testWaitForWorkerMessage,
 } from "../../../../packages/common/src/Worker.ts";
 import { createEvoluBinding } from "../../../../packages/react/src/local-first/createEvoluBinding.ts";
 
@@ -398,8 +419,9 @@ test("suspends a component whose instance's database was deleted instead of usin
 
   // The deletion renders the component again, before the reload replaces the
   // page, so it does not keep showing the deleted rows.
-  act(() => {
-    deliver({ type: "OnDatabaseDeleted" });
+  // oxlint-disable-next-line typescript/require-await -- An async act waits for the render that suspends.
+  await act(async () => {
+    deliver({ type: "OnDatabaseDeleted", removed: false });
   });
 
   assertEqual(getReloadCount(), 1);
@@ -431,8 +453,9 @@ test("renders another instance the app provides after a deletion", async () => {
   act(() => {
     render(createElement(Todos));
   });
-  act(() => {
-    deleted.deliver({ type: "OnDatabaseDeleted" });
+  // oxlint-disable-next-line typescript/require-await -- An async act waits for the render that suspends.
+  await act(async () => {
+    deleted.deliver({ type: "OnDatabaseDeleted", removed: false });
   });
   assertEqual(getFallback(), "Suspended");
 
@@ -473,12 +496,13 @@ test("waits instead of throwing when a deletion disposes the instance before Rea
   // the render and the subscriptions.
   const DeleteOnCommit: FC = () => {
     useLayoutEffect(() => {
-      deliver({ type: "OnDatabaseDeleted" });
+      deliver({ type: "OnDatabaseDeleted", removed: false });
     }, []);
     return createElement(Subscriber);
   };
 
-  act(() => {
+  // oxlint-disable-next-line typescript/require-await -- An async act waits for the render that suspends.
+  await act(async () => {
     render(createElement(DeleteOnCommit));
   });
 
@@ -909,4 +933,318 @@ test("hydrates before the first snapshot without rendering again", () => {
   // The client starts from the same NoRelays object as the server.
   assertEqual(setup.statuses, ["NoRelays"]);
   assertEqual(setup.container.textContent, "NoRelays");
+});
+
+describe("EvoluAppProvider", () => {
+  const DeviceSchema = {
+    _settings: { id: id("Settings"), theme: String },
+  };
+  const app = createEvoluBinding<EvoluSchema, typeof DeviceSchema>();
+  const settingsQuery = createQueryBuilder(DeviceSchema)((db) =>
+    db.selectFrom("_settings").select(["id", "theme"]),
+  );
+  const ownerB = createAppOwner(
+    createOwnerSecret(testCreateDeps({ seed: "b" })),
+  );
+
+  /** An EvoluApp whose stores the test sets, with a device instance stub. */
+  const setupApp = (device: object = {}) => {
+    const current = createStore<CurrentAppOwner<EvoluSchema> | null>(null);
+    const appOwners = createStore<ReadonlyArray<AppOwnerEntry>>([]);
+    const evoluApp = {
+      current,
+      appOwners,
+      device,
+    } as unknown as EvoluApp<EvoluSchema, typeof DeviceSchema>;
+    // The same promise on every render, as EvoluAppProvider requires.
+    const appPromise = Promise.resolve(evoluApp);
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const render = async (children: ReactNode): Promise<void> => {
+      // oxlint-disable-next-line typescript/require-await -- An async act waits for the renders that suspend.
+      await act(async () => {
+        root.render(
+          createElement(
+            Suspense,
+            { fallback: "Loading" },
+            createElement(app.EvoluAppProvider, {
+              value: appPromise,
+              withoutAppOwner: "No AppOwner",
+              // oxlint-disable-next-line react/no-children-prop -- createElement needs required children as a prop.
+              children,
+            }),
+          ),
+        );
+      });
+    };
+    return {
+      current,
+      appOwners,
+      getText: () => container.textContent,
+      render,
+      [Symbol.dispose]: () => {
+        act(() => {
+          root.unmount();
+        });
+      },
+    };
+  };
+
+  it("renders withoutAppOwner, then the open AppOwner's instance, remounting its children on a switch, also to another database of the same AppOwner", async () => {
+    using setup = setupApp();
+    // Each instance has its AppOwner, as createEvoluApp's do.
+    const evoluA = { appOwner: testAppOwner } as Evolu;
+    const evoluB = { appOwner: ownerB } as Evolu;
+    const mounts: Array<OwnerId> = [];
+    const Child: FC = () => {
+      const evolu = app.useEvolu();
+      const { appOwner } = evolu;
+      // Kept from its first render, so a child reused after the switch keeps
+      // showing the first AppOwner. Recorded once per mount, unlike an
+      // effect, which Suspense runs again when it shows the children again.
+      const [mountedWith] = useState(() => {
+        mounts.push(appOwner.id);
+        return appOwner.id;
+      });
+      return `${mountedWith === testAppOwner.id ? "A" : "B"} ${evolu === evoluA ? "a" : "b"}`;
+    };
+
+    await setup.render(createElement(Child));
+    assertEqual(setup.getText(), "No AppOwner");
+
+    // oxlint-disable-next-line typescript/require-await -- An async act waits for the instance.
+    await act(async () => {
+      setup.current.set({
+        appOwner: testAppOwner,
+        evolu: Promise.resolve(evoluA),
+      });
+    });
+    assertEqual(setup.getText(), "A a");
+
+    const evoluBPromise = Promise.resolve(evoluB);
+    // oxlint-disable-next-line typescript/require-await -- An async act waits for the instance.
+    await act(async () => {
+      setup.current.set({ appOwner: ownerB, evolu: evoluBPromise });
+    });
+    assertEqual(setup.getText(), "B b");
+    assertEqual(mounts, [testAppOwner.id, ownerB.id]);
+
+    // The same instance keeps the children.
+    act(() => {
+      setup.current.set({ appOwner: ownerB, evolu: evoluBPromise });
+    });
+    assertEqual(mounts, [testAppOwner.id, ownerB.id]);
+
+    // Another database of the same AppOwner, as after a removal and restore.
+    // oxlint-disable-next-line typescript/require-await -- An async act waits for the instance.
+    await act(async () => {
+      setup.current.set({
+        appOwner: ownerB,
+        evolu: Promise.resolve({ appOwner: ownerB } as Evolu),
+      });
+    });
+    assertEqual(setup.getText(), "B b");
+    assertEqual(mounts, [testAppOwner.id, ownerB.id, ownerB.id]);
+  });
+
+  it("shows the Suspense fallback while the open AppOwner's instance is pending, and withoutAppOwner again, unmounting the children, when none is open", async () => {
+    using setup = setupApp();
+    const evoluA = { appOwner: testAppOwner } as Evolu;
+    const opening = Promise.withResolvers<Evolu>();
+    const unmounts: Array<OwnerId> = [];
+    const Child: FC = () => {
+      const { appOwner } = app.useEvolu();
+      // A passive effect, whose cleanup runs on unmount, not when Suspense
+      // hides the children.
+      useEffect(
+        () => () => {
+          unmounts.push(appOwner.id);
+        },
+        [appOwner],
+      );
+      return "A";
+    };
+
+    await setup.render(createElement(Child));
+    // oxlint-disable-next-line typescript/require-await -- An async act waits for the render that suspends.
+    await act(async () => {
+      setup.current.set({ appOwner: testAppOwner, evolu: opening.promise });
+    });
+    assertEqual(setup.getText(), "Loading");
+
+    await act(async () => {
+      opening.resolve(evoluA);
+      await opening.promise;
+    });
+    assertEqual(setup.getText(), "A");
+
+    act(() => {
+      setup.current.set(null);
+    });
+    assertEqual(setup.getText(), "No AppOwner");
+    assertEqual(unmounts, [testAppOwner.id]);
+  });
+
+  it("throws the failure of a createEvoluApp whose device database is refused to the error boundary, instead of suspending", async () => {
+    await using disposer = new AsyncDisposableStack();
+    const run = disposer.use(
+      testCreateRun({
+        consoleStoreOutputEntry: createConsoleStoreOutput().entry,
+        createBroadcastChannel: testCreateBroadcastChannel,
+        createMessageChannel: testCreateMessageChannel,
+        createMessagePort: testCreateMessagePort,
+        createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
+        getDevicePersistence: () => Promise.resolve("Unknown" as const),
+        lockManager: testCreateLockManager(),
+      }),
+    );
+    const sharedWorker = disposer.use(
+      testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
+    );
+    void run(initSharedWorker(sharedWorker.self));
+    sharedWorker.connect();
+    // The tab leader's DbWorker refuses the device database, as when another
+    // context holds its files.
+    const refusedNames: Array<Name> = [];
+    sharedWorker.port.onMessage = (message) => {
+      if (message.type !== "DbWorkerInit") return;
+      refusedNames.push(message.name);
+      testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
+        message.port,
+      ).postMessage({
+        type: "LeaderRefused",
+        error: { type: "DatabaseHeldError", name: message.name },
+      });
+    };
+    sharedWorker.port.postMessage({
+      type: "AnnounceTabLeader",
+      consoleLevel: "silent",
+    });
+    const appRun = disposer.use(
+      run.create({
+        ...run.deps,
+        createDbWorker: testCreateWorker,
+        reloadApp: constVoid,
+        storedWorker: Promise.resolve(sharedWorker),
+      }),
+    );
+    const appPromise = appRun.orThrow(
+      createEvoluApp(deletionSchema, {
+        appName: testAppName,
+        auth: { type: "InstantStart" },
+        createFirstAppOwner: true,
+        transports: [],
+      }),
+    );
+    const caught: Array<unknown> = [];
+    const container = document.createElement("div");
+    // React would log the error the boundary catches on purpose.
+    const root = createRoot(container, { onCaughtError: constVoid });
+    disposer.defer(() => {
+      act(() => {
+        root.unmount();
+      });
+    });
+
+    // oxlint-disable-next-line typescript/require-await -- An async act waits for the render that suspends.
+    await act(async () => {
+      root.render(
+        createElement(
+          ErrorBoundary,
+          {
+            onError: (error) => {
+              caught.push(error);
+            },
+          },
+          createElement(
+            Suspense,
+            { fallback: "Loading" },
+            createElement(deletionBinding.EvoluAppProvider, {
+              value: appPromise,
+              withoutAppOwner: "No AppOwner",
+              // oxlint-disable-next-line react/no-children-prop -- createElement needs required children as a prop.
+              children: "Opened",
+            }),
+          ),
+        ),
+      );
+    });
+    for (let i = 0; i < 30 && caught.length === 0; i++)
+      await act(async () => {
+        await testWaitForWorkerMessage();
+      });
+
+    assertEqual(caught.length, 1);
+    const [error] = caught;
+    assert(error instanceof Error, "Expected the Error of run.orThrow.");
+    assertEqual(
+      error.cause,
+      createUnknownError({ type: "DatabaseHeldError", name: refusedNames[0] }),
+    );
+  });
+
+  it("re-renders useAppOwners when the AppOwners change", async () => {
+    using setup = setupApp();
+    const Names: FC = () =>
+      app
+        .useAppOwners()
+        .map(({ name }) => name)
+        .join(",");
+
+    await setup.render(null);
+    // oxlint-disable-next-line typescript/require-await -- An async act waits for the instance.
+    await act(async () => {
+      setup.current.set({
+        appOwner: testAppOwner,
+        evolu: Promise.resolve({} as Evolu),
+      });
+    });
+    await setup.render(createElement(Names));
+    assertEqual(setup.getText(), "");
+
+    act(() => {
+      setup.appOwners.set([
+        { id: testAppOwner.id, name: null, lastOpenedAt: null },
+        {
+          id: ownerB.id,
+          name: NonEmptyTrimmedString100.orThrow("Work"),
+          lastOpenedAt: null,
+        },
+      ]);
+    });
+    assertEqual(setup.getText(), ",Work");
+  });
+
+  it("reads the app's device tables through the device instance, with useDeviceQuery and useDeviceQueries", async () => {
+    const rows = [{ id: "s", theme: "dark" }];
+    // One promise, as an instance caches a query's load, so a render after the
+    // suspension reads the promise it suspended on.
+    const loaded = Promise.resolve(rows);
+    const device = {
+      loadQuery: () => loaded,
+      loadQueries: (queries: ReadonlyArray<unknown>) =>
+        queries.map(() => loaded),
+      subscribeQuery: () => () => constVoid,
+      getQueryRows: () => rows,
+    };
+    using setup = setupApp(device);
+    const Settings: FC = () => {
+      assertSame(app.useDeviceEvolu(), device);
+      const [queried] = app.useDeviceQueries([settingsQuery]);
+      return [...app.useDeviceQuery(settingsQuery), ...queried]
+        .map(({ theme }) => theme)
+        .join(",");
+    };
+
+    await setup.render(null);
+    // oxlint-disable-next-line typescript/require-await -- An async act waits for the instance.
+    await act(async () => {
+      setup.current.set({
+        appOwner: testAppOwner,
+        evolu: Promise.resolve({} as Evolu),
+      });
+    });
+    await setup.render(createElement(Settings));
+    assertEqual(setup.getText(), "dark,dark");
+  });
 });

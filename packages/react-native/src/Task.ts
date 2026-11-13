@@ -13,6 +13,11 @@ import {
   type RunCustomDeps,
 } from "@evolu/common";
 
+/** React Native's global error utilities, `ErrorUtils`. */
+interface ErrorUtils {
+  readonly reportError: (error: unknown) => void;
+}
+
 /**
  * Creates a root {@link Run} for React Native.
  *
@@ -56,9 +61,14 @@ export function createRun<D extends object>(
 ): DisposableRun | DisposableRun<D> {
   const reportDefect = (reported: unknown): void => {
     const error = defectToError(reported);
-    if (globalThis.ErrorUtils) {
-      // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Report through the React Native host API on the global object even if a realm lexical binding shadows it.
-      globalThis.ErrorUtils.reportError(error);
+    // React Native's own types declare it as a constant without reportError,
+    // which isn't a property of globalThis, so it's read with its runtime
+    // shape. Through the global object even if a realm lexical binding
+    // shadows it.
+    const errorUtils = (globalThis as { readonly ErrorUtils?: ErrorUtils })
+      .ErrorUtils;
+    if (errorUtils) {
+      errorUtils.reportError(error);
     } else {
       reportDefectAfterMicrotask(error);
     }

@@ -105,17 +105,10 @@ const Page: FC = async () => {
           <Button href="/docs" arrow="right">
             Get started
           </Button>
-          <Button href="/playgrounds/minimal" variant="outline">
+          <Button href="/playgrounds/full/instant" variant="outline">
             Playground
           </Button>
         </div>
-        <p className="max-w-xl text-sm text-balance text-zinc-500 dark:text-zinc-400">
-          Evolu Library is ready. Evolu local&#8209;first runs in production in{" "}
-          <a href="https://trezor.io/trezor-suite" className={linkClassName}>
-            Trezor Suite
-          </a>
-          ; general release is coming.
-        </p>
       </section>
 
       <div className="mx-auto mt-6 w-full max-w-3xl">

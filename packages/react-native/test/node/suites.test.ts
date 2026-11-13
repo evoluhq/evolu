@@ -4,11 +4,6 @@
  * fail the test, never hang it, and report no defect, since a reported defect
  * is fatal on React Native.
  */
-// Declares React Native's ErrorUtils global as src/Task.ts reads it, before
-// React Native's own types, which the specs bring, declare it as a const.
-// oxlint-disable-next-line import/no-empty-named-blocks, unicorn/require-module-specifiers -- Includes global declarations during type-checking without emitting a runtime import.
-import type {} from "../../src/ErrorUtils.d.ts";
-
 import {
   assert,
   assertEqual,
@@ -25,6 +20,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, mock, test } from "node:test";
+import type { DeviceSuitesDeps } from "../device/suites.ts";
 import { setTimeout } from "node:timers/promises";
 
 installPolyfills();
@@ -65,6 +61,9 @@ const setupEvoluTest = (createDeps: () => EvoluDeps): Promise<void> => {
     test: (name, fn) => tests.set(name, fn),
     assertEqual,
     createEvoluDeps: createDeps,
+    // The Evolu test doesn't load a DeviceSecret.
+    loadDeviceSecret: {} as DeviceSuitesDeps["loadDeviceSecret"],
+    forgetDeviceSecret: {} as DeviceSuitesDeps["forgetDeviceSecret"],
   });
   const fn = tests.get(
     "Evolu, created by createEvoluDeps with a transport, stores and queries a row",

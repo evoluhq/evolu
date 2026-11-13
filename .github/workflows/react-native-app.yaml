@@ -4,11 +4,12 @@ name: React Native apps
 # Android x86_64 emulator, seeds the databases expo-sqlite's SQLCipher wrote
 # into expo-sqlite's directory, and runs the device suites of
 # packages/react-native/test/device through the app's native-tests URL with
-# scripts/device-tests.mts, which requires every test Node.js counts to pass
-# and the app to reload. The Expo example's jobs always run; the example
-# without Expo's when the caller asks, since the native code is the same in
-# both, which differ only in autolinking, entry files and the Android build's
-# configuration cache. Each job then reports its app's size against
+# scripts/device-tests.mts, which requires every test Node.js counts to pass,
+# the app to reload, and, once the driver stopped and opened it again, to
+# relaunch. The Expo example's jobs always run; the example without Expo's
+# when the caller asks, since the native code is the same in both, which differ
+# only in autolinking, entry files and the Android build's configuration
+# cache. Each job then reports its app's size against
 # bench/app-size/baselines.json, as bench/app-size/README.md describes.
 on:
   workflow_call:

@@ -26,11 +26,20 @@ import { createXChaCha20Poly1305 } from "../Crypto.ts";
 import { createUnknownError, type UnknownError } from "../Error.ts";
 import { constVoid } from "../Function.ts";
 import type { DbWorkerInit, UnsupportedDbVersionError } from "./Db.ts";
+// From the package root, which exports it next to DeviceEvolu.
+import type { DeviceMutation } from "../index.ts";
 import {
   AppName,
   createEvolu,
+  createEvoluApp,
   createEvoluDeps,
+  subscribeAppOwnerState,
+  type AppOwnerEvolu,
+  type AppOwnerState,
+  type CurrentAppOwner,
+  type DeviceEvolu,
   type DevicePersistence,
+  type EmptyEvoluSchema,
   type Evolu,
   type EvoluConfig,
   isDatabaseDeleted,
@@ -40,13 +49,16 @@ import {
   type StoredWorkerDep,
 } from "./Evolu.ts";
 import {
+  createAppOwner,
   createOwnerSecret,
   createOwnerWebSocketTransport,
   createSharedOwner,
   createSharedReadonlyOwner,
   createShardOwner,
+  type AppOwner,
   type Owner,
-  type OwnerId,
+  OwnerId,
+  type ReadonlyOwner,
   RelayUrl,
   RelayUrlFromString,
   testAppOwner,
@@ -85,6 +97,7 @@ import { acquireLeaderLock, testCreateLockManager } from "../LockManager.ts";
 import { installPolyfills } from "../Polyfills.ts";
 import { err, ok, type Result } from "../Result.ts";
 import { SqliteBoolean } from "../Sqlite.ts";
+import { createStore } from "../Store.ts";
 import { explicitAbortReason, testCreateDeps, testCreateRun } from "../Task.ts";
 import { testCreateId, testStubGlobal } from "../Test.ts";
 import { maxMillis, Millis } from "../Time.ts";
@@ -154,6 +167,11 @@ const testPostedAppOwner: Owner = {
 
 const testSharedOwner = createSharedOwner(
   createOwnerSecret(testCreateDeps({ seed: "evolu-shared-owner" })),
+);
+
+/** An AppOwner other than an instance's own, testAppOwner. */
+const testOtherAppOwner = createAppOwner(
+  createOwnerSecret(testCreateDeps({ seed: "evolu-other-app-owner" })),
 );
 
 /** The registration IDs that the inputs' owner actions name, in order. */
@@ -291,6 +309,35 @@ describe("Evolu", () => {
       },
     });
   };
+
+  it("DeviceEvolu can't export, delete, or dispose the device database", () => {
+    const useDevice = (device: DeviceEvolu<EmptyEvoluSchema>): void => {
+      // @ts-expect-error DeviceEvolu has no exportDatabase, which would write every AppOwner secret in plaintext.
+      void device.exportDatabase;
+      // @ts-expect-error DeviceEvolu has no deleteDatabase, which would lose every AppOwner secret.
+      void device.deleteDatabase;
+      // @ts-expect-error DeviceEvolu has no disposal, because the app disposes it.
+      void device[Symbol.asyncDispose];
+      // @ts-expect-error A device schema without tables has no table to write, such as Evolu's own _evolu_appOwner.
+      device.insert("_evolu_appOwner", {});
+      // @ts-expect-error A device schema without tables has no table to query, such as the app's own.
+      void device.loadQuery(todoTitleQuery);
+    };
+    const useCurrent = (current: CurrentAppOwner<EmptyEvoluSchema>): void => {
+      void current.evolu.then((evolu) => {
+        // @ts-expect-error An AppOwner's instance has no disposal, because the app disposes it.
+        void evolu[Symbol.asyncDispose];
+      });
+    };
+    assertType<
+      typeof useCurrent,
+      (current: CurrentAppOwner<EmptyEvoluSchema>) => void
+    >();
+    assertType<
+      typeof useDevice,
+      (device: DeviceEvolu<EmptyEvoluSchema>) => void
+    >();
+  });
 
   it("AppName", () => {
     assertEqual(AppName.fromUnknown("my-app"), ok("my-app"));
@@ -596,6 +643,7 @@ describe("Evolu", () => {
         indexes: [],
       };
       const sharedWorkerId = testCreateId()<"SharedWorker">();
+      const gateId = testCreateId()();
       const sharedWorkerPort: {
         value: MessagePort<SharedWorkerOutput, SharedWorkerInput> | null;
       } = { value: null };
@@ -632,11 +680,14 @@ describe("Evolu", () => {
       sharedWorkerPort.value.postMessage(
         {
           type: "DbWorkerInit",
+          mode: "Open",
           name: testName,
           consoleLevel: "debug",
           sqliteSchema,
           encryptionKey: testAppOwner.encryptionKey,
           memoryOnly: true,
+          createFirstAppOwner: null,
+          gateId,
           consoleEntryOrErrorChannelName:
             consoleEntryOrErrorBroadcastChannelName,
           sharedWorkerId,
@@ -650,11 +701,14 @@ describe("Evolu", () => {
       assertLength(dbWorkerMessages, 1);
       assertEqual(dbWorkerMessages[0], {
         type: "DbWorkerInit",
+        mode: "Open",
         name: testName,
         consoleLevel: "debug",
         sqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: true,
+        createFirstAppOwner: null,
+        gateId,
         consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
         sharedWorkerId,
         port: dbWorkerChannel.port1.native,
@@ -713,11 +767,14 @@ describe("Evolu", () => {
       >();
       const init: DbWorkerInit = {
         type: "DbWorkerInit",
+        mode: "Open",
         name: testName,
         consoleLevel: "debug",
         sqliteSchema: { tables: {}, indexes: [] },
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: true,
+        createFirstAppOwner: null,
+        gateId: testCreateId()(),
         consoleEntryOrErrorChannelName: channelName,
         sharedWorkerId: workerId,
         port: dbWorkerChannel.port1.native,
@@ -2025,13 +2082,14 @@ describe("Evolu", () => {
         "encryptionKey",
         "evoluPort",
         "id",
+        "instanceKind",
         "memoryOnly",
         "name",
         "sqliteSchema",
         "type",
       ]);
       assertEqual(message.name, evolu.name);
-      assertEqual(message.id, "dXpWgmgRSqCJV_tQPAS7Ug");
+      assertEqual(message.id, "uOCPavv1rW_A-VrpXIfUZA");
       assertTrue(typeof message.consoleLevel === "string");
       assertTrue(
         typeof message.sqliteSchema === "object" &&
@@ -2039,7 +2097,62 @@ describe("Evolu", () => {
       );
       assertEqualBytes(message.encryptionKey, testAppOwner.encryptionKey);
       assertFalse(message.memoryOnly);
+      // Neither a device database, which creates the first AppOwner, nor an
+      // AppOwner's, which opens only while the device database lists it.
+      assertEqual(message.instanceKind, { type: "Standalone" });
       assertNonNullable(message.evoluPort);
+    });
+
+    it("posts a device database's CreateEvolu at most at debug, so SQL tracing logs no AppOwner secret", async () => {
+      const sharedWorkerMessages: Array<SharedWorkerInput> = [];
+      const sharedWorker = testCreateSharedWorker<
+        SharedWorkerInput,
+        SharedWorkerOutput
+      >();
+      sharedWorker.self.onConnect = (port) => {
+        port.onMessage = (message) => {
+          sharedWorkerMessages.push(message);
+        };
+      };
+      sharedWorker.connect();
+
+      await using run = testCreateRun({
+        createDbWorker: testCreateWorker,
+        createBroadcastChannel: testCreateBroadcastChannel,
+        createMessageChannel: testCreateMessageChannel,
+        getDevicePersistence: () => Promise.resolve("Unknown" as const),
+        lockManager: testCreateLockManager(),
+        reloadApp: constVoid,
+        storedWorker: Promise.resolve(sharedWorker),
+      });
+      run.deps.console.setLevel("trace");
+
+      // Waits for the device database, which answers nothing here.
+      const starting = run.abortable(
+        createEvoluApp(Schema, {
+          appName: testAppName,
+          auth: { type: "InstantStart" },
+          createFirstAppOwner: true,
+          transports: [],
+        }),
+      );
+      await using _evolu = await run.ok(testCreateEvolu);
+      await testWaitForWorkerMessage();
+
+      const levels = sharedWorkerMessages.flatMap((message) =>
+        message.type === "CreateEvolu"
+          ? [[message.instanceKind.type === "Device", message.consoleLevel]]
+          : [],
+      );
+      assertEqual(
+        levels.toSorted(([a], [b]) => Number(a) - Number(b)),
+        [
+          [false, "trace"],
+          [true, "debug"],
+        ],
+      );
+      starting.abort();
+      await starting;
     });
 
     describe("requestSync", () => {
@@ -2115,6 +2228,109 @@ describe("Evolu", () => {
     });
 
     describe("useOwner", () => {
+      it("refuses instant start's public device owner", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        // Instant start's device owner, whose ID is fixed.
+        const instantStart: ReadonlyOwner = {
+          id: OwnerId.orThrow("UjIemozuaMa1V6CptaxKcQ"),
+          encryptionKey: testAppOwner.encryptionKey,
+        };
+
+        assertThrowsInstanceOf(
+          () => evolu.useOwner(instantStart, [testOwnerTransport]),
+          Error,
+        );
+      });
+
+      it("syncs its own AppOwner and throws for another one", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const evolu = await setup.run.ok(testCreateEvolu);
+
+        const error = assertThrowsInstanceOf(
+          () => evolu.useOwner(testOtherAppOwner, [testOwnerTransport]),
+          Error,
+        );
+        assertTrue(
+          error.message.startsWith(
+            "An AppOwner's data lives only in its own database",
+          ),
+        );
+        evolu.useOwner(evolu.appOwner, [testOwnerTransport]);
+        await testWaitForWorkerMessage();
+
+        // The other AppOwner was never posted, and the own one syncs.
+        assertEqual(
+          setup.evoluInputs.flatMap((input) =>
+            input.type === "UseOwner"
+              ? input.actions.flatMap((action) =>
+                  action.action === "add" ? [action.owner.owner.id] : [],
+                )
+              : [],
+          ),
+          [testAppOwner.id],
+        );
+      });
+
+      it("types DeviceEvolu's useOwner and mutations without AppOwners", () => {
+        const withAppOwner = (
+          device: DeviceEvolu<typeof Schema>,
+          appOwner: AppOwner,
+        ) => {
+          const id = TodoId.orThrow(createIdFromString("device-todo"));
+          const title = NonEmptyTrimmedString100.orThrow("Device");
+          // @ts-expect-error A device database syncs no AppOwner, whose data lives only in its own database.
+          device.useOwner(appOwner, [testOwnerTransport]);
+          // @ts-expect-error A device database writes no AppOwner's rows, whose data lives only in its own database.
+          device.insert("todo", { title }, { owner: appOwner });
+          // @ts-expect-error A device database writes no AppOwner's rows, whose data lives only in its own database.
+          device.update("todo", { id, title }, { owner: appOwner });
+          // @ts-expect-error A device database writes no AppOwner's rows, whose data lives only in its own database.
+          device.upsert("todo", { id, title }, { owner: appOwner });
+          device.insert("todo", { title }, { owner: testSharedOwner });
+        };
+        assertType<
+          Parameters<typeof withAppOwner>,
+          [DeviceEvolu<typeof Schema>, AppOwner]
+        >();
+        assertType<
+          DeviceEvolu<typeof Schema>["insert"],
+          DeviceMutation<typeof Schema, "insert">
+        >();
+      });
+
+      it("types DeviceEvolu's useOwner with transports and its synced mutations with an owner", () => {
+        const DeviceSchema = {
+          ...Schema,
+          _setting: { id: id("Setting"), name: NonEmptyTrimmedString100 },
+        };
+        const withoutOwner = (device: DeviceEvolu<typeof DeviceSchema>) => {
+          const id = TodoId.orThrow(createIdFromString("device-todo"));
+          const title = NonEmptyTrimmedString100.orThrow("Device");
+          // @ts-expect-error The device instance has no default transports, so useOwner takes them.
+          device.useOwner(testSharedOwner);
+          device.useOwner(testSharedOwner, [testOwnerTransport]);
+          // @ts-expect-error The device owner never syncs, so a mutation of a synced table takes the owner it syncs with.
+          device.insert("todo", { title });
+          // @ts-expect-error The device owner never syncs, so a mutation of a synced table takes the owner it syncs with.
+          device.update("todo", { id, title }, { onSuccess: constVoid });
+          // @ts-expect-error The device owner never syncs, so a mutation of a synced table takes the owner it syncs with.
+          device.upsert("todo", { id, title });
+          const table = "todo" as "todo" | "_setting";
+          // @ts-expect-error The device owner never syncs, so a mutation of a synced table takes the owner it syncs with.
+          device.update(table, { id });
+          device.update(table, { id }, { owner: testSharedOwner });
+          // A local-only table's rows stay on this device.
+          device.insert("_setting", { name: title });
+          device.insert("_setting", { name: title }, { onSuccess: constVoid });
+        };
+        assertType<
+          Parameters<typeof withoutOwner>,
+          [DeviceEvolu<typeof DeviceSchema>]
+        >();
+      });
+
       it("auto-uses appOwner in a microtask when transports are configured", async () => {
         await using setup = await setupRunWithEvoluDeps();
         const { run, evoluInputs } = setup;
@@ -2285,7 +2501,7 @@ describe("Evolu", () => {
               { ...testOwnerTransport },
             ]);
           }, Error).message,
-          "useOwner requires distinct transports.",
+          "Transports must be distinct.",
         );
 
         const otherTransport = createOwnerWebSocketTransport({
@@ -2337,7 +2553,7 @@ describe("Evolu", () => {
         assertInstanceOf(result.error.reason.defect, Error);
         assertEqual(
           result.error.reason.defect.message,
-          "useOwner requires distinct transports.",
+          "Transports must be distinct.",
         );
         await testWaitForWorkerMessage();
         assertEqual(evoluInputs, []);
@@ -2767,7 +2983,7 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
 
       await evolu[Symbol.asyncDispose]();
@@ -2936,7 +3152,7 @@ describe("Evolu", () => {
       assertLength(callbackIds, 2);
 
       const error = createUnknownError(new Error("Disk I/O error."));
-      postEvoluOutput({ type: "OnMutateFailed", callbackIds, error });
+      postEvoluOutput({ type: "OnRequestFailed", callbackIds, error });
       // Patches naming callbacks that already ran find nothing to run.
       postEvoluOutput({
         type: "OnPatchesByQuery",
@@ -3029,7 +3245,7 @@ describe("Evolu", () => {
         "Mutate"
       >;
       const error = createUnknownError(new Error("Disk I/O error."));
-      postEvoluOutput({ type: "OnMutateFailed", callbackIds, error });
+      postEvoluOutput({ type: "OnRequestFailed", callbackIds, error });
       await testWaitForWorkerMessage();
 
       assertEqual(errors, [error]);
@@ -3254,7 +3470,7 @@ describe("Evolu", () => {
       assertSame(notifications, 0);
       await testWaitForWorkerMessage();
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
 
       postEvoluOutput({
@@ -3292,7 +3508,7 @@ describe("Evolu", () => {
       assertSame(evolu.loadQuery(todoTitleQuery), initialLoad);
       await testWaitForWorkerMessage();
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
 
       // The old read completes first. Its promise must still settle, and the
@@ -3375,7 +3591,7 @@ describe("Evolu", () => {
       const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
       await testWaitForWorkerMessage();
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
       unsubscribe();
       evoluInputs.length = 0;
@@ -3406,7 +3622,7 @@ describe("Evolu", () => {
       assertNotSame(reload, cachedLoad);
       await testWaitForWorkerMessage();
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
     });
 
@@ -3438,7 +3654,7 @@ describe("Evolu", () => {
       assertSame(evolu.loadQuery(todoTitleQuery), refreshingLoad);
       await testWaitForWorkerMessage();
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
       unsubscribe();
     });
@@ -3458,8 +3674,242 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
+    });
+
+    it("loadQuery with cache: false reads again and leaves the cached load", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const cachedLoad = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
+        ]),
+        callbackIds: [],
+      });
+      assertEqual(await cachedLoad, []);
+      evoluInputs.length = 0;
+
+      const uncachedLoad = evolu.loadQuery(todoTitleQuery, { cache: false });
+      assertNotSame(uncachedLoad, cachedLoad);
+      assertSame(evolu.loadQuery(todoTitleQuery), cachedLoad);
+
+      await testWaitForWorkerMessage();
+      assertLength(evoluInputs, 1);
+      const query = evoluInputs[0] as ExtractTyped<EvoluInput, "Query">;
+      assertEqual(query.queries, new Set([todoTitleQuery]));
+      assertLength(query.callbackIds, 1);
+
+      // Another tab's row, which the cached load missed.
+      const row = { title: "Another tab's" };
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [row] }])],
+        ]),
+        callbackIds: query.callbackIds,
+      });
+      assertEqual(await uncachedLoad, [row]);
+    });
+
+    it("loadQuery with cache: false gives its answer to a settled cached load, fulfilled or rejected", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const cachedLoad = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
+        ]),
+        callbackIds: [],
+      });
+      assertEqual(await cachedLoad, []);
+
+      evoluInputs.length = 0;
+      const uncachedLoad = evolu.loadQuery(todoTitleQuery, { cache: false });
+      await testWaitForWorkerMessage();
+      const query = evoluInputs[0] as ExtractTyped<EvoluInput, "Query">;
+      const row = { title: "Another tab's" };
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [row] }])],
+        ]),
+        callbackIds: query.callbackIds,
+      });
+      assertEqual(await uncachedLoad, [row]);
+      assertEqual(evolu.getQueryRows(todoTitleQuery), [row]);
+      assertEqual(await evolu.loadQuery(todoTitleQuery), [row]);
+
+      const failedQuery = createQuery((db) =>
+        db.selectFrom("todo").select(["title"]).limit(1),
+      );
+      const failedLoad = evolu.loadQuery(failedQuery);
+      await testWaitForWorkerMessage();
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [failedQuery, err(createUnknownError(new Error("Disk I/O error.")))],
+        ]),
+        callbackIds: [],
+      });
+      await failedLoad.then(() => {
+        throw new Error("The cached load resolved.");
+      }, constVoid);
+
+      evoluInputs.length = 0;
+      const uncachedFailedLoad = evolu.loadQuery(failedQuery, { cache: false });
+      await testWaitForWorkerMessage();
+      const failedQueryInput = evoluInputs[0] as ExtractTyped<
+        EvoluInput,
+        "Query"
+      >;
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [failedQuery, ok([{ op: "replaceAll", value: [] }])],
+        ]),
+        callbackIds: failedQueryInput.callbackIds,
+      });
+      assertEqual(await uncachedFailedLoad, []);
+      assertEqual(await evolu.loadQuery(failedQuery), []);
+    });
+
+    it("loadQuery with cache: false waits for its own Query, not an earlier load", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const pendingLoad = evolu.loadQuery(todoTitleQuery);
+      await testWaitForWorkerMessage();
+      const uncachedLoad = evolu.loadQuery(todoTitleQuery, { cache: false });
+      let isUncachedLoadSettled = false;
+      void uncachedLoad.then(() => {
+        isUncachedLoadSettled = true;
+      });
+      await testWaitForWorkerMessage();
+      assertLength(evoluInputs, 2);
+      const uncachedQuery = evoluInputs[1] as ExtractTyped<EvoluInput, "Query">;
+
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
+        ]),
+        callbackIds: [],
+      });
+      assertEqual(await pendingLoad, []);
+      await testWaitForWorkerMessage();
+      assertFalse(isUncachedLoadSettled);
+
+      const row = { title: "Stored meanwhile" };
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [row] }])],
+        ]),
+        callbackIds: uncachedQuery.callbackIds,
+      });
+      assertEqual(await uncachedLoad, [row]);
+    });
+
+    it("loadQuery with cache: false rejects when SQLite fails its query", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const uncachedLoad = evolu.loadQuery(todoTitleQuery, { cache: false });
+      await testWaitForWorkerMessage();
+      const query = evoluInputs[0] as ExtractTyped<EvoluInput, "Query">;
+
+      const error = createUnknownError(new Error("Disk I/O error."));
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([[todoTitleQuery, err(error)]]),
+        callbackIds: query.callbackIds,
+      });
+      await uncachedLoad.then(
+        () => {
+          throw new Error("The uncached load resolved.");
+        },
+        (reason: unknown) => {
+          assertEqual(reason, error);
+        },
+      );
+    });
+
+    it("loadQuery with cache: false is sent after the mutations made before it and before those made after it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      void evolu.loadQuery(todoTitleQuery, { cache: false });
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("New") });
+      void evolu.loadQuery(todoTitleQuery, { cache: false });
+      void evolu.deleteDatabase();
+      await testWaitForWorkerMessage();
+
+      assertEqual(
+        evoluInputs.map(({ type }) => type),
+        ["Query", "Mutate", "Query", "DeleteDatabase"],
+      );
+    });
+
+    it("loadQuery with cache: false settles no cached load made after it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const uncachedLoad = evolu.loadQuery(todoTitleQuery, { cache: false });
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("New") });
+      const cachedLoad = evolu.loadQuery(todoTitleQuery);
+      let isCachedLoadSettled = false;
+      void cachedLoad.then(() => {
+        isCachedLoadSettled = true;
+      });
+      await testWaitForWorkerMessage();
+      const uncachedQuery = evoluInputs[0] as ExtractTyped<EvoluInput, "Query">;
+      assertLength(uncachedQuery.callbackIds, 1);
+
+      // Answered before the insert, so the cached load waits for its own.
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [] }])],
+        ]),
+        callbackIds: uncachedQuery.callbackIds,
+      });
+      assertEqual(await uncachedLoad, []);
+      await testWaitForWorkerMessage();
+      assertFalse(isCachedLoadSettled);
+
+      const row = { title: "New" };
+      postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [todoTitleQuery, ok([{ op: "replaceAll", value: [row] }])],
+        ]),
+        callbackIds: [],
+      });
+      assertEqual(await cachedLoad, [row]);
+    });
+
+    it("disposal resolves an uncached load with no rows", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const uncachedLoad = evolu.loadQuery(todoTitleQuery, { cache: false });
+      await evolu[Symbol.asyncDispose]();
+      assertEqual(await uncachedLoad, []);
     });
 
     it("loadQuery right after a mutation reads after the mutation", async () => {
@@ -3534,6 +3984,7 @@ describe("Evolu", () => {
         {
           type: "Query",
           queries: new Set([todoTitleQuery, todoTitleDescQuery]),
+          callbackIds: [],
         },
       ]);
     });
@@ -3615,7 +4066,7 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
 
       unsubscribe();
@@ -3633,7 +4084,7 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
 
       unsubscribe();
@@ -3709,7 +4160,7 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
 
       unsubscribe();
@@ -3792,7 +4243,7 @@ describe("Evolu", () => {
       assertNotSame(evolu.loadQuery(todoTitleQuery), load);
       await testWaitForWorkerMessage();
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
     });
 
@@ -3890,7 +4341,7 @@ describe("Evolu", () => {
       assertNotSame(evolu.loadQuery(todoTitleQuery), load);
       await testWaitForWorkerMessage();
       assertEqual(evoluInputs, [
-        { type: "Query", queries: new Set([todoTitleQuery]) },
+        { type: "Query", queries: new Set([todoTitleQuery]), callbackIds: [] },
       ]);
     });
 
@@ -4143,6 +4594,33 @@ describe("Evolu", () => {
         evolu.update("todo", { id: todoId, title: {} } as never);
       }, Error);
       assertSame(invalidError.message, "Invalid DbChange for table 'todo'.");
+    });
+
+    it("writes rows of its own AppOwner and throws for another one", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      const values = { title: NonEmptyTrimmedString100.orThrow("Owned") };
+
+      const error = assertThrowsInstanceOf(
+        () => evolu.insert("todo", values, { owner: testOtherAppOwner }),
+        Error,
+      );
+      assertTrue(
+        error.message.startsWith(
+          "An AppOwner's data lives only in its own database",
+        ),
+      );
+      evolu.insert("todo", values, { owner: evolu.appOwner });
+      await testWaitForWorkerMessage();
+
+      const changes = evoluInputs.flatMap((input) =>
+        input.type === "Mutate" ? input.changes : [],
+      );
+      assertEqual(
+        changes.map(({ ownerId }) => ownerId),
+        [testAppOwner.id],
+      );
     });
   });
 
@@ -4721,10 +5199,22 @@ describe("Evolu", () => {
       );
 
       const deletion = evolu.deleteDatabase();
-      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: false });
 
       assertEqual(await deletion, ok());
       assertEqual(events, ["onDatabaseDeleted"]);
+    });
+
+    it("fails as disposed when a removal deletes the database, whose files may not be gone yet", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const deletion = evolu.deleteDatabase();
+      await testWaitForWorkerMessage();
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: true });
+
+      assertEqual(await deletion, err({ type: "EvoluDisposedError" }));
     });
 
     it("resolves once the database is deleted, after which the instance is disposed", async () => {
@@ -4734,7 +5224,7 @@ describe("Evolu", () => {
 
       const deletion = evolu.deleteDatabase();
       await testWaitForWorkerMessage();
-      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: false });
 
       assertEqual(await deletion, ok());
       await testWaitForWorkerMessage();
@@ -4754,7 +5244,7 @@ describe("Evolu", () => {
       const deletion = evolu.deleteDatabase();
       const settled = evolu.loadQuery(todoTitleQuery).then(() => "settled");
       await testWaitForWorkerMessage();
-      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: false });
       assertEqual(await deletion, ok());
       await testWaitForWorkerMessage();
 
@@ -4778,7 +5268,7 @@ describe("Evolu", () => {
 
       const settled = evolu.loadQuery(todoTitleQuery).then(() => "settled");
       await testWaitForWorkerMessage();
-      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: false });
       await testWaitForWorkerMessage();
 
       assertEqual(reloads, [undefined]);
@@ -4786,6 +5276,32 @@ describe("Evolu", () => {
         await Promise.race([settled, Promise.resolve("pending")]),
         "pending",
       );
+    });
+
+    it("resolves an uncached load the deletion dropped with no rows, once the instance is disposed", async () => {
+      for (const removed of [false, true]) {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, postEvoluOutput } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+
+        // Code awaits it, such as under a lock, so it must not stay pending.
+        const uncachedLoad = evolu.loadQuery(todoTitleQuery, { cache: false });
+        await testWaitForWorkerMessage();
+        postEvoluOutput({ type: "OnDatabaseDeleted", removed });
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          await Promise.race([uncachedLoad, Promise.resolve("pending")]),
+          [],
+        );
+        assertTrue(isDatabaseDeleted(evolu));
+        assertEqual(
+          assertThrowsInstanceOf(() => {
+            evolu.getQueryRows(todoTitleQuery);
+          }, Error).message,
+          disposedMessage,
+        );
+      }
     });
 
     it("shares a pending deletion, and asks again after it failed", async () => {
@@ -4843,7 +5359,7 @@ describe("Evolu", () => {
         }),
       );
 
-      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: false });
       await testWaitForWorkerMessage();
 
       assertEqual(events, ["onDatabaseDeleted"]);
@@ -4869,7 +5385,7 @@ describe("Evolu", () => {
 
       assertSame(
         assertThrowsInstanceOf(() => {
-          setup.deliver({ type: "OnDatabaseDeleted" });
+          setup.deliver({ type: "OnDatabaseDeleted", removed: false });
         }, Error),
         error,
       );
@@ -4900,7 +5416,7 @@ describe("Evolu", () => {
 
       assertSame(
         assertThrowsInstanceOf(() => {
-          setup.deliver({ type: "OnDatabaseDeleted" });
+          setup.deliver({ type: "OnDatabaseDeleted", removed: false });
         }, Error),
         error,
       );
@@ -4919,7 +5435,7 @@ describe("Evolu", () => {
       const { run, postEvoluOutput } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: false });
       await testWaitForWorkerMessage();
 
       assertEqual(reloads, [undefined]);
@@ -4946,7 +5462,7 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
       assertEqual(notifiedRows.splice(0), [[{ title: "A" }]]);
 
-      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: false });
       await testWaitForWorkerMessage();
 
       // Bindings render again, so they show no deleted rows.
@@ -4959,7 +5475,7 @@ describe("Evolu", () => {
       const evolu = await run.ok(testCreateEvolu);
       assertFalse(isDatabaseDeleted(evolu));
 
-      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: false });
       await testWaitForWorkerMessage();
 
       assertTrue(isDatabaseDeleted(evolu));
@@ -4986,7 +5502,7 @@ describe("Evolu", () => {
 
       const deletion = evolu.deleteDatabase();
       await testWaitForWorkerMessage();
-      postEvoluOutput({ type: "OnDatabaseDeleted" });
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: false });
 
       assertEqual(await deletion, ok());
       assertEqual(reloads, [undefined]);
@@ -5249,5 +5765,207 @@ describe("Evolu", () => {
         "OnDeleteOwnerFailed received without pending owner deletion.",
       );
     });
+  });
+});
+
+describe("subscribeAppOwnerState", () => {
+  type TestSchema = EmptyEvoluSchema;
+
+  // Only the name tells the instances apart here.
+  const createInstance = (name: string) =>
+    ({ name }) as unknown as AppOwnerEvolu<TestSchema>;
+
+  const currentOf = (
+    evolu: Promise<AppOwnerEvolu<TestSchema>>,
+  ): CurrentAppOwner<TestSchema> => ({ appOwner: testAppOwner, evolu });
+
+  const setup = (initial: CurrentAppOwner<TestSchema> | null = null) => {
+    const current = createStore(initial);
+    const states: Array<AppOwnerState<TestSchema>> = [];
+    const unsubscribe = subscribeAppOwnerState(current, (state) => {
+      states.push(state);
+    });
+    return { current, states, unsubscribe };
+  };
+
+  it("calls onChange at once with None, then Opening, then Open once the instance opens", async () => {
+    const { current, states, unsubscribe } = setup();
+    const opening = Promise.withResolvers<AppOwnerEvolu<TestSchema>>();
+    const opened = currentOf(opening.promise);
+
+    current.set(opened);
+    const instance = createInstance("a");
+    opening.resolve(instance);
+    await testWaitForWorkerMessage();
+
+    assertEqual(states, [
+      { type: "None" },
+      { type: "Opening", current: opened },
+      { type: "Open", current: opened, evolu: instance },
+    ]);
+    unsubscribe();
+  });
+
+  it("starts Opening with the current AppOwner", async () => {
+    const instance = createInstance("a");
+    const opened = currentOf(Promise.resolve(instance));
+    const { states, unsubscribe } = setup(opened);
+
+    assertEqual(states, [{ type: "Opening", current: opened }]);
+    await testWaitForWorkerMessage();
+    assertEqual(states.at(-1), {
+      type: "Open",
+      current: opened,
+      evolu: instance,
+    });
+    unsubscribe();
+  });
+
+  it("ignores an instance that opens after the tab moved on to another", async () => {
+    const { current, states, unsubscribe } = setup();
+    const openingA = Promise.withResolvers<AppOwnerEvolu<TestSchema>>();
+    const openingB = Promise.withResolvers<AppOwnerEvolu<TestSchema>>();
+    const currentA = currentOf(openingA.promise);
+    const currentB = currentOf(openingB.promise);
+
+    current.set(currentA);
+    current.set(currentB);
+    openingA.resolve(createInstance("a"));
+    await testWaitForWorkerMessage();
+    assertEqual(states.at(-1), { type: "Opening", current: currentB });
+
+    const instance = createInstance("b");
+    openingB.resolve(instance);
+    await testWaitForWorkerMessage();
+    assertEqual(states.slice(1), [
+      { type: "Opening", current: currentA },
+      { type: "Opening", current: currentB },
+      { type: "Open", current: currentB, evolu: instance },
+    ]);
+    unsubscribe();
+  });
+
+  it("ignores an instance that opens after the tab closed the AppOwner and opened it again", async () => {
+    const { current, states, unsubscribe } = setup();
+    const opening = Promise.withResolvers<AppOwnerEvolu<TestSchema>>();
+    const reopening = Promise.withResolvers<AppOwnerEvolu<TestSchema>>();
+    const reopened = currentOf(reopening.promise);
+
+    current.set(currentOf(opening.promise));
+    current.set(null);
+    current.set(reopened);
+    opening.resolve(createInstance("a"));
+    await testWaitForWorkerMessage();
+
+    assertEqual(states.at(-1), { type: "Opening", current: reopened });
+    unsubscribe();
+  });
+
+  it("changes nothing when an instance opens after the unsubscribe", async () => {
+    const { current, states, unsubscribe } = setup();
+    const opening = Promise.withResolvers<AppOwnerEvolu<TestSchema>>();
+    current.set(currentOf(opening.promise));
+
+    unsubscribe();
+    current.set(null);
+    opening.resolve(createInstance("a"));
+    await testWaitForWorkerMessage();
+
+    assertEqual(
+      states.map(({ type }) => type),
+      ["None", "Opening"],
+    );
+  });
+
+  it("keeps the type and instance for another CurrentAppOwner with the same instance, with the new current", async () => {
+    const { current, states, unsubscribe } = setup();
+    const opening = Promise.withResolvers<AppOwnerEvolu<TestSchema>>();
+    const opened = currentOf(opening.promise);
+    current.set(opened);
+
+    // While the instance opens.
+    const sameWhileOpening = currentOf(opened.evolu);
+    current.set(sameWhileOpening);
+    assertEqual(states.at(-1), {
+      type: "Opening",
+      current: sameWhileOpening,
+    });
+    const instance = createInstance("a");
+    opening.resolve(instance);
+    await testWaitForWorkerMessage();
+    assertEqual(states.at(-1), {
+      type: "Open",
+      current: sameWhileOpening,
+      evolu: instance,
+    });
+
+    // Once it's open.
+    const sameWhileOpen = currentOf(opened.evolu);
+    current.set(sameWhileOpen);
+    const last = states.at(-1);
+    assertEqual(last, {
+      type: "Open",
+      current: sameWhileOpen,
+      evolu: instance,
+    });
+    assertSame(last?.type === "Open" && last.evolu, instance);
+    assertEqual(
+      states.map(({ type }) => type),
+      ["None", "Opening", "Opening", "Open", "Open"],
+    );
+    unsubscribe();
+  });
+
+  it("changes nothing when the store notifies of the same CurrentAppOwner", async () => {
+    const instance = createInstance("a");
+    const opened = currentOf(Promise.resolve(instance));
+    // A store that notifies on every set, as a ReadonlyStore may.
+    const current = createStore<CurrentAppOwner<TestSchema> | null>(
+      opened,
+      () => false,
+    );
+    const states: Array<AppOwnerState<TestSchema>> = [];
+    const unsubscribe = subscribeAppOwnerState(current, (state) => {
+      states.push(state);
+    });
+    await testWaitForWorkerMessage();
+    const count = states.length;
+
+    current.set(opened);
+    await testWaitForWorkerMessage();
+
+    assertSame(states.length, count);
+    unsubscribe();
+  });
+
+  it("is None again when the tab has no AppOwner open", async () => {
+    const instance = createInstance("a");
+    const { current, states, unsubscribe } = setup(
+      currentOf(Promise.resolve(instance)),
+    );
+    await testWaitForWorkerMessage();
+
+    current.set(null);
+
+    assertEqual(states.at(-1), { type: "None" });
+    unsubscribe();
+  });
+
+  it("stays Opening while the instance never opens, as an aborted open's", async () => {
+    const opened = currentOf(new Promise<AppOwnerEvolu<TestSchema>>(constVoid));
+    const { states, unsubscribe } = setup(opened);
+    await testWaitForWorkerMessage();
+
+    assertEqual(states, [{ type: "Opening", current: opened }]);
+    unsubscribe();
+  });
+
+  it("stops listening to the store once unsubscribed", () => {
+    const { current, states, unsubscribe } = setup();
+
+    unsubscribe();
+    current.set(currentOf(Promise.resolve(createInstance("a"))));
+
+    assertEqual(states, [{ type: "None" }]);
   });
 });

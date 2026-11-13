@@ -1,7 +1,3 @@
-// Declares React Native's ErrorUtils global as src/Task.ts reads it.
-// oxlint-disable-next-line import/no-empty-named-blocks, unicorn/require-module-specifiers -- Includes global declarations during type-checking without emitting a runtime import.
-import type {} from "../../src/ErrorUtils.d.ts";
-
 import {
   assert,
   assertEqual,
@@ -118,15 +114,12 @@ describe("createEvoluDeps", () => {
 
   it("starts another shared worker after the running one panics", async () => {
     const reported = Promise.withResolvers<unknown>();
-    const reportError = mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>(
-      (error) => {
-        reported.resolve(error);
-      },
-    );
+    const reportError = mock.fn<(error: unknown) => void>((error) => {
+      reported.resolve(error);
+    });
     using _errorUtils = testStubGlobal("ErrorUtils", {
       getGlobalHandler: () => null,
-      setGlobalHandler:
-        mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
+      setGlobalHandler: mock.fn(),
       reportError,
     });
     const createDeps = () =>
@@ -215,12 +208,10 @@ describe("createEvoluDeps", () => {
   });
 
   it("reports a database that fails to open as an UnknownError", async () => {
-    const reportError =
-      mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>();
+    const reportError = mock.fn<(error: unknown) => void>();
     using _errorUtils = testStubGlobal("ErrorUtils", {
       getGlobalHandler: () => null,
-      setGlobalHandler:
-        mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
+      setGlobalHandler: mock.fn(),
       reportError,
     });
     const error = new Error("No SQLCipher.");
@@ -300,12 +291,10 @@ describe("createEvoluDeps", () => {
   });
 
   it("rejects a query SQLite fails and keeps the database available", async () => {
-    const reportError =
-      mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>();
+    const reportError = mock.fn<(error: unknown) => void>();
     using _errorUtils = testStubGlobal("ErrorUtils", {
       getGlobalHandler: () => null,
-      setGlobalHandler:
-        mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
+      setGlobalHandler: mock.fn(),
       reportError,
     });
     using deps = createEvoluDeps({

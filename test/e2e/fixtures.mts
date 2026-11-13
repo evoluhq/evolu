@@ -53,10 +53,17 @@ export interface BrowserEvents {
   readonly newPrivateContext: () => Promise<BrowserContext>;
   /**
    * Accepts the next dialog after checking its message; a prompt receives
-   * `value`. Any other dialog, including the examples' Evolu error alert, is
-   * dismissed and fails the test.
+   * `value`, or keeps what it was prefilled with. Any other dialog, including
+   * the examples' Evolu error alert, is dismissed and fails the test.
    */
   readonly acceptNextDialog: (message: string, value?: string) => void;
+  /**
+   * Accepts the next prompt as prefilled after checking its message and that it
+   * was prefilled with `defaultValue`.
+   */
+  readonly acceptNextPrompt: (message: string, defaultValue: string) => void;
+  /** Dismisses the next dialog after checking its message. */
+  readonly dismissNextDialog: (message: string) => void;
 }
 
 export const test = /*#__PURE__*/ base.extend<
@@ -83,10 +90,11 @@ export const test = /*#__PURE__*/ base.extend<
     runTest,
   ) => {
     const failures: Array<string> = [];
-    const expectedDialogs: Array<{
-      message: string;
-      value: string | undefined;
-    }> = [];
+    const expectedDialogs: Array<
+      | { type: "Accept"; message: string; value: string | undefined }
+      | { type: "AcceptPrefilled"; message: string; defaultValue: string }
+      | { type: "Dismiss"; message: string }
+    > = [];
     const contexts: Array<BrowserContext> = [];
     const privateBrowsers: Array<Browser> = [];
     const webkitHomes: Array<string> = [];
@@ -99,7 +107,21 @@ export const test = /*#__PURE__*/ base.extend<
       const expected = expectedDialogs[0];
       if (expected !== undefined && dialog.message() === expected.message) {
         expectedDialogs.shift();
-        dialog.accept(expected.value).catch(recordFailure);
+        if (
+          expected.type === "AcceptPrefilled" &&
+          dialog.defaultValue() !== expected.defaultValue
+        )
+          failures.push(
+            `Prompt "${expected.message}" prefilled "${dialog.defaultValue()}", not "${expected.defaultValue}"`,
+          );
+        (expected.type === "Dismiss"
+          ? dialog.dismiss()
+          : dialog.accept(
+              expected.type === "Accept" && expected.value !== undefined
+                ? expected.value
+                : dialog.defaultValue(),
+            )
+        ).catch(recordFailure);
         return;
       }
       failures.push(`Unexpected ${dialog.type()} dialog: ${dialog.message()}`);
@@ -161,7 +183,17 @@ export const test = /*#__PURE__*/ base.extend<
         );
       },
       acceptNextDialog: (message, value) => {
-        expectedDialogs.push({ message, value });
+        expectedDialogs.push({ type: "Accept", message, value });
+      },
+      acceptNextPrompt: (message, defaultValue) => {
+        expectedDialogs.push({
+          type: "AcceptPrefilled",
+          message,
+          defaultValue,
+        });
+      },
+      dismissNextDialog: (message) => {
+        expectedDialogs.push({ type: "Dismiss", message });
       },
     });
 
@@ -317,12 +349,84 @@ export const countPersistCalls = async (
 };
 
 /**
- * Adds a todo with Enter. The examples clear the input in the mutation's
- * onSuccess callback.
+ * Adds a project through the full playground's prompt, from the one "Add
+ * Project" button on the page: on Home while it has no project, or on the
+ * Projects tab.
+ */
+export const addProject = async (
+  browserEvents: BrowserEvents,
+  page: Page,
+  name: string,
+): Promise<void> => {
+  browserEvents.acceptNextDialog("What's the project name?", name);
+  await page.getByRole("button", { name: "Add Project", exact: true }).click();
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+};
+
+/**
+ * Adds a todo with Enter to the page's only project. The playground clears the
+ * input in the mutation's onSuccess callback.
  */
 export const addTodo = async (page: Page, title: string): Promise<void> => {
   const input = page.getByPlaceholder("Add a new todo...");
   await input.fill(title);
   await input.press("Enter");
   await expect(input).toHaveValue("");
+};
+
+/** The message of the full playground's prompt to restore an AppOwner. */
+export const restorePrompt = "Enter your mnemonic to restore your data:";
+
+/**
+ * The message of the full playground's prompt for an AppOwner's name, when it
+ * creates, restores, or renames one.
+ */
+export const namePrompt = "Name this account";
+
+/**
+ * Reads the open AppOwner's mnemonic through the playground's account UI, as a
+ * user copies it to sync another device.
+ */
+export const readMnemonic = async (page: Page): Promise<string> => {
+  await page.getByRole("button", { name: /^show mnemonic$/iu }).click();
+  const mnemonic = await page.locator("textarea[readonly]").inputValue();
+  await page.getByRole("button", { name: /^hide mnemonic$/iu }).click();
+  return mnemonic;
+};
+
+/**
+ * Restores the AppOwner of `mnemonic` through the playground's restore prompt
+ * in a page that has another AppOwner open, and waits until it's open: the
+ * playground then shows that mnemonic. The open AppOwner's UI remounts, which
+ * hides the mnemonic again, so each attempt shows it when it's hidden.
+ */
+export const restoreMnemonic = async (
+  browserEvents: BrowserEvents,
+  page: Page,
+  mnemonic: string,
+): Promise<void> => {
+  // Showing the mnemonic of the AppOwner the page opened first proves its
+  // account UI handles clicks, so the restore's click isn't lost.
+  await readMnemonic(page);
+  browserEvents.acceptNextDialog(restorePrompt, mnemonic);
+  browserEvents.acceptNextDialog(namePrompt);
+  await page.getByRole("button", { name: /^restore account$/iu }).click();
+  const shown = page.locator("textarea[readonly]");
+  // Each attempt's actions time out, and an attempt returns null when they do,
+  // so an element that disappears in a remount ends the attempt rather than
+  // the poll, which a throwing attempt would end.
+  await expect
+    .poll(async () => {
+      try {
+        if (!(await shown.isVisible()))
+          await page
+            .getByRole("button", { name: /^show mnemonic$/iu })
+            .click({ timeout: 1_000 });
+        return await shown.inputValue({ timeout: 1_000 });
+      } catch {
+        return null;
+      }
+    })
+    .toBe(mnemonic);
+  await page.getByRole("button", { name: /^hide mnemonic$/iu }).click();
 };

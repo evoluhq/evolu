@@ -67,7 +67,10 @@ saved on the device unless it is `Persisted`. The
 - **Users can clear site data at any time.**
 
 Only changes that have not synced exist nowhere else, so an app that syncs with
-a relay loses at most those.
+a relay loses at most those, as long as the owners' secrets are kept elsewhere
+too. `createEvoluApp` stores the AppOwner secrets in the app's device database,
+so once a browser deletes it, the synced data can't be read again unless the
+user kept the AppOwner's mnemonic.
 
 ### Persistent storage
 
@@ -81,9 +84,9 @@ once per tab with
 - Firefox asks the user, so every tab asks until the user allows it.
 - Safari decides silently, granting it mainly to Home Screen web apps.
 
-Evolu asks after the first change, not on page load, because only unsynced
-changes need it, and Firefox's prompt makes sense to the user only after they
-saved something. To ask at another moment, or never, pass your own
+Evolu asks after the first change, not on page load, because until then
+there's nothing to lose, and Firefox's prompt makes sense to the user only after
+they saved something. To ask at another moment, or never, pass your own
 `requestPersistentStorage` to `createEvoluDeps`:
 
 ```ts
@@ -100,8 +103,9 @@ await using _run = createRun(deps);
 // ---cut-end---
 ```
 
-A user who wants nothing kept on the device needs the app to offer the
-`memoryOnly` option.
+`createEvoluApp` keeps its databases in memory only where the browser stores
+nothing, so a user who wants nothing kept on the device needs an app that
+creates its instances with `createEvolu` and offers its `memoryOnly` option.
 
 ## How can I check the current database filesize?
 
@@ -157,18 +161,20 @@ Evolu uses [Kysely](https://kysely.dev/), a query builder, not an ORM, so it has
 
 ## How do I store device-specific settings that shouldn't sync?
 
-Use a separate Evolu instance with `transports: []` and `_`-prefixed tables for device-specific settings like UI preferences, onboarding state, or account management flow. The prefix keeps the tables local even if the instance later syncs other owners:
-
-The following setup reuses the shared `run` and persisted `appOwner` from [Create Evolu](/docs/local-first#create-evolu).
+With `createEvoluApp`, put settings such as UI preferences or onboarding state in the app's device database, which keeps the AppOwners on the device. Pass its tables as `device.schema`, and use them through `app.device`, or in React and Vue through `useDeviceEvolu` and `useDeviceQuery`, in Vue typed with `createEvoluBinding`. They stay the same when the user opens another AppOwner. Prefix the tables with `_`, which keeps them local-only:
 
 ```ts
-import { AppName, createEvolu, id } from "@evolu/common";
+import { AppName, createEvoluApp, id } from "@evolu/common";
 // ---cut-start---
-import { assertEqual, createQueryBuilder, testAppOwner } from "@evolu/common";
+import {
+  assertEqual,
+  createQueryBuilder,
+  NonEmptyTrimmedString100,
+} from "@evolu/common";
 import { createEvoluDeps, createRun } from "@evolu/web";
 
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
 const run = createRun(createEvoluDeps());
-const appOwner = testAppOwner;
 // ---cut-end---
 
 const PreferencesId = id("Preferences");
@@ -181,21 +187,21 @@ const DeviceSchema = {
   },
 };
 
-// Local-only instance for device settings (no sync)
-const deviceEvolu = await run.ok(
-  createEvolu(DeviceSchema, {
-    appName: AppName.orThrow("MyApp-Device"),
-    // No sync - stays local to device
-    transports: [],
-    appOwner,
+const app = await run.orThrow(
+  createEvoluApp(Schema, {
+    appName: AppName.orThrow("MyApp"),
+    auth: { type: "InstantStart" },
+    createFirstAppOwner: true,
+    device: { schema: DeviceSchema },
   }),
 );
+
+const { id: preferencesId } = app.device.insert("_preferences", {});
 // ---cut-start---
 
-const { id: preferencesId } = deviceEvolu.insert("_preferences", {});
 const createQuery = createQueryBuilder(DeviceSchema);
 assertEqual(
-  await deviceEvolu.loadQuery(
+  await app.device.loadQuery(
     createQuery((db) =>
       db
         .selectFrom("_preferences")
@@ -205,6 +211,7 @@ assertEqual(
   ),
   [{ id: preferencesId }],
 );
+await app[Symbol.asyncDispose]();
 // ---cut-end---
 ```
 
@@ -214,6 +221,8 @@ This approach gives us:
 - **Schema evolution** for local settings
 - **Reactive queries** for local state
 - **Complete separation** from synced user data
+
+An app that brings its own AppOwners to `createEvolu` can keep such settings in a separate instance with `transports: []` and `_`-prefixed tables.
 
 ## How do I store owner-specific data that shouldn't sync?
 
@@ -387,9 +396,9 @@ Evolu previously had an automatic seeding feature that ran when an AppOwner was 
 ```ts
 import {
   createIdFromString,
-  type Evolu,
   id,
   NonEmptyTrimmedString100,
+  type AppOwnerEvolu,
 } from "@evolu/common";
 // ---cut-start---
 import {
@@ -406,7 +415,7 @@ const CategorySchema = {
   category: { id: id("Category"), name: NonEmptyTrimmedString100 },
 };
 
-const seedDefaultData = (evolu: Evolu<typeof CategorySchema>) => {
+const seedDefaultData = (evolu: AppOwnerEvolu<typeof CategorySchema>) => {
   for (const [externalId, name] of [
     ["groceries", "Groceries"],
     ["utilities", "Utilities"],
@@ -449,7 +458,7 @@ assertEqual(
 
 **Alternative approach**: Create Evolu without transports initially, verify the user through a backend service that knows whether it's their first login, then have the client insert data explicitly before enabling sync:
 
-Using `CategorySchema` and `seedDefaultData` above, with the shared `run` and persisted `appOwner` from [Create Evolu](/docs/local-first#create-evolu):
+Using `CategorySchema` and `seedDefaultData` above, with the shared `run` and `appOwner` from Supply your own owner in [Create Evolu](/docs/local-first#create-evolu):
 
 ```ts
 import { AppName, createEvolu, WebSocketUrl } from "@evolu/common";
@@ -458,10 +467,10 @@ import {
   assertEqual,
   createIdFromString,
   createQueryBuilder,
-  type Evolu,
   id,
   NonEmptyTrimmedString100,
   testAppOwner,
+  type AppOwnerEvolu,
 } from "@evolu/common";
 import { createEvoluDeps, createRun } from "@evolu/web";
 
@@ -469,7 +478,7 @@ const CategorySchema = {
   category: { id: id("Category"), name: NonEmptyTrimmedString100 },
 };
 
-const seedDefaultData = (evolu: Evolu<typeof CategorySchema>) => {
+const seedDefaultData = (evolu: AppOwnerEvolu<typeof CategorySchema>) => {
   for (const [externalId, name] of [
     ["groceries", "Groceries"],
     ["utilities", "Utilities"],

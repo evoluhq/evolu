@@ -38,7 +38,7 @@ const config = {
     command:
       'node packages/sqlite-wasm/scripts/check-wasm.mts && pnpm --filter "web^..." --filter @evolu/relay -r run build && pnpm --filter web run build && pnpm --filter web start --ip 127.0.0.1 --port 3100',
     env: { NEXT_PUBLIC_EVOLU_RELAY_URL: relayUrl },
-    url: `${baseURL}/playgrounds/minimal`,
+    url: `${baseURL}/playgrounds/full/instant`,
     reuseExistingServer: false,
     // Without it, Playwright sends SIGKILL to the command's process group,
     // and a pnpm that starts scripts in their own group (11.27 and later)

@@ -2,20 +2,39 @@
  * Runs the device suites of `test/device/` in an example app that an app job
  * built and installed on a booted iOS simulator or Android emulator, and fails
  * unless the app ran as many tests as the suites register in Node.js on that
- * platform, every one passed, and the app then logged that it reloaded.
+ * platform, every one passed, the app then logged that it reloaded, and, once
+ * this driver stopped its process and opened it again, that it relaunched with
+ * the DeviceSecret it stored.
  *
- * - It stops the app, removes the reload marker an unfinished earlier run left,
- *   and seeds the fixtures into expo-sqlite's directory in the app's container:
- *   on iOS through `xcrun simctl get_app_container`, on Android with `adb
- *   root`, which a `google_apis` image allows, since a release build allows no
- *   `run-as`, then `chown` to the app's uid and `restorecon`.
+ * - It stops the app, removes the reload marker and the DeviceSecret check an
+ *   unfinished earlier run left, on Android also the DeviceSecret record an
+ *   earlier run stored, so the app stores it again, and seeds the fixtures into
+ *   expo-sqlite's directory in the app's container: on iOS through `xcrun
+ *   simctl get_app_container`, on Android with `adb root`, which a
+ *   `google_apis` image allows, since a release build allows no `run-as`, then
+ *   `chown` to the app's uid and `restorecon`. On Android it also seeds a
+ *   DeviceSecret record no Keystore key can read, which the app forgets.
  * - It reads the app's log, React Native's os_log subsystem on iOS and logcat's
  *   `ReactNativeJS` tag on Android, and opens the app at its URL, on iOS after
  *   approving the URL's scheme in the simulator, which would otherwise ask.
- * - It ends on the reload after the result, at once when the app's process dies,
- *   or hasn't started 30 seconds after it was opened, printing its crash, from
- *   the simulator's `.ips` reports on iOS and logcat's crash buffer on Android,
- *   or on a timeout.
+ * - Once the app reloaded, it checks where the app stored its DeviceSecret: on
+ *   iOS that the simulator's keychain database holds its Keychain items as
+ *   readable after the first unlock on this device only, through `sqlite3`, and
+ *   on Android that its record has the size of an encrypted one, not of the
+ *   secret in plain text, that a new encrypted record replaced the unreadable
+ *   one, and, in Keystore2's database, that the Keystore holds a key of an app
+ *   name the app kept and none of one it forgot. The Keychain keeps an item
+ *   after the app is removed, and the app reads it instead of storing another,
+ *   so only a simulator the app never ran on, as the app jobs boot, checks how
+ *   a build stores it.
+ * - Before the relaunch, on Android, it cuts short DeviceSecret records the app
+ *   stored for that before the reload, and changes another one in the byte
+ *   after its IV, so the relaunched app finds them unreadable while their
+ *   Keystore keys exist.
+ * - It ends on the relaunch after the reload, at once when the app's process
+ *   dies, or hasn't started 30 seconds after it was opened, printing its crash,
+ *   from the simulator's `.ips` reports on iOS and logcat's crash buffer on
+ *   Android, or on a timeout.
  * - It refuses a container path that isn't absolute, and ends the run at once
  *   when the log stream exits, printing the stream's error.
  * - Every xcrun or adb command, and the log stream's first line, must come within
@@ -62,9 +81,11 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
@@ -75,10 +96,18 @@ import {
   deviceFixtureRows,
   deviceFixtures,
   deviceIllFormedNames,
+  deviceForgottenSecretAppName,
+  deviceKeptSecretAppName,
+  deviceSecretAppName,
+  deviceSecretCheck,
+  deviceTamperedSecretAppName,
   deviceTestsMarker,
   deviceTestsTag,
+  deviceTruncatedSecrets,
+  deviceUnreadableSecretAppName,
   registerDeviceSuites,
   type DevicePlatform,
+  type DeviceSuitesDeps,
 } from "../test/device/suites.ts";
 import { writeIllFormedNamesDatabase } from "../test/illFormedNames.ts";
 
@@ -91,7 +120,8 @@ export type DeviceTestsLine =
       readonly failed: number;
       readonly total: number;
     }
-  | { readonly type: "Reloaded" };
+  | { readonly type: "Reloaded" }
+  | { readonly type: "Relaunched" };
 
 /**
  * Reads a line the app's runner logged, wherever in a log line it is, or
@@ -102,6 +132,7 @@ export const parseDeviceTestsLine = (line: string): DeviceTestsLine | null => {
   if (index === -1) return null;
   const text = line.slice(index + deviceTestsTag.length + 1);
   if (text === "reloaded") return { type: "Reloaded" };
+  if (text === "relaunched") return { type: "Relaunched" };
   if (text.startsWith("failed: "))
     return { type: "Failed", text: text.slice("failed: ".length) };
   const summary = /^passed=(\d+) failed=(\d+) total=(\d+)$/u.exec(text);
@@ -116,8 +147,9 @@ export const parseDeviceTestsLine = (line: string): DeviceTestsLine | null => {
 
 /**
  * The number of tests the suites register on `platform`, with a test function
- * that only counts them. Registering touches neither the binding nor
- * `createEvoluDeps`, so placeholders stand in for them.
+ * that only counts them. Registering touches neither the binding,
+ * `createEvoluDeps` nor the DeviceSecret functions, so placeholders stand in
+ * for them.
  */
 export const countDeviceTests = (platform: DevicePlatform): number => {
   let count = 0;
@@ -131,6 +163,8 @@ export const countDeviceTests = (platform: DevicePlatform): number => {
     },
     assertEqual,
     createEvoluDeps: {} as () => EvoluDeps,
+    loadDeviceSecret: {} as DeviceSuitesDeps["loadDeviceSecret"],
+    forgetDeviceSecret: {} as DeviceSuitesDeps["forgetDeviceSecret"],
   });
   return count;
 };
@@ -249,6 +283,7 @@ export const runDeviceTests = async ({
   commandMilliseconds = 60_000,
   xcrun = "xcrun",
   adb = "adb",
+  sqlite3 = "sqlite3",
   crashReportsDirectory = join(homedir(), "Library/Logs/DiagnosticReports"),
 }: {
   platform: DevicePlatform;
@@ -267,6 +302,7 @@ export const runDeviceTests = async ({
   commandMilliseconds?: number;
   xcrun?: string;
   adb?: string;
+  sqlite3?: string;
   /** Where the simulator writes the `.ips` reports of crashed apps. */
   crashReportsDirectory?: string;
 }): Promise<{ readonly passed: boolean; readonly output: string }> => {
@@ -275,6 +311,7 @@ export const runDeviceTests = async ({
     .toSorted()
     .map((file) => join(fixturesDirectory, file));
   const marker = `evolu1-${deviceTestsMarker}.db`;
+  const secretCheck = `evolu1-${deviceSecretCheck}.db`;
   const spawnCommand = (command: string, args: ReadonlyArray<string>) => {
     const result = spawnSync(command, args, {
       encoding: "utf8",
@@ -307,6 +344,10 @@ export const runDeviceTests = async ({
    * for.
    */
   let crash: (signal: AbortSignal) => Promise<string>;
+  // A failure the app's run left on the device, read once it reloaded.
+  let checkAfterRun: () => string | null;
+  // Stops the app's process and opens it again.
+  let relaunch: () => void;
   if (platform === "ios") {
     // A simulator without the app running fails the terminate, which is fine.
     spawnCommand(xcrun, ["simctl", "terminate", device, app]);
@@ -325,6 +366,7 @@ export const runDeviceTests = async ({
     const directory = join(container, "Documents/SQLite");
     mkdirSync(directory, { recursive: true });
     rmSync(join(directory, marker), { force: true });
+    rmSync(join(directory, secretCheck), { force: true });
     for (const fixture of fixtures)
       copyFileSync(fixture, join(directory, basename(fixture)));
     stream = spawn(
@@ -389,6 +431,37 @@ export const runDeviceTests = async ({
     ]);
     runCommand(xcrun, ["simctl", "openurl", device, url]);
     opened = performance.now();
+    relaunch = () => {
+      runCommand(xcrun, ["simctl", "terminate", device, app]);
+      runCommand(xcrun, ["simctl", "openurl", device, url]);
+    };
+    // The keychain database keeps the SHA-1 of an item's service and account,
+    // and its accessibility, which "cku" names for readable after the first
+    // unlock on this device only, and whether iCloud syncs it. An earlier build
+    // can have left an item in another access group, so each one counts. No
+    // ~/.sqliterc changes the output.
+    checkAfterRun = () => {
+      const home = runCommand(xcrun, [
+        "simctl",
+        "getenv",
+        device,
+        "HOME",
+      ]).trim();
+      const sha1 = (text: string) =>
+        createHash("sha1").update(text).digest("hex");
+      const [items, readable] = runCommand(sqlite3, [
+        "-init",
+        "/dev/null",
+        "-readonly",
+        join(home, "Library/Keychains/keychain-2-debug.db"),
+        `select count(*), count(*) filter (where pdmn = 'cku' and sync = 0) from genp where svce = x'${sha1(`dev.evolu.deviceSecret/${app}`)}' and acct = x'${sha1(deviceSecretAppName)}' and tomb = 0;`,
+      ])
+        .trim()
+        .split("|");
+      return items !== "0" && items === readable
+        ? null
+        : `Device tests: the Keychain holds ${items} items of the DeviceSecret, ${readable} of them readable after the first unlock on this device only and not synced.`;
+    };
     isAlive = () =>
       spawnCommand(xcrun, ["simctl", "spawn", device, "launchctl", "list"])
         .stdout.split("\n")
@@ -444,29 +517,109 @@ export const runDeviceTests = async ({
       adbRun("shell", ...args.map(quoteForShell));
     const data = `/data/data/${app}`;
     const directory = `${data}/files/SQLite`;
+    const secretPath = `${data}/no_backup/evolu-device-secret-${deviceSecretAppName}`;
     shell("am", "force-stop", app);
     adbRun("root");
     adbRun("wait-for-device");
-    shell("mkdir", "-p", directory);
-    shell("rm", "-f", `${directory}/${marker}`);
+    shell("mkdir", "-p", directory, `${data}/no_backup`);
+    shell(
+      "rm",
+      "-f",
+      `${directory}/${marker}`,
+      `${directory}/${secretCheck}`,
+      secretPath,
+    );
     adbRun("push", ...fixtures, `${directory}/`);
+    // An IV and a ciphertext that no Keystore key authenticates, which the
+    // app reports as unreadable and keeps until the runner forgets it.
+    const unreadableSecret = new Uint8Array(12 + 32).fill(7);
+    const unreadableSecretPath = `${data}/no_backup/evolu-device-secret-${deviceUnreadableSecretAppName}`;
+    const withSecretFile = <T,>(fn: (file: string) => T): T => {
+      const temporary = mkdtempSync(join(tmpdir(), "evolu-device-secret-"));
+      try {
+        return fn(join(temporary, "secret"));
+      } finally {
+        rmSync(temporary, { recursive: true, force: true });
+      }
+    };
+    withSecretFile((file) => {
+      writeFileSync(file, unreadableSecret);
+      adbRun("push", file, unreadableSecretPath);
+    });
+    checkAfterRun = () =>
+      withSecretFile((file) => {
+        // The runner forgot the record it couldn't read and stored a new one.
+        adbRun("pull", unreadableSecretPath, file);
+        const replaced = readFileSync(file);
+        if (replaced.equals(unreadableSecret))
+          return "Device tests: the app didn't replace the DeviceSecret record it couldn't read after forgetting it.";
+        // An IV, the secret's 43 characters, and the tag, while the secret in
+        // plain text would be its 43 characters alone.
+        if (replaced.length !== 12 + 43 + 16)
+          return `Device tests: the DeviceSecret record that replaced the unreadable one has ${replaced.length} bytes, not the 71 of an encrypted one.`;
+        adbRun("pull", secretPath, file);
+        const { length } = readFileSync(file);
+        if (length !== 12 + 43 + 16)
+          return `Device tests: the DeviceSecret record has ${length} bytes, not the 71 of an encrypted one.`;
+        // Live keys of the app's uid, under the aliases EvoluAppModule.java
+        // gives each app name.
+        const alias = (appName: string) => `dev.evolu.deviceSecret.${appName}`;
+        const [kept, forgotten] = shell(
+          "sqlite3",
+          "/data/misc/keystore/persistent.sqlite",
+          `select count(*) filter (where alias = '${alias(deviceKeptSecretAppName)}'), count(*) filter (where alias = '${alias(deviceForgottenSecretAppName)}') from keyentry where domain = 0 and namespace = ${uid} and state = 1;`,
+        )
+          .trim()
+          .split("|");
+        return kept === "1" && forgotten === "0"
+          ? null
+          : `Device tests: the Keystore holds ${kept} keys of the app name the app kept and ${forgotten} of the one it forgot, not 1 and 0.`;
+      });
     const uid = shell("stat", "-c", "%u", data).trim();
-    shell("chown", "-R", `${uid}:${uid}`, `${data}/files`);
-    shell("restorecon", "-R", `${data}/files`);
+    shell("chown", "-R", `${uid}:${uid}`, `${data}/files`, `${data}/no_backup`);
+    shell("restorecon", "-R", `${data}/files`, `${data}/no_backup`);
     // logcat prints what the buffer holds before it follows, so it misses
     // nothing the app logged after the buffer was cleared.
     adbRun("logcat", "-c");
-    shell(
-      "am",
-      "start",
-      "-W",
-      "-a",
-      "android.intent.action.VIEW",
-      "-d",
-      url,
-      app,
-    );
+    const start = () =>
+      shell(
+        "am",
+        "start",
+        "-W",
+        "-a",
+        "android.intent.action.VIEW",
+        "-d",
+        url,
+        app,
+      );
+    start();
     opened = performance.now();
+    relaunch = () => {
+      shell("am", "force-stop", app);
+      // Shorter than an IV and a tag, while their Keystore keys stay.
+      const truncatedPaths = deviceTruncatedSecrets.map(
+        ({ appName, length }) => {
+          const path = `${data}/no_backup/evolu-device-secret-${appName}`;
+          withSecretFile((file) => {
+            writeFileSync(file, new Uint8Array(length).fill(7));
+            adbRun("push", file, path);
+          });
+          return path;
+        },
+      );
+      // Of full length, failing authentication: its first ciphertext byte.
+      const tamperedPath = `${data}/no_backup/evolu-device-secret-${deviceTamperedSecretAppName}`;
+      withSecretFile((file) => {
+        adbRun("pull", tamperedPath, file);
+        const record = readFileSync(file);
+        record.writeUInt8(record.readUInt8(12) ^ 0xff, 12);
+        writeFileSync(file, record);
+        adbRun("push", file, tamperedPath);
+      });
+      shell("chown", `${uid}:${uid}`, ...truncatedPaths, tamperedPath);
+      shell("restorecon", ...truncatedPaths, tamperedPath);
+      start();
+    };
     stream = spawn(
       adb,
       ["-s", device, "logcat", "-v", "brief", "-s", "ReactNativeJS:V"],
@@ -494,7 +647,12 @@ export const runDeviceTests = async ({
 
   const seconds = `${timeoutMilliseconds / 1000} s`;
   const failures: Array<string> = [];
-  let summary: Extract<DeviceTestsLine, { type: "Summary" }> | null = null;
+  // The tests' summary is awaited, then, once they passed, the app's reload,
+  // after which this driver relaunches it, then its relaunch.
+  let phase:
+    | { readonly type: "Tests" }
+    | { readonly type: "Reload"; readonly total: number }
+    | { readonly type: "Relaunch"; readonly total: number } = { type: "Tests" };
   // Before the log is read, so a failure leaves no line to handle. An app that
   // ran and stopped died, and so did one that hasn't started within the launch
   // window, as when its native code fails to load.
@@ -544,7 +702,8 @@ export const runDeviceTests = async ({
             );
           break;
         case "Summary":
-          summary = parsed;
+          // The runner logs it once, before the reload.
+          phase = { type: "Reload", total: parsed.total };
           if (parsed.failed > 0)
             finish(
               false,
@@ -559,10 +718,31 @@ export const runDeviceTests = async ({
             );
           break;
         case "Reloaded":
-          if (summary != null)
+          if (phase.type === "Reload") {
+            const { total } = phase;
+            try {
+              const changed = checkAfterRun();
+              if (changed != null) {
+                finish(false, changed);
+                break;
+              }
+              relaunch();
+            } catch (error) {
+              fail(error as Error);
+              break;
+            }
+            // The stopped app isn't dead, and the opened one gets the launch
+            // window again.
+            phase = { type: "Relaunch", total };
+            wasAlive = false;
+            opened = performance.now();
+          }
+          break;
+        case "Relaunched":
+          if (phase.type === "Relaunch")
             finish(
               true,
-              `Device tests: ${summary.total} of ${summary.total} passed, and the app reloaded.`,
+              `Device tests: ${phase.total} of ${phase.total} passed, the app reloaded, and it relaunched with the DeviceSecret it stored.`,
             );
           break;
         // Only a new kind of line, which the compiler then flags, reaches it.
@@ -588,9 +768,11 @@ export const runDeviceTests = async ({
     const timeout = setTimeout(() => {
       finish(
         false,
-        summary == null
+        phase.type === "Tests"
           ? `Device tests: no result within ${seconds}.`
-          : `Device tests: ${summary.total} of ${summary.total} passed, but the app didn't log that it reloaded within ${seconds}.`,
+          : phase.type === "Relaunch"
+            ? `Device tests: ${phase.total} of ${phase.total} passed and the app reloaded, but it didn't log that it relaunched within ${seconds}.`
+            : `Device tests: ${phase.total} of ${phase.total} passed, but the app didn't log that it reloaded within ${seconds}.`,
       );
     }, timeoutMilliseconds);
   });
@@ -613,6 +795,7 @@ export const runDeviceTestsCli = async (
     env?: NodeJS.ProcessEnv;
     xcrun?: string;
     adb?: string;
+    sqlite3?: string;
     crashReportsDirectory?: string;
   },
 ): Promise<number> => {

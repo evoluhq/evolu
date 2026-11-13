@@ -5,8 +5,9 @@ import type {
   OwnerTransport,
   ReadonlyOwner,
 } from "@evolu/common";
-import { onScopeDispose } from "vue";
+import { isDatabaseDeleted } from "@evolu/common/local-first";
 import { isServerRendering } from "./isServerRendering.ts";
+import { subscribeForScope } from "./subscribeForScope.ts";
 import { useEvolu } from "./useEvolu.ts";
 
 /**
@@ -28,6 +29,8 @@ export const useOwner = (
   if (owner == null || isServerRendering()) return;
 
   const evolu = useEvolu();
+  // The deletion of its database disposed the instance, whose methods throw.
+  if (isDatabaseDeleted(evolu)) return;
 
-  onScopeDispose(evolu.useOwner(owner, transports));
+  subscribeForScope(() => evolu.useOwner(owner, transports));
 };

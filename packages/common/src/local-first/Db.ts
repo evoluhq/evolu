@@ -52,12 +52,16 @@
  * an I/O error or no memory, made SQLite roll the transaction back; then the
  * commit fails and the mutation is answered with an {@link UnknownError}. A
  * dispose message, the SharedWorker ending, or an abort that is not a panic
- * posts nothing. A deletion of the database ends the worker without refusing
- * it: it posts that the database was deleted, or answers the failed deletion. A
- * discard message posts nothing, after the worker deletes the database its own
- * startup created. When a worker fails before it gets its port, such as a web
- * worker whose script fails to load, the tab that hosts it posts the refusal in
- * its place; see {@link CreateDbWorker}.
+ * posts nothing. A worker that serves the database never deletes it: a worker
+ * started only to delete does, by name, so it deletes a database that doesn't
+ * open too. A worker whose gate ended, and a worker started only to delete
+ * whose attempt ended, end once they hold the database lock, before they touch
+ * its files, and post nothing; see {@link OpenDbWorkerInit.gateId} and
+ * {@link DeleteDbWorkerInit.attemptId}. Otherwise, a worker started only to
+ * delete posts that the files were deleted, or that deleting them failed. When
+ * a worker fails before it gets its port, such as a web worker whose script
+ * fails to load, the tab that hosts it posts the refusal in its place; see
+ * {@link CreateDbWorker}.
  *
  * @module
  */
@@ -93,10 +97,11 @@ import type { LockManagerDep } from "../LockManager.ts";
 import {
   acquireLeaderLock,
   acquireLeaderLockCallback,
+  isLeaderLockHeld,
 } from "../LockManager.ts";
 import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
 import { orderString, orderUint8Array } from "../Order.ts";
-import { err, getOk, ok, tryAsync, trySync, type Result } from "../Result.ts";
+import { err, getOk, ok, trySync, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
   SqliteDep,
@@ -112,7 +117,7 @@ import {
   sqliteQueryStringToSqliteQuery,
   SqliteValue,
 } from "../Sqlite.ts";
-import { AbortError, callback, type Run, type Task } from "../Task.ts";
+import { AbortError, callback, timeout, type Run, type Task } from "../Task.ts";
 import {
   millisToDateIso,
   saturateMillis,
@@ -140,8 +145,14 @@ import type {
   WorkerDeps,
   WorkerSelf,
 } from "../Worker.ts";
+import { appOwnerTable } from "./Auth.ts";
 import type { OwnerId, OwnerIdBytes } from "./Owner.ts";
-import { ownerIdBytesToOwnerId, ownerIdToOwnerIdBytes } from "./Owner.ts";
+import {
+  createOwnerSecret,
+  ownerIdBytesToOwnerId,
+  ownerIdToOwnerIdBytes,
+  ownerSecretToOwnerId,
+} from "./Owner.ts";
 import {
   applyProtocolMessageAsClient,
   createProtocolMessageForSync,
@@ -154,7 +165,7 @@ import {
   type ProtocolTimestampMismatchError,
 } from "./Protocol.ts";
 import type { Query } from "./Query.ts";
-import type { MutationChange, SqliteSchemaDep } from "./Schema.ts";
+import type { ConditionalMutationChange, SqliteSchemaDep } from "./Schema.ts";
 import {
   ensureSqliteSchema,
   isLocalOnlyTable,
@@ -168,13 +179,13 @@ import type {
   DbWorkerOutput,
   DbWorkerQueuedResponse,
   EvoluInput,
-  EvoluInstanceId,
   SharedWorkerId,
 } from "./Shared.ts";
 import {
   consoleEntryOrErrorBroadcastChannelName,
   postConsoleEntry,
 } from "./Shared.ts";
+import { databaseHeldTimeout } from "../Sqlite.ts";
 import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
@@ -187,6 +198,7 @@ import {
   type CrdtMessage,
   type Storage,
 } from "./Storage.ts";
+import type { Evolu, EvoluApp } from "./Evolu.ts";
 import type { Timestamp } from "./Timestamp.ts";
 import {
   createInitialTimestamp,
@@ -204,13 +216,73 @@ import {
 
 export type DbWorker = Worker<DbWorkerInit>;
 
-export interface DbWorkerInit {
-  readonly type: "DbWorkerInit";
-  readonly name: Name;
-  readonly consoleLevel: ConsoleLevel;
+/**
+ * What a {@link DbWorker} receives: {@link OpenDbWorkerInit} for a worker that
+ * opens and serves its database, or {@link DeleteDbWorkerInit} for one that only
+ * deletes its database's files.
+ */
+export type DbWorkerInit = OpenDbWorkerInit | DeleteDbWorkerInit;
+
+/** A {@link DbWorkerInit} for a worker that opens and serves its database. */
+export interface OpenDbWorkerInit extends DbWorkerInitFields {
+  readonly mode: "Open";
   readonly sqliteSchema: SqliteSchema;
   readonly encryptionKey: EncryptionKey;
   readonly memoryOnly: boolean;
+  /**
+   * Set for a device database. When this DbWorker's startup creates the
+   * database, it inserts a new AppOwner owned by `deviceOwnerId` into Evolu's
+   * AppOwner table in the same transaction, so tabs that open the device
+   * database at once end up with one first AppOwner. It never inserts into an
+   * existing database. See docs/adr/evolu-creates-and-stores-app-owners.md.
+   */
+  readonly createFirstAppOwner: { readonly deviceOwnerId: OwnerId } | null;
+  /**
+   * The gate this DbWorker was requested for. The SharedWorker leads for it
+   * from creating or reviving the database, or after a failed deletion, until a
+   * deletion, a removal, a refusal, or the tenant's end. Once the DbWorker
+   * holds the database lock, it opens the database only while the SharedWorker
+   * leads for its gate, and otherwise ends without touching the files and posts
+   * nothing, so a DbWorker requested before a deletion never creates the
+   * database again. One that opens holds the lock until it ends, so the
+   * deletion's DbWorker waits for it.
+   */
+  readonly gateId: string;
+  /**
+   * The SharedWorker that requested this DbWorker. It leads for this ID while
+   * it runs, so the DbWorker stops serving once it can lead for it.
+   */
+  readonly sharedWorkerId: SharedWorkerId;
+}
+
+/**
+ * A {@link DbWorkerInit} for a worker that only deletes its database's files,
+ * once it holds the database lock, without opening the database or needing its
+ * key. It answers `DatabaseDeleted` or `DeleteFailed` and ends. It waits for
+ * the lock for {@link databaseHeldTimeout}, such as while a tab of another build
+ * keeps the database open, then stops waiting and answers `DeleteFailed` with
+ * {@link DatabaseHeldError}, so it never deletes later.
+ */
+export interface DeleteDbWorkerInit extends DbWorkerInitFields {
+  readonly mode: "Delete";
+  /**
+   * The deletion attempt this DbWorker was requested for. The SharedWorker
+   * leads for it from requesting this DbWorker until it requests another one
+   * for the same deletion, as at a tab leader change, the deletion settles or
+   * stops, or the SharedWorker ends. Once this DbWorker holds the database
+   * lock, it deletes the files only while the SharedWorker leads for its
+   * attempt, and otherwise ends without touching them and posts nothing, so a
+   * DbWorker of an earlier attempt never deletes a database opened again since,
+   * such as of an AppOwner restored after its removal.
+   */
+  readonly attemptId: string;
+}
+
+/** The fields of every {@link DbWorkerInit}. */
+export interface DbWorkerInitFields {
+  readonly type: "DbWorkerInit";
+  readonly name: Name;
+  readonly consoleLevel: ConsoleLevel;
   /**
    * The channel this DbWorker posts console entries and errors on, which the
    * SharedWorker that requested it names: a stored worker's is
@@ -218,11 +290,6 @@ export interface DbWorkerInit {
    * worker's reaches only its instance's deps.
    */
   readonly consoleEntryOrErrorChannelName: string;
-  /**
-   * The SharedWorker that requested this DbWorker. It leads for this ID while
-   * it runs, so the DbWorker stops serving once it can lead for it.
-   */
-  readonly sharedWorkerId: SharedWorkerId;
   readonly port: NativeMessagePort<DbWorkerOutput, DbWorkerInput>;
 }
 
@@ -312,9 +379,11 @@ export interface UnsupportedDbVersionError extends Typed<"UnsupportedDbVersionEr
 }
 
 /**
- * Another context kept holding the database's files, so the database did not
- * open, or `Evolu.deleteDatabase` did not delete it; see
- * {@link WaitForDatabaseRelease}.
+ * Another context kept holding the database or its files for
+ * {@link databaseHeldTimeout}, so the database did not open, or
+ * {@link Evolu.deleteDatabase} or {@link EvoluApp.remove} did not delete it, or
+ * such a deletion did not finish in time, such as while the tab that starts it
+ * shows a modal dialog; see {@link WaitForDatabaseRelease}.
  *
  * A browser can keep the files of a worker that ended without closing them
  * until the browser restarts. Ask the user to close the app's other tabs or to
@@ -328,9 +397,11 @@ export interface DatabaseHeldError extends Typed<"DatabaseHeldError"> {
 
 /**
  * Starts the platform-agnostic Evolu DbWorker and owns its resources until it
- * refuses startup or fails, it handles a deletion of the database, the worker
- * receives a dispose or discard message, the SharedWorker that requested it
- * ends, or its {@link Run} is aborted.
+ * refuses startup or fails, the worker receives a dispose message, the
+ * SharedWorker that requested it ends, its gate ends before it opens the
+ * database, or its {@link Run} is aborted. A worker started with
+ * {@link DeleteDbWorkerInit} only deletes the database's files once it holds the
+ * database lock, and ends.
  */
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
@@ -374,7 +445,53 @@ export const startDbWorker =
         }),
       );
 
+      if (initMessage.mode === "Delete") {
+        // A tab of another build can keep the database open, holding its
+        // lock, so the wait ends. The disposer, not the wait, owns the
+        // request, so returning releases a lock granted as the wait ends, and
+        // the worker doesn't delete the database once that tab closes it,
+        // maybe after the app opened it again. A Task returning the lock
+        // would lose it when the deadline wins in the same microtask
+        // checkpoint, as with the React Native lock manager.
+        const locked = await run(
+          timeout(
+            callback<void>(({ resolve }) => {
+              disposer.use(
+                acquireLeaderLockCallback(deps)(initMessage.name, () => {
+                  resolve(ok());
+                }),
+              );
+            }),
+            databaseHeldTimeout,
+          ),
+        );
+        if (!locked.ok) {
+          port.postMessage({
+            type: "DeleteFailed",
+            error: { type: "DatabaseHeldError", name: initMessage.name },
+          });
+          return ok();
+        }
+        if (!(await isLeaderLockHeld(deps)(initMessage.attemptId))) return ok();
+        // The database's earlier workers released the lock, so none has it
+        // open.
+        const deleted = await run(deps.deleteDatabaseFiles(initMessage.name));
+        port.postMessage(
+          deleted.ok
+            ? { type: "DatabaseDeleted" }
+            : { type: "DeleteFailed", error: deleted.error },
+        );
+        return ok();
+      }
+
       disposer.use(await run.ok(acquireLeaderLock(initMessage.name)));
+
+      // Before the wait below, which on the web opens the pool and creates
+      // its directory. Such a worker posts nothing, so the tenant keeps its
+      // end of the port. Only a rare race leaves one, a port object, so the
+      // tenant doesn't track the ports of DbWorkers it requested beside its
+      // leader's.
+      if (!(await isLeaderLockHeld(deps)(initMessage.gateId))) return ok();
 
       if (!initMessage.memoryOnly && deps.waitForDatabaseRelease) {
         const released = await run(
@@ -407,10 +524,7 @@ export const startDbWorker =
         timestampConfig: { maxDrift: defaultTimestampMaxDrift },
       };
       const startup = sqlite.transaction(
-        (): Result<
-          { readonly clock: Timestamp; readonly created: boolean },
-          UnsupportedDbVersionError
-        > => {
+        (): Result<Timestamp, UnsupportedDbVersionError> => {
           // Only the version record is read before the version check, because a
           // newer database can hold schema objects this code cannot read.
           const { rows: versionColumnRows } = sqlite.exec<{ name: string }>(sql`
@@ -419,8 +533,9 @@ export const startDbWorker =
           const versionColumns = new Set(
             versionColumnRows.map((row) => row.name),
           );
+          const created = versionColumns.size === 0;
           let initialClock: Timestamp;
-          if (versionColumns.size === 0) {
+          if (created) {
             // The SharedWorker stamps with its session's node ID, but earlier
             // releases stamp with the stored one, so it is random too.
             initialClock = createInitialTimestamp(dbDeps);
@@ -435,16 +550,33 @@ export const startDbWorker =
             initialClock = timestampBytesToTimestamp(firstInArray(rows).clock);
           }
           ensureSqliteSchema(dbDeps)(initMessage.sqliteSchema);
+          // A lock lets only one DbWorker open a database, and this
+          // transaction commits before it serves a request, so tabs that start
+          // at once get one first AppOwner; see
+          // docs/adr/evolu-creates-and-stores-app-owners.md.
+          if (created && initMessage.createFirstAppOwner) {
+            const secret = createOwnerSecret(dbDeps);
+            applyLocalOnlyChange(dbDeps)(
+              {
+                ownerId: initMessage.createFirstAppOwner.deviceOwnerId,
+                ...DbChange.orThrow({
+                  table: appOwnerTable,
+                  id: ownerSecretToOwnerId(secret),
+                  values: { secret },
+                  isInsert: true,
+                  isDelete: null,
+                }),
+              },
+              deps.time.now(),
+            );
+          }
           const released = releaseDriftQuarantine(dbDeps)(initialClock);
           if (released) {
             initialClock = released;
             saveClock(dbDeps)(released);
           }
           tryApplyQuarantinedMessages(dbDeps);
-          return ok({
-            clock: initialClock,
-            created: versionColumns.size === 0,
-          });
+          return ok(initialClock);
         },
       );
       if (!startup.ok) {
@@ -457,7 +589,7 @@ export const startDbWorker =
         });
         return ok();
       }
-      const { clock: initialClock, created } = startup.value;
+      const initialClock = startup.value;
 
       const storage = createClientStorage({
         ...dbDeps,
@@ -470,24 +602,18 @@ export const startDbWorker =
         clock: initialClock,
       });
 
-      const ending = await run.ok(
-        callback<
-          | Typed<"Dispose">
-          | Typed<"Discard">
-          | {
-              readonly type: "DeleteDatabase";
-              readonly attemptId: Id;
-              readonly id: EvoluInstanceId;
-            }
-        >(({ resolve, reject }) => {
+      // It serves until Dispose or the SharedWorker's end. The SharedWorker
+      // deletes the database with a worker started only to delete.
+      await run.ok(
+        callback<void>(({ resolve, reject }) => {
           port.onMessage = (input) => {
             // A throw, such as a response that cannot be posted, panics this
             // worker's Run like a task defect, so the database is refused.
             // Mutations, queries, exports, and owner deletions answer their
             // SQLite failures instead.
             try {
-              if (input.type === "Dispose" || input.type === "Discard") {
-                resolve(ok(input));
+              if (input.type === "Dispose") {
+                resolve(ok());
                 return;
               }
 
@@ -572,6 +698,27 @@ export const startDbWorker =
 
               const request = input.request;
               if (request.type === "ForSharedWorker") {
+                if (request.message.type === "HasAppOwner") {
+                  const { ownerId } = request.message;
+                  // A failed read answers with its error, not that no row
+                  // exists, and the database stays available.
+                  const result = trySync(
+                    () =>
+                      sqlite.exec(sql`
+                        select 1
+                        from ${sql.identifier(appOwnerTable)}
+                        where "id" = ${ownerId};
+                      `).rows.length > 0,
+                    createUnknownError,
+                  );
+                  if (!result.ok) deps.console.error(result.error);
+                  postQueuedResponse({
+                    type: "ForSharedWorker",
+                    message: { type: "HasAppOwner", result },
+                  });
+                  return;
+                }
+
                 const protocolMessagesByOwnerId = new Map<
                   OwnerId,
                   ProtocolMessage
@@ -695,15 +842,6 @@ export const startDbWorker =
                 return;
               }
 
-              if (request.message.type === "DeleteDatabase") {
-                // Serving ends first, so nothing else reaches the database
-                // the deletion closes.
-                resolve(
-                  ok({ type: "DeleteDatabase", attemptId, id: request.id }),
-                );
-                return;
-              }
-
               exhaustiveCheck(request.message);
             } catch (error) {
               reject(error);
@@ -716,7 +854,7 @@ export const startDbWorker =
           // (https://bugzilla.mozilla.org/show_bug.cgi?id=2077609).
           const sharedWorkerEnded = acquireLeaderLockCallback(deps)(
             initMessage.sharedWorkerId,
-            () => resolve(ok({ type: "Dispose" })),
+            () => resolve(ok()),
           );
 
           return () => {
@@ -725,62 +863,6 @@ export const startDbWorker =
           };
         }),
       );
-
-      // This worker still holds the database lock, which the disposer releases
-      // after the answer. Closing first leaves no connection to the files. A
-      // throw would refuse the database instead of answering, so only an abort,
-      // which stops this worker on purpose, throws here.
-      const closeAndDeleteFiles = async (): Promise<
-        Result<void, DatabaseHeldError | UnknownError>
-      > => {
-        const closed = await tryAsync(
-          () => sqlite[Symbol.asyncDispose](),
-          createUnknownError,
-        );
-        // A database kept in memory has a name of its own, so it has no files.
-        if (!closed.ok || initMessage.memoryOnly) return closed;
-        return run(deps.deleteDatabaseFiles(initMessage.name));
-      };
-
-      switch (ending.type) {
-        case "Dispose":
-          break;
-
-        case "Discard": {
-          // A worker the tenant will not use, such as one requested before
-          // the tenant deleted the database, deletes the database its startup
-          // created, so none reappears. It handled no request, so the
-          // database holds no data.
-          if (!created || initMessage.memoryOnly) break;
-          const deleted = await closeAndDeleteFiles();
-          if (!deleted.ok) deps.console.info("discardFailed", deleted.error);
-          break;
-        }
-
-        case "DeleteDatabase": {
-          const deleted = await closeAndDeleteFiles();
-          port.postMessage(
-            deleted.ok
-              ? { type: "DatabaseDeleted" }
-              : {
-                  type: "OnQueuedResponse",
-                  attemptId: ending.attemptId,
-                  response: {
-                    type: "ForEvolu",
-                    id: ending.id,
-                    message: {
-                      type: "DeleteDatabaseFailed",
-                      error: deleted.error,
-                    },
-                  },
-                },
-          );
-          break;
-        }
-
-        default:
-          exhaustiveCheck(ending);
-      }
 
       return ok();
     } catch (error) {
@@ -1567,6 +1649,7 @@ const handleMutation =
             ? nextTimestamp.value
             : nextTimestamp.error.timestamp;
 
+          // A change of a synced table has no onlyIf, which mutate asserts.
           const { ownerId, ...dbChange } = change;
           const message: CrdtMessage = {
             timestamp: clockTimestamp,
@@ -1607,28 +1690,65 @@ const handleMutation =
     );
 
 /**
- * Applies a change of a local-only table, which keeps no history. The change
- * that creates the row sets `createdAt` and leaves `updatedAt` null; a later
- * change sets `updatedAt`. A change at the time the row was created leaves
- * `updatedAt`, because without history it cannot be told apart from the
- * creating change replayed after its response was lost, and a replay must
- * change nothing. Changes of one request share its time.
+ * Applies a change of a local-only table, which keeps no history. A delete
+ * removes the row, and an update changes only an existing row, so an update
+ * after a delete, such as from a tab that hadn't seen it, leaves the row
+ * deleted, as a synced table's tombstone does; an insert or an upsert creates
+ * the row. The change that creates the row sets `createdAt` and leaves
+ * `updatedAt` null; a later change sets `updatedAt`. A change at the time the
+ * row was created leaves `updatedAt`, because without history it cannot be told
+ * apart from the creating change replayed after its response was lost, and a
+ * replay must change nothing. Changes of one request share its time. A change
+ * with {@link ConditionalMutationChange.onlyIf} changes nothing unless the row
+ * is as given.
  */
 const applyLocalOnlyChange =
   (deps: SqliteDep) =>
-  (change: MutationChange, now: Millis): void => {
+  (change: ConditionalMutationChange, now: Millis): void => {
     const table = sql.identifier(change.table);
     const { ownerId, id } = change;
+
+    if (change.onlyIf) {
+      const exists =
+        deps.sqlite.prepared`
+          select 1 from ${table} where "ownerId" = ${ownerId} and "id" = ${id};
+        `.rows.length > 0;
+      switch (change.onlyIf.type) {
+        case "RowAbsent":
+          if (exists) return;
+          break;
+        case "RowMatches":
+          if (!exists) return;
+          for (const [column, value] of Object.entries(change.onlyIf.values)) {
+            const { rows } = deps.sqlite.prepared`
+              select 1
+              from ${table}
+              where
+                "ownerId" = ${ownerId}
+                and "id" = ${id}
+                and ${sql.identifier(column)} is ${value};
+            `;
+            if (rows.length === 0) return;
+          }
+          break;
+        default:
+          exhaustiveCheck(change.onlyIf);
+      }
+    }
 
     if (change.isDelete) {
       deps.sqlite.prepared`
         delete from ${table}
         where "ownerId" = ${ownerId} and "id" = ${id};
       `;
-    } else {
-      const date = millisToDateIso(now);
-      // Earlier releases left createdAt null on a row an update created, and
-      // updatedAt holds the time of its latest update, the earliest time left.
+      return;
+    }
+
+    const date = millisToDateIso(now);
+    // Earlier releases left createdAt null on a row an update created, and
+    // updatedAt holds the time of its latest update, the earliest time left.
+    // An update changes no missing row, nor do the column updates after it.
+    if (change.isInsert)
       deps.sqlite.prepared`
         insert into ${table} ("ownerId", "id", "createdAt")
         values (${ownerId}, ${id}, ${date})
@@ -1640,14 +1760,24 @@ const applyLocalOnlyChange =
               else ${date}
             end;
       `;
+    else
+      deps.sqlite.prepared`
+        update ${table}
+        set
+          "createdAt" = coalesce("createdAt", "updatedAt", ${date}),
+          "updatedAt" = case
+            when "createdAt" = ${date} then "updatedAt"
+            else ${date}
+          end
+        where "ownerId" = ${ownerId} and "id" = ${id};
+      `;
 
-      for (const [column, value] of dbChangeToColumns(change)) {
-        deps.sqlite.prepared`
-          update ${table}
-          set ${sql.identifier(column)} = ${value}
-          where "ownerId" = ${ownerId} and "id" = ${id};
-        `;
-      }
+    for (const [column, value] of dbChangeToColumns(change)) {
+      deps.sqlite.prepared`
+        update ${table}
+        set ${sql.identifier(column)} = ${value}
+        where "ownerId" = ${ownerId} and "id" = ${id};
+      `;
     }
   };
 
@@ -1858,58 +1988,3 @@ const loadQueries =
 
     return rowsByQuery;
   };
-
-//   reset: (deps) => (message) => {
-//     const result = deps.sqlite.transaction(() => {
-//       const sqliteSchema = getSqliteSchema(deps)();
-//       if (!sqliteSchema.ok) return sqliteSchema;
-
-//       for (const tableName in sqliteSchema.value.tables) {
-//         /**
-//          * The dropped table is completely removed from the database schema and
-//          * the disk file. The table can not be recovered. All indices and
-//          * triggers associated with the table are also deleted.
-//          * https://sqlite.org/lang_droptable.html
-//          */
-//         const result = deps.sqlite.exec(sql`
-//           drop table ${sql.identifier(tableName)};
-//         `);
-//         if (!result.ok) return result;
-//       }
-
-//       if (message.restore) {
-//         const result = ensureSqliteSchema(deps)(message.restore.sqliteSchema);
-//         if (!result.ok) return result;
-
-//         const secret = mnemonicToOwnerSecret(message.restore.mnemonic);
-//         const appOwner = createAppOwner(secret);
-//         const clock = createClock(deps)();
-
-//         return initializeDb(deps)(appOwner, clock.get());
-//       }
-
-//       return ok();
-//     });
-
-//     if (!result.ok) {
-//       deps.postMessage({ type: "onError", error: result.error });
-//       return;
-//     }
-
-//     deps.postMessage({
-//       type: "onReset",
-//       callbackId: message.callbackId,
-//       reload: message.reload,
-//     });
-//   },
-
-//   ensureSqliteSchema: (deps) => (message) => {
-//     const result = deps.sqlite.transaction(() =>
-//       ensureSqliteSchema(deps)(message.sqliteSchema),
-//     );
-
-//     if (!result.ok) {
-//       deps.postMessage({ type: "onError", error: result.error });
-//       return;
-//     }
-//   },

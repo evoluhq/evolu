@@ -18,22 +18,29 @@ All data Evolu syncs is encrypted end-to-end. This means:
 
 ## Encryption on the device
 
-- **Web and Electron** (React, Svelte, Vue, and vanilla JS with `@evolu/web`): encrypted. `@evolu/sqlite-wasm` encrypts every page of the database and its rollback journal in SQLCipher 4's format as the `sqlcipher` scheme of SQLite3 Multiple Ciphers writes it, with AES-256-CBC and HMAC-SHA512.
-- **React Native and Expo**: encrypted. `@evolu/react-native` runs the same SQLite core as the web, natively, in the same format and with the same algorithms, with the CPU's AES instructions where it has them. The databases that expo-sqlite's SQLCipher encrypted for earlier releases open in place.
-- **Node.js**: encrypted. `@evolu/nodejs` runs the same SQLite core in a Node-API addon, in the same format and with the same algorithms, with the CPU's AES instructions where it has them. A database an earlier release wrote is plaintext and fails to open, and the release notes say how to keep its data. The Evolu Relay's database isn't encrypted, because the changes it stores already are.
+Evolu encrypts every database an app stores on the device with AES-256, on the web and in Electron, in React Native and Expo, and in Node.js. The Evolu Relay's database isn't encrypted, because the changes it stores already are.
 
-The database key is derived from the app owner's secret, which Evolu doesn't store, so the database is only as safe as the place the app keeps that secret. The examples use `testAppOwner`, whose secret is public, so use it only for testing.
+Each AppOwner's database is encrypted with a key derived from the AppOwner's secret. The app keeps those secrets in one more database on the device, whose key decides how safe the data on the device is.
 
-With the `memoryOnly` option, this instance keeps its database in memory and stores nothing on the device. Its data lasts until the instance ends, for example when its tab closes or reloads. On the web, it exchanges changes with other instances only through relays.
+On React Native, that key can come from the platform's secure storage, the iOS Keychain or the Android Keystore, without a prompt, so anything that can only read the app's storage can't read the secrets.
 
-A memory instance and an instance that stores its database can still sync the same owner: through a relay, and on React Native also directly, even offline. The stored instance then keeps those changes on the device. To keep nothing on the device, dispose those instances first.
+On the web, a browser gives an app no secure storage that works without the user, so the key comes from a passkey or is public:
+
+- A passkey keeps the secrets from anything that can only read the app's storage, but the user has to confirm it whenever the app starts, and not every passkey provider supports it yet.
+- A public key lets the app start without a prompt, but anything that can read the app's storage can read the secrets, and with them every AppOwner's data.
+
+An app with sensitive data should use a passkey. An app with little at stake, such as a PWA wallet that holds only small amounts, may prefer to start without a prompt. On Node.js, Evolu offers no secure storage yet, so the key is public unless the app keeps it itself, as it can on any platform, such as with Electron's `safeStorage`. An app that supplies its own AppOwners, such as ones derived from a hardware wallet, keeps their secrets itself, so their databases are only as safe as the place it keeps them.
+
+Exports leave encryption: `exportDatabase` returns the database as a plain SQLite file that users can open in any SQLite tool, so treat exported files as sensitive.
+
+A database kept in memory stores nothing on the device and is gone when its instance ends. Its changes still sync, so an instance of the same owner that stores its database on the device, now or later, keeps them. [Will my data stay on the device?](/docs/faq#will-my-data-stay-on-the-device) says when Evolu keeps a database in memory.
 
 ## API design prevents data leaks
 
 Evolu's API is designed to prevent developers from accidentally leaking sensitive data:
 
 - **No public data options**: There is no API to mark data as "public" or "unencrypted"
-- **Can't be disabled**: No option turns off end-to-end encryption or the encryption of the database on the device
+- **Can't be disabled**: No option turns off end-to-end encryption or the encryption of the databases on the device, though a device database with a public key, as [Encryption on the device](#encryption-on-the-device) describes, protects nothing from whoever can read the app's storage
 - **Explicit plaintext export**: `exportDatabase` returns the whole local database as a plain, unencrypted SQLite file, so users can open their data in any SQLite tool. SQL's `VACUUM INTO` also writes an unencrypted file, on every platform. Apps should treat such files as sensitive
 
 ## Traffic analysis protection

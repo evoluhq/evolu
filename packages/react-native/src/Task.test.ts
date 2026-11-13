@@ -15,8 +15,7 @@ describe("createRun", () => {
     const reportError = mock.fn<(error: unknown) => void>();
     using _errorUtils = testStubGlobal("ErrorUtils", {
       getGlobalHandler: () => null,
-      setGlobalHandler:
-        mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
+      setGlobalHandler: mock.fn(),
       reportError,
     });
     await using run = createRun();
@@ -29,13 +28,11 @@ describe("createRun", () => {
   });
 
   it("createRun preserves a custom reportDefect", async () => {
-    const reportError =
-      mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>();
+    const reportError = mock.fn<(error: unknown) => void>();
     const reportDefect = mock.fn();
     using _errorUtils = testStubGlobal("ErrorUtils", {
       getGlobalHandler: () => null,
-      setGlobalHandler:
-        mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
+      setGlobalHandler: mock.fn(),
       reportError,
     });
     await using run = createRun({ reportDefect });

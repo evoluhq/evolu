@@ -1073,11 +1073,14 @@ const setupWebEvoluDeps = ({
       const port = createClosableNativePort();
       const init: DbWorkerInit = {
         type: "DbWorkerInit",
+        mode: "Open",
         name: testName,
         consoleLevel: "silent",
         sqliteSchema: { tables: {}, indexes: [] },
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
+        createFirstAppOwner: null,
+        gateId: createIdFromString("gate"),
         consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
         sharedWorkerId: createIdFromString<"SharedWorker">("worker"),
         port: port as unknown as NativeMessagePort<

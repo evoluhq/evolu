@@ -1,27 +1,56 @@
 "use client";
 
-import * as Evolu from "@evolu/common";
+import {
+  AppName,
+  booleanToSqliteBoolean,
+  constNull,
+  createEvoluApp,
+  createObjectURL,
+  createOwnerSecret,
+  createQueryBuilder,
+  id,
+  Mnemonic,
+  mnemonicToOwnerSecret,
+  NonEmptyTrimmedString100,
+  nullOr,
+  ownerSecretToOwnerId,
+  SqliteBoolean,
+  sqliteTrue,
+  WebSocketUrlFromString,
+  type EvoluDisposedError,
+  type KyselyNotNull,
+  type OwnerSecret,
+  type UnknownError,
+} from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-web";
 import { createRun } from "@evolu/web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import { clsx } from "clsx";
-import { Suspense, use, useState, useSyncExternalStore, type FC } from "react";
+import {
+  Component,
+  Suspense,
+  use,
+  useState,
+  useSyncExternalStore,
+  type FC,
+  type ReactNode,
+} from "react";
 
 // Any Standard Schema library can be used.
 const AppSchema = {
   todo: {
     // Primary keys are branded types, preventing accidental use of IDs across
     // different tables (e.g., a TodoId can't be used where a UserId is expected).
-    id: Evolu.id("Todo"),
+    id: id("Todo"),
     // Branded type ensuring titles are non-empty and ≤100 chars.
-    title: Evolu.NonEmptyTrimmedString100,
+    title: NonEmptyTrimmedString100,
     // SQLite doesn't support the boolean type; it uses 0 and 1 instead.
-    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
+    isCompleted: nullOr(SqliteBoolean),
   },
 };
 
-const createAppQuery = Evolu.createQueryBuilder(AppSchema);
+const createAppQuery = createQueryBuilder(AppSchema);
 
 const todosQuery = createAppQuery((db) =>
   db
@@ -30,13 +59,13 @@ const todosQuery = createAppQuery((db) =>
     .select(["id", "title", "isCompleted"])
 
     // Soft delete: filter out deleted rows.
-    .where("isDeleted", "is not", Evolu.sqliteTrue)
+    .where("isDeleted", "is not", sqliteTrue)
 
     // Like with GraphQL, all columns except id are nullable in queries
     // (even if defined without nullOr in the schema) to allow schema
     // evolution without migrations. Filter nulls with where + $narrowType.
     .where("title", "is not", null)
-    .$narrowType<{ title: Evolu.KyselyNotNull }>()
+    .$narrowType<{ title: KyselyNotNull }>()
 
     // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
     .orderBy("createdAt"),
@@ -46,30 +75,27 @@ const todosQuery = createAppQuery((db) =>
 type TodosRow = typeof todosQuery.Row;
 
 // Create Run with dependencies for React Web.
-const run = createRun(
-  createEvoluDeps({
-    console: Evolu.createConsole({
-      level: "debug",
-      formatter: Evolu.createConsoleFormatter()({
-        timestampFormat: "relative",
-      }),
-    }),
-  }),
-);
+const run = createRun(createEvoluDeps());
 
-const { EvoluContext, useEvolu, useOwnerSyncStatus, useQuery } =
-  createEvoluBinding<typeof AppSchema>();
+const {
+  EvoluAppProvider,
+  useEvolu,
+  useAppOwners,
+  useEvoluApp,
+  useOwnerSyncStatus,
+  useQuery,
+} = createEvoluBinding<typeof AppSchema>();
 
 export const EvoluMinimalExample: FC = () => {
   // `evoluError` is shared by all Evolu instances created from these deps.
   const error = useSyncExternalStore(
     run.deps.evoluError.subscribe,
     run.deps.evoluError.get,
-    Evolu.constNull,
+    constNull,
   );
 
   return (
-    <div className="min-h-screen px-8 py-8">
+    <div className="min-h-screen px-4 py-8 sm:px-8">
       <div className="mx-auto max-w-md">
         <div className="mb-2 flex items-center justify-between pb-4">
           <h1 className="w-full text-center text-xl font-semibold text-gray-900">
@@ -78,8 +104,10 @@ export const EvoluMinimalExample: FC = () => {
         </div>
 
         <p className="mb-6 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
-          This example uses a shared test identity. Visitors connected to the
-          same relay share its data. Use only sample data.
+          The smallest Evolu app: it starts at once with one account, with no
+          passkey and no switching between accounts. Without a passkey, its data
+          on this device isn&apos;t protected against malware, so it
+          doesn&apos;t suit sensitive data.
         </p>
 
         {error && (
@@ -91,27 +119,39 @@ export const EvoluMinimalExample: FC = () => {
           </p>
         )}
 
-        <Suspense>
-          {/*
-            Suspense delivers great UX (no loading flickers) and DX (no loading
-            states to manage). Highly recommended with Evolu.
-          */}
-          <App />
-        </Suspense>
+        {/* A failed start, such as of a refused database, shows here instead of
+            unmounting the page. */}
+        <ErrorBoundary
+          fallback={
+            <p role="alert" className="text-sm text-red-800">
+              The app couldn&apos;t start. See the console for details.
+            </p>
+          }
+        >
+          <Suspense>
+            {/*
+              Suspense delivers great UX (no loading flickers) and DX (no
+              loading states to manage). Highly recommended with Evolu.
+            */}
+            <App />
+          </Suspense>
+        </ErrorBoundary>
       </div>
     </div>
   );
 };
 
-const appPromise = run.ok(
-  Evolu.createEvolu(AppSchema, {
-    appName: Evolu.AppName.orThrow("minimal-example"),
-    appOwner: Evolu.testAppOwner,
+const appPromise = run.orThrow(
+  createEvoluApp(AppSchema, {
+    appName: AppName.orThrow("minimal-example"),
+    auth: { type: "InstantStart" },
+    // The first start creates the account and opens it.
+    createFirstAppOwner: true,
 
     transports: [
       {
         type: "WebSocket",
-        url: Evolu.WebSocketUrlFromString.orThrow(
+        url: WebSocketUrlFromString.orThrow(
           process.env.NEXT_PUBLIC_EVOLU_RELAY_URL ??
             (process.env.NODE_ENV === "development"
               ? "ws://localhost:4000"
@@ -123,23 +163,118 @@ const appPromise = run.ok(
 );
 
 const App: FC = () => (
-  <EvoluContext value={use(appPromise)}>
+  <EvoluAppProvider value={appPromise} withoutAppOwner={<WithoutAppOwner />}>
     <SyncStatus />
     {/* The todos load in their own boundary, so the status line's live region
-        is already mounted when the first status arrives. */}
-    <Suspense>
-      <DevicePersistenceNotice />
-      <Todos />
-      <OwnerActions />
-    </Suspense>
-  </EvoluContext>
+        is already mounted when the first status arrives. A query SQLite
+        fails, such as on a corrupt page, shows its message here. */}
+    <ErrorBoundary
+      fallback={
+        <p role="alert" className="mb-4 text-sm text-red-800">
+          This account&apos;s data couldn&apos;t load. See the console for
+          details.
+        </p>
+      }
+    >
+      <Suspense>
+        <DevicePersistenceNotice />
+        <Todos />
+      </Suspense>
+    </ErrorBoundary>
+    {/* Outside the data's boundaries, so the user can still back up, restore,
+        or delete the account while a refused database keeps its queries
+        pending, or after a query failed. */}
+    <OwnerActions />
+  </EvoluAppProvider>
 );
 
 /**
+ * Renders `fallback` instead of its children once one of them throws, which
+ * React logs, rather than unmounting the page. React has no hook for an error
+ * boundary, so it's a class.
+ */
+class ErrorBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { failed: boolean }
+> {
+  override state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  override render(): ReactNode {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+/**
+ * Shown when no account is open, such as after Delete Account. The app keeps
+ * one account, so an account another tab added is offered to open instead.
+ */
+const WithoutAppOwner: FC = () => {
+  const app = useEvoluApp();
+  const appOwners = useAppOwners();
+
+  return (
+    <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
+      <p className="mb-4 text-sm text-gray-600">No account is open.</p>
+      {appOwners.length > 0 ? (
+        <Button
+          title="Open Account"
+          variant="primary"
+          onClick={() => {
+            app.open(appOwners[0].id);
+          }}
+        />
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            title="Create Account"
+            variant="primary"
+            onClick={() => {
+              void app.add(createOwnerSecret(run.deps)).then((added) => {
+                if (!added.ok) alert("Creating the account failed. Try again.");
+              });
+            }}
+          />
+          <Button
+            title="Restore Account"
+            onClick={() => {
+              const secret = promptMnemonic();
+              if (!secret) return;
+              void app.add(secret).then((added) => {
+                if (!added.ok)
+                  alert("Restoring the account failed. Try again.");
+              });
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** Asks for a mnemonic and returns its secret, or null when it's cancelled. */
+const promptMnemonic = (): OwnerSecret | null => {
+  const value = window.prompt("Enter your mnemonic to restore your data:");
+  if (value == null) return null;
+  // Mnemonic accepts one spelling only, as its JSDoc says.
+  const mnemonic = Mnemonic.fromUnknown(
+    value.normalize("NFKD").trim().split(/\s+/u).join(" "),
+  );
+  if (!mnemonic.ok) {
+    alert(Mnemonic.formatError(mnemonic.error));
+    return null;
+  }
+  return mnemonicToOwnerSecret(mnemonic.value);
+};
+
+/**
  * Tells the user when this device doesn't keep their data, and shows nothing
- * otherwise. That happens with the `memoryOnly` option, or where the browser
- * offers no persistent storage, as in Safari's Private Browsing or a Firefox
- * private window. See `DevicePersistence` in `@evolu/common/local-first`.
+ * otherwise. That happens where the browser offers no persistent storage, as in
+ * Safari's Private Browsing or a Firefox private window. See
+ * `DevicePersistence` in `@evolu/common/local-first`.
  */
 const DevicePersistenceNotice: FC = () => {
   const devicePersistence = use(useEvolu().devicePersistence);
@@ -180,10 +315,6 @@ const SyncStatus: FC = () => {
   );
 };
 
-/** Trims user input and validates it as a todo title. */
-const parseTodoTitle = (value: string) =>
-  Evolu.NonEmptyTrimmedString100.fromUnknown(value.trim());
-
 const Todos: FC = () => {
   // useQuery returns live data - component re-renders when data changes.
   const todos = useQuery(todosQuery);
@@ -194,7 +325,7 @@ const Todos: FC = () => {
   const addTodo = () => {
     const result = parseTodoTitle(newTodoTitle);
     if (!result.ok) {
-      alert(Evolu.NonEmptyTrimmedString100.formatError(result.error));
+      alert(NonEmptyTrimmedString100.formatError(result.error));
       return;
     }
 
@@ -240,13 +371,13 @@ const Todos: FC = () => {
 
 const TodoItem: FC<{
   row: TodosRow;
-}> = ({ row: { id, title, isCompleted } }) => {
+}> = ({ row: { id: todoId, title, isCompleted } }) => {
   const { update } = useEvolu();
 
   const handleToggleCompletedClick = () => {
     update("todo", {
-      id,
-      isCompleted: Evolu.booleanToSqliteBoolean(!isCompleted),
+      id: todoId,
+      isCompleted: booleanToSqliteBoolean(!isCompleted),
     });
   };
 
@@ -256,18 +387,18 @@ const TodoItem: FC<{
 
     const result = parseTodoTitle(newTitle);
     if (!result.ok) {
-      alert(Evolu.NonEmptyTrimmedString100.formatError(result.error));
+      alert(NonEmptyTrimmedString100.formatError(result.error));
       return;
     }
 
-    update("todo", { id, title: result.value });
+    update("todo", { id: todoId, title: result.value });
   };
 
   const handleDeleteClick = () => {
     update("todo", {
-      id,
+      id: todoId,
       // Soft delete with isDeleted flag (CRDT-friendly, preserves sync history).
-      isDeleted: Evolu.sqliteTrue,
+      isDeleted: sqliteTrue,
     });
   };
 
@@ -309,21 +440,72 @@ const TodoItem: FC<{
   );
 };
 
+/** Trims user input and validates it as a todo title. */
+const parseTodoTitle = (value: string) =>
+  NonEmptyTrimmedString100.fromUnknown(value.trim());
+
 const OwnerActions: FC = () => {
+  const app = useEvoluApp();
+  // The instance of the account the app has open, as app.current holds it.
   const evolu = useEvolu();
 
   const [showMnemonic, setShowMnemonic] = useState(false);
 
-  const handleDownloadDatabaseClick = () => {
-    void evolu.exportDatabase().then((data: Uint8Array<ArrayBuffer>) => {
-      using objectUrl = Evolu.createObjectURL(
-        new Blob([data], { type: "application/x-sqlite3" }),
-      );
-      const link = document.createElement("a");
-      link.href = objectUrl.url;
-      link.download = `${evolu.name}.sqlite3`;
-      link.click();
+  // The restored account replaces this one. It's added before this one is
+  // removed, so a crash between the two leaves two accounts, not none. Adding
+  // opens it.
+  const handleRestoreClick = async () => {
+    const secret = promptMnemonic();
+    if (!secret) return;
+    // Replacing removes the open account, so it asks first, as Delete Account
+    // does.
+    if (
+      ownerSecretToOwnerId(secret) !== evolu.appOwner.id &&
+      !confirm(
+        "Replace this account? It's removed from this device, and only its mnemonic brings back what synced.",
+      )
+    )
+      return;
+    const added = await app.add(secret);
+    if (!added.ok) {
+      alert("Adding the account failed. Try again.");
+      return;
+    }
+    // Restoring the open account's own mnemonic leaves nothing to remove.
+    if (added.value === evolu.appOwner.id) return;
+    const removed = await app.remove(evolu.appOwner.id);
+    if (!removed.ok) alert("Removing the previous account failed.");
+  };
+
+  const handleDeleteClick = () => {
+    if (
+      !confirm(
+        "Delete this account? It's removed from this device, and only its mnemonic brings back what synced.",
+      )
+    )
+      return;
+    void app.remove(evolu.appOwner.id).then((removed) => {
+      if (!removed.ok) alert("Deleting the account failed. Try again.");
     });
+  };
+
+  const handleDownloadDatabaseClick = () => {
+    void evolu
+      .exportDatabase()
+      .then((data: Uint8Array<ArrayBuffer>) => {
+        using objectUrl = createObjectURL(
+          new Blob([data], { type: "application/x-sqlite3" }),
+        );
+        const link = document.createElement("a");
+        link.href = objectUrl.url;
+        link.download = `${evolu.name}.sqlite3`;
+        link.click();
+      })
+      .catch((error: EvoluDisposedError | UnknownError) => {
+        // A deletion or removal disposed the instance first.
+        if (error.type === "EvoluDisposedError") return;
+        alert("Downloading the data failed. Try again.");
+      });
   };
 
   return (
@@ -332,13 +514,6 @@ const OwnerActions: FC = () => {
       <p className="mb-4 text-sm text-gray-600">
         Todos are stored in local SQLite. When you sync across devices, your
         data is end-to-end encrypted using your mnemonic.
-      </p>
-
-      <p className="mb-4 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
-        Restore and reset are not implemented yet. Encrypted SQLite requires
-        secure persistence and unlocking of the AppOwner secret, such as
-        WebAuthn PRF or an external authentication mechanism. Persisting the
-        secret directly in browser storage would undermine encryption at rest.
       </p>
 
       <div className="space-y-3">
@@ -364,53 +539,15 @@ const OwnerActions: FC = () => {
           </div>
         )}
 
-        <div className="flex gap-2">
-          <Button disabled title="Restore from Mnemonic" />
-          <Button disabled title="Reset All Data" />
+        <div className="flex flex-wrap gap-2">
           <Button
-            title="Download Database"
-            onClick={handleDownloadDatabaseClick}
+            title="Restore Account"
+            onClick={() => {
+              void handleRestoreClick();
+            }}
           />
-        </div>
-
-        <div className="mb-4 space-y-3 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
-          <p className="font-medium text-gray-900">
-            Restore and reset are not implemented in this example yet.
-          </p>
-          <p>
-            Evolu encrypts the local SQLite database using secret material
-            associated with the AppOwner. Restoring from a mnemonic provides the
-            secret needed to derive the AppOwner, identify its database, and
-            unlock that database.
-          </p>
-          <p>
-            A production application must protect this secret between sessions.
-            Persisting the mnemonic or AppOwner secret directly in browser
-            storage would allow code or malware capable of reading that storage
-            to obtain both the encrypted database and the key needed to decrypt
-            it, largely defeating encryption at rest.
-          </p>
-          <p>
-            A secure browser implementation could use a passkey with the
-            WebAuthn PRF extension to derive a wrapping key after user
-            verification. Another option is to unlock the secret through an
-            external authentication service or trusted device. In both cases,
-            the user authenticates whenever the application is opened so the
-            AppOwner secret is not persisted in browser storage.
-          </p>
-          <p>
-            An application that does not require encryption at rest can persist
-            the AppOwner secret in browser storage to avoid repeated
-            authentication. Anyone who extracts browser storage then has that
-            secret, which decrypts the database and also lets them read and
-            write the owner&apos;s synced data on its relays.
-          </p>
-          <p>
-            Reset requires disposing every active instance, deleting the local
-            SQLite file across tabs, removing any persisted AppOwner secret, and
-            mounting a new Evolu instance. That deletion and authentication flow
-            has not been completed yet.
-          </p>
+          <Button title="Delete Account" onClick={handleDeleteClick} />
+          <Button title="Download Data" onClick={handleDownloadDatabaseClick} />
         </div>
       </div>
     </div>
@@ -420,12 +557,11 @@ const OwnerActions: FC = () => {
 const Button: FC<{
   title: string;
   className?: string;
-  onClick?: () => void;
-  disabled?: boolean;
+  onClick: () => void;
   variant?: "primary" | "secondary";
-}> = ({ title, className, onClick, disabled, variant = "secondary" }) => {
+}> = ({ title, className, onClick, variant = "secondary" }) => {
   const baseClasses =
-    "px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
   const variantClasses =
     variant === "primary"
       ? "bg-blue-600 text-white hover:bg-blue-700"
@@ -435,7 +571,6 @@ const Button: FC<{
     <button
       className={clsx(baseClasses, variantClasses, className)}
       onClick={onClick}
-      disabled={disabled}
     >
       {title}
     </button>

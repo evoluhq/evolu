@@ -3,11 +3,6 @@
  * specs mocked, since Node.js can't load React Native. Its lines go through the
  * summarizer, so the runner logs what `scripts/device-bench.mts` reads.
  */
-// Declares React Native's ErrorUtils global as src/Task.ts reads it, before
-// React Native's own types, which the specs bring, declare it as a const.
-// oxlint-disable-next-line import/no-empty-named-blocks, unicorn/require-module-specifiers -- Includes global declarations during type-checking without emitting a runtime import.
-import type {} from "../../src/ErrorUtils.d.ts";
-
 import {
   acquireLeaderLock,
   assert,

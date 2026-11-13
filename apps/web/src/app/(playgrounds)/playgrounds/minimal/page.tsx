@@ -3,14 +3,9 @@
 import dynamic from "next/dynamic";
 import type { FC } from "react";
 
-/**
- * Using dynamic with ssr: false emulates SPA behavior in Next.js.
- *
- * Evolu supports SSR (server-side rendering), but because data is end-to-end
- * encrypted, it must stay on clients - so SSR will render empty rows. If SSR
- * with data is needed, use server deps to render public or shared data (check
- * tests).
- */
+// SQLite and the worker dependencies exist only in the browser, and
+// EvoluMinimalExample creates the app at module scope, so the module loads only
+// there.
 const EvoluMinimalExample = dynamic(
   () => import("./EvoluMinimalExample").then((mod) => mod.EvoluMinimalExample),
   { ssr: false },

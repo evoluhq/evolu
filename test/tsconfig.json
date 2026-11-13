@@ -1,6 +1,8 @@
 {
   "extends": "../packages/typescript-config/base.json",
   "compilerOptions": {
+    // The playgrounds' browser tests import apps/web's TSX.
+    "jsx": "react-jsx",
     "lib": ["dom", "esnext", "webworker"],
     "module": "ESNext",
     "moduleResolution": "Bundler",

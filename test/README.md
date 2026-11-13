@@ -135,6 +135,7 @@ and the search tests use the generated API reference and current documentation.
 integration projects: first in Chromium with coverage, then in Firefox and
 WebKit without coverage because those engines do not support V8 coverage. Its
 test files are selected by `integration/browsers/vitest.config.ts`,
+`integration/browsers/playgrounds/vitest.config.ts`,
 `integration/browsers/web/vitest.config.ts`,
 `integration/browsers/sqlite-wasm/vitest.config.ts` and
 `integration/browsers/sqlite-wasm/quota/vitest.config.ts`; it does not discover
@@ -187,23 +188,29 @@ projects; register new Vitest suites in the appropriate project config.
 
 ## Browser E2E tests
 
-Playwright tests in `test/e2e` drive the actual Next.js minimal, full, and sync
-playgrounds in Chromium, Firefox, and WebKit, including React, workers, and
-persistent WASM SQLite. They cover CRUD, the mutation completion callback,
-reload persistence, live updates between tabs without Suspense hiding the loaded
-UI, and sync through a real relay between isolated browser contexts. The tab
-test records DOM removals and hiding throughout updates, including brief
-hide/show transitions between assertions.
-The full example also covers projects, moving todos, restoring deleted todos and
-projects, mnemonic visibility, and the disabled unfinished actions. Its navigation
-test opens Trash for the first time after deleting a todo and checks that
-`startTransition` keeps the loaded UI visible while Trash's queries load. Both
-examples use the same DOM visibility observer to detect even brief Suspense hides.
-The sync playground tests restart the relay, add a backup relay, and check the
-connection and synchronization state while one relay is down and after it
-catches up.
-The private-browsing tests in Firefox and WebKit check that memory databases
-belong to individual instances: offline tabs don't exchange changes, closing
+Playwright tests in `test/e2e` drive the actual Next.js playgrounds in Chromium,
+Firefox, and WebKit, including React, workers, and persistent WASM SQLite.
+`EvoluFullExample.spec.mts` covers the full playground's instant start variant:
+CRUD across projects, moving todos, restoring deleted todos and projects, the
+mutation completion callback, reload persistence, live updates between tabs
+without Suspense hiding the loaded UI, sync through a real relay between
+isolated browser contexts, accounts, the database download, and deleting the
+database in every tab. The tab test records DOM removals and hiding throughout
+updates, including brief hide/show transitions between assertions, and the
+navigation test opens Trash for the first time after deleting a todo and checks
+that `startTransition` keeps the loaded UI visible while Trash's queries load.
+Its relay tests validate relay URLs, restart the relay, add a backup relay, and
+check the connection and synchronization state while one relay is down and
+after it catches up.
+`EvoluMinimalExample.spec.mts` checks that the minimal playground adds,
+completes, and deletes todos, keeps them across a reload, restores its account
+in another browser, and after Delete Account restores or creates one.
+`EvoluFullPasskeyExample.spec.mts` covers the passkey variant in Chromium,
+whose CDP adds a virtual authenticator: the first use, unlocking, restoring,
+starting over or declining it, and a provider without the PRF extension.
+The private-browsing tests in Firefox and WebKit check that the passkey variant
+starts in memory without a passkey, and that memory databases belong to
+individual instances: offline tabs don't exchange changes, closing
 the first tab preserves the second tab's unsynced changes, and online tabs
 exchange changes through the relay. Chromium skips these tests because its
 incognito windows provide OPFS.
@@ -240,7 +247,8 @@ playgrounds load, before they build or start anything.
 
 Tests run sequentially because the relay address is embedded in the browser
 bundle. Each test replaces the relay at that address with fresh storage, so
-the example's temporary shared `testAppOwner` cannot connect unrelated tests.
+nothing one test synced reaches another, such as an account restored from the
+same mnemonic.
 Tests that need a backup relay start a second relay on the next port. Keep
 ports 3100, 4311, and 4312 free and run only one E2E invocation at a time.
 
