@@ -14,7 +14,7 @@ import { createMutableRecord, objectToEntries } from "./Object.ts";
 import type { Result } from "./Result.ts";
 import { ok } from "./Result.ts";
 import { type Task, testCreateRun, type TestRunDep } from "./Task.ts";
-import { performanceDurationBetween } from "./Time.ts";
+import { performanceDurationBetween, type PositiveDuration } from "./Time.ts";
 import {
   array,
   type ArrayType,
@@ -34,6 +34,18 @@ import {
   Uint8Array,
   union,
 } from "./Type.ts";
+
+/**
+ * How long Evolu waits for another context to release a database, such as a tab
+ * of another build of the app that keeps it open, or another process of a
+ * native app, before it fails with a `DatabaseHeldError`.
+ *
+ * @group Core
+ */
+export const databaseHeldTimeout: PositiveDuration =
+  // Longer than the two seconds Chromium gives a terminated worker to release
+  // its files.
+  "10s";
 
 /**
  * Platform-agnostic SQLite wrapping a {@link SqliteDriver}.

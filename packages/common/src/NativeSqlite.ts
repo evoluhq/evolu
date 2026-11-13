@@ -98,8 +98,13 @@ import type {
   SqliteRow,
   SqliteValue,
 } from "./Sqlite.ts";
+import { databaseHeldTimeout } from "./Sqlite.ts";
 import { sleep, type Task } from "./Task.ts";
-import { performanceDurationBetween, type PositiveMillis } from "./Time.ts";
+import {
+  durationToMillis,
+  performanceDurationBetween,
+  type PositiveMillis,
+} from "./Time.ts";
 import { typed, type InferType, type Name, type Typed } from "./Type.ts";
 
 /** The binding the native code creates for a JavaScript runtime. */
@@ -386,8 +391,9 @@ const execResultOf = (result: NativeSqliteRunResult): SqliteExecResult => {
 /**
  * Runs `attempt` at once and, until one returns ok, again 50 ms after an
  * attempt that returned an error, then after twice the previous delay, up to a
- * second. It returns the error of an attempt that ends 10 seconds or more after
- * the first started, as the web waits for a database another context holds.
+ * second. It returns the error of an attempt that ends
+ * {@link databaseHeldTimeout} or more after the first started, as the web waits
+ * for a database another context holds.
  */
 export const retryWhileHeld =
   <T, E>(attempt: () => Result<T, E>): Task<T, E> =>
@@ -398,7 +404,8 @@ export const retryWhileHeld =
     for (
       let delay = 50;
       !result.ok &&
-      performanceDurationBetween(start, time.performance.now()) < 10_000;
+      performanceDurationBetween(start, time.performance.now()) <
+        durationToMillis(databaseHeldTimeout);
       delay = Math.min(delay * 2, 1000)
     ) {
       await run.ok(sleep(delay as PositiveMillis));

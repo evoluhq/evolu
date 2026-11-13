@@ -6,6 +6,7 @@
 
 import {
   createUnknownError,
+  databaseHeldTimeout,
   disposable,
   err,
   exhaustiveCheck,
@@ -244,10 +245,10 @@ export interface SqliteWasmLoadDep {
  * When another context holds a file of the pool, the pool is opened again after
  * 50 ms, then after twice the previous delay, up to a second, with the
  * `heldTimeout` option of {@link openSahPool}, and the wait fails with
- * {@link DatabaseHeldError} when it is still held 10 seconds after the first
- * attempt started. Evolu then refuses to start the database, and the app
- * receives the error as its `evoluError`. Every other error is thrown, as the
- * driver throws it.
+ * {@link DatabaseHeldError} when it is still held {@link databaseHeldTimeout}
+ * after the first attempt started. Evolu then refuses to start the database,
+ * and the app receives the error as its `evoluError`. Every other error is
+ * thrown, as the driver throws it.
  */
 export const createWaitForDatabaseRelease =
   (deps: OpfsRootDep & SqliteWasmLoadDep): WaitForDatabaseRelease =>
@@ -255,8 +256,7 @@ export const createWaitForDatabaseRelease =
   async (run) => {
     const sqliteWasm = getOrThrowWithMessage(await deps.sqliteWasmLoad);
     const opened = await run(
-      // Longer than the two seconds Chromium gives a terminated worker.
-      openDatabasePool(name, { heldTimeout: "10s" }),
+      openDatabasePool(name, { heldTimeout: databaseHeldTimeout }),
       { ...deps, sqliteWasm },
     );
     if (!opened.ok && opened.error.type === "SahPoolHeldError")
@@ -274,10 +274,10 @@ export const createWaitForDatabaseRelease =
  * missing directory, which it then doesn't create.
  *
  * It fails with {@link DatabaseHeldError} when another context still holds a
- * file of the pool 10 seconds after the first attempt, and deletes nothing. Any
- * other failure, such as SQLite that failed to load or a file that could not be
- * deleted, fails with an {@link UnknownError}, after which only the pool's
- * disposal still runs.
+ * file of the pool {@link databaseHeldTimeout} after the first attempt, and
+ * deletes nothing. Any other failure, such as SQLite that failed to load or a
+ * file that could not be deleted, fails with an {@link UnknownError}, after
+ * which only the pool's disposal still runs.
  */
 export const createDeleteDatabaseFiles =
   (deps: OpfsRootWithRemoveEntryDep & SqliteWasmLoadDep): DeleteDatabaseFiles =>
@@ -301,8 +301,7 @@ export const createDeleteDatabaseFiles =
     const sqliteWasm = await deps.sqliteWasmLoad;
     if (!sqliteWasm.ok) return err(createUnknownError(sqliteWasm.error));
     const opened = await run(
-      // As createWaitForDatabaseRelease waits.
-      openDatabasePool(name, { heldTimeout: "10s" }),
+      openDatabasePool(name, { heldTimeout: databaseHeldTimeout }),
       { ...deps, sqliteWasm: sqliteWasm.value },
     );
     if (!opened.ok)
