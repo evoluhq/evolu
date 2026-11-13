@@ -199,7 +199,9 @@ export const ExampleShell: FC<{ intro: ReactNode; children: ReactNode }> = ({
   );
 
   return (
-    <div className="min-h-screen px-4 py-8 sm:px-8">
+    // The website's dark mode would make text without its own color white,
+    // such as the selects', and native controls dark, on this light page.
+    <div className="min-h-screen px-4 py-8 text-gray-900 scheme-light sm:px-8">
       <div className="mx-auto w-full max-w-md">
         <div className="mb-6 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
           {intro}
